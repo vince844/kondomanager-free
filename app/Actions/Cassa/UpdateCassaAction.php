@@ -56,7 +56,14 @@ class UpdateCassaAction
                 // payload — anche un salvataggio che non tocca affatto questo campo,
                 // che comunque lo re-invia — la colonna resta congelata a zero.
                 $nuovoSaldoIniziale = $saldoInizialeAttuale;
-            } elseif ($hasMovimenti && $nuovoSaldoIniziale !== $saldoInizialeAttuale) {
+            } elseif ($hasMovimenti && $nuovoSaldoIniziale !== $saldoInizialeAttuale && $saldoInizialeAttuale !== 0) {
+                // MODIFICARE un'apertura già in colonna con movimenti sotto altererebbe il saldo
+                // all'indietro. AGGIUNGERE la prima apertura a una cassa che ne è priva (colonna a
+                // zero, niente a giornale) invece no: la scrittura va a inizio esercizio e aggiunge
+                // ciò che manca. Prima il blocco copriva anche questo caso, e chi aveva cominciato a
+                // pagare prima di mettere il saldo della banca non aveva nessuna strada — lo Stato
+                // patrimoniale mandava qui («registra il saldo iniziale») e qui si trovava un no
+                // (test reale del 12/09/2026, «Via delle Acacie»).
                 throw ValidationException::withMessages([
                     'saldo_iniziale' => 'Impossibile modificare il saldo di apertura: questa risorsa ha già movimenti contabili registrati.'
                 ]);

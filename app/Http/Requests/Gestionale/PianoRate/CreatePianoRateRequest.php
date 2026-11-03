@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\PianoRate;
 
+use App\Http\Requests\Gestionale\PianoConto\Conto\ImportoSenzaSegno;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -12,8 +13,179 @@ class CreatePianoRateRequest extends FormRequest
         return true;
     }
 
+    /** La natura della gestione scelta: `gestioni.tipo`, non `piani_rate.tipo` (decisione 11). */
+    public function gestioneStraordinaria(): bool
+    {
+        $id = $this->input('gestione_id');
+
+        // Rilievo T-J del terzo giro: solo una gestione del condominio dell'indirizzo; di un'altra non si legge nemmeno la natura.
+        return $id !== null && \App\Models\Gestione::where('condominio_id', $this->idDelCondominio())->whereKey($id)->value('tipo') === 'straordinaria';
+    }
+
+    public function messages(): array
+    {
+        return [
+            // La coda su «Urgenza» solo dove quella scelta esiste a video: il carrello del piano straordinario (verifica S6, R4).
+            'data_delibera_assemblea.required' => 'Indica la data della delibera dell\'assemblea: su una gestione straordinaria è il giorno che decide chi paga (art. 63 disp. att. c.c.).'
+                . ($this->input('tipo') === 'straordinario' ? ' Con un intervento d\'urgenza scegli «Urgenza» e dichiara la competenza sulla fattura.' : ''),
+            'competenze_capitoli.*.tratti.*.dal.required' => 'Ogni tratto di competenza vuole la data di inizio.',
+            'competenze_capitoli.*.tratti.*.al.required' => 'Ogni tratto di competenza vuole la data di fine.',
+        ];
+    }
+
+    /**
+     * I tratti di competenza per voce (B2, S6): ognuno con `al ≥ dal`, tutti dentro l'esercizio del piano,
+     * in ordine e **senza un giorno in comune** — «01/01–15/04» e «15/04–31/12» condividono il 15 aprile e
+     * `InsiemePeriodi` li rifiuta; qui lo si dice con un 422 sulla voce, non con un 500 alla generazione.
+     * Il motore non interseca i tratti con l'esercizio: la validazione è l'unico presidio.
+     */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $esercizio = $this->route('esercizio');
+            $inizio = $esercizio?->data_inizio ? substr((string) $esercizio->data_inizio, 0, 10) : null;
+            $fine = $esercizio?->data_fine ? substr((string) $esercizio->data_fine, 0, 10) : null;
+
+            // Sullo straordinario la competenza è il giorno della delibera, o quella dichiarata sulla fattura
+            // (decisioni 12 e 20): le voci non hanno un periodo proprio, e i tratti si rifiutano invece di
+            // scriverli e ignorarli (verifica S6, R1).
+            if ($this->input('competenze_capitoli', []) !== [] && $this->gestioneStraordinaria()) {
+                $validator->errors()->add('competenze_capitoli', 'Su una gestione straordinaria la competenza è il giorno della delibera dell\'assemblea, o quella dichiarata sulla fattura: le voci di spesa non hanno un periodo proprio.');
+            }
+
+            foreach ($this->input('competenze_capitoli', []) as $i => $voce) {
+                $tratti = collect($voce['tratti'] ?? [])
+                    ->map(fn ($t) => ['dal' => substr((string) ($t['dal'] ?? ''), 0, 10), 'al' => substr((string) ($t['al'] ?? ''), 0, 10)])
+                    ->filter(fn ($t) => $t['dal'] !== '' && $t['al'] !== '')
+                    ->sortBy('dal')->values();
+                $precedente = null;
+                foreach ($tratti as $t) {
+                    if ($t['al'] < $t['dal']) {
+                        $validator->errors()->add("competenze_capitoli.{$i}", 'In un tratto di competenza la fine non può precedere l\'inizio.');
+                        break;
+                    }
+                    if ($inizio !== null && $fine !== null && ($t['dal'] < $inizio || $t['al'] > $fine)) {
+                        $validator->errors()->add("competenze_capitoli.{$i}", sprintf('I tratti di competenza devono stare dentro l\'esercizio (%s – %s): il piano conta i giorni di quell\'anno, non di un altro.', $this->giorno($inizio), $this->giorno($fine)));
+                        break;
+                    }
+                    if ($precedente !== null && $t['dal'] <= $precedente) {
+                        $validator->errors()->add("competenze_capitoli.{$i}", sprintf('Due tratti di competenza non possono avere un giorno in comune: il tratto che comincia il %s si sovrappone a quello che finisce il %s. Chiudi il primo il giorno prima.', $this->giorno($t['dal']), $this->giorno($precedente)));
+                        break;
+                    }
+                    $precedente = $t['al'];
+                }
+            }
+
+            // L'importo che il piano forza su una voce si scrive senza il segno, come quello della voce: lo decide il tipo. Una configurazione che
+            // non è una lista, o una riga già in errore, la rifiutano le regole del campo.
+            $configurazione = $this->input('capitoli_config');
+            foreach (is_array($configurazione) ? $configurazione : [] as $i => $conf) {
+                if (is_array($conf) && ImportoSenzaSegno::eNegativo($conf['importo'] ?? null)) {
+                    ImportoSenzaSegno::rifiuta($validator, "capitoli_config.{$i}.importo", ImportoSenzaSegno::PER_IL_PIANO);
+                }
+            }
+
+            $this->guardiaSpeseNegative($validator);
+            $this->guardiaFattureRettificate($validator);
+        });
+    }
+
+    /**
+     * Una voce di spesa scritta con il meno (dato delle versioni fino alla 1.11.0-beta.51) non entra in un piano nuovo con una cifra: il motore la
+     * addebita in positivo, e se un piano la tiene già la addebiterebbe una seconda volta. Il selettore della creazione la spegne; una richiesta che
+     * la porta lo stesso con un importo si rifiuta sul campo della riga, nominando la voce, e i piani che la addebitano se ce ne sono (`VoceDiSpesaNegativa`).
+     * Vale anche per un sottoconto, che il fermo del piano su una copia positiva non vede.
+     *
+     * Una riga con l'importo vuoto non si rifiuta qui: la copia è l'importo della voce, negativo, e la ferma il fermo del piano. Una riga a zero
+     * neppure, e il piano nasce con la copia a zero: non addebita la voce, e `VoceDiSpesaNegativa::pianiPerVoce` non lo conta.
+     * Una riga il cui id è già rifiutato (fuori dal condominio, inesistente) si salta: questa regola non legge quella voce e non ne dice il nome.
+     */
+    private function guardiaSpeseNegative($validator): void
+    {
+        $configurazione = $this->input('capitoli_config');
+        if ($this->input('tipo') === 'straordinario' || ! is_array($configurazione)) {
+            return;
+        }
+
+        $condominioId = $this->idDelCondominio();
+        foreach ($configurazione as $i => $conf) {
+            if (! is_array($conf) || empty($conf['id']) || $validator->errors()->has("capitoli_config.{$i}.id") || $validator->errors()->has("capitoli_config.{$i}.importo")) {
+                continue;
+            }
+            $importo = $conf['importo'] ?? null;
+            if (! is_string($importo) || trim($importo) === '' || \App\Helpers\MoneyHelper::toCents($importo) <= 0) {
+                continue;
+            }
+
+            $voce = \App\Models\Gestionale\Conto::whereKey($conf['id'])
+                ->whereIn('piano_conto_id', fn ($q) => $q->select('id')->from('piani_conti')->where('condominio_id', $condominioId))
+                ->with('pianoConto')
+                ->first();
+            if ($voce === null || ! \App\Models\Gestionale\Conto::eSpesaNegativa((string) $voce->tipo, (int) $voce->importo)) {
+                continue;
+            }
+
+            $gestioneId = (int) ($voce->pianoConto?->gestione_id ?? 0);
+            $piani = \App\Services\Riparto\VoceDiSpesaNegativa::pianiPerVoce([(int) $voce->id], $gestioneId)[(int) $voce->id] ?? [];
+            $bloccano = \App\Models\Gestionale\Conto::pianiCheBloccanoLaVoce([(int) $voce->id])[(int) $voce->id] ?? [];
+            $terzoLivello = \App\Services\Riparto\VoceDiSpesaNegativa::alTerzoLivello([(int) $voce->id]) !== [];
+            $validator->errors()->add("capitoli_config.{$i}.importo", \App\Services\Riparto\VoceDiSpesaNegativa::rifiuto((string) $voce->nome, (int) $voce->importo, $piani, $bloccano, $terzoLivello));
+        }
+    }
+
+    /**
+     * Coda 165 (1.11.0-beta.36): una fattura rettificata da una nota del fornitore collegata non si mette in un piano per
+     * più di quanto ne resta — il netto (`NettoNoteCollegate`), meno quello che altri piani ne chiedono già. È il confine
+     * d'ingresso della stessa regola che ferma il ricalcolo: meglio dirlo qui, sull'indice della fattura, che trovarlo
+     * alla generazione. Importo vuoto o zero vuol dire «tutto»: ciò che il motore ripartisce, mai oltre il netto.
+     *
+     * Le fatture senza note collegate restano come prima: il tetto generale dell'importo è la Coda 166.
+     */
+    private function guardiaFattureRettificate($validator): void
+    {
+        foreach ($this->input('fatture_config', []) as $i => $conf) {
+            if ($validator->errors()->has("fatture_config.{$i}.id") || empty($conf['id'])) {
+                continue;
+            }
+            $f = \App\Models\Gestionale\FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])->find($conf['id']);
+            if ($f === null || $f->tipo_documento !== 'fattura' || ($netto = $f->nettoNoteCollegate()) === null) {
+                continue;
+            }
+
+            $importo = \App\Helpers\MoneyHelper::toCents($conf['importo'] ?? '');
+            // Zero vuol dire «tutto», e «tutto» è ciò che il motore ripartisce: la parte del piano al netto delle note su
+            // quella parte, mai oltre il netto (R2 della Fase 1-bis — lo stesso numero di `chiestoDaiPiani`).
+            $chiesto = $importo > 0 ? $importo : max(0, min($netto['parte_piano'] - $netto['rettificato_piano'], $netto['netto']));
+            $gia = $f->chiestoDaiPiani();
+            $resta = max(0, $netto['netto'] - $gia);
+            $inPiu = $chiesto - $resta;
+            if ($inPiu <= 0) {
+                continue;
+            }
+
+            $validator->errors()->add("fatture_config.{$i}.importo",
+                "La fattura n. {$f->numero_documento}, al netto {$f->elencoNoteCollegate('di', true)}, vale "
+                . \App\Helpers\MoneyHelper::format($netto['netto'])
+                . ($gia > 0 ? ', e altri piani ne chiedono già ' . \App\Helpers\MoneyHelper::format($gia) : '')
+                . ': con questo importo il piano chiederebbe ' . \App\Helpers\MoneyHelper::format($inPiu)
+                . ' più di quanto ne resta. Metti al massimo ' . \App\Helpers\MoneyHelper::format($resta) . '.');
+        }
+    }
+
+    private function giorno(string $iso): string
+    {
+        return \Carbon\CarbonImmutable::parse($iso)->format('d/m/Y');
+    }
+
     public function rules(): array
     {
+        // Decisione 44 (1.11.0-beta.42, rilievo V11 di sicurezza, c'era già nella .41): ogni id che arriva dal corpo è del condominio
+        // dell'indirizzo, e la gestione anche del suo esercizio. Prima bastava che esistesse: con la gestione, una fattura, una voce, un
+        // saldo o una persona di un altro condominio il piano nasceva qui con i numeri di là.
+        $condominioId = (int) ($this->route('condominio')?->id ?? $this->route('condominio'));
+        $esercizioId = (int) ($this->route('esercizio')?->id ?? $this->route('esercizio'));
+        $contoDelCondominio = fn () => Rule::exists('conti', 'id')->whereIn('piano_conto_id', fn ($q) => $q->select('id')->from('piani_conti')->where('condominio_id', $condominioId));
+
         return [
 
             // --- [INIZIO FIX BIVIO ORDINARIO/STRAORDINARIO] ---
@@ -29,21 +201,57 @@ class CreatePianoRateRequest extends FormRequest
                     }
                 },
             ],
-            'fatture_config.*.id'      => ['required_with:fatture_config', 'exists:fatture_passive,id'],
+            'fatture_config.*.id'      => ['required_with:fatture_config', 'integer', Rule::exists('fatture_passive', 'id')->where('condominio_id', $condominioId),
+                // Il carrello esclude le stornate solo quando si carica: stornata nel frattempo (un'altra scheda) o con una
+                // richiesta costruita a mano, la fattura entrava nel piano e le rate la chiedevano (verifica delle
+                // correzioni della Fase 1-bis, 1.11.0-beta.35).
+                function ($attribute, $value, $fail) {
+                    // Rilievo T11: solo una fattura del condominio dell'indirizzo, perché il messaggio ne dice il numero; una di un
+                    // altro condominio la rifiuta già `exists`, senza dire niente di lei.
+                    $f = \App\Models\Gestionale\FatturaPassiva::where('condominio_id', $this->idDelCondominio())->find($value);
+                    $stato = $f ? (is_object($f->stato_pagamento) ? $f->stato_pagamento->value : $f->stato_pagamento) : null;
+                    if ($f && (($f->dati_extra['is_stornata'] ?? false) || $stato === 'stornata')) {
+                        $fail("La fattura n. {$f->numero_documento} è stata stornata nel frattempo: toglila dal carrello.");
+
+                        return;
+                    }
+                    // Coda 165 (1.11.0-beta.36): un piano finanzia fatture. Il carrello non offre le note, ma una
+                    // richiesta costruita a mano le faceva entrare — con una riga ad personam positiva, come fabbisogno.
+                    if ($f && $f->tipo_documento !== 'fattura') {
+                        $fail("Il documento n. {$f->numero_documento} è una nota di credito: un piano rate finanzia fatture. "
+                            . 'La nota riduce la fattura che rettifica: collegala a quella, dall\'elenco delle fatture.');
+
+                        return;
+                    }
+                    // …e una fattura annullata per intero da una nota del fornitore collegata non ha più niente da chiedere.
+                    if ($f && ($netto = $f->nettoNoteCollegate()) !== null && $netto['netto'] <= 0) {
+                        $fail("La fattura n. {$f->numero_documento} è annullata per intero {$f->elencoNoteCollegate('da', true)}: "
+                            . 'non resta niente da finanziare. Toglila dal carrello.');
+                    }
+                },
+            ],
             'fatture_config.*.importo' => ['required_with:fatture_config'],
             
             // Scudo Legale (Obbligatorio per Art. 1135 c.c. se straordinario)
             'tipo_autorizzazione'        => ['nullable', 'required_if:tipo,straordinario', 'in:delibera,urgenza'],
             'motivazione_autorizzazione' => ['nullable', 'required_if:tipo,straordinario', 'string', 'min:5'],
+            // B2 (decisione 12): la data della delibera è **obbligatoria, senza default**, quando la GESTIONE è
+            // straordinaria (è la natura che decide, decisione 11 — non `tipo`) e l'autorizzazione non è
+            // l'urgenza: è il giorno che fa la competenza dello straordinario (Cass. 24654/2010) e il motore
+            // senza si ferma. Con `urgenza` la competenza va dichiarata sulla fattura. Facoltativa altrove.
+            'data_delibera_assemblea'    => ['nullable', 'date', Rule::requiredIf(fn () => $this->gestioneStraordinaria() && $this->input('tipo_autorizzazione') !== 'urgenza')],
             // --- [FINE FIX BIVIO] ---
 
-            'gestione_id'          => ['required', 'exists:gestioni,id'],
+            'gestione_id'          => ['required', 'integer', Rule::exists('gestioni', 'id')->where('condominio_id', $condominioId)
+                ->whereIn('id', fn ($q) => $q->select('gestione_id')->from('esercizio_gestione')->where('esercizio_id', $esercizioId))],
             'nome' => [
                 'required', 
                 'string', 
                 'max:255',
+                // Rilievo T-J: l'unicità del nome solo fra i piani del condominio dell'indirizzo — con la gestione di un altro,
+                // «già in uso» diceva se là esisteva un piano con quel nome.
                 Rule::unique('piani_rate')->where(function ($query) {
-                    return $query->where('gestione_id', $this->gestione_id);
+                    return $query->where('gestione_id', $this->gestione_id)->where('condominio_id', $this->idDelCondominio());
                 }),
             ],
             'descrizione'          => ['nullable', 'string'],
@@ -65,21 +273,44 @@ class CreatePianoRateRequest extends FormRequest
             
             // Assicurati che siano conti validi
             'capitoli_ids'         => 'nullable|array',
-            'capitoli_ids.*'       => 'exists:conti,id', 
+            'capitoli_ids.*'       => ['integer', $contoDelCondominio()],
             
             // Validazione della configurazione dettagliata
             'capitoli_config'      => 'nullable|array',
-            'capitoli_config.*.id' => 'required|exists:conti,id',
+            'capitoli_config.*.id' => ['required', 'integer', $contoDelCondominio()],
             'capitoli_config.*.importo' => 'nullable|string', 
             'capitoli_config.*.note' => 'nullable|string|max:255',
+
+            // B2, S6 (decisione 20): la competenza dichiarata per voce, come tratti di date. Si applica alla
+            // riga della pivot del conto indicato, o alle sue foglie se la pivot è nata su quelle (il motore
+            // cerca prima il conto, poi la radice). I controlli di forma — dentro l'esercizio, ordinati, senza
+            // giorni in comune — stanno in `withValidator`: `InsiemePeriodi` li rifiuterebbe con un'eccezione
+            // dentro la generazione, che è il posto sbagliato.
+            'competenze_capitoli'                => 'nullable|array',
+            'competenze_capitoli.*.conto_id'     => ['required', 'integer', $contoDelCondominio()],
+            'competenze_capitoli.*.tratti'       => 'required|array|min:1|max:6',
+            'competenze_capitoli.*.tratti.*.dal' => 'required|date',
+            'competenze_capitoli.*.tratti.*.al'  => 'required|date',
             
             // Configurazione personalizzata dei saldi (Riparto manuale Art. 63)
             'saldi_config'                             => ['nullable', 'array', $this->ripartoManualeQuadra()],
-            'saldi_config.*.saldo_id'                  => ['required', 'exists:saldi,id'],
+            'saldi_config.*.saldo_id'                  => ['required', 'integer', Rule::exists('saldi', 'id')->where('condominio_id', $condominioId)],
             'saldi_config.*.ripartizioni'              => ['required', 'array'],
-            'saldi_config.*.ripartizioni.*.anagrafica_id' => ['required', 'exists:anagrafiche,id'],
+            // Qualunque persona del condominio, come il modulo offre oggi (decisione 44): resta possibile un accordo fra le parti.
+            'saldi_config.*.ripartizioni.*.anagrafica_id' => ['required', 'integer', Rule::exists('anagrafiche', 'id')->where(fn ($q) => $q
+                // La stessa regola della persona del condominio negli incassi (`StoreIncassoRateRequest::personaDelCondominio()`):
+                // associata al condominio o titolare di una sua unità, anche cessata.
+                ->whereIn('id', fn ($sub) => $sub->select('anagrafica_id')->from('anagrafica_condominio')->where('condominio_id', $condominioId))
+                ->orWhereIn('id', fn ($sub) => $sub->select('anagrafica_immobile.anagrafica_id')->from('anagrafica_immobile')
+                    ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')->where('immobili.condominio_id', $condominioId)))],
             'saldi_config.*.ripartizioni.*.importo'    => ['required', 'string'],
         ];
+    }
+
+    /** L'id del condominio dell'indirizzo (decisione 44), letto una volta per le regole e per le chiusure. */
+    private function idDelCondominio(): int
+    {
+        return (int) ($this->route('condominio')?->id ?? $this->route('condominio'));
     }
 
     /**
@@ -113,9 +344,10 @@ class CreatePianoRateRequest extends FormRequest
                     continue;
                 }
 
-                // Un `saldo_id` inesistente lo segnala già `exists`: qui non si raddoppia
-                // l'errore, si tace.
-                $saldo = \App\Models\Saldo::find($config['saldo_id'] ?? null);
+                // Un `saldo_id` inesistente, o di un altro condominio, lo segnala già `exists`: qui non si raddoppia
+                // l'errore, si tace — e non si legge la cifra di un saldo di un altro condominio (rilievo T11 del giro
+                // sulle correzioni della .42: il messaggio della quadratura la mostrava).
+                $saldo = \App\Models\Saldo::where('condominio_id', $this->idDelCondominio())->find($config['saldo_id'] ?? null);
                 if (! $saldo) {
                     continue;
                 }

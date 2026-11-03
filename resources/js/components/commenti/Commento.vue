@@ -162,7 +162,7 @@ function formatDate(dateStr: string): string {
         <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ authorName }}</span>
 
         <!-- Badge in attesa -->
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
           <Clock class="w-3 h-3" />
           {{ trans('commenti.in_attesa_approvazione') }}
         </span>
@@ -264,7 +264,7 @@ function formatDate(dateStr: string): string {
         <!-- Badge in attesa (solo moderatori) -->
         <span
           v-if="commento.stato === 'in_attesa' && canModerate"
-          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
         >
           <Clock class="w-3 h-3" />
           {{ trans('commenti.in_attesa') }}

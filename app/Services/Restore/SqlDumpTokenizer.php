@@ -3,6 +3,7 @@
 namespace App\Services\Restore;
 
 use App\Services\Restore\Exceptions\MalformedDumpException;
+use App\Services\Restore\Exceptions\RestoreFileException;
 use Generator;
 use RuntimeException;
 
@@ -69,14 +70,15 @@ class SqlDumpTokenizer
      */
     public function statements(int $offset = 0, string $delimiter = ';'): Generator
     {
+        // Durante il ripristino il messaggio arriva alla finestra dei backup: il percorso va solo nel log del server.
         if (! is_file($this->path)) {
-            throw new RuntimeException("Dump non trovato: {$this->path}");
+            throw new RestoreFileException(MessaggiDelRipristino::di('dump_unreadable'), $this->path);
         }
 
-        $handle = @fopen($this->path, 'rb');
+        [$handle, $avviso] = RestoreFileException::raccogliAvviso(fn () => fopen($this->path, 'rb'));
 
         if ($handle === false) {
-            throw new RuntimeException("Impossibile aprire il dump in lettura: {$this->path}");
+            throw new RestoreFileException(MessaggiDelRipristino::di('dump_unreadable'), $this->path, $avviso);
         }
 
         try {

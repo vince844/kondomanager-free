@@ -8,17 +8,28 @@ import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import { misuraLeggibile } from '@/lib/gestionale/misure';
-import { List, Pencil, Building2, Map, FileText, Ruler } from 'lucide-vue-next';
+import { List, Pencil, Building2, Map, FileText, Ruler, History, UsersRound } from 'lucide-vue-next';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import TitolaritaSheet from '@/components/gestionale/immobili/TitolaritaSheet.vue';
+import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
+import { ref } from 'vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { Building } from '@/types/buildings';
+import type { StoricoTitolaritaDati } from '@/types/gestionale/passaggi';
 
 const props = defineProps<{
   condominio: Building;
   immobile: Immobile;
+  storico: StoricoTitolaritaDati;
 }>()
+
+// «Titolare dal 1 maggio 2026» (§6.5 di pertinenze_vendita_locazione.md): i titolari di un diritto
+// reale in corso oggi, con il link che apre «Chi ha avuto questa unità».
+const storicoAperto = ref(false);
+const titolariOggi = computed(() => props.storico.righe.filter(r => r.in_corso && r.diritto !== 'Locazione'));
+const occupantiOggi = computed(() => props.storico.righe.filter(r => r.in_corso && r.diritto === 'Locazione'));
 
 
 /** La superficie come la scrivono l'elenco e la scheda di modifica: vedi `lib/gestionale/misure.ts`. */
@@ -129,6 +140,30 @@ const pageGuides = computed(() => [
                 -->
                 <p class="text-sm font-medium">{{ superficieLeggibile ? superficieLeggibile + ' m²' : '-' }}</p>
               </div>
+              <div class="sm:col-span-2 pt-2 space-y-1">
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1">
+                  <UsersRound class="w-3 h-3" /> {{ titolariOggi.length === 1 ? 'Titolare' : 'Titolari' }}
+                </p>
+                <template v-if="titolariOggi.length">
+                  <p v-for="t in titolariOggi" :key="t.id" class="text-sm font-medium flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span>{{ t.anagrafica.nome }}</span>
+                    <BadgeRuolo :ruolo="t.tipologia" taglia="sm" />
+                    <span class="text-slate-500 dark:text-slate-400 font-normal">{{ t.periodo.replace(' · in corso', '') }}</span>
+                  </p>
+                </template>
+                <p v-else class="text-sm italic text-slate-500">Nessun titolare in corso.</p>
+                <p v-if="occupantiOggi.length" class="text-xs text-slate-500 dark:text-slate-400">
+                  locato a {{ occupantiOggi.map(o => o.anagrafica.nome).join(', ') }}
+                </p>
+                <button
+                  v-if="storico.righe.length"
+                  type="button"
+                  @click="storicoAperto = true"
+                  class="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors mt-0.5"
+                >
+                  <History class="w-3 h-3" /> Chi ha avuto questa unità{{ storico.passaggi ? ` · ${storico.passaggi} ${storico.passaggi === 1 ? 'passaggio' : 'passaggi'}` : '' }}
+                </button>
+              </div>
               <div class="sm:col-span-2 pt-2">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Descrizione</p>
                 <p class="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
@@ -181,4 +216,6 @@ const pageGuides = computed(() => [
       </ImmobileLayout>
     </div>
   </GestionaleLayout>
+
+  <TitolaritaSheet v-model:open="storicoAperto" :storico="storico" :unita="`${immobile.nome} (Int. ${immobile.interno})`" />
 </template>

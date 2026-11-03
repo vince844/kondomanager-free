@@ -65,8 +65,6 @@ class EditFornitoreResource extends JsonResource
             // Magia 1: Recupera l'IBAN principale (o dalla colonna o dal conto corrente polimorfico associato)
             'iban_principale'          => $this->iban_principale ?? $this->contiCorrenti()->where('tipo', 'ordinario')->value('iban'),
             
-            // Magia 2: Recupera il primo referente associato per ripopolare la v-select in Vue
-            'anagrafica_id'            => $this->referenti()->first()?->id,
 
             // --- Timestamps ---
             'created_at'               => $this->created_at,

@@ -22,8 +22,10 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<Documento>[] => [
     cell: ({ row, table }) => {
       const documento = row.original;
 
+      // Scaricare e approvare passano dalla scheda del fornitore, come le altre azioni sui suoi documenti: le rotte
+      // dell'archivio lavorano solo sui documenti dell'archivio.
       const toggleApproval = () => {
-          router.put(route(generateRoute('documenti.toggle-approval'), { id: documento.id }), {}, {
+          router.put(route(generateRoute('fornitori.documenti.toggle-approval'), { fornitore: fornitore.id, documento: documento.id }), {}, {
             preserveScroll: true,
             only: ['stats', 'documenti'],
             onSuccess: () => {
@@ -41,7 +43,9 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<Documento>[] => [
         ? 'Approvato - clicca per rimuovere approvazione'
         : 'Non approvato - clicca per approvare';
     
-      const shieldIcon = hasPermission([Permission.APPROVE_ARCHIVE_DOCUMENTS])
+      // L'approvazione cambia il documento: chiede «Modifica anagrafiche», come la sua rotta (`FornitorePolicy::update`), e
+      // «Approva documenti archivio», il permesso dell'interruttore.
+      const shieldIcon = hasPermission([Permission.APPROVE_ARCHIVE_DOCUMENTS]) && hasPermission([Permission.EDIT_ANAGRAFICHE])
         ? h('div', {
             class: 'cursor-pointer mt-3 mr-1',
             title: tooltip,
@@ -59,7 +63,7 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<Documento>[] => [
 
       const titleAndDesc = h('div', { class: 'flex flex-col justify-center' }, [
         h('a', {
-          href: route(generateRoute('documenti.download'), { documento: documento.id }),
+          href: route(generateRoute('fornitori.documenti.download'), { fornitore: fornitore.id, documento: documento.id }),
           class: 'text-sm font-bold text-slate-800 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors line-clamp-1',
           title: documento.name
         }, documento.name),

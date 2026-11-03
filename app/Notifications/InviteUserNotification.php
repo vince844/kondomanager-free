@@ -6,7 +6,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Carbon;
 
 class InviteUserNotification extends LocalizedNotification implements ShouldQueue
 {
@@ -45,11 +44,11 @@ class InviteUserNotification extends LocalizedNotification implements ShouldQueu
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $signedUrl = URL::temporarySignedRoute(
-            'invito.register',
-            Carbon::now()->addDays(3),
-            ['id' => $this->invito->id] 
-        );
+        // Firmato ma senza una scadenza sua: la scadenza è quella dell'invito, che il controller
+        // controlla e spiega («l'invito è scaduto, chiedine un altro»). Con una scadenza nella firma
+        // rispondeva prima il middleware `signed`, con il 403 generico, e il messaggio dell'invito
+        // scaduto non si raggiungeva mai (1.11.0-beta.45). Un invito cancellato dà 404.
+        $signedUrl = URL::signedRoute('invito.register', ['id' => $this->invito->id]);
 
         return (new MailMessage)
 

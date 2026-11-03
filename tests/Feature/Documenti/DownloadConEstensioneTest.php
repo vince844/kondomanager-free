@@ -78,11 +78,16 @@ function documentoDaScaricare(Condominio $condominio, User $autore, string $tito
         'path'         => 'documenti/a1b2c3d4.pdf',
         'mime_type'    => 'application/pdf',
         'file_size'    => 39,
-        'category_id'  => CategoriaDocumento::firstOrCreate(['name' => 'Verbali'])->id,
         'is_published' => true,
         'is_approved'  => true,
         'created_by'   => $autore->id,
     ]);
+
+    // ⚠️ **Con il legame, non con una colonna** (1.11.0-beta.10): `category_id` è sparita, e
+    // passarla qui dentro sarebbe stata una riga muta — non essendo `$fillable`, l'assegnazione di
+    // massa la **scarta in silenzio** e il documento sarebbe rimasto senza categoria, mentre il
+    // fixture dichiarava il contrario.
+    $documento->categorie()->attach(CategoriaDocumento::firstOrCreate(['name' => 'Verbali'])->id);
 
     $documento->condomini()->attach($condominio->id);
 

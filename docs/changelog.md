@@ -7,6 +7,5159 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0] - Ogni giorno al suo titolare
+
+> **Stable release.**
+> I passaggi di titolarità (vendita o donazione, inizio e fine di una locazione, usufrutto, successione), con la quota
+> divisa sui giorni di titolarità e il prospetto degli oneri accessori; le fatture elettroniche XML e P7M lette dal file,
+> con le note di credito collegate alla fattura che rettificano; la prima nota, i mastrini e lo stato patrimoniale con
+> sei controlli; il riparto scritto alla generazione del piano; l'importazione da Danea anche dai suoi elenchi Excel, e
+> dal modello Excel; accesso, ruoli e permessi rivisti.
+>
+> ⚠️ **Tocca il database rispetto alla 1.10.0**: 26 migrazioni, che creano tabelle e colonne e travasano o riscrivono
+> questi dati: la categoria di ogni documento, che passa nei legami fra documenti e categorie; le categorie iniziali dei
+> documenti e dei fornitori che mancano, e la chiave interna della categoria «Fatture»; la posizione sulla ritenuta dei
+> fornitori già dichiarata; il periodo di competenza che una fattura portava già; l'esercizio dei piani rate su una
+> gestione con un solo esercizio; la frase del credito e, nel caso misto, il versato e il residuo nei promemoria del
+> portale. Tolgono tre colonne che il programma non ha mai riempito, e cambiano il controllo della fattura doppia (ora
+> dentro un condominio) e quello del già versato (anche per persona). Rispetto alla 1.11.0-beta.60 nessuna migrazione nuova. I requisiti sono quelli della 1.10.0:
+> PHP 8.4.1 e le stesse estensioni. Dopo l'aggiornamento si controlla `APP_URL` nel `.env`.
+>
+> Rispetto alla 1.11.0-beta.60: il Docker di sviluppo, dopo un `git pull`, si ricompila con `--build`, e a ogni avvio allinea ruoli e permessi,
+> l'elenco dei Comuni, la classificazione ATECO e la versione registrata; le azioni suggerite dal riquadro «Tesoreria a
+> 30gg» aprono la loro pagina; le guide del gestionale e i messaggi del programma non citano numeri di versioni di prova; il testo dello scheduler
+> nelle impostazioni e quello della pagina degli aggiornamenti dicono ciò che il programma fa; i README seguono la stabile.
+>
+> 60 beta release (beta.1 → beta.60) prima della stable: il dettaglio di ognuna è nelle voci qui sotto.
+
+---
+
+## [1.11.0-beta.60] - Ogni piano nel suo anno
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione nuova: una migrazione che c'era (i documenti in più categorie) toglie ora la
+vecchia colonna della categoria, con il suo vincolo, dopo averne travasato il valore nei legami fra documenti e categorie; lo fa con due controlli separati, e dove è già
+girata non fa niente. Dopo l'aggiornamento cambiano due file: il blocco
+`TRUSTED_PROXIES=*` che il motore dell'aggiornamento di una versione precedente aggiungeva al `.env` diventa `TRUSTED_PROXIES=PRIVATE_SUBNETS` (una riga scritta a mano
+non si tocca), e un `update_bridge.json` rimasto nella cartella principale dell'installazione si toglie. Nessun permesso nuovo.
+
+**Che cosa fa la beta.**
+- **I link delle mail del reset della password e della verifica dell'email** portano l'indirizzo scritto in `APP_URL` (se è ancora il valore di serie, quello della richiesta): dopo l'aggiornamento controlla che sia
+  l'indirizzo con cui apri il gestionale, con `https://` se il gestionale è in https. I link di verifica già spediti non valgono più, e se ne chiede uno nuovo dalla
+  pagina della verifica.
+- **L'aggiornamento dal pannello**, per gli aggiornamenti che partono da questa versione, tiene il suo file di scambio in `storage/app`, parte solo con il token del
+  lancio e, se si ferma con un errore, si chiude e dice da dove ripartire. Il comando di installazione dell'immagine Docker, se non riesce a leggere dal database se
+  l'installazione c'è già, si ferma senza scrivere. Gli avvisi di sicurezza della 1.11.0 escono con la stabile, negli avvisi di sicurezza del repository.
+- **Il piano rate sulla gestione usata in più esercizi.** La pagina del piano, «Sposta spesa» e i collegamenti dei compiti seguono l'esercizio del piano; il cancello
+  della successione conta i saldi di ogni esercizio, come la generazione, e si ferma se la parte di un erede, o quella tolta al defunto, entrerebbe due volte; i messaggi che fermano un piano dicono
+  il fatto senza indicare strade che la pagina non offre.
+- **La quota aperta con tante unità**: il badge conta le unità e dice la cifra con il segno, il riquadro raggruppa le quote per causa con «Mostra tutte», e la riga
+  sotto la voce nomina le prime unità.
+- **Le regolazioni immediate registrate su una voce di entrata** con le versioni di prima compaiono in un riquadro della pagina «Fatture passive», con la strada
+  dello storno.
+- **La politica di sicurezza del repository**: una vulnerabilità si segnala in privato, dalla scheda Security, non in una issue. Il README spiega meglio
+  l'aggiornamento manuale.
+
+---
+
+## [1.11.0-beta.59] - I conti tornano
+
+**Tocca il database.** Una colonna nuova nei piani rate (`quote_non_assegnate`), che l'aggiornamento crea da sola e lascia vuota nei piani che ci sono già; nessun dato esistente viene riscritto.
+Le rate emesse da questa versione in poi con una spesa a carico di una sola unità scrivono nel giornale una riga in più per unità, che chiude l'anticipazione di quella spesa. Nessun permesso nuovo.
+Una libreria della posta (symfony/mime) è aggiornata alla versione 8.1.10, per un avviso di sicurezza di gravità media.
+
+**Che cosa fa la beta.**
+- **L'estratto conto per persona** conta solo le righe della posizione di condòmino e mette ogni movimento alla sua data di competenza, in ordine di data: un
+  condòmino che è anche referente di un fornitore non vede più le fatture del fornitore fra i versamenti. La data in cui il movimento è stato inserito compare in
+  pagina quando è diversa.
+- **Lo scadenziario F24** raccoglie le ritenute e le deleghe di tutti gli esercizi: quando si apre il nuovo esercizio, le ritenute di dicembre, da versare entro il
+  16 gennaio, restano in vista. Una delega di un esercizio diverso dal corrente porta il nome del suo esercizio.
+- **Le ritenute.** L'appalto di un ente non commerciale va sul codice tributo 1020; i due regimi delle provvigioni hanno nomi che dicono la riduzione nel verso
+  giusto; le etichette dei regimi non citano più l'articolo del DPR 600/1973, che dal 01/01/2027 è abrogato dal testo unico dei versamenti (D.Lgs. 33/2025).
+- **Le spese a carico di una sola unità nelle rate emesse** da questa versione in poi non sono più addebitate due volte; per le rate già emesse la card
+  «Crediti da riallineare» elenca la cifra addebitata due volte, senza correggerla. Lo storno di una fattura, o una nota di credito, che toglierebbe una
+  spesa già chiesta ai condòmini si rifiuta, e il messaggio dice la strada.
+- **Il piano rate con una quota senza destinatario** ha tre stati («Allineato», «Quota aperta», «Disallineato») e un riquadro che elenca le quote una per una, con il
+  perché e che cosa fare.
+- **La prima scadenza** scelta con le regole di ricorrenza avanzate è la prima rata del piano.
+- **Il prospetto degli oneri accessori** dice chi rimborsa chi in altre storie con un accordo fra le parti (l'uscita di chi ha preso il posto della parte, il rientro,
+  i piani emessi dopo un cambio), e le sue stampe usano parole più precise per i crediti.
+
+---
+
+## [1.11.0-beta.58] - La modifica non si perde
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: utenti, ruoli, anagrafiche, documenti e contabilità
+restano com'erano. L'unica aggiunta è una chiave di configurazione dei backup, con il suo valore di serie, che non chiede niente a chi aggiorna.
+
+**Che cosa fa la beta.**
+- **La password si ridigita in una finestra sulla stessa pagina.** Quando un'azione delicata (la 2FA, lo scarico di un backup, le impostazioni
+  della posta, dare poteri a un account) chiede di ridigitare la password, la finestra compare sopra il modulo: quello che hai scritto resta lì e,
+  dopo la conferma, il salvataggio riparte da solo. Dopo l'aggiornamento le pagine già aperte vanno ricaricate.
+- **I permessi del pannello.** I fornitori e le loro categorie chiedono i permessi delle anagrafiche; i documenti di una persona, di un fornitore o
+  di un'unità si gestiscono dalla loro scheda; la casella delle attività chiede i permessi dell'agenda; le tendine che scelgono persone mostrano
+  solo ciò che serve. Il collaboratore di serie non elimina i fornitori, e «Reinvita» e il ritiro della verifica dell'email non si fanno sul proprio account
+  né sull'ultimo amministratore attivo. I dettagli di sicurezza escono con la 1.11.0 stabile, negli avvisi di sicurezza del repository.
+- **Il prospetto degli oneri accessori** dice chi rimborsa chi in altre storie rare con più passaggi (chi esce, rientra ed esce di nuovo; una voce
+  che comincia dopo un accordo fra le parti; chi entra nei giorni di un rientro) e mostra il già versato dell'unità accanto alla voce di chi
+  restituisce i giorni ripresi; il pannello del rientro e la nota dei giorni dopo l'uscita dicono la cosa giusta.
+- **L'elenco utenti** ha tre card cliccabili (totale, da verificare, sospesi) e il filtro «Verifica».
+- **La guida «Registrare un passaggio»** ha sei schede e si apre su quella del passaggio scelto.
+- **Il ripristino dei backup** riparte dal punto giusto anche se un passo si ferma senza un errore, e un backup che non riesce a partire non resta
+  «in corso».
+
+---
+
+## [1.11.0-beta.57] - Tutto al suo posto
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: utenti, ruoli, segnalazioni, comunicazioni, documenti e contabilità
+restano com'erano. Una beta di sicurezza: corregge alcune falle e rivede intorno l'accesso, i permessi fra gli utenti, il portale dei condòmini, le pagine
+pubbliche e il ripristino dei backup. Conviene aggiornare chi ha l'installazione raggiungibile da internet. I dettagli delle falle escono con la 1.11.0
+stabile, negli avvisi di sicurezza del repository.
+
+**Che cosa fa la beta.**
+- **L'accesso.** Le password nuove hanno almeno 10 caratteri. Il limite ai tentativi vale per ogni account, e c'è un tetto per
+  indirizzo. Le azioni delicate (la 2FA, lo scarico di un backup, le impostazioni della posta, dare poteri a un account) chiedono di ridigitare la password, se
+  non lo si è fatto negli ultimi 15 minuti. Cambiare la password chiude le sessioni sugli altri dispositivi. Il titolare di un account riceve una mail quando
+  cambiano la sua password, la sua email o la sua 2FA.
+- **Utenti e ruoli.** Chi non è amministratore concede solo i ruoli «utente» e «fornitore», e gestisce solo gli account che hanno questi ruoli. Gli altri
+  account, le pagine dei ruoli e il «Ruolo predefinito nuovi utenti» li gestisce l'amministratore. Un invito dà il ruolo predefinito solo se è «utente» o
+  «fornitore». Nell'elenco utenti ogni comando compare solo a chi lo può usare, e il numero dei permessi resta quello della riga.
+- **Il portale dei condòmini.** Bozze e oggetti in attesa di approvazione li apre solo chi li ha scritti, e gli avvisi di una segnalazione o di una
+  comunicazione nuova partono solo a chi la può aprire. Su una segnalazione privata, «Rendi pubblica» la mostra a tutto il condominio, con una conferma. Gli
+  stati dicono «In attesa di approvazione», «Bozza», «Pubblicata» e, a parte, «Privata». Modificare una segnalazione, una comunicazione o un documento
+  dell'archivio non ne cambia l'autore né l'approvazione. Nelle mail i testi scritti dagli utenti arrivano come testo semplice.
+- **Il pannello.** Le anagrafiche seguono i loro permessi, e il collaboratore di serie non le elimina. Ogni riquadro della dashboard segue il permesso
+  del suo elenco. La pagina dei ruoli dice che cosa apre l'accesso al pannello.
+- **Pagine pubbliche e impostazioni.** Le pagine pubbliche non dicono la versione installata. Le pagine del gestionale non si aprono dentro un riquadro di un
+  altro sito. Nelle impostazioni della posta, se cambiano il server, la porta o la crittografia, la password SMTP va riscritta.
+- **Il ripristino dei backup** non si ferma più a metà con le sessioni nel database, si riprende con la password anche a metà import e dal punto in cui si era
+  fermato, e si ferma prima di toccare il database se il backup di sicurezza non riesce. I suoi messaggi più comuni sono nella lingua dell'installazione, e gli
+  errori dei backup non mostrano le cartelle dell'installazione, dei temporanei e degli archivi. Se la risposta a «Riprendi il ripristino» non arriva, la finestra e la pagina di attesa tornano alla frase prudente.
+- **L'installazione a mano** su un server, descritta nel README, usa il comando `kondomanager:installa` e parte in produzione. Chi ha già installato a mano
+  controlli che nel file `.env` ci siano `APP_ENV=production` e `APP_DEBUG=false`, e cambi la password di `admin@km.com` se è ancora quella del README.
+- **Le librerie** sono aggiornate, Laravel compreso, senza cambi di versione maggiore; la costruzione dell'immagine Docker segnala quelle con
+  vulnerabilità note.
+
+---
+
+## [1.11.0-beta.56] - Chi rimborsa chi
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi, i saldi già scritti e i passaggi
+già registrati restano com'erano.
+
+**Che cosa fa la beta.**
+- **Il conguaglio di un secondo passaggio con una voce di entrata è giusto.** Con un'entrata nel piano (l'affitto dell'antenna, per
+  esempio), il secondo passaggio con «Scrivi il conguaglio» sulla stessa quota scrive nel Wallet la parte dell'entrata dei soli giorni dopo
+  l'uscita, e il pannello «Cosa cambierà» dice la cifra giusta.
+- **Il prospetto degli oneri accessori dice chi rimborsa chi anche nelle storie con più passaggi:** due cambi d'inquilino in fila con le due
+  scelte, un conduttore entrato fra i due, un conguaglio annullato seguito dall'uscita di chi era entrato, chi esce, rientra ed esce di
+  nuovo, una voce che matura tutta dopo un passaggio, il già versato registrato a «l'unità (senza persona)». Dove un conduttore entrato dopo rimborsa i giorni di un cambio che le parti hanno regolato fra loro, la sua voce dice «con il cambio
+  d'inquilino del … regolato fra le parti».
+
+---
+
+## [1.11.0-beta.55] - Il coinquilino che resta
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi e i passaggi già registrati
+restano com'erano.
+
+**Che cosa fa la beta.**
+- **La fine di una locazione con un coinquilino che resta chiede se scrivere il conguaglio, e lo calcola con la regola del piano.** Le
+  due scelte «Scrivi il conguaglio» e «Non scriverlo» ci sono anche quando esce uno solo dei conduttori e l'altro resta, se la regola del
+  piano cambia le parti: la parte dell'inquilino si ridivide per quota e per giorni fra chi è stato conduttore nell'anno, come in un piano
+  generato dopo l'uscita.
+- **I passaggi che vengono dopo, sulla stessa unità, dicono la loro differenza del piano:** la fine di un altro conduttore, il cambio
+  d'inquilino, l'inizio di un nuovo conduttore e una vendita. Dove una parte resta fuori dalle righe in saldi, il pannello «Cosa
+  cambierà» la dice con la persona e la cifra.
+- **Dove la locazione è continuata con un coinquilino, il prospetto degli oneri accessori divide con la regola del piano le voci che i
+  passaggi hanno cambiato,** anche sui preventivi generati dalla 1.10, e dice per ogni conduttore ciò che ha nelle sue rate, ciò che un
+  passaggio ha scritto in saldi e chi rimborsa chi. Dopo una fermata dice chi ha pagato i giorni della quota. Nel cambio d'inquilino non
+  fa dividere i giorni di chi esce a chi non li ha presi, e la sua testa non dice «vuoto» quando un piano approvato è rimasto fuori.
+- **Le fermate dicono la parte da regolare anche dove prima il programma taceva:** chi ha già la sua parte della coppia e compra
+  un'altra quota, chi ricompra la sua stessa parte, la nuda proprietà comprata il giorno in cui si estingue l'usufrutto, la successione di
+  chi aveva ricevuto una fermata, le righe aperte a mano. Le successioni di fila e la rivendita dell'erede dicono le cifre giuste.
+- **Guida.** La «Guida: registrare un passaggio» dice il comportamento di adesso.
+
+---
+
+## [1.11.0-beta.54] - Le catene delle fermate
+
+**Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione: i piani già emessi e i passaggi già registrati
+restano com'erano.
+
+**Che cosa fa la beta.**
+- **Le fermate dopo «Scrivi il conguaglio» dicono le cifre giuste in più casi di passaggi che si susseguono sulla stessa unità.** Dopo la
+  fine di una locazione, la costituzione, la riserva e l'estinzione dell'usufrutto su un'unità divisa fra piena proprietà e usufrutto non
+  sbagliano più la parte da regolare a mano, e la vendita dopo una fermata a carico di più persone nomina solo le persone di quella
+  fermata, se è stata registrata dalla beta.53 in poi.
+- **La rivendita dell'erede che aveva anche comprato una parte**, se quell'acquisto aveva lasciato una fermata, dice a carico di chi è:
+  dell'erede e delle persone delle fermate di prima insieme, senza indicare il Wallet, perché la parte di ognuno la decide
+  l'amministratore. Se l'erede è l'unico erede di chi gli aveva venduto, la fermata è sua, con il Wallet.
+- **Il riparto di un'unità divisa fra piena proprietà e usufrutto** legge anche la riga a quota zero chiusa il giorno prima di un'altra
+  dello stesso ruolo, che vale dalla sua data d'inizio. Cambiano i piani generati o ricalcolati dopo l'aggiornamento; quelli già emessi
+  restano.
+- **Le frasi dei passaggi nominano la gestione una volta sola:** «sulla Gestione ordinaria», non «sulla gestione Gestione ordinaria».
+- **Guide.** La «Guida: registrare un passaggio» e la «Guida: ruoli e usufrutto» dicono il comportamento di adesso.
+
+---
+
+## [1.11.0-beta.53] - Il saldo legato al passaggio
+
+**Tocca lo schema del database: una colonna nuova, `passaggio_id`, nella tabella dei saldi, con la chiave esterna sui passaggi di
+titolarità.** La migrazione non sposta né riscrive dati: i saldi che ci sono restano come sono, senza legame. L'aggiornamento la applica
+da sé.
+
+**Che cosa fa la beta.**
+- **Il saldo del Wallet si lega a un passaggio.** Quando un passaggio di titolarità lascia una parte che il programma non sposta da sé,
+  la passi dal Wallet con due saldi legati a quel passaggio: non occupano il posto di un riporto e si tolgono insieme al passaggio, se lo
+  annulli. Il modale «Aggiungi credito» (e quello del debito) ha la scelta «Legato a un passaggio».
+- **Le frasi dei passaggi dicono i fatti.** Per ogni persona, quanto sommano i suoi saldi legati e quanto vale la sua parte. La nota di
+  solidarietà dice a parte i saldi legati, e annullando un passaggio il programma nomina, senza toccarli, i saldi
+  scritti a mano dal Wallet dopo la registrazione senza legarli a un passaggio.
+- **Una voce di spesa scritta col meno si conta in positivo in ogni totale**, come la conta il calcolo delle quote: nel piano dei conti,
+  nella distinta, nell'elenco e nel cruscotto. La creazione di un piano non la propone e «Sposta spesa» non la muove.
+- **Un piano approvato blocca anche il padre, il tipo, la tabella e le percentuali di una voce**, non solo l'importo.
+- **«ad» davanti ai nomi che cominciano per «a»** in tutte le frasi dei passaggi.
+- **Correzioni.** Il modale «Aggiungi credito» non nasconde più una frase e non taglia il menu delle persone; la riga di una voce nel
+  piano dei conti non mostra più un piano straordinario che non esiste; la conferma di «Rimuovi voce» sulle voci di entrata, la guida della
+  regolazione immediata e le frasi delle fermate dopo una fermata sono corrette.
+- **Guida.** La guida dei saldi iniziali ha una sezione nuova, «Il saldo legato a un passaggio».
+
+---
+
+## [1.11.0-beta.52] - Il segno delle entrate
+
+**Tocca i dati del database, senza cambiare lo schema: una migrazione riscrive la frase del promemoria del credito e riallinea i
+promemoria del caso misto scritti prima di questa beta.** La migrazione lavora solo sui promemoria delle rate che il condòmino vede
+nel portale, e fa tre cose. Dove la descrizione contiene ancora, esatta, la frase della 1.8.0 che prometteva la compensazione
+automatica del credito sulle rate successive, sostituisce quella frase e lascia il resto del testo com'è: al suo posto «il credito
+resta a tuo favore. L'amministratore può usarlo per compensare una tua quota da pagare o restituirtelo.», oppure «il credito è stato
+usato o restituito.» se la persona ha su quella rata quote a credito non annullate e sono tutte già pagate per intero. Poi ricalcola,
+con lo stesso calcolo che il programma usa da questa beta, i promemoria scritti prima che portano il riferimento alla rata, per una
+persona sola che sulla rata ha quote attive dei due segni, una da pagare e una a credito (il caso misto), saldati compresi: una
+segnalazione della persona resta com'è e si aggiornano i numeri, e il testo si riscrive solo se è ancora quello scritto dal
+programma. Infine scrive nel registro quanti promemoria già saldati hanno ancora una quota da pagare, senza toccarli. Non cambia lo
+schema, le date né gli altri eventi, e dei promemoria fuori dal caso misto non cambia le descrizioni senza la frase esatta, gli stati
+e gli importi, che si riscrivono al primo movimento sulla rata. Aggiorna solo la descrizione e i dati del promemoria, senza toccare
+`updated_at`: i promemoria pagati non tornano a comparire nel portale per trenta giorni. Ogni promemoria riscritto va nel registro
+dell'applicazione, e uno che non si riesce a riallineare ci va come avviso, senza fermare l'aggiornamento. Si può rilanciare: la
+frase vecchia non c'è più e un promemoria riallineato non si ricalcola una seconda volta, quindi il secondo giro non cambia niente di
+ciò che il primo ha scritto, e riprova solo un promemoria che non era riuscito a riallineare. Senza migrazione, i promemoria scritti
+da adesso salvano anche il contante versato dalla persona e quanto aspetta la compensazione, e il registro di un passaggio
+d'usufrutto segna come entrata la voce di entrata che sposta all'«Usufruttuario»; un passaggio registrato prima si legge come prima.
+
+La voce di entrata fuori dai passaggi. Le voci di entrata, come l'affitto di un'antenna, in alcune operazioni il programma le
+trattava come spese senza dirlo: «Sposta spesa» fra una spesa e un'entrata, una fattura o una regolazione immediata su un'entrata, un
+importo negativo scritto al posto del tipo «Entrata», dieci totali che sommavano le entrate alle spese. Le prime tre erano nel «Non
+ancora» della beta.51, che dei dieci totali nominava solo il badge «Disallineato: ricalcola!». Con loro il promemoria del portale per
+una quota a credito, che prometteva una compensazione che il programma non fa da solo. Il segno di una voce ora si legge come lo
+legge il calcolo delle quote, che non cambia. Ci sono anche l'art. 984 c.c. per le entrate sulle unità in usufrutto e tre correzioni
+dei passaggi: due di frasi e una del selettore del Wallet. Ogni difetto ha prima avuto un test rosso; le correzioni sono passate da
+una revisione avversariale, da due giri di verifica sulle correzioni e da una verifica a video. I difetti trovati nelle funzioni
+nuove sono corretti prima del rilascio e non figurano fra le correzioni, che riguardano solo ciò che c'era già.
+
+**Cambi di comportamento, detti per primi.**
+- **«Sposta spesa» si fa solo fra voci dello stesso tipo.** Con «Spese generali» a € 1.200,00 e l'entrata «Affitto antenna» a
+  € 240,00 il piano chiede € 960,00. Spostare € 50,00 dalla spesa all'entrata lo portava a € 860,00, e al contrario a € 1.060,00: il
+  totale cambiava del doppio dello spostamento, con il messaggio di successo. Ora lo spostamento fra una spesa e un'entrata si
+  rifiuta prima di scrivere, sotto «Sposta su»: ««Spese generali» è una spesa e «Affitto antenna» è un'entrata: il budget si sposta
+  solo fra voci dello stesso tipo, altrimenti il totale del piano cambierebbe. Scegli una voce dello stesso tipo.» Il menu della
+  destinazione offre solo le voci del tipo della sorgente, e una destinazione scelta prima si svuota se con la sorgente nuova non è
+  più ammessa. Il tipo è quello con cui il calcolo distribuisce la voce: un capitolo di tipo «Spesa (uscita)» senza tabelle proprie e
+  con i soli sottoconti di entrata conta come un'entrata (spostandogli € 100,00 da una spesa il piano passava da € 1.200,00 a
+  € 1.000,00), e un capitolo con sottoconti di spesa e di entrata insieme non si sposta e non riceve (lo spostamento portava il piano
+  da € 1.400,00 a € 1.320,00): nel menu della sorgente compare spento, con «(capitolo con spese ed entrate: non si sposta)». Lo
+  storno di uno spostamento già scritto non passa da questo controllo. C'era dalla v1.9.0.
+- **«Sposta spesa» non sovrappone una voce a un capitolo o ai sottoconti già nel piano.** Nel piano «Spese generali» a € 1.200,00 e i
+  sottoconti «Ascensore» (€ 600,00) e «Caldaia» (€ 400,00) del capitolo «Manutenzione»: € 2.200,00. Spostare € 100,00 su
+  «Manutenzione» scriveva una riga per il capitolo, e il calcolo, che dà la quota del capitolo ai sottoconti e salta le loro righe,
+  contava solo quella: il piano scendeva a € 1.200,00 e «Ricalcola» rispondeva con successo. Ora lo spostamento si rifiuta:
+  ««Manutenzione» non è nel piano, ma lo sono i suoi sottoconti «Ascensore» e «Caldaia»: con una riga anche per il capitolo il piano
+  conterebbe solo quella e non più le righe dei sottoconti. Sposta il budget su uno dei sottoconti.»; verso un sottoconto il cui
+  capitolo è nel piano la frase dice di spostare il budget sul capitolo, e il menu non offre più queste voci. La sovrapposizione
+  segue la regola del calcolo: un capitolo con tabelle millesimali proprie non passa la quota ai sottoconti, e contano i sottoconti
+  nati fino alla creazione del piano, o tutti se nessuno lo è. Nei piani che il vecchio spostamento aveva già colpito il rifiuto dice
+  come uscirne, e la pagina mostra un riquadro (fra le funzioni nuove). Anche questo controllo non si applica allo storno. C'era
+  dalla v1.9.0.
+- **Il capitolo di una fattura è una voce di spesa.** Una fattura di € 300,00 registrata sull'entrata «Affitto antenna» (€ 240,00)
+  creava uno sforo di € 60,00, e il piano integrativo che lo recuperava accreditava € 30,00 a testa invece di chiederli. Ora la
+  registrazione non offre le voci di entrata, la voce proposta dall'ultima fattura del fornitore è solo una voce di spesa del
+  condominio, e il server rifiuta sul campo della riga: ««Affitto antenna» è una voce di entrata: il capitolo di una fattura è una
+  voce di spesa. Scegli un'altra voce.» Nella modifica di una fattura già scritta su un'entrata la riga mostra la voce, che nel menu
+  è spenta e segnata «Entrata», e il salvataggio si rifiuta finché la riga non va su una voce di spesa, anche se non la tocchi:
+  «Questa riga è sulla voce di entrata «Affitto antenna»: il capitolo di una fattura è una voce di spesa. Scegli una voce di spesa
+  per salvare la modifica.» Restano come prima la nota di credito del fornitore, le righe con l'unità (il capitolo si scarta), quelle
+  a € 0,00 e quelle di sopravvenienza; una riga negativa si rifiuta come una positiva, e lo storno di una fattura già scritta su
+  un'entrata passa. C'era dalla v1.9.0.
+- **La regolazione immediata non si usa per un'entrata.** Una regolazione di € 300,00 su un'entrata scriveva un costo in DARE e la
+  cassa in AVERE: un'uscita di banca che non c'era. Ora il menu del capitolo offre solo le voci di spesa e il server rifiuta sul
+  campo del capitolo: ««Affitto antenna» è una voce di entrata: la regolazione immediata registra un'uscita di cassa e non si usa per
+  un'entrata. Scegli una voce di spesa.» Lo storno di una regolazione già scritta passa. C'era dalla v1.10.0.
+- **L'importo di una voce si scrive senza il segno.** Una voce di spesa scritta a meno € 240,00, invece che con il tipo «Entrata», il
+  calcolo la addebita in positivo: accanto a «Spese generali» a € 1.200,00 il piano chiedeva € 1.440,00 invece di € 960,00. Ora nella
+  nuova voce il campo non accetta il meno (scritto «-240,00» resta «240,00») e sotto dice «Si scrive senza il segno: lo decide il
+  tipo della voce.»; il server rifiuta un importo negativo con «Una voce di spesa non può avere un importo negativo. Se è un
+  provento, per esempio l'affitto di un'antenna, scegli «Entrata» e scrivi l'importo senza il segno.» o, per un'entrata, «L'importo
+  di una voce di entrata si scrive senza il segno: è il tipo «Entrata» a ridurre quanto si chiede ai condòmini.» Nella modifica si
+  rifiuta un importo cambiato in negativo, con lo stesso testo (prima, per una voce in nessun piano, rispondeva «L'importo minimo
+  consentito è € 0,00 (già impegnato nei piani rate)»): una voce già negativa, dato delle versioni passate, si rinomina e si porta a
+  «Entrata» senza toccare l'importo, ma un'entrata negativa non si porta a «Spesa (uscita)» senza correggere l'importo. Nella
+  creazione del piano l'importo scelto per una voce non può essere negativo («L'importo di una voce nel piano non può essere
+  negativo. Scrivi l'importo senza il segno: lo decide il tipo della voce.»), e il rifiuto si legge accanto a «Salva piano rate». Un
+  capitolo scritto col meno si crea a zero, come prima. C'era dalla v1.7.0; nella configurazione del piano dalla v1.9.0.
+- **Un piano con una voce di spesa negativa si ferma prima di scrivere.** Un piano con una voce di spesa a meno € 240,00 si
+  ricalcolava in silenzio chiedendo € 1.440,00 invece di € 960,00. Ora si fermano prima di scrivere la creazione del piano (anche
+  senza generarlo subito), la generazione, «Ricalcola», «Sincronizza» e «Rimuovi voce e ricalcola», anche quando si toglie una voce
+  positiva mentre un'altra è negativa (la voce resta nel piano). Il messaggio in testa alla pagina nomina la voce, la cifra
+  addebitata e la strada con il suo costo: «Il piano non si ricalcola: la voce di spesa «Rimborso» ha un importo negativo (meno
+  € 240,00) e il piano la addebiterebbe in positivo, per € 240,00. Correggi l'importo della voce nel piano dei conti: se è un
+  provento, scegli «Entrata» e scrivi l'importo senza il segno. Il piano tiene una copia dell'importo della voce e correggere la voce
+  non la cambia: togli la voce dal piano con «Rimuovi voce e ricalcola» e riaggiungila con «Sincronizza». Togliendola si perdono i
+  suoi tratti di competenza, se ne ha: annotali prima e riscrivili ricreando il piano.» Un piano approvato va prima riportato in
+  bozza, e il messaggio avvisa che così si azzerano i dati dell'approvazione, da annotare prima. Con più voci negative, con un
+  sottoconto (che «Sincronizza» non riaggiunge) o con la copia di un capitolo la strada è eliminare il piano e ricrearlo, e il
+  messaggio dice che cosa si perde: il riparto manuale dei saldi solidali, i tratti di competenza delle voci, la ricorrenza, gli
+  spostamenti di budget fra le voci e gli importi scelti per le voci. Il fermo scatta anche per un sottoconto di spesa negativo sotto
+  un capitolo con la copia positiva, se la somma dei sottoconti resta positiva, e per un capitolo con la copia a zero o negativa se
+  almeno un suo sottoconto è negativo, di spesa o di entrata; con la copia negativa anche senza, se il calcolo la addebita in
+  positivo. Non scatta per una voce di entrata scritta col meno fuori da un capitolo così, perché il calcolo le toglie il segno, né
+  nei piani straordinari. Nell'esempio, la voce corretta a € 200,00, tolta e riaggiunta, porta il piano a € 1.400,00; portata a
+  «Entrata» con € 240,00, a € 960,00. Il dato era possibile dalla v1.7.0; il fermo è nuovo.
+- **Il promemoria del portale non chiede ciò che il credito copre.** Una persona ha sulla stessa rata una quota da pagare di € 50,00
+  e un credito di € 10,00 su un'altra quota: il netto è € 40,00. Dopo i € 40,00 versati la finestra della rata diceva «Totale rata
+  calcolato € 40,00 · Già versato − € 40,00 · Residuo da pagare € 10,00» e offriva «Ho pagato l'intera rata tramite bonifico». Ora
+  l'agenda, il cruscotto e la finestra dicono «In attesa della compensazione» e «Non devi versare altro. L'amministratore deve ancora
+  registrare la compensazione di € 10,00 fra una tua quota da pagare e un tuo credito.», senza pulsanti; dopo «Usa credito» la rata è
+  saldata e il già versato resta € 40,00. Su una rata non ancora emessa con il netto a zero l'etichetta è «Da compensare», e la frase
+  dice che la compensazione la registra l'amministratore dopo l'emissione. Una segnalazione che arriva lo stesso su una rata senza
+  niente da versare si rifiuta prima di scrivere, con «Su questa rata non resta niente da versare: la compensazione di € 10,00 la
+  registra l'amministratore. Non devi fare altro.» (senza compensazione, «Su questa rata non resta niente da versare. Non devi fare
+  altro.»), e il rifiuto si legge nella finestra. Un credito puro è «A credito» finché il credito c'è; usato o restituito, la
+  finestra dice «Il credito di questa rata è stato usato o restituito: non resta niente da versare né da ricevere.» «Già versato» è
+  il contante della persona, senza il credito usato, e le righe «Credito usato altrove o restituito», «Credito applicato da un'altra
+  quota» e «Credito ancora a tuo favore» fanno tornare la colonna dove serve. Il riquadro rosso della scadenza compare anche con il
+  netto a credito se resta un importo da versare, e la finestra aperta mostra lo stato di adesso quando la pagina si ricarica. Il
+  testo del promemoria, solo in italiano come prima, segue lo stesso stato: per un credito puro «Non è richiesto alcun pagamento: il
+  credito resta a tuo favore. L'amministratore può usarlo per compensare una tua quota da pagare o restituirtelo.»; un testo
+  ritoccato a mano non si riscrive. La frase che prometteva la compensazione automatica c'era dalla v1.8.0, il pagato contato sulle
+  sole quote da pagare dopo un incasso dalla v1.9.0.
+- **Una quota annullata non tiene aperta la verifica incassi.** Una quota da pagare annullata e mai pagata non conta più né per il
+  promemoria della persona né per la rata saldata: dopo un incasso o il suo storno, se le altre quote da pagare della rata sono
+  pagate, il compito della verifica incassi si chiude, come dice il promemoria.
+
+**Funzioni nuove.**
+- **L'avviso della voce di spesa negativa sulla pagina del piano.** Con rate emesse, incassi, crediti usati o un passaggio che lo ha
+  conguagliato un piano non si ricalcola, non perde voci e non si elimina: il fermo si raggiunge solo dopo aver annullato tutto, e
+  fino ad allora la voce resta addebitata in positivo senza che nessuno lo dica. Ora la pagina del piano mostra, in ogni stato e
+  senza pulsanti, un riquadro rosso sopra la nota degli scoperti: «Il piano contiene una voce di spesa con un importo negativo», una
+  frase per voce con la cifra addebitata («La voce «Rimborso vecchio» ha un importo negativo (meno € 240,00) e il piano la addebita
+  in positivo, per € 240,00.»), la situazione e le strade possibili, tutte, senza sceglierne una. In bozza «Ricalcola» si ferma; da
+  approvato il piano va prima riportato in bozza; con quote a giornale, incassi, crediti usati o il conguaglio di un passaggio
+  «Ricalcola», «Rimuovi voce e ricalcola» ed «Elimina» lo rifiutano, e le strade sono annullare nell'ordine che funziona e poi
+  correggere, oppure un saldo: «Se il piano non si può più riscrivere (incassi o crediti usati da tenere, o un passaggio di
+  titolarità che l'ha conguagliato), regola la differenza con un saldo sulle unità, da «Saldi iniziali»: questo piano non lo legge
+  più, entra nel prossimo piano della gestione che applica i saldi, o nell'esercizio dopo. Il Wallet tiene un saldo per persona,
+  gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: dove la persona ne ha già uno, si corregge quello, se
+  nessun piano l'ha ancora assorbito o se il piano che l'ha assorbito si può ancora riscrivere; se l'ha già assorbito un piano che
+  non si riscrive più, il Wallet non accetta né un secondo saldo né la correzione, e per quella persona la differenza va
+  nell'esercizio dopo. Se il saldo è fra quelli da cui una successione ha calcolato l'arretrato agli eredi, il Wallet lo dice e
+  indica la strada.» La riga dei totali della pagina conta la voce come il calcolo, in positivo (con «Spese generali» a € 1.200,00 e
+  l'entrata «Affitto antenna» a € 240,00, «da ripartire: € 1.200,00 (spese € 1.440,00, entrate € 240,00)»). Il cestino resta acceso:
+  è la via d'uscita.
+- **Il riquadro delle righe sovrapposte.** Dove un capitolo ha nel piano la sua riga insieme a quelle dei suoi sottoconti, come
+  poteva lasciarlo il vecchio «Sposta spesa», il calcolo conta solo la riga del capitolo, e la somma delle righe non è quella
+  ripartita. La pagina del piano lo dice in un riquadro ambra: «Nel piano un capitolo ha la sua riga insieme a quelle dei suoi
+  sottoconti», una frase per capitolo, «La somma delle righe non è quella che il piano ripartisce: «Ricalcola» non lo corregge, e
+  «Sposta spesa» non offre queste voci come destinazione.», e l'uscita: togliere il capitolo dal piano con «Rimuovi voce e ricalcola»
+  e, se il capitolo ha ricevuto budget con «Sposta spesa», stornare prima quello spostamento dallo storico, con l'icona dell'orologio
+  accanto all'importo. Nell'esempio di «Manutenzione» lo storno e la rimozione del capitolo riportano il piano a € 2.200,00.
+- **L'avviso del capitolo con la copia a zero o negativa.** Dove nessuna voce è più negativa ma un capitolo ha nel piano una copia a
+  zero o negativa e dei sottoconti con degli importi, per esempio dopo aver corretto il sottoconto che il fermo nominava, «Ricalcola»
+  passa e il capitolo resta com'era. La pagina lo dice: «Il piano contiene un capitolo con la copia a zero o negativa», una frase per
+  capitolo che dice la copia e i sottoconti («… il piano ripartisce la copia fra i sottoconti, non i loro importi.»), ««Ricalcola»
+  non segnala questo capitolo e non ne cambia la copia: se è la cifra che volevi, non c'è niente da correggere.», e la strada:
+  eliminare il piano e ricrearlo, con quello che si perde. Non compare se la copia viene da uno spostamento di budget partito dal
+  capitolo, né per un capitolo con tabelle proprie, con la copia positiva, con i sottoconti tutti a zero o nati dopo il piano. Per
+  esempio, con una spesa di € 1.200,00 e nel piano il capitolo «Antenna» a zero, con i sottoconti «Manutenzione antenna» a € 100,00 e
+  «Affitto antenna», di entrata, scritto a meno € 500,00: il fermo nomina l'affitto; corretto a € 500,00, «Ricalcola» passa e il
+  piano resta a € 1.200,00, e ricreandolo il totale va a € 800,00.
+- **L'art. 984 c.c. nei modali della voce di entrata.** Scegliendo «Entrata» nella nuova voce, nella modifica di una voce che sta su
+  una tabella sola e nel collegamento a una tabella compare una nota: «Un affitto o un canone che il condominio incassa è un frutto
+  civile e spetta all'usufruttuario (art. 984 c.c.); se il titolo dell'usufrutto dice altro, vale fra le parti. Sulle unità in
+  usufrutto decide questa voce: con «Usufruttuario %» a 100 l'entrata va all'usufruttuario, con «Proprietario %» a 100 al nudo
+  proprietario. Con l'usufruttuario inserito a mano nella scheda dell'unità, una data di inizio a metà anno non divide l'entrata
+  giorno per giorno, salvo una riga di usufrutto chiusa il giorno prima; una data di fine sì. «Registra passaggio» divide i giorni.»
+  Il programma non sceglie al posto tuo: una nuova voce parte da «Proprietario %» a 100, e il calcolo non cambia. Con Elsa nuda
+  proprietaria, Ugo usufruttuario, una spesa di € 1.200,00 e un affitto di € 240,00: con l'affitto sul «Proprietario» Elsa paga
+  € 960,00 e Ugo niente; sull'«Usufruttuario» Elsa paga € 1.200,00 e Ugo ha € 240,00 a credito. Con l'affitto sull'«Usufruttuario» e
+  l'usufrutto costituito da «Registra passaggio» il 1/5 l'affitto segue i giorni: € 78,90 a chi era proprietario per i 120 giorni
+  prima (240 × 120/365), € 161,10 all'usufruttuario per i 245 dopo. Le etichette «Proprietario %», «Inquilino %» e «Usufruttuario %»
+  della nuova voce e del collegamento ora si traducono, e il collegamento dice «Percentuale della voce attribuita a questa tabella»
+  invece che «della spesa».
+- **Il pannello della costituzione d'usufrutto dice quando una voce è un'entrata.** Nell'elenco delle voci che passano dal
+  «Proprietario» all'«Usufruttuario» un'entrata ha l'etichetta «Entrata» e, spuntata, la frase «Se è un frutto civile, come un
+  affitto o un canone, l'art. 984 c.c. lo dà all'usufruttuario (se il titolo dell'usufrutto dice altro, vale fra le parti): l'entrata
+  passa all'«Usufruttuario». Togli la spunta se deve restare al nudo proprietario.»; per le altre unità in usufrutto della tabella
+  non si mostra l'importo dell'ultimo piano, che per un'entrata sarebbe un credito col meno.
+- **Il riepilogo dei rifiuti nella modifica della fattura.** In cima al modulo di modifica c'è il riepilogo degli errori, lo stesso
+  della registrazione, portato in vista e con il nome del campo («Conto addebito», «Riga 2», …); l'errore della voce e quello
+  dell'unità si leggono anche sotto il loro menu, e spariscono appena il campo cambia. Le finestre che hanno già il loro messaggio
+  non lo ripetono. Prima un rifiuto del server senza un campo, o quello sul conto di addebito, non compariva da nessuna parte, e il
+  salvataggio sembrava non fare niente.
+- **Il Wallet: «Intero immobile» e il rifiuto nel modale.** Nel modale «Aggiungi credito» (o debito), se la gestione ha già un saldo
+  per l'intero immobile la scelta «Intero immobile» è spenta, con «Questa gestione ha già un saldo per l'intero immobile: modifica
+  quello esistente.», e il modale parte da «Soggetto specifico»; le righe scritte da un passaggio non occupano il posto, come per il
+  server. Un rifiuto del server, per esempio un secondo saldo o un importo non valido, si legge nel modale, che resta aperto: prima
+  non si vedeva niente.
+
+**I totali, le frasi e le stampe.**
+- **I totali tolgono le entrate dalle spese.** Dieci totali sommavano le voci di entrata come spese. Con «Spese generali» a
+  € 1.200,00 e «Affitto antenna» a € 240,00, su un piano giusto di € 960,00, il badge «Disallineato: ricalcola!» restava acceso
+  (atteso € 1.440,00 contro € 960,00) e «Ricalcola» non lo spegneva, il cruscotto diceva «URGENTE» e «Delta: +€ 480,00», la distinta
+  delle spese «TOTALE PREVENTIVO € 1.440,00» mentre le stampe del riparto dicevano € 960,00, e la creazione del piano «Totale
+  richiesto» € 1.440,00. Ora il piano dei conti dice «Preventivo: € 1.200,00», le sole spese, con il badge «Entrate: € 240,00» e il
+  suggerimento «Le entrate si sottraggono alle spese: da ripartire € 960,00.», e l'elenco dei piani dei conti € 1.200,00 con «2 voci
+  (1 di entrata)» ed «Entrate € 240,00». La distinta in PDF dice «TOTALE PREVENTIVO € 1.200,00», «ENTRATE € 240,00» e «DA RIPARTIRE
+  (spese meno entrate) € 960,00», mostra l'entrata nella sua riga con «(entrata)» e il meno, somma il totale generale sul da
+  ripartire (€ 960,00 più € 300,00 di sopravvenienze fanno € 1.260,00) e chiude con «Le entrate si sottraggono alle spese: il
+  preventivo da ripartire fra i condòmini è la differenza.» La pagina del piano rate dice «2 voci incluse • da ripartire: € 960,00
+  (spese € 1.200,00, entrate € 240,00)», segna l'entrata «Entrata» con «€ -240,00», e il badge è spento. L'elenco dei piani rate ha
+  la colonna «Da ripartire», prima «Preventivo» (per i piani di sole spese la cifra non cambia, salvo una voce di spesa negativa, che
+  ora conta in positivo come nel calcolo), con «spese € 1.200,00, entrate € 240,00» sotto. Il cruscotto chiama il riquadro «Da
+  ripartire» (€ 960,00), dice «… al netto delle entrate di € 240,00 …», «Allineato» e 100 %; con il netto a zero o negativo, per
+  esempio con le sole entrate, dice 100 % se il piano non chiede più del netto. La creazione del piano dice «Da ripartire: € 960,00
+  (spese € 1.200,00, entrate € 240,00)» e segna l'entrata nel selettore delle voci. Un'entrata scritta col meno, dato possibile dalla
+  1.7.0 alla 1.11.0-beta.51, conta per il suo valore assoluto nel cruscotto, nelle voci scoperte e nel selettore del piano nuovo, che
+  non la propone come sforo da recuperare. Senza entrate, salvo il nome della colonna dell'elenco, le parole restano quelle di prima
+  («Totale richiesto», «Fabbisogno Condiviso», «totale preventivo») e la distinta è quella di prima. Il badge c'era dalla v1.9.0,
+  nella forma di oggi dalla v1.10.0; la distinta dalla v1.9.1.
+- **Il badge «Disallineato» con un acconto e un già versato.** Una voce di € 1.000,00, € 200,00 già versati e un acconto di € 500,00:
+  il piano chiede € 400,00, perché toglie dal già versato la stessa metà che chiede della voce, mentre l'atteso del badge lo toglieva
+  tutto e diceva € 300,00. Il badge era acceso su un piano giusto, e «Ricalcola» non lo spegneva. Ora l'atteso toglie il già versato
+  con la stessa quota del calcolo, mai un centesimo in più del versato, e il badge è spento anche con un acconto di un terzo e un
+  saldo dei due terzi di € 1.200,00 con € 300,00 versati (€ 300,00 e € 600,00) e con la riga di un capitolo e il già versato sui
+  sottoconti. Un già versato registrato dopo la generazione accende ancora il badge: il piano va ricalcolato. C'era dalla v1.10.0.
+- **Le frasi dei passaggi d'usufrutto con un'entrata.** Il pannello «Cosa cambierà» di un passaggio d'usufrutto metteva le entrate
+  sotto l'art. 1004 c.c., che riguarda le spese. Ora, dove passano all'«Usufruttuario» solo entrate, la frase non cita l'art. 1004
+  c.c. (senza rate emesse dice «… l'usufruttuario è …: nei piani generati o ricalcolati dopo passano all'«Usufruttuario» le sole
+  entrate.»), e lo storico «… questa entrata è passata dal «Proprietario» all'«Usufruttuario».»; nello storico e nell'avviso
+  dell'annullamento la voce spostata è detta entrata fra parentesi («Affitto antenna (Proprietà, Ordinaria 2026, entrata)»), e le
+  frasi delle voci bloccate dicono «l'entrata di quella voce», o «l'ordinaria o l'entrata di quelle voci», invece dell'ordinaria.
+- **Le frasi della fine di un inquilino entrato dopo.** La beta.51 diceva «Con la fine della locazione di Luca i suoi giorni dal 18
+  aprile 2026 tornano a chi paga al posto dell'inquilino …», ma i giorni dopo la fine non sono di Luca, e lo storico «… i giorni di
+  Luca dal 1 dicembre 2026 tornano …», con l'ordine delle parole storto. Ora le due frasi del pannello dicono «… i giorni dal 18
+  aprile 2026 tornano a chi paga al posto dell'inquilino …», e lo storico «Con questa fine la parte verso Elsa … risale da € 30,58 a
+  € 61,15 (gestione …): dal 1 dicembre 2026, finita la locazione di Luca, i giorni tornano a chi paga al posto dell'inquilino, da
+  regolare a mano fra …». Le cifre non cambiano, e nessun dato va corretto: le frasi si leggono dal registro. La guida del passaggio
+  dice «i giorni che copriva».
+- **La regola del Wallet con la sua eccezione, nelle guide e nella successione.** Cinque punti delle guide dicevano la regola del
+  Wallet, un saldo per persona, gestione, unità ed esercizio, senza dire che non contano quelli scritti da un passaggio: chi aveva
+  solo la riga di un conguaglio leggeva «si regola fra le parti» dove il pannello gli proponeva il Wallet. Lo stesso diceva l'avviso
+  della successione, dove le righe dell'arretrato agli eredi le ha scritte proprio un passaggio. Ora la guida dei saldi iniziali dice
+  «… perché il Wallet accetta un solo saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio:
+  la riga di un conguaglio non occupa il posto, e la riga a mano si aggiunge accanto», le guide del passaggio e del piano rate danno
+  la strada a mano a chi non ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che non sia stato scritto da un
+  passaggio, e l'avviso della successione dice «se nessuno ha già, su quella gestione, quell'unità e quell'esercizio, un saldo che
+  non sia stato scritto da un passaggio, altrimenti la parte si regola fra le parti; se i saldi registrati sono già la parte di
+  ognuno, dice che ci sono già e che non serve registrare altro». Le frasi che il pannello compone con i nomi erano già vere e
+  restano. Nell'esempio, con la riga del passaggio già nel Wallet, Ugo ed Elsa registrano il loro saldo manuale, un secondo saldo
+  manuale della stessa persona si rifiuta, e il piano dopo assorbe le righe sommate: Ugo € 35,77 ed Elsa € 319,75 a debito, Ines
+  € 355,52 a credito. C'era dalla beta.50 nelle guide, dalla beta.51 nell'avviso della successione.
+- **Il credito nell'incasso, e la conferma del cestino.** Nella schermata dell'incasso il suggerimento sul credito di una riga faceva
+  credere che il credito si usasse da solo; ora dice «Su questa riga c'è un credito che puoi usare con «Usa credito».». La conferma
+  di «Rimuovi voce e ricalcola» aggiunge «Se la voce ha dei tratti di competenza, con la rimozione si perdono: annotali prima, perché
+  si riscrivono solo ricreando il piano.»
+
+**Correzioni.**
+- Nella modifica di una fattura una riga accettava la voce o l'unità di un altro condominio, e i costi passavano da un libro
+  all'altro (€ 130,00 uscivano dai costi del primo condominio ed entravano in quelli del secondo); il conto di addebito, e in
+  registrazione il fondo di riserva, il debito e la fonte di una copertura e la tabella millesimale di un imprevisto, potevano essere
+  di un altro condominio, e un elenco al posto dell'id portava a video «Array to string conversion» con il testo della query. Ora la
+  voce, l'unità, il conto di addebito, il fondo di riserva, il debito, la fonte di una copertura e la tabella millesimale si
+  controllano nel condominio della pagina, ciascuno con il suo messaggio sul campo («La voce scelta non appartiene a questo
+  condominio.», e così per gli altri); il fondo di riserva dev'essere il mastro di una cassa di tipo fondo, e la fonte di una
+  copertura per sopravvenienza una voce di spesa. Dal modulo queste scelte non si potevano fare: il rifiuto riguarda le richieste
+  costruite a mano. È integrità dei dati, non riservatezza, perché istanza e database sono di un solo cliente. La modifica lo
+  permetteva dalla v1.9.1.
+- Un elenco al posto dell'id in «Sposta spesa» e nella regolazione immediata, possibile solo con una richiesta costruita a mano,
+  finiva in un errore del server con il testo dell'eccezione: ora è un errore sul campo («La voce da cui spostare il budget non è
+  valida: scegli una voce dal menu «Preleva da».», «La voce su cui spostare il budget non è valida: scegli una voce dal menu «Sposta
+  su».»), e nella regolazione lo stesso per gestione, esercizio, capitolo, cassa e fornitore.
+- Il rimborso di un credito non riallineava il promemoria della persona nel portale, che restava com'era. Ora incasso, «Usa credito»,
+  rimborso e i loro storni passano dallo stesso calcolo: con il netto di € 40,00 versato e poi il rimborso del credito di € 10,00,
+  restano € 10,00 da versare e niente da compensare. Se la scrittura tocca solo il credito, un promemoria segnalato dalla persona
+  resta segnalato e si aggiornano i numeri.
+- La X dei messaggi copriva il testo dei messaggi lunghi, come il fermo di «Ricalcola»: le varianti del riquadro toglievano lo spazio
+  a destra riservato alla X (16 px invece di 40). Ora lo spazio c'è, su tutte le pagine che usano il riquadro dei messaggi. C'era
+  dalla 1.10.0-beta.17.
+- Nel Wallet, con «Soggetto specifico», il selettore delle persone escludeva chi aveva solo righe scritte da un passaggio, e la
+  strada a mano delle fermate non si poteva fare dall'interfaccia, anche se il server la accettava: nel condominio di prova delle
+  guide offriva solo Luca, ora anche Ugo, Ines ed Elsa. Le righe scritte da un passaggio non occupano il posto, come per il server.
+  C'era dalla beta.31, che ha portato le righe del conguaglio nel Wallet, e si vedeva dalla beta.50, che propone quella strada.
+
+**Errata della beta.50 e della beta.51.** Cinque voci dei changelog della beta.50 e della beta.51 dicevano la regola del Wallet senza
+la sua eccezione: nella beta.50 «Il coinquilino che resta» («se nessuna delle due persone ha già un saldo su quella gestione, unità
+ed esercizio (il Wallet accetta una sola riga per persona, gestione, unità ed esercizio)») e «La fermata dopo «Scrivi»» («solo se
+nessuna delle due persone della riga ha già un saldo su quella gestione, unità ed esercizio»); nella beta.51 «La fine di un inquilino
+dopo una vendita si ferma e chiede la spunta» («se nessuna delle due persone ha già un saldo su quella gestione, quell'unità e
+quell'esercizio»), «Il cancello della generazione nomina il defunto» («se qualcuno ha già un saldo su quella gestione e quell'unità,
+la parte si regola fra le parti») e il «Non ancora» («il Wallet ne tiene uno per persona, gestione, unità ed esercizio»). La regola è
+un saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio: le righe che un passaggio ha
+scritto, come la coppia di un conguaglio o l'arretrato passato agli eredi, non occupano il posto. Quindi la strada a mano è il saldo
+manuale dal Wallet anche per chi ha già la riga di un conguaglio, e «si regola fra le parti» vale solo se una delle persone ha già un
+saldo che un passaggio non ha scritto. Il resto di quelle voci resta vero, e anche ciò che il «Non ancora» della beta.51 diceva delle
+voci di entrata.
+
+**Le guide.** La guida «dettaglio piano rate» dice che le entrate si contano col meno, che «Sposta spesa» si fa fra voci dello stesso
+tipo, che nei piani straordinari non funziona e si rifiuta sempre, e che cosa fare con una voce di spesa negativa (il fermo, il
+riquadro, la copia del piano, il sottoconto, i tratti di competenza, la bozza). La guida del riparto con l'usufrutto aggiunge l'art.
+984 c.c. alle regole, una sezione sulle entrate (un affitto, un canone) con la cautela sull'usufrutto inserito a mano, e le entrate
+nel passaggio. La guida della registrazione delle fatture dice che le voci di entrata non compaiono e si rifiutano, e che in modifica
+una riga su un'entrata va portata su una voce di spesa; quella della regolazione immediata che il capitolo è sempre una voce di
+spesa; quella delle operazioni sui conti la distinta con le entrate; quella dell'incasso che il portale mostra il credito, e dice che
+l'amministratore può usarlo o restituirlo se sulla stessa rata la persona non ha altro da pagare, altrimenti che la compensazione la
+registra l'amministratore. Le guide del passaggio, dei saldi iniziali e della creazione del piano rate dicono la regola del Wallet
+con la sua eccezione, e la guida del passaggio dice la fine di un inquilino con «i giorni che copriva»; la guida in testa al piano
+dei conti dice che il preventivo conta le sole voci di spesa.
+
+**Non ancora.** Con un piano a voci scelte che lascia fuori un'entrata il cruscotto dice 125 % (il piano chiede € 1.200,00 contro
+€ 960,00 da ripartire), e l'elenco delle voci non coperte nomina ancora l'entrata. Un capitolo con sottoconti di spesa e di entrata
+il calcolo lo divide in proporzione fra le due: «Sposta spesa» non lo muove e i totali della pagina del piano, dell'elenco dei piani
+rate e del badge lo dividono come il calcolo, ma la correzione del calcolo è della 1.12. Nella 1.12 anche «Sincronizza» di un
+capitolo con un sottoconto nato dopo il piano, che addebita l'entrata come una spesa (c'era dalla v1.9.0); lo spostamento da una
+sorgente sovrapposta, che passa ancora nei piani della forma di prima della 1.9 già colpiti dal vecchio «Sposta spesa»; il cambio di
+tipo di una voce che ha già movimenti. Nei piani straordinari «Sposta spesa» non funziona e si rifiuta sempre: il menu della sorgente
+elenca le fatture, ma lo spostamento cerca la sorgente fra le voci, con l'identificativo interno della fattura, e il rifiuto non dice
+perché: «L'elemento source id selezionato non è valido.» se nessuna voce del condominio ha quell'identificativo, altrimenti un altro
+rifiuto dello spostamento, a volte con il nome di una voce che non c'entra, o «La voce sorgente non è presente in questo piano
+rate.». Niente si sposta. Il fermo ha un falso positivo accettato, con un'entrata i cui sottoconti di entrata sono scritti col meno:
+in alcuni casi si ferma anche dove il calcolo distribuirebbe giusto, e la strada è correggere gli importi dei sottoconti. Delle frasi
+del pannello sull'ordinaria il modulo del passaggio mostra solo la prima, dalla beta.41: la frase sull'art. 984 c.c. e quella su chi
+riceve un'entrata nelle altre unità della tabella esistono ma non arrivano a video; si vedono l'etichetta «Entrata» e la frase sotto
+la voce. La frase del conguaglio con un netto di entrata dice ancora «all'usufruttuario, art. 1004 c.c.». I promemoria salvati prima
+di questa beta e non del caso misto restano come sono fino al primo movimento sulla rata: quelli «Rata saldata» con una quota da
+pagare (la migrazione li conta) e quelli che leggono il pagato al posto del versato. Un versamento fatto da un altro per conto della
+persona («Versato da») il portale lo conta come suo. Il testo del promemoria è solo in italiano, e lo spagnolo dei testi nuovi è una
+copia dell'inglese. L'incasso vero di un'entrata da terzi, come l'affitto dell'antenna versato al condominio, non si registra ancora:
+arriva con il rendiconto. Restano i limiti dichiarati dei passaggi della beta.51.
+
+**Per chi sviluppa.** Una migrazione di dati, `2026_10_17_100000_riscrivi_descrizioni_promemoria_credito`, nel dataset di
+`UpgradeMigrationsRerunTest`: nessuna colonna, `down()` vuoto di proposito. Tolte o cambiate: `totale_capitoli` del piano rate non
+c'è più, al suo posto `totale_spese`, `totale_entrate` e `totale_da_ripartire`; `copertura.preventivo` del cruscotto diventa
+`copertura.spese`, `copertura.entrate` e `copertura.da_ripartire`; `importo_totale` di `PianoDeiContiResource` è la somma delle sole
+spese, con `importo_entrate` e `capitoli_entrate_count`; il piano dei conti manda `totaleEntrate` e `totaleDaRipartire`;
+`BudgetCoverageService::analyze()` porta `tipo` e `segno` per voce e somma i totali col segno. Nuove: `tipo` su sorgenti e
+destinazioni di «Sposta spesa» (`spesa`, `entrata`, `misto`), sui capitoli del piano rate, sulle voci del selettore della creazione e
+del modulo delle fatture; le props `avviso_spesa_negativa` e `avviso_righe_sovrapposte` della pagina del piano; nel meta del
+promemoria `importo_versato` e `da_compensare`; `voci_spostate[].tipo` nel registro dei passaggi; `tipo` nelle voci da spostare
+dell'anteprima e nella loro impronta (un pannello mostrato prima dell'aggiornamento si rifiuta con il messaggio di sempre e si
+rilegge). Classi nuove: `App\Services\Riparto\SpeseNegativeNelPiano` (il fermo, in sola lettura, con la stessa selezione e lo stesso
+importo del calcolo), `AvvisoSpeseNegative`, `QuotaDellaChiamata` (spostata da `ConguaglioPassaggio` senza modifiche, serve anche al
+badge), `App\Exceptions\Gestionale\SpesaNegativaNelPianoException`, `App\Http\Requests\Gestionale\Movimenti\PerimetroFattura`,
+`App\Http\Requests\Gestionale\PianoConto\Conto\ImportoSenzaSegno`; lato pagina `totaliPerTipo.ts` (l'unica conversione euro →
+centesimi della creazione del piano), `compensazione.ts`, `SuggerimentoEntrataUsufrutto.vue`, `destinazioniAmmesse` e `TIPO_MISTO` in
+`budgetMovements.ts`. Costanti e metodi nuovi: `Conto::TIPI_DI_SPESA`, `segnoDelTipo()`, `segno()`, `eMisto()`, `ripartoPerSegno()`,
+`importoConSegno()` e `sottocontiDelPiano()` (`segno()` lancia `LogicException` se il tipo non è caricato: la `select` del cruscotto
+ora porta `conti.tipo`); `BudgetMovementService::tipoDelSegno()`, `sovrapposteAlPiano()`, `destinazioniPerLaPagina()` e
+`avvisoRigheSovrapposte()`; `PianoRateQuoteService::totaliPerSegnoCents()`; `BudgetCoverageService::importoDellaVoce()`;
+`EventiRataCondomino::stato()`, `applica()` e `descrizione()` pubblici, e `coppieToccate()` con il terzo elemento;
+`GeneratePianoRateAction::execute()` con il parametro `appenaSincronizzate`;
+`RegistraRegolazioneImmediataAction::messaggioVoceDiEntrata()`; `VociDaSpostare::etichetta()`; la chiave di traduzione
+`income_usufruct` in quattro lingue. Il calcolo delle quote non cambia: in `CalcoloQuoteService` cambia solo il registro, che riporta
+il già versato assorbito e dice quanto dell'importo del piano non è stato ripartito, anche senza entrate (prima sbagliava con un già
+versato e con un capitolo nel piano, contato due volte). `AggiornaScadenziarioCondomino` resta, con un commento che dice che nessuno
+lo chiama. Test nuovi: 43 file `Beta52*Test.php`, con tre scenari condivisi, e 37 file vitest; cambiati `DashboardFinancialTest` (le
+chiavi nuove), `SuccessioneTest` (un test nuovo), il dataset di `UpgradeMigrationsRerunTest` e l'intestazione di
+`PassaggioProprietaGuide.test.ts`.
+
+---
+
+## [1.11.0-beta.51] - Niente in silenzio
+
+**Non cambia lo schema del database, ma i passaggi e gli annullamenti salvano nel loro registro alcune informazioni nuove.**
+L'annullamento di una vendita, di un usufrutto o di una successione ricorda fino a dove arrivavano le quote dei piani in quel
+momento, così da distinguere i piani ricalcolati dopo; la fine di un inquilino ricorda la parte di una fermata di prima che
+risale; l'inizio di una locazione ricorda la parte della coppia di righe di saldo che il nuovo inquilino ha preso, e chi pagava
+quei giorni; le fermate ricordano l'inquilino la cui fine le ha fatte nascere e, quando più passaggi si fermano sulla stessa
+persona, l'elenco di quei passaggi. Anche le quote di un piano generato dopo una successione con l'arretrato agli eredi, quando il
+cancello della generazione nomina il defunto, ricordano nei parametri del calcolo la persona, l'unità e la cifra detta. Nessuna
+migrazione e nessun dato esistente riscritto: i passaggi registrati prima non hanno queste informazioni e si leggono come prima, e
+gli annullamenti di prima, che non ricordano quel punto, si leggono con la sola ora (nel dubbio, il piano va ricalcolato).
+
+La chiusura dei subentri. Con la beta.50 la locazione ha avuto la sua scelta; questa prende i conti che, dopo un passaggio, potevano
+restare sbagliati senza che il programma lo dicesse, e li fa dire o li ferma: un piano che segue ancora un passaggio annullato, un
+inquilino che finisce dopo una vendita, un defunto che un piano calcola ancora, una nota di solidarietà che contava due volte la
+stessa cifra, un prospetto che dava a una persona i giorni di un'altra. Ogni difetto di calcolo e ogni frase del server hanno prima
+avuto un test rosso; le correzioni sono passate da una revisione avversariale, da un giro sulle correzioni e da una verifica a
+video. I difetti trovati nelle funzioni nuove sono corretti prima del rilascio e non figurano fra le correzioni, che riguardano solo
+ciò che c'era già.
+
+**Cambi di comportamento, detti per primi.**
+- **Dopo un annullamento, un passaggio che prenderebbe un piano da ricalcolare non si registra.** Se una vendita, un usufrutto o una
+  successione è stata registrata, il piano rate è stato ricalcolato con quel passaggio e il passaggio è stato poi annullato, le
+  quote del piano hanno ancora la titolarità di un passaggio che non c'è più. Un nuovo passaggio sulla stessa unità, il cui
+  conguaglio prenderebbe quel piano (nella successione e nella locazione, solo con «Scrivi») mentre un incasso, un credito usato o
+  un conguaglio già scritto su una sua quota ne impediscono il ricalcolo, scriverebbe la coppia di righe di saldo su quelle quote, e
+  la coppia uscirebbe sbagliata. Ora il pannello «Cosa cambierà» mette sopra il conguaglio un riquadro ambra: «Ricalcola prima il
+  piano …, poi registra questo passaggio», con il passaggio annullato, il motivo per cui il ricalcolo oggi si rifiuta e i passi fino
+  al ricalcolo. Il pannello resta, con il conguaglio e la via d'uscita: la casella «Le parti hanno regolato il conguaglio fra loro»
+  nella vendita e nell'usufrutto, «Non scriverlo» nella successione e nella fine di una locazione. Finché non ricalcoli il piano o
+  non scegli di non scrivere il conguaglio, «Registra passaggio» resta spento, con una riga che dice perché; e la registrazione,
+  anche con una richiesta costruita a mano, viene rifiutata prima di scrivere qualunque cosa (errore sul campo del passaggio). Non
+  rifiuta con «Non scriverlo», finché la scelta non è fatta, né per un passaggio annullato su un'altra unità dello stesso piano.
+- **Dopo un annullamento il piano si ricalcola prima di emettere, incassare o rimborsare.** Un piano generato o ricalcolato fra la
+  registrazione di una vendita, di un usufrutto o di una successione e il suo annullamento ha le quote con la titolarità del
+  passaggio e, emesso così, manderebbe a giornale le quote di chi non è più titolare. Nell'esempio, una vendita da Ugo a Elsa
+  dell'1/5 su un'ordinaria di € 1.200,00: dopo il ricalcolo le quote sono € 394,52 a Ugo e € 805,48 a Elsa; annullata la vendita,
+  l'emissione fino al 30/6 mandava a giornale € 197,28 a Ugo e € 402,76 a Elsa (€ 600,04 in tutto, per gli arrotondamenti delle
+  rate), invece di € 600,00 a Ugo. Ora il piano conta fra quelli che devono ancora seguire un passaggio, anche se il passaggio è
+  stato annullato: l'emissione, l'incasso (anche con un credito usato) e il rimborso si rifiutano finché non lo ricalcoli, e
+  dicono quale passaggio è stato annullato e di chi andrebbero a giornale le quote («… perché torni alla titolarità di prima:
+  emesse così, le quote di Elsa andrebbero a giornale per un passaggio che non c'è più»). Il ricalcolo, se il piano ha un
+  movimento, si rifiuta come prima e dice che poi riporterà le quote alla titolarità di prima. Vale anche per la costituzione e
+  l'estinzione dell'usufrutto, per la successione e per la vendita con il box, che è un passaggio solo. Non cambia niente se il
+  piano non è stato ricalcolato dopo il passaggio (le quote c'erano già e tornano com'erano), se il ricalcolo è stato fatto dopo
+  l'annullamento, se la decorrenza è oltre la fine dell'esercizio del piano o se l'annullamento non cambierebbe nessuna quota (una
+  straordinaria deliberata prima della vendita). La locazione resta fuori. Per gli annullamenti fatti prima di questa beta, che
+  non ricordano il punto, conta la sola ora: nel dubbio la guardia scatta, e un ricalcolo la toglie.
+- **La fine di un inquilino dopo una vendita si ferma e chiede la spunta.** Ines esce il 24/1 con «Scrivi» (la coppia, € 355,52, va
+  a Ugo), Luca entra l'8/2, Ugo vende a Elsa il 12/3 e Luca finisce il 18/4. I 258 giorni dopo la fine di Luca li paga Elsa, ma la
+  coppia è a nome di Ugo: € 268,20 di Elsa restavano a Ugo, in silenzio. Il pannello della fine di Luca non diceva niente, il
+  registro non ricordava niente. Ora la fine di un inquilino entrato dopo è una fermata come le altre dopo «Scrivi»: se i giorni che
+  lui copriva tornano a chi paga al posto dell'inquilino e questi non è più chi ha preso la coppia (ha venduto, l'usufrutto è
+  passato, il proprietario è morto), il programma registra la fine, non sposta quella parte e lo dice con la persona, la cifra e la
+  strada a mano; chiede la spunta «Ho letto cosa cambierà» e la nota, e lo storico e il registro della fine conservano la fermata
+  (nell'esempio € 268,20 verso Elsa, a carico di Ugo). La strada a mano è il saldo manuale dal Wallet se nessuna delle due persone
+  ha già un saldo su quella gestione, quell'unità e quell'esercizio; altrimenti la parte si regola fra le parti. La cifra è la
+  variazione della parte di chi riceve quei giorni e non ha già la coppia. Non è una fermata quando quei giorni vanno a un altro
+  inquilino (un coinquilino, o chi entra al suo posto con un cambio d'inquilino in un passo) o a chi ha già la coppia. Se una
+  fermata di prima conteneva già quei giorni, la parte da regolare risale invece di nascere: Ines esce l'1/7 (coppia di € 181,48 a
+  Ugo), Ugo vende a Elsa l'1/10 (fermata di € 90,74), Luca entra l'1/11 (la parte verso Elsa scende a € 30,58) e finisce l'1/12, e
+  la parte verso Elsa risale da € 30,58 a € 61,15. Il pannello, il cancello, lo storico e il registro lo dicono da quanto a quanto,
+  e l'annullamento della fine avvisa che la parte torna com'era.
+- **La nota di solidarietà dice la cifra al netto della coppia.** Nell'estratto conto, nella situazione debitoria e nella schermata
+  dell'incasso, la nota che ricorda la solidarietà di chi compra (art. 63, quarto comma, e art. 67 delle disposizioni di attuazione
+  del codice civile) dice quanto risulta non pagato a nome di chi vende. Dopo un conguaglio «Scrivi» la coppia ha già messo una
+  parte di quelle rate a debito di chi compra, e la nota la contava due volte: con un'ordinaria di € 1.200,00 emessa tutta, una
+  vendita dell'1/5 e niente pagato, diceva € 1.200,00, mentre € 805,48 erano già a debito di Elsa; la parte di Ugo, 120/365 di
+  € 1.200,00, è € 394,52. Ora la cifra è al netto e la coppia sta nella stessa frase: «a nome di Ugo risultano oggi € 394,52 non
+  pagati su questa unità (€ 1.200,00 nelle rate, di cui € 805,48 già a debito di Elsa con il conguaglio del 1 maggio 2026)». Con le
+  rate emesse fino al 30/6 la cifra è la stessa, € 394,52 (€ 600,00 nelle rate, di cui € 205,48); se il netto è zero dice che non
+  risulta nulla di non pagato e che le rate sono tutte già a debito di chi compra. Vale per la vendita piena e per la riserva
+  d'usufrutto, gestione per gestione: il credito di una non copre il debito di un'altra. Con la rinuncia al conguaglio, o dopo il
+  suo annullamento, non c'è coppia e la cifra resta lorda; se la coppia è stata assorbita da un secondo piano, la nota torna alla
+  cifra lorda, che non sottostima mai il debito.
+- **Il cancello della generazione nomina il defunto.** Ugo muore il 1/5; la successione passa l'arretrato agli eredi, Anna al 60 % e
+  Bruno al 40 %. Un piano ordinario di € 1.200,00 generato o ricalcolato dopo calcola ancora Ugo per i suoi giorni fino al decesso:
+  Ugo € 394,52, Anna € 483,29 e Bruno € 322,19. Quelle rate nascono ora, fuori dall'arretrato, e nessuna riga le passava agli eredi:
+  la frase «la posizione del defunto si chiude» lasciava intendere il contrario. Ora il cancello che si apre alla generazione
+  (creazione del piano, ricalcolo, «togli una voce») aggiunge una voce: «La successione di Ugo (decesso del 1 maggio 2026) ha
+  passato l'arretrato agli eredi, ma questo piano calcola ancora per Ugo € 394,52 … Ne rispondono gli eredi, ciascuno per la sua
+  quota (art. 754 c.c.): Anna € 236,71 e Bruno € 157,81». Poi dice la strada: un saldo manuale dal Wallet sulla stessa gestione
+  (€ 394,52 a credito di Ugo, € 236,71 a debito di Anna e € 157,81 a debito di Bruno), che il piano assorbe alla generazione
+  successiva; se qualcuno ha già un saldo su quella gestione e quell'unità, la parte si regola fra le parti. Se il piano non applica
+  i saldi del Wallet lo dice: serve crearlo di nuovo o, alla creazione, registrare i saldi e rimandare il modulo. Dopo la
+  registrazione dei saldi il cancello ritorna a ogni ricalcolo, ma con un'altra frase: «I saldi ci sono già … questo piano li
+  assorbe nelle loro quote con questa generazione. Non serve registrare altro»; vale solo se i saldi sono davvero la parte (la cifra
+  per ognuno, nel verso giusto, a meno di un centesimo): con semplici riporti, di altra cifra, resta «si regola fra le parti». Più
+  successioni dello stesso defunto sulla stessa unità (la proprietà e la nuda proprietà) dividono la cifra per ruolo, qualunque sia
+  l'ordine di registrazione; dove un pezzo non si attribuisce, la voce nomina le successioni e dice che la divisione la decide
+  l'amministratore. Anche il modulo della successione dice che la posizione del defunto si chiude su ciò che c'è già.
+- **L'anteprima dell'inizio di una locazione rifiuta quello che rifiuta la registrazione.** Ugo, Ines inquilina al 100 %, rate
+  emesse fino al 30/6. L'anteprima dell'inizio di Luca al 100 % dall'1/7 rispondeva che si poteva, il pannello proponeva il
+  passaggio, e la registrazione rifiutava: «la somma delle quote per inquilino non può superare 100: il 1 luglio 2026 farebbe 200».
+  Ora l'anteprima rifiuta con lo stesso testo e sullo stesso campo (la quota per l'unità, le pertinenze per il box: Ines al 50 % e
+  Luca al 100 % sul box fanno 150). Rifiuta anche la sovrapposizione con una riga d'inquilino di chi entra già finita (dal 1/5 al
+  31/8, contro un inizio dall'1/7), sul campo «chi entra». Il rifiuto non scrive niente, e la stessa regola vale alla registrazione
+  prima di ogni scrittura.
+- **Il prospetto non dà a una persona una voce che matura dopo un cambio d'inquilino.** Una voce di spesa di € 400,00 con competenza
+  dall'1/10 al 31/12, di cui il 30 % all'inquilino (€ 120,00). Ines passa il suo posto a Marco l'1/4 con «Scrivi» in un solo passo,
+  Marco finisce l'1/7 con «Scrivi» e Luca entra l'1/10. La voce è tutta dopo il cambio: non è di Ines. Il prospetto dava a Ines
+  € 208,77 invece di € 88,77 e a Luca € 90,74 invece di € 210,74: € 120,00 a danno di Ugo (con «Non scriverlo» nel cambio, a danno
+  di Ines). La causa: per sapere chi paga una voce il prospetto cercava la fine di un inquilino solo fra le fini senza un nuovo
+  inquilino, e non vedeva il cambio. Non serve un'entrata: basta una voce con la competenza tutta dopo il cambio. Ora segue la
+  catena a ogni passo: Ines resta con € 88,77 e Luca rimborsa a Ugo i € 120,00 che Ugo ha pagato con la coppia (€ 210,74 in tutto);
+  con «Non scriverlo» nel cambio li rimborsa a Ines, che li ha nelle rate.
+- **Più fermate sulla stessa persona: il residuo è uno solo.** Ugo e Anna, comproprietari al 50 %, vendono a Elsa il 12/3 e l'1/4;
+  ognuna delle due vendite si ferma sulla parte di Elsa (€ 153,33 e € 142,94, in tutto € 296,27). Poi Marco entra l'1/6 e toglie a
+  Elsa € 222,46. La beta.50 sottraeva quei € 222,46 da ognuna delle due fermate, e ognuna si azzerava da sola: il pannello diceva
+  «non resta niente da regolare» con € 73,81 ancora da regolare. Ora il residuo è uno, per persona che riceve, e il pannello lo dice
+  in una frase che nomina le fermate. Con più persone a carico il residuo resta uno solo per tutte insieme: la frase dice la cifra
+  di ogni fermata (qui € 153,33 per Ugo e € 142,94 per Anna) e che la parte di ognuno la decide l'amministratore.
+- **L'inizio che azzera una fermata è un'informazione.** Nell'esempio della fine di Luca che ferma € 268,20 verso Elsa, Marco entra
+  lo stesso giorno, il 18/4, e riprende i 258 giorni: la parte di Elsa torna a zero. La fine di Luca ha già chiesto la spunta per
+  € 268,20; l'inizio di Marco non ne chiede una seconda: il pannello dice che non resta niente da regolare fra le parti (prima erano
+  € 268,20), come informazione, senza spunta e senza nota. Se per la fermata di prima avevi registrato il saldo dal Wallet (€ 268,20
+  a credito di Ugo e € 268,20 a debito di Elsa), la frase dice di correggerlo, perché il programma non lo toglie; con la fermata
+  «fra le parti» questa riga non compare. La regola è il residuo zero, non il giorno stesso: con un residuo che resta il motivo del
+  cancello resta. Annullare l'inizio che aveva ridotto o azzerato una fermata avvisa che la parte torna da € 0,00 a € 268,20 e che
+  gli accordi o i saldi adeguati nel frattempo vanno rivisti.
+
+**Le frasi e le stampe.**
+- **La differenza fra il conguaglio della vendita e il piano generato dopo.** Dove il già versato è sia della persona sia dell'unità
+  sullo stesso conto, il conguaglio e il piano generato dopo la vendita danno due cifre diverse. Con una spesa di € 1.200,00 sul
+  100 % del proprietario, Ugo che ha versato € 300,00, l'unità € 200,00 e la vendita dell'1/5, il conguaglio dà € 671,23 a Elsa e
+  € 28,77 a Ugo; il piano generato dopo, € 626,48 e € 73,52: la differenza di € 44,75 non era detta da nessuna parte. Ora la frase
+  del conguaglio dice le due cifre e la differenza, e anche la quota di un comproprietario o dell'inquilina che nel piano di dopo
+  cambia (Anna € 480,33 invece di € 466,67). Con un piano d'acconto applica al già versato la stessa frazione del piano (Elsa
+  € 313,24 e Ugo € 36,76 contro € 335,62 e € 14,38: € 22,38). Dice anche il caso in cui il già versato di Ugo supera la sua parte, o
+  quello dell'unità supera la spesa che resta (in un caso provato € 201,37 a Elsa contro € 0,00), con le cifre. Non c'è con una
+  parte sola del già versato, dove le due strade coincidono al centesimo, né quando chi compra è già sul piano, né quando la
+  differenza è di un centesimo.
+- **Una cifra negativa si dice con le parole.** Nelle frasi del conguaglio un netto negativo era scritto «€ -100,83» e letto come un
+  debito o un credito di segno opposto: ora dice un credito di € 100,83 a Elsa e un debito di € 100,83 a Ugo, e una riga di rimborso
+  dice «€ 100,82 a credito di chi entra». «Coprono più dei suoi giorni» si dice solo se la parte e le bozze hanno lo stesso segno e
+  le bozze superano la parte in valore assoluto. Le righe della riassegnazione e i motivi del cancello seguono la stessa regola, e
+  la riga di una voce di entrata che matura dopo il passaggio dice «l'entrata è di chi entra per intero».
+- **La stampa del prospetto degli oneri accessori.** Nel piede delle sezioni, nel blocco «Giorni senza conduttore» e nella frase
+  finale nessuna cifra si stampa più con «€ -»: un totale negativo è «a favore di» chi lo ha, un credito di chi ha pagato i giorni
+  senza conduttore è «a credito», e «da restituire a … i giorni dopo la sua uscita» si dice solo di chi è uscito (un inquilino
+  ancora lì, a cui chi ha pagato i suoi giorni deve dei soldi, li riceve). La colonna «Importo» delle righe tiene invece il segno:
+  il verso lo dice la colonna «Come». Con un'entrata di € 1.000,00 che supera la spesa dei giorni senza conduttore il piede dice
+  € 118,52 di credito; a Luca, con la coppia a credito, la sezione dice «Totale a favore di Luca € 209,26» e la frase finale elenca
+  le cifre per persona.
+- **Un verso per pagatore, e il credito di chi entra.** Quando i pagatori dei giorni hanno versi diversi, la frase dell'inizio di
+  Luca dice che Luca rimborsa € 87,36 a Elsa e che Ugo gli restituisce € 3,49, e non «li rimborsa Luca a Ugo e a Elsa»; il pannello
+  e il prospetto dicono gli stessi nomi, versi e cifre. Se in un cambio d'inquilino chi entra ha un credito (nell'esempio € 209,26),
+  la frase dice che passa a lui, e con «Non scriverlo» che è chi esce a restituire la differenza, non a rimborsare. Un piano della
+  1.10 senza il riparto registrato, con un capitolo di entrata, dice che le parti si regolano nel verso delle voci: il dato di chi
+  rimborsa chi non c'è, e il programma non lo indovina.
+- **Il box spuntato nella locazione.** Con il box spuntato tre frasi del pannello (lo scaduto di chi esce, il conteggio delle quote
+  emesse e ciò che non cambia) erano imprecise: lo scaduto contava solo l'unità principale, e «12 quote su questa unità» includeva
+  le quote del box. Ora contano l'unità e le pertinenze spuntate e lo dicono («sull'unità e sulle pertinenze spuntate»); lo scaduto
+  della fine di Ines è € 180,00 (€ 162,00 sull'unità e € 18,00 sul box), con la divisione fra parentesi. All'inizio di Luca, se le
+  due unità hanno la stessa storia la frase è una sola, senza il nome dell'unità; con un altro proprietario sul box restano due.
+
+**Correzioni.**
+- Una data dell'atto mandata come elenco da una richiesta costruita a mano, insieme a una scadenza del contratto, faceva comparire
+  una pagina d'errore invece del messaggio sul campo: ora l'anteprima e la registrazione di un passaggio rispondono con l'errore
+  sul campo e non scrivono niente.
+- Nelle frasi del pannello «Cosa cambierà», del cancello e dello storico il simbolo € restava a fine riga, staccato dalla cifra: ora
+  € 268,20 resta unito. Le note che scrive l'amministratore restano com'erano.
+
+**Errata della beta.50.** Il «Non ancora» della beta.50 diceva che la stampa del prospetto, quando chi è uscito deve ricevere una
+restituzione, dice il verso rovesciato e una cifra con il segno meno. Era il contrario: il caso era quello di un'entrata che nei
+giorni dopo l'uscita supera la spesa, e allora la restituzione non va a chi è uscito ma la deve lui. Con una fine di locazione
+dell'1/7 con «Non scriverlo» e un'entrata di € 1.000,00 sul 30 % dell'inquilino, la stampa diceva «Totale da restituire a chi le
+ha pagate, fra le parti, € -118,52» (spese per € 181,48 e un'entrata di € 300,00 nei 184 giorni dopo l'uscita): è chi è uscito,
+che ha tutto l'anno nelle sue rate, a dover restituire € 118,52. Dalla beta.51 la stampa dice «Totale che chi è uscito deve
+restituire, fra le parti». Anche l'altro caso di quel «Non ancora», il cambio d'inquilino in un passo seguito dalla fine di chi
+era entrato, non riguardava solo le entrate: bastava una voce con la competenza tutta dopo il cambio, e c'era già nella beta.48.
+
+**Le guide.** La guida del passaggio dice che si ferma anche la fine di un inquilino entrato dopo (con l'esempio da € 30,58 a
+€ 61,15), che dopo un annullamento il piano va ricalcolato prima di emettere, incassare o rimborsare e che un nuovo passaggio che lo
+prenderebbe non si registra, che l'inizio di una locazione che sfora le quote si rifiuta già nell'anteprima, che l'inizio che azzera
+una fermata è un'informazione, che la nota di solidarietà è al netto della coppia, che il cancello del defunto ritorna dopo i saldi
+e che il prospetto segue le voci lungo i cambi d'inquilino. La guida «creare un piano rate» dice il cancello del defunto, quella del
+«dettaglio piano rate» il ricalcolo dopo un annullamento, e quella dei «saldi iniziali» la strada a mano per una parte che il
+programma non sposta.
+
+**Non ancora.** Le voci di entrata (i proventi dell'antenna, per esempio) hanno ancora dei casi fuori dai passaggi che danno cifre
+sbagliate senza dirlo, e che c'erano già nella 1.10: «Sposta spesa» fra una spesa e un'entrata (il totale del piano cambia del
+doppio dello spostamento), una fattura o una regolazione immediata registrata su una voce di entrata, e un importo negativo
+scritto su una voce di spesa al posto di scegliere il tipo «Entrata»; il badge «Disallineato: ricalcola!» è acceso su ogni piano
+con un'entrata. Si sistemano nella beta successiva, e fino ad allora conviene evitare quelle tre operazioni. L'incasso vero di
+un'entrata da terzi, come l'affitto dell'antenna versato al condominio, non si registra ancora: arriva con il rendiconto. Limiti
+dichiarati dei passaggi: la frase della differenza fra il conguaglio e il piano generato dopo tace quando si vende una parte della
+quota e quando il piano chiede una parte della voce che il programma non sa dire (l'importo del capitolo diviso fra i sottoconti
+in un modo diverso dalla loro somma); con più persone a carico di una fermata il residuo è uno solo e la parte di ognuna la decide
+l'amministratore; se il cancello del defunto trova un saldo unico che comprende riporto e parte (il Wallet ne tiene uno per
+persona, gestione, unità ed esercizio), non sa quanto sia riporto e dice «si regola fra le parti»; il cancello ritorna anche
+quando la parte netta del defunto è zero, con la frase «i saldi ci sono già», e non tace; se la coppia è assorbita da un secondo
+piano la nota di solidarietà resta lorda. Sotto il riquadro ambra del piano da ricalcolare il conguaglio mostra ancora le cifre
+del piano com'è (in un caso provato € 115,06 invece di € 1,78): il riquadro dice di ricalcolare prima il piano e la registrazione
+non passa. La pagina di un piano che segue un passaggio annullato non lo dice: lo dicono il rifiuto dell'emissione e l'anteprima
+di un nuovo passaggio. L'anteprima rifiuta come la registrazione gli sfori di quota dell'inizio di una locazione; per gli altri
+tipi di passaggio il confronto non è ancora fatto. Restano dalla beta.50 una riga del Wallet legata al passaggio che si tolga con
+l'annullamento, la fine di una locazione con un coinquilino che resta e la regola del piano, e, a 375 px, il percorso in alto
+della pagina che sfora di 16 px con un nome di condominio molto lungo.
+
+**Per chi sviluppa.** Nessuna migrazione: le chiavi nuove stanno nel registro JSON del passaggio. `annullamento.quota_max_id` è
+l'id più alto di quota nel momento dell'annullamento; `fermata_risale` (con `prima` e `dopo`) e `giorni_del_conduttore` sono
+chiavi del passaggio; dentro `fermata_dopo_scrivi` ci sono `conduttore_uscente` e `conduttore_uscente_id` (l'inquilino la cui fine
+ha fatto nascere la fermata) e dentro `fermata_ridotta` `passaggi_ids`, `passaggi` e `persone` (un residuo per gruppo di fermate,
+non per fermata). La risposta dell'anteprima porta `rate.piano_da_ricalcolare`, `rate.fermate_risalgono` e
+`rate.giorni_del_conduttore`; la nota di solidarietà aggiunge `residuo_lordo_cents` e `coppia_cents`, e `residuo_uscente_cents`
+diventa il netto. Classi nuove: `DefuntoNelPiano` (la voce `defunto_nel_piano` del cancello della generazione),
+`QuoteNateDopoIlPassaggio` (la regola delle quote nate dopo un passaggio, una sola per gli avvisi dell'annullamento e per
+`PianoRate::passaggiDaSeguire`, che ora vede anche i passaggi annullati) e `ImportoInParole` (le cifre dette con le parole, prima
+dentro `FermataDopoScrivi`). `FermataDopoScrivi::perLaFineDelConduttore` è la fermata della fine di un inquilino;
+`GeneratePianoRateAction::saldiSiApplicano` è la regola dei saldi estratta dal corpo della generazione, e
+`GeneratePianoRateAction::execute` ha il parametro nuovo `allaCreazione`; sulle quote del piano
+`regole_calcolo.parametri.titolarita_alla` porta, quando il cancello nomina un defunto, la chiave `defunti` (persona, unità e
+cifra); `ConguaglioPassaggio::confrontoConIlPiano` è una seconda fonte dichiarata della frase della differenza, confrontata con il
+piano generato davvero. Lato pagina `FraseConImporti.vue` e `importoSenzaACapo.ts`. Test nuovi:
+`Beta51PassaggiFineConduttoreTest`, `Beta51PassaggiParteCheRisaleTest`, `Beta51PassaggiDueFermateTest`,
+`Beta51PassaggiRegistroInizioTest`, `Beta51PassaggiEntrateTest`, `Beta51PassaggiFrasiTest`, `Beta51PassaggiInizioSopraTest`,
+`Beta51PianoRatePassaggioAnnullatoTest`, `Beta51PianoRateDefuntoNelPianoTest`, `Beta51PianoRateNotaCoppiaTest` e i vitest
+`AnteprimaPassaggioPianoDaRicalcolare`, `PassaggioNewPianoDaRicalcolare`, `DestinatariWarningDefunto`, `FraseConImporti`,
+`importoSenzaACapo`, `PassaggioNewImportiSenzaACapo`, `Beta51ImportiSenzaACapo`, `PassaggioProprietaGuide`; riscritti
+`RiservaUsufruttoTest`, `RegistraSubentroTest`, `InizioLocazionePianoFermoTest` e `ConguaglioPerTrattiTest`.
+
+---
+
+## [1.11.0-beta.50] - I giorni dopo l'uscita
+
+**Non cambia lo schema del database, ma i passaggi salvano nel loro registro alcune informazioni nuove.** Sono la scelta sul
+conguaglio della locazione, i periodi su cui si divide la coppia di righe di saldo, chi restava inquilino il giorno della fine, e le
+fermate e le informazioni sul rinnovo di cui si dice più sotto. Nessuna migrazione e nessun dato esistente riscritto: i passaggi
+registrati prima non hanno queste informazioni e si leggono come prima, salvo il prospetto degli oneri accessori per le fini di
+locazione di prima (terzo punto qui sotto).
+
+La locazione, come la successione della beta.48. Quando un inquilino se ne va e il piano rate non si ricalcola più, restano da
+decidere i giorni dopo la sua uscita: li prende chi sta al posto dell'inquilino, oppure restano nelle rate di chi esce e le parti li
+regolano fra loro? La beta.47 aveva dichiarato questa scelta non ancora costruita. Ora il programma la chiede, la porta fino al
+prospetto degli oneri accessori e, quando un passaggio successivo la sposta, lo dice. Ogni difetto di calcolo e ogni frase del
+server hanno prima avuto un test rosso; le correzioni sono passate da una revisione avversariale, da più giri sulle correzioni e da
+una verifica a video. I difetti trovati nelle funzioni nuove sono corretti prima del rilascio e non figurano fra le correzioni, che
+riguardano solo ciò che c'era già.
+
+**Cambi di comportamento, detti per primi.**
+- **Alla fine di una locazione il conguaglio si sceglie.** Vale per la fine senza un nuovo inquilino e per il cambio d'inquilino,
+  quando il passaggio tocca un piano che non si ricalcola più (rate a giornale, un incasso o un conguaglio già scritto) e il
+  pannello «Cosa cambierà» propone delle righe di saldo. Il pannello chiede «Scrivi il conguaglio» o «Non scriverlo», con nessuna
+  delle due già scelta; senza la scelta il passaggio non si registra, e una richiesta che arriva senza viene rifiutata. La scelta è
+  una sola per l'appartamento e per le pertinenze spuntate, si rifà se cambiano le persone della coppia, e la nota è facoltativa (se
+  la scrivi, almeno dieci caratteri). Prende il posto della casella «Le parti hanno regolato il conguaglio fra loro», che nella
+  locazione sparisce e resta nella vendita e nell'usufrutto: un modulo rimasto aperto da prima dell'aggiornamento che la manda vale
+  «Non scriverlo». I passaggi già registrati con la casella restano come erano. Dove la scelta c'è, le frasi che dicevano «chi paga
+  i giorni dopo l'uscita lo decide l'amministratore» rimandano alla scelta.
+- **«Scrivi il conguaglio» e «Non scriverlo».** Con «Scrivi», senza un nuovo inquilino i giorni dopo l'uscita passano a chi paga al
+  posto dell'inquilino (l'usufruttuario, se c'è, poi il proprietario, poi il nudo proprietario), ognuno per la sua parte; con un
+  nuovo inquilino passano a lui. Le righe in saldi entrano nel prossimo piano della stessa gestione. Con «Non scriverlo» non si
+  scrive nessuna riga in saldi, i giorni restano nelle rate di chi esce e le parti li regolano fra loro con il prospetto degli oneri
+  accessori, senza dichiarare un accordo. In tutti e due i casi il piano che il passaggio prende resta com'è. Un esempio: oneri
+  accessori di € 360,00 per l'anno a carico dell'inquilino, che esce il 1/7. I suoi 181 giorni valgono € 178,52, i 184 dopo l'uscita
+  € 181,48. Con «Scrivi» gli € 181,48 vanno a debito di chi paga al posto dell'inquilino e a credito dell'inquilino; con «Non
+  scriverlo» restano nelle sue rate, e il prospetto dice che gli vanno restituiti.
+- **Il prospetto degli oneri accessori segue la scelta.** Con «Scrivi» i giorni dopo l'uscita compaiono come senza conduttore,
+  pagati da chi ha preso la coppia. Con «Non scriverlo» l'inquilino uscito ha nelle sue rate tutto l'anno, i suoi 181 giorni valgono
+  € 178,52 e gli € 181,48 dei giorni dopo l'uscita gli sono «da restituire», fra le parti: nel riassunto, nel dettaglio e nella
+  stampa, che dice anche «conguaglio non scritto». Nel cambio d'inquilino con «Non scriverlo» il prospetto dice quanto chi entra
+  rimborsa a chi esce; dopo «Annulla il conguaglio» il prospetto torna a 365 giorni, come prima. Le fini di locazione registrate
+  prima di questa beta, senza la scelta nel registro, il prospetto le legge ora come «Non scriverlo»: se sull'unità non resta un
+  altro inquilino, l'inquilino uscito, che prima compariva con 365 giorni, ora ha i suoi 181 e gli si restituiscono i giorni dopo
+  l'uscita. Se sull'unità c'è un saldo manuale scritto dal Wallet sulla stessa gestione, quello che le versioni di prima indicavano
+  per quei giorni, il prospetto avverte che possono essere già regolati. Un piano generato da una versione precedente, senza il
+  riparto registrato, il prospetto lo lascia fuori dopo un cambio d'inquilino, e il pannello lo dice.
+- **I passaggi si annullano nell'ordine in cui sono stati registrati.** L'ultimo registrato per primo, non l'ultimo per data. Un
+  passaggio registrato dopo, anche con una data precedente, può leggere ciò che l'altro ha scritto (la coppia di una fine divisa
+  sulla titolarità di dopo una vendita, le fonti di una successione, una fermata): annullare prima l'altro lascerebbe soldi
+  sbagliati. Una vendita del 1/10 registrata prima di una fine di locazione del 1/7 con «Scrivi», annullata per prima, lascerebbe a
+  chi compra una riga di saldo di € 90,74 senza che sia più titolare. Il rifiuto dice quale passaggio, registrato dopo, si annulla
+  prima. Due comproprietari che vendono, registrati al contrario delle date, prima richiedevano di cominciare da quello con la data
+  più recente.
+- **La scheda delle pertinenze compare anche nella locazione.** Nella fine e nell'inizio di una locazione, come nella vendita, si
+  spuntano le pertinenze che il contratto comprende (il box, per esempio): la data e la scelta sul conguaglio valgono insieme per
+  l'appartamento e per le pertinenze spuntate. Il passaggio sul box riceve il regime del contratto e la data di fine, e il prospetto
+  del box legge la scelta dal passaggio dell'appartamento. Chi entra come inquilino non può essere già proprietario di una
+  pertinenza spuntata. All'inizio di una locazione chi entra risulta inquilino del box al 100 %, qualunque sia la sua quota
+  sull'appartamento, e il pannello lo dice.
+- **Il pannello «Cosa cambierà» scorre da desktop.** Da schermo largo il pannello non supera l'altezza dello schermo e scorre al suo
+  interno, con il titolo sempre in vista: le due voci della scelta, in fondo, si raggiungono senza scorrere tutta la pagina. Da
+  telefono resta nella colonna.
+- **La coppia, per persona, per giorno e per capitolo.** Senza un nuovo inquilino la coppia si divide su tutto il periodo dopo
+  l'uscita per persona (con tutte le sue righe), per giorno (chi compra a metà periodo prende i giorni dalla sua vendita) e per
+  capitolo, ogni voce con la sua competenza; una voce di entrata, come i proventi dell'antenna, toglie con il suo segno. La
+  divisione è a resti maggiori: il centesimo va a chi ha il resto più grande, a pari resto a chi esce; fra la coppia e un piano
+  generato dopo la fine può restare al più un centesimo per unità. I giorni dopo l'uscita che nessuno copre restano nelle rate di
+  chi esce, e il pannello lo dice: se la riga di chi paga al posto dell'inquilino finisce il 30/9 e dopo non c'è un proprietario, a
+  lui vanno i suoi 92 giorni (€ 90,74) e gli altri € 90,74 restano nelle rate dell'inquilino.
+- **Il coinquilino che resta.** Alla fine di una locazione in cui resta un altro inquilino sull'unità, il programma non propone il
+  conguaglio dei giorni dopo l'uscita e la scelta non c'è: non indovina a chi vanno. Il pannello dice la cifra, che resta nelle rate
+  di chi esce, e che chi la paga lo decidono le parti. Il saldo manuale dal Wallet lo indica solo se si può fare davvero, cioè se
+  nessuna delle due persone ha già un saldo su quella gestione, unità ed esercizio (il Wallet accetta una sola riga per persona,
+  gestione, unità ed esercizio); altrimenti dice che la parte si regola fra le parti. Il passaggio chiede la spunta «Ho letto cosa
+  cambierà» nel riquadro «Questo passaggio tocca conti già in corso», e lo storico conserva la fermata. Il pannello e il modulo non
+  dicono più «l'unità resta sfitta» dove resta un inquilino: dicono «resta inquilino Dora», e il modulo guarda chi è inquilino il
+  giorno scritto, anche per una fine registrata in ritardo.
+- **La fermata dopo «Scrivi».** Dopo una fine con «Scrivi», chi paga al posto dell'inquilino ha preso con la coppia i giorni dopo
+  l'uscita. Se un passaggio successivo abbassa il suo peso fra chi sta al posto dell'inquilino (una vendita, anche datata prima
+  della fine e registrata dopo; la costituzione o l'estinzione di un usufrutto, anche con l'accrescimento; una successione con
+  l'arretrato a nome del defunto e «Scrivi»), la parte di quei giorni dal passaggio in poi non passa da sola a chi entra: senza la
+  fermata restava a chi vende, in silenzio (nell'esempio, una vendita da Ugo a Elsa il 1/10: € 90,74 in più a chi vende e in meno a
+  chi compra). Ora il programma registra il passaggio, non sposta quella parte e lo dice con la persona, la cifra e la strada a
+  mano, e chiede la spunta «Ho letto cosa cambierà» e la nota; lo storico dell'unità e il registro del passaggio conservano la
+  fermata. La cifra conta solo i giorni senza un conduttore registrato. La strada a mano è un saldo manuale dal Wallet solo se
+  nessuna delle due persone della riga ha già un saldo su quella gestione, unità ed esercizio, altrimenti la parte si regola fra le
+  parti: verso il condominio non si sposta niente in silenzio, e chi ha preso la coppia resta debitore. Non sono fermate la riserva,
+  la successione con l'arretrato agli eredi, «Non scriverlo» e una fine il cui conguaglio è stato annullato. Una seconda vendita dopo
+  una fermata dice la sua parte, da regolare fra le parti perché il programma non sa come è stata regolata la prima (fine di Ines
+  il 1/7, vendita da Ugo a Elsa il 1/9 con una fermata di € 120,33 verso Elsa, poi da Elsa a Carlo il 1/11: € 60,16 di quei giorni
+  sono di Carlo), e lo storico della prima dice quanto è passato. Se la parte di chi
+  entra è un credito, perché un'entrata supera la spesa dei suoi giorni, la fermata dice la cifra a credito (nel caso provato
+  € 29,26 a credito di Elsa): un credito si dice con le parole, mai con «€ -».
+- **L'inizio di una locazione dopo una fine con «Scrivi».** Un rinnovo con la stessa persona, un rientro o un nuovo inquilino in due
+  passi non sono fermate ma informazioni: chi entra rimborsa con il prospetto i giorni che la coppia ha dato a chi pagava al posto
+  suo, e il pannello lo dice con i nomi. Nel rinnovo dice anche che la fine, se è l'ultimo passaggio, si può annullare e registrare
+  di nuovo con «Non scriverlo». Dopo una fermata, l'inizio toglie dalla fermata i giorni del nuovo conduttore e dice quanto resta da
+  regolare.
+- **Più passaggi di fila.** Dopo un cambio d'inquilino con «Non scriverlo» i giorni di chi è entrato sono nelle rate di chi era
+  uscito: se anche lui se ne va, la fine non scrive una coppia a suo credito per giorni che non ha pagato. Dopo un cambio regolato
+  fra le parti (la casella di prima, o il conguaglio annullato) seguito dalla fine «Scrivi» di chi era entrato, il prospetto segue
+  la catena, con la riga «regolata fra le parti al cambio d'inquilino del …». Il coinquilino si riconosce con una regola sola,
+  quella del prospetto, e dal registro: la fine registrata ricorda chi restava inquilino quel giorno, unità per unità.
+- **«Annulla il conguaglio» avvisa se una vendita si è fermata su quella coppia.** Prima di confermare, lo storico dice la fermata
+  della vendita e il saldo manuale dal Wallet da rivedere; annullato il conguaglio, dice che quella fermata non vale più. Avvisa e
+  non rifiuta: un rifiuto lascerebbe il conguaglio bloccato quando la vendita non si annulla più. Il messaggio che segue, quando
+  porta un avviso, non si chiude da solo.
+- **Dopo la registrazione il riquadro nomina chi paga al posto dell'inquilino.** Alla fine di una locazione senza un nuovo inquilino
+  il riquadro verde dice la cifra e la persona («… a debito di …, che paga al posto dell'inquilino nei giorni dopo l'uscita») e
+  porta al suo estratto conto; prima parlava di chi entra, che non c'è.
+
+**Correzioni.**
+- Il pannello non resta più fermo dopo «Nessuno». Nella fine di una locazione, scritta la data e passato il breve ritardo del
+  calcolo, spuntare «Nessuno — l'unità resta sfitta» non cambiava l'anteprima: il pannello restava su «Il pannello sta leggendo il
+  modulo.» e «Registra passaggio» restava spento. Succedeva anche nella beta.49. Ora il calcolo riparte quando il modulo diventa
+  completo.
+- In ogni passaggio, una risposta vecchia dell'anteprima, arrivata dopo una modifica del modulo, non riaccende più il pulsante
+  «Registra passaggio»: finché il pannello non ha letto il modulo di adesso, il pulsante resta spento.
+- La pagina dei passaggi d'usufrutto non riceve più il codice fiscale delle persone che non sono più titolari: non lo
+  mostrava, ma lo riceveva.
+- La nota che il riallineamento dei crediti scrive nel libro giornale non porta più la versione («come la scrive oggi l'emissione»):
+  la scrittura resta nel giornale per sempre, e un numero di beta lì dentro invecchia. Le note già scritte restano com'erano, e la
+  causale «Riallineamento crediti (1.11)» non cambia.
+- La conferma del riallineamento dice che le scritture prendono la data di competenza e l'esercizio della scrittura che correggono,
+  e che la registrazione è di oggi, cioè la data che il libro giornale mostra: chi cercava la rettifica alla data della
+  compensazione non la trovava.
+- La card «Addebiti» dell'estratto conto dice «le rate emesse a carico del condòmino e i rimborsi del suo credito», e che un incasso
+  stornato e il suo storno restano nell'elenco, non nel totale: diceva «e gli eventuali ripristini di debito», che dalla beta.49 non
+  entrano in «Totale addebiti».
+
+**Errata della beta.49.** Il changelog della beta.49 diceva che la compensazione e il rimborso prelevavano il credito riportato da
+«Crediti verso condomini», dove nessuno l'aveva scritto. Per la compensazione era vero; per il rimborso no, se la quota era tutta a
+credito: usciva già dal «Fondo Passate Gestioni», dalla beta.31. La beta.49 ha cambiato il rimborso solo per la quota con importo
+maggiore o uguale a zero e un credito riportato, che usciva da «Crediti verso condomini». Il suo «Non ancora» chiamava «prima nota»
+l'elenco del Libro Giornale: la prima nota è un'altra pagina. E fra i cambi di comportamento diceva che il riallineamento scrive
+«nella data e nell'esercizio» della scrittura che corregge: la data è quella di competenza, e la registrazione è di oggi.
+
+**Le guide.** La guida del passaggio dice che alla fine di una locazione il conguaglio si sceglie e cosa fanno le due voci, dove la
+scelta non c'è, che dopo «Scrivi» una vendita non sposta la parte che la coppia ha già dato, e che si annulla per primo l'ultimo
+passaggio registrato. Le guide dei saldi e del piano rate dicono che alla fine di una locazione senza un nuovo inquilino la coppia va
+a chi paga al posto dell'inquilino, e che anche una fine locazione con il conguaglio non scritto tiene fermo il piano.
+
+**Non ancora.** Le entrate (i proventi dell'antenna, per esempio) hanno ancora dei casi limite nei giorni dopo l'uscita
+dell'inquilino, quando la loro competenza è dopo l'uscita e superano la spesa: dopo un cambio d'inquilino in un passo con «Scrivi»,
+seguito dalla fine di chi era entrato, il prospetto lascia l'entrata nelle rate di chi è uscito per primo; e la stampa, quando chi è
+uscito deve ricevere una restituzione, dice il verso rovesciato e una cifra con il segno meno. Sono casi rari e si sistemano nella
+beta successiva. Con le voci di entrata, finché la beta successiva non le corregge, conviene evitare tre operazioni che oggi danno
+cifre sbagliate senza dirlo, e che c'erano già nella 1.10: «Sposta spesa» fra una spesa e un'entrata (il totale del piano cambia del
+doppio dello spostamento), una fattura o una regolazione immediata registrata su una voce di entrata, e un importo negativo scritto
+su una voce di spesa al posto di scegliere il tipo «Entrata». L'incasso vero di un'entrata da terzi, come l'affitto dell'antenna
+versato al condominio, non si registra ancora: il piano chiede ai condòmini le spese al netto dell'entrata, ma quel denaro non ha un
+movimento, e a fine anno banca e stato patrimoniale restano sotto dell'importo; arriva con il rendiconto. Con un coinquilino che
+resta il programma non divide i giorni dopo l'uscita fra i conduttori con la regola del piano. Una riga del Wallet legata al
+passaggio, che si tolga con l'annullamento, non c'è: il saldo manuale scritto per una fermata resta, e l'avviso lo dice. Altri
+limiti noti: l'anteprima di un inizio di locazione su un'unità con un inquilino già al 100 % dice che si può, e la registrazione lo
+rifiuta; con il box spuntato nella locazione tre frasi del pannello sono imprecise; a 375 px il percorso in alto della pagina sfora
+di 16 px con un nome di condominio molto lungo.
+
+**Per chi sviluppa.** Nessuna migrazione: la scelta sta nel registro del passaggio (`conguaglio.scelta`, `scritto` o `non_scritto`,
+con i periodi della coppia in `conguaglio.periodi`) e nel campo `conguaglio` della richiesta (`scrivi` o `non_scrivere`), ora ammesso
+anche nella fine di una locazione. Classi nuove: `ChiPagaAlPostoDellInquilino` (chi paga al posto dell'inquilino per persona e per
+giorno; una copia della regola di `CalcoloQuoteService`, non codice condiviso) e `FermataDopoScrivi`. Campi nuovi del registro:
+`fermata_dopo_scrivi`, `fermata_ridotta`, `fermata_coinquilino`, `coinquilini_letti`, `rinnovo_dopo_scrivi`.
+`Subentro::haUnConguaglio()` legge il registro. `AnnullaPassaggioAction` annulla in ordine di registrazione. Lato pagina
+`rinunciaConguaglio.ts`. Test nuovi: `FineLocazioneSceltaTest`, `CambioInquilinoSceltaTest`, `CoinquilinoCheRestaTest`,
+`ProspettoFineLocazioneTest`, `ProspettoFineLocazioneStampaTest`, `FermataDopoScriviTest`, `InizioDopoScriviTest`,
+`CorrezioniDellaBeta50Test`, `RevisioneBeta50MotoreTest`, `StrettoBeta50MotoreTest`, `UltimoGiroBeta50Test`, `ChiusuraBeta50Test`,
+`MutazioniCorrezioniBeta50Test` e i vitest `sceltaConguaglioLocazione`, `AnteprimaPassaggioLocazione`, `PassaggioNewLocazione`;
+riscritti sulla scelta `FineLocazioneFrasiTest`, `InizioLocazionePianoFermoTest`, `ProspettoCambioInquilinoTest`,
+`StatoDelPianoDopoPassaggioTest`, `SuccessioneRichiestaTest`.
+
+---
+
+## [1.11.0-beta.49] - Ogni credito al suo conto
+
+**Non cambia lo schema del database, ma in due casi scrive sui dati che ci sono già.** Il riallineamento dei crediti aggiunge
+scritture al libro giornale per correggere quelle che le versioni fino alla 1.10 hanno scritto sul conto sbagliato o non hanno scritto:
+dalla pagina degli incassi solo dopo la tua conferma, da console quando lanci il comando. Il ricalcolo di un piano dopo uno storno rimette il
+riferimento alla rata sulle righe già nel giornale che lo perdevano: importi, conti, date e persone non cambiano. Nessuna migrazione.
+
+La contabilità dei crediti riportati da un esercizio precedente. Dalla 1.9 l'emissione lasciava fuori dal giornale la spesa delle quote
+che il credito riportato porta a zero o sotto, e la compensazione e il rimborso prelevavano il credito riportato da «Crediti verso
+condomini», dove nessuno l'aveva scritto: lo stato patrimoniale e l'estratto conto non tornavano con le rate. Ora il credito riportato
+esce dal «Fondo Passate Gestioni» finché la sua quota non è a giornale, e una rata fatta di soli crediti va a giornale come le altre.
+Ogni difetto ha prima avuto un test rosso; le correzioni sono passate da una revisione avversariale, da un giro sulle correzioni e da
+una verifica a video.
+
+**Cambi di comportamento, detti per primi.**
+- **Una rata di soli crediti va a giornale.** Dalla beta.42 restava in bozza; nella 1.9 e nella 1.10 era segnata «emessa» senza
+  nessuna riga. Ora l'emissione scrive le due parti di ogni quota a credito: la spesa della rata in dare e il credito riportato che la
+  paga in avere, su «Crediti verso condomini», con le contropartite «Gestione rate» e «Fondo Passate Gestioni». La rata diventa
+  «emessa» e, come ogni rata emessa, ferma il ricalcolo del piano: per ricalcolarlo si annulla l'emissione, dopo aver stornato gli
+  incassi, le compensazioni o i rimborsi che la toccano. Lo stesso per una quota a credito dentro una rata che ha anche dei debiti, che
+  prima restava fuori dal giornale. Resta in bozza solo la rata che non ha niente da portare a giornale, e l'esito lo dice.
+- **Il credito riportato esce dal «Fondo Passate Gestioni».** La compensazione («Usa credito») e il rimborso prendono il credito
+  riportato di una quota non ancora a giornale dal «Fondo Passate Gestioni», e il resto (le entrate dell'anno, il credito di una quota
+  già a giornale, un versamento in eccesso) da «Crediti verso condomini»; una quota che ha tutte e due le parti si divide sui due conti,
+  prima il riporto. La finestra del rimborso dice da quale conto esce. Se il conto «Fondo Passate Gestioni» (2301) manca, la
+  compensazione e il rimborso di un credito riportato si rifiutano e dicono perché: prima ricadevano in silenzio su «Crediti verso
+  condomini». Le compensazioni nuove hanno la causale «Compensazione con il credito» e la nota «Utilizzo del credito».
+- **Le entrate dell'anno non sono un credito riportato.** La quota di un'unità che ha più entrate che spese (i proventi dell'antenna su
+  un box, per esempio) va a giornale in avere su «Crediti verso condomini», e nell'estratto conto la riga si chiama «Quota delle entrate
+  dell'anno».
+- **Le quote dei piani generati prima della 1.8.0, senza il dettaglio del calcolo, non si indovinano**: con un credito di mezzo non si
+  sa quanta parte è spesa e quanta credito riportato. Quella quota sola resta fuori dal giornale, anche quando è a zero, e l'esito
+  dell'emissione la nomina con la persona e la rata; le altre quote della rata vanno a giornale. Per portarla a giornale si ricalcola il
+  piano: emettere la rata non basta.
+- **Lo storno di un incasso che ha usato un credito** scrive lo specchio dell'incasso e, se il credito era uscito prima che la sua rata
+  andasse a giornale, una scrittura figlia che lo riporta su «Crediti verso condomini». L'annullamento di un'emissione cancella anche le
+  sue scritture figlie. Se due persone stornano lo stesso incasso nello stesso momento, il secondo storno trova il primo e si ferma.
+- **La conferma dello storno avvisa quando la parte in più è già stata usata.** Se l'incasso aveva pagato una quota più del dovuto e
+  quella parte è già stata compensata o rimborsata, lo storno non annulla quell'uso: la conferma dice la rata, la persona, quanto è già
+  stato usato, dove (protocollo e data) e quanto tornerà da pagare. Se l'avviso non arriva entro 15 secondi, la conferma lo dice.
+- **Crediti da riallineare.** Nella pagina degli incassi compare una card se le versioni fino alla 1.10 hanno lasciato crediti scritti
+  male: compensazioni che hanno preso un credito riportato da «Crediti verso condomini», e quote a credito rimaste fuori dall'emissione
+  della loro rata. «Scrivi le correzioni» dice quante scritture aggiunge e le scrive nella data e nell'esercizio della scrittura che
+  correggono, con la causale «Riallineamento crediti (1.11)»; le scritture esistenti non si modificano, e la rettifica di una
+  compensazione segue la compensazione: se l'incasso si storna, si storna con lei. Le rate di soli crediti segnate «emesse» senza righe
+  la card le elenca con il collegamento alla pagina del piano, da dove le emetti tu, con la data e l'avviso che scegli; ciò che non si
+  può scrivere (un esercizio chiuso, una quota senza il dettaglio del calcolo) resta elencato, con il perché. Lo stesso da console:
+  `php artisan kondomanager:riallinea-crediti`. Il comando non chiede conferma: con `--dry-run` mostra e basta, senza scrive subito, e
+  senza `--condominio` lo fa per tutti i condomìni. Le rate emesse con la 1.8 il riallineamento non le riconosce come tali: quella
+  versione, all'emissione, portava a giornale la sola spesa delle quote, senza il saldo riportato, e il saldo riportato delle quote che
+  ha portato a giornale resta fuori dal giornale.
+- **Il ricalcolo dopo uno storno non perde i legami.** Ricalcolare un piano, o togliere una voce, dopo un incasso stornato cancellava
+  il legame fra l'incasso, la sua rettifica e la quota; ora i legami passano alla quota nuova, anche quando l'annullamento di un
+  passaggio riunisce la quota del pregresso. Il ricalcolo e «togli una voce» sono l'unico punto in cui il programma tocca righe già nel
+  giornale, e toccano solo il riferimento alla rata; l'annullamento del passaggio sposta i legami della quota e non tocca il giornale.
+- **L'estratto conto.** Il saldo pregresso pagato con il piano entra nell'estratto di chi lo paga, una volta sola: la scrittura che
+  porta a giornale la rata dei saldi non si somma al saldo iniziale. «Totale addebiti» e «Totale versato» non contano le coppie di uno
+  storno, che sul saldo pesano zero (un incasso da € 100,00 stornato li gonfiava tutti e due di € 100,00); le righe restano
+  nell'elenco. Sparisce la riga «A copertura Rata n.1» che non corrispondeva a niente; con due quote uguali della stessa persona ogni
+  riga prende la sua; le righe di un piano di un altro esercizio pesano il loro importo intero. A video e nel PDF.
+- **La previsione di cassa conta il netto**: il credito riportato che paga una rata non è un incasso, e un incasso stornato non conta
+  più come incassato.
+
+**Correzioni.**
+- La conferma dello storno moltiplicava per 100 l'importo dell'incasso: ora usa i centesimi del server.
+- La pagina di una scrittura diceva «movimento annullato» per ogni scrittura con una figlia, anche per un incasso valido con la sua
+  compensazione: ora lo dice solo per gli storni, e mostra le altre come «scritture collegate».
+- Una rata segnata «emessa» senza righe, presa da un passaggio registrato con la beta.41, non si emette di nuovo: chi compra
+  pagherebbe due volte. L'emissione si rifiuta e dice perché.
+- La pagina degli incassi mostra il messaggio dopo un'operazione, che prima non compariva.
+- «Stai per emettere 1 rata», non «1 rate», nel riquadro e nella conferma dell'emissione; le concordanze dell'esito, della card e
+  del comando.
+
+**Le guide.** La guida del piano rate dice che anche una rata di soli crediti va a giornale, i soli casi che non ci vanno e che una
+rata emessa ferma il ricalcolo. La guida degli incassi ha due sezioni nuove: da quale conto esce il credito, e cosa succede se poi
+l'incasso si storna.
+
+**Non ancora.** La prima nota mostra come importo di una rata a credito il totale in dare della sua scrittura, che è l'importo
+contabile vero ma non la cifra della rata; il riallineamento e una nuova compensazione sulla stessa quota, nello stesso istante, non
+hanno ancora un blocco comune; il «Credito disponibile» dell'estratto conto è lordo: somma anche le quote a credito delle rate in
+bozza e non sottrae il debito delle altre quote.
+
+**Per chi sviluppa.** Nessuna migrazione. In `RataQuote` il criterio del credito, uno solo per emissione, incasso, rimborso, storno,
+estratto conto e comando: `ruoloDelCredito()`, `componenti()`, `dareDiEmissione()`, `righeDiEmissione()`, `creditoUscitoDaPassate()`,
+`scritturaDiEmissione()`, `fermaSenzaDettaglio()`. `PianoRate::saldoAssorbito()`, estratto da `ConguaglioPassaggio`, che lo chiama.
+`RigeneraRateTenendoILegami` (ricalcolo e «togli una voce»; l'annullamento del passaggio sposta solo i legami della quota).
+`AvvisoStornoIncasso` e la rotta `admin.gestionale.movimenti-rate.storno.anteprima`. `RiallineaCreditiService`, il comando `kondomanager:riallinea-crediti`, `RiallineaCreditiController` e la prop
+`riallineamento_crediti` della pagina degli incassi; le rettifiche si riconoscono dalla struttura (figlie di uno `storno_credito`) e
+dalla causale che comincia con `RiallineaCreditiService::MARCATORE`. `ContoPassateGestioniMancanteException`. `Rata::incassi` netto;
+`importo_totale_cents` negli incassi. Lato pagina `storniScrittura.ts` (con gli alias di `bannerStorno.ts`), `confermaStorno.ts`,
+`statoRigaEstratto.ts`. Test nuovi: `CreditiEmissioneEstrattoContoTest`, `CreditiStornoTest`, `LegamiDopoIlRicalcoloTest`,
+`RiallineaCreditiTest`, `CreditiRevisioneEstrattoTest`, `CreditiRevisioneCriterioTest`, `CreditiRevisioneEmissioneTest`,
+`CreditiGiroStrettoTest`, e i vitest `statoRigaEstratto`, `confermaStorno`, `bannerStorno`, `storniScrittura`; quattro test di
+`StatoDelPianoDopoPassaggioTest` riscritti sulla nuova emissione.
+
+---
+
+## [1.11.0-beta.48] - Il conguaglio si sceglie
+
+**Non tocca il database.** La successione come la fanno gli studi, prima parte. Nella successione e nel legato il conguaglio non
+è più proposto come scontato: si sceglie se scriverlo, senza niente di già scelto, e il pannello «Cosa cambierà» dice le due
+strade prima della scelta. Gli studi che ci hanno risposto lasciano la posizione del defunto com'è e conguagliano solo se gli eredi
+lo chiedono: ora il programma lo permette senza chiedere di dichiarare un accordo che non c'è. Le frasi della successione, dello
+storico e dei saldi sono state riscritte dove dicevano cose false o mettevano «a» davanti a un nome che comincia per «a». Ogni
+difetto di calcolo e ogni frase del server hanno prima avuto un test rosso; i testi del modulo, che non ha test di componente, sono
+stati guardati a video. Le correzioni sono passate da una revisione avversariale e da un giro sulle correzioni.
+
+**Cambi di comportamento, detti per primi.**
+- **Nella successione e nel legato il conguaglio si sceglie.** Con l'arretrato a nome del defunto e un conguaglio da proporre, il
+  pannello chiede «Scrivi il conguaglio» o «Non scriverlo: la posizione resta com'è», con nessuna delle due già scelta, e senza la
+  scelta il passaggio non si registra: anche una richiesta che arriva senza la scelta viene rifiutata. «Non scriverlo» non scrive
+  nessuna riga in saldi, e non chiede di dichiarare un accordo fra le parti: la nota è facoltativa (se la scrivi, almeno dieci
+  caratteri). Le rate emesse restano al defunto, e le rate in bozza che il pannello elenca passano all'erede di riferimento, che le
+  paga tutte. Con
+  l'arretrato agli eredi la scelta non c'è: conguaglio e arretrato fanno un conto solo. Dalla beta.44 la successione aveva una
+  casella come quella della vendita, «Gli eredi hanno regolato il conguaglio fra loro», con la nota obbligatoria: nella vendita,
+  nell'usufrutto e nella locazione la casella «Le parti hanno regolato il conguaglio fra loro» resta com'è. Un modulo rimasto aperto da prima dell'aggiornamento, che manda la casella con la nota,
+  vale «Non scriverlo».
+- **Prima della scelta il pannello dice tutte e due le strade.** Il riquadro dice «conguaglio da scegliere»; la cifra che resta a
+  nome del defunto è detta con tutte e due le cifre («€ 400,00 senza conguaglio, € 394,52 se scrivi il conguaglio»), anche nel
+  cancello, dove prima la seconda cifra era quella «se gli eredi vi rinunciano»; la frase d'apertura è al condizionale («Se scrivi il conguaglio, le sue righe fra … da una
+  parte e … dall'altra entrano nei saldi…»). Le frasi del calcolo per quota si vedono prima della scelta e con «Scrivi», e
+  spariscono con «Non scriverlo», dove sarebbero false. Prima il pannello mostrava sempre l'esito di «Scrivi», perché la casella
+  della rinuncia partiva spenta.
+- **Lo storico dice «Conguaglio non scritto»**, su ogni riga del passaggio, anche su quelle delle pertinenze, e il messaggio dopo
+  la registrazione dice «Nessuna riga in saldi: il conguaglio non è stato scritto». Con il conguaglio scritto, finché si può ancora
+  annullare, la scheda aggiunge,
+  sotto «annulla il conguaglio» (che dichiara un accordo fra le parti), la strada per quando il conguaglio non andava scritto:
+  annullare il passaggio e registrarlo di nuovo con «Non scriverlo».
+- **Le cifre di ciascun erede, non la loro somma.** Dove il conguaglio non è scritto, o è stato annullato, la frase del piano che
+  non si ricalcola più e l'avviso dell'annullamento del passaggio dicono la cifra di ciascuno: «€ 531,45 a credito di Anna,
+  € 268,47 a debito di Bruno e € 268,46 a debito di Carla». Prima dicevano «€ 5,48», la somma di cifre di segno diverso, che non è
+  la cifra di nessuno. Per le successioni con più eredi registrate prima di questa beta le cifre di ciascuno non sono state
+  conservate, e il messaggio lo dice. Un piano tenuto fermo da una successione con il conguaglio non scritto «è tenuto fermo» da
+  quel passaggio, non «preso nel conguaglio».
+- **Il legato non chiama «eredi» chi riceve l'unità**: nelle frasi del pannello (la parte di chi riceve l'unità, ognuno per la sua
+  quota, il rappresentante in assemblea), nelle voci della scelta, nel riquadro e nel rifiuto che chiedono chi riceve le rate in
+  bozza, nel modulo e nei messaggi.
+- **Nella successione del nudo proprietario l'ordinaria segue la voce.** Il pannello diceva sempre «la quota ordinaria resta
+  all'usufruttuario»; con una voce ordinaria sul «Proprietario» il piano la dava invece al nudo proprietario, e il conguaglio la
+  divide fra gli eredi. Ora, in quel caso, la frase dice che le voci sul «Proprietario» erano a carico del defunto e passano agli
+  eredi, e che la legge (art. 1004 c.c.) darebbe l'ordinaria all'usufruttuario: per i piani che verranno la si segue spostando la
+  voce su «Usufruttuario». Nessuna scelta nuova: chi paga l'ordinaria si decide sulla voce, come prima.
+
+**Correzioni.**
+- In un passaggio con chi esce (vendita, successione, usufrutto, fine locazione) una data che non è una data dava una pagina
+  d'errore; ora dà il messaggio del campo, e nella successione dice «Il giorno del decesso non è una data valida.». I messaggi della successione parlano del giorno del decesso, non della data dell'atto, anche quello del periodo chiuso,
+  e la scheda in testa al modulo lo dice.
+- Richieste costruite a mano, fuori dal modulo: la scelta mandata in un passaggio che non è una successione, o insieme alla
+  casella, si rifiuta sul campo; un elenco al posto del tipo, della forma, del ruolo o dell'arretrato dà il messaggio del campo
+  invece di una pagina d'errore (lo stesso per la scelta, che è nuova); un erede indicato con «vero» al posto del numero faceva erede l'anagrafica
+  numero 1, anche di un altro condominio, e gli eredi mandati come mappa invece che come elenco registravano la successione senza
+  conguaglio, con le bozze lasciate al defunto: ora si rifiutano.
+- «ad» davanti ai nomi che cominciano per «a» in tutte le frasi della successione — il pannello e le sue tabelle, il cancello, i
+  messaggi dopo la registrazione e dopo l'annullamento, lo storico — e, in ogni passaggio, nelle frasi del cancello sulle quote di
+  chi esce e nella fine di una locazione senza rate emesse a chi esce.
+- Le righe di saldo degli altri eredi entrano «nel prossimo piano della stessa gestione», non «nel piano dopo»: così dicono il
+  cancello, il riquadro dell'erede di riferimento, la scelta dell'arretrato e la guida.
+- Quando il pannello aspetta solo l'erede di riferimento non dice più «Un dato del modulo non è accettabile»: dice «Manca una scelta
+  nel modulo» e chiede di scegliere a chi passano le rate in bozza.
+- Le cifre a credito del conguaglio degli eredi si scrivono «€ 531,45 a credito», non «€ -531,45», nella tabella delle coppie e
+  nella riga per gestione; nella colonna stretta del pannello «a credito» va a capo sotto la cifra.
+- I messaggi dei saldi sulle righe del conguaglio e dell'arretrato dicevano «una delle due righe», dove le righe sono una coppia per
+  ogni erede; il sottotitolo del lucchetto dice «righe a somma zero», e il suo suggerimento «le sue righe si tolgono insieme».
+- Il riquadro dell'erede di riferimento dice cosa succede con il conguaglio e senza: diceva che gli altri eredi pagano la loro parte
+  con le righe di saldo, che con «Non scriverlo» non ci sono.
+
+**Le guide.** La guida del passaggio dice che il conguaglio si sceglie, cosa fanno le due voci, come si corregge, e cosa succede
+all'ordinaria quando muore il nudo proprietario. La guida dei saldi e quella del piano rate dicono che le coppie del conguaglio sono
+una per ogni persona che entra. La guida dei saldi dice anche che nella successione il conguaglio si sceglie alla registrazione, e che
+nella vendita e nella successione le bozze di un piano che non si ricalcola più passano a chi entra (diceva che restavano a chi
+esce). La guida del piano rate dice il piano tenuto fermo da una successione con il conguaglio non scritto.
+
+**Non ancora.** Le bozze divise fra gli eredi per quota, al posto dell'erede di riferimento, come scelta; l'erede di riferimento che
+resta tale negli anni dopo; il conguaglio fatto più tardi, quando gli eredi lo chiedono, che oggi si scrive a mano con un saldo
+manuale dal Wallet sulla stessa gestione.
+
+**Per chi sviluppa.** Nessuna migrazione: la scelta sta nel registro del passaggio (`registro.conguaglio.scelta`: `scritto` o
+`non_scritto`). Il campo `conguaglio` della richiesta (`scrivi` / `non_scrivere`), vietato fuori dalla successione e insieme a
+`rinuncia_conguaglio`; `RegistraSubentroAction` lo chiede con l'arretrato a nome del defunto e le coppie proposte.
+`Subentro::conguaglioNonScritto()`, e `conguaglioRinunciato()` che lo comprende; `regolato_fuori.persone` alla registrazione e
+all'annullamento del conguaglio. Nell'anteprima `rate.arretrato.frase_da_scegliere` e `rate.frasi_del_conguaglio`.
+`FrasiObbligati::conLaD()`; `PianoRate::passaggiNonScritti()`; `StoricoTitolarita` legge la scelta e la nota dal passaggio padre.
+`AnteprimaPassaggioRequest`: `list` per `eredi`, `numeric` per l'id dell'erede, i campi di testo letti come testo. Lato pagina
+`preposizione.ts` (`aNome`), `fraseArretrato(…, daScegliere)` e `conguaglioDaScegliere()`. Test nuovi:
+`SuccessioneSceltaConguaglioTest`, `SuccessioneTestiTest`, `SuccessionePannelloTest`, `SuccessioneRichiestaTest`,
+`SuccessioneGiroStrettoTest`, `AnteprimaPassaggio.test.ts`, `preposizione.test.ts`; la griglia degli invarianti prova «Non
+scriverlo» con le coppie. `RitenutaTooltipsTest` monta i moduli attaccati al documento e li smonta dopo ogni prova.
+
+---
+
+## [1.11.0-beta.47] - Chi ha pagato cosa
+
+**Non tocca il database.** Una beta di correzioni sulla locazione e sulla successione. Il prospetto degli oneri accessori ora
+dice chi ha pagato cosa anche dopo un cambio d'inquilino e sull'unità divisa fra piena proprietà e usufrutto. Le frasi del
+pannello «Cosa cambierà» sulla fine e sull'inizio di una locazione dicono a chi vanno le voci dell'inquilino, e dove decide
+l'amministratore. La vendita della metà piena sull'unità divisa conguaglia anche i giorni senza inquilino. Dopo la morte del
+nudo proprietario gli eredi tornano proprietari pieni per quota, come prometteva la beta.44. Ogni difetto ha prima avuto un test
+rosso, e le correzioni sono passate da tre giri di revisione avversariale.
+
+**Cambi di comportamento, detti per primi.**
+- **La successione si ferma se il defunto risulta ancora usufruttuario dell'unità il giorno del decesso**, o di una pertinenza
+  spuntata. L'usufrutto si estingue con la morte (art. 979 c.c.) e non passa agli eredi: il messaggio dice di registrare prima
+  «Usufrutto → estinzione» con la stessa data, poi la successione. Dalla beta.44, sull'unità divisa (proprietario pieno di una
+  metà e usufruttuario dell'altra), la successione della metà piena registrata per prima, con l'arretrato agli eredi, contava due
+  volte i giorni dell'usufrutto dopo il decesso: nel caso provato l'erede pagava € 302,47 in più e al defunto restava un credito
+  uguale. Nell'ordine giusto le cifre erano già giuste.
+- **Dopo la morte del nudo proprietario, l'estinzione di uno dei due usufrutti non chiede più quali nudi proprietari tornano
+  pieni**, se prima della successione la nuda proprietà era una sola: la parte dell'usufrutto che finisce torna piena agli eredi,
+  ciascuno per la sua quota, e il pannello lo dice. È la regola di legge che il programma applicava già alla nuda proprietà di una
+  persona sola, e che la beta.44 prometteva. Con gli usufrutti censiti a mano invece il modulo chiedeva di scegliere: con gli eredi
+  al 60 % e al 40 % rifiutava ogni scelta, con gli eredi al 50 % la proponeva, e la scelta di un erede solo gli dava tutto il
+  conguaglio. Con due nude proprietà di origini diverse la scelta resta all'amministratore, come prima.
+- **Il prospetto degli oneri accessori ha un terzo modo: «con il conguaglio del cambio d'inquilino del …».** Un cambio
+  d'inquilino registrato dopo la generazione del piano, con il conguaglio, dà a chi entra i suoi giorni: il prospetto li lasciava
+  tutti a chi esce, e chi entra non compariva. Ora chi entra ha la sua voce, con accanto la data del cambio, e nel totale di ogni
+  conduttore, quando le parti sono più d'una, la riga «di cui con il conguaglio del cambio d'inquilino». Se le parti hanno
+  rinunciato al conguaglio, o il conguaglio è stato annullato, il prospetto resta com'era.
+- **Il prospetto sull'unità divisa fra piena proprietà e usufrutto.** Nei giorni senza inquilino la voce dell'inquilino va a chi
+  gode l'unità, il proprietario pieno e l'usufruttuario, in due righe: il prospetto contava quei giorni due volte, e un inquilino
+  registrato dopo la generazione non aveva niente da rimborsare. Dopo la vendita della metà piena faceva rimborsare a chi compra
+  anche la parte dell'usufrutto che resta a chi vende (€ 302,46 alla persona sbagliata nel caso provato). All'estinzione di un
+  usufrutto con più nudi proprietari, la parte dell'usufruttuario segue tutti quelli tornati pieni.
+- **La vendita della metà piena sull'unità divisa conguaglia anche i giorni senza inquilino.** Quando la voce dell'inquilino
+  ricadeva su chi gode l'unità in più tratti dell'anno, chi compra non pagava niente dei suoi giorni e chi vende li pagava tutti,
+  in silenzio, con un pannello che dava una ragione falsa («la competenza delle quote emesse finisce prima»). In una delle forme
+  provate chi compra doveva € 151,23 e il conguaglio gli dava € 0,00.
+- **Alla fine di una locazione senza un nuovo inquilino, il pannello, il blocco «Rate» e lo storico nominano chi riceve le voci
+  dell'inquilino**: chi le riceve nel riparto (l'usufruttuario, se c'è, poi il proprietario; sull'unità divisa il proprietario
+  pieno insieme all'usufruttuario), non i proprietari di oggi. Prima il pannello sbagliava persona su tre forme d'unità su cinque
+  (nominava la nuda proprietaria, non nominava l'usufruttuario), il blocco «Rate» diceva «tornano al proprietario» anche
+  sull'unità in usufrutto, lo storico scriveva «tornano a al proprietario», e con un nuovo inquilino pannello e storico dicevano
+  che le voci «tornano» al proprietario. La frase ora dice che vale per i piani generati o ricalcolati dopo il passaggio; sul piano che non si
+  ricalcola più il pannello aggiunge, piano per piano, che le quote non ancora emesse restano a chi esce e che chi paga i giorni
+  dopo l'uscita lo decide l'amministratore.
+- **L'inizio di una locazione su un piano che non si ricalcola più non promette più quote al nuovo inquilino.** È il limite
+  dichiarato nella beta.42. Il pannello diceva che dal giorno del contratto le voci dell'inquilino «verranno intestate» a chi entra,
+  e la conferma chiedeva la spunta perché «il destinatario cambierebbe»: le quote invece restano a chi le ha. Ora dice, piano per
+  piano e unità per unità, che il piano non si ricalcola più e come si regola la parte dell'inquilino: la rimborsa il nuovo
+  inquilino a chi la paga, con il prospetto degli oneri accessori; nel cambio d'inquilino in due passi resta invece nelle rate
+  dell'inquilino di prima, e chi paga i giorni dopo la sua uscita lo decide l'amministratore. Contano solo i piani con voci a carico dell'inquilino e con la
+  competenza dopo l'inizio; un piano generato da una versione precedente senza riparto registrato ha una frase sua.
+- **Il rifiuto dell'accrescimento con più nudi proprietari dice la ragione vera.** Diceva sempre che il programma non sa quale
+  usufrutto stia sopra quale nuda proprietà, anche dove lo sa (la nuda passata agli eredi, o un usufrutto nato da una riserva
+  registrata qui) e la parte torna piena da sé.
+- **Dopo la registrazione di un passaggio, il secondo pulsante si chiama «Scheda di …»** e porta alla scheda di chi entra, al posto
+  di «Aggiorna l'anagrafe condominiale». Sotto, una frase spiega perché: il passaggio ha già aggiornato chi ha l'unità e da
+  quando, e il registro dell'anagrafe condominiale chiede anche il codice fiscale e la residenza o il domicilio di ogni titolare,
+  inquilini compresi (art. 1130 n. 6 c.c.).
+
+**Ritocchi.**
+- Nel modulo del passaggio la spiegazione della quota («il passaggio la porta tutta») sta nel riquadro che si apre sull'icona
+  accanto all'etichetta: sotto il campo allungava la colonna, e la riga di chi entra non era più allineata.
+- Nella stampa del prospetto, dalla seconda pagina la prima riga finiva sopra la linea dell'intestazione del condominio.
+- Le frasi nuove mettono la «d» davanti a un nome che comincia per «a»: «ad Anna».
+
+**Le guide.** La guida del passaggio dice i tre modi del prospetto, cosa succede alla locazione su un piano che non si ricalcola
+più e la fermata della successione; la guida «Ruoli e usufrutto» dice chi paga la voce dell'inquilino sull'unità divisa nei giorni
+senza inquilino.
+
+**Non ancora.** Chi paga i giorni dopo l'uscita dell'inquilino quando le sue quote sono in un piano che non si ricalcola più: il
+pannello lo dice, la scelta dell'amministratore non è ancora costruita. Alcune correzioni ai crediti nei passaggi, trovate insieme
+a queste, arrivano con la prossima beta. Restano come prima: nella successione dopo un'estinzione la frase che dice «già ceduto con
+un passaggio precedente (l'usufrutto)», mentre l'usufrutto si è estinto; con le pertinenze, la frase finale «un piano generato dopo
+dividerà quelle voci fra …» nomina le stesse persone per tutte le unità, anche per quella dove ce n'è una sola; nell'inizio di una locazione con un coinquilino già sulla
+pertinenza spuntata, il pannello descrive come registrabile un passaggio che la registrazione rifiuta; per i piani della 1.10 che non
+ricordano il loro esercizio, il conguaglio e il prospetto lo deducono dalla data di creazione, e l'amministratore non lo può
+correggere.
+
+**Per chi sviluppa.** Nessuna migrazione. `ProspettoOneriAccessori`: il modo `conguaglio` con `conguaglio_del` sulla voce,
+`con_il_conguaglio` nel totale del conduttore; la catena dei pagatori segue il ruolo, per persona, ed è tenuta in memoria per il
+calcolo; le righe gemelle si uniscono prima di dividerle; il già versato «dell'unità» si divide come il conguaglio, con la voce al
+lordo e la sua riga. `InsiemePeriodi::unione()`. `PeriodoDellaRiga`: per ricostruire i giorni di una riga di ripiego si tolgono
+solo quelli delle righe risolte sul ruolo richiesto. `FrasiObbligati::alPostoDellInquilino()`, `aChi()`, `a()`; tolta
+`nomiOClausola()`. `NudiDellEstinzione`: la nuda ereditata (`per()` restituisce `ereditata`), `A_MANO` pubblica.
+`ConguaglioPassaggio::nudiDellEstinzione()` pubblica. `AnteprimaPassaggio`: i piani fermi per gruppo e per unità.
+`AnteprimaPassaggioRequest`: la fermata della successione e la ragione del rifiuto dell'accrescimento. Test nuovi:
+`ProspettoCambioInquilinoTest`, `FineLocazioneFrasiTest`, `InizioLocazionePianoFermoTest`, `UnitaMistaRipiegoVenditaTest`,
+`EstinzioneDopoMorteDelNudoTest`, `SuccessioneConUsufruttoInCorsoTest`.
+
+---
+
+## [1.11.0-beta.46] - Anche a porte chiuse
+
+**Non tocca il database.** Una beta piccola: in manutenzione la rotta di salute `/up` torna a rispondere, e dice lo stato
+vero dell'installazione. Serve a chi tiene il programma in un container con un controllo di salute, e a chi orchestra i
+container e chiude un'istanza mettendola in manutenzione.
+
+**Cambi di comportamento, detti per primi.**
+- **In manutenzione `/up` dice lo stato vero.** Con `php artisan down` risponde come fuori dalla manutenzione: 200 se
+  l'installazione è sana, 503 se non lo è (database che non risponde, migrazioni da applicare). Le altre pagine restano
+  chiuse. Dalla beta.32 rispondeva come le altre pagine: con `--redirect` il rimando (302), che un controllo di salute
+  come `curl -f` prende per «sano» anche su un'installazione malata; senza, 503, che durante una manutenzione voluta
+  faceva risultare malato il container (l'HEALTHCHECK dell'immagine Docker) e lo faceva togliere da un proxy come
+  Traefik; e 500 con la manutenzione salvata nel database e il database giù. **Per chi passa dalla 1.10 non cambia
+  niente**: lì `/up` era la rotta di salute di Laravel, che la manutenzione lascia aperta. La beta.32, spostandola perché
+  dicesse la verità, aveva perso quell'eccezione.
+- **Chi usava `/up` per sapere se il sito è aperto agli utenti** (un monitor che deve suonare a sito chiuso, un
+  bilanciatore che toglie un nodo durante la manutenzione) interroghi una pagina vera, per esempio `/login`, e consideri
+  buono solo il 200: con `--redirect` anche `/login` risponde 302.
+- **Chi è in manutenzione con la pagina prerenderizzata (`--render`) e aggiorna da una beta dalla .32 alla .45** rilanci
+  `php artisan down` dopo l'aggiornamento: il file della manutenzione scritto da quelle versioni non contiene l'eccezione,
+  e finché non lo si riscrive `/up` resta chiuso.
+
+**Tema scuro.**
+- **La pagina «Novità», che si apre dopo un aggiornamento, ora si legge anche in tema scuro.** Il titoletto «Novità di
+  questa versione» era grigio quasi nero su fondo nero, le voci grigio medio, e attorno al riquadro restava una cornice
+  chiara. In tema chiaro non cambia niente.
+
+**Sotto il cofano.**
+- Test nuovi su `/up` in manutenzione, con la manutenzione salvata nel database e con il comando vero
+  (`artisan down --redirect`): 200 a installazione sana, 503 con una migrazione da applicare o con il database giù, le
+  altre pagine chiuse, e l'elenco delle eccezioni che è `/up` e basta. Uno esegue il file che `public/index.php` legge
+  prima di avviare l'applicazione con la pagina prerenderizzata, perché lì il controllo non passa dal middleware.
+
+---
+
+## [1.11.0-beta.45] - Solo chi ha il link
+
+**Non tocca il database.** Una beta di sicurezza: corregge due falle, una nel primo accesso degli utenti creati
+dall'amministratore e una nella registrazione da invito, e quello che due giri di revisione avversariale hanno trovato
+intorno. Conviene aggiornare chi ha l'installazione raggiungibile da internet. I dettagli delle due falle escono con la
+1.11.0 stabile, negli avvisi di sicurezza del repository, insieme a quelli della beta.39.
+
+**Cambi di comportamento, detti per primi.**
+- **I link del primo accesso spediti prima di questo aggiornamento non valgono più.** Chi non ha ancora scelto la
+  password trova il link non più valido: dall'elenco utenti, «Reinvita» ne manda uno nuovo.
+- **Un link del primo accesso vale solo per l'account com'era quando è partito.** Se dopo l'invio si corregge l'email o il
+  nome, si fa «Reinvita», si sospende o si riattiva l'utente, o se ne cambia la verifica, il link di prima non vale più e
+  serve un nuovo invio. Ruoli, permessi e anagrafica non lo toccano.
+- **Un invito vale tre giorni**, come dice la sua email; prima scadeva dopo un'ora. Un invito scaduto, già usato o per un
+  indirizzo che ha già un account porta al login con un messaggio che dice cosa fare, invece di una pagina 403 vuota.
+- **La registrazione pubblica, se è accesa, non accetta più un invito con la stessa email.** Un invito lo accetta solo il
+  suo link, e solo un invito accettato dà i suoi condomìni all'anagrafica di chi si registra.
+- **Le pagine del primo accesso e dell'invito non si aprono con un altro utente collegato nello stesso browser**: il link
+  porta alla home di chi è collegato. Prima il modulo si apriva, e il salvataggio finiva sulla pagina dell'altro.
+- **I rifiuti sulla pagina di login hanno un riquadro loro, in ambra**: link non più valido, invito scaduto o già usato,
+  firma del link non valida. Il verde resta per le conferme; dopo il primo accesso compare «La password è impostata: ora
+  puoi accedere.».
+
+**Sicurezza.**
+- **Primo accesso e registrazione da invito**: corrette due falle. I dettagli negli avvisi di sicurezza della 1.11.0.
+- Il registro degli errori non scrive più la firma di un link rifiutato: chi lo leggeva, o lo incollava in un forum, poteva
+  riaprire quel link.
+- Una guardia nuova nella suite elenca ogni rotta senza login che accetta un salvataggio, con la prova che chiede a chi la
+  chiama (firma del link, token, sessione), e la verifica: una rotta nuova senza prova fa fallire la suite.
+
+**Inviti, il resto.**
+- **«Nuovo invito»**: i due campi affiancati, come in «Nuovo utente», con l'aiuto accanto alle etichette e la durata scritta
+  in pagina. Invio aggiunge l'indirizzo e non manda più il modulo; il pulsante conta gli inviti («Invia 2 inviti»). Un
+  indirizzo già invitato o scritto male ha il suo errore sotto il campo («C'è già un invito per … Se è scaduto, eliminalo
+  dall'elenco degli inviti e invita di nuovo.»): prima la pagina diceva solo «errore durante l'invio».
+- Gli indirizzi degli inviti si salvano in minuscolo, e un invito scritto con le maiuscole si completa: prima chi lo
+  riceveva restava fermo su «deve essere in minuscolo», sotto un campo che non poteva modificare.
+- L'elenco degli inviti dice «Accettato» a un invito accettato anche dopo la sua scadenza; prima diceva «Scaduto».
+- Testi: i messaggi nuovi in italiano, inglese, spagnolo e portoghese; in spagnolo le email del primo accesso e
+  dell'invito, rimaste in inglese; in spagnolo e portoghese gli avvisi di link non valido e di account sospeso; «Il campo
+  condomini è richiesto» invece di «Il campo buildings è richiesto».
+
+---
+
+## [1.11.0-beta.44] - Ogni erede la sua quota
+
+**Non tocca il database.** Nessuna migrazione: la successione è un tipo di passaggio nuovo, e ciò che le serve (gli eredi con le
+quote, l'arretrato del defunto, l'accrescimento dell'usufrutto) sta nel registro del passaggio e nelle righe di saldo che esistono
+già. Muore il proprietario pieno, un comproprietario o il nudo proprietario: gli eredi entrano nello stesso ruolo, ciascuno con la
+sua quota, dal giorno del decesso, e il defunto resta titolare fino al giorno prima.
+
+**Cambi di comportamento, detti per primi.**
+- **L'estinzione di un usufrutto senza nessun nudo proprietario in corso si rifiuta anche nel server.** Fino alla .43 la fermava solo
+  il modulo, con i titolari di oggi invece che con quelli del giorno dell'atto; il server la registrava, e l'unità restava senza
+  proprietario. Il messaggio dice di associare prima il nudo proprietario, o, se la nuda proprietà è censita come proprietà piena
+  accanto all'usufrutto, di correggere il ruolo di quella riga.
+- **Un passaggio registrato fuori ordine non riapre più una riga che un passaggio successivo ha già chiuso.** Esempio: Elsa e
+  Franco al 50 %; si registra prima la vendita del 1° settembre di Franco a Elsa, poi la vendita con riserva d'usufrutto del 1°
+  maggio di Elsa a Dino, dalla riga di Elsa di prima. Fino alla .43 la registrazione richiudeva quella riga al 30 aprile e dal 1°
+  settembre l'unità risultava di Elsa piena al 100 %, Elsa usufruttuaria al 50 % e Dino nudo al 50 %, e nessuno dei due passaggi
+  si poteva più annullare. Ora l'anteprima si ferma e dice la strada: annullare i passaggi successivi, l'ultimo per primo,
+  registrare questo e poi di nuovo quelli; se il passaggio dopo ha ceduto proprio quella riga, la correzione a mano. Vale per chi
+  esce, per chi compra o eredita una quota che si somma alla sua, per chi si riserva l'usufrutto, per chi costituisce, per il nudo
+  proprietario che torna pieno e per l'accrescimento.
+- **Chi entra in un passaggio dev'essere una persona del condominio**, e così ogni erede. Prima il server controllava solo che
+  l'anagrafica esistesse: un passaggio poteva aprire una riga a una persona di un altro condominio, che il modulo non propone.
+- **Nell'estratto conto il credito di un passaggio ancora nei saldi si conta al netto, per gestione e unità.** Con più coppie di
+  conguaglio sulla stessa unità una persona può averne una a credito e una a debito: dalla .41 si contava solo quella a credito, e
+  il credito annunciato era gonfiato (€ 322,19 invece di € 5,48 nel caso provato).
+- **Senza le righe di riparto (i piani generati prima della 1.11.0-beta.29), la parte arrivata a chi vende si segue lungo la
+  catena.** Fino alla .43 si contava solo sul passaggio diretto: dopo una vendita piena seguita da un passaggio a metà, le quote del
+  primo titolare entravano per intero nel conguaglio di chi vendeva. Ora un passaggio pieno porta la parte del passaggio dopo, e una
+  successione dopo un passaggio a metà moltiplica le parti (nonno, figli, nipoti: la metà della metà). Due estinzioni parziali in
+  fila restano contate sul passaggio diretto.
+- **«Elimina anagrafica» si ferma anche per chi ha righe di saldo di un passaggio o righe scritte da un passaggio**, per esempio il
+  secondo nudo proprietario tornato pieno, che il passaggio non nomina come chi entra: la cancellazione in cascata toglieva una gamba
+  della coppia di conguaglio, o una riga che il passaggio non sapeva più disfare.
+- **Il messaggio dopo la registrazione dice «risulta», al presente, per tutti i tipi**: prima diceva «è stato titolare», una forma
+  con il genere, e il plurale restava al futuro.
+- **Lo storico dei passaggi mostra il conguaglio di ciascuno di quelli che entrano**: all'estinzione con più nudi proprietari
+  mostrava solo quello del primo. Con più persone che entrano dice la riga di ognuna e, a parte, quella di chi esce.
+
+**La successione.**
+- **Il modulo.** «Registra passaggio» ha la quinta voce, «Successione», anche nel menu della riga («Registra la successione»). Si
+  sceglie il defunto fra i titolari in corso; gli eredi, ciascuno con la quota che eredita, fanno insieme la quota del defunto
+  («Dividi in parti uguali» la divide al centesimo di punto; una quota ha al massimo due decimali e almeno 0,01 %). Un erede già
+  comproprietario somma la quota ereditata alla sua; un erede minorenne si registra come gli altri. Le pertinenze collegate seguono
+  l'unità, e la quota del defunto sul box si divide fra gli eredi in proporzione. La morte dell'usufruttuario resta l'estinzione
+  dell'usufrutto.
+- **Il conguaglio** è quello della vendita, per giorni: la parte dal giorno del decesso si divide fra gli eredi per quota. Le rate
+  in bozza di un piano che non si ricalcola più passano a un solo erede, l'erede di riferimento, che il programma chiede solo quando
+  servono; la sua parte nel conguaglio scende di altrettanto, e può diventare un credito. Gli altri eredi, su quel piano, non hanno
+  rate: la loro parte sta in righe di saldo ed entra nel piano dopo.
+- **L'arretrato del defunto**: le rate emesse e non pagate, le sue bozze e i suoi saldi, cioè la sua posizione verso il
+  condominio. La scelta è dell'amministratore, senza una risposta già data. **Agli eredi, per quota**: righe di saldo sulla stessa gestione, una a credito del defunto e una a debito di ogni erede; con il conguaglio
+  ogni erede risponde della sua quota di tutto e la posizione del defunto si chiude; passano all'erede di riferimento anche le bozze
+  di prima del decesso, salvo quelle con un pagamento. Oppure **a nome del defunto** («eredi di …»): resta dov'è, e chi versa al suo
+  posto si registra con «Versato da». Esempio, su € 1.200,00 l'anno in dodici rate: Ugo muore il 1° maggio con quattro rate emesse e
+  non pagate e otto in bozza; eredi Anna al 60 %, erede di riferimento, e Bruno al 40 %. Le otto bozze passano ad Anna; il
+  conguaglio è un credito di € 316,71 per Anna e un debito di € 322,19 per Bruno; l'arretrato è € 236,71 per Anna e € 157,81 per
+  Bruno. Alla fine Anna risponde di € 720,00 e Bruno di € 480,00, il 60 % e il 40 % dell'anno, e la posizione di Ugo è a zero. Se il
+  defunto aveva versato in più, l'arretrato è un credito e passa agli eredi allo stesso modo. Con l'arretrato agli eredi il
+  solo conguaglio non si annulla, né vi si rinuncia: conguaglio e arretrato fanno un conto solo. Dei contributi del defunto fino al
+  giorno prima del decesso rispondono gli eredi, ogni erede per la sua quota (art. 754 c.c.), con tutte e due le scelte: cambia solo
+  dove si scrive il debito. Il pannello avvisa che, con l'arretrato agli eredi, le rate del defunto non pagate restano a suo nome e
+  non vanno incassate (un pagamento, anche con «Versato da», lascerebbe il defunto a credito), e che con un erede solo sull'unità
+  l'arretrato va tutto a quell'erede, anche quando l'eredità ha altri eredi.
+- **Il legato.** Chi riceve l'unità per legato non eredita il patrimonio: l'arretrato del defunto resta a suo nome, per forza. I
+  legatari possono essere più d'uno.
+- **L'accrescimento.** All'estinzione di un usufrutto, con un altro usufruttuario in corso, la casella «L'usufrutto si accresce
+  all'altro usufruttuario», da spuntare quando l'atto lo prevede o per il legato di usufrutto congiunto (artt. 675 e 678 c.c.):
+  l'usufrutto di chi muore va agli usufruttuari che restano, in proporzione alla loro quota; la nuda proprietà resta nuda, e il
+  conguaglio dell'ordinaria va a loro. Senza la casella resta la regola di legge: la nuda proprietà si riunisce all'usufrutto che
+  finisce. Con la nuda proprietà di più nudi proprietari l'accrescimento non si registra da qui, perché il programma non sa quale
+  usufrutto stia sopra quale nuda: la casella non c'è, e il modulo dice di correggere le righe a mano. All'estinzione dopo vale la
+  scelta sull'ordinaria dell'usufrutto di chi resta, e il pannello dice se la parte arrivata era nata con la scelta opposta.
+- **La morte del nudo proprietario.** La nuda proprietà passa agli eredi per quota, e all'estinzione dell'usufrutto tornano
+  proprietari pieni loro, senza che l'amministratore debba scegliere. Se un erede ha già l'usufrutto dell'unità, il passaggio si
+  ferma e indica la via a mano.
+- **I piani che si ricalcolano ancora** la successione non li prende: li segue il ricalcolo, che darà agli eredi i giorni dal decesso
+  divisi per quota e lascerà al defunto quelli di prima. Il pannello lo dice: con l'arretrato agli eredi indica il saldo manuale per
+  passare agli eredi anche quei giorni; con l'arretrato a nome del defunto avvisa che quelle quote restano a suo nome, con una parte in ogni rata del piano.
+- **Quando vende un erede**, nel conguaglio entrano anche le rate passate all'erede di riferimento, con la quota di chi vende; le rate
+  restano all'erede di riferimento. Chi compra paga i suoi giorni su tutto il piano.
+- **Dove si vede.** Il pannello «Cosa cambierà»: gli eredi, il conguaglio per erede, la tabella dell'arretrato, «Chi resta
+  obbligato» con l'art. 754 c.c. per i contributi fino al decesso e gli eredi come comproprietari dopo. Il messaggio dopo la
+  registrazione, con il netto per erede e un estratto conto per ciascuno. Lo storico dell'unità: gli eredi con le quote, l'arretrato
+  per erede, il conguaglio. Il Wallet: le righe dell'arretrato e i saldi da cui l'arretrato è calcolato non si modificano né si
+  cancellano da soli, e spiegano perché; si correggono annullando la successione e registrandola di nuovo. L'estratto conto del
+  defunto non propone di rimborsare ciò che è passato agli eredi. L'annullamento della successione rimette tutto com'era.
+
+**Corretto.**
+- Nelle frasi del pannello e dei messaggi, lo spazio prima di «%» non va più a capo.
+- Il server accettava un sottotipo nella fine della locazione («costituzione») e lo scriveva nel registro del passaggio.
+- Nell'usufrutto e nella locazione la nota sotto la rinuncia al conguaglio diceva «vale fra venditore e acquirente», con una
+  sentenza sulla vendita: ora dice «vale fra le parti».
+
+**Le guide.** La guida del passaggio di proprietà ha la sezione «Quando muore un proprietario» (gli eredi e le quote, il
+conguaglio, l'erede di riferimento, l'arretrato agli eredi o a nome del defunto, il legato, la morte del nudo proprietario) e il
+punto sull'accrescimento in «Quando finisce un usufrutto».
+
+**Non ancora.** La vendita di una parte della propria quota non c'è: quando un passaggio successivo ha ceduto una riga che poi si
+somma, la strada è a mano. Le rate in bozza già create non si dividono per quota fra gli eredi, una per ciascuno: vanno all'erede di
+riferimento, e gli altri eredi pagano la loro parte con le righe di saldo, nel piano dopo. Il credito del defunto nei saldi, assorbito da un piano dopo, sta
+accanto alle sue rate non pagate e va compensato a mano. Con tre o più usufruttuari dopo un accrescimento, all'estinzione il
+programma chiede quali nudi proprietari tornano pieni (la risposta giusta è «tutti, ciascuno per la sua quota»). Senza le righe di
+riparto due estinzioni parziali in fila si contano sul passaggio diretto. Un arretrato che non trova un esercizio aperto su cui
+scriversi resta a nome del defunto: il messaggio, lo storico e «Chi resta obbligato» lo dicono. Il calcolo quota per quota di una
+nuda proprietà di due pezzi tornata piena solo in parte, che si ferma, arriva più avanti.
+
+**Per chi sviluppa.** Nessuna migrazione: `subentri.tipo_passaggio` vale anche `successione` (stringa), con il sottotipo `legato`.
+Nel `registro` del passaggio: `eredi` [{anagrafica_id, quota, riga_id}], `arretrato` {scelta, totale, resta, saldi, fonti,
+non_scritto}, `accrescimento` [{anagrafica_id, quota, riga_id}]. `Subentro`: `eredi()`, `accrescimento()`, `destinatari()`,
+`entranti()`, `rigaEntranteDi()`, `saldiDellArretrato()`, `fontiDellArretrato()`, `arretratoAgliEredi()`,
+`successioneCheLeggeISaldi()`, `origineDellaParteAccresciuta()`; `origineDellUsufrutto()` risale l'accrescimento.
+`TitolaritaImmobile::passaggioCheLaChiude()` (il passaggio che ha chiuso una riga, come chi esce o nel registro).
+`AnteprimaPassaggio` ritorna `rate.arretrato` (con `resta_senza_conguaglio` e `frase_senza_conguaglio` a nome del defunto);
+`AnteprimaPassaggio::nudiDistintiIl()`. `NudiDellEstinzione::dalRegistro` segue la nuda agli eredi; `GenealogiaDellaQuota` ha
+l'arco `SUCCESSIONE`, usato anche per l'accrescimento. `ConguaglioPassaggio`: le quote dei coeredi in `quoteConguagliabili()`, la
+parte arrivata lungo la catena in `predecessori()`. `RegistraSubentroAction::fermaSeHaUnaFine()`. `Saldo::fraseFonteDellArretrato()`,
+`FRASE_ARRETRATO`, `FRASE_CONGUAGLIO_CON_ARRETRATO`. JS: `quoteEredi.ts`, `rinunciaConguaglio.ts`. Test nuovi: `SuccessioneTest`; le
+forme SU, SUD e SU2 nella griglia degli invarianti, con il controllo «la posizione del defunto chiude a zero».
+
+---
+
+## [1.11.0-beta.43] - Ogni quota sa da dove viene
+
+**Tocca il database.** Una migrazione, rieseguibile senza danni, aggiunge alle righe di riparto la colonna
+`anagrafica_immobile_id`: il legame fra ogni quota di un piano rate e la riga di titolarità da cui viene. Sulle righe già
+scritte resta vuota: la scrivono i piani generati o ricalcolati da questa versione, e per gli altri il conguaglio la deduce
+al volo, solo dove la riga possibile è una sola. Se la riga di titolarità sparisce (si dissocia una persona, si annulla un
+passaggio), la quota resta com'è e perde soltanto il legame. Il tema è doppio. Dopo più passaggi sulla stessa unità il
+conguaglio riconosceva ogni quota dal ruolo di chi la riceveva, non da dove veniva, e si fermava o sbagliava; ora ogni quota
+porta la sua riga di titolarità e il conguaglio la segue lungo la catena. E alla fine di un usufrutto, con un altro in corso,
+non tornano più proprietari pieni tutti i nudi proprietari: torna chi deve.
+
+**Cambi di comportamento, detti per primi.**
+- **Alla fine di un usufrutto, con un altro in corso sull'unità, torna proprietario pieno solo il nudo proprietario di
+  quell'usufrutto.** Esempio, su una voce di € 1.200,00 l'anno a carico dell'usufruttuario: Ugo ha l'usufrutto di metà (nuda
+  proprietà a Mara) ed Elsa quello dell'altra metà (nuda proprietà a Carlo); l'usufrutto di Ugo finisce il 1° aprile. Fino
+  alla .42 tornava piena anche la nuda proprietà di Carlo, ancora sotto l'usufrutto di Elsa, e il conguaglio si divideva fra
+  Mara e Carlo (€ 226,03 e € 226,02); ora torna piena solo quella di Mara, e i 275 giorni dal 1° aprile sono tutti suoi:
+  € 452,05 a suo debito e a credito di Ugo. Il pannello ricorda che è la regola di legge, e che con l'accrescimento all'altro
+  usufruttuario l'estinzione non si registra da qui.
+- **Quale nuda proprietà torna piena lo dice il programma, in quest'ordine, finché i dati lo dicono.** Prima il passaggio da
+  cui è nato l'usufrutto, se l'ha registrato il programma (una costituzione, una vendita con riserva d'usufrutto): indica
+  quale nuda proprietà, anche se venduta dopo o sommata a un'altra, e il modulo non chiede niente; se la nuda si è sommata a
+  un'altra torna piena solo la parte che il passaggio conosce, e se ne conosce meno sceglie l'amministratore. Poi la somma
+  delle quote: se i nudi proprietari possibili valgono insieme proprio l'usufrutto che finisce, tornano proprietari pieni
+  tutti. Infine la regola di legge: un solo nudo proprietario che vale più dell'usufrutto che finisce (due genitori donano
+  con riserva d'usufrutto a un solo nudo proprietario, e muore un genitore) torna proprietario pieno per il 50 % che finisce
+  e resta nudo proprietario dell'altro 50 %; fino alla .42 tornava proprietario pieno del 100 %. Dove nemmeno questo basta
+  (titolari censiti a mano) decide l'amministratore.
+- **Dove i dati non dicono quale nuda proprietà, sceglie l'amministratore.** Nella scheda «Chi torna proprietario pieno» ogni
+  nudo proprietario dell'unità ha la sua casella, e nessuna è già spuntata: si spuntano i nudi proprietari della parte su cui
+  l'usufrutto finisce, che insieme valgono quanto l'usufrutto. C'è anche la casella «Tutti i nudi proprietari, ciascuno per
+  la sua quota», da usare se la nuda proprietà è in comune fra i nudi proprietari: ciascuno torna proprietario pieno per la
+  sua parte dell'usufrutto che finisce e resta nudo proprietario del resto (due nudi proprietari al 50 % sotto due usufrutti
+  del 50 %: ciascuno per il 25 %). Se nessuna combinazione di nude proprietà intere vale l'usufrutto, le caselle non ci sono
+  e resta solo «ciascuno per la sua quota». Senza una scelta l'estinzione si rifiuta e la chiede; con una scelta che vale il
+  100 % su un usufrutto del 50 % si rifiuta e lo dice; una riga di un'altra unità non vale come scelta, anche con la quota
+  giusta. Con più nudi proprietari la coppia del conguaglio è una per nudo proprietario, secondo la parte che torna a
+  ciascuno, se nota, o per quota.
+- **Chi esce che è anche nudo proprietario non torna proprietario pieno sotto un altro usufrutto, e non c'è più una coppia
+  con la stessa persona.** Con un altro usufrutto in corso, se chi esce è anche nudo proprietario dell'altra parte, quella parte non
+  torna piena con l'usufrutto che finisce: torna piena da sé, senza scelta, la nuda proprietà dell'altro nudo proprietario, e
+  il conguaglio è tutto suo, come nel primo punto. Senza un altro usufrutto in corso tornano proprietari pieni tutti i nudi
+  proprietari, chi esce compreso: la sua parte, anche su una pertinenza, resta a suo nome fuori dal conguaglio, e il pannello
+  lo dice. Fino alla .42, se chi esce era anche nudo proprietario, il conguaglio scriveva una coppia a debito e a credito
+  della stessa persona (se era l'unico nudo) o si fermava (se i nudi erano più d'uno); ora, con Ugo usufruttuario di tutta l'unità e nudo proprietario di metà, e la nuda
+  proprietà dell'altra metà a Mara, i € 904,11 che il conguaglio sposta dall'usufruttuario si dividono per quota: € 452,06
+  restano a Ugo, € 452,05 vanno a Mara, e la coppia è una sola, con Mara. Nello storico il passaggio nomina come chi entra il
+  nudo proprietario diverso da chi esce.
+- **Quando i dati non bastano, l'estinzione si rifiuta e si registra a mano.** Con un altro usufrutto in corso il programma
+  non indovina in tre forme: il passaggio da cui è nato l'usufrutto porta a una nuda proprietà di chi esce; chi esce ha una
+  nuda proprietà comprata mentre era usufruttuario, che può essere quella della parte che finisce; i nudi proprietari che
+  possono tornare proprietari pieni valgono meno dell'usufrutto che finisce. L'estinzione si rifiuta con la strada a mano:
+  chiudere da «Modifica associazione» la riga dell'usufrutto al giorno prima e correggere le righe dei nudi proprietari
+  secondo l'atto, senza conguaglio automatico. Stessa strada se la nuda proprietà è nata il giorno stesso dell'estinzione e
+  tornerebbe piena solo in parte. Per la seconda di due estinzioni dello stesso giorno sulle stesse righe il rifiuto è lo
+  stesso, ma il messaggio non indica una strada: le righe si correggono a mano, o si chiede assistenza. Con le pertinenze
+  spuntate il passaggio si rifiuta dove lì la regola non decide: se serve una scelta dice di registrare l'estinzione dalla
+  pertinenza, dove si sceglie; se il programma si ferma, di togliere la spunta e registrare a mano la pertinenza da «Modifica
+  associazione». Un rifiuto non scrive niente.
+- **Il modulo dell'estinzione guarda il giorno dell'atto, non quello di oggi.** La scheda guarda le righe in corso il giorno
+  scritto per l'estinzione: dal 1° aprile, con la nuda proprietà di Carlo venduta il 1° giugno, passa se si sceglie quella di
+  Mara e si rifiuta se si sceglie quella venduta. Cambiando chi esce, fra costituzione ed estinzione, o la data, scelte ed errori si
+  azzerano; senza una data si usa il giorno di oggi di chi registra, non il giorno UTC, che fra mezzanotte e l'una o le due a
+  Roma, secondo l'ora legale, è ancora quello prima. Dove l'estinzione si rifiuta c'è una riga ambra con il motivo, e niente
+  caselle. La didascalia dice che torna proprietario pieno il nudo proprietario dell'usufrutto che finisce.
+- **«Chi resta obbligato» dice di quale parte risponde chi torna proprietario pieno.** Con un altro usufrutto in corso, con
+  una nuda proprietà che torna piena solo in parte, o sull'unità mista (un proprietario pieno dell'altra metà), la frase
+  diceva che il nudo proprietario torna proprietario pieno e risponde di tutte le spese dell'unità: falso, perché l'altra
+  parte resta ai suoi titolari. Ora dice «Carlo (per il 25 %) e Dora (per il 25 %) tornano proprietari pieni della parte
+  dell'usufrutto che finisce e ne rispondono, ciascuno per la sua parte; per il resto dell'unità rispondono, come prima, i
+  titolari di quella parte (il nudo proprietario e l'usufruttuario in solido, art. 67 ult. co. disp. att. c.c.)», anche
+  nello storico, che per i passaggi registrati da questa versione dice chi torna proprietario pieno e per quale parte. Dove
+  sull'unità non resta nessun altro titolare la frase è quella di sempre.
+- **Il conguaglio dei passaggi in catena non si ferma più dove la parte che passa è certa.** Nella .41 e nella .42, in queste
+  forme, il conguaglio dei passaggi dopo il primo si fermava e la parte che passa si scriveva a mano con un saldo manuale dal
+  Wallet. Ora ogni quota si segue dalla riga di titolarità da cui viene, e il conguaglio calcola, anche con più nudi
+  proprietari e riserve. Due casi su una voce di € 1.200,00 l'anno, con ciò che ogni persona paga davvero; «con la legge» e
+  «come dice ogni voce» sono le due scelte, alla riserva o alla costituzione, su chi paga l'ordinaria:
+  - Una vendita, un riacquisto, una nuova vendita: Ugo vende a Bice il 1° marzo, Bice a Ugo il 1° maggio, Ugo a Carlo il 1°
+    luglio, con rate emesse fra un passaggio e l'altro; Ugo € 394,52, Bice € 200,55, Carlo € 604,93.
+  - Ugo torna proprietario pieno il 1° maggio, costituisce un usufrutto a Carlo dal 1° luglio al 1° ottobre; con la legge la
+    voce a carico del proprietario è di Carlo in quei mesi: Carlo paga € 302,46 (un centesimo meno dei € 302,47 dei suoi 92
+    giorni, perché ogni passaggio arrotonda per conto suo), Ugo € 897,54; con «come dice ogni voce» Ugo paga € 1.200,00.
+- **Le fermate sono meno e dicono la ragione vera.** Un piano fermo (quote a giornale, un incasso, o preso dal conguaglio di
+  un passaggio) non si ricalcola, quindi non avrà il legame. Dove la riga di titolarità possibile non è una sola (due righe
+  uguali della stessa persona, l'addebito diretto di chi ha più righe sull'unità, una riga cambiata o aperta dopo la
+  generazione) il conguaglio non decide. La fermata «le quote sono passate per più strade» non scatta più sull'unità intera,
+  ma solo sul gruppo di quote che il programma non sa attribuire, e dice la ragione vera: il piano è di prima e non dice da
+  quale riga viene la quota; la riga è cambiata dopo la generazione senza un passaggio che lo dica; il passaggio è di prima
+  della 1.11.0-beta.37, quando non annotava le righe toccate; la riserva o la costituzione non dicono chi ha comprato la nuda
+  proprietà; la quota è passata di mano senza un passaggio che lo dica. Un gruppo di soli saldi pregressi senza legame non si
+  ferma più. Restano ferme, come nella .42: i piani generati prima della 1.11.0-beta.29, su un'unità mista dopo un passaggio;
+  le quote della 1.7.x con un saldo pregresso assorbito dal piano; le quote «mai passate» a chi esce. Dove si ferma, la parte
+  che passa si scrive con un saldo manuale dal Wallet.
+- **Una nuda proprietà fatta di due pezzi, tornata piena solo in parte, ferma il conguaglio dei passaggi dopo.** Succede
+  quando una persona ha una nuda proprietà nata dalla somma di due nude di origine diversa (una riserva, un acquisto, due
+  donazioni dello stesso giorno), un'estinzione la fa tornare piena solo in parte, e poi la persona fa un altro passaggio: le
+  quote già emesse vanno sulla parte tornata piena o su quella rimasta nuda secondo il pezzo da cui vengono. Se la somma è
+  stata registrata dopo la generazione del piano, il conguaglio si ferma per il gruppo di quote di una persona sul piano e
+  sull'unità, se una sua riga arriva su quella nuda proprietà, anche per la quota di chi esce. Resta fuori ciò che la legge
+  del passaggio esclude per intero: l'ordinaria nella riserva con la legge, la straordinaria nella costituzione e
+  nell'estinzione. Una somma fatta prima della generazione si calcola (il caso dei genitori che hanno donato anni prima).
+- **Un passaggio registrato prima di questa versione senza una coppia di conguaglio ferma la catena che lo attraversa.** Se
+  un passaggio registrato con una versione precedente (dalla 1.11.0-beta.37, la prima che annota le righe toccate) ha preso
+  il piano nel suo conguaglio senza scrivere nessuna coppia su quell'unità, non si sa se il conguaglio si era fermato e la
+  parte era stata regolata a mano: dove la catena che lo attraversa è ambigua, il conguaglio dopo si ferma e dice «registrato
+  prima della 1.11.0-beta.43 senza una coppia di conguaglio su questa unità»; con una coppia scritta sull'unità la quota si
+  segue. Per prudenza ferma anche un passaggio senza coppia per un'altra ragione (niente da conguagliare, una rinuncia).
+- **Nella vendita, un riquadro dice come registrare l'accordo «le rate le paga chi vende».** Sotto il modulo, senza spunta,
+  il riquadro «Da sapere» ha una frase per l'accordo «le rate di un piano le paga chi vende»: il piano si ricalcola per
+  giorni e i pagamenti di chi vende si registrano con «Versato da». Compare solo nella vendita senza riserva d'usufrutto, se
+  chi esce ha quote in un piano ancora da ricalcolare (altrimenti vale «Le parti hanno regolato il conguaglio fra loro»).
+
+**Correzioni.**
+- **Chi comprava la nuda proprietà dopo un nuovo usufrutto pagava un godimento che era di un altro.** Con una voce a carico
+  dell'usufruttuario, Rita ha l'usufrutto fino al 1° maggio; Ugo, nudo proprietario, costituisce un usufrutto a Carlo il 1°
+  luglio e vende la nuda proprietà a Fede il 1° settembre: Fede pagava € 401,10 del godimento di Carlo, ora niente. Lo stesso
+  con una costituzione «come dice ogni voce».
+- **Alla fine di un usufrutto riservato in una vendita, chi aveva comprato la nuda proprietà non riceveva niente.** Ugo ha
+  l'usufrutto, finito il 15 aprile, e Rita la nuda proprietà, con una voce da € 600,00 a carico del proprietario; Rita vende
+  a Carlo con riserva d'usufrutto il 5 maggio, e il suo usufrutto finisce il 18 maggio: il pannello diceva quella riga della
+  nuda proprietà che Rita teneva, e niente passava. Ora, con la legge, la voce passa a Carlo: Carlo € 374,79, Rita € 225,21.
+- **Due passaggi della stessa persona nello stesso giorno: chi comprava la metà piena pagava anche la nuda già venduta.**
+  Ugo, proprietario pieno di metà e nudo proprietario dell'altra, con l'usufrutto a Mara, vende il 30 settembre la nuda
+  proprietà a Elsa e la metà piena a Nora; registrata prima la nuda, Nora pagava € 305,76. Ora valgono l'ordine di
+  registrazione e i giorni di ogni titolare, in tutti e due gli ordini: Nora paga € 152,88.
+- **Con un'autorimessa come pertinenza, due conguagli andavano alla persona sbagliata.** All'estinzione, con la nuda
+  proprietà dell'appartamento venduta a Elsa e quella dell'autorimessa rimasta a Bice, la coppia dell'autorimessa andava a
+  Elsa, che lì non ha niente: ora chi entra su ogni unità è il nudo proprietario di quell'unità. In una vendita, con
+  appartamento e autorimessa per metà di Ugo e per metà di Bice, Bice vende a Ugo la sua metà dell'appartamento e Ugo vende
+  tutto a Elsa: Elsa pagava anche i giorni della metà dell'autorimessa rimasta a Bice (€ 80,54 sull'autorimessa), ora
+  € 40,27. Il pannello e le bozze contano le quote di un predecessore solo sulle unità dove ha ceduto qualcosa a chi esce.
+- **Un centesimo in più a chi entra, nelle catene.** Ugo vende a Elsa il 1° maggio, Elsa a Bruno il 1° luglio, Bruno a Carlo
+  il 15 settembre: Carlo pagava € 355,08 e Bruno € 249,85, perché ogni intestatario arrotondava per sé; ora la parte di chi
+  entra si arrotonda una volta per piano e unità, con i resti maggiori: € 355,07 e € 249,86. Lo stesso su un piano senza
+  dettaglio del riparto: l'intero conguaglio è € 1.006,03 (€ 1.200,00 × 306/365), non € 1.006,02.
+- **La rivendita della nuda proprietà, dopo una costituzione «come dice ogni voce», non conguagliava su un piano senza
+  dettaglio del riparto.** Su un piano generato prima della 1.11.0-beta.29, Elsa compra la nuda proprietà e la rivende a
+  Carlo: la rivendita non scriveva nessuna coppia, e Elsa perdeva i giorni di Carlo (€ 401,10 su € 1.200,00); ora la scrive.
+- **Le frasi del pannello dicono chi riceve il conguaglio e che cosa è già passato.** L'apertura del blocco delle rate non
+  dice più «conguaglio fra Ugo e Ugo» e, con una pertinenza, nomina chi riceve le coppie unità per unità; la quota già ceduta
+  si dice «emessa a Bice per una parte dell'unità che Ugo ha già ceduto»; sotto i nudi proprietari la frase dice che il
+  conguaglio si divide come dice il pannello «Cosa cambierà».
+- **Il suggerimento della data di fine di una riga, in «Modifica associazione».** Diceva che le rate già emesse non cambiano
+  e le regola il conguaglio del passaggio: vero solo se la data viene da un passaggio. Ora aggiunge che, se la data si scrive
+  lì, il conguaglio, se serve, si scrive con un saldo manuale dal Wallet.
+- **«Registra passaggio» sul telefono: la riga di chi esce nascondeva il nome.** Su uno schermo stretto quota e data
+  schiacciavano il nome fino a farlo sparire, e la data usciva dal bordo. Ora scendono sotto il nome; la quota si legge
+  «50 %», non «50.00 %».
+
+**Le guide.** La guida del passaggio di proprietà ha una sezione nuova, «Quando finisce un usufrutto»: senza un altro
+usufrutto in corso tornano proprietari pieni tutti i nudi proprietari; con un altro in corso, solo il nudo proprietario
+dell'usufrutto che finisce, riconosciuto dal passaggio da cui è nato l'usufrutto, dalla somma delle quote o dalla regola di
+legge; quando i dati non bastano sceglie l'amministratore; in cinque casi si ferma, e in tre l'estinzione si registra a mano
+da «Modifica associazione»; «Chi resta obbligato» dice che chi torna proprietario pieno risponde della parte
+dell'usufrutto che finisce, e del resto i suoi titolari. I primi tre punti hanno il loro esempio con le cifre. Una voce nuova, «Il conguaglio segue ogni
+quota lungo i passaggi», con l'esempio di Ugo, Bice e Carlo; la voce «Quando il conguaglio si ferma» è riscritta, con i casi e
+la strada del saldo manuale dal Wallet. La voce sulle bozze della vendita dice come registrare l'accordo «le rate le paga chi vende»;
+«Ruoli e usufrutto» dice chi torna proprietario pieno alla fine di uno dei due usufrutti, e che le quote dell'unità che non
+tornano al 100 % possono venire da un'estinzione registrata prima di questa versione.
+
+**Non ancora.** La successione: arriva con la beta.44; fino ad allora vale la regola di legge, e se l'atto prevede
+l'accrescimento all'altro usufruttuario le righe si correggono a mano da «Modifica associazione». Il calcolo quota per quota
+di una nuda proprietà di due pezzi tornata piena solo in parte, che oggi si ferma, arriva più avanti, probabilmente con la
+successione. Restano, per scelta, le fermate dette sopra, fra cui un passaggio registrato prima della 1.11.0-beta.37 che ha
+toccato la quota: dove il dato manca il programma non indovina. Le estinzioni già registrate con le versioni precedenti nelle
+forme corrette qui sopra non si correggono da sole (per esempio due nude proprietà tornate piene con un usufrutto ancora in
+corso su una parte): si correggono a mano nella scheda dell'unità. L'estinzione di un usufrutto senza nessun nudo
+proprietario in corso la ferma solo il modulo, guardando i titolari di oggi: il server la registrerebbe, e l'unità resterebbe
+senza proprietario (dalla beta.44 la rifiuta anche il server). «Paga tutto chi
+esce» su un piano che si ricalcola ancora ha solo la frase nel pannello e nella guida (l'accordo si registra con «Versato da»
+e non lascia traccia nel passaggio), e la vendita di una parte della propria quota non c'è (il messaggio spiega come
+registrarla a mano): se ne riparla con un caso vero, dopo la successione e prima della stabile. L'inizio di una locazione su
+un piano già fermo: la parte dell'inquilino dal giorno del contratto resta al proprietario, mentre il pannello annuncia che
+cambia intestatario. Le cifre delle catene lunghe con la spesa straordinaria e l'addebito diretto non sono ancora verificate
+caso per caso come le altre. Con «ciascuno per la sua quota» può restare una riga di nuda proprietà dello 0,01 %: finisce un
+usufrutto del 33,33 %, chi esce è anche nudo proprietario del 66,66 %, c'è un altro usufrutto del 66,67 % e i candidati sono
+i due nudi proprietari al 16,67 %; il primo torna proprietario pieno per tutta la sua quota (16,67 %), il secondo per il
+16,66 % e resta nudo proprietario dello 0,01 %: non è un errore di denaro. Più passaggi in una catena possono ancora
+differire di qualche centesimo dal conto fatto in un colpo solo.
+
+**Per chi sviluppa.** Migrazione `2026_10_04_120000_add_anagrafica_immobile_id_to_righe_riparto_table`:
+`righe_riparto.anagrafica_immobile_id`, nullable, con vincolo verso `anagrafica_immobile` e `nullOnDelete`; idempotente,
+nell'elenco di `UpgradeMigrationsRerunTest`. Il legame lo scrivono `CalcoloQuoteService` (`ad_personam`: nel calcolo per
+persona, senza tratto, solo se la persona ha una riga sola sull'unità; con il tratto, una riga di riparto per riga di
+titolarità) e `GenerateRateQuotesAction::scriviDettaglio`; resta nullo per `netting`, `quota_zero`, l'addebito diretto
+atemporale di chi ha più righe sull'unità e il dettaglio ricostruito di un piano senza righe di riparto.
+`GenealogiaDellaQuota::calcola()` dà per ogni riga di riparto le `parti` o `indecidibile` con la frase e `ferma`;
+`legamiDedotti()` per i piani senza legame. `NudiDellEstinzione::per()` dà `nudi`, `da`, `errore`, `fermo` e `consolida` a
+richiesta, anteprima e registrazione; `RegistraSubentroAction::applicaRighe()` divide la riga di un nudo che torna
+proprietario pieno solo in parte. `AnteprimaPassaggio` ritorna in più `nudi` e `cancello.avvisi`. Nel `registro` del
+passaggio: `versione` 3 (`GenealogiaDellaQuota` sotto la 3 applica la regola di prima) e, all'estinzione, `nudi`, che
+`FrasiObbligati::daSubentro()` legge per «Chi resta obbligato» dello storico. JS: `nudiInteri.ts`, `percentuale.ts`,
+`PassaggioNew.vue`. Test nuovi: `CateneDelConguaglioTest`, `EstinzioneConPiuUsufruttiTest`, `LegameRigheRipartoTest`.
+
+---
+
+## [1.11.0-beta.42] - Ogni quota, una volta sola
+
+**Non tocca il database.** Nessuna migrazione. Il registro di ogni passaggio di titolarità, che c'era già, porta da questa
+versione due informazioni in più: quali piani rate il suo conguaglio ha preso e, con la rinuncia o con il conguaglio
+annullato, quanto le parti hanno regolato fra loro. Il tema è uno: dopo un passaggio, ogni quota va sistemata da una sola fra
+le due strade — il ricalcolo del piano o il conguaglio del passaggio —, mai da tutte e due; dove nessuna delle due può farlo,
+la quota resta intestata a chi l'aveva e il pannello lo dice. Fino alla .41 in alcuni casi chi comprava pagava due volte i suoi
+giorni, chi vendeva riceveva un credito su quote mai sue, o i giorni di chi comprava restavano a carico di chi vendeva senza
+che nessuna delle due strade li spostasse.
+
+**Cambi di comportamento, detti per primi.**
+- **Un passaggio prende nel conguaglio i piani che il ricalcolo rifiuta, e solo quelli.** Il ricalcolo si rifiutava già per una
+  quota a giornale o per un movimento; il conguaglio invece prendeva le rate «emesse» e i piani con quote a giornale. Una rata
+  «emessa» senza quote a giornale (l'emissione scriveva quello stato anche su una rata fatta solo di quote a credito) finiva
+  così sistemata da tutte e due le strade; un piano con un incasso su una rata ancora in bozza da nessuna. Ora la regola è una
+  sola, per tutti e due: un piano con una quota a giornale, o con un incasso, un credito usato o un rimborso su una sua quota,
+  non si ricalcola, e un passaggio lo prende nel suo conguaglio. Una rata senza quote da pagare non diventa più «emessa», e il
+  messaggio dell'emissione lo dice.
+- **Il piano preso dal conguaglio di un passaggio resta com'è.** Non si ricalcola, non si elimina e non perde una voce, anche
+  dopo lo storno dell'incasso che lo aveva fermato, e il passaggio dopo lo prende a sua volta nel suo conguaglio. Anche i saldi
+  del Wallet che ha assorbito restano con il lucchetto e non si modificano né si eliminano: fino alla .41, stornato l'incasso,
+  tornavano modificabili. Annullare il conguaglio vuol dire che le parti hanno regolato fra loro, e il piano resta fermo. Per
+  ricalcolarlo si tolgono prima le sue quote a giornale e i movimenti, se ne ha, poi si annulla il passaggio dallo storico
+  della sua unità, lo si registra di nuovo e si ricalcola; un movimento tolto si registra di nuovo dopo il ricalcolo. Con un
+  passaggio registrato prima di questa versione l'ordine è un altro, e lo dicono i messaggi. Se le parti avevano già regolato
+  fra loro — con la rinuncia o annullando il conguaglio — il messaggio lo dice, con la cifra quando la rinuncia o
+  l'annullamento sono fatti con questa versione: ricalcolando, il condominio addebita a chi entra i suoi giorni, e
+  quell'accordo va rifatto fra le parti. L'inizio di una locazione e la fine di una locazione senza un nuovo inquilino non hanno
+  conguaglio e non prendono nessun piano, come nella .41, anche quando sono stati registrati con le versioni precedenti.
+- **Un piano che deve ancora seguire una vendita o un usufrutto si ricalcola prima di emettere.** Una vendita o un usufrutto
+  registrati quando il piano si poteva ancora ricalcolare non lo conguagliano: lo lasciano al ricalcolo. Fino alla .41 lo si
+  poteva emettere lo stesso, e al passaggio dopo chi vendeva riceveva un credito su quote mai sue (€ 1.006,03 su una spesa di
+  € 1.200,00). Ora l'emissione, l'incasso, la compensazione e il rimborso su una sua quota si rifiutano finché il piano non è
+  ricalcolato, e il messaggio dice quale passaggio deve seguire; quello dell'incasso, della compensazione e del rimborso dice
+  anche quale piano ricalcolare. Dopo l'inizio di una locazione o un cambio d'inquilino l'emissione e l'incasso non si
+  rifiutano, come fino alla .41: un piano emesso senza ricalcolo lascia le quote dell'inquilino a chi le aveva quando è stato
+  calcolato, il proprietario o l'inquilino di prima. Su quelle quote, e sui piani già emessi senza ricalcolo con le versioni
+  precedenti (le cui rate rimaste si emettono e si incassano come prima), il conguaglio del passaggio dopo si ferma e lo dice,
+  con la spunta nel cancello, anche quando la legge lascerebbe comunque quella spesa a chi esce.
+- **Il passaggio porta tutta la quota di chi esce.** La casella «La quota cambia» non c'è più: nessun numero diverso dalla
+  quota di chi esce aveva un esito giusto (Elsa al 100 % che «vende 50» a Carlo: il riparto addebitava a Carlo anche l'altra
+  metà). La vendita di una parte della propria quota, con chi vende che resta sulla parte che tiene, arriva più avanti; fino
+  ad allora il messaggio spiega come registrarla a mano.
+- **L'annullamento dell'emissione di una rata.** Non si blocca più per un passaggio registrato da questa versione: il piano
+  preso resta fermo comunque, e la rata riemessa ha le stesse quote. Per i passaggi registrati con le versioni precedenti la
+  guardia resta, ma guarda il piano e non più le due righe del conguaglio: si rifiuta quando il passaggio è stato registrato
+  dopo l'emissione della rata, anche se c'è stata la rinuncia o se il conguaglio è stato annullato. Fino alla .41 in quei due
+  casi l'annullamento dell'emissione passava, e annullare il conguaglio era la strada indicata per sbloccarlo; ora non più. Non
+  si rifiuta più per un passaggio che non ha preso quel piano, anche se ha la coppia sulla stessa gestione. Il messaggio dice
+  quale passaggio annullare prima e in che ordine.
+
+**Correzioni.**
+- **Chi comprava pagava due volte i suoi giorni** quando il piano aveva una rata «emessa» fatta solo di quote a credito: il
+  conguaglio scriveva la coppia e il ricalcolo dopo divideva di nuovo per giorni (€ 179,73 su una spesa di € 1.200,00).
+- **Con un incasso su una rata ancora in bozza succedeva il contrario**: il conguaglio non prendeva il piano, il ricalcolo si
+  rifiutava per l'incasso, e i giorni di chi comprava restavano a carico di chi vendeva finché l'incasso non si annullava. Ora
+  il conguaglio prende il piano.
+- **Dopo una costituzione d'usufrutto con la legge**, la strada indicata per ricalcolare spostava in silenzio l'ordinaria
+  dall'usufruttuario al nudo proprietario.
+- **L'estinzione di un usufrutto lo stesso giorno in cui il nudo proprietario ha comprato la nuda proprietà, quando aveva già
+  la piena proprietà di un'altra parte**: le due parti si sommano in una riga sola. Se quel giorno è arrivata anche la piena
+  proprietà, l'estinzione si rifiuta e dice in che ordine annullare e registrare di nuovo i passaggi, anche con due venditori
+  della nuda proprietà o con lo stesso venditore. Nei casi più rari il rifiuto dice il fatto e rimanda alla correzione a mano:
+  una riga piena associata a mano, un passaggio registrato insieme a una pertinenza, una vendita o donazione con riserva
+  d'usufrutto, un passaggio in cui esce il nudo proprietario, una vendita della nuda proprietà o un passaggio a favore del nudo
+  proprietario con una data successiva. Prima l'estinzione si registrava lo stesso e rendeva piena la nuda proprietà nata quel
+  giorno senza guardare la piena già presente, lasciando due righe piene aperte e sovrapposte, sull'unità e sulle pertinenze
+  spuntate.
+- **Un'estinzione con una data che precede la vendita della nuda già registrata** si rifiuta e lo dice: prima chi aveva
+  venduto la nuda restava proprietario pieno in silenzio.
+- **La costituzione e l'estinzione dell'usufrutto** sommano le righe dello stesso ruolo, come la vendita, anche
+  nell'annullamento.
+- **La scelta su chi paga l'ordinaria tocca anche un altro usufrutto della stessa gestione, e ora il pannello del passaggio lo
+  dice prima della conferma.** La scelta agisce sulla voce, e la voce vale per tutto l'anno della gestione: scegliendo la
+  legge, nei piani generati o ricalcolati dopo l'ordinaria della voce spostata va all'usufruttuario anche per i giorni di un
+  usufrutto nato con «come dice ogni voce», anche se già finito. Il pannello nomina quell'usufrutto, con l'unità e le date, e
+  per lasciare la voce al nudo proprietario basta toglierle la spunta. Fino alla .41 l'esito era lo stesso, ma il pannello non
+  lo diceva. Vale per gli usufrutti registrati dalla 1.11.0-beta.41, la prima versione che registra la scelta.
+- **Alla fine di una locazione senza un nuovo inquilino il pannello prometteva un conguaglio che non si calcola**: le quote non
+  ancora emesse intestate all'inquilino, in un piano che non si ricalcola più, risultavano «comprese nel conguaglio». Ora il
+  pannello dice che restano intestate all'inquilino, senza conguaglio, e che chi paga i giorni dopo la fine della locazione lo
+  decide l'amministratore, se serve con un saldo manuale dal Wallet sulla stessa gestione.
+- **Messaggi che si rimandavano l'uno all'altro.** L'annullamento di un passaggio non consiglia più di annullare prima il
+  conguaglio: non serve più, perché l'annullamento di un'emissione fatta dopo il passaggio non si rifiuta più per quel
+  passaggio. Quando la coppia l'ha già assorbita un altro piano emesso, il messaggio dà due strade, prima la breve (il passaggio
+  resta e il piano si emette così com'è), poi quella completa.
+- **Le frasi dicono la ragione vera per cui un piano non si riscrive** — quote a giornale, un incasso, un credito usato o
+  rimborsato, il conguaglio di un passaggio — nel rifiuto, nel pannello del passaggio, nel Wallet e sul pulsante «Ricalcola»,
+  con il rimedio di ognuna; nominano i passaggi con la loro unità, una volta sola anche con le pertinenze, e al plurale
+  quando sono più d'uno. Il riquadro del saldo bloccato propone di annullare le emissioni solo quando servono davvero.
+- **I rifiuti si leggono un pezzo per volta.** Il rifiuto dell'annullamento di un'emissione metteva i passaggi in fila in una
+  frase sola, tutto centrato: ora è allineato a sinistra, con i passaggi in elenco e i passi da seguire numerati, nell'ordine
+  in cui vanno fatti. Il nuovo rifiuto dell'emissione ha la stessa forma: quando anche il ricalcolo è fermo, i passi arrivano
+  fino al ricalcolo e alla nuova registrazione del movimento annullato. Così anche l'avviso del pulsante «Ricalcola», che
+  prima diceva solo «annulla prima le emissioni» e ora dice la ragione per cui il piano è fermo, i passaggi e i passi per
+  riaprirlo.
+- **Un'emissione o una rimozione rifiutate si presentavano come riuscite.** Quando il programma non emetteva — per esempio
+  con la data della delibera di uno straordinario corretta dopo il calcolo delle quote, o senza i conti contabili delle rate —
+  la finestra diceva «Emissione completata» con il numero delle rate scelte, e il motivo spariva. Togliere una voce da un piano
+  che non si riscrive diceva allo stesso modo «Voce rimossa». Ora la finestra dice il rifiuto e il motivo, e il cestino della
+  voce è spento finché il piano è fermo. Quando l'emissione riesce, l'esito conta le rate andate davvero a giornale, e
+  un'emissione che non ne porta nessuna («Nessuna rata emessa») si mostra come avviso, non come successo.
+- **La pagina del piano rate in tema scuro** restava chiara per metà (i riquadri dei totali, la copertura delle spese, la
+  tabella e le celle delle rate, la storia del budget): ora sono scuri anche loro. Il tema chiaro non cambia.
+- **Il Wallet sul telefono**: sotto i 768 px di larghezza la lista delle unità e il dettaglio si alternano, con «Torna
+  all'elenco» sempre in vista, invece del dettaglio schiacciato accanto alla lista. Il ruolo si legge «nudo proprietario»,
+  non con il nome interno del campo.
+- **Sicurezza.** La creazione di un piano rate accetta solo la gestione, le fatture, le voci, i saldi e le persone del
+  condominio dell'indirizzo, e il messaggio di rifiuto non dice niente di un altro condominio — né una cifra, né il numero di
+  un documento, né la natura di una gestione. L'emissione considera solo le rate del piano, e «Pubblica nascoste» solo un
+  piano del condominio dell'indirizzo: fino alla .41, con un indirizzo scritto a mano, rendeva visibili ai condòmini di un
+  altro condominio le rate emesse senza notifica.
+
+**Le guide.** La guida del passaggio di proprietà spiega quando un piano si ricalcola e quando lo prende il conguaglio, la
+quota intera, come registrare a mano la vendita di una parte, cosa vuol dire annullare il conguaglio e come si riapre un piano
+preso. La guida del piano rate dice i tre casi in cui il ricalcolo è bloccato, che un piano in bozza può essere fermo e
+l'annullamento delle emissioni con i passaggi; quella del Wallet come si corregge un saldo secondo la ragione per cui il piano
+è fermo, quando scatta il lucchetto (anche per il conguaglio di un passaggio) e che un piano con rate emesse non si elimina
+finché le emissioni non sono annullate, e lo dice anche il riquadro «Dati Blindati» della pagina. La guida della lista dei
+piani dice che le date di un piano già creato non si cambiano; «Ruoli e usufrutto» quando un piano non si ricalcola più.
+
+**Non ancora.** La successione, che la beta.41 dava per questa versione: arriva con la beta.44. L'estinzione di uno fra due
+usufrutti sulla stessa unità fa tornare proprietario pieno anche il nudo proprietario della parte su cui l'altro usufrutto
+continua, e una parte del conguaglio va anche a quel nudo proprietario; si corregge con la beta.43. Alcune catene di
+passaggi sulla stessa unità — dopo un usufrutto estinto o riservato, con due passaggi della stessa persona nello stesso
+giorno, con una pertinenza che ha un nudo proprietario diverso o è rimasta in parte a un comproprietario — possono dare
+ancora un conguaglio sbagliato, o fermarlo dove la parte che passa è certa: si correggono con la beta.43. Su un piano senza
+dettaglio del riparto (generato prima della 1.11.0-beta.29), la rivendita della nuda proprietà dopo una costituzione «come
+dice ogni voce» non conguaglia: chi rivende perde la parte dei giorni di chi compra (€ 401,10 su una spesa di € 1.200,00);
+si corregge con la beta.43. L'inizio di una locazione su un piano già fermo: la parte dell'inquilino dal giorno del
+contratto resta al proprietario, mentre il pannello annuncia ancora che da quel giorno le voci a carico dell'inquilino
+cambiano intestatario (si corregge con la versione dedicata alla locazione). La vendita di una parte della propria quota. Un
+passaggio dentro una catena può arrotondare di qualche centesimo diversamente dal conto sull'intera gestione.
+
+**Per chi sviluppa.** `PianoRate::eImmutabile()` = scrittura, movimento (`importo_pagato ≠ 0`) o conguaglio di un passaggio
+(`conguagliato()`); `immutabiliFra()` per gli insiemi; `ragioniDelFermo()`, `fraseDelFermo()`, `rimediDelFermo()`.
+`passaggiDaSeguire()` (solo vendita e usufrutto) per la guardia dell'emissione (`EmissioneRateController::fraseDaRicalcolare()`)
+e di incasso, compensazione e rimborso (`fraseRicalcolaPrima()`; incasso e compensazione la sollevano come
+`PianoDaRicalcolareException`, il rimborso come errore di validazione su `rata_quote_id`). `ragioniInParole()`,
+`vociDeiPassaggi()`, `rimediDelFermo(inElenco: true)` e `fermoPerLaPagina()`, che li dà già divisi all'avviso del pulsante
+«Ricalcola» (prop `fermo_del_piano`, calcolata con `conIPassaggiCalcolati()`). I rifiuti dell'emissione e del suo
+annullamento scrivono i passaggi in elenco e i passi numerati in testo semplice (`EmissioneRateController::elencoPuntato()`,
+`passiNumerati()`: riga vuota, «• », «1. »), che la pagina del piano legge con
+`resources/js/lib/gestionale/pianiRate/blocchiMessaggio.ts`. Nel `registro` del passaggio: `versione` 2, `piani_presi`
+(scritto alla registrazione, anche con la rinuncia; vuoto per i passaggi senza conguaglio, `Subentro::haUnConguaglio()`),
+`regolato_fuori` (per gestione, con la rinuncia o con l'annullamento del conguaglio). Per i passaggi senza `piani_presi`
+(registrati prima di questa versione) vale la regola di prima, applicata all'ora del passaggio (`scritturaEntro()`,
+`presoSoloInParteDa()`). `Rata::aGiornale()` per «emessa». Test: `StatoDelPianoDopoPassaggioTest`,
+`UsufruttoRigheSommateTest`, `QuotaDelPassaggioTest`, `CreazionePianoRateIngressoTest`, la griglia degli invarianti dei
+passaggi con il ricalcolo prima dell'emissione; vitest della modale del Wallet e di `blocchiMessaggio`.
+
+---
+
+## [1.11.0-beta.41] - Ognuno la sua parte
+
+**Non tocca il database.** Nessuna migrazione: la scelta fatta al passaggio e le voci spostate si scrivono nel registro
+del passaggio, che c'era già. Due temi, tutti e due di denaro che poteva finire sulla persona sbagliata (Code 170 e 171):
+**l'unità che è in parte in piena proprietà e in parte in nuda proprietà e usufrutto**, e **chi paga l'ordinaria dal
+giorno in cui nasce un usufrutto**.
+
+**Cambi di comportamento, detti per primi.**
+- **Un'unità «mista» si divide per le quote registrate.** Quando un'unità è in parte di un proprietario pieno e in parte
+  in nuda proprietà più usufrutto, ognuno paga la sua parte. Prima la voce sul «Proprietario» andava tutta al
+  proprietario pieno: con Bice proprietaria al 50 %, Ugo usufruttuario ed Elsa nuda proprietaria dell'altra metà, su una
+  spesa di € 1.200,00 Bice pagava € 1.200,00. Ora paga € 600,00, e l'altra metà va a Elsa (voci sul «Proprietario» e
+  straordinarie) o a Ugo (voci sull'«Usufruttuario»). Vale per le voci, per la spesa addebitata direttamente all'unità,
+  per i giorni senza inquilino e per i saldi pregressi, e solo quando le quote registrate fanno 100 in ogni periodo:
+  altrimenti il calcolo resta quello di prima. Cambiano i piani generati o ricalcolati da adesso; le rate emesse non si
+  toccano. L'avviso dell'unità mista nel pannello del passaggio non c'è più, perché il caso ora si divide.
+- **Alla costituzione e alla riserva d'usufrutto il modulo chiede chi paga l'ordinaria dal giorno dell'atto.**
+  «All'usufruttuario», la proposta di legge (art. 1004 c.c.), è già scelto; l'alternativa è «Come dice ogni voce». Con la legge il conguaglio
+  è quello di prima: nella riserva l'ordinaria resta a chi vende, che resta usufruttuario; nella costituzione passa
+  all'usufruttuario per i giorni. In più le voci ordinarie sul «Proprietario» passano su «Usufruttuario», così anche un
+  piano generato o ricalcolato dopo dà all'usufruttuario l'ordinaria di quelle voci. Prima il conguaglio la dava
+  all'usufruttuario e un piano ricalcolato al nudo proprietario: lo stesso euro a due persone diverse. Con «Come dice ogni voce» le voci non si
+  toccano e il conguaglio le segue una per una.
+- **Una voce vale per tutta la tabella.** Spostarla su «Usufruttuario» cambia chi paga anche nelle altre unità in usufrutto
+  della stessa tabella: il modulo le elenca, con l'importo dell'ultimo piano, e ogni voce si può togliere dall'elenco.
+  Dove non c'è usufrutto paga il proprietario, come prima. Una voce compresa in un piano approvato ha la ripartizione
+  bloccata: si elenca, non si sposta, e il pannello dice perché. Lo stesso vale per tutte le voci della gestione quando un
+  piano approvato le comprende tutte senza elencarle una per una, come i piani creati con le versioni precedenti: qui il
+  passaggio è più prudente della pagina della voce, che quelle voci non le blocca. Se quel piano ha già rate a giornale,
+  la scelta vale comunque per quel piano, anche sulle quote ancora in bozza: nella costituzione con il conguaglio, nella riserva perché l'ordinaria resta a chi vende. Se non ha niente a giornale, la scelta non
+  lo raggiunge: non c'è conguaglio, e il piano generato o ricalcolato dà l'ordinaria di quelle voci al nudo proprietario
+  (nella riserva, a chi compra). Per applicarla si riporta il piano in bozza dalla sua pagina prima di registrare il
+  passaggio. Il pannello dice quale dei casi è, con il nome del piano.
+- **Nel conguaglio passa solo la quota che esce.** Se chi esce tiene un'altra parte dell'unità, per esempio Ugo
+  proprietario pieno di metà e usufruttuario dell'altra metà che vende la metà piena, la spesa di quell'altra parte resta
+  sua, e le frasi del conguaglio lo dicono voce per voce. Le rate in bozza di quel piano comprendono anche la parte che
+  resta: restano intestate a chi vende, perché la quota non passa intera, e la parte che passa si regola nel conguaglio.
+- **Il conguaglio si ferma quando non separa con certezza la parte che passa.** Succede quando una persona ha avuto più
+  quote sulla stessa unità per strade diverse: ne ha ceduta una e ricomprata un'altra, ne tiene una arrivata da chi l'aveva prima mentre ne cede un'altra, ha perso un usufrutto e poi ha
+  comprato da un nudo proprietario, o l'usufrutto che si chiude era stato costituito da chi era tornato proprietario
+  pieno. E sui piani generati prima della 1.11.0-beta.29 (con la 1.10 o con le prime beta della 1.11), che non hanno il dettaglio del riparto, quando la titolarità di
+  un'unità mista cambia una seconda volta dopo la generazione. In questi casi il conguaglio proponeva cifre sbagliate, in
+  più o in meno. Ora non ne propone e il pannello dice perché: le bozze restano a chi le ha, e se serve un conguaglio si
+  scrive con un saldo manuale dal Wallet sulla stessa gestione. Il collegamento fra il riparto e le quote di ogni persona
+  arriva con la beta.42, e con quello queste catene torneranno ad avere il loro conguaglio.
+- **La scelta è obbligatoria.** Una registrazione che arriva senza (un modulo rimasto aperto da prima dell'aggiornamento)
+  viene rifiutata, con l'invito a ricaricare la pagina.
+
+**Dopo il passaggio.**
+- **Annullando il passaggio** le voci spostate restano dove sono. L'annullamento lo dice prima di confermare, con i
+  coefficienti che le voci avevano prima: se vanno riportate com'erano, si cambiano dalla pagina della voce.
+- **Lo storico** del passaggio ha una riga «Ordinaria» con la scelta e, con la legge, le voci spostate con i coefficienti
+  di prima e di dopo. I passaggi registrati prima di questa versione non l'hanno: allora la scelta non c'era.
+- **Le catene.** L'estinzione di un usufrutto nato «come dice ogni voce» ne segue la scelta e lo dice, con la data del
+  passaggio da cui viene; una pertinenza segue la scelta dell'unità. Nella vendita successiva ogni voce passa dalla data
+  in cui era arrivata a chi vende.
+- **Se l'elenco delle voci cambia fra l'anteprima e la conferma** (un piano riportato in bozza, una voce nuova creata da
+  un collega), la registrazione si ferma, il pannello si ricalcola e lo dice.
+- **Le frasi del conguaglio dicono la scelta.** Una voce che resta per «come dice ogni voce» lo dice, invece di «la
+  competenza finisce prima del…»; una voce divisa fra due ruoli nomina le sue due parti.
+
+**Correzioni.** Tutte nel conguaglio dei passaggi, e tutte di denaro su una persona sbagliata.
+- **Il conguaglio spostava anche la parte dell'unità che chi esce tiene.** Ugo, proprietario pieno di metà e usufruttuario
+  dell'altra, vende la metà piena: chi comprava pagava i giorni dell'unità intera, € 904,11 invece di € 452,05 su una spesa
+  di € 1.200,00. Lo stesso nella costituzione dell'usufrutto sulla metà piena e, con la voce sul «Proprietario»,
+  all'estinzione dell'usufrutto che Ugo ha sull'altra metà, dove alla nuda proprietaria si addebitavano € 452,05 senza
+  ragione. E quando chi esce aveva comprato da un proprietario in quella situazione: passavano anche le righe che il
+  venditore di prima teneva.
+- **La vendita della nuda proprietà dopo una costituzione con la legge e il piano ricalcolato** non faceva passare
+  niente a chi comprava, quando una voce era rimasta sul «Proprietario» (bloccata da un piano approvato, o tolta
+  dall'elenco) e il piano ricalcolato ne dava l'ordinaria al nudo proprietario: chi vendeva restava a pagare 245 giorni
+  dopo l'atto, € 805,48.
+- **Una voce divisa fra «Inquilino» e «Proprietario», dopo la fine di una locazione:** nella vendita successiva chi
+  comprava pagava € 426,92 invece di € 400,00 su una spesa di € 1.000,00, perché tutta la quota si divideva sui giorni
+  della sola parte dell'inquilino.
+- **L'estinzione di un usufrutto con più nudi proprietari** risultava passata al primo soltanto: chi poi comprava dal primo
+  pagava il godimento dell'unità intera, € 703,56 invece di € 351,78, e chi comprava dall'altro niente. Ora ognuno riceve
+  la parte della sua quota, anche quando l'estinzione è stata registrata con una versione precedente.
+- **Un usufrutto estinto con il piano già emesso tornava nella vendita successiva.** Chi era proprietario pieno di metà e
+  usufruttuario dell'altra perde l'usufrutto, poi vende la metà piena: chi comprava pagava anche l'usufrutto, che il
+  conguaglio dell'estinzione aveva già regolato.
+- **Le quote generate con la 1.7.x non dicono quanta parte di ogni rata è saldo pregresso.** In una vendita il
+  conguaglio le leggeva come tutta spesa dell'anno, e dava a chi compra anche il pregresso di chi vende. Ora, quando il
+  piano ha assorbito un saldo pregresso di quell'unità, su quelle quote il conguaglio si ferma e lo dice: le bozze restano
+  a chi le ha, e se serve un conguaglio si scrive a mano dal Wallet. Senza un saldo assorbito la quota è tutta spesa, come
+  prima.
+- **Un saldo intestato all'unità poteva essere ripartito per più del suo importo** quando la stessa persona aveva due righe
+  sull'unità, per esempio chi vende e poi ricompra: € 2.000,00 su un saldo di € 1.000,00. Ora le quote della stessa
+  persona si sommano e il totale torna.
+
+**Le guide.** «Ruoli e usufrutto» è riscritta: chi paga l'ordinaria al passaggio, l'unità mista, e gli accordi fra
+usufruttuario e nudo proprietario nelle note interne della riga del titolare, al posto del consiglio di una ripartizione
+70/30. La guida del passaggio di proprietà spiega la scelta, le voci bloccate e come applicare la scelta quando un piano
+approvato le blocca, quando il conguaglio si ferma, e cosa resta dopo un annullamento. Nella
+modifica di un titolare la quota spiega che su un'unità mista dice anche come si divide l'unità.
+
+**Non ancora.** Le voci create dopo il passaggio, e quelle delle gestioni che si apriranno, partono dal «Proprietario»:
+per darle all'usufruttuario si mettono su «Usufruttuario» dalla pagina della voce. Il pannello lo dice; un richiamo
+quando si genera il piano arriverà più avanti (Coda 213). La spesa addebitata direttamente a un'unità non ha una voce da
+spostare: con la legge il conguaglio la lascia all'usufruttuario, mentre un piano ricalcolato la dà al nudo proprietario.
+Come deve andare è da decidere (Coda 216). I saldi pregressi si calcolano ancora senza periodo: su
+un'unità diventata mista con un passaggio il pregresso resta ripartito come prima (Coda 174). La successione arriva con la
+beta.42.
+
+**Per chi sviluppa.** `UnitaMista` (`app/Services/Riparto`) dice chi aggiungere al ruolo che paga; un'unità non mista non
+passa dal codice nuovo, e la suite intera lo prova al centesimo. `VociDaSpostare` trova le voci candidate, le sposta e ne
+calcola l'impronta che il modulo rimanda alla conferma. Nel `registro` del passaggio: `ordinaria_dopo_atto`,
+`voci_spostate` (con i coefficienti di prima e di dopo), `ordinaria_ereditata_da`. Il conguaglio segue l'ordinaria per
+lato (le voci sul «Proprietario» e le altre), ciascuno con la sua data d'arrivo. In `ConguaglioPassaggio` una riga di
+riparto passa solo se è della quota che esce: restano fuori i ruoli che chi esce tiene o ha già ceduto
+(`AnteprimaPassaggio::ruoliCheRestano`), quelli che il predecessore non ha mai ceduto, e la parte non arrivata di un
+usufrutto estinto con più nudi proprietari (`anelliVerso`). Le righe di ripiego sono un gruppo a sé. Le quote senza
+composizione con un saldo pregresso assorbito dal piano (`saldi.piano_rate_id`) non si conguagliano (`senzaComposizione`).
+Il conguaglio si ferma, con la ragione, sulle unità in cui una persona ha avuto più quote per strade diverse
+(`catenaAmbigua`) e su un piano senza righe di riparto, su un'unità mista, quando un passaggio è stato registrato dopo la
+generazione (`registro.quota_max_id`). Per le voci bloccate l'anteprima manda `frasi_bloccate`, una per caso con i piani che bloccano la voce, secondo che
+il piano abbia rate a giornale, non ne abbia, o le blocchi dalle fatture di uno straordinario (`VociDaSpostare::pianiCheBloccano`).
+Test: `UnitaMistaTest` (35), `OrdinariaDopoAttoTest`, `QuotaCheEsceTest`, `ConguaglioQuoteSenzaComposizioneTest`, vitest
+della spunta (`vociDaSpostare.test.ts`).
+
+---
+
+## [1.11.0-beta.40] - Chi versa per un altro
+
+**Non tocca il database.** Nessuna migrazione: il legame con chi ha versato usa il campo `riferimento` delle righe
+contabili, che c'era già. Un tema: **chi versa per un altro** (Coda 167). Il compratore che salda l'arretrato di chi ha
+venduto, il figlio che paga la rata della madre: il debito resta di chi deve, e chi ha versato resta scritto.
+
+Con questa beta entra anche un principio che guiderà il resto del programma: ciò che la legge impone verso il condominio
+non si sceglie; come si ripartiscono debiti e crediti fra le persone lo decide l'amministratore. Quando le strade
+legittime sono più di una e quella giusta dipende da un accordo che il programma non conosce, il programma non sceglie
+in silenzio: chiede.
+
+**Cambi di comportamento, detti per primi.**
+- **Il credito di una gestione sulle rate di un'altra.** Quando il credito di una gestione coprirebbe una rata di
+  un'altra (il credito dell'ordinaria sulla rata del tetto), il modulo chiede «Il credito passa di gestione?»: «Solo
+  sulla sua gestione» o «Anche sulle altre gestioni». La domanda compare solo quando la risposta cambia gli importi, e
+  senza risposta il server rifiuta l'incasso. Prima la casella di conferma compariva solo in una parte dei casi, e il
+  server registrava comunque il passaggio, con la nota «confermata dall'amministratore». Vale anche senza «Versato da».
+- **Il credito su più gestioni, in automatico.** Il credito di una gestione copre da sé solo le rate della sua gestione,
+  e i soldi versati pagano le rate dalla più vecchia. Prima soldi e credito si spendevano insieme per scadenza, su
+  qualunque gestione. Con una gestione sola non cambia niente. Arrivando da un link che indica già la rata (una
+  segnalazione, «Compensa» dall'estratto conto, il riquadro «Crediti da compensare»), senza «Versato da», il modulo fa
+  come prima.
+- **La gestione dell'incasso.** Un incasso che paga rate di più gestioni, con il filtro «Gestione» vuoto, chiede a quale
+  gestione va. Prima il server prendeva la gestione della quota con l'id più basso: un criterio casuale, non sempre
+  quello che il modulo lasciava intendere. Contano anche le rate coperte solo dal credito, perché la gestione intesta sia
+  l'incasso sia la compensazione.
+
+**«Versato da».**
+- Nel nuovo incasso, sotto la persona, il campo «Versato da»: chi ha fatto davvero il bonifico, fra le persone del
+  condominio. Il pagante resta chi deve, e il denaro chiude le sue rate come sempre. La riga di cassa dice «per conto
+  di», le righe che chiudono il debito dicono «versato da» e lo legano nel `riferimento`. Senza denaro versato il campo
+  non ha effetto: una compensazione a solo credito non ha nessuno che versa.
+- **Il credito di chi deve**: con «Versato da» il modulo chiede «Resta a …» (prima i soldi versati, il credito
+  resta suo) o «Si usa adesso» (prima il credito, poi i soldi). Niente è già scelto; finché manca la scelta «Conferma
+  incasso» è spento con il motivo accanto, e il server rifiuta.
+- **La parte in più**: va a chi ha versato, su una sua rata **emessa** in questo condominio — su una bozza
+  bloccherebbe il ricalcolo del suo piano. Il modulo propone la prima ancora da pagare nella gestione dell'incasso; una
+  rata di un'altra gestione si sceglie a mano, con l'avviso. Se chi ha versato non ha rate emesse qui, la parte in più
+  non si registra: si registra il debito e la differenza si restituisce.
+- **Dove si vede.** Elenco e dettaglio degli incassi (con la ricerca per nome di chi ha versato); l'estratto conto di chi
+  deve (la nota sulla riga) e quello di chi ha versato (il riquadro «Versamenti per conto di altri», a schermo e nel
+  PDF, che non tocca il suo saldo); la Prima nota e i mastrini, dove la controparte è «chi ha versato per conto di chi
+  deve». Lo storno annulla anche la parte in più e il riquadro lo segna «stornato».
+- Un'anagrafica che un incasso nomina come «Versato da» non si elimina.
+
+**Correzioni.**
+- **La verifica incassi di una rata** si chiudeva quando la somma dei pagamenti arrivava al totale: l'anticipo di un
+  condòmino nascondeva il debito di un altro. Ora si chiude solo quando ogni quota è pagata, e lo storno la riapre solo
+  se la rata non è più saldata.
+- **Richieste costruite a mano.** Nel salvataggio di un incasso un id della persona mandato come elenco diventava
+  l'anagrafica n.1, anche di un altro condominio; per cassa, gestione e rate dava una pagina d'errore (Coda 208, chiusa).
+  Ora è un errore di validazione. L'attività chiusa da un incasso arrivato da una segnalazione deve essere di questo
+  condominio.
+
+**Non ancora.** La tabella di distribuzione in cui l'amministratore vede e cambia, rata per rata, quanto paga il credito
+e quanto i soldi, con le strade possibili come proposte, arriva in una beta dedicata (Coda 210): è lì
+che finiscono il «prima il credito» senza «Versato da», la priorità fra gestioni e l'indicazione di chi paga (art. 1193
+c.c.). Stornare un incasso la cui parte in più è già stata usata fa ricomparire un debito senza avvisare, come per il
+pagante da sempre (Coda 209).
+
+**Per chi sviluppa.** Quale credito va su quale rata lo decide una funzione pura, `PianoCreditoIncasso`, con lo specchio
+nel modulo (`pianoCreditoIncasso.ts`) e una tabella di casi condivisa (`tests/Fixtures/piano_credito_incasso.json`):
+se i due smettono di calcolare uguale, un test è rosso. Incasso e storno aggiornano lo scadenziario dalle stesse coppie
+rata-persona (`EventiRataCondomino`). Le nuove guardie sono eccezioni della famiglia `IncassoNonRegistrabileException`:
+il modulo torna compilato con il messaggio sul campo giusto. Test: `IncassoPerContoDiTest` (67), `PianoCreditoIncassoTest`,
+vitest del modulo e del pianificatore.
+
+---
+
+## [1.11.0-beta.39] - Ognuno apre solo le sue porte
+
+**Non tocca il database.** Una beta di sicurezza. Contiene le tre falle segnalate da kta1kri (PR #48), le quattro Code
+trovate nella stessa revisione (183–186) e quello che tre giri di revisione avversariale hanno trovato intorno. Due
+falle si raggiungevano **senza nessun permesso concesso a mano**, e una senza nemmeno il login: conviene aggiornare
+chiunque usi il portale dei condòmini.
+
+**Cambi di comportamento, detti per primi.**
+- Posta, cron e registro delle email si aprono solo con il permesso «Gestisci impostazioni generali», che di serie ha solo
+  l'amministratore. Dalla 1.9.0 alla 1.11.0-beta.38 bastava il login: condòmino, fornitore e collaboratore aprivano le
+  tre pagine digitando l'indirizzo.
+- `/fetch-condomini` risponde solo a chi gestisce (amministratore, collaboratore, chi ha «Accesso pannello
+  amministratore» o «Visualizza condomini»). Condòmini e fornitori ricevono 403.
+- Dal portale un condòmino scarica per id solo i documenti che vede nel suo elenco: pubblicati e approvati, o caricati da
+  lui. Il documento indirizzato a un condòmino resta suo, quello del condominio è di tutto il palazzo. I documenti
+  caricati dalla scheda di un'unità (rogiti, contratti) restano all'amministratore.
+- Riprendi e annulla, nel recupero di un ripristino fallito, rispondono solo mentre il ripristino è in corso, e accettano
+  al massimo cinque password sbagliate al minuto. Chi ha ancora aperta la pagina del ripristino non è toccato dal limite.
+- Per i ruoli su misura **senza** «Accesso pannello amministratore», i permessi di modifica e cancellazione di eventi,
+  comunicazioni, documenti e segnalazioni valgono solo sui record dei propri palazzi. Restano fuori: rate e compiti del
+  gestionale, allegati delle unità, record indirizzati ad altre persone, record che stanno anche in un palazzo altrui.
+  Nell'elenco la matita e il cestino compaiono ancora su quei record e portano a una pagina 403: la correzione è in
+  roadmap. I ruoli di serie non cambiano.
+- Tolta la rotta `/condomini/options`, che nessuna pagina usava.
+
+**Sicurezza.**
+- **Segnalazione di un pagamento** (segnalata da kta1kri). Fino alla beta.38 chiunque avesse «Visualizza eventi» — cioè
+  ogni condòmino e ogni fornitore di serie — poteva segnalare come pagato **qualunque** evento di **qualunque** palazzo,
+  compresi i compiti nascosti dell'amministratore: bastava l'id. Ora la segnalazione la fa solo la persona a cui la rata
+  è intestata, e solo su una rata.
+- **Segnalazioni in un palazzo altrui** (segnalata da kta1kri). Un condòmino poteva aprire una segnalazione in un
+  condominio che non è il suo, indicandone l'id. La stessa lacuna c'era in eventi, documenti e comunicazioni lato
+  condòmino (Coda 184): ora il condominio indicato deve essere uno dei propri.
+- **Elenco dei condomìni** (segnalata da kta1kri). `/fetch-condomini` restituiva a chiunque avesse il login l'elenco di
+  tutti i condomìni dell'installazione.
+- **Posta e cron**. Oltre a leggere destinatari e oggetti di tutte le email e il token del cron, qualunque utente col
+  login poteva farsi mandare la password SMTP salvata su un server suo (test di connessione) e deviare tutta la posta
+  dell'installazione, compreso il link per reimpostare la password dell'amministratore.
+- **Documenti delle unità**. Un condòmino di serie scaricava per id il rogito o il contratto caricato per l'unità di un
+  altro, e i documenti non ancora pubblicati o approvati del suo palazzo.
+- **Ripristino**. Dopo un qualunque ripristino, la rotta di recupero restava aperta per sempre, senza login e senza
+  limite di tentativi: un modo per provare la password dell'amministratore aggirando il blocco del login e il secondo
+  fattore.
+- **Dati personali nella pagina di modifica di un documento** (Coda 183). La pagina mandava al browser l'elenco di tutti
+  i condomìni e di tutte le anagrafiche, con codice fiscale, email e telefono. La pagina non li leggeva.
+- **Permessi concessi da soli** (Coda 185). Con un permesso di modifica o cancellazione concesso senza l'accesso al
+  pannello si toccavano i record di ogni palazzo. Ora vale il limite descritto sopra, fra i cambi di comportamento.
+
+**Per chi sviluppa.** Un test nuovo, `RotteSoloLoginTest`, elenca ogni rotta protetta dal solo login e fallisce quando ne
+compare una nuova senza un motivo scritto, o quando un controllo nel controller sparisce, anche solo commentato. La
+domanda «questo condominio è dell'utente?» ora ha una regola sola, `CondominioDellUtente`, e il limite dei permessi
+concessi fuori dal pannello un trait solo, `PerimetroFuoriPannello`.
+
+**Grazie** a kta1kri, che ha trovato e segnalato le prime tre falle. I suoi due commit entrano con il suo nome.
+
+## [1.11.0-beta.38] - Chi vende resta, da usufruttuario
+
+**Non tocca il database.** Un tema: la vendita o donazione della nuda proprietà con riserva d'usufrutto, il caso dei
+genitori che donano la casa ai figli e continuano ad abitarci. E alcuni cambi di comportamento che valgono anche fuori
+dalla riserva, detti qui in testa.
+
+**Cambia anche fuori dalla riserva.**
+- Il pannello «Cosa cambierà» non chiede la spunta quando nessuna quota cambia persona. Le quote che restano a chi le ha —
+  per legge (l'ordinaria dell'usufruttuario, la straordinaria del nudo proprietario), perché sono di soli saldi pregressi,
+  o perché la spesa è tutta di chi vende — compaiono nel riquadro «Quote che questo passaggio non tocca», senza spunta.
+  Vale anche per la costituzione e l'estinzione dell'usufrutto, la vendita della sola nuda proprietà e la vendita piena.
+- La frase della costituzione d'usufrutto su chi resta obbligato era sbagliata: diceva che verso il condominio si
+  risponde «secondo la natura della spesa». Dal 2013 nudo proprietario e usufruttuario rispondono in solido (art. 67 ult.
+  co. disp. att. c.c.); la natura della spesa conta fra di loro. Cambia anche nello storico delle costituzioni già
+  registrate.
+- La nota di solidarietà: nella vendita della sola nuda proprietà nomina anche l'usufruttuario e l'art. 67, per nome solo
+  quando il programma sa con certezza su quale quota sta l'usufrutto; una vendita datata nell'anno prima ha la nota anche
+  se è registrato solo l'esercizio in corso; «nessuna quota è intestata a chi compra» dice l'eccezione dei saldi intestati
+  all'unità, che si addebitano quando si genera il piano.
+- Da «Modifica associazione» non si cambia più il ruolo di una riga che un passaggio ha toccato, anche chiusa e anche dei
+  passaggi già registrati con la versione precedente; quota, date e note sì. Per correggere il ruolo si annulla il
+  passaggio.
+- L'annullamento di un passaggio non avvisa più a vuoto per un consuntivo dell'anno prima generato dopo: quando il piano
+  ha il dettaglio del riparto, decide il riparto.
+- Nello storico le righe portano il nome del passaggio con la maiuscola, e l'usufrutto dice «Usufrutto · costituzione» o
+  «Usufrutto · estinzione».
+- L'esempio nella nota del cancello diceva «conguaglio concordato fra le parti», e chi lo seguiva scriveva la rinuncia
+  nella nota senza spuntarla: la coppia finiva nei saldi. Ora l'esempio è neutro.
+
+**La casella.** Nel modulo della vendita, «Chi vende o dona resta usufruttuario». Chi vende resta sulla stessa quota come
+usufruttuario, chi compra entra nudo proprietario; la quota è quella intera di chi vende, e la riserva si dichiara solo da
+un proprietario pieno. Nello storico il passaggio si chiama «Vendita o donazione con riserva d'usufrutto», e si annulla
+come ogni altro. L'usufrutto a una persona diversa da chi vende resta rifiutato: si registra a mano, e il messaggio ora
+dice anche che le righe aperte a mano valgono da sempre per il riparto.
+
+**Chi paga cosa.** Nelle rate già emesse e nelle bozze dei piani già emessi l'ordinaria resta a chi vende, che è
+usufruttuario (art. 1004 c.c.): non si conguaglia. La straordinaria segue la competenza — la data della delibera, o
+quella dichiarata sulla fattura — e dal giorno dell'atto è del nudo proprietario (art. 1005 c.c.). Un piano generato o
+ricalcolato dopo l'atto addebita invece secondo i coefficienti della tabella: le voci sul «Proprietario» vanno a chi
+compra la nuda proprietà. Perché l'ordinaria resti a chi vende, la voce va su «Usufruttuario», non su «Inquilino», che su
+un'unità affittata la farebbe pagare all'inquilino. Il pannello lo dice quando lo legge nel riparto di un piano non ancora
+emesso.
+
+**Chi resta obbligato.** Dal giorno dell'atto nudo proprietario e usufruttuario rispondono in solido verso il condominio
+(art. 67 ult. co.). Se chi compra la nuda proprietà risponda anche dell'arretrato di chi vende (art. 63 co. 4) la
+giurisprudenza non l'ha chiarito: il programma lo dice, e decide l'amministratore. La copia autentica si registra come in
+ogni vendita, ma non libera chi vende, che resta usufruttuario. La nota di solidarietà tiene separati l'arretrato e le
+quote successive all'atto.
+
+**I due genitori.** La seconda riserva sulla stessa unità — l'altro genitore che dona la propria metà — si somma alla
+prima, come nella vendita normale. Registrate tutte e due, l'unità torna coerente.
+
+**I limiti, detti.**
+- Un'unità in parte in piena proprietà e in parte in nuda proprietà e usufrutto (la riserva di un solo comproprietario,
+  con l'altro che resta proprietario pieno): i piani generati o ricalcolati non la sanno dividere, e il pannello lo avvisa
+  con nomi e quote. Si corregge prima della 1.11 stabile.
+- Nelle unità in usufrutto l'ordinaria sulle voci «Proprietario» va al nudo proprietario nei piani, mentre il conguaglio
+  sulle rate emesse la dà all'usufruttuario: si porta a una regola sola prima della 1.11 stabile, dopo aver sentito gli
+  amministratori sul forum.
+- Un saldo intestato all'unità, in un piano generato dopo un passaggio, va a chi è titolare quando si genera il piano: da
+  decidere prima della stabile. Le frasi ora lo dicono.
+- La vendita di una parte della propria quota non è prevista, e «La quota cambia» oggi la lascia registrare in modo
+  sbagliato: da decidere prima della stabile.
+- Quando muore uno dei due genitori usufruttuari, a chi va la sua parte d'usufrutto (l'accrescimento) arriva con la
+  successione.
+
+**Per chi sviluppa.** Un file di test nuovo e permanente, `InvariantiPassaggiTest`, controlla su tutte le combinazioni
+dei passaggi le regole che non devono mai rompersi: il passaggio non cambia il totale dell'unità, le coppie del
+conguaglio sommano a zero, l'anteprima è ciò che si scrive, l'annullamento rimette tutto com'era. Un tipo di passaggio
+nuovo si aggiunge all'elenco degli scenari con poche righe.
+
+## [1.11.0-beta.37] - Il passaggio sbagliato si annulla
+
+**Tocca il database: quattro colonne nuove su `subentri`** (`annullato_il`, `annullato_da`, `nota_annullamento`,
+`registro`; migrazione `2026_09_28_100000_add_annullamento_to_subentri_table`, rieseguibile, senza travaso di dati). Un
+solo tema: annullare un passaggio di titolarità registrato per sbaglio.
+
+**Il problema.** Fino a ieri un passaggio registrato non si annullava. Con la data del rogito sbagliata, o la persona
+sbagliata, si correggeva a mano: si chiudevano righe, si riassociava, e le rate passate a chi era entrato e il conguaglio
+restavano dove il passaggio li aveva messi.
+
+**Dallo storico, l'ultimo passaggio, a rate intatte.** Nello storico dell'unità («Chi ha avuto questa unità»), sotto il
+passaggio, c'è «Annulla il passaggio…». Prima di confermare dice solo ciò che quel passaggio ha davvero toccato — le
+righe di titolarità che ha scritto, le quote delle rate passate a chi era entrato, con le regole di prima, il conguaglio
+— e che cosa resta da fare; serve una nota. Si annulla solo l'ultimo passaggio dell'unità, insieme alle pertinenze
+passate con lei, e solo se dopo il passaggio non ha rate emesse, pagamenti (anche di un altro condòmino) o pagamenti
+segnalati dal portale non ancora verificati su una quota che l'annullamento cambierebbe, se nessuna riga sua è stata
+corretta a mano, se una riga associata a mano dopo non si scontra con quella che tornerebbe e se il conguaglio non è già
+in un piano. Altrimenti il comando non c'è, e «perché?» dice che cosa sistemare prima: le rate emesse, piano per piano,
+con la via intera se ci sono già pagamenti; il conguaglio da annullare prima, quando l'annullamento dell'emissione lo
+chiede; il passaggio che viene dopo, e da quale storico si annulla; la riga in conflitto, con la via giusta a seconda che
+sia stata associata dopo o corretta da prima.
+
+**Il passaggio annullato resta.** Nello storico, con la data, chi l'ha annullato e la nota; nessun conto lo legge più:
+né il riparto, né la nota di solidarietà, né il prospetto degli oneri. Resta anche su un'unità che l'annullamento lascia
+senza titolari. La persona entrata per sbaglio si può cancellare, e lo storico la nomina ancora.
+
+**Il registro.** Da questa versione ogni passaggio scrive che cosa ha fatto — righe chiuse, aperte e modificate, quote
+spostate — e l'annullamento lo rilegge al contrario, riconoscendo le quote non dal solo id ma dalla traccia che il
+passaggio lascia dentro ciascuna (KondoManager dichiara MySQL 5.7+, e su MySQL 5.7 un riavvio può far riprendere a una
+quota nuova l'id di una sparita col suo piano). I passaggi registrati prima non hanno il registro: non si annullano, e il
+programma lo dice; si correggono a mano, da «Modifica associazione» e «Associa soggetto», come prima.
+
+**Quando l'annullamento non basta da solo.** Un piano generato o ricalcolato dopo il passaggio, non ancora emesso, con
+quote che l'annullamento cambierebbe — di chi era entrato, di chi era uscito o di chi ha preso i giorni rimasti scoperti
+— non ferma niente: l'annullamento avvisa di ricalcolarlo, con un messaggio che resta sulla pagina finché non lo chiudi.
+Un piano ricalcolato o eliminato che si era già portato via le bozze del passaggio non ferma niente nemmeno lui: non c'è
+più niente da rimettere.
+
+**Scritture contemporanee.** L'annullamento, la registrazione di un passaggio sulla stessa unità, l'emissione delle rate,
+la generazione di un piano e «Associa soggetto» / «Modifica associazione» non si sovrascrivono più a vicenda: si mettono
+in fila. L'emissione intesta la scrittura a chi possiede la quota nel momento in cui emette; una segnalazione dal
+portale in volo aspetta e poi rilegge lo stato di adesso; un piano che stava usando un saldo tolto nel frattempo si
+ferma, invece di generare quote su un numero che non esiste più.
+
+**Corretti anche.** Due testi dicevano che un passaggio registrato «non si annulla (arriva con la prossima versione)»:
+oggi si annulla dallo storico, e lo dicono. Nello storico la data di registrazione e quella dell'annullamento erano
+quelle del server: fra mezzanotte e le due a Roma indicavano il giorno prima. Il contatore dei promemoria in agenda
+restava vecchio per dieci minuti dopo un annullamento.
+
+**I limiti.** Non si annulla un passaggio in mezzo a una catena, né uno con rate emesse a chi era entrato: prima si
+annulla quello dopo, o l'emissione, con la via intera se ci sono già pagamenti. Il documento allegato al passaggio resta
+nell'archivio dell'unità. La vendita con riserva d'usufrutto arriva con la beta.38.
+
+---
+
+## [1.11.0-beta.36] - La nota del fornitore sa quale fattura corregge
+
+**Tocca il database: una colonna nuova, `fatture_passive.fattura_rettificata_id`** (migrazione
+`2026_09_27_090000_add_fattura_rettificata_id_to_fatture_passive_table`, rieseguibile, senza travaso di dati). Un solo
+tema: la nota di credito emessa dal fornitore, che finora il piano rate non vedeva.
+
+**Il problema.** Quando una fattura elettronica è sbagliata, il fornitore emette una nota di credito e poi, se serve, una
+fattura nuova. La nota si registrava con la linguetta «Nota credito» o dall'XML, ma non si collegava a niente: la
+fattura annullata restava nel suo piano rate, le rate continuavano a chiederla, e la fattura nuova entrava in un secondo
+piano. La stessa spesa chiesta due volte, € 2.000,00 per € 1.000,00, senza un avviso. Le difese della beta.35 guardavano
+solo lo storno interno.
+
+**La nota porta la fattura che corregge.** Nel modulo, per una nota di credito, sotto il fornitore c'è il campo
+«Fattura che la nota rettifica»: si sceglie fra le fatture dello stesso fornitore di qualunque esercizio. Dall'XML il
+programma la propone da sé quando il file la dichiara e numero e data trovano una fattura sola; con più fatture
+dichiarate, o due fatture con lo stesso numero e la stessa data, non propone niente e lo dice. Nel lotto di più file la
+proposta si rifà quando la fattura del lotto è stata registrata dopo la lettura della nota. Le note registrate prima di
+questa versione non si collegano da sole: dal menu della nota c'è «Collega a una fattura», e «Scollega» toglie il
+collegamento. Il dettaglio della nota dice quale fattura corregge, quello della fattura quali note ha.
+
+**La stessa regola dello storno.** Se la fattura sta in un piano che non ha ancora incassato, la nota non si registra e
+non si collega finché il piano non è tolto: il riquadro sotto il campo dice quale piano e come. Se il piano ha già
+incassato, la nota si registra dopo una conferma, anche se la si modifica o la si collega dopo: le rate restano, e la
+conferma dice quanto chiedono più di quanto resta della fattura e che la differenza si sistema con una delibera, di
+solito nel conguaglio del consuntivo, fra ciascun condòmino e il condominio. Lo storno e l'eliminazione di una fattura con
+note collegate si rifiutano, con la via; una fattura con note collegate non si modifica sotto quanto le note rettificano.
+
+**La fattura vale al netto.** Il carrello del piano la offre al netto e scrive il perché; annullata per intero, sparisce.
+La creazione del piano rifiuta un importo oltre il netto e dice di quanto; il ricalcolo di un piano che chiede più del
+netto si ferma, nomina fattura e nota e dice di quanto, mentre un piano fatto sul netto si ricalcola come sempre. Il
+motore toglie la nota dalla parte giusta: una nota sulla riga di un'unità toglie la quota a quell'unità, una sulla voce
+fuori preventivo la toglie alla voce, e non si toglie mai a un'unità o a una voce più di quanto la fattura le addebita. Il
+cruscotto mostra la fattura al netto, con la riga della nota; la copertura delle voci legge la stessa regola. La stampa
+ricostruita di un piano che ha già le quote spiega le quote che esistono, senza la nota arrivata dopo.
+
+**Casi particolari.** Una nota sulla parte a preventivo della fattura non tocca il piano. La nota pregressa, registrata
+senza righe, vale la sua testata. Una nota contestata non conta finché resta tale, ma non supera comunque il totale della
+fattura. Spostare una nota collegata da un'unità a un'altra segue la stessa regola: cambia chi paga.
+
+**Corretti anche.** Una nota di credito con una riga ad personam positiva entrava nel carrello come fabbisogno; il
+cruscotto la contava fra le fatture in sospeso.
+
+**I limiti.** Una riga di nota non si può marcare «fuori preventivo»: su una fattura mista la nota riduce la parte della
+voce su cui la registri. Per un piano «tutto» (importo € 0,00) già emesso o incassato, quanto chiede per una fattura non
+si ricava più: gli avvisi non danno cifre e i conti lo contano per intero. L'importo zero nel carrello per le fatture
+senza note resta un difetto più vecchio di questa versione.
+
+---
+
+## [1.11.0-beta.35] - La pregressa segue il suo periodo
+
+**Non tocca il database: nessuna migrazione.** Tre cambi di comportamento, in quest'ordine: lo storno di una fattura
+che sta in un piano rate; nel piano che finanzia le fatture la competenza dichiarata sulla fattura decide anche su una
+gestione ordinaria; il periodo diventa obbligatorio per le nuove pregresse con una parte non coperta dai saldi iniziali.
+
+**Lo storno di una fattura che sta in un piano rate.** Fino a ieri lo storno non guardava i piani: la fattura annullata
+restava nel suo piano, e le rate continuavano a chiederla. Registrata di nuovo e messa in un piano nuovo, i condòmini la
+pagavano due volte. Ora modifica, eliminazione e storno seguono una regola sola. Finché il piano non ha incassato niente,
+la fattura prima si toglie dal piano: su un piano in bozza lo storno chiede di eliminarlo, su uno approvato di riportarlo
+in bozza ed eliminarlo, su uno con rate emesse di annullare prima le emissioni; le altre fatture del piano tornano
+disponibili per un piano nuovo. Se il piano ha già incassato, lo storno resta possibile, perché la fattura è annullata
+davvero e la contabilità deve dirlo: la conferma avvisa, con il nome del piano, che le sue rate restano e che quanto i
+condòmini hanno versato per quella spesa va restituito o destinato con una delibera. Un piano che contiene già una
+fattura stornata non si ricalcola: si ferma e la nomina. La creazione di un piano rifiuta una fattura stornata nel
+frattempo. Ogni motivo che manda allo storno, quando lo storno è rifiutato, dice anche perché e che cosa fare prima.
+Nell'elenco delle fatture le voci «non consentito» si cliccano e aprono il motivo: il suggerimento al passaggio del
+mouse, fin qui, non compariva mai.
+
+**Nel piano da fatture decide la competenza della fattura, anche sull'ordinaria.** Il piano che finanzia le fatture
+fuori preventivo — quello che apre «Finanzia spesa» dalla dashboard — su una gestione ordinaria ignorava la competenza
+dichiarata sulla fattura e divideva la spesa sui giorni dell'esercizio: dopo una vendita, una fattura del 2025 la pagava
+in parte chi è entrato quest'anno. Ora la competenza dichiarata decide qualunque sia la gestione, nel motore e nel
+conguaglio del passaggio, che danno lo stesso numero. Una pregressa 2025 da € 1.200,00, quattro rate emesse, rogito il
+1° maggio: era una coppia da € 5,48 con otto bozze passate a chi compra; ora è tutta di chi vende, nessuna coppia, e le
+bozze restano sue. Un imprevisto dichiarato dal 1° marzo al 31 agosto si divide sui suoi giorni, 61 a chi vende e 123 a
+chi compra, non sui 365 dell'esercizio. Senza competenza dichiarata non cambia niente; nel piano per capitoli la
+competenza della fattura resta un dato della fattura e non sposta le rate.
+
+**Il periodo delle pregresse diventa obbligatorio.** Una pregressa con una parte non coperta dai saldi iniziali — la
+parte che finisce in un piano — non si registra più senza il periodo in cui il costo è maturato, e quel periodo si chiude
+prima dell'inizio dell'esercizio in cui la registri. Dopo non si potrebbe aggiungere: una pregressa non si modifica, si
+storna. Tutta coperta dai saldi, il periodo resta facoltativo. La finestra della motivazione non precompila più la
+competenza di una pregressa con la data dell'assemblea di quest'anno.
+
+**Le pregresse già registrate senza periodo non si indovinano.** Il carrello del piano le segnala e dice che cosa ne farà
+il riparto: sull'ordinaria i giorni di quest'anno, sulla straordinaria il giorno della delibera, con «Urgenza»
+l'arresto. Segnala anche quelle con un periodo dentro l'esercizio, come la data dell'assemblea che il modulo
+precompilava. Alla generazione il piano si ferma, dice su quali giorni la ripartisce e come rimediare, e chiede una nota
+anche quando nessun titolare cambia. La fattura si riconosce subito: fornitore e importo accanto al numero, e il numero
+apre il dettaglio con il collegamento alla fattura.
+
+**La creazione del piano mostra i rifiuti del server.** Una generazione fermata, o una gestione senza piano dei conti,
+fin qui non dicevano niente: si premeva «Salva piano rate» e non succedeva nulla di visibile. Ora il motivo compare
+accanto al pulsante, e resta finché non lo chiudi.
+
+**Nel modulo della fattura.** La regola «dentro un piano approvato la fattura non si modifica più» guarda tutti i piani
+della fattura, non il primo che trova. L'analisi del budget non mostra più «+€ -282,00» in verde: segno e colore seguono
+il numero, e l'etichetta dice «Residuo». I tre modi della competenza stanno in colonna, a tutta larghezza. Nel carrello
+del piano, sul telefono, l'importo da finanziare scende sotto il testo.
+
+**Corretti anche.** La nota della presa d'atto era facoltativa se la richiesta, costruita a mano, mandava «1» o «TRUE»
+al posto di un sì. Nel conguaglio di una vendita due addebiti diretti sulla stessa unità si fondevano in una voce sola,
+con il nome del primo e la somma dei due. Le date della competenza scritte all'europea si giudicavano come testo. Una
+pregressa con le coperture malformate dava un errore del server invece di un messaggio.
+
+**I limiti.** Come si rettifica un piano che ha già incassato per una fattura poi stornata è una scelta da fare con il
+rendiconto. Con un già versato sia della persona sia dell'unità sullo stesso conto, conguaglio e motore danno qualche
+euro di differenza, da prima di questa versione. Una copertura «sopravvenienza» senza conto non va dove dovrebbe. Il
+tema scuro del carrello delle fatture resta da sistemare.
+
+## [1.11.0-beta.34] - Cambia il nome, non l'importo
+
+**Non tocca il database: nessuna migrazione.** Cambia come si registra una vendita su un piano rate già
+emesso in parte, nasce una stampa nuova per unità, e la revisione ha corretto un difetto di denaro del
+conguaglio che veniva dalla 1.11.0-beta.31.
+
+**Nella vendita, le rate in bozza passano a chi compra.** Fino a ieri, se il piano aveva già emesso a
+giornale anche una sola rata, le rate ancora in bozza restavano intestate a chi vende e il conguaglio
+le comprendeva tutte. Sul forum gli amministratori hanno detto come lavorano davvero: *si cambia il nome
+sulle rate che restano, senza rifare il riparto; il passato si regola con il conguaglio*. Ora è così. Le
+rate in bozza che scadono dal giorno del passaggio passano a chi compra: **cambia l'intestatario, non
+l'importo**, e il riparto deliberato non si tocca. Il conguaglio si calcola sull'**intero piano** e toglie
+ciò che chi compra paga già con quelle rate: dodici rate da € 100,00, quattro emesse, rogito il 1°
+maggio, e la coppia passa da € 805,48 a **€ 5,48**, con gli stessi totali per persona, al centesimo, sui
+giorni di ciascuno. Se le rate che passano coprono più dei giorni di chi compra — un rogito il giorno
+stesso della scadenza — la coppia si rovescia, e il pannello e l'avviso lo dicono nel verso giusto.
+
+Restano a chi vende, e si conguagliano come prima: le bozze **già scadute** prima del rogito, quelle
+**già pagate** anche in parte o con un pagamento segnalato dal portale e non ancora verificato, quelle di
+una **straordinaria che è sua** (deliberata quando l'unità era sua) o divisa fra i due per competenza. Il
+**saldo pregresso** dentro una bozza non passa mai: la bozza si divide, il preventivo a chi compra e il
+pregresso a chi vende in una quota sua sulla stessa rata. Vale con i tre modi di distribuire i saldi —
+rata zero, prima rata, spalmati — a debito e a credito. Vale anche con la rinuncia al conguaglio: le
+parti regolano fra loro la coppia, non chi paga le rate che devono ancora scadere. Nella **locazione** e
+nell'**usufrutto** le bozze restano a chi esce, come prima: lì chi entra paga solo una parte delle voci. I
+**promemoria del portale** seguono le quote: a chi vende spariscono quelli delle rate che non sono più
+sue, a chi compra arrivano. Le **stampe del riparto** mettono le rate passate in una colonna propria,
+«Passate con un passaggio», e l'**estratto conto** conta tutte e due le quote quando chi compra aveva già
+la sua sulla stessa rata.
+
+**La vendita della nuda proprietà non trascina l'ordinaria.** Dalla costituzione dell'usufrutto le spese
+ordinarie sono dell'usufruttuario (art. 1004 c.c.), e si regolano con quel passaggio. Se poi il nudo
+proprietario vende, chi compra la nuda proprietà non ne risponde: le rate ordinarie dei piani generati
+prima dell'usufrutto restano dove sono e non entrano nel conguaglio. Fino a ieri gliene faceva pagare una
+parte che l'usufruttuario aveva già rimborsato.
+
+**Il prospetto degli oneri accessori.** Dalla pagina dei titolari di un'unità che ha avuto un inquilino,
+«Prospetto oneri accessori» stampa, esercizio per esercizio, una sezione per ogni conduttore con le voci
+che il riparto pone a carico dell'inquilino: tabella e millesimi, quota inquilino, competenza, giorni,
+importo. Dice quali voci sono **già nelle sue rate** e quali ha **pagato il proprietario** perché nei
+giorni del piano nessun inquilino era registrato — una locazione registrata dopo la generazione — e
+quindi vanno rimborsate: le divide sui giorni di conduzione con la stessa regola del riparto, e i giorni
+senza nessun conduttore restano a chi ha pagato. È sul **preventivo**: il conguaglio definitivo si fa sul
+rendiconto. **Non è un riparto né una richiesta del condominio**: verso il condominio risponde il
+proprietario, e il prospetto è l'indicazione specifica delle spese che il conduttore ha diritto di avere
+prima di pagare. L'art. 9 L. 392/1978 lo cita solo per la locazione abitativa e per quella a uso diverso;
+per la locazione atipica e il comodato rimanda al contratto. Per questo il **regime del contratto** ora si
+chiede a ogni conduttore che entra, non più solo sul box.
+
+**Sulla straordinaria, il pannello della competenza dice che decide la delibera.** Registrando una fattura
+di una gestione straordinaria, «Costo maturato dal … al …» scavalca la data della delibera del piano: con
+una vendita nel mezzo paga chi era titolare in quel periodo, non chi lo era il giorno della delibera. Il
+pannello ora lo dice in chiaro e indica il modo giusto, «Spesa deliberata il …» (art. 63 disp. att. c.c.;
+Cass. 24654/2010).
+
+**Corretto dalla revisione — un difetto della 1.11.0-beta.31.** Quando il proprietario paga le voci
+dell'inquilino per i giorni in cui l'inquilino non c'era, e quei giorni sono due tratti (gennaio–febbraio
+e novembre–dicembre attorno a un contratto), il conguaglio di una vendita divideva la riga su tutto l'anno:
+chi comprava il 1° maggio riceveva 245/365 di una spesa che copriva 120 giorni, € 80,55 invece di € 61,00
+su quell'esempio. Ora i giorni si ricostruiscono dal riparto registrato, e se non tornano la voce non si
+divide.
+
+**I limiti, detti.** Il prospetto non unisce appartamento e box dello stesso conduttore. La «deroga
+dichiarata» — il rogito che mette tutto l'anno a carico di chi vende — è una versione a sé, decisa dalle
+risposte al forum. L'annullamento di un passaggio registrato arriva con la parte successiva dei subentri,
+insieme alla successione e alla vendita con riserva d'usufrutto.
+
+---
+
+## [1.11.0-beta.33] - I documenti che sopravvivono al container
+
+**Non tocca il database: nessuna migrazione.** Tocca `composer.lock`: entra il driver S3 di
+Flysystem (`league/flysystem-aws-s3-v3`), con l'SDK Amazon potato al solo servizio S3 (6 MB invece
+di 68). Per chi si autoospita e per chi installa dallo zip **non cambia niente**: i documenti
+restano dove sono sempre stati, `storage/app/private/documenti`, con gli stessi nomi; i 172 test
+dei documenti sono passati senza modificarne uno.
+
+**I documenti hanno un disco, e il disco si sceglie.** Fino a ieri cinquanta punti in diciannove
+file scrivevano `local` e `public` a mano; ora un servizio solo, `ArchivioDocumenti`, sa dove
+stanno i file caricati — archivio, unità, fornitori, anagrafiche, fatture, titoli di subentro — e la
+firma delle stampe. `DOCUMENTI_DISK=local` (il predefinito) è il disco di sempre. `DOCUMENTI_DISK=s3`
+li mette su un bucket S3-compatibile — Cloudflare R2, Amazon S3, Backblaze B2, MinIO — con le
+variabili `AWS_*` standard di Laravel e un prefisso (`DOCUMENTI_PREFIX`) per tenere più
+installazioni nello stesso bucket. Su S3 il download scorre in streaming, la firma per le stampe
+si copia in una cartella temporanea (mPDF vuole un file), l'anteprima della firma è un indirizzo
+firmato a scadenza e il bucket resta privato. Cambiare il valore **non sposta** i file già caricati:
+vale per un'installazione che nasce così. Con i documenti su S3 il backup interno non li contiene, e
+la pagina dei backup lo dice.
+
+**Se S3 non risponde, lo si sa subito e non si perde niente.** La revisione ha trovato che una
+scrittura su un bucket sbagliato (token scaduto, endpoint irraggiungibile, `AWS_BUCKET` vuoto)
+taceva: sei schermate avrebbero risposto «creato» scrivendo una riga senza file. Ora un
+caricamento che non riesce è un errore, con il suo messaggio e nessuna riga; una firma
+irraggiungibile non ferma una stampa (esce senza firma, come sul disco locale con il file mancante);
+e `php artisan kondomanager:verifica-persistenza` — che l'immagine Docker lancia a ogni avvio —
+scrive, rilegge e cancella un oggetto di prova: un bucket sbagliato ferma il container con il
+messaggio giusto invece di perdere il primo documento in silenzio.
+
+**Nel container, documenti effimeri = non disponibile.** `/up` dice dove stanno i documenti
+(`esterni`, `su_volume`, `effimeri`) e, solo dentro l'immagine Docker (`KM_CONTAINER=1`), i
+documenti sul disco locale senza un volume rendono l'installazione non disponibile (503): chi
+orchestra i container non deve dire «pronta» a un'istanza che perde i file alla prima
+ricreazione. Fuori dal container non cambia niente. `verifica-persistenza` conosce il disco e
+avvisa quando, con S3, gli archivi di backup restano nel container senza volume.
+
+**Un tetto allo spazio, mostrato e non applicato.** `LIMITE_SPAZIO_MB` (assente, vuoto o 0 =
+nessun limite). L'uso si somma dalla colonna `file_size` dei documenti, che dice il vero, più la
+firma. Si mostra, non blocca: chi ospita misura e avvisa da fuori.
+
+**«Questa installazione».** Una pagina nuova nelle impostazioni con i fatti dell'installazione:
+condomini su tetto (i dimostrativi contano, e lo dice), spazio su tetto — **solo se c'è un tetto**,
+un totale senza conseguenza è una curiosità —, le funzioni accese (aggiornamenti dal pannello,
+pianificatore esterno, backup interni, archiviazione esterna), dove stanno i documenti, la
+versione, e un collegamento «Gestisci il tuo piano» solo se chi ospita ha dato un indirizzo
+(`GESTIONE_PIANO_URL`). Nessuna parola «piano» se manca. La mappa delle funzioni è condivisa a ogni
+pagina come `funzioni`. Testi in quattro lingue. `php artisan kondomanager:stats --json` dà gli
+stessi numeri a chi ospita.
+
+**Le due vie d'aggiornamento percorrono lo stesso elenco.** La rilettura del flusso in apertura ha
+trovato che `kondomanager:aggiorna` (immagine Docker, `git pull`) rielencava a mano cinque dei sette
+passi di `SystemFinalizer::finalize()` (pagina di aggiornamento, ripristino): un seeder nuovo
+agganciato a una sola delle due vie sarebbe mancato all'altra, in silenzio. Ora l'elenco è uno,
+`passiDatabase()`, percorso da entrambe, con un test che lo fissa e prova comuni e ATECO da tabelle
+vuote dal comando.
+
+**L'immagine pubblicata della beta.32 è stata ritirata.** Provando il container senza volume,
+`verifica-persistenza` contava file di backup in un'immagine appena nata: `.dockerignore` escludeva
+`storage/app/private` e `storage/app/public` **ma non `storage/app/backups`**, e l'immagine
+`1.11.0-beta.32` su ghcr.io conteneva quattro backup del database di sviluppo. L'unico download era
+il server di staging. Il package è stato cancellato; ora `.dockerignore` esclude `storage/app`
+intero e ogni file nascosto dalla radice, un test presidia il file, e il contesto di build è stato
+misurato (zero file sotto `storage/app`, nessun `.env`). Un'immagine si ispeziona prima del push:
+il workflow lo fa da solo.
+
+**Il workflow che pubblica l'immagine.** `.github/workflows/immagine.yml`: a ogni tag `v*`
+costruisce l'immagine amd64, la avvia davvero con un MySQL di servizio e un volume — installazione
+dalle variabili, `/up` 200 entro tre minuti, nessun `.env` né pacchetto di sviluppo dentro — e
+solo allora la pubblica su `ghcr.io/vince844/kondomanager-core` con il numero del tag; `latest`
+solo sulle stabili. L'immagine porta l'etichetta OCI con il repository di origine. La prova vera è
+il primo tag.
+
+**Documentazione.** Piano esecutivo con le sei decisioni, il verbale della revisione (dodici
+rilievi, tutti applicati) e il reperto dei backup; variabili documentate in `.env.example`; il
+contratto delle variabili nel piano dell'infrastruttura aggiornato con i nomi neutri del disco.
+
+## [1.11.0-beta.32] - Il programma che si installa da solo
+
+**Non tocca il database: nessuna migrazione.** Cambia come si arriva a un database installato, non
+cosa c'è dentro. Per chi installa dallo zip con la procedura guidata non cambia niente, ed è stato
+provato dall'inizio alla fine su un database vuoto prima di chiudere: gli stessi passi, nello stesso
+ordine, con lo stesso risultato.
+
+**La procedura guidata, senza la procedura guidata.** I passi che il wizard di installazione faceva
+uno per uno — migrazioni, permessi, primo amministratore, dati iniziali, nome e lingua, chiusura —
+sono ora quattro servizi che il wizard chiama al posto dei suoi blocchi, e che un comando nuovo
+usa senza nessuno alla tastiera: `php artisan kondomanager:installa` (alias `km:install`). Legge
+`INSTALL_ADMIN_EMAIL` e `INSTALL_ADMIN_PASSWORD` (il nome è facoltativo, `APP_NAME` e `APP_LOCALE`
+per nome e lingua), aspetta che il database risponda, e su un database vuoto installa. Prima di
+scrivere una riga verifica di avere tutto: senza i dati dell'amministratore si ferma con il
+messaggio giusto e **nessuna tabella creata**. È ripetibile per costruzione: su un'installazione
+fatta non fa nulla e non fallisce; se trova un amministratore ma non il file di lock — chi ha
+installato dai sorgenti, un container ricreato — scrive il lock e basta. L'amministratore nasce
+**prima** dei dati iniziali, così l'utente di comodo del seeder non viene mai creato; da permessi a
+impostazioni è una transazione sola: un'installazione interrotta a metà lascia lo schema e niente
+altro, e al secondo avvio si rifà per intero. La password si usa una volta e non compare mai:
+non nell'output, non nei messaggi, non nella traccia di un errore.
+
+**Un database che si allinea al codice, anche senza la pagina di aggiornamento.** `php artisan
+kondomanager:aggiorna` fa i passi che l'aggiornamento dal pannello fa dopo aver deployato uno zip
+— migrazioni, permessi e mappa dei ruoli, elenco dei comuni, classificazione ATECO, versione
+registrata — per chi il codice lo cambia in un altro modo: un'immagine Docker nuova, un `git
+pull`. Senza, un permesso aggiunto dal codice resterebbe nel codice: è il guasto silenzioso già
+visto nella 1.9.1, che la revisione di questa versione ha visto ripresentarsi nel container.
+
+**L'interruttore dell'installer si può girare dall'ambiente.** `INSTALLER_ENABLED`, se presente,
+vince sul letterale di `config/installer.php` che accende procedura guidata, controllo degli
+aggiornamenti e aggiornamento automatico; se manca, vale il letterale e non cambia niente per
+nessuno. Serve dove il codice non si ritocca — un container — e a chi vuole spegnere gli
+aggiornamenti automatici con un'impostazione che sopravvive agli aggiornamenti stessi: il `.env` è
+fra i file preservati, `config/` no. Una guardia nei test pretende che la riga letterale resti nella
+forma che lo script di build dello zip sostituisce.
+
+**Un tetto al numero di condomini, per chi ospita il programma per altri.** `LIMITE_CONDOMINI`:
+assente, vuoto o zero vuol dire nessun limite, ed è il caso di ogni installazione autonoma. Con un
+tetto, la creazione oltre il tetto — dimostrativo compreso, che è un condominio anche lui — è
+rifiutata con un messaggio neutro, «questa installazione ha raggiunto il numero massimo di
+condomini consentiti», senza lasciare niente a metà. L'importatore non lo applica: porta dentro un
+archivio che esiste già.
+
+**`/up` dice la verità.** La rotta di salute rispondeva 200 appena l'applicazione si avviava,
+database o no: per un container era una bugia utile a nessuno. Ora risponde 200 solo se
+l'installazione è chiusa (lock, oppure un amministratore: chi ha installato dai sorgenti non ha mai
+avuto il lock), il database risponde e non ci sono migrazioni da applicare; 503 altrimenti. Sta
+fuori dal gruppo web (niente sessione aperta da un controllo ogni cinque secondi) e a chi arriva da
+internet dice solo lo stato; il dettaglio lo vede chi chiama dalla macchina o da una rete privata.
+Le migrazioni applicate che non hanno più un file — succede a chiunque abbia aggiornato attraverso
+più versioni — si contano e non rendono malata l'installazione.
+
+**L'immagine Docker canonica.** Un `Dockerfile` in radice a più stadi (Node e Composer non entrano
+nell'immagine finale, i pacchetti di compilazione nemmeno), `.dockerignore` (né `.env` né le cache
+di chi costruisce entrano nel contesto), `docker/production/` con nginx, php-fpm, worker delle code
+e scheduler sotto supervisor, log su stdout. Il primo avvio non è interattivo: l'entrypoint attende
+il database, installa se è vuoto, allinea se esiste, costruisce le cache **a runtime** (in fase di
+build le variabili non ci sono) e solo allora serve. Default sicuri: produzione, debug spento,
+cache, sessioni e code sul database, installer spento, proxy fidati sulle reti private. Con
+`APP_KEY` mancante si ferma e lo dice. Provata in locale su un MySQL usa e getta: primo avvio,
+riavvio, ricreazione senza volume. `docker/standard` e `docker/frankenphp` non sono toccati.
+
+**Manutenzione.** Con la cache sul database una riga scaduta sparisce solo se qualcuno la rilegge:
+una pulizia settimanale nello scheduler. Un test sui rimborsi che diventava rosso fra le 22 e le 24
+UTC («domani» calcolato in UTC contro l'«oggi» dell'utente a Roma) ora usa lo stesso calendario
+della regola.
+
+**Documentazione.** Piano esecutivo della versione con il verbale della revisione (otto rilievi,
+tutti applicati), variabili documentate in `.env.example`, piano dell'infrastruttura aggiornato con
+il nome reale del comando.
+
+## [1.11.0-beta.31] - Il tempo entra nel calcolo
+
+**Tocca il database: undici migrazioni**, tutte rieseguibili e tutte nel test che le rilancia a metà
+(che da questa versione fotografa anche gli indici, non solo le tabelle). Nell'ordine: (1) due colonne
+di competenza sulle fatture, `competenza_dal/al`; (2) la tabella `competenze_capitolo`, i tratti di
+competenza di una voce del piano, come la stagione di riscaldamento; (3) la tabella `subentri`, i
+passaggi di titolarità registrati; (4) i suoi dettagli — documento del titolo, scadenza e regime
+della locazione, pertinenze come righe figlie; (5) `saldi.subentro_id`, la coppia del conguaglio, con
+vincolo `restrict`; (6) un indice sui periodi della pivot unità–persona; (7) il congelato temporale su
+`righe_riparto` — `competenza_dal/al`, `gradino_competenza`, `giorni_titolarita`; (8) la caduta di
+`anagrafica_immobile.tipologie_spese`, vuota da sempre; (9) `piani_rate.esercizio_id`, con travaso
+dai piani esistenti; (10) il vincolo dei contributi già versati che passa da «per unità» a «per unità
+e persona», e su `subentri` le due colonne dell'annullamento del conguaglio; (11) su `righe_riparto` il
+**tratto** di titolarità che ogni riga copre (`titolarita_dal/al`), non solo quanti giorni — è ciò che
+permette al conguaglio di dividere ogni riga sui suoi giorni senza ipotesi. Chi aggiorna non deve fare
+nulla: i piani già generati restano identici, atemporali, e lo dicono.
+
+**Le date entrano nel riparto.** Fino a ieri le date di inizio e fine di una titolarità erano
+registrate e ignorate; da oggi il motore le legge, e la regola è doppia, agganciata alla natura della
+gestione. Sull'**ordinario** la quota di un'unità che cambia mano nel periodo si divide **in
+proporzione ai giorni** fra chi esce e chi entra, sul periodo di competenza: quello dichiarato sulla
+voce (una o più tratti — il riscaldamento di zona E va dal 1º gennaio al 15 aprile e dal 15 ottobre al
+31 dicembre), altrimenti quello della gestione se ha le date, altrimenti quello dell'esercizio.
+Sullo **straordinario** conta un giorno solo, quello della delibera dell'assemblea (art. 63 disp. att.
+c.c.; Cass. 24654/2010 e 24236/2025): chi era titolare quel giorno risponde dell'intera spesa, anche
+se poi vende. Per questo la data della delibera è **chiesta alla creazione** del piano, senza valore
+predefinito, e senza di essa il motore **si ferma e la chiede** invece di inventare un periodo; con
+un intervento d'urgenza la delibera non esiste per costruzione e la competenza si dichiara sulle
+fatture, voce per voce («Costo maturato dal… al…» o «Spesa deliberata il…»). Il dettaglio congelato
+di ogni riga porta periodo, gradino e giorni, e le stampe del riparto lo dicono in legenda e accanto
+al nome — «(245 gg)» — così il foglio che va in assemblea racconta come è stato deciso.
+
+**Se la competenza cambia i destinatari, la generazione si ferma e lo mostra.** Chi entra, chi esce,
+per quanti giorni su quanti: si prosegue con una spunta e una nota di almeno dieci caratteri, che
+restano congelate nel piano. È una presa d'atto, non un'approvazione al buio. E quando chi esce non
+ha un successore — l'inquilino che va via a giugno e l'unità resta sfitta — i giorni scoperti non si
+spalmano su chi c'era: vanno agli anelli successivi della cascata su quei giorni (il proprietario per
+i 184 giorni sfitti; se l'usufruttuario copre una parte del vuoto e il proprietario il resto, ciascuno
+la sua), e il pannello lo dice. Un proprietario che esce senza nessun successore — nemmeno come nudo
+proprietario — lascia giorni di nessuno: la parte resta **scoperta**, con il suo motivo, e la
+generazione chiede una motivazione — il programma non sceglie chi paga al posto dell'amministratore.
+
+**«Registra passaggio».** Dall'elenco dei titolari di un'unità: vendita o donazione, inizio e fine di
+una locazione, costituzione ed estinzione dell'usufrutto. Una data sola, quella dell'atto: il periodo
+di chi esce si chiude il giorno prima, quello di chi entra si apre, la storia dell'unità resta intera.
+Il pannello «Cosa cambierà» è calcolato dal server su ciò che si sta scrivendo e ha quattro blocchi:
+l'anagrafica, le rate già emesse con il conguaglio proposto, chi resta obbligato (la solidarietà
+dell'art. 63 co. 4 per l'esercizio in corso e il precedente, l'obbligo di chi vende finché il
+condominio non riceve copia autentica del titolo, co. 5), cosa non cambia (millesimi, tabelle, teste
+in assemblea, pertinenze). Se il passaggio tocca rate emesse o cambia il destinatario di un piano
+già generato, la conferma chiede spunta e nota. Le pertinenze spuntate seguono; il PDF del titolo
+finisce fra i documenti dell'unità; la copia autentica si registra anche dopo, dallo storico; la
+scadenza di una locazione può mettere un promemoria in agenda. Lo storico «Chi ha avuto questa
+unità» elenca i periodi e i passaggi registrati con il loro vademecum. Una riga con storia non si
+cancella, la persona non si sostituisce e — se la riga fa parte di un passaggio — nemmeno il ruolo si
+cambia da «Modifica»: si corregge quota, date e note; un'unità con passaggi registrati non si
+elimina.
+
+**Il conguaglio delle rate già emesse.** Le rate emesse non si toccano — sono crediti già iscritti
+verso persone nominate. Il passaggio scrive **due righe di saldo che sommano a zero**: credito a chi
+esce e debito uguale a chi entra, per la parte di quota che spetta a chi entra in proporzione ai
+giorni (sullo straordinario, tutto da un lato secondo la delibera); portano un lucchetto viola, non si
+modificano una alla volta, e il piano successivo le assorbe nella rata 0 come qualunque saldo. Il
+calcolo è quello del pannello, al centesimo: **riga per riga**, ognuna sul tratto di titolarità che
+copre davvero (la persona che ha cambiato quota nell'anno ha due righe e due tratti; chi era già uscito
+alla generazione non passa nulla; il versato della persona resta suo), voce per voce quando una voce ha
+una competenza propria, al netto del già versato spaccato come fa il motore (la parte versata dalla
+persona resta sua, quella dell'unità abbassa la spesa), e comprende le rate ancora in bozza di un piano
+che ha già emesso a giornale — quel piano non si ricalcola più, e le sue bozze resteranno intestate a
+chi esce. Regge la
+catena dei passaggi nello stesso esercizio (chi compra a maggio e rivende a settembre conguaglia le
+quote del venditore di maggio) e l'estinzione dell'usufrutto con più nudi proprietari (una coppia
+ciascuno, per quota). Se le parti hanno regolato il conguaglio fra loro si rinuncia con una nota; se
+si scopre dopo, si annulla dallo storico finché nessun piano l'ha assorbito.
+
+**Il rimborso di un credito.** Dall'estratto conto di una persona con credito disponibile — chi ha
+venduto e ha una coppia di conguaglio a suo favore, chi ha pagato più del dovuto — l'amministratore
+registra il **rimborso**: cassa, data, importo fino al credito. Nasce una scrittura `rimborso
+condomino` (protocollo `RMB`), con la contropartita che dipende dall'origine del credito, stornabile
+come gli altri movimenti; il credito disponibile si aggiorna e si vede anche in stampa; nel widget
+«Crediti da compensare» ogni riga ha la seconda uscita «Estratto conto · rimborsa». Per la stessa
+pagina un difetto che c'era dalla 1.9.1: l'elenco dei movimenti confrontava il tipo di movimento con
+una stringa mentre era un'enumerazione, e rettifiche e storni non venivano riconosciuti come tali.
+
+**I contributi già versati seguono la persona.** Un versamento registrato con la persona sconta solo
+la sua quota; senza persona resta dell'unità. Con un passaggio dopo la generazione il versato di chi
+è uscito non scontava più lui ma chi era entrato.
+
+**Cambia anche in questi punti.** La data di inizio di una titolarità conta come decorrenza solo se
+ha un predecessore — la riga della stessa coppia chiusa il giorno prima, o il fatto di essere entrata
+con un passaggio registrato — altrimenti è la data del censimento e la riga è «aperta da sempre»: un
+comproprietario censito a giugno accanto a una vendita di febbraio fra altri due conta l'anno intero.
+«Oggi» è quello dell'utente, non del server (alle 23:30 chi entra da domani non è ancora titolare).
+Una rata emessa non si riporta in bozza se un passaggio registrato dopo l'emissione l'ha già
+conguagliata, al grano dell'esercizio del piano. Cambiare la data della delibera su uno
+straordinario già generato è ammesso, ma avvisa di ricalcolare, e l'emissione con le quote calcolate
+sulla data vecchia è rifiutata. Con «Urgenza» l'approvazione del piano non chiede una delibera che
+non esiste. Il calcolo del «deficit di cassa ereditato» non conta la coppia del conguaglio come
+provvista. Due comandi di diagnosi: `kondomanager:verifica-delibere` (i piani straordinari senza
+data, le fatture senza competenza) e `verifica-titolarita`, che non chiama «200» un passaggio con
+decorrenza futura. «Gestisci sforo» dalla dashboard apre il piano con la voce sforata **già
+selezionata** e l'importo dello sforo come importo da richiedere: prima arrivava solo la gestione,
+la voce andava ritrovata nel menu fra quelle esaurite, e l'avviso in testa parlava di «fatture nel
+carrello» — un carrello che sull'ordinario non esiste. La scheda «Competenza delle voci», quando il
+piano include tutto, elenca solo i capitoli con ancora qualcosa da finanziare (loro o una loro voce), e
+con più di sei voci si cerca per nome. Sull'integrativa la stessa scheda **ripropone la competenza già
+dichiarata** sulla voce nel piano madre («come nel piano …»), invece del periodo della gestione: prima il
+riscaldamento dichiarato sulla stagione tornava sull'anno intero nel piano dei 300 euro di sforo, e i
+giorni di chi vende e chi compra cambiavano fra i due piani senza che nessuno lo dicesse. Registrando
+una fattura, sotto la voce si legge la competenza che quella voce ha nel piano, con la regola: il
+riparto ordinario segue quei giorni, non la competenza dichiarata sulla fattura (decisione 19). La
+catena intera — fattura sulla voce con la stagione → sforo → integrativa → riparto — è nei test:
+100.000 divisi 105/78 giorni sul piano madre, 30.000 divisi 17.213/12.787 sull'integrativa, stessa
+stagione, piano madre intatto. E una riga di fattura ancora a zero non è più «sforo budget» su un
+capitolo già oltre il preventivo (il residuo negativo faceva dire «0 supera −282»): il semaforo si
+accende quando c'è un importo; la regola è una sola, `sforaBudget`, nota di credito mai, zero mai,
+poi lordo contro residuo. **Le pregresse**: la parte coperta dai saldi iniziali resta di chi aveva
+quel saldo (il passaggio non divide i saldi pregressi); l'eccedenza va a straordinario e la
+ripartisce la competenza dichiarata sulla fattura — il pannello ora lo chiede esplicitamente sulla
+pregressa, perché senza quella data decide la delibera di quest'anno, e dopo un passaggio pagherebbe
+chi è entrato per un costo di quando l'unità era di chi è uscito (provato nel motore: con «costo
+maturato 2025» tutto al venditore, senza → all'acquirente).
+
+**Cosa non fa, e lo dichiara.** La **successione** non è un tipo di passaggio: si registra come
+vendita con estremi «successione di…», e il vademecum parla di venditore; il tipo proprio, con gli
+eredi in comunione e i minorenni fuori dal bilancio, è la prossima versione. La **vendita con riserva
+d'usufrutto** (chi vende resta usufruttuario) non ha una sua via: il modulo la rifiuta e dice come
+registrarla a mano. Le rate in bozza di un piano già emesso a giornale restano a chi esce e si
+conguagliano, non passano a chi entra. I giorni «di nessuno» si misurano dove nessun titolare del
+ruolo è in vigore, non dove le quote sommano meno di cento. Gli storni gonfiano i totali «addebiti»
+e «versato» dell'estratto conto, da sempre.
+
+**Documentazione.** Il progetto sul subentro ha quattordici decisioni nuove (11–24) e la regola
+dell'apertura ereditata riscritta; le guide in-app «Registra passaggio», «Piano rate», «Dettaglio del
+piano» e «Saldi» hanno le schede sul pro rata, sul cancello e sulla coppia; i testi che dicevano «le
+date non entrano nel calcolo» sono stati riscritti. Cinque verifiche indipendenti (motore,
+registrazione, competenze e rimborso, revisione avversariale finale con 36 rilievi, e una seconda sulle
+sue correzioni con 23) stanno nei documenti interni con le loro correzioni; `kondomanager:verifica-
+titolarita` segnala anche la chiusura e apertura lo stesso giorno scritte a mano prima di questa versione.
+
+---
+
+## [1.11.0-beta.30] - Chi Paga, Deciso In Un Posto Solo
+
+**Non tocca il database: nessuna migrazione.** Due cose nei dati cambiano però forma, entrambe in
+modo additivo e senza bisogno di riallineare nulla di ciò che c'è già: le quote generate da questa
+versione in poi portano una chiave in più nel loro snapshot (`regole_calcolo.parametri.titolarita_alla`,
+vedi sotto), e le relazioni fra unità e persone passano da un modello dedicato che espone l'`id`
+della riga di titolarità — la **modifica di una titolarità scrive per riga e non scrive se nulla
+cambia**; con una riga per persona, che è il caso di ogni installazione, l'effetto è nullo.
+
+**Chi è titolare di questa unità, deciso in un posto solo.** Fino a ieri la domanda aveva venti
+risposte sparse in venti punti del programma — il motore di riparto, l'attribuzione dei saldi, la
+situazione debitoria, l'importatore, i verificatori, le stampe — ognuna con il suo filtro scritto a
+mano, quattordici con «solo i titolari attivi» e sei senza. Da oggi la risposta la dà un servizio
+solo, `RisolutoreTitolari`, con **la regola di sempre**: conta chi è segnato come attivo, e basta.
+È un lavoro di impianto, non una funzione: il cancello per farlo uscire era che il riparto restasse
+**identico al centesimo** su tutta la suite — il condominio reale da 44 unità e 8 tabelle, il
+riparto esatto, i casi limite, la concordanza fra motore e stampe — ed è passato con 2.516 test
+verdi senza cambiare una riga di quelli esistenti. È il primo blocco del pacchetto sui **subentri**
+della 1.11: questa versione mette il risolutore, la prossima farà entrare il tempo nel calcolo.
+
+**Quattro letture del ruolo rese deterministiche.** In quattro punti (il dettaglio del piano rate,
+l'incasso delle rate, la situazione debitoria e il comando di verifica dei saldi solidali) il ruolo
+di una persona sull'unità veniva letto «la prima riga che capita», senza un ordine: con una riga
+per persona era indifferente, e resta identico a prima. Quando la prossima versione ammetterà due
+periodi della stessa persona sulla stessa unità — chi vende e ricompra, l'inquilino che diventa
+proprietario — quelle letture sceglieranno prima la riga attiva, poi la più recente, invece di
+affidarsi al caso.
+
+**Il periodo di competenza esiste come primitivo, e per ora viene ignorato di proposito.** Il motore
+accetta in coda un periodo di competenza (`PeriodoCompetenza`: un intervallo di date, dove una data
+puntuale è un periodo lungo un giorno), lo trasporta fino al risolutore, e il risolutore non lo usa.
+Nessun punto del programma lo passa ancora. È il binario su cui la prossima versione farà correre il
+pro rata; qui serve a fissare le firme una volta sola.
+
+**Niente cambia a video.** Nessuna schermata, nessuna guida in-app, nessuna stampa è diversa: le
+due stampe del riparto, registrato e ricostruito, escono identiche, la situazione debitoria e le
+anagrafiche delle unità rispondono con gli stessi dati di prima.
+
+**Cosa questa versione NON fa, perché non lo si legga fra le righe.** Il subentro **non è ancora
+gestito**: le date di inizio e fine di una titolarità continuano a essere registrate e mostrate ma
+**non entrano in nessun calcolo**, come il programma dice già nelle sue schermate. Niente pro rata,
+niente «Registra passaggio», niente storico per periodo: è la 1.11.0-beta.31. Nella pagina del
+piano dei conti il nome accanto a una riga di fattura è ancora quello di ogni proprietario
+registrato, anche cessato, uno accanto all'altro: censito, si chiude con i periodi. E resta aperta
+una domanda per l'importatore — oggi la stessa persona può entrare con due ruoli diversi sulla
+stessa unità — che sta in roadmap, non qui.
+
+**Documentazione.** Aprendo questa versione il progetto sul subentro è stato riletto per intero
+contro il codice e riconciliato con una segnalazione arrivata dal forum (gli stessi due scenari già
+registrati ad agosto): il criterio di competenza è ora scritto una volta sola e nel verso giusto —
+la data della delibera decide per le spese straordinarie, il periodo di maturazione per le
+ordinarie —, la data della delibera per lo straordinario sarà **chiesta e non dedotta**, e otto
+decisioni nuove fissano la forma della prossima versione. Il verbale e il referto della revisione
+stanno nei documenti interni.
+
+## [1.11.0-beta.29] - Il Riparto Che Si Ricorda
+
+**Tocca il database:** una tabella nuova, `righe_riparto`, e due colonne di `rate_quote` tolte
+(`riga_fattura_id` e `voce_id`, mai scritte né lette da quando esistono). Due migrazioni,
+entrambe rieseguibili. **E un cambio di comportamento in generazione:** una spesa di una sola
+unità (la riga di fattura con l'immobile) che non ha nessun proprietario, nudo proprietario o
+usufruttuario attivo a cui andare **ferma la generazione** come ogni altro scoperto e chiede la
+motivazione; fino a ieri il motore la perdeva con un avviso nei log e il piano si generava con
+quell'importo in meno, senza dirlo a nessuno.
+
+**Il riparto smette di essere un ricalcolo.** Il motore, nel punto in cui decide quanto spetta a
+chi, sa il conto, la tabella, il valore del millesimo, il ruolo risolto, la quota di possesso, la
+riga di fattura — e finora, subito dopo, li fondeva in un peso e li buttava via: `rate_quote`
+conservava il totale e basta. Le due stampe del riparto ricostruivano tutto al momento della
+stampa, ognuna con un'aritmetica sua: quella per tabella rifaceva i pesi dal vivo, quella per
+capitolo si rifaceva gli importi da `righe_fattura` e deduceva il già versato per differenza. I
+centesimi che le due ricostruzioni non sapevano spiegare finivano in «Fuori riparto» o sommati
+agli addebiti ad personam (Code 77 e 78); un contributo registrato dopo l'emissione faceva
+dichiarare uno sconto che nessuna quota aveva avuto; un titolare staccato dopo la generazione
+spariva da un documento e restava nell'altro. Ora il dettaglio si scrive **una volta, alla
+generazione, nella stessa transazione delle quote**: una riga per componente — tabella per
+tabella, ruolo per ruolo, il già versato come riga negativa per soggetto, la spesa ad personam
+con la sua riga di fattura, gli zeri documentati con il millesimo di allora — e per ogni soggetto
+la somma delle righe è esattamente la sua quota, altrimenti non si scrive niente, nemmeno le
+quote. Le stampe **leggono**: nessuna aritmetica di riparto in stampa, i centesimi sono quelli
+del motore riga per riga.
+
+**Il documento dice cosa sta guardando.** In legenda e nella nota legale: «riparto **registrato**
+alla generazione del gg/mm/aaaa», oppure «**ricostruito** dai dati attuali, non registrato» per i
+piani generati prima di questo aggiornamento — che restano tali, e chi li ha già emessi non li
+rigenera: quei documenti continuano a uscire come prima —, oppure «**anteprima**» per un piano non
+ancora generato. Rigenerare un piano sostituisce il dettaglio, come sostituisce le rate.
+
+**Cosa cambia nelle due stampe.** «Addebito diretto» contiene solo le spese ad personam — prima ci
+finiva il residuo del già versato, e l'unico condòmino con un intervento a suo carico leggeva
+«Addebito diretto −€ 100,00». Il pregresso ha la sua colonna, «Saldi precedenti», e il già versato
+la sua, «Già versato», anche nella stampa per tabella; sono colonne come le altre, e contano nella
+divisione in blocchi: un piano con cinque tabelle, saldi iniziali e un versamento registrato, che
+stava in una pagina, ora esce in due blocchi. «Fuori riparto» diventa una guardia: nel registrato
+non compare, e se comparisse è un errore che viene scritto nei log. Le pseudo-colonne stanno
+sempre in coda. Un titolare staccato dopo la generazione tiene la sua cella sulla tabella e sul
+capitolo, con il ruolo di allora; chi è subentrato dopo non compare, perché non era nel calcolo.
+Un conto o una tabella cancellati dopo la generazione non fanno sparire la colonna: resta, con il
+nome di allora e i millesimi congelati. La radice di ogni voce è congelata: spostare un sottoconto
+dopo l'assemblea non sposta una colonna. I soggetti a totale zero che il dettaglio spiega (quota
+interamente coperta dal già versato) compaiono in entrambe le stampe con le loro celle. Nella
+stampa per capitolo, un capitolo con voci su tabelle diverse mostra «—» al posto di un millesimo
+che non gli appartiene (prima mostrava quello della prima tabella). Due precisazioni al
+centesimo: nella stampa per tabella il totale di un soggetto è spaccato fra le colonne per
+componente, e su un conto con più tabelle *e* due ruoli risolti sulla stessa persona una colonna
+può muoversi di un centesimo rispetto a prima, a totali per soggetto e per conto invariati — vale
+anche per la ristampa «ricostruita» dei piani vecchi; e la spesa ad personam senza titolare, quando
+si accetta lo scoperto, non viene addebitata a nessuno, com'era, ma ora lo si sa.
+
+**Le guardie.** Il registro nasce **accanto** ai totali e non li tocca: i test che tengono fermo il
+motore — il condominio reale da 44 unità e 8 tabelle riprodotto al centesimo, il riparto esatto, i
+casi limite, la concordanza fra motore e stampa — sono verdi senza cambiare una riga. Venticinque
+test nuovi: sette invarianti del registro in memoria (le righe sommano ai totali per soggetto e ai
+registri per conto, il secondo Hare, il netting per soggetto, gli zeri, l'ad personam con la riga,
+lo scoperto nuovo), otto sulla scrittura (riconciliazione sul dato salvato con `quota_pura_gestione`,
+rigenerazione che sostituisce, cascata, rollback nei due versi, colonne tolte, il cancello dello
+scoperto), dieci sulle stampe (Coda 77 e 78 sullo scenario misurato dalla revisione, i tre stati
+della fonte, l'ordine delle colonne, il conto e la tabella cancellati, la radice congelata, gli zeri).
+Le due migrazioni sono nel test che le riesegue.
+
+**Pulizia.** Quattro test portavano nomi di persone e di condomìni veri, rimasti da fixture
+costruite su dati di amministratori: sostituiti con nomi inventati, numeri invariati.
+
+**Cosa resta.** Il subentro fatto *prima* della generazione resta attribuito al titolare attuale:
+`contributi_versati.anagrafica_id` esiste e il motore non la legge — si chiude con le beta dei
+subentri, che arrivano in questa versione. Il tipo di intervento e il flag abitazione principale
+non si congelano ancora: appartengono all'intervento e al soggetto-unità-anno, che il modello dati
+non ha. I conti di entrata restano un difetto del motore, non delle stampe.
+
+---
+
+## [1.11.0-beta.28] - Le Stampe Che Rispondono
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Una beta piccola, per chiudere un difetto di famiglia. La beta.23 l'aveva trovato nel Libro
+Giornale e la .27 nelle tre stampe del piano rate: `Output(..., 'I')` di mPDF scrive il PDF
+direttamente sull'uscita e restituisce una stringa vuota — il browser riceveva il file, ma la
+risposta dell'applicazione era vuota e nessun test poteva leggerla. La revisione della .27 ha
+contato le stampe rimaste con la stessa forma: **quattro** — l'estratto conto dell'anagrafica, il
+modello F24, la distinta e la ripartizione delle spese del piano dei conti. Ora tutte e quattro
+restituiscono i byte nella risposta, con un nome di file dichiarato.
+
+**I nomi.** Estratto conto: `estratto-conto-<condominio>-2026-<anagrafica>.pdf` invece di
+`EC_Nome_Cognome_Esercizio anno 2026.pdf`, spazi compresi. Distinta e ripartizione delle spese:
+`distinta-spese-<condominio>-2026-<piano>.pdf` e `ripartizione-spese-<condominio>-2026-<piano>.pdf`
+invece di `distinta_spese.pdf` e `ripartizione_spese.pdf`, uguali per tutti — il piano dei conti
+è uno per gestione, e un esercizio con ordinaria e straordinaria ne ha due. Il modello F24 tiene
+il suo nome (`F24-<protocollo>.pdf`), ma ora lo dichiara la risposta e non l'eco di mPDF. La
+distinta del pagamento fornitore non aveva il difetto — scaricava già con i byte — ma usciva come
+`Distinta_PAG-PAG-2026-00001_….pdf`, con il prefisso raddoppiato: ora `distinta-pagamento-pag-2026-00001-<data>.pdf`.
+
+**I test, scritti prima della cura.** Cinque: quattro fallivano con un corpo a zero byte, il quinto
+sul nome. Ogni stampa ora ha un'asserzione sui byte (`%PDF`, più di mille) e sul nome dichiarato —
+la forma che avrebbe visto il vuoto da mesi. In tutto il gestionale non resta nessun
+`Output(..., 'I')`.
+
+**Cosa resta.** I Code 77/78 col dettaglio persistito del riparto, che la .27 dava alla .28, escono
+nella **.29**: toccano il database e sono una beta intera. Un'anagrafica con un nome tutto fuori
+dall'alfabeto latino avrebbe un file senza il suo nome (lo slug è vuoto, il nome ripiega sul solo
+condominio e anno); l'estratto conto di un condominio senza esercizio aperto risponde 500 già
+da prima: annotati.
+
+---
+
+## [1.11.0-beta.27] - Il Riparto Che Sta In Un A4
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Un amministratore ha messo a confronto, sullo stesso condominio, il riparto per tabella di
+KondoManager e quello del programma che usava prima: «bello da vedere quello di KM ma solo da
+lontano… prova a stamparlo su carta e capisci subito». Aveva ragione. Con più di cinque tabelle il
+foglio diventava un A3 — che nessuna stampante di casa o di studio ha — e il browser lo ristampava
+su un A4 verticale, illeggibile e su due pagine; il suo programma metteva 48 righe e sei tabelle in
+un A4 orizzontale, a una pagina. Le due stampe del riparto — per tabella e per capitolo — ora
+escono **sempre in A4 orizzontale**: si sceglie l'orientamento, non il foglio. Margini stretti
+(8 mm ai lati, intestazione e piede misurati sul millimetro), corpo del carattere a 7 punti fino a
+sei colonne, colonne di servizio ridotte, celle compatte: quel condominio da 38 unità e 48 righe
+sta in due pagine per tabella e in due per capitolo, dove prima ne servivano due in A3 e quattro.
+
+**Blocchi bilanciati, totali una volta sola.** Con molte tabelle la stampa non rimpicciolisce il
+carattere: spezza le colonne in blocchi di pagina, e i blocchi sono **bilanciati** — dieci tabelle
+fanno 5 + 5, non 8 + 2 con un blocco quasi vuoto. Il blocco che porta le colonne dei totali (totale
+soggetto, percentuale, totale unità) ha tre colonne in più, e con sette o otto tabelle i numeri non
+ci stavano: quel blocco non supera le sei tabelle, e sette escono in 4 + 3. Le colonne e la riga
+dei **totali generali stanno solo nell'ultimo blocco**, dove chi legge ha visto tutte le colonne;
+i blocchi precedenti chiudono con i totali delle sole colonne del blocco e lo dicono in calce
+(«Continua nel blocco successivo»). Prima ogni blocco ripeteva i totali del documento intero, e la
+seconda pagina affermava un totale che le sue colonne contraddicevano (Coda 79, chiusa).
+
+**Si legge nell'ordine del palazzo.** Le righe escono per interno in ordine naturale — «2» prima di
+«10», «4 bis» fra «4» e «5» — poi le unità senza interno (box, cantine) per nome; l'ordine di
+inserimento non conta più. La cella dell'unità ha il nome in testa e una sola riga piccola sotto,
+«int. 3 · piano 1», solo quando c'è qualcosa da scrivere: un box senza interno non stampa più
+«Int. —» a vuoto, e un piano inserito come numero nudo («1», «T») prende la sua etichetta.
+
+**Il file ha un nome, e la risposta ha un corpo.** Le tre stampe del piano rate — scadenziario,
+riparto per tabella, riparto per capitolo — scaricano come `riparto-tabelle-<condominio>-2026.pdf`
+e simili, invece di `prospetto_rate.pdf` per tutte. Sotto c'era un difetto silenzioso: mPDF
+scriveva il PDF direttamente sull'uscita e la risposta di Laravel restava vuota — il browser
+vedeva il file, un test no. Ora la risposta porta i byte, e un test li misura.
+
+**Firma e piede nel margine.** La firma dell'amministratore, nelle due stampe del riparto, sta su
+una riga con l'etichetta, più bassa: prima il suo blocco finiva da solo su una terza pagina bianca.
+Il piè di pagina — data, nota legale, numero di pagina — ha una variante compatta che sta nei
+7 mm del margine: quello standard ne misura 10,6 e il suo filetto tagliava l'ultima riga e la
+firma, e le «due pagine» esistevano solo grazie a quella sovrapposizione.
+
+**Dettagli che si vedono su carta.** Nel riparto per capitolo le quote seguono i decimali della
+tabella, come nel riparto per tabella (prima erano tre fissi: lo stesso millesimo usciva «38,80» in
+una stampa e «38,400» nell'altra, e a sei colonne «159,570» si spezzava). Le intestazioni «TOT.
+SOGG.» e «mill. ‰» stanno su una riga; le percentuali della barra dei ruoli hanno la virgola
+(«75,9%»); la legenda dei ruoli dichiara anche il nudo proprietario («NP»), che le righe già
+stampavano, e le unità di misura che le colonne usano davvero (millesimi, quote, persone, kW,
+metri cubi); nelle due stampe la nuda proprietà sta accanto al proprietario, nello stesso posto.
+
+**Un condominio di prova con la forma di uno vero.** Fino a qui la leggibilità delle stampe era
+misurata su quattro unità e tre tabelle. Ora c'è `CondominioStampeSeeder`: 38 unità (17
+appartamenti, 17 box, 4 cantine), 48 righe, sei tabelle — acqua a consumo, acqua a quote fisse,
+una generale ridotta, generale, interrato, scale — cinque capitoli di preventivo per € 18.350,00,
+sei appartamenti e quattro box affittati, coppie con un nome solo, un ente fra gli inquilini,
+proprietari con più unità. La forma è quella segnalata; nomi, sede, numerazione, millesimi,
+consumi e importi sono costruiti. Diciotto test lo usano: formato e pagine letti **nel PDF** (non
+nelle variabili del modello), riga per riga uguale alle quote, blocchi 5 + 5 e 4 + 3 e 7 → 4 + 3,
+totali solo nell'ultimo blocco, ordine di lettura, decimali, etichetta del piano, firma
+configurata su disco finto con le due pagine che reggono, e l'altezza delle righe che non cambia
+fra un totale a quattro cifre e uno a cinque — il caso dei piani straordinari.
+
+**Cosa resta.** Nel riparto per capitolo della fixture compare una colonna «Fuori riparto» da
+€ 0,01 su otto righe: sono i centesimi che la cascata dei ruoli non assegna quando una voce è
+divisa 66,67/33,33 — il Code 77/78, che la beta.28 chiude con il dettaglio persistito del riparto.
+Un importo di riga a cinque cifre con sei tabelle, e una nota legale di più righe nel piede
+standard di tutte le stampe, restano annotati in coda.
+
+---
+
+## [1.11.0-beta.26] - Tutti I Movimenti Della Banca
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+«Tutti i movimenti della banca» è la domanda quotidiana dell'amministratore, e finora non aveva una
+risposta: la Prima nota mette insieme tutte le casse e parte da zero a ogni esercizio, il Libro
+Giornale elenca le scritture e non i conti, lo Stato patrimoniale dà un saldo e non le righe che lo
+compongono. Ora ogni conto ha il suo **mastrino** — punto 2 della sequenza di
+`docs/registri_contabili.md`, decisioni D21 scritte prima del codice: dare, avere e saldo
+progressivo di quel conto, riga per riga, nel periodo dell'esercizio in barra. Sta sotto Movimenti
+come pagina figlia dello Stato patrimoniale, e un selettore in testa passa da un conto all'altro:
+le voci del piano dei conti che hanno righe, raggruppate per tipo, con il numero di movimenti nel
+periodo. Il nome del conto è il titolo; il codice interno sta accanto, piccolo, perché serve a chi
+cerca «1010.01» e non a chi cerca «Banca».
+
+**Il saldo parte dal riporto, non da zero.** La prima riga è quanto c'era sul conto il giorno prima
+dell'esercizio, con dentro tutto ciò che precede — anche gli esercizi passati — e l'ultima riga è il
+saldo di oggi (o della data di fine, per un esercizio chiuso). Per costruzione è **lo stesso numero
+della riga dello Stato patrimoniale** da cui si è cliccato: il mastrino è il dettaglio della
+fotografia e chiude sul suo numero, sempre, e un test con i valori a mano lo tiene fermo. Il perimetro
+è per data e non per esercizio: una scrittura datata fuori dal periodo del suo esercizio — il caso
+che il controllo «Liquidità e riepilogo» segnala — compare nel mastrino del periodo in cui cade, con
+il badge del suo esercizio, così mastrino e fotografia non divergono mai. Il saldo è nel verso
+naturale del conto — dare meno avere per attivo e costo, avere meno dare per passivo e ricavo — e
+va in rosso quando è contro natura: la banca sotto zero, il fornitore a credito.
+
+**Un clic sulla riga apre la contropartita.** Sotto ogni movimento compaiono le righe sorelle della
+scrittura — conto, dare, avere — cioè da dove viene o dove va il denaro, anche quando i conti sono
+più di uno; con la data di annotazione, lo stato, la nota e il rimando alla scrittura in partita
+doppia. La controparte in colonna è risolta con le stesse fonti della Prima nota — fornitore,
+erario, anagrafica, cassa — riusate e non riscritte; sul mastrino dei crediti ogni riga porta il
+suo condòmino, e non quello della riga accanto (la revisione lo ha trovato prima dell'uscita).
+Gli storni come nel registro: l'originale resta con la marca «stornata» — anche una fattura
+stornata, letta dallo stato della fattura — e lo storno è una riga come le altre.
+
+**Cosa dichiara invece di nascondere.** Sopra la tabella, quando ricorrono: un saldo di apertura
+di cassa **non ancora registrato a giornale** — la fotografia lo conta, il mastrino no, e la
+differenza è scritta, con il rimando al Libro Giornale dove si registra; le righe di **altri esercizi** dentro
+il periodo; le righe di **questo** esercizio datate prima del suo inizio, che stanno nel riporto
+(una fattura pregressa, per esempio); i movimenti **datati oltre la fine del periodo**, contati.
+Un esercizio non ancora cominciato ha un periodo vuoto e un riporto che vale la fotografia a oggi,
+e la pagina lo dice. «Oggi» è quello dell'utente in Italia, lo stesso dello Stato patrimoniale,
+anche alle 00:30.
+
+**Filtri che non inventano saldi.** Ricerca su descrizione, protocollo e controparte; intervallo di
+date dentro il periodo, e una data fuori dal periodo viene ignorata invece di produrre un saldo che
+non esiste. Filtrando, i totali dare e avere diventano parziali e lo dicono; il **saldo alla data
+resta quello vero**, e il riporto non si filtra mai. Un filtro senza esito lo dice in modo diverso
+da un conto senza movimenti: nel primo caso il saldo in testa è ancora quello del conto alla sua
+data, nel secondo è il riporto.
+
+**La stampa, e il libro mastro.** Il mastrino di un conto scarica come
+`mastrino-1010.01-<condominio>-2026.pdf`, in orizzontale, con la riga di riporto, le righe, i
+totali e il saldo finale; con un filtro attivo il foglio si dichiara «estratto parziale» ed elenca
+i filtri. E dal menù «Stampa» — nel mastrino e nello Stato patrimoniale — c'è **«Tutti i conti —
+libro mastro»**: un foglio solo con il mastrino di ogni conto movimentato, un conto per pagina,
+con l'indice in copertina, senza filtri, `libro-mastro-<condominio>-2026.pdf`. Un conto senza
+righe, senza riporto e senza apertura da dichiarare non stampa una pagina vuota. Stessa carta
+intestata delle altre tre stampe, senza firma: è un registro calcolato, non un atto.
+
+**Tre porte, e si torna da dove si è entrati.** Nello **Stato patrimoniale** ogni conto della
+situazione patrimoniale e ogni cassa del riepilogo finanziario è un link al suo mastrino, alla
+stessa data — la porta di chi sta indagando un rosso. In **Risorse e fondi** l'azione «Movimenti»
+sulla riga della cassa — la porta di chi pensa «la banca». Nel **Libro Giornale**, aprendo una
+scrittura, ogni conto del dettaglio porta al suo mastrino — la porta di chi si chiede «e su questo
+conto cos'altro è passato?». Il pulsante in testa riporta alla pagina da cui si è arrivati. La
+modale per voce di spesa del Piano dei conti resta com'è, e lo si dichiara: ha una regola di
+perimetro sua — esclude le fatture contestate, perché serve al budget — e unificarla con il mastrino
+è una decisione da prendere quando si farà quella lettura, non di nascosto qui.
+
+**Due correzioni alla Prima nota e al racconto della .25.** La scheda «Solo denaro che si muove
+davvero» e la nota in fondo alla stampa dicevano che il saldo del registro «è al netto dei fondi
+accantonati» e per questo non coincide con l'estratto conto. Non è così: un accantonamento fatto
+con giroconto non compare nel registro, quindi la riga della banca continua a contarlo — come la
+banca; il registro non vede solo il denaro mai passato dalla cassa banca. Le ragioni vere per cui
+non coincide sono altre due, e ora i testi dicono quelle: il saldo è unico su tutte le casse reali
+(un prelievo verso i contanti compare due volte) e parte da zero a ogni esercizio; per il confronto
+con l'estratto conto vale il saldo della cassa nello Stato patrimoniale, che porta dentro il
+riporto. La stessa frase stava nel changelog della beta.24, che ora porta la correzione accanto.
+E nel changelog della beta.25 le scritture «fuori periodo» della prova erano undici, non dodici: la
+dodicesima era l'apertura registrata durante la prova stessa.
+
+**Guardie.** Il conto di un altro condominio, o un mastro con conti figli, non si apre da qui:
+404. Diciannove test con valori attesi calcolati a mano — riporto da un esercizio precedente, conto
+passivo con saldo contro natura, coppia originale + storno, riga di un altro esercizio, apertura
+non a giornale, filtro con totali parziali e saldo vero, postdatata, esercizio futuro, confini di
+data con il formato di MySQL, la notte in UTC, il libro mastro — e la suite della Prima nota resta
+verde senza toccare un test: il registro non cambia di una riga.
+
+---
+
+## [1.11.0-beta.25] - La Fotografia Che Nessuno Aveva Scattato
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Lo stato patrimoniale esisteva come motore dalla 1.10.0-beta.25 e si vedeva come un riquadro con due
+totali sopra il Libro Giornale, più una modale che dichiarava di essere provvisoria. Ora è una
+**pagina** nella barra Movimenti — punto 3 della sequenza di `docs/registri_contabili.md`, decisioni
+D16–D20 scritte prima del codice — ed è la pagina con cui l'amministratore verifica se tutta la
+contabilità torna. Per questo ogni numero che mostra è coperto da test con valori attesi **calcolati
+a mano**, non letti dal motore stesso: prima di questa beta nessun test aveva costi diversi da zero né
+dati su due esercizi.
+
+**Una fotografia, non il flusso dell'anno.** Ogni saldo è quanto c'era sui conti a una data — oggi
+per l'esercizio aperto, la data di fine per uno chiuso — con dentro tutto ciò che è successo prima,
+anche negli esercizi precedenti. Non si elencano gli anni passati: il loro effetto sta nel numero. Il
+motore sommava solo le scritture dell'esercizio, che è il flusso dell'anno: dal secondo anno in poi
+liquidità, crediti e debiti ereditati sparivano, perché non esiste ancora una chiusura che li riporti.
+Il motore ha guadagnato una lettura per data; quella per esercizio resta com'era, e il riquadro sul
+Libro Giornale continua a usarla. I flussi dell'esercizio — riepilogo finanziario e risultato di
+gestione — restano invece per esercizio, come il Libro Giornale e il consuntivo: se una scrittura è
+datata fuori dal periodo del suo esercizio, la fotografia e il riepilogo non contano le stesse righe,
+e uno dei controlli lo misura invece di nasconderlo.
+
+**Attività + Costi = Passività, con i numeri veri.** In questa versione le quote emesse ai condòmini
+sono registrate come debito della gestione verso i condòmini — il conto «Gestione Rate» — non come
+ricavo. I costi registrati e non ancora conguagliati sono spese sostenute per conto dei condòmini,
+e **stanno nella colonna delle attività, elencati uno per uno** — quali fatture e quali spese — così
+le due colonne finiscono sullo stesso numero: «totale attività e costi da conguagliare» a sinistra,
+«totale passività» a destra, e sotto il verdetto «quadratura: quadra». È la stessa uguaglianza del
+dare = avere del Libro Giornale, e il riquadro del Libro Giornale ora la scrive nella stessa forma
+— prima diceva «più spese di quante addebitate» anche quando le quote emesse superavano le spese,
+perché senza conti di ricavo il suo «risultato» era solo «meno i costi»; e in fondo alla sua modale
+prometteva ancora «una pagina dedicata arriverà». Il risultato di gestione ha il suo nome: quote
+emesse meno costi dell'esercizio, l'avanzo o il disavanzo che andrà a conguaglio. La pagina non
+scrive «0 = 0» e non dichiara mai i conti «in pari». Le etichette delle voci vengono dal ruolo del
+conto, non dalla sua categoria a database: «Gestione Rate» ha categoria «fondi», e non è un fondo.
+
+**Sei controlli con un nome, e ognuno dice come rimediare.** Non sigle e non un semaforo:
+«Partita doppia» — totale dare = totale avere su tutte le scritture fino alla data, lo stesso
+numero del Libro Giornale, perché è la base di tutto il resto; è la somma dei movimenti e non dei
+saldi, quindi è più grande della quadratura patrimoniale, e la nota lo dice —, «Quadratura patrimoniale»,
+«Raccordo fra cassa e competenza», «Vincoli e casse fondo», «Liquidità e riepilogo», «Casse reali
+sotto zero». Ogni card mostra l'uguaglianza con gli importi, l'esito e una
+nota; quando non torna, spiega cosa è successo, cosa fare, e **porta con un pulsante nella pagina
+dove si fa** — la Prima nota già filtrata sulla cassa che è andata sotto zero, i Giroconti per
+accantonare in un fondo, le Casse per il conto senza cassa, il Libro Giornale per la scrittura
+datata fuori periodo. Il raccordo fra cassa e competenza — perché la liquidità è cambiata di una
+cifra e il risultato di gestione di un'altra — è derivato dalla nostra identità contabile, riga per
+riga con il nome della posta (fatture non pagate, ritenute non versate, quote non incassate), e non
+trascritto dal modello di riferimento. I controlli che il programma non può eseguire — il confronto
+con l'estratto conto, il riparto contro la spesa — non compaiono come se fossero fatti.
+
+**Liquidità libera e accantonata.** Banca e contanti da una parte, i fondi dall'altra, fondo per
+fondo con il suo vincolo. Il controllo «vincoli dichiarati ≤ liquidità accantonata nei fondi» è nella
+forma del modello di riferimento, ma con l'esito **per fondo**: € 200 assegnati a un fondo che ne
+tiene 50 è rosso e dice quanto manca; un vincolo dichiarato senza nessuna cassa fondo che lo tenga è
+una segnalazione, non un errore; un fondo generico pieno senza vincoli non è un'anomalia, e la
+pagina lo scrive. Un fondo senza sottotipo dichiarato è vincolato, non libero: solo il «generico»
+esplicito è liberamente utilizzabile. I fondi restano partizioni del conto corrente: il totale li
+conta una volta sola, e non compare nessuna passività inventata per farli quadrare.
+
+**Il riepilogo finanziario dell'esercizio.** Per ogni cassa: disponibilità iniziale, entrate,
+uscite, disponibilità finale — le quattro colonne che l'art. 1130-bis chiede. Ogni riga quadra da
+sé. I trasferimenti fra casse contano nelle righe — un accantonamento è un'uscita della banca e
+un'entrata del fondo — ma non nel totale, che espone i soli flussi con l'esterno; un incasso diviso
+su due casse nella stessa scrittura non fa più cadere la pagina. L'apertura di una cassa conta come
+disponibilità iniziale, non come entrata. **Una registrazione stornata non conta**: originale e
+storno si annullano — «più cento meno cento fa zero» — e non stanno né fra le entrate né fra le
+uscite, che così sono i flussi reali con l'esterno; la nota sotto la tabella dice quante coppie
+sono state tolte e per quanto, e nella Prima nota restano leggibili entrambe, come vuole l'art.
+2219. Una banca o una cassa contanti che sia scesa sotto zero anche per un solo giorno
+dell'esercizio è segnalata, con l'importo e la data — **a fine giornata**: la data di un movimento
+non ha l'ora, e una spesa stornata lo stesso giorno non è un'ora di scoperto.
+
+**A chi devo soldi, subito.** La card «Debiti» apre l'elenco delle fatture ancora da pagare —
+fornitore, documento, scadenza, residuo — e ogni riga ha un pulsante **«Paga»** che porta al
+pagamento con quella fattura già selezionata. In fondo, la somma dei residui è confrontata con il
+saldo del conto fornitori, e le ritenute da versare portano agli F24. Le note di credito nate da uno
+storno non compaiono: non sono un credito da spendere (dalla beta.20 non si possono compensare), e
+la loro scrittura ha già annullato il debito — elencarle faceva comparire una differenza col conto
+fornitori che non esiste.
+
+**Provata su un condominio nuovo, azione per azione.** Prima di chiudere la beta la pagina è stata
+seguita passo passo su un condominio creato da zero: apertura della banca, fondo con giroconto,
+emissione delle rate, incasso, fattura con ritenuta, pagamento dalla modale, una spesa più grande
+del saldo, il suo storno, lo storno dell'incasso, il versamento F24, la stampa, un esercizio futuro.
+A ogni passo i numeri attesi erano calcolati a mano prima di aprire la pagina, e sono tornati tutti.
+Il test ha trovato una cosa: dopo lo storno di una spesa il controllo «sotto zero» restava rosso per
+un istante intra-giornata che non esiste — corretto come descritto sopra.
+
+**Esercizio non ancora iniziato.** Se la data di inizio è nel futuro, la pagina lo dice e non
+mostra una fotografia a oggi con dentro l'esercizio precedente: prima non c'era distinzione fra
+«ancora da aprire» e «aperto». La data «oggi» è quella dell'utente in Italia, non quella del server
+in UTC: alle 00:30 il giorno era ancora quello prima.
+
+**La stampa** usa la carta del registro di contabilità: caratteri propri, carta intestata, i
+prospetti a doppio filetto, uno sotto l'altro così che si spezzino fra le pagine. Senza firma, come
+gli altri due libri: è una fotografia calcolata, non un atto. **I tre libri scaricano con il loro
+nome** — `stato-patrimoniale-<condominio>-2026-al-2026-09-12.pdf`, `prima-nota-…`,
+`libro-giornale-…` — e non più come `print.pdf`, che è il nome che il browser inventa quando il
+programma non ne dichiara uno.
+
+**Seguendo i pulsanti si arriva in fondo.** Provato su un condominio con l'esercizio sbagliato e la
+banca senza apertura: tutti e due i rossi si chiudono seguendo solo i rimedi proposti. Perché
+succedesse, tre cose sono cambiate. «Liquidità e riepilogo» ora conta quante scritture stanno fuori
+dal periodo dell'esercizio: se sono tutte, o più della metà, dice che **sono le date dell'esercizio a
+essere sbagliate** e il pulsante porta a modificare l'esercizio — non a correggere undici scritture
+una per una *(diceva «dodici»: la dodicesima è l'apertura registrata durante la prova stessa — corretto nella beta.26)*. «Casse reali sotto zero» distingue una banca **senza saldo di apertura e senza incassi**
+(«i pagamenti sono usciti da un conto che, per il programma, era vuoto») da un movimento sulla cassa
+sbagliata, e nel primo caso porta dritto a registrare il saldo iniziale — con le tre uscite possibili:
+c'erano soldi (registra il saldo), hanno versato (registra gli incassi), il conto era davvero a zero
+(il pagamento è sulla cassa sbagliata). E quel pulsante prima portava a un **no**: il form della cassa
+rifiutava il saldo di apertura se c'erano già movimenti, anche quando nessuna apertura era mai stata
+registrata — e il rifiuto non si vedeva nemmeno, la pagina si ricaricava in silenzio. Ora la **prima**
+apertura di una cassa che ne è priva si può registrare anche con movimenti sotto (va a inizio
+esercizio e aggiunge ciò che manca; modificarne una già registrata resta vietato), e un rifiuto
+compare sotto il campo.
+
+**Un incasso con una quota pagata a credito usciva «stornato».** Trovato chiudendo la beta su un
+condominio con due fondi e quattro storni: `storno_credito` comincia come uno storno ma è la quota
+coperta da un credito, figlia di un incasso che resta valido. Il criterio «figlia che comincia per
+storno_» — lo stesso della Prima nota dalla beta.24 — lo prendeva per uno storno: nella Prima nota
+quell'incasso era marcato «stornata», e nel riepilogo finanziario sparivano 24,57 dalle entrate
+della banca, con il controllo «Liquidità e riepilogo» rosso e una diagnosi sbagliata. Ora gli
+storni veri sono un elenco esplicito nel programma, e due test tengono fermo il caso.
+
+**Ritocchi visti al test.** Nel pagamento fornitore una ragione sociale lunga andava a capo dentro
+il menu e spingeva la × e la freccia su una seconda riga: ora il valore scelto sta su una riga e si
+tronca con i puntini (vale per ogni menu a scelta singola). L'anteprima della scrittura nella
+regolazione immediata e nel giroconto non usa più il carattere a spaziatura fissa. Nella
+situazione patrimoniale la colonna del codice è larga quanto il codice più lungo, non 64 pixel
+fissi.
+
+**Cosa si completa con gli altri moduli, e non è una dimenticanza.** In fondo alla pagina e in fondo
+al foglio: non elenca i condòmini che devono soldi, solo il totale — l'elenco per unità arriva con
+il modulo morosi e solleciti, e si aprirà da qui. Non confronta con l'estratto conto della banca —
+resta un controllo dell'amministratore finché non ci sarà la riconciliazione bancaria, che
+diventerà un controllo di questa pagina. Non chiude l'esercizio — quote e costi si accumulano dal
+primo, il cumulato da conguagliare è dichiarato, e la fotografia al 31/12 di un esercizio chiuso
+diventerà definitiva con la chiusura guidata. Sono i tre agganci previsti, non tre buchi.
+
+---
+
+## [1.11.0-beta.24] - La Prima Nota Che Non Era Ancora Nata
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+La voce «Prima nota» era in barra da mesi, con il badge «In sviluppo» e un link che non portava da
+nessuna parte. Dietro quel segnaposto manca(va) l'unico registro che la legge impone davvero:
+l'**art. 1130, comma 1, n. 7 del codice civile** obbliga l'amministratore a tenere il *registro di
+contabilità*, dove «vengono annotati in ordine cronologico, entro trenta giorni da quello
+dell'effettuazione, i singoli movimenti in entrata ed in uscita». Il Libro Giornale, per quanto
+completo, è un'altra cosa: contiene tutte le scritture in partita doppia, comprese quelle che non
+muovono un euro.
+
+**Ora la pagina esiste, si legge e si stampa.** Per ogni movimento: la data effettiva — quella su
+cui il registro è ordinato, come chiede la norma — e accanto la data in cui è stato annotato, con
+un avviso quando fra le due passano più di trenta giorni. Poi la descrizione, la cassa che si è
+mossa, la controparte, entrata o uscita, e il saldo progressivo.
+
+**Compare solo il denaro che si muove davvero.** Una fattura registrata e non pagata non entra nel
+registro; un accantonamento verso il fondo di riserva nemmeno, perché quei soldi restano sullo
+stesso conto corrente — non sono usciti da nessuna parte. Un prelievo dalla banca ai contanti,
+invece, produce due righe: è corretto, ed è il motivo per cui questo registro non coincide con
+l'estratto conto della banca.
+
+**La controparte è ricostruita, non lasciata vuota.** Il nome di chi ha versato o di chi è stato
+pagato non vive in un posto solo: per un incasso è il condòmino, per un pagamento è il fornitore,
+per un versamento di ritenute è l'Erario, per un giroconto è l'altra cassa. La pagina li cerca in
+quest'ordine e mostra il primo che trova.
+
+**Ogni movimento ha il suo numero.** Le fonti che descrivono questo registro elencano il numero
+d'operazione fra i dati minimi, prima ancora della data: serve a citare un movimento senza doverlo
+descrivere — «operazione n. 47» invece di «quel bonifico di maggio». La numerazione è cronologica
+sull'esercizio e non cambia quando si filtra.
+
+**Filtrando un periodo, il saldo resta quello vero.** Se guardi solo giugno, la colonna «Saldo»
+continua a dire quanto c'era davvero sul conto in quei giorni — non il netto del mese. È la ragione
+per cui la legge vuole questo registro: dare «un continuo e diretto controllo, in tempo reale, della
+situazione contabile e delle somme a disposizione del condominio». I totali in testa, invece, sono
+dichiarati come parziali, perché quelli sì che si riferiscono ai soli movimenti mostrati. La stessa
+distinzione vale dentro il dettaglio per cassa: entrate e uscite di ogni cassa sono parziali quanto
+i totali e lo dicono in intestazione, il saldo di ognuna no.
+
+**La stampa non denuncia i tuoi ritardi.** A video il registro segnala i movimenti annotati oltre i
+trenta giorni dell'art. 1130, comma 1, n. 7 c.c.: è la vista con cui rimediare. In stampa no — il
+foglio che porti in assemblea riporta la sola data del movimento, l'unica che la norma chieda. Un
+registro che denuncia da solo i ritardi del suo autore, consegnato ai condòmini, è un'arma contro
+l'amministratore. Il pulsante «Stampa» ha due voci: **«Stampa per l'assemblea»** e **«Copia di
+controllo»**, che aggiunge le date di annotazione e segnala i ritardi. La seconda si dichiara tale
+in testa al foglio: due stampe dello stesso registro che si distinguono per una colonna sola sono
+indistinguibili una volta sul tavolo. Nella stessa riga di lavoro è sparito il saldo dal piede della
+tabella stampata: un saldo progressivo non si somma, e ricopiare l'ultima riga sotto l'etichetta
+«totale dell'esercizio» la faceva leggere come una somma che non è. Il saldo finale resta dichiarato
+una volta sola, in testa, con la data a cui si riferisce.
+
+**Un clic sulla riga apre il dettaglio**, con una cosa che la tabella non può dire: il saldo della
+**singola cassa** dopo quel movimento. La colonna «Saldo» è complessiva su tutte le casse reali,
+perché il registro di legge è un documento unico; con due conti reali, però, quel numero da solo
+non dice su quale dei due si è mosso il denaro.
+
+**La stampa ha un aspetto suo.** È la prima stampa del gestionale con caratteri propri — Inter per
+il testo, Fraunces per titoli e importi — invece di quello generico di serie: carta intestata del
+condominio, intestazioni in maiuscoletto, importi incolonnati, totali a doppio filetto. Chiude con
+una nota che spiega a chi legge come è fatto il registro, comprese **le operazioni stornate**, che
+restano stampate e marcate: il codice civile chiede che una scrittura contabile resti leggibile
+anche dove è stata corretta (art. 2219), e un registro che facesse sparire ciò che annulla non
+rispetterebbe quella regola.
+
+Il Libro Giornale, che nella beta precedente rimandava a questo registro con un riferimento
+testuale perché la pagina non esisteva ancora, ora ci rimanda con un link vero — sia a schermo sia
+nella stampa.
+
+**Le due pagine si comportano allo stesso modo.** In entrambi gli elenchi il rimando al dettaglio di
+una scrittura vive ora dentro il pannello che si apre cliccando la riga, e la colonna con l'icona in
+coda è sparita: era un secondo percorso per la stessa cosa, e nel Libro Giornale quel pannello non
+offriva alcuna via verso il dettaglio.
+
+**Questo registro è uno dei tre documenti del rendiconto, non il rendiconto.** L'art. 1130-bis c.c.
+lo compone di un registro di contabilità — quello di questa beta — un riepilogo finanziario e una
+nota sintetica esplicativa della gestione. Chi ci aveva scritto in estate chiedendo un rendiconto
+completo trova qui la prima metà, consegnata; la seconda arriverà in una versione dedicata, perché
+richiede un pezzo di motore che oggi manca — il risultato d'esercizio scritto a chiusura, non solo
+calcolato a video — e non ha senso promettere un fascicolo che non quadra ancora da solo.
+
+**Due limiti dichiarati sul foglio.** Il saldo del registro è al netto dei fondi accantonati, e per
+questo non coincide con l'estratto conto: ne differisce di quanto è vincolato *(⚠️ falso, corretto
+nella beta.26: un accantonamento con giroconto non compare nel registro, quindi la riga della banca
+continua a contarlo — come la banca)*. E il saldo
+progressivo parte da zero all'inizio dell'esercizio: il riporto dall'anno precedente arriverà con
+il rendiconto. Entrambe le cose sono scritte nella nota «Come leggere questo registro» e nelle
+schede della pagina — chi confronta il foglio con la banca deve saperlo dal foglio.
+
+### Bugfix
+
+- **Lo storno di un incasso ha ora la data dello storno, non quella dell'incasso.** Era l'unico
+  dei cinque storni del gestionale a retrodatare: nel registro di contabilità la rettifica si
+  infilava subito dopo l'incasso e ogni saldo fra le due date diceva che quei soldi non c'erano.
+- **Da un fondo non si paga, nemmeno con una regolazione immediata o un F24.** Pagamenti e
+  incassi rifiutavano già una cassa di tipo fondo; le altre due richieste no, e un pagamento
+  fatto da un fondo spariva dal registro. Il versamento F24 accetta inoltre solo casse del
+  condominio giusto.
+- **Lo storno di un versamento F24 non era collegato al versamento originale.** Era l'unico storno
+  del gestionale a non scrivere il legame con la scrittura di partenza, contro la regola che il
+  progetto applica ovunque («lo storno non elimina: scrive una scrittura uguale e contraria,
+  collegata»). Chi risaliva dallo storno all'originale — il nuovo registro per primo, che così
+  perdeva «Erario» come controparte — non lo trovava più. Gli storni F24 registrati prima di questa
+  beta restano senza collegamento e nel registro hanno la controparte vuota: sono pochi e solo su
+  installazioni beta, e non si tocca il database per riallinearli.
+- **Il tetto della stampa del registro ora deriva dalla memoria dell'installazione**, come quello
+  del Libro Giornale, invece di essere un numero fisso: un numero inventato più alto della soglia
+  già misurata avrebbe riportato la stampa a interrompersi in silenzio sulle installazioni piccole.
+- **Un `console.log` di debug nella pagina «Nuovo evento» finiva nel bundle di produzione.** Era lì
+  da prima di questa beta; l'ha trovato il controllo sui residui di debug nato dalla riga di
+  `PdfService` scappata nella beta.23. Tolto, nessun cambio di comportamento.
+
+---
+
+## [1.11.0-beta.23] - Il Giornale Che Ora Si Legge Riga Per Riga
+
+**Non tocca il database:** nessuna migrazione, nessun dato nuovo.
+
+Un amministratore che tiene un corso di contabilità in partita doppia ha chiesto perché nel Libro
+Giornale i segni fossero sempre positivi, sia per i pagamenti che per i versamenti. La risposta
+immediata era corretta — il verso di una scrittura lo porta la colonna, dare o avere, non il segno
+— ma la domanda era il sintomo di un problema vero: un libro giornale è un documento **riga per
+riga**, e la nostra pagina era **scrittura per scrittura**, con una sola colonna «Importo» che
+sommava tutto insieme.
+
+**Ora un clic sulla riga apre le sue righe di partita doppia** — conto, dare, avere — la stessa
+tabella che prima viveva solo nel dettaglio. Chiude il malinteso senza far cambiare pagina.
+
+**E il Libro Giornale si stampa**, riga per riga, in forma cronologica classica: data, protocollo,
+conto, dare, avere — richiesto da un utente, non un'iniziativa nostra. La stampa rispetta gli
+stessi filtri della pagina, **tutti e cinque**: se l'amministratore ha già ristretto il periodo,
+lo stato, il tipo di movimento o cercato una causale, stampa solo quello — e lo dichiara in un
+riquadro, con il totale marcato «parziale», perché un documento che tace il proprio perimetro può
+finire in assemblea o davanti a un CTU con un numero che sembra completo e non lo è.
+
+⚠️ **La pagina dichiara anche cosa NON è.** Il Libro Giornale è il registro delle scritture in
+partita doppia — non è il registro di contabilità (entrate e uscite) che l'art. 1130, comma 1, n. 7
+c.c. impone. I due registri contengono righe diverse — un giroconto fra fondi, per dire, entra nel
+giornale ma non nel registro di legge — e non si possono fondere in una pagina sola. Quel secondo
+registro non esiste ancora: quando esisterà, questa pagina rimanderà lì per chi cerca entrate e
+uscite.
+
+### Una stampa grande non si blocca più a metà
+
+Misurato prima di prometterlo: un esercizio molto attivo può generare migliaia di righe, e mPDF
+tiene l'intera tabella in memoria per calcolare le colonne. Su un'installazione con la memoria
+tipica di questo prodotto, una tabella sola esauriva la memoria attorno alle mille righe — un
+volume che un condominio con bollette mensili e incassi rateali raggiunge da solo in un anno
+ordinario. L'esito non era un errore leggibile: era una pagina bianca, senza traccia nei log.
+
+La tabella ora si genera **a blocchi**: stesso aspetto, stesso tempo, un decimo della memoria. E
+quando un esercizio è davvero fuori scala, la stampa lo dice — chiede di restringere il periodo —
+invece di interrompersi in silenzio.
+
+### E alcune cose più piccole, trovate lungo la strada
+
+- Un valore di filtro non interpretabile nella data non manda più in errore la stampa: viene
+  trattato come «nessun filtro», la stessa tolleranza che l'elenco a schermo aveva già.
+- Un registro di più pagine ora si identifica su ognuna, non solo sulla prima.
+- Il clic vicino al pulsante di dettaglio, senza colpirlo esattamente, non apre più il pannello
+  al posto suo.
+
+---
+
+## [1.11.0-beta.22] - Il Capitolo Che Sopravviveva Allo Storno
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova, nessun conto contabile nuovo.
+
+Quando una fattura arriva dopo la chiusura dell'esercizio, il programma non ha un capitolo dove
+metterla — quell'anno è chiuso — e allora ne **crea uno apposta**, chiedendo prima
+all'amministratore la motivazione legale. È il meccanismo della sopravvenienza passiva, ed è
+corretto: la spesa esiste, e va scritta da qualche parte.
+
+Stornando quella fattura, però, il capitolo **restava in piedi con il suo importo**. La contropartita
+dello storno finiva su `passate_gestioni` e senza l'etichetta della voce di spesa, quindi il costo
+non tornava mai indietro da dove era venuto: il piano dei conti, il dettaglio della voce e il
+rendiconto continuavano a mostrare una spesa che nessun documento giustificava più. Da questa
+versione lo storno la annulla **sullo stesso capitolo e con la stessa etichetta** con cui era stata
+scritta, e i due movimenti si elidono.
+
+⚠️ **E il capitolo smette anche di chiedere quei soldi.** Oltre al costo a consuntivo, quel capitolo
+portava un **fabbisogno** pari all'importo della fattura: nel piano dei conti restava una riga da
+€ 610,00 di preventivo per un documento annullato, e l'intestazione continuava a sommarla fra le
+sopravvenienze. Adesso lo storno azzera anche quello. La voce **resta visibile, a zero**: non viene
+cancellata, perché la traccia di cosa è successo deve restare consultabile.
+
+*(Questo secondo pezzo non l'hanno trovato i test: è emerso guardando la pagina, dopo che i test
+erano già verdi.)*
+
+### E due difetti che stavano sulla stessa strada
+
+⚠️ **Una pregressa coperta in parte non si poteva stornare affatto.** Quando l'importo supera il
+debito storico dichiarato, la copertura viene divisa in due — una parte a rata zero, il resto come
+sopravvenienza. In quel caso lo storno si interrompeva con un errore di quadratura e non succedeva
+niente: il documento restava vivo e l'amministratore non aveva modo di annullarlo. Il difetto
+**precede questa versione di diverse beta**, ma rendeva irraggiungibile proprio la correzione qui
+sopra, nello scenario che la descrive.
+
+⚠️ **Il piano rate straordinario continuava a proporre le fatture stornate.** Il carrello da cui si
+scelgono le spese da ripartire le offriva col loro importo pieno, già suggerito. Selezionandole,
+quei soldi venivano **addebitati ai proprietari per un documento che non esiste più**. La mancanza
+era su entrambe le liste del carrello, quindi la correzione vale anche per le fatture straordinarie
+dell'anno in corso.
+
+⚠️ **Gli importi già registrati non cambiano.** Nessuna scrittura esistente viene riscritta: ciò che
+è a bilancio oggi resta identico.
+
+### E il carrello, quando è vuoto, dice cosa fare
+
+Solo grafica, sulla stessa card. Quando non c'era niente da ripartire, il carrello mostrava una riga
+di testo sospesa in un riquadro vuoto. Adesso spiega **perché** è vuoto e **cosa fare** — registrare
+una fattura fuori preventivo, oppure scegliere un'altra gestione. E quando la gestione non è ancora
+stata scelta usa la **stessa nota** del riquadro dei saldi pregressi lì sopra, che dice già la stessa
+identica cosa: due riquadri adiacenti non devono parlare due lingue diverse per la stessa attesa.
+
+E l'intestazione della card **descrive invece di ordinare**: diceva «seleziona le fatture impreviste o
+ad personam» anche nei due stati in cui non c'è niente da selezionare — ed era quello, più del resto,
+a farla sembrare staccata da ciò che stava sotto.
+
+⚠️ **E lo «scudo legale» compare solo quando c'è una fattura da autorizzare.** Il riquadro che chiede
+il tipo di autorizzazione e gli estremi del verbale restava lì anche a carrello vuoto: chiedeva la
+delibera di una spesa che non esiste, per un piano che il programma **rifiuta comunque** — senza
+almeno una fattura selezionata un piano straordinario non si può creare. La card, invece, resta
+visibile: è l'unica cosa a schermo che spiega perché il salvataggio non andrebbe a buon fine. In quello
+stato la card perde però la propria **intestazione**: sopra una frase di due righe, un titolo più la
+sua descrizione erano più preambolo che contenuto. Resta un riquadro solo, che si spiega da sé.
+
+---
+
+## [1.11.0-beta.21] - La Nota Che Sembrava Un Buco
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Una nota di credito che arriva da un fornitore e si riferisce a un anno già chiuso non è una brutta
+notizia: è denaro che torna. Il programma la trattava come il suo esatto contrario.
+
+Il ramo del **debito pregresso** si accende guardando solo la data: un documento datato prima
+dell'inizio dell'esercizio ci finisce dentro, che sia una fattura o una nota di credito. Da lì il
+programma leggeva l'importo **senza segno** e concludeva che ci fosse uno scoperto da coprire —
+quindi chiedeva all'amministratore la motivazione legale di una **spesa imprevista**, su un
+documento che le risorse le libera. E se la motivazione veniva compilata, creava per davvero un
+**capitolo di spesa nuovo** e una copertura a bilancio: un costo inventato per registrare un
+guadagno.
+
+Da questa versione non succede più, in nessuno dei quattro punti in cui poteva succedere: il calcolo
+dell'eccedenza, il controllo prima del salvataggio, il pannello che l'amministratore ha davanti, e
+il motore contabile — quest'ultimo anche se la richiesta arriva già compilata da fuori.
+
+⚠️ **L'importo registrato era già corretto** e non cambia: la nota si registrava, e si registra,
+come **credito** con gli importi negativi. Sbagliato era tutto ciò che veniva prima. Per questo la
+correzione **toglie** quattro comportamenti e non ne introduce nessuno — in particolare non
+introduce nessun conto contabile nuovo.
+
+### Il pannello diceva una cosa che non sarebbe più successa
+
+Il riquadro del debito pregresso mostrava la nota di credito come uno **scoperto** da coprire, col
+semaforo arancione e la promessa di un assistente che avrebbe aiutato a giustificarla. Chiuse le
+altre tre porte, quella promessa sarebbe rimasta lì senza che l'assistente si aprisse più: un
+messaggio sbagliato è meglio di un messaggio che promette qualcosa che non accade. Adesso il
+pannello dice zero, perché una nota di credito non ha niente da coprire.
+
+### Cosa ha trovato la revisione
+
+Nove rilievi proposti, tre confermati. Due riguardavano **questa correzione**: il pannello di cui
+sopra — la quarta porta, quella che l'amministratore guarda davvero — e il fatto che due delle
+correzioni non fossero protette da nessuna prova, dimostrato rimettendole com'erano e vedendo 129
+prove restare verdi.
+
+Il terzo non riguarda questa versione ed è più vecchio: stornando una fattura pregressa, il capitolo
+di spesa che quella fattura aveva fatto creare **non viene annullato**, e continua a pesare sul
+rendiconto per un documento che non esiste più. È stato riprodotto due volte e messo in programma
+per la versione successiva: tocca il libro giornale e la ripartizione, e questa versione era fatta
+di sole rimozioni.
+
+## [1.11.0-beta.20] - Quello Che Quadrava Lo Stesso
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Il controllo che verifica la partita doppia diceva 🟢 su una contabilità sbagliata, e aveva ragione.
+Una fattura registrata per € 100,14 invece dei € 100,15 che il fornitore chiede **quadra
+perfettamente**: i due lati della scrittura sono sbagliati dello stesso importo, e nessuna somma
+tradisce niente. Quel controllo verificava che i conti fossero coerenti **con sé stessi**, non che
+fossero **giusti rispetto al documento** — e sono due domande diverse.
+
+Da questa versione ne fa una quinta. Per ogni fattura importata da XML confronta il totale registrato
+con quello che il fornitore ha dichiarato nel file, e lo scrive come **equazione con i numeri veri**:
+
+> `26G-00011672 · dichiarato dal fornitore € 100,15 = registrato € 100,15 · quadra`
+
+Non un indicatore «tutto ok» ma un'affermazione verificabile per ogni documento, che si legge anche
+quando l'esito è positivo — un controllo che si vede solo quando fallisce non permette di sapere se è
+stato eseguito. Lo stato complessivo distingue adesso tre casi invece di due: conti coerenti,
+**conti coerenti ma un documento registrato per un importo diverso da quello dichiarato**, e anomalia
+contabile vera. Il caso di mezzo non è un errore: dalla 1.11.0-beta.19 il programma avvisa e non
+blocca, quindi un importo diverso può essere stato scelto.
+
+⚠️ **Il confronto è possibile solo sulle fatture importate dalla beta.19 in poi**, perché sono le
+uniche che conservano i totali dichiarati dal fornitore. Su un archivio più vecchio la risposta dirà
+«nessuna fattura da confrontare» invece di far credere che sia tutto a posto.
+
+Quel controllo, fino a oggi, non aveva **nessun test**: se avesse smesso di vedere le anomalie
+avrebbe risposto 🟢 e nessuno l'avrebbe saputo. Adesso ne ha sette, e ciascuno gli mette davanti
+un'anomalia costruita apposta.
+
+### Tre vicoli ciechi chiusi
+
+Un vicolo cieco è un documento che il programma non permette più né di correggere né di annullare.
+Se ne chiudono tre, tutti sulle note di credito.
+
+- **«Fuori preventivo» non si offre più su una nota di credito.** Quel pulsante dichiara una spesa
+  imprevista che sfora il budget, e una nota di credito il budget lo **libera**: premendolo si
+  marcava il documento come sforo motivato, e da lì non era più né modificabile né stornabile.
+- **Cambiare il tipo di documento adesso azzera la motivazione dello sforo.** Bastava scriverla su
+  una fattura, cambiare idea e commutare in nota di credito: la motivazione restava attaccata a un
+  documento che non poteva averla prodotta, con lo stesso esito di prima.
+- **Le note di credito generate da uno storno prima della 1.11.0-beta.18 non sono più compensabili.**
+  Quella correzione valeva solo per le note nuove; quelle già in archivio restavano selezionabili, e
+  un fornitore poteva vedersi decurtare un pagamento con un documento che non ha mai emesso. Adesso
+  si riconoscono dal legame con la fattura che hanno annullato, senza bisogno di toccare i dati.
+
+### Cosa ha trovato la revisione, e cosa ha trovato lo schermo
+
+La revisione avversariale ha proposto diciassette rilievi, sei dei quali confermati e corretti. Due
+riguardavano **le correzioni di questa versione stessa**: chiudendo il primo vicolo cieco se ne era
+aperto un altro — il pulsante spariva ma il contrassegno restava acceso sulla riga, e il documento
+non si salvava più — e un test che dichiarava di proteggere il pagamento non provava niente, cosa
+dimostrata rimettendo il codice vecchio e vedendo tutte le 2.358 prove restare verdi.
+
+Il simbolo dell'euro scritto dopo l'importo invece che prima, in nove punti della risposta, non l'ha
+trovato la revisione: l'ha trovato aprire la pagina e guardarla.
+
+## [1.11.0-beta.19] - Il Totale Che Non È Nostro
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova. I riepiloghi del documento
+si conservano in `dati_extra`, che è una colonna JSON già esistente.
+
+Una fattura elettronica dichiara la propria IVA. Non la lascia dedurre: la scrive, gruppo per
+gruppo, nei blocchi `DatiRiepilogo` che il tracciato rende obbligatori per ogni coppia
+aliquota/natura. Fino a ieri Kondomanager quel numero lo ignorava e se lo ricalcolava per conto
+proprio, riga per riga, arrotondando ciascuna riga separatamente.
+
+Sulla maggior parte dei documenti le due strade coincidono. Su una bolletta del gas fra le undici
+usate per le prove no: il fornitore dichiara **€ 100,15** e il programma registrava **€ 100,14**.
+È la differenza fra «arrotonda e somma» e «somma e arrotonda», e la seconda è quella che la
+fattura elettronica prescrive.
+
+Da questa versione l'imposta che il documento dichiara viene distribuita fra le righe del suo
+gruppo, invece di essere ricalcolata. Il totale registrato è quello scritto sulla fattura, e lo è
+su tutti e undici i file reali di prova — verificato uno per uno, a video e nei test, su quattro
+percorsi: registrazione, modifica, storno e debito pregresso.
+
+### E se l'amministratore cambia una riga?
+
+Questa è la domanda che la versione ha dovuto risolvere, e la risposta è in due parti.
+
+«Imponibile 45,74, imposta 10,06» è una frase sola: prenderne la seconda metà senza controllare la
+prima significa applicare a righe qualsiasi un numero che ne descriveva altre. Quindi **l'imposta
+dichiarata di un gruppo vale finché le righe di quel gruppo sommano all'imponibile che il gruppo
+dichiara**; appena divergono, quel gruppo — e solo quello — torna al calcolo per riga. Spezzare
+una spesa fra due capitoli non cambia niente, perché la somma resta la stessa; correggere un
+importo sì, ed è giusto che sia così.
+
+La seconda parte è nuova e vale da sola la versione. **Su una fattura ricevuta il totale non è
+nostro:** il debito verso il fornitore è quello che il documento chiede, tutto intero. Se
+cancellando o modificando una riga la registrazione smette di valere quanto la fattura, adesso
+c'è un avviso che lo dice, con tutti e due i numeri:
+
+> Il documento chiede € 100,15, questa registrazione vale € 55,80 — in meno di € 44,35.
+> Registrandola così, il debito verso il fornitore non sarà quello che la fattura chiede.
+
+Segnala e non blocca: l'amministratore resta l'autorità sul proprio documento, e un'importazione
+può anche aver letto male. Ma prima non lo diceva nessuno.
+
+### Le altre correzioni
+
+Una revisione avversariale su questa versione ha trovato dodici difetti distinti, e sono tutti
+chiusi qui. I più gravi, oltre ai due sopra:
+
+- **Riaprire una nota di credito nata da uno storno la gonfiava.** Se la fattura originale
+  conteneva una riga in diminuzione, riaprire la nota per correggere una data la faceva passare da
+  −€ 100,15 a −€ 104,54: € 4,39 di credito verso il fornitore che non corrispondevano a niente.
+- **La stessa nota, riaperta e salvata, perdeva l'IVA dichiarata** e tornava a calcolarla per
+  riga, divergendo di un centesimo dalla fattura che doveva annullare.
+- **Svuotare l'aliquota del debito pregresso** mostrava zero IVA a schermo e ne salvava il 22 %:
+  su € 1.000,00, € 220,00 di debito che nessuno aveva digitato. Il campo adesso è obbligatorio,
+  perché né 22 né 0 sono quello che l'amministratore ha detto.
+- **Lo storno rifiutava una fattura ordinaria a credito** — quando gli storni di riga superano gli
+  addebiti — dicendole «non puoi stornare una nota di credito», che era anche il tipo di documento
+  sbagliato. Quel documento restava senza nessuna via di rettifica.
+- **Due blocchi di riepilogo sulla stessa aliquota si sovrascrivevano** invece di sommarsi, e le
+  due parti del programma che rispondono alla stessa domanda si contraddicevano: l'elenco dei file
+  avrebbe detto € 183,00 e la registrazione € 161,00.
+
+### Sotto il cofano
+
+Il calcolo che distribuisce un importo senza perdere centesimi viveva in due copie identiche
+dentro il motore di riparto, con l'avvertenza scritta di tenerle allineate a mano. Il ciclo passivo
+ne aveva bisogno e sarebbe nata la terza: ora è una funzione sola, e un test la confronta con una
+copia congelata dell'originale su duemila casi generati, perché da lì escono le quote che i
+condòmini pagano.
+
+I database temporanei usati dalle prove di backup avevano nomi fissi e si contendevano lo stesso
+nome fra due copie del progetto: adesso sono distinti, e le due suite si possono lanciare insieme.
+
+## [1.11.0-beta.18] - Il Meno Che Diventava Più
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Una delle undici fatture reali usate per le prove — una bolletta del gas — contiene una riga in
+diminuzione: lo storno «Oneri di sistema», −€ 1,80. Il motore contabile la respingeva con un
+messaggio di sbilancio, e negli altri tre punti che quel tipo di riga attraversa — storno,
+modifica, piano rate — dove riusciva a passare produceva numeri gonfiati che quadravano lo
+stesso. Questa beta chiude quella famiglia intera, più la Coda 132.
+
+Il difetto d'origine è stato trovato registrando a video le fatture di prova per il tutorial
+sull'importazione XML: la bolletta del gas si rifiutava di entrare. La revisione avversariale
+del 05/09/2026 ne ha trovati altri cinque nella stessa area — tre esistenti da sempre, due
+introdotti dalla prima stesura della correzione — e uno l'ha trovato la verifica a video, dopo
+che tutti i test erano verdi.
+
+### La riga in diminuzione non passava affatto
+
+`FatturaPassivaService` scriveva ogni riga di dettaglio come DARE del suo **valore assoluto**.
+La riga da −€ 1,80 finiva a giornale come DARE € 1,80: contribuiva al totale invece di ridurlo.
+La testata valeva il totale vero del documento, € 100,15; la somma delle righe € 104,54 — lo
+scarto contato due volte, al lordo dell'IVA al 22%. `DoubleEntryValidator` faceva il suo mestiere
+e respingeva tutto con «Errore di integrità contabile».
+
+Ora il segno naturale della riga decide il verso: negativa → AVERE, positiva → DARE, importo
+sempre positivo come vuole lo schema. Sullo stesso capitolo di spesa, così la riduzione riduce.
+Sulle note di credito il segno resta uno solo — il moltiplicatore per −1 e il filtro
+invertitore lavoravano già insieme, e la prima stesura di questa correzione li aveva sommati,
+producendo una nota da DARE € 244,00 / AVERE € 0,00. Il test l'ha vista in pochi secondi.
+
+### Lo storno gonfiava la nota di credito (①)
+
+`StornoFatturaController` applicava `abs()` a ogni riga prima di rimandarla al servizio: la
+nota di credito generata valeva **più** della fattura che doveva annullare — € 134,20 contro
+€ 109,80 sul caso verificato. Restavano € 24,40 di credito verso il fornitore che non
+corrispondevano a nessun denaro, e il capitolo chiudeva con una spesa negativa che entrava nel
+rendiconto e si ripartiva ai condòmini. Tolto l'`abs()`: la nota è lo specchio esatto, e i due
+documenti si annullano a zero.
+
+### La modifica la faceva crescere in silenzio (②)
+
+`FatturaRegisterEdit.vue` idratava le righe con `Math.abs()` per tutti i tipi di documento. La
+riga negativa compariva senza il meno, e bastava riaprire la fattura per correggere una data e
+salvarla perché il totale passasse da € 109,80 a € 134,20 — nessun avviso, contabilità in
+quadratura, € 24,40 mai spesi caricati sul capitolo. L'`abs()` ora vale solo dove serve
+davvero, sulle note di credito, dove il segno lo mette il tipo di documento.
+
+### La testata sceglie il verso dal segno (③)
+
+Quando gli storni di riga superano gli addebiti — il conguaglio a credito più grande del
+consumo del periodo — il documento vale meno di zero: il fornitore deve a noi. La riga di
+testata era scritta come AVERE fisso del valore assoluto, e la registrazione veniva respinta
+con lo stesso messaggio di sbilancio. Ora il verso lo decide il netto: negativo → DARE.
+
+### Lo storno di una pregressa non scriveva niente (④)
+
+Una fattura registrata come debito di un esercizio precedente non ha righe di dettaglio:
+l'importo sta sui campi di testata. `StornoFatturaController` leggeva invece due colonne che
+**non esistono** in tabella — `imponibile_pregresso` e `aliquota_iva_pregressa` — e da un
+valore nullo ricavava zero. La nota di credito veniva creata **vuota**: la fattura risultava
+stornata, il debito restava a bilancio, niente lo segnalava. Ora i due valori si ricavano dai
+campi veri, e la nota vale quanto la fattura che annulla. Le due scritture morte che
+`FatturaPassivaService` faceva verso quelle stesse colonne inesistenti sono state tolte.
+
+### Le quote straordinarie addebitavano la riduzione (⑤)
+
+`CalcoloQuoteService` sommava le righe in valore assoluto: su un documento da € 1.000,00 con una
+rettifica in diminuzione da −€ 200,00 generava quote per € 1.400,00. I condòmini pagavano il 40%
+in più del documento. La riduzione ora riduce.
+
+### Sulla nota di credito il divieto adesso si vede (Coda 132)
+
+Digitare a mano un importo negativo su una nota di credito ne annullava il segno, riportava il
+totale in positivo e faceva sì che il programma non la riconoscesse più come nota di credito:
+diventava pagabile e stornabile come una fattura qualunque. La coda era aperta da tempo con un
+rimedio più largo — vietare il negativo ovunque — che questa beta ha dovuto restringere: sulla
+fattura ordinaria la riga in diminuzione è legittima, ed è esattamente il caso appena sistemato.
+Il divieto vale quindi solo sulla nota di credito.
+
+**La verifica a video ha trovato che il rifiuto non si vedeva.** Il server respingeva
+correttamente, ma la pagina di modifica non stampava alcun errore di riga: il pulsante tornava
+attivo e non succedeva niente. Un rifiuto muto è peggio del difetto che chiude. Ora il messaggio
+compare sotto la casella dell'importo e dice il perché: «Su una nota di credito il segno lo mette
+già il tipo di documento».
+
+### L'importazione XML perdeva gli importi di una pregressa
+
+Un file datato in un esercizio già chiuso apre il pannello del debito pregresso, che chiede un
+importo solo. L'importazione mandava le sole righe di dettaglio, che quel pannello non legge: il
+campo restava a € 0,00. **Su undici file reali di prova, sei sono datati 2024–2025** — su tutti e
+sei l'amministratore doveva ricopiare a mano un importo che il file dichiara, il contrario di
+quello che l'importazione promette. Ora imponibile, imposta e aliquota effettiva arrivano dal
+`DatiRiepilogo` del documento.
+
+### Verifica
+
+Tutte e undici le fatture reali di prova sono state registrate e controllate importo per
+importo — imponibile, IVA, totale, ritenuta — contro il valore dichiarato nell'XML, con le
+scritture verificate in quadratura una per una. Il file duplicato è stato correttamente
+rifiutato. Il caso con cassa previdenziale registra la cassa come riga propria; il caso con
+sconto in riga somma al totale dichiarato.
+
+### Cosa resta in coda
+
+Tre voci nuove, aperte e non chiuse qui:
+
+- **Coda 140** — cancellando una fattura la scrittura contabile resta orfana. Comportamento
+  preesistente, non introdotto da questa beta.
+- **Coda 141** — un secondo `abs()` sulle coperture in `CalcoloQuoteService`. Lasciato aperto di
+  proposito: nessuna delle lenti usate è riuscita a costruire uno scenario raggiungibile, e non
+  si tocca un calcolo di denaro senza un caso che lo dimostri.
+- **Coda 142** — l'IVA viene ricalcolata riga per riga invece di essere presa dal riepilogo
+  dichiarato, con scarti di 1 centesimo su alcuni documenti. Assegnata alla beta.19.
+
+---
+
+## [1.11.0-beta.17] - Il Segno Che Nessuno Guardava
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Chiude tre code aperte il 04/09/2026 nella stessa area — la nota di credito e lo storno nel
+ciclo passivo — e la Fase 1-bis (revisione avversariale del 05/09/2026) ha trovato che la prima
+stesura ne aveva rotte altre due, sullo stesso pezzo di dominio, prima di dichiararle chiuse.
+
+### Una nota di credito non consuma budget (Coda 122)
+
+**Segnalazione dal forum, 04/09/2026.** Registrando una nota di credito, il pannello di
+simulazione la trattava come una spesa: budget e cassa scendevano dove la contabilità li alza.
+Il segno esisteva già lato server (`FatturaPassivaService` moltiplica per −1 tutto ciò che
+registra come `nota_credito`), ma nessuno dei tre calcoli dell'anteprima — `budgetImpacts`,
+`rigaInSforo`, `bankForecast` — riceveva `tipo_documento` per saperlo.
+
+Sul caso del forum — nota da € 61,00, capitolo con € 1.178,00 di residuo, banca a € 117,85 — il
+pannello diceva «Usato € 61,00» invece di −€ 61,00, e «saldo post € 56,85» dove non usciva un
+euro. **Il numero atteso dall'utente era sbagliato quanto il nostro**: si aspettava € 178,85, il
+simmetrico. Ma una fattura non tocca mai un conto di liquidità (la scrittura è DARE capitolo /
+AVERE debiti fornitori) e una nota di credito non si incassa, si compensa. Il numero onesto è il
+saldo **invariato**, con l'uscita azzerata.
+
+La conseguenza più seria era di flusso: su un capitolo già consumato — il caso normale per una
+nota di credito — l'amministratore doveva inventare una giustificazione di sforo per un
+documento che il budget lo libera, e quella giustificazione finiva agli atti senza via
+d'uscita: una nota in `sforo_motivato` non è più modificabile, e non è stornabile.
+
+**La revisione avversariale del 05/09/2026 ha trovato due difetti che questa stessa correzione
+aveva introdotto.** `isOk` — il ramo che alimenta davvero il blocco, non il badge sotto il campo
+importo — non conosceva `tipo_documento`: su un capitolo già sforato una nota di credito apriva
+comunque lo sforo motivato, lo stesso vicolo cieco che la coda doveva chiudere. E la barra di
+consumo del capitolo, con `speso_cents` ora negativo, riceveva dal CSS una larghezza negativa che
+il browser scarta: si disegnava **piena** proprio dove il testo diceva «+€ 1.239,00». Corrette
+entrambe, con controprova.
+
+Il selettore Fattura/Nota di credito in modifica — cliccabile e senza alcun effetto sul
+salvataggio, difetto già noto ma non chiuso — è diventato un'etichetta di sola lettura col
+lucchetto: la prima correzione lo aveva reso disabilitato ma ancora a due caselle affiancate, e
+due caselle — una spenta, una colorata — dicono ancora «puoi scegliere» anche se non rispondono
+al clic.
+
+### La ritenuta di una nota da storno non si perde più (Coda 123)
+
+**Trovata indagando la Coda 122, indipendente da essa.** Quando si storna una fattura con
+ritenuta, l'importo trattenuto viene congelato sulla nota di credito generata
+(`ritenuta_override`, già esistente per lo storno stesso). Ma `aggiornaFattura()` non lo
+leggeva mai: riapriva sempre il ricalcolo sull'anagrafica **attuale** del fornitore. Se
+l'anagrafica cambiava fra lo storno e la modifica — ad esempio il fornitore diventava
+forfetario — bastava correggere una data per azzerare la ritenuta e lasciare un residuo verso
+l'Erario senza contropartita sul conto 2202. E dopo, quel residuo non si richiudeva più: la
+fattura originale era già stornata, e una nota di credito non è stornabile.
+
+**La revisione avversariale del 05/09/2026, seguita da una verifica a video della correzione
+stessa, ha trovato una tagliola nella prima stesura.** Il confronto per decidere se congelare
+leggeva la nota di credito stessa — mutabile — invece della fattura originale, immutabile per
+costruzione. Un primo salvataggio con l'imponibile sbagliato passava dal ricalcolo dal vivo e
+cancellava il valore congelato dalla nota; un secondo salvataggio, tornato all'imponibile
+giusto, congelava lo **zero** appena scritto. Il residuo fantasma diventava permanente — lo
+stesso identico danno che la coda doveva impedire, ricreato su un terzo percorso. Corretto
+risalendo sempre all'originale (`dati_extra->stornata_da_id`); la stessa tagliola viveva anche
+nell'anteprima del frontend, corretta passando una nuova prop `nota_storno_originale` dal
+controller.
+
+Verificato a video il flusso intero, incluso il caso con righe miste — una prestazione che
+concorre alla base ritenuta e un contributo di cassa previdenziale che non vi concorre —
+registrando davvero un pagamento e controllando che il task «Versare F24» generato riporti
+l'importo corretto.
+
+Corretti nello stesso giro: il toggle «Applica ritenuta d'acconto» e la casella «Concorre alla
+base ritenuta» restavano cliccabili su una nota congelata, ignorati in silenzio dal
+salvataggio — ora disabilitati con la spiegazione al posto della domanda, e quel riquadro non
+sparisce più quando il fornitore diventa forfetario (spariva insieme al resto, lasciando il
+numero corretto senza alcuna spiegazione del perché).
+
+### Una nota da storno non compare più come pagamento da compensare (Coda 124)
+
+**Trovata leggendo il codice della Coda 123.** Lo storno marca la nota generata con
+`dati_extra->nota_storno`, apposta per escluderla dalla compensazione automatica dei pagamenti.
+Ma la ricostruzione di `dati_extra` in `registraFattura()` scartava quella chiave insieme a
+tutto il resto: il filtro che doveva escluderla era sempre vero al contrario. **Misurato con una
+sonda end-to-end**: una fattura vera compensata con la nota nata da uno storno risultava
+«pagata», residuo zero, zero euro usciti dalla cassa — mentre il mastro dei debiti fornitori
+restava a debito. Corretto in tre punti: la ricostruzione di `dati_extra`, la query delle
+pendenze (che aveva un secondo buco indipendente), e una guardia di dominio nel servizio di
+pagamento come terza linea di difesa.
+
+Corretta insieme: la voce «Registra pagamento» restava offerta sul menu della nota da storno e
+portava a un form che non la trova più — un vicolo cieco muto, dove prima «funzionava» ed era
+proprio il difetto.
+
+### Altre correzioni dello stesso blocco
+
+- **Il badge «Stornata» e l'importo annullato non sono più barrati** nell'elenco fatture: la
+  riga sopra il testo è un segno tipografico per un prezzo o una parola cancellata, non per un
+  badge colorato — sembrava un errore di impaginazione.
+- **Un tooltip spiega «Concorre alla base ritenuta»** anche fuori dal contesto XML, utile
+  compilando una fattura a mano.
+- **`RitenutaCalcolo::override()` non scrive più l'importo della ritenuta al posto della sua
+  base** quando `imponibile_calcolo` manca: un default silenzioso trovato dalla revisione
+  avversariale.
+- **Il catch dedicato per `NotaStornoNonCompensabileException`**, come già esisteva per
+  `IdempotencyKeyConflittoException`: una regola di dominio rispettata non finisce più nel log
+  come guasto tecnico con stack trace.
+- Corretti cinque testi in maiuscolo di stile inglese («Genera Nota di Credito», «Elimina
+  Fattura», «Ratifica Assembleare — Sforo Motivato», «Conferma Ratifica», «Approva Fattura»,
+  «Fuori Preventivo») trovati verificando a video: in italiano solo la prima parola di una
+  frase è maiuscola.
+- **Il badge «Ritenuta» e la casella «Applica ritenuta d'acconto» ora mostrano la
+  percentuale** («Ritenuta 4%», «Applica ritenuta d'acconto 20%») invece di dire solo che il
+  fornitore ne è soggetto: prima bisognava aprire la sua scheda per saperlo. Aggiunto anche un
+  tooltip sulla casella, con lo stesso testo sulle quattro pagine dove il badge compare
+  (registrazione e modifica fattura, registrazione e modifica pagamento).
+- **La casella «Concorre alla base ritenuta» non è più blu**: stesso difetto di
+  «Applica ritenuta d'acconto» prima di questa beta — l'utility Tailwind `text-amber-600` non
+  colora l'accent-color nativo del checkbox, il browser disegnava il blu di default.
+- **Il modale «Saldo conto insufficiente» corretto**: il pulsante «Annulla» era uno stile
+  `ghost` che si leggeva come testo semplice, non come un pulsante; il titolo era in maiuscolo
+  a ogni parola.
+
+### Dieci rilievi restano aperti, spostati in roadmap (Coda 129-138)
+
+La revisione avversariale ha trovato 27 sospetti, 25 sopravvissuti a una confutazione
+indipendente. Undici erano introdotti da questa beta e sono stati corretti; dieci erano
+preesistenti nello stesso codice e non sono stati toccati — cinque assegnati alla beta.18
+(gate dell'eccedenza pregressa e della spesa imprevista ciechi al tipo documento, importi di
+riga negativi che aggirano la guardia di storno, la correzione della Coda 124 che vale solo per
+gli storni futuri), cinque in coda senza data (dettagli minori di presentazione e di audit).
+Dettaglio completo in `docs/roadmap.md`.
+
+---
+
+## [1.11.0-beta.16] - Quello Che La Fattura Non Dice
+
+🚨 **Tocca il database:** una colonna su `fornitori`, `ritenuta_decisa_il`. Migrazione idempotente,
+nel dataset di `UpgradeMigrationsRerunTest`, con backfill.
+
+È l'ultima dell'arco cominciato con la beta.11, e chiude tre code aperte dal collaudo della .14 —
+la **116**, la **117** e la **114**. Il titolo fa il paio con quello della .14, *Quello Che C'Era
+Scritto Nel File*, e non è un vezzo: quella beta ha imparato a leggere ciò che il documento
+dichiara, questa si occupa di ciò che **non dichiara mai**.
+
+⚠️ **La cartella di XML e lo smistamento fra condomìni non sono qui.** Erano il piano scritto per
+la .16, e aprendola sono stati misurati: nessuno dei due chiude un difetto — allargano. La ragione
+sta in roadmap; in due righe: servono una schermata nuova fuori dal contesto condominio, un
+permesso nuovo e una tabella, e oggi lo smistamento automatico funzionerebbe su **2 condomìni su
+8**, perché quattro non hanno il codice fiscale e due hanno stringhe che codici fiscali non sono.
+
+### La ritenuta che la fattura non dichiara (Coda 116)
+
+**Un documento senza blocco `<DatiRitenuta>` non significa che la ritenuta non sia dovuta.**
+L'obbligo è del condominio come sostituto d'imposta, non del fornitore che la scrive in fattura —
+ed è l'unico buco dell'importazione XML che **non si chiude leggendo meglio il file**: nessun campo
+può rispondere.
+
+🔬 **Misurato sugli undici XML veri: sei non hanno quel blocco.** Uno dei sei è il decimo file —
+un geometra, cassa previdenziale TC03, cedente persona fisica — su cui il 20% è dovuto. Finora
+quella fattura si registrava a netto pieno, in silenzio: il condominio pagava tutto al fornitore e
+all'Erario non versava niente, restandone responsabile.
+
+Adesso, la prima volta che si registra una fattura di un fornitore mai classificato, il modulo
+chiede se sia soggetto a ritenuta. **Una volta sola nella vita di quel fornitore**, e la risposta
+si applica **prima** della registrazione: la trattenuta vale già su quel documento, non sul
+successivo.
+
+### «No» e «non gliel'ha mai chiesto nessuno» erano la stessa cosa
+
+`fornitori.soggetto_ritenuta` è `NOT NULL default 0`: un fornitore appena censito e uno per cui la
+risposta è davvero no avevano **lo stesso valore in colonna**. Misurato in sviluppo: 9 su 13 in
+quello stato indistinto. Senza distinguerli, un «no» sarebbe tornato indistinguibile da un
+silenzio e la domanda si sarebbe ripresentata alla fattura dopo — cioè un avviso che non si può
+chiudere, che è quello che si impara a saltare.
+
+Da qui la colonna. ⚠️ **La prima stesura guardava solo quella data, ed era troppo stretta**: il
+programma chiedeva la posizione anche di fornitori palesemente classificati, quelli nati da un
+seeder o da un'importazione. Quattro test che registrano fatture sono diventati rossi e hanno
+dettato la regola giusta — **un «sì» si vede dai campi che lo esprimono e non ha bisogno di una
+data; è il «no» a non avere modo di distinguersi dal silenzio.**
+
+### La domanda arriva già con una risposta
+
+⛔ **Proposta, non decisione.** Il file porta indizi e vengono usati per proporre: `RF19` →
+forfetario, la ritenuta non si applica ed è un fatto dichiarato dal documento; un contributo di
+cassa previdenziale, o un cedente **persona fisica** invece che società, → lavoro autonomo al 20%,
+e lì è un indizio, non una prova. Ogni proposta dice **da dove viene** e resta modificabile.
+
+Per il terzo segnale il parser è stato allargato: `fornitoreEPersonaFisica` è un campo suo e non si
+deduce dalla stringa del nome, perché `fornitoreDenominazione` compone «Mario Rossi» e «ROSSI SRL»
+nello stesso modo. Nell'XML la distinzione è netta — `<Denominazione>` oppure `<Nome>`+`<Cognome>`
+— e va portata fin dentro il DTO invece che ricostruita a valle indovinando sui suffissi.
+
+### Quello che ha trovato il collaudo a video, e che nessun test poteva trovare
+
+🚨 **L'anteprima diceva un numero e il salvataggio ne faceva un altro.** Rispondendo «è soggetto
+a ritenuta, lavoro autonomo 20%», il riquadro dei totali continuava a dire **«Nessuna Ritenuta
+€ 0,00»** e il netto restava l'intero: `risolviRegimeRitenuta()` legge `soggetto_ritenuta`
+**dall'anagrafica salvata**, che su un fornitore mai classificato è falsa per definizione. La
+fattura poi si registrava con la trattenuta giusta — il controller applica la risposta prima —
+ma chi premeva «Registra» aveva davanti un altro importo.
+
+⚠️ **I test lato server non potevano prenderlo**: guardano la fattura a database, dove il numero
+era corretto. Il difetto stava **fra la risposta e lo schermo**, cioè dove guarda solo il collaudo
+a video. Corretto: l'anteprima usa il fornitore «come sarà dopo aver risposto», e su € 1.000,00
+mostra € 200,00 al 20% e € 40,00 al 4%.
+
+⛔ **E la prima stesura dei test non proteggeva la correzione.** Ricostruivano la logica del
+componente con una **replica**, in un file di libreria: riportando il `.vue` al difetto restavano
+tutti verdi. Sono stati riscritti sul componente montato davvero — lì la controprova morde su due
+test — e i vecchi **cancellati**, perché un test che sembra una protezione e non lo è è peggio di
+uno che manca. La lezione sta nel flusso di lavoro.
+
+Nello stesso giro, tre correzioni più piccole, tutte viste con gli occhi e non dai test:
+
+- **La stessa frase due volte** nel riquadro della domanda, a tre righe di distanza.
+- **Si parlava di un documento che non c'era**: registrando a mano, senza caricare nessun XML, la
+  spiegazione diceva «il documento non dice niente sulla natura del fornitore».
+- **Il menù del regime era quello nativo del sistema operativo** e stonava con la pagina: ora è
+  `v-select`, con le stesse etichette dell'anagrafica.
+
+### Un file XML non può più mettere in ginocchio il server (Coda 117)
+
+Non c'era **nessun tetto** al numero di righe lette: un XML formalmente valido da 10 MB produce
+**81.284 righe e 111 MB di picco**, su installazioni che spesso hanno `memory_limit=128M`.
+
+Il numero scelto è **mille**, e viene dai file veri: gli undici del collaudo hanno **al massimo 6
+righe**, le tre fixture ufficiali dell'Agenzia da 1 a 3. È oltre centosessanta volte il massimo mai
+osservato, quindi passa senza discutere anche una bolletta con una riga per contatore.
+
+⚠️ **Il tetto scatta prima che il file diventi un albero**, contando sulla stringa grezza come fa
+`rifiutaDoctype()`. Il disegno proposto quando la coda è stata aperta lo faceva scattare **dopo**
+ed era stato bocciato: a quel punto la memoria è già spesa. C'è un test apposta per quell'ordine —
+un file troppo lungo *e* malformato: se l'ordine è giusto vince il tetto, se no vince l'errore di
+sintassi. Senza quel test, spostare la guardia nel posto sbagliato non avrebbe fatto diventare
+rosso niente.
+
+### Il controllo sul codice fiscale del condominio (Coda 114)
+
+L'avviso dopo un'importazione diceva solo che senza codice fiscale «non si emettono documenti
+fiscali». Vero, e incompleto da quando esiste la lettura degli XML: senza quel dato salta anche la
+guardia che rifiuta una fattura intestata a un altro condominio — l'errore più caro da scoprire
+dopo, perché si porta dietro scritture in partita doppia e budget. Quel verificatore non aveva
+nessun test: adesso ne ha tre.
+
+### Corretto anche
+
+- **`TipoRitenuta` usato senza essere importato** in `StoreFatturaRequest`, in una riga che sarebbe
+  esplosa a ogni registrazione. ⚠️ `php -l` non lo vede, e i 22 test di
+  `FatturaPassivaControllerTest` sono passati lo stesso — **perché nessuno di loro registra una
+  fattura via HTTP**: `fatture.store` in quel file non compare. È un buco di copertura, e resta.
+- **Lo strumento con cui si misura il contrasto in tema scuro era cieco da diciassette giorni**:
+  leggeva i colori con un'espressione che dà per scontato `rgb()`, mentre Tailwind 4 emette
+  `oklch`. Ogni testo di palette su fondo scuro collassava sullo stesso valore, e in chiaro
+  *nascondeva* difetti veri. Trovato usandolo, non rileggendolo. Ora la conversione la fa il
+  browser. Sta in `docs/flusso_di_lavoro_rilascio.md`, insieme ad altri dieci rilievi della
+  rilettura di apertura.
+
+---
+
+## [1.11.0-beta.15] - Il Codice Che Nessuno Aveva Scelto
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+Chiude la **Coda 119**, aperta da Vincenzo il 03/09/2026 guardando il riquadro rosa durante il
+collaudo della beta.14: *«ok la spunta, ma se poi me lo dimentico?»*. La domanda era sulla promessa
+di correggere a mano il codice tributo prima dell'F24. Seguendo la catena si è scoperto che quella
+promessa **non la riscuoteva nessuno**: mesi dopo, alla generazione della delega,
+`GeneraDelegheF24Action::naturaPercipiente()` non trovava la natura del percipiente e ripiegava in
+silenzio su `PERSONA_FISICA_IRPEF`, cioè stampava **1019** anche su un soggetto IRES, che vuole
+**1020**.
+
+Non è un errore contabile: la partita doppia resta giusta, perché il debito verso l'Erario si accende
+sul conto con `ruolo = debiti_erario_ritenute` per ruolo e mai per codice tributo. È peggio, in un
+certo senso — **il denaro arriva all'Erario sotto un codice che non è il suo, e si rimedia con
+l'Agenzia, non con una scrittura.**
+
+⚠️ **Il difetto era vivo nei dati.** La delega del condominio dimostrativo portava davvero `1019` per
+una s.r.l. Non è stato costruito un caso per la prova: è stato trovato aprendo la pagina.
+
+### Il ripiego silenzioso non c'è più
+
+`naturaPercipiente()` adesso restituisce `null` quando nessuno sa la risposta, e
+`bloccaSeLaNaturaNonSiSa()` solleva una `DomainException` che **nomina i fornitori**. Togliendo il
+ripiego sono diventati rossi **sedici test insieme**: erano verdi perché proteggevano il difetto —
+uno di loro commentava perfino «fornitore persona fisica → 1019», attribuendo a una classificazione
+un valore che nessuno aveva scelto. Adesso quel 1019 è guadagnato.
+
+### Il blocco è vivibile, e chiede solo dove decide
+
+Due correzioni dello stesso giorno, la seconda trovata riguardando il proprio lavoro:
+
+- **Si dice prima, non dopo.** Sopra lo scadenzario compare l'elenco dei fornitori da classificare,
+  con il collegamento a ciascuna anagrafica. Finché c'è, il pulsante «Aggiorna scadenze» è spento e
+  il tooltip dice perché: prima ne uscivano **due messaggi rossi identici** a mezzo secondo di
+  distanza — il pannello e l'esito di una pressione che non poteva riuscire.
+- **Non si chiede un dato che non decide niente.** `TipoRitenuta::codiceTributo()` fa dipendere il
+  codice dalla natura per un regime solo, l'appalto (1019/1020): altrove è sempre 1040, o 1001 per
+  il lavoro dipendente. La prima stesura bloccava sempre, e a un condominio che paga solo un
+  professionista avrebbe rifiutato la delega dicendogli pure una cosa falsa. Ora l'enum sa
+  rispondere a `dipendeDallaNatura()`, e `codiceTributo()` accetta una natura assente rifiutandola
+  solo dove conta, invece di pretenderne una inventata dal chiamante.
+
+### L'anagrafica la chiede, senza ripetere la beta.6
+
+⚠️ **La regola non è «obbligatoria se soggetto a ritenuta».** Quella è esattamente ciò che è costato
+la **beta.6**, ed è documentato dentro il file che si sarebbe dovuto modificare: i tre campi
+dell'override erano `required_if:soggetto_ritenuta,true`, e ogni fornitore già a database con la
+spunta e un campo vuoto diventò **impossibile da salvare**, anche solo per correggergli il telefono.
+
+Vincenzo ha scelto la **presa d'atto**, lo stesso schema già adottato per lo sforo di budget: l'obbligo
+scatta quando si crea il fornitore, quando si accende la spunta, o quando si tocca il blocco fiscale
+— cioè quando l'incompletezza la stai producendo adesso, non quando la stai ereditando. Una scheda
+già incompleta resta salvabile finché si cambia altro. Il pregresso lo prende il blocco sull'F24, nel
+momento in cui il dato serve davvero.
+
+La regola vive in un trait solo (`ChiedeLaNaturaDelPercipiente`) e la deduzione del regime è stata
+estratta nell'enum (`TipoRitenuta::dedotto()`), perché prima esisteva solo dentro l'azione F24:
+riscriverla nella validazione avrebbe creato la condizione perché un giorno il modulo accetti un
+fornitore che l'F24 rifiuta.
+
+### Un rifiuto non può essere muto
+
+La finestra «crea fornitore da XML» rende gli errori **a mano, campo per campo**, e la natura del
+percipiente non era fra quelli: un 422 su quella chiave avrebbe fatto tornare il pulsante da «Creo il
+fornitore...» a «Crea e aggancia» **senza una parola**. Peggio, la rete costruita per il difetto del
+forum del 30/08 guarda solo `FornitoriNew.vue` e `FornitoriEdit.vue`: sarebbe restata verde.
+
+Oltre all'errore sotto al campo è stato aggiunto un **ripiego strutturale**: ciò che non trova posto
+sotto a un campo compare in cima alla finestra. E la finestra ha finalmente un suo file di test, con
+una guardia che verifica che l'elenco dei campi «stampati» non menta — se mentisse, il ripiego
+scarterebbe un errore credendo che abbia già un posto suo.
+
+### Lo scadenzario si legge in riga
+
+La data con il conto alla rovescia e il codice tributo occupavano due righe mentre le altre colonne
+ne occupavano una: siccome le celle a una riga si centrano in verticale, la tabella si leggeva a
+scalini. Ora tutta la riga sta su una linea sola (scarto massimo misurato: 1,5 px) e il codice
+tributo è un badge come il tipo di versamento, senza carattere a spaziatura fissa.
+
+### Corretto anche
+
+- **Due date scritte in avanti** (04/09/2026 in commenti scritti il 03/09), in cinque file.
+- **`docs/design/f24_ritenute_design.md` §8, punti 4 e 5**: erano ancora elencati come difetti aperti
+  ed erano chiusi dalla 1.10 — l'iscrizione a `PagamentoStornato` e il calendario delle festività.
+  Verificati sul codice prima di scrivere le rettifiche.
+
+### Difetti misurati e lasciati scritti
+
+- **La pagina F24 non ha il tema scuro.** Sei elementi con `bg-white` senza variante `dark:`: le tre
+  schede dei totali, i due filtri e il riquadro della tabella. Viene dal modulo F24 della 1.10, non
+  da questa beta. Le superfici si correggono tutte insieme o si misurano e si lascia scritto.
+- **`prepareForValidation` trasforma una chiave assente in `false`.** Una chiamata che ometta
+  `soggetto_ritenuta` la vede diventare falsa: oggi i tre moduli mandano sempre il carico completo,
+  quindi non è raggiungibile, ma un client parziale azzererebbe in silenzio la ritenuta.
+
+---
+
+## [1.11.0-beta.14] - Quello Che C'Era Scritto Nel File
+
+**Non tocca il database:** nessuna migrazione, nessuna colonna nuova.
+
+È il passo che si vede di tutto il percorso cominciato tre beta fa: **una fattura passiva non si
+digita più, si carica**. Si sceglie il file XML che il fornitore ha mandato via PEC o che si è
+scaricato dal portale Fatture e Corrispettivi, e il modulo si compila da sé — numero, date, importi,
+righe, IBAN, fornitore.
+
+Il titolo però dice l'altra metà del lavoro, che è più grande della prima. Leggendo davvero le
+undici fatture vere di un amministratore è venuto fuori che **il file dichiara cose che non stavamo
+ascoltando**: un contributo di cassa previdenziale che non entrava in fattura, una ritenuta
+d'acconto che attraversava il sistema senza che nessuna schermata la mostrasse, un campo che dice
+quali righe entrano nella base della ritenuta e che veniva sovrascritto. Sono soldi, e sotto trovi
+tutto per esteso.
+
+### Si carica il file, il modulo si compila
+
+Nella schermata di registrazione, in testa, c'è una fascia con il pulsante **«Importa XML»**. Si
+possono caricare **più documenti insieme**: il sistema li legge tutti, ne mostra l'elenco con
+fornitore, data e importo, e si decide quale registrare per primo. Dopo il salvataggio ripropone
+quelli che restano, così un lotto si smaltisce senza tornare indietro a cercarli.
+
+Accetta **XML in chiaro e buste firmate `.p7m`**, ed è la stessa cosa che si può fare dal riquadro
+«Allega documento» in fondo al pannello: allegare il PDF e leggere l'XML restano due gesti diversi,
+ma un XML allegato lì viene letto lo stesso.
+
+### Il fornitore si crea dal file, senza uscire dalla pagina
+
+Se il fornitore non è ancora in anagrafica, un pulsante lo crea leggendo i dati dal documento —
+ragione sociale, partita IVA, indirizzo, PEC — e lo aggancia alla fattura che si sta registrando.
+Prima bisognava lasciare l'importo a metà, andare in anagrafica, e ricominciare.
+
+Il modale **propone** anche il regime di ritenuta quando il file lo dichiara e i conti tornano: il
+4% dell'appalto, il 20% del lavoro autonomo. Propone, non decide — la spunta si toglie e il regime
+si cambia prima di salvare.
+
+### Il contributo di cassa previdenziale entra in fattura
+
+Su una parcella di un professionista iscritto a una cassa — geometri, ingegneri, avvocati — il
+contributo integrativo del 4 o 5% è una voce a sé del documento, e **non veniva registrata**. Su una
+parcella vera del collaudo significava una fattura da € 3.904,00 al posto di € 4.099,20: **€ 195,20
+in meno**, senza che nulla lo segnalasse.
+
+Ora è una riga di spesa come le altre, con la sua aliquota IVA. E il file dice anche se quel
+contributo è soggetto a ritenuta d'acconto: **lo si legge dal documento invece di dedurlo**, così la
+risposta la dà chi ha emesso la fattura e non una nostra tabella da tenere aggiornata.
+
+### La ritenuta dichiarata dal file, messa a confronto con quella del modulo
+
+Il documento può dichiarare una ritenuta d'acconto. Se il fornitore in anagrafica non è segnato come
+soggetto a ritenuta, il modulo non ne trattiene nessuna — e prima **nessuna schermata diceva che le
+due cose non coincidevano**: la fattura si registrava a netto pieno, il condominio pagava tutto al
+fornitore e non versava niente all'Erario, restando comunque responsabile come sostituto d'imposta.
+
+Adesso i due numeri stanno uno sotto l'altro, con scritto perché non coincidono e cosa fare. **Si
+segnala e non si blocca**: l'anagrafica descrive il fornitore *oggi*, il file descrive *quel*
+documento, e nessuno dei due comanda sull'altro — può essere una casella dimenticata in anagrafica
+come una fattura di soli materiali da un fornitore che di solito fa appalti. L'ultima parola resta
+all'amministratore.
+
+Il confronto vale **in entrambi i versi**: se il modulo trattiene e il file non dichiara niente, lo
+dice ugualmente, perché l'assenza del blocco nel file non vuol dire che la ritenuta non sia dovuta.
+E quando i due importi coincidono lo conferma con una riga verde. Quando invece non c'è niente da
+dire — il caso di gran lunga più frequente — **non compare nulla**: un avviso che c'è sempre smette
+di essere letto in una settimana.
+
+### Un contributo previdenziale non è una ritenuta d'acconto
+
+Lo schema della fattura elettronica usa lo stesso blocco per sei cose diverse: due sono ritenute
+d'acconto, le altre quattro sono contributi previdenziali — INPS, ENASARCO, ENPAM. Non li versa il
+condominio: li versa il fornitore al proprio ente. Ora vengono distinti, e se il file ne dichiara
+uno lo si dice a parte, senza confonderlo con una trattenuta da operare.
+
+### Il file intestato a un altro condominio non entra
+
+Se il codice fiscale del destinatario scritto nel documento non è quello del condominio aperto, il
+file viene rifiutato spiegando a chi è intestato. Non è un avviso da scavalcare: la fattura
+sbagliata imputata al palazzo sbagliato è il tipo di errore che il rendiconto non perdona.
+
+Il controllo però ha bisogno del codice fiscale del condominio, e non tutti ce l'hanno — succede
+soprattutto a chi ha importato lo storico da un altro gestionale. In quel caso il lettore lo dice,
+con il collegamento all'anagrafica per rimediare: **avvisa senza bloccare**, perché in quel
+condominio ci si è entrati apposta.
+
+### Il lavoro scritto a mano non si perde più
+
+Se si è già compilato qualcosa nel modulo e poi si carica un XML, il sistema chiede conferma prima
+di sostituirlo. Prima le righe scritte a mano — capitoli assegnati, immobili delle spese private,
+spunte di sopravvenienza — sparivano in blocco senza un avviso e senza modo di tornare indietro.
+
+### Righe più piccole, tutte viste all'uso
+
+- Le **righe puramente descrittive da € 0,00** che molti fornitori mettono in fattura — numeri di
+  protocollo, riferimenti tecnici — non chiedono più un capitolo di spesa: non sono spese, e
+  restano nel documento come contenuto.
+- **Cancellando una riga, l'errore di un'altra non sparisce più.** Prima bastava togliere una voce
+  qualsiasi perché il messaggio rosso di un'altra svanisse: la riga sbagliata restava a schermo
+  senza più niente addosso, e il salvataggio veniva rifiutato di nuovo.
+- Il **messaggio di un file illeggibile** adesso dice cosa fare invece di riportare il testo tecnico
+  del lettore XML.
+- Registrando un altro documento, **non resta a schermo il messaggio rosso** di un file scartato
+  prima.
+- Il **pulsante della fascia** non promette più un elenco quando l'elenco è vuoto, e chiudendo il
+  lettore mentre sta ancora leggendo **il documento non si prende più il modulo** alle spalle.
+- Il cestino dell'elenco toglie un documento dalla coda **senza svuotare il modulo**: è un comando
+  dell'elenco, non della fattura che si sta compilando.
+
+---
+
+## [1.11.0-beta.13] - La Fattura Che Si Registrava Due Volte
+
+**Tocca il database:** una migrazione idempotente allarga l'indice univoco su `fatture_passive`
+(`unique_ft` → `unique_ft_condominio`), descritto più sotto.
+
+È il terzo passo di un percorso più lungo — leggere una fattura da un file XML invece che
+digitarla — e arriva prima del pezzo che si vede, perché prima serve chiudere una porta: oggi
+niente impedisce di registrare due volte lo stesso documento, e un file letto automaticamente
+aumenta quel rischio invece di ridurlo.
+
+### Un avviso quando una fattura sembra già registrata
+
+Mentre si compila una fattura — in Registrazione e in Modifica — il sistema controlla da solo se
+ne esiste già una simile, su due livelli. **Forte**: stesso fornitore e stesso numero documento
+nello stesso esercizio. **Standard**: stesso fornitore, stesso importo lordo al centesimo, data
+entro una settimana. Se trova qualcosa lo dice con un avviso sotto le date, con un collegamento
+alla fattura esistente — ma **non blocca mai**: un canone o un'utenza allo stesso importo ogni
+mese non è un doppione, ed è per questo che la finestra è di sette giorni e non di trenta.
+L'ultima parola resta all'amministratore.
+
+### Il messaggio quando è davvero lo stesso documento
+
+Diverso dall'avviso sopra: quando fornitore, numero e data coincidono **esattamente** con una
+fattura già a database, il salvataggio viene rifiutato — non perché il sistema abbia deciso al
+posto di chi registra, ma perché a quel punto non è più un sospetto: è la stessa identità.
+Prima, in questo caso preciso, il salvataggio falliva **senza dire niente**: nessun errore visibile,
+il pulsante tornava semplicemente cliccabile. Ora un messaggio spiega cosa è successo. Lo stesso
+vale stornando due fatture gemelle lo stesso giorno, un caso distinto che poteva mostrare
+l'errore tecnico del database invece di una spiegazione.
+
+### L'indice che bloccava fra un condominio e l'altro, non dentro
+
+L'indice univoco che protegge dal doppio inserimento esisteva già, ma senza saperlo nessuno: non
+comprendeva il condominio, quindi bloccava anche fatture legittime dello stesso fornitore su due
+palazzi diversi — un fornitore condiviso da più condomìni dello stesso studio è la norma, non
+l'eccezione. Ora la protezione resta dentro un condominio, dove ha senso, e sparisce fra un
+condominio e l'altro, dove non ne aveva.
+
+### Numero documento e fornitore non si cambiano più aggirando il modulo
+
+In Modifica, numero documento e fornitore sono già di sola lettura a video: ora lo sono anche lato
+server. Non è un caso che riguardi l'uso normale del programma — è una rete di sicurezza in più,
+verificata nella stessa beta.
+
+---
+
+## [1.11.0-beta.12] - L'Allegato Che Non Aveva Una Strada Sua
+
+Nasce da una segnalazione sul forum: *«dopo aver registrato una fattura passiva non c'è più la
+possibilità di allegare il pdf della stessa. Penso bisogni cancellare la fattura e inserirla
+nuovamente»*. Non era vero nella forma in cui è stata scritta — il PDF si poteva ancora allegare,
+dal modulo di Modifica — ma dietro c'era un problema reale e più profondo: l'allegato di una fattura
+non aveva una strada propria, e passava dalla stessa porta di ogni altra modifica.
+
+### Allegare un documento non riscrive più la contabilità
+
+Prima, salvare un allegato rifaceva daccapo le scritture di competenza e di pagamento — anche
+quando l'unica cosa cambiata era il file. Adesso l'allegato ha una porta sua: si carica e si
+elimina dalla pagina **Dettaglio fattura**, senza toccare il libro giornale. Il modulo di Modifica
+non gestisce più i file: gli allegati vivono tutti nella card «Allegati» del Dettaglio.
+
+### Una fattura può avere più di un allegato
+
+Prima, l'ultimo file caricato **cancellava** quello precedente senza avviso: chi allegava la
+fattura e poi la quietanza si ritrovava con la sola quietanza. Adesso si allegano quanti documenti
+servono — il PDF originale, l'XML se arriva via SdI, la ricevuta del bonifico — e restano tutti,
+scaricabili uno per uno. Con più di tre allegati l'elenco scorre, invece di allungare la pagina
+all'infinito.
+
+### ⚠️ Il documento resta anche a fattura chiusa, ma non si può più togliere
+
+Un allegato si aggiunge anche su una fattura pagata, stornata o coperta da un esercizio ormai
+chiuso: un documento è una prova, e aggiungerla non riscrive un bilancio. **Eliminarlo però no**:
+una volta che la fattura non è più modificabile, l'allegato resta scaricabile ma non si cancella,
+per non alterare la documentazione di un fatto contabile ormai chiuso. Chi ha allegato il file
+sbagliato lo corregge caricandone uno nuovo accanto, non sostituendo quello vecchio.
+
+### La busta `.p7m` vera adesso si allega davvero
+
+Il controllo sul tipo di file si basava su come il sistema *riconosce* il contenuto, e una busta
+firmata `.p7m` — quella che arriva davvero dallo SdI — viene sempre riconosciuta come un formato
+generico: veniva **sempre rifiutata**, sia in creazione che in allegato successivo, senza che il
+messaggio d'errore spiegasse perché. Ora il controllo si basa sull'estensione del file, come già
+avviene per gli altri formati ammessi.
+
+### La conferma prima di eliminare un allegato ora è quella vera
+
+Il pulsante «Elimina» su un documento chiedeva conferma con il popup nativo del browser, non con la
+finestra dell'applicazione: su questa pagina poteva sembrare — ed era, in alcuni casi — che non
+succedesse niente al clic. Ora la conferma è la stessa finestra usata in tutto il resto del
+programma.
+
+### Nell'elenco si vede quanti allegati ha una fattura
+
+Prima la graffetta accanto al numero scaricava sempre il **primo** allegato, anche quando ce n'erano
+altri, e non diceva quanti fossero. Adesso al suo posto c'è un'icona con il **numero scritto
+accanto**: si legge a colpo d'occhio che una fattura ha due o tre documenti, senza doverci passare
+sopra col mouse — e su un telefono, dove il mouse non c'è, l'informazione esiste comunque. Per
+aprirli si passa dal menu della riga o dal Dettaglio, dove sono elencati tutti.
+
+### Il filtro per data dell'elenco fatture ora è un intervallo vero
+
+Erano due campi data separati e identici, che non dicevano né quale fosse l'inizio né **quale data**
+stessero filtrando — e in questo modulo le date sono tre. Adesso è un selettore unico con un
+calendario a due mesi, e quando è vuoto dice «Data documento», così si sa cosa si sta per filtrare.
+
+Si sceglie un intervallo cliccando due date. Scegliendone **una sola**, il calendario chiede cosa
+deve essere: **«dal»** o **«fino al»** — così «tutte le fatture fino al 31 dicembre» si può ancora
+chiedere, come si faceva con i due campi separati. Il tasto Esc annulla la scelta a metà, senza
+applicare niente.
+
+⚠️ **Tre difetti trovati provando la schermata dal vivo, e corretti qui.** Scegliendo due date in
+rapida successione, la seconda poteva non arrivare mai al filtro: l'elenco restava filtrato solo
+sulla prima mentre il pulsante mostrava l'intervallo completo, cioè **dichiarava un filtro e ne
+applicava un altro**. Un indirizzo con una data scritta male — un segnalibro vecchio, un
+collegamento incollato storto — faceva sparire l'intera barra dei filtri, compresi «Azzera filtri»
+e «Nuova fattura»: adesso una data illeggibile vale semplicemente «nessun filtro». E «Azzera filtri»
+non toglieva il filtro sugli **sfori motivati**: chi ci arrivava dalla card in cima restava
+bloccato lì senza capire perché.
+
+### Dettagli
+
+- Ogni allegato mostra **quando è stato caricato**, accanto alla dimensione del file.
+- Il testo del filtro «Filtra per numero o fornitore» era più grande degli altri filtri sulla stessa
+  riga: ora sono tutti della stessa dimensione.
+- Un intervallo di date scritto al contrario nell'indirizzo (fine prima dell'inizio) si raddrizza da
+  solo, invece di restare rovesciato e restituire un elenco sempre vuoto.
+- Il pulsante «Paga fattura» ha l'icona che il programma usa già per l'azione di pagare.
+- Il messaggio che spiega perché non si può eliminare un allegato diceva «per non alterare un fatto
+  contabile ormai chiuso», che è vero solo per una fattura pagata: su una stornata, una pregressa o
+  una con sforo da ratificare diceva una cosa falsa. Adesso la spiegazione vale in tutti i casi.
+- Quando il server rifiuta di eliminare un allegato, il messaggio si vede: prima restava in cima
+  alla pagina mentre si stava in fondo, e sembrava che il clic non avesse fatto niente.
+
+---
+
+## [1.11.0-beta.11] - Il File Che Poteva Fermare Il Server
+
+Questa versione **non aggiunge niente che si veda**. Non è dimenticanza: è la prima di più beta —
+lo abbiamo deciso così apposta, per non dover promettere una data unica su un lavoro grande — che
+costruiscono la lettura delle fatture elettroniche XML ricevute dal fornitore, richiesta sul forum
+il 29/08/2026. Qui c'è solo la fondazione: un servizio interno che sa leggere il file. Nessuna
+schermata lo usa ancora.
+
+### Cosa fa, quando qualcuno lo userà
+
+Legge un file FatturaPA — XML in chiaro o la busta firmata `.p7m` che arriva davvero dallo SdI — e
+ne ricava fornitore, righe, imponibile e IVA dichiarati, scadenze di pagamento, ritenuta d'acconto
+quando c'è. Non decide da solo cosa non torna: se le righe di dettaglio non sommano all'imponibile
+che la fattura dichiara — succede, e non è sempre un errore — lo segnala invece di sceglierne uno
+in silenzio. Provato contro i tre file di esempio che l'Agenzia delle Entrate pubblica per questo
+scopo, incluso un lotto con due fatture nello stesso file.
+
+### ⚠️ Un file da 49 KB poteva far esaurire la memoria del server
+
+La revisione prima del rilascio ha trovato che un file XML costruito ad arte — un'unica riga di
+testo ripetuta ottomila volte tramite un'entità XML — faceva scalare la memoria fino a spegnere il
+processo, senza che nessun messaggio d'errore lo raccontasse. Una FatturaPA vera non usa mai questo
+meccanismo: il servizio adesso rifiuta in blocco qualunque file che lo dichiari, prima ancora di
+provare a leggerlo.
+
+---
+
+## [1.11.0-beta.10] - Il Documento Che Stava In Un Posto Solo
+
+⚠️ **Questa versione aggiunge tre migrazioni**, e una di esse **cambia la struttura**: il legame fra
+un documento e la sua categoria passa da una colonna a una tabella a sé, perché le categorie ora
+sono più d'una. Il travaso dei dati esistenti è automatico e si applica con l'aggiornamento.
+
+### Un documento può stare in più categorie
+
+È una **richiesta arrivata dal forum**: *«sarebbe utile poter assegnare a un documento archiviato più
+categorie, attualmente è possibile associarlo a un'unica categoria. In alcuni casi aiuterebbe la
+ricerca dei documenti»*.
+
+Adesso si può. Il verbale dell'assemblea che approva il bilancio si trova sotto **«Verbali»** e sotto
+**«Bilanci»**, e compare in tutti e due gli elenchi — anche in quello che il condòmino sfoglia nella
+sua area. La ricerca per più categorie insieme c'era già; quello che mancava era che un documento
+potesse *starci* in più d'una.
+
+Nell'elenco la colonna mostra le prime due etichette e poi un **`+N`**, con l'elenco completo
+passandoci sopra: una cella che cresce all'infinito rende le righe illeggibili.
+
+### ⚠️ Cosa **non** cambia, e conviene saperlo
+
+I documenti caricati su un **fornitore, un'unità immobiliare o un'anagrafica** restano **senza
+categoria**, come prima. Non è una dimenticanza: quei moduli la categoria non la chiedono affatto,
+perché quei documenti vivono sulla scheda del loro soggetto e si trovano lì. Renderli categorizzabili
+è una domanda legittima, ma è un'altra decisione.
+
+Per l'archivio invece la categoria è **obbligatoria**: almeno una. Un documento d'archivio senza
+categoria non compare in nessuna vista per categoria e si trova solo cercandolo per nome — è il modo
+in cui i documenti si perdono.
+
+### L'ordinamento per categoria è stato tolto
+
+Cliccare l'intestazione «Categoria» ordinava l'elenco. Con più categorie per documento
+quell'ordinamento **non ha una risposta**: un documento che sta in «Bilanci» e in «Verbali» dove va?
+Le uniche vie erano inventare una regola che nessuno ha chiesto, o lasciare che il programma
+ordinasse per qualcosa di arbitrario. L'intestazione non è più cliccabile.
+
+Al suo posto l'elenco ha guadagnato **due cose che servono di più**: una colonna con la **data** del
+documento — quella vera, non «tre mesi fa», che in una tabella non si confronta — e un **filtro sullo
+stato**, accanto a quelli per categoria e condominio.
+
+### ⚠️ Anche il condòmino può scegliere le categorie, e prima non poteva
+
+Il modulo con cui il condòmino carica un documento in archivio **non aveva un campo per la
+categoria**: quella veniva presa dalla cartella da cui era entrato, in silenzio, e non si poteva né
+vederla né cambiarla. Il modulo di *modifica* invece il campo ce l'aveva — quindi l'unico modo per
+mettere un documento in due categorie era salvarlo e poi riaprirlo.
+
+Adesso il campo c'è anche al caricamento, con **già dentro la categoria da cui si è arrivati**: chi
+non vuole pensarci salva e basta, chi vuole aggiungerne altre lo fa subito.
+
+### La paginazione dell'area del condòmino era in inglese
+
+«First», «Previous», «Next», «Last» sotto ogni elenco della sua area — bacheca, segnalazioni,
+documenti, agenda. Adesso è nella lingua del programma, comprese le etichette che leggono i lettori
+di schermo.
+
+### Adesso si vede chi c'è dietro le sigle
+
+Le colonne **«Condomini»** e **«Anagrafiche»** mostravano dei cerchietti con le iniziali, e il nome
+solo passandoci sopra: da lì non si legge un indirizzo e non ci si va. Adesso si aprono, come già
+succede nell'elenco condomini, e ogni riga porta alla scheda — quella dell'anagrafica esiste dalla
+versione scorsa.
+
+### ⚠️ Eliminare una categoria: il messaggio diceva il falso
+
+La finestra di conferma avvisava: *«eliminerà la categoria e tutti i documenti ad essa associati»*.
+**Non è mai stato vero** — il programma si rifiuta di eliminare una categoria che ha documenti, e non
+ne tocca nessuno. Chi leggeva quel messaggio non cliccava, convinto di perdere il proprio archivio.
+
+Adesso le categorie dei documenti si comportano **come quelle dei fornitori**: nell'elenco c'è una
+colonna che dice **quanti** documenti usano ognuna, e provando a eliminarne una in uso si apre una
+finestra che dice **quali**, con il collegamento per andarci. La conferma vera compare solo sulle
+categorie che non usa nessuno.
+
+### ⚠️ La categoria «Fatture» non si rompe più se la rinomini
+
+Il programma cercava la categoria degli allegati delle fatture **dal suo nome**. Rinominandola — cosa
+che si poteva fare, ed è lecita — da quel momento **ogni allegato di fattura finiva in archivio senza
+categoria**, in silenzio.
+
+Adesso il programma la riconosce da una chiave interna che non cambia mai: l'etichetta resta tua, e
+puoi chiamarla come vuoi. La ricerca vecchia resta come ripiego, quindi la categoria si trova in più
+casi di prima e in nessuno di meno.
+
+### Le categorie dei documenti non risorgono più
+
+Erano scritte da un seeder che le rimetteva a ogni manutenzione: una categoria eliminata di proposito
+poteva **ricomparire da sola**, senza che niente lo dicesse. Ora le cinque iniziali le scrive una
+migrazione, che per costruzione gira una volta sola. È lo stesso lavoro fatto sulle categorie dei
+fornitori nella versione scorsa — e qui era più urgente, perché qui la cancellazione esisteva già.
+
+### Dettagli
+
+- Il pulsante «Gestisci le categorie» dell'elenco fornitori ha ora lo stesso aspetto di «Categorie»
+  dell'archivio: due pulsanti che portano alla stessa cosa non devono sembrare diversi.
+
+---
+
+## [1.11.0-beta.9] - Il Dato Che C'Era E Non Si Vedeva
+
+⚠️ **Questa versione aggiunge una migrazione**: porta a database le categorie di fornitore, che
+prima erano scritte da un seeder. Si applica da sola con l'aggiornamento, **non tocca nessun dato
+esistente** e su un'installazione che quelle categorie ce le ha già non fa niente.
+
+### Le categorie dei fornitori adesso sono tue
+
+Erano nove righe fisse — Elettricista, Idraulico, Muratore… — e **non c'era nessun modo di
+cambiarle**: niente pagina, niente pulsante. Se il tuo autospurgo non c'era, o mettevi «Altro» o
+niente.
+
+Adesso c'è una pagina: **Rubrica → Elenco fornitori → «Gestisci le categorie»**. Da lì si creano, si
+rinominano e si eliminano. E il momento in cui ci si accorge che una categoria manca non è quello —
+è mentre stai registrando un fornitore, con mezza scheda compilata: accanto alla tendina «Categoria
+fornitore» c'è un **«+»** che la crea e te la lascia già selezionata, **senza farti perdere quello
+che hai scritto**.
+
+### E sono diciannove, non più nove
+
+Alle nove storiche se ne aggiungono **dieci**: termotecnico e caldaie, antennista e citofonia, fabbro
+e serramenti, imbianchino, autospurgo, disinfestazione, portierato e custodia, assicurazioni, utenze,
+studi professionali. Il criterio è uno solo — *spesa ricorrente di un condominio a cui corrisponde un
+fornitore che emette fattura* — e non risolve il problema, lo sposta: qualunque elenco fisso è
+sbagliato per qualcuno. Serve a darti un punto di partenza più onesto; la funzione vera è il pulsante
+per farti le tue.
+
+### ⚠️ «Mostrami tutti gli idraulici»: adesso il programma sa rispondere
+
+Ed è la parte che spiega tutto il resto. La categoria di un fornitore **arrivava già al tuo
+browser**, in ogni riga dell'elenco — e nessuna schermata la mostrava: niente colonna, niente filtro.
+Si poteva classificare un fornitore e poi non c'era, in nessun punto del programma, il modo di
+chiedere chi fosse cosa.
+
+Misurato su un'installazione vera: **sei fornitori su otto non avevano categoria**. Non perché
+mancassero quelle giuste — perché compilarla non serviva a niente.
+
+Da questa versione l'elenco fornitori ha la **colonna «Categoria»** e un **filtro** che ne accetta
+più d'una insieme (chi cerca chi può salire su un tetto vuole muratori *e* lattonieri nello stesso
+elenco). E nella pagina delle categorie il nome è un collegamento che porta dritto all'elenco già
+filtrato.
+
+### Chi usa una categoria si vede, e si raggiunge
+
+Nella pagina delle categorie, accanto a ognuna, ci sono le **iniziali dei fornitori** che la usano —
+lo stesso pannello dell'elenco condomini. Si apre, si vedono tutti con l'indirizzo, e da lì si entra
+nella loro scheda.
+
+Serve soprattutto quando provi a eliminarne una: se qualcuno la usa **non si elimina**, perché quei
+fornitori resterebbero senza categoria senza che nessuno te lo dica. Invece di un «no» secco, si apre
+una finestra che ti dice **chi**, con il collegamento per andarci a cambiare la categoria.
+
+### ⚠️ L'anagrafica adesso ha una scheda — prima era una pagina bianca
+
+Nella Rubrica, cliccando il nome di una persona, si apriva **una pagina completamente vuota**. Non un
+errore: proprio niente, senza nemmeno un messaggio. È un difetto che c'era da prima di questa
+versione ed è saltato fuori seguendo un collegamento nuovo.
+
+Adesso c'è una scheda vera, fatta come quella del fornitore, con due linguette:
+
+- **Dettagli** — recapiti, le unità che occupa con il **ruolo e la quota**, i condomìni in cui
+  compare, il documento d'identità, e se ha o no l'accesso all'area riservata (con la spiegazione di
+  come si dà, che è dal modulo dell'utente e non dall'invito);
+- **Documenti** — i documenti **della persona**: copia del documento d'identità, deleghe, contratti.
+  Si caricano, si rinominano e si eliminano da lì, con lo stesso modulo della scheda fornitore.
+
+Altre linguette si aggiungeranno: la struttura è fatta per quello.
+
+### Cose piccole, tutte trovate guardando le schermate
+
+- I **rappresentanti** di un fornitore, nell'elenco, adesso si cliccano e portano alla scheda della
+  persona. Prima erano testo morto.
+- Il conteggio delle persone nei pannelli diceva «**1 Totali**». Adesso dice «1 in totale», e la
+  correzione si vede anche nell'elenco condomini e in quello delle unità. *(Nella stessa passata: lo
+  spagnolo diceva «Totals», cioè inglese.)*
+- La ricerca del codice ATECO, quando non trova niente, suggeriva due codici presentandoli come «i
+  due che servono più spesso **qui**». Non era vero: quel campo tiene il codice **del fornitore**,
+  mentre quei due sono il tuo e quello del condominio. Restano citati — il compenso
+  dell'amministratore si registra come fattura di un fornitore che è lui stesso — ma detti per quello
+  che sono.
+- Il caricamento documenti del fornitore prometteva «PDF o immagine (JPG/PNG)» e poi le immagini le
+  rifiutava. Adesso dichiara quello che accetta davvero. *(Il supporto alle immagini è una richiesta
+  arrivata dal forum: arriverà, ma insieme all'anteprima — un file che si carica e poi non si apre
+  sarebbe peggio.)*
+
+---
+
+## [1.11.0-beta.8] - Il Codice Che Non Si Chiama Più Così
+
+⚠️ **Questa versione aggiunge una migrazione**: una tabella nuova per i codici ATECO. Si applica da
+sola con l'aggiornamento e **non tocca nessun dato esistente**.
+
+### Il codice ATECO non si scrive più a memoria
+
+Accanto al campo «Codice ATECO» della scheda fornitore c'è un pulsante di ricerca sulla
+classificazione ufficiale ISTAT: **3.257 codici** con il loro titolo. Si cerca il codice, oppure
+l'attività a parole — «impianti idraulici», «ascensori» — e si sceglie dall'elenco. Nel campo finisce
+**solo il codice**, mai il titolo.
+
+Il campo resta comunque scrivibile a mano, come quello del Comune: una classificazione invecchia per
+revisioni, e un elenco fermo non deve poter impedire di scrivere il codice giusto.
+
+### Si vede da dove viene ogni codice
+
+Sotto ogni risultato compare il ramo della classificazione a cui appartiene, e accanto al codice se è
+una **categoria** o una **sottocategoria**. Non è un dettaglio: sulla visura camerale c'è il codice a
+**sei cifre**, cioè la sottocategoria, e adesso si distingue a colpo d'occhio.
+
+### ⚠️ ATECO 2025 ha cambiato i nomi, e il programma te lo dice
+
+Dal 1° aprile 2025 la classificazione è cambiata, e i titoli non contengono più le parole con cui si
+cercava prima:
+
+| | prima | oggi |
+| :--- | :--- | :--- |
+| **amministratore** | `68.32.00` Amministrazione di condomini e gestione di immobili per conto terzi | `68.32.01` Gestione di beni immobili per conto terzi |
+| **condominio** | `97.00.02` Attività di condomini | `97.00.10` Attività di condomini come datori di lavoro per personale domestico |
+
+Cercando «amministrazione condomini» non si trova niente — non è un difetto, è che quelle parole nel
+titolo ufficiale non ci sono più. Quando la ricerca non trova, il programma **dice quali sono i due
+codici che servono più spesso** invece di lasciarti a indovinare.
+
+### L'elenco viaggia col programma
+
+Nessuna installazione ha bisogno di internet per avere i codici: arrivano con l'aggiornamento, come
+già succede per l'elenco dei Comuni. Chi vuole può ricaricarli a mano:
+
+```
+php artisan kondomanager:aggiorna-ateco
+```
+
+E in fondo alla ricerca c'è scritto **«Classificazione ATECO 2025, pubblicata da ISTAT»**. Non è un
+ornamento: un elenco che non dice da dove viene invecchia in silenzio, e un codice ritirato
+suggerito dal programma è un dato sbagliato. C'è anche un comando che chiede a ISTAT se ha
+pubblicato una revisione più recente — `kondomanager:verifica-fonte-ateco` — e che **non è
+pianificato**, perché nessuna installazione deve uscire in rete da sola.
+
+### Dettagli
+
+La ricerca trova un codice anche scritto **senza i punti** (`432201`), e cerca le parole
+separatamente: «installazione ascensori» trova «Installazione di ascensori e scale mobili», che è il
+titolo ufficiale. I doppioni sono spariti — dove categoria e sottocategoria hanno lo stesso identico
+titolo, e succede in **725 casi su 920**, viene proposta solo quella a sei cifre.
+
+---
+
+## [1.11.0-beta.7] - Il Pulsante Che Non Faceva Niente
+
+**Non aggiunge migrazioni.** Corregge la **scheda del fornitore**, che in certi casi rifiutava il
+salvataggio senza dire niente: nessun messaggio verde, nessun messaggio rosso, e i dati non salvati.
+Lo ha segnalato un amministratore sul forum.
+
+### Il rifiuto che non aveva dove comparire
+
+Il programma rifiutava davvero il salvataggio — un errore di validazione — ma su campi che la
+schermata non sapeva far comparire: **22 chiavi su 39** nella scheda di modifica non avevano nessun
+posto dove stampare il proprio errore, 20 su 38 in quella di creazione. La pagina si ricaricava
+identica e il pulsante sembrava non fare niente.
+
+Ora, quando un salvataggio viene rifiutato:
+
+- in testa al modulo compare un riquadro che **elenca cosa va corretto**, campo per campo;
+- la pagina **ci salta sopra da sola**, così l'avviso non nasce fuori schermo;
+- sotto ogni campo compare la sua riga rossa;
+- e appena correggi il campo, **l'avviso sparisce subito** invece di restare fino al salvataggio dopo.
+
+Il riquadro è la rete sotto l'elenco puntuale: mostra anche le chiavi che nessuno ha ancora collegato
+a un campo, comprese quelle dei campi che si aggiungeranno domani.
+
+### Fornitori che non si salvavano più, qualunque cosa toccassi
+
+Se un fornitore aveva la spunta **«soggetto a ritenuta d'acconto»** e il campo **«Codice tributo»**
+vuoto, la sua scheda era **impossibile da salvare**: bastava voler cambiare il numero di telefono. Il
+riquadro si chiama «Override manuale (facoltativo)» e il programma lo pretendeva lo stesso.
+
+Ora è davvero facoltativo, come dice. L'aliquota resta obbligatoria **solo** quando non hai scelto un
+regime di ritenuta, perché è l'unico caso in cui il calcolo non saprebbe che percentuale applicare.
+
+### Dati veri che venivano rifiutati
+
+- **Telefono, cellulare e fax** accettavano 20 caratteri, cioè meno di «06 1234567 / 333 1234567».
+  Ora ne accettano 50 — le colonne del database ne reggevano 255 da sempre.
+- **Giorni di scadenza** è diventata una casella numerica.
+- **Codice fiscale, nazione e provincia** avevano limiti più larghi della colonna: il rifiuto arrivava
+  dal database come errore generico invece che accanto al campo. Ora combaciano.
+- **Codice ATECO**: il messaggio dice cosa fare — «scrivi solo il codice, senza la descrizione».
+
+### L'indirizzo email già in uso adesso dice dove
+
+Il programma controlla che un indirizzo non sia già usato fra **anagrafiche, fornitori e condomìni**.
+Prima diceva solo «è già in uso», e toccava cercarlo a mano in tre archivi: ora dice in quale.
+
+### Il referente del fornitore non sparisce più
+
+Ogni salvataggio della scheda **toglieva al fornitore i suoi rappresentanti**, in silenzio e con il
+messaggio verde di successo. Il primo rappresentante è la controparte scritta sulle registrazioni,
+quindi da lì in poi le fatture nuove nascevano senza.
+
+I rappresentanti si gestiscono dalla **loro scheda**, dove ognuno ha il suo ruolo fra sei, e la
+scheda del fornitore non li tocca più. Alla creazione di un fornitore nuovo puoi indicarne subito
+uno, **scegliendone il ruolo** — prima nasceva senza, e la scheda dei rappresentanti lo mostrava con
+la colonna vuota.
+
+### Il comune si cerca, non si scrive
+
+Accanto al campo «Comune» c'è il pulsante di ricerca sull'**elenco ISTAT**, lo stesso già in uso sul
+condominio: scegliendo il comune si riempie anche la sigla della provincia. Il campo resta scrivibile
+a mano, perché i comuni cambiano nome e si fondono.
+
+### Dettagli
+
+«Comune», «CAP» e «Prov.» sono nell'ordine in cui si scrive un indirizzo. Telefono, cellulare e fax
+hanno un esempio nella casella. Partita IVA e codice fiscale hanno un segnaposto leggibile. Il
+pulsante «Salva modifiche» ha l'icona giusta e non si seleziona più per sbaglio al posto di premerlo.
+Nella scheda del fornitore i «referenti» si chiamano **«rappresentanti»** dappertutto, come già si
+chiamavano nella loro pagina.
+
+---
+
+## [1.11.0-beta.6] - L'Importazione Che Si Poteva Disfare
+
+**Non aggiunge migrazioni.** Arriva l'**annullamento di un'importazione**: se hai caricato un
+condominio e ti accorgi che i file erano sbagliati, lo togli con tutto quello che è entrato con lui
+invece di cancellare le voci una per una.
+
+⚠️ **Cambia chi può importare.** Serve un permesso nuovo, **«Importa dati»**, che gli amministratori
+ricevono automaticamente con l'aggiornamento. Se avevi affidato l'importazione a un collaboratore
+dandogli «Crea condomini», da questa versione dovrai dargli anche «Importa dati» dalla scheda utente:
+la trovi fra i permessi, ed è una spunta.
+
+### Disfare un'importazione, finché si può
+
+Il pulsante sta sulla schermata di esito, e ci si torna dal cruscotto del condominio — «Esito, e se
+si può annullare». Prima di chiedere conferma dice **cosa sparirà**, contato: il condominio, le
+unità, le persone, le tabelle, i saldi. Le persone restano in rubrica se appartengono anche a un
+altro condominio o se hanno un accesso al programma.
+
+Vale anche per un'importazione **interrotta a metà**, che è il caso in cui serve di più: quelle
+scrivono comunque una parte, e finora quella parte non si toglieva.
+
+### Non c'è una scadenza, c'è una condizione
+
+Altri gestionali danno una settimana di tempo. Qui la domanda non è *quando* ma *se qualcuno ci ha
+lavorato sopra*: un'importazione su cui non hai ancora fatto niente resta annullabile per sempre,
+una su cui hai registrato una fattura non lo è già dopo dieci minuti. Quando non si può,
+**la schermata dice cosa lo impedisce** — «2 casse, 1 piano rate» — invece di mostrare un pulsante
+grigio.
+
+**E «lavorato sopra» non vuol dire solo contabilità.** Bloccano l'annullamento anche un documento
+caricato, una comunicazione in bacheca, un evento in agenda, una segnalazione aperta, un commento e
+i contributi già versati: sono tutte cose che sparirebbero insieme al condominio, e nessuna di esse
+è arrivata con l'importazione.
+
+Due casi restano fuori, ed entrambi sono detti a schermo: un'importazione entrata in un
+**condominio che esisteva già** (annullarla vorrebbe dire cancellare anche quello che c'era prima),
+e un caricamento mai confermato, che si **scarta** invece di annullarlo.
+
+### 🔒 Un file di un'importazione altrui non si tocca più
+
+Due delle dodici schermate dell'importazione non controllavano di chi fosse il caricamento: chi
+poteva importare riusciva a **cambiare il tipo di un file** di un collega e a **cancellarglielo**,
+conoscendo l'indirizzo. Il controllo che le altre dieci avevano già è stato messo anche lì.
+
+### Riconoscere un'importazione lasciata a metà
+
+Le schede «Importazione ferma a metà» dicevano solo data e numero di file: con due o tre migrazioni
+aperte insieme erano indistinguibili. Ora portano il nome del condominio, e quando l'importazione
+non c'è ancora arrivata i **nomi dei file** che hai caricato.
+
+### Dettagli
+
+- Il menu a tendina che corregge il tipo di un file ha l'aspetto delle altre tendine del programma,
+  invece di quello grezzo del browser.
+- I pulsanti «Lascia stare», «Scarta» e «Togli» si vedono come pulsanti: erano testo, e accanto a
+  un'azione rossa sembravano etichette.
+- La schermata di riconoscimento non parla più di una versione uscita mesi fa quando spiega cosa
+  non entra dai file dei movimenti.
+- La guida dell'importazione racconta l'annullamento, e non dice più che non esiste.
+
+---
+
+## [1.11.0-beta.5] - Il Foglio Per Chi Non Ha Niente Da Esportare
+
+**Non aggiunge migrazioni.** Arriva il **modello Excel da compilare a mano**: la strada per chi dal
+vecchio gestionale non riesce a tirare fuori un export utilizzabile. Si scarica dalla schermata di
+importazione, si compila, si ricarica lì — e da lì in poi è un'importazione come tutte le altre,
+con la stessa verifica riga per riga e la stessa anteprima prima di scrivere.
+
+Fino a ieri l'importatore parlava una lingua sola: quella dei file di Danea. Chi arrivava da un
+gestionale che non esporta niente di leggibile — o da un foglio di calcolo tenuto a mano, che è più
+frequente di quanto sembri — non aveva nessuna strada che non fosse ribattere tutto a mano, unità
+per unità, dentro le schermate del prodotto.
+
+### Un file solo, cinque fogli
+
+Il modello è un `.xlsx` con una copertina e quattro elenchi: le unità, le persone con chi possiede
+cosa, le tabelle millesimali e i saldi di apertura. Un file solo e non cinque, perché un file è una
+cosa da scaricare e una da rimandare indietro.
+
+**Ogni foglio spiega sé stesso.** In testa a ciascuno ci sono due righe che dicono cosa va scritto e
+cosa cambia se lo si scrive in un altro modo — comprese le due cose che a distanza di un anno nessuno
+ricorda: che una cella vuota in una tabella millesimale significa «questa unità non partecipa», che è
+diverso da zero, e che nei saldi un importo **positivo** vuol dire che l'unità deve al condominio.
+
+**La sigla dell'unità la scegli tu.** «B1/1», «int. 3», «016»: è la colonna che tiene insieme i
+quattro elenchi, e va ripetuta uguale negli altri fogli. Se la scrivi con uno spazio di troppo la
+riga non si perde — la collego lo stesso e te lo dico, invece di scartarla in silenzio.
+
+### Un foglio lasciato in bianco non butta via gli altri
+
+È il cambiamento che vale anche per chi importa da Danea. Prima, qualunque dato mancante fermava la
+catena al primo livello che ne aveva bisogno, e tutto ciò che stava sotto restava fuori pur non
+dipendendone: senza il foglio delle persone, un lotto si fermava al quarto livello su otto e
+lasciava indietro unità, tabelle e saldi che erano stati compilati.
+
+Ora c'è una distinzione: «scrivere sarebbe incoerente» resta un muro, «quel file non c'è» diventa un
+salto — dichiarato, con il motivo. E quando tutto ciò che avevi fornito è entrato, l'esito dice
+**completata**, non più «interrotta»: dire «interrotta» a chi i saldi non li aveva è dargli la colpa
+di qualcosa che non ha sbagliato.
+
+### Le schermate non promettono più cose che non c'entrano
+
+Tre correzioni nate guardando il modello passare per le schermate vere:
+
+- il pannello «cosa manca» non chiede più tre stampe di Danea a chi ha appena caricato il modello —
+  cioè proprio a chi quelle stampe non può produrre;
+- il riquadro dei saldi ha un terzo stato. Il modello non porta un totale di controllo (lo
+  scriverebbe la stessa mano che ha scritto le righe), e la schermata annunciava «non quadrano» in
+  rosso su un lotto in cui non c'era niente da quadrare. Ora dice **niente da quadrare**, e spiega
+  che quella somma va confrontata con l'ultimo rendiconto approvato;
+- il riepilogo delle colonne lette mostra tutte quelle dei cinque fogli, non le tre della copertina.
+
+### Sette difetti trovati rileggendo il codice prima di rilasciarlo
+
+Prima di chiudere questa beta il codice nuovo è stato riletto da capo cercando apposta il modo di
+romperlo. Sette difetti sono usciti, tutti riprodotti su un file vero, e tutti della stessa
+famiglia: **un dato sbagliato che entra senza che nessuno lo segnali**. Sono corretti tutti.
+
+- Un **importo scritto in un modo che non capivamo** — «n.d.», ma anche «€ 120,50» con il simbolo
+  o «(45,00)» fra parentesi — entrava come **zero**, in silenzio. Ora il simbolo, le parentesi e
+  il meno in coda si leggono correttamente, e ciò che resta illeggibile diventa un errore di riga
+  invece di una morosità azzerata.
+- **«1.234» veniva letto come uno virgola due**, cioè mille volte più piccolo. Sugli importi il
+  punto è ora il separatore delle migliaia, che è ciò che significa in italiano; sui millesimi
+  resta un decimale, perché lì tre decimali sono normali.
+- Scrivere **l'anno al posto della data** — `data_inizio: 2025` — creava un esercizio nel **1905**
+  senza un avviso. Ora viene rifiutato con l'istruzione giusta.
+- **Rinominare un foglio** in un modo che ne richiamava un altro («4 saldi» → «saldi per unità») lo
+  faceva sparire per intero, senza una riga che lo dicesse. Ora viene ritrovato dalle sue colonne,
+  e un foglio che davvero non sappiamo leggere lo diciamo.
+- **Due righe di saldo della stessa persona** sulla stessa unità: la seconda non entrava, e il suo
+  importo spariva. Ora si sommano, con le due causali unite. Vale anche per chi importa da Danea.
+- Caricando **il modello insieme a una stampa del vecchio gestionale**, gli errori bloccanti del
+  file scritto a mano venivano cancellati e la conferma si sbloccava da sola. Ora nessun file
+  cancella i rilievi di un altro, e due file che portano lo stesso dato lo dicono invece di
+  scegliere in silenzio.
+
+Una seconda rilettura ne ha trovati altri **dodici**, e i due che pesavano di più erano stati
+classificati come minori:
+
+- **la sigla dell'unità era protetta solo sul primo foglio.** «016» restava «016» lì, ma negli
+  altri tre Excel lo salvava come il numero 16: per ogni unità con lo zero davanti — la
+  numerazione più comune di chi arriva da Danea — sparivano titolari, millesimi e saldi;
+- **due colonne millesimali con lo stesso nome**: la seconda cancellava la prima, e i millesimi
+  entravano ribaltati senza un avviso;
+- il foglio delle tabelle era **l'unico senza la riga «cancella gli esempi»**, quindi i millesimi
+  finti del modello potevano entrare come veri;
+- una data impossibile come **31/02/2026 diventava il 3 marzo** invece di essere rifiutata;
+- un millesimo scritto «45,5 mill.» **spariva** come se quell'unità non partecipasse;
+- un foglio **svuotato** dava un errore bloccante con scritto «riscarica il modello», a chi quel
+  foglio l'aveva lasciato in bianco apposta.
+
+### Le schermate dopo l'importazione
+
+- **«Cosa ho importato»** al posto di «cosa è entrato», e le righe a zero non dicono più «era già
+  a posto» ma **«non nei tuoi file»**, con sotto la spiegazione: il preventivo di spesa il modello
+  non lo chiede apposta, e c'è il collegamento al piano dei conti dove si crea.
+- I tre contatori — creati, uniti, saltati — dicono **cosa significano**. «Uniti» e «saltati» non
+  si distinguevano, ed è proprio lì che sta la promessa: quello che c'era già non lo tocco.
+- Il riquadro dello **scarto sui saldi** ha un consiglio in tutti i suoi stati, anche quando i
+  saldi non sono entrati perché non quadravano.
+- **Il rapporto in PDF si ritrova.** Chi chiudeva la pagina di esito senza scaricarlo non aveva
+  più modo di tornarci: il collegamento spariva appena i controlli erano finiti, cioè quando il
+  rapporto serve davvero. Ora sta in «Da controllare», dentro il condominio, e non se ne va.
+- Tolto il riferimento a una versione passata nella nota sull'annullamento: il comando non c'è
+  ancora, e adesso lo dice invece di dare una data che è già trascorsa.
+
+### Ritrovare il lavoro, giorni dopo
+
+- **Il richiamo sul cruscotto non sparisce più quando i controlli sono chiusi**: cambia faccia. Da
+  richiamo giallo con le cose da fare diventa una riga neutra — «questo condominio è arrivato da
+  un'importazione, ecco la ricevuta» — con dentro il PDF. La domanda «dov'è il rapporto?» arriva
+  mesi dopo, cioè esattamente quando prima il collegamento era già sparito.
+- **Tutte le importazioni lasciate a metà**, non solo l'ultima. Chi ne sta migrando tre — che
+  all'inizio di uno studio è la norma — se ne vedeva ricordare una sola: le altre restavano in
+  archivio senza che nessuna schermata le nominasse.
+- Nella lista «Da controllare», **«Metti da parte»** al posto di «Non mi riguarda», ed è un
+  pulsante come gli altri: l'unica azione che toglie una riga dalla lista non deve sembrare meno
+  di un'azione. E le due frasi che dicono chi ricontrolla una voce — io o tu — ora stanno nello
+  stesso posto e hanno la stessa forma.
+- Quando i saldi sono intestati a persone ma **le persone non sono state importate**, ora c'è un
+  messaggio solo invece di uno per riga, e non nomina più «il riparto» a chi ha compilato il
+  modello a mano.
+
+### Le due strade dette come due strade
+
+Finché l'unica origine era Danea, le schermate potevano parlare di «vecchio gestionale» e basta.
+Adesso non è più vero, e i testi lo dicono:
+
+- si trascinano **«i file da importare»** — gli export del vecchio gestionale *o* il modello
+  compilato a mano — non più «i file del tuo vecchio gestionale»;
+- il riquadro «il file dice a quale condominio appartiene?» spiega anche dove si colloca il
+  modello: la sua copertina porta il nome e le date, quindi sta nel gruppo dei file che si
+  presentano da soli;
+- **il passo «Capitoli di spesa» non compare più** quando si importa solo dal modello. Il
+  preventivo il modello non lo chiede, quindi un passo grigio in mezzo a sette verdi faceva
+  cercare un foglio che non esiste. Nei file di Danea resta, perché là quella stampa si può
+  esportare e non averla è un fatto;
+- la guida in-app distingue **«Strada 1 · da Danea»** e **«Strada 2 · il modello»**, e dice cosa
+  aspettarsi dagli altri gestionali.
+
+### Cruscotto
+
+- «Copertura bilancio» e «Inbox operativa» ora hanno **la stessa altezza** anche su un condominio
+  senza dati: prima la prima restava corta e la seconda al suo minimo, con un buco sotto. Quando la
+  copertura cresce continua a comandare lei, come già faceva.
+- Il riquadro «Da controllare dopo l'importazione» **dice come si chiude**. Le voci si chiudono in
+  due modi: alcune spariscono da sole appena il dato è a posto — le ricontrolla il sistema — le
+  altre restano finché non dici tu di averle guardate, perché il confronto è con documenti che
+  stanno fuori da Kondomanager. Senza dirlo il riquadro sembrava bloccato: si sistema un problema,
+  si torna al cruscotto e se ne trovano ancora tre.
+
+  Non ha un pulsante per chiuderlo, ed è voluto: sarebbe o un modo di nascondere senza aver
+  sistemato, o una spunta collettiva su cose non fatte — cioè la todolist che si spunta senza
+  lavorare, che è il difetto per cui questa lista è nata verificabile. La valvola esiste, ed è per
+  voce, dove è onesta e reversibile.
+
+---
+
+## [1.11.0-beta.4] - Il Bilancio Che Veniva Letto E Buttato
+
+**Non aggiunge migrazioni.** L'importatore da Danea impara a leggere una stampa che finora
+riconosceva e scartava: il «Bilancio consuntivo per conto», da cui nasce la struttura delle spese
+del condominio.
+
+Chi importava aveva unità, persone, tabelle e saldi — e un piano dei conti vuoto. I capitoli di
+spesa andavano ribattuti a mano, uno per uno, guardando la stampa che era già stata caricata.
+
+### La struttura delle spese entra da sé
+
+Dal bilancio consuntivo entrano i capitoli con le loro voci: «AMMINISTRAZIONE» con sotto il
+compenso, la cancelleria, la gestione del conto corrente. Sul corpus di un amministratore vero sono
+4 capitoli e 17 voci, lette senza un errore.
+
+**Gli importi entrano a zero, ed è voluto.** Quello che il consuntivo porta è la fotografia di
+quanto si è speso l'anno scorso, non il preventivo di quest'anno: scriverlo come budget vorrebbe
+dire deliberare al posto dell'assemblea. La cifra dell'anno scorso finisce nella descrizione di
+ogni voce, dove nessun calcolo la legge ma si ritrova nel momento in cui serve — cioè quando si
+scrive il preventivo vero.
+
+### Le spese personali non entrano due volte
+
+Il bilancio stampa «Spese personali» come se fosse un capitolo. Non lo è: sono addebiti a singoli
+condòmini, e sono **già dentro i saldi di apertura** che l'importazione scrive. Misurato: la
+colonna «Movimenti personali» del riparto somma esattamente la stessa cifra.
+
+Importarle anche come capitolo le avrebbe contate due volte — e ripartite per millesimi avrebbero
+fatto pagare a tutti quello che devono singoli. Ora si leggono, entrano nella quadratura, e un
+avviso dice dove sono finite.
+
+---
+
+## [1.11.0-beta.3] - Il Condominio Che Nessun File Sapeva Dire
+
+**Non aggiunge migrazioni.** Corregge l'importatore da Danea per chi esporta i dati in un modo che
+non avevamo previsto — e che si è scoperto essere il più naturale dei due.
+
+**Chiude anche un difetto di riservatezza che c'era da prima:** l'importazione a metà di un
+collega era visibile, dirottabile e cancellabile da chiunque potesse importare. Se hai più di una
+persona che usa Kondomanager nello stesso studio, questo aggiornamento riguarda anche te.
+
+Danea offre due strade per tirare fuori i dati. Le **stampe esportate** portano in testa una riga
+con il nome del condominio e il codice fiscale; l'**Import/Export tramite Excel** produce elenchi
+puri, che cominciano dalle intestazioni di colonna. L'importatore leggeva il condominio solo dalla
+prima riga della testata, e la seconda strada non ne aveva nessuna.
+
+Chi arrivava di lì caricava unità, persone e tabelle, le vedeva leggere correttamente — e poi
+l'anteprima si chiudeva con un messaggio che non spiegava niente. Non c'era nessuna via d'uscita:
+il consiglio implicito era «riesporta come stampa», ma un amministratore che prende in gestione un
+condominio adesso, in Danea, di consuntivi non ne ha.
+
+### Ora si può dire a mano dove vanno i dati
+
+Quando nessun file dichiara il condominio, la schermata di verifica lo chiede: una tendina, in
+fondo alla pagina. La scelta resta visibile e modificabile finché non si conferma, e vale meno di
+quello che dicono i file — se in seguito si aggiunge una stampa con la testata, comanda la testata.
+
+**L'esercizio non si sceglie: viene dichiarato.** Sotto la tendina compare qual è, con il suo
+periodo. È quello aperto del condominio, la stessa regola che il programma usa dappertutto, e non
+c'è una seconda risposta ragionevole da offrire: importare vuol dire registrare chi possiede cosa
+*adesso*. La data di inizio dell'esercizio diventa la data di inizio di ogni titolarità scritta,
+quindi indicare l'anno sbagliato non avrebbe prodotto nessun errore e nessun avviso — solo numeri
+giusti nel periodo sbagliato, scoperti al primo riparto. Se il condominio non ha un esercizio
+aperto, la schermata lo dice prima: unità, persone e tabelle entrano lo stesso, chi possiede cosa
+e i saldi no.
+
+Il condominio scelto viene anche **riconosciuto come esistente**, quindi le unità e le persone si
+attaccano a quello che c'è invece di crearne un secondo. E l'anteprima non ripropone più le due
+domande «questo esiste già, vuoi unirlo?» sul condominio e sull'esercizio: la risposta è nella
+scelta appena fatta.
+
+### L'anteprima moriva invece di spiegare
+
+Il difetto vero e proprio era una riga sola. Sette valori su otto si difendevano dall'assenza del
+dato; il condominio no, e la sua mancanza usciva come un errore tecnico al posto di una
+spiegazione. Adesso la mancanza viene detta nella schermata di verifica, dove si può rimediare.
+
+### Prima di caricare, la schermata dice cosa aspettarsi
+
+Quello che cambia il modo di lavorare è una cosa sola: **il file dice a quale condominio
+appartiene?** Alcuni lo dichiarano in testa — nome, codice fiscale e periodo dell'esercizio — e da
+quelli l'importazione crea condominio ed esercizio da sé, con le date esatte anche quando l'anno
+non è solare. Altri sono elenchi puri, e allora il condominio deve essere già in archivio con un
+esercizio aperto.
+
+Fino a ieri questa differenza si scopriva alla **terza** schermata, con i file ormai caricati e
+l'esportazione da rifare. Ora è scritta sulla pagina d'ingresso, prima di scegliere i file.
+
+### I saldi entrano anche in un esercizio che non aveva una gestione
+
+Importando dentro un condominio già in archivio, l'importazione arrivava fino ai saldi e lì si
+fermava: «l'esercizio non ha nessuna gestione a cui agganciare i saldi». Succedeva per un esercizio
+creato dal programma stesso, che nasce senza. Ora la gestione ordinaria viene agganciata come già
+accade quando è l'importazione a creare l'esercizio.
+
+### Un esercizio straordinario diventa una gestione, non un secondo anno
+
+Nel gestionale di partenza ordinario e straordinario sono **due esercizi distinti**, ciascuno col
+suo periodo. Da noi sono due **gestioni** dentro lo stesso esercizio — la separazione che il
+rendiconto deve mostrare.
+
+Prima l'importazione di uno straordinario apriva un secondo esercizio accavallato al primo, ed
+entrambi restavano aperti; la gestione ordinaria veniva agganciata a tutti e due, e l'unica traccia
+del tipo era una parola nella descrizione. Ora lo straordinario entra nella **gestione
+straordinaria** del condominio, con le sue date, dentro l'esercizio che copre quel periodo. Se
+quell'esercizio non c'è ancora, l'importazione si ferma e lo dice, invece di aprire un anno
+contabile che nessuno ha deliberato.
+
+Nello stesso passaggio: i saldi finivano sempre nella gestione più vecchia dell'esercizio, che con
+due gestioni è sempre l'ordinaria. Ora vanno in quella che l'importazione ha effettivamente usato.
+
+### Un'importazione è di chi l'ha caricata
+
+**Chiunque potesse importare poteva aprire, dirottare e scartare l'importazione a metà di un
+collega.** Non serviva nemmeno indovinare un indirizzo: la schermata d'ingresso mostrava a tutti
+l'ultimo lotto in corso — quello di chiunque l'avesse lasciato aperto — col nome del suo
+condominio. Tutte e nove le pagine dell'importazione sono ora chiuse a chi non è il proprietario
+del lotto; l'amministratore continua a vederle, che è il suo mestiere.
+
+Il difetto c'era da prima di questa funzione. È saltato fuori cercandone altri, e nessun test
+l'aveva visto per una ragione che vale la pena dire: i test **lo percorrevano**, caricando come un
+utente e proseguendo come un altro. Una suite che passa dentro il buco non lo può vedere.
+
+### Il condominio scelto è quello scelto, anche se un altro ha lo stesso nome
+
+Il condominio si indica da una tendina — cioè si punta il dito su una riga precisa — ma quella
+riga veniva poi **ricercata** per codice fiscale, e se manca per nome. Con due condomìni omonimi
+**senza codice fiscale** si finiva nel primo: scegliendo il secondo, unità e persone entravano
+nell'altro. Il codice fiscale del condominio è facoltativo, e chi amministra più stabili della
+stessa proprietà ha nomi ripetuti.
+
+Nello stesso passaggio: cambiando idea sulla destinazione, la risposta data per il condominio
+scartato restava scritta sul lotto, e più avanti **zittiva** la domanda «in archivio esiste già,
+vuoi unirlo?» su quel condominio. Ora se ne va insieme alla scelta che l'aveva generata; le
+risposte sui file — i nomi doppi da dividere, i duplicati fra le persone — restano, perché
+cambiare il condominio di arrivo non le rende sbagliate.
+
+### Due porte che si aprivano su un muro
+
+La tendina elencava nome e codice fiscale di **tutti** i condomìni dell'archivio anche a chi non
+può vederne l'elenco, e chi non ha il permesso di modificarli, dopo aver scelto, sbatteva in un
+errore a schermo pieno. Ora a quell'utente la tendina non compare e la pagina dice perché.
+
+E il permesso si ricontrolla al momento di scrivere, non solo quando la scelta viene registrata:
+fra i due momenti possono passare giorni, e un permesso revocato deve valere.
+
+### Le etichette di stato non sono più pillole
+
+Le badge di tutta l'applicazione — «pronto», «da sistemare», «bozza», i contatori — passano da
+angoli tondi ad angoli smussati, come i riquadri e i campi accanto a cui vivono. Sono 154 usi del
+componente più 16 etichette scritte a mano nelle pagine, allineate nello stesso passaggio.
+
+### Il riparto consuntivo non è più annunciato come indispensabile
+
+Sulla schermata di riconoscimento, l'elenco di cosa manca marcava il riparto consuntivo con
+«senza, non si prosegue», nello stesso riquadro che dice «puoi proseguire lo stesso». Ora dice cosa
+si perde davvero — i saldi di apertura, che non stanno in nessun altro file — e che il condominio,
+se il riparto non c'è, viene chiesto nella schermata dopo.
+
+---
+
+## [1.11.0-beta.2] - La Rete Che Non Avrebbe Retto
+
+**Non aggiunge migrazioni.** Corregge il backup di sicurezza che gira prima di ogni aggiornamento —
+quello che dalla 1.11 in poi parte da solo — e che in cinque punti diversi non avrebbe fatto il suo
+lavoro. Nessuno l'aveva mai esercitato: era rimasto dormiente per settantasette beta.
+
+Questa versione nasce da una decisione presa prima di scrivere codice: **collaudare quel backup per
+davvero**, su una copia di un database reale, invece di dedurne il funzionamento leggendo. Il motore
+si è rivelato solido — dump completo, reimportazione pulita, tutti i conteggi identici — ma i bordi
+no, e i bordi sono quelli che si toccano nel momento peggiore.
+
+### Un backup interrotto produceva un archivio che non si poteva rimettere dentro
+
+Il backup avanza a piccoli passi, così regge anche gli hosting lenti. Se un passo veniva ucciso a
+metà — un limite di tempo, la memoria esaurita, un riavvio — quello che aveva scritto restava nel
+file ma non veniva registrato da nessuna parte. Il passo successivo ripartiva dall'ultimo punto noto
+e **riscriveva lo stesso pezzo una seconda volta**.
+
+L'archivio risultava completato, con la sua dimensione e il suo codice di controllo. Ma non si
+reimportava: misurato, moriva su una riga duplicata. È il difetto che colpisce **proprio le macchine
+lente**, cioè quelle per cui i piccoli passi esistono: dove il backup si conclude in un colpo solo,
+non si riprende mai.
+
+### L'archivio dichiarava la versione sbagliata, e il ripristino rifiutava sé stesso
+
+Il backup di sicurezza gira quando i file della versione nuova hanno già sostituito i vecchi, ma il
+database è ancora quello di prima. L'archivio si etichettava con la versione **dei file**, pur
+contenendo il database **di prima**.
+
+La conseguenza si vedeva nell'unico momento in cui quel backup serve: l'amministratore a cui
+l'aggiornamento va male rimette i file della versione precedente — la reazione naturale — e il
+programma **rifiutava il proprio backup di sicurezza**, dicendo che proveniva da una versione più
+recente. Adesso l'archivio dichiara la versione del database che contiene, che è ciò che un backup
+ha sempre significato.
+
+### Un backup abbandonato bloccava tutto per due ore
+
+Bastava chiudere la scheda a metà backup perché il programma continuasse a crederlo in corso. In
+quella finestra non si poteva né farne un altro né **ripristinare** — cioè proprio quello che serve
+a chi ha appena visto fallire un aggiornamento e ha chiuso la pagina. Ora un backup abbandonato
+viene riconosciuto e archiviato prima di rispondere, mentre uno interrotto da poco resta a
+disposizione per essere ripreso.
+
+### Il backup di sicurezza torna a chi aggiorna da una versione di prova
+
+Chi aveva installato una versione di prova della 1.10 non riceveva il backup automatico, pur avendo
+tutto il necessario per farlo. Il controllo guardava il numero di versione invece di guardare se
+l'infrastruttura ci fosse, e ogni numero con «beta» dentro veniva considerato più vecchio della
+versione definitiva. Adesso conta solo quello che serve davvero, e chi arriva da una 1.9 resta
+correttamente escluso perché quell'infrastruttura non ce l'ha ancora.
+
+### Un file dimenticato poteva bloccare l'aggiornamento per sempre
+
+Segnalato da un amministratore che si è trovato «Scarica e Installa» disabilitato senza spiegazione,
+con tutti i requisiti a posto. Il programma cercava un file di blocco nella cartella temporanea del
+server — un file che **non ha mai scritto**: era il residuo di un meccanismo pensato e mai
+costruito. Su un hosting condiviso quella cartella è comune a più siti, quindi bastava un file con
+quel nome, di chiunque e di qualunque età, per bloccare l'aggiornamento senza dire perché e senza
+scadenza. Tolto.
+
+### Se un aggiornamento fallisce, adesso il programma dice in che ordine rimediare
+
+Il messaggio d'errore diceva «puoi ripristinare il backup dalla pagina Gestione backups». Seguito
+alla lettera dopo una migrazione fallita, quel consiglio non ripara niente: rimette il database e il
+ripristino riesegue le stesse migrazioni, cioè rilancia il guasto.
+
+L'ordine che funziona è **prima i file della versione precedente, poi il database** — e adesso è
+scritto lì, con il motivo, perché senza il motivo alla prima fretta si salta il passaggio. È anche
+distinto il caso in cui basta ripremere (una pagina che si blocca) da quello in cui ripremere non
+serve (lo stesso errore che torna identico).
+
+### Nota di metodo
+
+Cinque di questi otto difetti sono stati trovati collaudando invece di leggere, e **due sono stati
+introdotti dalle correzioni di questa stessa versione**, poi trovati dalla revisione che precede il
+rilascio. Uno dei due era peggiore del difetto che correggeva: produceva un archivio a cui mancavano
+diciassette tabelle su ottantacinque, dichiarandolo completo.
+
+Ogni correzione è ora protetta da una prova automatica, e ogni prova è stata verificata rimettendo
+il difetto per controllare che diventasse rossa — perché una prova che resta verde anche senza la
+correzione non protegge nessuno.
+
+---
+
+## [1.11.0-beta.1] - L'Aggiornamento Che Non Arrivava a Destinazione
+
+**Non aggiunge migrazioni**, ma cambia il comportamento di una che già c'è: quella delle righe per
+pagina si fermava a metà strada e lasciava il database incompleto. Chi ha già aggiornato alla 1.10.0
+senza problemi non deve rifare niente.
+
+Quattro difetti diversi con una sola conseguenza: il programma arriva alla versione nuova con
+qualcosa di vecchio ancora attaccato — le dipendenze, la configurazione in cache, la tabella delle
+rotte, gli asset. Il primo si è manifestato davvero, la sera del rilascio, sull'aggiornamento della
+nostra dimostrazione pubblica; gli altri tre sono venuti fuori riproducendo in laboratorio
+l'aggiornamento 1.9.1 → 1.10.0 per capire il primo. Nessuno li avrebbe segnalati spontaneamente,
+perché tolgono anche gli strumenti con cui si capirebbe cosa è successo.
+
+### La cache delle rotte sopravviveva all'aggiornamento
+
+L'aggiornatore automatico svuotava `bootstrap/cache` cancellando un elenco di nomi:
+`config.php`, `routes.php`, `packages.php`, `services.php`. Ma **`routes.php` è il nome che Laravel
+usava fino alla versione 6**: dalla 7 la cache delle rotte si chiama `routes-v7.php`. E
+`bootstrap/cache` è fra le cartelle che il deploy preserva, quindi non veniva nemmeno sovrascritta.
+
+Restavano sul server, da prima dell'aggiornamento, `routes-v7.php`, `events.php` e `settings.php`.
+Risultato misurato: codice nuovo con la tabella delle rotte vecchia — `route:list` fallisce cercando
+un controller che non esiste più, e le rotte nate nella versione nuova non ci sono affatto. Dopo un
+`optimize:clear` tornano tutte.
+
+**Chi aggiorna dal pannello non ha una console**, quindi non poteva né accorgersene né uscirne.
+
+Adesso si cancella tutto ciò che finisce in `.php` dentro quella cartella, invece di un elenco.
+Sono tutti file che il framework rigenera da solo. Un elenco scritto a mano invecchia in silenzio
+ogni volta che Laravel rinomina un file, ed era già successo una volta.
+
+⚠️ **Ma questa correzione non vale per l'aggiornamento che stai per fare, e va detto.** L'aggiornatore
+che gira quando premi il pulsante è quello della versione **installata**, non quello della versione
+che stai scaricando: viene copiato da `resources/installer/index.php` dell'installazione corrente. La
+pulizia corretta governa quindi gli aggiornamenti che *partono* dalla 1.11 in poi.
+
+**Chi ha lanciato `php artisan optimize` prima di aggiornare** deve quindi lanciare, subito dopo:
+
+```
+php artisan optimize:clear
+```
+
+Chi non lo ha mai lanciato non ha nessuna cache da svuotare e non deve fare niente.
+
+### La migrazione delle righe per pagina moriva sulla configurazione vecchia
+
+`config/pagination.php` nasce nella 1.10. Chi aggiorna da prima con la configurazione in cache non
+ha quella chiave, quindi `config('pagination.consentite')` vale `null` — e in PHP 8 `in_array()` con
+un elenco nullo è un errore fatale, non un avviso.
+
+Misurato: `migrate` si fermava lì e lasciava **dieci migrazioni pendenti**, cioè un database a metà.
+
+Il difetto stava nella guardia, non nel valore: il ripiego a 10 c'era già e difendeva dal
+`DEFAULT_PER_PAGE=` lasciato vuoto nel `.env`. Non difendeva dal caso in cui il file di
+configurazione non si vedesse ancora. Cinque test nuovi, e uno di loro ha trovato che la prima
+stesura della correzione copriva solo metà del problema: il secondo argomento di `config()`
+restituisce il ripiego quando la chiave *manca*, ma non quando c'è e vale `null`.
+
+### E la stessa cosa, in quattro punti che la prima correzione aveva mancato
+
+La revisione di questa beta ha trovato che l'impostazione delle righe per pagina veniva letta allo
+stesso modo, senza rete, in altri quattro punti. Uno sta sul percorso di **ogni elenco del
+programma** — trenta schermate: con la configurazione vecchia in cache sarebbe stato un errore su
+tutto il gestionale, non su una singola pagina. Gli altri tre impediscono di aprire e di salvare le
+impostazioni generali.
+
+Corretti tutti, e aggiunta una guardia automatica che d'ora in poi rifiuta una lettura di quella
+configurazione senza rete: era la seconda volta che lo stesso difetto si presentava, e alla seconda
+si chiude la forma, non il caso.
+
+### Le rotte dell'installer dipendevano da una libreria che durante l'aggiornamento non c'è ancora
+
+`Route::livewire()` non è un metodo di Laravel: è una macro, e la registra soltanto Livewire 4. Il
+file che la usava viene letto all'avvio di ogni processo, web e console, **tranne quando le rotte
+sono in cache**: `loadRoutesFrom()` salta il file se `bootstrap/cache/routes-v7.php` esiste. Ed è
+proprio l'altro difetto di questa versione a togliere quella cache, quindi le due cose si incrociano
+e quella protezione non è una su cui contare. Nella finestra fra lo scaricamento del codice nuovo e
+l'aggiornamento delle librerie, il programma non si avviava affatto.
+
+Il costo non è l'errore, è cosa porta via: fallivano `migrate`, `optimize:clear`, `route:list` e
+`about`, cioè proprio gli strumenti con cui si finisce l'aggiornamento e si capisce cosa è successo.
+E il messaggio — «Attribute [livewire] does not exist» — non nomina né Livewire né le dipendenze.
+
+Adesso il passo del wizard si registra con `Route::get()`. Non è un ripiego: Livewire documenta la
+forma diretta, con Livewire 4 produce la stessa pagina, e con la 3 sopravvive dove la macro muore.
+
+### L'avvio in Docker saltava l'installazione delle dipendenze
+
+Gli entrypoint controllavano `if [ ! -d "vendor" ]`, cioè scambiavano «la cartella esiste» per «la
+cartella è quella giusta», e quattordici righe dopo lanciavano `migrate`. Dopo un aggiornamento del
+codice la cartella c'è — con dentro le librerie vecchie — quindi l'installazione veniva saltata in
+automatico e senza che nessuno leggesse niente. Stessa forma per `node_modules` e per `public/build`,
+che serviva gli asset della versione precedente in silenzio.
+
+Adesso le dipendenze si installano sempre — quando non c'è niente da fare costa pochi secondi — e
+gli asset si ricostruiscono quando un sorgente è più recente del manifest.
+
+### Sicurezza: aggiornata la libreria che interpreta il testo formattato
+
+`league/commonmark` dalla **2.8.2** alla **2.10.0**. La versione precedente aveva sei avvisi di
+sicurezza aperti: **quattro di gravità alta e due media**. Cinque sono casi di *denial of service* su
+testo costruito apposta; il sesto è diverso e va detto — è un aggiramento del filtro sui link
+pericolosi, cioè un problema di contenuto che passa, non di server che rallenta. Nessuna altra
+dipendenza è stata toccata.
+
+### Documentazione interna
+
+Il commento in cima al comando che misura lo stato dei documenti dichiarava che la cartella `docs/`
+è tenuta fuori da git. Non è più vero dal 21 agosto: è un repository a sé, e il repository pubblico
+ne traccia dieci file — le sole guide che servono a chi installa e usa il programma.
+
+---
+
 ## [1.10.0] — Migration & Ledgers
 
 > **Stable release.**

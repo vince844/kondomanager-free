@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Actions\PianoRate\RigeneraRateTenendoILegami;
 use App\Actions\PianoRate\GeneratePianoRateAction;
 use App\Actions\PianoRate\SyncOrphanChaptersAction;
 use App\Enums\StatoPianoRate;
 use App\Events\Gestionale\PianoRateStatusUpdated;
+use App\Exceptions\Gestionale\DestinatariCambiatiException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
+use App\Exceptions\Gestionale\SpesaNegativaNelPianoException;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Immobile;
 use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Traits\HandleFlashMessages;
@@ -35,20 +39,33 @@ class PianoRateGenerationController extends Controller
         $validated = $request->validate([
             'orphan_ids' => 'nullable|array',
             'orphan_ids.*' => 'integer|exists:conti,id',
-            'nota_scoperti' => 'required_if:accetta_scoperti,true|nullable|string|min:10',
+            // `required_if_accepted` e non `required_if:…,true`: con «1» o «on» la regola di prima non chiedeva la nota, mentre
+            // `boolean()` qui sotto la presa d'atto la accettava lo stesso (R10 della Fase 1-bis, 1.11.0-beta.35). E la regola
+            // `boolean` sui due flag: `boolean()` legge anche «TRUE» e «On», che `accepted` non riconosce.
+            'accetta_scoperti' => 'nullable|boolean',
+            'accetta_destinatari' => 'nullable|boolean',
+            'nota_scoperti' => 'required_if_accepted:accetta_scoperti|nullable|string|min:10',
+            // B2, cancello (2) della decisione 14: stessa forma del cancello degli scoperti.
+            'nota_destinatari' => 'required_if_accepted:accetta_destinatari|nullable|string|min:10',
         ]);
 
         $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
         $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
+        $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
+        $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
 
-        // 1. Check Pagamenti (Blocco Totale)
-        $haPagamenti = $pianoRate->rate()
-            ->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))
-            ->exists();
+        // 1. Check Pagamenti (Blocco Totale). `haIncassiRegistrati()` legge `importo_pagato ≠ 0`: anche un
+        // credito compensato o rimborsato è un movimento che il ricalcolo cancellerebbe (B2, S6).
+        if ($pianoRate->haIncassiRegistrati()) {
+            // Rilievo R1 della Fase 1-bis della .42: se il piano deve ancora seguire un passaggio, il rifiuto lo nomina, così il nesso
+            // con il rifiuto dell'emissione si vede.
+            $daSeguire = $pianoRate->passaggiDaSeguire();
 
-        if ($haPagamenti) {
             return back()->with($this->flashError(
-                "Impossibile ricalcolare: ci sono rate con incassi registrati. Annulla prima gli incassi."
+                "Impossibile ricalcolare: ci sono rate con incassi registrati, o crediti già usati in compensazione o rimborsati. Annulla prima quei movimenti."
+                // Beta.51 (§6.3): fra i passaggi da seguire ci sono anche quelli annullati dopo il ricalcolo, e per loro il ricalcolo non «terrà
+                // conto» di niente: riporterà le quote alla titolarità di prima.
+                . ($daSeguire !== [] ? ' Poi ' . PianoRate::dopoIlRicalcolo($daSeguire) . '.' : '')
             ));
         }
 
@@ -63,16 +80,30 @@ class PianoRateGenerationController extends Controller
             ));
         }
 
+        // Decisione 38 (1.11.0-beta.42, rilievo R2): un passaggio ha già conguagliato il piano. Ricalcolarlo darebbe a chi è
+        // entrato i suoi giorni nel riparto e anche la coppia, e pagherebbe due volte.
+        if (($fraseConguagliato = $pianoRate->fraseConguagliato('Ricalcolarlo', 'ricalcola il piano')) !== null) {
+            return back()->with($this->flashError($fraseConguagliato));
+        }
+
         try {
             DB::beginTransaction();
+            // Le unità del condominio, bloccate come PRIMA istruzione: la generazione legge titolari e saldi senza lock, e un
+            // passaggio o il suo annullamento che committasse nel frattempo lascerebbe quote calcolate su righe e saldi che
+            // non esistono più (giro di verifica della 1.11.0-beta.37, C-R3; `Immobile::bloccaPerScrivere`).
+            Immobile::bloccaDelCondominio((int) $condominio->id);
 
             // 3. Sincronizzazione Granulare
             $orphanIds = $validated['orphan_ids'] ?? [];
             $nuoviCapitoli = 0;
+            $appenaSincronizzate = [];
             
             // Se l'array è vuoto, significa che l'utente ha scelto "Ricalcola (Senza aggiunte)"
             if (!empty($orphanIds)) {
+                $vociPrima = $this->vociDelPiano($pianoRate);
                 $nuoviCapitoli = $syncAction->execute($pianoRate, $orphanIds);
+                // Le voci scritte adesso non hanno una copia che il piano tenga da prima: se il fermo le trova negative lo dice come voci.
+                $appenaSincronizzate = array_values(array_diff($this->vociDelPiano($pianoRate), $vociPrima));
             }
 
             // 4. Reset e Rigenerazione Inbox
@@ -86,12 +117,16 @@ class PianoRateGenerationController extends Controller
                 );
             }
 
-            $pianoRate->rate()->delete();
-            $stats = $generateAction->execute(
+            // Le rate si cancellano e si rigenerano tenendo i legami degli incassi stornati con le quote (DC4, 1.11.0-beta.49).
+            $stats = app(RigeneraRateTenendoILegami::class)->esegui($pianoRate, fn () => $generateAction->execute(
                 pianoRate: $pianoRate,
                 accettaScoperti: $accettaScoperti,
-                notaScoperti: $notaScoperti
-            );
+                notaScoperti: $notaScoperti,
+                accettaDestinatari: $accettaDestinatari,
+                notaDestinatari: $notaDestinatari,
+                esercizio: $esercizio,
+                appenaSincronizzate: $appenaSincronizzate,
+            ));
 
             // Ricreiamo l'inbox con i nuovi ID delle rate
             if ($vecchioStato === StatoPianoRate::APPROVATO) {
@@ -129,10 +164,23 @@ class PianoRateGenerationController extends Controller
         } catch (ScopertiNonAccettatiException $e) {
             DB::rollBack();
             return back()->with('scoperti_warning', $e->getScoperti());
+        } catch (DestinatariCambiatiException $e) {
+            DB::rollBack();
+            return back()->with('destinatari_warning', $e->getCambiamenti());
+        } catch (SpesaNegativaNelPianoException $e) {
+            DB::rollBack();
+            return back()->with($this->flashError($e->getMessage()));
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore rigenerazione piano rate", ['error' => $e->getMessage()]);
             return back()->with($this->flashError("Errore durante il ricalcolo: " . $e->getMessage()));
         }
     }
+
+    /** @return list<int> gli id delle voci che stanno nella pivot del piano */
+    private function vociDelPiano(PianoRate $pianoRate): array
+    {
+        return DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id)->pluck('conto_id')->map(fn ($id) => (int) $id)->all();
+    }
+
 }

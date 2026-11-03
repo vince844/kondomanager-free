@@ -165,17 +165,34 @@ class Immobile extends Model
     // Relazione molti-a-molti con anagrafiche (proprietari, inquilini, usufruttuari)
     public function anagrafiche()
     {
+        // `id` nel pivot e modello dedicato dalla 1.11.0-beta.30 (B1 del progetto sul subentro):
+        // la riga di titolarità ha un'identità propria, perché B2 registrerà più periodi per la stessa
+        // persona e le rotte dovranno lavorare per periodo, non per persona. Nessun cast: vedi il
+        // docblock di `TitolaritaImmobile`.
         return $this->belongsToMany(Anagrafica::class, 'anagrafica_immobile')
+            ->using(TitolaritaImmobile::class)
             ->withPivot([
+                'id',
                 'tipologia',
                 'quota',
-                'tipologie_spese',
+                // `tipologie_spese` è caduta con la 1.11.0-beta.31 (decisione 8 del progetto sul subentro).
                 'data_inizio',
                 'data_fine',
                 'attivo',
                 'note',
             ])
             ->withTimestamps();
+    }
+
+    /**
+     * Le righe di titolarità dell'unità come modello proprio, non come pivot di `anagrafiche()`:
+     * servono a chi lavora **per periodo** — le rotte di modifica e «Dissocia» dalla 1.11.0-beta.31,
+     * lo storico «Chi ha avuto questa unità», «Registra passaggio» — e a scoprire dall'`id` di una
+     * riga se appartiene davvero a questa unità (`PassaggioController`, `ImmobileAnagraficaController`).
+     */
+    public function titolarita()
+    {
+        return $this->hasMany(TitolaritaImmobile::class, 'immobile_id');
     }
 
     /**
@@ -241,9 +258,57 @@ class Immobile extends Model
     protected function relazioniDeiFigliNelleRotte(): array
     {
         return [
+            // `{anagrafica}` non è più un parametro delle rotte dell'unità dalla 1.11.0-beta.31 (le
+            // rotte di modifica ricevono `{titolarita}`), ma la coppia resta: costa nulla e protegge
+            // chi la reintroducesse.
             'anagrafica' => 'anagrafiche',
+            // La riga di titolarità cercata **dentro** l'unità: `/immobili/3/anagrafiche/1322` con una
+            // riga 1322 di un'altra unità risponde 404 già qui, prima del controller.
+            'titolarita' => 'titolarita',
             'documento' => 'documenti',
+            // Il passaggio registrato cercato dentro l'unità (S6: `PATCH passaggi/{subentro}/copia-autentica`), annullati
+            // compresi (beta.37): una seconda scheda rimasta aperta riceve un rifiuto leggibile, non una pagina 404.
+            'subentro' => 'subentriConAnnullati',
         ];
+    }
+
+    /**
+     * Il punto in cui si mettono in fila le scritture che cambiano chi è titolare di un'unità e che cosa deve (1.11.0-beta.37,
+     * giro di verifica della Fase 1-bis): la registrazione di un passaggio, il suo annullamento, «Associa» e «Modifica»
+     * bloccano le righe `immobili` delle loro unità; la generazione di un piano (`bloccaDelCondominio`) quelle di tutto il
+     * condominio. Va chiamato come PRIMA istruzione della transazione: su MySQL (REPEATABLE READ) l'istantanea delle
+     * letture nasce alla prima SELECT senza lock, e un lock preso dopo non fa vedere ciò che un'altra scrittura ha appena
+     * committato. Sempre prima degli altri lock, così due operazioni non si incrociano (su SQLite non cambia niente).
+     *
+     * @param iterable<int> $ids
+     */
+    public static function bloccaPerScrivere(iterable $ids): void
+    {
+        $ids = collect($ids)->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+        if ($ids !== []) {
+            \Illuminate\Support\Facades\DB::table('immobili')->whereIn('id', $ids)->lockForUpdate()->pluck('id');
+        }
+    }
+
+    /** Come `bloccaPerScrivere`, per tutte le unità di un condominio: lo usa la generazione dei piani. */
+    public static function bloccaDelCondominio(int $condominioId): void
+    {
+        \Illuminate\Support\Facades\DB::table('immobili')->where('condominio_id', $condominioId)->lockForUpdate()->pluck('id');
+    }
+
+    /** I passaggi registrati su questa unità (`subentri`, B2). */
+    public function subentri(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Gestionale\Subentro::class, 'immobile_id');
+    }
+
+    /**
+     * I passaggi dell'unità **con gli annullati**, solo per il binding delle rotte: `subentri()` resta quella dei conti,
+     * che un passaggio annullato non deve vedere. Le rotte che ricevono un annullato lo rifiutano con un messaggio.
+     */
+    public function subentriConAnnullati(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Gestionale\Subentro::class, 'immobile_id')->withoutGlobalScope('non_annullati');
     }
 
 }

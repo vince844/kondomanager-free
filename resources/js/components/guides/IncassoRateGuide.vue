@@ -12,8 +12,10 @@
  * La regola del testo, la stessa di PianoRateGuide: non ripetere le etichette dei campi — chi
  * legge le ha davanti — ma dire cosa succede davvero quando li si tocca, e in quale ordine.
  *
- * ⚠️ Ogni affermazione di questo file è stata verificata sul codice il 12/08/2026. Alcune
- * descrivono comportamenti che sono difetti aperti, non scelte: sono segnati «per ora» e hanno
+ * ⚠️ Ogni affermazione di questo file è stata verificata sul codice il 12/08/2026; il conto da cui esce
+ * il credito riportato e lo storno (scheda «Credito» e «Conferma») il 10/10/2026, con la 1.11.0-beta.49, e
+ * il credito delle entrate dell'anno e la quota rimasta fuori dall'emissione l'11/10/2026, nella stessa beta; il portale del condòmino, il badge «Credito attivo» e «In attesa della compensazione» il 17/10/2026, con la 1.11.0-beta.52.
+ * Alcune descrivono comportamenti che sono difetti aperti, non scelte: sono segnati «per ora» e hanno
  * una voce in roadmap. Se li correggi, questo file va corretto con loro.
  */
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -77,11 +79,13 @@ defineEmits(['update:open']);
                                     «N/D». Non manca il credito: manca la persona a cui attribuirlo.
                                 </p>
                                 <p>
-                                    Allocando su una riga che porta anche il debito di un altro, quello che eccede
-                                    la quota del pagante diventa un <strong>suo anticipo</strong>, e il debito
-                                    altrui resta aperto. Se su quella rata il pagante non ha proprio nessuna quota,
-                                    l'incasso viene <strong>rifiutato</strong> e il motivo compare sopra il pulsante
-                                    di conferma.
+                                    Allocando su una riga che porta anche il debito di un altro, i soldi saldano solo
+                                    le quote del pagante: se sulla riga ne distribuisci più di quanto vale la sua
+                                    quota, la parte che non è sua non ha dove andare e l'incasso <strong>si
+                                    ferma</strong> con «Errore di integrità contabile», senza scrivere niente. Cerca per
+                                    persona, oppure incassa dalla riga solo la sua quota. Se su quella rata il pagante
+                                    non ha proprio nessuna quota, l'incasso viene <strong>rifiutato</strong> e il motivo
+                                    compare sopra il pulsante di conferma.
                                 </p>
                             </div>
                         </div>
@@ -100,7 +104,7 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">L'intestatario è il pagante</h3>
                             <p>
                                 Non è solo il nome sulla ricevuta: decide quali quote vengono saldate, quale credito è
-                                utilizzabile e a chi va accreditato l'eventuale anticipo. L'elenco propone
+                                utilizzabile e, salvo «Versato da», a chi va accreditato l'eventuale anticipo. L'elenco propone
                                 <strong>tutte</strong> le anagrafiche con un'unità nel condominio, non i soli
                                 intestatari dell'unità scelta.
                             </p>
@@ -109,6 +113,33 @@ defineEmits(['update:open']);
                                 costruita per un altro. Cambiando scheda «Persona»/«Immobile» si azzerano pagante,
                                 unità, elenco e importo — ma non cassa, data, causale, filtro gestione e «Mostra
                                 scadute», che restano attivi sulla ricerca successiva.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Chi ha versato per un altro</h3>
+                            <p>
+                                Quando il bonifico l'ha fatto un'altra persona — chi ha comprato che salda l'arretrato di
+                                chi ha venduto, un familiare —, come pagante resta chi deve, e chi ha versato si sceglie in
+                                <strong>«Versato da»</strong>. Il denaro chiude le rate del pagante, come sempre; le note
+                                dell'incasso dicono chi ha versato, e l'estratto conto di chi ha versato lo elenca in
+                                «Versamenti per conto di altri», senza toccare il suo saldo.
+                            </p>
+                            <p class="mt-2">
+                                Due cose dipendono da come si sono accordati, e le scegli tu. Se il pagante ha un credito,
+                                il modulo chiede se <strong>resta suo</strong> — il debito si paga prima con i soldi versati
+                                — o <strong>si usa adesso</strong>, prima dei soldi versati: allora quello che avanza è la
+                                parte in più di chi ha versato. E la <strong>parte in più</strong> va su una rata di chi ha
+                                versato: è già proposta la prima ancora da pagare nella gestione dell'incasso, o
+                                l'ultima se sono tutte pagate (lì diventa un suo credito); se in quella gestione non ne
+                                ha, la scegli tu, anche di un'altra gestione.
+                            </p>
+                            <p class="mt-2 text-xs text-slate-500">
+                                Se chi ha versato non ha rate emesse in questo condominio, la parte in più non può
+                                diventare un suo credito: si registra solo il debito e la differenza si restituisce.
+                                «Versato da» si sceglie fra le persone del condominio: chi non ha un'unità si associa prima
+                                al condominio dall'anagrafica. Un bonifico che paga due posizioni si registra come due
+                                incassi.
                             </p>
                         </section>
                     </TabsContent>
@@ -183,7 +214,9 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 Il menu <strong>«Gestione»</strong> filtra l'elenco, ma non è solo un filtro: il
                                 valore viene salvato e diventa la gestione della scrittura contabile. Lasciandolo su
-                                «Tutte» la gestione viene dedotta dalla prima rata pagata.
+                                «Tutte», se le rate pagate sono di una gestione sola l'incasso va a quella; se sono di
+                                più gestioni compare <strong>«Gestione dell'incasso»</strong> e la scegli tu: finché
+                                manca, «Conferma incasso» resta spento.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
                                 Toccare uno dei due ricostruisce l'elenco da capo: le allocazioni fatte a mano si
@@ -200,10 +233,14 @@ defineEmits(['update:open']);
                             </h3>
                             <p>
                                 Nessun credito viene impiegato finché non premi <strong>«Usa credito»</strong> sulla
-                                riga che lo porta. Il pulsante non applica l'importo da sé: marca la riga e lascia
+                                riga che lo porta — salvo quando ha versato un'altra persona e scegli
+                                <strong>«Si usa adesso»</strong>, che lo include da sé, e quando arrivi da un link che
+                                indica già la rata — una segnalazione di pagamento, «Compensa» dall'estratto conto, il
+                                riquadro «Crediti da compensare» — senza «Versato da»: lì il credito della stessa
+                                gestione della rata è già incluso. Il pulsante non applica l'importo da sé: marca la riga e lascia
                                 fare alla distribuzione automatica, impegnando il credito
                                 <strong>per la parte che il contante lascia scoperta</strong>. Un secondo clic lo
-                                rilascia.
+                                rilascia. Finché non lo usi, il portale lo dice al condòmino: quando non ha altro da versare ma una sua quota da pagare aspetta il credito che ha su un'altra quota della stessa rata, la rata emessa compare <strong>«In attesa della compensazione»</strong>, con la cifra da compensare e la frase che la compensazione la registra l'amministratore.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
                                 Premendolo mentre sei in manuale, la pagina <strong>torna in automatico</strong> e
@@ -226,22 +263,49 @@ defineEmits(['update:open']);
                         </section>
 
                         <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Da quale conto esce il credito</h3>
+                            <p>
+                                Un credito riportato da un esercizio precedente — la quota a credito di una rata che porta il
+                                riporto: la rata zero, la prima, o ogni rata con «tutte le rate» — entra nel libro giornale con
+                                l'emissione della sua rata. Finché la sua quota non è a giornale (la rata in bozza, o una quota
+                                rimasta fuori dall'emissione), «Usa credito» lo preleva da <strong>«Passate gestioni»</strong>, e
+                                il credito che avanza ci torna; quando la quota è a giornale lo preleva da <strong>«Crediti verso
+                                condomini»</strong>, dove l'emissione l'ha portato. Il credito di un versamento in eccesso sta
+                                sempre fra i crediti verso condomini.
+                            </p>
+                            <p class="mt-2">
+                                Anche le entrate dell'anno possono fare una quota a credito: una voce di tipo «entrata» (i
+                                proventi dell'antenna, per esempio) ripartita su un'unità con poche o nessuna spesa. Quel credito
+                                non viene da un esercizio precedente, e sta fra i crediti verso condomini anche con la rata in
+                                bozza: l'emissione della rata lo chiude. Una quota con tutte e due le parti si usa prima dal
+                                credito riportato, poi dalle entrate. Il portale del condòmino mostra quel credito: se sulla stessa rata non ha
+                                altro da pagare dice che l'amministratore può usarlo o restituirlo, altrimenti che la compensazione la registra l'amministratore.
+                            </p>
+                            <p class="mt-2 text-xs text-slate-500">
+                                Senza il conto «Fondo Passate Gestioni» (2301) la compensazione di un credito riportato con la
+                                quota non ancora a giornale si rifiuta, come il suo rimborso. È un conto di sistema: dalle pagine
+                                del programma non si ricrea, e va ripristinato da chi gestisce l'installazione.
+                            </p>
+                        </section>
+
+                        <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Compensare fra gestioni diverse</h3>
                             <p>
-                                Se il credito che stai prelevando appartiene a una gestione di cui non stai pagando
-                                debiti, compare una fascia ambra con una spunta di conferma: finché non la metti,
-                                <strong>«Conferma incasso» resta spento</strong>. Serve a rendere deliberato uno
-                                spostamento fra ordinaria e straordinaria.
+                                Il credito di una gestione copre da sé solo le rate della sua gestione. Quando
+                                potrebbe coprire anche rate di un'altra — l'ordinaria che paga il tetto — compare una
+                                fascia ambra con due strade: <strong>«Solo sulla sua gestione»</strong> (il credito
+                                che avanza resta al condòmino) o <strong>«Anche sulle altre gestioni»</strong> (la
+                                nota dell'incasso dirà che l'hai scelto tu). Niente è già scelto, e finché non scegli
+                                <strong>«Conferma incasso» resta spento</strong>: dipende da come sono tenuti i conti
+                                e da cosa ha deliberato l'assemblea.
                             </p>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
                             <Info class="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
                             <p class="text-xs text-slate-600 dark:text-slate-400">
-                                Il badge <strong>«Credito attivo»</strong> descrive i crediti come «automaticamente
-                                attivi e pronti per la compensazione». Per ora la scritta promette più di quanto
-                                accada: segnala che su quella riga c'è un credito, non che verrà usato. Va comunque
-                                premuto «Usa credito».
+                                Il badge <strong>«Credito attivo»</strong> segnala che su quella riga c'è un credito
+                                che puoi usare con «Usa credito»: non dice che verrà usato.
                             </p>
                         </div>
                     </TabsContent>
@@ -278,6 +342,10 @@ defineEmits(['update:open']);
                                 strapagamento sull'ultima quota toccata, così <strong>ricompare come credito</strong>
                                 del condòmino, riutilizzabile al prossimo incasso.
                             </p>
+                            <p class="mt-2">
+                                Con <strong>«Versato da»</strong> la parte in più va invece su una rata di chi ha versato:
+                                vedi «Chi ha versato per un altro», nella scheda «Chi paga».
+                            </p>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
@@ -306,6 +374,22 @@ defineEmits(['update:open']);
                                 Le scadenze del condòmino vengono aggiornate a saldata, parziale o da pagare, e le
                                 attività di verifica collegate si chiudono da sole nella posta interna — compresa
                                 quella generale della rata, quando risulta saldata da tutto il condominio.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Se poi l'incasso si storna</h3>
+                            <p>
+                                Lo storno, dall'elenco degli incassi, scrive lo specchio dell'incasso e della sua
+                                compensazione, sugli stessi conti, e le rate tornano da pagare. Se il credito usato era
+                                riportato da una rata ancora in bozza e nel frattempo quella rata è stata emessa, una seconda
+                                scrittura, legata all'emissione, porta il credito restituito fra i crediti verso condomini,
+                                come l'avrebbe portato l'emissione.
+                            </p>
+                            <p class="mt-2">
+                                Se la parte in più dell'incasso è già stata usata in una compensazione o rimborsata, lo storno
+                                non annulla quell'uso: la rata torna da pagare anche per quella parte. La conferma dello storno
+                                lo dice prima, con la rata, l'importo e dove è stato usato.
                             </p>
                         </section>
                     </TabsContent>

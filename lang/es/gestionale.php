@@ -1115,6 +1115,7 @@ return [
                     ],
                     'help' => [
                         'supplier_prefill' => 'Will be prefilled in invoices.',
+                        'income_usufruct' => 'Un alquiler o un canon que el condominio cobra es un fruto civil y corresponde al usufructuario (art. 984 del Código Civil italiano); si el título del usufructo dice otra cosa, vale entre las partes. En las unidades en usufructo decide esta partida: con «Usufructuary %» a 100 el ingreso va al usufructuario, con «Owner %» a 100 al nudo propietario. Con el usufructuario introducido a mano en la ficha de la unidad, una fecha de inicio a mitad de año no divide el ingreso día a día, salvo una línea de usufructo cerrada el día anterior; una fecha de fin sí. «Registra passaggio» divide los días.',
                     ],
                     'actions' => [
                         'saving' => 'Saving...',

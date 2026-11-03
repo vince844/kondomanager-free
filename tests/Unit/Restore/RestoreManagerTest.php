@@ -22,7 +22,10 @@ use Tests\TestCase;
  */
 uses(TestCase::class);
 
-const KM_RESTORE_E2E_DB = 'km_restore_e2e';
+// I database di prova portano un suffisso unico per checkout: senza, lanciare la suite
+// in TEST e in ufficiale insieme fa sfilare il database all'altra esecuzione. Vedi
+// `kmDatabaseDiProva()` in tests/Pest.php.
+defined('KM_RESTORE_E2E_DB') || define('KM_RESTORE_E2E_DB', kmDatabaseDiProva('km_restore_e2e'));
 
 function kmE2eAdminPdo(): ?PDO
 {

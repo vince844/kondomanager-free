@@ -10,7 +10,8 @@ import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Button } from '@/components/ui/button';
 import Alert from '@/components/Alert.vue';
-import { Pencil, Trash2, Loader2, SearchX, Plus, Tags } from 'lucide-vue-next';
+import { Pencil, Trash2, Loader2, SearchX, Plus, Tags, Lock } from 'lucide-vue-next';
+import { etichettaPrivacy } from '@/lib/pubblicazione';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { useSegnalazioni } from '@/composables/useSegnalazioni';
@@ -296,6 +297,15 @@ async function confirmDelete(): Promise<void> {
                     :class="getPriorityMeta(segnalazione.priority).colorClass"
                   />
                   {{ segnalazione.subject }}
+                  <!-- Coda 306: «Privata» è un'indicazione a parte, da `is_private`. -->
+                  <span
+                    v-if="etichettaPrivacy('segnalazioni', segnalazione.is_private)"
+                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500"
+                    :title="trans('segnalazioni.privacy.private_hint')"
+                  >
+                    <Lock class="w-3.5 h-3.5" />
+                    {{ trans(etichettaPrivacy('segnalazioni', segnalazione.is_private) ?? '') }}
+                  </span>
                 </Link>
 
                 <div class="flex gap-1">

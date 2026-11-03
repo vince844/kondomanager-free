@@ -1,0 +1,18 @@
+{
+    "features": [
+        "NO DATABASE CHANGES — A security beta: it fixes two flaws, one in the first sign-in of users created by the administrator and one in registration by invitation, plus what two rounds of adversarial review found around them. Installations reachable from the internet should update. The details of the two flaws will be published with the stable 1.11.0, in the repository's security advisories.",
+        "CHANGED: FIRST SIGN-IN LINKS ALREADY SENT NO LONGER WORK — Users who have not chosen a password yet will find the link no longer valid: from the user list, «Reinvite» sends a new one.",
+        "CHANGED: A FIRST SIGN-IN LINK IS VALID FOR THE ACCOUNT AS IT WAS WHEN IT WAS SENT — If, after sending, the email or the name is corrected, «Reinvite» is used, the user is suspended or reactivated, or their verification is changed, the earlier link no longer works and a new one must be sent. Roles, permissions and the linked contact do not affect it.",
+        "CHANGED: AN INVITATION IS VALID FOR THREE DAYS — As its email says; before, it expired after one hour. An expired or already used invitation, or one for an address that already has an account, leads to the login page with a message that says what to do, instead of an empty 403 page.",
+        "CHANGED: PUBLIC REGISTRATION NO LONGER ACCEPTS AN INVITATION — An invitation is accepted only through its own link, and only an accepted invitation gives its buildings to the contact of the person who registers.",
+        "CHANGED: FIRST SIGN-IN AND INVITATION WITH ANOTHER USER LOGGED IN — The two pages do not open while another user is logged in in the same browser: the link leads to that user's home page. Before, the form opened and saving ended up on the other user's page.",
+        "CHANGED: REJECTIONS ON THE LOGIN PAGE — They have their own amber box: link no longer valid, invitation expired or already used, invalid link signature. Green stays for confirmations; after the first sign-in the page says «Your password is set. You can now log in.».",
+        "SECURITY: FIRST SIGN-IN AND REGISTRATION BY INVITATION — Two flaws fixed. Details in the security advisories of 1.11.0.",
+        "SECURITY: THE ERROR LOG — It no longer writes the signature of a rejected link: anyone who read the log, or pasted it in a forum, could reopen that link.",
+        "SECURITY: A GUARD ON ROUTES WITHOUT LOGIN — The test suite lists every route without login that accepts a save, with the proof it asks from the caller (link signature, token, session), and checks it: a new route without proof makes the suite fail.",
+        "NEW INVITATION — The two fields side by side, as in «New user», with help next to the labels and the validity written on the page. Enter adds the address and no longer submits the form; the button counts the invitations. An address already invited or mistyped has its own error under the field: before, the page only said «error while sending».",
+        "INVITATIONS WITH CAPITAL LETTERS — Invitation addresses are saved in lower case, and an invitation written with capital letters can be completed: before, whoever received it was stuck on «must be lowercase», under a field they could not edit.",
+        "INVITATION LIST — An accepted invitation stays «Accepted» after its expiry; before, it said «Expired».",
+        "TEXTS — The new messages in Italian, English, Spanish and Portuguese; in Spanish, the first sign-in and invitation emails, which were still in English; in Spanish and Portuguese, the invalid link and suspended account notices; «The buildings field is required» now uses the field's readable name in every language."
+    ]
+}

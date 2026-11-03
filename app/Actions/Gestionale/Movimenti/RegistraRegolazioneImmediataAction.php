@@ -35,6 +35,12 @@ use Illuminate\Support\Facades\DB;
  */
 class RegistraRegolazioneImmediataAction
 {
+    /** Il rifiuto di una voce di entrata: uno solo per la richiesta (sul campo del capitolo) e per l'Action. */
+    public static function messaggioVoceDiEntrata(string $nome): string
+    {
+        return "«{$nome}» è una voce di entrata: la regolazione immediata registra un'uscita di cassa e non si usa per un'entrata. Scegli una voce di spesa.";
+    }
+
     public function execute(array $validated, Condominio $condominio, Esercizio $esercizio): ScritturaContabile
     {
         $importoCents = MoneyHelper::toCents($validated['importo']);
@@ -80,6 +86,11 @@ class RegistraRegolazioneImmediataAction
                 throw new RegolazioneImmediataNonAmmessaException(
                     'Il capitolo di spesa selezionato non appartiene a questo condominio.'
                 );
+            }
+
+            // La regolazione scrive DARE sul costo e AVERE sulla cassa: su un'entrata sarebbe un'uscita di banca che non c'è stata.
+            if (Conto::segnoDelTipo((string) $capitolo->tipo) !== 1) {
+                throw new RegolazioneImmediataNonAmmessaException(self::messaggioVoceDiEntrata($capitolo->nome));
             }
 
             if (! $capitolo->conto_contabile_id) {

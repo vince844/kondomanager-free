@@ -2,12 +2,17 @@
 
 namespace App\Services\Import;
 
+use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\ImportBatch;
+use App\Services\Import\Canonical\CanonicalCondominio;
+use App\Services\Import\Canonical\CanonicalEsercizio;
 use App\Services\Import\Canonical\CanonicalSoggetto;
 use App\Services\Import\Canonical\CanonicalTitolarita;
 use App\Models\ImportFile;
 use App\Services\Import\Canonical\CanonicalSaldiApertura;
 use App\Services\Import\Canonical\CanonicalSaldo;
+use App\Services\Import\Livelli\LivelloCapitoli;
 use App\Services\Import\Livelli\LivelloCondominio;
 use App\Services\Import\Livelli\LivelloEsercizi;
 use App\Services\Import\Livelli\LivelloSaldi;
@@ -17,9 +22,12 @@ use App\Services\Import\Livelli\LivelloTitolarita;
 use App\Services\Import\Livelli\LivelloUnita;
 use App\Services\Import\Parser\AnagraficaMillesimiParser;
 use App\Services\Import\Parser\BannerParser;
+use App\Services\Import\Parser\BilancioConsuntivoParser;
 use App\Services\Import\Parser\ElencoUnitaParser;
+use App\Services\Import\Parser\ModelloManualeParser;
 use App\Services\Import\Parser\RipartoConsuntivoParser;
 use Illuminate\Support\Facades\Storage;
+use Carbon\CarbonImmutable;
 use RuntimeException;
 
 /**
@@ -41,6 +49,13 @@ use RuntimeException;
  */
 final class ImportVerificaService
 {
+    /**
+     * Chiave di `import_batches.decisioni` per la destinazione scelta a mano.
+     *
+     * Il condominio si sceglie; l'esercizio **no**, si risolve — vedi `applicaDestinazione()`.
+     */
+    public const DESTINAZIONE_CONDOMINIO = 'destinazione:condominio';
+
     public function __construct(
         private readonly SpreadsheetReader $reader = new SpreadsheetReader,
         private readonly ReportRecognizer $riconoscitore = new ReportRecognizer,
@@ -50,7 +65,8 @@ final class ImportVerificaService
      * @return array{
      *     canonici: array<string, mixed>,
      *     esiti: array<string, EsitoVerifica>,
-     *     letture: list<array{file: string, tipo: string, righe: int}>
+     *     letture: list<array{file: string, tipo: string, righe: int}>,
+     *     dichiaratoDaiFile: bool
      * }
      */
     public function verifica(ImportBatch $batch): array
@@ -64,10 +80,33 @@ final class ImportVerificaService
         $immobiliCompatti = [];
         $immobiliRicchi = [];
 
+        // ⚠️ **Chi ha fornito che cosa.** Serve a due difetti trovati dalla revisione
+        // avversariale della beta.5, che sono lo stesso difetto visto da due lati: in un lotto
+        // che contiene il modello compilato a mano **e** una stampa di Danea, i lettori di Danea
+        // assegnavano canonici ed esiti con un `=` secco. Misurato: caricando il modello da solo
+        // l'esito dei saldi aveva un errore bloccante e `confermabile = false`; aggiungendo i due
+        // file di Danea lo stesso esito tornava a zero errori e **confermabile = true**. I due
+        // errori scritti a mano non erano stati risolti — erano stati cancellati.
+        //
+        // Il caso misto è legittimo e previsto (si esporta quel che si può e si scrive a mano il
+        // resto), ma è legittimo solo finché i file si **completano**. Due file che portano lo
+        // stesso livello sono un conflitto, e va detto, non risolto in silenzio prendendo l'ultimo.
+        $fonteCanonico = [];
+
         foreach ($batch->files as $file) {
             $tipo = $file->report_type === null ? null : ReportType::tryFrom($file->report_type);
 
             if ($tipo === null || ! $tipo->importabile()) {
+                continue;
+            }
+
+            // ⚠️ **Il modello manuale non passa di qui.** `foglio()` sceglie **un** foglio e
+            // scarta gli altri quattro: è la strada giusta per una stampa di Danea, dove il
+            // report è uno, ed è quella sbagliata per un file che è un report solo *scritto su
+            // cinque fogli*. Va intercettato prima della scelta, non dopo.
+            if ($tipo === ReportType::ModelloManuale) {
+                $this->leggiModello($file, $canonici, $fonteCanonico, $esiti, $letture, $immobiliRicchi);
+
                 continue;
             }
 
@@ -86,9 +125,13 @@ final class ImportVerificaService
             [$foglioLetto, $rigaIntestazione] = $foglio;
 
             match ($tipo) {
-                ReportType::RipartoConsuntivo => $this->leggiRiparto($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file),
-                ReportType::ElencoUnita => $this->leggiElencoUnita($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file, $immobiliRicchi),
-                ReportType::AnagraficaMillesimi => $this->leggiMillesimi($foglioLetto, $rigaIntestazione, $canonici, $esiti, $letture, $file, $immobiliCompatti),
+                ReportType::RipartoConsuntivo => $this->leggiRiparto($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file),
+                ReportType::ElencoUnita => $this->leggiElencoUnita($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file, $immobiliRicchi),
+                ReportType::AnagraficaMillesimi => $this->leggiMillesimi($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file, $immobiliCompatti),
+                // Fino alla 1.11.0-beta.4 finiva nel `default`, cioè `leggiSoloBanner()`: se ne
+                // leggeva la testata e si buttava il contenuto, perché non esisteva un livello
+                // in cui i capitoli potessero atterrare.
+                ReportType::BilancioConsuntivo => $this->leggiBilancio($foglioLetto, $rigaIntestazione, $canonici, $fonteCanonico, $esiti, $letture, $file),
                 // Gli altri report hanno una testata da cui ricavare condominio ed esercizio,
                 // anche se il loro contenuto va nell'archivio storico che la 1.10 non ha.
                 default => $this->leggiSoloBanner($foglioLetto, $canonici, $esiti),
@@ -102,10 +145,165 @@ final class ImportVerificaService
             $canonici[LivelloUnita::CHIAVE] = $immobili;
         }
 
+        // Se il condominio lo dichiarano i **file**, la scelta manuale non si deve nemmeno
+        // offrire: la schermata proporrebbe una tendina che poi verrebbe ignorata, perché la
+        // testata di una stampa vince sempre sulla scelta a mano.
+        $dichiaratoDaiFile = ($canonici[LivelloCondominio::CHIAVE] ?? null) !== null;
+
+        $canonici = $this->applicaDestinazione($batch, $canonici);
         $canonici = $this->applicaDecisioni($batch, $canonici);
+
+        // ⚠️ **Nessuno ha detto di quale condominio si tratta** — né i file né l'utente.
+        //
+        // Il condominio e l'esercizio si leggono dalla testata, e la testata la porta solo una
+        // *stampa* esportata — il riparto consuntivo. Gli export «Import/Export tramite Excel»
+        // di Danea sono elenchi puri: cominciano dalle intestazioni di colonna e non hanno
+        // nessuna riga `Condominio <nome> - C. Fisc. <cf>`.
+        //
+        // Chi carica solo quelli arriva qui con unità, persone e tabelle lette correttamente e
+        // **senza un condominio in cui metterle**. Fino al 28/08/2026 non se ne accorgeva
+        // nessuno: la schermata di verifica mostrava tre avvisi innocui, e l'anteprima moriva
+        // con un errore che non spiegava niente. Il rilievo giusto esisteva già — lo emette il
+        // BannerParser — ma questi file il BannerParser non lo attivano mai.
+        //
+        // Il controllo sta **dopo** `applicaDestinazione`: se l'amministratore ha scelto lui in
+        // quale condominio importare, non manca più niente e l'errore non deve comparire.
+        if (($canonici[LivelloCondominio::CHIAVE] ?? null) === null) {
+            $esiti[LivelloCondominio::CHIAVE] = ($esiti[LivelloCondominio::CHIAVE] ?? new EsitoVerifica(1))
+                ->con(Rilievo::errore(
+                    'condominio.nessun_file_lo_dichiara',
+                    'Nessuno dei file caricati dice a quale condominio appartengono.',
+                    'Il nome del condominio e il codice fiscale stanno nella testata delle stampe '
+                    .'esportate da Danea, non negli export «Import/Export tramite Excel», che sono '
+                    .'elenchi senza intestazione. Puoi indicare qui sotto in quale condominio '
+                    .'importarli, oppure aggiungere una stampa che porti la testata — il '
+                    .'«Consuntivo ripartizioni per unità» è quella giusta, e serve anche per i saldi.',
+                ));
+        }
+
+        // ⚠️ **Il condominio scelto non ha un esercizio aperto: non entrerebbe niente.**
+        //
+        // `ImportRunner::esegui()` fa `return` al primo livello che non passa, ed «Esercizi» è il
+        // **secondo**: cade lì e soggetti, unità, titolarità, tabelle e saldi non vengono nemmeno
+        // tentati. Misurato: zero unità scritte.
+        //
+        // Il livello un messaggio ce l'ha — `esercizi.dati_assenti` — ma è quello sbagliato per
+        // questo caso: dice «nessuno dei file dichiara il periodo» e manda a cercare una stampa
+        // con la testata. Qui non è colpa dei file, e quella stampa non risolverebbe niente:
+        // manca un esercizio **in archivio**, e si apre dal condominio.
+        //
+        // Va detto **prima**, dove c'è ancora la tendina con cui rimediare, e non dopo la
+        // conferma con un'importazione che si ferma al secondo passo.
+        if (! $dichiaratoDaiFile
+            && ($canonici[LivelloCondominio::CHIAVE] ?? null) !== null
+            && ($canonici[LivelloEsercizi::CHIAVE] ?? null) === null
+        ) {
+            $esiti[LivelloCondominio::CHIAVE] = ($esiti[LivelloCondominio::CHIAVE] ?? new EsitoVerifica(1))
+                ->con(Rilievo::errore(
+                    'esercizio.condominio_senza_esercizio_aperto',
+                    sprintf(
+                        '«%s» non ha un esercizio aperto: non ci si può importare niente.',
+                        $canonici[LivelloCondominio::CHIAVE]->nome,
+                    ),
+                    'Ogni unità, persona e tabella entra dentro un esercizio, quindi senza non si '
+                    .'scrive nemmeno la prima riga. Aprine uno dal condominio — «Esercizi» → «Nuovo '
+                    .'esercizio» — e torna qui: i file caricati restano dove sono.',
+                ));
+        }
+
+        // ⚠️ **Un esercizio straordinario non è un anno contabile: è una gestione.**
+        //
+        // Verificato sullo schema Firebird di Domustudio: là l'esercizio è una riga di
+        // `TCONDOMINI` con date proprie e una colonna `STRAORDINARIO`, legata all'ordinario dallo
+        // stesso `CONDGENID`. Da noi lo stesso concetto è una gestione `straordinaria`, e
+        // `LivelloEsercizi` ce lo mette. Va annunciato **prima** della conferma, perché è una
+        // scelta strutturale sul condominio di qualcun altro, non un dettaglio.
+        $esercizio = $canonici[LivelloEsercizi::CHIAVE] ?? null;
+
+        if ($esercizio !== null && $esercizio->eStraordinario()) {
+            $esiti[LivelloCondominio::CHIAVE] = ($esiti[LivelloCondominio::CHIAVE] ?? new EsitoVerifica(1))
+                ->con(Rilievo::avviso(
+                    'esercizio.straordinario_in_gestione_dedicata',
+                    sprintf('Il file è di un esercizio straordinario: «%s».', $esercizio->etichetta),
+                    'Da noi ordinario e straordinario sono due gestioni dentro lo stesso esercizio, '
+                    .'mentre nel tuo gestionale sono due esercizi distinti: lo metterò nella '
+                    .'gestione straordinaria del condominio, senza aprire un secondo esercizio. '
+                    .'Serve che l\'esercizio che copre quel periodo sia già stato importato.',
+                ));
+        }
+
         $esiti = $this->togliDecisioniPrese($batch, $esiti);
 
-        return compact('canonici', 'esiti', 'letture');
+        return compact('canonici', 'esiti', 'letture', 'dichiaratoDaiFile');
+    }
+
+    /**
+     * Registra un canonico dicendo **chi l'ha fornito**, e non lascia che il secondo cancelli il primo.
+     *
+     * Il primo file che porta un livello se lo tiene. Il secondo non sovrascrive: apre un errore
+     * che nomina entrambi i file e il dato conteso, così l'amministratore toglie quello di troppo
+     * invece di scoprire fra un mese quale dei due era finito in archivio.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @param  array<string, string>  $fonti
+     * @param  array<string, EsitoVerifica>  $esiti
+     */
+    private function registraCanonico(
+        array &$canonici,
+        array &$fonti,
+        array &$esiti,
+        string $chiave,
+        mixed $valore,
+        ImportFile $file,
+        string $etichetta,
+    ): void {
+        if ($valore === null || $valore === []) {
+            return;
+        }
+
+        if (! isset($canonici[$chiave])) {
+            $canonici[$chiave] = $valore;
+            $fonti[$chiave] = $file->nome_originale;
+
+            return;
+        }
+
+        if (($fonti[$chiave] ?? null) === $file->nome_originale) {
+            return;
+        }
+
+        $esiti[$chiave] = ($esiti[$chiave] ?? new EsitoVerifica(0))
+            ->con(Rilievo::errore(
+                'import.due_file_stesso_dato',
+                sprintf(
+                    'Due file portano %s: «%s» e «%s».',
+                    $etichetta,
+                    $fonti[$chiave] ?? 'un altro file',
+                    $file->nome_originale,
+                ),
+                'Uso il primo e ignoro il secondo, ma quale dei due sia quello giusto non lo posso '
+                .'sapere io. Togli dal caricamento quello di troppo e riprova: i file caricati '
+                .'possono completarsi a vicenda, non contraddirsi.',
+            ));
+    }
+
+    /**
+     * Somma un esito a quello che c'è già, invece di sostituirlo.
+     *
+     * ⚠️ Sostituire cancellava i rilievi del file letto prima — **compresi quelli bloccanti** — e
+     * il pulsante di conferma si sbloccava da solo. Vale in tutte le direzioni: non era il modello
+     * a essere fragile, era la regola a essere scritta in un posto solo.
+     *
+     * @param  array<string, EsitoVerifica>  $esiti
+     */
+    private function fondiEsito(array &$esiti, string $chiave, EsitoVerifica $esito): void
+    {
+        $esiti[$chiave] = isset($esiti[$chiave])
+            ? new EsitoVerifica(
+                $esiti[$chiave]->righeTotali + $esito->righeTotali,
+                [...$esiti[$chiave]->rilievi, ...$esito->rilievi],
+            )
+            : $esito;
     }
 
     /**
@@ -160,6 +358,141 @@ final class ImportVerificaService
      * @param  array<string, mixed>  $canonici
      * @return array<string, mixed>
      */
+    /**
+     * La destinazione scelta dall'amministratore: «importa dentro **questo** condominio».
+     *
+     * Serve a chi esporta da Danea con «Import/Export tramite Excel» invece che dalle stampe:
+     * quegli export sono elenchi senza testata, quindi nessun file può dire in quale condominio
+     * vadano messi. Prima della beta di questa correzione quelle persone non avevano nessuna
+     * strada — e chi arriva da un altro gestionale senza un consuntivo da esportare non ne aveva
+     * comunque, perché il consuntivo è l'unica stampa con la testata.
+     *
+     * **Non si inventa niente.** Il condominio canonico viene costruito dal record che l'utente
+     * ha scelto, con il suo codice fiscale: da lì in avanti `RicercaEsistenti` lo ritrova come
+     * esistente e i livelli scrivono dentro quello, esattamente come già succede a chi crea il
+     * condominio a mano e poi carica file che portano il suo codice fiscale. È la stessa strada,
+     * aperta a chi quel codice fiscale nei file non ce l'ha.
+     *
+     * La scelta vive in `decisioni` e non in una colonna nuova: è una decisione presa prima che
+     * si scriva, come «dividi il nome doppio», e `import_batches.condominio_id` significa già
+     * un'altra cosa — il condominio **creato** dall'importazione.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @return array<string, mixed>
+     */
+    /**
+     * Le decisioni che la scelta della destinazione ha già preso, senza chiederle di nuovo.
+     *
+     * Chi indica «importa dentro Le Terrazze» ha già risposto alla domanda «in archivio c'è già
+     * un condominio uguale, vuoi unirlo?»: è lo stesso record, l'ha scelto lui. Riproporla
+     * nell'anteprima non è prudenza, è un'eco — e l'opzione «unisci» sarebbe pure dannosa,
+     * perché riscriverebbe il condominio con i dati che vengono dal condominio stesso.
+     *
+     * `salta` è «lascia com'è»: tiene quello che c'è in archivio e ci collega unità, tabelle e
+     * saldi. È l'unica risposta coerente con la scelta appena fatta.
+     *
+     * @return array<string, mixed> le decisioni del lotto, con dentro anche quelle implicite
+     */
+    public function decisioniImplicite(ImportBatch $batch): array
+    {
+        $decisioni = $batch->decisioni ?? [];
+        $canonici = $this->applicaDestinazione($batch, []);
+
+        if (isset($canonici[LivelloCondominio::CHIAVE])) {
+            $decisioni[LivelloCondominio::CHIAVE.':'.$canonici[LivelloCondominio::CHIAVE]->chiave()] = 'salta';
+        }
+
+        if (isset($canonici[LivelloEsercizi::CHIAVE])) {
+            $decisioni[LivelloEsercizi::CHIAVE.':'.$canonici[LivelloEsercizi::CHIAVE]->etichetta] = 'salta';
+        }
+
+        return $decisioni;
+    }
+
+    /**
+     * L'esercizio **aperto** di un condominio, o `null` se non ne ha.
+     *
+     * Pubblico e statico perché la schermata deve poter dichiarare **prima** quale esercizio
+     * verrà usato: un fatto annunciato e poi disatteso è peggio di una domanda.
+     */
+    public static function esercizioApertoDi(int $condominioId): ?Esercizio
+    {
+        return Esercizio::where('condominio_id', $condominioId)
+            ->where('stato', 'aperto')
+            ->orderBy('data_inizio', 'desc')
+            ->first();
+    }
+
+    private function applicaDestinazione(ImportBatch $batch, array $canonici): array
+    {
+        $condominioId = ($batch->decisioni ?? [])[self::DESTINAZIONE_CONDOMINIO] ?? null;
+
+        if ($condominioId === null) {
+            return $canonici;
+        }
+
+        // ⚠️ **Se i file lo dichiarano, qui non si applica niente — nemmeno l'esercizio.**
+        //
+        // Per mezza giornata questa uscita non c'era: il condominio era protetto dalla sua
+        // guardia, l'esercizio no. Con una testata che porta il condominio **senza** la riga
+        // `Periodo:` — e una scelta di destinazione rimasta sul lotto da prima — uscivano
+        // canonici **misti**: condominio dal file, esercizio di un altro stabile. Misurato:
+        // condominio «A DAL FILE», esercizio «ESERCIZIO-DI-B». Nessun errore, nessun avviso, e
+        // ogni titolarità di A nata con il periodo di B.
+        //
+        // La regola è una sola e vale per entrambi: **la testata di una stampa comanda**, e
+        // l'esercizio appartiene al condominio in cui si sta scrivendo, non a quello che
+        // l'utente aveva indicato prima di caricare il file.
+        if (($canonici[LivelloCondominio::CHIAVE] ?? null) !== null) {
+            return $canonici;
+        }
+
+        $c = Condominio::find($condominioId);
+
+        if ($c === null) {
+            // Il condominio scelto è stato cancellato nel frattempo. Non si inventa niente: senza
+            // canonico riparte il rilievo «nessun file lo dichiara», che è la verità.
+            return $canonici;
+        }
+
+        $canonici[LivelloCondominio::CHIAVE] = new CanonicalCondominio(
+            nome: $c->nome,
+            codiceFiscale: $c->codice_fiscale,
+            indirizzo: $c->indirizzo,
+            cap: $c->cap,
+            comune: $c->comune,
+            provincia: $c->provincia,
+            idScelto: $c->id,
+        );
+
+        // ⚠️ **L'esercizio non si sceglie: si risolve.**
+        //
+        // Per una manciata di ore questa è stata una seconda tendina, e sarebbe stata la
+        // superficie d'errore peggiore di tutto l'importatore. La data di inizio dell'esercizio
+        // diventa la `data_inizio` di **ogni titolarità** scritta — misurato: importando nel
+        // 2026 le righe di `anagrafica_immobile` nascono con `2026-01-01`. Puntare all'anno
+        // sbagliato non produce nessun errore, nessun avviso e nessuna quadratura fuori posto:
+        // scrive numeri giusti nel periodo sbagliato, e ci si accorge al primo riparto. La
+        // tendina per giunta elencava **anche gli esercizi chiusi**.
+        //
+        // La regola è quella che usa tutto il resto del prodotto — `HasEsercizio::getEsercizioCorrente()`:
+        // l'esercizio **aperto**, con l'invariante «al più uno per condominio» presidiata da
+        // `CreateEsercizioRequest` e da `CondominioService::createEsercizioForCondominio()`.
+        // Importare significa registrare chi possiede cosa **adesso**, e «adesso» è l'esercizio
+        // aperto: non c'è una seconda risposta ragionevole da offrire.
+        $e = self::esercizioApertoDi($c->id);
+
+        if ($e !== null) {
+            $canonici[LivelloEsercizi::CHIAVE] = new CanonicalEsercizio(
+                etichetta: $e->nome,
+                dataInizio: CarbonImmutable::parse($e->data_inizio),
+                dataFine: CarbonImmutable::parse($e->data_fine),
+            );
+        }
+
+        return $canonici;
+    }
+
     private function applicaDecisioni(ImportBatch $batch, array $canonici): array
     {
         $decisioni = $batch->decisioni ?? [];
@@ -273,6 +606,12 @@ final class ImportVerificaService
                         daTitolareCessato: $r->daTitolareCessato,
                         rigaSorgente: $r->rigaSorgente,
                         daNomeDiviso: true,
+                        // Ogni campo non ripetuto in una ricostruzione torna al suo default, ed è
+                        // il modo in cui `fonte` era già sparita una volta. Oggi la causale non si
+                        // vede lo stesso su queste righe — il testo del nome diviso ha la
+                        // precedenza — ma perderla qui significa perderla anche per la fusione
+                        // solidale a valle, che la userebbe.
+                        causale: $r->causale,
                     );
                 }
 
@@ -280,6 +619,9 @@ final class ImportVerificaService
                     righe: $righe,
                     totaleRiferimentoCents: $saldi->totaleRiferimentoCents,
                     arrotondamentiCents: $saldi->arrotondamentiCents,
+                    // Si ricostruisce l'oggetto, quindi ogni campo non ripetuto qui torna al suo
+                    // default: la fonte sparirebbe e l'anteprima ricomincerebbe a dire «riparto».
+                    fonte: $saldi->fonte,
                 );
             }
         }
@@ -306,20 +648,21 @@ final class ImportVerificaService
      * @param  array<string, EsitoVerifica>  $esiti
      * @param  list<array{file: string, tipo: string, righe: int}>  $letture
      */
-    private function leggiRiparto(Foglio $foglio, int $riga, array &$canonici, array &$esiti, array &$letture, ImportFile $file): void
+    private function leggiRiparto(Foglio $foglio, int $riga, array &$canonici, array &$fonti, array &$esiti, array &$letture, ImportFile $file): void
     {
         $banner = (new BannerParser)->estrai($foglio);
         $this->registraBanner($banner, $canonici, $esiti);
 
         $saldi = (new RipartoConsuntivoParser)->estrai($foglio, $riga);
 
-        $canonici[LivelloSaldi::CHIAVE] = new CanonicalSaldiApertura(
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloSaldi::CHIAVE, new CanonicalSaldiApertura(
             righe: $saldi['saldi'],
             totaleRiferimentoCents: $saldi['totale_riferimento_cents'],
             arrotondamentiCents: $saldi['arrotondamenti_cents'],
-        );
+            fonte: 'riparto consuntivo',
+        ), $file, 'i saldi di apertura');
 
-        $esiti[LivelloSaldi::CHIAVE] = $saldi['esito'];
+        $this->fondiEsito($esiti, LivelloSaldi::CHIAVE, $saldi['esito']);
         $letture[] = ['file' => $file->nome_originale, 'tipo' => 'Saldi di apertura', 'righe' => $saldi['esito']->righeTotali];
     }
 
@@ -329,15 +672,15 @@ final class ImportVerificaService
      * @param  list<array{file: string, tipo: string, righe: int}>  $letture
      * @param  array<string, mixed>  $immobili
      */
-    private function leggiElencoUnita(Foglio $foglio, int $riga, array &$canonici, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
+    private function leggiElencoUnita(Foglio $foglio, int $riga, array &$canonici, array &$fonti, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
     {
         $letto = (new ElencoUnitaParser)->estrai($foglio, $riga);
 
-        $canonici[LivelloSoggetti::CHIAVE] = $letto['soggetti'];
-        $canonici[LivelloTitolarita::CHIAVE] = $letto['titolarita'];
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloSoggetti::CHIAVE, $letto['soggetti'], $file, 'le persone');
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloTitolarita::CHIAVE, $letto['titolarita'], $file, 'chi possiede cosa');
         $immobili = [...$immobili, ...$letto['immobili']];
 
-        $esiti[LivelloSoggetti::CHIAVE] = $letto['esito'];
+        $this->fondiEsito($esiti, LivelloSoggetti::CHIAVE, $letto['esito']);
         $letture[] = ['file' => $file->nome_originale, 'tipo' => 'Persone, unità e titolarità', 'righe' => $letto['esito']->righeTotali];
     }
 
@@ -347,14 +690,14 @@ final class ImportVerificaService
      * @param  list<array{file: string, tipo: string, righe: int}>  $letture
      * @param  array<string, mixed>  $immobili
      */
-    private function leggiMillesimi(Foglio $foglio, int $riga, array &$canonici, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
+    private function leggiMillesimi(Foglio $foglio, int $riga, array &$canonici, array &$fonti, array &$esiti, array &$letture, ImportFile $file, array &$immobili): void
     {
         $letto = (new AnagraficaMillesimiParser)->estrai($foglio, $riga);
 
-        $canonici[LivelloTabelle::CHIAVE] = $letto['tabelle'];
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloTabelle::CHIAVE, $letto['tabelle'], $file, 'le tabelle millesimali');
         $immobili = [...$immobili, ...$letto['immobili']];
 
-        $esiti[LivelloTabelle::CHIAVE] = $letto['esito'];
+        $this->fondiEsito($esiti, LivelloTabelle::CHIAVE, $letto['esito']);
         $letture[] = ['file' => $file->nome_originale, 'tipo' => 'Tabelle millesimali', 'righe' => $letto['esito']->righeTotali];
     }
 
@@ -362,6 +705,101 @@ final class ImportVerificaService
      * @param  array<string, mixed>  $canonici
      * @param  array<string, EsitoVerifica>  $esiti
      */
+    /**
+     * Il bilancio consuntivo → la struttura delle spese, **e** la testata come tutti gli altri.
+     *
+     * Il banner si legge lo stesso: questa stampa lo porta come le sue sorelle, ed è uno dei file
+     * che permettono all'importazione di sapere di quale condominio si tratta.
+     */
+    private function leggiBilancio(
+        Foglio $foglio,
+        int $rigaIntestazione,
+        array &$canonici,
+        array &$fonti,
+        array &$esiti,
+        array &$letture,
+        ImportFile $file,
+    ): void {
+        $this->leggiSoloBanner($foglio, $canonici, $esiti);
+
+        $letto = (new BilancioConsuntivoParser)->estrai($foglio, $rigaIntestazione);
+
+        $this->registraCanonico($canonici, $fonti, $esiti, LivelloCapitoli::CHIAVE, $letto['struttura'], $file, 'i capitoli di spesa');
+        $this->fondiEsito($esiti, LivelloCapitoli::CHIAVE, $letto['esito']);
+
+        $letture[] = [
+            'file' => $file->nome_originale,
+            'tipo' => 'Capitoli di spesa',
+            'righe' => $letto['esito']->righeTotali,
+        ];
+    }
+
+    /**
+     * Il modello compilato a mano: **un file, cinque fogli, tutti i canonici in un colpo solo**.
+     *
+     * ## Perché i suoi esiti si fondono invece di sovrascrivere
+     *
+     * Un lotto può contenere il modello **e** una stampa di Danea: capita a chi ha esportato
+     * quello che poteva e ha scritto a mano il resto, che è esattamente il caso per cui il
+     * modello esiste. Assegnare `$esiti[...] = ` cancellerebbe in silenzio i rilievi già letti
+     * dall'altro file, e con essi le decisioni ancora da prendere — cioè il pulsante di conferma
+     * si sbloccherebbe da solo. Si usa `con()`, che li accumula.
+     *
+     * I **canonici** invece non si fondono: il primo che arriva vince, come per il condominio
+     * nella testata. Fondere due elenchi di persone provenienti da due file scritti in momenti
+     * diversi è una cosa che nessuno può fare al posto dell'amministratore.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @param  array<string, EsitoVerifica>  $esiti
+     * @param  list<array{file: string, tipo: string, righe: int}>  $letture
+     * @param  array<string, mixed>  $immobili
+     */
+    private function leggiModello(ImportFile $file, array &$canonici, array &$fonti, array &$esiti, array &$letture, array &$immobili): void
+    {
+        $percorso = Storage::disk(ImportUploadService::DISCO)->path($file->percorso);
+
+        try {
+            $fogli = $this->reader->leggi($percorso);
+        } catch (RuntimeException) {
+            $esiti['file:'.$file->id] = new EsitoVerifica(0, [Rilievo::errore(
+                'file.illeggibile',
+                sprintf('Non riesco a rileggere «%s».', $file->nome_originale),
+                'Ricaricalo: potrebbe essere stato spostato o danneggiato dopo il caricamento.',
+            )]);
+
+            return;
+        }
+
+        $letto = (new ModelloManualeParser)->estrai($fogli);
+
+        // Il condominio passa dalla stessa porta della testata delle stampe: è là che vive il
+        // controllo «due file di due condomìni diversi», e il modello non ne è esente.
+        $this->registraBanner([
+            'condominio' => $letto['condominio'],
+            'esercizio' => $letto['esercizio'],
+            'esito' => new EsitoVerifica(0),
+        ], $canonici, $esiti);
+
+        foreach ($letto['esiti'] as $chiave => $esito) {
+            $this->fondiEsito($esiti, $chiave, $esito);
+        }
+
+        $immobili = [...$immobili, ...$letto['immobili']];
+
+        foreach ([
+            LivelloSoggetti::CHIAVE => [$letto['soggetti'], 'le persone'],
+            LivelloTitolarita::CHIAVE => [$letto['titolarita'], 'chi possiede cosa'],
+            LivelloTabelle::CHIAVE => [$letto['tabelle'], 'le tabelle millesimali'],
+            LivelloSaldi::CHIAVE => [$letto['saldi'], 'i saldi di apertura'],
+        ] as $chiave => [$valore, $etichetta]) {
+            $this->registraCanonico($canonici, $fonti, $esiti, $chiave, $valore, $file, $etichetta);
+        }
+
+        foreach ($letto['letture'] as $lettura) {
+            $letture[] = ['file' => $file->nome_originale, ...$lettura];
+        }
+    }
+
     private function leggiSoloBanner(Foglio $foglio, array &$canonici, array &$esiti): void
     {
         $this->registraBanner((new BannerParser)->estrai($foglio), $canonici, $esiti);

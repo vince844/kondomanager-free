@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide, { type GuideItem } from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
@@ -9,13 +9,21 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useDateConverter } from '@/composables/useDateConverter';
-import { ArrowLeft, Printer, Mail, Wallet, ArrowDownCircle, ArrowUpCircle, Building2, Landmark,FileText, Banknote, HelpCircle, RotateCcw, CheckCircle2, AlertCircle, PieChart, Coins, Info, XCircle, ChevronDown } from 'lucide-vue-next';
+import { ArrowLeft, Printer, Mail, Wallet, ArrowDownCircle, ArrowUpCircle, Building2, Landmark,FileText, Banknote, HelpCircle, RotateCcw, CheckCircle2, AlertCircle, PieChart, Coins, Info, XCircle, ChevronDown, ShieldCheck } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
+import MoneyInput from '@/components/MoneyInput.vue';
 import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
+import { statoRigaEstratto, type TonoStato } from '@/lib/gestionale/pianiRate/statoRigaEstratto';
 
 const props = defineProps<{
   condominio: Building;
@@ -38,7 +46,87 @@ const props = defineProps<{
     compensabile_frase: string;
     compensabile_rata_id: number | null;
   };
+  /** B2, S6: ciò che serve al modulo «Rimborsa il credito». */
+  rimborso: {
+    quote: Array<{ id: number; rata: number | null; piano: string | null; gestione: string | null; immobile: string | null; origine: 'saldi' | 'entrate' | 'misto' | 'eccedenza'; conto: 'passate_gestioni' | 'crediti_condomini'; a_giornale: boolean; credito_cents: number; credito_formattato: string; credito_euro: string }>;
+    casse: Array<{ id: number; nome: string; tipo: string; saldo_cents: number; saldo_formattato: string }>;
+    /** Il credito di chi esce ancora in `saldi` (coppia del passaggio non assorbita): non è ancora una quota. */
+    credito_in_saldi: number;
+  };
+  /**
+   * B2, S7: la solidarietà dell'art. 63 co. 4 verso questa persona come entrante — nota, non quota. Dalla beta.51 (Coda 172)
+   * `residuo_uscente_cents` è al netto della coppia del conguaglio ancora nel Wallet; `residuo_lordo_cents` è la cifra prima della
+   * coppia e `coppia_cents` la coppia. La pagina mostra il testo (con `subentro_id` e `immobile`), che dice la coppia nella stessa frase: le cifre in
+   * centesimi servono ai test e al laboratorio.
+   */
+  solidarieta?: Array<{ subentro_id: number; immobile: string; uscente: string | null; entrante: string | null; decorrenza: string; esercizi: string; residuo_uscente_cents: number; residuo_uscente_formattato: string; residuo_lordo_cents: number; coppia_cents: number; testo: string }>;
+  /** Coda 167, beta.40: i versamenti che questa persona ha fatto per il debito di un'altra — fuori dal libro, perché non erano suo debito. */
+  versamenti_per_altri?: Array<{ scrittura_id: number; data: string | null; protocollo: string | null; per_conto_di: string; importo_cents: number; importo_formattato: string; stornato: boolean }>;
 }>();
+
+// --- Rimborso del credito (B2, S6, voce 9) ------------------------------------------------------------
+const rimborsoAperto = ref(false);
+const formRimborso = useForm({
+    rata_quote_id: (props.rimborso?.quote[0]?.id ?? null) as number | null,
+    cassa_id: (props.rimborso?.casse.length === 1 ? props.rimborso.casse[0].id : null) as number | null,
+    // Non `data`: `useForm()` espone già un metodo `data()`, e un campo con quel nome lo copre — il
+    // v-model legava una funzione e il campo restava vuoto.
+    data_rimborso: new Date().toISOString().substring(0, 10),
+    importo: props.rimborso?.quote[0]?.credito_euro ?? '',
+    nota: '',
+});
+
+/** Le quote a credito con un'etichetta per `v-select`: importo, gestione, piano, rata, unità. */
+const quoteRimborsabili = computed(() => (props.rimborso?.quote ?? []).map(q => ({
+    ...q,
+    etichetta: `${q.credito_formattato} — ${q.gestione ?? 'gestione'}${q.piano ? `, ${q.piano}` : ''}${q.rata !== null ? ` (rata ${q.rata})` : ''}${q.immobile ? ` · ${q.immobile}` : ''}`,
+})));
+
+// L'importo con la maschera italiana degli altri moduli (verifica S6, R17): «1.000» resta mille, non € 1,00.
+const moneyOptionsRimborso = { prefix: '', suffix: '', thousands: '.', decimal: ',', precision: 2, allowBlank: true, masked: true, disableNegative: true };
+
+const quotaScelta = computed(() => props.rimborso?.quote.find(q => q.id === formRimborso.rata_quote_id) ?? null);
+
+// Da dove viene il credito (rilievo K2 della Fase 1-bis): il riporto da un esercizio precedente, le entrate dell'anno di una voce di
+// tipo «entrata», tutte e due, o un versamento in eccesso.
+const ETICHETTA_ORIGINE: Record<string, string> = { saldi: 'da saldi', entrate: 'entrate', misto: 'saldi ed entrate', eccedenza: 'eccedenza' };
+const cassaScelta = computed(() => props.rimborso?.casse.find(c => c.id === formRimborso.cassa_id) ?? null);
+
+// Cambiando quota, l'importo proposto è il suo credito intero: si può ridurre, non superare.
+watch(() => formRimborso.rata_quote_id, () => {
+    if (quotaScelta.value) formRimborso.importo = quotaScelta.value.credito_euro;
+});
+
+const apriRimborso = () => {
+    formRimborso.clearErrors();
+    // Dopo un rimborso la quota scelta può non essere più in lista (chiusa): si riparte dalla prima che c'è (verifica S6, R23).
+    if (!quotaScelta.value) formRimborso.rata_quote_id = props.rimborso?.quote[0]?.id ?? null;
+    if (quotaScelta.value) formRimborso.importo = quotaScelta.value.credito_euro;
+    rimborsoAperto.value = true;
+};
+
+const inviaRimborso = () => {
+    formRimborso.post(route(generateRoute('gestionale.anagrafiche.rimborsi.store'), { condominio: props.condominio.id, anagrafica: props.anagrafica.id }), {
+        preserveScroll: true,
+        onSuccess: () => { rimborsoAperto.value = false; formRimborso.reset('nota'); },
+    });
+};
+
+// Lo storno di un rimborso: stessa strada degli incassi (rettifica + originale annullata).
+// `AlertDialogAction` chiude il dialogo da sé prima che arrivi `confirm`: la riga scelta vive in una ref
+// separata dall'apertura, altrimenti al momento della conferma è già nulla e nessuna richiesta parte.
+const stornoDaConfermare = ref<any | null>(null);
+const stornoAperto = ref(false);
+const chiediStorno = (riga: any) => { stornoDaConfermare.value = riga; stornoAperto.value = true; };
+const stornaRimborso = () => {
+    const riga = stornoDaConfermare.value;
+    stornoAperto.value = false;
+    if (!riga) return;
+    router.post(route(generateRoute('gestionale.movimenti-rate.storno'), { condominio: props.condominio.id, scrittura: riga.scrittura_id }), {}, {
+        preserveScroll: true,
+        onFinish: () => { stornoDaConfermare.value = null; },
+    });
+};
 
 const { euro } = useCurrencyFormatter({ fromCents: false }); 
 const { toItalian } = useDateConverter();
@@ -114,7 +202,7 @@ const pageGuides: GuideItem[] = [
   },
   {
     title: 'Addebiti',
-    description: 'Tutte le rate emesse a carico del condòmino e gli eventuali ripristini di debito.',
+    description: 'Le rate emesse a carico del condòmino e i rimborsi del suo credito. Un incasso stornato e il suo storno restano nell\'elenco, non nel totale.',
     icon: Banknote,
     colorVariant: 'amber'
   },
@@ -138,27 +226,22 @@ const saldoInizialeColorClass = computed(() => {
     return 'text-gray-600';
 });
 
-const getStatoConfig = (stato: string | null) => {
-    if (!stato) return { label: '', class: '', icon: null };
+// Il bollino di una riga: l'etichetta (la stessa della stampa) e il tono da `statoRigaEstratto` (1.11.0-beta.49), colore e icona
+// qui. Uno stato che la pagina non conosce non disegna niente: prima «stornata» usciva come un riquadro vuoto.
+const STILE_DEL_TONO: Record<TonoStato, { class: string; icon: any }> = {
+    verde: { class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
+    indaco: { class: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: Coins },
+    ambra: { class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart },
+    rosso: { class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle },
+    blu: { class: 'bg-blue-50 text-blue-700 border-blue-200', icon: ArrowDownCircle },
+    grigio: { class: 'bg-slate-100 text-slate-600 border-slate-300', icon: XCircle },
+};
 
-    switch(stato) {
-        case 'pagata': 
-            return { label: 'PAGATA', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
-        case 'credito': 
-            return { label: 'COMPENSATA', class: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: Coins };
-        case 'parzialmente_pagata': 
-        case 'partial': // Aggiunto alias di sicurezza (se usato nel DB)
-            return { label: 'PARZIALE', class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart };
-        case 'da_pagare': 
-        case 'pending': // Aggiunto alias
-            return { label: 'NON PAGATA', class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle };
-        case 'credito_puro': 
-            return { label: 'CREDITO', class: 'bg-blue-50 text-blue-700 border-blue-200', icon: ArrowDownCircle };
-        case 'stornato': // GESTIONE DELLO STORNO
-            return { label: 'STORNATA', class: 'bg-slate-100 text-slate-600 border-slate-300', icon: XCircle };
-        default: 
-            return { label: '', class: '', icon: null };
-    }
+const getStatoConfig = (stato: string | null) => {
+    const bollino = statoRigaEstratto(stato);
+    if (!bollino) return null;
+
+    return { label: bollino.etichetta, ...STILE_DEL_TONO[bollino.tono] };
 };
 
 const getImportoStyle = (riga: any) => {
@@ -169,7 +252,7 @@ const getImportoStyle = (riga: any) => {
          }
          return 'text-red-600 font-medium';
     } else if (riga.tipo_riga === 'avere') {
-         return 'text-emerald-600 font-bold font-mono text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100';
+         return 'text-emerald-600 font-bold tabular-nums text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100';
     }
     
     const isCredito = riga.dettagli?.some((d: any) => d.type === 'rata' && d.status === 'credito');
@@ -187,7 +270,7 @@ const getImportoStyle = (riga: any) => {
         <div class="px-6 py-8 space-y-6">
             <PageHeaderGuide
                 :page-title="`Estratto Conto: ${anagrafica.nome}`"
-                :page-subtitle="`Situazione contabile dettagliata, saldo progressivo e storico movimenti. CF: ${anagrafica.codice_fiscale}`"
+                :page-subtitle="`Situazione contabile dettagliata, saldo progressivo e storico movimenti.${anagrafica.codice_fiscale ? ' CF: ' + anagrafica.codice_fiscale : ''}`"
                 :guides="pageGuides"
                 :breadcrumbs="breadcrumbs"
                 :condominio="condominio"
@@ -306,6 +389,19 @@ const getImportoStyle = (riga: any) => {
                             >Compensa</a>
                         </p>
                         <p v-else class="text-[10px] text-muted-foreground mt-1">Nessun credito attivo</p>
+                        <!-- B2, S6: il rimborso — denaro che esce a fronte della quota a credito, per chi non ha più rate da compensare -->
+                        <button
+                            v-if="rimborso && rimborso.quote.length > 0"
+                            type="button"
+                            @click="apriRimborso"
+                            class="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                        >
+                            <Banknote class="w-3.5 h-3.5" /> Rimborsa il credito
+                        </button>
+                        <p v-else-if="rimborso && rimborso.credito_in_saldi > 0" class="text-[10px] text-blue-700/80 mt-2 leading-tight">
+                            {{ euro(rimborso.credito_in_saldi / 100) }} di credito dal passaggio di titolarità sono ancora nei saldi della gestione:
+                            diventano una quota rimborsabile quando il prossimo piano rate li assorbe.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -336,11 +432,39 @@ const getImportoStyle = (riga: any) => {
             </div>
         </div>
 
+            <!-- Coda 167, beta.40: i versamenti fatti per il debito di un altro. Chiudono le quote di chi doveva e non toccano il saldo di questa persona: per questo stanno qui e non nel libro qui sotto. -->
+            <div v-if="versamenti_per_altri && versamenti_per_altri.length" class="rounded-lg border border-sky-200 bg-sky-50/70 dark:border-sky-900/40 dark:bg-sky-950/20 px-4 py-3 flex items-start gap-3">
+                <Banknote class="w-4 h-4 mt-0.5 shrink-0 text-sky-600" />
+                <div class="text-[12px] leading-relaxed text-sky-950 dark:text-sky-100">
+                    <span class="font-bold uppercase tracking-wider text-[10px] text-sky-800 dark:text-sky-300 block mb-0.5">Versamenti per conto di altri</span>
+                    <p class="mb-1">Rate di altre persone pagate da {{ anagrafica.nome }}: chiudono il debito di chi le doveva e non cambiano il saldo qui sotto.</p>
+                    <ul class="space-y-0.5 tabular-nums">
+                        <li v-for="v in versamenti_per_altri" :key="v.scrittura_id" :class="{ 'text-sky-900/50 dark:text-sky-100/50': v.stornato }">
+                            Versato il {{ v.data }}: {{ v.importo_formattato }} per conto di {{ v.per_conto_di }}<span v-if="v.protocollo"> (prot. {{ v.protocollo }})</span>
+                            <span v-if="v.stornato" class="ml-1.5 inline-block rounded border border-slate-300 bg-slate-50 px-1.5 text-[10px] font-semibold uppercase leading-4 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">stornato</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- B2, S7: la nota calcolata dell'art. 63 co. 4 — chi è entrato risponde in solido con chi è uscito. Non è una quota né un sollecito. -->
+            <div v-if="solidarieta && solidarieta.length" class="space-y-2">
+                <div v-for="n in solidarieta" :key="n.subentro_id" class="rounded-lg border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-3 flex items-start gap-3">
+                    <ShieldCheck class="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                    <div class="text-[12px] leading-relaxed text-amber-950 dark:text-amber-100">
+                        <span class="font-bold uppercase tracking-wider text-[10px] text-amber-800 dark:text-amber-300 block mb-0.5">Chi risponde in solido · {{ n.immobile }}</span>
+                        {{ n.testo }}
+                    </div>
+                </div>
+            </div>
+
         <div class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50/80 p-3 rounded-lg border border-dashed border-gray-200">
             <span class="font-bold uppercase tracking-wider text-[10px] text-gray-400 mr-1">Legenda:</span>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 shadow-sm"><FileText class="w-3 h-3" /></div><span>Emissione</span></div>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm"><Banknote class="w-3 h-3" /></div><span>Incasso</span></div>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-sm"><RotateCcw class="w-3 h-3" /></div><span>Storno</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shadow-sm"><Coins class="w-3 h-3" /></div><span>Compensazione</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-sm"><Banknote class="w-3 h-3" /></div><span>Rimborso</span></div>
             <div class="h-4 w-px bg-gray-300 mx-2 hidden sm:block"></div>
             <div class="flex items-center gap-1.5"><CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" /> <span class="text-emerald-700 font-medium">Saldata</span></div>
             <div class="flex items-center gap-1.5"><PieChart class="w-3.5 h-3.5 text-amber-600" /> <span class="text-amber-700 font-medium">Parziale</span></div>
@@ -392,12 +516,16 @@ const getImportoStyle = (riga: any) => {
                                         <div v-else-if="riga.tipo_icona === 'payment'" class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 border border-emerald-200 shadow-sm"><Banknote class="w-4 h-4" /></div>
                                         <div v-else-if="riga.tipo_icona === 'landmark'" class="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600 border border-yellow-200 shadow-sm"><Landmark class="w-4 h-4" /></div>
                                         <div v-else-if="riga.tipo_icona === 'rotate-ccw'" class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-200 shadow-sm"><RotateCcw class="w-4 h-4" /></div>
+                                        <div v-else-if="riga.tipo_icona === 'banknote'" class="w-8 h-8 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 border border-rose-200 shadow-sm"><Banknote class="w-4 h-4" /></div>
+                                        <div v-else-if="riga.tipo_icona === 'coins'" class="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 border border-indigo-200 shadow-sm"><Coins class="w-4 h-4" /></div>
                                         <div v-else class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 border border-gray-200 shadow-sm"><HelpCircle class="w-4 h-4" /></div>
                                     </div>
                                 </td>
                                 <td class="px-4 py-3 align-top">
                                     <div class="text-sm font-medium text-gray-700">{{ riga.data }}</div>
-                                    <div v-if="riga.protocollo" class="mt-1"><Badge variant="outline" class="text-[9px] px-1 h-4 font-mono text-gray-400 border-gray-200">{{ riga.protocollo }}</Badge></div>
+                                    <!-- Coda 317: la data è quella del movimento (competenza); il giorno in cui è stato inserito arriva solo se è diverso, ed è per l'amministratore: il PDF non lo stampa. -->
+                                    <div v-if="riga.data_registrazione" class="text-[10px] text-gray-400 leading-tight mt-0.5">Registrata il {{ riga.data_registrazione }}</div>
+                                    <div v-if="riga.protocollo" class="mt-1"><Badge variant="outline" class="text-[9px] px-1 h-4 tabular-nums text-gray-400 border-gray-200">{{ riga.protocollo }}</Badge></div>
                                 </td>
                                 <td class="px-4 py-3 align-top">
                                     <div class="flex items-center gap-2 mb-1">
@@ -405,6 +533,14 @@ const getImportoStyle = (riga: any) => {
                                         <Badge v-if="riga.gestione" variant="secondary" class="text-[9px] h-4 px-1.5 bg-gray-100 text-gray-500 font-normal">{{ riga.gestione }}</Badge>
                                     </div>
                                     <p v-if="riga.note" class="text-xs text-blue-600 italic mb-1">Note: {{ riga.note }}</p>
+                                    <button
+                                        v-if="riga.stornabile"
+                                        type="button"
+                                        @click="chiediStorno(riga)"
+                                        class="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:underline mb-1"
+                                    >
+                                        <RotateCcw class="w-3 h-3" /> Storna il rimborso
+                                    </button>
                                     <div v-if="riga.dettagli && riga.dettagli.length > 0" class="flex flex-col gap-1 mt-1">
                                         <div v-for="(item, index) in riga.dettagli" :key="index" class="flex items-center flex-wrap gap-2">
                                             
@@ -412,9 +548,9 @@ const getImportoStyle = (riga: any) => {
                                                 <span class="w-1 h-1 rounded-full bg-gray-300 shrink-0"></span> {{ item.text }}
                                             </span>
                                             
-                                            <span v-if="item.status" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider" :class="getStatoConfig(item.status).class">
-                                                <component :is="getStatoConfig(item.status).icon" class="w-3 h-3" />
-                                                <span>{{ getStatoConfig(item.status).label }}</span>
+                                            <span v-if="getStatoConfig(item.status)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider" :class="getStatoConfig(item.status)!.class">
+                                                <component :is="getStatoConfig(item.status)!.icon" class="w-3 h-3" />
+                                                <span>{{ getStatoConfig(item.status)!.label }}</span>
                                             </span>
                                         </div>
                                     </div>
@@ -438,7 +574,7 @@ const getImportoStyle = (riga: any) => {
                                                         <span>
                                                             {{ 
                                                               riga.breakdown.type === 'incasso' ? 'Dettaglio Incasso' : 
-                                                              (riga.breakdown.type === 'storno' ? 'Dettaglio Storno' : 'Dettaglio Addebito') 
+                                                              (riga.breakdown.type === 'storno' ? 'Dettaglio Storno' : (riga.breakdown.type === 'rimborso' ? 'Dettaglio Rimborso' : (riga.breakdown.type === 'compensazione' ? 'Dettaglio Compensazione' : 'Dettaglio Addebito'))) 
                                                             }}
                                                             <span v-if="riga.breakdown.immobile !== 'Generico'">(Int. {{ riga.breakdown.immobile }})</span>
                                                         </span>
@@ -450,14 +586,14 @@ const getImportoStyle = (riga: any) => {
                                                                 <div class="w-1.5 h-1.5 rounded-full" :class="riga.breakdown.start < 0 ? 'bg-emerald-500' : (riga.breakdown.start > 0 ? 'bg-red-500' : 'bg-gray-500')"></div>
                                                                 <span>Saldo precedente:</span>
                                                             </span>
-                                                            <span class="font-mono">{{ euro(riga.breakdown.start) }}</span>
+                                                            <span class="tabular-nums">{{ euro(riga.breakdown.start) }}</span>
                                                         </div>
 
                                                         <div class="flex justify-between items-center text-white">
                                                             <span class="pl-2.5">
                                                                 Movimento in {{ riga.breakdown.type === 'incasso' ? 'Avere' : 'Dare' }}:
                                                             </span>
-                                                            <span class="font-mono font-bold" :class="riga.breakdown.type === 'storno' ? 'text-slate-400 line-through' : ''">
+                                                            <span class="tabular-nums font-bold" :class="riga.breakdown.type === 'storno' ? 'text-slate-400 line-through' : ''">
                                                                 {{ riga.breakdown.type === 'incasso' ? '-' : '+' }} {{ euro(riga.breakdown.cost) }}
                                                             </span>
                                                         </div>
@@ -466,24 +602,24 @@ const getImportoStyle = (riga: any) => {
                                                             <div class="my-1.5 pl-2.5 border-l-2 border-slate-600 ml-1 py-0.5 space-y-1 text-[11px]">
                                                                 <div class="flex justify-between items-center text-slate-300">
                                                                     <span class="italic text-slate-400">Quota pura:</span>
-                                                                    <span class="font-mono">{{ euro(riga.breakdown.cost) }}</span>
+                                                                    <span class="tabular-nums">{{ euro(riga.breakdown.cost) }}</span>
                                                                 </div>
                                                                 <div class="flex justify-between items-center text-slate-300">
                                                                     <span class="italic text-slate-400">
                                                                         {{ riga.breakdown.saldo_usato > 0 ? '+ Recupero Debito:' : '- Sconto Credito:' }}
                                                                     </span>
-                                                                    <span class="font-mono">{{ euro(riga.breakdown.saldo_usato) }}</span>
+                                                                    <span class="tabular-nums">{{ euro(riga.breakdown.saldo_usato) }}</span>
                                                                 </div>
                                                                 <div class="flex justify-between items-center font-bold text-white pt-1">
                                                                     <span>Da pagare per questa quota:</span>
-                                                                    <span class="font-mono text-amber-400">{{ euro(riga.breakdown.totale_richiesto) }}</span>
+                                                                    <span class="tabular-nums text-amber-400">{{ euro(riga.breakdown.totale_richiesto) }}</span>
                                                                 </div>
                                                             </div>
                                                         </template>
                                                         <div class="border-t border-slate-700 my-2 pt-2">
                                                             <div class="flex justify-between items-center font-bold text-sm">
                                                                 <span class="text-white">Nuovo saldo progressivo:</span>
-                                                                <span class="font-mono" :class="riga.breakdown.end < 0 ? 'text-emerald-400' : (riga.breakdown.end > 0 ? 'text-red-400' : 'text-white')">
+                                                                <span class="tabular-nums" :class="riga.breakdown.end < 0 ? 'text-emerald-400' : (riga.breakdown.end > 0 ? 'text-red-400' : 'text-white')">
                                                                     {{ euro(riga.breakdown.end) }}
                                                                 </span>
                                                             </div>
@@ -497,12 +633,12 @@ const getImportoStyle = (riga: any) => {
                                 </td>
 
                                 <td class="px-4 py-3 text-right align-top">
-                                    <span v-if="riga.avere > 0" class="text-emerald-600 font-bold font-mono text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{{ euro(riga.avere / 100) }}</span>
+                                    <span v-if="riga.avere > 0" class="text-emerald-600 font-bold tabular-nums text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">{{ euro(riga.avere / 100) }}</span>
                                     <span v-else class="text-gray-200 text-xs">-</span>
                                 </td>
                                 
                                 <td class="px-4 py-3 text-right align-top bg-gray-50/30 group-hover:bg-gray-100/50 border-l border-gray-100">
-                                    <span class="font-mono font-bold text-sm" :class="riga.saldo > 0 ? 'text-red-600' : (riga.saldo < 0 ? 'text-emerald-600' : 'text-gray-400')">{{ euro(riga.saldo / 100) }}</span>
+                                    <span class="tabular-nums font-bold text-sm" :class="riga.saldo > 0 ? 'text-red-600' : (riga.saldo < 0 ? 'text-emerald-600' : 'text-gray-400')">{{ euro(riga.saldo / 100) }}</span>
                                 </td>
                             </tr>
                         </tbody>
@@ -511,6 +647,123 @@ const getImportoStyle = (riga: any) => {
             </div>
         </div>
         </div>
+
+        <!-- B2, S6: il modulo del rimborso -->
+        <Dialog :open="rimborsoAperto" @update:open="rimborsoAperto = $event">
+            <!-- Niente autofocus sul primo campo: `v-select` si apre quando riceve il focus, e il modale nasceva col menu spalancato -->
+            <DialogContent class="sm:max-w-lg overflow-hidden" @open-auto-focus.prevent>
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2"><Banknote class="w-5 h-5 text-blue-600" /> Rimborsa il credito</DialogTitle>
+                    <DialogDescription>
+                        Denaro che esce dalla cassa a fronte di una quota a credito di {{ anagrafica.nome }}. La quota si chiude per l'importo
+                        rimborsato; le rate emesse non cambiano. Si può stornare dalla riga dell'estratto conto.
+                    </DialogDescription>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="inviaRimborso">
+                    <div class="space-y-1.5">
+                        <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Credito da rimborsare</Label>
+                        <v-select
+                            :options="quoteRimborsabili"
+                            v-model="formRimborso.rata_quote_id"
+                            label="etichetta"
+                            :reduce="(q: any) => q.id"
+                            :clearable="false"
+                            class="w-full min-w-0 bg-white text-sm shadow-sm"
+                            placeholder="Scegli il credito…"
+                            @update:modelValue="formRimborso.clearErrors('rata_quote_id')"
+                        >
+                            <template #option="{ credito_formattato, gestione, piano, rata, immobile, origine }">
+                                <div class="flex flex-col py-0.5">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="font-bold text-sm text-slate-800">{{ credito_formattato }}</span>
+                                        <span class="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ ETICHETTA_ORIGINE[origine] ?? origine }}</span>
+                                    </div>
+                                    <span class="text-[10px] text-slate-500 mt-0.5">{{ gestione ?? 'gestione' }}<template v-if="piano">, {{ piano }}</template><template v-if="rata !== null"> · rata {{ rata }}</template><template v-if="immobile"> · {{ immobile }}</template></span>
+                                </div>
+                            </template>
+                            <!-- L'etichetta intera è lunga: nel campo si tronca, nel menu si legge per intero -->
+                            <template #selected-option="{ etichetta }">
+                                <span class="block truncate max-w-[24rem] text-sm">{{ etichetta }}</span>
+                            </template>
+                            <template #no-options><span class="text-[12px] text-slate-500">Nessun credito da rimborsare.</span></template>
+                        </v-select>
+                        <p v-if="quotaScelta" class="text-[10.5px] text-slate-500 leading-snug">
+                            <template v-if="quotaScelta.origine === 'saldi' && quotaScelta.conto === 'passate_gestioni'">Credito riportato da un esercizio precedente, con la sua quota non ancora a giornale: in contabilità esce da «Passate gestioni».</template>
+                            <template v-else-if="quotaScelta.origine === 'saldi'">Credito riportato da un esercizio precedente, portato a giornale con la sua rata: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
+                            <template v-else-if="quotaScelta.origine === 'misto' && quotaScelta.conto === 'passate_gestioni'">Credito in parte riportato da un esercizio precedente e in parte delle entrate dell'anno, con la sua quota non ancora a giornale: in contabilità la parte riportata esce da «Passate gestioni», quella delle entrate da «Crediti verso condomini».</template>
+                            <template v-else-if="(quotaScelta.origine === 'misto' || quotaScelta.origine === 'entrate') && quotaScelta.a_giornale">Credito delle entrate dell'anno{{ quotaScelta.origine === 'misto' ? ' e riportato da un esercizio precedente' : '' }}, portato a giornale con la sua rata: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
+                            <template v-else-if="quotaScelta.origine === 'misto' || quotaScelta.origine === 'entrate'">Credito delle entrate dell'anno (le entrate del piano superano la spesa di questa quota), con la sua quota non ancora a giornale: in contabilità esce da «Crediti verso condomini», e la scrittura della quota, quando va a giornale, lo chiude.</template>
+                            <template v-else>Credito da un versamento in eccesso: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
+                        </p>
+                        <p v-if="formRimborso.errors.rata_quote_id" class="text-[11px] text-red-600">{{ formRimborso.errors.rata_quote_id }}</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1.5 col-span-2 sm:col-span-1">
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Cassa</Label>
+                            <v-select
+                                :options="rimborso.casse"
+                                v-model="formRimborso.cassa_id"
+                                label="nome"
+                                :reduce="(c: any) => c.id"
+                                class="w-full min-w-0 bg-white text-sm shadow-sm"
+                                placeholder="Da dove esce il denaro?"
+                                @update:modelValue="formRimborso.clearErrors('cassa_id')"
+                            >
+                                <template #option="{ nome, tipo, saldo_formattato, saldo_cents }">
+                                    <div class="flex flex-col py-0.5">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="font-bold text-sm text-slate-800">{{ nome }}</span>
+                                            <span class="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ tipo }}</span>
+                                        </div>
+                                        <span class="text-[10px] mt-0.5" :class="saldo_cents > 0 ? 'text-slate-500' : 'text-rose-600'">Saldo {{ saldo_formattato }}</span>
+                                    </div>
+                                </template>
+                                <template #selected-option="{ nome, saldo_formattato }">
+                                    <span class="text-sm">{{ nome }} <span class="text-slate-400">· {{ saldo_formattato }}</span></span>
+                                </template>
+                                <template #no-options><span class="text-[12px] text-slate-500">Nessuna cassa banca o contanti attiva.</span></template>
+                            </v-select>
+                            <p v-if="formRimborso.errors.cassa_id" class="text-[11px] text-red-600">{{ formRimborso.errors.cassa_id }}</p>
+                        </div>
+                        <div class="space-y-1.5 col-span-2 sm:col-span-1">
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data del rimborso</Label>
+                            <Input type="date" v-model="formRimborso.data_rimborso" class="h-9 text-sm" />
+                            <p v-if="formRimborso.errors.data_rimborso" class="text-[11px] text-red-600">{{ formRimborso.errors.data_rimborso }}</p>
+                        </div>
+                    </div>
+                    <div class="space-y-1.5">
+                        <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Importo</Label>
+                        <div class="relative">
+                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">€</span>
+                            <MoneyInput v-model="formRimborso.importo" :money-options="moneyOptionsRimborso" :lazy="true" class="h-9 pl-6 text-sm text-left" />
+                        </div>
+                        <p class="text-[10.5px] text-slate-500">Al massimo {{ quotaScelta?.credito_formattato ?? '—' }}, il credito disponibile su questa quota<template v-if="cassaScelta">; la cassa «{{ cassaScelta.nome }}» ha {{ cassaScelta.saldo_formattato }}</template>.</p>
+                        <p v-if="formRimborso.errors.importo" class="text-[11px] text-red-600">{{ formRimborso.errors.importo }}</p>
+                    </div>
+                    <div class="space-y-1.5">
+                        <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Nota <span class="font-normal text-slate-400">(facoltativa)</span></Label>
+                        <Input v-model="formRimborso.nota" placeholder="Es. bonifico del 20/09, IBAN comunicato via mail" class="h-9 text-sm" />
+                    </div>
+                    <DialogFooter class="gap-2">
+                        <Button type="button" variant="outline" @click="rimborsoAperto = false">Annulla</Button>
+                        <Button type="submit" :disabled="formRimborso.processing || !quotaScelta || !formRimborso.cassa_id">Registra il rimborso</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+
+        <ConfirmDialog
+            :model-value="stornoAperto"
+            title="Stornare il rimborso?"
+            confirm-text="Storna"
+            cancel-text="Lascia com'è"
+            variant="destructive"
+            @update:model-value="(v: boolean) => { stornoAperto = v }"
+            @confirm="stornaRimborso"
+        >
+            Il rimborso <strong>{{ stornoDaConfermare?.protocollo }}</strong> viene annullato con una scrittura di rettifica: nei libri il denaro
+            torna in cassa e il credito torna disponibile sulla quota. Il movimento originale resta nel giornale come annullato.
+        </ConfirmDialog>
     </GestionaleLayout>
 </template>
 

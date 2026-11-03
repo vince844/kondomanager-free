@@ -7,13 +7,23 @@ use App\Models\Evento;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestione;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\Tabella;
+use App\Exceptions\Gestionale\DestinatariCambiatiException;
+use App\Exceptions\Gestionale\FatturaRettificataNelPianoException;
+use App\Exceptions\Gestionale\FatturaStornataNelPianoException;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
+use App\Exceptions\Gestionale\SpesaNegativaNelPianoException;
+use App\Models\Anagrafica;
+use App\Models\Esercizio;
+use App\Services\Riparto\CompetenzaDelPiano;
+use App\Services\Riparto\SpeseNegativeNelPiano;
 use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\SaldoEsercizioService;
+use App\Services\Subentro\DefuntoNelPiano;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -42,7 +52,19 @@ class GeneratePianoRateAction
      * @param array $saldiConfig Array contenente la configurazione di applicazione personalizzata per i saldi.
      * @param bool $accettaScoperti Se true, ignora le quote non coperte (scoperti) e procede con la generazione.
      * @param string|null $notaScoperti Motivazione obbligatoria che giustifica la generazione con scoperti (salvata a DB).
+     * @param bool $accettaDestinatari B2, cancello (2) della decisione 14: l'amministratore ha letto che la risoluzione per
+     *                                 periodo cambia dei destinatari e procede comunque.
+     * @param string|null $notaDestinatari La nota del cancello (2), congelata in `regole_calcolo.parametri.titolarita_alla`.
+     * @param Esercizio|null $esercizio L'esercizio di riferimento della competenza (i controller lo hanno dall'indirizzo);
+     *                                  senza, quello attivo della gestione.
+     * @param bool $allaCreazione La richiesta è la creazione del piano: se il cancello (2) la ferma il piano non esiste, e la strada dei saldi
+     *                            che il cancello indica è un'altra (registrarli e rimandare il modulo).
+     * @param list<int> $appenaSincronizzate Le voci che «Sincronizza» ha appena scritto nel piano: se una è negativa il rifiuto non dice di toglierla dal piano,
+     *                                        perché il rifiuto annulla la scrittura e nel piano non c'è nessuna copia.
+     * @throws DestinatariCambiatiException Se la risoluzione temporale cambia dei destinatari e $accettaDestinatari è false.
+     * @throws \App\Exceptions\Gestionale\RichiedeDeliberaException Straordinario senza data della delibera (decisione 12).
      *
+     * @throws SpesaNegativaNelPianoException Se il piano contiene una voce di spesa con un importo negativo (il motore la addebiterebbe in positivo).
      * @throws ScopertiNonAccettatiException Se vi sono quote scoperte e $accettaScoperti è false.
      * @throws \RuntimeException Se il calcolo non produce alcuna quota (errore di configurazione tabelle/anagrafiche).
      *
@@ -53,7 +75,12 @@ class GeneratePianoRateAction
         ?bool $forzaApplicazioneSaldi = null, 
         array $saldiConfig = [],
         bool $accettaScoperti = false,
-        ?string $notaScoperti = null
+        ?string $notaScoperti = null,
+        bool $accettaDestinatari = false,
+        ?string $notaDestinatari = null,
+        ?Esercizio $esercizio = null,
+        bool $allaCreazione = false,
+        array $appenaSincronizzate = [],
     ): array
     {
         $pianoRate->refresh();
@@ -68,13 +95,69 @@ class GeneratePianoRateAction
         }
         $gestione = $pianoRate->gestione;
 
+        // Una voce di spesa con un importo negativo il motore la addebita in positivo: ci si ferma prima di scrivere qualunque cosa, e il
+        // rifiuto la nomina. Lo straordinario non ha voci, ma fatture.
+        $speseNegative = app(SpeseNegativeNelPiano::class)->trova($pianoRate, $appenaSincronizzate);
+        if ($speseNegative !== []) {
+            throw new SpesaNegativaNelPianoException($pianoRate, $speseNegative, $allaCreazione);
+        }
+
+        // R1 della Fase 1-bis (1.11.0-beta.35): una fattura stornata quando lo storno non guardava i piani è rimasta nel
+        // suo piano, e il motore non esclude le stornate. Ci si ferma prima di scrivere qualunque cosa.
+        if ($pianoRate->tipo === 'straordinario') {
+            $stornate = $pianoRate->fatture->filter(fn ($f) => ($f->dati_extra['is_stornata'] ?? false)
+                || (is_object($f->stato_pagamento) ? $f->stato_pagamento->value : $f->stato_pagamento) === 'stornata');
+            if ($stornate->isNotEmpty()) {
+                throw new FatturaStornataNelPianoException($pianoRate, $stornate->values());
+            }
+
+            // Coda 165 (1.11.0-beta.36): la fattura rettificata da una nota del fornitore collegata. Il criterio è il
+            // numero — i piani che la contengono chiedono più del suo netto? — non la presenza della nota: un piano fatto
+            // dal carrello dopo la nota chiede già il netto, e si ricalcola.
+            $netti = \App\Services\Gestionale\NettoNoteCollegate::perFatture($pianoRate->fatture->pluck('id')->all());
+            $eccedenze = [];
+            foreach ($pianoRate->fatture as $f) {
+                if (! isset($netti[$f->id])) {
+                    continue;
+                }
+                $f->loadMissing(['pianiRate', 'noteCollegate', 'righe', 'coperture']);
+                $chiesto = $f->chiestoDaiPiani();
+                if ($chiesto > $netti[$f->id]['netto']) {
+                    $eccedenze[] = [
+                        'numero' => (string) ($f->numero_documento ?? ('#' . $f->id)),
+                        'note' => (string) $f->elencoNoteCollegate('di', true),
+                        'netto' => $netti[$f->id]['netto'],
+                        'chiesto' => $chiesto,
+                        'piani' => $f->pianiRate->count(),
+                    ];
+                }
+            }
+            if ($eccedenze !== []) {
+                throw new FatturaRettificataNelPianoException($pianoRate, $eccedenze);
+            }
+        }
+
         // =========================================================================
         // BIVIO ARCHITETTURALE
         // =========================================================================
+        // B2 (1.11.0-beta.31): la competenza di base — la cascata D3 con la natura della gestione
+        // (decisione 11) — la decide `CompetenzaDelPiano`, una volta sola per chi genera e chi stampa. Il
+        // motore la raffina per capitolo (tratti dichiarati, decisione 20) e per fattura (competenza
+        // dichiarata, decisione 12) e, dove il periodo cambia un destinatario o un peso, lo registra per
+        // il cancello (2). Con una gestione senza esercizio la competenza è nulla e il calcolo resta
+        // atemporale, com'era.
+        // Il piano ricorda l'esercizio con cui è generato (migrazione 9): è ciò che il conguaglio del
+        // passaggio e l'anteprima leggeranno, così la competenza è una sola per tutti (verifica S5, R8).
+        if ($esercizio !== null && (int) $pianoRate->esercizio_id !== (int) $esercizio->id) {
+            $pianoRate->esercizio_id = $esercizio->id;
+            $pianoRate->save();
+        }
+        $competenza = app(CompetenzaDelPiano::class)->perPiano($pianoRate, $esercizio);
+
         if ($pianoRate->tipo === 'straordinario') {
-            $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate);
+            $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate, $competenza);
         } else {
-            $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
+            $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate, false, $competenza);
         }
         // =========================================================================
 
@@ -136,20 +219,28 @@ class GeneratePianoRateAction
                     // affidabile della catena gestione->esercizio (Gestione ha solo
                     // esercizi(), plurale: un ->esercizio singolare non esiste).
                     $condominioIdEccedenze = $pianoRate->condominio_id;
-                    // REVISIONE AVVERSARIALE: senza fallback, una gestione senza
-                    // alcun esercizio con pivot attiva=true produceva un segmento
-                    // vuoto nell'URL ("/esercizi//piani-rate/12") — 404 al click.
-                    // Stesso fallback già usato da PianoRateQuoteService.
-                    $esercizioAttivoId = $pianoRate->gestione
-                        ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
-                        ?? $pianoRate->gestione?->esercizi()->first()?->id;
+                    // Coda 75: il collegamento porta al piano dentro il suo esercizio, quello con cui il piano è generato (`piani_rate.esercizio_id`,
+                    // scritto qui sopra e alla creazione del piano), non nel «primo attivo» del pivot: la gestione riusata su più esercizi li ha
+                    // attivi tutti. Solo un piano senza esercizio scritto lo deduce (`CompetenzaDelPiano::esercizioDelPiano`): quello che contiene la
+                    // data di creazione, o il più recente fra gli attivi, o il più recente. Una gestione con degli esercizi dà sempre un esercizio:
+                    // l'indirizzo non ha un segmento vuoto.
+                    $esercizioAttivoId = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate)?->id;
 
                     $immobiliNomiEcc = Immobile::whereIn('id', array_column($eccedenze, 'immobile_id'))
                         ->pluck('nome', 'id')
                         ->toArray();
+                    // B2 (decisione 17): l'eccedenza può essere di una PERSONA — chi ha versato più della sua quota,
+                    // o non è più fra i destinatari (ha venduto) — e allora si dice il nome, non solo l'unità
+                    // (Fase 1-bis S8-6): quel denaro è suo e va restituito a lui.
+                    $nomiPersoneEcc = \App\Models\Anagrafica::whereIn('id', array_filter(array_column($eccedenze, 'anagrafica_id')))
+                        ->pluck('nome', 'id')->toArray();
                     $dettaglioUnita = collect($eccedenze)
-                        ->map(fn ($e) => ($immobiliNomiEcc[$e['immobile_id']] ?? "Immobile #{$e['immobile_id']}")
-                            .': € '.number_format($e['eccedenza'] / 100, 2, ',', '.'))
+                        ->map(function ($e) use ($immobiliNomiEcc, $nomiPersoneEcc) {
+                            $unita = $immobiliNomiEcc[$e['immobile_id']] ?? "Immobile #{$e['immobile_id']}";
+                            $persona = ! empty($e['anagrafica_id']) ? ' — '.($nomiPersoneEcc[$e['anagrafica_id']] ?? "anagrafica #{$e['anagrafica_id']}").(($e['dovuto'] ?? 0) === 0 ? ' (non più destinatario)' : '') : '';
+
+                            return $unita.$persona.': € '.number_format($e['eccedenza'] / 100, 2, ',', '.');
+                        })
                         ->implode(', ');
 
                     InboxService::createTask(
@@ -212,7 +303,8 @@ class GeneratePianoRateAction
                 'immobile_nome' => $s['immobile_id']
                     ? ($immobiliNomi[$s['immobile_id']] ?? 'Immobile #' . $s['immobile_id'])
                     : null,
-                'conto_nome'    => $contiNomi[$s['conto_id']] ?? 'Conto #' . $s['conto_id'],
+                // Senza conto (la riga ad personam non ne ha uno) il nome è nullo, non «Conto #».
+                'conto_nome'    => $s['conto_id'] ? ($contiNomi[$s['conto_id']] ?? 'Conto #' . $s['conto_id']) : null,
                 'tabella_nome'  => ($s['tabella_id'] ?? null)
                     ? ($tabelleNomi[$s['tabella_id']] ?? 'Tabella #' . $s['tabella_id'])
                     : null,
@@ -243,9 +335,8 @@ class GeneratePianoRateAction
             // catena di relazioni; per l'esercizio si riusa il fallback già collaudato sopra.
             $condominioId = $pianoRate->condominio_id;
 
-            $esercizioIdScoperti = $pianoRate->gestione
-                ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
-                ?? $pianoRate->gestione?->esercizi()->first()?->id;
+            // Coda 75: l'esercizio del piano, come per il collegamento delle eccedenze.
+            $esercizioIdScoperti = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate)?->id;
 
             // ⚠️ Il testo diceva una causa sola — «unità senza anagrafiche attive» — che dalla
             // beta.48 non è più l'unica, e dalla .61 nemmeno la più frequente. Ora nomina le cause
@@ -326,26 +417,30 @@ class GeneratePianoRateAction
         }
         // =========================================================================
 
+        // =========================================================================
+        // CANCELLO (2) — decisione 14 del progetto sul subentro (B2, 1.11.0-beta.31)
+        // La risoluzione per periodo ha cambiato un destinatario o un peso rispetto a quella
+        // atemporale — o il piano contiene una pregressa registrata senza periodo (decisione 26) —:
+        // si mostra **chi** e **perché**, e si procede solo con spunta e nota. Viene dopo il cancello
+        // degli scoperti, così i due non si sovrappongono nello stesso giro.
+        // =========================================================================
+        $risoluzione = $this->calcolatore->getRisoluzioneTemporale();
+        $cambiamenti = $risoluzione['destinatari_cambiati'];
+        // Se i saldi del Wallet entrano nelle quote di questo piano: una regola sola per il cancello, che lo dice, e per il corpo
+        // della generazione, che lo fa (decisione 80, beta.51).
+        $applicare = $this->saldiSiApplicano($pianoRate, $gestione, $forzaApplicazioneSaldi);
+        // Beta.51, §6.2 (Coda 226): il defunto che questo piano calcola ancora. Dopo una successione con l'arretrato agli eredi, il
+        // motore intesta ancora al defunto i suoi giorni fino al decesso, e nessuna riga li passa agli eredi: il cancello lo dice,
+        // con la cifra, la parte di ogni erede e la strada. Non è una coppia che cambia: viene dopo i cambiamenti del motore.
+        $defunti = app(DefuntoNelPiano::class)->per($pianoRate, $totaliPerImmobile, $applicare, $this->calcolatore->getRigheDettaglio(), $allaCreazione);
+        if ((!empty($cambiamenti) || $defunti !== []) && !$accettaDestinatari) {
+            throw new DestinatariCambiatiException($this->arricchisciCambiamenti(array_merge($cambiamenti, $defunti), $pianoRate));
+        }
+        $titolaritaAlla = self::titolaritaAlla($cambiamenti, $defunti, $notaDestinatari);
+
         // 3. GESTIONE SALDI
         //
-        // Ordine di precedenza, dal più esplicito al più debole:
-        //   a) l'override passato dal chiamante (creazione del piano);
-        //   b) il piano possiede già dei saldi — un ricalcolo non può perderli
-        //      per strada, è esattamente il bug del "lucchetto orfano";
-        //   c) i piani straordinari non assorbono pregressi se nessuno lo chiede
-        //      esplicitamente: è ciò che il log qui sotto dichiara da sempre, ma
-        //      che senza questo ramo non era vero per i piani generati in differita;
-        //   d) la scelta persistita alla creazione (piani generati più tardi);
-        //   e) il vecchio flag di gestione, per i piani antecedenti alla beta.32.
-        $possiedeSaldi = Saldo::where('piano_rate_id', $pianoRate->id)->exists();
-
-        $applicare = match (true) {
-            $forzaApplicazioneSaldi !== null      => $forzaApplicazioneSaldi,
-            $possiedeSaldi                        => true,
-            $pianoRate->tipo === 'straordinario'  => false,
-            $pianoRate->applica_saldi !== null    => (bool) $pianoRate->applica_saldi,
-            default                               => (bool) $gestione->fresh()->saldo_applicato,
-        };
+        // `$applicare` l'ha deciso `saldiSiApplicano()` prima del cancello (2); l'ordine di precedenza è nel suo commento.
 
         if ($pianoRate->tipo === 'straordinario') {
             Log::info("▶ Piano Straordinario: Saldi ignorati di default (salvo override esplicito).");
@@ -375,8 +470,16 @@ class GeneratePianoRateAction
             $pianoRate,
             $totaliPerImmobile,
             $dateRate,
-            $saldi
+            $saldi,
+            // Il dettaglio del riparto (beta.29): le righe che spiegano i totali, scritte con le quote.
+            $this->calcolatore->getRigheDettaglio(),
+            // B2 (decisione 15): come sono stati risolti i titolari, e la nota del cancello (2).
+            $titolaritaAlla
         );
+
+        // 5-bis. Le quote non assegnate di questa generazione, a rate scritte (Coda 414). Qui gli scoperti o non ci sono o sono accettati:
+        // senza la presa d'atto il cancello qui sopra si è già fermato.
+        $this->registraQuoteNonAssegnate($pianoRate, $scoperti, presaDAtto: $accettaScoperti && filled($notaScoperti));
 
         // 6. LUCCHETTO SALDI
         // Chi genera le quote è anche l'unico che chiude (o riapre) il lucchetto,
@@ -448,6 +551,158 @@ class GeneratePianoRateAction
     }
 
     /**
+     * Le quote non assegnate dell'ultima generazione, in `piani_rate.quote_non_assegnate` (Coda 414, decisione 153.6).
+     *
+     * Si scrive a rate scritte, a ogni generazione, e dipende dagli scoperti, non dalla nota: «Rimuovi voce e ricalcola»
+     * (`PianoRateController::detachCapitolo`) rigenera accettando gli scoperti senza una nota nuova, e se la scrittura stesse sotto la nota
+     * la colonna terrebbe le quote della generazione di prima, anche una che con la voce tolta non c'è più. Senza scoperti la colonna e la
+     * nota si svuotano: il riquadro della pagina e lo «scoperto documentato» del cruscotto leggono la nota, e dopo il censimento e il
+     * ricalcolo direbbero una quota che non c'è più.
+     *
+     * Lo scarto registrato è quello vero, `atteso − generato` di `PianoRateQuoteService` letto sul piano appena scritto, e non la somma delle
+     * quote: il motore toglie dalla voce un arrotondamento solo e registra ogni quota con il suo, e le due cifre possono differire di un
+     * centesimo. È la fotografia di questa generazione: lo stato del piano la confronta con lo scarto di adesso.
+     *
+     * Le voci portano i nomi di unità, voce e tabella com'erano alla generazione, e una chiave stabile (motivo, unità, voce, tabella, ruolo,
+     * riga) a cui un addebito futuro possa riferirsi.
+     *
+     * Ogni voce porta il segno della sua voce del piano (`segno`: 1 spesa, −1 entrata): il motore registra la cifra in valore assoluto, e la
+     * quota di una voce di entrata è un credito che nessuno riceve, che lo scarto conta con il meno.
+     *
+     * Senza una presa d'atto in questa generazione («Rimuovi voce e ricalcola» accetta senza chiedere) una quota è accettata solo se la
+     * generazione di prima l'aveva già accettata, con la stessa chiave: una quota nuova (un titolare tolto dopo la generazione) porta
+     * `accettata` false, e il piano è disallineato finché «Ricalcola» non chiede la presa d'atto.
+     *
+     * @param list<array<string, mixed>> $scoperti gli scoperti del motore, con le righe senza millesimo (`importo` 0)
+     * @param bool $presaDAtto la generazione ha la presa d'atto dell'amministratore, con la nota
+     */
+    private function registraQuoteNonAssegnate(PianoRate $pianoRate, array $scoperti, bool $presaDAtto = true): void
+    {
+        if ($scoperti === []) {
+            if ($pianoRate->quote_non_assegnate !== null || $pianoRate->nota_scoperti !== null) {
+                $pianoRate->quote_non_assegnate = null;
+                $pianoRate->nota_scoperti = null;
+                $pianoRate->save();
+            }
+
+            return;
+        }
+
+        $immobiliNomi = Immobile::whereIn('id', array_filter(array_column($scoperti, 'immobile_id')))->pluck('nome', 'id')->all();
+        $conti = Conto::whereIn('id', array_filter(array_column($scoperti, 'conto_id')))->get(['id', 'nome', 'tipo'])->keyBy('id');
+        $contiNomi = $conti->map(fn (Conto $c) => $c->nome)->all();
+        $giaAccettate = $presaDAtto ? [] : collect($pianoRate->quote_non_assegnate['voci'] ?? [])
+            ->filter(fn ($v) => ($v['accettata'] ?? true) !== false)->pluck('chiave')->all();
+        $tabelleIds = array_filter(array_map(fn ($s) => $s['tabella_id'] ?? null, $scoperti));
+        $tabelleNomi = $tabelleIds === [] ? [] : Tabella::whereIn('id', $tabelleIds)->pluck('nome', 'id')->all();
+
+        $chiavi = [];
+        $voci = array_map(function (array $s) use ($immobiliNomi, $contiNomi, $tabelleNomi, $conti, $presaDAtto, $giaAccettate, &$chiavi) {
+            $immobileId = isset($s['immobile_id']) ? (int) $s['immobile_id'] : null;
+            $contoId = isset($s['conto_id']) ? (int) $s['conto_id'] : null;
+            $tabellaId = isset($s['tabella_id']) ? (int) $s['tabella_id'] : null;
+            $riga = $s['riga_descrizione'] ?? null;
+
+            $chiave = implode('|', [
+                $s['motivo'] ?? 'senza_titolare', $immobileId ?? '', $contoId ?? '', $tabellaId ?? '', $s['ruolo_richiesto'] ?? '',
+                $riga !== null ? substr(md5((string) $riga), 0, 10) : '',
+            ]);
+            // Due quote con gli stessi dati (due righe uguali di una fattura): la seconda porta il suo numero, e la chiave resta unica.
+            $chiavi[$chiave] = ($chiavi[$chiave] ?? 0) + 1;
+            if ($chiavi[$chiave] > 1) {
+                $chiave .= '#'.$chiavi[$chiave];
+            }
+
+            return [
+                'chiave'           => $chiave,
+                'motivo'           => $s['motivo'] ?? null,
+                'immobile_id'      => $immobileId,
+                'immobile_nome'    => $immobileId !== null ? ($immobiliNomi[$immobileId] ?? null) : null,
+                'conto_id'         => $contoId,
+                'conto_nome'       => $contoId !== null ? ($contiNomi[$contoId] ?? null) : null,
+                'tabella_id'       => $tabellaId,
+                'tabella_nome'     => $tabellaId !== null ? ($tabelleNomi[$tabellaId] ?? null) : null,
+                'ruolo_richiesto'  => $s['ruolo_richiesto'] ?? null,
+                'importo_cents'    => (int) ($s['importo'] ?? 0),
+                'giorni'           => isset($s['giorni']) ? (int) $s['giorni'] : null,
+                'riga_descrizione' => $riga,
+                'segno'            => $contoId !== null && isset($conti[$contoId]) ? Conto::segnoDelTipo((string) ($conti[$contoId]->tipo ?? 'spesa')) : 1,
+                'accettata'        => $presaDAtto || in_array($chiave, $giaAccettate, true),
+            ];
+        }, array_values($scoperti));
+
+        // Il piano riletto: le rate appena scritte, e nessuna relazione caricata prima della generazione.
+        $scritto = PianoRate::find($pianoRate->id);
+
+        $pianoRate->quote_non_assegnate = [
+            'voci'          => $voci,
+            'scarto_cents'  => app(\App\Services\PianoRateQuoteService::class)->scartoCents($scritto),
+            'registrate_il' => now()->toIso8601String(),
+            'registrate_da' => Auth::id(),
+        ];
+        $pianoRate->save();
+    }
+
+    /**
+     * I parametri `titolarita_alla` congelati nelle quote (decisione 15): come sono stati risolti i titolari e la nota del cancello (2).
+     * Atemporale se il motore non ha cambiamenti né ci sono defunti da dire. Altrimenti la forma del cancello — `risoluzione` temporale,
+     * `destinatari_cambiati`, `nota_cancello`, `coppie` — anche quando i cambiamenti sono solo voci del defunto, più la chiave `defunti`
+     * (persona, unità e cifra di ogni voce), che c'è solo se ce ne sono: i test che fissano la forma per intero non la conoscono.
+     *
+     * Le coppie (unità, ruolo) cambiate, non le voci: una coppia compare in una voce per conto. La pregressa senza periodo
+     * (decisione 26) non è una coppia: chiede la nota, ma non cambia nessun destinatario. Né lo è la voce del defunto: dice una cifra
+     * che il piano calcola ancora, non un destinatario che cambia.
+     *
+     * @param list<array<string, mixed>> $cambiamenti i cambiamenti del motore
+     * @param list<array<string, mixed>> $defunti le voci di `DefuntoNelPiano`
+     * @return array<string, mixed>
+     */
+    public static function titolaritaAlla(array $cambiamenti, array $defunti, ?string $notaDestinatari): array
+    {
+        if (empty($cambiamenti) && $defunti === []) {
+            return GenerateRateQuotesAction::TITOLARITA_ATEMPORALE;
+        }
+
+        return [
+            'risoluzione'          => 'temporale',
+            'destinatari_cambiati' => true,
+            'nota_cancello'        => $notaDestinatari,
+            'coppie'               => count(array_unique(array_map(fn ($c) => $c['immobile_id'].'|'.$c['tipologia'], array_filter($cambiamenti, fn ($c) => ($c['motivo'] ?? null) !== 'pregressa_senza_periodo')))),
+        ] + ($defunti === [] ? [] : [
+            'defunti'              => array_map(fn (array $d) => ['anagrafica_id' => (int) $d['defunto']['id'], 'immobile_id' => (int) $d['immobile_id'], 'cifra' => (int) $d['cifra']], $defunti),
+        ]);
+    }
+
+    /**
+     * Se i saldi del Wallet entrano nelle quote di questo piano alla prossima generazione (decisione 80, beta.51). Una regola sola
+     * per il corpo della generazione e per il cancello (2): quest'ultimo dice all'amministratore se un saldo registrato dal Wallet
+     * passerà la parte del defunto agli eredi, e non può promettere ciò che il piano non fa. Pura: una sola lettura, nessuna
+     * scrittura.
+     *
+     * Ordine di precedenza, dal più esplicito al più debole:
+     *   a) l'override passato dal chiamante (creazione del piano);
+     *   b) il piano possiede già dei saldi — un ricalcolo non può perderli
+     *      per strada, è esattamente il bug del "lucchetto orfano";
+     *   c) i piani straordinari non assorbono pregressi se nessuno lo chiede
+     *      esplicitamente: è ciò che il log di `execute()` dichiara da sempre, ma
+     *      che senza questo ramo non era vero per i piani generati in differita;
+     *   d) la scelta persistita alla creazione (piani generati più tardi);
+     *   e) il vecchio flag di gestione, per i piani antecedenti alla beta.32.
+     */
+    public function saldiSiApplicano(PianoRate $pianoRate, Gestione $gestione, ?bool $forzaApplicazioneSaldi = null): bool
+    {
+        $possiedeSaldi = Saldo::where('piano_rate_id', $pianoRate->id)->exists();
+
+        return match (true) {
+            $forzaApplicazioneSaldi !== null      => $forzaApplicazioneSaldi,
+            $possiedeSaldi                        => true,
+            $pianoRate->tipo === 'straordinario'  => false,
+            $pianoRate->applica_saldi !== null    => (bool) $pianoRate->applica_saldi,
+            default                               => (bool) $gestione->fresh()->saldo_applicato,
+        };
+    }
+
+    /**
      * Estrae dalla distribuzione le righe della tabella `saldi` realmente
      * consumate e il loro totale netto in centesimi.
      *
@@ -480,5 +735,89 @@ class GeneratePianoRateAction
         }
 
         return [array_values(array_unique($ids)), $totale];
+    }
+
+    /**
+     * I cambiamenti del motore, con i nomi che la pagina mostra: l'unità, il conto, il ruolo e le
+     * persone. Stessa forma di lavoro dell'arricchimento degli scoperti qui sopra: una query per tipo.
+     *
+     * @param list<array<string,mixed>> $cambiamenti
+     * @return list<array<string,mixed>>
+     */
+    private function arricchisciCambiamenti(array $cambiamenti, PianoRate $pianoRate): array
+    {
+        // Le pregresse senza periodo (decisione 26): la finestra le nomina, e il solo numero non basta a riconoscerle —
+        // fornitore, data, importi e voce, più il collegamento alla fattura (richiesta di Vincenzo a video, 27/09/2026).
+        $fattureIds = array_values(array_unique(array_filter(array_map(
+            fn (array $c) => ($c['motivo'] ?? null) === 'pregressa_senza_periodo' ? (int) ($c['fattura_id'] ?? 0) : null,
+            $cambiamenti,
+        ))));
+        $pregresse = empty($fattureIds) ? collect() : FatturaPassiva::with('fornitore')->whereIn('id', $fattureIds)->get()->keyBy('id');
+        $nelPiano = empty($fattureIds) ? [] : DB::table('piano_rate_fatture')->where('piano_rate_id', $pianoRate->id)
+            ->whereIn('fattura_passiva_id', $fattureIds)->pluck('importo_collegato', 'fattura_passiva_id')->all();
+        $vociCopertura = empty($fattureIds) ? collect() : DB::table('fattura_coperture')
+            ->join('conti', 'conti.id', '=', 'fattura_coperture.conto_id')
+            ->whereIn('fattura_coperture.fattura_passiva_id', $fattureIds)->where('fattura_coperture.tipo_copertura', 'sopravvenienza')
+            ->pluck('conti.nome', 'fattura_coperture.fattura_passiva_id');
+
+        $immobiliIds = array_unique(array_filter(array_column($cambiamenti, 'immobile_id')));
+        $contiIds    = array_unique(array_filter(array_column($cambiamenti, 'conto_id')));
+        $righeIds    = [];
+        $anagraficheIds = [];
+        foreach ($cambiamenti as $c) {
+            foreach ($c['righe'] ?? [] as $r) {
+                $righeIds[] = (int) $r['riga_id'];
+            }
+            foreach ($c['ripiego']['righe'] ?? [] as $r) {
+                $righeIds[] = (int) $r['riga_id'];
+            }
+            foreach ($c['anagrafiche_escluse'] ?? [] as $aid) {
+                $anagraficheIds[] = (int) $aid;
+            }
+        }
+
+        $immobiliNomi = Immobile::whereIn('id', $immobiliIds)->pluck('nome', 'id')->all();
+        $contiNomi    = Conto::whereIn('id', $contiIds)->pluck('nome', 'id')->all();
+        $righe = empty($righeIds) ? collect() : DB::table('anagrafica_immobile')
+            ->join('anagrafiche', 'anagrafiche.id', '=', 'anagrafica_immobile.anagrafica_id')
+            ->whereIn('anagrafica_immobile.id', $righeIds)
+            ->get(['anagrafica_immobile.id', 'anagrafica_immobile.anagrafica_id', 'anagrafica_immobile.data_inizio', 'anagrafica_immobile.data_fine', 'anagrafica_immobile.quota', 'anagrafiche.nome'])
+            ->keyBy('id');
+        $anagraficheNomi = empty($anagraficheIds) ? [] : Anagrafica::whereIn('id', $anagraficheIds)->pluck('nome', 'id')->all();
+
+        return array_map(function (array $c) use ($immobiliNomi, $contiNomi, $righe, $anagraficheNomi, $pregresse, $nelPiano, $vociCopertura) {
+            if (($c['motivo'] ?? null) === 'pregressa_senza_periodo' && ($f = $pregresse->get((int) ($c['fattura_id'] ?? 0)))) {
+                $c['fattura'] = [
+                    'id'                   => (int) $f->id,
+                    'numero'               => (string) $f->numero_documento,
+                    'fornitore'            => $f->fornitore?->ragione_sociale,
+                    'data_documento'       => $f->data_documento?->format('d/m/Y'),
+                    'totale_formattato'    => \App\Helpers\MoneyHelper::format((int) abs((int) $f->totale_documento)),
+                    'nel_piano_formattato' => isset($nelPiano[$f->id]) ? \App\Helpers\MoneyHelper::format((int) $nelPiano[$f->id]) : null,
+                    'voce'                 => $f->dati_extra['log_legale_sopravvenienza']['nome_voce'] ?? $vociCopertura->get($f->id),
+                    'url'                  => route('admin.gestionale.fatture.show', [$f->condominio_id, $f->id]),
+                ];
+            }
+            $c['immobile_nome'] = $c['immobile_id'] ? ($immobiliNomi[$c['immobile_id']] ?? 'Immobile #' . $c['immobile_id']) : null;
+            $c['conto_nome'] = ($c['conto_id'] ?? null) ? ($contiNomi[$c['conto_id']] ?? 'Conto #' . $c['conto_id']) : null;
+            $c['righe'] = array_map(function (array $r) use ($righe) {
+                $riga = $righe->get($r['riga_id']);
+
+                return $r + [
+                    'anagrafica_id'   => $riga?->anagrafica_id,
+                    'anagrafica_nome' => $riga?->nome,
+                    'data_inizio'     => $riga?->data_inizio ? substr((string) $riga->data_inizio, 0, 10) : null,
+                    'data_fine'       => $riga?->data_fine ? substr((string) $riga->data_fine, 0, 10) : null,
+                    'quota'           => $riga?->quota,
+                ];
+            }, $c['righe'] ?? []);
+            $c['anagrafiche_escluse'] = array_map(fn ($aid) => ['anagrafica_id' => $aid, 'anagrafica_nome' => $anagraficheNomi[$aid] ?? 'Anagrafica #' . $aid], $c['anagrafiche_escluse'] ?? []);
+            // Decisione 22: chi ha preso i giorni scoperti, con il nome.
+            if (isset($c['ripiego']['righe'])) {
+                $c['ripiego']['righe'] = array_map(fn (array $r) => $r + ['anagrafica_id' => $righe->get($r['riga_id'])?->anagrafica_id, 'anagrafica_nome' => $righe->get($r['riga_id'])?->nome], $c['ripiego']['righe']);
+            }
+
+            return $c;
+        }, $cambiamenti);
     }
 }

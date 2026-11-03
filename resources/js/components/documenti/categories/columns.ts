@@ -2,7 +2,7 @@ import { h } from 'vue';
 import DropdownAction from '@/components/documenti/categories/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/documenti/categories/DataTableColumnHeader.vue';
 import { usePermission } from "@/composables/permissions";
-import { trans } from 'laravel-vue-i18n';
+import { trans, transChoice } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Categoria } from '@/types/categorie';
 
@@ -50,6 +50,29 @@ export const columns: ColumnDef<Categoria>[] = [
         h('div', categoria.description)
       ]);
     }
+  },
+  {
+    /*
+     * Quanti documenti usano questa categoria.
+     *
+     * ⚠️ **Il numero si vede PRIMA di provare a eliminare**, esattamente come nelle categorie di
+     * fornitore: è la stessa informazione che il rifiuto darebbe dopo, e messa qui evita il
+     * tentativo invece di respingerlo. Non è ordinabile per la ragione di sempre: nessuno clicca
+     * un'intestazione aspettandosi di ordinare per un conteggio.
+     */
+    id: 'documenti_count',
+    enableSorting: false,
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.categories.documents') }),
+
+    cell: ({ row }) => {
+      const quanti = row.original.documenti_count ?? 0;
+
+      return h(
+        'span',
+        { class: quanti === 0 ? 'text-sm text-slate-400' : 'text-sm tabular-nums' },
+        transChoice('documenti.categoria_bloccata.usata', quanti, { count: String(quanti) })
+      );
+    },
   },
   {
     id: 'actions',

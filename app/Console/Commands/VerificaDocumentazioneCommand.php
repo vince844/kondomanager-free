@@ -34,8 +34,30 @@ use Illuminate\Support\Str;
  * 4. **Link fra documenti che non risolvono** — `[testo](altro_documento.md)` verso un file che
  *    non esiste.
  *
- * `docs/` è escluso da git di proposito (sono documenti interni): il comando lavora sui file che
- * trova su disco, e non ha senso in produzione. Per questo non compare in nessuno scheduler.
+ * ## Su quali file gira davvero — e perché su un clone pubblico ne vede pochissimi
+ *
+ * *Corretto il 26/08/2026: questo capoverso diceva «`docs/` è escluso da git di proposito (sono
+ * documenti interni)», ed era falso da cinque giorni.*
+ *
+ * `docs/` è un **repository a sé**, clonato dentro la cartella del progetto: origine il repository
+ * **privato** `vince844/kondomanager-docs` su GitHub, dal 21/08/2026 (vedi `docs/LEGGIMI_REPOSITORY.md`).
+ * È escluso dal repository *del prodotto*, non da git.
+ *
+ * L'esclusione è una **regola invertita** in `.gitignore` — `docs/*` più quattro negazioni — così un
+ * documento nuovo nasce privato senza che nessuno debba ricordarsi di aggiungerlo a una lista. Il
+ * repository pubblico ne **traccia quindi 10 file**, e sono le sole guide che servono a chi installa
+ * e usa KondoManager: `changelog.md`, `docker_local_dev.*.md`, `synology_nas_install.*.md`,
+ * `plesk_cronjob_guide.md`. *(La prima stesura diceva «10 su 62»: 62 è il conteggio dei soli `.md`
+ * di primo livello, mentre il repository dei documenti ne traccia 63 e la cartella su disco ne
+ * contiene 73 in tutto. Un rapporto con due denominatori diversi non è una misura.)*
+ *
+ * Il comando lavora sui file che **trova su disco**, non su quelli tracciati. Su un checkout di
+ * sviluppo li vede tutti; su un clone del repository pubblico ne vede dieci, e le sue misure —
+ * età, riferimenti, link fra documenti — perdono quasi ogni significato. Non è un difetto del
+ * comando: è la stessa causa della **Coda 82** in `docs/roadmap.md`, dove due test di sistema
+ * leggono documenti che nel repository pubblico non ci sono.
+ *
+ * In produzione non ha senso, e infatti non compare in nessuno scheduler.
  */
 class VerificaDocumentazioneCommand extends Command
 {

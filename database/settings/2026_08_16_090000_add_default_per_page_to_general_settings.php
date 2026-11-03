@@ -40,7 +40,22 @@ return new class extends SettingsMigration
     {
         $configurato = (int) config('pagination.default_per_page');
 
-        return in_array($configurato, config('pagination.consentite'), true)
+        // ⚠️ Il ripiego a `[]` protegge da un caso diverso da quello descritto sopra, e più grave.
+        // `config/pagination.php` nasce in questa versione: chi aggiorna da una precedente con la
+        // configurazione in cache (`bootstrap/cache/config.php`) non ha ancora quella chiave, e
+        // `config()` restituisce `null`. In PHP 8 `in_array()` con un haystack nullo è un errore
+        // fatale, non un avviso: `migrate` si ferma qui e lascia il database a metà — misurato,
+        // dieci migrazioni pendenti.
+        //
+        // Con il ripiego la catena si chiude da sola senza altre righe: `(int) null` è `0`, `0` non
+        // appartiene a `[]`, quindi si torna a 10, che è il valore giusto per chi arriva da una
+        // versione dove l'impostazione non esisteva.
+        //
+        // Si usa `??` e non il secondo argomento di `config()`: quello restituisce il ripiego solo
+        // quando la chiave **manca**, mentre una chiave presente e valorizzata `null` lo scavalca e
+        // arriva intatta a `in_array()`. Sono due stati diversi e li vogliamo coprire entrambi —
+        // lo ha trovato il test, non il ragionamento.
+        return in_array($configurato, config('pagination.consentite') ?? [], true)
             ? $configurato
             : 10;
     }

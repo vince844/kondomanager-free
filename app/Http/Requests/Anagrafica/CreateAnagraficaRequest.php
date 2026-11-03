@@ -6,6 +6,8 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use App\Models\Anagrafica;
 use App\Rules\UniqueEmailAcrossTables;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 
@@ -18,11 +20,13 @@ use Illuminate\Support\Str;
 class CreateAnagraficaRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Il permesso prima delle regole (decisione 137): chi non può creare un'anagrafica riceve il rifiuto di
+     * `AnagraficaPolicy::create`, con la sua frase, e nessun esito delle regole, nemmeno di quelle di unicità.
+     * `AnagraficaController::store()` lo chiede di nuovo.
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('create', Anagrafica::class);
     }
 
     /**

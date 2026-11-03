@@ -78,11 +78,15 @@ it('semina anche quando l\'aggiornamento parte dalla schermata, non solo chiaman
 });
 
 it('non fa risorgere le tabelle di lookup che l\'amministratore ha cancellato', function () {
-    // È il motivo per cui la chiamata deve essere mirata e non `db:seed` intero: i quattro seeder
-    // delle tabelle master usano `firstOrCreate` sul nome, e rimetterebbero in piedi ciò che
+    // È il motivo per cui la chiamata deve essere mirata e non `db:seed` intero: i seeder delle
+    // tabelle master usano `firstOrCreate` sul nome, e rimetterebbero in piedi ciò che
     // l'amministratore ha eliminato di proposito.
-    $this->seed(\Database\Seeders\CategoriaDocumentoSeeder::class);
-
+    //
+    // ⚠️ **La riga che seminava le categorie qui non c'è più, e la sua assenza è il punto.**
+    // `CategoriaDocumentoSeeder` è stato **cancellato** nella 1.11.0-beta.10: le cinque categorie
+    // iniziali le scrive ora la migrazione `seed_categorie_documento`, che `RefreshDatabase` esegue
+    // — quindi ci sono già, e non c'è più nessun seeder da chiamare. Questo test resta valido e
+    // diventa più forte: prova lo stato **vero** dell'installazione, non uno costruito a mano.
     $categoria = CategoriaDocumento::firstOrFail();
     $nome = $categoria->name;
     $categoria->delete();

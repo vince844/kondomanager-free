@@ -18,9 +18,14 @@ use App\Traits\PaginaElenco;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Inertia\Response;
 
+/**
+ * Le anagrafiche del pannello. Ogni azione chiede la sua abilità ad `AnagraficaPolicy` (decisione 137): il gruppo delle
+ * rotte chiede solo di entrare nel pannello, e queste pagine mostrano codici fiscali, telefoni e indirizzi email.
+ */
 class AnagraficaController extends Controller
 {
     use OrdinaElenco;
@@ -45,7 +50,9 @@ class AnagraficaController extends Controller
      * @return \Illuminate\Http\Response
      */
     public function index(AnagraficaIndexRequest $request): Response
-    {   
+    {
+        Gate::authorize('viewAny', Anagrafica::class);
+
         $validated = $request->validated();
 
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
@@ -96,6 +103,8 @@ class AnagraficaController extends Controller
      */
     public function create(): Response
     {
+        Gate::authorize('create', Anagrafica::class);
+
         return Inertia::render('anagrafiche/AnagraficheNew', [
             'condomini' => CondominioResource::collection(Condominio::all())
         ]);
@@ -109,7 +118,7 @@ class AnagraficaController extends Controller
      * - Creates a new `Anagrafica` record and attaches related condomini (buildings).
      * - Wraps the operation in a database transaction to ensure atomicity.
      * - Logs errors and rolls back in case of failure.
-     * - Redirects to the anagrafiche index with a success or error flash message.
+     * - Torna, con il messaggio, dove dice `dopoIlSalvataggio()`: l'elenco a chi lo consulta, se no un modulo.
      *
      * @param  \App\Http\Requests\Anagrafica\CreateAnagraficaRequest  $request
      * @return \Illuminate\Http\RedirectResponse
@@ -118,6 +127,7 @@ class AnagraficaController extends Controller
      */
     public function store(CreateAnagraficaRequest $request): RedirectResponse
     {
+        Gate::authorize('create', Anagrafica::class);
 
         $validated = $request->validated(); 
 
@@ -130,7 +140,7 @@ class AnagraficaController extends Controller
 
             DB::commit();
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio($anagrafica)->with(
                 $this->flashSuccess(__('anagrafiche.success_create_anagrafica'))
             );
 
@@ -140,7 +150,7 @@ class AnagraficaController extends Controller
 
             Log::error('Error creating anagrafica: ' . $e->getMessage());
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio(null)->with(
                 $this->flashError(__('anagrafiche.error_create_anagrafica'))
             );
 
@@ -149,11 +159,91 @@ class AnagraficaController extends Controller
     }
 
     /**
+     * Dove torna chi ha salvato: una pagina che può aprire, perché un salvataggio riuscito non finisca in un rifiuto.
+     *
+     * L'elenco chiede «Visualizza anagrafiche», i moduli «Crea» o «Modifica anagrafiche» (`AnagraficaPolicy`): un ruolo
+     * su misura può salvare senza consultare l'elenco. A chi lo consulta si torna all'elenco, come prima; agli altri il
+     * modulo della persona salvata, quello di modifica se la può modificare, se no un modulo nuovo (chi arriva qui ha
+     * appena creato o modificato, quindi uno dei due gli si apre). Il messaggio, di riuscita o d'errore, va con lui.
+     */
+    private function dopoIlSalvataggio(?Anagrafica $anagrafica): \Illuminate\Http\RedirectResponse
+    {
+        $utente = request()->user();
+
+        if ($utente->can('viewAny', Anagrafica::class)) {
+            return to_route('admin.anagrafiche.index');
+        }
+
+        if ($anagrafica !== null && $utente->can('update', $anagrafica)) {
+            return to_route('admin.anagrafiche.edit', $anagrafica);
+        }
+
+        return to_route('admin.anagrafiche.create');
+    }
+
+    /**
      * Display the specified resource.
      */
-    public function show(Anagrafica $anagrafica)
+    /**
+     * La scheda dell'anagrafica.
+     *
+     * ## ⚠️ Questo metodo aveva il corpo vuoto, e la pagina era bianca
+     *
+     * Fino alla 1.11.0-beta.9 qui c'era `//`. `Route::resource` registra comunque la rotta, quindi
+     * `admin/anagrafiche/{id}` rispondeva **200 con niente dentro**: pagina bianca, nessun errore,
+     * nessuna riga di log. E non era una rotta che nessuno raggiungeva —
+     * `resources/js/components/anagrafiche/columns.ts` ci punta col **nome della persona**
+     * nell'elenco della rubrica: bastava cliccare un nome.
+     *
+     * È la stessa famiglia del difetto arrivato dal forum nella beta.62 — `categorie.show`
+     * registrata verso un metodo inesistente, che rispondeva 500 — con una differenza che la rende
+     * peggiore: **un 500 lo si segnala, una pagina bianca fa pensare che sia colpa della propria
+     * connessione.** Trovato il 31/08/2026 seguendo un collegamento nuovo verso una destinazione
+     * vecchia, che è il momento in cui i difetti dormienti si svegliano.
+     *
+     * ## Cosa mostra
+     *
+     * Le stesse quattro famiglie di dati della scheda del fornitore, che è il modello dichiarato:
+     * recapiti, documento d'identità, i condomìni in cui la persona compare e le unità che occupa.
+     * I documenti stanno nella scheda accanto (`AnagraficaDocumentoController`), perché sono un
+     * elenco paginato e non un riquadro.
+     */
+    public function show(Anagrafica $anagrafica): Response
     {
-        //
+        Gate::authorize('view', $anagrafica);
+
+        $anagrafica->loadMissing([
+            'condomini',
+            'user',
+            // Le unità con il **ruolo** e la **quota**, che stanno sulla pivot: senza, la scheda
+            // direbbe «occupa tre unità» senza dire a che titolo, che è l'unica cosa che conta.
+            'immobili' => fn ($q) => $q->with('condominio:id,nome'),
+        ]);
+
+        return Inertia::render('anagrafiche/AnagraficheView', [
+            'anagrafica' => new AnagraficaResource($anagrafica),
+
+            // ⚠️ Le unità non passano da `AnagraficaResource`: quella è condivisa da mezzo
+            // programma e non carica la pivot. Si adattano qui, dove si sa cosa serve a questa
+            // schermata, invece di allargare una risorsa che altri usano per altro.
+            'immobili' => $anagrafica->immobili->map(fn ($immobile) => [
+                'id'          => $immobile->id,
+                // `etichettaEstesa` e non `etichetta`: qui lo spazio c'è, e «Int. 3 (Attico)»
+                // dice più di «Attico». La regola è scritta sul modello.
+                'etichetta'   => $immobile->etichetta_estesa,
+                'condominio'  => $immobile->condominio?->nome,
+                'tipologia'   => $immobile->pivot->tipologia,
+                'quota'       => $immobile->pivot->quota,
+                'attivo'      => (bool) $immobile->pivot->attivo,
+                // Carbon dalla beta.31 (cast di `TitolaritaImmobile`): il JSON resta `Y-m-d`.
+                'data_inizio' => $immobile->pivot->data_inizio?->toDateString(),
+                'data_fine'   => $immobile->pivot->data_fine?->toDateString(),
+            ])->values(),
+
+            // Il conteggio dei documenti serve alla scheda accanto: senza, la linguetta
+            // «Documenti» non sa dire se c'è qualcosa dentro prima che uno ci entri.
+            'documenti_count' => $anagrafica->documenti()->count(),
+        ]);
     }
 
     /**
@@ -170,7 +260,8 @@ class AnagraficaController extends Controller
      */
     public function edit(Anagrafica $anagrafica): Response
     {
-        
+       Gate::authorize('update', $anagrafica);
+
        $anagrafica->loadMissing(['condomini']);
 
        return Inertia::render('anagrafiche/AnagraficheEdit', [
@@ -197,6 +288,7 @@ class AnagraficaController extends Controller
      */
     public function update(UpdateAnagraficaRequest $request, Anagrafica $anagrafica): RedirectResponse
     {
+        Gate::authorize('update', $anagrafica);
 
         $validated = $request->validated(); 
 
@@ -205,11 +297,11 @@ class AnagraficaController extends Controller
             DB::beginTransaction();
 
             $anagrafica->update($validated);
-            $anagrafica->condomini()->sync($validated['condomini']); 
+            $anagrafica->condomini()->sync($validated['condomini']);
 
             DB::commit();
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio($anagrafica)->with(
                 $this->flashSuccess(__('anagrafiche.success_update_anagrafica'))
             );
 
@@ -219,7 +311,7 @@ class AnagraficaController extends Controller
 
             Log::error('Error updating anagrafica: ' . $e->getMessage());
 
-            return to_route('admin.anagrafiche.index')->with(
+            return $this->dopoIlSalvataggio($anagrafica)->with(
                 $this->flashError(__('anagrafiche.error_update_anagrafica'))
             );
         }
@@ -241,13 +333,53 @@ class AnagraficaController extends Controller
      */
     public function destroy(Anagrafica $anagrafica): RedirectResponse
     {
+        Gate::authorize('delete', $anagrafica);
+
         // Check if the anagrafica has any condomini associated with it
         if ($anagrafica->condomini()->exists()) {
             return back()->with(
                 $this->flashError(__('anagrafiche.anagrafica_has_building'))
             );
         }
-    
+
+        // B2 (S5, inv. 19): chi compare in un passaggio di titolarità registrato non si cancella. La FK di
+        // `saldi.anagrafica_id` è in cascata: sparirebbe una sola gamba della coppia di conguaglio, e lo
+        // storico dell'unità perderebbe il nome (verifica S5, R3).
+        // 1.11.0-beta.44: la successione e l'accrescimento nominano come chi entra una persona sola; le altre stanno nel registro. Rilievo
+        // L17 della Fase 1-bis: prima di tutto le righe in saldi di un passaggio (la cascata ne toglierebbe una gamba), che coprono anche i
+        // nudi tornati pieni oltre il primo; il registro solo sulle unità dove la persona ha avuto una riga, non su tutti i condomìni.
+        // Rilievo GA6 del giro: anche una riga che un passaggio ha scritto (il nudo tornato pieno oltre il primo, senza righe in saldi): la
+        // cascata la toglierebbe, e il registro del passaggio non saprebbe più disfarla.
+        $righeDellaPersona = \Illuminate\Support\Facades\DB::table('anagrafica_immobile')->where('anagrafica_id', $anagrafica->id)->get(['id', 'immobile_id']);
+        $unitaDellaPersona = $righeDellaPersona->pluck('immobile_id')->unique()->all();
+        $idRighe = $righeDellaPersona->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $parteDiUnPassaggio = \App\Models\Gestionale\Subentro::where('anagrafica_uscente_id', $anagrafica->id)->orWhere('anagrafica_entrante_id', $anagrafica->id)->exists()
+            || \App\Models\Saldo::where('anagrafica_id', $anagrafica->id)->whereNotNull('subentro_id')->exists()
+            || ($unitaDellaPersona !== [] && \App\Models\Gestionale\Subentro::whereIn('immobile_id', $unitaDellaPersona)->get()
+                ->contains(fn ($s) => in_array((int) $anagrafica->id, $s->entranti(), true) || array_intersect($s->righeDelRegistro(), $idRighe) !== []));
+        // 1.11.0-beta.53 (Coda 244): anche un saldo del Wallet legato a un passaggio. La cascata lo toglierebbe in silenzio, e
+        // l'annullamento del passaggio non lo troverebbe più per toglierlo o nominarlo.
+        $legate = \App\Models\Saldo::where('anagrafica_id', $anagrafica->id)->whereNotNull('passaggio_id')->get(['id', 'condominio_id', 'esercizio_id', 'passaggio_id']);
+        if ($parteDiUnPassaggio || $legate->isNotEmpty()) {
+            // Chi ha solo saldi legati non compare in un passaggio: sono i saldi che la nominano, e la frase dice i loro fatti. Chi è parte di un
+            // passaggio resta anche senza.
+            return back()->with(
+                $this->flashError($parteDiUnPassaggio
+                    ? 'Questa anagrafica compare in un passaggio di titolarità registrato (vendita, locazione, usufrutto o successione): non si può eliminare, perché lo storico delle unità, il conguaglio in saldi e i saldi legati a un passaggio la nominano.'
+                    : 'Questa anagrafica non si può eliminare, perché i saldi legati a un passaggio di titolarità (vendita, locazione, usufrutto o successione) la nominano. '
+                        . \App\Services\Subentro\FermataDopoScrivi::fattiDeiLegati($legate, null, 'la parte', togli: true))
+            );
+        }
+
+        // Coda 167 (1.11.0-beta.40, reperto R15 della Fase 1-bis): chi ha versato per il debito di un altro è legato
+        // agli incassi dal campo `riferimento` delle righe, che non ha chiave esterna. Cancellandolo, il riquadro
+        // «Versamenti per conto di altri», l'elenco degli incassi e il registro perderebbero il suo nome in silenzio.
+        if (\App\Models\Gestionale\RigaScrittura::where('riferimento_type', Anagrafica::class)->where('riferimento_id', $anagrafica->id)->exists()) {
+            return back()->with(
+                $this->flashError('Questa anagrafica compare come «Versato da» in un incasso: non si può eliminare, perché l\'incasso e il registro la nominano.')
+            );
+        }
+
         try {
 
             $anagrafica->delete();

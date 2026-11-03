@@ -46,11 +46,16 @@ class BudgetMovementController extends Controller
             PianoConto::query()->where('condominio_id', $condominio->id)->pluck('id')->all(),
         );
 
+        // `integer` prima di `exists`: `exists` accetta anche un elenco di id, e `findOrFail` di un elenco rende una collezione, non una voce.
+        // Un elenco al posto dell'id è un errore sul campo, con la scelta da rifare, e non il testo di un'eccezione.
         $validated = $request->validate([
-            'source_id' => ['required', $contiDelCondominio],
-            'destination_id' => ['required', 'different:source_id', $contiDelCondominio],
+            'source_id' => ['bail', 'required', 'integer', $contiDelCondominio],
+            'destination_id' => ['bail', 'required', 'integer', 'different:source_id', $contiDelCondominio],
             'amount' => 'required|numeric|min:0.01',
             'reason' => 'required|string|max:255',
+        ], [
+            'source_id.integer' => 'La voce da cui spostare il budget non è valida: scegli una voce dal menu «Preleva da».',
+            'destination_id.integer' => 'La voce su cui spostare il budget non è valida: scegli una voce dal menu «Sposta su».',
         ]);
 
         try {

@@ -106,7 +106,7 @@ it('la ritenuta a base ridotta arrotonda due volte: prima la base, poi la tratte
     $fattura = (new FatturaPassivaService())->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
             'righe' => [[
-                'descrizione' => 'Provvigioni con riduzione',
+                'descrizione' => 'Provvigioni, base 50%',
                 'importo_imponibile' => 1000.13,
                 'aliquota_iva' => 22,
                 'conto_id' => $capitolo->id,

@@ -1,0 +1,14 @@
+{
+    "features": [
+        "⚠️ ESTA VERSÃO ACRESCENTA TRÊS MIGRAÇÕES, e uma muda a estrutura: a ligação entre um documento e a sua categoria passa de uma coluna para uma tabela própria, porque as categorias são agora mais do que uma. A transferência dos dados existentes é automática.",
+        "UM DOCUMENTO PODE ESTAR EM VÁRIAS CATEGORIAS — Pedido chegado do fórum. A ata da assembleia que aprova o orçamento encontra-se em «Verbali» e em «Bilanci», e aparece nas duas listas, incluindo a que o condómino consulta na sua área. Na lista a coluna mostra as duas primeiras etiquetas e depois um «+N».",
+        "⚠️ O QUE NÃO MUDA — Os documentos carregados num fornecedor, numa fração ou numa pessoa continuam SEM categoria: esses formulários não a pedem, porque esses documentos vivem na ficha do seu sujeito. No arquivo, pelo contrário, a categoria é obrigatória, pelo menos uma.",
+        "⚠️ O CONDÓMINO TAMBÉM PODE ESCOLHER AS CATEGORIAS — O formulário com que o condómino carrega um documento não tinha campo de categoria: era tomada, em silêncio, da pasta de onde tinha entrado. O formulário de edição tinha-o, pelo que para pôr um documento em duas categorias era preciso guardá-lo e reabri-lo. Agora o campo existe também no carregamento, já com a categoria de onde se veio.",
+        "A PAGINAÇÃO DA ÁREA DO CONDÓMINO ESTAVA EM INGLÊS — «First», «Previous», «Next», «Last» sob cada lista da sua área: mural, ocorrências, documentos, agenda. Agora está na língua do programa, incluindo as etiquetas que os leitores de ecrã anunciam.",
+        "A ORDENAÇÃO POR CATEGORIA FOI RETIRADA — Com várias categorias por documento não tem resposta. No seu lugar a lista ganhou duas coisas mais úteis: uma coluna com a DATA do documento — a data real, não «há três meses» — e um FILTRO do estado, ao lado dos de categoria e condomínio.",
+        "AGORA VÊ-SE QUEM ESTÁ POR TRÁS DAS SIGLAS — As colunas «Condomínios» e «Pessoas» mostravam círculos com as iniciais e o nome só ao passar por cima. Agora abrem-se e cada linha leva à ficha.",
+        "⚠️ ELIMINAR UMA CATEGORIA: A MENSAGEM DIZIA O FALSO — A confirmação avisava que eliminaria «a categoria e todos os documentos associados». Nunca foi verdade: o programa recusa-se a eliminar uma categoria com documentos e não toca em nenhum. Agora comportam-se como as dos fornecedores: uma coluna diz quantos documentos usam cada uma, e ao tentar eliminar uma em uso abre-se uma janela que diz quais.",
+        "⚠️ A CATEGORIA «FATTURE» JÁ NÃO SE PARTE SE A RENOMEARES — O programa procurava-a pelo nome: ao renomeá-la, cada anexo de fatura passava a entrar no arquivo sem categoria, em silêncio. Agora é reconhecida por uma chave interna que nunca muda.",
+        "AS CATEGORIAS DOS DOCUMENTOS JÁ NÃO RESSUSCITAM — Eram escritas por um seeder que as repunha a cada manutenção. As cinco iniciais passam a ser escritas por uma migração, que corre uma só vez."
+    ]
+}

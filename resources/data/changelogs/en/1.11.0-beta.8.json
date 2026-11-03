@@ -1,0 +1,11 @@
+{
+    "features": [
+        "⚠️ THIS VERSION ADDS A MIGRATION: a new table for ATECO codes. It applies itself with the update and touches no existing data.",
+        "THE ATECO CODE NO LONGER HAS TO BE TYPED FROM MEMORY — Next to the «ATECO code» field of the supplier record there is a search button on the official ISTAT classification: 3,257 codes with their titles. You can search by code, or by activity in words, and pick from the list. The field stays editable by hand.",
+        "YOU CAN SEE WHERE EACH CODE COMES FROM — Under each result the branch of the classification it belongs to is shown, and next to the code whether it is a category or a subcategory: the chamber of commerce record carries the six-digit code, that is the subcategory, and now it can be told at a glance.",
+        "⚠️ ATECO 2025 CHANGED THE NAMES, AND THE PROGRAM TELLS YOU — Since 1 April 2025 the classification has changed: the condominium administrator was 68.32.00, today it is 68.32.01 «Gestione di beni immobili per conto terzi»; the building was 97.00.02 and is now 97.00.10. Searching with the old words finds nothing, because the official titles no longer contain them: when the search finds nothing, the program tells you which two codes are the ones most needed.",
+        "THE LIST TRAVELS WITH THE PROGRAM — No installation needs the internet to have the codes: they arrive with the update, as already happens for the list of municipalities. Anyone can reload them by hand with «php artisan kondomanager:aggiorna-ateco».",
+        "AND YOU ALWAYS KNOW WHICH CLASSIFICATION THEY COME FROM — At the bottom of the search it says «Classificazione ATECO 2025, pubblicata da ISTAT». It is not an ornament: a list that does not say where it comes from ages silently, and a withdrawn code suggested by the program is wrong data. There is also a command that asks ISTAT whether a more recent revision has been published.",
+        "DETAILS — The search finds a code even written without the dots («432201»), and looks for the words separately, so «installazione ascensori» finds «Installazione di ascensori e scale mobili». Duplicates are gone: where a category and a subcategory carry the exact same title — 725 cases out of 920 — only the six-digit one is offered."
+    ]
+}

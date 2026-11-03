@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Impostazioni;
 
 use App\Enums\BackupStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\ConfermaPasswordRecente;
 use App\Http\Requests\Settings\UpdateBackupSettingsRequest;
 use App\Models\Backup;
 use App\Services\Backup\BackupManager;
@@ -11,6 +12,7 @@ use App\Services\Backup\BackupPasswordStore;
 use App\Services\Backup\BackupPreflight;
 use App\Services\Backup\Destinations\DestinationManager;
 use App\Services\Backup\Exceptions\BackupInProgressException;
+use App\Services\Restore\MessaggiDelRipristino;
 use App\Settings\BackupSettings;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +22,7 @@ use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * Gestione backup dalla pagina impostazioni.
@@ -65,6 +68,9 @@ class BackupSettingsController extends Controller
             'retention_keep_last' => $settings->retention_keep_last,
             // Solo se la password è impostata, MAI il valore in chiaro
             'backup_has_password' => $passwordStore->has(),
+            // Con i documenti su un disco S3 (1.11.0-beta.33) l'archivio non li contiene: stanno
+            // già fuori dalla macchina. Va detto qui, dove uno si aspetta di trovarli.
+            'documenti_esterni' => config('kondomanager.disco_documenti', 'local') !== 'local',
         ]);
     }
 
@@ -141,10 +147,21 @@ class BackupSettingsController extends Controller
         return response()->json(['backup' => $this->presentBackup($backup->refresh())]);
     }
 
-    public function download(BackupSettings $settings, Backup $backup, DestinationManager $destinations): BinaryFileResponse
+    public function download(Request $request, BackupSettings $settings, Backup $backup, DestinationManager $destinations): BinaryFileResponse|SymfonyResponse
     {
         $this->ensureEnabled();
         Gate::authorize('manage', $settings);
+
+        // Il backup contiene tutto: chiede la password ridigitata da poco (Coda 261). Dalla pagina dei backup
+        // il clic sull'icona di scarico chiede prima lo stato della conferma (`GET confirm-password/stato`): se
+        // è scaduta apre la finestra della password sulla stessa pagina, e a conferma data il file parte da
+        // solo. Il rimando alla pagina della conferma, qui sotto, vale per il collegamento aperto senza la
+        // pagina (tasto centrale, senza JavaScript) e per uno stato che la pagina non ha potuto leggere; dopo
+        // quella conferma si torna alla pagina dei backup e non all'indirizzo del file, che dentro il modulo
+        // Inertia della conferma non si scaricherebbe.
+        if (ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'impostazioni.backups');
+        }
 
         abort_unless($backup->status === BackupStatus::COMPLETED && $backup->filename, 404);
 
@@ -170,12 +187,19 @@ class BackupSettingsController extends Controller
         );
     }
 
-    public function updateSettings(UpdateBackupSettingsRequest $request, BackupSettings $settings, BackupPasswordStore $passwordStore): RedirectResponse
+    public function updateSettings(UpdateBackupSettingsRequest $request, BackupSettings $settings, BackupPasswordStore $passwordStore): RedirectResponse|SymfonyResponse
     {
         $this->ensureEnabled();
         Gate::authorize('manage', $settings);
 
         $validated = $request->validated();
+
+        // Una password nuova dei backup chiede la password dell'account ridigitata da poco, come
+        // toglierla (Coda 261, decisione 127.7); la sola conservazione no: il modulo è uno solo per
+        // le due cose.
+        if (filled($validated['password'] ?? null) && ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'impostazioni.backups');
+        }
 
         try {
             $settings->retention_keep_last = (int) $validated['retention_keep_last'];
@@ -201,10 +225,15 @@ class BackupSettingsController extends Controller
      * Rimuove la password di cifratura predefinita dei backup. L'impostazione
      * avviene invece insieme alle altre impostazioni (updateSettings).
      */
-    public function removePassword(Request $request, BackupSettings $settings, BackupPasswordStore $passwordStore): RedirectResponse
+    public function removePassword(Request $request, BackupSettings $settings, BackupPasswordStore $passwordStore): RedirectResponse|SymfonyResponse
     {
         $this->ensureEnabled();
         Gate::authorize('manage', $settings);
+
+        // Senza password i backup futuri escono in chiaro: chiede la password dell'account (Coda 261).
+        if (ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'impostazioni.backups');
+        }
 
         $request->validate([
             'remove' => 'required|accepted',
@@ -228,7 +257,8 @@ class BackupSettingsController extends Controller
             'progress' => $backup->progress,
             'size' => $backup->size,
             'checksum' => $backup->checksum,
-            'error' => $backup->error,
+            // Senza le cartelle del server anche l'errore salvato prima che `BackupManager::fail` lo passasse dalla rete.
+            'error' => $backup->error === null ? null : MessaggiDelRipristino::senzaPercorsi($backup->error),
             'created_at' => $backup->created_at?->toIso8601String(),
             'completed_at' => $backup->completed_at?->toIso8601String(),
             'created_by' => $backup->relationLoaded('creator') ? $backup->creator?->name : null,

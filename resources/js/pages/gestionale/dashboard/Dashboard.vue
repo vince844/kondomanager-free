@@ -4,11 +4,13 @@ import { Head, Link, InfiniteScroll, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { etichettaFabbisogno } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench, BookOpen } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench, BookOpen, Link2 } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -24,7 +26,10 @@ const props = defineProps<{
   esercizio: Esercizio;    
   esercizi: Esercizio[];   
   copertura: {
-    preventivo: number;
+    // In centesimi. Le voci di entrata si sottraggono: da ripartire = spese − entrate.
+    spese: number;
+    entrate: number;
+    da_ripartire: number;
     pianificato: number;
     virtuale: number;
     addebiti_personali: number; 
@@ -43,6 +48,9 @@ const props = defineProps<{
         strategia: string;
         gestione: string;
         gestione_id?: number;
+        /** Una voce di spesa scritta con il meno: la creazione non la propone, e `nota` dice la strada. */
+        spesa_negativa?: boolean;
+        nota?: string | null;
     }>;
     scoperto_count: number;
   } | null;
@@ -60,7 +68,7 @@ const props = defineProps<{
     gestione_id: number | null;
     strategia: string;
     righe: Array<{
-        id: number;
+        id: number | string;
         tipo: string;
         importo: number;
         descrizione: string;
@@ -83,7 +91,12 @@ const props = defineProps<{
   widgets?: Record<string, any>;
 }>()
 
-const { generatePath } = usePermission();
+const { generatePath, hasPermission } = usePermission();
+
+// «Rifiuta» e «Completa» dei compiti chiudono una scadenza in agenda, e le loro rotte (`admin.inbox.reject`,
+// `admin.inbox.complete`) chiedono «Modifica scadenza in agenda» (`EventoPolicy::chiudiCompito`, Coda 402): senza il
+// permesso i due comandi non compaiono, e restano «Registra» e «Risolvi».
+const puoChiudereCompiti = computed(() => hasPermission([Permission.EDIT_EVENTS]));
 const { euro } = useCurrencyFormatter();
 const showOrphansModal = ref(false);
 
@@ -154,7 +167,8 @@ const suggerimentoOperativo = computed(() => {
         }
     }
     if (statoCopertura.value === 'documented') {
-        return "Il fabbisogno scoperto è stato registrato con motivazione. Censisci l'anagrafica mancante: l'importo sarà recuperato a conguaglio o tramite addebito manuale.";
+        // D143: niente «conguaglio» né «addebito manuale», che il programma non ha. Le strade sono quelle della pagina del piano.
+        return "Il fabbisogno scoperto è stato registrato con motivazione. Censisci l'anagrafica mancante e ricalcola il piano; se le rate sono già emesse, prima vanno annullate le emissioni (e prima ancora stornati gli incassi). Il programma non ha un addebito individuale.";
     }
     if (statoCopertura.value === 'surplus') {
         return "Stai incassando più del necessario. Verifica se ci sono arrotondamenti eccessivi o voci duplicate nei piani rate. Se hai modificato il preventivo, ricorda di ricalcolare le rate per allineare tutto.";
@@ -162,10 +176,24 @@ const suggerimentoOperativo = computed(() => {
     return null;
 });
 
+// Il riquadro del fabbisogno: con le entrate si chiama «Da ripartire» e mostra il netto, senza resta com'è. Barra e percentuale
+// dividono per il netto: se non è maggiore di zero (la sola entrata) non c'è niente da coprire, e non si divide. La copertura è
+// completa (100 %) se il piano non chiede più del netto, cioè il delta non è positivo; altrimenti è zero.
+const nienteDaCoprire = computed(() => !!props.copertura && props.copertura.da_ripartire <= 0);
+const nomeRiquadroFabbisogno = computed(() => etichettaFabbisogno(props.copertura?.entrate ?? 0));
+
+const suggerimentoFabbisogno = computed(() => {
+    const entrate = props.copertura?.entrate ?? 0;
+    return entrate > 0
+        ? `Fabbisogno reale condominiale (preventivo + sfori autorizzati), al netto delle entrate di ${euro(entrate)}. Esclude categoricamente le spese ad personam.`
+        : 'Fabbisogno reale condominiale (preventivo + sfori autorizzati). Esclude categoricamente le spese ad personam.';
+});
+
 const percentualeFormattata = computed(() => {
-    if (!props.copertura || props.copertura.preventivo === 0) return '0.0';
+    if (!props.copertura) return '0.0';
+    if (nienteDaCoprire.value) return deltaReale.value <= 0 ? '100.0' : '0.0';
     const totaleCoperto = pianificatoCondiviso.value + (props.copertura.virtuale || 0);
-    const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
+    const rawPct = (totaleCoperto / props.copertura.da_ripartire) * 100;
 
     if (statoCopertura.value === 'deficit' || statoCopertura.value === 'documented' || statoCopertura.value === 'misaligned') {
         if (rawPct >= 99.9) return '99.9'; 
@@ -176,9 +204,10 @@ const percentualeFormattata = computed(() => {
 });
 
 const larghezzaBarra = computed(() => {
-    if (!props.copertura || props.copertura.preventivo === 0) return '0%';
+    if (!props.copertura) return '0%';
+    if (nienteDaCoprire.value) return deltaReale.value <= 0 ? '100%' : '0%';
     const totaleCoperto = pianificatoCondiviso.value + (props.copertura.virtuale || 0);
-    const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
+    const rawPct = (totaleCoperto / props.copertura.da_ripartire) * 100;
     return Math.min(rawPct, 100) + '%';
 });
 
@@ -215,6 +244,11 @@ const confirmReject = () => {
 // raggiungere il piu' alto, mai il contrario — se Inbox ha molte attivita'
 // reali, sfonderebbe qualunque limite. Misuriamo Copertura Bilancio col
 // ResizeObserver e capiamo Inbox a quell'altezza, con scroll interno.
+//
+// ⚠️ **Si misura il BORDER box, non il content box.** `contentRect` esclude il bordo della card
+// (1px per lato), quindi l'altezza che si passava a Inbox era sempre 2px piu' bassa di quella
+// vera: le due schede non combaciavano mai del tutto, e su un fondo chiaro quei 2px si vedono.
+// `borderBoxSize` non c'e' su ogni browser, quindi resta `contentRect` come ripiego.
 const coperturaCardRef = ref<HTMLElement | null>(null);
 const coperturaHeight = ref<number | null>(null);
 let coperturaResizeObserver: ResizeObserver | null = null;
@@ -222,7 +256,10 @@ let coperturaResizeObserver: ResizeObserver | null = null;
 onMounted(() => {
     if (!coperturaCardRef.value) return;
     coperturaResizeObserver = new ResizeObserver((entries) => {
-        coperturaHeight.value = entries[0].contentRect.height;
+        const voce = entries[0];
+        const bordo = Array.isArray(voce.borderBoxSize) ? voce.borderBoxSize[0] : voce.borderBoxSize;
+
+        coperturaHeight.value = bordo?.blockSize ?? voce.contentRect.height;
     });
     coperturaResizeObserver.observe(coperturaCardRef.value);
 });
@@ -253,7 +290,18 @@ onUnmounted(() => {
 
                 <div class="md:col-span-1 lg:col-span-4 flex flex-col gap-6">
                     
-                    <div v-if="copertura" ref="coperturaCardRef" class="relative flex flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
+                    <!--
+                        ⚠️ `min-h-[430px]` e' lo **stesso pavimento** che ha Inbox Operativa, e va
+                        tenuto uguale ai due. Senza, su un condominio appena importato — copertura
+                        a zero, quindi card corta — Inbox restava al suo minimo e Copertura no: due
+                        schede affiancate di altezza diversa, con un buco sotto quella di sinistra.
+
+                        Non tocca il caso opposto, che e' quello gia' lavorato: quando Copertura
+                        cresce oltre i 430px comanda lei, e il ResizeObserver qui sopra porta Inbox
+                        alla stessa altezza mettendole lo scroll dentro. Il pavimento vale solo
+                        finche' non c'e' abbastanza contenuto da superarlo.
+                    -->
+                    <div v-if="copertura" ref="coperturaCardRef" class="relative flex min-h-[430px] flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
                         <div class="absolute -right-6 -top-6 text-slate-50 dark:text-slate-800/50 pointer-events-none transition-colors group-hover:text-slate-100 dark:group-hover:text-slate-800">
                             <Wallet class="h-32 w-32 opacity-50" />
                         </div>
@@ -273,7 +321,7 @@ onUnmounted(() => {
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger>
-                                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-help transition-colors"
+                                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold border cursor-help transition-colors"
                                                 :class="{
                                                     'bg-red-50 text-red-700 border-red-100 hover:bg-red-100': statoCopertura === 'misaligned',
                                                     'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100': statoCopertura === 'deficit',
@@ -302,16 +350,16 @@ onUnmounted(() => {
     
                                     <div class="bg-slate-50/50 dark:bg-slate-800/30 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-center">
                                         <div class="flex items-center gap-1.5 mb-1.5">
-                                            <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">Fabbisogno Condiviso</p>
+                                            <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">{{ nomeRiquadroFabbisogno }}</p>
                                             <TooltipProvider>
                                                 <Tooltip>
                                                     <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
-                                                    <TooltipContent><p class="text-xs max-w-[200px]">Fabbisogno reale condominiale (preventivo + sfori autorizzati). Esclude categoricamente le spese ad personam.</p></TooltipContent>
+                                                    <TooltipContent><p class="text-xs max-w-[200px]">{{ suggerimentoFabbisogno }}</p></TooltipContent>
                                                 </Tooltip>
                                             </TooltipProvider>
                                         </div>
                                         <p class="text-base font-black text-slate-700 dark:text-slate-200 leading-none">
-                                            {{ euro(copertura.preventivo) }}
+                                            {{ euro(copertura.da_ripartire) }}
                                         </p>
                                     </div>
                                     
@@ -425,8 +473,12 @@ onUnmounted(() => {
                                     </span>
                                 </div>
                                 
+                                <!--
+                                  Coda 414 (D138): la frase diceva «Hai modificato il preventivo spese… Ricalcola i seguenti piani», ma l'elenco ha anche piani
+                                  che non si ricalcolano più (rate emesse, incassi) e piani scostati per un'altra ragione. I piani in «quota aperta» non ci sono.
+                                -->
                                 <p class="text-[10px] text-red-800/80 dark:text-red-400 leading-tight mb-3">
-                                    Hai modificato il preventivo spese, ma le rate generate non sono più aggiornate. Ricalcola i seguenti piani:
+                                    Le rate di questi piani non corrispondono a quello che il piano chiede. Apri il piano: «Copertura spese» dice di quanto, e il pulsante «Ricalcola» dice se si ricalcola ancora.
                                 </p>
 
                                 <div class="space-y-1.5">
@@ -568,7 +620,7 @@ onUnmounted(() => {
                                                 <div class="shrink-0 flex items-center gap-2">
     
                                                     <template v-if="task.type === 'verifica_pagamento'">
-                                                        <button @click="openRejectModal(task)" title="Rifiuta segnalazione"
+                                                        <button v-if="puoChiudereCompiti" @click="openRejectModal(task)" title="Rifiuta segnalazione"
                                                             class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-red-600 hover:border-red-200 hover:bg-red-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
                                                             <XCircle class="w-4 h-4" />
                                                         </button>
@@ -580,7 +632,7 @@ onUnmounted(() => {
                                                     </template>
 
                                                     <template v-else>
-                                                        <button @click="completeTask(task.id)" title="Segna come completato"
+                                                        <button v-if="puoChiudereCompiti" @click="completeTask(task.id)" title="Segna come completato"
                                                             class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
                                                             <CheckCircle2 class="w-4 h-4" />
                                                         </button>
@@ -703,6 +755,8 @@ onUnmounted(() => {
                                                 <div class="flex items-start gap-2">
                                                     <div class="mt-0.5">
                                                         <User v-if="riga.tipo === 'ad_personam'" class="w-3.5 h-3.5 text-indigo-500" />
+                                                        <!-- Coda 165: la nota del fornitore collegata, che porta la fattura al netto. -->
+                                                        <Link2 v-else-if="riga.tipo === 'nota'" class="w-3.5 h-3.5 text-rose-500" />
                                                         <LayoutDashboard v-else class="w-3.5 h-3.5 text-amber-500" />
                                                     </div>
                                                     <div>
@@ -769,6 +823,10 @@ onUnmounted(() => {
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-600 text-white">
                                                     Rata Integrativa
                                                 </span>
+                                                <span v-else-if="orfano.spesa_negativa"
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">
+                                                    Importo negativo
+                                                </span>
                                                 <span v-else 
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">
                                                     Sforo Aperto
@@ -803,13 +861,17 @@ onUnmounted(() => {
                                                 <template v-else-if="orfano.strategia === 'fondo_riserva'">
                                                     Coperta dal fondo di riserva patrimoniale. Nessuna azione richiesta.
                                                 </template>
+                                                <!-- La creazione del piano non propone la voce (è spenta nel selettore): la nota del server dice la strada. -->
+                                                <template v-else-if="orfano.spesa_negativa">
+                                                    {{ orfano.nota }}
+                                                </template>
                                                 <template v-else>
                                                     Voce senza copertura attiva. Delibera un piano rate per finanziare questo importo.
                                                 </template>
                                             </p>
 
-                                            <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia)" 
-                                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}`">
+                                            <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia) && !orfano.spesa_negativa" 
+                                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}&conto_id=${orfano.id}`">
                                                 <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm shrink-0">
                                                     Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
                                                 </Button>

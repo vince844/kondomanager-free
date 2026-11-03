@@ -52,7 +52,9 @@ defineEmits(['update:open']);
               <ul class="space-y-2 list-disc pl-5">
                 <li>Il <strong>fornitore è facoltativo</strong> ed è solo un'etichetta per la reportistica:
                     non movimenta il mastro Debiti verso Fornitori.</li>
-                <li>Il capitolo mostra il suo residuo e il movimento pesa sul budget come ogni spesa.</li>
+                <li>Il capitolo non mostra il residuo, a differenza della fattura: la spesa alza il consuntivo della voce.</li>
+                <li>Il capitolo è sempre una voce di spesa: un'entrata non si registra qui, perché la regolazione
+                    è un'uscita di cassa.</li>
                 <li>I <strong>fondi non compaiono</strong> fra le casse: sono partizioni contabili del conto
                     corrente, non casse da cui esce denaro — un'uscita reale parte da banca o contanti.</li>
                 <li>Con più operazioni in fila, <strong>"Registra e nuova"</strong> salva e riapre il modulo

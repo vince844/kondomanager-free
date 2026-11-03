@@ -14,11 +14,14 @@ use Illuminate\Support\Facades\Schema;
  * già messo. Chi ha versato €500 nel 2025 per dei lavori se li vede richiedere
  * daccapo quando arriva la fattura.
  *
- * CHIAVE DI NETTING = `immobile_id` (obbligatorio), non l'anagrafica.
- * Il contributo è della UNITÀ: se l'unità viene venduta, il nuovo proprietario
- * eredita la copertura e i due si regolano privatamente in sede di rogito
- * (art. 63 disp. att. c.c.). `anagrafica_id` resta come traccia di CHI ha
- * versato — serve al rendiconto e alla trasparenza, non al calcolo.
+ * CHIAVE DI NETTING = `immobile_id` (obbligatorio); `anagrafica_id` dice CHI ha versato.
+ * ➕ 19/09/2026 (1.11.0-beta.31, decisione 17 del progetto sul subentro): la frase che stava
+ * qui — «se l'unità viene venduta, il nuovo proprietario eredita la copertura» — era il
+ * contrario di ciò che il motore fa da B2. Dove `anagrafica_id` è valorizzato la copertura
+ * sconta la quota di QUELLA persona (`ContributoVersato::perImmobileESoggetto`,
+ * `CalcoloQuoteService::nettingGiaVersato`); dove è nullo resta dell'unità, come prima.
+ * Venditore e acquirente si regolano fra loro «per quanto pagato al condominio, salvo
+ * diverso accordo» (Cass. 11199/2021): il programma non sposta lo sconto da uno all'altro.
  *
  * TARGET FLESSIBILE (polimorfico):
  *   - `Conto`    → contributo verso una voce di spesa specifica (fondo lavori

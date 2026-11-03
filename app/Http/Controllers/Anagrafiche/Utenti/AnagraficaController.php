@@ -41,8 +41,11 @@ class AnagraficaController extends Controller
         // Get the logged user
         $user = Auth::user();
 
-        //Get buildings codes from invito email
-        $buildingCodes = Invito::where('email', $user->email)->first();
+        // I condomìni vengono solo da un invito accettato con il suo link. Fino alla 1.11.0-beta.44
+        // bastava un invito qualunque con la stessa email, anche scaduto o mai accettato: chi si
+        // registrava per primo con l'email di un invitato se li ritrovava, una volta verificata
+        // l'email (Fase 1-bis della 1.11.0-beta.45, rilievo X2).
+        $buildingCodes = Invito::where('email', $user->email)->whereNotNull('accepted_at')->first();
 
         // Create the anagrafica and attach the user id
         $anagrafica = Anagrafica::create([

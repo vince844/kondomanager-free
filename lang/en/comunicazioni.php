@@ -175,11 +175,11 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'visibility'  => 'If set to private, only administrators will be able to view the communication.',
+        'visibility'  => 'A draft, or a communication awaiting approval, is not shown to residents; once published and approved, the residents it is addressed to can see it.',
         'priority'    => 'The priority level may affect the visibility or urgency on the bulletin board.',
         'comments'    => 'When this option is selected, comments will be enabled for this communication.',
         'featured'    => 'Featured communications are highlighted on the bulletin board to draw more attention.',
-        'notify_update' => "Sends an email to those who were already recipients, telling them the communication has changed. Leave it off if you are fixing a typo: anyone added to the audience now receives it anyway, because for them it is new.",
+        'notify_update' => "Sends an email to those who were already recipients, telling them the communication has changed. Leave it off if you are fixing a typo: anyone added to the audience now receives it anyway, because for them it is new. While it is a draft or awaiting approval nothing is sent; once it is published and approved, all recipients receive it.",
         'private'     => 'Private communications can only be viewed by administrators and you.',
     ],
 
@@ -219,5 +219,22 @@ return [
         'read_desc'         => 'View the details and the full content of the sent communication.',
         'urgency_title'     => 'Urgency',
         'urgency_desc'      => 'The priority level indicates how quickly it needs to be acknowledged.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Coda 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'Awaiting approval',
+        'draft'     => 'Draft',
+        'published' => 'Published',
+        'needs_approval' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved, with the shield next to the title in the list of communications.',
+        'waiting_approver' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved by whoever approves communications.',
+    ],
+
+    'privacy' => [
+        'private'      => 'Private',
+        'private_hint' => 'Visible only to the author, the linked people and the administrator',
+        'recipients_required' => 'A private communication must stay addressed to at least one recipient: without recipients only the person who wrote it, and the administrator, could see it.',
+    ],
 ];

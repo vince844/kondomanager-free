@@ -3,6 +3,7 @@
 namespace App\Services\System;
 
 use App\Services\UpdateService;
+use Database\Seeders\AtecoSeeder;
 use Database\Seeders\ComuniSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Exception;
@@ -39,12 +40,35 @@ class SystemFinalizer
         set_time_limit(0);
         @ini_set('max_execution_time', '0');
 
-        $this->runMigrationsWithRetry();
-        $this->sincronizzaRuoliEPermessi();
-        $this->caricaElencoComuni();
-        $this->alignDatabaseVersion();
+        foreach ($this->passiDatabase() as $passo) {
+            $passo();
+        }
         $this->clearSystemCaches();
         $this->ensureStorageLink();
+    }
+
+    /**
+     * I passi che toccano il database, nell'ordine. **Un elenco solo, percorso da due vie**: da
+     * `finalize()` (pagina di aggiornamento, ripristino) e da `kondomanager:aggiorna` (immagine
+     * Docker a ogni avvio, `git pull`). Fino alla 1.11.0-beta.32 il comando li rielencava a mano:
+     * un dato di riferimento nuovo agganciato a una sola delle due vie mancava all'altra, in
+     * silenzio — lo stesso guasto della beta.55, in una forma che la suite non vedeva. Chi aggiunge
+     * un seeder mirato lo mette qui, e basta.
+     *
+     * Le chiavi sono i nomi che il comando stampa; `AggiornaCommandTest` pretende che siano
+     * esattamente questi, così un passo nuovo non può entrare senza che il test lo veda.
+     *
+     * @return array<string, callable(): void>
+     */
+    public function passiDatabase(): array
+    {
+        return [
+            'migrazioni' => fn () => $this->runMigrationsWithRetry(),
+            'ruoli_e_permessi' => fn () => $this->sincronizzaRuoliEPermessi(),
+            'comuni' => fn () => $this->caricaElencoComuni(),
+            'ateco' => fn () => $this->caricaClassificazioneAteco(),
+            'versione' => fn () => $this->alignDatabaseVersion(),
+        ];
     }
 
     /**
@@ -137,6 +161,37 @@ class SystemFinalizer
             Log::info('Elenco comuni allineato');
         } catch (Exception $e) {
             Log::warning('Caricamento elenco comuni fallito', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Porta a database la classificazione ATECO, che viaggia come file nel repository.
+     *
+     * **Perché sta qui e non basta il seeder.** Vale parola per parola quello che è scritto sopra per
+     * i Comuni: `db:seed` intero non viene mai eseguito in aggiornamento, e `AtecoSeeder` è
+     * agganciato a `DatabaseSeeder`, cioè alla **prima installazione**. Senza questa riga la
+     * migrazione della 1.11.0-beta.8 creerebbe la tabella `codici_ateco` e la lascerebbe **vuota su
+     * ogni installazione aggiornata**: il pulsante accanto al campo «Codice ATECO» non troverebbe
+     * mai niente, per nessuno, senza un errore e senza un log.
+     *
+     * ⚠️ **E non è un timore teorico: è successo.** La prima stesura della beta.8 non aveva né questo
+     * aggancio né quello in `DatabaseSeeder`, e l'ha trovato la revisione avversariale con la suite
+     * verde — esattamente come per i Comuni nella beta.59.
+     *
+     * Non solleva: un aggiornamento non deve fallire perché un aiuto alla compilazione non si è
+     * popolato. Il difetto che resterebbe è un campo da riempire a mano, cioè come si faceva prima.
+     */
+    public function caricaClassificazioneAteco(): void
+    {
+        try {
+            Artisan::call('db:seed', [
+                '--class' => AtecoSeeder::class,
+                '--force' => true,
+            ]);
+
+            Log::info('Classificazione ATECO allineata');
+        } catch (Exception $e) {
+            Log::warning('Caricamento classificazione ATECO fallito', ['error' => $e->getMessage()]);
         }
     }
 

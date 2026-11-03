@@ -119,7 +119,7 @@ final class TreasuryGuardianService
         }
 
         // 7. Generazione Azioni Suggerite
-        $azioni = $this->generaAzioniSuggerite($livello, $risultato['scenarioPessimisticoCents'], $incassiAttesiCents, $debitiPregressiScadutiCents);
+        $azioni = $this->generaAzioniSuggerite($condominioId, $livello, $risultato['scenarioPessimisticoCents'], $incassiAttesiCents, $debitiPregressiScadutiCents);
 
         return new TreasuryStatus(
             condominioId: $condominioId,
@@ -242,17 +242,20 @@ final class TreasuryGuardianService
     }
 
     /**
-     * Rate emesse con totale incassato calcolato via subquery (withSum).
+     * Rate emesse con il totale incassato calcolato via subquery (withSum), senza GROUP BY.
      *
-     * Usa Eloquent + withSum('incassi', 'importo') per sommare solo le righe
-     * di tipo 'avere' collegate alla rata, senza GROUP BY.
+     * Il totale è il **netto** delle righe con la rata fuori dall'emissione (`Rata::incassi`): AVERE − DARE, su ogni conto. Dalla
+     * 1.11.0-beta.49 (decisione 76.3) non conta il credito riportato che l'emissione scrive in AVERE con la rata (decisione 71),
+     * e sottrae lo storno di un incasso: fino alla beta.48 si sommavano le sole righe in AVERE, e un incasso stornato contava
+     * ancora come incassato. Una rettifica del riallineamento dei crediti, che sposta il credito fra due conti con la stessa rata,
+     * pesa zero.
      *
      * @return \Illuminate\Database\Eloquent\Collection<Rata>
      */
     private function queryRateEmesse(int $condominioId, ?int $gestioneId, Carbon $limite): \Illuminate\Database\Eloquent\Collection
     {
         $query = Rata::query()
-            ->withSum('incassi', 'importo')
+            ->withSum('incassi as incassi_sum_importo', \Illuminate\Support\Facades\DB::raw("CASE WHEN tipo_riga = 'avere' THEN importo ELSE -importo END"))
             ->where('stato', 'emessa')
             ->where(function($q) use ($limite) {
                 $q->whereNull('data_scadenza')
@@ -268,27 +271,44 @@ final class TreasuryGuardianService
         return $query->get();
     }
 
-    private function generaAzioniSuggerite(string $livello, int $scenarioPessimisticoCents, int $incassiAttesiCents, int $debitiPregressiScadutiCents): array
+    /**
+     * Le righe d'azione del widget aprono una pagina: `route` è il nome vero della rotta, con il prefisso
+     * `admin.` (il gestionale esiste solo lì) e con i parametri che la rotta pretende, a partire dal
+     * condominio. Un nome senza prefisso o un parametro che manca fa sollevare Ziggy, e la riga non si apre.
+     */
+    private function generaAzioniSuggerite(int $condominioId, string $livello, int $scenarioPessimisticoCents, int $incassiAttesiCents, int $debitiPregressiScadutiCents): array
     {
         $azioni = [];
+        $delCondominio = ['condominio' => $condominioId];
 
         if ($livello !== 'verde') {
             if ($incassiAttesiCents > 0) {
+                // Il programma non manda promemoria ai ritardatari: la riga porta all'elenco degli incassi, dove si
+                // registra ciò che è già arrivato in banca.
                 $azioni[] = new AzioneSuggerita(
                     tipo: 'sollecito',
                     label: 'Verifica o Sollecita Incassi',
-                    descrizione: 'Registra eventuali versamenti bancari già ricevuti o invia promemoria ai ritardatari',
+                    descrizione: 'Registra eventuali versamenti bancari già ricevuti',
                     impattoCents: $incassiAttesiCents,
-                    route: 'gestionale.rate.index', // Esempio
+                    route: 'admin.gestionale.movimenti-rate.index',
+                    routeParams: $delCondominio,
                 );
             } else {
-                // Se non ci sono rate emesse, l'unica soluzione per coprire le uscite è emetterle
+                // Se non ci sono rate emesse, l'unica soluzione per coprire le uscite è emetterle.
+                // I piani rate stanno sotto un esercizio: si apre quello aperto, o l'elenco degli esercizi se non ce n'è.
+                $esercizioId = DB::table('esercizi')
+                    ->where('condominio_id', $condominioId)
+                    ->where('stato', 'aperto')
+                    ->orderBy('id')
+                    ->value('id');
+
                 $azioni[] = new AzioneSuggerita(
                     tipo: 'emissione_rate',
                     label: 'Emetti Nuove Rate',
                     descrizione: 'Non ci sono incassi attesi sufficienti per coprire le uscite',
                     impattoCents: 0,
-                    route: 'gestionale.piani-rate.index',
+                    route: $esercizioId ? 'admin.gestionale.esercizi.piani-rate.index' : 'admin.gestionale.esercizi.index',
+                    routeParams: $esercizioId ? $delCondominio + ['esercizio' => $esercizioId] : $delCondominio,
                 );
             }
         }
@@ -300,8 +320,8 @@ final class TreasuryGuardianService
                 label: 'Gestisci Debiti Pregressi',
                 descrizione: 'Hai esposizioni storiche che non rientrano nel budget corrente',
                 impattoCents: 0, // Nessun impatto a 30gg
-                route: 'gestionale.fatture.index', 
-                routeParams: ['pregresso' => 1]
+                route: 'admin.gestionale.fatture.index',
+                routeParams: $delCondominio + ['pregresso' => 1]
             );
         }
 

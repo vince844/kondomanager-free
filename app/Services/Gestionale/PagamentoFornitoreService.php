@@ -19,6 +19,7 @@ use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\NessunEsercizioApertoException;
+use App\Exceptions\Pagamenti\NotaStornoNonCompensabileException;
 use App\Exceptions\Pagamenti\OverpaymentException;
 use App\Exceptions\Pagamenti\PagamentoGiaStornatoException;
 use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
@@ -1079,6 +1080,15 @@ class PagamentoFornitoreService
             // che un euro sia uscito dalla cassa. Le NC vere del fornitore restano
             // compensabili: qui si esclude solo l'artefatto interno.
             ->whereNull('dati_extra->nota_storno')
+            // ⚠️ **Coda 133** — anche le note generate PRIMA della correzione della Coda 124, che
+            // la chiave `nota_storno` non ce l'hanno. Si riconoscono da chi le punta: la fattura
+            // stornata porta `dati_extra.stornata_da_id`. Una query sola, nessuna migrazione.
+            //
+            // ⚠️ Questa è la SECONDA delle due liste che `pendenze()` unisce, e correggerne una
+            // sola lasciava la nota selezionabile passando per l'altra — è il difetto che il
+            // commento della Coda 124 in `PagamentoFornitoreController` aveva già dovuto scrivere
+            // una volta, e che è tornato identico qui.
+            ->whereNotIn('id', static::idNoteNateDaStorno($condominioId))
             ->orderBy('data_scadenza')
             ->get();
     }
@@ -1140,6 +1150,24 @@ class PagamentoFornitoreService
         if ((int) $fornitoriDistinti->first() !== (int) $data['fornitore_id']) {
             throw new AllocazioniInconsistentiException(
                 'Il fornitore delle fatture selezionate non corrisponde al fornitore del pagamento.'
+            );
+        }
+
+        // 2-bis. Nessuna nota da storno fra le allocazioni.
+        //
+        // ⚠️ **Coda 124, seconda linea di difesa.** La schermata non la offre più —
+        // `pendenze()` la esclude alla fonte — ma questa validazione gira su
+        // QUALUNQUE richiesta arrivi a `registraPagamento()`, costruita a mano o no.
+        // Se domani un altro elenco dimenticasse il filtro, il denaro si ferma qui e
+        // non a database.
+        // ⚠️ **Coda 133**: `eNataDaStorno()` riconosce anche le note generate PRIMA della
+        // correzione della Coda 124, che la chiave `nota_storno` non ce l'hanno — dal legame
+        // `stornata_da_id` che la fattura originale porta da sempre. Nessuna migrazione.
+        $noteStorno = $fatture->filter(fn (FatturaPassiva $f) => $f->eNataDaStorno());
+        if ($noteStorno->isNotEmpty()) {
+            throw new NotaStornoNonCompensabileException(
+                'Le seguenti note di credito sono state generate da uno storno e non sono compensabili: '.
+                $noteStorno->pluck('numero_documento')->implode(', ')
             );
         }
 
@@ -1608,5 +1636,28 @@ class PagamentoFornitoreService
         }
 
         return mb_substr("Pag. cumulativo {$n} fatture - {$nome}", 0, 255);
+    }
+
+    /**
+     * Gli id delle note di credito **nate da uno storno**, riconosciute dal legame che la fattura
+     * originale porta da sempre (`dati_extra.stornata_da_id`).
+     *
+     * Serve alle due liste che `pendenze()` unisce e alla validazione del pagamento: sta qui, in un
+     * posto solo, perché la Coda 124 aveva già pagato una volta il prezzo di chiudere una porta e
+     * lasciarne aperta un'altra. Coda 133.
+     *
+     * @return array<int, int>
+     */
+    public static function idNoteNateDaStorno(int $condominioId): array
+    {
+        return FatturaPassiva::where('condominio_id', $condominioId)
+            ->whereNotNull('dati_extra')
+            ->get(['id', 'dati_extra'])
+            ->map(fn (FatturaPassiva $f) => $f->dati_extra['stornata_da_id'] ?? null)
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
     }
 }

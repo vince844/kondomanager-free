@@ -47,6 +47,12 @@ final class LivelloCondominio implements LivelloImport
                 'Nessuno dei file caricati contiene la testata con il nome del condominio.',
                 'Carica almeno una stampa con l\'intestazione — il riparto consuntivo, i movimenti '
                 .'o le rate versate — oppure compila il modello «Condominio» di Kondomanager.',
+                // ⚠️ **Questo resta bloccante, a differenza degli altri cinque «dati assenti».**
+                // Senza condominio non c'è nessun contenitore in cui scrivere: ogni livello
+                // successivo dipende da lui, direttamente o per cascata. Non è «un file che ho
+                // scelto di non dare», è l'assenza del posto. E chi arriva qui ha già avuto la
+                // sua via d'uscita nella schermata di verifica, dove la destinazione si sceglie
+                // a mano (beta.3).
             )];
         }
 

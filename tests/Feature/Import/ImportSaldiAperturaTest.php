@@ -287,7 +287,7 @@ it('segnala il saldo intestato a chi su quell\'unità non è titolare', function
 });
 
 it('non perde il flag «nome diviso» quando due saldi solidali si fondono sulla stessa unità', function () {
-    // Trovato dalla revisione avversariale: accorpaSolidali() costruiva il CanonicalSaldo unito
+    // Trovato dalla revisione avversariale: accorpaPerPosizione() costruiva il CanonicalSaldo unito
     // senza inoltrare daNomeDiviso, che il costruttore lascia a `false` di default. Un saldo
     // solidale nato da «dividi nome doppio» perdeva quel flag in silenzio non appena si fondeva
     // con un altro saldo solidale sulla stessa unità (es. un residuo di titolare cessato) — e
@@ -295,7 +295,7 @@ it('non perde il flag «nome diviso» quando due saldi solidali si fondono sulla
     //
     // Test diretto sul metodo, via reflection: costruire l'intero contesto (condominio,
     // esercizio, gestione, unità) solo per arrivare a due righe che si fondono sarebbe più
-    // impianto che verifica — accorpaSolidali() è una trasformazione pura sui dati canonici.
+    // impianto che verifica — accorpaPerPosizione() è una trasformazione pura sui dati canonici.
     $cessato = new CanonicalSaldo(
         immobileRef: 'u1', soggettoNome: null, importoCents: 3000,
         daTitolareCessato: true, daNomeDiviso: false,
@@ -305,7 +305,7 @@ it('non perde il flag «nome diviso» quando due saldi solidali si fondono sulla
         daTitolareCessato: false, daNomeDiviso: true,
     );
 
-    $metodo = new ReflectionMethod(LivelloSaldi::class, 'accorpaSolidali');
+    $metodo = new ReflectionMethod(LivelloSaldi::class, 'accorpaPerPosizione');
     $metodo->setAccessible(true);
 
     $stub = new class
@@ -316,10 +316,12 @@ it('non perde il flag «nome diviso» quando due saldi solidali si fondono sulla
         }
     };
 
-    $risultato = $metodo->invoke(new LivelloSaldi, [
+    $avvisi = [];
+
+    $risultato = $metodo->invokeArgs(new LivelloSaldi, [[
         [$cessato, $stub, null],
         [$diviso, $stub, null],
-    ]);
+    ], &$avvisi]);
 
     expect($risultato)->toHaveCount(1);
 
@@ -328,5 +330,101 @@ it('non perde il flag «nome diviso» quando due saldi solidali si fondono sulla
 
     expect($fuso->importoCents)->toBe(5000)
         ->and($fuso->daTitolareCessato)->toBeTrue()
-        ->and($fuso->daNomeDiviso)->toBeTrue();
+        ->and($fuso->daNomeDiviso)->toBeTrue()
+        // La fusione non è più muta: dalla beta.5 dice che è avvenuta, perché il modello
+        // compilabile a mano invita a scrivere due righe sulla stessa posizione.
+        ->and($avvisi[0]->codice)->toBe('saldi.righe_fuse_su_una_posizione');
+});
+
+it('somma due righe intestate alla stessa persona invece di perderne una', function () {
+    // ⚠️ **Il difetto che la revisione avversariale della beta.5 ha misurato.** L'accorpamento
+    // valeva solo per i saldi solidali; due righe con la **stessa persona** sulla stessa unità
+    // arrivavano intere al ciclo di scrittura, la prima creava il `Saldo` e la seconda finiva in
+    // `saltati` — un contatore che ovunque nel prodotto significa «era già in archivio».
+    // € 300 sparivano, il lotto si chiudeva «completato», e sul modello manuale la quadratura non
+    // c'è per costruzione, quindi niente lo annunciava.
+    $conguaglio = new CanonicalSaldo(
+        immobileRef: 'u1', soggettoNome: 'ROSSI MARIO', importoCents: 12050,
+        causale: 'conguaglio 2024/2025',
+    );
+    $morosita = new CanonicalSaldo(
+        immobileRef: 'u1', soggettoNome: 'ROSSI MARIO', importoCents: 30000,
+        causale: 'rate non versate 2025',
+    );
+
+    $metodo = new ReflectionMethod(LivelloSaldi::class, 'accorpaPerPosizione');
+    $metodo->setAccessible(true);
+
+    $immobile = new class
+    {
+        public function getKey(): int
+        {
+            return 1;
+        }
+    };
+    $persona = new class
+    {
+        public function getKey(): int
+        {
+            return 7;
+        }
+    };
+
+    $avvisi = [];
+
+    $risultato = $metodo->invokeArgs(new LivelloSaldi, [[
+        [$conguaglio, $immobile, $persona],
+        [$morosita, $immobile, $persona],
+    ], &$avvisi]);
+
+    expect($risultato)->toHaveCount(1)
+        ->and($risultato[0][0]->importoCents)->toBe(42050)
+        // Il nome resta, ed è ciò che distingue questa fusione da quella dei solidali.
+        ->and($risultato[0][0]->soggettoNome)->toBe('ROSSI MARIO')
+        // Le due causali si uniscono: il perché di una posizione aperta è l'unica cosa che
+        // nessuna stampa porta, e perderne metà sarebbe scegliere a caso quale metà.
+        ->and($risultato[0][0]->causale)->toBe('conguaglio 2024/2025 · rate non versate 2025')
+        ->and($avvisi[0]->codice)->toBe('saldi.righe_fuse_su_una_posizione');
+});
+
+it('tiene distinte due persone diverse sulla stessa unità', function () {
+    // La controprova: l'accorpamento è per **posizione**, non per unità. Fondere i comproprietari
+    // trasformerebbe due morosità in una, intestata a uno solo.
+    $uno = new CanonicalSaldo(immobileRef: 'u1', soggettoNome: 'BIANCHI ANNA', importoCents: 10000);
+    $due = new CanonicalSaldo(immobileRef: 'u1', soggettoNome: 'VERDI LUCA', importoCents: 20000);
+
+    $metodo = new ReflectionMethod(LivelloSaldi::class, 'accorpaPerPosizione');
+    $metodo->setAccessible(true);
+
+    $immobile = new class
+    {
+        public function getKey(): int
+        {
+            return 1;
+        }
+    };
+    $anna = new class
+    {
+        public function getKey(): int
+        {
+            return 7;
+        }
+    };
+    $luca = new class
+    {
+        public function getKey(): int
+        {
+            return 8;
+        }
+    };
+
+    $avvisi = [];
+
+    $risultato = $metodo->invokeArgs(new LivelloSaldi, [[
+        [$uno, $immobile, $anna],
+        [$due, $immobile, $luca],
+    ], &$avvisi]);
+
+    expect($risultato)->toHaveCount(2)
+        ->and($avvisi)->toBe([]);
 });

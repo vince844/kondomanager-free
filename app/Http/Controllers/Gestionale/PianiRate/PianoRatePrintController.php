@@ -81,8 +81,15 @@ class PianoRatePrintController extends Controller
 
         $mpdf->SetHeader($condominio->nome . '||Scadenziario Rate – ' . $pianoRate->nome);
 
-        return response($mpdf->Output('prospetto_rate.pdf', 'I'))
-            ->header('Content-Type', 'application/pdf');
+        // ⚠️ `Output(..., 'I')` scrive sull'output buffer e torna vuota: il browser riceveva il PDF
+        // (e il nome fisso `prospetto_rate.pdf`) dall'echo di mPDF, ma il corpo della risposta Laravel
+        // era vuoto e nessun test poteva ispezionarlo. STRING_RETURN restituisce i byte veri; il nome
+        // parlante viene da PdfService::nomeFile. Stessa trappola e stessa cura del Libro Giornale (beta.23).
+        $nomeFile = PdfService::nomeFile('scadenziario-rate', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     // -------------------------------------------------------------------------
@@ -96,7 +103,7 @@ class PianoRatePrintController extends Controller
      * Usufruttuario / Comodatario) mostra la quota millesimale e l'importo
      * ripartito su ciascuna tabella millesimale configurata nel piano dei conti.
      *
-     * Orientamento: Landscape, formato adattivo (A4-L fino a 6 tabelle, A3-L oltre).
+     * Orientamento: orizzontale, formato A4 sempre (dalla 1.11.0-beta.27: prima A3 oltre cinque tabelle).
      */
     public function ripartoTabelle(
         Request $request,
@@ -110,11 +117,13 @@ class PianoRatePrintController extends Controller
 
         $nTabelle = count($matrice['tabelle']);
 
-        // Adatta formato pagina al numero di tabelle:
-        // ≤ 5 tabelle → A4 Landscape (297 × 210 mm)
-        // 6-8 tabelle → A3 Landscape (420 × 297 mm)
-        // > 8 tabelle → A3 Landscape con font ridotto (gestito nella view)
-        $formato = $nTabelle > 5 ? 'A3-L' : 'A4-L';
+        // ⚠️ **Sempre A4, orizzontale.** Fino alla 1.11.0-beta.26 oltre cinque tabelle il foglio
+        // diventava A3: nessuna stampante di casa o di studio lo ha, e un amministratore ci ha
+        // mostrato il risultato — l'A3 ristampato dal browser su un A4 verticale, illeggibile e su
+        // due pagine, contro l'A4 orizzontale a una pagina del programma che usava prima. Deciso da
+        // Vincenzo il 13/09/2026: si stampa sempre in A4 e si sceglie solo l'orientamento; con molte
+        // tabelle il modello spezza in blocchi di pagina (`array_chunk`), non allarga il foglio.
+        $formato = 'A4-L';
 
         $data = [
             'condominio' => $condominio,
@@ -122,20 +131,38 @@ class PianoRatePrintController extends Controller
             'pianoRate'  => $pianoRate,
             'matrice'    => $matrice,
             'nTabelle'   => $nTabelle,
+            // La firma dell'amministratore in una riga sola, sotto le note, e un piè di pagina che
+            // sta nel margine: vedi `pdf.base`.
+            'firma_compatta' => true,
+            'piede_compatto' => true,
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.riparto_tabelle', $data, [
             'format'      => $formato,
             'orientation' => 'L',
-            'margin_top'  => 32,
+            // 31: l'intestazione di pagina parte a 10 mm (margin_header); il suo testo finisce a 27,4 mm
+            // ma il filetto sotto (`.header` in pdf/styles: padding-bottom 10px + bordo 2px) arriva a
+            // 30,95 mm. A 30 le maiuscole del titolo gli stavano a 0,2 mm e le parentesi di «(Blocco 2
+            // di 2)» lo toccavano; a 28 lo barrava. Su un A4 orizzontale ogni millimetro è una riga in
+            // più per pagina. Se il nome del condominio va a capo (oltre ~88 caratteri a 16pt)
+            // l'intestazione cresce di 7,9 mm e copre il titolo: caso non gestito, già così con il 32.
+            'margin_top'  => 31,
             'margin_left' => 8,
             'margin_right'=> 8,
+            // Il piè di pagina standard misura 10,6 mm (mPDF rende la tabella a 9pt, non ai 7 del div)
+            // e con margin_footer 5 non sta nei 7 mm di 12 − 5: il filetto tagliava firma e ultima
+            // riga. La variante `piede_compatto` di pdf.base sta in 6,5 mm; 15 di margine erano aria,
+            // e con 48 righe quei millimetri decidono se legenda e firma stanno nella seconda pagina.
+            'margin_bottom' => 12,
         ]);
 
         $mpdf->SetHeader($condominio->nome . '||Riparto per Tabella – ' . $pianoRate->nome);
 
-        return response($mpdf->Output('riparto_tabelle.pdf', 'I'))
-            ->header('Content-Type', 'application/pdf');
+        $nomeFile = PdfService::nomeFile('riparto-tabelle', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     /**
@@ -156,8 +183,8 @@ class PianoRatePrintController extends Controller
 
         $nCapitoli = count($matrice['capitoli']);
 
-        // Adatta formato pagina al numero di capitoli:
-        $formato = $nCapitoli > 5 ? 'A3-L' : 'A4-L';
+        // Sempre A4 orizzontale, come la gemella per tabelle: vedi la nota lì (beta.27).
+        $formato = 'A4-L';
 
         $data = [
             'condominio' => $condominio,
@@ -165,20 +192,27 @@ class PianoRatePrintController extends Controller
             'pianoRate'  => $pianoRate,
             'matrice'    => $matrice,
             'nCapitoli'  => $nCapitoli,
+            'firma_compatta' => true,
+            'piede_compatto' => true,
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.riparto_capitoli', $data, [
             'format'      => $formato,
             'orientation' => 'L',
-            'margin_top'  => 32,
+            // Stessi margini e stesse ragioni del riparto per tabella, qui sopra.
+            'margin_top'  => 31,
             'margin_left' => 8,
             'margin_right'=> 8,
+            'margin_bottom' => 12,
         ]);
 
         $mpdf->SetHeader($condominio->nome . '||Riparto per Capitolo di Spesa – ' . $pianoRate->nome);
 
-        return response($mpdf->Output('riparto_capitoli.pdf', 'I'))
-            ->header('Content-Type', 'application/pdf');
+        $nomeFile = PdfService::nomeFile('riparto-capitoli', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     // -------------------------------------------------------------------------

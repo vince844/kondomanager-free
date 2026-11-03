@@ -41,7 +41,7 @@ const fuoriStruttura = computed(() => props.livello >= 3)
 const AVVISO_FUORI_STRUTTURA =
   'Voce fuori struttura — il piano dei conti prevede due livelli, capitolo e sottoconto. '
   + 'Finché resta qui, un piano rate generato includendo tutte le voci NON la addebita: le rate '
-  + 'chiedono meno del dovuto. Spostala sotto un capitolo di primo livello, oppure eliminala.'
+  + 'chiedono meno del dovuto. Spostala sotto un capitolo di primo livello.'
 
 interface Emits {
   (e: 'seleziona', conto: Conto): void

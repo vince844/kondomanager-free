@@ -1,0 +1,8 @@
+{
+  "features": [
+    "LE QUATTRO STAMPE CHE RISPONDEVANO VUOTE — Un difetto di famiglia, trovato nel Libro Giornale (beta.23) e nelle stampe del piano rate (beta.27): «Output(..., 'I')» di mPDF scrive il PDF sull'uscita e restituisce una stringa vuota, così il browser riceveva il file ma la risposta dell'applicazione era vuota e nessun test poteva leggerla. Restavano quattro stampe con la stessa forma — estratto conto dell'anagrafica, modello F24, distinta e ripartizione delle spese del piano dei conti — e ora tutte restituiscono i byte, con un nome di file dichiarato.",
+    "I NOMI DEI FILE — Estratto conto: «estratto-conto-<condominio>-2026-<anagrafica>.pdf» invece di «EC_Nome_Cognome_Esercizio anno 2026.pdf». Distinta e ripartizione delle spese: «distinta-spese-<condominio>-2026-<piano>.pdf» e «ripartizione-spese-…» invece di «distinta_spese.pdf», uguale per tutti; il piano dei conti è uno per gestione, e ordinaria e straordinaria hanno il loro. La distinta del pagamento fornitore usciva «Distinta_PAG-PAG-…», col prefisso raddoppiato: ora «distinta-pagamento-pag-2026-00001-<data>.pdf».",
+    "TEST SCRITTI PRIMA DELLA CURA — Cinque: quattro fallivano con un corpo a zero byte, il quinto sul nome. Ogni stampa ha ora un'asserzione sui byte e sul nome dichiarato. In tutto il gestionale non resta nessun «Output(..., 'I')».",
+    "COSA RESTA — I Code 77/78 col dettaglio persistito del riparto, che la beta.27 dava alla .28, escono nella .29: toccano il database e sono una beta intera."
+  ]
+}

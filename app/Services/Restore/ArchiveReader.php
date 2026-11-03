@@ -4,7 +4,7 @@ namespace App\Services\Restore;
 
 use App\Services\Restore\Exceptions\InvalidArchivePasswordException;
 use App\Services\Restore\Exceptions\MalformedArchiveException;
-use RuntimeException;
+use App\Services\Restore\Exceptions\RestoreFileException;
 use ZipArchive;
 
 /**
@@ -43,15 +43,16 @@ class ArchiveReader
         }
 
         if (! is_file($this->path)) {
-            throw new RuntimeException("Archivio non trovato: {$this->path}");
+            // L'avvio controlla che l'archivio ci sia: qui manca uno step dopo (spostato o eliminato nel frattempo).
+            // Il messaggio arriva alla finestra dei backup: il percorso va solo nel log del server.
+            throw new RestoreFileException(MessaggiDelRipristino::di('archive_missing'), $this->path);
         }
 
         $zip = new ZipArchive;
 
         if ($zip->open($this->path, ZipArchive::RDONLY) !== true) {
-            throw new MalformedArchiveException(
-                "Impossibile aprire l'archivio {$this->path}: file corrotto o non zip."
-            );
+            // Senza il percorso: il messaggio arriva alla finestra dei backup.
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('archive_not_zip'));
         }
 
         if ($this->password !== null && $this->password !== '') {
@@ -107,20 +108,16 @@ class ArchiveReader
 
         if ($raw === false) {
             if ($this->isEncrypted()) {
-                throw new InvalidArchivePasswordException(
-                    'Archivio cifrato: password mancante o errata.'
-                );
+                throw new InvalidArchivePasswordException(MessaggiDelRipristino::di('archive_password'));
             }
 
-            throw new MalformedArchiveException(
-                "L'archivio non contiene un manifest.json leggibile: non è un backup di KondoManager."
-            );
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('archive_no_manifest'));
         }
 
         $manifest = json_decode($raw, true);
 
         if (! is_array($manifest)) {
-            throw new MalformedArchiveException('manifest.json corrotto: non è JSON valido.');
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('archive_bad_manifest'));
         }
 
         return $manifest;
@@ -147,7 +144,7 @@ class ArchiveReader
             $stat = $this->zip->statIndex($index);
 
             if ($stat === false) {
-                throw new MalformedArchiveException("Voce #{$index} illeggibile: archivio corrotto.");
+                throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_unreadable_index', ['index' => $index]));
             }
 
             $name = (string) $stat['name'];
@@ -181,22 +178,16 @@ class ArchiveReader
     private function assertSafeEntryName(string $name): void
     {
         if ($name === '' || str_contains($name, "\0") || str_contains($name, '\\')) {
-            throw new MalformedArchiveException(
-                "Voce con nome illegale nell'archivio: possibile manomissione."
-            );
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_illegal_name'));
         }
 
         if (str_starts_with($name, '/')) {
-            throw new MalformedArchiveException(
-                "Voce con percorso assoluto nell'archivio (\"{$name}\"): possibile attacco zip-slip."
-            );
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_absolute_path', ['name' => $name]));
         }
 
         foreach (explode('/', $name) as $segment) {
             if ($segment === '..' || $segment === '.') {
-                throw new MalformedArchiveException(
-                    "Voce con traversal di percorso nell'archivio (\"{$name}\"): possibile attacco zip-slip."
-                );
+                throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_traversal', ['name' => $name]));
             }
         }
 
@@ -205,9 +196,7 @@ class ArchiveReader
             || str_starts_with($name, 'files/');
 
         if (! $isAllowed) {
-            throw new MalformedArchiveException(
-                "Voce inattesa nell'archivio (\"{$name}\"): un backup di KondoManager non la conterrebbe."
-            );
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_unexpected', ['name' => $name]));
         }
     }
 
@@ -219,9 +208,7 @@ class ArchiveReader
         if ($this->zip->getExternalAttributesIndex($index, $opsys, $attributes)
             && $opsys === ZipArchive::OPSYS_UNIX
             && ((($attributes >> 16) & 0xF000) === 0xA000)) {
-            throw new MalformedArchiveException(
-                "Voce symlink nell'archivio (\"{$name}\"): possibile manomissione."
-            );
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_symlink', ['name' => $name]));
         }
     }
 
@@ -232,28 +219,32 @@ class ArchiveReader
         $target = rtrim($targetDir, '/').'/'.$name;
         $directory = dirname($target);
 
-        if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
-            throw new RuntimeException("Impossibile creare la cartella di estrazione {$directory}.");
+        // L'avviso del sistema su cartella e file porterebbe il percorso del server fino alla finestra dei backup: il
+        // messaggio dice che cosa non è riuscito, il percorso e l'avviso vanno nel log del server.
+        if (! is_dir($directory)) {
+            [$creata, $avviso] = RestoreFileException::raccogliAvviso(fn () => mkdir($directory, 0755, true));
+
+            if (! $creata && ! is_dir($directory)) {
+                throw new RestoreFileException(MessaggiDelRipristino::di('extract_write_failed'), $directory, $avviso);
+            }
         }
 
         $stream = $this->zip->getStream($name);
 
         if ($stream === false) {
             if (($stat['encryption_method'] ?? ZipArchive::EM_NONE) !== ZipArchive::EM_NONE) {
-                throw new InvalidArchivePasswordException(
-                    'Archivio cifrato: password mancante o errata.'
-                );
+                throw new InvalidArchivePasswordException(MessaggiDelRipristino::di('archive_password'));
             }
 
-            throw new MalformedArchiveException("Voce \"{$name}\" illeggibile: archivio corrotto.");
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_unreadable', ['name' => $name]));
         }
 
-        $out = fopen($target, 'wb');
+        [$out, $avviso] = RestoreFileException::raccogliAvviso(fn () => fopen($target, 'wb'));
 
         if ($out === false) {
             fclose($stream);
 
-            throw new RuntimeException("Impossibile scrivere il file estratto {$target}.");
+            throw new RestoreFileException(MessaggiDelRipristino::di('extract_write_failed'), $target, $avviso);
         }
 
         $written = stream_copy_to_stream($stream, $out);
@@ -265,9 +256,7 @@ class ArchiveReader
         if ($written === false || $written !== (int) $stat['size']) {
             @unlink($target);
 
-            throw new MalformedArchiveException(
-                "Voce \"{$name}\" estratta incompleta: attesi {$stat['size']} byte."
-            );
+            throw new MalformedArchiveException(MessaggiDelRipristino::di('entry_incomplete', ['name' => $name, 'size' => (int) $stat['size']]));
         }
 
         return (int) $written;

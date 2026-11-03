@@ -63,15 +63,19 @@ class Rata extends Model
     }
 
     /**
-     * Righe scritture di tipo 'avere' collegate a questa rata.
+     * Le righe del giornale con questa rata, fuori dall'emissione: incassi, compensazioni, rimborsi, i loro storni e le rettifiche
+     * del riallineamento dei crediti. Si sommano **al netto** (AVERE − DARE, `TreasuryGuardianService::queryRateEmesse()`), e il
+     * netto è quanto della rata è già stato incassato.
      *
-     * Usata con withSum('incassi', 'importo') per calcolare il totale
-     * incassato come subquery, evitando GROUP BY + aggregazione manuale.
+     * Due correzioni della 1.11.0-beta.49 (decisione 76.3). L'emissione scrive in AVERE, con la rata, il credito riportato di una
+     * quota a credito (decisione 71): non è un incasso, e senza il filtro sull'emissione la previsione di cassa lo contava come
+     * denaro già entrato. E fino alla beta.48 la relazione prendeva le sole righe in AVERE: la rettifica di un incasso stornato,
+     * in DARE, non si sottraeva, e l'incasso annullato contava ancora come incassato.
      */
     public function incassi(): HasMany
     {
         return $this->hasMany(RigaScrittura::class, 'rata_id')
-                     ->where('tipo_riga', 'avere');
+                     ->whereHas('scrittura', fn ($s) => $s->where(fn ($t) => $t->whereNull('tipo_movimento')->orWhere('tipo_movimento', '!=', 'emissione_rata')));
     }
 
     // === SCOPES ===
@@ -83,6 +87,17 @@ class Rata extends Model
     public function scopeEmessa($query)
     {
         return $query->where('stato', 'emessa');
+    }
+
+    /**
+     * Per `whereExists` / `whereNotExists` nelle query su `rate`: la rata è a giornale, cioè almeno una sua quota ha una
+     * scrittura (decisione 34, 1.11.0-beta.42). Lo stato «emessa» può non dirlo: fino alla beta.41 l'emissione lo scriveva
+     * anche su una rata senza scritture, fatta solo di quote a credito, e i dati di allora restano così.
+     */
+    public static function aGiornale(string $colonnaRata = 'rate.id'): \Closure
+    {
+        return fn ($q) => $q->select(\Illuminate\Support\Facades\DB::raw(1))->from('rate_quote as q_gio')
+            ->whereColumn('q_gio.rata_id', $colonnaRata)->whereNotNull('q_gio.scrittura_contabile_id');
     }
 
     public function scopeChiusa($query)

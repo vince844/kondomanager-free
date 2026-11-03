@@ -1,5 +1,34 @@
 <?php
 
+// Le reti private davvero: quelle da cui un proxy si connette all'applicazione e da cui nessuno arriva da
+// internet. Il segno PRIVATE_SUBNETS (e il suo sinonimo private_ranges) nel .env vale questo elenco.
+$retiPrivate = [
+    '127.0.0.0/8', '::1/128',                           // loopback
+    '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',    // RFC 1918
+    '100.64.0.0/10',                                    // CGNAT (RFC 6598), molti hosting condivisi
+    '169.254.0.0/16', 'fe80::/10',                      // link-local
+    'fc00::/7',                                         // ULA, le reti private IPv6
+    // Le stesse reti IPv4 come le riporta un server a doppio stack (::ffff:a.b.c.d): solo loro, non
+    // ::ffff:0:0/96, che comprende ogni IPv4 di internet.
+    '::ffff:127.0.0.0/104', '::ffff:10.0.0.0/104', '::ffff:172.16.0.0/108', '::ffff:192.168.0.0/112',
+    '::ffff:100.64.0.0/106', '::ffff:169.254.0.0/112',
+];
+
+// Il valore del .env, con il segno sostituito dall'elenco; ogni altro valore ('*', una lista di
+// indirizzi, nessun valore) arriva al middleware com'era.
+$proxiesFidati = env('TRUSTED_PROXIES');
+
+if (is_string($proxiesFidati)) {
+    $vociDelValore = array_map('trim', explode(',', $proxiesFidati));
+
+    if (array_intersect($vociDelValore, ['PRIVATE_SUBNETS', 'private_ranges']) !== []) {
+        $proxiesFidati = array_values(array_unique(array_merge(
+            array_diff($vociDelValore, ['PRIVATE_SUBNETS', 'private_ranges', '']),
+            $retiPrivate
+        )));
+    }
+}
+
 return [
 
     /*
@@ -29,10 +58,19 @@ return [
     | Il valore risolto sopravvive anche a `php artisan config:cache`.
     |
     | VALORE CONSIGLIATO — dalla beta.65: PRIVATE_SUBNETS
-    | È un token che Symfony sostituisce con l'elenco delle reti private (loopback, RFC1918,
-    | CGNAT 100.64/10 e gli equivalenti IPv6). Si fida solo di un proxy che si connette da una di
-    | quelle reti — cioè il caso dell'hosting condiviso e di nginx/apache davanti a php-fpm — e da
-    | internet NON è falsificabile, perché chi arriva da fuori ha un REMOTE_ADDR pubblico.
+    | È un segno che questo file sostituisce con l'elenco delle reti private ($retiPrivate, qui
+    | sopra): loopback, RFC1918, CGNAT 100.64/10, link-local, e le reti IPv6 locali (ULA fc00::/7,
+    | fe80::/10). Si fida solo di un proxy che si connette da una di quelle reti — cioè il caso
+    | dell'hosting condiviso e di nginx/apache davanti a php-fpm — e da internet NON è
+    | falsificabile, perché chi arriva da fuori ha un REMOTE_ADDR pubblico.
+    |
+    | L'elenco è nostro e comprende solo reti da cui non si arriva da internet: il segno non arriva
+    | così com'è a Symfony, che con lo stesso nome (IpUtils::PRIVATE_SUBNETS) ha un elenco più
+    | largo. È ciò che tiene veri i limiti per indirizzo (login, sfida 2FA): ci si fida solo del
+    | proxy, e l'indirizzo di chi arriva da fuori resta il suo. Per chi ha già
+    | PRIVATE_SUBNETS nel .env vale ogni proxy su una rete privata vera,
+    | anche quando il server lo riporta come IPv6 (::ffff:172.18.0.2): quelle forme sono
+    | nell'elenco. Anche il nome che Symfony accetta come sinonimo, private_ranges, vale così.
     |
     | È il valore che l'installatore scrive da solo (UpgradePatchServiceProvider), e ha sostituito
     | il precedente '*'. Fino alla beta.64 quel '*' veniva scritto in base a HTTP_HOST, cioè a
@@ -79,6 +117,6 @@ return [
     |
     */
 
-    'proxies' => env('TRUSTED_PROXIES'),
+    'proxies' => $proxiesFidati,
 
 ];

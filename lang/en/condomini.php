@@ -11,6 +11,7 @@ return [
     'error_edit_building'     => "An error occurred while updating the building.",
     'success_delete_building' => "The building was deleted successfully.",
     'error_delete_building'   => "An error occurred while deleting the building.",
+    'limite_condomini_raggiunto' => "This installation has reached the maximum number of buildings allowed.",
 
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
@@ -50,7 +51,7 @@ return [
         'actions'        => 'Actions',
         'residents'      => 'Residents',
         'residents_desc' => 'Quickly view the complete list of people associated with this building.',
-        'total'          => 'Totals',
+        'total'          => '{1} 1 in total|[2,*] :count in total',
         'click_to_manage'=> 'Click to manage',
     ],
 

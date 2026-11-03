@@ -3,28 +3,25 @@
 namespace App\Http\Controllers\Documenti\Utenti;
 
 use App\Events\Documenti\NotifyAdminOfCreatedDocumento;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
 use App\Http\Requests\Documento\Utenti\UpdateDocumentoRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
-use App\Http\Resources\Condominio\CondominioOptionsResource;
-use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Portale\CondominioPortaleResource;
+use App\Http\Resources\Portale\DocumentoPortaleResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
-use App\Http\Resources\Documenti\DocumentoResource;
-use App\Models\Anagrafica;
 use App\Models\CategoriaDocumento;
-use App\Models\Condominio;
 use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasAnagrafica;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Arr;
 
@@ -56,8 +53,16 @@ class DocumentoController extends Controller
         $condomini = $anagrafica->condomini;
 
         return Inertia::render('documenti/user/DocumentiNew', [
-            'condomini' => CondominioResource::collection($condomini),
+            // Coda 260: i propri condomìni con id e nome, senza le note dell'amministratore.
+            'condomini' => CondominioPortaleResource::collection($condomini),
             'categoria' => (int) $validated['categoria'],
+            // ⚠️ **L'elenco completo, dalla 1.11.0-beta.10.** Prima non serviva: la categoria era
+            // una sola e arrivava dall'indirizzo, invisibile. Ora il condòmino può aggiungerne —
+            // ed è il senso della beta — quindi il modulo deve poterle mostrare. Senza questa
+            // riga il campo ci sarebbe e resterebbe vuoto, che è peggio del campo assente.
+            'categories' => CategoriaDocumentoResource::collection(
+                CategoriaDocumento::orderBy('name')->get()
+            ),
             // Il limite lo decide il server, non noi.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
         ]);
@@ -86,7 +91,7 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             $uploadedFile = $request->file('file');
 
-            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+            $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
             $documento = Documento::create([
                 'name'         => $validated['name'],
@@ -95,10 +100,11 @@ class DocumentoController extends Controller
                 'mime_type'    => $uploadedFile->getClientMimeType(),
                 'file_size'    => $uploadedFile->getSize(),
                 'created_by'   => $validated['created_by'],
-                'category_id'  => $validated['category_id'],
                 'is_published' => $validated['is_published'],
                 'is_approved'  => $validated['is_approved'],
             ]);
+
+            $documento->categorie()->attach($validated['categorie']);
 
             $documento->condomini()->attach($validated['condomini_ids']);
 
@@ -151,16 +157,22 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
-        $documento->loadMissing(['categoria', 'condomini', 'anagrafiche']);
+        $this->soloDellArchivio($documento);
+
+        // Fino alla 1.11.0-beta.39 questa pagina mandava anche 'condomini' (l'elenco intero,
+        // Condominio::all()) e 'anagrafiche' (Anagrafica::all(), con codice fiscale, email, PEC e
+        // telefono di tutti) — nessuno dei due era nella dichiarazione dei props di
+        // DocumentiEdit.vue, e UpdateDocumentoRequest non accetta né condomini_ids né anagrafiche
+        // in ingresso: erano dati morti, mandati al browser di ogni condòmino con questo permesso
+        // senza che nulla li leggesse (Coda 183).
+        $documento->loadMissing('categorie');
 
         return Inertia::render('documenti/user/DocumentiEdit', [
-            'documento'   => new DocumentoResource($documento),
+            'documento'   => new DocumentoPortaleResource($documento),
             'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
-            'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
             // Il limite lo decide il server, non noi.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
-        ]); 
+        ]);
     }
 
     /**
@@ -169,6 +181,8 @@ class DocumentoController extends Controller
     public function update(UpdateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
         Gate::authorize('update',$documento);
+
+        $this->soloDellArchivio($documento);
 
         $validated = $request->validated();
 
@@ -179,12 +193,10 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::disk('local')->exists($documento->path)) {
-                    Storage::disk('local')->delete($documento->path);
-                }
+                app(ArchivioDocumenti::class)->elimina($documento->path);
 
                 $uploadedFile = $request->file('file');
-                $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
                 // Update file related fields
                 $documento->path = $path;
@@ -198,11 +210,22 @@ class DocumentoController extends Controller
                 'path'         => $documento->path,
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
-                'created_by'   => $validated['created_by'] ?? $documento->created_by,
-                'category_id'  => $validated['category_id'] ?? $documento->category_id,
-                'is_published' => $validated['is_published'],
-                'is_approved'  => $validated['is_approved'],
+                // Coda 303: autore, pubblicazione e approvazione non cambiano in modifica. Chi
+                // modifica il documento di un altro (con un ruolo su misura) non ne diventa l'autore,
+                // e la modifica non lo approva né lo ritira: l'approvazione cambia solo
+                // dall'interruttore dell'amministratore (decisione 127.2).
+                'updated_by'   => Auth::id(),
             ]);
+
+            // ⚠️ **Solo se il modulo le ha mandate, ed è la protezione che conta di più qui.**
+            // Il condòmino arriva a questo modulo da **una** categoria, quella che stava sfogliando.
+            // Se il modulo ne mandasse una sola, un condòmino che corregge il nome di un documento
+            // che sta in tre categorie **ne cancellerebbe due senza saperlo** — nessun errore,
+            // nessun messaggio. È la ragione per cui la tendina multipla va anche qui, e non solo
+            // nei moduli dell'amministratore.
+            if (isset($validated['categorie'])) {
+                $documento->categorie()->sync($validated['categorie']);
+            }
 
             DB::commit();
 
@@ -227,14 +250,14 @@ class DocumentoController extends Controller
     {
         Gate::authorize('delete', $documento);
 
+        $this->soloDellArchivio($documento);
+
         try {
             // Start a transaction in case you need to roll back
             DB::beginTransaction();
 
             // Delete the file from storage
-            if (Storage::disk('local')->exists($documento->path)) {
-                Storage::disk('local')->delete($documento->path);
-            }
+            app(ArchivioDocumenti::class)->elimina($documento->path);
 
             // Delete the database record
             $documento->delete();
@@ -279,15 +302,17 @@ class DocumentoController extends Controller
     {
         Gate::authorize('view',$documento);
 
+        $this->soloDellArchivio($documento);
+
         try {
 
-            if (!Storage::disk('local')->exists($documento->path)) {
+            if (!app(ArchivioDocumenti::class)->esiste($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found'))
                 );
             }
 
-            return Storage::disk('local')->download($documento->path, $documento->nomeDiScaricamento());
+            return app(ArchivioDocumenti::class)->scarica($documento->path, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
 
@@ -301,5 +326,16 @@ class DocumentoController extends Controller
             );
 
         }
+    }
+
+    /**
+     * Le rotte dei documenti del portale lavorano sui documenti dell'archivio, quelli senza un proprietario, come li
+     * mostra il suo elenco (`DocumentoService::getUserBaseQuery`), anche per chi ha il pannello: un documento di una
+     * persona, di un fornitore, di un'unità o di una fattura per queste rotte non c'è (404). Si apre e si cambia dalla
+     * pagina del proprietario, con il suo permesso.
+     */
+    private function soloDellArchivio(Documento $documento): void
+    {
+        abort_unless($documento->documentable_type === null, 404);
     }
 }

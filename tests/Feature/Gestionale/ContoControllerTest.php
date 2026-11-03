@@ -342,9 +342,9 @@ test('Update: modificare una voce di terzo livello non accusa di una scelta mai 
 
     // Dice dov'è la voce, non cosa avrebbe scelto...
     expect($messaggio)->toContain('terzo livello')
-        // ...e dice cosa fare, con l'alternativa: non tutti quei residui vanno salvati.
+        // ...e dice cosa fare: il capitolo padre di primo livello. L'eliminazione non è proposta, perché una voce con delle righe di fattura non si elimina.
         ->and($messaggio)->toContain('primo livello')
-        ->and($messaggio)->toContain('elimina')
+        ->and($messaggio)->not->toContain('elimina')
         // ...e soprattutto non accusa di una selezione mai avvenuta.
         ->and($messaggio)->not->toContain('Il padre selezionato');
 });

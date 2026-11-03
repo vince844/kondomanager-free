@@ -110,6 +110,24 @@ function coefficientiSottoIlCento(overrides: Record<string, unknown> = {}) {
     };
 }
 
+/** La spesa ad personam di un'unità senza titolare di diritto reale — 1.11.0-beta.29. */
+function adPersonamSenzaTitolare(overrides: Record<string, unknown> = {}) {
+    return {
+        immobile_id: 9,
+        immobile_nome: 'Interno 9',
+        // La riga con l'immobile non ha un conto: è la forma che il prodotto produce.
+        conto_id: null,
+        conto_nome: null,
+        riga_descrizione: 'Rifacimento balcone',
+        tabella_id: null,
+        tabella_nome: null,
+        importo: 10000,
+        ruolo_richiesto: null,
+        motivo: 'ad_personam_senza_titolare',
+        ...overrides,
+    };
+}
+
 function monta(scoperti: Record<string, unknown>[]) {
     return mount(ScopertoWarning, { props: { scoperti: scoperti as never } });
 }
@@ -212,5 +230,23 @@ describe('le tre forme insieme', () => {
         // Con `immobile_id` nullo la vecchia formula («quota non assegnabile») descriveva
         // una cosa che non è: qui non c'è nessuna quota di nessuno.
         expect(w.text()).toContain('importo non ripartibile');
+    });
+});
+
+
+describe('la spesa ad personam senza titolare', () => {
+    test('dice che manca il titolare dell\'unità, con l\'importo che si perderebbe, e porta all\'unità', () => {
+        // Fino alla beta.28 questo caso non arrivava qui: il motore lo perdeva con un avviso nei
+        // log e il piano si generava con cento euro in meno, senza dirlo a nessuno.
+        const w = monta([adPersonamSenzaTitolare()]);
+
+        expect(w.text()).toContain('Interno 9 ha una spesa a suo carico ma nessun proprietario');
+        expect(w.text()).toContain('Registra il titolare');
+        expect(w.text()).toContain('100,00');
+        expect(w.text()).not.toContain('Censisci le anagrafiche mancanti');
+        expect(w.html()).toContain('/immobili/9');
+        // Senza conto la colonna della voce mostra la descrizione della riga, mai «Conto #».
+        expect(w.text()).toContain('Rifacimento balcone');
+        expect(w.text()).not.toContain('Conto #');
     });
 });

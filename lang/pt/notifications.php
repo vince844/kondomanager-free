@@ -35,9 +35,12 @@ return [
         'line_1'    => 'O administrador do condomínio convidou-o a registar a sua conta online.',
         'action'    => 'Registar agora',
         'line_2'    => 'Este convite expirará dentro de três dias.',
+        'expired'   => 'O convite expirou. Peça ao administrador que lhe envie um novo.',
+        'already_used' => 'Este convite já foi utilizado. Inicie sessão com a sua conta.',
+        'account_exists' => 'Já existe uma conta com este email: inicie sessão ou recupere a senha se não se lembrar dela.',
     ],
 
-    // Novo usuário criado pelo administrador (NewUserEmailNotification)
+    // Novo utilizador criado pelo administrador (NewUserEmailNotification)
     'new_user_created' => [
         'subject'   => 'Bem-vindo ao :appName',
         'greeting'  => 'Olá :name,',
@@ -45,6 +48,7 @@ return [
         'action'    => 'Definir senha',
         'line_2'    => 'Este link expirará em três dias.',
         'password_already_set' => 'A sua senha já foi definida. Inicie sessão com as suas credenciais.',
+        'password_set' => 'A sua senha foi definida. Já pode iniciar sessão.',
         'link_expired' => 'O link de convite expirou ou já não é válido. Contacte o administrador para receber um novo convite.',
     ],
 
@@ -118,6 +122,28 @@ return [
         'object'      => 'Assunto',
         'priority'    => 'Prioridade',
         'action'      => 'Ver notificação',
+    ],
+
+    // Segnalazione privata resa pubblica (SegnalazioneResaPubblicaNotification)
+    'ticket_made_public' => [
+        'subject'  => 'A sua sinalização agora é pública',
+        'subject_pending' => 'A sua sinalização já não é privada',
+        'greeting' => 'Olá :name',
+        'line_1'   => ':user tornou pública a sua sinalização.',
+        'line_1_pending' => ':user decidiu que a sua sinalização já não é privada.',
+        'object'   => 'Assunto',
+        'line_2'   => 'Agora todos os condóminos de :condominio a veem, com o seu nome.',
+        'line_2_pending' => 'Todos os condóminos de :condominio a vão ver, com o seu nome, quando estiver publicada e aprovada.',
+        'action'   => 'Ver sinalização',
+    ],
+
+    // Porque é que um email ao autor não leva o botão para a ficha (PulsanteSoloSeLaApre)
+    'author_cannot_open' => [
+        'outside_building' => 'Já não a vê no portal: não consta entre os condóminos de :condominio.',
+        'no_permission'    => 'Não a vê no portal: a sua conta não tem permissão para a abrir.',
+        'not_published'    => 'Não a vê no portal: neste momento não está publicada e aprovada.',
+        'not_addressed'    => 'Já não a vê no portal: já não se dirige a si.',
+        'no_anagrafica'    => 'Não a vê no portal: a sua conta não está associada a um registo. Para usar o portal, inicie sessão e preencha os seus dados.',
     ],
 
     // Aprovação de ticket (ApproveSegnalazioneNotification)
@@ -208,5 +234,42 @@ return [
         'title'       => 'Título',
         'description' => 'Descrição',
         'action'      => 'Ver documentos',
+    ],
+
+    // ─── Avisos de segurança ao titular da conta (Coda 267) ────────────────────
+    'security_alert' => [
+        'greeting' => 'Olá :name,',
+        'autore'   => 'A alteração foi feita por :autore.',
+        'sempre'   => 'Este aviso é enviado a cada alteração da segurança da sua conta e não pode ser desativado.',
+        'password_cambiata' => [
+            'subject'   => 'A palavra-passe da sua conta foi alterada',
+            'line_1'    => 'Em :data às :ora a palavra-passe da sua conta em :appName foi alterada.',
+            'consiglio' => 'Se não foi você a fazer esta alteração, redefina já a palavra-passe com «Password dimenticata?» na página de acesso e avise o administrador.',
+        ],
+        'password_reimpostata' => [
+            'subject'   => 'A palavra-passe da sua conta foi redefinida',
+            'line_1'    => 'Em :data às :ora a palavra-passe da sua conta em :appName foi redefinida com o link «Password dimenticata?».',
+            'consiglio' => 'Se não foi você a fazer esta alteração, redefina já a palavra-passe com «Password dimenticata?» na página de acesso e avise o administrador.',
+        ],
+        'email_cambiata' => [
+            'subject'   => 'O endereço de email da sua conta foi alterado',
+            'line_1'    => 'Em :data às :ora o endereço de email da sua conta em :appName foi alterado para :email. A partir de agora o acesso faz-se com o novo endereço, e os links para redefinir a palavra-passe chegam lá.',
+            'consiglio' => 'Se não foi você a pedir esta alteração, contacte já o administrador.',
+        ],
+        'due_fattori_attivata' => [
+            'subject'   => 'Autenticação de dois fatores ativada',
+            'line_1'    => 'Em :data às :ora foi ativada a autenticação de dois fatores da sua conta em :appName.',
+            'consiglio' => 'Se não foi você a fazer esta alteração, altere já a palavra-passe e avise o administrador.',
+        ],
+        'due_fattori_disattivata' => [
+            'subject'   => 'Autenticação de dois fatores desativada',
+            'line_1'    => 'Em :data às :ora foi desativada a autenticação de dois fatores da sua conta em :appName: para entrar basta agora a palavra-passe.',
+            'consiglio' => 'Se não foi você a fazer esta alteração, altere já a palavra-passe, volte a ativar a autenticação de dois fatores e avise o administrador.',
+        ],
+        'codici_rigenerati' => [
+            'subject'   => 'Novos códigos de recuperação',
+            'line_1'    => 'Em :data às :ora foram gerados novos códigos de recuperação da autenticação de dois fatores da sua conta em :appName: os anteriores deixaram de valer.',
+            'consiglio' => 'Se não foi você a fazer esta alteração, altere já a palavra-passe e avise o administrador.',
+        ],
     ],
 ];

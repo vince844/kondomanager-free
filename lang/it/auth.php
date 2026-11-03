@@ -22,6 +22,8 @@ return [
     'invalid_2fa_code'          => 'Il codice di autenticazione a due fattori fornito non è valido.',
     'invalid_2fa_recovery_code' => 'Il codice di recupero dell\'autenticazione a due fattori fornito non è valido.',
     'too_many_2fa_attempts'     => 'Troppi tentativi di autenticazione a due fattori. Riprova tra :seconds secondi.',
+    'two_factor_expired'        => 'La verifica del codice è scaduta: inserisci di nuovo email e password.',
+    'two_factor_restart'        => 'Troppi codici sbagliati: inserisci di nuovo email e password.',
     
     /* ------------------------------------------------------------------
      | Headers, Titles and Descriptions
@@ -184,6 +186,29 @@ return [
             'toggle_recovery_code'       => 'accedere usando un codice di recupero',
             'or'                         => 'oppure puoi',
         ],
+    ],
+
+    /* ------------------------------------------------------------------
+     | Hints next to form fields
+     | ------------------------------------------------------------------ */
+    'hint' => [
+        // La lunghezza minima di ogni password nuova (Coda 262): `Password::defaults()`.
+        'password_min' => 'Almeno 10 caratteri.',
+    ],
+
+    /* ------------------------------------------------------------------
+     | La finestra che chiede di nuovo la password (Coda 404): compare sopra la
+     | pagina quando un'azione sensibile la richiede, e l'azione riparte da sola.
+     | ------------------------------------------------------------------ */
+    'confirm_password_dialog' => [
+        'title'          => 'Conferma la tua password',
+        'description'    => 'Per continuare ridigita la tua password. Dopo la conferma l\'azione che hai chiesto riparte da sola, senza bisogno di riscrivere niente. Se annulli, non viene eseguita e quello che hai scritto resta com\'è.',
+        'cancel'         => 'Annulla',
+        'confirm'        => 'Conferma',
+        'too_many'       => 'Troppi tentativi in poco tempo: riprova fra un minuto.|Troppi tentativi in poco tempo: riprova fra :count minuti.',
+        'too_many_later' => 'Troppi tentativi in poco tempo: riprova più tardi.',
+        'error_generic'  => 'Non è stato possibile controllare la password. Riprova.',
+        'session_ended'  => 'La sessione è scaduta: ricarica la pagina e, se serve, accedi di nuovo.',
     ],
 
     /* ------------------------------------------------------------------

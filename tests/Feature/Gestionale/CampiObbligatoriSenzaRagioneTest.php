@@ -25,7 +25,7 @@
  * valore assente `(string) null` dà **stringa vuota** — che il vincolo `NOT NULL` accetta.
  *
  * E l'unità non resta senza identità: `nome` è obbligatorio e le stampe lo mettono in testa, con
- * l'interno come riga sotto («Int. —» quando manca). Un posto auto si chiama «Posto auto 3» e si
+ * l'interno come riga sotto (nessuna riga quando manca). Un posto auto si chiama «Posto auto 3» e si
  * riconosce; oggi è costretto a fingere un interno che finisce stampato nei riparti.
  *
  * ## Cosa questo file NON copre

@@ -2,10 +2,11 @@ import { h } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
-import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
+import { priorityConstants } from '@/lib/comunicazioni/constants';
+import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
 import { usePermission } from "@/composables/permissions";
 import { trans } from 'laravel-vue-i18n';
-import { ShieldCheck } from 'lucide-vue-next';
+import { Lock, ShieldCheck } from 'lucide-vue-next';
 import { Permission }  from "@/enums/Permission";
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -250,16 +251,23 @@ export const columns: ColumnDef<Comunicazione>[] = [
   {
     accessorKey: 'is_published',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('comunicazioni.table.status') }),
+    // Coda 306: lo stato di pubblicazione viene da `is_published` e `is_approved` insieme («In attesa
+    // di approvazione», «Bozza», «Pubblicata»); «Privata» è un'indicazione a parte, da `is_private`.
+    // Le due etichette vengono da `@/lib/pubblicazione`, come nella scheda.
     cell: ({ row }) => {
+      const comunicazione = row.original as unknown as Record<string, unknown>;
+      const stato = statoPubblicazione(row.getValue('is_published'), comunicazione.is_approved);
+      const privata = etichettaPrivacy('comunicazioni', comunicazione.is_private);
 
-      const value = Boolean(row.getValue('is_published'));
-      const stato = publishedConstants.find(p => p.value === value);
-  
-      if (!stato) return h('span', '–');
-  
       return h('div', { class: 'flex items-center gap-2' }, [
-        h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
-        h('span', trans(stato.label))
+        h('span', { class: `h-2 w-2 shrink-0 rounded-full ${colorePubblicazione(stato)}` }),
+        h('span', trans(etichettaStatoPubblicazione('comunicazioni', row.getValue('is_published'), comunicazione.is_approved))),
+        privata
+          ? h('span', { class: 'inline-flex items-center gap-1 text-xs text-slate-500', title: trans('comunicazioni.privacy.private_hint') }, [
+              h(Lock, { class: 'h-3 w-3' }),
+              trans(privata),
+            ])
+          : null,
       ]);
     },
     filterFn: (row, id, value) =>

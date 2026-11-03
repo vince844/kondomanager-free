@@ -6,18 +6,28 @@ use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
 use App\Http\Controllers\Gestionale\Gestioni\GestioneController;
 use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaController;
+use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\PassaggioController;
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
+use App\Http\Controllers\Gestionale\Immobili\ProspettoOneriController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
+use App\Http\Controllers\Gestionale\Movimenti\CollegamentoNotaCreditoController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
+use App\Http\Controllers\Gestionale\Movimenti\FetchFattureSimiliController;
+use App\Http\Controllers\Gestionale\Movimenti\ImportaFatturaXmlController;
 use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
+use App\Http\Controllers\Gestionale\Movimenti\MastrinoController;
+use App\Http\Controllers\Gestionale\Movimenti\RegistroContabilitaController;
+use App\Http\Controllers\Gestionale\Movimenti\RiallineaCreditiController;
+use App\Http\Controllers\Gestionale\Movimenti\StatoPatrimonialeController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
 use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
+use App\Http\Controllers\Gestionale\Movimenti\RateDiChiHaVersatoController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoPagamentoController;
@@ -150,10 +160,38 @@ Route::prefix('/gestionale/{condominio}')
     Route::resource('immobili', ImmobileController::class)
         ->parameters(['immobili' => 'immobile']);
 
+    // «Registra passaggio» (1.11.0-beta.31, B2 del progetto sul subentro): la pagina, il pannello
+    // «Cosa cambierà» calcolato dal server, la scrittura. Prima della resource sorella perché
+    // `passaggi` non deve essere letto come un `{titolarita}`.
+    Route::get('immobili/{immobile}/passaggi/create', [PassaggioController::class, 'create'])
+        ->name('immobili.passaggi.create');
+    Route::post('immobili/{immobile}/passaggi/anteprima', [PassaggioController::class, 'anteprima'])
+        ->name('immobili.passaggi.anteprima');
+    Route::post('immobili/{immobile}/passaggi', [PassaggioController::class, 'store'])
+        ->name('immobili.passaggi.store');
+    Route::post('immobili/{immobile}/passaggi/anagrafica', [PassaggioController::class, 'creaAnagrafica'])
+        ->name('immobili.passaggi.anagrafica');
+    // S6: la copia autentica del titolo arriva dopo il rogito; il «finché non la ricevi» deve potersi spegnere.
+    Route::patch('immobili/{immobile}/passaggi/{subentro}/copia-autentica', [PassaggioController::class, 'copiaAutentica'])
+        ->name('immobili.passaggi.copia-autentica');
+    // S6: le due righe del conguaglio si tolgono insieme e con una nota, mai una sola dal Wallet.
+    Route::delete('immobili/{immobile}/passaggi/{subentro}/conguaglio', [PassaggioController::class, 'annullaConguaglio'])
+        ->name('immobili.passaggi.annulla-conguaglio');
+    // 1.11.0-beta.37: l'annullamento dell'ultimo passaggio dell'unità, a rate intatte (decisione 27). Un passaggio
+    // annullato resta nello storico; il binding lo trova (`Immobile::subentriConAnnullati`), e una seconda richiesta
+    // riceve «già annullato» invece di un 404.
+    Route::delete('immobili/{immobile}/passaggi/{subentro}', [PassaggioController::class, 'annulla'])
+        ->name('immobili.passaggi.annulla');
+
+    // ⚠️ `{titolarita}` e non più `{anagrafica}`: dalla 1.11.0-beta.31 `edit`, `update` e `destroy`
+    // ricevono l'**id della riga** di `anagrafica_immobile` (`TitolaritaImmobile`), non della persona.
+    // La stessa persona può avere due periodi sulla stessa unità — vende e ricompra, l'inquilino che
+    // diventa proprietario — e «quale dei due» lo dice solo la riga (decisione 13). I nomi delle rotte
+    // non cambiano; cambia il valore che il frontend passa (`titolarita: anagrafica.pivot.id`).
     Route::resource('immobili.anagrafiche', ImmobileAnagraficaController::class)
         ->parameters([
             'immobili' => 'immobile',
-            'anagrafiche' => 'anagrafica'
+            'anagrafiche' => 'titolarita'
         ]);
     
     // `except(['show'])`: `ImmobileDocumentoController` non implementa `show` — un documento si
@@ -166,11 +204,24 @@ Route::prefix('/gestionale/{condominio}')
             'documenti' => 'documento'
         ]);
 
+    // Scaricare e approvare un documento dell'unità si fa dalla sua scheda: le rotte dell'archivio
+    // (`documenti.download`, `documenti.toggle-approval`) lavorano solo sui documenti dell'archivio. Il documento si
+    // cerca dentro l'unità, come per le altre rotte annidate del gruppo.
+    Route::get('immobili/{immobile}/documenti/{documento}/download', [ImmobileDocumentoController::class, 'download'])
+        ->name('immobili.documenti.download');
+
+    Route::put('immobili/{immobile}/documenti/{documento}/toggle-approval', [ImmobileDocumentoController::class, 'approvazione'])
+        ->name('immobili.documenti.toggle-approval');
+
     // Le pertinenze di un'unità: sola lettura. Il legame si dichiara dalla scheda della
     // **pertinenza**, non da qui — è la pertinenza che punta al principale, e un secondo punto di
     // scrittura sullo stesso dato sarebbe due verità con due regole.
     Route::get('immobili/{immobile}/pertinenze', [ImmobileController::class, 'pertinenze'])
         ->name('immobili.pertinenze.index');
+
+    // B3a (1.11.0-beta.34): il prospetto degli oneri accessori dell'unità, per esercizio (in query).
+    Route::get('immobili/{immobile}/prospetto-oneri', [ProspettoOneriController::class, 'stampa'])
+        ->name('immobili.prospetto-oneri');
     
     // --- CASSE ---
     Route::resource('casse', CassaController::class)
@@ -306,6 +357,10 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/anagrafiche/{anagrafica}/estratto-conto/print', [EstrattoContoAnagraficaController::class, 'print'])
         ->name('anagrafiche.estratto-conto.print');
+
+    // B2, S6: il rimborso del credito dall'estratto conto — denaro che esce a fronte di una quota a credito.
+    Route::post('/anagrafiche/{anagrafica}/rimborsi', [\App\Http\Controllers\Gestionale\Rimborsi\RimborsoCreditoController::class, 'store'])
+        ->name('anagrafiche.rimborsi.store');
     
     Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)
     ->name('esercizi.piani-rate.regenerate');
@@ -315,8 +370,44 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('esercizi/{esercizio}/scritture', [ScritturaContabileController::class, 'index'])
         ->name('esercizi.scritture.index');
 
+    // Stampa riga per riga (§10.1.2 di docs/registri_contabili.md) — stessi filtri dell'elenco.
+    Route::get('esercizi/{esercizio}/scritture/print', [ScritturaContabileController::class, 'stampa'])
+        ->name('esercizi.scritture.print');
+
+    // Registro di contabilità (art. 1130, comma 1, n. 7 c.c.) — punto 1 della sequenza di
+    // docs/registri_contabili.md. È la voce "Prima nota" del menu Movimenti.
+    Route::get('esercizi/{esercizio}/registro-contabilita', [RegistroContabilitaController::class, 'index'])
+        ->name('esercizi.registro-contabilita.index');
+
+    Route::get('esercizi/{esercizio}/registro-contabilita/print', [RegistroContabilitaController::class, 'stampa'])
+        ->name('esercizi.registro-contabilita.print');
+
+    // Stato patrimoniale — punto 3 di docs/registri_contabili.md (D16–D20), beta.25.
+    Route::get('esercizi/{esercizio}/stato-patrimoniale', [StatoPatrimonialeController::class, 'index'])
+        ->name('esercizi.stato-patrimoniale.index');
+
+    Route::get('esercizi/{esercizio}/stato-patrimoniale/print', [StatoPatrimonialeController::class, 'stampa'])
+        ->name('esercizi.stato-patrimoniale.print');
+
+    // Il mastrino di un conto contabile — punto 2 di docs/registri_contabili.md (D21), beta.26.
+    // Pagina figlia dello Stato patrimoniale, non una voce della barra. Il conto si risolve
+    // dentro il condominio dell'esercizio (`Esercizio::contiContabili()`): scoped come le altre.
+    Route::get('esercizi/{esercizio}/conti/{contoContabile}/movimenti', [MastrinoController::class, 'index'])
+        ->name('esercizi.conti.movimenti');
+
+    Route::get('esercizi/{esercizio}/conti/{contoContabile}/movimenti/print', [MastrinoController::class, 'stampa'])
+        ->name('esercizi.conti.movimenti.print');
+
+    // Il libro mastro: tutti i mastrini dell'esercizio in un foglio solo.
+    Route::get('esercizi/{esercizio}/libro-mastro/print', [MastrinoController::class, 'stampaLibroMastro'])
+        ->name('esercizi.libro-mastro.print');
+
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');
+
+    // Coda 167, decisione 30.8: le rate di chi ha versato per un altro, per scegliere dove va la parte in più.
+    Route::get('rate-di-chi-ha-versato', RateDiChiHaVersatoController::class)
+        ->name('rate-di-chi-ha-versato');
     
     // `only()` e non un `resource` intero: `IncassoRateController` implementa **solo** queste
     // quattro azioni. Un incasso non si modifica e non si cancella: si **storna** (la rotta qui
@@ -329,6 +420,14 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)
         ->name('movimenti-rate.storno');
+
+    // Coda 209 (1.11.0-beta.49, decisione 75.5): l'avviso della conferma dello storno, in sola lettura.
+    Route::get('movimenti-rate/{scrittura}/storno/anteprima', [StornoIncassoController::class, 'anteprima'])
+        ->name('movimenti-rate.storno.anteprima');
+
+    // La conferma della card «Crediti da riallineare» della pagina «Incassi rate» (decisioni 75.1 e 76.1).
+    Route::post('/riallinea-crediti', RiallineaCreditiController::class)
+        ->name('riallinea-crediti');
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');
@@ -363,6 +462,22 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/fatture', [FatturaPassivaController::class, 'index'])
         ->name('fatture.index');
 
+    // Decisione D4 (1.11.0-beta.13): interrogato mentre il modulo si compila, per il
+    // controllo duplicati a due livelli, mai bloccante. Sta prima di 'fetch-*' con
+    // trattino per coerenza col resto del gruppo, dopo 'create' perché è lì che serve.
+    Route::get('/fetch-fatture-simili', FetchFattureSimiliController::class)
+        ->name('fetch-fatture-simili');
+
+    // Coda 165 (1.11.0-beta.36): le fatture che una nota di credito del fornitore può rettificare,
+    // con i motivi della scala già calcolati. In sola lettura, per il modulo e per «Collega a una fattura».
+    Route::get('/fetch-fatture-rettificabili', [CollegamentoNotaCreditoController::class, 'candidate'])
+        ->name('fetch-fatture-rettificabili');
+
+    // Beta.14, decisione 1 di apertura: legge l'XML e restituisce i dati per
+    // precompilare il form — non crea niente, il salvataggio resta 'fatture.store'.
+    Route::post('/fatture/importa-xml', ImportaFatturaXmlController::class)
+        ->name('fatture.importa-xml');
+
     Route::get('/fatture/create', [FatturaPassivaController::class, 'create'])
         ->name('fatture.create');
 
@@ -383,6 +498,14 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/fatture/{fattura}/storno', StornoFatturaController::class)
         ->name('fatture.storno');
+
+    // Coda 165: il collegamento fra la nota di credito del fornitore e la fattura che rettifica,
+    // per le note già registrate. {fattura} qui è la NOTA.
+    Route::post('/fatture/{fattura}/collega-fattura', [CollegamentoNotaCreditoController::class, 'collega'])
+        ->name('fatture.collega-fattura');
+
+    Route::post('/fatture/{fattura}/scollega-fattura', [CollegamentoNotaCreditoController::class, 'scollega'])
+        ->name('fatture.scollega-fattura');
     
     // --- APPROVAZIONE BASE: transizione da_approvare → approvata ---
     Route::post('/fatture/{fattura}/approva', [FatturaPassivaController::class, 'approva'])
@@ -394,6 +517,13 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/fatture/{fattura}/download/{documento}', [FatturaPassivaController::class, 'download'])
         ->name('fatture.download');
+
+    // Allegati fuori dalla riscrittura contabile — Coda 102, 1.11.0-beta.12.
+    Route::post('/fatture/{fattura}/documenti', [FatturaPassivaController::class, 'storeDocumento'])
+        ->name('fatture.documenti.store');
+
+    Route::delete('/fatture/{fattura}/documenti/{documento}', [FatturaPassivaController::class, 'destroyDocumento'])
+        ->name('fatture.documenti.destroy');
     
     // --- CICLO PASSIVO: PAGAMENTI (v1.9.1) ---
     Route::get('/pagamenti-fornitori', [PagamentoFornitoreController::class, 'index'])

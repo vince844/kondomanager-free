@@ -59,9 +59,15 @@ class DelegaF24PrintController extends Controller
             'casellePettine' => ModelloF24Service::CASELLE_CODICE_FISCALE,
         ], $configurazione);
 
-        // `I` apre il PDF nel visualizzatore invece di forzare il salvataggio: un F24 si
-        // guarda prima di stamparlo, e il nome del file resta comunque quello che diamo noi.
-        return response($pdf->Output($modello->nomeFile($delega), 'I'))
-            ->header('Content-Type', 'application/pdf');
+        // Si apre nel visualizzatore (`inline`) invece di forzare il salvataggio: un F24 si guarda
+        // prima di stamparlo. ⚠️ Prima era `Output(..., 'I')`: mPDF mandava da sé, con `header()`,
+        // `Content-Type` e `Content-disposition: inline; filename="…"`, e il corpo con `echo`; nella
+        // risposta Laravel non passava nulla, e nessun test la guardava (beta.28, Coda 151). Ora i
+        // byte e il nome stanno nella risposta, dove un test li legge.
+        $nomeFile = $modello->nomeFile($delega);
+
+        return response($pdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 }

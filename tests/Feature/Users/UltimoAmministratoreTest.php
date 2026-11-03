@@ -109,3 +109,100 @@ it('con due amministratori si può sospendere l\'altro', function () {
 
     expect($secondo->fresh()->suspended())->toBeTrue();
 });
+
+// ─── I ruoli mandati come elenco (Coda 258, decisione 130.1) ──────────────────
+
+it('Coda 258 — l\'ultimo amministratore non si degrada con un elenco di ruoli senza «amministratore», in nessuna forma', function () {
+    // Spatie appiattisce l'elenco e assegna ogni elemento: la regola guarda l'elenco intero, non il primo.
+    $utente = Role::where('name', RoleEnum::UTENTE->value)->firstOrFail();
+    $fornitore = Role::where('name', RoleEnum::FORNITORE->value)->firstOrFail();
+
+    foreach ([
+        'due id'                      => [$utente->id, $fornitore->id],
+        'un elenco dentro l\'elenco'  => [[$utente->id, $fornitore->id]],
+        'un elemento con id e nome'   => [['id' => $utente->id, 'name' => RoleEnum::FORNITORE->value]],
+        'per nome'                    => [RoleEnum::UTENTE->value],
+    ] as $forma => $ruoli) {
+        $this->actingAs($this->admin)
+            ->put(route('utenti.update', ['utenti' => $this->admin->id]), scheda($this->admin, ['roles' => $ruoli]))
+            ->assertSessionHasErrors('roles');
+
+        expect($this->admin->fresh()->getRoleNames()->all())->toBe([RoleEnum::AMMINISTRATORE->value], $forma);
+    }
+});
+
+it('Coda 258 — un elenco che tiene «amministratore» non degrada l\'ultimo amministratore, e passa', function () {
+    $utente = Role::where('name', RoleEnum::UTENTE->value)->firstOrFail();
+    $amministratore = Role::where('name', RoleEnum::AMMINISTRATORE->value)->firstOrFail();
+
+    $this->actingAs($this->admin)
+        ->put(route('utenti.update', ['utenti' => $this->admin->id]), scheda($this->admin, ['roles' => [$utente->id, $amministratore->id]]))
+        ->assertSessionHasNoErrors();
+
+    expect($this->admin->fresh()->hasRole(RoleEnum::AMMINISTRATORE->value))->toBeTrue();
+});
+
+// ─── L'eliminazione del proprio account dal profilo ───────────────────────────
+// Il quarto modo di restare senza amministratori: il profilo offre a tutti «Elimina account» e chiedeva
+// solo la password. La regola è la stessa delle altre tre (`isUltimoAmministratoreAttivo()`), e l'errore
+// arriva sotto il campo della password della finestra, l'unico che la finestra mostra.
+
+/** L'eliminazione come la manda la finestra del profilo (`DeleteUser.vue`, `form.delete`). */
+function eliminaDalProfilo($test, User $utente, string $password = 'password')
+{
+    return $test->actingAs($utente)
+        ->from('/settings/profile')
+        ->withHeaders(['X-Inertia' => 'true', 'X-Requested-With' => 'XMLHttpRequest'])
+        ->delete('/settings/profile', ['password' => $password]);
+}
+
+it('l\'ultimo amministratore non elimina il proprio account dal profilo: la finestra dice perché, e l\'account resta', function () {
+    eliminaDalProfilo($this, $this->admin)
+        ->assertRedirect('/settings/profile')
+        ->assertSessionHasErrors(['password' => __('policies.users_last_admin_self')]);
+
+    expect(User::find($this->admin->id))->not->toBeNull()
+        ->and(User::role(RoleEnum::AMMINISTRATORE->value)->count())->toBe(1)
+        ->and(auth()->check())->toBeTrue();
+});
+
+it('un amministratore sospeso non conta: l\'unico attivo non elimina il proprio account dal profilo', function () {
+    $sospeso = User::factory()->create(['email_verified_at' => now(), 'suspended_at' => now()]);
+    $sospeso->assignRole(RoleEnum::AMMINISTRATORE->value);
+
+    eliminaDalProfilo($this, $this->admin)
+        ->assertSessionHasErrors(['password' => __('policies.users_last_admin_self')]);
+
+    expect(User::find($this->admin->id))->not->toBeNull();
+});
+
+it('con un altro amministratore attivo, l\'amministratore elimina il proprio account dal profilo', function () {
+    $secondo = User::factory()->create(['email_verified_at' => now()]);
+    $secondo->assignRole(RoleEnum::AMMINISTRATORE->value);
+
+    eliminaDalProfilo($this, $this->admin)
+        ->assertSessionHasNoErrors()
+        ->assertRedirect('/');
+
+    expect(User::find($this->admin->id))->toBeNull()
+        ->and(User::find($secondo->id))->not->toBeNull();
+});
+
+it('chi non è amministratore continua a eliminare il proprio account dal profilo, anche con un solo amministratore in casa', function () {
+    $condomino = User::factory()->create(['email_verified_at' => now()]);
+    $condomino->assignRole(RoleEnum::UTENTE->value);
+
+    eliminaDalProfilo($this, $condomino)
+        ->assertSessionHasNoErrors()
+        ->assertRedirect('/');
+
+    expect(User::find($condomino->id))->toBeNull()
+        ->and(User::find($this->admin->id))->not->toBeNull();
+});
+
+it('l\'ultimo amministratore legge perché anche con la password sbagliata: la password non si prova per un\'eliminazione che non può avvenire', function () {
+    eliminaDalProfilo($this, $this->admin, 'sbagliata')
+        ->assertSessionHasErrors(['password' => __('policies.users_last_admin_self')]);
+
+    expect(User::find($this->admin->id))->not->toBeNull();
+});

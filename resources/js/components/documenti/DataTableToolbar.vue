@@ -10,8 +10,10 @@ import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilte
 import { usePermission } from "@/composables/permissions";
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import { reidratraFiltri } from '@/composables/useReidratazioneFiltri';
+import { parametroStato } from '@/lib/documenti/filtro-stato';
 import { Permission } from '@/enums/Permission';
 import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
+import { publishedConstants } from '@/lib/documenti/constants';
 import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
@@ -34,12 +36,35 @@ const { table, filters } = defineProps<{
    * costruita apposta. È la domanda del perimetro di raggiungibilità: *cosa diventa raggiungibile
    * che prima non lo era?*
    */
-  filters?: { name?: string | null, category_id?: number[] | null, condominio_id?: number[] | null }
+  filters?: { name?: string | null, category_id?: number[] | null, condominio_id?: number[] | null, is_published?: boolean[] | null }
 }>();
 
 // Read current filters from column state
-const categoriaColumn = table.getColumn('categoria');
+// ⚠️ La colonna si chiama `categorie` dalla 1.11.0-beta.10: con il nome vecchio
+// `getColumn` restituisce `undefined` e il filtro smette di funzionare **in silenzio**.
+const categoriaColumn = table.getColumn('categorie');
 const condominioColumn = table.getColumn('condomini');
+
+/**
+ * ⚠️ **Lo stato si filtra, non si ordina** (1.11.0-beta.10).
+ *
+ * Ordinare per due soli valori mette in cima tutti i pubblici o tutti i privati, e lascia gli altri
+ * in fondo dove nessuno li guarda: è un filtro fatto male. Il filtro vero mostra quello che serve e
+ * nasconde il resto, e dice a schermo che lo sta facendo.
+ *
+ * Le opzioni sono **due e note**, quindi non si caricano da nessuna parte: `publishedConstants` è la
+ * stessa fonte che disegna la colonna e le tendine dei moduli.
+ */
+const statoColumn = table.getColumn('is_published');
+
+const opzioniStato = computed(() =>
+  publishedConstants.map((s) => ({ label: trans(s.label), value: String(s.value), icon: s.icon }))
+);
+
+const statoFilter = computed(() => {
+  const valore = statoColumn?.getFilterValue();
+  return Array.isArray(valore) ? valore : [];
+});
 
 // LOGICA DROPDOWN CONDOMINI
 const { condomini, isLoading: isLoadingCondomini, loadCondomini } = useCondomini();
@@ -68,7 +93,7 @@ const condominioFilter = computed(() => {
  * per esteso in `useReidratazioneFiltri.ts`, insieme al motivo per cui vive in un file a sé e non
  * qui dentro: dentro il componente il test non poteva chiamarla, e ne provava una copia.
  */
-reidratraFiltri(filters, nameFilter, categoriaColumn, condominioColumn);
+reidratraFiltri(filters, nameFilter, categoriaColumn, condominioColumn, statoColumn);
 
 /*
  * ⚠️ **Reidratare il valore non basta: senza le opzioni la pillola non ha un nome da scrivere.**
@@ -98,8 +123,8 @@ if (filters?.condominio_id?.length) {
 const { filtra } = useTabellaServer(() => route(generateRoute('documenti.index')));
 
 watchDebounced(
-  [nameFilter, categoriaFilter, condominioFilter],
-  ([name, category_id, condominio_id]) => {
+  [nameFilter, categoriaFilter, condominioFilter, statoFilter],
+  ([name, category_id, condominio_id, is_published]) => {
     // Ogni filtro che può essere vuoto viaggia come `null`, mai omesso: la richiesta riparte da ciò
     // che c'è nell'URL, e un filtro omesso resterebbe quello di prima. Per i filtri sfaccettati
     // (categoria, condomìni) il «vuoto» è la lista senza elementi.
@@ -107,10 +132,15 @@ watchDebounced(
       name: name || null,
       category_id: category_id.length > 0 ? category_id : null,
       condominio_id: condominio_id.length > 0 ? condominio_id : null,
+      // ⚠️ La conversione sta in `lib/documenti/filtro-stato.ts` insieme alla sua gemella in
+      // entrata: le stringhe della tabella tornano booleani veri per il server, e le due direzioni
+      // sono provate **insieme**, con un giro completo. Scritta qui come espressione, la metà
+      // d'andata non era guardata da nessun test — ed è il difetto che ha aperto quel file.
+      is_published: parametroStato(is_published as string[]),
     };
 
     filtra(filtri, () => {
-      if (!name && category_id.length === 0 && condominio_id.length === 0) {
+      if (!name && category_id.length === 0 && condominio_id.length === 0 && is_published.length === 0) {
         table.reset();
       }
     });
@@ -122,6 +152,7 @@ const clearAllFilters = () => {
   nameFilter.value = '';
   categoriaColumn?.setFilterValue(undefined);
   condominioColumn?.setFilterValue(undefined);
+  statoColumn?.setFilterValue(undefined);
 
   router.get(route(generateRoute('documenti.index')), { page: 1 }, {
     preserveState: true,
@@ -149,6 +180,15 @@ const clearAllFilters = () => {
         :options="categorie"
         :isLoading="isLoading"
         @open="handleOpenDropdown"
+        @update:filter="() => {}"
+        class="w-full lg:w-auto"
+      />
+
+      <DataTableFacetedFilter
+        v-if="statoColumn"
+        :column="statoColumn"
+        :title="trans('documenti.table.status')"
+        :options="opzioniStato"
         @update:filter="() => {}"
         class="w-full lg:w-auto"
       />

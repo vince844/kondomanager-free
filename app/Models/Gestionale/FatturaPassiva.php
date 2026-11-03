@@ -5,6 +5,7 @@ namespace App\Models\Gestionale;
 use App\Traits\RisolveIFigliDelleRotte;
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\TipoAllocazioneFattura;
+use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Documento;
 use App\Models\Esercizio;
@@ -15,6 +16,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Services\Gestionale\NettoNoteCollegate;
 use Illuminate\Support\Carbon;
 
 class FatturaPassiva extends Model
@@ -36,6 +39,9 @@ class FatturaPassiva extends Model
         'data_scadenza'                 => 'date',
         'is_pregresso'                  => 'boolean',
         'data_competenza_originaria'    => 'date',
+        // B2 (1.11.0-beta.31): il periodo di competenza dichiarato. Nullo = cascata di D3.
+        'competenza_dal'                => 'date:Y-m-d',
+        'competenza_al'                 => 'date:Y-m-d',
         'dati_extra'                    => 'array',
         'importo_imponibile'            => 'integer',
         'importo_iva'                   => 'integer',
@@ -135,7 +141,22 @@ class FatturaPassiva extends Model
      */
     public function pianiRate(): BelongsToMany
     {
-        return $this->belongsToMany(PianoRate::class, 'piano_rate_fatture');
+        return $this->belongsToMany(PianoRate::class, 'piano_rate_fatture')->withPivot('importo_collegato');
+    }
+
+    /**
+     * Solo sulla nota di credito: la fattura che rettifica (Coda 165, 1.11.0-beta.36). Facoltativa, di qualunque
+     * esercizio, dello stesso fornitore e condominio.
+     */
+    public function fatturaRettificata(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'fattura_rettificata_id');
+    }
+
+    /** Le note di credito del fornitore collegate a questa fattura (Coda 165). */
+    public function noteCollegate(): HasMany
+    {
+        return $this->hasMany(self::class, 'fattura_rettificata_id')->where('tipo_documento', 'nota_credito');
     }
 
     public function esercizio(): BelongsTo
@@ -177,6 +198,16 @@ class FatturaPassiva extends Model
                  . 'Se vuoi tornare indietro, elimina la nota di credito generata dallo storno.';
         }
 
+        // Coda 165 (1.11.0-beta.36): una nota del fornitore collegata resterebbe senza la fattura che rettifica — la
+        // chiave esterna la scollegherebbe in silenzio.
+        if ($note = $this->elencoNoteCollegate()) {
+            return $this->noteCollegate->count() === 1
+                ? "La fattura ha {$note} del fornitore collegata: eliminandola la nota resterebbe senza la fattura che "
+                    . 'rettifica. Scollega o elimina prima la nota.'
+                : "La fattura ha {$note} del fornitore collegate: eliminandola le note resterebbero senza la fattura che "
+                    . 'rettificano. Scollega o elimina prima le note.';
+        }
+
         $coperturaConfermata = $this->coperture
             ->where('tipo_copertura', 'fondo_riserva')
             ->where('stato', 'confermata')
@@ -188,18 +219,20 @@ class FatturaPassiva extends Model
                  . 'Storna prima il giroconto di conferma dalla pagina Giroconti.';
         }
 
-        foreach ($this->pianiRate as $piano) {
-            if ($piano->eImmutabile()) {
-                return "La fattura è nel piano rate «{$piano->nome}», che ha già rate emesse o incassate. "
-                     . 'Annulla le emissioni di quel piano, oppure usa lo Storno.';
-            }
+        // I piani, con la regola unica di modifica, eliminazione e storno (`pianiConGrado()`, 1.11.0-beta.35): conta il
+        // piano più avanzato. Con rate emesse il motivo non propone più lo storno: finché il piano non ha incassato, lo
+        // storno lo rifiuta.
+        if ($voce = $this->pianoAlGrado('incassato', 'emesso', 'approvato')) {
+            $nome = $voce['piano']->nome;
 
-            $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
-
-            if ($stato === 'approvato') {
-                return "La fattura è nel piano rate «{$piano->nome}», che è approvato (art. 1135 c.c.). "
-                     . 'Riporta il piano in bozza per poterla eliminare.';
-            }
+            return match ($voce['grado']) {
+                'incassato' => $this->motivoBloccoStorno()
+                    ?? "La fattura è nel piano rate «{$nome}», che ha già incassato rate: non si elimina, usa lo storno.",
+                'emesso' => "La fattura è nel piano rate «{$nome}», che ha già rate emesse. "
+                     . 'Annulla le emissioni di quel piano e riportalo in bozza per poterla eliminare.',
+                'approvato' => "La fattura è nel piano rate «{$nome}», che è approvato (art. 1135 c.c.). "
+                     . 'Riporta il piano in bozza per poterla eliminare.',
+            };
         }
 
         if ($this->stato_pagamento !== StatoPagamentoFattura::APERTA) {
@@ -207,14 +240,19 @@ class FatturaPassiva extends Model
                  . 'storna prima il pagamento dalla sezione Pagamenti fornitori, poi usa lo Storno sulla fattura.';
         }
 
+        // Le due guardie qui sotto mandano allo storno: se lo storno oggi è rifiutato per un piano rate, lo dicono con la
+        // via, come la modifica (verifica delle correzioni della Fase 1-bis, 1.11.0-beta.35).
+        $bloccoStorno = $this->motivoBloccoStorno();
+        $poi = $bloccoStorno ? ' Lo storno però ora non è possibile: ' . $bloccoStorno : '';
+
         if ($this->scritture->count() > 1) {
             return 'La fattura è collegata a più scritture contabili: eliminarla ne lascerebbe alcune senza '
-                 . 'documento. Usa lo Storno, che le chiude tutte in modo tracciato.';
+                 . 'documento. Usa lo Storno, che le chiude tutte in modo tracciato.' . $poi;
         }
 
         if (($this->esercizio?->stato) === 'chiuso') {
             return 'La fattura appartiene a un esercizio chiuso e già rendicontato: quel bilancio non si '
-                 . 'riscrive. Usa lo Storno, che registra la rettifica nell\'esercizio corrente.';
+                 . 'riscrive. Usa lo Storno, che registra la rettifica nell\'esercizio corrente.' . $poi;
         }
 
         return null;
@@ -228,6 +266,704 @@ class FatturaPassiva extends Model
     public function getMotivoBloccoEliminazioneAttribute(): ?string
     {
         return $this->motivoBloccoEliminazione();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | STORNO E PIANI RATE — una regola sola (1.11.0-beta.35, R1 della Fase 1-bis)
+    |--------------------------------------------------------------------------
+    */
+
+    /** @var list<array{piano: PianoRate, grado: string}>|null */
+    protected ?array $pianiConGradoLetti = null;
+
+    /**
+     * I piani rate che contengono questa fattura, ognuno con il grado a cui è arrivato: la base della regola unica di
+     * modifica, eliminazione e storno.
+     *
+     * Le tre guardie leggevano i piani ciascuna a modo suo, e si contraddicevano: la modifica mandava allo storno, e lo
+     * storno non guardava i piani — la fattura annullata restava in `piano_rate_fatture`, il motore la leggeva senza
+     * escludere le stornate e le rate la chiedevano ancora. Registrata di nuovo e messa in un piano nuovo, i condòmini la
+     * pagavano due volte. Decisione di Vincenzo del 27/09/2026: lo storno segue la scala dell'eliminazione.
+     *
+     * Quattro gradi, dal più avanzato: `incassato` (una quota ha un incasso, o un credito compensato o rimborsato:
+     * `importo_pagato ≠ 0`), `emesso` (una quota è a giornale), `approvato`, `bozza`. I movimenti si leggono prima dello
+     * stato, perché il server lascia riportare in bozza anche un piano già emesso.
+     *
+     * @return list<array{piano: PianoRate, grado: string}>
+     */
+    public function pianiConGrado(): array
+    {
+        return $this->pianiConGradoLetti ??= $this->pianiRate->sortBy('id')->values()->map(function (PianoRate $piano) {
+            $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
+
+            return ['piano' => $piano, 'grado' => match (true) {
+                $piano->haIncassiRegistrati() => 'incassato',
+                $piano->haRateEmesse() => 'emesso',
+                $stato === 'approvato' => 'approvato',
+                default => 'bozza',
+            }];
+        })->all();
+    }
+
+    /**
+     * Il piano più avanzato fra i gradi chiesti, cercati nell'ordine in cui si passano — o `null`. Con una fattura divisa
+     * fra più piani (Coda 156) non conta il primo piano, conta quello che chiede più passi: una fattura in un piano in
+     * bozza e in uno che ha già incassato si storna, non si modifica.
+     *
+     * @return array{piano: PianoRate, grado: string}|null
+     */
+    public function pianoAlGrado(string ...$gradi): ?array
+    {
+        foreach ($gradi as $grado) {
+            foreach ($this->pianiConGrado() as $voce) {
+                if ($voce['grado'] === $grado) {
+                    return $voce;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Perché questa fattura non si può stornare — o `null` se si può. Come `motivoBloccoEliminazione()`: il controller la
+     * chiama per decidere e l'elenco per spiegare, e ogni motivo dice la via d'uscita.
+     *
+     * Le prime quattro guardie vivevano in `StornoFatturaController` (stessi messaggi); quella sui piani è nuova. Finché
+     * un piano non ha incassato niente, la fattura prima si toglie dal piano — e in un piano da fatture l'unico modo è
+     * eliminarlo, perché una fattura sola non si stacca. Con incassi lo storno resta possibile: la fattura è annullata
+     * davvero e la contabilità deve dirlo; lo dice `avvisoStorno()`.
+     */
+    public function motivoBloccoStorno(): ?string
+    {
+        if ($this->dati_extra['is_stornata'] ?? false) {
+            return 'Questa fattura è già stata stornata in precedenza.';
+        }
+
+        // ⚠️ **Si guarda il TIPO del documento, non il segno del netto.**
+        // La guardia leggeva `netto_a_pagare < 0` e dava della nota di credito a qualunque
+        // documento a credito. Ma una fattura ordinaria PUÒ essere a credito: le righe negative
+        // sono legittime (il file 06 dei collaudi ne ha una) e se gli storni di riga superano
+        // gli addebiti il netto è negativo su un documento di tipo `fattura`. Quel documento
+        // restava senza nessuna via di rettifica — la modifica rimanda allo storno, e lo storno
+        // negava adducendo un tipo di documento che non era il suo. Il messaggio, per giunta,
+        // nominava una nota di credito a chi aveva in mano una fattura.
+        // Trovato dalla Fase 1-bis della beta.19, lente «segno».
+        if ($this->tipo_documento === 'nota_credito') {
+            return 'Una nota di credito non si storna: rettifica la fattura che annulla, oppure registra il documento che il fornitore ha emesso.';
+        }
+
+        // Coda 165 (1.11.0-beta.36): lo storno annulla la fattura per intero, e la nota del fornitore resterebbe — il
+        // credito verso il fornitore conterebbe due volte.
+        if ($note = $this->elencoNoteCollegate()) {
+            $una = $this->noteCollegate->count() === 1;
+
+            return "La fattura ha {$note} del fornitore " . ($una ? 'collegata' : 'collegate') . ': stornarla conterebbe '
+                 . 'due volte il credito verso il fornitore. Scollega o elimina prima ' . ($una ? 'la nota' : 'le note')
+                 . ', poi storna la fattura.';
+        }
+
+        // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
+        // credito: il denaro è già uscito dalla cassa e quel movimento va stornato per
+        // primo, altrimenti restano un'uscita di cassa senza debito che la giustifichi e
+        // — dopo un'eventuale eliminazione della NC — una fattura "aperta" con pagamenti
+        // ancora allocati.
+        if ($this->stato_pagamento !== StatoPagamentoFattura::APERTA) {
+            return 'La fattura ha pagamenti registrati. Storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.';
+        }
+
+        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale — il
+        // fondo è già stato decurtato per questa fattura. Stornare la fattura
+        // lasciando in piedi il giroconto consumerebbe il fondo per un debito che
+        // non esiste più. Prima si storna il giroconto (la copertura torna in
+        // attesa), poi la fattura.
+        if ($this->coperture->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->isNotEmpty()) {
+            return 'La copertura dal fondo è già stata confermata con un giroconto. Storna prima il giroconto di conferma dalla pagina Giroconti, poi la fattura.';
+        }
+
+        return $this->viaDalPiano(
+            fn (string $grado) => $grado === 'emesso'
+                ? 'dopo lo storno quelle rate la chiederebbero ancora'
+                : 'dopo lo storno le sue rate la chiederebbero ancora',
+            'storna la fattura',
+        ) ?? $this->motivoSpesaAdPersonamGiaChiesta('storno', 'storna la fattura');
+    }
+
+    /**
+     * Perché lo storno o una nota di credito non tolgono la spesa ad personam di questa fattura (Coda 313, decisione 160) — o null: un piano
+     * che la contiene ha già emesso una rata che chiede quella spesa su un'unità della fattura (`RataQuote::rateEmesseConAdPersonam`, anche
+     * le emissioni scritte fino alla 1.11.0-beta.58, che non hanno la riga di chiusura). La chiusura dell'emissione e lo storno, o la nota,
+     * la toglierebbero due volte dall'unità; il programma non scrive un credito al posto delle persone. La strada passa dal piano: gli
+     * incassi stornati, le emissioni annullate, il piano in bozza ed eliminato (la scala di `viaDalPiano`), poi lo storno o la nota, e dal
+     * carrello un piano nuovo, che chiede la fattura al netto della nota.
+     *
+     * @param  'storno'|'nota'|'collega'  $come  lo storno della fattura, una nota collegata registrata o modificata, «Collega a una fattura»
+     * @param  list<int>|null  $unita  le unità che la nota riduce (null: tutte quelle della fattura)
+     */
+    public function motivoSpesaAdPersonamGiaChiesta(string $come, string $poi, ?array $unita = null): ?string
+    {
+        $sue = $this->righe->whereNotNull('immobile_id')->pluck('immobile_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($unita !== null) {
+            $sue = array_values(array_intersect($sue, array_map('intval', $unita)));
+        }
+        $voci = $sue === [] ? [] : RataQuote::rateEmesseConAdPersonam($sue, $this->pianiRate->pluck('id')->map(fn ($id) => (int) $id)->all());
+        if ($voci === []) {
+            return null;
+        }
+        $una = array_sum(array_map(fn (array $v) => count($v['rate']), $voci)) === 1;
+        $chiesta = $una ? 'quella rata l\'ha chiesta ai condòmini' : 'quelle rate l\'hanno chiesta ai condòmini';
+        $toglie = match ($come) {
+            'storno' => 'lo storno la toglierebbe dall\'unità',
+            'collega' => 'collegata, la nota la toglierebbe dalla fattura',
+            default => 'la nota la toglierebbe dall\'unità',
+        };
+        $suUnita = RataQuote::elencoUnita(array_values(array_intersect($sue, array_merge(...array_column($voci, 'unita')))));
+        $pianiDelleVoci = array_map(fn (array $v) => collect($this->pianiRate)->firstWhere('id', $v['piano_id']), $voci);
+        if (count($voci) === 1) {
+            $piano = $pianiDelleVoci[0];
+            $via = ucfirst($piano?->stradaDelPianoConguagliato() ?? ($piano?->haIncassiRegistrati()
+                ? 'storna prima gli incassi registrati sulle sue rate, annulla le emissioni, riporta il piano in bozza ed eliminalo'
+                : 'annulla le emissioni, riporta il piano in bozza ed eliminalo'));
+        } else {
+            $via = 'Per ciascuno di quei piani storna prima gli incassi registrati sulle sue rate, se ce ne sono, annulla le emissioni, riportalo in bozza ed eliminalo'
+                . (($fermi = PianoRate::fraseDeiPianiConguagliati($pianiDelleVoci)) === null ? '' : '; ' . $fermi);
+        }
+        $dopo = $come === 'storno'
+            ? (count($voci) === 1 ? 'le altre fatture del piano, se ce ne sono, tornano disponibili per un piano nuovo.' : 'le altre fatture di quei piani, se ce ne sono, tornano disponibili per un piano nuovo.')
+            : 'nel carrello del piano nuovo la fattura compare al netto della nota.';
+
+        return ucfirst(RataQuote::fraseRateEmesse($voci)) . " con la spesa ad personam della fattura n. {$this->numero_documento} su {$suUnita}: "
+            . "{$toglie} dopo che {$chiesta}. {$via}, poi {$poi}; {$dopo}";
+    }
+
+    /**
+     * Perché una nota collegata a questa fattura non toglie da un'unità più di quanto la fattura le ha addebitato (Coda 313, decisione 160,
+     * limite L4 della forma semplice) — o null. Il giornale scrive la riga della nota sull'unità per intero, anche dove la fattura non ha
+     * righe o ne ha di meno (nel netto quell'eccedenza «non è attribuibile», decisione 26, punto 6): la parte in più toglie dall'unità
+     * l'anticipazione di un'altra spesa. Se su quell'unità una rata emessa, di qualunque piano, ha chiesto una spesa ad personam, le
+     * emissioni l'hanno già chiusa, e l'unità resterebbe a credito senza persona: la stessa guardia della nota senza fattura
+     * (`FatturaPassivaService::motivoNotaSenzaFatturaSuSpesaChiesta`), per la sola parte che la fattura non copre.
+     *
+     * Quanto la fattura ha sull'unità: le sue righe sull'unità (imponibile più IVA) meno le righe delle altre note collegate su quell'unità
+     * (anche le contestate: il giornale le scrive); `$escludi` è la nota che si modifica, che non conta fra le altre.
+     *
+     * @param  'nota'|'collega'  $come
+     * @param  array<int, int>  $riduzioni  quanto la nota toglie da ogni unità, in centesimi (positivo)
+     */
+    public function motivoNotaOltreLaFattura(string $come, array $riduzioni, ?int $escludi = null): ?string
+    {
+        foreach ($riduzioni as $unita => $toglie) {
+            $ha = (int) $this->righe->where('immobile_id', $unita)->sum(fn ($r) => (int) $r->importo_imponibile + (int) $r->importo_iva);
+            $altre = -(int) \Illuminate\Support\Facades\DB::table('righe_fattura as rf')->join('fatture_passive as n', 'n.id', '=', 'rf.fattura_passiva_id')
+                ->where('n.fattura_rettificata_id', $this->id)->where('n.tipo_documento', 'nota_credito')
+                ->when($escludi !== null, fn ($q) => $q->where('n.id', '!=', $escludi))->where('rf.immobile_id', $unita)
+                ->sum(\Illuminate\Support\Facades\DB::raw('rf.importo_imponibile + rf.importo_iva'));
+            $resta = max(0, $ha - $altre);
+            if ($toglie <= $resta) {
+                continue;
+            }
+            $voci = RataQuote::rateEmesseConAdPersonam([(int) $unita]);
+            if ($voci === []) {
+                continue;
+            }
+            $etichetta = RataQuote::elencoUnita([(int) $unita]);
+            $chiesta = array_sum(array_map(fn (array $v) => count($v['rate']), $voci)) === 1 ? 'quella rata l\'ha chiesta' : 'quelle rate l\'hanno chiesta';
+            $fattura = "la fattura n. {$this->numero_documento}";
+            $apre = $ha === 0
+                ? "La nota ha una riga su {$etichetta}, dove {$fattura} non ha righe"
+                : "La nota toglie da {$etichetta} " . MoneyHelper::format($toglie) . ", più " . ($resta === $ha ? 'di quanto' : 'di quanto, al netto delle altre note collegate,')
+                    . " {$fattura} ha su quell'unità (" . MoneyHelper::format($resta) . ')';
+            $dellaFattura = $this->righe->whereNotNull('immobile_id')->pluck('immobile_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $metti = $ha === 0
+                ? ($dellaFattura === [] ? 'metti la riga senza l\'unità, su un capitolo'
+                    : 'metti la riga ' . (count($dellaFattura) === 1 ? 'sull\'unità' : 'su un\'unità') . ' della fattura, ' . RataQuote::elencoUnita($dellaFattura))
+                : ($resta === 0 ? 'togli la riga da ' . $etichetta : 'riduci la riga su ' . $etichetta . ' a non più di ' . MoneyHelper::format($resta));
+            $se = $come === 'collega' ? "Se la nota rettifica {$fattura}, modificala e {$metti}, poi collegala" : "Se la nota rettifica {$fattura}, {$metti}";
+
+            return "{$apre}, e su quell'unità " . RataQuote::fraseRateEmesse($voci) . ' con una spesa ad personam: ' . ($ha === 0 ? 'la nota' : 'la parte in più')
+                . " la toglierebbe dall'unità dopo che {$chiesta} ai condòmini. {$se}; se rettifica un'altra fattura, collegala a quella.";
+        }
+
+        return null;
+    }
+
+    /**
+     * La scala dei piani, una volta sola per storno e nota di credito (Coda 165, 1.11.0-beta.36): il piano più avanzato
+     * fra quelli che non hanno incassato — è quello che chiede più passi — e la via per ogni grado. In un piano da fatture
+     * una fattura sola non si stacca: la via finisce sempre con l'eliminazione del piano.
+     *
+     * @param  \Closure(string): string  $conseguenza  che cosa succederebbe, per grado
+     * @param  string  $poi  che cosa si fa dopo aver tolto il piano
+     */
+    private function viaDalPiano(\Closure $conseguenza, string $poi): ?string
+    {
+        $altre = 'le altre fatture del piano, se ce ne sono, tornano disponibili per un piano nuovo.';
+
+        if ($voce = $this->pianoAlGrado('emesso', 'approvato', 'bozza')) {
+            $nome = $voce['piano']->nome;
+            $perche = $conseguenza($voce['grado']);
+            // Un piano che un passaggio ha preso nel conguaglio non si elimina finché il passaggio c'è: i passi sono quelli del pulsante «Ricalcola».
+            $conguagliato = $voce['piano']->stradaDelPianoConguagliato();
+
+            return match ($voce['grado']) {
+                'emesso' => "La fattura è nel piano rate «{$nome}», che ha già rate emesse: {$perche}. "
+                    . ($conguagliato !== null ? ucfirst($conguagliato) : 'Annulla le emissioni, riporta il piano in bozza ed eliminalo') . ", poi {$poi}; {$altre}",
+                'approvato' => "La fattura è nel piano rate «{$nome}», approvato: {$perche}. "
+                    . ($conguagliato !== null ? ucfirst($conguagliato) : 'Riporta il piano in bozza ed eliminalo') . ", poi {$poi}; {$altre}",
+                'bozza' => "La fattura è nel piano rate «{$nome}», in bozza: {$perche}. "
+                    . ($conguagliato !== null ? ucfirst($conguagliato) : 'Elimina prima il piano') . ", poi {$poi}; {$altre}",
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Cosa resta dopo lo storno di una fattura che sta in un piano che ha già incassato — o `null`. Lo mostra la conferma
+     * dello storno: il piano non si rettifica da solo, e il versato per una spesa annullata è una decisione dell'assemblea.
+     */
+    public function avvisoStorno(): ?string
+    {
+        $nomi = collect($this->pianiConGrado())
+            ->where('grado', 'incassato')
+            ->map(fn (array $voce) => '«' . $voce['piano']->nome . '»')
+            ->values();
+
+        if ($nomi->isEmpty()) {
+            return null;
+        }
+
+        $dove = $nomi->count() === 1
+            ? "La fattura è nel piano rate {$nomi->first()}, che ha già incassato rate."
+            : 'La fattura è nei piani rate ' . $nomi->slice(0, -1)->implode(', ') . ' e ' . $nomi->last() . ', che hanno già incassato rate.';
+
+        return $dove . ' Lo storno annulla la fattura in contabilità, ma le rate del piano restano e continuano a chiederla: '
+            . 'quanto i condòmini hanno versato per questa spesa va restituito o destinato con una delibera.';
+    }
+
+    public function getMotivoBloccoStornoAttribute(): ?string
+    {
+        return $this->motivoBloccoStorno();
+    }
+
+    public function getAvvisoStornoAttribute(): ?string
+    {
+        return $this->avvisoStorno();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | NOTA DI CREDITO DEL FORNITORE E PIANI RATE (Coda 165, 1.11.0-beta.36)
+    |--------------------------------------------------------------------------
+    | Decisione 26, punto 6: la nota del fornitore collegata a questa fattura segue la stessa scala dello storno. I metodi
+    | stanno sulla FATTURA rettificata, perché è lei a stare nei piani; il form, «Collega a una fattura» e il server
+    | chiamano gli stessi, come lo storno: una riga di codice sola per decidere e per spiegare.
+    */
+
+    /**
+     * «la nota di credito n. X», o «le note di credito n. X e n. Y», delle note collegate — o `null` se non ce ne sono. Con
+     * una preposizione, articolata: «della nota…», «dalle note…» — «al netto di la nota» si leggeva in due messaggi
+     * (testuale della Fase 1-bis). Le contestate si tolgono quando la frase parla del netto, che non le conta.
+     */
+    public function elencoNoteCollegate(string $preposizione = '', bool $senzaContestate = false): ?string
+    {
+        $note = $this->noteCollegate;
+        if ($senzaContestate) {
+            $note = $note->reject(fn ($n) => (is_object($n->stato_approvazione) ? $n->stato_approvazione->value : $n->stato_approvazione) === 'contestata');
+        }
+        $numeri = $note->pluck('numero_documento')->map(fn ($n) => 'n. ' . $n)->values();
+        if ($numeri->isEmpty()) {
+            return null;
+        }
+
+        $una = $numeri->count() === 1;
+        $articolo = match ($preposizione) {
+            'di' => $una ? 'della' : 'delle',
+            'da' => $una ? 'dalla' : 'dalle',
+            default => $una ? 'la' : 'le',
+        };
+
+        return $una
+            ? "{$articolo} nota di credito " . $numeri->first()
+            : "{$articolo} note di credito " . $numeri->slice(0, -1)->implode(', ') . ' e ' . $numeri->last();
+    }
+
+    /** La fattura al netto delle note collegate (vedi `NettoNoteCollegate`), o `null` se non ne ha. */
+    public function nettoNoteCollegate(): ?array
+    {
+        return NettoNoteCollegate::perFattura((int) $this->id);
+    }
+
+    /**
+     * Quanto chiedono per questa fattura i piani che la contengono, in centesimi: l'importo collegato di ogni piano, o —
+     * se è zero, cioè «tutto» — ciò che il motore ripartisce: la parte che il piano finanzia al netto delle note su quella
+     * parte, e mai più del netto della fattura (`CalcoloQuoteService::calcolaDaFattureStraordinarie`, R2 della Fase 1-bis).
+     * Solo i piani con il grado dato, se ne passi.
+     */
+    public function chiestoDaiPiani(string ...$gradi): int
+    {
+        $netto = $this->nettoNoteCollegate();
+        $naturale = $netto !== null
+            ? min($netto['parte_piano'] - $netto['rettificato_piano'], $netto['netto'])
+            : $this->partePianoLorda();
+        $chiesto = 0;
+        foreach ($this->pianiConGrado() as $voce) {
+            if ($gradi !== [] && ! in_array($voce['grado'], $gradi, true)) {
+                continue;
+            }
+            $collegato = (int) ($voce['piano']->pivot->importo_collegato ?? 0);
+            if ($collegato > 0) {
+                $chiesto += $collegato;
+            } elseif ($netto !== null && in_array($voce['grado'], ['emesso', 'incassato'], true)) {
+                // Un piano «tutto» che non si ricalcola più chiede quello che ha ripartito alla generazione, e da qui
+                // non si sa quali note c'erano allora. Si conta la parte intera, senza note: il limite alto, che non fa
+                // finanziare due volte; gli avvisi non danno cifre (`chiestoNonCerto`, V4 della verifica).
+                $chiesto += max(0, (int) $netto['parte_piano']);
+            } else {
+                $chiesto += max(0, $naturale);
+            }
+        }
+
+        return $chiesto;
+    }
+
+    /**
+     * Se quanto chiedono i piani dei gradi dati **non si può sapere**: un piano «tutto» (importo collegato a zero) già
+     * emesso o incassato, su una fattura con note collegate. Allora gli avvisi non danno cifre invece di inventarle (V4).
+     */
+    private function chiestoNonCerto(string ...$gradi): bool
+    {
+        if ($this->nettoNoteCollegate() === null) {
+            return false;
+        }
+        foreach ($this->pianiConGrado() as $voce) {
+            if (($gradi === [] || in_array($voce['grado'], $gradi, true))
+                && in_array($voce['grado'], ['emesso', 'incassato'], true)
+                && (int) ($voce['piano']->pivot->importo_collegato ?? 0) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * La parte della fattura che un piano da fatture finanzia, al lordo: i componenti del motore — righe ad personam, righe
+     * fuori preventivo con una voce, o le coperture «sopravvenienza» con una voce della pregressa.
+     */
+    public function partePianoLorda(): int
+    {
+        if ($this->is_pregresso) {
+            return (int) $this->coperture->where('tipo_copertura', 'sopravvenienza')->whereNotNull('conto_id')->sum(fn ($c) => abs((int) $c->importo));
+        }
+
+        return (int) $this->righe->filter(fn ($r) => $r->immobile_id !== null || ($r->is_sopravvenienza && $r->conto_id !== null))
+            ->sum(fn ($r) => (int) $r->importo_imponibile + (int) $r->importo_iva);
+    }
+
+    /**
+     * Quanto vale la fattura dopo una nota in più, con le sue righe vere: la stessa regola di `NettoNoteCollegate` —
+     * dove la nota non tocca la parte del piano, il netto non scende (R4 della Fase 1-bis: prima si toglieva l'intero
+     * importo, e una nota sulla parte a preventivo faceva chiedere di restituire denaro mai chiesto in più). Con righe
+     * vuote, il netto di oggi: la modifica di una nota lo legge dopo aver scritto le righe nuove.
+     *
+     * @param  list<array{conto_id: ?int, immobile_id: ?int, riduzione: int}>  $righeNota
+     * @return array{netto: int, rettificato_piano: int}
+     */
+    private function statoDopoNota(array $righeNota): array
+    {
+        $dopo = NettoNoteCollegate::perFattura((int) $this->id, $righeNota);
+
+        return [
+            'netto' => (int) ($dopo['netto'] ?? $this->partePianoLorda()),
+            'rettificato_piano' => (int) ($dopo['rettificato_piano'] ?? 0),
+        ];
+    }
+
+    /** «La fattura è nel piano rate «X», che ha già incassato rate.» per i piani che hanno incassato — o `null`. */
+    private function doveIncassato(): ?string
+    {
+        $nomi = collect($this->pianiConGrado())->where('grado', 'incassato')
+            ->map(fn (array $voce) => '«' . $voce['piano']->nome . '»')->values();
+        if ($nomi->isEmpty()) {
+            return null;
+        }
+
+        return $nomi->count() === 1
+            ? "La fattura è nel piano rate {$nomi->first()}, che ha già incassato rate."
+            : 'La fattura è nei piani rate ' . $nomi->slice(0, -1)->implode(', ') . ' e ' . $nomi->last() . ', che hanno già incassato rate.';
+    }
+
+    /**
+     * Il testo dell'avviso con incassi, in tre forme: con la cifra quando le rate chiedono più del netto; senza cifra
+     * quando il netto scende ma quanto chiedono i piani non si sa (piano «tutto» già incassato, V4 — la frase sulla
+     * restituzione non si perde, W2 del terzo giro); sulla ripartizione quando cambia solo di chi è la parte.
+     *
+     * Chiude sempre con come si sistema di solito: il conguaglio nel consuntivo, verso il condominio. Deciso da Vincenzo
+     * il 27/09/2026 dopo la ricerca sulla legge — il credito e il debito di ciascuno sono verso il condominio, e una
+     * compensazione diretta fra condòmini non ha base (art. 1241 c.c.).
+     */
+    private function testoAvvisoIncassato(string $dove, ?int $inPiu, bool $nettoScende = false, bool $modifica = false): string
+    {
+        $come = ' con una delibera, di solito nel conguaglio del consuntivo: la differenza è fra ciascun condòmino e il '
+            . 'condominio, non fra condòmini.';
+        // In modifica la nota può solo spostarsi: «riduce il debito» sarebbe falso, e le rate possono essere state
+        // calcolate già con la nota (testuale del quarto giro). Le rate «restano quelle già calcolate» vale in tutti i casi.
+        $apre = $modifica ? ' La modifica cambia quanto e dove la nota riduce la fattura' : ' La nota riduce il debito verso il fornitore';
+        if ($inPiu !== null && $inPiu > 0) {
+            return $dove . $apre . ', ma le rate restano e chiedono '
+                . MoneyHelper::format($inPiu) . ' più di quanto resta della fattura: quanto i condòmini hanno versato in più '
+                . 'va restituito o destinato' . $come;
+        }
+        if ($nettoScende) {
+            return $dove . $apre . ' e la fattura vale di meno, ma le rate restano quelle già calcolate: quanto i condòmini '
+                . 'hanno versato oltre quanto resta della fattura va restituito o destinato' . $come;
+        }
+
+        return $dove . $apre . ', ma le rate restano quelle già calcolate: se la nota riguarda una parte precisa — '
+            . 'un\'unità, una voce — quanto ha versato ciascun condòmino può non corrispondere più alla sua parte, e va '
+            . 'sistemato' . $come;
+    }
+
+    /**
+     * Perché una nota del fornitore non si può collegare a questa fattura (in registrazione, con «Collega a una
+     * fattura», o modificandola) — o `null` se si può. Con un piano che ha incassato si può: lo dice
+     * `avvisoNotaCollegata()`.
+     *
+     * @param  int  $importoNotaCents  la magnitudine della nota che si sta registrando o collegando, per il tetto del totale
+     * @param  list<array{conto_id: ?int, immobile_id: ?int, riduzione: int}>|null  $righeNota  le righe della nota, per il
+     *         «di quanto»; `null` se non si conoscono (la richiesta, prima del calcolo dell'IVA): il messaggio non dà cifre
+     */
+    public function motivoBloccoNotaCollegata(int $importoNotaCents = 0, string $poi = 'registra la nota', ?array $righeNota = null, bool $notaContestata = false): ?string
+    {
+        if ($this->tipo_documento !== 'fattura') {
+            return 'Una nota di credito rettifica una fattura, non un\'altra nota.';
+        }
+
+        if ($this->dati_extra['is_stornata'] ?? false) {
+            return "La fattura n. {$this->numero_documento} è già stata stornata: la nota del fornitore sarebbe un secondo "
+                . 'credito sullo stesso documento. Se lo storno era un errore, elimina la nota nata dallo storno, che '
+                . "ripristina la fattura, poi {$poi}.";
+        }
+
+        $documento = (int) $this->importo_imponibile + (int) $this->importo_iva;
+        $giaRettificato = (int) ($this->nettoNoteCollegate()['rettificato'] ?? 0);
+        if ($importoNotaCents > 0 && $giaRettificato + $importoNotaCents > $documento) {
+            return "Le note collegate alla fattura n. {$this->numero_documento} arriverebbero a "
+                . MoneyHelper::format($giaRettificato + $importoNotaCents) . ', oltre il suo totale di '
+                . MoneyHelper::format($documento) . '. Controlla l\'importo della nota, o la fattura che rettifica.';
+        }
+
+        // Coda 313 (decisione 160): la nota che toglie la spesa ad personam di questa fattura da un'unità a cui una rata emessa l'ha già
+        // chiesta. Anche la contestata: il giornale la scrive lo stesso. Senza le righe (la richiesta, prima del calcolo) la guarda il
+        // servizio, che le ha.
+        $unitaNota = [];
+        foreach ($righeNota ?? [] as $r) {
+            if (($r['immobile_id'] ?? null) !== null) {
+                $unitaNota[(int) $r['immobile_id']] = ($unitaNota[(int) $r['immobile_id']] ?? 0) + (int) $r['riduzione'];
+            }
+        }
+        $riduzioniNota = array_filter($unitaNota, fn (int $n) => $n > 0);
+        $unitaNota = array_keys($riduzioniNota);
+        $come = $poi === 'collega la nota' ? 'collega' : 'nota';
+        $adPersonam = fn () => $unitaNota === [] ? null
+            : ($this->motivoSpesaAdPersonamGiaChiesta($come, $poi, $unitaNota) ?? $this->motivoNotaOltreLaFattura($come, $riduzioniNota));
+
+        // Una nota contestata non conta nel netto (`NettoNoteCollegate`): non cambia niente di quanto i piani chiedono, e
+        // la scala non la riguarda. Il tetto qui sopra sì — vale per tutte le note (V3 della verifica delle correzioni).
+        if ($notaContestata) {
+            return $adPersonam();
+        }
+
+        $inPiu = $righeNota === null || $this->chiestoNonCerto('emesso', 'approvato', 'bozza')
+            ? null
+            : $this->chiestoDaiPiani('emesso', 'approvato', 'bozza') - $this->statoDopoNota($righeNota)['netto'];
+
+        return $this->viaDalPiano(
+            fn (string $grado) => $inPiu !== null && $inPiu > 0
+                ? ($grado === 'emesso' ? 'con la nota, quelle rate' : 'con la nota, le sue rate')
+                    . ' chiederebbero ' . MoneyHelper::format($inPiu) . ' più di quanto resta della fattura'
+                : ($grado === 'emesso' ? 'quelle rate' : 'le sue rate') . ' sono già calcolate e non si aggiornano da sole',
+            $poi,
+        ) ?? $adPersonam();
+    }
+
+    /**
+     * Che cosa resta dopo aver collegato una nota a questa fattura, quando un piano che la contiene ha già incassato — o
+     * `null`. Lo mostra la conferma, come per lo storno: le rate non si rettificano da sole.
+     *
+     * Con le righe della nota si sa dove riduce: se le rate chiedono più del netto, l'avviso dice di quanto; se la nota
+     * tocca la parte del piano senza cambiare il totale — la voce di una riga fuori preventivo, su un piano parziale — l'avviso c'è lo
+     * stesso, perché la parte di ciascuno non torna (Coda 165, 1.11.0-beta.36); la riga di un'unità su cui una rata emessa ha chiesto la spesa
+     * ad personam non arriva qui, si rifiuta prima (decisione 160, {@see motivoSpesaAdPersonamGiaChiesta()}); se la nota sta tutta sulla parte a preventivo,
+     * il piano non c'entra e l'avviso non c'è (R4). Senza righe non si sa, e l'avviso c'è, senza cifra.
+     *
+     * @param  list<array{conto_id: ?int, immobile_id: ?int, riduzione: int}>|null  $righeNota
+     */
+    public function avvisoNotaCollegata(?array $righeNota = null, bool $notaContestata = false): ?string
+    {
+        if ($notaContestata || ($dove = $this->doveIncassato()) === null) {
+            return null;
+        }
+        if ($righeNota === null) {
+            return $this->testoAvvisoIncassato($dove, null);
+        }
+
+        $oggi = $this->nettoNoteCollegate();
+        $dopo = $this->statoDopoNota($righeNota);
+        $toccaIlPiano = $dopo['rettificato_piano'] !== (int) ($oggi['rettificato_piano'] ?? 0);
+        if ($this->chiestoNonCerto('incassato')) {
+            // Quanto chiede il piano non si sa: l'avviso c'è se la nota cambia qualcosa, senza cifra (V4).
+            $scende = $dopo['netto'] < (int) ($oggi['netto'] ?? $this->partePianoLorda());
+
+            return $toccaIlPiano || $scende ? $this->testoAvvisoIncassato($dove, null, $scende) : null;
+        }
+        $inPiu = $this->chiestoDaiPiani('incassato') - $dopo['netto'];
+        if ($inPiu <= 0 && ! $toccaIlPiano) {
+            return null;
+        }
+
+        return $this->testoAvvisoIncassato($dove, $inPiu);
+    }
+
+    /**
+     * Se la modifica di una nota collegata cambia che cosa i piani dovrebbero chiedere a qualcuno: il netto scende, o
+     * un'unità o una voce della parte del piano viene ridotta **di più** (anche una che prima non lo era — la nota
+     * spostata da un'unità a un'altra). «Modifica con la scala» (decisione 26, punto 6): correggere una data o una
+     * descrizione, o ridurre la nota, non fa chiedere a nessuno più di prima e resta libero.
+     */
+    private function modificaNotaCambiaIlPiano(?array $prima, ?array $dopo): bool
+    {
+        $nettoPrima = (int) ($prima['netto'] ?? $this->partePianoLorda());
+        $nettoDopo = (int) ($dopo['netto'] ?? $this->partePianoLorda());
+        if ($nettoDopo < $nettoPrima) {
+            return true;
+        }
+
+        // Le riduzioni per chiave sono negative: «di più» è più negativo.
+        $impPrima = NettoNoteCollegate::impronta($prima);
+        foreach (NettoNoteCollegate::impronta($dopo) as $chiave => $riduzione) {
+            if ($riduzione < ($impPrima[$chiave] ?? 0)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Perché la modifica di una nota collegata a questa fattura non si può salvare — o `null`. Si chiama **dentro** la
+     * transazione di `FatturaPassivaService::aggiornaFattura`, dopo che le righe nuove della nota sono scritte: il netto
+     * «dopo» si legge dal database con gli importi veri (IVA dichiarata compresa), non da un calcolo parallelo.
+     *
+     * La scala scatta se il netto scende o se un'unità o una voce del piano viene ridotta di più: spostare la nota da
+     * un'unità a un'altra a netto invariato cambiava chi deve pagare senza che nessun piano lo sapesse (scartato dalla
+     * deduplica della Fase 1-bis come «decisione», ripreso perché la decisione dice «modifica con la scala»).
+     *
+     * @param  array<string, mixed>|null  $prima  `nettoNoteCollegate()` letto prima della modifica
+     */
+    public function motivoBloccoModificaNota(?array $prima, string $poi = 'modifica la nota', int $importoNotaContestata = 0, int $importoNotaContestataPrima = 0): ?string
+    {
+        $dopo = $this->nettoNoteCollegate();
+        $documento = (int) $this->importo_imponibile + (int) $this->importo_iva;
+        // La nota contestata modificata: fuori dal netto, e quindi dalla scala, ma dentro il tetto del totale come in
+        // registrazione — portata da € 100,00 a € 1.500,00 su una fattura da € 1.000,00 passava (V3).
+        if ($importoNotaContestata > 0) {
+            $totale = (int) ($dopo['rettificato'] ?? 0) + $importoNotaContestata;
+            $totalePrima = (int) ($prima['rettificato'] ?? 0) + $importoNotaContestataPrima;
+
+            // Solo se cresce, come per le altre note: correggere la descrizione di una contestata non si blocca (W3).
+            return $totale > $documento && $totale > $totalePrima
+                ? "Le note collegate alla fattura n. {$this->numero_documento} arriverebbero a " . MoneyHelper::format($totale)
+                    . ', oltre il suo totale di ' . MoneyHelper::format($documento) . '. Controlla l\'importo della nota; per '
+                    . 'collegarla a un\'altra fattura, prima «Scollega» dall\'elenco.'
+                : null;
+        }
+        $rettificatoDopo = (int) ($dopo['rettificato'] ?? 0);
+        if ($rettificatoDopo > $documento && $rettificatoDopo > (int) ($prima['rettificato'] ?? 0)) {
+            return "Le note collegate alla fattura n. {$this->numero_documento} arriverebbero a "
+                . MoneyHelper::format($rettificatoDopo) . ', oltre il suo totale di '
+                . MoneyHelper::format($documento) . '. Controlla l\'importo della nota; per collegarla a un\'altra fattura, '
+                . 'prima «Scollega» dall\'elenco.';
+        }
+
+        if (! $this->modificaNotaCambiaIlPiano($prima, $dopo)) {
+            return null;
+        }
+
+        // Le righe nuove sono già scritte: il «dopo» è lo stato di oggi (righe in più vuote).
+        return $this->motivoBloccoNotaCollegata(0, $poi, []);
+    }
+
+    /**
+     * L'avviso della modifica di una nota collegata quando un piano che contiene la fattura ha incassato — o `null`.
+     * Come `motivoBloccoModificaNota`, dentro la transazione e a righe scritte; il servizio lo fa confermare con un
+     * secondo invio (R5 della Fase 1-bis: prima la modifica passava senza avviso).
+     */
+    public function avvisoModificaNota(?array $prima): ?string
+    {
+        if (($dove = $this->doveIncassato()) === null) {
+            return null;
+        }
+        $dopo = $this->nettoNoteCollegate();
+        if (! $this->modificaNotaCambiaIlPiano($prima, $dopo)) {
+            return null;
+        }
+
+        if ($this->chiestoNonCerto('incassato')) {
+            $scende = (int) ($dopo['netto'] ?? $this->partePianoLorda()) < (int) ($prima['netto'] ?? $this->partePianoLorda());
+
+            return $this->testoAvvisoIncassato($dove, null, $scende, true);
+        }
+
+        return $this->testoAvvisoIncassato($dove, $this->chiestoDaiPiani('incassato') - (int) ($dopo['netto'] ?? $this->partePianoLorda()), false, true);
+    }
+
+    /**
+     * Perché la modifica di questa **fattura** non si può salvare per le note collegate — o `null`: il suo totale non può
+     * scendere sotto quanto le note già rettificano (la stessa regola del collegamento, «mai oltre il totale»). Dentro la
+     * transazione di `aggiornaFattura`, a righe scritte (domanda aperta della Fase 1-bis).
+     */
+    public function motivoBloccoModificaFatturaRettificata(): ?string
+    {
+        $netto = $this->nettoNoteCollegate();
+        if ($netto === null) {
+            return null;
+        }
+        if ($netto['rettificato'] <= $netto['documento']) {
+            return null;
+        }
+
+        // Le stesse note della cifra: le contestate non contano, e non si nominano (testuale della verifica).
+        $una = count($netto['note']) === 1;
+
+        return "Con questa modifica la fattura n. {$this->numero_documento} varrebbe " . MoneyHelper::format($netto['documento'])
+            . ', meno di quanto ' . ($una ? 'rettifica ' : 'rettificano ') . $this->elencoNoteCollegate('', true) . ' ('
+            . MoneyHelper::format($netto['rettificato']) . '). Controlla gli importi, o scollega prima una nota dall\'elenco.';
+    }
+
+    /**
+     * Perché questa nota di credito non si può collegare a una fattura (lato NOTA) — o `null` se si può. Il parametro
+     * serve all'elenco, che calcola in una query sola quali note sono nate da uno storno.
+     */
+    public function motivoBloccoCollegamento(?bool $eNataDaStorno = null): ?string
+    {
+        if ($this->tipo_documento !== 'nota_credito') {
+            return 'Solo una nota di credito si collega a una fattura.';
+        }
+
+        if ($eNataDaStorno ?? $this->eNataDaStorno()) {
+            return 'Questa nota è nata da uno storno: è già legata alla fattura che annulla, e non si collega a un\'altra.';
+        }
+
+        if ($this->fattura_rettificata_id !== null) {
+            $numero = $this->fatturaRettificata?->numero_documento ?? ('#' . $this->fattura_rettificata_id);
+
+            return "La nota rettifica già la fattura n. {$numero}: per cambiarla, prima «Scollega».";
+        }
+
+        return null;
     }
 
     // ── Scopes originali ─────────────────────────────────────────────────────
@@ -369,4 +1105,38 @@ class FatturaPassiva extends Model
         ];
     }
 
+
+    /**
+     * Questa nota di credito è nata da uno **storno**, quindi non è compensabile né pagabile?
+     *
+     * ⚠️ **Due criteri, e il secondo esiste per le note già a database.** La correzione della
+     * Coda 124 marca le note nuove con `dati_extra.nota_storno`, ma le note generate **prima** di
+     * quella correzione quella chiave non ce l'hanno e restavano compensabili: il fornitore
+     * poteva vedersi decurtare un pagamento con una nota che non ha mai emesso. Era la Coda 133.
+     *
+     * Il secondo criterio non ha bisogno di nessuna migrazione, perché il legame esiste già ed è
+     * sempre esistito: quando `StornoFatturaController` genera la nota, **congela la fattura
+     * originale** scrivendole `dati_extra.stornata_da_id` con l'id della nota. Una nota puntata da
+     * una fattura è nata da uno storno, comunque sia stata marcata.
+     *
+     * ⚠️ **Il verso conta.** Si guarda chi *punta* questa nota, non cosa questa nota dichiara di
+     * sé: è ciò che permette di riconoscere le storiche senza toccarle. E lascia intatto il caso
+     * opposto — una nota di credito **vera**, emessa dal fornitore, non è puntata da nessuno e
+     * resta compensabile come sempre.
+     */
+    public function eNataDaStorno(): bool
+    {
+        if (! empty($this->dati_extra['nota_storno'] ?? null)) {
+            return true;
+        }
+
+        if ($this->tipo_documento !== 'nota_credito') {
+            return false;
+        }
+
+        return static::query()
+            ->where('condominio_id', $this->condominio_id)
+            ->whereJsonContains('dati_extra->stornata_da_id', $this->id)
+            ->exists();
+    }
 }

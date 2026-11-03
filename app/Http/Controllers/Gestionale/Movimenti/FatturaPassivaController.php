@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Traits\OrdinaElenco;
+use App\Services\Documenti\ArchivioDocumenti;
 
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Gestionale\Movimenti\StoreFatturaDocumentoRequest;
 use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
 use App\Http\Requests\Gestionale\Movimenti\UpdateFatturaRequest;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -23,8 +25,10 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Immobile;
 use App\Models\Saldo;
+use App\Services\Gestionale\Duplicati\CollisioneUnicaFattura;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Services\Gestionale\PagamentoFornitoreService;
+use App\Services\Gestionale\RegolazioniSuVoceDiEntrata;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
@@ -32,13 +36,13 @@ use App\Traits\HasEsercizio;
 use App\Traits\PaginaElenco;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -107,7 +111,10 @@ class FatturaPassivaController extends Controller
             // `coperture`, `pianiRate`, `scritture` ed `esercizio` servono a
             // motivoBloccoEliminazione(): caricate qui una volta, invece di
             // sette query per riga moltiplicate per le venti righe di pagina.
-            ->with(['fornitore', 'righe', 'documenti', 'coperture', 'pianiRate', 'scritture', 'esercizio'])
+            // `noteCollegate` e `fatturaRettificata` (Coda 165, 1.11.0-beta.36): le guardie di storno ed eliminazione
+            // guardano le note collegate, e il menu della nota dice quale fattura rettifica.
+            ->with(['fornitore', 'righe', 'documenti', 'coperture', 'pianiRate', 'scritture', 'esercizio',
+                'noteCollegate', 'fatturaRettificata:id,numero_documento,data_documento'])
             ->when($request->stato_pagamento, fn ($q, $v) => $q->where('stato_pagamento', $v))
             ->when($request->stato_approvazione, fn ($q, $v) => $q->where('stato_approvazione', $v))
             ->when($request->search, fn ($q, $v) => $q->where('numero_documento', 'like', "%{$v}%")
@@ -127,7 +134,28 @@ class FatturaPassivaController extends Controller
         // eliminabile, guardava due condizioni su sette e sbagliava in entrambi
         // i versi — nascondeva la voce senza spiegare, o la mostrava e poi il
         // server la rifiutava.
-        $fatture->through(fn (FatturaPassiva $fattura) => $fattura->append('motivo_blocco_eliminazione'));
+        // ⚠️ **Il frontend non può calcolare da sé se una nota è nata da uno storno.** Le note
+        // generate prima della Coda 124 non hanno `dati_extra.nota_storno`, e il legame che le
+        // identifica sta sull'ALTRO documento (`stornata_da_id` sulla fattura originale): un menù
+        // che guarda solo la chiave le offre ancora «Registra pagamento», e il form si apre senza
+        // trovarle nelle pendenze — il vicolo cieco muto che la Coda 124 dichiarava chiuso.
+        // L'insieme si raccoglie in **una** query per tutto l'elenco, non una per fattura.
+        // Trovato dalla Fase 1-bis della beta.20, Coda 133.
+        $idNoteDaStorno = PagamentoFornitoreService::idNoteNateDaStorno($condominio->id);
+
+        $fatture->through(function (FatturaPassiva $fattura) use ($idNoteDaStorno) {
+            // Lo storno ha la sua guardia sul model come l'eliminazione, e l'avviso per il piano che ha già incassato
+            // (1.11.0-beta.35, R1 della Fase 1-bis): il menu mostra lo stesso motivo che applicherebbe il server.
+            $fattura->append(['motivo_blocco_eliminazione', 'motivo_blocco_storno', 'avviso_storno']);
+            $eNataDaStorno = ! empty($fattura->dati_extra['nota_storno'] ?? null) || in_array($fattura->id, $idNoteDaStorno, true);
+            $fattura->setAttribute('e_nata_da_storno', $eNataDaStorno);
+            // Coda 165: perché questa nota non si collega a una fattura — `null` se si può. Sulle fatture non serve.
+            $fattura->setAttribute('motivo_blocco_collegamento', $fattura->tipo_documento === 'nota_credito'
+                ? $fattura->motivoBloccoCollegamento($eNataDaStorno)
+                : null);
+
+            return $fattura;
+        });
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -159,6 +187,9 @@ class FatturaPassivaController extends Controller
             'fatture' => $fatture,
             'stats' => $stats,
             'regolazioniImmediate' => $regolazioniImmediate,
+            // Coda 287: le regolazioni immediate non stornate scritte su una voce che oggi non è di spesa, di tutto il condominio della rotta
+            // (anche degli esercizi chiusi: lo storno passa e si registra nell'esercizio aperto). La pagina le mostra in un blocco a sé finché ce n'è una.
+            'regolazioniSuVoceDiEntrata' => app(RegolazioniSuVoceDiEntrata::class)->delCondominio($condominio->id),
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
             'statiPagamento' => collect(StatoPagamentoFattura::cases())->map(fn ($c) => [
@@ -181,7 +212,7 @@ class FatturaPassivaController extends Controller
      * @param  Condominio  $condominio  Il condominio in cui si sta registrando la fattura.
      * @return Response Vista Inertia contenente il "Matrix Workspace" e tutte le dipendenze calcolate.
      */
-    public function create(Condominio $condominio): Response
+    public function create(Condominio $condominio, Request $request): Response
     {
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -208,6 +239,30 @@ class FatturaPassivaController extends Controller
             'condominio' => $condominio,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
+            // ⚠️ Deciso il 02/09/2026, aprendo la riprogettazione della UI: due pulsanti
+            // della stessa toolbar (`DataTableToolbar.vue`) puntano alla stessa rotta —
+            // «due porte, una stanza», la decisione di apertura della beta.14 — ma devono
+            // aprire porte VISIVAMENTE diverse: «Importa XML» mostra subito la dropzone,
+            // «Nuova fattura» il form vuoto. `?modo=xml` è la sola differenza fra le due
+            // `Link`; qualunque altro valore (o l'assenza del parametro) resta manuale.
+            'modalita_ingresso' => $request->query('modo') === 'xml' ? 'xml' : 'manuale',
+            /*
+             * ⚠️ **Senza codice fiscale il controllo «questa fattura è di questo
+             * palazzo?» non può girare, e prima taceva.** Leggendo un XML si confronta
+             * il `CessionarioCommittente` del file col codice fiscale del condominio
+             * (ImportaFatturaXmlController): se il condominio non ce l'ha, la guardia si
+             * salta — giustamente, non c'è niente da confrontare — ma l'amministratore
+             * non lo sapeva, e si ritrovava senza rete credendo di averla.
+             *
+             * Il caso non è teorico: la creazione a mano pretende il campo
+             * (CreateCondominioRequest: `required`), ma **l'importatore Danea può creare
+             * un condominio senza** — tanto che ha già un controllo post-import apposta
+             * (`Controlli\Verificatori\CodiceFiscaleDelCondominio`). Cioè capita
+             * proprio a chi sta caricando lo storico, che è anche chi più probabilmente
+             * importerà XML subito dopo. Misurato il 03/09/2026: 4 condomìni su 8 nel
+             * database di sviluppo hanno `codice_fiscale` a null.
+             */
+            'condominio_senza_codice_fiscale' => trim((string) $condominio->codice_fiscale) === '',
             ...$contestoBudget,
             'gestioni' => $condominio->gestioni()
                 ->where('gestioni.attiva', true)
@@ -272,9 +327,49 @@ class FatturaPassivaController extends Controller
      * @param  Condominio  $condominio  Il condominio interessato.
      * @return RedirectResponse Reindirizza alla pagina precedente (back) per permettere inserimenti multipli.
      */
+    /**
+     * Scrive sull'anagrafica del fornitore la risposta data al volo durante la registrazione.
+     *
+     * ⚠️ **È una scrittura su un'altra entità, ed è voluta.** Registrare una fattura di norma
+     * non tocca il fornitore; qui sì, perché la domanda «è soggetto a ritenuta?» riguarda il
+     * fornitore e non il documento, e chiederla a ogni fattura invece che una volta sola
+     * produrrebbe un avviso che in una settimana nessuno legge più.
+     *
+     * `ritenuta_decisa_il` si scrive **sempre**, anche quando la risposta è «no»: è quel «no»
+     * che senza la data resterebbe indistinguibile da un silenzio, e farebbe tornare la
+     * domanda alla fattura successiva.
+     */
+    private function applicaPosizioneRitenuta(StoreFatturaRequest $request): void
+    {
+        if (! $request->has('posizione_ritenuta.soggetto')) {
+            return;
+        }
+
+        $fornitore = Fornitore::find($request->input('fornitore_id'));
+
+        if (! $fornitore || ! $fornitore->posizioneRitenutaMaiDecisa()) {
+            return;
+        }
+
+        $soggetto = $request->boolean('posizione_ritenuta.soggetto');
+
+        $fornitore->update([
+            'soggetto_ritenuta' => $soggetto,
+            'tipo_ritenuta' => $soggetto ? $request->input('posizione_ritenuta.tipo') : null,
+            'ritenuta_decisa_il' => now(),
+        ]);
+    }
+
     public function store(StoreFatturaRequest $request, Condominio $condominio): RedirectResponse
     {
         try {
+            // ⚠️ **Prima di registrare, non dopo.** La risposta sulla posizione fiscale del
+            // fornitore cambia se e quanto si trattiene: applicarla dopo significherebbe
+            // registrare la fattura con la posizione vecchia e correggere l'anagrafica per la
+            // prossima volta — cioè perdere esattamente il documento per cui la domanda è
+            // stata fatta (Coda 116).
+            $this->applicaPosizioneRitenuta($request);
+
             $this->service->registraFattura(
                 $request->validated(),
                 $condominio->id,
@@ -304,6 +399,32 @@ class FatturaPassivaController extends Controller
             Log::error('ERRORE 404: '.$e->getMessage());
 
             return back()->withErrors(['error' => 'Risorsa non trovata. Verifica fornitore, conto e gestione.']);
+
+        } catch (UniqueConstraintViolationException $e) {
+            // ⚠️ **Decisione D2, 1.11.0-beta.13.** Prima di questa guardia, una collisione
+            // contro l'indice unico finiva nel `catch (\Exception)` generico qui sotto: la
+            // sessione riceveva l'errore sotto la chiave `error`, ma né `FatturaRegisterNew.vue`
+            // né `FatturaRegisterEdit.vue` renderizzano quella chiave da nessuna parte — un
+            // salvataggio bloccato non mostrava niente, il pulsante tornava semplicemente
+            // cliccabile. Il riconoscimento è in `CollisioneUnicaFattura`, testabile senza
+            // database reale (vedi il docblock lì).
+            if (! CollisioneUnicaFattura::rilevata($e)) {
+                throw $e;
+            }
+
+            Log::error("Fattura duplicata bloccata dall'indice unico: ".$e->getMessage());
+
+            return back()->withErrors([
+                'numero_documento' => 'Esiste già una fattura di questo fornitore con lo stesso numero documento e la stessa data. Verifica il numero prima di salvare di nuovo.',
+            ]);
+
+        } catch (\App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException $e) {
+            // Coda 165: il motivo, con la via, accanto al campo — non nella chiave generica, dove non si vede.
+            return back()->withErrors(['fattura_rettificata_id' => $e->getMessage()]);
+
+        } catch (\App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException $e) {
+            // Coda 165: il piano ha incassato — la nota si registra, dopo la spunta sotto il campo (R3, R7 della Fase 1-bis).
+            return back()->withErrors(['avviso_nota' => $e->getMessage()]);
 
         } catch (\Exception $e) {
             Log::error('FATAL ERROR NEL SERVICE: '.$e->getMessage());
@@ -366,6 +487,14 @@ class FatturaPassivaController extends Controller
         try {
             DB::transaction(function () use ($fattura, $fatturaOriginale, $contiImprevistiIds) {
 
+                // Coda 165 (1.11.0-beta.36): la guardia qui sopra legge senza lucchetto. Una nota del fornitore collegata
+                // nello stesso istante da un'altra scheda restava scollegata in silenzio (la chiave esterna mette null):
+                // si rilegge la fattura bloccata e si riguarda, come nello storno (verifica delle correzioni).
+                $bloccata = FatturaPassiva::lockForUpdate()->find($fattura->id);
+                if ($bloccata !== null && ($motivo = $bloccata->motivoBloccoEliminazione())) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+
                 // --- LA RESURREZIONE ---
                 // Sciogliere il congelamento non basta: lo stato di pagamento va
                 // RICALCOLATO dai pivot, non forzato ad APERTA. Forzarlo produceva
@@ -421,9 +550,7 @@ class FatturaPassivaController extends Controller
                 // ----------------------------------------
 
                 foreach ($fattura->documenti as $documento) {
-                    if (Storage::disk('local')->exists($documento->path)) {
-                        Storage::disk('local')->delete($documento->path);
-                    }
+                    app(ArchivioDocumenti::class)->elimina($documento->path);
                     $documento->delete();
                 }
 
@@ -435,6 +562,9 @@ class FatturaPassivaController extends Controller
                 : 'Fattura eliminata fisicamente dal sistema.';
 
             return back()->with($this->flashSuccess($msg));
+
+        } catch (\App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException $e) {
+            return back()->with($this->flashError('Operazione negata: '.$e->getMessage()));
 
         } catch (\Exception $e) {
             Log::error("Errore durante l'eliminazione fisica della fattura ID {$fattura->id}: ".$e->getMessage());
@@ -462,7 +592,8 @@ class FatturaPassivaController extends Controller
                 ->with($this->flashError($motivo));
         }
 
-        $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture']);
+        // `fatturaRettificata` (Coda 165): la modifica di una nota collegata dice quale fattura rettifica.
+        $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture', 'fatturaRettificata:id,numero_documento,data_documento']);
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -472,9 +603,36 @@ class FatturaPassivaController extends Controller
         // la conterebbe due volte e farebbe scattare un falso "sforamento budget".
         $contestoBudget = $this->prepareContestoBudget($condominio, $esercizio, $fattura);
 
+        // ⚠️ **Coda 123, 05/09/2026 — trovato verificando a video la correzione stessa.**
+        // L'anteprima di una NC da storno deve mostrare la ritenuta CONGELATA (stesso
+        // fix di FatturaPassivaService::aggiornaFattura(), che legge la fattura ORIGINALE
+        // e non la NC): senza questa prop, il frontend non ha modo di sapere quale fosse
+        // l'imponibile e la ritenuta dell'originale, e confrontava la NC con sé stessa. Va
+        // bene finché nessuno tocca mai l'imponibile della NC — ma se un salvataggio con
+        // l'imponibile sbagliato lo altera (il "caso anomalo" che il congelamento non copre),
+        // il termine di paragone del frontend si guasta insieme alla NC, e l'anteprima
+        // continuerebbe a mostrare zero anche dopo che l'amministratore rimette l'importo
+        // giusto — mentre il backend, che legge l'originale immutabile, salverebbe già
+        // correttamente. Stesso pattern di lettura di `aggiornaFattura()`.
+        $notaStornoOriginale = null;
+        if ($fattura->eNataDaStorno()) {   // Coda 133: anche le note storiche, senza migrazione
+            $originale = FatturaPassiva::where('condominio_id', $condominio->id)
+                ->where('dati_extra->stornata_da_id', $fattura->id)
+                ->first();
+
+            if ($originale) {
+                $notaStornoOriginale = [
+                    'importo_imponibile' => $originale->importo_imponibile,
+                    'importo_ritenuta' => $originale->importo_ritenuta,
+                    'ritenuta_details' => $originale->dati_extra['fiscal']['ritenuta_details'] ?? null,
+                ];
+            }
+        }
+
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterEdit', [
             'condominio' => $condominio,
             'fattura' => $fattura,
+            'nota_storno_originale' => $notaStornoOriginale,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
             ...$contestoBudget,
@@ -599,9 +757,15 @@ class FatturaPassivaController extends Controller
             // ed è quello che il resto del codice usa già — `GenerateSaldiAction:28` e
             // `SaldoEsercizioService`. Qui e nella query gemella dei debiti fornitori era
             // l'unico posto rimasto a orientarsi su `anagrafica_id`.
+            // B2 (S5): la coppia di conguaglio di un passaggio somma zero — il debito di chi entra
+            // qui gonfierebbe la provvista senza che esista denaro nuovo. Fuori. Dalla 1.11.0-beta.53
+            // fuori anche le righe legate a un passaggio: la parte di una fermata passata a mano, che sposta
+            // denaro fra due persone e non ne porta di nuovo.
             $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
                 ->where('esercizio_id', $esercizio->id)
                 ->whereNull('fornitore_id')
+                ->whereNull('subentro_id')
+                ->whereNull('passaggio_id')
                 ->where('saldo_iniziale', '>', 0)
                 ->sum('saldo_iniziale');
 
@@ -746,11 +910,23 @@ class FatturaPassivaController extends Controller
             ->pluck('totale', 'target_id');
 
         // 5. Conti con residuo budget e storico movimenti recenti
+        // Il capitolo di una fattura è una voce di spesa: le entrate non si offrono. In modifica restano le voci che le righe hanno già, anche
+        // di entrata (dato delle versioni precedenti): il menu le mostra spente e la riga si porta su una voce di spesa. L'`or` sta dentro il
+        // gruppo, e il perimetro del condominio fuori: una voce di un altro condominio non rientra da lì.
+        $vociDelleRighe = $escludiFattura?->righe()->whereNotNull('conto_id')->pluck('conto_id')->all() ?? [];
         $conti = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
+            ->where(fn ($q) => $q->whereIn('tipo', Conto::TIPI_DI_SPESA)->orWhereIn('id', $vociDelleRighe))
             ->with('parent')
             ->whereDoesntHave('sottoconti')
-            ->get()
-            ->map(function ($conto) use ($ultimeSpese, $spesePerConto, $giaVersatoPerConto) {
+            ->get();
+        // La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella,
+        // non la competenza dichiarata sulla fattura (decisione 19), e la riga lo dice dove si sceglie la voce.
+        $competenzePiano = app(\App\Services\Riparto\CompetenzaDichiarataPerVoce::class)->perConti(
+            $conti->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            $conti->mapWithKeys(fn ($c) => [(int) $c->id => $c->parent_id !== null ? (int) $c->parent_id : null])->all(),
+        );
+        $conti = $conti
+            ->map(function ($conto) use ($ultimeSpese, $spesePerConto, $giaVersatoPerConto, $competenzePiano) {
                 $budgetApprovato = $conto->importo ?? 0;
                 $spesaAttuale = $spesePerConto->get($conto->id, 0);
                 $residuo = $budgetApprovato - $spesaAttuale;
@@ -771,6 +947,7 @@ class FatturaPassivaController extends Controller
                 return [
                     'id' => $conto->id,
                     'nome' => $conto->nome,
+                    'tipo' => $conto->tipo,
                     'parent_nome' => $conto->parent ? $conto->parent->nome : null,
                     '_sort_key' => $conto->parent ? $conto->parent->nome.' '.$conto->nome : $conto->nome,
                     'codice' => null,
@@ -778,6 +955,7 @@ class FatturaPassivaController extends Controller
                     'is_capiente' => $residuo >= 0,
                     'ultimi_movimenti' => $storicoRecente,
                     'gia_versato_cents' => (int) ($giaVersatoPerConto->get($conto->id) ?? 0),
+                    'competenza_piano' => $competenzePiano[(int) $conto->id] ?? null,
                 ];
             })
             ->sortBy('_sort_key')
@@ -796,10 +974,42 @@ class FatturaPassivaController extends Controller
             ->groupBy('fornitore_id')
             ->map(fn ($righe) => (float) $righe->first()->aliquota_iva);
 
+        // ⚠️ **Stessa forma di lavoro di $ultimeAliquoteIva qui sopra, non un meccanismo
+        // nuovo.** Deciso con Vincenzo il 02/09/2026, aprendo la riprogettazione della UI
+        // di importazione XML: il capitolo che pesa di più sul tempo dell'amministratore
+        // (28 righe da assegnare su 11 fatture vere, nel collaudo di
+        // docs/lettura_xml_fatture_passive.md) diventa una proposta invece di una scelta
+        // da zero. `whereNotNull('conto_id')` esclude le righe sopravvenienza e quelle
+        // legate a un immobile, che il servizio registra apposta senza capitolo
+        // (FatturaPassivaService::registraFattura(), «SMISTAMENTO INTELLIGENTE
+        // IMPREVISTI»): proporle come capitolo sarebbe proporre un buco.
+        // Solo le voci di spesa del condominio: la proposta deve stare fra quelle che il menu offre.
+        $ultimiConti = DB::table('righe_fattura')
+            ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+            ->join('conti', 'conti.id', '=', 'righe_fattura.conto_id')
+            ->join('piani_conti', 'piani_conti.id', '=', 'conti.piano_conto_id')
+            ->where('fatture_passive.condominio_id', $condominio->id)
+            ->where('piani_conti.condominio_id', $condominio->id)
+            ->whereIn('conti.tipo', Conto::TIPI_DI_SPESA)
+            ->whereNotNull('righe_fattura.conto_id')
+            ->select('fatture_passive.fornitore_id', 'righe_fattura.conto_id')
+            ->orderByDesc('fatture_passive.data_documento')
+            ->orderByDesc('righe_fattura.id')
+            ->get()
+            ->groupBy('fornitore_id')
+            ->map(fn ($righe) => (int) $righe->first()->conto_id);
+
         return [
-            'fornitori' => Fornitore::all()->map(function (Fornitore $f) use ($ultimeAliquoteIva) {
+            'fornitori' => Fornitore::all()->map(function (Fornitore $f) use ($ultimeAliquoteIva, $ultimiConti) {
                 $data = $f->toArray();
                 $data['ultima_aliquota_iva'] = $ultimeAliquoteIva->get($f->id);
+                $data['ultimo_conto_id'] = $ultimiConti->get($f->id);
+                // ⚠️ **Calcolato qui e non a schermo, di proposito** (Coda 116). La regola —
+                // «nessuno si è mai pronunciato» non è «non è soggetto a ritenuta» — vive in
+                // `Fornitore::posizioneRitenutaMaiDecisa()`, e riscriverla in TypeScript
+                // creerebbe la condizione perché un giorno il modulo non chieda ciò che il
+                // server poi pretende, o viceversa.
+                $data['posizione_ritenuta_mai_decisa'] = $f->posizioneRitenutaMaiDecisa();
 
                 return $data;
             }),
@@ -827,7 +1037,6 @@ class FatturaPassivaController extends Controller
             $this->service->aggiornaFattura(
                 $fattura,
                 $request->validated(),
-                $request->file('file')
             );
 
             return redirect()
@@ -836,6 +1045,29 @@ class FatturaPassivaController extends Controller
 
         } catch (FatturaModificaVietataException $e) {
             return back()->withErrors(['modifica_vietata' => $e->getMessage()]);
+
+        } catch (\App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException $e) {
+            // Coda 165: la nota collegata, modificata, ridurrebbe una fattura che un piano chiede ancora per intero.
+            return back()->withErrors(['fattura_rettificata_id' => $e->getMessage()]);
+
+        } catch (\App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException $e) {
+            // Coda 165: il piano ha incassato — la modifica si salva dopo la conferma, con un secondo invio (R5).
+            return back()->withErrors(['avviso_nota' => $e->getMessage()]);
+
+        } catch (UniqueConstraintViolationException $e) {
+            if (! CollisioneUnicaFattura::rilevata($e)) {
+                throw $e;
+            }
+
+            // ⚠️ Può capitare anche qui nonostante `guardiaNumeroDocumentoCollidente()`: quella
+            // guardia guarda solo dentro lo stesso esercizio (D4-forte), l'indice
+            // `unique_ft_condominio` no — è scoped al condominio. Due fatture con lo stesso
+            // fornitore, numero e data ma in esercizi diversi passano la guardia e arrivano qui.
+            Log::error("Fattura duplicata bloccata dall'indice unico in modifica, ID {$fattura->id}: ".$e->getMessage());
+
+            return back()->withErrors([
+                'numero_documento' => 'Esiste già una fattura di questo fornitore con lo stesso numero documento e la stessa data.',
+            ]);
 
         } catch (\Exception $e) {
             Log::error("Errore modifica fattura ID {$fattura->id}: ".$e->getMessage());
@@ -920,6 +1152,9 @@ class FatturaPassivaController extends Controller
             // Beta.19: le coperture fondo alimentano il banner "conferma con
             // giroconto" (pianificata) / "coperta da GIR-…" (confermata).
             'coperture.scritturaGiroconto:id,numero_protocollo',
+            // Coda 165 (1.11.0-beta.36): la fattura che la nota rettifica, e le note collegate alla fattura.
+            'fatturaRettificata:id,numero_documento,data_documento',
+            'noteCollegate:id,numero_documento,data_documento,totale_documento,tipo_documento,fattura_rettificata_id,stato_approvazione',
         ]);
 
         // Caricamento del nome utente che ha ratificato se presente
@@ -935,10 +1170,21 @@ class FatturaPassivaController extends Controller
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaShow', [
             'condominio' => new CondominioResource($condominio),
-            'fattura' => $fattura,
+            // Coda 133: anche `FatturaShow` offre «Registra pagamento», e deve sapere se la
+            // nota è nata da uno storno — chiave o legame inverso. Qui il documento è uno solo.
+            'fattura' => $fattura->setAttribute('e_nata_da_storno', $fattura->eNataDaStorno()),
             'utenteRatifica' => $utenteRatifica,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
+            // Il motivo autoritativo — sono quattro condizioni diverse (pagata, stornata,
+            // pregressa, sforo da ratificare) e il frontend ne teneva solo
+            // un'approssimazione booleana per abilitare/disabilitare i controlli. Un
+            // amministratore con lo sforo da ratificare vedeva lo stesso identico
+            // messaggio generico di uno con la fattura già pagata — segnalato da
+            // Vincenzo il 03/09/2026 («non mi spiego perché, la fattura non è ancora
+            // stata pagata»): il motivo vero c'era già lato server, mancava solo di
+            // arrivare qui.
+            'motivoBloccoModifica' => $this->service->motivoBloccoModifica($fattura),
         ]);
     }
 
@@ -966,22 +1212,20 @@ class FatturaPassivaController extends Controller
 
         try {
             // 3. VERIFICA ESISTENZA
-            if (! Storage::disk('local')->exists($documento->path)) {
+            if (! app(ArchivioDocumenti::class)->esiste($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found') ?? 'File della fattura non trovato sul server.')
                 );
             }
 
-            // Otteniamo il percorso assoluto del file sul server
-            $percorsoAssoluto = Storage::disk('local')->path($documento->path);
-
+            // In streaming, non da un percorso assoluto: sul disco S3 un percorso non esiste.
             // `nomeDiScaricamento()` e non `$documento->name`: qui il nome nasce da
             // `getClientOriginalName()`, quindi **di norma** l'estensione ce l'ha già e il metodo
             // non tocca niente. Ma «di norma» non è «sempre» — un nome di file senza estensione
             // arriva da qualunque sistema che lo generi — e soprattutto la regola del nome di
             // scaricamento dev'essere **una sola** in tutto il progetto: è averla avuta in due
             // copie che ha prodotto la segnalazione dal forum sui documenti d'archivio.
-            return response()->download($percorsoAssoluto, $documento->nomeDiScaricamento());
+            return app(ArchivioDocumenti::class)->scarica($documento->path, $documento->nomeDiScaricamento());
 
         } catch (\Exception $e) {
             Log::error("Errore download fattura ID {$fattura->id}: ".$e->getMessage());
@@ -989,6 +1233,84 @@ class FatturaPassivaController extends Controller
             return redirect()->back()->with(
                 $this->flashError(__('documenti.error_downloading_document') ?? 'Errore durante il download del documento.')
             );
+        }
+    }
+
+    /**
+     * Allega un documento a una fattura già registrata (Coda 102, 1.11.0-beta.12).
+     *
+     * Non passa da aggiornaFattura(): niente scritture da ricreare, niente allegati
+     * esistenti da cancellare. Consentito anche a esercizio chiuso e su una fattura
+     * stornata — un documento è una prova, non un fatto contabile.
+     *
+     * ⚠️ **Il `Gate` c'è**, a differenza di una prima stesura che l'aveva tolto
+     * motivando l'assenza con «nessun'altra azione di questo controller passa dalla
+     * policy dei documenti» — falso: `download()` (sotto) ci passa già, sullo stesso
+     * modello. La revisione avversariale della beta.12 l'ha preso: senza il Gate un
+     * utente col solo permesso di pannello poteva allegare un file che poi
+     * `download()` gli avrebbe negato di riaprire.
+     */
+    public function storeDocumento(StoreFatturaDocumentoRequest $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        Gate::authorize('create', Documento::class);
+
+        try {
+            $this->service->aggiungiDocumento($fattura, $request->file('file'));
+
+            return back()->with($this->flashSuccess('Documento allegato con successo.'));
+
+        } catch (\Exception $e) {
+            Log::error("Errore allegando documento alla fattura ID {$fattura->id}: ".$e->getMessage());
+
+            return back()->with($this->flashError('Errore durante il caricamento del documento: '.$e->getMessage()));
+        }
+    }
+
+    /**
+     * Rimuove un documento allegato a una fattura (Coda 102, 1.11.0-beta.12).
+     *
+     * Stesso controllo anti-IDOR di download(): un documento allegabile da qui deve
+     * appartenere davvero a questa fattura, non essere un id indovinato.
+     *
+     * ⚠️ **Guardia sullo stato, aggiunta dopo la revisione avversariale della
+     * beta.12 — asimmetrica rispetto a storeDocumento() di proposito.** Allegare è
+     * consentito anche a esercizio chiuso (un documento è una prova, non riscrive un
+     * bilancio — decisione di Vincenzo, 01/09/2026). *Eliminare* no: `Documento` non
+     * usa SoftDeletes, quindi la cancellazione è definitiva e senza traccia, e prima
+     * di questa beta un allegato non era mai cancellabile da nessuna schermata su una
+     * fattura in uno di questi stati. La stessa ragione che giustifica di aggiungere
+     * una prova vieta di distruggerla: si riusa `motivoBloccoModifica()`, lo stesso
+     * elenco di stati che già blocca la Modifica.
+     */
+    public function destroyDocumento(Condominio $condominio, FatturaPassiva $fattura, Documento $documento): RedirectResponse
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        if ($documento->documentable_id !== $fattura->id || $documento->documentable_type !== FatturaPassiva::class) {
+            abort(403, 'Azione non autorizzata. Il documento non appartiene a questa fattura.');
+        }
+
+        Gate::authorize('delete', $documento);
+
+        if ($motivo = $this->service->motivoBloccoModifica($fattura)) {
+            return back()->with($this->flashError(
+                "Non è possibile eliminare l'allegato: {$motivo} (la cancellazione di un documento non ha uno storno: è definitiva)."
+            ));
+        }
+
+        try {
+            app(ArchivioDocumenti::class)->elimina($documento->path);
+
+            $documento->delete();
+
+            return back()->with($this->flashSuccess('Documento eliminato con successo.'));
+
+        } catch (\Exception $e) {
+            Log::error("Errore eliminando documento dalla fattura ID {$fattura->id}: ".$e->getMessage());
+
+            return back()->with($this->flashError('Errore durante l\'eliminazione del documento.'));
         }
     }
 }

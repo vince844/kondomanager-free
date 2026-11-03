@@ -181,18 +181,31 @@ return [
 
     'custom' => [
         'roles' => [
-            'not_allowed' => 'Non puoi assegnare questo ruolo: i ruoli amministrativi li concede un amministratore.',
+            'not_allowed' => 'Non puoi assegnare questo ruolo: chi non è amministratore assegna solo i ruoli «utente» e «fornitore».',
             'last_admin' => "Questo è l'ultimo amministratore attivo: cambiargli ruolo lascerebbe l'installazione senza nessuno che possa governarla.",
+            'privileged_target' => 'Solo un amministratore può cambiare i ruoli di questo account: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
         ],
         'permissions' => [
             'not_allowed' => 'Non puoi concedere un permesso che tu stesso non hai.',
+            'privileged_target' => 'Solo un amministratore può cambiare i permessi aggiuntivi di questo account: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
+        ],
+        'default_user_role' => [
+            'only_admin' => 'Il ruolo predefinito dei nuovi utenti lo cambia solo un amministratore.',
         ],
         'email' => [
             'required' => 'Il campo :attribute è richiesto',
             'unique' => 'Il campo :attribute è già in uso',
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
             'email' => 'Il campo :attribute deve essere un indirizzo email valido',
-            'unique_email_across_tables' => "Questo indirizzo email è già in uso."
+            'unique_email_across_tables' => "Questo indirizzo email è già in uso.",
+            'privileged_target' => 'Solo un amministratore può cambiare l\'email di questo account: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
+            'own_from_profile' => "La tua email non si cambia da qui: si cambia dal tuo profilo, dove serve la password attuale.",
+            'unique_email_across_tables_in' => "Questo indirizzo email è già in uso: risulta su :dove.",
+            'sorgenti' => [
+                'anagrafiche' => "un'anagrafica",
+                'fornitori'   => 'un altro fornitore',
+                'condomini'   => 'un condominio',
+            ],
         ],
         'email_secondaria' => [
             'required' => 'Il campo :attribute è richiesto',
@@ -200,11 +213,18 @@ return [
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
             'email' => 'Il campo :attribute deve essere un indirizzo email valido'
         ],
+        'ruolo' => [
+            'required_with' => 'Scegli anche il ruolo del rappresentante',
+        ],
+        'codice_ateco' => [
+            'max' => 'Scrivi solo il codice, senza la descrizione — per esempio 43.22.01',
+        ],
         'pec' => [
             'required' => 'Il campo :attribute è richiesto',
             'unique' => 'Il campo :attribute è già in uso',
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
-            'email' => 'Il campo :attribute deve essere un indirizzo email valido'
+            'email' => 'Il campo :attribute deve essere un indirizzo email valido',
+            'different' => "La PEC deve essere diversa dall'email ordinaria: se la ditta ha un solo indirizzo, lascia vuoto uno dei due campi",
         ],
         'name' => [
             'required' => 'Il campo :attribute è richiesto'
@@ -246,6 +266,8 @@ return [
 
     'attributes' => [
         'email' => 'indirizzo email',
+        'emails' => 'indirizzi email',
+        'buildings' => 'condomini',
         'email_secondaria' => 'indirizzo email secondario',
         'pec' => 'indirizzo email pec',
         'name' => 'nome e cognome',
@@ -289,6 +311,7 @@ return [
             'is_published' => 'stato documento',
             'condomini_ids' => 'condomini',
             'category_id' => 'categoria',
+            'categorie' => 'categorie',
         ],
         'categorie' => [
             'name' => 'nome',

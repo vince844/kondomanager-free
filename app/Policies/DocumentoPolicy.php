@@ -5,10 +5,13 @@ namespace App\Policies;
 use App\Enums\Permission;
 use App\Models\Documento;
 use App\Models\User;
+use App\Traits\PerimetroFuoriPannello;
 use Illuminate\Auth\Access\Response;
 
 class DocumentoPolicy
 {
+    use PerimetroFuoriPannello;
+
     /**
      * Determine whether the user can view any models.
      */
@@ -30,9 +33,19 @@ class DocumentoPolicy
             return Response::allow();
         }
 
+        // Fuori dal pannello vale la stessa regola dell'elenco del condòmino (DocumentoService,
+        // getUserBaseQuery): solo l'archivio, mai gli allegati del gestionale (documento d'unità, di
+        // fattura, di fornitore, del subentro: hanno un `documentable` e sono dell'amministratore), e
+        // solo pubblicato e approvato, salvo il proprio documento ancora in attesa. Poi, come
+        // sempre, il documento indirizzato a un condòmino va solo a lui, quello del condominio a
+        // tutto il palazzo. Fino alla 1.11.0-beta.38 bastava il palazzo in comune: un condòmino di
+        // serie scaricava per id il rogito o il contratto dell'unità di un altro (giro di sicurezza
+        // della 1.11.0-beta.39).
         if (
-            $user->hasPermissionTo(Permission::VIEW_ARCHIVE_DOCUMENTS->value) && 
-            $this->isAssignedToUserOrCondominio($user, $documento)
+            $user->hasPermissionTo(Permission::VIEW_ARCHIVE_DOCUMENTS->value)
+            && $documento->documentable_type === null
+            && (($documento->is_published && $documento->is_approved) || (int) $documento->created_by === (int) $user->id)
+            && $this->isAssignedToUserOrCondominio($user, $documento)
         ) {
             return Response::allow();
         }
@@ -57,7 +70,13 @@ class DocumentoPolicy
      */
     public function update(User $user, Documento $documento): Response
     {
-        if ($user->hasPermissionTo(Permission::EDIT_ARCHIVE_DOCUMENTS->value)) {
+        // Fuori dal pannello il permesso largo vale solo nel perimetro dell'utente (giro di sicurezza
+        // della 1.11.0-beta.39, Coda 185 allargata): vedi PerimetroFuoriPannello.
+        // Fuori dal pannello solo l'archivio: gli allegati del gestionale (`documentable`) restano
+        // dell'amministratore anche quando sono agganciati al palazzo dell'utente.
+        if ($user->hasPermissionTo(Permission::EDIT_ARCHIVE_DOCUMENTS->value)
+            && ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)
+                || ($documento->documentable_type === null && $this->nelPerimetroDellUtente($user, $documento)))) {
             return Response::allow();
         }
 
@@ -75,7 +94,9 @@ class DocumentoPolicy
      */
     public function delete(User $user, Documento $documento): Response
     {
-        if ($user->hasPermissionTo(Permission::DELETE_ARCHIVE_DOCUMENTS->value)) {
+        if ($user->hasPermissionTo(Permission::DELETE_ARCHIVE_DOCUMENTS->value)
+            && ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)
+                || ($documento->documentable_type === null && $this->nelPerimetroDellUtente($user, $documento)))) {
             return Response::allow();
         }
         

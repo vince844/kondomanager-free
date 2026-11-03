@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Alert from '@/components/Alert.vue';
-import { CheckCircle2, CircleAlert, Info, RotateCcw, Clock } from 'lucide-vue-next';
+import { CheckCircle2, CircleAlert, Info, RotateCcw, Clock, FileDown, Archive, RefreshCw } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 
@@ -41,6 +41,8 @@ const props = defineProps<{
   voci: Voce[];
   aperte: number;
   puo_vedere_rapporto: boolean;
+  /** Le importazioni che hanno scritto su questo condominio, dalla più recente. */
+  importazioni: { uuid: string; quando: string | null; record: number }[];
 }>();
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -76,7 +78,7 @@ const chiuse = computed(() => props.voci.filter((v) => v.stato !== 'aperto' && v
 const ETICHETTA_STATO: Record<string, string> = {
   risolto: 'sistemato',
   spuntato: 'controllato da te',
-  messo_da_parte: 'non ti riguarda',
+  messo_da_parte: 'messa da parte',
   superato: 'non più modificabile',
 };
 
@@ -148,9 +150,26 @@ function agisci(v: Voce, azione: 'spunta' | 'metti_da_parte' | 'riapri') {
             <template v-if="v.quante > 1"> — e altre {{ v.quante - 1 }} righe simili.</template>
           </p>
 
+          <!--
+            ⚠️ **Le due frasi sono simmetriche, e prima non lo erano.**
+
+            «Questa non posso ricontrollarla da solo» stava qui, in un riquadro; il suo opposto —
+            «si chiude da sola appena l'avrai sistemata» — stava *dentro la riga dei pulsanti*,
+            come testo nudo fra due bottoni: sembrava l'etichetta di un pulsante mancante, e
+            spingeva a cercare qualcosa da premere che non c'era.
+
+            Sono la stessa informazione detta nei due versi — chi ricontrolla questa voce, io o
+            tu — quindi vanno nello stesso posto e con la stessa forma.
+          -->
           <p v-if="!v.verificabile && v.perche" class="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
             <Info class="mr-1 inline h-3 w-3" />
             Questa non posso ricontrollarla da solo: {{ v.perche }}
+          </p>
+
+          <p v-else-if="v.verificabile && !v.superata" class="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+            <RefreshCw class="mr-1 inline h-3 w-3" />
+            Questa la ricontrollo da solo: sparisce da qui appena l'avrai sistemata, senza che tu
+            debba spuntarla.
           </p>
 
           <div class="flex flex-wrap items-center gap-2">
@@ -167,12 +186,19 @@ function agisci(v: Voce, azione: 'spunta' | 'metti_da_parte' | 'riapri') {
             >
               L'ho controllato
             </Button>
-            <span v-else class="text-xs text-muted-foreground">
-              Si chiude da sola appena l'avrai sistemata.
-            </span>
 
-            <Button size="sm" variant="ghost" @click="agisci(v, 'metti_da_parte')">
-              Non mi riguarda
+            <!--
+              ⚠️ Era «Non mi riguarda», ed era una frase che dice troppo: chiede di dichiarare che
+              la cosa non ti compete, quando quasi sempre significa «adesso no». «Metti da parte»
+              è il nome dell'azione anche nel motore (`metti_da_parte`), non pretende un giudizio,
+              e non chiude nessuna porta — la voce resta fra quelle già viste e si riapre.
+
+              Ed è un pulsante come gli altri: era `ghost`, cioè testo, e l'unica azione che toglie
+              una riga dalla lista non deve sembrare meno di un'azione.
+            -->
+            <Button size="sm" variant="outline" @click="agisci(v, 'metti_da_parte')">
+              <Archive class="mr-1.5 h-3.5 w-3.5" />
+              Metti da parte
             </Button>
           </div>
         </CardContent>
@@ -206,12 +232,50 @@ function agisci(v: Voce, azione: 'spunta' | 'metti_da_parte' | 'riapri') {
         </div>
       </div>
 
-      <p v-if="props.puo_vedere_rapporto && props.voci.length" class="border-t pt-4 text-xs text-muted-foreground">
-        Queste voci arrivano dalle importazioni di questo condominio.
-        <Link :href="route('import.esito', props.voci[0].lotto)" class="underline">
-          Vedi il rapporto completo dell'ultima
-        </Link>
-      </p>
+      <!--
+        ⚠️ **La strada di ritorno al rapporto, che prima non c'era.**
+
+        Qui c'era una riga di testo con un link, disegnata `v-if="voci.length"`: spariva quando i
+        controlli erano finiti, cioè esattamente quando il rapporto serve — è il documento che si
+        allega al passaggio di consegne, e chi chiude la pagina di esito senza scaricarlo non
+        aveva più modo di tornarci. Una ricevuta che si può vedere una volta sola non è una
+        ricevuta.
+
+        Ora è una scheda, sempre presente finché c'è un'importazione, con dentro il PDF.
+      -->
+      <Card v-if="props.puo_vedere_rapporto && props.importazioni.length">
+        <CardHeader class="pb-3">
+          <CardTitle class="flex items-center gap-2 text-base">
+            <FileDown class="h-4 w-4" /> Le importazioni di questo condominio
+          </CardTitle>
+          <CardDescription>
+            Il rapporto è la ricevuta di cosa è entrato e da quale riga di quale file: si allega al
+            passaggio di consegne e si archivia.
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-2">
+          <div
+            v-for="i in props.importazioni"
+            :key="i.uuid"
+            class="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+          >
+            <span class="text-muted-foreground">
+              {{ i.quando ?? 'in corso' }} · {{ i.record }} record ·
+              <span class="font-mono text-xs uppercase">{{ i.uuid.slice(0, 8) }}</span>
+            </span>
+            <span class="flex items-center gap-2">
+              <a :href="route('import.rapporto', i.uuid)" target="_blank">
+                <Button variant="outline" size="sm">
+                  <FileDown class="mr-1.5 h-3.5 w-3.5" /> Rapporto (PDF)
+                </Button>
+              </a>
+              <Link :href="route('import.esito', i.uuid)">
+                <Button variant="ghost" size="sm">Rivedi l'esito</Button>
+              </Link>
+            </span>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   </AppLayout>
 </template>

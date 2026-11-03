@@ -50,7 +50,9 @@ class RegolazioneImmediataController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        // Una regolazione registra un'uscita di cassa: il capitolo è una voce di spesa, le entrate non si offrono.
         $capitoli = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
+            ->whereIn('tipo', Conto::TIPI_DI_SPESA)
             ->whereDoesntHave('sottoconti')
             ->whereNotNull('conto_contabile_id')
             ->visibili()

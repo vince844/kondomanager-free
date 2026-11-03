@@ -40,7 +40,38 @@ class ControlliPostImportController extends Controller
             'voci' => $voci,
             'aperte' => count(array_filter($voci, fn ($v) => $v['stato'] === StatoControllo::Aperto->value)),
             'puo_vedere_rapporto' => $request->user()?->can('Crea condomini') ?? false,
+            'importazioni' => $this->importazioni($condominio),
         ]);
+    }
+
+    /**
+     * Le importazioni che hanno scritto qualcosa su questo condominio, dalla più recente.
+     *
+     * ⚠️ **Serve a una domanda che ha fatto un amministratore vero:** «ho chiuso la pagina di
+     * esito senza scaricare il rapporto, come ci torno?». Prima non ci si tornava. Il link
+     * esisteva, ma era una riga di testo in fondo alla lista dei controlli, disegnata solo
+     * `v-if="voci.length"` — cioè spariva proprio nel momento in cui il lavoro era finito, che è
+     * quando il rapporto serve davvero: è il documento che si allega al passaggio di consegne.
+     *
+     * Il rapporto è una **ricevuta**, e una ricevuta che si può vedere una volta sola non è una
+     * ricevuta.
+     *
+     * @return list<array{uuid: string, quando: string|null, record: int}>
+     */
+    private function importazioni(Condominio $condominio): array
+    {
+        return ImportBatch::query()
+            ->where('condominio_id', $condominio->id)
+            ->whereIn('stato', [ImportBatch::STATO_COMPLETATO, ImportBatch::STATO_PARZIALE])
+            ->latest('completato_at')
+            ->limit(5)
+            ->get()
+            ->map(fn (ImportBatch $b) => [
+                'uuid' => $b->uuid,
+                'quando' => $b->completato_at?->format('d/m/Y H:i'),
+                'record' => collect($b->rapporto['livelli'] ?? [])->sum('creati'),
+            ])
+            ->all();
     }
 
     public function aggiorna(Request $request, Condominio $condominio, ImportBatch $batch)

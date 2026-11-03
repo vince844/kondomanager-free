@@ -36,6 +36,10 @@ return [
         'verification_sent' => 'A new verification link has been sent to your email address.',
         'save' => 'Save',
         'saved' => 'Saved',
+        // Coda 261: la password attuale, solo quando l'email cambia.
+        'current_password' => 'Current password',
+        'current_password_placeholder' => 'Enter your current password',
+        'current_password_hint' => 'Changing the email address requires your current password.',
     ],
 
     'password' => [
@@ -64,6 +68,8 @@ return [
     ],
 
     'two_factor' => [
+        // Coda 261: `enable` con la 2FA già confermata.
+        'already_enabled' => 'Two-factor authentication is already on: to change it, turn it off first.',
         'title' => 'Two-Factor Authentication',
         'heading' => 'Two-Factor Authentication',
         'description' => 'Manage two-factor authentication (2FA) settings',

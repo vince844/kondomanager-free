@@ -82,7 +82,7 @@ class VerificaStrutturaContiCommand extends Command
                 $this->line('');
                 // Stessa etichetta che l'amministratore legge nell'albero del piano dei conti:
                 // chi lancia il comando sul server e poi apre la pagina non deve tradurre.
-                $this->line("  <fg=yellow>Voci fuori struttura ({$fuoriStruttura->count()}):</> il piano dei conti prevede due livelli. Spostale sotto un capitolo di primo livello, oppure eliminale.");
+                $this->line("  <fg=yellow>Voci fuori struttura ({$fuoriStruttura->count()}):</> il piano dei conti prevede due livelli. Spostale sotto un capitolo di primo livello.");
                 $this->table(
                     ['Voce', 'Codice', 'Sotto-conto padre', 'Capitolo', 'Preventivo'],
                     $fuoriStruttura->map(fn ($r) => [

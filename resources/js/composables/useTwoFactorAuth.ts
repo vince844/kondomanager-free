@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import { trans } from 'laravel-vue-i18n';
+import { confermaPoiRiprova } from '@/composables/useConfermaPassword';
 
 interface EnableResponse {
   qrCode: string;
@@ -58,6 +59,10 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
         const data: EnableResponse = await response.json();
         qrCodeSvg.value = data.qrCode;
         secretKey.value = data.secret;
+      } else if (confermaPoiRiprova(response.status, () => enable(), () => { showModal.value = false; })) {
+        // La password va ridigitata (Coda 404): la finestra si apre su questa pagina e la chiamata riparte da sola.
+        // Con «Annulla» la modale dell'attivazione, che senza il QR non ha niente da mostrare, si chiude: riaprendola la chiamata riparte.
+        return;
       } else {
         console.error('Error enabling 2FA:', response.statusText);
       }
@@ -90,6 +95,9 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
         showingRecoveryCodes.value = true;
         passcode.value = '';
         error.value = '';
+      } else if (confermaPoiRiprova(response.status, () => confirm())) {
+        // Il codice a sei cifre resta nello stato e si rimanda uguale.
+        return;
       } else {
         const errorData = await response.json();
         error.value = errorData.message || trans('settings.two_factor.invalid_code');
@@ -112,6 +120,8 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
       if (response.ok) {
         const data: RecoveryCodesResponse = await response.json();
         recoveryCodesList.value = data.recovery_codes || [];
+      } else if (confermaPoiRiprova(response.status, () => regenerateRecoveryCodes())) {
+        return;
       } else {
         console.error('Error regenerating codes:', response.statusText);
       }
@@ -133,6 +143,8 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
         recoveryCodesList.value = [];
         qrCodeSvg.value = '';
         secretKey.value = '';
+      } else if (confermaPoiRiprova(response.status, () => disable())) {
+        return;
       } else {
         console.error('Error disabling 2FA:', response.statusText);
       }

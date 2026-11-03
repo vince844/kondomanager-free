@@ -30,7 +30,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const pageGuides = [
   {
-    title: 'Referenti Aziendali',
+    title: 'Rappresentanti aziendali',
     description: 'Gestisci i contatti diretti dell\'azienda. Questi saranno i tuoi interlocutori per richieste e interventi.',
     icon: Users,
     colorVariant: 'blue' as const
@@ -62,7 +62,7 @@ const pageGuides = [
 
       <PageHeaderGuide
         :page-title="`Rappresentanti: ${fornitore.ragione_sociale}`"
-        page-subtitle="Gestisci i contatti e i referenti per questo fornitore"
+        page-subtitle="Gestisci i rappresentanti di questo fornitore e il ruolo di ciascuno"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :video-url="null"

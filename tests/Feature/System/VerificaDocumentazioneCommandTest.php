@@ -12,6 +12,14 @@
  * facendo passare per sano un riferimento rotto: è la trappola della beta.52, misurare una cosa e
  * riportarla come se ne avesse misurata un'altra.
  *
+ * ## Su un clone pubblico
+ *
+ * `docs/` è nel `.gitignore` salvo dieci file: su un clone pubblico la roadmap e gli altri documenti
+ * di lavoro non ci sono. I quattro test che la nominano (il riferimento rotto, l'ambiguo, l'età fra
+ * le serie, l'indice delle voci di coda) o fallirebbero, o — l'ultimo — passerebbero misurando il
+ * vuoto: hanno il loro `skip` motivato, che scatta solo quando la roadmap non c'è. Gli altri
+ * misurano i documenti che ci sono, e girano ovunque.
+ *
  * ## Cosa questo file NON copre
  *
  * Non copre il marciume semantico — un riferimento che risolve mentre il contenuto di quelle righe
@@ -43,7 +51,7 @@ it('un riferimento a un file inesistente è un falso certo', function () {
     // Il documento vero non deve avere riferimenti a file spariti: se questo test si accende,
     // qualcuno ha rinominato o cancellato un file che la roadmap cita.
     expect($uscita)->toContain('Riferimenti file:riga che non risolvono: nessuno');
-});
+})->skip(fn () => ! file_exists(base_path('docs/roadmap.md')), 'docs/ è gitignorato: la roadmap non è su questa macchina');
 
 it('distingue l\'ambiguo dal rotto, invece di scegliere per conto suo', function () {
     Artisan::call('kondomanager:verifica-documentazione');
@@ -53,7 +61,7 @@ it('distingue l\'ambiguo dal rotto, invece di scegliere per conto suo', function
     // «risolto», è indecidibile. Il comando deve dirlo, non indovinare.
     expect($uscita)->toContain('Riferimenti ambigui')
         ->and($uscita)->toContain('Si risolve scrivendo il percorso, non indovinando.');
-});
+})->skip(fn () => ! file_exists(base_path('docs/roadmap.md')), 'docs/ è gitignorato: la roadmap non è su questa macchina');
 
 it('mostra l\'età in beta, che è la cosa che nessuno calcola leggendo', function () {
     config(['app.version' => '1.10.0-beta.50']);
@@ -77,7 +85,7 @@ it('l\'età non mescola le serie: i numeri di beta ripartono da uno', function (
 
     // E la roadmap, verificata dentro la 1.10, dev'essere fra i vecchi: non fra i freschi.
     expect($uscita)->toContain('roadmap.md');
-});
+})->skip(fn () => ! file_exists(base_path('docs/roadmap.md')), 'docs/ è gitignorato: la roadmap non è su questa macchina');
 
 it('il filtro sull\'età non mostra niente quando nessun documento la supera', function () {
     config(['app.version' => '1.10.0-beta.50']);
@@ -94,7 +102,7 @@ it('pretende che ogni voce di coda aperta stia nell\'indice della roadmap', func
     Artisan::call('kondomanager:verifica-documentazione');
 
     expect(Artisan::output())->toContain('Voci di coda che l\'indice della roadmap non elenca: nessuno');
-});
+})->skip(fn () => ! file_exists(base_path('docs/roadmap.md')), 'docs/ è gitignorato: la roadmap non è su questa macchina');
 
 it('non chiede al changelog un\'intestazione di stato', function () {
     // Il changelog non descrive codice: descrive cosa è cambiato, e ogni voce porta la sua

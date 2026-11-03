@@ -7,10 +7,10 @@ use App\Http\Requests\Evento\EventoIndexRequest;
 use App\Http\Requests\Evento\Utenti\CreateEventoRequest;
 use App\Http\Requests\Evento\Utenti\EditEventoRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
-use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Portale\CondominioPortaleResource;
+use App\Http\Resources\Portale\EventoPortaleResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
 use App\Http\Resources\Evento\EditEventoResource;
-use App\Http\Resources\Evento\EventoResource;
 use App\Models\CategoriaEvento;
 use App\Models\EccezioneEvento;
 use App\Models\Evento;
@@ -46,9 +46,17 @@ class EventoController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(EventoIndexRequest $request, Evento $evento): Response
+    public function index(EventoIndexRequest $request): Response
     {
-        Gate::authorize('view', $evento);
+        // L'elenco non riguarda un Evento preciso: si autorizza sulla classe (viewAny, cioè il solo
+        // permesso VIEW_EVENTS). Fino alla 1.11.0-beta.38 questo metodo riceveva un Evento vuoto,
+        // iniettato dal container perché la rotta resource non ha {evento}, e autorizzava 'view' su
+        // quello: passava solo perché EventoPolicy::view guarda il solo permesso. La PR #48
+        // proponeva di restringere view() al condominio in comune, e con un Evento vuoto l'agenda
+        // sarebbe andata in 403. view() è rimasta com'era (giro di sicurezza della 1.11.0-beta.39),
+        // ma questo elenco non deve dipendere da lei: è già ristretto all'utente da
+        // getUserCondominioData() e da RecurrenceService qui sotto.
+        Gate::authorize('viewAny', Evento::class);
 
         $validated = $request->validated();
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
@@ -107,7 +115,8 @@ class EventoController extends Controller
 
         return Inertia::render('eventi/user/EventiList', [
             'eventi' => [
-                'data' => EventoResource::collection($events->items()),
+                // Coda 260: la risorsa minima del portale.
+                'data' => EventoPortaleResource::collection($events->items()),
                 'current_page' => $events->currentPage(),
                 'last_page' => $events->lastPage(),
                 'per_page' => $events->perPage(),
@@ -129,7 +138,8 @@ class EventoController extends Controller
         $condomini = $anagrafica->condomini;
 
         return Inertia::render('eventi/user/EventiNew', [
-            'condomini'   => CondominioResource::collection($condomini),
+            // Coda 260: i propri condomìni con id e nome, senza le note dell'amministratore.
+            'condomini'   => CondominioPortaleResource::collection($condomini),
             'categorie'   => CategoriaEventoResource::collection(CategoriaEvento::all()),
         ]);
     }

@@ -16,8 +16,11 @@ use Tests\TestCase;
  */
 uses(TestCase::class);
 
-const KM_RESTORE_IMP_SRC = 'km_restore_imp_src';
-const KM_RESTORE_IMP_DST = 'km_restore_imp_dst';
+// I database di prova portano un suffisso unico per checkout: senza, lanciare la suite
+// in TEST e in ufficiale insieme fa sfilare il database all'altra esecuzione. Vedi
+// `kmDatabaseDiProva()` in tests/Pest.php.
+defined('KM_RESTORE_IMP_SRC') || define('KM_RESTORE_IMP_SRC', kmDatabaseDiProva('km_restore_imp_src'));
+defined('KM_RESTORE_IMP_DST') || define('KM_RESTORE_IMP_DST', kmDatabaseDiProva('km_restore_imp_dst'));
 
 function kmImpAdminPdo(): ?PDO
 {

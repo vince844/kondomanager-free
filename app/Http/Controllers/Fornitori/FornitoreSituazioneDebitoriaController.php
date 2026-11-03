@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Fornitore;
+use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Saldo;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 
 class FornitoreSituazioneDebitoriaController extends Controller
@@ -17,6 +19,10 @@ class FornitoreSituazioneDebitoriaController extends Controller
      */
     public function index(Fornitore $fornitore)
     {
+        // La situazione debitoria si legge con la scheda del fornitore; un debito pregresso si registra e si toglie
+        // modificandolo (Coda 402).
+        Gate::authorize('view', $fornitore);
+
         // Recuperiamo tutti i "saldi" (passività) legati a questo fornitore
         $situazioneDebitoria = Saldo::where('fornitore_id', $fornitore->id)
             ->with(['condominio', 'esercizio'])
@@ -53,6 +59,8 @@ class FornitoreSituazioneDebitoriaController extends Controller
      */
     public function store(Request $request, Fornitore $fornitore)
     {
+        Gate::authorize('update', $fornitore);
+
         // ⚠️ **`importo` arriva MASCHERATO, e con `numeric` non passava mai.**
         // La modale usa `MoneyInput` con `masked: true`, quindi il campo vale «380,00» —
         // punto per le migliaia, virgola per i decimali. `is_numeric('380,00')` è **false**
@@ -150,11 +158,27 @@ class FornitoreSituazioneDebitoriaController extends Controller
      */
     public function destroy(Fornitore $fornitore, Saldo $saldo)
     {
+        Gate::authorize('update', $fornitore);
+
         // Sicurezza: verifichiamo che il saldo appartenga effettivamente a questo fornitore
         if ($saldo->fornitore_id !== $fornitore->id) {
             return back()->with('message', [
                 'type' => 'error',
                 'message' => 'Operazione non autorizzata.'
+            ]);
+        }
+
+        // Una pendenza che una fattura pregressa estingue resta finché la fattura c'è: la fattura la nomina
+        // (`fatture_passive.saldo_patrimoniale_id`) e il database non lascia il riferimento vuoto (Coda 409). La pagina
+        // dice quale fattura la usa, e la pendenza resta com'è.
+        $fatture = FatturaPassiva::where('saldo_patrimoniale_id', $saldo->id)->pluck('numero_documento');
+
+        if ($fatture->isNotEmpty()) {
+            return back()->with('message', [
+                'type' => 'error',
+                'message' => trans_choice('fornitori.situazione_debitoria.debito_estinto', $fatture->count(), [
+                    'fatture' => $fatture->map(fn ($numero) => $numero ?: 'S/N')->implode(', '),
+                ]),
             ]);
         }
 

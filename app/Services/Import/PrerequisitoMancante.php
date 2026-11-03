@@ -22,10 +22,26 @@ namespace App\Services\Import;
  */
 final readonly class PrerequisitoMancante
 {
+    /**
+     * @param  bool  $bloccante  falso quando la condizione mancante è **un file che non c'è**
+     *
+     * ⚠️ **Non tutti i prerequisiti mancanti sono un problema, e trattarli uguale costava
+     * l'importazione.** «Il condominio non è in archivio» e «nessun file porta i saldi» finivano
+     * nella stessa classe, e `ImportRunner` si fermava su entrambi. Ma il primo è un'incoerenza —
+     * scrivere sarebbe sbagliato — mentre il secondo è **una scelta di chi importa**: non ho quel
+     * file, o non l'ho compilato.
+     *
+     * Misurato prima della correzione, con l'ordine dei livelli
+     * `condominio → esercizi → capitoli → soggetti → unità → titolarità → tabelle → saldi`:
+     * un lotto senza il foglio delle persone si fermava al **quarto** livello e lasciava fuori
+     * unità, tabelle e saldi — che dalle persone non dipendono affatto. Venivano scartati solo
+     * perché stavano più in basso nella catena.
+     */
     public function __construct(
         public string $codice,
         public string $cosaManca,
         public string $rimedio,
+        public bool $bloccante = true,
     ) {}
 
     public function toArray(): array
@@ -34,17 +50,21 @@ final readonly class PrerequisitoMancante
             'codice' => $this->codice,
             'cosa_manca' => $this->cosaManca,
             'rimedio' => $this->rimedio,
+            'bloccante' => $this->bloccante,
         ];
     }
 
     /**
      * Il rilievo corrispondente, per mostrarlo nella stessa lista degli altri.
      *
-     * Un prerequisito mancante è sempre **bloccante**: non è un'opinione sulla qualità del
-     * dato, è l'impossibilità di scriverlo senza lasciare il sistema incoerente.
+     * La severità segue `bloccante`: un'incoerenza è un **errore**, un file che non c'è è un
+     * **avviso**. Mostrare in rosso «nessun file porta i saldi» a chi i saldi non li ha è la
+     * stessa cosa che dirgli che ha sbagliato — e non ha sbagliato niente.
      */
     public function comeRilievo(): Rilievo
     {
-        return Rilievo::errore($this->codice, $this->cosaManca, $this->rimedio);
+        return $this->bloccante
+            ? Rilievo::errore($this->codice, $this->cosaManca, $this->rimedio)
+            : Rilievo::avviso($this->codice, $this->cosaManca, $this->rimedio);
     }
 }

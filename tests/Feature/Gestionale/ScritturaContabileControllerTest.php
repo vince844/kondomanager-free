@@ -334,3 +334,263 @@ test('una cassa con saldo iniziale non ancora portato a giornale compare nella d
             ->where('diagnosi.casse_senza_apertura.0.id', $cassa->id)
         );
 });
+
+/**
+ * ⚠️ **Coda 145 dei registri contabili, §10.1.1.** Prima di questa beta l'elenco non mandava le
+ * righe della scrittura: il payload di `index()` si fermava a `importo` (il totale dare) e
+ * `is_quadrata`. La riga espandibile — «clic e sotto compaiono conto, dare e avere» — non ha
+ * niente da mostrare senza questo dato, e senza l'eager load `righe.contoContabile` la stessa
+ * richiesta genererebbe una query N+1 per ogni scrittura in pagina.
+ */
+test('elenco: ogni scrittura porta le sue righe, col conto e non solo un id', function () {
+    $user = adminGiornale();
+    $ctx = setupGiornale();
+    [$condominio, $esercizio, , $contoAttivo, $contoPassivo] = $ctx;
+    $scrittura = creaScritturaGiornale($ctx, ['causale' => 'Con righe da espandere']);
+
+    // ⚠️ Il backend non garantisce l'ordine dare/avere — in `Show.vue` (`righeOrdinate`) è il
+    // frontend a riordinarle. Il test verifica il contenuto delle due righe, non la posizione.
+    $righe = $this->actingAs($user)
+        ->get(route('admin.gestionale.esercizi.scritture.index', [$condominio, $esercizio]))
+        ->assertOk()
+        ->viewData('page')['props']['scritture']['data'][0]['righe'];
+
+    expect($righe)->toHaveCount(2);
+
+    $dare = collect($righe)->firstWhere('tipo_riga', 'dare');
+    $avere = collect($righe)->firstWhere('tipo_riga', 'avere');
+
+    expect($dare)->not->toBeNull()
+        ->and($dare['conto']['id'])->toBe($contoAttivo)
+        ->and($dare['conto']['nome'])->not->toBeEmpty()
+        ->and($avere)->not->toBeNull()
+        ->and($avere['conto']['id'])->toBe($contoPassivo);
+});
+
+/**
+ * ⚠️ **La forma non deve divergere fra elenco e dettaglio.** `serializzaRighe()` è condiviso da
+ * `index()` e `show()` apposta: se un domani qualcuno duplica la logica invece di riusarla, questo
+ * test smette di vedere la garanzia — non perché il dato sia sbagliato, ma perché avrebbe smesso
+ * di essere lo stesso dato.
+ */
+test('elenco e dettaglio descrivono la stessa riga con le stesse chiavi', function () {
+    $user = adminGiornale();
+    $ctx = setupGiornale();
+    [$condominio, $esercizio] = $ctx;
+    $scrittura = creaScritturaGiornale($ctx);
+
+    $rigaElenco = $this->actingAs($user)
+        ->get(route('admin.gestionale.esercizi.scritture.index', [$condominio, $esercizio]))
+        ->viewData('page')['props']['scritture']['data'][0]['righe'][0];
+
+    $rigaDettaglio = $this->actingAs($user)
+        ->get(route('admin.gestionale.scritture.show', [$condominio, $scrittura]))
+        ->viewData('page')['props']['scrittura']['righe'][0];
+
+    expect(array_keys($rigaElenco))->toBe(array_keys($rigaDettaglio));
+});
+
+// ---------------------------------------------------------------------------
+// STAMPA — §10.1.2 di docs/registri_contabili.md
+// ---------------------------------------------------------------------------
+
+/**
+ * Chiama righePerStampa() via reflection: è privato e statico apposta, perché la trasformazione
+ * dei dati e la generazione del PDF sono due cose diverse da provare in due modi diversi — questa
+ * si verifica sull'array PHP, senza mai chiamare mPDF.
+ */
+function righePerStampa($scritture): array
+{
+    $reflection = new ReflectionClass(App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController::class);
+    $method = $reflection->getMethod('righePerStampa');
+
+    return $method->invoke(null, $scritture);
+}
+
+test('righePerStampa: dare prima di avere, indipendentemente dall\'ordine di creazione', function () {
+    $ctx = setupGiornale();
+    [, , , $contoAttivo, $contoPassivo] = $ctx;
+    $scrittura = creaScritturaGiornale($ctx);
+
+    // Ricarico con l'eager load che il controller usa davvero — senza, contoContabile
+    // sarebbe lazy e il test non proverebbe la stessa condizione della stampa reale.
+    $scrittura->load(['righe.contoContabile', 'righe.cassa', 'righe.voceSpesa']);
+
+    $righe = righePerStampa(collect([$scrittura]));
+
+    expect($righe)->toHaveCount(2);
+    expect($righe[0]['dare'])->not->toBeNull();
+    expect($righe[0]['avere'])->toBeNull();
+    expect($righe[1]['avere'])->not->toBeNull();
+    expect($righe[1]['dare'])->toBeNull();
+});
+
+test('righePerStampa: la forma della riga è quella che il template Blade si aspetta', function () {
+    $ctx = setupGiornale();
+    $scrittura = creaScritturaGiornale($ctx, [
+        'causale' => 'Causale di prova',
+        'numero_protocollo' => 'PROVA-001',
+    ]);
+    $scrittura->load(['righe.contoContabile', 'righe.cassa', 'righe.voceSpesa']);
+
+    $righe = righePerStampa(collect([$scrittura]));
+
+    expect($righe[0])->toHaveKeys(['data', 'protocollo', 'causale', 'conto_nome', 'conto_codice', 'dettaglio', 'dare', 'avere']);
+    expect($righe[0]['protocollo'])->toBe('PROVA-001');
+    expect($righe[0]['causale'])->toBe('Causale di prova');
+    // Nessuna cassa, nessuna voce di spesa, nessuna nota su queste righe: il dettaglio deve
+    // essere null e non una stringa vuota — è il fallback del template che decide cosa scrivere.
+    expect($righe[0]['dettaglio'])->toBeNull();
+});
+
+test('righePerStampa: il dettaglio unisce cassa, voce di spesa e nota con un separatore', function () {
+    $ctx = setupGiornale();
+    [$condominio, $esercizio, $gestione, $contoAttivo] = $ctx;
+
+    $cassa = DB::table('casse')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'conto_contabile_id' => $contoAttivo,
+        'nome' => 'Cassa di prova',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $scrittura = ScritturaContabile::create([
+        'condominio_id' => $condominio->id, 'esercizio_id' => $esercizio->id, 'gestione_id' => $gestione->id,
+        'data_registrazione' => now()->format('Y-m-d'), 'data_competenza' => now()->format('Y-m-d'),
+        'causale' => 'Con dettaglio', 'tipo_movimento' => TipoMovimentoContabile::RETTIFICA->value, 'stato' => 'registrata',
+    ]);
+    RigaScrittura::create([
+        'scrittura_id' => $scrittura->id, 'conto_contabile_id' => $contoAttivo, 'cassa_id' => $cassa,
+        'tipo_riga' => 'dare', 'importo' => 5000, 'note' => 'Nota di prova',
+    ]);
+    $scrittura->load(['righe.contoContabile', 'righe.cassa', 'righe.voceSpesa']);
+
+    $righe = righePerStampa(collect([$scrittura]));
+
+    expect($righe[0]['dettaglio'])->toBe('Cassa di prova · Nota di prova');
+});
+
+test('stampa: risponde con un PDF valido e rispetta gli stessi filtri dell\'elenco', function () {
+    $user = adminGiornale();
+    $ctx = setupGiornale();
+    [$condominio, $esercizio] = $ctx;
+    creaScritturaGiornale($ctx, ['causale' => 'Fuori periodo', 'data_registrazione' => '2020-01-01']);
+    creaScritturaGiornale($ctx, ['causale' => 'Dentro periodo', 'data_registrazione' => now()->format('Y-m-d')]);
+
+    $risposta = $this->actingAs($user)->get(route('admin.gestionale.esercizi.scritture.print', [
+        $condominio, $esercizio, 'data_da' => now()->subDay()->format('Y-m-d'),
+    ]));
+
+    $risposta->assertOk();
+    $risposta->assertHeader('Content-Type', 'application/pdf');
+});
+
+/**
+ * ⚠️ **Fase 1-bis della beta.23**: il test sopra si fermava a status e header, mai al contenuto
+ * — mutando via `applyFiltri()` disattivato restava verde lo stesso. Il confronto per
+ * dimensione del PDF è stato provato e scartato: la compressione di mPDF non è monotona
+ * rispetto al numero di righe (misurato: un documento più corto ma con un riquadro di testo
+ * in più pesava DI PIÙ di uno con sei righe ripetitive, perché la ripetizione comprime meglio
+ * della varietà). La prova che regge è sulla QUERY: si intercetta l'SQL vero con `DB::listen()`
+ * e si legge il binding, non il PDF.
+ */
+test('stampa: la query eseguita porta davvero il filtro data, non solo il PDF che lo dichiara', function () {
+    $user = adminGiornale();
+    $ctx = setupGiornale();
+    [$condominio, $esercizio] = $ctx;
+    creaScritturaGiornale($ctx, ['data_registrazione' => '2020-01-01']);
+
+    $sogliaAttesa = now()->subDay()->format('Y-m-d');
+    $bindingsCatturati = [];
+
+    DB::listen(function ($query) use (&$bindingsCatturati) {
+        if (str_contains($query->sql, 'scritture_contabili') && str_contains($query->sql, 'data_registrazione')) {
+            $bindingsCatturati[] = $query->bindings;
+        }
+    });
+
+    $this->actingAs($user)->get(route('admin.gestionale.esercizi.scritture.print', [
+        $condominio, $esercizio, 'data_da' => $sogliaAttesa,
+    ]));
+
+    $tuttiIBindings = collect($bindingsCatturati)->flatten()->all();
+
+    // ⚠️ `toContain()` è variadico: un secondo argomento diventa un secondo valore da cercare,
+    // non un messaggio — lo stesso trabocchetto già incontrato e documentato nella beta.22.
+    expect(in_array($sogliaAttesa, $tuttiIBindings, true))
+        ->toBeTrue('nessuna query verso scritture_contabili porta il valore del filtro data_da: applyFiltri() non sta filtrando la stampa');
+});
+
+test('stampa: un esercizio senza scritture produce comunque un PDF, non un errore', function () {
+    $user = adminGiornale();
+    $ctx = setupGiornale();
+    [$condominio, $esercizio] = $ctx;
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.esercizi.scritture.print', [$condominio, $esercizio]))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/pdf');
+});
+
+/**
+ * ⚠️ **404, non 403** — misurato, non presunto. `abort(403, ...)` è la prima riga di `stampa()`,
+ * ma non la si raggiunge mai su questo scenario: l'intero gruppo di rotte del gestionale ha
+ * `scopeBindings()` (beta.66, `routes/gestionale.php`) e Laravel rifiuta di risolvere un
+ * `{esercizio}` che non è annidato sotto quel `{condominio}` **prima** che il controller giri.
+ * Il controllo manuale è ridondante qui, non sbagliato — resta come difesa in profondità.
+ */
+test('stampa: un esercizio di un altro condominio non si risolve nemmeno per rotta', function () {
+    $user = adminGiornale();
+    $ctx = setupGiornale();
+    [$condominio] = $ctx;
+    $altroCtx = setupGiornale();
+    $esercizioDiAltri = $altroCtx[1];
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.esercizi.scritture.print', [$condominio, $esercizioDiAltri]))
+        ->assertNotFound();
+});
+
+/**
+ * ⚠️ **Il tetto della stampa non è un numero inventato: deriva dal `memory_limit` dell'host.**
+ *
+ * Rilievo di punta della Fase 1-bis della beta.23, trovato da tre lenti indipendenti: la stampa
+ * esauriva la memoria PRIMA del tempo, e moriva con un fatal error dentro mPDF — pagina bianca,
+ * nessuna eccezione applicativa, niente nei log. La tabella a blocchi (vedi
+ * `libro_giornale.blade.php`) ha portato la capienza da ~1.000 a ~4.500 righe con
+ * `memory_limit = 128M`, ma un tetto serve comunque: oltre, si rifiuta spiegando cosa fare
+ * invece di schiantarsi in silenzio.
+ */
+function tettoConLimite(string $limite): int
+{
+    // ⚠️ Si passa la stringa alla formula, non si abbassa il `memory_limit` del processo:
+    // `ini_set('memory_limit', '128M')` fallisce appena la suite ha già allocato di più
+    // («Current memory usage is 210763776 bytes») — misurato, ed era un difetto di questo
+    // test, non del codice.
+    $metodo = new ReflectionMethod(
+        App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController::class,
+        'righeStampabiliCon'
+    );
+
+    return $metodo->invoke(null, $limite);
+}
+
+test('il tetto della stampa cresce con la memoria disponibile dell\'installazione', function () {
+    $a128 = tettoConLimite('128M');
+    $a256 = tettoConLimite('256M');
+    $a512 = tettoConLimite('512M');
+
+    // Su 128M — il parco installato che il progetto dichiara — deve restare largamente sopra
+    // il volume di un anno ordinario (~250 scritture, cioè ~600 righe) senza avvicinarsi alle
+    // ~4.500 righe che sono la rottura misurata.
+    expect($a128)->toBeGreaterThan(1500)
+        ->and($a128)->toBeLessThan(4500);
+
+    // Chi ha più memoria ottiene più capienza, senza configurare nulla.
+    expect($a256)->toBeGreaterThan($a128);
+    expect($a512)->toBeGreaterThan($a256);
+});
+
+test('senza limite di memoria non si applica nessun tetto', function () {
+    expect(tettoConLimite('-1'))->toBe(PHP_INT_MAX);
+});

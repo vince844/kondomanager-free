@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><ns3:FatturaElettronica versione="FPR12" xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>20101010104</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>vqhjpsyguj</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>0000000</CodiceDestinatario>
+            <ContattiTrasmittente/>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10101010105</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>BNCMRC63D23F704B</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>Bianchi Marco</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DEI PLATANI</Indirizzo>
+                <NumeroCivico>42/C</NumeroCivico>
+                <CAP>20900</CAP>
+                <Comune>MONZA</Comune>
+                <Provincia>MB</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <Contatti/>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <CodiceFiscale>30404040401</CodiceFiscale>
+                <Anagrafica>
+                    <Nome>MIMOSE</Nome>
+                    <Cognome>RESIDENZA</Cognome>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DELLE MIMOSE</Indirizzo>
+                <NumeroCivico>31-33</NumeroCivico>
+                <CAP>20885</CAP>
+                <Comune>RONCO BRIANTINO</Comune>
+                <Provincia>MB</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD04</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2025-02-27</Data>
+                <Numero>1</Numero>
+                <ImportoTotaleDocumento>1464.00</ImportoTotaleDocumento>
+            </DatiGeneraliDocumento>
+            <DatiFattureCollegate>
+                <RiferimentoNumeroLinea>20</RiferimentoNumeroLinea>
+                <IdDocumento>28</IdDocumento>
+                <Data>2024-12-22</Data>
+            </DatiFattureCollegate>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>20</NumeroLinea>
+                <Descrizione>Fornitura ed installazione telecamera per impianto - videocitofonico condominiale marca Elvox art. VIW559C</Descrizione>
+                <Quantita>1.00000000</Quantita>
+                <UnitaMisura>N</UnitaMisura>
+                <PrezzoUnitario>1200.00000000</PrezzoUnitario>
+                <PrezzoTotale>1200.00000000</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>1200.00</ImponibileImporto>
+                <Imposta>264.00</Imposta>
+                <EsigibilitaIVA>I</EsigibilitaIVA>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+        <DatiPagamento>
+            <CondizioniPagamento>TP02</CondizioniPagamento>
+            <DettaglioPagamento>
+                <ModalitaPagamento>MP05</ModalitaPagamento>
+                <DataRiferimentoTerminiPagamento>2025-02-27</DataRiferimentoTerminiPagamento>
+                <DataScadenzaPagamento>2025-02-27</DataScadenzaPagamento>
+                <ImportoPagamento>1464.00</ImportoPagamento>
+                <IstitutoFinanziario>BANCA DELTA</IstitutoFinanziario>
+                <IBAN>IT79P0101010101100000001111</IBAN>
+            </DettaglioPagamento>
+        </DatiPagamento>
+    </FatturaElettronicaBody>
+</ns3:FatturaElettronica>

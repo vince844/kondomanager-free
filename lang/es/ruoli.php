@@ -11,6 +11,9 @@ return [
     'role_not_found'               => 'Role not found.',
     'cannot_edit_default_role'     => 'Cannot edit the default role ":role".',
     'cannot_delete_default_role'   => 'Cannot delete the default role ":role".',
+    'cannot_delete_registration_role' => 'El rol «:role» es el rol predeterminado para nuevos usuarios: para eliminarlo, elige primero otro en la configuración general.',
+    'registration_role_dialog_title' => 'El rol predeterminado para nuevos usuarios no se puede eliminar',
+    'registration_role_dialog_close' => 'Entendido',
     'default_role_not_found'       => 'Default role not found.',
-    'success_delete_with_reassign' => 'The role has been deleted and all associated users have been reassigned to the :default_role role.',
+    'success_delete_with_reassign' => 'Rol eliminado. Usuarios que se quedaron sin rol y pasaron al rol :default_role: :count.',
 ];

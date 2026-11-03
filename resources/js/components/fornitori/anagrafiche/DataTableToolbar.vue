@@ -11,6 +11,8 @@ defineProps<{
   table: Table<TData>
 }>()
 
+// Associare un referente è una modifica del fornitore: la rotta chiede «Modifica anagrafiche» (`FornitorePolicy::update`,
+// Coda 402).
 const { hasPermission, generateRoute, generatePath } = usePermission();
 const page = usePage<{ fornitore: Fornitore}>()
 
@@ -21,7 +23,7 @@ const page = usePage<{ fornitore: Fornitore}>()
 
     <Link 
       as="button"
-      v-if="hasPermission([Permission.CREATE_USERS])"
+      v-if="hasPermission([Permission.EDIT_ANAGRAFICHE])"
       :href="route(generateRoute('fornitori.anagrafiche.create'), { fornitore: page.props.fornitore.id })" 
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >

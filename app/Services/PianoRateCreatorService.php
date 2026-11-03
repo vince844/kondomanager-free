@@ -25,10 +25,10 @@ class PianoRateCreatorService
         $gestione = Gestione::with(['pianoConto.conti', 'esercizi'])->findOrFail($gestioneId);
 
         if (!$gestione->pianoConto) {
-            throw new RuntimeException("The selected management (gestione) has no linked chart of accounts (piano conti).");
+            throw new RuntimeException("La gestione scelta non ha un piano dei conti collegato: crealo prima del piano rate.");
         }
         if (!$gestione->data_inizio) {
-            throw new RuntimeException("The selected management (gestione) has no defined start date.");
+            throw new RuntimeException("La gestione scelta non ha una data di inizio: impostala dalla scheda della gestione prima di creare il piano rate.");
         }
 
         return $gestione;

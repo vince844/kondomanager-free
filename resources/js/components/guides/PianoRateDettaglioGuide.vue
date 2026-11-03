@@ -60,9 +60,11 @@ defineEmits(['update:open']);
                                 L'interruttore in alto ha due stati, e la differenza non è estetica:
                             </p>
                             <ul class="ml-5 mt-2 list-disc space-y-1.5">
-                                <li><strong>Bozza</strong> — il piano è ancora modificabile e <strong>non ha
-                                    generato nessun movimento contabile</strong>. Puoi correggere capitoli,
-                                    ricalcolare, aggiungere o togliere voci liberamente.</li>
+                                <li><strong>Bozza</strong> — <strong>nessuna rata è ancora a giornale</strong> e di
+                                    solito il piano si corregge: capitoli, ricalcolo, voci da aggiungere o togliere. Se
+                                    però su una sua quota c'è un movimento (un incasso, un credito usato o rimborsato) o
+                                    se il conguaglio di un passaggio lo ha preso, non si ricalcola, non si elimina e non
+                                    si toglie una voce: il motivo e come riaprirlo sono sul pulsante <strong>Ricalcola</strong>.</li>
                                 <li><strong>Approvato</strong> — passa da qui solo dopo aver registrato i dati
                                     della delibera assembleare (data, numero di verbale opzionale, note). Il
                                     piano si "congela" e diventa possibile emettere le rate in contabilità.</li>
@@ -78,10 +80,32 @@ defineEmits(['update:open']);
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
                             <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                             <div class="space-y-1 text-xs text-amber-900 dark:text-amber-200">
-                                <p><strong>«Disallineato: ricalcola!»</strong> significa che qualcuno ha
-                                modificato un preventivo o una tabella millesimale dopo che questo piano è
-                                stato generato. Le quote mostrate non corrispondono più ai dati attuali finché
-                                non premi <strong>Ricalcola</strong>.</p>
+                                <p><strong>«Copertura spese»</strong> confronta quanto il piano chiede — le sue voci, meno il
+                                già versato che toglie — con quanto c'è nelle rate. Ci sono tre casi:</p>
+                                <ul class="ml-4 list-disc space-y-1">
+                                    <li><strong>nessun badge</strong>: le due cifre coincidono;</li>
+                                    <li><strong>«Quota aperta»</strong>, in ambra, con la cifra (le entrate con il segno meno) e dove
+                                    sta: l'unità, se è una sola, o quante sono le unità; la voce, o quante sono le voci, quando la quota
+                                    non è di un'unità. La differenza sono le quote non assegnate che hai accettato con «Procedi
+                                    comunque» (un'unità senza titolare, una voce senza tabella, una tabella senza millesimi), e il piano
+                                    non è cambiato da allora. <strong>Ricalcola</strong> da solo non le assegna a nessuno: prima va
+                                    sistemata la causa, che il riquadro in cima alla pagina dice causa per causa, con le unità e le
+                                    voci;</li>
+                                    <li><strong>«Disallineato: ricalcola!»</strong>, in rosso: la differenza è un'altra, per esempio un
+                                    già versato registrato dopo la generazione o una voce che ha cambiato tipo. <strong>Ricalcola</strong>
+                                    rifà le rate con i dati di adesso. Se il piano non si ricalcola più (rate emesse, incassi, il
+                                    conguaglio di un passaggio) il badge dice solo «Disallineato», e il pulsante dice perché e come
+                                    riaprirlo.</li>
+                                </ul>
+                                <p>Un piano con quote non assegnate accettate prima di questo aggiornamento resta «Disallineato»: la
+                                cifra non era registrata. Al primo <strong>Ricalcola</strong>, se qualcosa resta senza destinatario, il
+                                programma chiede di nuovo la presa d'atto e la registra.</p>
+                                <p>Il confronto è fra i totali: un cambio di millesimi o di titolari a totale uguale non accende il
+                                badge, e di solito nemmeno il preventivo della voce cambiato dopo, perché il piano chiede l'importo che
+                                ha scritto quando è stato creato. Fa eccezione una voce con del già versato: la parte del già versato
+                                che il piano toglie dipende dal preventivo della voce, e un preventivo cambiato dopo può accendere
+                                «Disallineato»; <strong>Ricalcola</strong> rifà le rate.</p>
+                                <p>Le voci di entrata si contano con il segno meno, come fa il calcolo delle quote.</p>
                             </div>
                         </div>
 
@@ -96,9 +120,18 @@ defineEmits(['update:open']);
                                 piano può includere: in quel caso ti viene chiesto quali aggiungere.
                             </p>
                             <p class="mt-2">
-                                È <strong>bloccato</strong> in due casi, e per lo stesso motivo — proteggere
-                                movimenti già scritti: se sono già stati registrati incassi, o se qualche rata
-                                è già stata emessa in contabilità. Il messaggio sul pulsante dice quale dei due.
+                                È <strong>bloccato</strong> in tre casi: se qualche rata è già a giornale; se su una
+                                sua quota c'è un incasso, un credito usato o un rimborso, anche su una rata in bozza; o se
+                                un <strong>passaggio di titolarità</strong> ha preso il piano nel suo conguaglio o lo tiene fermo
+                                (una successione o una fine locazione con il conguaglio non scritto), perché ricalcolarlo rifarebbe per giorni ciò che
+                                il conguaglio ha già regolato, o la posizione che il passaggio ha lasciato com'era. Il messaggio dice
+                                quale, e la strada: per un passaggio, togliere prima le quote a giornale e i movimenti, se ce
+                                ne sono, poi annullarlo dallo storico della sua unità, registrarlo di nuovo e ricalcolare (con un passaggio registrato da una versione più vecchia l'ordine è un altro, e lo dice il messaggio). Al
+                                contrario, dopo una vendita o un usufrutto registrati quando il piano si ricalcolava ancora,
+                                emissioni, incassi e rimborsi si rifiutano finché non lo ricalcoli; dopo un cambio d'inquilino no, e un
+                                piano emesso senza ricalcolo lascia le quote all'inquilino di prima. Lo stesso vale se il passaggio
+                                è stato annullato dopo il ricalcolo del piano: le quote hanno ancora la titolarità di un passaggio
+                                che non c'è più, e il messaggio dice quale passaggio e di chi andrebbero a giornale le quote.
                             </p>
                         </section>
 
@@ -138,6 +171,17 @@ defineEmits(['update:open']);
                                 quell'importo, e il messaggio d'errore te lo dice in euro — non solo il pivot
                                 di questo piano, anche lo speso reale del libro giornale.
                             </p>
+                            <p class="mt-2">
+                                Si sposta fra voci dello stesso tipo: spese con spese, entrate con entrate, come il piano le conta (un capitolo di spesa che passa l'importo ai soli sottoconti di entrata conta come un'entrata). Fra
+                                una spesa e un'entrata il totale del piano cambierebbe, e il programma lo
+                                rifiuta: il menu della destinazione offre solo le voci del tipo della sorgente. Un capitolo che il piano divide fra spese ed entrate non si sposta e non riceve budget, e il menu non offre le voci che si sovrapporrebbero a un capitolo o a dei sottoconti già nel piano, perché di due righe sovrapposte il piano conta solo quella del capitolo. Se nel piano un capitolo ha la sua riga insieme a quelle dei suoi sottoconti e il piano conta solo quella del capitolo, un riquadro in cima alla pagina lo dice e indica come uscirne. Nei piani straordinari «Sposta spesa» non funziona: il menu della sorgente elenca le fatture, ma lo spostamento lavora sulle voci, e il programma lo rifiuta sempre.
+                            </p>
+                            <p class="mt-2">
+                                Una voce di spesa che il piano conta con un importo negativo, il suo o quello della copia, non cede e non riceve budget, e nemmeno il capitolo
+                                del piano che la ripartisce: il piano la addebita in positivo, e lo spostamento cambierebbe il totale. È la voce che nomina l'avviso in cima alla
+                                pagina. Non riceve budget neanche una voce di spesa scritta con il meno che il piano non conta così, né un capitolo fuori dal piano che la
+                                ripartirebbe: il piano la addebiterebbe in positivo. I menu non offrono queste voci dove il programma le rifiuterebbe.
+                            </p>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
@@ -160,15 +204,20 @@ defineEmits(['update:open']);
                                 <li><strong>Gruppo</strong> — è un capitolo che raggruppa più sottoconti.</li>
                                 <li><strong>Integra</strong> — ha ricevuto fondi da un'altra voce con «Sposta
                                     spesa», e li ha ancora: uno storno completo spegne questa etichetta.</li>
-                                <li><strong>Parziale</strong> — l'importo incluso è inferiore al preventivo
-                                    originale della voce.</li>
+                                <li><strong>Parziale</strong> — l'importo incluso è diverso dal preventivo della voce: una
+                                    riga sotto la voce dice il preventivo, la parte che non è in questo piano (e quanta ne ha
+                                    ceduta con «Sposta spesa», se ne ha ceduta) e la parte che c'è.</li>
+                                <li><strong>Non assegnati</strong> — una riga sotto la voce dice la cifra delle quote non
+                                    assegnate accettate su quella voce, e dove stanno: restano fuori dalle rate.</li>
                                 <li><strong>Standard</strong> — nessuna delle precedenti: la voce entra per
-                                    l'intero preventivo.</li>
+                                    l'intero preventivo.</li> <li><strong>Entrata</strong> — si aggiunge alle altre su una voce che il piano conta con il segno meno, come un affitto o un canone: l'importo compare con il meno e si sottrae alle spese. Con delle entrate la riga sotto il titolo della sezione dice quanto resta da ripartire, con le spese e le entrate fra parentesi, al posto del totale preventivo.</li>
                             </ul>
                             <p class="mt-2">
                                 Il cestino accanto a ogni voce la rimuove dal piano — e <strong>ricalcola
                                 immediatamente</strong> le rate di tutti i condòmini. È disabilitato se il
-                                piano è già approvato o se ci sono incassi registrati; e se la voce ha un
+                                piano è approvato o, anche in bozza, se il piano non si ricalcola più — un incasso, un
+                                credito usato o rimborsato, il conguaglio di un passaggio (l'avviso sul pulsante
+                                «Ricalcola» dice quale e come riaprirlo); e se la voce ha un
                                 <strong>saldo netto</strong> diverso da zero verso altre voci di questo piano
                                 (ha ceduto o ricevuto con «Sposta spesa» più di quanto le sia poi tornato
                                 indietro), va prima riportata a zero con lo <strong>«Storna»</strong> —
@@ -176,6 +225,19 @@ defineEmits(['update:open']);
                                 ognuno ha il proprio pulsante per restituire esattamente quella cifra. La voce
                                 rimossa torna disponibile fra le «orfane» e si può reintrodurre in seguito con
                                 «Sincronizza».
+                            </p>
+                            <p class="mt-2">
+                                Le versioni precedenti permettevano una voce di spesa con un importo
+                                <strong>negativo</strong>, e il calcolo delle quote la addebita in positivo.
+                                «Ricalcola» si ferma dove il calcolo la addebiterebbe in positivo, la nomina e dice che cosa fare, e
+                                un riquadro in cima alla pagina la segnala in ogni stato del piano. Se il piano tiene
+                                una copia dell'importo della voce, correggere la voce non basta: si toglie la voce
+                                con il cestino e si riaggiunge con «Sincronizza» (un sottoconto, o un capitolo che divide la copia fra i sottoconti, no: si elimina il
+                                piano e si ricrea), e togliendola si perdono i suoi
+                                tratti di competenza, da annotare prima e da riscrivere ricreando il piano. Se le
+                                voci con la copia negativa sono più d'una, si elimina il piano e si ricrea. «Ricalcola» si ferma anche per un capitolo che nel piano ha una copia a zero o negativa da dividere fra i sottoconti, se uno di questi ha un importo negativo, anche di entrata: corretto il sottoconto, «Ricalcola» passa, ma la copia del capitolo resta com'era, e per cambiarla si elimina il piano e si ricrea. Un piano approvato va
+                                prima riportato in bozza, e questo azzera il numero del verbale e la nota
+                                dell'approvazione: annotali prima.
                             </p>
                         </section>
 
@@ -196,10 +258,35 @@ defineEmits(['update:open']);
                             <p>
                                 Con il piano <strong>Approvato</strong>, spunta le rate da emettere (le
                                 caselle compaiono nell'intestazione di ogni colonna) oppure usa <strong>«Seleziona
-                                tutte»</strong>. Solo le rate non ancora emesse sono selezionabili. Il pulsante
-                                <strong>«Emetti»</strong> apre un modulo dove scegli la data di registrazione,
+                                tutte»</strong>. Solo le rate non ancora emesse sono selezionabili. Anche una rata di soli crediti va a
+                                giornale: per ogni quota a credito la spesa della rata in dare e il credito riportato che la paga in
+                                avere, a nome del condòmino; una quota a zero, con spesa e credito uguali, porta tutte e due le righe.
+                                Non va a giornale, e l'esito dell'emissione dice perché, solo una rata che non ha niente da portare
+                                (una rata vuota, o il cui credito è già stato usato o rimborsato per intero), una rata fatta solo di
+                                quote a credito, o a zero, senza il dettaglio del calcolo (vedi sotto), o una rata segnata «emessa»
+                                senza scritture che un passaggio registrato con una versione di prima ha preso così.
+                                Il pulsante <strong>«Emetti»</strong> apre un modulo dove scegli la data di registrazione,
                                 una causale personalizzata (opzionale — altrimenti il sistema usa una dicitura
                                 standard) e se rendere subito visibili le rate ai condòmini.
+                            </p>
+                            <p class="mt-2">
+                                Una quota a credito, o a zero, senza il dettaglio del calcolo (piani generati prima della versione
+                                1.8.0) resta fuori da sola, perché il programma non separa la spesa dal credito riportato, e l'esito
+                                nomina la persona e la rata. Una quota a credito lascia al condòmino il suo credito, da usare o
+                                rimborsare. In una quota a zero la spesa della rata e il credito riportato che la paga si pareggiano
+                                e restano fuori tutti e due: non c'è un credito da usare né da rimborsare, anche se l'estratto conto
+                                può mostrare a credito il saldo pregresso. Se le altre quote della rata vanno a giornale, la card
+                                «Crediti da riallineare» degli incassi elenca la quota ferma fra le voci che restano come sono, e la
+                                tiene anche dopo lo storno di un incasso o di un rimborso che ne ha usato il credito. Una rata fatta
+                                solo di quote ferme resta in bozza, e così la mostra la pagina del piano; il perché lo dice l'esito
+                                dell'emissione. Per portare la quota a giornale si ricalcola il piano, dopo aver stornato gli
+                                incassi, le compensazioni e i rimborsi e annullato le emissioni; prima va controllato il saldo
+                                pregresso di quella persona, che le versioni di prima della 1.8.0 sottraevano invece di sommare.
+                            </p>
+                            <p class="mt-2">
+                                Una rata emessa, anche di soli crediti, ferma il ricalcolo del piano (vedi «Ricalcola»): per
+                                ricalcolarlo si annulla l'emissione, dopo aver stornato gli incassi, le compensazioni o i rimborsi
+                                che la toccano.
                             </p>
                         </section>
 
@@ -220,8 +307,29 @@ defineEmits(['update:open']);
                             <p>
                                 Passa il mouse sull'intestazione di una rata già emessa: compare una freccia
                                 circolare. Annulla la scrittura contabile e riporta la rata in Bozza — ma
-                                <strong>si blocca se ci sono già incassi registrati</strong> su quella rata: va
-                                prima rimosso l'incasso.
+                                <strong>si blocca se su quella rata ci sono incassi</strong>, o un credito già usato in
+                                compensazione (anche per pagare un'altra rata) o rimborsato: va prima stornato quel movimento.
+                            </p>
+                            <p class="mt-2">
+                                Con un <strong>passaggio di titolarità</strong>, registrato da una versione più vecchia,
+                                che ha preso il piano nel conguaglio dopo l'emissione, si blocca anche per quello:
+                                il messaggio dice quale passaggio annullare prima, dallo storico della sua unità; poi si annulla
+                                l'emissione, e solo dopo si registra di nuovo il passaggio. Con i passaggi registrati dalla
+                                1.11 in poi l'annullamento non si blocca: il piano preso resta fermo comunque, e la rata riemessa
+                                ha le stesse quote.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Il conguaglio di un passaggio</h3>
+                            <p>
+                                Le rate già emesse non si toccano quando un'unità cambia titolare: a sistemare i conti è una
+                                <strong>coppia di saldi a somma zero per ogni persona che entra</strong> (alla fine di una locazione senza un nuovo
+                                inquilino, per ogni persona che paga al posto dell'inquilino) — di solito credito a chi
+                                esce e debito a chi entra, per la parte di quota che spetta a chi entra in proporzione ai giorni, o il
+                                contrario. Le coppie stanno nei saldi della gestione con un lucchetto viola, e il prossimo piano le
+                                assorbe nella Rata 0 come qualunque saldo. Si annullano solo tutte insieme, dallo storico dell'unità,
+                                finché nessun piano le ha assorbite.
                             </p>
                         </section>
 
@@ -285,9 +393,7 @@ defineEmits(['update:open']);
                                 <p><strong>2. Strapagamento</strong> — un condòmino che ha versato <strong>più
                                 della sua quota</strong>: la rata risulta comunque «pagata» (il dovuto è
                                 coperto), ma l'eccedenza resta a suo credito e compare qui, nella card
-                                «Crediti (Anticipi)» e nel totale di riga. Riconosciuto dalla beta.73 — prima
-                                la pagina vedeva solo il primo caso, e un'eccedenza versata restava invisibile
-                                sia nel totale crediti sia nell'incassato dichiarato.</p>
+                                «Crediti (Anticipi)» e nel totale di riga.</p>
                                 <p class="text-blue-700/80 dark:text-blue-300/80">In entrambi i casi il credito
                                 si spende con «Usa credito» al prossimo incasso di quel condòmino.</p>
                             </div>

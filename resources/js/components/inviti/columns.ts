@@ -5,6 +5,7 @@ import type { Building } from '@/types/buildings';
 import DropdownAction from '@/components/inviti/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/inviti/DataTableColumnHeader.vue';
 import { Badge }  from '@/components/ui/badge';
+import { statoInvito } from '@/lib/inviti/statoInvito';
 
 export const columns: ColumnDef<Invito>[] = [
       {
@@ -56,23 +57,16 @@ export const columns: ColumnDef<Invito>[] = [
           // Access the original row data
           const original = row.original; 
 
-          // Extract 'accepted_at' and 'expires_at'
-          const acceptedAt = original.accepted_at;
-          const expiredAt = original.expires_at
+          // L'accettazione prima della scadenza: vedi `statoInvito()`.
+          const stato = statoInvito(original.accepted_at, original.expires_at);
 
-          // Current date to compare with
-          const currentDate = new Date();
-       
-          // Determine if accepted, expired, or not accepted
           let statusLabel = '';
           let badgeClass = '';
     
-          if (expiredAt && new Date(expiredAt) < currentDate) {
-            // If expired date is in the past, show "Scaduto"
+          if (stato === 'scaduto') {
             statusLabel = 'Scaduto';
             badgeClass = 'inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset'; 
-          } else if (acceptedAt) {
-            // If accepted_at exists, show "Accettato"
+          } else if (stato === 'accettato') {
             statusLabel = 'Accettato';
             badgeClass = 'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20 ring-inset'; 
           } else {

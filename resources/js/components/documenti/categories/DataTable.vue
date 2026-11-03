@@ -45,6 +45,9 @@ const table = useVueTable({
   manualPagination: true,
   // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
   manualSorting: true,
+  // Le righe per id, non per posizione: l'elenco ricarica tenendo la tabella, e con la posizione una riga restava
+  // la stessa riga con un'altra categoria dentro, e il menù «Modifica» con la categoria di prima.
+  getRowId: (categoria) => String(categoria.id),
   onPaginationChange: updater => {
     const stato = table.getState().pagination
     const p = typeof updater === 'function' ? updater(stato) : updater

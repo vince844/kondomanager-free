@@ -100,6 +100,15 @@ final class CatalogoControlli
                 perche: 'Se quel debito vada chiesto al vecchio proprietario o al nuovo è una '
                     .'valutazione giuridica, non una query.',
             ),
+            'saldi.righe_fuse_su_una_posizione' => new VoceCatalogo(
+                rotta: $saldi,
+                etichettaAzione: 'Vai ai saldi',
+                perche: 'Due righe del file riguardavano la stessa persona sulla stessa unità e le '
+                    .'ho sommate: in archivio una posizione per esercizio è tutto quello che c\'è. '
+                    .'Se le due cifre erano due cose distinte da tenere separate — un conguaglio e '
+                    .'una morosità — la strada non è il saldo di apertura ma un movimento, e quale '
+                    .'delle due sia lo sai solo tu.',
+            ),
             'saldi.da_nome_diviso' => new VoceCatalogo(
                 rotta: $saldi,
                 etichettaAzione: 'Vai ai saldi',
@@ -113,7 +122,49 @@ final class CatalogoControlli
                 perche: 'Se le due persone in una cella sola vadano divise, e in che proporzione, '
                     .'lo sai solo tu.',
             ),
-            'tabella.parziale' => new VoceCatalogo(
+            'esercizio.straordinario_in_gestione_dedicata' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai alle gestioni',
+                perche: 'La gestione straordinaria è stata creata e le spese ci sono finite dentro, '
+                    .'ma se quella separazione corrisponda a come è stato deliberato lo sai solo tu: '
+                    .'il file dichiara «straordinario», non quale delibera ci sta sotto.',
+            ),
+                        'capitoli.spese_personali_non_importate' => new VoceCatalogo(
+                rotta: $saldi,
+                etichettaAzione: 'Vai ai saldi',
+                perche: 'Non c\'è niente da rimettere a posto: quelle spese sono già dentro i saldi '
+                    .'di apertura di chi le deve. La voce resta per dire dove sono finite, perché '
+                    .'chi confronta il bilancio vecchio con l\'archivio nuovo le cercherebbe fra i '
+                    .'capitoli e non le troverebbe.',
+            ),
+            'capitoli.senza_preventivo' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'Quanto chiedere ai condòmini quest\'anno lo decide l\'assemblea, non il '
+                    .'consuntivo dell\'anno scorso: nessuna query può scrivere un preventivo al posto '
+                    .'di chi lo delibera.',
+            ),
+            'capitoli.senza_voci' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'Se quel capitolo serva davvero, e con quali voci sotto, lo sa solo chi '
+                    .'gestisce il condominio: il file lo porta senza contenuto, e un contenitore '
+                    .'vuoto non si può né preventivare né ripartire.',
+            ),
+            'bilancio.non_quadra' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'La differenza è fra i numeri del file e il totale che il file stesso '
+                    .'dichiara: solo chi ha quella stampa in mano può dire quale dei due è giusto.',
+            ),
+            'capitolo.non_quadra' => new VoceCatalogo(
+                rotta: $struttura,
+                etichettaAzione: 'Vai al piano dei conti',
+                perche: 'Come sopra, ma su un capitolo solo. Gli importi di un consuntivo non entrano '
+                    .'in archivio come preventivo, quindi la differenza non sposta nessun numero: '
+                    .'resta però un segnale che quella stampa va guardata.',
+            ),
+                        'tabella.parziale' => new VoceCatalogo(
                 rotta: $tabelle,
                 etichettaAzione: 'Vai alle tabelle',
                 perche: 'Una tabella parziale è un modo normale di ripartire: solo tu sai se quelle '
@@ -172,6 +223,67 @@ final class CatalogoControlli
             'soggetti.non_ricavabili_da_questo_report' => new VoceCatalogo(
                 perche: 'Il file caricato non conteneva le persone: la strada è un altro export, non '
                     .'una correzione in archivio.',
+            ),
+
+            // ── Il modello compilato a mano ─────────────────────────────────────────────────
+            //
+            // Nessuno di questi ha un verificatore, e non per pigrizia: sono tutti giudizi su un
+            // file che non esiste più. Una query sull'archivio direbbe com'è andata a finire, non
+            // se ciò che si è scritto era quello che l'amministratore intendeva — che è
+            // esattamente la domanda che questi avvisi pongono.
+            'modello.unita_ripetuta' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'La stessa sigla compariva due volte nel foglio: se erano due unità diverse '
+                    .'ne è entrata una sola, e quale delle due manchi lo sai solo tu guardando il file.',
+            ),
+            'modello.sigla_scritta_diversa' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Le righe si sono collegate lo stesso, ignorando spazi e maiuscole: non c\'è '
+                    .'niente di rotto in archivio. Resta però il file da uniformare prima di un '
+                    .'secondo caricamento, e quel file è sul tuo computer.',
+            ),
+            'modello.ruolo_assente' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Dove il ruolo mancava abbiamo scritto «proprietario», che è il caso più '
+                    .'frequente ma non è indifferente: a un inquilino non spettano le spese '
+                    .'straordinarie. Chi sia davvero il titolare lo dice solo il tuo archivio vecchio.',
+            ),
+            'modello.quote_non_fanno_cento' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Una somma diversa da 100 può essere giusta — un usufrutto accanto a una '
+                    .'nuda proprietà — oppure due comproprietari copiati male: la differenza fra i '
+                    .'due casi non sta nei numeri, sta nell\'atto.',
+            ),
+            'modello.totale_di_controllo_diverso' => new VoceCatalogo(
+                rotta: $tabelle,
+                etichettaAzione: 'Vai alle tabelle',
+                perche: 'La somma delle righe non corrisponde al totale scritto in fondo al foglio. '
+                    .'Di solito è una riga persa mentre si copiava, ma può anche essere il totale a '
+                    .'essere sbagliato: entrambi li ha scritti la stessa mano.',
+            ),
+            'modello.tabelle_omonime' => new VoceCatalogo(
+                rotta: $tabelle,
+                etichettaAzione: 'Vai alle tabelle',
+                perche: 'Due colonne del foglio si chiamavano uguale: ne è entrata una sola, la '
+                    .'prima. Se erano due ripartizioni diverse — due scale, due corpi scala — la '
+                    .'seconda va rifatta, e come si chiama lo decidi tu.',
+            ),
+            'modello.foglio_non_riconosciuto' => new VoceCatalogo(
+                perche: 'Un foglio del file non l\'ho letto perché non capisco a cosa corrisponda. '
+                    .'Se erano appunti tuoi non c\'è niente da fare; se erano dati, la strada è '
+                    .'rinominare il foglio come nel modello vuoto e ricaricare il file — non una '
+                    .'correzione in archivio.',
+            ),
+            'modello.tabelle_senza_nome' => new VoceCatalogo(
+                rotta: $tabelle,
+                etichettaAzione: 'Vai alle tabelle',
+                perche: 'Il foglio delle tabelle non aveva nessuna colonna intestata, quindi non è '
+                    .'entrata nessuna tabella: si rimedia ricaricando il file compilato, non '
+                    .'correggendo l\'archivio.',
             ),
         ];
     }

@@ -2,6 +2,9 @@
 // Pagina di esito del ripristino. Volutamente autonoma (niente layout
 // autenticato): dopo il ripristino le sessioni sono azzerate e tutti devono
 // rifare l'accesso. Legge lo stato su file passato dal controller.
+// Senza `dettaglio` (chi non ha l'accesso, o non gestisce i backup) il server
+// manda solo la fase e che cosa riconfigurare: niente log tecnico, e la pagina
+// dice che i dettagli si vedono qui dopo l'accesso (Coda 343).
 import { Head } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import { trans } from 'laravel-vue-i18n'
@@ -9,16 +12,17 @@ import { CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Copy, ClipboardCheck
 
 const props = defineProps<{
   restore: {
-    uuid: string | null
     phase: string | null
-    manifest: Record<string, any> | null
     outcome: Record<string, any>
-    error: string | null
+    aborted?: boolean
+    uuid?: string | null
+    manifest?: Record<string, any> | null
+    error?: string | null
     failed_phase?: string | null
     failed_at?: number | null
-    aborted?: boolean
     app_version?: string | null
   } | null
+  dettaglio?: boolean
 }>()
 
 const sourceVersion = computed(() => props.restore?.manifest?.app?.version ?? null)
@@ -92,6 +96,10 @@ function copyLog() {
             <li v-for="(item, i) in reconfigure" :key="i">{{ item }}</li>
           </ul>
         </div>
+
+        <p v-if="!dettaglio" class="mt-5 text-center text-[12px] text-slate-400" data-testid="dettagli-dopo-accesso">
+          {{ trans('impostazioni.restore_result.details_after_login') }}
+        </p>
       </template>
 
       <!-- NON RIUSCITO -->
@@ -102,8 +110,11 @@ function copyLog() {
           <p class="mt-2 text-sm text-slate-600">{{ trans('impostazioni.restore_recovery.failed_body') }}</p>
         </div>
 
-        <!-- Dettagli tecnici + log copiabile per l'assistenza -->
-        <details class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left">
+        <!-- Dettagli tecnici + log copiabile per l'assistenza: solo a chi vede il dettaglio -->
+        <p v-if="!dettaglio" class="mt-5 text-center text-[12px] text-slate-400" data-testid="dettagli-dopo-accesso">
+          {{ trans('impostazioni.restore_result.details_after_login') }}
+        </p>
+        <details v-else class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left">
           <summary class="cursor-pointer select-none text-[13px] font-medium text-slate-600">
             {{ trans('impostazioni.restore_recovery.details') }}
           </summary>

@@ -2,9 +2,8 @@
 
 namespace App\Livewire\Installer;
 
-use App\Models\User;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
+use App\Services\Installer\CreaAmministratore;
+use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -23,7 +22,8 @@ class CreateAdmin extends Component
         return [
             'name' => 'required|string|min:2',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6|confirmed',
+            // La regola di tutte le password nuove (Coda 262): almeno dieci caratteri.
+            'password' => ['required', 'confirmed', Password::defaults()],
         ];
     }
 
@@ -58,7 +58,7 @@ class CreateAdmin extends Component
                 return;
             } else {
                 $this->resetErrorBag('password');
-                $this->validate(['password' => 'required|min:6']);
+                $this->validate(['password' => ['required', Password::defaults()]]);
                 $this->dispatch('wizard.canProceed');
 
                 return;
@@ -78,30 +78,9 @@ class CreateAdmin extends Component
         $this->validate();
 
         try {
-            $userData = [
-                'name' => trim($this->name),
-                'email' => trim($this->email),
-                'password' => Hash::make($this->password),
-            ];
-
-            if (config('installer.options.verify_admin_email', true)) {
-                $userData['email_verified_at'] = now();
-            }
-
-            $user = User::create($userData);
-
-            $spatieConfig = config('installer.spatie');
-
-            if (($spatieConfig['enabled'] ?? false) && method_exists($user, 'assignRole')) {
-                $roleTable = config('permission.table_names.roles', 'roles');
-                $roleExists = DB::table($roleTable)
-                    ->where('name', $spatieConfig['admin_role'])
-                    ->exists();
-
-                if ($roleExists) {
-                    $user->assignRole($spatieConfig['admin_role']);
-                }
-            }
+            // Utente, verifica dell'email e ruolo vivono in App\Services\Installer\CreaAmministratore,
+            // condiviso con `km:install` (1.11.0-beta.32): stesse regole, stesso esito.
+            $user = app(CreaAmministratore::class)->esegui($this->name, $this->email, $this->password);
 
             // Nota: la password non viene mai inclusa nel payload dispatchato — non deve
             // transitare, nemmeno temporaneamente, nel progress file su disco. Lo step

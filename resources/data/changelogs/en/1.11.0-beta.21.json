@@ -1,0 +1,8 @@
+{
+    "features": [
+        "A CREDIT NOTE FROM A CLOSED YEAR IS NO LONGER MISTAKEN FOR A SHORTFALL — The program recognises documents from closed financial years by date alone, so credit notes ended up there too. It then read the amount without its sign and concluded there was a gap to cover: it asked the administrator for the legal justification of an unforeseen expense, on a document that actually brings money back. If the justification was filled in, the program really did create a new expense chapter and a coverage entry — an invented cost to record a gain.",
+        "THE PRIOR-DEBT PANEL NO LONGER PROMISES HELP THAT NEVER COMES — On a credit note it showed the full amount as a shortfall, with an amber light and the announcement of an assistant that would help justify it. It now shows zero, because a credit note has nothing to cover.",
+        "THE RECORDED AMOUNT DOES NOT CHANGE, AND WAS ALREADY CORRECT — A credit note from a closed year was, and still is, recorded as a credit with negative amounts. What was wrong was only what the program did before getting there: this version removes four behaviours and introduces none, no new ledger account included.",
+        "ON AN INVOICE FROM A CLOSED YEAR THE JUSTIFICATION IS STILL REQUIRED — The protection has not widened: an unforeseen expense emerging after closure still requires its justification and its dedicated chapter, which is the intended behaviour."
+    ]
+}

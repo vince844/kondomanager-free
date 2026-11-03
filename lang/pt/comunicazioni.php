@@ -175,11 +175,11 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'visibility'    => 'Se definida como privada, apenas os administradores poderão visualizar a comunicação.',
+        'visibility'    => 'Um rascunho, ou uma comunicação a aguardar aprovação, não aparece aos condóminos; depois de publicada e aprovada, veem-na os condóminos a quem se dirige.',
         'priority'      => 'Selecione o nível de prioridade com que esta comunicação deve ser tratada. As prioridades podem influenciar a visibilidade ou a urgência no quadro.',
         'comments'      => 'Quando esta opção é selecionada, os comentários serão ativados para esta comunicação.',
         'featured'      => 'As comunicações em destaque são realçadas no quadro para atrair maior atenção.',
-        'notify_update' => "Envia um email a quem já era destinatário, a dizer que a comunicação mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-a de qualquer forma, porque para ele é nova.",
+        'notify_update' => "Envia um email a quem já era destinatário, a dizer que a comunicação mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-a de qualquer forma, porque para ele é nova. Enquanto for um rascunho ou estiver a aguardar aprovação não é enviado nada; quando estiver publicada e aprovada, recebem-na todos os destinatários.",
         'private'       => 'As comunicações privadas podem ser visualizadas apenas pelos administradores e por si.',
     ],
 
@@ -215,5 +215,22 @@ return [
         'history_desc'     => 'Consulte o arquivo de todas as comunicações anteriores com os respetivos anexos e comentários.',
         'visibility_title' => 'Visibilidade',
         'visibility_desc'  => 'Verifique o estado de publicação e a quem se destina a mensagem.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Coda 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'A aguardar aprovação',
+        'draft'     => 'Rascunho',
+        'published' => 'Publicada',
+        'needs_approval' => 'Está a aguardar aprovação: escolher «Publicada» não basta para a mostrar aos condóminos. Vão vê-la quando estiver aprovada, com o escudo ao lado do título na lista de comunicações.',
+        'waiting_approver' => 'Está a aguardar aprovação: escolher «Publicada» não basta para a mostrar aos condóminos. Vão vê-la quando for aprovada por quem aprova as comunicações.',
+    ],
+
+    'privacy' => [
+        'private'      => 'Privada',
+        'private_hint' => 'Visível apenas para o autor, as pessoas associadas e o administrador',
+        'recipients_required' => 'Uma comunicação privada tem de continuar dirigida a pelo menos um destinatário: sem destinatários só a veria quem a escreveu, além do administrador.',
+    ],
 ];

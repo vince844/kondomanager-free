@@ -377,7 +377,7 @@ const scaricaDistinta = () => {
                         <CardTitle class="flex items-center gap-2 text-base text-slate-800">
                             <FileText class="w-4 h-4 text-slate-400" />
                             Fatture saldate con questo pagamento
-                            <span class="ml-auto text-xs font-bold text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+                            <span class="ml-auto text-xs font-bold text-slate-400 bg-slate-100 rounded-md px-2 py-0.5">
                                 {{ scrittura.fatture.length }}
                             </span>
                         </CardTitle>

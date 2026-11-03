@@ -101,27 +101,24 @@ class SegnalazioneService
 
     /**
      * Build base query for a regular user based on their anagrafica and condomini.
+     *
+     * Chi vede che cosa lo dice `Segnalazione::scopeVisibiliNelPortale()`, la stessa regola della
+     * scheda: qui si aggiunge solo che l'elenco mostra le pubblicate e approvate (le proprie in
+     * moderazione l'autore le apre per indirizzo, Coda 389). La regola non si riscrive qui:
+     * `is_private` la guarda lo scope, e una privata senza residenti resta del suo autore
+     * (Coda 304).
      */
     private function buildUserScopedBaseQuery(?Anagrafica $anagrafica, ?Collection $condominioIds): Builder
     {
-        if (!$anagrafica || !$condominioIds || $condominioIds->isEmpty()) {
+        if (!$anagrafica || !$condominioIds || $condominioIds->isEmpty() || !$anagrafica->user) {
             Log::warning('No anagrafica or condominio IDs provided for user-scoped query.');
             return Segnalazione::query()->whereRaw('1 = 0'); 
         }
 
         return Segnalazione::with(['anagrafiche.user', 'condominio', 'createdBy.anagrafica'])
+            ->visibiliNelPortale($anagrafica->user)
             ->where('is_published', true)
-            ->where('is_approved', true)
-            ->where(function ($query) use ($anagrafica, $condominioIds) {
-                $query
-                    ->whereHas('anagrafiche', fn($sub) =>
-                        $sub->where('anagrafica_id', $anagrafica->id)
-                    )
-                    ->orWhere(fn($q) =>
-                        $q->whereIn('condominio_id', $condominioIds->toArray())
-                          ->whereDoesntHave('anagrafiche')
-                    );
-            });
+            ->where('is_approved', true);
     }
 
     /**
@@ -144,7 +141,7 @@ class SegnalazioneService
 
         $query = $isAdmin
             ? $this->buildAdminBaseQuery()
-            : $this->buildUserScopedBaseQuery($user->anagrafica, optional($user->anagrafica)->condomini->pluck('id') ?? collect());
+            : $this->buildUserScopedBaseQuery($user->anagrafica, $user->anagrafica?->condomini->pluck('id') ?? collect());
 
         return $this->buildStatsQuery($query);
     }

@@ -3,23 +3,35 @@
 namespace App\Http\Resources\Gestionale\PianiRate;
 
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
+use App\Services\PianoRateQuoteService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\DB;
 
 class PianoRateResource extends JsonResource
 {
+    /**
+     * Le quote non assegnate le legge solo la pagina del piano (`PianiRateShow.vue`): l'elenco dei piani non le riceve, né la cifra per voce.
+     */
+    private bool $conQuoteNonAssegnate = false;
+
+    public function conQuoteNonAssegnate(): static
+    {
+        $this->conQuoteNonAssegnate = true;
+
+        return $this;
+    }
+
     public function toArray(Request $request): array
     {
         $isStraordinario = $this->tipo === 'straordinario';
 
-        // 1. CARICAMENTO RELAZIONI E CALCOLO TOTALE REALE
+        // 1. CARICAMENTO RELAZIONI E TOTALI
         if ($isStraordinario) {
             // SCENARIO 2: Leggiamo le fatture
             if (!$this->relationLoaded('fattureStraordinarie')) {
                 $this->load('fattureStraordinarie.fornitore');
             }
-            $totaleReale = $this->fattureStraordinarie->sum('pivot.importo_collegato');
         } else {
             // SCENARIO 1: Leggiamo i capitoli (Vecchia logica invariata)
             if (!$this->relationLoaded('capitoli')) {
@@ -27,15 +39,26 @@ class PianoRateResource extends JsonResource
                     $q->withPivot(['importo', 'note']);
                 }]);
             }
-            $totaleReale = $this->capitoli->sum(function ($capitolo) {
-                return !is_null($capitolo->pivot->importo) 
-                    ? $capitolo->pivot->importo 
-                    : $capitolo->importo;
-            });
         }
+
+        // Le spese e le entrate che il piano chiede, con lo stesso segno e lo stesso arrotondamento dell'atteso del badge:
+        // le voci di entrata non si sommano alle spese.
+        $totali = app(PianoRateQuoteService::class)->totaliPerSegnoCents($this->resource);
 
         // Gestione Stato
         $statoValue = $this->stato instanceof \UnitEnum ? $this->stato->value : $this->stato;
+
+        // Coda 414: le quote non assegnate dell'ultima generazione, e per ogni voce del piano la loro somma (anche quelle dei suoi sottoconti).
+        // Coda 433: e le loro chiavi, con cui la pagina nomina le unità sotto la voce anche quando la quota è di un sottoconto.
+        $quoteNonAssegnate = $this->conQuoteNonAssegnate && is_array($this->quote_non_assegnate) ? $this->quote_non_assegnate : null;
+        $nonAssegnatePerConto = [];
+        $chiaviPerConto = [];
+        foreach ($quoteNonAssegnate['voci'] ?? [] as $voce) {
+            if (! empty($voce['conto_id'])) {
+                $nonAssegnatePerConto[(int) $voce['conto_id']] = ($nonAssegnatePerConto[(int) $voce['conto_id']] ?? 0) + (int) ($voce['importo_cents'] ?? 0);
+                $chiaviPerConto[(int) $voce['conto_id']][] = (string) $voce['chiave'];
+            }
+        }
 
         return [
             'id'                            => $this->id,
@@ -57,11 +80,14 @@ class PianoRateResource extends JsonResource
             'numero_verbale'                => $this->numero_verbale,
             'nota_approvazione'             => $this->nota_approvazione,
             'nota_scoperti'                 => $this->nota_scoperti,
+            'quote_non_assegnate'           => $this->when($this->conQuoteNonAssegnate, $quoteNonAssegnate),
             'tipo_autorizzazione'           => $this->tipo_autorizzazione,
             'motivazione_autorizzazione'    => $this->motivazione_autorizzazione,
             'approvato_da_user_id'          => $this->approvato_da_user_id,
             'approvato_il'                  => $this->approvato_il?->format('Y-m-d H:i:s'),
-            'totale_capitoli'               => (int) $totaleReale,
+            'totale_spese'                  => $totali['spese'],
+            'totale_entrate'                => $totali['entrate'],
+            'totale_da_ripartire'           => $totali['spese'] - $totali['entrate'],
             'totale_piano'                  => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
             'gestione'                      => new GestioneResource($this->whenLoaded('gestione')),
             'budget_movements'              => $this->whenLoaded('budgetMovements'),
@@ -101,8 +127,8 @@ class PianoRateResource extends JsonResource
                         ];
                     });
                 })
-                : $this->whenLoaded('capitoli', function() {
-                    return $this->capitoli->map(function ($c) {
+                : $this->whenLoaded('capitoli', function() use ($nonAssegnatePerConto, $chiaviPerConto) {
+                    return $this->capitoli->map(function ($c) use ($nonAssegnatePerConto, $chiaviPerConto) {
 
                         $isParent = $c->sottoconti->isNotEmpty();
 
@@ -118,7 +144,7 @@ class PianoRateResource extends JsonResource
 
                         $isFrazionato = !is_null($c->pivot->importo) && abs($c->pivot->importo - $importoOriginale) > 1;
 
-                        return [
+                        $voce = [
                             'id'                => $c->id,
                             'nome'              => $c->nome,
                             'importo'           => (int) $importoEffettivo,
@@ -127,9 +153,35 @@ class PianoRateResource extends JsonResource
                             'note'              => $c->pivot->note,
                             'is_parent'         => $isParent,
                             'figli_names'       => $isParent ? $sottocontiSnapshot->pluck('nome')->join(', ') : '',
+                            'tipo'              => $c->segno($this->created_at) < 0 ? 'entrata' : 'spesa',
                         ];
+
+                        // La cifra per voce la legge la pagina del piano; l'elenco non la riceve (come la colonna `quote_non_assegnate`).
+                        if ($this->conQuoteNonAssegnate) {
+                            $sotto = $nonAssegnatePerConto === [] ? [] : self::contoESottoconti($c);
+                            $voce['non_assegnati_cents'] = array_sum(array_map(fn (int $id) => $nonAssegnatePerConto[$id] ?? 0, $sotto));
+                            $voce['non_assegnati_chiavi'] = array_merge(...array_map(fn (int $id) => $chiaviPerConto[$id] ?? [], $sotto));
+                        }
+
+                        return $voce;
                     });
                 }),
         ];
+    }
+
+    /**
+     * La voce e i suoi sottoconti a ogni livello: le quote non assegnate di un capitolo senza tabelle stanno sui sottoconti a cui il motore
+     * passa la sua parte.
+     *
+     * @return list<int>
+     */
+    private static function contoESottoconti(\App\Models\Gestionale\Conto $conto): array
+    {
+        $ids = [(int) $conto->id];
+        foreach ($conto->sottoconti as $figlio) {
+            array_push($ids, ...self::contoESottoconti($figlio));
+        }
+
+        return $ids;
     }
 }

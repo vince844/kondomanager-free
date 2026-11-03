@@ -8,13 +8,14 @@ use App\Traits\HasAnagrafica;
 use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
 use App\Http\Requests\Comunicazione\CreateUserComunicazioneRequest;
 use App\Http\Requests\Comunicazione\UpdateUserComunicazioneRequest;
-use App\Http\Resources\Comunicazioni\ComunicazioneResource;
+use App\Http\Resources\Portale\ComunicazionePortaleResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Models\Comunicazione;
 use App\Services\ComunicazioneService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\PaginaElenco;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
@@ -53,7 +54,9 @@ class ComunicazioneController extends Controller
      */
     public function index(ComunicazioneIndexRequest $request, Comunicazione $comunicazione): Response
     {
-        Gate::authorize('view', $comunicazione);
+        // Decisione 134.4: l'elenco si apre anche a chi vede solo le proprie, e il servizio gli mostra
+        // ciò che la regola del portale gli concede.
+        Gate::authorize('elencoNelPortale', Comunicazione::class);
 
         $validated = $request->validated();
 
@@ -83,7 +86,7 @@ class ComunicazioneController extends Controller
 
         return Inertia::render('comunicazioni/user/ComunicazioniList', [
             'comunicazioni' => [
-                'data' => ComunicazioneResource::collection($comunicazioni)->resolve(),
+                'data' => ComunicazionePortaleResource::collection($comunicazioni)->resolve(),
                 'current_page' => $comunicazioni->currentPage(),
                 'last_page' => $comunicazioni->lastPage(),
                 'per_page' => $comunicazioni->perPage(),
@@ -216,8 +219,10 @@ class ComunicazioneController extends Controller
         Gate::authorize('show', $comunicazione);
 
         return Inertia::render('comunicazioni/ComunicazioniView', [
-            'comunicazione' => new ComunicazioneResource(
-                $comunicazione->loadMissing('createdBy')
+            // Coda 260: la risorsa minima del portale; la policy non carica più le persone collegate
+            // sul modello, e la risorsa non le mostrerebbe comunque.
+            'comunicazione' => new ComunicazionePortaleResource(
+                $comunicazione->loadMissing('createdBy.anagrafica')
             ),
         ]);
     }
@@ -246,7 +251,7 @@ class ComunicazioneController extends Controller
         $comunicazione->loadMissing(['createdBy.anagrafica', 'condomini']);
 
         return Inertia::render('comunicazioni/user/ComunicazioniEdit', [
-         'comunicazione' => new ComunicazioneResource($comunicazione),
+         'comunicazione' => new ComunicazionePortaleResource($comunicazione),
          'condomini'     => CondominioOptionsResource::collection($condomini)->resolve(),
         ]);
     }
@@ -281,7 +286,9 @@ class ComunicazioneController extends Controller
 
             DB::beginTransaction();
 
-            $comunicazione->update($validated);
+            // Coda 303: chi modifica sta in `updated_by`, non in `created_by` (che la richiesta di
+            // modifica non porta più).
+            $comunicazione->update($validated + ['updated_by' => Auth::id()]);
 
             $comunicazione->condomini()->sync($validated['condomini_ids']);
 

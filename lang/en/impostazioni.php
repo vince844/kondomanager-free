@@ -14,6 +14,9 @@ return [
     'error_regenerate_cron_token' => 'An error occurred while regenerating the token.',
     'success_save_mail_settings' => 'Email configuration saved successfully.',
     'error_save_mail_settings' => 'Error while saving the email configuration.',
+    'error_test_mail_password_required' => 'The server, port or encryption differ from the saved ones: retype the SMTP password to run the test. The saved password is only used with the server it was saved for.',
+    'error_save_mail_password_required' => 'The server, port or encryption have changed: retype the SMTP password. The saved password only applies to the server it was saved for.',
+    'error_test_mail_too_many' => 'Too many tests in a short time: wait a minute and try again.',
     'success_save_print_settings' => 'Print settings have been saved successfully.',
     'success_save_backup_settings' => 'Backup settings have been saved successfully.',
     'error_save_backup_settings' => 'An error occurred while saving the backup settings.',
@@ -28,6 +31,9 @@ return [
     'backup_success_completed' => 'Backup completed successfully. Download it and store it in a safe place.',
 
     'restore_error_generic' => 'An error occurred during the restore. Please try again.',
+    'restore_error_account_password' => 'Your account password is not correct.',
+    'restore_error_too_many' => 'Too many attempts in a short time: please try again in one minute.|Too many attempts in a short time: please try again in :count minutes.',
+    'restore_error_too_many_later' => 'Too many attempts in a short time: please try again later.',
 
     'restore_result' => [
         'page_title' => 'Restore result',
@@ -43,9 +49,11 @@ return [
         'title_none' => 'No recent restore',
         'subtitle_none' => 'There is no restore in progress or just finished.',
         'go_to_login' => 'Go to login',
+        'details_after_login' => 'The administrator sees the technical details of the restore (source backup, versions, any error) on this page, after signing in.',
     ],
     'restore_recovery' => [
         'auth_failed' => 'Wrong password.',
+        'auth_unavailable' => 'The password cannot be checked for this restore: copy the log and send it to us for support. If the backups window it was started from is still open, and no more than an hour has passed since it started, you can resume it or unlock the application from there.|The password cannot be checked for this restore: copy the log and send it to us for support. If the backups window it was started from is still open, and no more than :ore hours have passed since it started, you can resume it or unlock the application from there.',
         'failed_title' => 'Restore failed',
         'failed_body' => 'The restore stopped before completing. The database may be incomplete: you can try to resume it or unlock the application.',
         'details' => 'Technical details',
@@ -55,6 +63,7 @@ return [
         'resume' => 'Resume the restore',
         'unlock' => 'Unlock the application',
         'unlock_note' => 'The database may stay incomplete.',
+        'database_untouched' => 'The restore did not touch the database: unlocking brings the application back with the data it had.',
         'working' => 'Please wait…',
         'resume_progress' => 'Restore in progress…',
     ],
@@ -68,6 +77,33 @@ return [
         'finalizing' => 'Finalizing…',
         'completed' => 'Completed',
         'failed' => 'Failed',
+    ],
+
+    // The restore engine messages shown by the backups window (`MessaggiDelRipristino`).
+    'restore_engine' => [
+        'archive_password' => 'Encrypted archive: the password is missing or wrong.',
+        'archive_not_zip' => 'The archive cannot be opened: the file is corrupted or is not a zip.',
+        'archive_no_manifest' => 'The archive does not contain a readable manifest.json: it is not a KondoManager backup.',
+        'archive_bad_manifest' => 'The archive\'s manifest.json is corrupted: it is not valid JSON.',
+        'entry_unreadable_index' => 'Entry no. :index of the archive cannot be read: the archive is corrupted.',
+        'entry_unreadable' => 'Entry ":name" of the archive cannot be read: the archive is corrupted.',
+        'entry_illegal_name' => 'An entry of the archive has an invalid name: the archive may have been tampered with.',
+        'entry_absolute_path' => 'Entry ":name" of the archive has an absolute path: the archive may have been tampered with.',
+        'entry_traversal' => 'Entry ":name" of the archive has an invalid path, with a "." or ".." segment: the archive may have been tampered with.',
+        'entry_unexpected' => 'Entry ":name" cannot belong to a KondoManager backup.',
+        'entry_symlink' => 'Entry ":name" of the archive is a symbolic link: the archive may have been tampered with.',
+        'entry_incomplete' => 'Entry ":name" of the archive came out incomplete: :size bytes expected.',
+        'format_unsupported' => 'Unsupported backup format (manifest_format :format): the archive was created by an incompatible version.',
+        'newer_version' => 'The backup comes from a newer version (:source) than the installed one (:current). Update KondoManager first, then try the restore again.',
+        'driver_unsupported' => 'The backup uses an unsupported database type (:driver).',
+        'driver_mismatch' => 'The backup was created with :driver, but this installation uses :current: restoring between different databases is not supported.',
+        'restore_running' => 'A restore is already in progress.',
+        'backup_running' => 'A backup is running: wait for it to finish before restoring.',
+        'restore_busy' => 'Another request is starting a restore: try again in a few seconds.',
+        'archive_missing' => 'After the restore started, the backup archive can no longer be found on the server: check that it has not been moved or deleted.',
+        'extract_write_failed' => 'The archive files cannot be written to the restore\'s temporary folder: check the free space and the write permissions on the server.',
+        'dump_unreadable' => 'The database dump, extracted from the archive into the restore\'s temporary folder, can no longer be found or cannot be read.',
+        'safety_backup_failed' => 'The safety backup did not succeed: the restore stopped before touching the database. «Resume the restore» tries the safety backup again; to restore without it, unlock the application and start the restore again with «:casella» unticked.',
     ],
 
     /* ------------------------------------------------------------------
@@ -110,6 +146,8 @@ return [
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
+        'installazione_title' => 'This installation',
+        'installazione_description' => 'How many buildings, how much storage and which functions: the facts of this installation',
         'settings_head' => 'Settings',
         'settings_title' => 'Application settings',
         'settings_description' => 'Below is a list of all configurable settings for the application.',
@@ -173,6 +211,7 @@ return [
         'backup_retention' => 'Backups to keep',
         'backup_retention_help' => 'Number of completed backups to keep on the server: after each new backup, older ones beyond this limit are deleted automatically.',
         'backups_disabled_badge' => 'Disabled',
+        'backup_documenti_esterni' => 'Documents live on an external disk (S3) and are not part of this archive: it contains the database and working files. Documents are already off this machine.',
         'backup_running_badge' => 'Backup in progress',
         'backup_type_title' => 'Backup type',
         'backup_type_full' => 'Full',
@@ -211,6 +250,8 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
+        'installazione_title' => 'This installation',
+        'installazione_description' => 'Limits, storage and enabled functions of this installation',
         'general_settings_title' => 'General settings',
         'general_settings_description' => 'General configuration settings for the application.',
         'users_settings_title' => 'User management',
@@ -231,7 +272,7 @@ return [
         'user_registration_title' => 'Enable user registration',
         'user_registration_description' => 'If enabled, users can register from the home page.',
         'default_role_title' => 'Default role for new users',
-        'default_role_description' => 'Choose which role to automatically assign to users who register from the frontend.',
+        'default_role_description' => 'The role automatically given to users who register from the website. People who accept an invitation receive it only if it is «utente» or «fornitore»; otherwise they receive «utente».',
         'default_per_page_title' => 'Rows per page in lists',
         'default_per_page_description' => 'How many rows tables show to those who have not chosen yet. Each person keeps their own choice, list by list: whoever changes it finds it again on their return.',
         'force_comment_moderation_title' => 'Force comment moderation',
@@ -265,7 +306,7 @@ return [
         'test_unsaved_warning' => 'You have unsaved changes. Save the configuration before sending the test.',
 
         'cron_guide_1_title' => 'The Invisible Engine',
-        'cron_guide_1_desc' => 'The daemon automatically runs background tasks: it checks deadlines, issues installments, and manages alerts without manual intervention.',
+        'cron_guide_1_desc' => 'The daemon runs system maintenance in the background, with no manual intervention: it removes events that ended more than a year ago and expired cache, checks whether a new version is available and, where the shared-hosting option is turned on, also processes the job queue.',
         'cron_guide_2_title' => 'Webhook (External)',
         'cron_guide_2_desc' => 'Identified by the orange dot. It allows you to trigger the scheduler via an encrypted URL called by external services (e.g., cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Native)',
@@ -381,5 +422,32 @@ return [
         'backup_security_desc' => 'The archive contains all application data and keys. Download it and store it in a safe place: anyone who owns it can read the data.',
         'backup_restore_title' => 'How to restore',
         'backup_restore_desc' => 'The database can be re-imported with phpMyAdmin (db/database.sql) and the files copied from the files folder of the archive. The step-by-step procedure is in the official documentation.',
+    ],
+    'installazione' => [
+        'condomini' => 'Buildings',
+        'condomini_desc' => 'The buildings managed by this installation',
+        'condomini_dimostrativi' => 'Plus :n demo buildings, which count towards the cap',
+        'illimitato' => 'unlimited',
+        'spazio' => 'Document storage',
+        'spazio_desc' => 'Uploaded documents and the print signature, added up',
+        'funzioni' => 'Functions',
+        'funzioni_desc' => 'What is switched on in this installation: decided from outside, not here',
+        'funzione_aggiornamenti_in_app' => 'In-app updates',
+        'funzione_pianificatore_esterno' => 'External scheduler',
+        'funzione_backup' => 'Built-in backups',
+        'funzione_archiviazione_esterna' => 'External storage',
+        'si' => 'yes',
+        'no' => 'no',
+        'documenti' => 'Where documents live',
+        'documenti_esterni' => 'on an external disk (S3)',
+        'documenti_su_volume' => 'on a separate volume',
+        'documenti_effimeri' => 'on the local disk',
+        'versione' => 'Version',
+        'gestione_piano' => 'Manage your plan',
+    ],
+
+    // Coda 258, decisione 134.1: la nota accanto al ruolo predefinito dei nuovi utenti, per chi non è amministratore.
+    'ruolo_registrazione' => [
+        'solo_amministratore' => 'Only an administrator can change the default role for new users.',
     ],
 ];

@@ -56,6 +56,165 @@ test('pagina di modifica fattura passiva espone tutte le prop di contesto budget
     );
 });
 
+test('propone il capitolo dell\'ultima fattura del fornitore, stessa forma di ultima_aliquota_iva', function () {
+    // Deciso con Vincenzo il 02/09/2026, aprendo la riprogettazione della UI di
+    // importazione XML: 28 righe da assegnare su 11 fatture vere è il costo di tempo
+    // più alto misurato (docs/lettura_xml_fatture_passive.md), e il prodotto già
+    // risolve lo stesso problema per l'aliquota IVA con una query — questa è la
+    // stessa query, su conto_id invece che aliquota_iva.
+    $ctx = setupContabile();
+    [$condominio, $esercizio, $gestione, $fornitore, $primoCapitolo] = $ctx;
+
+    $secondoCapitoloId = DB::table('conti')->insertGetId([
+        'piano_conto_id'     => $primoCapitolo->piano_conto_id,
+        'conto_contabile_id' => $primoCapitolo->conto_contabile_id,
+        'nome'               => 'Pulizie scale Test',
+        'tipo'               => 'spesa',
+        'importo'            => 200000,
+        'is_tecnico'         => false,
+        'created_at'         => now(),
+        'updated_at'         => now(),
+    ]);
+
+    // Prima fattura, sul primo capitolo, datata prima.
+    (new App\Services\Gestionale\FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'data_documento' => '2026-01-10',
+            'righe' => [[
+                'descrizione' => 'Intervento gennaio',
+                'importo_imponibile' => 100,
+                'aliquota_iva' => 22,
+                'conto_id' => $primoCapitolo->id,
+                'is_sopravvenienza' => false,
+            ]],
+        ]),
+        $condominio->id
+    );
+
+    // Seconda fattura, più recente, sul secondo capitolo: è questo che deve vincere.
+    (new App\Services\Gestionale\FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'data_documento' => '2026-03-15',
+            'righe' => [[
+                'descrizione' => 'Intervento marzo',
+                'importo_imponibile' => 150,
+                'aliquota_iva' => 22,
+                'conto_id' => $secondoCapitoloId,
+                'is_sopravvenienza' => false,
+            ]],
+        ]),
+        $condominio->id
+    );
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('fornitori.0.id', $fornitore->id)
+        ->where('fornitori.0.ultimo_conto_id', $secondoCapitoloId)
+    );
+});
+
+test('una riga sopravvenienza privata (conto_id null) non sporca la proposta di capitolo', function () {
+    // Controprova mirata: FatturaPassivaService::registraFattura() lascia
+    // conto_id=null per una sopravvenienza «privata» (legata a un immobile, non al
+    // preventivo comune — è l'unico sotto-caso che resta davvero senza capitolo: la
+    // sopravvenienza «comune» ne crea uno dinamico). Se quella fattura fosse l'ultima
+    // e la query non filtrasse i null, la proposta sarebbe null — un buco al posto
+    // di un capitolo, sull'unica fattura che il fornitore ha mai avuto.
+    $ctx = setupContabile();
+    [$condominio, $esercizio, $gestione, $fornitore, $primoCapitolo, , $immobileId] = $ctx;
+
+    (new App\Services\Gestionale\FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'data_documento' => '2026-01-10',
+            'righe' => [[
+                'descrizione' => 'Intervento gennaio',
+                'importo_imponibile' => 100,
+                'aliquota_iva' => 22,
+                'conto_id' => $primoCapitolo->id,
+                'is_sopravvenienza' => false,
+            ]],
+        ]),
+        $condominio->id
+    );
+
+    (new App\Services\Gestionale\FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'data_documento' => '2026-03-15', // più recente della prima
+            'righe' => [[
+                'descrizione' => 'Spesa privata imprevista',
+                'importo_imponibile' => 150,
+                'aliquota_iva' => 22,
+                'conto_id' => null,
+                'immobile_id' => $immobileId,
+                'is_sopravvenienza' => true,
+            ]],
+        ]),
+        $condominio->id
+    );
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('fornitori.0.id', $fornitore->id)
+        ->where('fornitori.0.ultimo_conto_id', $primoCapitolo->id)
+    );
+});
+
+test('?modo=xml apre la pagina con la dropzone, senza parametro apre il form vuoto', function () {
+    // Deciso il 02/09/2026, riprogettando la UI: «Importa XML» e «Nuova fattura»
+    // sono la stessa rotta (decisione 1 di apertura della beta.14, «due porte, una
+    // stanza») ma devono aprirsi su viste diverse — `?modo=xml` è la sola
+    // differenza fra i due pulsanti della toolbar.
+    $ctx = setupContabile();
+    [$condominio] = $ctx;
+
+    $conModo = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio, 'modo' => 'xml']));
+    $conModo->assertInertia(fn ($page) => $page->where('modalita_ingresso', 'xml'));
+
+    $senzaModo = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+    $senzaModo->assertInertia(fn ($page) => $page->where('modalita_ingresso', 'manuale'));
+
+    $modoIgnoto = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio, 'modo' => 'qualcosaltro']));
+    $modoIgnoto->assertInertia(fn ($page) => $page->where('modalita_ingresso', 'manuale'));
+});
+
+test('la pagina dice se il condominio non ha codice fiscale, così il lettore XML può avvisare', function () {
+    // ⚠️ Senza codice fiscale la guardia «questa fattura è di questo palazzo?»
+    // (ImportaFatturaXmlController) si salta — giustamente, non c'è niente da
+    // confrontare — ma prima si saltava IN SILENZIO: l'amministratore credeva di avere
+    // una rete che non c'era. Il caso non è teorico: la creazione a mano pretende il
+    // campo, ma l'importatore Danea può creare un condominio senza (tanto che ha già un
+    // controllo post-import apposta), cioè capita proprio a chi sta caricando lo storico
+    // ed è più probabile che importi XML subito dopo.
+    $ctx = setupContabile();
+    [$condominio] = $ctx;
+
+    $condominio->update(['codice_fiscale' => '30202020209']);
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]))
+        ->assertInertia(fn ($page) => $page->where('condominio_senza_codice_fiscale', false));
+
+    $condominio->update(['codice_fiscale' => null]);
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]))
+        ->assertInertia(fn ($page) => $page->where('condominio_senza_codice_fiscale', true));
+
+    // Una stringa di soli spazi non è un codice fiscale: `trim()` la tratta come assente,
+    // altrimenti la rete risulterebbe attiva mentre il confronto non può riuscire.
+    $condominio->update(['codice_fiscale' => '   ']);
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]))
+        ->assertInertia(fn ($page) => $page->where('condominio_senza_codice_fiscale', true));
+});
+
 test('pagina di creazione fattura passiva espone lo stesso contesto budget della modifica', function () {
     $ctx = setupContabile();
     [$condominio, , , $fornitore, $capitolo] = $ctx;

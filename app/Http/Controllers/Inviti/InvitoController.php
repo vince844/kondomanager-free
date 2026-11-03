@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Inertia\Response;
 
 class InvitoController extends Controller
@@ -82,15 +83,31 @@ class InvitoController extends Controller
         // chiunque poteva spedire inviti con il nostro dominio.
         Gate::authorize('create', User::class);
 
+        // Le email in minuscolo prima di validare: `unique` vede così anche lo stesso indirizzo
+        // scritto con le maiuscole, e l'invitato non si ferma sulla regola `lowercase` della
+        // registrazione.
+        if (is_array($request->input('emails'))) {
+            $request->merge(['emails' => array_map(
+                fn ($email) => is_string($email) ? Str::lower(trim($email)) : $email,
+                $request->input('emails'),
+            )]);
+        }
+
+        // Fuori dal `try` anche la validazione, per la stessa ragione della guardia: dentro, «questo
+        // indirizzo è già invitato» diventava «errore durante l'invio» con il ritorno all'elenco
+        // utenti (1.11.0-beta.45).
+        $request->validate([
+            'emails'    => 'required|array|min:1',
+            'emails.*'  => 'email|unique:inviti,email',
+            'buildings' => 'required|array',
+        ], [
+            'emails.*.email'  => __('users.indirizzo_non_valido'),
+            'emails.*.unique' => __('users.invito_gia_presente'),
+        ]);
+
         try {
 
             DB::beginTransaction();
-
-            $request->validate([
-                'emails'    => 'required|array|min:1',  
-                'emails.*'  => 'email|unique:inviti,email',  
-                'buildings' => 'required|array', 
-            ]);
 
             // Loop through each email and create an invite
             foreach ($request->emails as $email) {
@@ -98,7 +115,7 @@ class InvitoController extends Controller
                 $invito = Invito::create([
                     'email'          => $email,
                     'building_codes' => $request->buildings,
-                    'expires_at'     => Carbon::now()->addMinutes(60),
+                    'expires_at'     => Carbon::now()->addDays(Invito::GIORNI_DI_VALIDITA),
                 ]);
 
                 $invito->notify(new InviteUserNotification($invito));

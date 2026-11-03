@@ -8,6 +8,7 @@ use App\Models\Immobile;
 use App\Services\Import\Controlli\EsitoControllo;
 use App\Services\Import\Controlli\VerificatoreControllo;
 use Illuminate\Support\Facades\DB;
+use App\Services\Riparto\RisolutoreTitolari;
 
 /**
  * Le unità importate hanno qualcuno a cui intestare le rate?
@@ -39,9 +40,9 @@ final class UnitaConTitolare implements VerificatoreControllo
             return EsitoControllo::risolto('Nessuna unità importata da questo lotto.');
         }
 
-        $conTitolare = DB::table('anagrafica_immobile')
-            ->whereIn('immobile_id', $id)
-            ->where('attivo', true)
+        $conTitolare = app(RisolutoreTitolari::class)->vincolaQuery(
+            DB::table('anagrafica_immobile')->whereIn('immobile_id', $id)
+        )
             ->whereIn('tipologia', array_column(RuoloAnagraficaImmobile::titolariDiDirittoReale(), 'value'))
             ->distinct()
             ->count('immobile_id');

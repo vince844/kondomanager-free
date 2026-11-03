@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { useForm } from '@inertiajs/vue3'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,6 +15,8 @@ import { useTabelle } from '@/composables/useTabelle'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
 import vSelect from 'vue-select'
 import MoneyInput from '@/components/MoneyInput.vue'
+import SuggerimentoEntrataUsufrutto from './SuggerimentoEntrataUsufrutto.vue'
+import { trans } from 'laravel-vue-i18n'
 import type { TabellaDropdown } from '@/types/gestionale/tabelle'
 
 interface Emits {
@@ -37,6 +39,9 @@ const isSottoConto = ref(false)
 const richiedeGiaVersato = ref(false)
 const { tabelle, isLoading: isLoadingTabelle, fetchTabelle } = useTabelle()
 const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti, reset: resetCapitoli } = useCapitoliConti()
+/** I capitoli che un piano approvato tiene: una voce nuova sotto di loro cambierebbe quel piano, e il salvataggio lo rifiuta (`CreateContoRequest`). */
+const capitoloSelezionabile = (c: CapitoloDropdown) => !c.blocco
+const ciSonoCapitoliBloccati = computed(() => capitoli.value.some((c) => !!c.blocco))
 
 const moneyOptions = ref({
   prefix: '',              
@@ -45,7 +50,9 @@ const moneyOptions = ref({
   decimal: ',',          
   precision: 2,            
   allowBlank: false,
-  masked: true 
+  masked: true,
+  // Il segno lo decide il tipo della voce: il meno non si scrive (come nel Wallet dei saldi e nel modulo del piano).
+  disableNegative: true
 })
 
 const form = useForm({
@@ -221,9 +228,16 @@ const submit = () => {
                 @open="onDropdownCapitoliOpen"
                 :loading="isLoadingCapitoli"
                 :clearable="true"
+                :selectable="capitoloSelezionabile"
                 class="mt-1"
               >
+                <template #option="capitolo">
+                  <span :class="{ 'text-slate-400': !!capitolo.blocco }">{{ capitolo.blocco ? `${capitolo.nome} (${capitolo.blocco})` : capitolo.nome }}</span>
+                </template>
               </v-select>
+              <p v-if="ciSonoCapitoliBloccati" class="text-[11px] text-slate-500 mt-1">
+                I capitoli che un piano approvato tiene non si scelgono finché il piano non torna in bozza.
+              </p>
               <InputError :message="form.errors.parent_id" />
             </div>
 
@@ -269,6 +283,7 @@ const submit = () => {
                 class="mt-1"
                 @focus="form.clearErrors('importo')"
               />
+              <p class="mt-1 text-xs text-muted-foreground">Si scrive senza il segno: lo decide il tipo della voce.</p>
               <InputError :message="form.errors.importo" />
             </div>
 
@@ -291,18 +306,20 @@ const submit = () => {
 
             <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
               <div>
-                <Label class="text-xs">Proprietario %</Label>
+                <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.owner_percent') }}</Label>
                 <Input v-model="form.percentuale_proprietario" placeholder="100" class="h-8 mt-1" />
               </div>
               <div>
-                <Label class="text-xs">Inquilino %</Label>
+                <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.tenant_percent') }}</Label>
                 <Input v-model="form.percentuale_inquilino" placeholder="0" class="h-8 mt-1" />
               </div>
               <div>
-                <Label class="text-xs">Usufruttuario %</Label>
+                <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.usufructuary_percent') }}</Label>
                 <Input v-model="form.percentuale_usufruttuario" placeholder="0" class="h-8 mt-1" />
               </div>
             </div>
+
+            <SuggerimentoEntrataUsufrutto v-if="!isCapitolo && form.tipo === 'entrata'" />
 
             <div>
               <Label for="note">Note</Label>

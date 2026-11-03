@@ -293,6 +293,24 @@ it('con «rata zero» il ciclo delle rate ordinarie non solleva', function () {
         ->and($rataZero->importo_totale)->toBe(50000);
 });
 
+it('B1: anche le quote della Rata 0 dichiarano titolarita_alla = risoluzione atemporale — il ramo dei saldi ha il suo scrittore dello snapshot', function () {
+    $pianoRate = creaPianoRatePerQuoteTest(['metodo_distribuzione' => 'rata_zero', 'numero_rate' => 1]);
+    $anagrafica = Anagrafica::factory()->create();
+
+    app(GenerateRateQuotesAction::class)->execute(
+        $pianoRate, [], ['2026-01-05'],
+        [$anagrafica->id => [0 => ['importo' => 50000, 'meta_storico' => ['tipo_riparto' => 'nominale']]]]
+    );
+
+    $rataZero = Rata::where('piano_rate_id', $pianoRate->id)->where('numero_rata', 0)->firstOrFail();
+    $quote = RataQuote::where('rata_id', $rataZero->id)->get();
+    expect($quote)->toHaveCount(1);
+    foreach ($quote as $q) {
+        expect($q->regole_calcolo['parametri']['titolarita_alla'] ?? null)->toBe(GenerateRateQuotesAction::TITOLARITA_ATEMPORALE)
+            ->and($q->regole_calcolo['parametri']['metodo_distribuzione'])->toBe('rata_zero');
+    }
+});
+
 it('con «tutte le rate» il pregresso si spalma e la somma resta esatta', function () {
     $pianoRate = creaPianoRatePerQuoteTest(['metodo_distribuzione' => 'tutte_rate', 'numero_rate' => 3]);
     $anagrafica = Anagrafica::factory()->create();

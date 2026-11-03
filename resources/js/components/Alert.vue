@@ -40,13 +40,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- Le varianti hanno `pl-4`, non `px-4`: la fusione delle classi tiene l'ultima, e un `px-4` dopo `pr-10` toglieva lo spazio della X, che finiva sopra il testo. -->
   <Alert
     v-if="showNotification"
     class="relative pr-10"
-    :class="{'bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded': type === 'success',
-            'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded': type === 'error',
-            'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded': type === 'warning',
-            'bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded': type === 'info'
+    :class="{'bg-green-100 border border-green-400 text-green-700 pl-4 py-3 rounded': type === 'success',
+            'bg-red-100 border border-red-400 text-red-700 pl-4 py-3 rounded': type === 'error',
+            'bg-yellow-100 border border-yellow-400 text-yellow-700 pl-4 py-3 rounded': type === 'warning',
+            'bg-blue-100 border border-blue-400 text-blue-700 pl-4 py-3 rounded': type === 'info'
             }"
     >
     <AlertDescription class="font-medium">

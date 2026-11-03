@@ -18,7 +18,7 @@ class PaymentReportingController extends Controller
 
     public function __invoke(Request $request, Evento $evento)
     {
-        $this->authorize('view', $evento);
+        $this->authorize('reportPayment', $evento);
 
         $currentStatus = $evento->meta['status'] ?? 'pending';
 
@@ -26,8 +26,36 @@ class PaymentReportingController extends Controller
         if ($currentStatus === 'paid') return back()->with('error', 'Già pagata.');
         if ($currentStatus === 'reported') return back()->with('info', 'Già segnalato.');
 
-        DB::transaction(function () use ($request, $evento) {
-            
+        // Su una rata senza niente da versare la segnalazione non ha oggetto: si rifiuta prima di scrivere qualsiasi cosa.
+        if (($rifiuto = $this->nienteDaVersare($evento->meta ?? [])) !== null) {
+            return back()->withErrors(['evento' => $rifiuto]);
+        }
+
+        $persona = $evento->anagrafiche->first()?->id;
+        $rifiuto = null;
+
+        $esito = DB::transaction(function () use ($request, $evento, $persona, &$rifiuto) {
+            // Il promemoria riletto sotto lock (giro di verifica della 1.11.0-beta.37, C-R5): la registrazione di un
+            // passaggio o il suo annullamento possono averne appena riscritto importi e stato, o averlo tolto. La
+            // segnalazione parte da quelli, non dalla copia letta all'apertura della richiesta. Prima le righe ponte della
+            // persona, poi il promemoria: lo stesso ordine di `AnnullaPassaggioAction`, che altrimenti si incrocerebbe con
+            // l'aggancio del compito qui sotto.
+            if ($persona !== null) {
+                DB::table('anagrafica_evento')->where('anagrafica_id', $persona)->lockForUpdate()->pluck('id');
+            }
+            $evento = Evento::whereKey($evento->id)->lockForUpdate()->first();
+            if ($evento === null) {
+                return 'sparito';
+            }
+            $statoAdesso = $evento->meta['status'] ?? 'pending';
+            if ($statoAdesso === 'paid' || $statoAdesso === 'reported') {
+                return $statoAdesso;
+            }
+            // Fra l'apertura della richiesta e il lock un incasso può aver già portato il restante a zero.
+            if (($rifiuto = $this->nienteDaVersare($evento->meta ?? [])) !== null) {
+                return 'niente_da_versare';
+            }
+
             // 1. Rileva intento credito dal frontend
             $intentUsaCredito = $request->boolean('intent_usa_credito');
             // Nota: I valori dal frontend arrivano in centesimi
@@ -126,8 +154,35 @@ class PaymentReportingController extends Controller
                 $adminMeta['action_url'] = route('admin.gestionale.movimenti-rate.create', $actionUrlParams);
                 $adminEvent->update(['meta' => $adminMeta]);
             }
+
+            return null;
         });
 
-        return back()->with('success', 'Segnalazione inviata con successo.');
+        return match ($esito) {
+            'niente_da_versare' => back()->withErrors(['evento' => $rifiuto]),
+            'paid' => back()->with('error', 'Già pagata.'),
+            'reported' => back()->with('info', 'Già segnalato.'),
+            'sparito' => back()->with('error', 'Questa rata è cambiata nel frattempo: ricarica la pagina.'),
+            default => back()->with('success', 'Segnalazione inviata con successo.'),
+        };
+    }
+
+    /**
+     * Il rifiuto della segnalazione quando sulla rata non resta niente da versare, o `null` se la segnalazione ha un oggetto.
+     *
+     * Si guarda il valore solo se `importo_restante` c'è: un promemoria costruito a mano senza la chiave non si rifiuta. Il
+     * rifiuto dice perché e che cosa fare (niente: la compensazione, se c'è, la registra l'amministratore).
+     */
+    private function nienteDaVersare(array $meta): ?string
+    {
+        if (! array_key_exists('importo_restante', $meta) || (int) $meta['importo_restante'] > 0) {
+            return null;
+        }
+
+        $daCompensare = (int) ($meta['da_compensare'] ?? 0);
+
+        return $daCompensare > 0
+            ? 'Su questa rata non resta niente da versare: la compensazione di ' . MoneyHelper::format($daCompensare) . " la registra l'amministratore. Non devi fare altro."
+            : 'Su questa rata non resta niente da versare. Non devi fare altro.';
     }
 }

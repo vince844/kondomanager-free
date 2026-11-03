@@ -429,7 +429,7 @@ function onKeydown(e: KeyboardEvent) {
                                                 vincolato — serve deroga assembleare
                                             </span>
                                         </div>
-                                        <span class="shrink-0 font-mono text-xs">{{ euroCents(saldo_cents) }}</span>
+                                        <span class="shrink-0 text-xs tabular-nums">{{ euroCents(saldo_cents) }}</span>
                                     </div>
                                 </template>
                                 <template #selected-option="{ nome, saldo_cents }">
@@ -468,7 +468,7 @@ function onKeydown(e: KeyboardEvent) {
                                                 {{ etichettaTipo[tipo as Cassa['tipo']] }}
                                             </span>
                                         </div>
-                                        <span class="shrink-0 font-mono text-xs">{{ euroCents(saldo_cents) }}</span>
+                                        <span class="shrink-0 text-xs tabular-nums">{{ euroCents(saldo_cents) }}</span>
                                     </div>
                                 </template>
                                 <template #selected-option="{ nome, saldo_cents }">
@@ -511,7 +511,7 @@ function onKeydown(e: KeyboardEvent) {
                             <Landmark class="h-4 w-4 text-slate-400" />
                             <span class="text-xs font-semibold uppercase tracking-wide">Anteprima scrittura</span>
                         </div>
-                        <span class="rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 font-mono text-[10px] tracking-wider text-slate-300">
+                        <span class="rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-slate-300">
                             GIR · {{ form.data_operazione ? form.data_operazione.split('-').reverse().join('/') : '—' }}
                         </span>
                     </div>
@@ -520,7 +520,7 @@ function onKeydown(e: KeyboardEvent) {
                         <div class="rounded-lg border-l-2 border-emerald-400/80 bg-white/[0.04] px-4 py-3">
                             <div class="flex items-center justify-between gap-3">
                                 <span class="text-[10px] font-black uppercase tracking-widest text-emerald-300">Dare</span>
-                                <span class="shrink-0 font-mono text-base tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
+                                <span class="shrink-0 text-base font-semibold tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
                                     {{ importoValido ? euro(form.importo) : '—' }}
                                 </span>
                             </div>
@@ -532,7 +532,7 @@ function onKeydown(e: KeyboardEvent) {
                         <div class="rounded-lg border-l-2 border-rose-400/80 bg-white/[0.04] px-4 py-3">
                             <div class="flex items-center justify-between gap-3">
                                 <span class="text-[10px] font-black uppercase tracking-widest text-rose-300">Avere</span>
-                                <span class="shrink-0 font-mono text-base tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
+                                <span class="shrink-0 text-base font-semibold tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
                                     {{ importoValido ? euro(form.importo) : '—' }}
                                 </span>
                             </div>
@@ -561,7 +561,7 @@ function onKeydown(e: KeyboardEvent) {
                         <Info class="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
                             La liquidità complessiva non cambia: il giroconto sposta la destinazione contabile
-                            all'interno dell'unico conto corrente. Un solo movimento a protocollo <span class="font-mono">GIR</span>.
+                            all'interno dell'unico conto corrente. Un solo movimento a protocollo <span class="font-semibold">GIR</span>.
                         </span>
                     </div>
                 </div>

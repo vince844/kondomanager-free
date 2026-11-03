@@ -1,0 +1,8 @@
+{
+  "features": [
+    "THE FOUR PRINTS THAT ANSWERED EMPTY — A family defect, found in the General Journal (beta.23) and in the instalment-plan prints (beta.27): mPDF's «Output(..., 'I')» writes the PDF straight to the output and returns an empty string, so the browser got the file but the application's response was empty and no test could read it. Four prints still had that form — the person's account statement, the F24 form, the expense list and the expense apportionment of the chart of accounts — and now all of them return the bytes, with a declared file name.",
+    "FILE NAMES — Account statement: «estratto-conto-<building>-2026-<person>.pdf» instead of «EC_Name_Surname_Esercizio anno 2026.pdf». Expense list and apportionment: «distinta-spese-<building>-2026-<plan>.pdf» and «ripartizione-spese-…» instead of «distinta_spese.pdf», the same for everyone; the chart of accounts is one per management, and ordinary and extraordinary each get their own. The supplier payment slip came out as «Distinta_PAG-PAG-…», with a doubled prefix: now «distinta-pagamento-pag-2026-00001-<date>.pdf».",
+    "TESTS WRITTEN BEFORE THE FIX — Five: four failed with a zero-byte body, the fifth on the name. Every print now has an assertion on the bytes and on the declared name. No «Output(..., 'I')» is left anywhere in the management module.",
+    "WHAT REMAINS — Code 77/78 with the persisted apportionment detail, which beta.27 assigned to .28, ship in .29: they touch the database and are a full beta."
+  ]
+}

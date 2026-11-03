@@ -117,6 +117,39 @@ test('il backup pre-aggiornamento è di tipo solo-database e arriva a completame
     expect(Backup::firstWhere('uuid', $uuid)->status->value)->toBe('completed');
 });
 
+test('Coda 400 — il backup prima dell\'aggiornamento con la cartella dei temporanei che non si crea risulta fallito, con la ragione, e non resta in corso; a cartella sistemata, l\'avvio dopo fa un backup nuovo che arriva in fondo', function () {
+    $admin = upgradeAdmin();
+    $temporanei = config('backup.tmp_path');
+    // Una cartella che non si può creare: dentro /dev/null, che non è una cartella.
+    config(['backup.tmp_path' => '/dev/null/kondo-temporanei']);
+
+    // La pagina di conferma avvia il backup e guida i passi finché è in corso; fallito, non va avanti (`Confirm.vue`, con
+    // `axios`: richieste JSON).
+    $guida = function ($avvio) use ($admin) {
+        $backup = $avvio->json('backup');
+        for ($i = 0; $i < 50 && in_array($backup['status'] ?? null, ['pending', 'dumping_database', 'archiving_files', 'finalizing'], true); $i++) {
+            $backup = $this->actingAs($admin)->postJson("/system/upgrade/backup/{$backup['uuid']}/step")->json('backup');
+        }
+
+        return $backup ?? [];
+    };
+    $primoAvvio = $this->actingAs($admin)->postJson('/system/upgrade/backup');
+    $primo = $guida($primoAvvio);
+    $inCorso = Backup::running()->count();
+    // La cartella è sistemata.
+    config(['backup.tmp_path' => $temporanei]);
+    $secondoAvvio = $this->actingAs($admin)->postJson('/system/upgrade/backup');
+    $secondo = $guida($secondoAvvio);
+
+    expect($primoAvvio->status())->toBe(200)
+        ->and($primo['status'] ?? null)->toBe('failed')
+        ->and((string) ($primo['error'] ?? ''))->not->toBe('')
+        ->and($inCorso)->toBe(0)
+        ->and($secondoAvvio->status())->toBe(200)
+        ->and($secondo['uuid'] ?? null)->not->toBe($primo['uuid'] ?? null)
+        ->and($secondo['status'] ?? null)->toBe('completed');
+});
+
 test('un secondo avvio riusa il backup di sicurezza già in corso', function () {
     $admin = upgradeAdmin();
 
@@ -172,9 +205,22 @@ test('il backup pre-aggiornamento funziona anche se manca type/encrypted', funct
  * non è disponibile, ma l'aggiornamento deve restare possibile.
  *
  * È il caso 1.9.1 → 1.10.0, cioè il percorso di ogni installazione ufficiale.
+ *
+ * ⚠️ **Riscritti il 27/08/2026, e la differenza non è cosmetica.** Prima questi test
+ * simulavano la 1.9.1 con la sola **stringa di versione**, e il loro stesso commento
+ * ammetteva il trucco: «la tabella esiste, ma il gate di versione la considera comunque
+ * non disponibile». Fissavano cioè il proxy invece della condizione.
+ *
+ * Il proxy è stato tolto — `version_compare('1.10.0-beta.77', '1.10.0', '>=')` è falso, e
+ * lasciava senza rete ogni installazione che avesse girato una beta della 1.10, pur avendo
+ * la tabella dalla beta.11. Ora la disponibilità dipende **solo dall'infrastruttura**, e i
+ * test la simulano come si presenta davvero su una 1.9.1: la tabella non c'è.
  */
 test('aggiornando da una 1.9.x il backup pre-aggiornamento non è disponibile', function () {
     setDbVersion('1.9.1');
+
+    // Com'è fatta davvero un'installazione 1.9.1: la tabella nasce nella 1.10.0-beta.11.
+    Schema::drop('backups');
 
     $this->actingAs(upgradeAdmin())
         ->get('/system/upgrade/finalize')
@@ -188,23 +234,30 @@ test('aggiornando da una 1.9.x il backup pre-aggiornamento non è disponibile', 
 
 test('aggiornando da una 1.9.x l endpoint del backup risponde 409', function () {
     setDbVersion('1.9.1');
-
-    // La tabella esiste (RefreshDatabase ha eseguito tutte le migrazioni), ma
-    // il gate di versione la considera comunque non disponibile: su
-    // un'installazione reale a 1.9.1 quella tabella non ci sarebbe.
-    expect(Schema::hasTable('backups'))->toBeTrue();
+    Schema::drop('backups');
 
     $this->actingAs(upgradeAdmin())
         ->post('/system/upgrade/backup')
         ->assertStatus(409);
 });
 
-test('anche una versione illeggibile nel database disattiva il backup senza bloccare nulla', function () {
+/**
+ * La versione registrata NON decide più se il backup è disponibile, e questo test lo fissa.
+ *
+ * Prima una versione illeggibile lo disattivava, perché il confronto falliva. Era un effetto
+ * collaterale del proxy: una stringa vuota nelle impostazioni non dice niente su quale
+ * infrastruttura di backup esista sul posto. Adesso conta solo la tabella, e l'aggiornamento
+ * resta possibile in ogni caso — che è l'invariante vera di questa pagina.
+ */
+test('una versione illeggibile nel database non toglie il backup, perché non è lei a deciderlo', function () {
     setDbVersion('');
 
     $this->actingAs(upgradeAdmin())
         ->get('/system/upgrade/finalize')
-        ->assertInertia(fn ($page) => $page->where('canBackup', false));
+        ->assertInertia(fn ($page) => $page
+            ->where('canBackup', true)
+            ->where('needsUpgrade', true)
+        );
 });
 
 /**
@@ -231,8 +284,16 @@ test('la finalizzazione resta raggiungibile quando il backup non è disponibile'
     expect($version)->toBe(config('app.version'));
 });
 
-test('il backup torna disponibile aggiornando da una 1.10 o successiva', function () {
-    foreach (['1.10.0', '1.10.3', '1.11.0'] as $from) {
+/**
+ * Il caso per cui il proxy è stato tolto: **le beta della 1.10 sono nel dataset**.
+ *
+ * `version_compare('1.10.0-beta.77', '1.10.0', '>=')` è falso, quindi ogni tester della 1.10
+ * restava senza rete pur avendo la tabella dalla beta.11 — cioè proprio chi aggiorna per primo
+ * e più spesso. Se qualcuno rimettesse un confronto di versione davanti a `hasTable`, queste
+ * quattro righe diventano rosse.
+ */
+test('il backup torna disponibile aggiornando da una 1.10 o successiva, beta comprese', function () {
+    foreach (['1.10.0-beta.11', '1.10.0-beta.77', '1.10.0', '1.10.3', '1.11.0'] as $from) {
         setDbVersion($from);
 
         $this->actingAs(upgradeAdmin())

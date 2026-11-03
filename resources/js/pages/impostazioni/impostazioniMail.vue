@@ -14,6 +14,7 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import MailSetupGuide from '@/components/guides/MailSetupGuide.vue';
 import { trans } from 'laravel-vue-i18n';
 import axios from 'axios';
+import { confermaPoiRiprova } from '@/composables/useConfermaPassword';
 
 const page = usePage();
 const flashMessage = computed(() => (page.props as any).flash?.message);
@@ -139,19 +140,30 @@ const submit = () => {
 
 const runTest = async () => {
     if (!testEmail.value) return;
+
+    // Il corpo si compone una volta: la prova rifatta dopo la conferma della password manda gli stessi dati.
+    await inviaProva({
+        ...form.data(),
+        test_email: testEmail.value,
+    });
+};
+
+const inviaProva = async (corpo: Record<string, unknown>) => {
     isTesting.value  = true;
     testStatus.value = null;
     errorMessage.value = '';
 
     try {
-        const response = await axios.post(route('admin.settings.mail.test'), {
-            ...form.data(),
-            test_email: testEmail.value,
-        });
+        const response = await axios.post(route('admin.settings.mail.test'), corpo);
         if (response.data.success) testStatus.value = 'success';
     } catch (error: any) {
+        // La password va ridigitata (Coda 404): la finestra si apre su questa pagina e la prova riparte da sola.
+        if (confermaPoiRiprova(error.response?.status, () => inviaProva(corpo))) return;
         testStatus.value   = 'error';
-        errorMessage.value = error.response?.data?.message || 'Errore di connessione';
+        // Sei prove al minuto (Coda 311): il 429 del limite non ha un messaggio nella lingua della pagina.
+        errorMessage.value = error.response?.status === 429
+            ? trans('impostazioni.error_test_mail_too_many')
+            : error.response?.data?.message || 'Errore di connessione';
     } finally {
         isTesting.value = false;
     }

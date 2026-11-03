@@ -86,10 +86,17 @@ it('si ferma alle persone quando manca l\'export che le contiene', function () {
         ->and($esercizio->data_fine->toDateString())->toBe('2025-10-31')
         ->and($esercizio->stato)->toBe('aperto');
 
-    // Quel che è entrato resta: il lotto è parziale, non annullato.
+    // ⚠️ **Dalla 1.11.0-beta.5 il lotto risulta «completato», non più «parziale».**
+    //
+    // Cambia il significato, non il comportamento: qui è entrato **tutto quello che era stato
+    // fornito** — il file portava la testata e nient'altro — e i livelli senza dati sono stati
+    // saltati, non falliti. Chiamare «interrotta» un'importazione in cui non è andato storto
+    // niente diceva all'amministratore che aveva sbagliato qualcosa, e non aveva sbagliato.
+    //
+    // Quello che **non** cambia è cosa è finito in archivio: due sole entità, il condominio e
+    // l'esercizio. È l'assertion che conta, e resta identica.
     $batch = $ctx->batch->fresh();
-    expect($batch->stato)->toBe(ImportBatch::STATO_PARZIALE)
-        ->and($batch->livello_corrente)->toBe('soggetti')
+    expect($batch->stato)->toBe(ImportBatch::STATO_COMPLETATO)
         ->and($batch->itemsCreati()->count())->toBe(2);
 });
 

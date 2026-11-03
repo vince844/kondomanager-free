@@ -17,6 +17,8 @@ export interface GuideItem {
   description: string;
   icon: any;
   colorVariant: 'blue' | 'amber' | 'emerald' | 'slate';
+  /** Facoltativo: un rimando cliccabile sotto la descrizione, verso una pagina correlata. */
+  link?: { label: string; href: string };
 }
 
 const props = defineProps<{
@@ -267,6 +269,14 @@ function selectEsercizio(esercizioId: number | string) {
         <p class="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">
           {{ guide.description }}
         </p>
+        <Link
+          v-if="guide.link"
+          :href="guide.link.href"
+          class="inline-flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
+        >
+          {{ guide.link.label }}
+          <ChevronRight class="w-3 h-3" />
+        </Link>
       </div>
     </div>
 

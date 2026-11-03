@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
@@ -35,6 +37,16 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     $migration = require $path;
 
     $tabellePrima = collect(Schema::getTableListing())->sort()->values()->all();
+    // Anche gli indici (S8-28): la migrazione di luglio su `contributi_versati`, rieseguita dopo la beta.31 che
+    // ha sostituito il suo vincolo con quello per persona, non trovava più il proprio indice e rifaceva il dedup
+    // per unità — cancellando righe legittime — e ricreava il vincolo vecchio. Le tabelle non lo dicevano.
+    $indiciPrima = collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getIndexes($t))->pluck('name')->sort()->values()->all()])->all();
+    // E le chiavi esterne (rilievo T16 della Fase 1-bis della 1.11.0-beta.43): su sqlite una seconda chiave uguale non cambia né
+    // tabelle né indici, e su MySQL la stessa riesecuzione fallirebbe. Si confrontano colonne, tabella, colonne di arrivo e regola.
+    $chiavi = fn () => collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getForeignKeys($t))
+        ->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . '(' . implode(',', $k['foreign_columns']) . ') ' . strtolower((string) ($k['on_delete'] ?? '')))
+        ->sort()->values()->all()])->all();
+    $chiaviPrima = $chiavi();
 
     // RefreshDatabase ha già eseguito l'intera catena: questa seconda chiamata
     // riproduce esattamente la ripresa dopo un'interruzione che ha applicato le
@@ -42,9 +54,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     $migration->up();
 
     // Una riesecuzione deve essere un no-op strutturale: nessuna tabella persa,
-    // nessuna tabella comparsa.
+    // nessuna tabella comparsa, nessun indice diverso.
     expect(collect(Schema::getTableListing())->sort()->values()->all())
-        ->toEqual($tabellePrima);
+        ->toEqual($tabellePrima)
+        ->and(collect($tabellePrima)->mapWithKeys(fn ($t) => [$t => collect(Schema::getIndexes($t))->pluck('name')->sort()->values()->all()])->all())
+        ->toEqual($indiciPrima)
+        ->and($chiavi())->toEqual($chiaviPrima);
 })->with([
     // Aggiunta nella beta.43: era l'unica migrazione del percorso 1.9.1 → 1.10 rimasta fuori
     // dal dataset. È un `MODIFY` su un ENUM, quindi intrinsecamente rieseguibile — passa senza
@@ -102,6 +117,30 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // migrazione fuori da questo dataset smette di essere presidiata.
     '2026_08_19_100000_create_comuni_table',
 
+    // Aggiunta nella 1.11.0-beta.8: la classificazione ATECO. Stessa forma della tabella dei Comuni
+    // — guardia sulla sola esistenza, nessuna foreign key da aggiungere separatamente — e per la
+    // stessa ragione sta qui: una migrazione fuori da questo dataset smette di essere presidiata.
+    '2026_08_30_100000_create_codici_ateco_table',
+
+    // Aggiunta nella 1.11.0-beta.9: le categorie di fornitore iniziali, spostate dal seeder a una
+    // migrazione perché l'amministratore ora può cancellarle. Scrive **dati**, non schema, quindi la
+    // rieseguibilità qui vale doppio: senza la guardia per nome un secondo passaggio creerebbe nove
+    // doppioni.
+    '2026_08_31_090000_seed_categorie_fornitore',
+
+    // Aggiunta nella beta.10, gemella di quella qui sopra: le cinque categorie dei documenti
+    // passano dal seeder a una migrazione, **per lo stesso motivo e con più urgenza** — la voce
+    // «Elimina» sulle categorie dell'archivio esiste da prima, quindi la risurrezione da `db:seed`
+    // poteva già succedere. Anche questa scrive **dati**: senza la guardia per nome un secondo
+    // passaggio creerebbe cinque doppioni.
+    '2026_08_31_120000_seed_categorie_documento',
+
+    // Aggiunta nella beta.10: la colonna `slug` sulle categorie dei documenti, con il backfill
+    // della sola riga «Fatture». Ha **due** guardie separate — una sulla colonna e una sul dato —
+    // perché su MySQL il DDL non è transazionale e un'esecuzione morta a metà deve poter fare al
+    // secondo tentativo solo la metà che manca.
+    '2026_08_31_130000_add_slug_to_categorie_documento',
+
     // Aggiunta nella beta.62: `immobili.numero_vani` da `integer` a `decimal(5,2)`, per le visure
     // catastali che riportano mezzi vani. È un `MODIFY` su tabella viva, quindi la stessa
     // categoria a rischio di `add_pertinenza_di_to_immobili` e
@@ -129,4 +168,194 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // idempotenza sta nell'esclusione degli utenti che la riga ce l'hanno già: al secondo giro non
     // trova nessuno, e soprattutto non riaccende quello che qualcuno avesse spento nel frattempo.
     '2026_08_22_090100_seed_preferenze_notifica_di_modifica',
+
+    // Aggiunta nella beta.13: allarga con `condominio_id` l'indice unico di `fatture_passive`,
+    // che bloccava la stessa terna fra condomìni diversi. È la categoria a rischio più alto del
+    // dataset — due DDL su una tabella popolata, e in mezzo ai due l'indice unico **non esiste**
+    // — e ha una particolarità che nessun'altra qui dentro ha: l'indice vecchio regge la chiave
+    // esterna su `fornitore_id`, quindi l'ordine dei due statement non è libero. Si crea prima il
+    // nuovo (con `fornitore_id` in testa, così subentra) e solo dopo si toglie il vecchio;
+    // l'ordine opposto dà errore 1553, incontrato scrivendola. Le due guardie leggono **le
+    // colonne** degli indici, non la loro esistenza, e reggono anche lo stato «tutti e due
+    // presenti» che un'interruzione fra i due statement lascia — provato a mano ricreandolo.
+    '2026_09_02_090000_scope_unique_fattura_al_condominio',
+    // Aggiunta nella beta.16 (Coda 116): una colonna sola su `fornitori`, per distinguere «no»
+    // da «non gliel'ha mai chiesto nessuno». Rischio basso — un `ADD COLUMN` nullable su una
+    // tabella popolata — ma porta un **backfill**, ed è quello a doverla far entrare qui: la
+    // guardia toglie e rifà la colonna, quindi una riesecuzione ricalcola anche il backfill.
+    // È idempotente perché il criterio non dipende dallo stato precedente della colonna, ma
+    // solo da `soggetto_ritenuta` / `tipo_ritenuta` / `regime_forfetario`, che il backfill non
+    // tocca: rieseguirla dà lo stesso insieme di fornitori marcati come già decisi.
+    '2026_09_04_090000_add_ritenuta_decisa_il_to_fornitori_table',
+    // Aggiunte nella beta.29 (il dettaglio del riparto persistito): una tabella nuova, `create`
+    // dentro `hasTable` con le FK nella stessa `create`; e il drop di due colonne di `rate_quote`
+    // mai scritte né lette, con le guardie separate per FK (MySQL, `information_schema`) e per
+    // colonna, e il `dropForeign` nello stesso blueprint su SQLite — il modello è
+    // `add_pertinenza_di_to_immobili`. La seconda è quella che qui conta: un drop rieseguito
+    // senza guardia dà errore 1091 sullo stato parziale che un timeout lascia.
+    '2026_09_14_200000_create_righe_riparto_table',
+    '2026_09_14_200100_drop_riga_fattura_id_and_voce_id_from_rate_quote_table',
+    // Aggiunte nella 1.11.0-beta.31 (B2, il tempo entra nel calcolo): sei migrazioni più un drop nel
+    // blocco S2 del piano esecutivo, un'ottava in S5 (le colonne del passaggio su `subentri`, due FK) e una nona
+    // dalla verifica di S5 (`piani_rate.esercizio_id`, con travaso). Due `create` dentro `hasTable` (`competenze_capitolo`, `subentri`);
+    // colonne con `hasColumn` per colonna (fatture_passive, righe_riparto); la FK `saldi.subentro_id` con
+    // le due guardie separate (colonna, poi `information_schema` su MySQL e `PRAGMA foreign_key_list` su
+    // SQLite) — la categoria a rischio più alto del dataset, come `add_pertinenza_di`; l'indice non unico
+    // con `Schema::hasIndex`; il drop di `tipologie_spese` con `hasColumn` **e** un conteggio che si ferma se
+    // la colonna ha valori. Il travaso da `dati_extra->competenza` scrive solo dove le colonne nuove sono
+    // nulle: rieseguito non travasa due volte (invariante 23 del progetto sul subentro).
+    '2026_09_18_200000_add_competenza_to_fatture_passive_table',
+    '2026_09_18_200100_create_competenze_capitolo_table',
+    '2026_09_18_200200_create_subentri_table',
+    '2026_09_18_200300_add_subentro_id_to_saldi_table',
+    '2026_09_18_200400_add_index_periodi_to_anagrafica_immobile_table',
+    '2026_09_18_200500_add_competenza_to_righe_riparto_table',
+    '2026_09_18_200600_drop_tipologie_spese_from_anagrafica_immobile_table',
+    '2026_09_19_180000_add_dettagli_passaggio_to_subentri_table',
+    // La nona (verifica S5, R8): colonna + FK + travaso solo sui nulli dove la gestione ha un esercizio solo.
+    '2026_09_20_090000_add_esercizio_id_to_piani_rate_table',
+    // La decima (S6): unique nuovo su contributi_versati con guardie `getIndexes`, due colonne su subentri.
+    '2026_09_20_100000_s6_contributi_per_persona_e_annullamento_conguaglio',
+    '2026_09_20_180000_add_titolarita_tratto_to_righe_riparto_table',
+    // Coda 165 (beta.36): colonna più chiave esterna della tabella verso se stessa — due statement su MySQL.
+    '2026_09_27_090000_add_fattura_rettificata_id_to_fatture_passive_table',
+    // Beta.37: quattro colonne su subentri (annullamento e registro del passaggio) e la chiave esterna verso users.
+    '2026_09_28_100000_add_annullamento_to_subentri_table',
+    // Beta.43 (decisione 55): la riga di titolarità da cui viene ogni riga di riparto — colonna più chiave esterna, due
+    // statement su MySQL. Nessun travaso: i piani di prima restano senza legame, e il conguaglio lo deduce al volo.
+    '2026_10_04_120000_add_anagrafica_immobile_id_to_righe_riparto_table',
+    // La frase del promemoria del credito: riscrive **dati** (`eventi.description`) e nessuna struttura, quindi la riesecuzione è un
+    // no-op strutturale. La sua idempotenza sta nella `WHERE` sulla frase vecchia: al secondo giro non trova righe.
+    '2026_10_17_100000_riscrivi_descrizioni_promemoria_credito',
+    // Beta.53 (Coda 244): il passaggio a cui l'amministratore lega una riga del Wallet — colonna più chiave esterna verso `subentri`, due
+    // statement su MySQL. Nessun travaso: le righe di prima restano senza legame.
+    '2026_10_18_100000_add_passaggio_id_to_saldi_table',
+    // Beta.59 (Coda 414): una colonna JSON nullable su `piani_rate`, senza chiave esterna e senza travaso — la guardia è una, sulla colonna.
+    '2026_10_30_100000_add_quote_non_assegnate_to_piani_rate_table',
+    // Beta.10, in dataset dalla beta.60 (Coda 436): la tabella dei legami documento-categoria, il travaso e poi la chiave esterna e la colonna `documenti.category_id`
+    // tolte con due guardie separate (su MySQL sono due statement). Lo stato a metà, con il suo travaso, lo prova il test sotto.
+    '2026_08_31_140000_documenti_in_piu_categorie',
 ]);
+
+it('decisione 55 — la migrazione del legame interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera il legame', function () {
+    $migration = require database_path('migrations/2026_10_04_120000_add_anagrafica_immobile_id_to_righe_riparto_table.php');
+    Schema::table('righe_riparto', fn ($table) => $table->dropForeign(['anagrafica_immobile_id']));
+    $legame = fn () => collect(Schema::getForeignKeys('righe_riparto'))->filter(fn ($k) => $k['columns'] === ['anagrafica_immobile_id'])->values();
+    expect($legame())->toHaveCount(0)
+        ->and(Schema::hasColumn('righe_riparto', 'anagrafica_immobile_id'))->toBeTrue();
+
+    $migration->up();
+    $migration->up();
+
+    expect($legame())->toHaveCount(1)
+        ->and($legame()->first()['foreign_table'])->toBe('anagrafica_immobile')
+        ->and(strtolower((string) $legame()->first()['on_delete']))->toBe('set null');
+});
+
+it('la migrazione del passaggio delle righe del Wallet interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, restrict', function () {
+    $path = database_path('migrations/2026_10_18_100000_add_passaggio_id_to_saldi_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_10_18_100000_add_passaggio_id_to_saldi_table');
+    $migration = require $path;
+    $legame = fn () => collect(Schema::getForeignKeys('saldi'))->filter(fn ($k) => $k['columns'] === ['passaggio_id'])->values();
+    Schema::table('saldi', fn ($table) => $table->dropForeign(['passaggio_id']));
+    expect($legame())->toHaveCount(0)
+        ->and(Schema::hasColumn('saldi', 'passaggio_id'))->toBeTrue();
+
+    $migration->up();
+    $migration->up();
+
+    expect($legame())->toHaveCount(1)
+        ->and($legame()->first()['foreign_table'])->toBe('subentri')
+        ->and($legame()->first()['foreign_columns'])->toBe(['id'])
+        ->and(strtolower((string) $legame()->first()['on_delete']))->toBe('restrict');
+});
+
+it('Coda 414 — la migrazione delle quote non assegnate rieseguita dopo un\'interruzione lascia una colonna sola, e rifatta dopo il ritorno indietro la rimette', function () {
+    $path = database_path('migrations/2026_10_30_100000_add_quote_non_assegnate_to_piani_rate_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_10_30_100000_add_quote_non_assegnate_to_piani_rate_table');
+    $migration = require $path;
+    $colonne = fn () => collect(Schema::getColumnListing('piani_rate'))->filter(fn ($c) => $c === 'quote_non_assegnate')->count();
+    expect($colonne())->toBe(1);
+
+    $migration->up();
+    expect($colonne())->toBe(1);
+
+    $migration->down();
+    $migration->down();
+    expect($colonne())->toBe(0);
+
+    $migration->up();
+    $migration->up();
+    expect($colonne())->toBe(1);
+});
+
+it('Coda 436 — la migrazione dei documenti in più categorie ripresa dopo l\'interruzione fra la chiave esterna e la colonna (chiave tolta, colonna ancora lì) travasa la categoria nei legami e toglie la colonna, e rieseguita non cambia niente', function () {
+    $path = database_path('migrations/2026_08_31_140000_documenti_in_piu_categorie.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_08_31_140000_documenti_in_piu_categorie');
+    $migration = require $path;
+
+    // Lo stato di prima della migrazione: il ritorno indietro rimette la colonna con la sua chiave e toglie la tabella dei legami.
+    $migration->down();
+    $chiave = fn () => collect(Schema::getForeignKeys('documenti'))->filter(fn ($k) => $k['columns'] === ['category_id'])->count();
+    expect(Schema::hasColumn('documenti', 'category_id'))->toBeTrue()
+        ->and($chiave())->toBe(1)
+        ->and(Schema::hasTable('documento_categoria'))->toBeFalse();
+
+    $categoria = DB::table('categorie_documento')->orderBy('id')->value('id');
+    $documento = DB::table('documenti')->insertGetId([
+        'name' => 'Verbale', 'description' => '', 'created_by' => User::factory()->create()->id, 'path' => 'documenti/verbale.pdf',
+        'category_id' => $categoria, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    // L'interruzione fra i due statement di MySQL: la chiave è già tolta, la colonna c'è ancora.
+    Schema::table('documenti', fn ($table) => $table->dropForeign(['category_id']));
+    expect($chiave())->toBe(0)
+        ->and(Schema::hasColumn('documenti', 'category_id'))->toBeTrue();
+
+    $migration->up();
+    $migration->up();
+
+    expect(Schema::hasColumn('documenti', 'category_id'))->toBeFalse()
+        ->and($chiave())->toBe(0)
+        ->and(DB::table('documento_categoria')->where('documento_id', $documento)->pluck('categoria_documento_id')->all())->toBe([$categoria]);
+});
+
+it('Coda 436 — l\'interruzione dopo il travaso, con la chiave già tolta e la colonna ancora lì, si riprende senza duplicare i legami già scritti', function () {
+    $path = database_path('migrations/2026_08_31_140000_documenti_in_piu_categorie.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_08_31_140000_documenti_in_piu_categorie');
+    $migration = require $path;
+
+    // Il ritorno indietro toglie la tabella dei legami e rimette la colonna con la sua chiave.
+    $migration->down();
+    $categorie = DB::table('categorie_documento')->orderBy('id')->limit(2)->pluck('id')->all();
+    $autore = User::factory()->create()->id;
+    $documento = fn (string $nome, ?int $categoria) => DB::table('documenti')->insertGetId([
+        'name' => $nome, 'description' => '', 'created_by' => $autore, 'path' => "documenti/{$nome}.pdf",
+        'category_id' => $categoria, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    // Due documenti nella stessa categoria, uno in un'altra, uno senza: lo stato che il travaso legge.
+    $a = $documento('A', $categorie[0]);
+    $b = $documento('B', $categorie[0]);
+    $c = $documento('C', $categorie[1]);
+    $documento('D', null);
+
+    // L'interruzione fra i due statement di MySQL: la chiave è già tolta, la colonna c'è ancora.
+    Schema::table('documenti', fn ($table) => $table->dropForeign(['category_id']));
+
+    // E il travaso è già avvenuto, a metà: la tabella dei legami c'è e ha già la riga del primo documento.
+    Schema::create('documento_categoria', function ($tabella) {
+        $tabella->id();
+        $tabella->foreignId('documento_id')->constrained('documenti')->cascadeOnDelete();
+        $tabella->foreignId('categoria_documento_id')->constrained('categorie_documento')->cascadeOnDelete();
+        $tabella->unique(['documento_id', 'categoria_documento_id'], 'documento_categoria_unico');
+        $tabella->timestamps();
+    });
+    DB::table('documento_categoria')->insert(['documento_id' => $a, 'categoria_documento_id' => $categorie[0], 'created_at' => now(), 'updated_at' => now()]);
+
+    $migration->up();
+    $migration->up();
+
+    expect(Schema::hasColumn('documenti', 'category_id'))->toBeFalse()
+        ->and(DB::table('documento_categoria')->orderBy('documento_id')->get()->map(fn ($r) => [$r->documento_id, $r->categoria_documento_id])->all())
+        ->toBe([[$a, $categorie[0]], [$b, $categorie[0]], [$c, $categorie[1]]]);
+});

@@ -1,0 +1,8 @@
+{
+    "features": [
+        "A WARNING WHEN AN INVOICE LOOKS ALREADY REGISTERED — While filling in an invoice, both when registering and when editing, the system now checks on its own whether a similar one already exists: same supplier and same number in the same fiscal year, or same amount to the cent within a week. If it finds something it shows a warning with a link to the existing invoice, but it never blocks — a recurring utility bill at the same amount every month isn't a duplicate, and the final call stays with the administrator.",
+        "THE MESSAGE WHEN IT REALLY IS THE SAME DOCUMENT — Different from the warning above: when supplier, number and date match exactly an invoice already on record, saving is now refused. Before, in this exact case, saving failed silently — no visible error, nothing happened. Now a message explains what happened, both when registering and when reversing two twin invoices on the same day.",
+        "THE INDEX THAT BLOCKED ACROSS BUILDINGS INSTEAD OF WITHIN ONE — The safeguard against duplicate entries already existed but didn't account for the building: it also blocked legitimate invoices from the same supplier across two different buildings of the same firm. It now stays active within a single building, where it makes sense, and no longer applies across buildings.",
+        "INVOICE NUMBER AND SUPPLIER CAN NO LONGER BE CHANGED BY WORKING AROUND THE FORM — In Edit mode they were already read-only on screen; now they are read-only on the server too, one more safety net verified in this same beta."
+    ]
+}

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?><ns3:FatturaElettronica versione="FPR12" xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>20404040402</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>00005cowv8</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>ABCDEF1</CodiceDestinatario>
+            <ContattiTrasmittente>
+                <Telefono>0800-000005</Telefono>
+            </ContattiTrasmittente>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10505050509</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>10505050509</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>TERMOTECNICA OMEGA S.R.L.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DELLE INDUSTRIE 8/A</Indirizzo>
+                <CAP>20834</CAP>
+                <Comune>Nova Milanese</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>MI</Ufficio>
+                <NumeroREA>1000001</NumeroREA>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <CodiceFiscale>30202020209</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>CONDOMINIO VIA DEI TIGLI 8</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DEI TIGLI N. 8</Indirizzo>
+                <CAP>20863</CAP>
+                <Comune>Concorezzo</Comune>
+                <Provincia>MB</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+        <TerzoIntermediarioOSoggettoEmittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>20404040402</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>20404040402</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>SERVIZI TELEMATICI S.R.L.</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+        </TerzoIntermediarioOSoggettoEmittente>
+        <SoggettoEmittente>TZ</SoggettoEmittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-06-05</Data>
+                <Numero>655</Numero>
+                <DatiRitenuta>
+                    <TipoRitenuta>RT02</TipoRitenuta>
+                    <ImportoRitenuta>42.00</ImportoRitenuta>
+                    <AliquotaRitenuta>4.00</AliquotaRitenuta>
+                    <CausalePagamento>W</CausalePagamento>
+                </DatiRitenuta>
+                <ImportoTotaleDocumento>1155.00</ImportoTotaleDocumento>
+                <Causale>STAGIONE 2026 CONTRATTO MANUTENZIONE ORDINARIA</Causale>
+            </DatiGeneraliDocumento>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <Descrizione>PERIODO 13/04/2026 - 12/10/2026</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>0.00</PrezzoUnitario>
+                <PrezzoTotale>0.00</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <Ritenuta>SI</Ritenuta>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <Descrizione>CONDUZIONE, MANUTENZIONE, TERZO RESPONSABILE IMPIANTO RISCALDAMENTO</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>850.00</PrezzoUnitario>
+                <PrezzoTotale>850.00</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <Ritenuta>SI</Ritenuta>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <Descrizione>REPERIBILITA' NOTTURNA E FESTIVA</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>200.00</PrezzoUnitario>
+                <PrezzoTotale>200.00</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <Ritenuta>SI</Ritenuta>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <ImponibileImporto>1050.00</ImponibileImporto>
+                <Imposta>105.00</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+        <DatiPagamento>
+            <CondizioniPagamento>TP02</CondizioniPagamento>
+            <DettaglioPagamento>
+                <ModalitaPagamento>MP05</ModalitaPagamento>
+                <DataScadenzaPagamento>2026-08-31</DataScadenzaPagamento>
+                <ImportoPagamento>1113.00</ImportoPagamento>
+                <IBAN>IT25S0505050505000000005555</IBAN>
+            </DettaglioPagamento>
+        </DatiPagamento>
+    </FatturaElettronicaBody>
+</ns3:FatturaElettronica>

@@ -152,3 +152,59 @@ test('il divieto di eliminare la gestione dice dove stanno davvero i saldi', fun
 
     expect($messaggio)->toContain('fornitor');
 });
+
+/*
+|--------------------------------------------------------------------------
+| B2, S8-17 — la coppia del conguaglio non è provvista neanche per il listener
+|--------------------------------------------------------------------------
+*/
+
+/** Debito fornitore ereditato (−12.200), fattura pregressa coperta via rata 0, e — se chiesto — una coppia di conguaglio a somma zero. */
+function scenarioDeficitConCoppia(bool $conCoppia): ?\App\Models\Evento
+{
+    [$condominio, $esercizio, $gestione, $fornitore, , , $immobileId] = setupContabile();
+    \App\Models\CategoriaEvento::firstOrCreate(['name' => 'Scadenze amministrative'], ['description' => 'test']);
+    $user = \App\Models\User::factory()->create();
+
+    $saldoFornitoreId = DB::table('saldi')->insertGetId([
+        'condominio_id' => $condominio->id, 'esercizio_id' => $esercizio->id, 'gestione_id' => $gestione->id, 'fornitore_id' => $fornitore->id,
+        'saldo_iniziale' => -12200, 'is_applicato' => false, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    if ($conCoppia) {
+        $rossi = \App\Models\Anagrafica::factory()->create();
+        $bianchi = \App\Models\Anagrafica::factory()->create();
+        $subentro = \App\Models\Gestionale\Subentro::create([
+            'condominio_id' => $condominio->id, 'immobile_id' => $immobileId, 'anagrafica_uscente_id' => $rossi->id, 'anagrafica_entrante_id' => $bianchi->id,
+            'tipologia' => 'proprietario', 'tipo_passaggio' => 'vendita', 'decorrenza' => '2026-05-01', 'utente_id' => $user->id,
+        ]);
+        foreach ([[$rossi->id, -27655], [$bianchi->id, 27655]] as [$anagraficaId, $importo]) {
+            Saldo::create([
+                'esercizio_id' => $esercizio->id, 'condominio_id' => $condominio->id, 'gestione_id' => $gestione->id, 'immobile_id' => $immobileId,
+                'anagrafica_id' => $anagraficaId, 'saldo_iniziale' => $importo, 'origine' => 'automatico', 'is_applicato' => false, 'subentro_id' => $subentro->id,
+                'descrizione' => 'Conguaglio passaggio',
+            ]);
+        }
+    }
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'data_documento' => '2025-12-01', 'data_scadenza' => '2025-12-31', 'is_pregresso' => true,
+        'imponibile_pregresso' => 100.00, 'aliquota_iva_pregressa' => 22, 'saldo_patrimoniale_id' => $saldoFornitoreId, 'righe' => [],
+        'coperture' => [['tipo_copertura' => 'rata_0', 'importo' => 122.00, 'fonte_id' => $saldoFornitoreId]],
+    ]);
+    $fattura = (new \App\Services\Gestionale\FatturaPassivaService())->registraFattura($data, $condominio->id);
+
+    // Il listener è ShouldQueue + afterCommit: lo si esegue a mano, come farebbe il worker.
+    (new \App\Listeners\Gestionale\SyncScadenziarioWithFattura())->handle(new \App\Events\Gestionale\FatturaRegistrata($fattura, $user->id));
+
+    return \App\Models\Evento::where('meta->type', 'pianifica_ripianamento_deficit')->where('meta->context->saldo_id', $saldoFornitoreId)->first();
+}
+
+it('S8-17 — il «buco» del listener non conta la gamba positiva della coppia di conguaglio come provvista: con e senza coppia l\'avviso dice € 122,00 scoperti', function () {
+    $senza = scenarioDeficitConCoppia(false);
+    expect($senza)->not->toBeNull()->and((int) $senza->meta['importo_buco'])->toBe(12200);
+
+    // Prima della correzione la coppia (+27.655 di Bianchi) «copriva» il debito e l'avviso non nasceva.
+    $con = scenarioDeficitConCoppia(true);
+    expect($con)->not->toBeNull()->and((int) $con->meta['importo_buco'])->toBe(12200);
+});

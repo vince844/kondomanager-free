@@ -411,7 +411,11 @@ class CondominioDemoSeeder extends Seeder
             'is_capitolo'    => false,
             'nome'           => $nome,
             'tipo'           => 'spesa',
-            'natura_spesa'   => 'ordinaria',
+            // ⚠️ Qui c'era `'natura_spesa' => 'ordinaria'`: una colonna che `conti` non ha. Dal
+            // pulsante del prodotto passava — il modello è guarded e l'assegnazione di massa la
+            // scartava in silenzio (Coda 108) — ma `php artisan db:seed --class=CondominioDemoSeeder`
+            // gira senza guardie e moriva su «Unknown column». Trovato costruendo il seeder gemello
+            // delle stampe (beta.27).
             'importo'        => $importoCents,
             // ⚠️ **L'ancoraggio in partita doppia, e senza non si può fatturare.** È il conto di
             // costo su cui la fattura scriverà il DARE. `ContoController` lo risolve dal ruolo
@@ -599,6 +603,15 @@ class CondominioDemoSeeder extends Seeder
                 'soggetto_ritenuta'          => true,
                 'perc_imponibile_ritenuta'   => 100,
                 'perc_ritenuta'              => 4,
+                // ⚠️ **Una s.r.l. è soggetto IRES: codice tributo 1020, non 1019.**
+                // Fino al 03/09/2026 questo campo non c'era, e la demo mostrava una delega
+                // F24 con **1019** — il codice delle persone fisiche — perché
+                // `GeneraDelegheF24Action` ripiegava in silenzio su persona fisica quando la
+                // natura mancava. Il condominio dimostrativo esibiva quindi il difetto della
+                // Coda 119 come se fosse il comportamento normale, ed è il posto peggiore
+                // dove lasciarlo: è la schermata che un amministratore guarda per capire
+                // come funziona il programma.
+                'natura_percipiente'         => 'soggetto_ires',
                 'giorni_scadenza'            => 30,
                 'modalita_pagamento_default' => 'bonifico',
             ],
@@ -970,9 +983,10 @@ class CondominioDemoSeeder extends Seeder
                 'log_legale_sopravvenienza' => [
                     'nome_voce'           => 'Sostituzione vetrata androne',
                     // ⚠️ `conti.origine_decisionale` è un enum a **due** valori:
-                    // `gestione_corrente` e `delibera_assembleare`. Un terzo valore viene troncato
-                    // in silenzio da MySQL — scoperto al primo giro, perché il seeder passa dalla
-                    // porta vera e la porta ha detto di no.
+                    // `gestione_corrente` e `delibera_assembleare`. Un terzo valore MySQL lo rifiuta
+                    // («Data truncated for column», la connessione è in modalità `strict`) —
+                    // scoperto al primo giro, perché il seeder passa dalla porta vera e la porta
+                    // ha detto di no.
                     'origine_decisionale' => 'gestione_corrente',
                     'tipo_ripartizione'   => 'millesimale',
                     // ⚠️ **Obbligatoria quando la ripartizione è millesimale**:

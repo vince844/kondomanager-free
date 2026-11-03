@@ -1,0 +1,8 @@
+{
+ "features": [
+  "⚠️ ESTA VERSÃO NÃO ADICIONA MIGRAÇÕES. A importação do Danea aprende a ler uma impressão que até agora reconhecia e deitava fora: o «Bilancio consuntivo per conto», de onde nasce a estrutura de despesas do condomínio.",
+  "OS CAPÍTULOS DE DESPESA ENTRAM SOZINHOS — Antes, quem importava ficava com unidades, pessoas, tabelas e saldos, e um plano de contas vazio: os capítulos tinham de ser reescritos um a um, olhando para uma impressão já carregada. Agora entram os capítulos com as suas rubricas. Num condomínio real são 4 capítulos e 17 rubricas, lidos sem um erro.",
+  "OS VALORES ENTRAM A ZERO, E É INTENCIONAL — O que a prestação de contas traz é a fotografia do que se gastou no ano passado, não o orçamento deste ano: escrevê-lo como orçamento seria deliberar no lugar da assembleia. O valor do ano passado fica na descrição de cada rubrica, onde se encontra no momento em que é preciso: quando escreves o orçamento verdadeiro.",
+  "AS DESPESAS PESSOAIS NÃO ENTRAM DUAS VEZES — A prestação de contas imprime «Despesas pessoais» como se fosse um capítulo. Não é: são débitos a condóminos individuais, e já estão dentro dos saldos de abertura que a importação escreve. Importá-las também como capítulo tê-las-ia contado duas vezes, e repartidas por milésimos fariam todos pagar o que devem alguns."
+ ]
+}

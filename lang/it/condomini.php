@@ -11,6 +11,7 @@ return [
     'error_edit_building'     => "Si è verificato un errore durante la modifica del condominio.",
     'success_delete_building' => "Il condominio è stato eliminato con successo.",
     'error_delete_building'   => "Si è verificato un errore durante l'eliminazione del condominio.",
+    'limite_condomini_raggiunto' => "Questa installazione ha raggiunto il numero massimo di condomini consentiti.",
 
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
@@ -50,7 +51,7 @@ return [
         'actions'        => 'Azioni',
         'residents'      => 'Anagrafiche',
         'residents_desc' => 'Consulta rapidamente l\'elenco completo delle persone associate a questo condominio.',
-        'total'          => 'Totali',
+        'total'          => '{1} 1 in totale|[2,*] :count in totale',
         'click_to_manage'=> 'Clicca per gestire',
     ],
 

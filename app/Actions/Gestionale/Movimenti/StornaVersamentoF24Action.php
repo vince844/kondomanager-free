@@ -72,6 +72,13 @@ class StornaVersamentoF24Action
             $storno = ScritturaContabile::create([
                 'condominio_id' => $delega->condominio_id,
                 'esercizio_id' => $delega->esercizio_id,
+                // Come ogni altro storno del progetto (StornoIncassoRateAction,
+                // PagamentoFornitoreService::stornaPagamento): scrittura inversa collegata
+                // all'originale, mai soft-delete — è il contratto già scritto nel docblock di
+                // ScritturaContabile::padre()/figlie(). Senza questo collegamento, un lettore che
+                // risale dalla scrittura di storno (es. il registro di contabilità, che cerca la
+                // delega anche sul padre) non trova più «Erario» come controparte.
+                'scrittura_padre_id' => $originale->id,
                 'data_registrazione' => $data,
                 'data_competenza' => $data,
                 'causale' => "Storno versamento F24 — {$motivo}",

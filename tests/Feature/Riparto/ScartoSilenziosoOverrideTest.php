@@ -211,7 +211,7 @@ function totaleQuoteGenerateScartoSilenzioso(PianoRate $pianoRate): int
 
 test('capitolo forzato senza tabelle: la generazione si ferma invece di scartare in silenzio', function () {
     $s = scenarioCapitoloForzatoScartoSilenzioso();
-    // Nessuna tabella collegata, nessun sottoconto: è il caso di CalcoloQuoteService:569.
+    // Nessuna tabella collegata, nessun sottoconto: è il ramo di `CalcoloQuoteService::processaConti` per un capitolo con l'importo forzato dal piano.
 
     $action = app(GeneratePianoRateAction::class);
 
@@ -244,7 +244,7 @@ test('tabella collegata ma senza immobili: la generazione si ferma invece di sca
     $s = scenarioCapitoloForzatoScartoSilenzioso();
     collegaTabellaScartoSilenzioso($s['conto'], $s['condominio'], 'Millesimi generali');
     // La tabella esiste ed è collegata al capitolo, ma `quote_tabella` è vuota.
-    // È il caso che Vincenzo ha descritto: CalcoloQuoteService:661 → :765, return nudo.
+    // È il caso che Vincenzo ha descritto: la tabella senza quote utilizzabili in `CalcoloQuoteService::distribuisciSuTabelle`, che usciva con un `return` nudo.
 
     $action = app(GeneratePianoRateAction::class);
 

@@ -70,6 +70,48 @@ return [
             'report' => false,
         ],
 
+        /*
+        | I documenti caricati (archivio, unità, fornitori, fatture, titoli di subentro) e la firma
+        | delle stampe su un bucket S3-compatibile (Cloudflare R2, Amazon S3, Backblaze B2, MinIO…),
+        | quando `DOCUMENTI_DISK=s3`. Chi li usa non nomina questi dischi: legge
+        | `config('kondomanager.disco_documenti')` e `config('kondomanager.disco_pubblici')`, che
+        | senza la variabile valgono `local` e `public` — gli stessi dischi, le stesse cartelle di
+        | sempre. `root` è il prefisso nel bucket: per un'installazione ospitata il suo nome, per
+        | un'installazione autonoma di solito vuoto. Le credenziali sono le `AWS_*` del disco `s3`
+        | qui sopra (`AWS_DEFAULT_REGION=auto` per R2).
+        */
+        'documenti_s3' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION', 'auto'),
+            'bucket' => env('AWS_BUCKET'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'root' => trim((string) env('DOCUMENTI_PREFIX', ''), '/'),
+            // In streaming verso il browser, non scaricato per intero sul server prima.
+            'stream_reads' => true,
+            'throw' => false,
+            'report' => false,
+        ],
+
+        'pubblici_s3' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION', 'auto'),
+            'bucket' => env('AWS_BUCKET'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'root' => trim(trim((string) env('DOCUMENTI_PREFIX', ''), '/').'/pubblici', '/'),
+            // L'anteprima della firma è un URL firmato: se l'endpoint è raggiungibile solo dal
+            // server (MinIO in rete Docker), AWS_TEMPORARY_URL è l'indirizzo che il browser vede.
+            'url' => env('AWS_URL'),
+            'temporary_url' => env('AWS_TEMPORARY_URL'),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

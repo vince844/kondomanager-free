@@ -29,12 +29,18 @@ return [
     'delete_users'              => "Non hai permessi sufficienti per eliminare gli utenti!",
     'suspend_users'             => "Non hai permessi sufficienti per sospendere gli utenti!",
     'users_self_action'         => "Non puoi sospendere o eliminare il tuo stesso account.",
+    'users_self_reinvite'       => "Non puoi reinvitare il tuo stesso account: la password si cambia nelle impostazioni, in «Password».",
+    'users_self_unverify'       => "Non puoi togliere la verifica dell'email al tuo stesso account.",
     'users_last_admin'          => "Questo è l'ultimo amministratore attivo: senza, nessuno potrebbe più governare l'installazione.",
+    'users_last_admin_self'     => "Sei l'ultimo amministratore attivo: senza il tuo account nessuno potrebbe più governare l'installazione. Per eliminarlo serve prima un altro amministratore attivo.",
+    'users_privileged_target'   => 'Questo account lo gestisce solo un amministratore: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
+    'users_own_from_profile'    => 'Il tuo account da qui lo gestisce solo un amministratore: nome ed email si cambiano nelle impostazioni, in «Profilo», e la password in «Password».',
+    'users_revoke_not_owned'    => 'Non puoi togliere un permesso che tu stesso non hai.',
     // Roles
-    'view_roles'                => "Non hai permessi sufficienti per visualizzare i ruoli utente!",
-    'create_roles'              => "Non hai permessi sufficienti per creare un nuovo ruolo!",
-    'edit_roles'                => "Non hai permessi sufficienti per modificare i ruoli utente!",
-    'delete_roles'              => "Non hai permessi sufficienti per eliminare i ruoli utente!",
+    'view_roles'                => 'I ruoli li gestisce solo un amministratore.',
+    'create_roles'              => 'Solo un amministratore può creare un ruolo.',
+    'edit_roles'                => 'Solo un amministratore può modificare un ruolo.',
+    'delete_roles'              => 'Solo un amministratore può eliminare un ruolo.',
     // Permissions
     'view_permissions'          => "Non hai permessi sufficienti per visualizzare i permessi!",
     // Archive documents
@@ -49,5 +55,6 @@ return [
     'delete_events'             => 'Non hai permessi sufficienti per eliminare la scadenza in agenda!',
     'edit_events'               => "Non hai permessi sufficienti per modificare la scadenza in agenda!",
     'approve_events'            => "Non hai permessi sufficienti per approvare una scadenza in agenda!",
+    'report_payment_events'     => "Non puoi segnalare il pagamento di questa scadenza!",
 
 ];

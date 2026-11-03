@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Comunicazione;
 
 use App\Enums\Permission;
+use App\Rules\CondominioDellUtente;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
@@ -36,7 +37,13 @@ class CreateUserComunicazioneRequest extends FormRequest
             'is_approved'   => 'required|boolean',
             'is_private'    => 'sometimes|boolean',
             'created_by'    => 'required|exists:users,id',
-            'condomini_ids' => ['required', 'array', Rule::exists('condomini', 'id')],
+            'condomini_ids' => ['required', 'array'],
+            // Non basta che il condominio esista (giro di sicurezza della 1.11.0-beta.39, Coda 184):
+            // deve essere uno dei condomìni dell'utente, altrimenti la comunicazione finisce nella
+            // bacheca di un palazzo a cui non appartiene.
+            // `integer` prima di tutto: un elemento-array arriverebbe ad attach() come «chiave = id da
+            // collegare», e la chiave non la controlla nessuno.
+            'condomini_ids.*' => ['bail', 'integer', Rule::exists('condomini', 'id'), new CondominioDellUtente()],
         ];
     }
 

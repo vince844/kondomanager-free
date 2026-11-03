@@ -7,9 +7,11 @@ use App\Models\MailLog;
 use App\Settings\MailSettings;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -20,6 +22,11 @@ use Inertia\Inertia;
  * Spatie Laravel Settings e applicate a runtime dal MailConfigServiceProvider.
  *
  * Driver supportati: smtp, sendmail.
+ *
+ * La password SMTP salvata vale solo verso il server per cui è stata salvata: stesso host, porta e
+ * cifratura. Con il campo della password vuoto, la prova e il salvataggio verso un'altra destinazione
+ * chiedono di riscriverla: la password salvata non parte mai verso un server diverso da quello per cui
+ * è stata scritta, e non resta accanto a un server nuovo (Coda 311).
  */
 class MailSettingsController extends Controller
 {
@@ -30,11 +37,12 @@ class MailSettingsController extends Controller
      * Passa al frontend le impostazioni correnti, l'host SMTP dal .env
      * (per mostrare lo stato del fallback) e un flag che indica se
      * la password è già salvata (per gestire il placeholder dinamico).
+     * La password non esce, nemmeno cifrata: la pagina sa solo se c'è (Coda 311).
      */
     public function edit(MailSettings $settings)
     {
         return Inertia::render('impostazioni/impostazioniMail', [
-            'settings'      => $settings,
+            'settings'      => Arr::except($settings->toArray(), ['mail_password']),
             'mail_host_env' => config('mail.mailers.smtp.host'),
             'password_set'  => !empty($settings->mail_password),
         ]);
@@ -48,7 +56,8 @@ class MailSettingsController extends Controller
      *   il driver è smtp E la configurazione è abilitata.
      * - Con sendmail non servono credenziali, solo il mittente.
      * - La password viene criptata prima del salvataggio.
-     * - Se l'utente non reinserisce la password, quella esistente viene mantenuta.
+     * - Se l'utente non reinserisce la password, quella esistente viene mantenuta, ma solo se server,
+     *   porta e cifratura restano quelli salvati: verso un'altra destinazione va riscritta (Coda 311).
      * - Quando si passa a sendmail, i campi SMTP vengono azzerati.
      */
     public function update(Request $request, MailSettings $settings)
@@ -73,6 +82,14 @@ class MailSettingsController extends Controller
         }
 
         $request->validate($rules);
+
+        // Anche con la posta spenta: il server salvato oggi è quello verso cui la password partirà
+        // quando la posta si riaccende.
+        if ($driver === 'smtp' && $this->usaPasswordSalvata($request, $settings) && ! $this->stessaDestinazione($request, $settings)) {
+            throw ValidationException::withMessages([
+                'mail_password' => __('impostazioni.error_save_mail_password_required'),
+            ]);
+        }
 
         try {
             $settings->mail_enabled      = $request->boolean('mail_enabled');
@@ -116,19 +133,33 @@ class MailSettingsController extends Controller
      *
      * Nota: usa i valori del form, non quelli già salvati nel DB,
      * così l'utente può testare prima di salvare. Per la password,
-     * se il form è vuoto usa quella già salvata nel DB (decriptata).
+     * se il form è vuoto usa quella già salvata nel DB (decriptata), ma solo verso
+     * il server salvato (Coda 311).
+     *
+     * I due controlli stanno fuori dal `try`: un indirizzo non valido o la password da riscrivere
+     * sono errori del modulo (422), non prove fallite, e non vanno nel registro delle email.
      */
     public function testConnection(Request $request, MailSettings $settings)
     {
         $driver = $request->mail_driver ?? 'smtp';
 
+        $request->validate(['test_email' => ['required', 'email']]);
+
+        $passwordSalvata = $driver === 'smtp' && $this->usaPasswordSalvata($request, $settings);
+
+        if ($passwordSalvata && ! $this->stessaDestinazione($request, $settings)) {
+            return response()->json([
+                'success' => false,
+                'message' => __('impostazioni.error_test_mail_password_required'),
+            ], 422);
+        }
+
         try {
             if ($driver === 'smtp') {
-                // Priorità alla password del form; fallback a quella salvata nel DB
-                $password = $request->mail_password;
-                if (empty($password) && !empty($settings->mail_password)) {
-                    $password = $this->decryptOrRaw($settings->mail_password);
-                }
+                // Priorità alla password del form; quella salvata solo verso il server salvato
+                $password = $passwordSalvata
+                    ? $this->decryptOrRaw($settings->mail_password)
+                    : $request->mail_password;
 
                 Config::set('mail.default', 'smtp');
                 Config::set('mail.mailers.smtp.host',       $request->mail_host);
@@ -171,6 +202,40 @@ class MailSettingsController extends Controller
 
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Il campo della password è vuoto e una password è salvata: si userebbe quella salvata.
+     * «Vuoto» come per il salvataggio (`filled`): una password «0» è una password.
+     */
+    private function usaPasswordSalvata(Request $request, MailSettings $settings): bool
+    {
+        return ! $request->filled('mail_password') && ! empty($settings->mail_password);
+    }
+
+    /**
+     * Server, porta e cifratura della richiesta sono quelli salvati? L'host senza maiuscole e spazi,
+     * la porta come numero, la cifratura con «nessuna» scritta in qualunque modo (la pagina manda la
+     * stringa "null"): così anche il passaggio a una connessione in chiaro sullo stesso server conta
+     * come un'altra destinazione. L'utente non conta: la password andrebbe comunque al server salvato.
+     */
+    private function stessaDestinazione(Request $request, MailSettings $settings): bool
+    {
+        return $this->normalizzaHost($request->input('mail_host')) === $this->normalizzaHost($settings->mail_host)
+            && (int) $request->input('mail_port') === (int) $settings->mail_port
+            && $this->normalizzaCifratura($request->input('mail_encryption')) === $this->normalizzaCifratura($settings->mail_encryption);
+    }
+
+    private function normalizzaHost(mixed $host): string
+    {
+        return is_scalar($host) ? strtolower(trim((string) $host)) : '';
+    }
+
+    private function normalizzaCifratura(mixed $cifratura): string
+    {
+        $cifratura = is_scalar($cifratura) ? strtolower(trim((string) $cifratura)) : '';
+
+        return in_array($cifratura, ['', 'null', 'none'], true) ? '' : $cifratura;
     }
 
     /**

@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
+import { useConfermaEliminazione } from '@/composables/useConfermaEliminazione';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import Alert from '@/components/Alert.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ShieldCheck, FileText, Download, Building2, Calendar, FileSignature, Landmark, ArrowLeft, Stamp, Tags, Paperclip, Repeat2, CircleCheckBig } from "lucide-vue-next";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ShieldCheck, FileText, Download, Building2, Calendar, FileSignature, Landmark, Banknote, ArrowLeft, Stamp, Tags, Paperclip, Repeat2, CircleCheckBig, Trash2, Upload, Lock } from "lucide-vue-next";
 
 const props = defineProps<{
     condominio: any;
@@ -20,6 +23,7 @@ const props = defineProps<{
     esercizio: any;
     fattura: any;
     utenteRatifica: string | null;
+    motivoBloccoModifica: string | null;
 }>();
 
 const { euro } = useCurrencyFormatter();
@@ -64,8 +68,15 @@ const statoPagamentoVariant = computed(() => {
     }
 });
 
-const page = usePage<{ flash: { message?: Flash } }>();
+const page = usePage<{ flash: { message?: Flash }; errors: Record<string, string> }>();
 const flashMessage = computed(() => page.props.flash.message);
+
+// ⚠️ Prima di questa correzione (revisione avversariale, beta.12) un upload
+// respinto da StoreFatturaDocumentoRequest — file troppo grande, formato non
+// ammesso — tornava con `errors.file` valorizzato e `flash.message` a null:
+// la pagina non mostrava letteralmente niente, e l'amministratore non poteva
+// sapere se il pulsante fosse rotto o l'allegato fosse davvero salito.
+const erroreAllegato = computed(() => page.props.errors?.file);
 
 // ── Coperture da fondo (beta.19) ─────────────────────────────────────────────
 // Una copertura 'pianificata' aspetta il giroconto di conferma: finché non
@@ -82,6 +93,21 @@ const copertureFondo = computed(() => {
 const coperturePianificate = computed(() => copertureFondo.value.filter(c => c.stato === 'pianificata'));
 const copertureConfermate  = computed(() => copertureFondo.value.filter(c => c.stato === 'confermata'));
 
+// La stessa verità del server, non più una sua approssimazione: la prop arriva da
+// `FatturaPassivaService::motivoBloccoModifica()`, che è **anche** ciò che
+// `destroyDocumento()` interroga prima di cancellare un allegato.
+//
+// ⚠️ **Prima di questa correzione (03/09/2026) il perimetro qui era più stretto di
+// quello vero, e la differenza era visibile all'utente.** La copia locale elencava
+// quattro condizioni (pagata/parziale, stornata, pregressa, sforo da ratificare); il
+// server ne ha dieci — mancavano esercizio chiuso, coperture di sopravvenienza,
+// copertura dal fondo, sforo già ratificato in assemblea, piano rate emesso o
+// approvato. In quei sei casi il cestino appariva **attivo**: si cliccava, si
+// confermava un'eliminazione «definitiva», e il server la rifiutava con un flash. Ora
+// il pulsante è spento esattamente quando l'operazione è vietata, e il motivo mostrato
+// è quello che il server userebbe.
+const fatturaCongelata = computed(() => !!props.motivoBloccoModifica);
+
 const executeDownload = (documentoId: number) => {
     window.location.href = route(generateRoute('gestionale.fatture.download'), {
         condominio: props.condominio.id,
@@ -90,6 +116,70 @@ const executeDownload = (documentoId: number) => {
     });
 };
 
+// ── Allegati (Coda 102, 1.11.0-beta.12) ──────────────────────────────────────
+// Non passa più dal modulo di Modifica: qui non c'è nessuna guardia contabile,
+// perché un allegato non è un fatto contabile — consentito anche a esercizio
+// chiuso o su una fattura stornata.
+const documentoInput = ref<HTMLInputElement | null>(null);
+const uploadingDocumento = ref(false);
+
+const apriSelezioneFile = () => documentoInput.value?.click();
+
+const caricaDocumento = (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    uploadingDocumento.value = true;
+    router.post(
+        route(generateRoute('gestionale.fatture.documenti.store'), {
+            condominio: props.condominio.id,
+            fattura: props.fattura.id,
+        }),
+        formData,
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            onFinish: () => {
+                uploadingDocumento.value = false;
+                if (documentoInput.value) documentoInput.value.value = '';
+            },
+        }
+    );
+};
+
+// ⚠️ Non un `confirm()` nativo + router.delete diretto: vedi
+// useConfermaEliminazione.ts per il difetto che il pattern con un ref singolo
+// (dato + interruttore insieme) introduce in modo silenzioso.
+const eliminazioneDocumento = useConfermaEliminazione<{ id: number }>();
+
+const eliminaDocumento = () => {
+    eliminazioneDocumento.conferma((documento) => {
+        router.delete(
+            route(generateRoute('gestionale.fatture.documenti.destroy'), {
+                condominio: props.condominio.id,
+                fattura: props.fattura.id,
+                documento: documento.id,
+            }),
+            {
+                // ⚠️ Niente `preserveScroll` qui, ed è una scelta contro un difetto misurato.
+                // `fatturaCongelata` lato client è un'approssimazione di
+                // `motivoBloccoModifica()` lato server, che blocca in più casi — per esempio una
+                // fattura aperta e approvata ma già dentro un piano rate emesso. In quei casi il
+                // cestino è attivo, la finestra di conferma si apre, e il server risponde con un
+                // `back()` e un messaggio d'errore che l'`<Alert>` disegna **in cima alla
+                // pagina**: restando ancorati alla card degli allegati, in fondo, il rifiuto non
+                // si vedeva e sembrava che il clic non avesse fatto niente. Tornando in cima il
+                // messaggio si legge. La cura vera è far viaggiare il motivo col dato, come fa
+                // già `motivoBloccoEliminazione` sulle fatture: è una voce di roadmap, non una
+                // riga da improvvisare qui.
+                onFinish: () => eliminazioneDocumento.conclusa(),
+            }
+        );
+    });
+};
 </script>
 
 <template>
@@ -180,7 +270,7 @@ const executeDownload = (documentoId: number) => {
                         class="h-10 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
                         @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.create'), { condominio: condominio.id }))"
                     >
-                        <Landmark class="w-4 h-4" /> Procedi al pagamento
+                        <Banknote class="w-4 h-4" /> Procedi al pagamento
                     </Button>
                 </div>
             </div>
@@ -256,12 +346,39 @@ const executeDownload = (documentoId: number) => {
                                     {{ props.fattura.data_scadenza ? new Date(props.fattura.data_scadenza).toLocaleDateString('it-IT') : 'N/D' }}
                                 </p>
                             </div>
+                            <!-- Coda 165 (1.11.0-beta.36): il collegamento fra la nota del fornitore e la fattura che rettifica,
+                                 nei due versi. Si cambia dall'elenco («Collega», «Scollega»), qui si legge. -->
+                            <div v-if="props.fattura.fattura_rettificata" class="space-y-1 sm:col-span-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Fattura che la nota rettifica</p>
+                                <p class="text-sm text-slate-800 dark:text-slate-200">
+                                    <button type="button" class="font-bold underline underline-offset-2"
+                                        @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: props.fattura.fattura_rettificata.id }))">
+                                        n. {{ props.fattura.fattura_rettificata.numero_documento }}
+                                    </button>
+                                    <span v-if="props.fattura.fattura_rettificata.data_documento" class="text-slate-500"> del {{ new Date(props.fattura.fattura_rettificata.data_documento).toLocaleDateString('it-IT') }}</span>
+                                    <!-- Una nota contestata non conta nel netto (NettoNoteCollegate): lo si dice (testuale della Fase 1-bis). -->
+                                    <span v-if="props.fattura.stato_approvazione === 'contestata'" class="block text-xs text-slate-500 mt-1">La nota è contestata: finché resta tale, nel carrello dei piani rate e nel cruscotto la fattura non ne tiene conto.</span>
+                                    <span v-else class="block text-xs text-slate-500 mt-1">Nel carrello dei piani rate e nel cruscotto la fattura vale al netto di questa nota.</span>
+                                </p>
+                            </div>
+                            <div v-if="props.fattura.note_collegate?.length" class="space-y-1 sm:col-span-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ props.fattura.note_collegate.length === 1 ? 'Nota di credito del fornitore collegata' : 'Note di credito del fornitore collegate' }}</p>
+                                <p class="text-sm text-slate-800 dark:text-slate-200 flex flex-wrap gap-x-3 gap-y-1">
+                                    <button v-for="n in props.fattura.note_collegate" :key="n.id" type="button" class="font-bold underline underline-offset-2"
+                                        @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: n.id }))">
+                                        n. {{ n.numero_documento }} ({{ euro(n.totale_documento) }}<template v-if="n.stato_approvazione === 'contestata'">, contestata: non conta</template>)
+                                    </button>
+                                </p>
+                                <p v-if="props.fattura.note_collegate.some((n: any) => n.stato_approvazione !== 'contestata')" class="text-xs text-slate-500">Nel carrello dei piani rate e nel cruscotto la fattura vale al netto delle note collegate che non sono contestate.</p>
+                            </div>
                             <div v-if="props.fattura.dati_extra?.fiscal?.ritenuta_details" class="space-y-1 sm:col-span-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ritenuta d'Acconto</p>
                                 <p class="text-sm font-bold text-slate-800 dark:text-slate-200">
                                     Soggetto a ritenuta del {{ props.fattura.dati_extra.fiscal.ritenuta_details.aliquota }}% 
-                                    <span class="text-slate-500 font-normal ml-1">(Tributo: {{ props.fattura.dati_extra.fiscal.ritenuta_details.codice_tributo }})</span>
+                                    <span class="text-slate-500 font-normal ml-1">(Tributo alla registrazione: {{ props.fattura.dati_extra.fiscal.ritenuta_details.codice_tributo }})</span>
                                 </p>
+                                <!-- Coda 316: il codice è congelato alla registrazione; quello dell'F24 lo decide il regime della ritenuta (`TipoRitenuta::codiceTributo`) e, solo negli appalti, la natura del percipiente: per un ente non commerciale dalla 1.11.0-beta.59 è 1020 anche sulle fatture registrate con 1019. -->
+                                <p class="text-xs text-slate-500">Nell'F24 il codice lo decide il regime della ritenuta e, negli appalti, la natura del percipiente: non questo valore.</p>
                             </div>
                         </div>
                         
@@ -274,12 +391,19 @@ const executeDownload = (documentoId: number) => {
                                 <Landmark class="w-3.5 h-3.5" />
                                 {{ props.fattura.stato_pagamento === 'pagata' ? 'Saldato (Pagata)' : (props.fattura.stato_pagamento === 'aperta' ? 'Da Pagare (Aperta)' : 'Pagamento: ' + props.fattura.stato_pagamento) }}
                             </span>
-                            <Button 
-                                v-if="props.fattura.stato_pagamento !== 'pagata' && props.fattura.stato_approvazione === 'approvata'"
+                            <Button
+                                v-if="props.fattura.stato_pagamento !== 'pagata' && props.fattura.stato_approvazione === 'approvata' && !props.fattura.e_nata_da_storno"
                                 @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.create'), { condominio: props.condominio.id, fornitore_id: props.fattura.fornitore_id, fattura_id: props.fattura.id }))"
-                                class="h-7 px-3 text-xs gap-1.5 shadow-sm font-medium bg-emerald-600 hover:bg-emerald-700 text-white border-none rounded-md"
+                                class="h-7 px-3 text-[11px] gap-1.5 shadow-sm font-bold uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white border-none rounded-md"
                             >
-                                <Landmark class="w-3 h-3" /> Paga Fattura
+                                <!-- ⚠️ `Banknote` e non `Landmark`: nel prodotto `Landmark` è la banca
+                                     come istituzione, mentre l'azione di pagare ha già la sua icona in
+                                     F24Show.vue:510 («Registra versamento»). Allineata anche
+                                     «Procedi al pagamento» più in alto: è la stessa azione, e due
+                                     icone diverse per la stessa cosa nella stessa pagina si notano.
+                                     Resta `Landmark` sul badge dello stato di pagamento, che non è
+                                     un'azione ma un fatto. -->
+                                <Banknote class="w-3 h-3" /> Paga fattura
                             </Button>
                         </div>
                     </CardContent>
@@ -350,13 +474,35 @@ const executeDownload = (documentoId: number) => {
                 </Card>
 
                 <Card class="shadow-sm border-slate-200 dark:border-slate-800">
-                    <CardHeader class="pb-4">
+                    <CardHeader class="pb-4 flex flex-row items-center justify-between">
                         <CardTitle class="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
                             <Paperclip class="w-4 h-4 text-slate-400" /> Allegati
                         </CardTitle>
+                        <Button size="sm" variant="outline" class="h-8 text-xs gap-1.5" :disabled="uploadingDocumento" @click="apriSelezioneFile">
+                            <Upload class="w-3.5 h-3.5" /> {{ uploadingDocumento ? 'Caricamento...' : 'Allega' }}
+                        </Button>
+                        <input ref="documentoInput" type="file" class="hidden" accept=".pdf,.xml,.p7m,.jpg,.jpeg,.png" @change="caricaDocumento" />
                     </CardHeader>
                     <CardContent>
-                        <div v-if="props.fattura.documenti?.length" class="space-y-3">
+                        <p v-if="erroreAllegato" class="text-xs text-rose-600 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-lg px-3 py-2 mb-3">
+                            {{ erroreAllegato }}
+                        </p>
+                        <!-- ⚠️ Il motivo è della FATTURA, non del singolo allegato: una nota
+                             sola sopra l'elenco, sempre visibile — non un tooltip che si vede
+                             solo passandoci sopra col mouse (e mai su un touch screen), e non
+                             ripetuta per ogni riga se i documenti sono più d'uno. Stessa
+                             filosofia del menu di riga dell'elenco fatture, che scrive
+                             «Elimina — non consentito» come testo, non lo affida a un title. -->
+                        <p v-if="fatturaCongelata && props.fattura.documenti?.length" class="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 mb-3">
+                            <Lock class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <!-- Il motivo esatto, non un «non modificabile» generico che valeva
+                                 identico per una fattura già pagata e per una con lo sforo ancora
+                                 da ratificare — segnalato da Vincenzo il 03/09/2026. -->
+                            <span>{{ props.motivoBloccoModifica }} Gli allegati restano scaricabili ma non si possono eliminare.</span>
+                        </p>
+                        <!-- 213px = 3 righe da 63px + 2 spazi da 12px (space-y-3): esattamente 3
+                             allegati visibili, dal 4° in poi si scorre. -->
+                        <div v-if="props.fattura.documenti?.length" class="space-y-3 max-h-[213px] overflow-y-auto custom-scrollbar pr-1">
                             <div v-for="doc in props.fattura.documenti" :key="doc.id" class="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group">
                                 <div class="flex items-center gap-3 overflow-hidden">
                                     <div class="w-8 h-8 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
@@ -364,12 +510,65 @@ const executeDownload = (documentoId: number) => {
                                     </div>
                                     <div class="min-w-0">
                                         <p class="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{{ doc.name }}</p>
-                                        <p class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">{{ doc.file_size ? (doc.file_size / 1024).toFixed(1) + ' KB' : 'PDF' }}</p>
+                                        <!-- ⚠️ La data per esteso, non «tre giorni fa»: su un allegato
+                                             contabile serve sapere QUANDO è entrato, e una data relativa
+                                             non si confronta con quelle della fattura qui accanto. Stesso
+                                             formato del resto della pagina (`toLocaleDateString('it-IT')`). -->
+                                        <p class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">
+                                            {{ doc.file_size ? (doc.file_size / 1024).toFixed(1) + ' KB' : 'PDF' }}
+                                            <span v-if="doc.created_at" class="text-slate-400">
+                                                &middot; {{ new Date(doc.created_at).toLocaleDateString('it-IT') }}
+                                            </span>
+                                        </p>
                                     </div>
                                 </div>
-                                <Button size="icon" variant="ghost" class="shrink-0 h-8 w-8 text-slate-400 group-hover:text-primary" @click="executeDownload(doc.id)" title="Scarica Documento">
-                                    <Download class="w-4 h-4" />
-                                </Button>
+                                <div class="flex items-center shrink-0">
+                                    <!-- ⚠️ Stesso fumetto dell'applicazione del pulsante accanto, non il
+                                         `title` nativo: due icone affiancate che si comportano in due modi
+                                         diversi (grafica e ritardo del sistema operativo contro quelli
+                                         dell'app) si notano. E «Scarica documento» in forma di frase: la
+                                         maiuscola a metà era Title Case all'inglese. -->
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger as-child>
+                                                <Button size="icon" variant="ghost" class="h-8 w-8 text-slate-400 group-hover:text-primary" @click="executeDownload(doc.id)" aria-label="Scarica documento">
+                                                    <Download class="w-4 h-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent class="text-xs">Scarica documento</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger as-child>
+                                                <!-- ⚠️ Il trigger dell'hover è lo span, non il Button: un pulsante
+                                                     con l'attributo `disabled` non riceve gli eventi del mouse in
+                                                     nessun browser, quindi un tooltip agganciato lì non si aprirebbe
+                                                     mai proprio nel caso — congelata — in cui serve di più.
+                                                     ⚠️ Ma `tabindex` solo quando serve: a cestino attivo lo span
+                                                     sarebbe una fermata di TAB in più per ogni allegato, che non
+                                                     fa niente — il pulsante dentro è già raggiungibile da solo. -->
+                                                <span class="inline-block" :tabindex="fatturaCongelata ? 0 : -1">
+                                                    <Button size="icon" variant="ghost" class="h-8 w-8 text-slate-400 hover:text-rose-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-slate-400" :disabled="fatturaCongelata" @click="eliminazioneDocumento.chiedi(doc)" :aria-label="fatturaCongelata ? 'Elimina documento — non consentito su una fattura non più modificabile' : 'Elimina documento'">
+                                                        <Lock v-if="fatturaCongelata" class="w-4 h-4" />
+                                                        <Trash2 v-else class="w-4 h-4" />
+                                                    </Button>
+                                                </span>
+                                            </TooltipTrigger>
+                                            <!-- Il motivo esatto arriva da motivoBloccoModifica() — sono
+                                                 quattro condizioni diverse (pagata o parziale, stornata,
+                                                 pregressa, sforo da ratificare) e «un fatto contabile
+                                                 ormai chiuso» ne descriveva solo una, dicendo il falso
+                                                 sulle altre tre. Segnalato da Vincenzo il 03/09/2026. -->
+                                            <TooltipContent v-if="fatturaCongelata" class="text-xs max-w-72">
+                                                {{ props.motivoBloccoModifica }} Per correggere un allegato sbagliato puoi caricarne uno nuovo accanto a questo.
+                                            </TooltipContent>
+                                            <TooltipContent v-else class="text-xs">
+                                                Elimina documento
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
                             </div>
                         </div>
                         <div v-else class="text-center py-8">
@@ -383,5 +582,24 @@ const executeDownload = (documentoId: number) => {
                 </section>
             </div>
         </div>
+
+        <ConfirmDialog
+            :model-value="eliminazioneDocumento.confermaAperta.value"
+            title="Eliminare questo documento?"
+            description="Il file viene rimosso dal disco e la riga sparisce dagli allegati: l'operazione non è reversibile."
+            variant="destructive"
+            :loading="eliminazioneDocumento.inCorso.value"
+            @update:model-value="eliminazioneDocumento.suCambioApertura"
+            @confirm="eliminaDocumento"
+        />
     </GestionaleLayout>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+/* ⚠️ La quarta regola: senza questa la barra resta chiara su fondo scuro. Il blocco era stato
+   copiato da Dashboard.vue e ActionInbox.vue prendendone tre su quattro. */
+.dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+</style>

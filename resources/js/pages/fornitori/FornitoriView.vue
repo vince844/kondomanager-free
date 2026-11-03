@@ -5,6 +5,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import FornitoreLayout from '@/layouts/fornitori/FornitoreLayout.vue';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { trans } from 'laravel-vue-i18n';
 import { 
@@ -29,7 +30,8 @@ const props = defineProps<{
   fornitore: Fornitore;
 }>()
 
-const { generatePath, generateRoute } = usePermission();
+// Il modulo di modifica chiede «Modifica anagrafiche» (`FornitorePolicy::update`, Coda 402): senza, il comando non compare.
+const { generatePath, generateRoute, hasPermission } = usePermission();
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -130,6 +132,7 @@ const statoDot = computed(() => {
           </div>
 
           <Link
+            v-if="hasPermission([Permission.EDIT_ANAGRAFICHE])"
             as="button"
             :href="generatePath('fornitori/:fornitore/edit', { fornitore: props.fornitore.id })"
             class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 dark:bg-slate-700 border border-transparent shadow-sm text-xs font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors cursor-pointer"

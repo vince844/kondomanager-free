@@ -6,9 +6,11 @@ use App\Enums\NotificationType;
 use App\Enums\Permission;
 use App\Events\Documenti\NotifyAdminOfCreatedDocumento;
 use App\Models\Anagrafica;
+use App\Models\Documento;
 use App\Models\User;
 use App\Notifications\Documenti\ApproveDocumentoNotification;
 use App\Notifications\Documenti\NewDocumentoNotification;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Traits\FilterByNotificationPreference;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Collection;
@@ -46,7 +48,7 @@ class SendNewDocumentoNotificationToAdmin implements ShouldQueue
 
                 } else {
 
-                    $anagrafiche = $this->getAnagrafiche($validated);
+                    $anagrafiche = $this->getAnagrafiche($documento, $validated);
 
                     $recipients = $admins->keyBy('email')
                         ->union($anagrafiche)
@@ -67,13 +69,13 @@ class SendNewDocumentoNotificationToAdmin implements ShouldQueue
         }
     }
 
-    private function getAnagrafiche(array $validated): Collection
+    /**
+     * La platea è quella di `DestinatariNotifica` (Coda 302), letta dall'archivio: la stessa
+     * dell'elenco del portale, senza il creatore.
+     */
+    private function getAnagrafiche(Documento $documento, array $validated): Collection
     {
-        $query = !empty($validated['anagrafiche'])
-            ? Anagrafica::whereIn('id', $validated['anagrafiche'])
-            : Anagrafica::whereHas('condomini', fn ($q) =>
-                $q->whereIn('condominio_id', $validated['condomini_ids'])
-            );
+        $query = Anagrafica::whereIn('id', app(DestinatariNotifica::class)->perModello($documento));
 
         $filtered = $this->filterByNotificationPreference($query, NotificationType::NEW_ARCHIVE_DOCUMENT->value)->get();
         

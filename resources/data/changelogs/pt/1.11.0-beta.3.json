@@ -1,0 +1,9 @@
+{
+ "features": [
+  "⚠️ ESTA VERSÃO NÃO ADICIONA MIGRAÇÕES. Abre a importação do Danea a quem exporta os dados da forma mais natural — «Import/Export via Excel» — e corrige uma falha de privacidade já existente: a importação a meio de um colega era visível e apagável por qualquer pessoa com permissão de importar.",
+  "AGORA PODES INDICAR EM QUE CONDOMÍNIO IMPORTAR — O Danea oferece duas formas de extrair os dados. As impressões trazem o nome do condomínio no cabeçalho; as exportações «Import/Export via Excel» não, são listas simples. Quem vinha por aí via unidades, pessoas e tabelas lidas corretamente e depois parava sem explicação. Agora, quando nenhum ficheiro o diz, o ecrã de verificação pergunta-te onde colocá-los.",
+  "O EXERCÍCIO NÃO É PEDIDO, É DEDUZIDO — Escolhê-lo à mão seria o ponto mais fácil de errar: a data de início do exercício torna-se a data de cada titularidade escrita, por isso apontar ao ano errado não produz erro nem aviso — escreve números certos no período errado. Usa-se o exercício aberto do condomínio escolhido, e diz-se antes.",
+  "OS EXERCÍCIOS EXTRAORDINÁRIOS DO DANEA TORNAM-SE GESTÕES — No teu programa antigo um exercício extraordinário é um ano à parte; no Kondomanager é uma gestão dentro do exercício que cobre esse período. A importação reconhece-o e anuncia-o antes de escrever.",
+  "A IMPORTAÇÃO DE UM COLEGA JÁ NÃO É DE TODOS — Quem podia importar via a última importação a meio de qualquer outra pessoa, com o nome do condomínio, e podia retomá-la ou apagá-la. Nove endereços não verificavam sequer o proprietário. Se no teu escritório mais do que uma pessoa usa o Kondomanager, esta atualização também te diz respeito."
+ ]
+}

@@ -11,6 +11,7 @@ use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
 use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
+use App\Exceptions\Pagamenti\NotaStornoNonCompensabileException;
 use App\Exceptions\Pagamenti\RitenutaIncoerenteException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
@@ -319,6 +320,14 @@ class PagamentoFornitoreController extends Controller
             // rumore in mezzo agli errori veri.
             return back()->withErrors(['idempotency_key_conflitto' => $e->getMessage()]);
 
+        } catch (NotaStornoNonCompensabileException $e) {
+            // Coda 124: un'allocazione punta a una nota nata da uno storno. Non dovrebbe
+            // arrivare qui — la schermata non le offre più — ma se ci arriva è una regola di
+            // dominio rispettata, non un guasto. Stesso motivo del catch sopra: nel catch
+            // generico finirebbe a Log::error con lo stack trace, come rumore fra gli errori
+            // veri. Trovato dalla revisione avversariale del 05/09/2026.
+            return back()->withErrors(['nota_storno_non_compensabile' => $e->getMessage()]);
+
         } catch (\Exception $e) {
             // Errore tecnico non previsto. La transazione atomica garantisce
             // che nessun dato parziale sia stato scritto nel DB.
@@ -344,6 +353,14 @@ class PagamentoFornitoreController extends Controller
 
         $fornitoreId = (int) $request->input('fornitore_id');
 
+        // ⚠️ **Coda 133 — le note da storno GIÀ a database.** La correzione della Coda 124 marca le
+        // note nuove con `dati_extra.nota_storno`; quelle generate prima non ce l'hanno e restavano
+        // selezionabili, quindi compensabili con un documento che il fornitore non ha mai emesso.
+        // Il legame per riconoscerle esiste da sempre e sta sull'ALTRO documento: la fattura
+        // stornata porta `dati_extra.stornata_da_id` con l'id della nota. Si raccolgono in un colpo
+        // solo — una query, non una per nota — e si escludono per id. Nessuna migrazione.
+        $idNoteDaStorno = PagamentoFornitoreService::idNoteNateDaStorno($condominio->id);
+
         // Fatture aperte/parziali del fornitore
         // Fatture aperte/parziali del fornitore (incluse non approvate per mostrarle disabilitate)
         $pendenze = FatturaPassiva::where('condominio_id', $condominio->id)
@@ -352,6 +369,15 @@ class PagamentoFornitoreController extends Controller
                 StatoPagamentoFattura::APERTA->value,
                 StatoPagamentoFattura::PARZIALE->value,
             ])
+            // ⚠️ **Coda 124.** Non basta escludere la nota da storno da $noteCredito qui sotto:
+            // questa query pesca comunque TUTTI i documenti aperti del fornitore, nota da storno
+            // compresa, e il merge più in basso rigetta solo le note che sono ANCHE in
+            // $noteCredito — chiudere una porta senza chiudere questa lascerebbe la nota
+            // ugualmente selezionabile, solo passando per l'altra lista. La nota generata da uno
+            // storno non è un documento che il fornitore conosca: non ha senso pagarla né
+            // compensarla, va tolta da qui.
+            ->whereNull('dati_extra->nota_storno')
+            ->whereNotIn('id', $idNoteDaStorno)   // Coda 133: anche le storiche, vedi sopra
             ->with('righe')
             ->orderBy('data_scadenza')
             ->get()
@@ -637,8 +663,11 @@ class PagamentoFornitoreController extends Controller
 
         $mpdf = $pdfService->generate('pdf.gestionale.distinta', $data);
 
-        $filename = sprintf('Distinta_PAG-%s_%s.pdf',
-            $pagamento->scrittura->numero_protocollo ?? $pagamento->id,
+        // Il protocollo porta già il prefisso («PAG-2026-00001»): il nome usciva «Distinta_PAG-PAG-…».
+        // Forma della casa (beta.28): «distinta-pagamento-<protocollo>-<data>.pdf», solo ASCII.
+        $filename = PdfService::nomeFile(
+            'distinta-pagamento',
+            (string) ($pagamento->scrittura->numero_protocollo ?? $pagamento->id),
             $pagamento->data_pagamento?->format('Ymd') ?? date('Ymd')
         );
 

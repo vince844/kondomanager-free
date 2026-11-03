@@ -130,27 +130,18 @@ class ComunicazioneService
         ?Anagrafica $anagrafica,
         ?Collection $condominioIds
     ): Builder {
-        if (!$anagrafica || !$condominioIds) {
+        if (!$anagrafica || !$condominioIds || !$anagrafica->user) {
             Log::warning('No anagrafica or condominio IDs provided for user-scoped query.');
             return Comunicazione::query()->whereRaw('1 = 0');
         }
 
+        // Chi vede che cosa lo dice `Comunicazione::scopeVisibiliNelPortale()`, la stessa regola
+        // della scheda; l'elenco aggiunge solo «pubblicata e approvata» per tutti (Coda 389). La
+        // regola non si riscrive qui: `is_private` la guarda lo scope (Coda 304).
         return Comunicazione::with(['anagrafiche', 'condomini', 'createdBy.anagrafica'])
+            ->visibiliNelPortale($anagrafica->user)
             ->where('is_published', true)
-            ->where('is_approved', true)
-            ->where(function ($query) use ($anagrafica, $condominioIds) {
-                $query->where(function ($q) use ($anagrafica) {
-                    $q->whereHas('anagrafiche', function ($subQ) use ($anagrafica) {
-                        $subQ->where('anagrafica_id', $anagrafica->id);
-                    });
-                })
-                ->orWhere(function ($q) use ($condominioIds) {
-                    $q->whereDoesntHave('anagrafiche')
-                      ->whereHas('condomini', function ($subQ) use ($condominioIds) {
-                          $subQ->whereIn('condominio_id', $condominioIds);
-                      });
-                });
-            });
+            ->where('is_approved', true);
     }
 
     /**

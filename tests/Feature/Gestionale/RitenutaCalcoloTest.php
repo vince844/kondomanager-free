@@ -45,7 +45,8 @@ describe('TipoRitenuta', function () {
         expect(TipoRitenuta::LAVORO_AUTONOMO_20->titolo())->toBe(App\Enums\Fiscale\TitoloRitenuta::ACCONTO);
     });
 
-    it('provvigioni: 23% su base 50% con riduzione, su base 20% senza', function () {
+    // Coda 325: la base ordinaria è il 50%; il 20% è la base ridotta, con la dichiarazione del percipiente (art. 25-bis c. 2).
+    it('provvigioni: 23% su base 50%, ordinaria; su base 20%, ridotta con la dichiarazione del percipiente', function () {
         expect(TipoRitenuta::PROVVIGIONI_BASE_50->percentualeBase())->toBe(50.0);
         expect(TipoRitenuta::PROVVIGIONI_BASE_20->percentualeBase())->toBe(20.0);
         expect(TipoRitenuta::PROVVIGIONI_BASE_50->aliquota(Carbon::parse('2026-01-01')))->toBe(23.0);

@@ -2,6 +2,7 @@
 
 import { TransitionRoot } from '@headlessui/vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import DeleteUser from '@/components/DeleteUser.vue';
 import HeadingSmall from '@/components/HeadingSmall.vue';
 import InputError from '@/components/InputError.vue';
@@ -34,11 +35,17 @@ const user = page.props.auth.user as User;
 const form = useForm({
     name: user.name,
     email: user.email,
+    current_password: '',
 });
+
+// Coda 261: cambiare l'email chiede la password attuale, nello stesso modulo; il solo nome no.
+// Il server la chiede alla stessa condizione (`ProfileUpdateRequest`).
+const emailCambiata = computed(() => form.email !== user.email);
 
 const submit = () => {
     form.patch(route('profile.update'), {
         preserveScroll: true,
+        onFinish: () => form.reset('current_password'),
     });
 };
 </script>
@@ -77,6 +84,20 @@ const submit = () => {
                             :placeholder="trans('settings.profile.email_placeholder')"
                         />
                         <InputError class="mt-2" :message="form.errors.email" />
+                    </div>
+
+                    <div v-if="emailCambiata" class="grid gap-2">
+                        <Label for="current_password">{{ trans('settings.profile.current_password') }}</Label>
+                        <Input
+                            id="current_password"
+                            type="password"
+                            class="mt-1 block w-full"
+                            v-model="form.current_password"
+                            autocomplete="current-password"
+                            :placeholder="trans('settings.profile.current_password_placeholder')"
+                        />
+                        <p class="text-xs text-muted-foreground">{{ trans('settings.profile.current_password_hint') }}</p>
+                        <InputError class="mt-2" :message="form.errors.current_password" />
                     </div>
 
                     <div v-if="mustVerifyEmail && !user.email_verified_at">

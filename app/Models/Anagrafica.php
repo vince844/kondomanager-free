@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 use App\Models\Gestionale\RigaScrittura;
@@ -63,9 +64,29 @@ class Anagrafica extends Model
         return $this->belongsToMany(Comunicazione::class, 'anagrafica_comunicazione')->withTimestamps();
     }
 
+    /**
+     * I documenti dell'archivio di cui questa persona è **destinataria**.
+     *
+     * ⚠️ Da non confondere con `documentiPropri()`: qui la persona è *fra i destinatari* di un
+     * documento che vive nell'archivio (il verbale mandato a tutti), là il documento **è suo** —
+     * la copia del documento d'identità, una delega, un contratto d'affitto. Sono due domande
+     * diverse e due tabelle diverse, e tenerle separate è il motivo per cui hanno due nomi.
+     */
     public function documenti()
     {
         return $this->belongsToMany(Documento::class, 'anagrafica_documento');
+    }
+
+    /**
+     * I documenti **della persona**, quelli che l'amministratore archivia sulla sua scheda.
+     *
+     * Stessa forma che il fornitore ha da sempre (`Fornitore::documenti()`, morphMany su
+     * `documentable`): il documento appartiene al soggetto, e cancellando il soggetto se ne va con
+     * lui. Aggiunta nella 1.11.0-beta.9 insieme alla scheda dell'anagrafica.
+     */
+    public function documentiPropri(): MorphMany
+    {
+        return $this->morphMany(Documento::class, 'documentable');
     }
 
     public function eventi()
@@ -75,11 +96,17 @@ class Anagrafica extends Model
 
     public function immobili()
     {
+        // `id` nel pivot e modello dedicato dalla 1.11.0-beta.30 (B1 del progetto sul subentro):
+        // la riga di titolarità ha un'identità propria, perché B2 registrerà più periodi per la stessa
+        // persona e le rotte dovranno lavorare per periodo, non per persona. Nessun cast: vedi il
+        // docblock di `TitolaritaImmobile`.
         return $this->belongsToMany(Immobile::class, 'anagrafica_immobile')
+            ->using(TitolaritaImmobile::class)
             ->withPivot([
+                'id',
                 'tipologia',
                 'quota',
-                'tipologie_spese',
+                // `tipologie_spese` è caduta con la 1.11.0-beta.31 (decisione 8 del progetto sul subentro).
                 'data_inizio',
                 'data_fine',
                 'attivo',

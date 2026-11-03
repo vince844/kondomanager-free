@@ -119,6 +119,30 @@ it('le sole rotte senza vincolo sono quelle dichiarate, con la loro ragione', fu
     );
 });
 
+it('⚠️ in ogni rotta vincolata, il parametro che precede un figlio tipizzato è tipizzato anch\'esso', function () {
+    // Rilievo S1 della Fase 1-bis della 1.11.0-beta.42. `scopeBindings()` vincola un figlio al parametro che lo precede
+    // nell'indirizzo (`parentOfParameter`); se quel parametro non è tipizzato resta una stringa, e il figlio si risolve per
+    // sola chiave. La rotta resta «vincolata» per il test qui sopra, e il buco non si vedeva: `publishSilent` aveva
+    // `$esercizio` senza tipo, e il piano di un altro condominio, sotto il proprio, si pubblicava. Stesse fonti di
+    // `ImplicitRouteBinding`: i parametri tipizzati della firma e i nomi dell'indirizzo, con lo stesso ripiego sul nome.
+    $buchi = [];
+    foreach (Route::getRoutes()->getRoutes() as $r) {
+        if (! haIlVincolo($r)) {
+            continue;
+        }
+        $tipizzati = collect($r->signatureParameters(['subClass' => \Illuminate\Contracts\Routing\UrlRoutable::class]))->map(fn ($p) => $p->getName())->all();
+        $tipizzato = fn (string $nome) => in_array($nome, $tipizzati, true) || in_array(\Illuminate\Support\Str::camel($nome), $tipizzati, true);
+        $nomi = $r->parameterNames();
+        foreach ($nomi as $i => $nome) {
+            if ($i > 0 && $tipizzato($nome) && ! $tipizzato($nomi[$i - 1])) {
+                $buchi[] = $r->uri() . " ({$nomi[$i - 1]} prima di {$nome})";
+            }
+        }
+    }
+
+    expect(array_values(array_unique($buchi)))->toBe([], "Rotte vincolate con un genitore non tipizzato: il figlio si risolve senza vincolo.\n" . implode("\n", $buchi));
+});
+
 it('il vincolo copre quasi tutto il gestionale, e la cifra è quella dichiarata', function () {
     $tutte = rotteDelGestionale()->count();
     $con = rotteDelGestionale()->filter(fn ($r) => haIlVincolo($r))->count();
@@ -393,3 +417,30 @@ function coordinateDellaCoppia(string $rotta, string $chiave, array $contesto): 
 
     return [$contesto['condominio'], $chiave === 'tabellaId' ? 'tabella' : $chiave];
 }
+
+it('⚠️ «Pubblica in silenzio» non pubblica il piano di un altro condominio, né con un esercizio inesistente: 404, l\'evento resta nascosto e nessuna notifica parte', function () {
+    // Rilievo S1 della Fase 1-bis della 1.11.0-beta.42: prima rispondeva «Rate pubblicate!», l'evento del condominio B passava a
+    // privato e `RataEmessa` partiva verso i suoi condòmini.
+    \Illuminate\Support\Facades\Event::fake([\App\Events\Gestionale\RataEmessa::class]);
+    $admin = amministratoreDiProva();
+    $a = condominioCompleto();
+    $b = condominioCompleto();
+    $rataB = \App\Models\Gestionale\Rata::create(['piano_rate_id' => $b['pianoRate']->id, 'numero_rata' => 1, 'data_scadenza' => '2026-01-31', 'importo_totale' => 20000, 'stato' => 'emessa']);
+    $categoria = \App\Models\CategoriaEvento::firstOrCreate(['name' => 'Rate'], ['description' => 'Rate']);
+    $evento = \App\Models\Evento::create([
+        'title' => 'Rata 1', 'start_time' => now()->addMonth(), 'end_time' => now()->addMonth()->addHour(), 'created_by' => $admin->id,
+        'description' => 'Rata 1', 'category_id' => $categoria->id, 'visibility' => 'hidden', 'is_approved' => true, 'is_completed' => false,
+        'tipo' => \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value,
+        'meta' => ['type' => 'scadenza_rata_condomino', 'context' => ['piano_rate_id' => $b['pianoRate']->id, 'rata_id' => $rataB->id]],
+    ]);
+
+    $this->actingAs($admin)->post(route('admin.gestionale.piani-rate.publish-silent', [$a['condominio'], $a['esercizio'], $b['pianoRate']]))->assertNotFound();
+    $this->actingAs($admin)->post(route('admin.gestionale.piani-rate.publish-silent', [$a['condominio'], 999999, $b['pianoRate']]))->assertNotFound();
+
+    expect($evento->fresh()->visibility)->toBe('hidden');
+    \Illuminate\Support\Facades\Event::assertNotDispatched(\App\Events\Gestionale\RataEmessa::class);
+
+    // Controprova: il proprio piano, sotto il proprio esercizio, si pubblica.
+    $this->actingAs($admin)->post(route('admin.gestionale.piani-rate.publish-silent', [$b['condominio'], $b['esercizio'], $b['pianoRate']]))->assertRedirect();
+    expect($evento->fresh()->visibility)->toBe('private');
+});

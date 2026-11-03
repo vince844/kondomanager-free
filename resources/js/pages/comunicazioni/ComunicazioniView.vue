@@ -4,10 +4,11 @@ import { Head } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Megaphone, Eye, BellRing, CalendarDays, Info } from "lucide-vue-next";
+import { Megaphone, Eye, BellRing, CalendarDays, Info, Lock } from "lucide-vue-next";
 import { trans } from 'laravel-vue-i18n';
 import { usePermission } from "@/composables/permissions";
-import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
+import { priorityConstants } from '@/lib/comunicazioni/constants';
+import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
 import type { BreadcrumbItem } from '@/types';
 import type { Comunicazione } from "@/types/comunicazioni";
 
@@ -22,11 +23,13 @@ const currentPriority = computed(() => {
     return priorityConstants.find(p => p.value === props.comunicazione.priority);
 });
 
-// Ricava dinamicamente l'oggetto stato (pubblicato/nascosto) dal file constants
-const currentPublished = computed(() => {
-    // !! forza la conversione in booleano puro (1 -> true, 0 -> false)
-    return publishedConstants.find(p => p.value === !!props.comunicazione.is_published);
-});
+// Coda 306: lo stato di pubblicazione viene da `is_published` e `is_approved` insieme, e «Privata» è
+// un'indicazione a parte, da `is_private`: le due etichette vengono da `@/lib/pubblicazione`, come
+// nelle tabelle. La pagina è la stessa per il pannello e per il portale.
+const statoCorrente = computed(() =>
+    statoPubblicazione(props.comunicazione.is_published, props.comunicazione.is_approved)
+);
+const etichettaPrivata = computed(() => etichettaPrivacy('comunicazioni', props.comunicazione.is_private));
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   {
@@ -149,19 +152,15 @@ const pageGuides = computed(() => [
                                 {{ trans('comunicazioni.label.visibility') }}
                             </p>
                             
-                            <div v-if="currentPublished" class="flex items-center gap-2">
-                                <component
-                                    :is="currentPublished.icon"
-                                    class="w-4 h-4"
-                                    :class="currentPublished.colorClass"
-                                />
+                            <div class="flex items-center gap-2">
+                                <div class="w-2 h-2 rounded-full shrink-0" :class="colorePubblicazione(statoCorrente)"></div>
                                 <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                    {{ trans(currentPublished.label) }}
+                                    {{ trans(etichettaStatoPubblicazione('comunicazioni', comunicazione.is_published, comunicazione.is_approved)) }}
                                 </span>
                             </div>
-                            
-                            <div v-else class="text-sm font-semibold text-slate-400">
-                                {{ trans('comunicazioni.label.draft_hidden') }}
+                            <div v-if="etichettaPrivata" class="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500" :title="trans('comunicazioni.privacy.private_hint')">
+                                <Lock class="w-3 h-3 shrink-0" />
+                                <span>{{ trans(etichettaPrivata) }}</span>
                             </div>
                         </div>
 

@@ -99,10 +99,12 @@ beforeEach(function () {
         'mime_type'    => 'application/pdf',
         'file_size'    => 9,
         'created_by'   => $this->admin->id,
-        'category_id'  => $this->categoria->id,
         'is_published' => true,
         'is_approved'  => true,
     ]);
+
+    // Con il legame, non con la colonna: vedi 1.11.0-beta.10.
+    $this->documento->categorie()->attach($this->categoria->id);
 
     $this->documento->condomini()->attach($this->condominio->id);
     $this->documento->anagrafiche()->attach([$this->giaDestinatario->id]);
@@ -117,7 +119,10 @@ function datiDocumento(Documento $d, Condominio $condominio, array $anagrafiche,
         'created_by'      => $d->created_by,
         'is_approved'     => $d->is_approved,
         'is_published'    => $d->is_published,
-        'category_id'     => $d->category_id,
+        // ⚠️ Il modulo di modifica manda **sempre** le categorie, ed è quello che questo fixture
+        // deve rappresentare: prima diceva `'category_id' => $d->category_id`, che dalla
+        // 1.11.0-beta.10 vale `null` — un campo che nel modulo vero non esiste più.
+        'categorie'       => $d->categorie->pluck('id')->all(),
         'condomini_ids'   => [$condominio->id],
         'anagrafiche'     => collect($anagrafiche)->pluck('id')->all(),
         'avvisa_destinatari' => $avvisa,

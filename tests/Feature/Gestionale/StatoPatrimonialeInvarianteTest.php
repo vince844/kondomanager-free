@@ -150,3 +150,68 @@ test('il giroconto banca→fondo non altera la quadratura (riclassificazione int
     expect($sp['attivo']['totale'])->toBe(100_000);
     expect($sp['quadra'])->toBeTrue();
 })->group('stato-patrimoniale');
+
+/**
+ * «Via delle Acacie», 12/09/2026: una banca creata con saldo zero, da cui sono usciti pagamenti prima
+ * che qualcuno registrasse il saldo iniziale. Lo Stato patrimoniale la segnala «sotto zero» e manda
+ * a «registra il saldo iniziale» — e il form rispondeva «impossibile: ha già movimenti». La guardia
+ * serve contro la MODIFICA di un'apertura con movimenti sotto; la PRIMA apertura di una cassa che ne
+ * è priva va a inizio esercizio e aggiunge ciò che manca, senza alterare nulla.
+ */
+test('la prima apertura si può registrare anche su una cassa che ha già movimenti; modificarla dopo no', function () {
+    [$condominio] = setupContabile();
+    $banca = spCreaCassa($condominio->id, 0);
+    $esercizio = DB::table('esercizi')->where('condominio_id', $condominio->id)->first();
+    $gestione = DB::table('gestioni')->where('condominio_id', $condominio->id)->first();
+    $costi = DB::table('conti_contabili')->where('condominio_id', $condominio->id)->where('ruolo', 'sopravvenienze_passive')->value('id');
+
+    // Un pagamento da 525 da una banca «vuota».
+    $scritturaId = DB::table('scritture_contabili')->insertGetId([
+        'condominio_id' => $condominio->id, 'gestione_id' => $gestione->id, 'esercizio_id' => $esercizio->id,
+        'data_registrazione' => '2026-08-26', 'data_competenza' => '2026-08-26', 'numero_protocollo' => 'RIM-'.uniqid(),
+        'causale' => 'Pagamento', 'tipo_movimento' => 'regolazione_immediata', 'stato' => 'registrata',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('righe_scritture')->insert([
+        ['scrittura_id' => $scritturaId, 'conto_contabile_id' => $costi, 'cassa_id' => null, 'tipo_riga' => 'dare', 'importo' => 52500, 'created_at' => now(), 'updated_at' => now()],
+        ['scrittura_id' => $scritturaId, 'conto_contabile_id' => $banca->conto_contabile_id, 'cassa_id' => $banca->id, 'tipo_riga' => 'avere', 'importo' => 52500, 'created_at' => now(), 'updated_at' => now()],
+    ]);
+    expect($banca->fresh()->hasMovimentiOperativi())->toBeTrue()->and($banca->fresh()->hasAperturaRegistrata())->toBeFalse();
+
+    $dati = ['nome' => $banca->nome, 'tipo' => 'banca', 'saldo_iniziale' => '1.000,00'];
+    app(\App\Actions\Cassa\UpdateCassaAction::class)->execute($banca, $dati);
+
+    // L'apertura è a giornale, a inizio esercizio, e la colonna è a zero: contata una volta sola.
+    $banca->refresh();
+    expect($banca->hasAperturaRegistrata())->toBeTrue()->and((int) $banca->saldo_iniziale)->toBe(0);
+    $apertura = DB::table('scritture_contabili')->where('condominio_id', $condominio->id)->where('tipo_movimento', 'apertura')->first();
+    expect($apertura)->not->toBeNull()
+        ->and(substr($apertura->data_competenza, 0, 10))->toBe(substr($esercizio->data_inizio, 0, 10))
+        ->and(app(StatoPatrimonialeService::class)->calcola($condominio)['quadra'])->toBeTrue();
+
+    // Da qui in poi il campo è congelato: un secondo salvataggio con un altro importo non cambia niente.
+    app(\App\Actions\Cassa\UpdateCassaAction::class)->execute($banca->fresh(), ['nome' => $banca->nome, 'tipo' => 'banca', 'saldo_iniziale' => '5.000,00']);
+    expect((int) $banca->fresh()->saldo_iniziale)->toBe(0)
+        ->and(DB::table('scritture_contabili')->where('condominio_id', $condominio->id)->where('tipo_movimento', 'apertura')->count())->toBe(1);
+});
+
+test('modificare un saldo di apertura già in colonna su una cassa con movimenti resta vietato', function () {
+    [$condominio] = setupContabile();
+    $banca = spCreaCassa($condominio->id, 100_000); // in colonna, non a giornale (cassa migrata)
+    $esercizio = DB::table('esercizi')->where('condominio_id', $condominio->id)->first();
+    $gestione = DB::table('gestioni')->where('condominio_id', $condominio->id)->first();
+    $costi = DB::table('conti_contabili')->where('condominio_id', $condominio->id)->where('ruolo', 'sopravvenienze_passive')->value('id');
+    $scritturaId = DB::table('scritture_contabili')->insertGetId([
+        'condominio_id' => $condominio->id, 'gestione_id' => $gestione->id, 'esercizio_id' => $esercizio->id,
+        'data_registrazione' => '2026-08-26', 'data_competenza' => '2026-08-26', 'numero_protocollo' => 'RIM-'.uniqid(),
+        'causale' => 'Pagamento', 'tipo_movimento' => 'regolazione_immediata', 'stato' => 'registrata',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('righe_scritture')->insert([
+        ['scrittura_id' => $scritturaId, 'conto_contabile_id' => $costi, 'cassa_id' => null, 'tipo_riga' => 'dare', 'importo' => 500, 'created_at' => now(), 'updated_at' => now()],
+        ['scrittura_id' => $scritturaId, 'conto_contabile_id' => $banca->conto_contabile_id, 'cassa_id' => $banca->id, 'tipo_riga' => 'avere', 'importo' => 500, 'created_at' => now(), 'updated_at' => now()],
+    ]);
+
+    expect(fn () => app(\App\Actions\Cassa\UpdateCassaAction::class)->execute($banca, ['nome' => $banca->nome, 'tipo' => 'banca', 'saldo_iniziale' => '2.000,00']))
+        ->toThrow(\Illuminate\Validation\ValidationException::class);
+});

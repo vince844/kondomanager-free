@@ -35,6 +35,9 @@ return [
         'line_1'    => 'The condominium administrator has invited you to register your online account.',
         'action'    => 'Register now',
         'line_2'    => 'This invitation will expire in three days.',
+        'expired'   => 'This invitation has expired. Ask the administrator to send you a new one.',
+        'already_used' => 'This invitation has already been used. Log in with your account.',
+        'account_exists' => 'An account with this email already exists: log in, or reset your password if you do not remember it.',
     ],
     
     // New user created by admin (NewUserEmailNotification)
@@ -45,6 +48,7 @@ return [
         'action'    => 'Set password',
         'line_2'    => 'This link will expire in three days.',
         'password_already_set' => 'Your password has already been set. Please log in with your credentials.',
+        'password_set' => 'Your password is set. You can now log in.',
         'link_expired' => 'The invitation link has expired or is no longer valid. Please contact the administrator to receive a new invitation.',
     ],
 
@@ -118,6 +122,28 @@ return [
         'object'      => 'Subject',
         'priority'    => 'Priority',
         'action'      => 'View report',
+    ],
+
+    // Segnalazione privata resa pubblica (SegnalazioneResaPubblicaNotification)
+    'ticket_made_public' => [
+        'subject'  => 'Your report is now public',
+        'subject_pending' => 'Your report is no longer private',
+        'greeting' => 'Hello :name',
+        'line_1'   => ':user has made your report public.',
+        'line_1_pending' => ':user has decided that your report is no longer private.',
+        'object'   => 'Subject',
+        'line_2'   => 'All the residents of :condominio can now see it, with your name.',
+        'line_2_pending' => 'All the residents of :condominio will see it, with your name, once it is published and approved.',
+        'action'   => 'View report',
+    ],
+
+    // Why an email to the author has no button to the page (PulsanteSoloSeLaApre)
+    'author_cannot_open' => [
+        'outside_building' => 'You can no longer see it in the portal: you are not listed among the residents of :condominio.',
+        'no_permission'    => 'You cannot see it in the portal: your account does not have permission to open it.',
+        'not_published'    => 'You cannot see it in the portal: it is not published and approved at the moment.',
+        'not_addressed'    => 'You can no longer see it in the portal: it is no longer addressed to you.',
+        'no_anagrafica'    => 'You cannot see it in the portal: your account is not linked to a resident record. To use the portal, sign in and fill in your details.',
     ],
 
     // Ticket approval (ApproveSegnalazioneNotification)
@@ -208,5 +234,42 @@ return [
         'title'       => 'Title',
         'description' => 'Description',
         'action'      => 'View documents',
+    ],
+
+    // ─── Security alerts to the account holder (Coda 267) ──────────────────────
+    'security_alert' => [
+        'greeting' => 'Hello :name,',
+        'autore'   => 'The change was made by :autore.',
+        'sempre'   => 'This alert is sent for every change to the security of your account and cannot be turned off.',
+        'password_cambiata' => [
+            'subject'   => 'Your account password has been changed',
+            'line_1'    => 'On :data at :ora the password of your :appName account was changed.',
+            'consiglio' => 'If you did not make this change, reset your password right away with «Password dimenticata?» on the login page and tell the administrator.',
+        ],
+        'password_reimpostata' => [
+            'subject'   => 'Your account password has been reset',
+            'line_1'    => 'On :data at :ora the password of your :appName account was reset with the «Password dimenticata?» link.',
+            'consiglio' => 'If you did not make this change, reset your password right away with «Password dimenticata?» on the login page and tell the administrator.',
+        ],
+        'email_cambiata' => [
+            'subject'   => 'The email address of your account has been changed',
+            'line_1'    => 'On :data at :ora the email address of your :appName account was changed to :email. From now on the new address is used to log in, and password reset links are sent there.',
+            'consiglio' => 'If you did not ask for this change, contact the administrator right away.',
+        ],
+        'due_fattori_attivata' => [
+            'subject'   => 'Two-factor authentication turned on',
+            'line_1'    => 'On :data at :ora two-factor authentication was turned on for your :appName account.',
+            'consiglio' => 'If you did not make this change, change your password right away and tell the administrator.',
+        ],
+        'due_fattori_disattivata' => [
+            'subject'   => 'Two-factor authentication turned off',
+            'line_1'    => 'On :data at :ora two-factor authentication was turned off for your :appName account: the password alone is now enough to log in.',
+            'consiglio' => 'If you did not make this change, change your password right away, turn two-factor authentication back on and tell the administrator.',
+        ],
+        'codici_rigenerati' => [
+            'subject'   => 'New recovery codes',
+            'line_1'    => 'On :data at :ora new two-factor recovery codes were generated for your :appName account: the previous ones no longer work.',
+            'consiglio' => 'If you did not make this change, change your password right away and tell the administrator.',
+        ],
     ],
 ];

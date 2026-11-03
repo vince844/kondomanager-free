@@ -8,6 +8,7 @@ use App\Models\Anagrafica;
 use App\Models\User;
 use App\Notifications\Segnalazioni\ApprovedSegnalazioneNotification;
 use App\Notifications\Segnalazioni\NewSegnalazioneNotification;
+use App\Services\Notifiche\DestinatariNotifica;
 use App\Traits\FilterByNotificationPreference;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Log;
@@ -32,12 +33,15 @@ class SendApprovedSegnalazioneNotificationToUser implements ShouldQueue
                 Notification::send($creator, new ApprovedSegnalazioneNotification($segnalazione, $user));
             }
 
-            if (!$segnalazione->is_private && $segnalazione->is_approved) {
+            // Coda 302: la platea è quella di `DestinatariNotifica`, la stessa dell'elenco del
+            // portale: per una privata l'autore e le persone collegate, per una indirizzata a
+            // persone solo loro, altrimenti il condominio. Il creatore riceve l'avviso
+            // «approvata» qui sopra e non anche quello «nuova».
+            $platea = app(DestinatariNotifica::class)->perModello($segnalazione);
 
-                  $query = Anagrafica::with('condomini')
-                    ->whereHas('condomini', function ($query) use ($segnalazione) {
-                        $query->where('condominio_id', $segnalazione->condominio_id);
-                    });
+            if ($platea->isNotEmpty()) {
+
+                $query = Anagrafica::whereIn('id', $platea);
 
                 $anagrafiche = $this->filterByNotificationPreference($query, NotificationType::NEW_TICKET->value)
                     ->get()

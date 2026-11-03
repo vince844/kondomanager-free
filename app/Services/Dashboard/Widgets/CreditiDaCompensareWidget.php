@@ -46,8 +46,8 @@ class CreditiDaCompensareWidget implements DashboardWidget
                 }
 
                 // «Azionabile» non è «ha un bersaglio»: quando il credito sta su un'altra
-                // gestione il consiglio non lo propone — per disegno, serve la spunta
-                // dell'amministratore — ma la frase gli dice che si può fare. Se la riga in
+                // gestione il consiglio non lo propone — per disegno, serve la scelta
+                // dell'amministratore, decisione 30.11 — ma la frase gli dice che si può fare. Se la riga in
                 // quel caso non fosse cliccabile, l'inviterebbe a un vicolo cieco.
                 $azionabile = $comp['importo_cents'] > 0 || ($comp['debito_altrove_cents'] ?? 0) > 0;
 
@@ -61,6 +61,9 @@ class CreditiDaCompensareWidget implements DashboardWidget
                     'copre'                  => $comp['frase'],
                     'rata_bersaglio_id'      => $bersaglio['rata_id'] ?? null,
                     'url'                    => route('admin.gestionale.movimenti-rate.create', $parametri),
+                    // B2, S6: la seconda uscita della riga. Il rimborso vive nell'estratto conto della persona — è lì
+                    // che sta il pulsante «Rimborsa il credito» — e per chi è uscito dal condominio è l'unica strada.
+                    'url_estratto_conto'     => route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominioId, 'anagrafica' => $c['anagrafica_id']]),
                 ];
             })
             ->values()

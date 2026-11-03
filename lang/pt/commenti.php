@@ -6,7 +6,7 @@ return [
     'disabilita' => 'Desativar Comentários',
     'abilita' => 'Ativar Comentários',
     'nessun_commento' => 'Ainda não há comentários. Seja o primeiro a escrever um!',
-    'autore_sconosciuto' => 'Usuário Desconhecido',
+    'autore_sconosciuto' => 'Utilizador Desconhecido',
     'conferma_elimina' => 'Tem certeza de que deseja excluir este comentário?',
     'conferma_nascondi' => 'Tem certeza de que deseja ocultar este comentário?',
     'rimosso_da_moderatore' => 'Este comentário foi removido por um moderador.',

@@ -112,7 +112,14 @@ trait PaginaElenco
 
         $intero = (int) $valore;
 
-        return in_array($intero, config('pagination.consentite'), true) ? $intero : null;
+        // ⚠️ Il ripiego a `[]` non è pignoleria: `config/pagination.php` nasce nella beta.54,
+        // quindi chi aggiorna da prima con `bootstrap/cache/config.php` ancora quello vecchio non
+        // ha questa chiave e `config()` torna `null`. In PHP 8 `in_array()` con un elenco nullo è
+        // un TypeError fatale — e questo metodo sta sul percorso di **ogni elenco del programma**,
+        // trenta controller: sarebbe un 500 su tutto finché qualcuno non svuota la cache, cosa che
+        // chi aggiorna dal pannello non può fare. Stessa forma della Coda 86, in un punto molto
+        // più esposto. Con `[]` si ricade sul valore predefinito, che è il comportamento giusto.
+        return in_array($intero, config('pagination.consentite') ?? [], true) ? $intero : null;
     }
 
     /**

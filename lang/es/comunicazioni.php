@@ -175,11 +175,11 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'visibility'  => 'If set to private, only administrators will be able to view the communication.',
+        'visibility'  => 'Un borrador, o una comunicación pendiente de aprobación, no se muestra a los vecinos; una vez publicada y aprobada, la ven los vecinos a los que va dirigida.',
         'priority'    => 'The priority level may affect the visibility or urgency on the bulletin board.',
         'comments'    => 'When this option is selected, comments will be enabled for this communication.',
         'featured'    => 'Featured communications are highlighted on the bulletin board to draw more attention.',
-        'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que la comunicación ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora la recibirá igualmente, porque para él es nueva.",
+        'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que la comunicación ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora la recibirá igualmente, porque para él es nueva. Mientras sea un borrador o esté pendiente de aprobación no se envía nada; cuando esté publicada y aprobada, la recibirán todos los destinatarios.",
         'private'     => 'Private communications can only be viewed by administrators and you.',
     ],
 
@@ -219,5 +219,22 @@ return [
         'read_desc'         => 'View the details and the full content of the sent communication.',
         'urgency_title'     => 'Urgency',
         'urgency_desc'      => 'The priority level indicates how quickly it needs to be acknowledged.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Coda 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'Pendiente de aprobación',
+        'draft'     => 'Borrador',
+        'published' => 'Publicada',
+        'needs_approval' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando esté aprobada, con el escudo junto al título en la lista de comunicaciones.',
+        'waiting_approver' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando la apruebe quien aprueba las comunicaciones.',
+    ],
+
+    'privacy' => [
+        'private'      => 'Privada',
+        'private_hint' => 'Solo la ven el autor, las personas vinculadas y el administrador',
+        'recipients_required' => 'Una comunicación privada debe seguir dirigida al menos a un destinatario: sin destinatarios solo la vería quien la escribió, además del administrador.',
+    ],
 ];

@@ -12,6 +12,20 @@ return [
     'error_delete_anagrafica'   => 'An error occurred while deleting the resident record.',
     'anagrafica_has_building'   => 'The resident record cannot be deleted because it is associated with one or more buildings',
 
+    // The portal of an account without a resident record (CheckHasAnagrafica): the page with one's own details says why one lands there.
+    'account_without_anagrafica' => 'Your account is not linked to a resident record yet: to use the portal, fill in your details here.',
+    'panel_without_anagrafica' => 'The residents\' portal only opens with a resident record linked to the account, and yours has none: use the admin panel.',
+
+    // The panel's resident record pages and actions, for those without the permission (AnagraficaPolicy).
+    'permessi' => [
+        'view' => "You don't have sufficient permissions to view resident records.",
+        'create' => "You don't have sufficient permissions to create resident records.",
+        'update' => "You don't have sufficient permissions to edit resident records.",
+        'delete' => "You don't have sufficient permissions to delete resident records.",
+        // The «Recipients» list of notices, deadlines and documents (AnagraficaPolicy::sceglieDestinatari).
+        'destinatari' => "You don't have sufficient permissions to choose recipients among the resident records.",
+    ],
+
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -53,6 +67,7 @@ return [
         'delete_resident' => 'Delete',
         'save_resident'   => 'Save',
         'list_residents'  => 'List',
+        'back_to_dashboard' => 'Back to dashboard',
     ],
 
     /* ------------------------------------------------------------------
@@ -105,6 +120,7 @@ return [
     'tooltip' => [
         'buildings_header'      => 'Select and associate buildings',
         'buildings_description' => 'You can select one or more buildings to associate with this resident record. This will allow the resident to view data related to the associated buildings.',
+        'buildings_missing_registered_only' => "Only the buildings already registered in the system appear here.",
         'system_notifications'  => 'System notifications',
         'primary_email_desc'    => 'All system notifications for this resident (e.g. new tickets) will be sent to this address. The email address the associated user uses to log in may be different.',
         'secondary_email_desc'  => 'Additional address to receive a copy of system notifications sent to this resident.',

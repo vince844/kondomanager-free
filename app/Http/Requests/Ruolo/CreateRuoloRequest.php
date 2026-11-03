@@ -3,19 +3,23 @@
 namespace App\Http\Requests\Ruolo;
 
 use App\Traits\ValidaConcessioneRuoli;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Spatie\Permission\Models\Role;
 
 class CreateRuoloRequest extends FormRequest
 {
     use ValidaConcessioneRuoli;
 
     /**
-     * Determine if the user is authorized to make this request.
+     * Le pagine dei ruoli sono dell'amministratore (`RolePolicy`, Coda 258, decisione 134.1): chi non lo è
+     * riceve il rifiuto con il suo perché prima di qualunque errore sui campi.
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return true;
+        return Gate::inspect('create', Role::class);
     }
 
     /**
@@ -28,10 +32,12 @@ class CreateRuoloRequest extends FormRequest
         return [
             'name'        => ['required', 'string', 'max:255', Rule::unique('roles', 'name')->ignore($this->roles)],
             'description' => 'required|string|max:255',
-            // ⚠️ **La stessa regola dei permessi sull'utente, applicata al ruolo.** Senza,
-            // resta aperta la porta laterale: chi non può concedersi «Elimina utenti» si crea un
-            // ruolo su misura che lo contiene — i ruoli creati a mano non sono privilegiati — e
-            // poi lo indossa. Chiudere due porte su tre non chiude niente.
+            // ⚠️ **La stessa regola dei permessi sull'utente, applicata al ruolo: nessuno mette in un
+            // ruolo un permesso che non ha.** Oggi è una difesa (Coda 258, decisione 134.1):
+            // queste pagine le apre solo l'amministratore (`authorize()` qui sopra), che ha tutti i
+            // permessi. Resta perché un ruolo è un modo di dare permessi, e segue la stessa regola
+            // della scheda utenti: vale anche se un giorno un permesso non fosse
+            // dell'amministratore.
             'permissions' => ['sometimes', 'array', $this->regolaPermessiConcedibili()],
             'accessAdmin' => 'nullable|boolean',
         ];

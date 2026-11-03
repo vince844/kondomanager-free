@@ -6,11 +6,13 @@ use App\Models\Commento;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
 
 class CommentoEliminatoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
+    use TestoScrittoDaAltri;
 
     public function __construct(public Commento $commento) {
         parent::__construct();
@@ -27,6 +29,7 @@ class CommentoEliminatoNotification extends LocalizedNotification implements Sho
         $entita = class_basename($commentable);
         
         $titolo = $commentable->subject ?? $commentable->titolo ?? $commentable->title ?? $commentable->nome ?? null;
+        $titolo = $titolo === null ? null : self::testoComeTesto($titolo);
         $riferimento = $titolo ? "{$entita} \"{$titolo}\"" : $entita;
         $key = $this->getEntityKey();
 

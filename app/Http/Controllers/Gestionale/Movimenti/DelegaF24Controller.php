@@ -75,8 +75,15 @@ class DelegaF24Controller extends Controller
 
         $esercizio = $this->esercizioCorrente($condominio);
 
-        $base = DelegaF24::delCondominio($condominio->id)
-            ->when($esercizio, fn ($q) => $q->where('esercizio_id', $esercizio->id));
+        // ⚠️ **Le deleghe di tutti gli esercizi** (Coda 314, decisione 154.3). Fino alla 1.11.0-beta.58 l'elenco e i
+        // contatori guardavano il solo esercizio corrente: chiuso il vecchio per aprire il nuovo, una bozza o una
+        // confermata del vecchio spariva dall'elenco, da «Da versare» e da «Scadute», anche con la scadenza del 16
+        // gennaio ancora davanti. Una delega aperta è un debito verso l'Erario finché non è versata, e lo storico — le
+        // versate, le stornate e le annullate — non si perde al cambio dell'esercizio: ogni riga di un esercizio non
+        // corrente ne porta il nome. Il «Versato», invece, resta dell'esercizio corrente (`riepilogo()`).
+        $aperte = [StatoDelegaF24::BOZZA->value, StatoDelegaF24::CONFERMATA->value];
+
+        $base = DelegaF24::delCondominio($condominio->id);
 
         // I filtri restano in query string: così una vista filtrata si può mettere nei
         // preferiti o mandare per link, come nelle altre pagine del gestionale.
@@ -95,9 +102,7 @@ class DelegaF24Controller extends Controller
                         ->orWhere('note', 'like', "%{$testo}%");
                 });
             })
-            ->when($filtri['stato'], function ($q, $stato) {
-                $aperte = [StatoDelegaF24::BOZZA->value, StatoDelegaF24::CONFERMATA->value];
-
+            ->when($filtri['stato'], function ($q, $stato) use ($aperte) {
                 // Due voci non sono stati del database ma domande che l'amministratore si
                 // fa davvero: «cosa mi resta da versare» e «cosa è già in ritardo». La
                 // seconda è la sola che costa sanzioni, quindi merita un filtro suo.
@@ -109,9 +114,9 @@ class DelegaF24Controller extends Controller
             })
             ->when($filtri['plafond'], fn ($q, $p) => $q->where('plafond', $p));
 
-        // Il riepilogo guarda TUTTE le deleghe dell'esercizio, non la pagina corrente: un
+        // Il riepilogo guarda TUTTE le deleghe dell'elenco, non la pagina corrente: un
         // totale «da versare» che cambia sfogliando sarebbe un numero senza significato.
-        $riepilogo = $this->riepilogo((clone $base)->get());
+        $riepilogo = $this->riepilogo((clone $base)->get(), $esercizio);
 
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
         // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
@@ -120,7 +125,7 @@ class DelegaF24Controller extends Controller
         $deleghe = $filtrata
             ->with('righe')
             // Le scadenze aperte per prime, e fra queste la più vicina in cima: è l'ordine
-            // in cui vanno affrontate. Lo storico viene dopo, dalla più recente.
+            // in cui vanno affrontate. Lo storico viene dopo, anch'esso per scadenza crescente.
             //
             // ⚠️ Resta l'ordine **finché nessuno chiede altro**: `ordina()` azzera ciò che trova
             // (`reorder()`) proprio perché un ordinamento chiesto dev'essere il criterio primario e
@@ -133,11 +138,19 @@ class DelegaF24Controller extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
+        // Una delega di un esercizio che non è il corrente porta il nome del suo esercizio: è l'esercizio in cui
+        // finisce la scrittura, se se ne registra il versamento (`ConfermaVersamentoF24Action`, Coda 314).
+        $nomiEsercizi = $condominio->esercizi()->pluck('nome', 'id');
+
         // Il paginatore di Laravel serializza i suoi contatori in piatto; il `Datatable`
         // del gestionale li vuole sotto `meta`, come glieli passano le altre pagine
         // tramite le API Resource. Qui non serve una Resource: basta dargli la forma giusta.
         $delegheProps = [
-            'data' => $deleghe->items(),
+            'data' => collect($deleghe->items())
+                ->map(fn (DelegaF24 $d) => array_merge($d->toArray(), [
+                    'esercizio_non_corrente' => $this->esercizioNonCorrente($d, $esercizio, $nomiEsercizi),
+                ]))
+                ->all(),
             'meta' => [
                 'current_page' => $deleghe->currentPage(),
                 'per_page' => $deleghe->perPage(),
@@ -146,7 +159,20 @@ class DelegaF24Controller extends Controller
             ],
         ];
 
+        // ⚠️ **Si dice PRIMA che si prema il pulsante, non dopo che fallisce.**
+        // `GeneraDelegheF24Action` rifiuta di preparare la delega se anche un solo
+        // fornitore non ha la natura del percipiente — senza, il codice tributo sarebbe
+        // 1019 o 1020 a caso (Coda 119). Ma scoprire un blocco solo sbattendoci contro è
+        // un blocco che si subisce: l'elenco arriva in pagina, con il collegamento a
+        // ciascuna anagrafica, così il rimedio è un clic.
+        $daClassificare = $esercizio
+            ? $this->genera->fornitoriDaClassificare(
+                $this->genera->ritenuteInAttesa($condominio)
+            )
+            : [];
+
         return Inertia::render('gestionale/movimenti/f24/F24List', [
+            'fornitori_da_classificare' => $daClassificare,
             'condominio' => $condominio,
             'condomini' => $this->getCondomini(),
             'esercizio' => $esercizio,
@@ -182,6 +208,11 @@ class DelegaF24Controller extends Controller
             'condominio' => $condominio,
             'condomini' => $this->getCondomini(),
             'delega' => $delega,
+            'esercizio_non_corrente' => $this->esercizioNonCorrente(
+                $delega,
+                $this->esercizioCorrente($condominio),
+                $condominio->esercizi()->pluck('nome', 'id'),
+            ),
             'banche' => $this->banche($condominio),
             'motivo_blocco_modifica' => $delega->motivoBloccoModifica(),
             // Il modello ministeriale si stampa comunque: questi campi non sbarrano la
@@ -244,7 +275,15 @@ class DelegaF24Controller extends Controller
         $dati = $request->validate([
             'data_versamento' => ['required', 'date'],
             'conto_corrente_id' => ['required', 'integer', 'exists:conti_contabili,id'],
-            'cassa_id' => ['nullable', 'integer', 'exists:casse,id'],
+            // ⚠️ Scopata al condominio e ai soli tipi da cui si paga (beta.19): prima
+            // accettava la cassa di un altro condominio e una cassa `fondo`, e il versamento
+            // da un fondo spariva dal registro di contabilità (D15). Revisione della beta.24.
+            'cassa_id' => [
+                'nullable', 'integer',
+                \Illuminate\Validation\Rule::exists('casse', 'id')
+                    ->where('condominio_id', $condominio->id)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
+            ],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -335,12 +374,27 @@ class DelegaF24Controller extends Controller
             return ['numero' => 0, 'totale_cents' => 0];
         }
 
-        $ritenute = $this->genera->ritenuteDaVersare($condominio, $esercizioId);
+        // L'esercizio serve solo a sapere se ce n'è uno: le ritenute sono di tutti gli esercizi (Coda 314).
+        $ritenute = $this->genera->ritenuteDaVersare($condominio);
 
         return [
             'numero' => $ritenute->count(),
             'totale_cents' => (int) $ritenute->sum('importo'),
         ];
+    }
+
+    /**
+     * Il nome dell'esercizio della delega quando non è quello corrente, altrimenti `null`.
+     *
+     * @param  \Illuminate\Support\Collection<int,string>  $nomiEsercizi
+     */
+    private function esercizioNonCorrente(DelegaF24 $delega, $corrente, $nomiEsercizi): ?string
+    {
+        if ($corrente !== null && $delega->esercizio_id === $corrente->id) {
+            return null;
+        }
+
+        return $nomiEsercizi[$delega->esercizio_id] ?? null;
     }
 
     private function esercizioCorrente(Condominio $condominio)
@@ -374,14 +428,20 @@ class DelegaF24Controller extends Controller
     /**
      * I tre numeri in cima alla pagina: quanto si deve, quanto è già uscito, cosa è in
      * ritardo. Il terzo è quello che conta — una scadenza fiscale mancata costa sanzioni.
+     *
+     * «Da versare», «Scadute» e la prossima scadenza guardano le deleghe aperte di tutti gli esercizi. Il «Versato» è
+     * quello delle deleghe versate **dell'esercizio corrente**: la scrittura del versamento sta nell'esercizio della
+     * delega (`ConfermaVersamentoF24Action`), e le versate dei vecchi esercizi si vedono nello storico senza sommarsi.
      */
-    private function riepilogo($deleghe): array
+    private function riepilogo($deleghe, $esercizio): array
     {
         $aperte = $deleghe->whereIn('stato', [StatoDelegaF24::BOZZA, StatoDelegaF24::CONFERMATA]);
+        $versate = $deleghe->where('stato', StatoDelegaF24::VERSATA)
+            ->when($esercizio, fn ($d) => $d->where('esercizio_id', $esercizio->id));
 
         return [
             'da_versare_cents' => (int) $aperte->sum('totale_debito'),
-            'versato_cents' => (int) $deleghe->where('stato', StatoDelegaF24::VERSATA)->sum('totale_debito'),
+            'versato_cents' => (int) $versate->sum('totale_debito'),
             'scadute' => $aperte->filter(fn ($d) => $d->data_scadenza->isPast())->count(),
             'prossima_scadenza' => $aperte->sortBy('data_scadenza')->first()?->data_scadenza?->toDateString(),
         ];

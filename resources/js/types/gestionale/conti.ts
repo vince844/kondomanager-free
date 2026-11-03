@@ -63,6 +63,12 @@ export interface Conto {
   piani_collegati?: string[]
   dettaglio_copertura?: DettaglioCopertura[] // Array per la tabella dettaglio
   has_rate_emesse?: boolean
+  /**
+   * Il blocco dei piani approvati, con la regola del salvataggio (`Conto::pianiCheBloccanoLaVoce`): i piani che tengono la voce, o un capitolo sopra di
+   * lei, o che finanziano una spesa fuori preventivo registrata sulla voce, e la frase con la strada della bozza. Nullo se nessun piano approvato la tiene: allora
+   * l'importo, il padre, il tipo, la tabella e le percentuali si cambiano.
+   */
+  blocco?: { piani: Array<{ id: number, nome: string }>, frase: string } | null
 
   is_parent?: boolean
   is_frazionato?: boolean

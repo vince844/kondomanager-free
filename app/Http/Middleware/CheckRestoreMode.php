@@ -86,14 +86,21 @@ class CheckRestoreMode
 
         $locale = $marker['locale'] ?? $state['locale'] ?? config('app.locale');
 
+        // La pagina la vede chiunque apra il gestionale durante il ripristino: niente versione e niente
+        // messaggio d'errore (può contenere dati di persone). Li ha chi ha il token del ripristino o
+        // mette la password giusta in «Riprendi»: le loro risposte portano lo stato completo, e la
+        // pagina li scrive nel log se il ripristino si ferma di nuovo (Coda 343, decisione 127.5).
         return [
             'stuck' => $failed || $stale,
             'locale' => in_array($locale, self::SUPPORTED_LOCALES, true) ? $locale : 'it',
             'restoreUuid' => $marker['restore_uuid'] ?? ($state['uuid'] ?? null),
-            'failedPhase' => $state['failed_phase'] ?? $phase,
-            'error' => $state['error'] ?? null,
+            // Fermo su un errore, la fase del fallimento; in corso (in stallo), la fase in cui è: un `failed_phase` rimasto
+            // da una ripresa fatta con una versione precedente è di prima. Nel backup di sicurezza la pagina dice che il
+            // database non è stato toccato: deve essere la fase vera.
+            'failedPhase' => $failed ? ($state['failed_phase'] ?? $phase) : $phase,
             'failedAt' => $state['failed_at'] ?? null,
-            'appVersion' => config('app.version'),
+            // La durata del token della finestra dei backup: la frase della password che non si può verificare la nomina.
+            'oreDelToken' => intdiv($staleSeconds, 3600),
         ];
     }
 }

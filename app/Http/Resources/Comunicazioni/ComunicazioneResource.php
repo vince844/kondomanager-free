@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources\Comunicazioni;
 
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\User\UserResource;
@@ -33,8 +33,9 @@ class ComunicazioneResource extends JsonResource
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
                     'user'       => new UserResource($this->createdBy),
+                    // Della persona in rubrica dell'autore, id e nome (Coda 408): il resto sta nella sua scheda.
                     'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
-                        ? new AnagraficaResource($this->createdBy->anagrafica)
+                        ? new AnagraficaNomeResource($this->createdBy->anagrafica)
                         : null,
                 ];
             }),
@@ -42,7 +43,8 @@ class ComunicazioneResource extends JsonResource
                 'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini')),
                 'full'    => CondominioResource::collection($this->whenLoaded('condomini')),
             ],
-            'anagrafiche' => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
+            // I destinatari: gli elenchi, la scheda, la modifica e la dashboard ne leggono id e nome (Coda 408).
+            'anagrafiche' => AnagraficaNomeResource::collection($this->whenLoaded('anagrafiche')),
         ];
     }
 }

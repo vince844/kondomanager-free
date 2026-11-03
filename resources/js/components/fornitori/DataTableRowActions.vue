@@ -6,9 +6,17 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import type { Fornitore } from '@/types/fornitori';
 
 defineProps<{ fornitore: Fornitore }>()
+
+// Ogni comando chiede il permesso che `FornitorePolicy` chiede alla sua azione, con i permessi delle anagrafiche (Coda 402):
+// «Modifica» apre il modulo di modifica, che vuole «Modifica anagrafiche»; «Elimina» vuole «Elimina anagrafiche». Il
+// collaboratore di serie non ha «Elimina anagrafiche», come per le anagrafiche; chi ha la sola consultazione non ha comandi,
+// e il menù non compare.
+const { hasPermission } = usePermission()
 
 const fornitoreID = ref('');
 const isAlertOpen = ref(false)
@@ -36,7 +44,12 @@ const deleteFornitore = () => {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu
+    v-if="hasPermission([
+      Permission.EDIT_ANAGRAFICHE,
+      Permission.DELETE_ANAGRAFICHE
+    ])"
+  >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">Azioni</span>
@@ -46,7 +59,7 @@ const deleteFornitore = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-       <DropdownMenuItem>
+       <DropdownMenuItem v-if="hasPermission([Permission.EDIT_ANAGRAFICHE])">
         <Link
           :href="route('admin.fornitori.edit', { id: fornitore.id })"
           class="flex items-center gap-2"
@@ -56,7 +69,7 @@ const deleteFornitore = () => {
         </Link>
       </DropdownMenuItem> 
 
-      <DropdownMenuItem @click="handleDelete(fornitore)" >
+      <DropdownMenuItem v-if="hasPermission([Permission.DELETE_ANAGRAFICHE])" @click="handleDelete(fornitore)" >
         <Trash2 class="w-4 h-4 text-xs" />
         Elimina
       </DropdownMenuItem>

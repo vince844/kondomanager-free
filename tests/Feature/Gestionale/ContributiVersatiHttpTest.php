@@ -626,42 +626,46 @@ test('anche via URL diretto un capitolo non è versabile', function () {
  * guarda, esattamente il tipo di divergenza già corretto una volta in beta.25
  * sul saldo cassa.
  */
-test('il vincolo unique impedisce due righe per la stessa unità sulla stessa voce', function () {
+test('il vincolo unique è per (voce, unità, persona) dalla beta.31: la stessa persona due volte sulla stessa unità è rifiutata dal DB; due persone diverse sono ammesse; due righe senza persona restano ammesse dallo schema e le presidia il controller', function () {
     $sc = cvScenario(setupContabile());
+    $rossi = \App\Models\Anagrafica::forceCreate(['nome' => 'Rossi CV', 'email' => 'cv-rossi@test.it', 'indirizzo' => 'Via Verdi 1', 'codice_fiscale' => 'CVROSSI000000001']);
+    $bianchi = \App\Models\Anagrafica::forceCreate(['nome' => 'Bianchi CV', 'email' => 'cv-bianchi@test.it', 'indirizzo' => 'Via Verdi 2', 'codice_fiscale' => 'CVBIANCHI0000001']);
+    $base = ['condominio_id' => $sc->condominio->id, 'target_type' => Conto::class, 'target_id' => $sc->conto->id, 'immobile_id' => $sc->unita[0]->immobile->id, 'natura' => 'avanzo'];
 
-    ContributoVersato::create([
-        'condominio_id' => $sc->condominio->id,
-        'target_type'   => Conto::class,
-        'target_id'     => $sc->conto->id,
-        'immobile_id'   => $sc->unita[0]->immobile->id,
-        'importo_cents' => 10_000,
-        'natura'        => 'avanzo',
-    ]);
+    // Due persone sulla stessa unità e voce: dopo una vendita l'acquirente registra il suo versato accanto a quello del venditore.
+    ContributoVersato::create($base + ['anagrafica_id' => $rossi->id, 'importo_cents' => 10_000]);
+    ContributoVersato::create($base + ['anagrafica_id' => $bianchi->id, 'importo_cents' => 5_000]);
+    expect(ContributoVersato::count())->toBe(2);
 
-    ContributoVersato::create([
-        'condominio_id' => $sc->condominio->id,
-        'target_type'   => Conto::class,
-        'target_id'     => $sc->conto->id,
-        'immobile_id'   => $sc->unita[0]->immobile->id, // stessa unità, stessa voce
-        'importo_cents' => 5_000,
-        'natura'        => 'avanzo',
-    ]);
-})->throws(\Illuminate\Database\QueryException::class)
-  ->group('contributi', 'regressione-avversariale');
+    // La stessa persona due volte: no.
+    expect(fn () => ContributoVersato::create($base + ['anagrafica_id' => $rossi->id, 'importo_cents' => 1_000]))
+        ->toThrow(\Illuminate\Database\QueryException::class);
 
-/** Esegue solo la migrazione del vincolo unique (non l'intera suite migrations). */
+    // Senza persona (righe storiche, «dell'unità»): lo schema non le distingue più (NULL non collide in un UNIQUE);
+    // è il controller, che sostituisce integralmente le righe di una voce, a garantire una riga per unità.
+    ContributoVersato::create($base + ['anagrafica_id' => null, 'importo_cents' => 2_000]);
+    ContributoVersato::create($base + ['anagrafica_id' => null, 'importo_cents' => 3_000]);
+    expect(ContributoVersato::whereNull('anagrafica_id')->count())->toBe(2);
+})->group('contributi', 'regressione-avversariale');
+
+/** La migrazione di luglio (vincolo per unità) e quella di S6 (vincolo per persona), per il test del travaso. */
 function cvEseguiMigrazioneVincoloUnique(): \Illuminate\Database\Migrations\Migration
 {
     return require database_path('migrations/2026_07_25_090000_add_unique_constraint_to_contributi_versati.php');
 }
+function cvEseguiMigrazioneVincoloPersona(): \Illuminate\Database\Migrations\Migration
+{
+    return require database_path('migrations/2026_09_20_100000_s6_contributi_per_persona_e_annullamento_conguaglio.php');
+}
 
-test('BACKFILL REALE: la migrazione del vincolo unique deduplica sommando, non scartando', function () {
+test('BACKFILL REALE: la migrazione del vincolo unique di luglio deduplica sommando, non scartando; quella di S6 la sostituisce e resta rieseguibile in entrambi i versi', function () {
     $sc = cvScenario(setupContabile());
-    $migration = cvEseguiMigrazioneVincoloUnique();
+    $luglio = cvEseguiMigrazioneVincoloUnique();
+    $s6 = cvEseguiMigrazioneVincoloPersona();
 
-    // Il vincolo esiste già (RefreshDatabase ha girato tutte le migrazioni):
-    // lo togliamo per simulare lo stato PRIMA di questa correzione.
-    $migration->down();
+    // Stato PRIMA di entrambe: S6 giù (ripristina il vincolo di luglio col suo nome), poi luglio giù.
+    $s6->down();
+    $luglio->down();
 
     // Due righe duplicate, inserite scavalcando il vincolo (che non c'è più).
     DB::table('contributi_versati')->insert([
@@ -678,20 +682,16 @@ test('BACKFILL REALE: la migrazione del vincolo unique deduplica sommando, non s
             'created_at' => now(), 'updated_at' => now(),
         ],
     ]);
-
     expect(ContributoVersato::count())->toBe(2);
 
-    $migration->up(); // ri-applica: deve dedupllicare PRIMA di aggiungere il vincolo
-
+    $luglio->up(); // deduplica PRIMA di aggiungere il vincolo per unità
     expect(ContributoVersato::count())->toBe(1);
     expect((int) ContributoVersato::first()->importo_cents)->toBe(50_000); // 30.000+20.000, non perso
 
-    // Il vincolo è di nuovo attivo: un nuovo duplicato torna a essere impossibile.
-    expect(fn () => ContributoVersato::create([
-        'condominio_id' => $sc->condominio->id, 'target_type' => Conto::class,
-        'target_id' => $sc->conto->id, 'immobile_id' => $sc->unita[0]->immobile->id,
-        'importo_cents' => 1_000, 'natura' => 'avanzo',
-    ]))->toThrow(\Illuminate\Database\QueryException::class);
+    $s6->up(); // il vincolo diventa per persona; rieseguirla non cambia niente
+    $s6->up();
+    $indici = collect(\Illuminate\Support\Facades\Schema::getIndexes('contributi_versati'))->pluck('name');
+    expect($indici)->toContain('cv_target_immobile_persona_unique')->not->toContain('cv_target_immobile_unique');
 })->group('contributi', 'regressione-avversariale', 'backfill');
 
 test('un immobile di un altro condominio viene rifiutato, non silenziosamente ignorato', function () {
@@ -899,3 +899,121 @@ test('un piano che sfrutta il già versato non risulta disallineato', function (
         ->and($service->totaleAttesoCents($piano->fresh()))->toBe(90_000)
         ->and($service->eDisallineato($piano->fresh()))->toBeFalse();
 })->group('contributi', 'disallineamento');
+
+/*
+|--------------------------------------------------------------------------
+| B2 (1.11.0-beta.31), S6 — il già versato con la persona (decisione 17)
+|--------------------------------------------------------------------------
+*/
+
+test('B2 S6 — la pagina propone «Versato da» con i titolari in corso oggi, precompilato se il proprietario è uno solo; il salvataggio scrive anagrafica_id e il motore sconta solo quella persona', function () {
+    $sc = cvScenario(setupContabile());
+    // Sull'unità 1 entra un secondo proprietario (comproprietà 60/40): la persona va scelta.
+    $secondo = Anagrafica::forceCreate(['nome' => 'Comproprietario 1B', 'email' => 'cv1b@example.com', 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'CVTEST0000000091']);
+    DB::table('anagrafica_immobile')->where('immobile_id', $sc->unita[0]->immobile->id)->update(['quota' => 60]);
+    DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $secondo->id, 'immobile_id' => $sc->unita[0]->immobile->id, 'tipologia' => 'proprietario', 'quota' => 40, 'attivo' => true, 'data_inizio' => now()->format('Y-m-d')]);
+
+    $props = $this->actingAs($this->user)->get("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}")->viewData('page')['props'];
+    $righe = collect($props['righe']);
+    // Unità 1: due titolari → nessuna persona precompilata («l'unità»); unità 2: un solo proprietario → lui.
+    expect($righe->firstWhere('immobile_id', $sc->unita[0]->immobile->id)['anagrafica_id'])->toBeNull()
+        ->and($righe->firstWhere('immobile_id', $sc->unita[1]->immobile->id)['anagrafica_id'])->toBe($sc->unita[1]->anagrafica->id)
+        ->and(collect($props['titolari'][$sc->unita[0]->immobile->id])->pluck('quota')->sort()->values()->all())->toBe([40.0, 60.0]);
+
+    // Il venditore (60 %) ha versato € 300 a suo nome; l'unità 2 «l'unità».
+    $this->actingAs($this->user)
+        ->put("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'fondo_vincolato',
+            'righe' => [
+                ['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $sc->unita[0]->anagrafica->id, 'gia_versato' => 30_000],
+                ['immobile_id' => $sc->unita[1]->immobile->id, 'anagrafica_id' => null, 'gia_versato' => 50_000],
+            ],
+        ])->assertRedirect();
+
+    expect(ContributoVersato::where('anagrafica_id', $sc->unita[0]->anagrafica->id)->value('importo_cents'))->toBe(30_000)
+        ->and(ContributoVersato::whereNull('anagrafica_id')->count())->toBe(1);
+
+    // Il motore: unità 1 lorda 55.000 → 60 % = 33.000 al primo, 22.000 al secondo; lo sconto di 30.000 va SOLO al primo.
+    $dopo = (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione);
+    expect($dopo[$sc->unita[0]->anagrafica->id][$sc->unita[0]->immobile->id])->toBe(3_000)
+        ->and($dopo[$secondo->id][$sc->unita[0]->immobile->id])->toBe(22_000)
+        ->and($dopo[$sc->unita[1]->anagrafica->id][$sc->unita[1]->immobile->id])->toBe(5_000);
+
+    // Riaprendo la pagina la riga con la persona si rilegge com'è, con la quota lorda della persona (60 % di 55.000).
+    $props = $this->actingAs($this->user)->get("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}")->viewData('page')['props'];
+    $riga = collect($props['righe'])->firstWhere('anagrafica_id', $sc->unita[0]->anagrafica->id);
+    expect($riga['gia_versato'])->toBe(30_000)->and($riga['quota_lorda'])->toBe(33_000)->and($riga['quota_lorda_unita'])->toBe(55_000);
+})->group('contributi', 'http');
+
+test('B2 S6 — una persona che non è titolare in corso dell\'unità viene rifiutata, e la stessa persona due volte sulla stessa unità pure', function () {
+    $sc = cvScenario(setupContabile());
+    $estraneo = Anagrafica::forceCreate(['nome' => 'Estraneo', 'email' => 'cv-estraneo@example.com', 'indirizzo' => 'Via Roma 9', 'codice_fiscale' => 'CVTEST0000000092']);
+
+    $this->actingAs($this->user)
+        ->putJson("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'fondo_vincolato',
+            'righe' => [['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $estraneo->id, 'gia_versato' => 1_000]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('righe.0.anagrafica_id');
+
+    $this->actingAs($this->user)
+        ->putJson("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'fondo_vincolato',
+            'righe' => [
+                ['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $sc->unita[0]->anagrafica->id, 'gia_versato' => 1_000],
+                ['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $sc->unita[0]->anagrafica->id, 'gia_versato' => 2_000],
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors('righe.1.anagrafica_id');
+    expect(ContributoVersato::count())->toBe(0);
+})->group('contributi', 'http');
+
+test('B2 S6 (verifica, R15) — dopo una vendita il versato del venditore resta a suo nome e la pagina si salva ancora: la sua riga si conserva, l\'acquirente aggiunge la sua accanto, il motore sconta l\'acquirente e mette il resto del venditore in eccedenza', function () {
+    $sc = cvScenario(setupContabile());
+    $venditore = $sc->unita[0]->anagrafica;
+    // Il venditore versa € 300 a suo nome quando è ancora titolare.
+    $this->actingAs($this->user)
+        ->put("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'fondo_vincolato',
+            'righe' => [
+                ['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $venditore->id, 'gia_versato' => 30_000],
+                ['immobile_id' => $sc->unita[1]->immobile->id, 'anagrafica_id' => null, 'gia_versato' => 0],
+            ],
+        ])->assertRedirect();
+
+    // Vende: la sua titolarità si chiude ieri, l'acquirente entra oggi.
+    $acquirente = Anagrafica::forceCreate(['nome' => 'Acquirente 1B', 'email' => 'cv-acq@example.com', 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'CVTEST0000000093']);
+    DB::table('anagrafica_immobile')->where('immobile_id', $sc->unita[0]->immobile->id)->where('anagrafica_id', $venditore->id)->update(['data_fine' => now()->subDay()->format('Y-m-d')]);
+    DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $acquirente->id, 'immobile_id' => $sc->unita[0]->immobile->id, 'tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()->format('Y-m-d')]);
+
+    // La pagina: il venditore resta in elenco con la titolarità chiusa e la sua quota lorda storica (100 % di 55.000); l'acquirente è il titolare in corso.
+    $props = $this->actingAs($this->user)->get("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}")->viewData('page')['props'];
+    $titolari = collect($props['titolari'][$sc->unita[0]->immobile->id]);
+    expect($titolari->firstWhere('id', $venditore->id)['chiusa_il'])->toBe(now()->subDay()->format('Y-m-d'))
+        ->and($titolari->firstWhere('id', $acquirente->id)['chiusa_il'])->toBeNull();
+    $rigaVenditore = collect($props['righe'])->firstWhere('anagrafica_id', $venditore->id);
+    expect($rigaVenditore['gia_versato'])->toBe(30_000)->and($rigaVenditore['quota_lorda'])->toBe(55_000);
+
+    // Il salvataggio con la riga storica del venditore e la riga nuova dell'acquirente passa.
+    $this->actingAs($this->user)
+        ->put("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'fondo_vincolato',
+            'righe' => [
+                ['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $venditore->id, 'gia_versato' => 30_000],
+                ['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $acquirente->id, 'gia_versato' => 20_000],
+                ['immobile_id' => $sc->unita[1]->immobile->id, 'anagrafica_id' => null, 'gia_versato' => 0],
+            ],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+    expect(ContributoVersato::where('anagrafica_id', $venditore->id)->value('importo_cents'))->toBe(30_000)
+        ->and(ContributoVersato::where('anagrafica_id', $acquirente->id)->value('importo_cents'))->toBe(20_000);
+
+    // Una persona mai titolare e mai registrata resta rifiutata; una riga del venditore a zero non blocca.
+    $estraneo = Anagrafica::forceCreate(['nome' => 'Estraneo', 'email' => 'cv-estraneo2@example.com', 'indirizzo' => 'Via Roma 9', 'codice_fiscale' => 'CVTEST0000000094']);
+    $this->actingAs($this->user)
+        ->putJson("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}", [
+            'natura' => 'fondo_vincolato',
+            'righe' => [['immobile_id' => $sc->unita[0]->immobile->id, 'anagrafica_id' => $estraneo->id, 'gia_versato' => 1_000]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('righe.0.anagrafica_id');
+
+    // Come il motore sconta persona per persona (30.000 solo al venditore, 20.000 solo all'acquirente) lo prova il
+    // test S6 qui sopra; chi è fra i destinatari dopo la vendita lo decide la competenza del piano (D7/D8), non
+    // questa pagina — e senza periodo il motore è quello di sempre (`attivo`), quindi qui non lo si asserisce.
+})->group('contributi', 'http');

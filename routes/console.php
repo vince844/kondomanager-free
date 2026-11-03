@@ -1,8 +1,10 @@
 <?php
 
+use App\Services\Restore\RestoreMode;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 // ============================================================================
 // 0. HEARTBEAT — prova di vita dello scheduler.
@@ -23,6 +25,20 @@ Schedule::call(function () {
 Schedule::call(function () {
     Artisan::call('model:prune');
 })->name('system-prune')->daily(); 
+
+// ============================================================================
+// 1-bis. CACHE SCADUTA SUL DATABASE (1.11.0-beta.32)
+// ============================================================================
+// Con CACHE_STORE=database (l'immagine Docker) una riga scaduta sparisce solo quando qualcuno la
+// rilegge: quelle che nessuno rilegge restano per sempre. Una pulizia a settimana; la tabella
+// c'è in ogni installazione (migrazione di base), quindi gira ovunque e non costa niente dove la
+// cache è su file. `expiration` è un timestamp Unix. Le sessioni non hanno bisogno di questo:
+// Laravel le pulisce da solo (lotteria di `session.lottery`).
+Schedule::call(function () {
+    DB::table(config('cache.stores.database.table', 'cache'))
+        ->where('expiration', '<', now()->getTimestamp())
+        ->delete();
+})->name('pulizia-cache-scaduta')->weeklyOn(0, '03:30');
 
 // ============================================================================
 // 2. CONTROLLO AGGIORNAMENTI SISTEMA (Notifica Badge)
@@ -50,4 +66,18 @@ if (config('app.scheduler_queue_worker')) {
             '--backoff' => 10,
         ]);
     })->name('sync-queue-worker')->everyMinute()->withoutOverlapping();
+}
+
+// ============================================================================
+// 5. NIENTE DURANTE UN RIPRISTINO
+// ============================================================================
+// Mentre un ripristino è in corso il database è a metà import. La modalità ripristino ferma le
+// richieste HTTP, compreso il webhook /system/run-scheduler; gli eventi lanciati da riga di comando
+// (`schedule:run` del cron, `schedule:work` nell'immagine Docker) li ferma questo blocco, per ogni
+// evento registrato sopra, compreso il worker degli hosting condivisi. Il filtro controlla solo un file
+// (`RestoreMode`), niente database; il comando `schedule:run` invece, prima dei filtri, legge la cache per
+// sapere se il pianificatore è in pausa, e con la cache nel database legge la tabella a metà import (Coda 400).
+// Un evento nuovo va scritto PRIMA di questo blocco.
+foreach (Schedule::events() as $evento) {
+    $evento->skip(fn () => app(RestoreMode::class)->active());
 }

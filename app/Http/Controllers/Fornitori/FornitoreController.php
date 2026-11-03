@@ -6,12 +6,13 @@ use App\Traits\OrdinaElenco;
 
 use App\Enums\Fiscale\NaturaPercipiente;
 use App\Enums\Fiscale\TipoRitenuta;
+use App\Enums\RuoloRappresentanteFornitore;
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\CreateFornitoreRequest;
 use App\Http\Requests\Fornitore\FornitoreIndexRequest;
 use App\Http\Requests\Fornitore\UpdateFornitoreRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaConIndirizzoResource;
 use App\Http\Resources\Fornitore\Categorie\CategoriaFornitoreResource;
 use App\Http\Resources\Fornitore\EditFornitoreResource;
 use App\Http\Resources\Fornitore\FornitoreResource;
@@ -23,9 +24,15 @@ use App\Traits\PaginaElenco;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
+/**
+ * I fornitori del pannello. Ogni azione chiede il suo permesso a `FornitorePolicy`, con i permessi delle anagrafiche
+ * (Coda 402): leggere «Visualizza», creare «Crea», modificare «Modifica», eliminare «Elimina anagrafiche».
+ */
 class FornitoreController extends Controller
 {
     use OrdinaElenco;
@@ -44,6 +51,8 @@ class FornitoreController extends Controller
      */
     public function index(FornitoreIndexRequest $request): Response
     {
+        Gate::authorize('viewAny', Fornitore::class);
+
         $validated = $request->validated();
 
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'è, altrimenti
@@ -53,6 +62,17 @@ class FornitoreController extends Controller
         $fornitori = Fornitore::with(['referenti:id,nome,indirizzo', 'categoria'])
             ->when($validated['ragione_sociale'] ?? false, function ($query, $ragioneSociale) {
                 $query->where('ragione_sociale', 'like', "%{$ragioneSociale}%");
+            })
+            // ⚠️ **Il filtro per categoria, dalla 1.11.0-beta.9.**
+            //
+            // La categoria arrivava al browser in ogni riga — `with(['categoria'])` qui sopra,
+            // `FornitoreResource` la serializza — e **nessuno la mostrava né la usava**: niente
+            // colonna, niente filtro. Cioè si poteva classificare un fornitore e poi non c'era
+            // modo di chiedere «mostrami tutti gli idraulici». È molto probabilmente il motivo per
+            // cui, misurato il 30/08/2026, **sei fornitori su otto non avevano categoria**:
+            // compilarla non serviva a niente.
+            ->when($validated['categoria_id'] ?? false, function ($query, array $categorie) {
+                $query->whereIn('categoria_id', $categorie);
             })
             ->tap(fn ($q) => $this->ordina($q, $validated, FornitoreIndexRequest::colonneOrdinabili(), predefinita: 'ragione_sociale', versoPredefinito: 'asc'))
             ->paginate($validated['per_page'])
@@ -66,7 +86,14 @@ class FornitoreController extends Controller
                 'per_page'     => $fornitori->perPage(),
                 'total'        => $fornitori->total(),
             ],
-            'filters' => $request->only(['ragione_sociale']), 
+            // Le categorie viaggiano **sempre**, non a richiesta: sono poche righe, e caricarle
+            // pigramente all'apertura del menù — come fa l'elenco documenti — costringe poi a
+            // ricaricarle a mano quando si arriva con il filtro già applicato, altrimenti la
+            // pillola sa di essere accesa e non sa scrivere su cosa. Quel difetto è costato una
+            // segnalazione di Vincenzo sull'elenco documenti: qui non può darsi.
+            'categorie' => CategoriaFornitore::orderBy('name')->get(['id', 'name']),
+
+            'filters' => $request->only(['ragione_sociale', 'categoria_id']), 
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
         ]);
@@ -81,9 +108,16 @@ class FornitoreController extends Controller
      */
     public function create(): Response
     {
+        Gate::authorize('create', Fornitore::class);
+
         return Inertia::render('fornitori/FornitoriNew', [
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            // La tendina «Rappresentante» mostra il nome e, sotto, l'indirizzo (Coda 408): il resto della persona sta nella
+            // sua scheda, che chiede «Visualizza anagrafiche».
+            'anagrafiche' => AnagraficaConIndirizzoResource::collection(Anagrafica::get(['id', 'nome', 'indirizzo'])),
             'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all()),
+            // I sei ruoli vengono dall'enum, non da una lista scritta a mano nella pagina: erano
+            // già duplicati fra `CreateFornitoreAnagraficaRequest` e `AnagraficheNew.vue`.
+            'ruoliRappresentante' => RuoloRappresentanteFornitore::opzioni(),
             ...$this->regimeFiscaleOptions(),
         ]);
     }
@@ -94,11 +128,28 @@ class FornitoreController extends Controller
      * and creates the default bank account if an IBAN is provided.
      *
      * @param CreateFornitoreRequest $request Validated request data
-     * @return RedirectResponse Redirects to index with success/error message
+     * @return RedirectResponse|JsonResponse Redirects to index with success/error message
      * @since v1.9.0
+     *
+     * ⚠️ **Stesso endpoint, due esiti — negoziato sull'Accept, non duplicato.**
+     * Aggiunto aprendo la riprogettazione della UI di importazione XML (02/09/2026):
+     * il fornitore letto da un XML e non ancora in anagrafica va creato **senza
+     * lasciare la pagina** di registrazione della fattura, e `store()` fin qui
+     * rispondeva sempre con un redirect verso `admin.fornitori.index` — corretto per
+     * il form a pagina intera, ma per una chiamata da un modale significherebbe
+     * seguire il redirect e ricevere HTML al posto del fornitore appena creato.
+     *
+     * `CreateFornitoreRequest`, la creazione, gli effetti collaterali (referente,
+     * conto corrente) restano **identici in entrambi i casi**: è la stessa strada,
+     * non una seconda che rischia di divergere da questa — il commento su
+     * `anagrafica_id`/`ruolo` qui sotto ricorda cosa costa avere due strade per la
+     * stessa cosa.
      */
-    public function store(CreateFornitoreRequest $request): RedirectResponse
+    public function store(CreateFornitoreRequest $request): RedirectResponse|JsonResponse
     {
+        // Anche dalla registrazione della fattura: il rifiuto arriva come 403 con la frase della policy, in JSON alla
+        // finestra che crea il fornitore letto dall'XML.
+        Gate::authorize('create', Fornitore::class);
 
         // Otteniamo i dati validati.
         // Assicurati che CreateFornitoreRequest accetti e validi anche iban_principale
@@ -108,11 +159,22 @@ class FornitoreController extends Controller
             DB::beginTransaction();
 
             // 1. Creazione del Fornitore (i campi fiscali verranno salvati in automatico se presenti in $data)
-            $fornitore = Fornitore::create($data);
+            //
+            // ⚠️ `ritenuta_decisa_il` si scrive qui e non arriva dal modulo: non è un campo che
+            // l'amministratore compila, è la registrazione del fatto che **ha risposto**. Alla
+            // creazione ha sempre risposto, anche quando la risposta è «non soggetto a ritenuta»
+            // — ed è proprio quel «no» che senza questa riga resterebbe indistinguibile da un
+            // silenzio (Coda 116).
+            $fornitore = Fornitore::create($data + ['ritenuta_decisa_il' => now()]);
 
             // 2. Associazione dell'Anagrafica come referente (se presente)
             if (!empty($data['anagrafica_id'])) {
-                $fornitore->referenti()->attach($data['anagrafica_id']);
+                // Con il ruolo, che la validazione rende obbligatorio appena si sceglie
+                // un'anagrafica: senza, nasceva una riga che la scheda «Rappresentanti» avrebbe
+                // rifiutato, e che lì compariva con la colonna Ruolo vuota.
+                $fornitore->referenti()->attach($data['anagrafica_id'], [
+                    'ruolo' => $data['ruolo'],
+                ]);
             }
 
             // 3. Creazione del Conto Corrente predefinito (se è stato inserito un IBAN)
@@ -127,17 +189,30 @@ class FornitoreController extends Controller
 
             DB::commit();
 
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'id' => $fornitore->id,
+                    'ragione_sociale' => $fornitore->ragione_sociale,
+                ], 201);
+            }
+
             return to_route('admin.fornitori.index')->with(
                 $this->flashSuccess(__('fornitori.success_create_fornitore'))
             );
 
         } catch (\Throwable $e) {
             DB::rollback();
-            
+
             Log::error('Error creating fornitore', [
                 'message'       => $e->getMessage(),
                 'trace'         => $e->getTraceAsString(),
             ]);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'errore' => __('fornitori.error_create_fornitore'),
+                ], 500);
+            }
 
             return to_route('admin.fornitori.index')->with(
                 $this->flashError(__('fornitori.error_create_fornitore'))
@@ -150,6 +225,7 @@ class FornitoreController extends Controller
      */
     public function show(Fornitore $fornitore): Response
     {
+        Gate::authorize('view', $fornitore);
 
         $fornitore->loadMissing('referenti', 'categoria');
 
@@ -169,6 +245,8 @@ class FornitoreController extends Controller
      */
     public function edit(Fornitore $fornitore): Response
     {
+        Gate::authorize('update', $fornitore);
+
         RedirectHelper::rememberUrl();
 
         return Inertia::render('fornitori/FornitoriEdit', [
@@ -206,21 +284,32 @@ class FornitoreController extends Controller
      */
     public function update(UpdateFornitoreRequest $request, Fornitore $fornitore): RedirectResponse
     {
+        Gate::authorize('update', $fornitore);
+
         $validated = $request->validated(); 
 
         try {
             DB::beginTransaction();
 
             // 1. Aggiorna i dati del fornitore (inclusi i campi fiscali e lo stato)
+            //
+            // ⚠️ La data della decisione si aggiorna **solo se il riquadro fiscale è stato
+            // toccato**: chi sta cambiando l'IBAN non si è pronunciato sulla ritenuta, e
+            // segnare quella scheda come decisa registrerebbe una risposta che nessuno ha
+            // dato. È lo stesso criterio della presa d'atto di ieri, e viene dallo stesso
+            // trait proprio perché i due non possano divergere.
+            if ($request->costituisceUnaPresaDiPosizione($fornitore)) {
+                $validated['ritenuta_decisa_il'] = now();
+            }
+
             $fornitore->update($validated);
 
-            // 2. Sincronizza l'Anagrafica (Referente Principale)
-            if (!empty($validated['anagrafica_id'])) {
-                $fornitore->referenti()->sync([$validated['anagrafica_id']]);
-            } else {
-                // Se viene svuotato il campo nel form, rimuoviamo l'associazione
-                $fornitore->referenti()->detach();
-            }
+            // 2. I rappresentanti non si toccano da qui, ed è una rimozione voluta della beta.7.
+            // Prima questo punto faceva `detach()` senza argomenti quando il modulo non mandava
+            // `anagrafica_id` — cioè portava via **tutti** i rappresentanti a ogni salvataggio, con
+            // il messaggio verde di successo. La correzione non è stata rimettere la casella (che
+            // non sa esprimere il `ruolo`, obbligatorio dall'altra parte) ma togliere del tutto la
+            // scrittura: la relazione si governa dalla scheda «Rappresentanti».
 
             // 3. Gestione del Conto Corrente (Tesoreria)
             // Se c'è un IBAN, lo aggiorniamo (o lo creiamo se non esisteva).
@@ -251,7 +340,9 @@ class FornitoreController extends Controller
                 $this->flashSuccess(__('fornitori.success_update_fornitore'))
             );
 
-        } catch (\Exception $e) {
+        // `\Throwable` e non `\Exception`, come già fa `store()`: un `TypeError` sfuggirebbe alla
+        // cattura e lascerebbe aperta la transazione aperta poco sopra.
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Error updating fornitore: ' . $e->getMessage());
 
@@ -272,6 +363,9 @@ class FornitoreController extends Controller
      */
     public function destroy(Fornitore $fornitore): RedirectResponse
     {
+        // Fuori dal `try`: il `catch (\Throwable)` qui sotto trasformerebbe il rifiuto in un messaggio d'errore generico.
+        Gate::authorize('delete', $fornitore);
+
         try {
             // 1. CONTROLLO CONTABILE (Fondamentale!)
             if ($fornitore->fatture()->exists()) {
@@ -298,7 +392,7 @@ class FornitoreController extends Controller
                 $this->flashSuccess(__('fornitori.success_delete_fornitore'))
             );
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Error deleting fornitore: ' . $e->getMessage());
 

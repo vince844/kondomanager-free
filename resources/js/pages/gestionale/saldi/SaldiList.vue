@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
@@ -8,7 +8,7 @@ import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import SaldiGuide from '@/components/guides/SaldiGuide.vue';
 import SaldiDetailPanel from '@/components/gestionale/saldi/SaldiDetailPanel.vue';
-import { Coins, Lock, Search, Building2, Users } from 'lucide-vue-next';
+import { Coins, Lock, Search, Building2, Users, ChevronLeft } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { ImmobileConSaldi } from '@/types/gestionale/saldi';
 
@@ -26,6 +26,20 @@ const { generatePath } = usePermission();
 const selectedId = ref<number | null>(null);
 const search = ref('');
 const showGuide = ref(false);
+
+// Sotto i 768 px la lista si nasconde quando si apre un'unità: al ritorno riparte dove era, non dall'inizio (con decine di unità
+// andava riscorsa ogni volta).
+const lista = ref<HTMLElement | null>(null);
+let posizioneLista = 0;
+const apri = (id: number) => {
+  posizioneLista = lista.value?.scrollTop ?? 0;
+  selectedId.value = id;
+};
+const tornaAllElenco = async () => {
+  selectedId.value = null;
+  await nextTick();
+  if (lista.value) lista.value.scrollTop = posizioneLista;
+};
 
 const selectedImmobile = computed(() =>
   props.immobili.find(i => i.id === selectedId.value) ?? null
@@ -56,7 +70,7 @@ const pageGuides = [
   },
   {
     title: 'Dati Blindati',
-    description: 'I saldi assorbiti da un piano rate mostrano un lucchetto e non sono modificabili, per garantire la quadratura. Eliminando quel piano tornano liberi.',
+    description: 'Un saldo assorbito da un piano rate si modifica finché il piano si può ricalcolare. Quando il piano non si riscrive più (quote a giornale, un incasso, un credito usato o rimborsato, un passaggio che l\'ha preso nel conguaglio), il saldo mostra un lucchetto: aprilo per sapere perché e come correggerlo.',
     icon: Lock,
     colorVariant: 'blue' as const
   },
@@ -90,7 +104,12 @@ const pageGuides = [
         <div class="flex h-[calc(100vh-280px)] min-h-[500px] rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
 
           <!-- ── LEFT PANEL: lista immobili ────────────────────────────── -->
-          <div class="w-[300px] xl:w-[340px] shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800">
+          <!-- Sotto i 768 px un pannello per volta (verifica a video della .42): accanto alla lista larga 300 px il dettaglio
+               restava schiacciato in pochi pixel. Scelto un immobile, la lista lascia il posto al dettaglio. -->
+          <div
+            class="w-full md:w-[300px] xl:w-[340px] shrink-0 flex-col md:border-r border-slate-200 dark:border-slate-800"
+            :class="selectedImmobile ? 'hidden md:flex' : 'flex'"
+          >
 
             <!-- Search -->
             <div class="p-3 border-b border-slate-200 dark:border-slate-800">
@@ -110,11 +129,11 @@ const pageGuides = [
             </div>
 
             <!-- List -->
-            <div class="flex-1 overflow-y-auto p-2 space-y-0.5">
+            <div ref="lista" class="flex-1 overflow-y-auto p-2 space-y-0.5">
               <button
                 v-for="imm in filteredImmobili"
                 :key="imm.id"
-                @click="selectedId = imm.id"
+                @click="apri(imm.id)"
                 class="w-full text-left rounded-lg px-3 py-2.5 transition-all border flex items-center justify-between gap-2 group"
                 :class="selectedId === imm.id
                   ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800'
@@ -144,7 +163,16 @@ const pageGuides = [
           </div>
 
           <!-- ── RIGHT PANEL: dettaglio ─────────────────────────────────── -->
-          <div class="flex-1 overflow-y-auto">
+          <div class="flex-1 min-w-0 overflow-y-auto" :class="selectedImmobile ? 'block' : 'hidden md:block'">
+            <!-- Sempre in vista: il pannello è lui stesso il contenitore che scorre. -->
+            <button
+              v-if="selectedImmobile"
+              type="button"
+              class="md:hidden sticky top-0 z-10 w-full flex items-center gap-1 px-4 py-3 text-sm font-medium text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800"
+              @click="tornaAllElenco"
+            >
+              <ChevronLeft class="w-4 h-4" /> Torna all'elenco
+            </button>
             <!-- Empty state -->
             <div
               v-if="!selectedImmobile"

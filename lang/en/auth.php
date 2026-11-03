@@ -22,6 +22,8 @@ return [
     'invalid_2fa_code'          => 'The provided two-factor authentication code is invalid.',
     'invalid_2fa_recovery_code' => 'The provided two-factor authentication recovery code is invalid.',
     'too_many_2fa_attempts'     => 'Too many two-factor authentication attempts. Try again in :seconds seconds.',
+    'two_factor_expired'        => 'The code check has expired: enter your email and password again.',
+    'two_factor_restart'        => 'Too many wrong codes: enter your email and password again.',
     
     /* ------------------------------------------------------------------
      | Headers, Titles and Descriptions
@@ -184,6 +186,29 @@ return [
             'toggle_recovery_code'       => 'sign in using a recovery code',
             'or'                         => 'or you can',
         ],
+    ],
+
+    /* ------------------------------------------------------------------
+     | Hints next to form fields
+     | ------------------------------------------------------------------ */
+    'hint' => [
+        // La lunghezza minima di ogni password nuova (Coda 262): `Password::defaults()`.
+        'password_min' => 'At least 10 characters.',
+    ],
+
+    /* ------------------------------------------------------------------
+     | The window that asks for the password again (Coda 404): it appears over
+     | the page when a sensitive action requires it, and the action restarts by itself.
+     | ------------------------------------------------------------------ */
+    'confirm_password_dialog' => [
+        'title'          => 'Confirm your password',
+        'description'    => 'To continue, enter your password again. After you confirm, the action you asked for restarts by itself, with nothing to retype. If you cancel, it is not carried out and what you wrote stays as it is.',
+        'cancel'         => 'Cancel',
+        'confirm'        => 'Confirm',
+        'too_many'       => 'Too many attempts in a short time: try again in a minute.|Too many attempts in a short time: try again in :count minutes.',
+        'too_many_later' => 'Too many attempts in a short time: try again later.',
+        'error_generic'  => 'The password could not be checked. Try again.',
+        'session_ended'  => 'Your session has expired: reload the page and, if needed, sign in again.',
     ],
 
     /* ------------------------------------------------------------------

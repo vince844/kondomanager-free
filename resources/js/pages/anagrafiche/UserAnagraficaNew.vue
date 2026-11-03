@@ -1,7 +1,10 @@
 <script setup lang="ts">
 
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import Alert from '@/components/Alert.vue';
+import type { Flash } from '@/types/flash';
 import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
@@ -24,6 +27,11 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 const { generateRoute } = usePermission();
+
+// Chi arriva qui dal portale senza un'anagrafica collegata all'account legge perché (decisione 134.4,
+// `CheckHasAnagrafica`): la frase arriva dal server come avviso.
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash?.message);
 
 type DocumentType = {
   label: string;
@@ -80,6 +88,10 @@ const submit = () => {
       <div class="px-4 py-6">
         
         <Heading title="Crea anagrafica" description="Compila il seguente modulo per la creazione di una nuova anagrafica" />
+
+        <div v-if="flashMessage" class="py-2">
+            <Alert :message="flashMessage.message" :type="flashMessage.type" />
+        </div>
       
             <div class="mt-3 flex flex-col">
                 <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">

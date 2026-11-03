@@ -29,12 +29,18 @@ return [
     'delete_users'              => "You don't have sufficient permissions to delete users.",
     'suspend_users'             => "No tienes permisos suficientes para suspender usuarios.",
     'users_self_action'         => "No puedes suspender ni eliminar tu propia cuenta.",
+    'users_self_reinvite'       => "No puedes reinvitar tu propia cuenta: la contraseña se cambia en la configuración, en «Password».",
+    'users_self_unverify'       => "No puedes quitar la verificación del correo a tu propia cuenta.",
     'users_last_admin'          => "Este es el último administrador activo: sin esa cuenta nadie podría gestionar la instalación.",
+    'users_last_admin_self'     => "Eres el último administrador activo: sin tu cuenta nadie podría gestionar la instalación. Para eliminarla, primero hace falta otro administrador activo.",
+    'users_privileged_target'   => 'Solo un administrador gestiona esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
+    'users_own_from_profile'    => 'Solo un administrador gestiona tu cuenta desde aquí: el nombre y el correo se cambian en la configuración, en «Profile», y la contraseña en «Password».',
+    'users_revoke_not_owned'    => 'No puedes quitar un permiso que tú mismo no tienes.',
     // Roles
-    'view_roles'                => "You don't have sufficient permissions to view roles.",
-    'create_roles'              => "You don't have sufficient permissions to create a new role.",
-    'edit_roles'                => "You don't have sufficient permissions to edit roles.",
-    'delete_roles'              => "You don't have sufficient permissions to delete roles.",
+    'view_roles'                => 'Los roles los gestiona solo un administrador.',
+    'create_roles'              => 'Solo un administrador puede crear un rol.',
+    'edit_roles'                => 'Solo un administrador puede modificar un rol.',
+    'delete_roles'              => 'Solo un administrador puede eliminar un rol.',
     // Permissions
     'view_permissions'          => "You don't have sufficient permissions to view permissions.",
     // Archive documents
@@ -49,5 +55,6 @@ return [
     'delete_events'             => "You don't have sufficient permissions to delete events.",
     'edit_events'               => "You don't have sufficient permissions to edit events.",
     'approve_events'            => "ou don't have sufficient permissions to approve events.",
+    'report_payment_events'     => "No puedes informar del pago de este vencimiento.",
 
 ];

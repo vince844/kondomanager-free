@@ -26,6 +26,13 @@ final readonly class Rilievo
      * @param  int|null  $riga  1-based, come in Excel; null se il rilievo è sul file nel suo insieme
      * @param  string|null  $colonna  l'etichetta come compare nel file, non il campo canonico
      * @param  string|null  $chiaveDecisione  **quale** decisione questo rilievo sta aspettando
+     * @param  string|null  $foglio  il nome del foglio, quando il file ne ha più d'uno
+     *
+     * `foglio` esiste perché il modello compilabile a mano è **un file solo con cinque fogli**:
+     * là «Riga 14, colonna «indirizzo»» esiste cinque volte, e il numero di riga — che questa
+     * classe si è data la regola di rendere sempre uguale a quello che l'amministratore legge in
+     * Excel — torna a essere ambiguo proprio mentre sembra preciso. Resta `null` per i file di
+     * Danea, che un foglio utile ce l'hanno sempre e uno solo.
      *
      * `chiaveDecisione` esiste perché un rilievo `da_decidere` senza di essa è irrisolvibile: la
      * decisione dell'utente arriva con una chiave, e senza il collegamento niente può segnare
@@ -40,21 +47,22 @@ final readonly class Rilievo
         public ?int $riga = null,
         public ?string $colonna = null,
         public ?string $chiaveDecisione = null,
+        public ?string $foglio = null,
     ) {}
 
-    public static function errore(string $codice, string $messaggio, ?string $rimedio = null, ?int $riga = null, ?string $colonna = null): self
+    public static function errore(string $codice, string $messaggio, ?string $rimedio = null, ?int $riga = null, ?string $colonna = null, ?string $foglio = null): self
     {
-        return new self(Severita::Errore, $codice, $messaggio, $rimedio, $riga, $colonna);
+        return new self(Severita::Errore, $codice, $messaggio, $rimedio, $riga, $colonna, foglio: $foglio);
     }
 
-    public static function daDecidere(string $codice, string $messaggio, ?string $rimedio = null, ?int $riga = null, ?string $colonna = null, ?string $chiaveDecisione = null): self
+    public static function daDecidere(string $codice, string $messaggio, ?string $rimedio = null, ?int $riga = null, ?string $colonna = null, ?string $chiaveDecisione = null, ?string $foglio = null): self
     {
-        return new self(Severita::DaDecidere, $codice, $messaggio, $rimedio, $riga, $colonna, $chiaveDecisione);
+        return new self(Severita::DaDecidere, $codice, $messaggio, $rimedio, $riga, $colonna, $chiaveDecisione, $foglio);
     }
 
-    public static function avviso(string $codice, string $messaggio, ?string $rimedio = null, ?int $riga = null, ?string $colonna = null): self
+    public static function avviso(string $codice, string $messaggio, ?string $rimedio = null, ?int $riga = null, ?string $colonna = null, ?string $foglio = null): self
     {
-        return new self(Severita::Avviso, $codice, $messaggio, $rimedio, $riga, $colonna);
+        return new self(Severita::Avviso, $codice, $messaggio, $rimedio, $riga, $colonna, foglio: $foglio);
     }
 
     public function toArray(): array
@@ -67,6 +75,7 @@ final readonly class Rilievo
             'riga' => $this->riga,
             'colonna' => $this->colonna,
             'chiave_decisione' => $this->chiaveDecisione,
+            'foglio' => $this->foglio,
         ];
     }
 }

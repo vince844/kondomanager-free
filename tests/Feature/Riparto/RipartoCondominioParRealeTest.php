@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\DB;
 uses(RefreshDatabase::class);
 
 /**
- * Ricostruzione COMPLETA del condominio PAR («Residenza al Parco Corpo C»)
- * con i dati reali estratti dal database dell'amministratore (query su
+ * Ricostruzione COMPLETA del condominio di prova «PAR»: la forma e i numeri di un
+ * condominio vero, senza nomi — estratti dal database di un amministratore (query su
  * quote_tabella, conti, anagrafica_immobile, rate_quote) e incrociati con il
  * PDF di stampa v1.9.1 del 05/07/2026.
  *
@@ -97,7 +97,7 @@ function buildCondominioPar(): array
         76 => 62, 77 => 63, 78 => 64, 79 => 65, 80 => 49, 81 => 52, 82 => 53,
         83 => 57, 84 => 47,
     ];
-    $inquilini = [35 => 66]; // Telch Mario
+    $inquilini = [35 => 66]; // l'inquilino dell'unità 35, che al tunnel non partecipa
 
     // ── Conti (dalla query 2, ordine per conto_id 130-152) ──────────────────
     $contiDef = [
@@ -295,9 +295,9 @@ it('la stampa riparto ha ogni colonna esatta al budget e ogni riga identica a ra
     expect(array_sum($celleAf))->toBe(220000);    // colonna esatta
     expect(array_count_values($celleAf))->toBe([10476 => 17, 10477 => 4]); // resto spalmato all'interno
 
-    // ── TUNNEL: nessun centesimo a chi non partecipa (il caso Telch Mario) ──
+    // ── TUNNEL: nessun centesimo a chi non partecipa (l'inquilino dell'unità 35) ──
     $tunId = $tabelle['TUNNEL']->id;
-    $telch = $matrice['righe'][$immobili[35]->id]['soggetti'][$anagrafiche[66]->id];
-    expect($telch['per_tabella'][$tunId]['importo'])->toBe(0); // in v1.9.1 era €0,01
-    expect($telch['totale'])->toBe(71310);                     // ma il suo totale resta esatto
+    $inquilino35 = $matrice['righe'][$immobili[35]->id]['soggetti'][$anagrafiche[66]->id];
+    expect($inquilino35['per_tabella'][$tunId]['importo'])->toBe(0); // in v1.9.1 era €0,01
+    expect($inquilino35['totale'])->toBe(71310);                     // ma il suo totale resta esatto
 });

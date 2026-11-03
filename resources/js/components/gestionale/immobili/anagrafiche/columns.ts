@@ -60,8 +60,10 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
       header: 'Quota',
       cell: ({ row }) => {
         const anagrafica = row.original as AnagraficaWithPivot
+        // «20 %» e non «20.00 %»: il valore arriva dal database come stringa decimale con il punto.
+        const quota = Number(anagrafica.pivot.quota)
         return h('div', { class: 'flex items-center gap-1.5' }, [
-          h('span', { class: 'font-medium text-slate-700 dark:text-slate-300' }, anagrafica.pivot.quota),
+          h('span', { class: 'font-medium text-slate-700 dark:text-slate-300 tabular-nums' }, Number.isFinite(quota) ? quota.toLocaleString('it-IT', { maximumFractionDigits: 2 }) : String(anagrafica.pivot.quota)),
           h(Percent, { class: 'w-3 h-3 text-slate-400' })
         ])
       },

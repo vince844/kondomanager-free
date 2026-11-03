@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\Comunicazioni\ComunicazioneResource;
-use App\Http\Resources\Documenti\DocumentoResource;
-use App\Http\Resources\Evento\EventoResource;
-use App\Http\Resources\Segnalazioni\SegnalazioneResource;
+use App\Http\Resources\Portale\ComunicazionePortaleResource;
+use App\Http\Resources\Portale\DocumentoPortaleResource;
+use App\Http\Resources\Portale\EventoPortaleResource;
+use App\Http\Resources\Portale\SegnalazionePortaleResource;
+use App\Models\Evento;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -62,12 +64,16 @@ class UserDashboardController extends Controller
                 limit: 3
             );
 
-            // 1. Fetch dell'intera collection: il waterfall deve vedere tutti gli eventi
-            $eventiCollection = $this->recurrenceService->getEventsInNextDays(
-                days: 90, // ampliato come per la dashboard admin
-                anagrafica: $anagrafica,
-                condominioIds: $condominioIds
-            );
+            // 1. Fetch dell'intera collection: il waterfall deve vedere tutti gli eventi. Le scadenze
+            // arrivano solo a chi apre l'agenda (decisione 136.3): la stessa domanda della sua pagina,
+            // `EventoPolicy::viewAny`; senza, la dashboard non le mostra.
+            $eventiCollection = Gate::forUser($user)->allows('viewAny', Evento::class)
+                ? $this->recurrenceService->getEventsInNextDays(
+                    days: 90, // ampliato come per la dashboard admin
+                    anagrafica: $anagrafica,
+                    condominioIds: $condominioIds
+                )
+                : collect();
 
             // 2. Waterfall applicato sull'intera collection (invariato)
             $eventiProcessati = $this->applyFinancialWaterfall(
@@ -96,11 +102,13 @@ class UserDashboardController extends Controller
             abort(500, 'Unable to fetch reports.');
         }
 
+        // Coda 260: al portale le risorse minime (autore e condominio con id e nome, nessun dato di
+        // contatto di altri, nessuna nota del condominio).
         return Inertia::render('dashboard/UserDashboard', [
-            'segnalazioni'  => SegnalazioneResource::collection($segnalazioni),
-            'comunicazioni' => ComunicazioneResource::collection($comunicazioni),
-            'documenti'     => DocumentoResource::collection($documenti),
-            'eventi'        => Inertia::scroll(EventoResource::collection($eventiPaginati)),
+            'segnalazioni'  => SegnalazionePortaleResource::collection($segnalazioni),
+            'comunicazioni' => ComunicazionePortaleResource::collection($comunicazioni),
+            'documenti'     => DocumentoPortaleResource::collection($documenti),
+            'eventi'        => Inertia::scroll(EventoPortaleResource::collection($eventiPaginati)),
         ]);
     }
 }

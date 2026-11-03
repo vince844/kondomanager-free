@@ -8,8 +8,11 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestione;
 use App\Models\Gestionale\BudgetMovement;
+use App\Models\Gestionale\Conto;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
+use App\Services\Riparto\CompetenzaDichiarataPerVoce;
+use App\Services\Riparto\VoceDiSpesaNegativa;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -125,11 +128,28 @@ class FetchCapitoliPerGestioneController extends Controller
             $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap);
             $capitoliFinanziabiliRaw = collect($coverageService->getCapitoliFinanziabili($analisiBilancio, $vociDaSpostaSpesa))->keyBy('id');
 
-            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap) {
+            // La competenza già dichiarata sulla voce in un piano di questa gestione (decisione 20): la scheda
+            // «Competenza delle voci» la propone invece del periodo della gestione, dicendo da quale piano viene.
+            $dichiarate = app(CompetenzaDichiarataPerVoce::class)->perConti(
+                $conti->pluck('id')->map(fn ($id) => (int) $id)->all(),
+                $conti->mapWithKeys(fn ($c) => [(int) $c->id => $c->parent_id !== null ? (int) $c->parent_id : null])->all(),
+                (int) $gestioneId,
+                (int) $esercizioId,
+            );
+
+            // Le voci di spesa scritte con il meno, i piani della gestione che le addebitano già e quelli che ne bloccano l'importo: la nota dice dove stanno.
+            $speseNegative = $conti->filter(fn ($c) => Conto::eSpesaNegativa((string) $c->tipo, (int) $c->importo));
+            $pianiDelleNegative = VoceDiSpesaNegativa::pianiPerVoce($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all(), (int) $gestioneId);
+            $bloccoDelleNegative = Conto::pianiCheBloccanoLaVoce($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all());
+            $negativeAlTerzoLivello = VoceDiSpesaNegativa::alTerzoLivello($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap, $dichiarate, $pianiDelleNegative, $bloccoDelleNegative, $negativeAlTerzoLivello) {
                 // Troviamo il budget per l'interfaccia
-                $budgetTeorico = (int) $c->importo;
+                // Ogni voce vale il suo valore assoluto, come per il motore e per la copertura: un'entrata scritta con il meno non è uno sforo,
+                // e una spesa scritta con il meno il motore la addebita in positivo.
+                $budgetTeorico = BudgetCoverageService::importoDellaVoce($c, (int) $c->importo);
                 if ($budgetTeorico === 0 && $c->sottoconti->isNotEmpty()) {
-                    $budgetTeorico = (int) $c->sottoconti->sum('importo');
+                    $budgetTeorico = (int) $c->sottoconti->sum(fn ($figlio) => BudgetCoverageService::importoDellaVoce($figlio, (int) $figlio->importo));
                 }
 
                 $spesoReale = $this->getSpesoRealeRicorsivo($c, $fatturatoMap);
@@ -148,6 +168,15 @@ class FetchCapitoliPerGestioneController extends Controller
                     $isSforo = false; // Se è scudato, non è uno sforo "attivo"
                 }
 
+                // Una voce di spesa scritta con il meno non si propone mai: spenta, senza sforo, con la nota che dice la strada (correggerla, o la
+                // pagina del piano che la addebita già). Prima diceva «Esaurito» senza piano e «Sforo da recuperare» con il piano che la addebita.
+                $spesaNegativa = Conto::eSpesaNegativa((string) $c->tipo, (int) $c->importo);
+                if ($spesaNegativa) {
+                    $residuo = 0;
+                    $isDisabled = true;
+                    $isSforo = false;
+                }
+
                 $nome = $c->parent_id ? "{$c->parent->nome} > {$c->nome}" : "[CAPITOLO] {$c->nome}";
                 $daSpostaSpesa = $finanziabileData['da_sposta_spesa'] ?? false;
 
@@ -164,17 +193,27 @@ class FetchCapitoliPerGestioneController extends Controller
                 } elseif (max($budgetTeorico, $spesoReale) === 0) {
                     $nota = "Nessun budget o spesa";
                 }
+                if ($spesaNegativa) {
+                    $nota = VoceDiSpesaNegativa::nota((string) $c->nome, (int) $c->importo, $pianiDelleNegative[(int) $c->id] ?? [], $bloccoDelleNegative[(int) $c->id] ?? [], in_array((int) $c->id, $negativeAlTerzoLivello, true));
+                }
 
                 return [
                     'id'              => $c->id,
                     'nome'            => $nome,
+                    // Il tipo serve alla pagina per contare le voci di entrata con il segno meno, come il motore.
+                    'tipo'            => $c->tipo,
                     'importo_totale'  => MoneyHelper::fromCents($budgetTeorico),
                     'speso_reale'     => MoneyHelper::fromCents($spesoReale),
                     'residuo'         => MoneyHelper::fromCents($residuo),
                     'disabled'        => $isDisabled,
                     'is_sforo'        => $isSforo,
                     'da_sposta_spesa' => $daSpostaSpesa,
-                    'note'            => $nota
+                    'spesa_negativa'  => $spesaNegativa,
+                    'note'            => $nota,
+                    // B2, S6: la sezione «Competenza delle voci» elenca le radici quando il piano include tutto.
+                    'is_radice'       => $c->parent_id === null,
+                    'parent_id'       => $c->parent_id,
+                    'competenza_dichiarata' => $dichiarate[(int) $c->id] ?? null,
                 ];
             });
 

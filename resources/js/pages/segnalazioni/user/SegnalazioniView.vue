@@ -12,6 +12,8 @@ import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Segnalazione } from '@/types/segnalazioni';
 import ListaCommenti from '@/components/commenti/ListaCommenti.vue';
+import { guidaChiLaVede } from '@/lib/segnalazioni/privacy';
+import { etichettaPrivacy } from '@/lib/pubblicazione';
 
 const props = defineProps<{
   segnalazione: Segnalazione | any;
@@ -61,12 +63,17 @@ const pageGuides = computed(() => [
     colorVariant: 'amber' as const
   },
   {
-    title: 'Privacy e Sicurezza',
-    description: 'Questa conversazione è privata e visibile solo a te e all\'amministratore.',
+    // Coda 306: la guida dice «privata» solo se la segnalazione lo è (`is_private`); su una non
+    // privata dice chi la vede (`guidaChiLaVede`). Finché non è pubblicata e
+    // approvata (la apre solo l'autore) dice che per ora non la vede nessun altro.
+    title: trans(guidaChiLaVede(props.segnalazione).title),
+    description: trans(guidaChiLaVede(props.segnalazione).description),
     icon: Lock,
     colorVariant: 'emerald' as const
   }
 ]);
+
+const etichettaPrivata = computed(() => etichettaPrivacy('segnalazioni', props.segnalazione.is_private));
 </script>
 
 <template>
@@ -196,6 +203,10 @@ const pageGuides = computed(() => [
                   <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
                     {{ props.segnalazione.condominio?.full?.nome || props.segnalazione.condominio?.nome || '—' }}
                   </span>
+                </div>
+                <div v-if="etichettaPrivata" class="flex items-center gap-1.5 mt-2 text-xs text-slate-500" :title="trans('segnalazioni.privacy.private_hint')">
+                  <Lock class="w-3 h-3 shrink-0" />
+                  <span>{{ trans(etichettaPrivata) }}</span>
                 </div>
               </div>
 

@@ -12,6 +12,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\PianoRateQuoteService;
+use App\Services\Riparto\VoceDiSpesaNegativa;
 use App\Services\Dashboard\WidgetManager;
 use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
 use App\Services\Dashboard\Widgets\ControlliPostImportWidget;
@@ -38,6 +39,8 @@ class DashboardController extends Controller
         if ($esercizio) {
             $esercizio->load('gestioni');
             $totPrev = 0; 
+            $totSpese = 0;
+            $totEntrate = 0;
             $totPian = 0; 
             $totVirtualeGlobale = 0;
             $totBudgetPuro = 0;
@@ -80,6 +83,8 @@ class DashboardController extends Controller
                     }
                 ])
                 ->where('esercizio_id', $esercizio->id)
+                // Coda 165 (1.11.0-beta.36): fatture, non note — come il carrello.
+                ->where('tipo_documento', 'fattura')
                 ->where('stato_approvazione', '!=', 'contestata')
                 ->where('stato_pagamento', '!=', 'stornata')
                 ->where(function ($query) {
@@ -104,6 +109,10 @@ class DashboardController extends Controller
                 ->get();
 
             $gestionePrincipaleId = $esercizio->gestioni->where('attiva', true)->first()?->id;
+
+            // Coda 165: la fattura rettificata da una nota del fornitore collegata è in sospeso solo per il suo netto, e
+            // quella annullata per intero non lo è più. La stessa regola del carrello (`NettoNoteCollegate`).
+            $netti = \App\Services\Gestionale\NettoNoteCollegate::perFatture($fattureScoperteRaw->pluck('id')->all());
 
             foreach ($fattureScoperteRaw as $fattura) {
                 $datiExtra = is_string($fattura->dati_extra) 
@@ -151,6 +160,18 @@ class DashboardController extends Controller
                             ];
                         }
                     }
+                }
+
+                if (isset($netti[$fattura->id]) && $totaleFatturaCents > $netti[$fattura->id]['netto']) {
+                    $note = $netti[$fattura->id]['note'];
+                    $righeMappate[] = [
+                        'id'          => 'n_' . $fattura->id,
+                        'tipo'        => 'nota',
+                        'importo'     => $netti[$fattura->id]['netto'] - $totaleFatturaCents,
+                        'descrizione' => count($note) === 1 ? 'Nota di credito collegata' : 'Note di credito collegate',
+                        'dettaglio'   => 'n. ' . implode(', n. ', array_column($note, 'numero')),
+                    ];
+                    $totaleFatturaCents = $netti[$fattura->id]['netto'];
                 }
 
                 if ($totaleFatturaCents > 0) {
@@ -215,9 +236,18 @@ class DashboardController extends Controller
                     $budgetTeorico = $item['budget_teorico'];
                     $spesoReale = $fatturatoMap[$item['id']] ?? 0;
 
-                    $fabbisognoRealeGestione += max($budgetTeorico, $spesoReale);
-                    $budgetPuroGestione += $budgetTeorico;
-                    $virtualeGestione += $item['copertura_virtuale'] ?? 0;
+                    // Le voci di entrata si sottraggono: il fabbisogno da ripartire è il netto, come lo distribuisce il motore.
+                    $segno = $item['segno'];
+                    $fabbisognoVoce = max($budgetTeorico, $spesoReale);
+
+                    $fabbisognoRealeGestione += $segno * $fabbisognoVoce;
+                    if ($segno > 0) {
+                        $totSpese += $fabbisognoVoce;
+                    } else {
+                        $totEntrate += $fabbisognoVoce;
+                    }
+                    $budgetPuroGestione += $segno * $budgetTeorico;
+                    $virtualeGestione += $segno * ($item['copertura_virtuale'] ?? 0);
                 }
 
                 $totPrev += $fabbisognoRealeGestione;
@@ -226,6 +256,12 @@ class DashboardController extends Controller
                 $totVirtualeGlobale += $virtualeGestione; 
 
                 // --- 3. Analisi Deficit Pura ---
+                // Una voce di spesa scritta con il meno resta fra le scoperte (il calcolo la addebita in positivo), ma la creazione non la propone:
+                // la scheda dice la sua nota, che nomina i piani che la addebitano o dice di correggerla, e non porta alla creazione.
+                $idDelleNegative = collect($report['items'])->filter(fn ($i) => $i['spesa_negativa'] ?? false)->pluck('id')->map(fn ($id) => (int) $id)->all();
+                $pianiDelleNegative = VoceDiSpesaNegativa::pianiPerVoce($idDelleNegative, (int) $gestione->id);
+                $bloccoDelleNegative = Conto::pianiCheBloccanoLaVoce($idDelleNegative);
+                $negativeAlTerzoLivello = VoceDiSpesaNegativa::alTerzoLivello($idDelleNegative);
                 foreach ($report['items'] as $item) {
                     if (!($item['is_leaf'] ?? false)) continue;
 
@@ -246,6 +282,7 @@ class DashboardController extends Controller
                             $tipoStrategia = 'conguaglio';       
                         }
 
+                        $spesaNegativa = (bool) ($item['spesa_negativa'] ?? false);
                         $vociScoperte[] = [
                             'id'          => $item['id'],
                             'nome'        => $item['nome'],
@@ -253,7 +290,12 @@ class DashboardController extends Controller
                             'gestione'    => $gestione->nome,
                             'gestione_id' => $gestione->id,
                             'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget_teorico'],
-                            'strategia'   => $tipoStrategia 
+                            'strategia'   => $tipoStrategia,
+                            'spesa_negativa' => $spesaNegativa,
+                            // L'importo scritto della voce è il suo valore assoluto col meno: `budget_teorico` lo conta in positivo.
+                            'nota'        => $spesaNegativa
+                                ? VoceDiSpesaNegativa::nota((string) $item['nome'], -(int) $item['budget_teorico'], $pianiDelleNegative[(int) $item['id']] ?? [], $bloccoDelleNegative[(int) $item['id']] ?? [], in_array((int) $item['id'], $negativeAlTerzoLivello, true))
+                                : null,
                         ];
 
                     }
@@ -262,7 +304,7 @@ class DashboardController extends Controller
                 $pianiRate = PianoRate::where('gestione_id', $gestione->id)
                     ->with([
                         'capitoli' => function($q) {
-                            $q->select('conti.id', 'conti.importo');
+                            $q->select('conti.id', 'conti.importo', 'conti.tipo');
                         }, 
                         'fattureStraordinarie', 
                         'rate.rateQuote'
@@ -273,6 +315,8 @@ class DashboardController extends Controller
                 // la stessa domanda la fa anche la pagina del piano, e finché ognuna se la
                 // calcolava per conto proprio le due rispondevano in modo diverso — metodi
                 // diversi e tolleranze diverse (zero qui, € 2,00 di là). Vedi `eDisallineato()`.
+                // Coda 414: un piano in «quota aperta» (una quota non assegnata accettata, e il piano non si è mosso da allora) non è
+                // nell'elenco: «Ricalcola» non la assegna a nessuno. `eDisallineato()` vuol dire il terzo stato.
                 foreach ($pianiRate as $piano) {
                     if ($pianoRateQuoteService->eDisallineato($piano)) {
                         $pianiDisallineati[] = [
@@ -293,7 +337,9 @@ class DashboardController extends Controller
             $deltaReale = $totPrev - ($totPian + $totVirtualeGlobale);
 
             $copertura = [
-                'preventivo'         => $totPrev, 
+                'spese'              => $totSpese,
+                'entrate'            => $totEntrate,
+                'da_ripartire'       => $totPrev,
                 'pianificato'        => $totPian, 
                 'virtuale'           => $totVirtualeGlobale, 
                 'addebiti_personali' => $addebitiPersonali,

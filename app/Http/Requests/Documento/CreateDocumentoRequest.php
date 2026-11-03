@@ -31,7 +31,14 @@ class CreateDocumentoRequest extends FormRequest
         return [
             'name'            => 'required|string|max:255',
             'description'     => 'required|string',
-            'category_id'     => 'required|integer|exists:categorie_documento,id',
+            // ⚠️ **Almeno una, dalla 1.11.0-beta.10.** Un documento d'archivio senza categoria non
+            // compare in nessuna vista per categoria e si trova solo cercandolo per nome: è il modo
+            // in cui i documenti si perdono. L'obbligo vive **qui**, nei moduli dell'archivio, e non
+            // a livello di schema: i documenti caricati su un soggetto — fornitore, unità,
+            // anagrafica — non hanno categoria di proposito, e un vincolo sul database romperebbe
+            // quei caricamenti.
+            'categorie'       => ['required', 'array', 'min:1'],
+            'categorie.*'     => ['integer', 'exists:categorie_documento,id'],
             'is_published'    => 'required|boolean',
             'is_approved'     => 'required|boolean',
             'created_by'      => 'required|exists:users,id',
@@ -71,7 +78,7 @@ class CreateDocumentoRequest extends FormRequest
             'description'   => __('validation.attributes.documenti.description'),
             'is_published'  => __('validation.attributes.documenti.is_published'),
             'condomini_ids' => __('validation.attributes.documenti.condomini_ids'),
-            'category_id'   => __('validation.attributes.documenti.category_id'),
+            'categorie'     => __('validation.attributes.documenti.categorie'),
         ];
     }
 }

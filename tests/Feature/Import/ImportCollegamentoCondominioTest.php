@@ -58,11 +58,11 @@ function soggetto(string $nome, ?string $cf = null): CanonicalSoggetto
 
 test('una persona creata dall\'import risulta del condominio importato', function () {
     $condominio = Condominio::factory()->create(['nome' => 'Le Terrazze']);
-    $ctx = contestoSoggetti(['k1' => soggetto('DAL PONTE GIOVANNI', 'DLPGNN70A01H501U')], $condominio);
+    $ctx = contestoSoggetti(['k1' => soggetto('DAL MONTE STEFANO', 'DLPGNN70A01H501U')], $condominio);
 
     (new LivelloSoggetti)->commit($ctx);
 
-    $anagrafica = Anagrafica::where('nome', 'DAL PONTE GIOVANNI')->firstOrFail();
+    $anagrafica = Anagrafica::where('nome', 'DAL MONTE STEFANO')->firstOrFail();
 
     expect(DB::table('anagrafica_condominio')
         ->where('anagrafica_id', $anagrafica->id)

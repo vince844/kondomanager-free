@@ -1,6 +1,8 @@
 import { Building } from './buildings';
 
 export interface AnagraficaPivot {
+  /** L'id della riga di titolarità: le rotte di modifica e «Dissocia» lavorano per periodo (1.11.0-beta.31). */
+  id: number;
   tipologia: string;
   quota: number;
   tipologie_spese: string | null;
@@ -8,6 +10,8 @@ export interface AnagraficaPivot {
   data_fine: string | null;
   attivo: boolean;
   note: string | null;
+  /** La riga fa parte di un passaggio registrato (uscente o entrante): il ruolo non si cambia da «Modifica» (decisione 24). */
+  agganciata_a_passaggio?: boolean;
 }
 
 export interface DocumentType {

@@ -7,6 +7,7 @@ use App\Enums\Permission;
 use App\Models\Commento;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 
 class CommentoPolicy
 {
@@ -27,16 +28,22 @@ class CommentoPolicy
     /**
      * Determina se l'utente può creare un commento su un'entità commentabile.
      *
-     * Tre condizioni tutte necessarie:
+     * Quattro condizioni tutte necessarie:
      * 1. Ha il permesso di commentare segnalazioni
      * 2. Il thread è aperto (commentiAbilitati() === true)
      * 3. Appartiene al condominio dell'entità (multi-tenancy)
+     * 4. Può aprire l'entità (Coda 305): chi non vede una segnalazione — la privata di un vicino, una
+     *    in moderazione — non la commenta, e il rifiuto non dice niente di più di quello che dice la
+     *    scheda. La regola è quella di `show` della policy dell'entità, la stessa dell'elenco; vale
+     *    per ogni entità commentabile, quindi anche per le comunicazioni il giorno in cui avranno i
+     *    commenti. Un'entità senza `show` nella sua policy non si commenta.
      */
     public function create(User $user, Commentable $commentable): bool
     {
         return $user->hasPermissionTo(Permission::COMMENT_SEGNALAZIONI->value)
             && $commentable->commentiAbilitati()
-            && $this->appartieneAlCondominio($user, $commentable);
+            && $this->appartieneAlCondominio($user, $commentable)
+            && Gate::forUser($user)->allows('show', $commentable);
     }
 
     /**

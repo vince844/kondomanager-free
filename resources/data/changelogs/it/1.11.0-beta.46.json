@@ -1,0 +1,10 @@
+{
+    "features": [
+        "NON TOCCA IL DATABASE — Una beta piccola: in manutenzione la rotta di salute /up torna a rispondere, e dice lo stato vero dell'installazione. Serve a chi tiene il programma in un container con un controllo di salute, e a chi orchestra i container e chiude un'istanza mettendola in manutenzione.",
+        "CAMBIA: IN MANUTENZIONE /UP DICE LO STATO VERO — Con «php artisan down» risponde come fuori dalla manutenzione: 200 se l'installazione è sana, 503 se non lo è (database che non risponde, migrazioni da applicare). Le altre pagine restano chiuse. Dalla beta.32 rispondeva come le altre pagine: il rimando (302), che un controllo di salute prende per «sano» anche su un'installazione malata, oppure 503, che durante una manutenzione voluta faceva risultare malato il container. Per chi passa dalla 1.10 non cambia niente: lì /up era la rotta di salute di Laravel, che la manutenzione lascia aperta.",
+        "CAMBIA: CHI USAVA /UP PER SAPERE SE IL SITO È APERTO — Un monitor che deve suonare a sito chiuso, o un bilanciatore che toglie un nodo durante la manutenzione, interroghi una pagina vera, per esempio /login, e consideri buono solo il 200: con il rimando anche /login risponde 302.",
+        "CAMBIA: MANUTENZIONE CON LA PAGINA PRERENDERIZZATA — Chi è in manutenzione con «--render» e aggiorna da una beta dalla .32 alla .45 rilanci «php artisan down» dopo l'aggiornamento: il file della manutenzione scritto da quelle versioni non contiene l'eccezione, e finché non lo si riscrive /up resta chiuso.",
+        "TEMA SCURO: LA PAGINA «NOVITÀ» — Quella che si apre dopo un aggiornamento ora si legge anche in tema scuro: il titoletto era grigio quasi nero su fondo nero, le voci grigio medio, e attorno al riquadro restava una cornice chiara. In tema chiaro non cambia niente.",
+        "SOTTO IL COFANO — Test nuovi su /up in manutenzione, con la manutenzione salvata nel database e con il comando vero: 200 a installazione sana, 503 con una migrazione da applicare o con il database giù, le altre pagine chiuse, e l'elenco delle eccezioni che è /up e basta."
+    ]
+}

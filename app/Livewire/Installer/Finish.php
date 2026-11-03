@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Installer;
 
+use App\Services\Installer\ChiudiInstallazione;
 use Illuminate\Support\Facades\File;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -21,7 +22,6 @@ class Finish extends Component
     public function mount(): void
     {
         try {
-            $lockFile = config('installer.options.lock_file');
             $progressFile = config('installer.options.progress_file');
 
             if (File::exists($progressFile)) {
@@ -38,7 +38,9 @@ class Finish extends Component
             }
 
             try {
-                File::put($lockFile, now()->toDateTimeString());
+                // Il lock lo scrive App\Services\Installer\ChiudiInstallazione, condiviso con
+                // `km:install` (1.11.0-beta.32).
+                app(ChiudiInstallazione::class)->esegui();
             } catch (\Exception $e) {
                 $this->dispatch('wizard.error', ['message' => "Failed to create lock file: {$e->getMessage()}"]);
 

@@ -175,11 +175,11 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'visibility'  => 'Se impostata su privata, solo gli amministratori potranno visualizzare la comunicazione.',
+        'visibility'  => 'Una bozza, o una comunicazione in attesa di approvazione, non compare ai condòmini; pubblicata e approvata, la vedono i condòmini a cui è indirizzata.',
         'priority'    => 'Seleziona il livello di priorità con cui questa comunicazione deve essere trattata. Le priorità possono influenzare la visibilità o l\'urgenza nella bacheca.',
         'comments'    => 'Quando viene selezionata questa opzione verranno abilitati i commenti per questa comunicazione',
         'featured'    => 'Le comunicazioni in evidenza sono evidenziate nella bacheca per attirare maggiore attenzione.',
-        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che la comunicazione è cambiata. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso alla platea la riceve comunque, perché per lui è nuova.",
+        'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che la comunicazione è cambiata. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso alla platea la riceve comunque, perché per lui è nuova. Finché è una bozza o è in attesa di approvazione non parte niente; quando è pubblicata e approvata, la ricevono tutti i destinatari.",
         'private'     => 'Le comunicazioni private possono essere visualizzate solo dagli amministratori e da te.',
     ],
 
@@ -219,5 +219,22 @@ return [
         'read_desc'         => 'Consulta i dettagli e il contenuto completo della comunicazione inviata.',
         'urgency_title'     => 'Urgenza',
         'urgency_desc'      => 'Il livello di priorità indica quanto tempestivamente deve essere recepita.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Coda 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'In attesa di approvazione',
+        'draft'     => 'Bozza',
+        'published' => 'Pubblicata',
+        'needs_approval' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata, con lo scudo accanto al titolo nell\'elenco delle comunicazioni.',
+        'waiting_approver' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata da chi approva le comunicazioni.',
+    ],
+
+    'privacy' => [
+        'private'      => 'Privata',
+        'private_hint' => 'La vedono solo l\'autore, le persone collegate e l\'amministratore',
+        'recipients_required' => 'Una comunicazione privata resta indirizzata ad almeno un destinatario: senza destinatari la vedrebbe solo chi l\'ha scritta, oltre all\'amministratore.',
+    ],
 ];

@@ -1,0 +1,10 @@
+{
+    "features": [
+        "NÃO ALTERA A BASE DE DADOS — Uma beta pequena: em manutenção a rota de saúde /up volta a responder, e diz o estado real da instalação. Serve a quem tem o programa num contentor com uma verificação de saúde, e a quem orquestra os contentores e fecha uma instância pondo-a em manutenção.",
+        "MUDA: EM MANUTENÇÃO /UP DIZ O ESTADO REAL — Com «php artisan down» responde como fora da manutenção: 200 se a instalação está saudável, 503 se não está (base de dados que não responde, migrações por aplicar). As outras páginas continuam fechadas. Desde a beta.32 respondia como as outras páginas: o redirecionamento (302), que uma verificação de saúde considera «saudável» mesmo numa instalação avariada, ou 503, que durante uma manutenção planeada fazia o contentor parecer doente. Para quem atualiza a partir da 1.10 nada muda: aí /up era a rota de saúde do Laravel, que a manutenção deixa aberta.",
+        "MUDA: QUEM USAVA /UP PARA SABER SE O SITE ESTÁ ABERTO — Um monitor que deve alertar com o site fechado, ou um balanceador que retira um nó durante a manutenção, deve consultar uma página real, por exemplo /login, e considerar bom apenas o 200: com o redirecionamento também /login responde 302.",
+        "MUDA: MANUTENÇÃO COM A PÁGINA PRÉ-RENDERIZADA — Quem está em manutenção com «--render» e atualiza a partir de uma beta entre a .32 e a .45 deve voltar a executar «php artisan down» depois da atualização: o ficheiro de manutenção escrito por essas versões não contém a exceção, e enquanto não for reescrito /up continua fechado.",
+        "TEMA ESCURO: A PÁGINA «NOVIDADES» — A página que se abre depois de uma atualização passa a ler-se também no tema escuro: o subtítulo era cinzento quase preto sobre fundo preto, os itens cinzento médio, e à volta do cartão ficava uma moldura clara. No tema claro nada muda.",
+        "POR BAIXO DO CAPÔ — Testes novos sobre /up em manutenção, com a manutenção guardada na base de dados e com o comando real: 200 com a instalação saudável, 503 com uma migração por aplicar ou com a base de dados em baixo, as outras páginas fechadas, e a lista de exceções que é /up e nada mais."
+    ]
+}

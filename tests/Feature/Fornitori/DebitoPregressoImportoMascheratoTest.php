@@ -26,9 +26,12 @@ use Spatie\Permission\Models\Permission;
  */
 beforeEach(function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    // Registrare un debito pregresso modifica il fornitore e chiede «Modifica anagrafiche» (Coda 402); chi non lo ha è
+    // in `FornitoriPermessiDelPannelloTest.php`.
+    Permission::firstOrCreate(['name' => 'Modifica anagrafiche', 'guard_name' => 'web']);
 
     $this->user = User::factory()->create();
-    $this->user->givePermissionTo('Accesso pannello amministratore');
+    $this->user->givePermissionTo('Accesso pannello amministratore', 'Modifica anagrafiche');
 
     $this->condominio = Condominio::factory()->create();
 

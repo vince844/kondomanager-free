@@ -42,9 +42,16 @@ const table = useVueTable({
       return ordinamento.value
     },
   },
+  // `email_verified_at` è la colonna del filtro «Verifica»: la barra ne ha bisogno per tenere lo stato del
+  // filtro, l'elenco non la mostra (lo scudo della verifica sta nella cella del nome).
+  initialState: { columnVisibility: { email_verified_at: false } },
   manualPagination: true,
   // Senza questo la libreria ordina le righe che ha, cioè la pagina visibile.
   manualSorting: true,
+  // La riga ha per chiave l'id dell'utente, non la posizione: ordinamento, filtri e pagine ricaricano l'elenco
+  // tenendo la tabella, e con la posizione la prima riga restava la stessa riga con un altro utente dentro
+  // (decisione 135.1).
+  getRowId: (utente) => String(utente.id),
   onPaginationChange: updater => {
     const stato = table.getState().pagination
     const p = typeof updater === 'function' ? updater(stato) : updater
@@ -86,7 +93,7 @@ const table = useVueTable({
         </template>
         <template v-else>
           <TableRow>
-            <TableCell :colspan="columns.length" class="h-24 text-center">
+            <TableCell :colspan="table.getVisibleLeafColumns().length" class="h-24 text-center">
               {{ trans('users.dialogs.no_users_created') }}
             </TableCell>
           </TableRow>

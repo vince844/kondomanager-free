@@ -98,7 +98,8 @@ class ContributoVersato extends Model
     /**
      * Totale già versato per ciascuna unità verso un target (voce di spesa o gestione).
      *
-     * È la funzione che il motore di riparto interroga per il netting.
+     * È la lettura **per unità** che il motore usa quando la riga non dice chi ha versato
+     * (`anagrafica_id` nullo, com'è per tutto ciò che la pagina dei contributi ha registrato fin qui).
      *
      * @return Collection<int,int> mappa immobile_id => centesimi già versati
      */
@@ -111,5 +112,34 @@ class ContributoVersato extends Model
             ->groupBy('immobile_id')
             ->pluck('totale', 'immobile_id')
             ->map(fn ($v) => (int) $v);
+    }
+
+    /**
+     * Il già versato verso un target, per unità **e per persona** (decisione 17 del progetto
+     * `docs/subentro_e_competenza_temporale.md`, 1.11.0-beta.31).
+     *
+     * Chi ha versato lo dice `anagrafica_id`: dove c'è, la copertura sconta la quota **di quella
+     * persona** — il venditore che ha anticipato € 500 per i lavori non regala lo sconto all'acquirente,
+     * si regolano fra loro «per quanto pagato, salvo diverso accordo» (Cass. 11199/2021) — e dove manca
+     * (le righe storiche, scritte per unità) resta della unità, come prima. La chiave nulla raccoglie
+     * queste ultime.
+     *
+     * @return array<int, array<int|string, int>> immobile_id => [anagrafica_id|'' => centesimi]
+     */
+    public static function perImmobileESoggetto(string $targetType, int $targetId): array
+    {
+        $righe = static::query()
+            ->where('target_type', $targetType)
+            ->where('target_id', $targetId)
+            ->selectRaw('immobile_id, anagrafica_id, SUM(importo_cents) as totale')
+            ->groupBy('immobile_id', 'anagrafica_id')
+            ->get();
+
+        $out = [];
+        foreach ($righe as $r) {
+            $out[(int) $r->immobile_id][$r->anagrafica_id === null ? '' : (int) $r->anagrafica_id] = (int) $r->totale;
+        }
+
+        return $out;
     }
 }

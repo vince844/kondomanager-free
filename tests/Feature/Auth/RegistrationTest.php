@@ -20,11 +20,13 @@ test('new users can register', function () {
     \Spatie\Permission\Models\Role::firstOrCreate(['name' => \App\Enums\Role::UTENTE->value, 'guard_name' => 'web']);
     \Spatie\Permission\Models\Role::firstOrCreate(['name' => \App\Enums\Role::AMMINISTRATORE->value, 'guard_name' => 'web']);
 
+    // Dieci caratteri: dalla Coda 262 (decisione 127.1) è il minimo di ogni password nuova, e la
+    // password del test lo rispetta.
     $response = $this->post('/register', [
         'name' => 'Test User',
         'email' => 'test@example.com',
-        'password' => 'password',
-        'password_confirmation' => 'password',
+        'password' => 'password-nuova',
+        'password_confirmation' => 'password-nuova',
     ]);
 
     if (!\Illuminate\Support\Facades\Auth::check()) {

@@ -1,0 +1,8 @@
+# Il contesto di compilazione di questo Dockerfile di sviluppo (docker-compose.yml).
+# BuildKit legge questo file al posto del `.dockerignore` della radice, che è scritto per
+# l'immagine di produzione e toglie proprio `docker/supervisord.conf`: con quello la
+# compilazione si fermava con «"/docker/supervisord.conf": not found» (Coda 449, dalla
+# 1.11.0-beta.32). Il codice entra con il volume montato (`./:/var/www`), quindi alla
+# compilazione serve un file solo: se il Dockerfile copia altro, va aggiunto qui con `!`.
+*
+!docker/supervisord.conf

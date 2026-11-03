@@ -14,6 +14,19 @@ return [
     'error_detach_anagrafica'            => "An error occurred while detaching the record from the supplier.",
     'error_delete_has_invoices'          => "Unable to delete: the supplier has invoices registered in the system. To avoid compromising the accounting, we recommend changing the \"Status\" to \"Inactive\".",
 
+    // La página de las deudas anteriores de un proveedor.
+    'situazione_debitoria' => [
+        'debito_estinto' => "{1} Esta deuda no se puede eliminar: la usa la factura anterior :fatture, registrada para saldarla. Mientras exista la factura, la deuda se queda.|[2,*] Esta deuda no se puede eliminar: la usan las facturas anteriores :fatture, registradas para saldarla. Mientras existan las facturas, la deuda se queda.",
+    ],
+
+    // Las páginas y las acciones de los proveedores del panel, para quien no tiene el permiso (FornitorePolicy, con los permisos de las fichas).
+    'permessi' => [
+        'view' => "No tienes permisos suficientes para ver los proveedores registrados.",
+        'create' => "No tienes permisos suficientes para crear proveedores.",
+        'update' => "No tienes permisos suficientes para modificar los proveedores registrados.",
+        'delete' => "No tienes permisos suficientes para eliminar los proveedores registrados.",
+    ],
+
     /* ------------------------------------------------------------------
      | Headings, Titles and Descriptions
      | ------------------------------------------------------------------ */
@@ -33,6 +46,7 @@ return [
      | Table
      | ------------------------------------------------------------------ */
     'table' => [
+        'category'                => 'Categoría',
         'name'           => 'Company Name',
         'address'        => 'Address',
         'contacts'       => 'Contacts',
@@ -41,6 +55,8 @@ return [
         'click_to_view'  => 'Click to view',
         'filter_by_name' => 'Search supplier...',
         'residents'      => 'Referents',
+        'representatives_title' => 'Representantes del proveedor',
+        'representatives_desc'  => 'Las personas que responden por esta empresa. Abre una ficha para sus datos de contacto.',
         'residents_desc' => 'List of contacts and referents associated with this supplier.',
     ],
 
@@ -87,4 +103,77 @@ return [
         'edit_compliance_desc'        => 'Update tax rates to allow the system to automatically calculate net payments.',
     ],
     
+
+    /* ------------------------------------------------------------------
+     | Categorías de proveedor (1.11.0-beta.9)
+     | ------------------------------------------------------------------ */
+    'categorie' => [
+        // La página y las acciones de las categorías, para quien no tiene el permiso (CategoriaFornitorePolicy).
+        'permessi' => [
+            'view' => "No tienes permisos suficientes para ver las categorías de proveedores.",
+            'create' => "No tienes permisos suficientes para crear las categorías de proveedores.",
+            'update' => "No tienes permisos suficientes para renombrar o eliminar las categorías de proveedores.",
+        ],
+        'success_create'      => "La categoría se ha creado correctamente.",
+        'error_create'        => "Se ha producido un error al crear la categoría.",
+        'success_update'      => "La categoría se ha actualizado correctamente.",
+        'error_update'        => "Se ha producido un error al actualizar la categoría.",
+        'success_delete'      => "La categoría se ha eliminado correctamente.",
+        'error_delete'        => "Se ha producido un error al eliminar la categoría.",
+        'in_uso'              => "{1} La categoría «:nome» no se ha eliminado: hay un proveedor que la usa. Cambia su categoría e inténtalo de nuevo.|[2,*] La categoría «:nome» no se ha eliminado: hay :quanti proveedores que la usan. Cambia su categoría e inténtalo de nuevo.",
+
+        'head'                => "Categorías de proveedor",
+        'title'               => "Categorías de los proveedores",
+        'description'         => "Crea, renombra y elimina las categorías con las que clasificas empresas y profesionales.",
+        'back'                => "Volver a proveedores",
+
+        'new'                 => "Nueva categoría",
+        'new_title'           => "Crear nueva categoría",
+        'new_description'     => "Añade una categoría para clasificar empresas y profesionales.",
+        'edit_title'          => "Modificar categoría: :categoria",
+        'edit_description'    => "Aquí puedes cambiar el nombre y la descripción de la categoría.",
+
+        'name'                => "Nombre",
+        'name_placeholder'    => "Por ejemplo: cristalero",
+        'description_label'   => "Descripción",
+        'description_hint'    => "Opcional: solo sirve para recordar qué va aquí dentro.",
+        'description_placeholder' => "Qué tipo de proveedores reúne esta categoría",
+        'used_by'             => "Proveedores",
+        'suppliers_title'     => "Proveedores de esta categoría",
+        'suppliers_desc'      => "Quién está clasificado como «:categoria». Abre una ficha para cambiarle la categoría.",
+
+        'actions'             => "Acciones",
+        'edit'                => "Modificar",
+        'delete'              => "Eliminar",
+        'blocked_title'       => "Esta categoría no se puede eliminar",
+        'blocked_intro'       => "{1} Hay un proveedor clasificado como «:categoria». Mientras sea así, eliminarla lo dejaría sin categoría.|[2,*] Hay :count proveedores clasificados como «:categoria». Mientras sea así, eliminarla los dejaría sin categoría.",
+        'blocked_how'         => "Abre una ficha para cambiarle la categoría: cuando ya no la use nadie, la eliminación funciona.",
+        'blocked_close'       => "Entendido",
+        'delete_title'        => "¿Eliminar la categoría?",
+        'delete_description'  => "Los proveedores que la usan perderían su categoría, por eso la eliminación solo funciona si no la usa nadie.",
+        'save'                => "Guardar",
+        'cancel'              => "Cancelar",
+
+        'filtro_non_valido'   => "El filtro por categoría ya no es válido: esa categoría ya no existe. Aquí está la lista completa.",
+        'clear_filters'       => "Borrar los filtros",
+        'filter'              => "Filtrar por nombre...",
+        'no_results'          => "No se ha encontrado ninguna categoría.",
+        'empty'               => "Todavía no hay ninguna categoría.",
+
+        'quick_add'           => "Crear una nueva categoría",
+        'quick_add_title'     => "Nueva categoría de proveedor",
+        'quick_add_description' => "La creas aquí y queda seleccionada: no pierdes lo que ya has escrito en la ficha.",
+        'quick_created'       => "Categoría creada y seleccionada.",
+        'manage'              => "Gestionar las categorías",
+
+        'guides' => [
+            'own_title'       => "Categorías tuyas",
+            'own_desc'        => "Las categorías iniciales son un punto de partida: añade los oficios que necesitan tus comunidades y quita los que no usas.",
+            'use_title'       => "Para qué sirven",
+            'use_desc'        => "Clasifican empresas y profesionales en la lista de proveedores y permiten encontrarlos por tipo de trabajo.",
+            'safe_title'      => "Eliminación protegida",
+            'safe_desc'       => "Una categoría usada por al menos un proveedor no se elimina: antes hay que cambiar la categoría a esos proveedores.",
+        ],
+    ],
+
 ];

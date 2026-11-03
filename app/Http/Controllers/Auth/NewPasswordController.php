@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\Notifiche\AvvisiDiSicurezza;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,9 @@ class NewPasswordController extends Controller
                 ])->save();
 
                 event(new PasswordReset($user));
+
+                // Coda 267: chi ha in mano il link non è per forza il titolare.
+                app(AvvisiDiSicurezza::class)->avvisa($user, AvvisiDiSicurezza::PASSWORD_REIMPOSTATA);
             }
         );
 

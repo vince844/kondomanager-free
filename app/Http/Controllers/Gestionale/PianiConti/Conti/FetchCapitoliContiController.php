@@ -69,7 +69,15 @@ class FetchCapitoliContiController extends Controller
                 ->orderBy('nome')
                 ->get();
 
-            return response()->json($capitoli);
+            // Un capitolo che un piano approvato tiene non si sceglie come padre: la voce spostata sotto di lui cambierebbe quel piano, e il
+            // salvataggio lo rifiuta (`ContoController::update`, `Conto::pianiCheBloccanoLaVoce`). `blocco` dice in quale piano, nullo se nessuno.
+            $blocchi = Conto::pianiCheBloccanoLaVoce($capitoli->pluck('id')->map(fn ($id) => (int) $id)->all());
+
+            return response()->json($capitoli->map(fn (Conto $c) => [
+                'id' => $c->id,
+                'nome' => $c->nome,
+                'blocco' => isset($blocchi[(int) $c->id]) ? \App\Services\Gestionale\BloccoDellaVoce::nelPiano($blocchi[(int) $c->id]) : null,
+            ])->values());
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([

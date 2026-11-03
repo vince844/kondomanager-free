@@ -167,3 +167,49 @@ it('non blocca la rimozione di una voce toccata da movimenti su un piano rate di
 
     expect(DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoA->id)->where('conto_id', $sourceA->id)->exists())->toBeFalse();
 });
+
+// ---------------------------------------------------------------------------------------------------
+// B2 (1.11.0-beta.31), cancello (2) della decisione 14 — verifica indipendente S4 del 19/09/2026.
+// Fino a S4 la rimozione di una voce passava il cancello da sola, con una presa d'atto e una nota
+// scritte dal programma: ma il piano precedente può non aver mai attraversato il cancello (generato
+// atemporale, e il titolare chiuso dopo). La presa d'atto è dell'amministratore.
+// ---------------------------------------------------------------------------------------------------
+
+it('la rimozione di una voce si ferma davanti al cancello (2) se il ricalcolo cambia i destinatari, e riparte con spunta e nota', function () {
+    [$condominio, $piano, $source, $dest] = setupPianoDueVociETreRate();
+    DB::table('piano_rate_capitoli')->insert([
+        'piano_rate_id' => $piano->id, 'conto_id' => $dest->id, 'importo' => 50000, 'note' => null, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $esercizioId = DB::table('esercizio_gestione')->where('gestione_id', $piano->gestione_id)->value('esercizio_id');
+    $immobileId = DB::table('anagrafica_immobile')->value('immobile_id');
+
+    // Il piano generato com'era (un solo proprietario), poi il proprietario vende il 30/04 e l'acquirente
+    // decorre dal 01/05 — registrato dall'elenco titolari, senza rigenerare.
+    app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($piano, esercizio: \App\Models\Esercizio::find($esercizioId));
+    DB::table('anagrafica_immobile')->where('immobile_id', $immobileId)->update(['data_inizio' => '2019-03-03', 'data_fine' => '2026-04-30']);
+    $acquirenteId = DB::table('anagrafiche')->insertGetId(['nome' => 'Acquirente Test', 'indirizzo' => 'Via Test 2', 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('anagrafica_immobile')->insert([
+        'anagrafica_id' => $acquirenteId, 'immobile_id' => $immobileId, 'tipologia' => 'proprietario',
+        'quota' => 100, 'attivo' => true, 'data_inizio' => '2026-05-01', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $rotta = route('admin.gestionale.piani-rate.capitoli.detach', [
+        'condominio' => $condominio->id, 'esercizio' => $esercizioId, 'pianoRate' => $piano->id, 'capitolo' => $dest->id,
+    ]);
+
+    // (1) Senza presa d'atto: il pannello, e la voce è ancora nel piano (il rollback annulla il detach).
+    $risposta = $this->actingAs($this->user)->delete($rotta);
+    expect($risposta->getSession()->get('destinatari_warning'))->toBeArray()->not->toBeEmpty()
+        ->and($risposta->getSession()->get('destinatari_warning_detach'))->toBe($dest->id)
+        ->and(DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->where('conto_id', $dest->id)->exists())->toBeTrue();
+
+    // (2) Nota troppo corta: errore di validazione, niente tocco al piano.
+    $this->actingAs($this->user)->delete($rotta, ['accetta_destinatari' => true, 'nota_destinatari' => 'corta'])
+        ->assertSessionHasErrors('nota_destinatari');
+
+    // (3) Con spunta e nota: la voce esce e il piano si ricalcola pro rata, con la nota congelata.
+    $risposta = $this->actingAs($this->user)->delete($rotta, ['accetta_destinatari' => true, 'nota_destinatari' => 'Rogito del 30 aprile, letto il pannello']);
+    expect($risposta->getSession()->get('message')['type'] ?? null)->toBe('success')
+        ->and(DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->where('conto_id', $dest->id)->exists())->toBeFalse();
+    $quota = \App\Models\Gestionale\RataQuote::whereHas('rata', fn ($q) => $q->where('piano_rate_id', $piano->id))->first();
+    expect($quota->regole_calcolo['parametri']['titolarita_alla']['nota_cancello'])->toBe('Rogito del 30 aprile, letto il pannello');
+});

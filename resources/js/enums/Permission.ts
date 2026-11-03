@@ -7,6 +7,13 @@ export enum Permission {
   // Utenti
   CREATE_USERS = 'Crea utenti',
   EDIT_USERS = 'Modifica utenti',
+  /**
+   * ⚠️ **Mancava, e il frontend la usava lo stesso — come stringa scritta a mano.**
+   * `users/DataTableRowActions.vue` chiamava `hasPermission(['Sospendi utenti'])`: funzionava, ma
+   * teneva la chiave fuori dall'enumerazione, cioè fuori da qualunque controllo. L'ha trovata la
+   * guardia `PermessiNelFrontendTest` il 30/08/2026, al suo primo giro.
+   */
+  SUSPEND_USERS = 'Sospendi utenti',
   DELETE_USERS = 'Elimina utenti',
   VIEW_USERS = 'Visualizza utenti',
   // Anagrafiche
@@ -16,6 +23,12 @@ export enum Permission {
   VIEW_ANAGRAFICHE = 'Visualizza anagrafiche',
   // Condomini
   CREATE_CONDOMINI = 'Crea condomini',
+  /**
+   * ⚠️ **Deve restare identico al `case` di `App\Enums\Permission`.** Le due enumerazioni sono la
+   * stessa lista scritta due volte, e questa è la copia che decide cosa **si vede**: se diverge,
+   * la voce di menu compare a chi poi riceve un 403 — «una funzione visibile e rotta per un ruolo».
+   */
+  IMPORTA_DATI = 'Importa dati',
   EDIT_CONDOMINI = 'Modifica condomini',
   DELETE_CONDOMINI = 'Elimina condomini',
   VIEW_CONDOMINI = 'Visualizza condomini',

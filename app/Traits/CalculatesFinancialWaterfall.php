@@ -3,6 +3,8 @@
 namespace App\Traits;
 
 use App\Models\Gestionale\RataQuote;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Support\Arr;
 
 trait CalculatesFinancialWaterfall
 {
@@ -12,16 +14,25 @@ trait CalculatesFinancialWaterfall
      */
     public function applyFinancialWaterfall($events, $anagraficaId, $condominioIds = null, $pianoRateIds = null)
     {
-        $condominioIds = is_numeric($condominioIds) ? [$condominioIds] : $condominioIds;
-        $pianoRateIds = is_numeric($pianoRateIds) ? [$pianoRateIds] : $pianoRateIds;
+        // I palazzi: `null` vuol dire «nessun filtro» (chi chiama senza palazzi, come la dashboard del portale); una
+        // lista, anche vuota, sono i palazzi dell'anagrafica, e contano solo le loro quote. Senza palazzi non conta
+        // nessuna quota, e i promemoria restano come sono (un promemoria di un palazzo lasciato non prende le cifre di lì).
+        // I piani: una lista vuota vuol dire ancora «nessun filtro» (nessun esercizio aperto: contano tutti i piani dei palazzi).
+        if ($condominioIds !== null) {
+            $condominioIds = self::idComeLista($condominioIds);
+            if ($condominioIds === []) {
+                return $events;
+            }
+        }
+        $pianoRateIds = self::idComeLista($pianoRateIds);
 
         $tutteLeQuote = RataQuote::where('anagrafica_id', $anagraficaId)
             ->whereHas('rata.pianoRate', function ($q) use ($condominioIds, $pianoRateIds) {
-                if (!empty($condominioIds)) {
-                    $q->whereIn('condominio_id', (array)$condominioIds);
+                if ($condominioIds !== null) {
+                    $q->whereIn('condominio_id', $condominioIds);
                 }
-                if (!empty($pianoRateIds)) {
-                    $q->whereIn('id', (array)$pianoRateIds);
+                if ($pianoRateIds !== []) {
+                    $q->whereIn('id', $pianoRateIds);
                 }
             })
             ->with(['rata.pianoRate' => function($q) {
@@ -129,5 +140,27 @@ trait CalculatesFinancialWaterfall
         }
 
         return $processed;
+    }
+
+    /**
+     * Gli id dei filtri come lista piatta, qualunque forma abbiano: una Collection (gli id dei palazzi di
+     * un'anagrafica, come li dà `HandlesUserCondominioData`), un array, un id solo, oppure niente (lista vuota).
+     * Che cosa vuol dire una lista vuota lo decide chi la usa, in `applyFinancialWaterfall()`. `(array)` su una
+     * Collection dà le sue proprietà e non i suoi elementi: con zero palazzi o con due il filtro riceveva un array
+     * annidato, e l'agenda del portale rispondeva 500.
+     *
+     * @return list<int|string>
+     */
+    private static function idComeLista(mixed $ids): array
+    {
+        if ($ids === null) {
+            return [];
+        }
+
+        if ($ids instanceof Arrayable) {
+            $ids = $ids->toArray();
+        }
+
+        return array_values(Arr::flatten(is_array($ids) ? $ids : [$ids]));
     }
 }

@@ -4,11 +4,11 @@ namespace App\Listeners\Gestionale;
 
 use App\Enums\CategoriaEventoEnum;
 use App\Enums\StatoPianoRate;
-use App\Enums\VisibilityStatus; 
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
 use App\Enums\EventoTipo;
+use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -164,83 +164,13 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
                     if ($esiste) continue;
 
-                    $importoVal = 0; 
-                    
-                    $dettaglioQuote = $quote->map(function($q) use (&$importoVal) {
-                        $immobile = $q->immobile;
-                        // `etichetta`: senza interno restava «Int.  (Posto auto 3)», con la parentesi orfana.
-            // `etichettaEstesa`: qui prima si mostravano interno **e** nome, e applicare la sola
-            // `etichetta` avrebbe tolto il nome a ogni installazione esistente (ripasso .58).
-            $desc = $immobile ? $immobile->etichettaEstesa : "Unità";
-                        
-                        $componenteSpesa = $q->importo;
-                        $componenteSaldo = 0;
-                        $totaleCalcolato = $q->importo;
-
-                        // FIX: regole_calcolo è già un array grazie al cast nel modello
-                        $meta = is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo, true) : $q->regole_calcolo;
-
-                        if (is_array($meta)) {
-                            $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $q->importo;
-                            $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
-                            $totaleCalcolato = $meta['importi']['totale_calcolato'] ?? ($componenteSpesa + $componenteSaldo);
-                        }
-
-                        $importoVal += $totaleCalcolato;
-
-                        return [
-                            'descrizione' => $desc,
-                            'importo' => $totaleCalcolato,
-                            'componente_spesa' => $componenteSpesa,
-                            'componente_saldo' => $componenteSaldo,
-                        ];
-                    })->values()->toArray();
-
-                    if ($importoVal < 0) {
-                        $descUser = "Gentile {$anagrafica->nome}, questa voce rappresenta un credito a tuo favore registrato nella rata n. {$rata->numero_rata}.\n\nNon è richiesto alcun pagamento: l'importo verrà utilizzato automaticamente per compensare le rate successive.";
-                    } else {
-                        $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale n. {$rata->numero_rata}.\n\nVerifica il dettaglio quote e il netto da versare nello scontrino qui sotto. Dopo aver effettuato il versamento, potrai segnalarlo all'amministratore cliccando sul pulsante corrispondente.";
-                    }
-
-                    if (!empty($rata->note)) $descUser .= "\n\nNote: {$rata->note}";
-
-                    // ESTIAMO IL CREDITO SE ESISTE (In centesimi, come il resto degli importi)
-                    $creditoRataZeroApplicabile = $creditiRataZero[$anagraficaId] ?? 0;
-
-                    $eventoUser = Evento::create([
-                        'title'       => $rata->numero_rata == 0 ? "Saldo Iniziale - {$pianoRate->nome}" : "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}",
-                        'start_time'  => $rata->data_scadenza->copy()->setTime(0, 0),
-                        'end_time'    => $rata->data_scadenza->copy()->setTime(23, 59),
-                        'created_by'  => $user->id,
-                        'description' => $descUser,
-                        'category_id' => $catPublic->id,
-                        'visibility'  => VisibilityStatus::PRIVATE->value,
-                        'is_approved' => true,
-                        'timezone'    => config('app.timezone'),
-                        'meta'        => [
-                            'type'              => EventoTipo::SCADENZA_RATA_CONDOMINO->value,
-                            'is_emitted'        => false, 
-                            'requires_action'   => false, 
-                            'status'            => $importoVal <= 0 ? 'paid' : 'pending',
-                            'importo_originale' => $importoVal,
-                            'importo_pagato'    => 0,
-                            'importo_restante'  => $importoVal,
-                            'dettaglio_quote'   => $dettaglioQuote, 
-                            'gestione'          => $nomeGestione,
-                            'condominio_nome'   => $condominio->nome,
-                            'numero_rata'       => $rata->numero_rata,
-                            'piano_nome'        => $pianoRate->nome,
-                            'credito_rata_zero' => $creditoRataZeroApplicabile, // NUOVO CAMPO WALLET
-                            'context' => [
-                                'piano_rate_id' => $pianoRate->id,
-                                'rata_id'       => $rata->id
-                            ],
-                        ],
-                        'tipo' => EventoTipo::SCADENZA_RATA_CONDOMINO,
-                    ]);
-
-                    $eventoUser->anagrafiche()->attach($anagraficaId);
-                    $eventoUser->condomini()->attach($condominio->id);
+                    // La costruzione del promemoria vive in `EventiRataCondomino` (B3a, 1.11.0-beta.34): la usa anche
+                    // il passaggio che fa passare le bozze a chi entra, e due copie divergerebbero alla prima modifica.
+                    app(EventiRataCondomino::class)->crea(
+                        $pianoRate, $rata, $anagrafica, $quote, $condominio, $user->id, $nomeGestione, $catPublic->id,
+                        // ESTIAMO IL CREDITO SE ESISTE (In centesimi, come il resto degli importi)
+                        $creditiRataZero[$anagraficaId] ?? 0,
+                    );
                 }
             }
         }); 

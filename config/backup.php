@@ -78,8 +78,24 @@ return [
     // 'backups' contiene i checkpoint dei backup in corso (inclusa la
     // password di cifratura, cifrata con APP_KEY) e righe che comunque
     // punterebbero ad archivi inesistenti dopo un ripristino.
+    // Sessioni e cache: dopo un ripristino la finalizzazione le svuota
+    // comunque, una sessione nell'archivio è un accesso aperto scritto in un
+    // file, e una riga con la stessa chiave scritta durante l'import fermava
+    // l'import per chiave doppia (gli archivi già fatti li salta l'importatore,
+    // DatabaseImporter::TABELLE_SENZA_DATI).
+    // La coda e i token per reimpostare la password: anche questi la
+    // finalizzazione li svuota, e i lavori del backup riscritti durante
+    // l'import si eseguirebbero sul database a metà dove la coda gira
+    // (l'importatore salta anche questi negli archivi già fatti).
     'dump_exclude_data' => [
         'backups',
+        'sessions',
+        'cache',
+        'cache_locks',
+        'jobs',
+        'job_batches',
+        'failed_jobs',
+        'password_reset_tokens',
     ],
 
     // File di sistema del sistema operativo, inutili al ripristino:
@@ -139,6 +155,12 @@ return [
         // tutta l'app tranne le rotte di ripristino. In storage/framework
         // perché deve esistere anche se storage/app/backups viene ricreata.
         'marker_file' => env('BACKUP_RESTORE_MARKER_FILE', storage_path('framework/restore.lock')),
+        // Byte di istruzioni INSERT che l'import conferma insieme, in una
+        // transazione, prima di salvare il punto di ripresa: un passo che
+        // muore a metà lascia nel database solo i gruppi confermati, e la
+        // ripresa rifà al massimo un gruppo. Piccolo abbastanza per i limiti
+        // delle transazioni dei server in replica (Group Replication: 150 MB).
+        'import_group_bytes' => 8 * 1024 * 1024,
     ],
 
     'filename_prefix' => 'kondomanager-backup',

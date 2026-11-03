@@ -4,9 +4,9 @@ namespace App\Http\Requests\Gestionale\Movimenti;
 
 use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
 use App\Enums\Fiscale\NaturaRigaRitenuta;
+use App\Services\Gestionale\Duplicati\RicercaFattureSimili;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use App\Support\LimiteCaricamento;
 
 /**
  * Valida i dati per la modifica di una fattura passiva aperta.
@@ -28,7 +28,37 @@ class UpdateFatturaRequest extends FormRequest
 
     public function rules(): array
     {
+        // ⚠️ **Il `min:0` vale solo per la nota di credito, e la distinzione è sostanziale.**
+        // Su una fattura ordinaria una riga negativa è legittima e frequente: è lo storno
+        // «Oneri di sistema» che ogni bolletta gas porta dentro il documento, e il motore
+        // contabile ora la registra correttamente come AVERE sul capitolo. Vietarla qui
+        // richiuderebbe con la validazione la porta appena aperta nel servizio.
+        //
+        // ⚠️ **Su una nota di credito il vincolo è sul DOCUMENTO, non sulla singola riga —
+        // corretto il 06/09/2026, beta.19.** Fin qui era `min:0` per riga, e la ragione scritta
+        // qui sotto era difendere la guardia `if ($fattura->netto_a_pagare < 0)` di
+        // `StornoFatturaController`. Quella guardia **non esiste più**: la beta.19 l'ha
+        // sostituita con `tipo_documento === 'nota_credito'`, perché leggeva il segno del netto
+        // e dava della nota di credito a una fattura ordinaria a credito. Tolta la premessa,
+        // il `min:0` è rimasto in piedi senza il motivo per cui era stato scritto — e ha
+        // cominciato a sparare su un valore legittimo.
+        //
+        // **Il valore legittimo è questo**: la nota che storna una fattura contenente una riga
+        // NEGATIVA porta quella riga POSITIVA a database (−1 × −1,80 = +1,80), e il modulo di
+        // modifica la rimanda come magnitudine, cioè **−1,80**. Con `min:0` quella nota non era
+        // più salvabile: nemmeno una data. E il messaggio diceva all'amministratore di scrivere
+        // 1,80 positivo — obbedendo, la nota si gonfiava da −€ 100,15 a −€ 104,54, cioè proprio
+        // il difetto che la stessa beta aveva appena chiuso.
+        //
+        // Quello che va difeso resta vero e si difende dove vive: **una nota di credito deve
+        // restare un credito**. Il controllo è sulla somma delle righe, in `withValidator()`.
+        $isNotaCredito = $this->route('fattura')?->tipo_documento === 'nota_credito';
+        $condominioId = (int) $this->route('condominio')->id;
+
         return [
+            // Coda 165: la conferma dell'avviso quando la nota modificata rettifica una fattura in un piano che ha già
+            // incassato. Il servizio la chiede con un secondo invio (R5 della Fase 1-bis).
+            'conferma_avviso_nota' => 'nullable|boolean',
             'gestione_id' => [
                 'required',
                 Rule::exists('gestioni', 'id')->where('condominio_id', $this->route('condominio')->id),
@@ -37,9 +67,12 @@ class UpdateFatturaRequest extends FormRequest
             'numero_documento'   => 'required|string|max:50',
             'data_documento'     => 'required|date',
             'data_scadenza'      => 'required|date',
+            // La competenza (B2, S6): entrambi gli estremi o nessuno, come in `StoreFatturaRequest`.
+            'competenza_dal'     => 'nullable|date|required_with:competenza_al',
+            'competenza_al'      => 'nullable|date|required_with:competenza_dal|after_or_equal:competenza_dal',
             'modalita_pagamento' => 'required|string',
             'iban_fornitore'     => 'nullable|string',
-            'conto_corrente_id'  => 'nullable|exists:conti_contabili,id',
+            'conto_corrente_id'  => PerimetroFattura::regolaContoDiAddebito($condominioId),
             'applica_ritenuta'   => 'nullable|boolean',
             'dati_extra.fiscal.motivo_esclusione_ritenuta' => [
                 'nullable', 'string', Rule::in(array_column(MotivoEsclusioneRitenuta::cases(), 'value')),
@@ -55,36 +88,71 @@ class UpdateFatturaRequest extends FormRequest
             'righe.*.descrizione'        => 'required|string',
             'righe.*.importo_imponibile' => 'required|numeric',
             'righe.*.aliquota_iva'       => 'required|numeric|min:0|max:100',
-            'righe.*.conto_id'           => 'nullable|exists:conti,id',
-            'righe.*.immobile_id'        => 'nullable|exists:immobili,id',
+            'righe.*.conto_id'           => PerimetroFattura::regolaVoce($condominioId),
+            'righe.*.immobile_id'        => PerimetroFattura::regolaUnita($condominioId),
             'righe.*.concorre_base_ritenuta' => 'nullable|boolean',
             'righe.*.natura_riga_ritenuta' => [
                 'nullable', 'string', Rule::in(array_column(NaturaRigaRitenuta::cases(), 'value')),
             ],
 
-            'file' => ['nullable', 'file', 'mimes:pdf,xml,p7m,jpg,png',
-                // Il tetto di questa porta resta **10 MB, il suo**: un allegato di fattura è un
-                // documento singolo, non un archivio. Quello che cambia è che adesso non promette
-                // mai più di quanto il server accetti davvero.
-                'max:'.LimiteCaricamento::regolaMax(10.0)],
+            // ⚠️ Niente più 'file' salvato qui (Coda 102, 1.11.0-beta.12): allegare passava da
+            // aggiornaFattura(), che riscrive la contabilità per un file e cancellava ogni
+            // allegato esistente. L'upload vive ora in StoreFatturaDocumentoRequest, su una
+            // rotta a sé che non tocca le scritture.
+            //
+            // ⚠️ **'prohibited', non l'assenza della chiave.** Senza validazione un file
+            // inviato comunque — un bundle vecchio ancora aperto in una scheda durante un
+            // aggiornamento dell'applicazione, o un'integrazione ferma al contratto
+            // precedente — veniva ignorato in silenzio: nessun errore, nessun salvataggio,
+            // e la risposta restava «Fattura aggiornata con successo». Trovato dalla
+            // revisione avversariale della beta.12. Ora fallisce con un messaggio che dice
+            // dove allegare davvero, invece di far sparire un file sotto una conferma.
+            'file' => ['prohibited'],
         ];
     }
 
     public function messages(): array
     {
-        return [
+        return array_merge(PerimetroFattura::messaggi(), [
+            'file.prohibited' => 'Non è più possibile allegare un documento da qui: usa il pulsante «Allega» nella pagina di dettaglio della fattura.',
             'righe.required'                          => 'Devi inserire almeno una voce di spesa.',
             'righe.*.descrizione.required'            => 'La causale della riga è obbligatoria.',
             'righe.*.importo_imponibile.required'     => "L'importo è obbligatorio.",
             'righe.*.importo_imponibile.numeric'      => "L'importo deve essere un numero.",
+            'righe.*.importo_imponibile.min'          => "Su una nota di credito l'importo di riga non può essere negativo: "
+                .'il segno lo mette già il tipo di documento. Scrivi la cifra da accreditare.',
             'gestione_id.required'                    => 'La gestione contabile è obbligatoria.',
-        ];
+            'competenza_dal.required_with'            => 'La competenza vuole entrambe le date: manca l\'inizio.',
+            'competenza_al.required_with'             => 'La competenza vuole entrambe le date: manca la fine.',
+            'competenza_al.after_or_equal'            => 'La fine della competenza non può precedere l\'inizio.',
+        ]);
     }
 
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
             $righe = $this->input('righe', []);
+            $isNotaCreditoGuardia = $this->route('fattura')?->tipo_documento === 'nota_credito';
+
+            // ⚠️ **Una nota di credito deve restare un credito — il vincolo è sul documento.**
+            // Ha sostituito il `min:0` per riga (vedi il docblock di `rules()`): le singole righe
+            // di una nota possono essere negative, perché la nota che storna una fattura con una
+            // riga in diminuzione porta quella riga col segno opposto. Quello che non può
+            // succedere è che la SOMMA si ribalti: a quel punto il moltiplicatore −1 del servizio
+            // produrrebbe un documento di segno positivo che continua a chiamarsi nota di credito.
+            $sommaRighe = 0.0;
+            foreach ($righe as $riga) {
+                $sommaRighe += (float) ($riga['importo_imponibile'] ?? 0);
+            }
+
+            if ($isNotaCreditoGuardia && $sommaRighe <= 0) {
+                $validator->errors()->add(
+                    'righe',
+                    'Una nota di credito deve accreditare qualcosa: la somma delle righe è '
+                    .number_format($sommaRighe, 2, ',', '.').'. Le singole righe possono essere '
+                    .'negative — è il caso dello storno di una riga in diminuzione — ma il totale no.'
+                );
+            }
 
             foreach ($righe as $idx => $riga) {
                 $isSopravvenienza = filter_var($riga['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -95,7 +163,15 @@ class UpdateFatturaRequest extends FormRequest
                     );
                 }
 
-                if (empty($riga['immobile_id']) && empty($riga['conto_id'])) {
+                // ⚠️ Stessa esenzione della registrazione: una riga da € 0,00 è contenuto
+                // del documento, non una spesa da collocare a budget. Senza, una fattura
+                // importata da XML con una riga descrittiva diventava **non modificabile** —
+                // ogni salvataggio veniva rifiutato su un capitolo che non ha senso chiedere.
+                // La condizione qui è diversa da quella di `StoreFatturaRequest` di proposito:
+                // là si esentano le sopravvenienze, qui le righe assegnate a un immobile.
+                $importoNullo = (float) ($riga['importo_imponibile'] ?? 0) === 0.0;
+
+                if (!$importoNullo && empty($riga['immobile_id']) && empty($riga['conto_id'])) {
                     $validator->errors()->add(
                         "righe.{$idx}.conto_id",
                         'Il capitolo di spesa è obbligatorio per righe non assegnate a un immobile.'
@@ -103,8 +179,103 @@ class UpdateFatturaRequest extends FormRequest
                 }
             }
 
+            // Il capitolo di una fattura è una voce di spesa; la nota di credito, che disfa una fattura sbagliata, resta com'è. Le voci che la
+            // fattura ha già sulle righe cambiano la frase: la riga è già lì, e va portata su una voce di spesa.
+            $fattura = $this->route('fattura');
+            if ($fattura?->tipo_documento === 'fattura') {
+                PerimetroFattura::rifiutaLeEntrate(
+                    $validator,
+                    $righe,
+                    (int) $this->route('condominio')->id,
+                    $fattura->righe()->whereNotNull('conto_id')->pluck('conto_id')->map(fn ($id) => (int) $id)->all(),
+                );
+            }
+
             $this->guardiaNaturaPercipienteMancante($validator);
+            $this->guardiaNumeroDocumentoCollidente($validator);
         });
+    }
+
+    /**
+     * ⚠️ **Questo blocco, ed è deliberato**: non contraddice la decisione D4 («due livelli,
+     * mai bloccanti»), perché non è quella domanda. D4 riguarda l'incertezza — «questa nuova
+     * fattura *potrebbe* somigliare a un'altra, decidi tu» — ed è per questo che resta un
+     * avviso: il sistema non è sicuro, e un falso positivo è normale.
+     *
+     * Qui la domanda è diversa. `fornitore_id` e `numero_documento` sono **read-only a
+     * video** in questa schermata (vedi il blocco «Fornitore (Read-Only in Edit)» del
+     * template, e `numero_documento` reso come testo, non input): l'interfaccia non offre
+     * mai un modo di *cambiarli*. Se il numero arriva **cambiato** e per giunta uguale a
+     * quello di un'altra fattura viva dello stesso fornitore nello stesso esercizio, non è
+     * un'ambiguità da segnalare — è una richiesta che aggira un vincolo che il client
+     * dichiara di rispettare da solo: o è un bug del client, o è un tentativo di far
+     * combaciare due identità che non possono esserlo.
+     *
+     * ⛔ **Rettifica dopo la revisione avversariale della beta.13.** Questo docblock diceva
+     * «se `numero_documento` arriva uguale a quello di un'altra fattura», senza la parola
+     * *cambiato*, e la guardia faceva letteralmente quello: bloccava ogni salvataggio in cui
+     * il numero collideva, anche quando nessuno l'aveva toccato. Era il ragionamento a essere
+     * rovesciato — proprio *perché* il campo è read-only, il modulo rispedisce **sempre** il
+     * numero identico, quindi la collisione preesiste al salvataggio invece di essere prodotta
+     * da esso. Con due fatture gemelle (stesso numero, date diverse: uno stato che D4
+     * permette apposta) diventavano entrambe non salvabili, e bastava cambiare l'importo.
+     * Sorvegliare il numero **cambiato**, non il numero collidente.
+     *
+     * ⚠️ **Misurato, non teorico**: `numero_documento` qui è validato solo con
+     * `required|string|max:50`, senza `unique`, e `FatturaPassivaService::aggiornaFattura()`
+     * lo riscrive davvero. L'indice `unique_ft_condominio` non basta a coprirlo: include
+     * `data_documento`, che D4-forte non richiede — una data diversa lo bypassa.
+     */
+    private function guardiaNumeroDocumentoCollidente($validator): void
+    {
+        $fattura = $this->route('fattura');
+        $numero = trim((string) $this->input('numero_documento'));
+
+        if ($fattura === null || $numero === '') {
+            return;
+        }
+
+        // ⚠️ **Se il numero non è cambiato non c'è niente da sorvegliare, e ometterlo era un
+        // blocco vero.** D4 non è bloccante in registrazione, quindi il prodotto permette
+        // deliberatamente due fatture dello stesso fornitore, stesso esercizio, stesso numero e
+        // **date diverse** (`unique_ft_condominio` include `data_documento`, quindi non le ferma).
+        // Senza questa uscita anticipata la guardia trovava la gemella a ogni salvataggio di
+        // *entrambe*, e rifiutava anche una modifica che il numero non lo tocca nemmeno — cambiare
+        // il solo importo bastava. Il campo è read-only a video, quindi il modulo rispedisce
+        // sempre lo stesso valore: dall'interfaccia il blocco non era aggirabile in alcun modo.
+        //
+        // Il docblock qui sopra sbagliava la premessa: proprio *perché* è read-only il client
+        // manda sempre il numero identico, e la collisione preesiste al salvataggio invece di
+        // essere prodotta da esso. Quello che va sorvegliato è il numero **cambiato**, non il
+        // numero collidente. Trovato dalla revisione avversariale della beta.13, riprodotto da
+        // sei revisori indipendenti sulle sole rotte HTTP.
+        //
+        // Il confronto ricalca `RicercaFattureSimili::forte()` (`LOWER(TRIM(...))`, riga 112):
+        // se differissero, un numero con spazi o maiuscole diverse sfuggirebbe a questa uscita e
+        // verrebbe poi intercettato dalla ricerca, tornando esattamente al blocco di prima.
+        if (mb_strtolower($numero) === mb_strtolower(trim((string) $fattura->numero_documento))) {
+            return;
+        }
+
+        $collide = app(RicercaFattureSimili::class)
+            ->cerca(
+                condominioId: $fattura->condominio_id,
+                esercizioId: $fattura->esercizio_id,
+                fornitoreId: $fattura->fornitore_id,
+                numeroDocumento: $numero,
+                totaleDocumentoCents: null,
+                dataDocumento: null,
+                tipoDocumento: $fattura->tipo_documento,
+                escludiFatturaId: $fattura->id,
+            )
+            ->contains(fn ($f) => $f->motivo === RicercaFattureSimili::FORTE);
+
+        if ($collide) {
+            $validator->errors()->add(
+                'numero_documento',
+                'Esiste già un\'altra fattura di questo fornitore con lo stesso numero documento in questo esercizio. Fornitore e numero non sono modificabili da qui: se il numero è cambiato davvero, storna e registra di nuovo.'
+            );
+        }
     }
 
     /**

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><ns3:FatturaElettronica versione="FPR12" xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>SNTSLV65P02A087G</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>Aezt4</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>ABCDEF1</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10404040403</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>VRDLRA69R62F704X</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>STUDIO PAGHE DI VERDI DOTT.SSA LAURA</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF19</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DEI NOCI</Indirizzo>
+                <NumeroCivico>N 29</NumeroCivico>
+                <CAP>20863</CAP>
+                <Comune>CONCOREZZO</Comune>
+                <Provincia>MB</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <CodiceFiscale>30505050507</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>CONDOMINIO VIA DEGLI ORTI</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA DEGLI ORTI</Indirizzo>
+                <NumeroCivico>3</NumeroCivico>
+                <CAP>20124</CAP>
+                <Comune>MILANO</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2025-04-11</Data>
+                <Numero>34/F</Numero>
+                <DatiBollo>
+                    <BolloVirtuale>SI</BolloVirtuale>
+                    <ImportoBollo>2.00</ImportoBollo>
+                </DatiBollo>
+                <ImportoTotaleDocumento>302.00</ImportoTotaleDocumento>
+            </DatiGeneraliDocumento>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <Descrizione>ASSISTENZA ORDINARIA: Certificazione Unica e modello 770 periodo imposta 2023: 9 autonomi</Descrizione>
+                <PrezzoUnitario>302.00</PrezzoUnitario>
+                <PrezzoTotale>302.00</PrezzoTotale>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N2.2</Natura>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>0.00</AliquotaIVA>
+                <Natura>N2.2</Natura>
+                <ImponibileImporto>302.00</ImponibileImporto>
+                <Imposta>0.00</Imposta>
+                <RiferimentoNormativo>Operazione non soggetta Iva ai sensi art 1 c.c. 54-89 L. 190/2014 e succ. mod.</RiferimentoNormativo>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+    </FatturaElettronicaBody>
+</ns3:FatturaElettronica>

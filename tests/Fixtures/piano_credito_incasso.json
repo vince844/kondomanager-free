@@ -1,0 +1,89 @@
+{
+    "_nota": "Coda 167, decisioni 30.7 e 30.11 (1.11.0-beta.40). Una sola tabella per il pianificatore del server (App\\Services\\Gestionale\\PianoCreditoIncasso) e per il suo specchio nel modulo (resources/js/lib/gestionale/incassi/pianoCreditoIncasso.ts): se i due divergono, uno dei due test diventa rosso. Importi in centesimi. 'righe' sono le coperture richieste dal modulo (in ordine), 'crediti' i crediti impegnati; 'credito' nell'atteso è credito -> riga -> centesimi.",
+    "casi": [
+        {
+            "nome": "una gestione, prima i soldi: il credito copre lo scoperto",
+            "righe": [{ "chiave": 0, "importo": 30000, "gestione": 1 }],
+            "crediti": [{ "chiave": 0, "importo": 10000, "gestione": 1 }],
+            "contante": 20000, "credito_prima": false, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "0": 10000 } }, "contante": { "0": 20000 }, "usato": 10000, "serve_scelta": false }
+        },
+        {
+            "nome": "prima i soldi, e i soldi bastano: il credito resta dov'è",
+            "righe": [{ "chiave": 0, "importo": 30000, "gestione": 1 }],
+            "crediti": [{ "chiave": 0, "importo": 10000, "gestione": 1 }],
+            "contante": 30000, "credito_prima": false, "fra_gestioni": null,
+            "atteso": { "credito": {}, "contante": { "0": 30000 }, "usato": 0, "serve_scelta": false }
+        },
+        {
+            "nome": "prima il credito: copre per primo, i soldi il resto",
+            "righe": [{ "chiave": 0, "importo": 30000, "gestione": 1 }],
+            "crediti": [{ "chiave": 0, "importo": 10000, "gestione": 1 }],
+            "contante": 30000, "credito_prima": true, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "0": 10000 } }, "contante": { "0": 20000 }, "usato": 10000, "serve_scelta": false }
+        },
+        {
+            "nome": "prima i soldi su più righe: i soldi dalla prima, il credito sull'ultima (il motore di sempre)",
+            "righe": [{ "chiave": 0, "importo": 10000, "gestione": 1 }, { "chiave": 1, "importo": 10000, "gestione": 1 }, { "chiave": 2, "importo": 10000, "gestione": 1 }],
+            "crediti": [{ "chiave": 0, "importo": 5000, "gestione": 1 }],
+            "contante": 25000, "credito_prima": false, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "2": 5000 } }, "contante": { "0": 10000, "1": 10000, "2": 5000 }, "usato": 5000, "serve_scelta": false }
+        },
+        {
+            "nome": "prima il credito su più righe: il credito dalla prima",
+            "righe": [{ "chiave": 0, "importo": 10000, "gestione": 1 }, { "chiave": 1, "importo": 10000, "gestione": 1 }, { "chiave": 2, "importo": 10000, "gestione": 1 }],
+            "crediti": [{ "chiave": 0, "importo": 5000, "gestione": 1 }],
+            "contante": 25000, "credito_prima": true, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "0": 5000 } }, "contante": { "0": 5000, "1": 10000, "2": 10000 }, "usato": 5000, "serve_scelta": false }
+        },
+        {
+            "nome": "prima il credito, due gestioni: senza scelta il credito resta nella sua",
+            "righe": [{ "chiave": 0, "importo": 5000, "gestione": 1 }, { "chiave": 1, "importo": 30000, "gestione": 2 }],
+            "crediti": [{ "chiave": 0, "importo": 10000, "gestione": 1 }],
+            "contante": 30000, "credito_prima": true, "fra_gestioni": false,
+            "atteso": { "credito": { "0": { "0": 5000 } }, "contante": { "0": 0, "1": 30000 }, "usato": 5000, "serve_scelta": true }
+        },
+        {
+            "nome": "prima il credito, due gestioni: con la scelta passa anche all'altra",
+            "righe": [{ "chiave": 0, "importo": 5000, "gestione": 1 }, { "chiave": 1, "importo": 30000, "gestione": 2 }],
+            "crediti": [{ "chiave": 0, "importo": 10000, "gestione": 1 }],
+            "contante": 30000, "credito_prima": true, "fra_gestioni": true,
+            "atteso": { "credito": { "0": { "0": 5000, "1": 5000 } }, "contante": { "0": 0, "1": 25000 }, "usato": 10000, "serve_scelta": true }
+        },
+        {
+            "nome": "prima i soldi, due gestioni: lo scoperto dell'altra gestione si copre solo con la scelta",
+            "righe": [{ "chiave": 0, "importo": 5000, "gestione": 1 }, { "chiave": 1, "importo": 30000, "gestione": 2 }],
+            "crediti": [{ "chiave": 0, "importo": 10000, "gestione": 1 }],
+            "contante": 25000, "credito_prima": false, "fra_gestioni": true,
+            "atteso": { "credito": { "0": { "0": 5000, "1": 5000 } }, "contante": { "0": 0, "1": 25000 }, "usato": 10000, "serve_scelta": true }
+        },
+        {
+            "nome": "due gestioni ma il credito basta nella sua: nessuna scelta",
+            "righe": [{ "chiave": 0, "importo": 30000, "gestione": 1 }, { "chiave": 1, "importo": 5000, "gestione": 2 }],
+            "crediti": [{ "chiave": 0, "importo": 10000, "gestione": 1 }],
+            "contante": 25000, "credito_prima": false, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "0": 10000 } }, "contante": { "0": 20000, "1": 5000 }, "usato": 10000, "serve_scelta": false }
+        },
+        {
+            "nome": "due crediti di gestioni diverse, ciascuno sulla sua",
+            "righe": [{ "chiave": 0, "importo": 10000, "gestione": 1 }, { "chiave": 1, "importo": 10000, "gestione": 2 }],
+            "crediti": [{ "chiave": 0, "importo": 4000, "gestione": 2 }, { "chiave": 1, "importo": 3000, "gestione": 1 }],
+            "contante": 13000, "credito_prima": true, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "1": 4000 }, "1": { "0": 3000 } }, "contante": { "0": 7000, "1": 6000 }, "usato": 7000, "serve_scelta": false }
+        },
+        {
+            "nome": "senza gestione: una gestione a sé",
+            "righe": [{ "chiave": 0, "importo": 10000, "gestione": null }],
+            "crediti": [{ "chiave": 0, "importo": 5000, "gestione": null }],
+            "contante": 5000, "credito_prima": true, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "0": 5000 } }, "contante": { "0": 5000 }, "usato": 5000, "serve_scelta": false }
+        },
+        {
+            "nome": "credito maggiore delle righe: si usa solo quanto le righe chiedono",
+            "righe": [{ "chiave": 0, "importo": 30000, "gestione": 1 }],
+            "crediti": [{ "chiave": 0, "importo": 40000, "gestione": 1 }],
+            "contante": 30000, "credito_prima": true, "fra_gestioni": null,
+            "atteso": { "credito": { "0": { "0": 30000 } }, "contante": { "0": 0 }, "usato": 30000, "serve_scelta": false }
+        }
+    ]
+}

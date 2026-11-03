@@ -1,6 +1,7 @@
 <script setup lang="ts">
 
 import { Link, Head, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -16,12 +17,15 @@ import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
+import type { Categoria } from '@/types/categorie';
 
 const props = defineProps<{
   /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
   limiteFile: string;
   categoria: number;
   condomini: Building[];
+  /** Tutte le categorie, per il campo qui sotto: dalla 1.11.0-beta.10 se ne può scegliere più d'una. */
+  categories: Categoria[];
 }>()
 
 const { generateRoute } = usePermission()
@@ -34,7 +38,14 @@ const form = useForm({
   description: '',
   is_published: true,
   condomini_ids: [],
-  category_id: props.categoria,
+  // ⚠️ Un array, con **preselezionata la categoria da cui il condòmino è arrivato**: per chi non
+  // vuole pensarci non cambia niente, e chi vuole aggiungerne altre lo fa dal campo qui sotto.
+  //
+  // ⚠️ *Il campo è stato aggiunto verificando a video, chiudendo la beta.10: fino a quel momento
+  // questo commento diceva «chi vuole aggiungerne altre può» e **non poteva**, perché il modulo del
+  // condòmino non aveva alcun campo per le categorie — la sola arrivava dall'indirizzo, invisibile.
+  // Il modulo di modifica ce l'aveva già, quindi si potevano aggiungere solo dopo aver salvato.*
+  categorie: [props.categoria] as number[],
   is_private: false as boolean,
   file: null as File | null,
 })
@@ -212,6 +223,53 @@ const submit = () => {
 
                             <InputError :message="form.errors.condomini_ids" />
                 
+                        </div>
+                    </div>
+
+                    <Separator class="my-4" />
+
+                    <!--
+                      Le categorie del documento. ⚠️ **Almeno una è obbligatoria**, e arrivando da
+                      una categoria quella è già dentro: chi non vuole pensarci salva e basta.
+
+                      Niente pulsante «+» come sul modulo dell'amministratore: il pannello per
+                      creare una categoria nuova è stato tolto dalle pagine del condòmino nella
+                      beta.62, e le categorie il condòmino le consulta, non le gestisce.
+                    -->
+                    <div class="grid grid-cols-1 sm:grid-cols-6">
+                        <div class="sm:col-span-6">
+                            <div class="flex items-center gap-2 mb-1">
+                                <Label for="categorie">{{ trans('documenti.label.category') }}</Label>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80">
+                                        <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">Categorie del documento</h4>
+                                            <p class="text-sm">
+                                                Un documento può stare in più categorie, e si trova dentro ognuna:
+                                                il verbale dell'assemblea che approva il bilancio può stare sotto
+                                                «Verbali» e sotto «Bilanci». Almeno una è obbligatoria.
+                                            </p>
+                                        </div>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+
+                            <v-select
+                              multiple
+                              :options="categories"
+                              label="name"
+                              v-model="form.categorie"
+                              :reduce="(option: Categoria) => option.id"
+                              placeholder="Seleziona categoria"
+                              @update:modelValue="form.clearErrors('categorie')"
+                            />
+
+                            <InputError :message="form.errors.categorie" />
                         </div>
                     </div>
 

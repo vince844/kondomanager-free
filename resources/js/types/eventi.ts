@@ -31,8 +31,10 @@ export interface EventoMeta {
   requires_action?: boolean;  // Il flag per l'Inbox
   action_url?: string;        // Link per l'admin
   importo_originale?: number;
-  importo_pagato?: number;
+  importo_pagato?: number;    // Il pagato netto con il segno: un credito usato su un'altra rata o restituito lo riduce
+  importo_versato?: number;   // Il contante versato dalla persona sulle sue quote da pagare; assente in un promemoria di prima: vale il pagato
   importo_restante?: number;
+  da_compensare?: number;     // Quanto di una quota da pagare aspetta la compensazione con un credito sulla stessa rata
   reported_at?: string;
   context?: Record<string, any>; // IDs vari (rata_id, piano_rate_id)
   [key: string]: any;         // Permette qualsiasi altro campo futuro

@@ -18,12 +18,31 @@ class Documento extends Model
         'path',
         'mime_type',
         'file_size', 
-        'category_id',
+
     ];
 
-    public function categoria()
+    /**
+     * Le categorie del documento — **più d'una**, dalla 1.11.0-beta.10.
+     *
+     * ⚠️ **La relazione `categoria()` al singolare è stata tolta di proposito**, non rinominata con
+     * un alias di compatibilità. Lasciandola in piedi, ogni punto del codice non convertito avrebbe
+     * continuato a funzionare leggendo **una** categoria di N: nessun errore, nessun log, e il
+     * risultato sbagliato solo per i documenti che ne hanno più d'una — cioè il caso nuovo, quello
+     * che nessuno pensa a provare. Togliendola, quei punti falliscono alla prima richiesta e si
+     * trovano subito.
+     *
+     * Il legame è `documento_categoria`, e non `categoria_documento` che sarebbe la forma canonica
+     * di Laravel: quel nome starebbe a una lettera da `categorie_documento`, la tabella delle
+     * categorie.
+     */
+    public function categorie()
     {
-        return $this->belongsTo(CategoriaDocumento::class, 'category_id');
+        return $this->belongsToMany(
+            CategoriaDocumento::class,
+            'documento_categoria',
+            'documento_id',
+            'categoria_documento_id'
+        )->withTimestamps();
     }
 
     public function createdBy()

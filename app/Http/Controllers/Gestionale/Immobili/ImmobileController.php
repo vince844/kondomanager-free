@@ -306,6 +306,9 @@ class ImmobileController extends Controller
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'immobile'   => new ImmobileResource($immobile),
+            // «Titolare dal 1 maggio 2026» e il pannello «Chi ha avuto questa unità» (§6.5 di
+            // pertinenze_vendita_locazione.md): lo stesso storico dell'elenco titolari.
+            'storico'    => app(\App\Services\Subentro\StoricoTitolarita::class)->perImmobile($immobile),
         ]);
     }
 
@@ -548,6 +551,15 @@ class ImmobileController extends Controller
         // ⚠️ Stessa ragione della guardia gemella su `TabellaController@destroy`: senza, si
         // cancellava l'unità di un altro condominio, e con lei le sue quote in ogni tabella.
         abort_unless($immobile->condominio_id === $condominio->id, 404);
+
+        // B2 (S8-27): un'unità con passaggi di titolarità registrati non si elimina — lo storico «Chi ha avuto
+        // questa unità» e il conguaglio in `saldi` la nominano, e la FK `saldi.subentro_id` è `restrict`. Vale
+        // anche per la pertinenza spuntata in un passaggio (ha una riga `subentri` propria) e per il passaggio
+        // registrato con rinuncia al conguaglio (nessuna coppia, ma lo storico c'è).
+        if ($immobile->subentri()->exists()) {
+            return to_route('admin.gestionale.immobili.index', $condominio)
+                ->with($this->flashError('Questa unità ha passaggi di titolarità registrati (vendita, locazione o usufrutto): non si elimina, perché lo storico «Chi ha avuto questa unità» e il conguaglio in saldi la nominano.'));
+        }
 
         try {
 

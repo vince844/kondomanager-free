@@ -6,6 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use App\Enums\Permission;
+use App\Rules\CondominioDellUtente;
 use App\Support\LimiteCaricamento;
 
 /**
@@ -31,14 +32,24 @@ class CreateDocumentoRequest extends FormRequest
         return [
             'name'            => 'required|string|max:255',
             'description'     => 'required|string',
-            'category_id'     => 'required|string|exists:categorie_documento,id',
+            // ⚠️ **Almeno una, dalla 1.11.0-beta.10.** Un documento d'archivio senza categoria non
+            // compare in nessuna vista per categoria e si trova solo cercandolo per nome: è il modo
+            // in cui i documenti si perdono. L'obbligo vive **qui**, nei moduli dell'archivio, e non
+            // a livello di schema: i documenti caricati su un soggetto — fornitore, unità,
+            // anagrafica — non hanno categoria di proposito, e un vincolo sul database romperebbe
+            // quei caricamenti.
+            'categorie'       => ['required', 'array', 'min:1'],
+            'categorie.*'     => ['integer', 'exists:categorie_documento,id'],
             'is_published'    => 'required|boolean',
             'is_approved'     => 'required|boolean',
             'is_private'      => 'sometimes|boolean',
             'created_by'      => 'required|exists:users,id',
             'file'            => 'required|file|mimes:pdf|max:'.LimiteCaricamento::regolaMax(),
             'condomini_ids'   => ['required', 'array'],
-            'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
+            // Non basta che il condominio esista (giro di sicurezza della 1.11.0-beta.39, Coda 184):
+            // deve essere uno dei condomìni dell'utente, altrimenti il documento finisce nell'archivio
+            // di un palazzo a cui non appartiene.
+            'condomini_ids.*' => ['bail', 'integer', Rule::exists('condomini', 'id'), new CondominioDellUtente()],
         ];
     }
 
@@ -70,6 +81,7 @@ class CreateDocumentoRequest extends FormRequest
             'name'          => __('validation.attributes.documenti.name'),
             'description'   => __('validation.attributes.documenti.description'),
             'condomini_ids' => __('validation.attributes.documenti.condomini_ids'),
+            'categorie'     => __('validation.attributes.documenti.categorie'),
         ];
     }
 }

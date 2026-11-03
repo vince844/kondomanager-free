@@ -31,6 +31,18 @@ enum ReportType: string
     case ElencoAttivita = 'elenco_attivita';
 
     /**
+     * L'unico caso che non è una stampa di Danea: **il nostro modello compilato a mano**.
+     *
+     * È anche l'unico che sta su **più fogli**. Il vincolo che lo rende speciale è misurato:
+     * `ImportUploadService::riconosci()` scorre tutti i fogli ma ne tiene **uno solo**, il
+     * migliore, e `import_files.report_type` è una colonna sola. Un file ha un tipo. La strada
+     * non è quindi «cinque fogli riconosciuti come cinque tipi» ma un tipo solo, letto da un
+     * parser che li apre tutti — e per questo `ImportVerificaService` lo intercetta prima della
+     * scelta del foglio, invece di passare per `foglio()` come tutti gli altri.
+     */
+    case ModelloManuale = 'modello_manuale';
+
+    /**
      * Il titolo che la stampa porta in testa, quando ce l'ha.
      *
      * Confrontato normalizzato, e solo sulle prime righe: è la riga 0 in tutti i file reali,
@@ -44,6 +56,10 @@ enum ReportType: string
             self::Movimenti => 'Movimenti',
             self::RateVersate => 'Elenco rate versate',
             self::ElencoAttivita => 'Attività chiuse',
+            // ⚠️ La stessa stringa che `ModelloManualeWriter` scrive in riga 1 della copertina, e
+            // non una sua copia: due stringhe uguali scritte in due posti divergono sempre, e qui
+            // divergere significherebbe non riconoscere più il nostro stesso modello.
+            self::ModelloManuale => ModelloManualeWriter::TITOLO,
             // I due compatti escono senza testata: iniziano direttamente dall'intestazione.
             self::ElencoUnita, self::AnagraficaMillesimi => null,
         };
@@ -82,6 +98,12 @@ enum ReportType: string
             self::ElencoAttivita => [
                 'Nr. Pratica', 'Condominio', 'Tipologia', 'Priorità', 'Operatore', 'Titolo',
             ],
+            // ⚠️ Sono le etichette della **copertina**, non di tutto il modello, e la scelta è
+            // deliberata: la copertina è l'unico foglio le cui colonne le decidiamo noi e non
+            // cambiano mai. Sugli altri quattro l'amministratore aggiunge tabelle e rinomina
+            // colonne, quindi non sarebbero un'ancora. È anche il foglio che porta il titolo, e
+            // titolo più etichette portano il riconoscimento a 100.
+            self::ModelloManuale => ['campo', 'valore', 'a cosa serve'],
         };
     }
 
@@ -126,6 +148,9 @@ enum ReportType: string
             // perché i nomi li decide l'amministratore.
             self::AnagraficaMillesimi => ['*'],
             self::Movimenti, self::RateVersate => ['*'],
+            // Ogni colonna del modello è una colonna che abbiamo chiesto noi: sono tutte lette,
+            // e l'elenco non si può scrivere perché i nomi delle tabelle li decide chi compila.
+            self::ModelloManuale => ['*'],
             default => $this->etichette(),
         };
     }
@@ -158,13 +183,22 @@ enum ReportType: string
             self::AnagraficaMillesimi => 'Persone · Unità · Tabelle millesimali',
             self::RipartoConsuntivo => 'Saldi di apertura, con il totale su cui quadrarli',
             self::BilancioConsuntivo => 'Struttura dei capitoli di spesa',
-            // L'archivio storico è rimandato alla 1.10.1. Il file resta utile — la testata
-            // porta condominio ed esercizio — ma promettere «archivio storico dei movimenti»
-            // e poi non parlarne più né in conferma né in esito è il modo più diretto di far
-            // credere a chi migra di aver perso dei pezzi.
-            self::Movimenti => 'Solo condominio ed esercizio: lo storico non entra nella 1.10',
-            self::RateVersate => 'Solo condominio ed esercizio: lo storico non entra nella 1.10',
+            // L'archivio storico dei movimenti non è ancora implementato. Il file resta utile —
+            // la testata porta condominio ed esercizio — ma promettere «archivio storico dei
+            // movimenti» e poi non parlarne più né in conferma né in esito è il modo più diretto
+            // di far credere a chi migra di aver perso dei pezzi.
+            //
+            // ⚠️ **Senza il numero di versione, e non è pedanteria.** Qui c'era «non entra nella
+            // 1.10», scritto quando la 1.10 era il futuro: la 1.10 è uscita il 26/08/2026 e la
+            // 1.10.1 è stata fusa nella 1.11, quindi la frase è rimasta a promettere una cosa su
+            // una versione già passata. Se ne è accorto un giro a video il 30/08/2026, non un
+            // test — nessuno può esserlo. La regola del flusso di lavoro è scritta: *le guide
+            // descrivono il comportamento attuale, al presente, senza numeri di versione*, perché
+            // un numero sparso nel testo invecchia da solo a ogni rilascio.
+            self::Movimenti => 'Solo condominio ed esercizio: lo storico dei movimenti non entra ancora',
+            self::RateVersate => 'Solo condominio ed esercizio: lo storico dei versamenti non entra ancora',
             self::ElencoAttivita => 'Niente: Kondomanager non importa le pratiche',
+            self::ModelloManuale => 'Condominio · Unità · Persone · Tabelle millesimali · Saldi',
         };
     }
 
@@ -186,6 +220,9 @@ enum ReportType: string
             self::Movimenti => 'Movimenti',
             self::RateVersate => 'Rate versate',
             self::ElencoAttivita => 'Attività / pratiche',
+            // Non «Modello manuale»: chi lo ha compilato lo chiama «il modello», e il nome che
+            // legge nella schermata deve essere quello del file che ha appena trascinato.
+            self::ModelloManuale => 'Modello Kondomanager',
         };
     }
 

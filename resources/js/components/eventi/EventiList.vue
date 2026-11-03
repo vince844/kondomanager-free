@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useEventStyling } from '@/composables/useEventStyling';
 import EventDetailsDialog from '@/components/eventi/EventDetailsDialog.vue'; 
 import { Building2, Tag, CalendarDays } from 'lucide-vue-next';
@@ -13,11 +13,15 @@ const props = defineProps<{
 
 const { getEventStyle } = useEventStyling();
 const expandedIds = ref<Set<number>>(new Set());
-const selectedEvent = ref<Evento | null>(null);
+// Si tiene l'identificativo del promemoria aperto, e quello che la finestra mostra si ricava da `eventi`: quando la pagina si
+// ricarica (dopo una segnalazione rifiutata, o un incasso registrato dall'amministratore) la finestra aperta dice lo stato di
+// adesso e non quello di quando è stata aperta.
+const selectedId = ref<number | null>(null);
+const selectedEvent = computed<Evento | null>(() => props.eventi.find((e) => e.id === selectedId.value) ?? null);
 const isDialogOpen = ref(false);
 
 const openDetails = (evento: Evento) => {
-  selectedEvent.value = evento;
+  selectedId.value = evento.id;
   isDialogOpen.value = true;
 };
 
@@ -42,9 +46,10 @@ const getCondominioName = (evento: Evento) => {
     return null;
 };
 
-// Helper per intercettare le rate già pagate dal condòmino
+// Helper per intercettare le rate già pagate dal condòmino. Un credito puro già saldato (importo originale negativo) non ha un
+// pagamento registrato: la sua riga mostra la descrizione.
 const isRataPagata = (evento: Evento) => {
-    return evento.meta?.type === 'scadenza_rata_condomino' && evento.meta?.status === 'paid';
+    return evento.meta?.type === 'scadenza_rata_condomino' && evento.meta?.status === 'paid' && Number(evento.meta?.importo_originale ?? 0) >= 0;
 };
 
 const isRataRifiutata = (evento: Evento) => {

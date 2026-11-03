@@ -22,10 +22,13 @@ test('email can be verified', function () {
 
     Event::fake();
 
+    // Firmato sul percorso, come il link della mail (`CustomVerifyEmailNotification`): la rotta controlla
+    // quella firma (`signed:relative`).
     $verificationUrl = URL::temporarySignedRoute(
         'verification.verify',
         now()->addMinutes(60),
-        ['id' => $user->id, 'hash' => sha1($user->email)]
+        ['id' => $user->id, 'hash' => sha1($user->email)],
+        absolute: false,
     );
 
     $response = $this->actingAs($user)->get($verificationUrl);
@@ -38,10 +41,12 @@ test('email can be verified', function () {
 test('email is not verified with invalid hash', function () {
     $user = User::factory()->unverified()->create();
 
+    // Firmato sul percorso come il link della mail: la firma vale, e a fermare la verifica è l'hash.
     $verificationUrl = URL::temporarySignedRoute(
         'verification.verify',
         now()->addMinutes(60),
-        ['id' => $user->id, 'hash' => sha1('wrong-email')]
+        ['id' => $user->id, 'hash' => sha1('wrong-email')],
+        absolute: false,
     );
 
     $this->actingAs($user)->get($verificationUrl);

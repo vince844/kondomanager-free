@@ -7,6 +7,7 @@ use App\Exceptions\Gestionale\MetodoDistribuzioneSconosciutoException;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
+use App\Models\Gestionale\RigaRiparto;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -14,11 +15,45 @@ use Illuminate\Support\Facades\Log;
 
 class GenerateRateQuotesAction
 {
+    /**
+     * `regole_calcolo.parametri.titolarita_alla` di B1, e — da B2 — di ogni calcolo in cui la risoluzione
+     * per periodo **non ha cambiato destinatari né pesi** rispetto a quella atemporale (decisione 15
+     * ➕ 19/09/2026): la quota dichiara che chi paga è lo stesso di sempre. Il periodo e il gradino della
+     * singola riga stanno in `righe_riparto` (`competenza_dal/al`, `gradino_competenza`), non qui. Quando
+     * invece il periodo ha cambiato qualcuno, `GeneratePianoRateAction` scrive al suo posto
+     * `{ risoluzione: 'temporale', destinatari_cambiati: true, nota_cancello, coppie }` — la presa d'atto
+     * del cancello (2), decisione 14. Lo stesso quando il piano contiene una pregressa registrata senza
+     * periodo (decisione 26, 1.11.0-beta.35), che chiede la nota anche se nessun titolare cambia: allora
+     * `coppie` vale 0. E, dalla 1.11.0-beta.51, quando il cancello nomina un defunto che il piano calcola
+     * ancora (`DefuntoNelPiano`): la stessa forma, con in più la chiave `defunti`
+     * `[{ anagrafica_id, immobile_id, cifra }]` (`GeneratePianoRateAction::titolaritaAlla`).
+     */
+    public const TITOLARITA_ATEMPORALE = ['risoluzione' => 'atemporale'];
+
+    /**
+     * La fettina della rata `$rataAttuale` di `$totale` spalmato su `$numRate` rate, al centesimo: i centesimi del resto vanno
+     * sulle prime rate, con il segno del totale. È la regola di tutte le quote del piano, e della parte ad personam di ogni quota
+     * (Coda 313, `regole_calcolo.importi.addebito_diretto`): `RataQuote::partiAdPersonam` la rifà con la stessa funzione per le quote
+     * generate prima che la chiave ci fosse.
+     */
+    public static function fettina(int $totale, int $numRate, int $rataAttuale): int
+    {
+        if ($totale === 0 || $numRate <= 0) {
+            return 0;
+        }
+        $base = intdiv($totale, $numRate);
+        $resto = $totale % $numRate;
+
+        return $rataAttuale <= abs($resto) ? $base + ($totale < 0 ? -1 : 1) : $base;
+    }
+
     public function execute(
         PianoRate $pianoRate,
         array $totaliPerImmobile,
         array $dateRate,
-        array $saldi = []
+        array $saldi = [],
+        array $dettaglio = [],
+        array $titolaritaAlla = self::TITOLARITA_ATEMPORALE
     ): array {
         $numeroRate = count($dateRate);
         $rateCreate = 0;
@@ -31,21 +66,41 @@ class GenerateRateQuotesAction
         // -----------------------------------------------------------------------------
         // HELPER: Divisione perfetta dei centesimi (Evita la perdita di decimali)
         // -----------------------------------------------------------------------------
-        $calcolaFettina = function($totale, $numRate, $rataAttuale) {
-            if ($totale == 0) return 0;
-            $base = intdiv($totale, $numRate);
-            $resto = $totale % $numRate; 
-            $segnoResto = $totale < 0 ? -1 : 1;
+        $calcolaFettina = fn ($totale, $numRate, $rataAttuale) => self::fettina((int) $totale, (int) $numRate, (int) $rataAttuale);
 
-            // Spalmiamo i "centesimi dispari" (resto) sulle prime rate
-            if ($rataAttuale <= abs($resto)) {
-                return $base + (1 * $segnoResto);
+        // Coda 313: la parte ad personam del totale di ogni soggetto (le righe `ad_personam` del dettaglio: la spesa di una sola
+        // unità, che la fattura ha già scritto su «Crediti verso condomini» con l'unità). Va nello snapshot di ogni sua quota, con
+        // la stessa fettina del totale, perché l'emissione chiuda l'anticipazione invece di contarla fra le entrate della gestione.
+        $adPersonam = [];
+        foreach ($dettaglio as $riga) {
+            if (($riga['tipo'] ?? null) === RigaRiparto::TIPO_AD_PERSONAM && ($riga['anagrafica_id'] ?? null) !== null && ($riga['immobile_id'] ?? null) !== null) {
+                $adPersonam[(int) $riga['anagrafica_id']][(int) $riga['immobile_id']] = ($adPersonam[(int) $riga['anagrafica_id']][(int) $riga['immobile_id']] ?? 0) + (int) $riga['importo'];
             }
-            return $base;
-        };
+        }
 
         DB::beginTransaction();
         try {
+            // -----------------------------------------------------------------------------
+            // IL DETTAGLIO DEL RIPARTO (1.11.0-beta.29): prima delle rate, nella stessa transazione
+            // -----------------------------------------------------------------------------
+            //
+            // Le righe di `CalcoloQuoteService::getRigheDettaglio()` spiegano i totali che stiamo
+            // per spaccare in rate. Si scrivono qui e non nel motore perché questo è l'unico punto
+            // da cui passano tutte le porte della generazione (prima e rigenerazione): il dettaglio
+            // precedente si cancella **qui**, come le rate vengono cancellate da chi rigenera.
+            //
+            // ⚠️ Riconciliazione o niente: per ogni soggetto la somma delle righe deve essere
+            // esattamente il totale del motore — cioè, a valle, la somma delle sue quote pure di
+            // gestione. Se non torna, l'eccezione fa saltare **anche** le quote: un dettaglio che
+            // non spiega le quote non viene scritto, e nemmeno le quote che non sa spiegare.
+            // Con `$dettaglio` vuoto (chiamanti vecchi, test diretti) le quote si scrivono come prima;
+            // il dettaglio precedente del piano viene comunque cancellato, perché non spiegherebbe
+            // più le quote nuove — in stampa quel piano sarà «ricostruito».
+            RigaRiparto::where('piano_rate_id', $pianoRate->id)->delete();
+            if (!empty($dettaglio)) {
+                $this->scriviDettaglio($pianoRate, $totaliPerImmobile, $dettaglio, $now);
+            }
+
             // -----------------------------------------------------------------------------
             // FASE 0: CREAZIONE "RATA ZERO" (SALDO INIZIALE SEPARATO)
             // -----------------------------------------------------------------------------
@@ -83,7 +138,13 @@ class GenerateRateQuotesAction
                             ],
                             'parametri' => [
                                 'metodo_distribuzione'  => 'rata_zero',
-                                'numero_rata'           => 0
+                                'numero_rata'           => 0,
+                                // B1 (1.11.0-beta.30): come sono stati risolti i titolari. Chiave
+                                // additiva: i lettori dello snapshot leggono sottochiavi specifiche.
+                                // B2 (decisione 15): `{risoluzione:'temporale', destinatari_cambiati, nota_cancello}`
+                                // dove il periodo ha cambiato qualcosa; periodo, gradino e giorni stanno in
+                                // `righe_riparto`, non qui.
+                                'titolarita_alla'       => $titolaritaAlla,
                             ],
                             'dettagli_saldo' => $datiSaldo['meta_storico'],
                             'audit' => [
@@ -244,7 +305,8 @@ class GenerateRateQuotesAction
                             'parametri' => [
                                 'metodo_distribuzione'  => $pianoRate->metodo_distribuzione,
                                 'numero_rata'           => $numeroRata,
-                                'totale_rate_piano'     => $numeroRate
+                                'totale_rate_piano'     => $numeroRate,
+                                'titolarita_alla'       => $titolaritaAlla,
                             ],
                             'audit' => [
                                 'versione_calcolo'  => config('app.version', '1.9.0'), 
@@ -258,6 +320,13 @@ class GenerateRateQuotesAction
                             if ($pianoRate->metodo_distribuzione === 'tutte_rate') {
                                 $snapshot['note_saldo'] = "Quota saldo spalmata ({$numeroRata}/{$numeroRate})";
                             }
+                        }
+
+                        // Coda 313: la fettina della parte ad personam, solo per i soggetti che ne hanno una (le altre quote restano
+                        // identiche). È il fatto della generazione, con il suo segno; quanta parte chiude l'anticipazione lo dice
+                        // `RataQuote::partiAdPersonam`, che non la porta mai sotto zero.
+                        if (($adPersonam[$aid][$iid] ?? 0) !== 0) {
+                            $snapshot['importi']['addebito_diretto'] = $calcolaFettina($adPersonam[$aid][$iid], $numeroRate, $numeroRata);
                         }
 
                         // --- INIZIO NUOVA LOGICA EURISTICA ---
@@ -324,6 +393,87 @@ class GenerateRateQuotesAction
             DB::rollBack();
             Log::error("Errore GenerateRateQuotesAction: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             throw $e;
+        }
+    }
+
+    /**
+     * Scrive le righe del dettaglio, dopo averle riconciliate con i totali del motore.
+     *
+     * @param array<int,array<int,int>> $totaliPerImmobile  [anagrafica_id][immobile_id] => centesimi
+     * @param list<array<string,mixed>> $dettaglio          le righe di `getRigheDettaglio()`
+     */
+    private function scriviDettaglio(PianoRate $pianoRate, array $totaliPerImmobile, array $dettaglio, Carbon $now): void
+    {
+        $sommeRighe = [];
+        foreach ($dettaglio as $riga) {
+            if (($riga['anagrafica_id'] ?? null) === null) continue; // quota_zero: nessun soggetto
+            $chiave = $riga['anagrafica_id'].'|'.$riga['immobile_id'];
+            $sommeRighe[$chiave] = ($sommeRighe[$chiave] ?? 0) + (int) $riga['importo'];
+        }
+
+        $attesi = [];
+        foreach ($totaliPerImmobile as $aid => $perImmobile) {
+            foreach ($perImmobile as $iid => $importo) {
+                $attesi["$aid|$iid"] = (int) $importo;
+            }
+        }
+
+        foreach ($attesi as $chiave => $totale) {
+            if (($sommeRighe[$chiave] ?? 0) !== $totale) {
+                throw new \RuntimeException(sprintf(
+                    'Dettaglio del riparto non riconciliato per il soggetto %s del piano %d: righe %d, totale del motore %d.',
+                    $chiave, $pianoRate->id, $sommeRighe[$chiave] ?? 0, $totale
+                ));
+            }
+        }
+        foreach ($sommeRighe as $chiave => $somma) {
+            if (!array_key_exists($chiave, $attesi)) {
+                throw new \RuntimeException("Dettaglio del riparto con un soggetto ({$chiave}) che il motore non ha nei totali del piano {$pianoRate->id}.");
+            }
+        }
+
+        $versione = (string) config('app.version', '1.9.0');
+        $daInserire = [];
+        foreach ($dettaglio as $riga) {
+            $daInserire[] = [
+                'piano_rate_id'     => $pianoRate->id,
+                'tipo'              => $riga['tipo'],
+                'anagrafica_id'     => $riga['anagrafica_id'] ?? null,
+                'immobile_id'       => $riga['immobile_id'] ?? null,
+                // Decisione 55 (1.11.0-beta.43): la riga di titolarità da cui viene la riga di riparto.
+                'anagrafica_immobile_id' => $riga['anagrafica_immobile_id'] ?? null,
+                'conto_id'          => $riga['conto_id'] ?? null,
+                'conto_nome'        => $riga['conto_nome'] ?? null,
+                'conto_radice_id'   => $riga['conto_radice_id'] ?? null,
+                'conto_radice_nome' => $riga['conto_radice_nome'] ?? null,
+                'tabella_id'        => $riga['tabella_id'] ?? null,
+                'tabella_nome'      => $riga['tabella_nome'] ?? null,
+                'tabella_quota'     => $riga['tabella_quota'] ?? null,
+                'coefficiente'      => $riga['coefficiente'] ?? null,
+                'valore_millesimo'  => $riga['valore_millesimo'] ?? null,
+                'somma_valori'      => $riga['somma_valori'] ?? null,
+                'ruolo_richiesto'   => $riga['ruolo_richiesto'] ?? null,
+                'ruolo_risolto'     => $riga['ruolo_risolto'] ?? null,
+                'quota_possesso'    => $riga['quota_possesso'] ?? null,
+                'riga_fattura_id'   => $riga['riga_fattura_id'] ?? null,
+                'riga_descrizione'  => $riga['riga_descrizione'] ?? null,
+                'importo'           => (int) $riga['importo'],
+                // B2 (decisione 15): il congelato temporale per riga; nulli sulle righe atemporali.
+                // `insert()` salta i cast: le date arrivano già come `Y-m-d` dal motore.
+                'competenza_dal'    => $riga['competenza_dal'] ?? null,
+                'competenza_al'     => $riga['competenza_al'] ?? null,
+                'gradino_competenza' => $riga['gradino_competenza'] ?? null,
+                'giorni_titolarita' => $riga['giorni_titolarita'] ?? null,
+                // Migrazione 11 (S8-bis): il tratto che quei giorni coprono, non solo il conteggio.
+                'titolarita_dal'    => $riga['titolarita_dal'] ?? null,
+                'titolarita_al'     => $riga['titolarita_al'] ?? null,
+                'versione_calcolo'  => $versione,
+                'created_at'        => $now,
+                'updated_at'        => $now,
+            ];
+        }
+        foreach (array_chunk($daInserire, 500) as $chunk) {
+            RigaRiparto::insert($chunk);
         }
     }
 }

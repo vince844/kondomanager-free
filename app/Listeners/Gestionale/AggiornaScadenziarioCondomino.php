@@ -14,6 +14,10 @@ use Illuminate\Support\Number;
  * Intercetta la registrazione di un incasso e ricalcola il debito residuo
  * per la specifica anagrafica. Aggiorna lo stato visivo (es. "Pagato", "Parziale")
  * e gestisce la pulizia automatica dei task amministrativi (Inbox Zero).
+ *
+ * Non è chiamato da nessuno e non segue la regola di `EventiRataCondomino::stato()`: nessun codice emette
+ * `IncassoRegistrato`, e il promemoria si riallinea da `EventiRataCondomino::allineaPagato()`. Non va ricollegato:
+ * riporterebbe lo stato del promemoria a una regola che non è più quella del portale.
  */
 class AggiornaScadenziarioCondomino implements ShouldQueue
 {

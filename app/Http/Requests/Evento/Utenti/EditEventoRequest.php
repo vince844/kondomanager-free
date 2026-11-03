@@ -4,8 +4,11 @@ namespace App\Http\Requests\Evento\Utenti;
 
 use App\Enums\Permission;
 use App\Enums\VisibilityStatus;
+use App\Models\Evento;
+use App\Rules\CondominioDellUtente;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * @method bool merge(string $key)
@@ -17,6 +20,12 @@ class EditEventoRequest extends FormRequest
      */
     public function authorize(): bool
     {
+        // Prima delle regole (giro di sicurezza della 1.11.0-beta.39): `condomini_ids.*` ammette i
+        // condomìni in cui il record è già, e validando per primi chiunque saprebbe in quali palazzi
+        // sta un record che non può toccare (403 contro errore di validazione). Il Gate::authorize
+        // nel controller resta: è ridondante ma innocuo, e lo cerca RotteSoloLoginTest.
+        Gate::authorize('update', $this->route('evento'));
+
         return true;
     }
 
@@ -43,11 +52,32 @@ class EditEventoRequest extends FormRequest
             'recurrence_by_month_day' => 'nullable|integer|min:1|max:31',
             'recurrence_until'        => 'nullable|date',
             'condomini_ids'           => 'required|nullable|array',
-            'condomini_ids.*'         => 'exists:condomini,id',
+            // Non basta che il condominio esista (giro di sicurezza della 1.11.0-beta.39, Coda 184):
+            // deve essere uno dei condomìni dell'utente, altrimenti l'evento finisce nell'agenda di
+            // un palazzo a cui non appartiene.
+            // `integer` prima di tutto: un elemento-array arriverebbe a sync() come «chiave = id da
+            // collegare», e la chiave non la controlla nessuno. I condomìni in cui l'evento è già
+            // restano ammessi anche se l'autore non ne è più membro.
+            'condomini_ids.*'         => [
+                'bail', 'integer', 'exists:condomini,id',
+                new CondominioDellUtente($this->condominiGiaCollegati()),
+            ],
             'mode'                    => 'nullable|string',
             'occurrence_date'         => 'nullable|date',
             'created_by'              => 'required|exists:users,id',
         ];
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function condominiGiaCollegati(): array
+    {
+        $evento = $this->route('evento');
+
+        return $evento instanceof Evento
+            ? $evento->condomini()->pluck('condomini.id')->map(fn ($id) => (int) $id)->all()
+            : [];
     }
 
     /**

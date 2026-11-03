@@ -1,0 +1,9 @@
+{
+    "features": [
+        "IL LIBRO GIORNALE ORA SI LEGGE RIGA PER RIGA — Un clic sulla riga di una scrittura apre le sue righe di partita doppia (conto, dare, avere), la stessa tabella che prima viveva solo nel dettaglio. Chiude il malinteso da cui è nata questa modifica: la pagina mostrava un totale unico invece del dettaglio dare/avere, ed è per questo che i segni apparivano sempre positivi.",
+        "IL LIBRO GIORNALE SI PUÒ STAMPARE — Riga per riga, in forma cronologica: data, protocollo, conto, dare, avere. La stampa rispetta gli stessi filtri della pagina — periodo, stato, tipo movimento, testo cercato — e se qualcuno è attivo lo dichiara in un riquadro, con il totale marcato «parziale»: un documento che può finire in assemblea non deve tacere il proprio perimetro.",
+        "LA PAGINA DICHIARA COSA NON È — Il Libro Giornale è il registro delle scritture in partita doppia, non il registro di contabilità (entrate e uscite) previsto dall'art. 1130, comma 1, n. 7 c.c., che resta da costruire.",
+        "UNA STAMPA GRANDE NON SI BLOCCA PIÙ A METÀ — Un esercizio molto attivo poteva esaurire la memoria del server durante la generazione del PDF, con un fatal error senza traccia nei log. La tabella ora si genera a blocchi, con la stessa resa e un decimo della memoria; se l'esercizio è comunque fuori scala, la stampa lo dice e chiede di restringere il periodo invece di interrompersi in silenzio.",
+        "TRE CORREZIONI MINORI SULLA STAMPA — Un valore di filtro data non valido non manda più in errore la stampa; un documento di più pagine si identifica su ognuna, non solo sulla prima; un clic vicino al pulsante di dettaglio non apre più il pannello di espansione al posto del dettaglio."
+    ]
+}

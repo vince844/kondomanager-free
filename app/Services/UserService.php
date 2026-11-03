@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Anagrafica;
 use App\Repositories\UserRepository;
 use App\Notifications\NewUserEmailNotification;
+use App\Services\Notifiche\AvvisiDiSicurezza;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -58,8 +59,9 @@ class UserService
      */
     public function updateUser(User $user, array $validatedData)
     {
-    
-        return DB::transaction(function () use ($user, $validatedData) {
+        $vecchia = $user->email;
+
+        $aggiornato = DB::transaction(function () use ($user, $validatedData) {
 
             $this->userRepository->update($user, $validatedData);
 
@@ -76,6 +78,14 @@ class UserService
             return $user;
 
         });
+
+        // Coda 267: a transazione chiusa, e con il nome di chi ha fatto la modifica se non è il
+        // titolare. L'avviso va al vecchio indirizzo, con il nuovo mascherato.
+        if ($user->email !== $vecchia) {
+            app(AvvisiDiSicurezza::class)->emailCambiata($user, $vecchia, Auth::user());
+        }
+
+        return $aggiornato;
     }
 
     /**
@@ -84,13 +94,15 @@ class UserService
      *
      * `syncPermissions()` sostituisce l'intero insieme, e dalla beta.55 l'elenco proposto è
      * filtrato su ciò che l'attore possiede. Senza questa unione, un collaboratore che corregge
-     * l'email di un amministratore gli **toglierebbe in silenzio** i permessi che lui stesso non
-     * ha — un salvataggio che non riguardava i permessi, e che li perde.
+     * il nome di un amministratore gli **toglierebbe in silenzio** i permessi che lui stesso non
+     * ha — un salvataggio che non riguardava i permessi, e che li perde. (L'email, i ruoli e i
+     * permessi diretti di un account fuori dalla sua portata un collaboratore non li cambia (Coda 258):
+     * `ValidaConcessioneRuoli`, che per i permessi usa questa stessa funzione.)
      *
      * @param  array<int, mixed>  $mandati
      * @return array<int, string> Nomi dei permessi da sincronizzare.
      */
-    private function permessiDaSincronizzare(User $user, array $mandati): array
+    public function permessiDaSincronizzare(User $user, array $mandati): array
     {
         $attore = Auth::user();
 

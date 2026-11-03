@@ -545,15 +545,20 @@ it('non dichiara «già versato» quando non c\'è nessun contributo registrato'
     // Nessuna colonna «Già versato»: in questo condominio non c'è un solo contributo registrato.
     expect($matrice['tot_per_capitolo'])->not->toHaveKey(RipartoCapitoliService::COLONNA_GIA_VERSATO);
 
-    // Il subentrante non porta niente, perché niente gli è stato addebitato.
-    $riga = $matrice['righe'][$uscente->immobile->id]['soggetti'][$subentrante->id] ?? null;
-    expect($riga)->not->toBeNull()
-        ->and($riga['totale'])->toBe(0)
-        ->and(array_sum(array_column($riga['per_capitolo'], 'importo')))->toBe(0);
+    // Il subentrante non porta niente, perché niente gli è stato addebitato — e dalla
+    // 1.11.0-beta.29 non ha nemmeno una riga: la stampa legge il dettaglio registrato alla
+    // generazione, in cui lui non c'era. Fino alla .28 compariva a zero perché la stampa
+    // ricalcolava i pesi sulla pivot di oggi.
+    expect($matrice['righe'][$uscente->immobile->id]['soggetti'])->not->toHaveKey($subentrante->id);
+
+    // L'uscente tiene la sua riga sui capitoli, con il ruolo di allora: le sue quote restano in
+    // `rate_quote` e il documento le spiega senza «Fuori riparto» (che nel registrato è una guardia).
+    $rigaUscente = $matrice['righe'][$uscente->immobile->id]['soggetti'][$uscente->anagrafica->id] ?? null;
+    expect($rigaUscente)->not->toBeNull()
+        ->and($matrice['capitoli'])->not->toHaveKey(RipartoCapitoliService::COLONNA_FUORI_RIPARTO);
 
     // E il documento continua a valere le rate emesse: € 6.600,00, perché in questo scenario non
-    // ci sono né arretrati né versamenti — le quote dell'uscente restano in `rate_quote` e
-    // compaiono «fuori riparto», che è il presidio della beta.52.
+    // ci sono né arretrati né versamenti.
     expect($matrice['gran_totale'])->toBe(660_000);
 });
 

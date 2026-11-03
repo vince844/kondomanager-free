@@ -58,7 +58,7 @@ const mainNavItems = computed<NavItem[]>(() => [
         icon: House,
         children: [
             { type: 'link', title: trans('appHeader.elencoCondomini'), icon: List, href: '/condomini', permissions: [Permission.VIEW_CONDOMINI] },
-            { type: 'link', title: trans('appHeader.importaDati'), icon: DownloadCloud, href: '/importa-dati', permissions: [Permission.CREATE_CONDOMINI] },
+            { type: 'link', title: trans('appHeader.importaDati'), icon: DownloadCloud, href: '/importa-dati', permissions: [Permission.IMPORTA_DATI] },
         ],
     },
     {

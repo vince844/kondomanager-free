@@ -10,6 +10,7 @@ import { trans } from 'laravel-vue-i18n'
 import { Trash2, FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
 import type { User } from '@/types/users';
 import { usePermission } from '@/composables/permissions'
+import { Permission } from '@/enums/Permission'
 
 const props = defineProps<{ user: User }>()
 
@@ -18,18 +19,40 @@ const { hasPermission } = usePermission()
 /**
  * Il menù offre solo ciò che il server accetterebbe.
  *
- * Sospendere ed eliminare hanno due invarianti oltre al permesso — non sé stessi, non l'ultimo
- * amministratore attivo — e il server le fa rispettare comunque: qui si evita di proporre un
- * comando che finirebbe in un errore, che è la trappola descritta nella lezione della beta.53.
+ * Sospendere, eliminare e reinvitare hanno due invarianti oltre al permesso — non sé stessi, non
+ * l'ultimo amministratore attivo (Coda 399 per «Reinvita») — e il server le fa rispettare comunque:
+ * qui si evita di proporre un comando che finirebbe in un errore, che è la trappola descritta nella
+ * lezione della beta.53.
+ *
+ * Ogni comando vale solo per un account nella portata di chi guarda l'elenco (Coda 258, decisione 134.1):
+ * `gestibile` lo calcola il server con la stessa regola che usa per rifiutare. Anche «Modifica»: la scheda
+ * di un account fuori portata è solo dell'amministratore (decisione 136.1). E ogni comando chiede il
+ * permesso che chiede la sua rotta: «Modifica» e «Reinvita» «Modifica utenti» (decisione 136.3).
+ * Senza nessun comando il menù non compare.
  */
+const gestibile = computed(() => props.user.gestibile === true)
+
+const puoModificare = computed(() => gestibile.value && hasPermission([Permission.EDIT_USERS]))
+
 const puoSospendere = computed(
-  () => hasPermission(['Sospendi utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore
+  () => gestibile.value && hasPermission([Permission.SUSPEND_USERS]) && !props.user.is_self && !props.user.is_ultimo_amministratore
 )
 
-const puoRiattivare = computed(() => hasPermission(['Sospendi utenti']))
+const puoRiattivare = computed(() => gestibile.value && hasPermission([Permission.SUSPEND_USERS]))
+
+const puoReinvitare = computed(
+  () => gestibile.value && hasPermission([Permission.EDIT_USERS]) && !props.user.is_self && !props.user.is_ultimo_amministratore
+)
 
 const puoEliminare = computed(
-  () => hasPermission(['Elimina utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore
+  () => gestibile.value && hasPermission(['Elimina utenti']) && !props.user.is_self && !props.user.is_ultimo_amministratore
+)
+
+const haComandi = computed(() =>
+  puoModificare.value
+  || puoReinvitare.value
+  || puoEliminare.value
+  || (props.user.suspended_at ? puoRiattivare.value : puoSospendere.value)
 )
 
 const userID = ref('');
@@ -95,7 +118,7 @@ const reinviteUser = () => {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu v-if="haComandi">
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">{{ trans('comunicazioni.table.actions') }}</span>
@@ -105,7 +128,7 @@ const reinviteUser = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>{{ trans('comunicazioni.table.actions') }}</DropdownMenuLabel>
 
-      <DropdownMenuItem @click="editUser(user)" >
+      <DropdownMenuItem v-if="puoModificare" @click="editUser(user)" >
         <FilePenLine class="w-4 h-4 text-xs" />
         {{ trans('users.actions.edit_user') }}
       </DropdownMenuItem>
@@ -120,7 +143,7 @@ const reinviteUser = () => {
         {{ trans('users.actions.activate_user') }}
       </DropdownMenuItem>
 
-      <DropdownMenuItem @click="handleReinvite(user)" >
+      <DropdownMenuItem v-if="puoReinvitare" @click="handleReinvite(user)" >
         <Send class="w-4 h-4 text-xs" />
         {{ trans('users.actions.invite_user') }}
       </DropdownMenuItem>

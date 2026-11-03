@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Http\Resources\User\UserResource;
+use App\Support\FunzioniInstallazione;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -23,14 +24,22 @@ class HandleInertiaRequests extends Middleware
 
     public function share(Request $request): array
     {
-
-        $updateService = app(UpdateService::class);
-
         return [
             ...parent::share($request),
             'name' => config('app.name'),
-            'version' => config('app.version'),
+
+            // La versione, lo stato degli aggiornamenti (più giù) e la mappa delle funzioni vanno solo
+            // a chi ha fatto l'accesso: le pagine per ospiti (pagina iniziale, login, registrazione,
+            // «password dimenticata», reset) non li portano, nemmeno nel sorgente: da queste pagine la
+            // versione di un'installazione non si legge senza accesso. Per un ospite `null`; chi li legge
+            // (piè di pagina, intestazione, impostazioni, aggiornamento) sta dietro l'accesso (Coda 342,
+            // decisione 127.6).
+            'version' => fn () => $request->user() ? config('app.version') : null,
             'is_demo' => env('IS_DEMO', false),
+
+            // Cosa questa installazione sa fare (aggiornamenti in app, pianificatore esterno,
+            // backup, archiviazione esterna): una mappa sola, vedi App\Support\FunzioniInstallazione.
+            'funzioni' => fn () => $request->user() ? FunzioniInstallazione::mappa() : null,
             
             // Dati per Vue I18n
             'locale' => app()->getLocale(),
@@ -40,7 +49,7 @@ class HandleInertiaRequests extends Middleware
             // mentre il valore predefinito era 10, così chi si spostava a 50 non trovava più
             // l'opzione per tornare indietro. Una lista sola, e non può succedere di nuovo.
             'paginazione' => [
-                'consentite' => config('pagination.consentite'),
+                'consentite' => config('pagination.consentite') ?? [],
             ],
 
             'auth.user' => fn () => $request->user()
@@ -50,11 +59,20 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'message' => fn () => $request->session()->get('message'),
                 'scoperti_warning' => fn () => $request->session()->get('scoperti_warning'),
+                // B2, cancello (2): la risoluzione per periodo ha cambiato dei destinatari.
+                'destinatari_warning' => fn () => $request->session()->get('destinatari_warning'),
+                // …e, se il cancello è scattato rimuovendo una voce dal piano, quale voce: la rimozione riparte da lì.
+                'destinatari_warning_detach' => fn () => $request->session()->get('destinatari_warning_detach'),
+                // B2, S5: l'avviso verde dopo «Registra passaggio», con le due azioni del §6.4.
+                'passaggio_registrato' => fn () => $request->session()->get('passaggio_registrato'),
                 // Chiave separata e non accodata a `message`: il banner del flash viene
                 // dipinto e subito cancellato dal modale di conferma che gli si sostituisce
                 // (verificato a video sulla beta.46). Il suggerimento deve poter arrivare
                 // dove l'amministratore guarda davvero, cioè dentro quel modale.
                 'suggerimento_crediti' => fn () => $request->session()->get('suggerimento_crediti'),
+                // Decisione 34 (1.11.0-beta.42): che cosa ha fatto l'emissione, contato sulle rate andate a giornale. Stessa
+                // ragione del suggerimento: lo legge il modale dell'emissione.
+                'esito_emissione' => fn () => $request->session()->get('esito_emissione'),
             ],
 
             'csrf_token' => fn () => $request->user() 
@@ -92,14 +110,22 @@ class HandleInertiaRequests extends Middleware
                     ->count();
             }) : 0,
 
-            // Aggiungiamo stato aggiornamenti sistema
-            'system_update' => [
-                'available' => $updateService->isAutoUpdateEnabled() 
-                    ? $updateService->hasUpdateAvailable() 
-                    : false,
-                'new_version' => $updateService->getRemoteVersion(),
-                'current_version' => config('app.version'),
-            ],
+            // Stato degli aggiornamenti: solo con l'accesso, come la versione (Coda 342).
+            'system_update' => function () use ($request) {
+                if (! $request->user()) {
+                    return null;
+                }
+
+                $updateService = app(UpdateService::class);
+
+                return [
+                    'available' => $updateService->isAutoUpdateEnabled()
+                        ? $updateService->hasUpdateAvailable()
+                        : false,
+                    'new_version' => $updateService->getRemoteVersion(),
+                    'current_version' => config('app.version'),
+                ];
+            },
 
         ];
     }

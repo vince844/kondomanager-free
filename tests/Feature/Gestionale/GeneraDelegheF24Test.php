@@ -37,6 +37,14 @@ function ctxF24(int $percRitenuta = 4): array
         'soggetto_ritenuta' => true,
         'perc_ritenuta' => $percRitenuta,
         'perc_imponibile_ritenuta' => 100,
+        // ⚠️ **La natura si dichiara, non si lascia indovinare** (03/09/2026, Coda 119).
+        // Fino a quel giorno questo aiutante non la impostava, e i test qui sotto
+        // ottenevano 1019 dal **ripiego silenzioso** di `GeneraDelegheF24Action` — uno di
+        // loro lo commentava perfino «fornitore persona fisica → 1019», attribuendo a una
+        // classificazione un valore che nessuno aveva scelto. Erano test verdi che
+        // proteggevano il difetto invece del comportamento: tolto il ripiego, sono
+        // diventati rossi tutti insieme. Adesso il 1019 è **guadagnato**.
+        'natura_percipiente' => 'persona_fisica_irpef',
     ]);
     $ctx[3]->refresh();
 
@@ -263,4 +271,32 @@ test('la delega registra il codice fiscale del condominio', function () {
 
     expect($delega->cf_contribuente)->toEqual($condominio->codice_fiscale)
         ->and($delega->denominazione_contribuente)->toEqual($condominio->nome);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// La stampa del modello (beta.28)
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('il modello F24 risponde con il PDF nel corpo e col nome del file, non solo con lo status', function () {
+    // `Output(..., 'I')` scriveva il PDF sull'output buffer: il browser lo vedeva, la risposta
+    // Laravel era vuota e un test sullo status era verde su zero byte. Il commento nel controller
+    // diceva che «il nome del file resta quello che diamo noi»: era vero solo per l'echo di mPDF.
+    $ctx = ctxF24();
+    [$condominio, $esercizio] = $ctx;
+    pagaConRitenuta($ctx, '2026-03-10', 20_000);
+    $delega = azioneDeleghe()->esegui($condominio, $esercizio->id)->first();
+
+    app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+    $permesso = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    $ruolo = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'amministratore', 'guard_name' => 'web']);
+    $ruolo->givePermissionTo($permesso);
+    $user = \App\Models\User::factory()->create();
+    $user->assignRole($ruolo);
+
+    $risposta = $this->actingAs($user)->get(route('admin.gestionale.f24.modello', [$condominio, $delega]));
+
+    $risposta->assertOk()->assertHeader('Content-Type', 'application/pdf');
+    expect(strlen($risposta->getContent()))->toBeGreaterThan(1000)
+        ->and($risposta->getContent())->toStartWith('%PDF')
+        ->and($risposta->headers->get('Content-Disposition'))->toBe('inline; filename="'.app(\App\Services\Gestionale\ModelloF24Service::class)->nomeFile($delega).'"');
 });

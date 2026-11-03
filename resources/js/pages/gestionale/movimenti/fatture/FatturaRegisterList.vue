@@ -15,6 +15,17 @@ import Alert from "@/components/Alert.vue";
 import type { Building } from '@/types/buildings';
 import type { Flash } from '@/types/flash';
 
+/** Una regolazione immediata non stornata scritta su una voce che oggi non è di spesa (Coda 287): l'importo è in centesimi. */
+interface RegolazioneSuVoceDiEntrata {
+    id: number;
+    numero_protocollo: string | null;
+    data: string | null;
+    importo: number;
+    voce: string;
+    /** La voce si distingue per id: due voci possono avere lo stesso nome. */
+    voce_id: number;
+}
+
 const props = defineProps<{
     condominio: Building;
     condomini:  Building[];
@@ -22,6 +33,7 @@ const props = defineProps<{
     stats:      { totale_aperte: number; totale_sfori: number; importo_da_pagare: number };
     filters:    { stato_pagamento?: string; stato_approvazione?: string; search?: string };
     regolazioniImmediate?: number;
+    regolazioniSuVoceDiEntrata?: RegolazioneSuVoceDiEntrata[];
     esercizio?: { id: number } | null;
 }>();
 
@@ -61,6 +73,18 @@ const linkRegolazioni = computed(() => {
         tipo_movimento: 'regolazione_immediata',
     });
 });
+
+// Coda 287: le regolazioni immediate scritte su una voce di entrata (il menu le offriva fino alla 1.11.0-beta.51). Sono dati da correggere, non
+// un promemoria: il blocco non si nasconde, vale per tutto il condominio (anche gli esercizi chiusi) e sparisce quando l'ultima è stornata.
+// Lo storno di una scrittura di un esercizio chiuso si registra in un esercizio aperto (con più esercizi aperti il programma non dice quale):
+// senza un esercizio aperto la pagina non indica lo storno.
+const regolazioniSuEntrata = computed(() => props.regolazioniSuVoceDiEntrata ?? []);
+const unaSola = computed(() => regolazioniSuEntrata.value.length === 1);
+// Le regolazioni stanno su una voce sola (anche più d'una) o su più voci: le voci si contano per id, non per nome.
+const suUnaVoce = computed(() => new Set(regolazioniSuEntrata.value.map((r) => r.voce_id)).size === 1);
+
+const linkScrittura = (id: number) =>
+    route(generateRoute('gestionale.scritture.show'), { condominio: props.condominio.id, scrittura: id });
 
 // L'avviso è già silenzioso per chi non usa le regolazioni immediate (compare solo
 // se ce ne sono). Ma chi le usa come strumento abituale lo vedrebbe a ogni visita,
@@ -192,6 +216,58 @@ const filterSfori = () => {
 
                         <div v-if="flashMessage" class="mb-3">
                             <Alert :message="flashMessage.message" :type="flashMessage.type" />
+                        </div>
+
+                        <div
+                            v-if="regolazioniSuEntrata.length > 0"
+                            data-blocco="regolazioni-su-entrata"
+                            class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3"
+                        >
+                            <div class="flex items-start gap-3">
+                                <AlertTriangle class="w-4 h-4 mt-0.5 text-amber-600 shrink-0" />
+                                <div class="flex-1 min-w-0 space-y-1.5 text-sm text-amber-900">
+                                    <p class="font-semibold" data-testo="titolo">
+                                        {{ regolazioniSuEntrata.length }}
+                                        {{ unaSola ? 'regolazione immediata è registrata su una voce di entrata' : (suUnaVoce ? 'regolazioni immediate sono registrate su una voce di entrata' : 'regolazioni immediate sono registrate su voci di entrata') }}
+                                    </p>
+                                    <p data-testo="fatto">
+                                        La regolazione immediata registra un'uscita di cassa:
+                                        {{ unaSola ? 'questa è stata scritta come una spesa' : 'queste sono state scritte come spese' }},
+                                        e la banca o la cassa è scesa dell'importo invece di salire.
+                                    </p>
+                                    <p v-if="props.esercizio" data-testo="strada">
+                                        Per correggere, apri {{ unaSola ? 'la regolazione' : 'ognuna' }} e premi «Storna»: lo storno scrive la scrittura inversa
+                                        e la banca o la cassa torna com'era. Se l'esercizio della regolazione è chiuso, lo storno si registra in un esercizio aperto.
+                                    </p>
+                                    <p v-else data-testo="strada">
+                                        Per correggere serve lo storno, che per una regolazione di un esercizio chiuso si registra in un esercizio aperto:
+                                        oggi il condominio non ha un esercizio aperto, e lo storno si rifiuta.
+                                    </p>
+                                    <p data-testo="entrata">
+                                        L'incasso vero di un'entrata, per esempio l'affitto dell'antenna, oggi non si registra nel programma.
+                                    </p>
+                                    <ul class="divide-y divide-amber-200 rounded-lg border border-amber-200 bg-white/70">
+                                        <li
+                                            v-for="r in regolazioniSuEntrata"
+                                            :key="r.id"
+                                            data-riga="regolazione-su-entrata"
+                                            class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5"
+                                        >
+                                            <span class="font-medium">{{ r.numero_protocollo ?? `Scrittura #${r.id}` }}</span>
+                                            <span v-if="r.data">{{ r.data }}</span>
+                                            <span class="min-w-0 truncate">«{{ r.voce }}»</span>
+                                            <span class="tabular-nums font-semibold">{{ euro(r.importo) }}</span>
+                                            <Link
+                                                :href="linkScrittura(r.id)"
+                                                class="ml-auto flex h-8 items-center gap-1.5 rounded-lg px-3 font-medium text-amber-800 transition-colors hover:bg-amber-100"
+                                            >
+                                                Apri
+                                                <ArrowRight class="w-3.5 h-3.5" />
+                                            </Link>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
 
                         <div

@@ -8,7 +8,7 @@ use App\Enums\Role as RoleEnum;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\CreateUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaConIndirizzoResource;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
 use App\Http\Resources\User\EditUserResource;
@@ -30,13 +30,20 @@ use Illuminate\Support\Facades\Log;
 use App\Services\UserService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
+use App\Traits\ValidaConcessioneRuoli;
+use App\Http\Middleware\ConfermaPasswordRecente;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class UserController extends Controller
 {
     /** I due soli stati di un utente, usati dal filtro dell'elenco. */
     private const STATO_ATTIVO = 'attivo';
     private const STATO_SOSPESO = 'sospeso';
+
+    /** I due soli valori del filtro «Verifica»: l'email dell'utente è verificata oppure no (`email_verified_at`). */
+    private const VERIFICA_VERIFICATO = 'verificato';
+    private const VERIFICA_NON_VERIFICATO = 'non_verificato';
 
     use OrdinaElenco, PaginaElenco;
 
@@ -70,7 +77,7 @@ class UserController extends Controller
         ];
     }
 
-    use HandleFlashMessages;
+    use HandleFlashMessages, ValidaConcessioneRuoli;
 
     /**
      * Create a new controller instance.
@@ -90,12 +97,14 @@ class UserController extends Controller
      *   - `page`: The page number for pagination (must be >= 1).
      *   - `per_page`: Number of users per page (normalizzato dal trait PaginaElenco).
      *   - `name`: A string used to filter users by name.
+     *   - `roles`, `stato`, `verifica`: i filtri a scelta multipla (`verifica`: `verificato`, `non_verificato`).
      * - Queries the User model applying name filtering if provided.
      * - Paginates the results.
      * - Returns an Inertia view with:
      *   - A collection of users in a transformed resource format.
      *   - Metadata for pagination.
      *   - The applied filters for frontend use.
+     *   - Le tre card sopra l'elenco (`stats`: totale, da verificare, sospesi), sull'archivio intero.
      *
      * @param  \Illuminate\Http\Request $request The incoming HTTP request containing optional filters and pagination.
      * @return \Inertia\Response The rendered Inertia page with user data and pagination metadata.
@@ -122,6 +131,8 @@ class UserController extends Controller
             'roles.*'  => ['string', 'exists:roles,name'],
             'stato'    => ['sometimes', 'array'],
             'stato.*'  => ['string', Rule::in([self::STATO_ATTIVO, self::STATO_SOSPESO])],
+            'verifica'   => ['sometimes', 'array'],
+            'verifica.*' => ['string', Rule::in([self::VERIFICA_VERIFICATO, self::VERIFICA_NON_VERIFICATO])],
         ], self::regoleOrdinamento(array_keys(self::colonneOrdinabili()))));
 
         // Le righe per pagina si risolvono qui, una volta: la scelta esplicita se c'e', altrimenti
@@ -146,6 +157,16 @@ class UserController extends Controller
                     ? $query->whereNotNull('suspended_at')
                     : $query->whereNull('suspended_at');
             })
+            ->when($validated['verifica'] ?? false, function ($query, array $verifiche) {
+                // Come per lo stato: i due valori insieme sono «tutti».
+                if (count(array_unique($verifiche)) === 2) {
+                    return;
+                }
+
+                in_array(self::VERIFICA_NON_VERIFICATO, $verifiche, true)
+                    ? $query->whereNull('email_verified_at')
+                    : $query->whereNotNull('email_verified_at');
+            })
             ->tap(fn ($q) => $this->ordina($q, $validated, self::colonneOrdinabili(), predefinita: 'name', versoPredefinito: 'asc'))
             ->paginate($validated['per_page']);
 
@@ -153,6 +174,16 @@ class UserController extends Controller
         // `IndexUserResource` lo legge da qui. Chiederlo al model dentro la risorsa costerebbe
         // una query per ogni utente in elenco, che con 50 righe sono 50 query per un booleano.
         $request->attributes->set('unico_amministratore_id', User::unicoAmministratoreAttivoId());
+
+        // Le tre card sopra l'elenco (Coda 398): contano l'archivio intero, non le righe filtrate né la pagina, e
+        // tutti gli account che l'elenco può mostrare, amministratori compresi: a chi ha «Visualizza utenti»
+        // l'elenco li mostra tutti, la portata toglie i comandi della riga e non le righe. Una sola query; i
+        // numeri si leggono come interi, perché su MySQL una somma torna come testo.
+        $conteggi = User::query()
+            ->selectRaw('COUNT(*) AS totale')
+            ->selectRaw('SUM(CASE WHEN email_verified_at IS NULL THEN 1 ELSE 0 END) AS da_verificare')
+            ->selectRaw('SUM(CASE WHEN suspended_at IS NOT NULL THEN 1 ELSE 0 END) AS sospesi')
+            ->first();
 
         return Inertia::render('utenti/ElencoUtenti', [
             'users' => IndexUserResource::collection($users)->response()->getData(true)['data'],
@@ -162,7 +193,12 @@ class UserController extends Controller
                 'per_page' => $users->perPage(),
                 'total' => $users->total(),
             ],
-            'filters' => $request->only(['name', 'roles', 'stato']),
+            'stats' => [
+                'totale'        => (int) $conteggi->totale,
+                'da_verificare' => (int) $conteggi->da_verificare,
+                'sospesi'       => (int) $conteggi->sospesi,
+            ],
+            'filters' => $request->only(['name', 'roles', 'stato', 'verifica']),
             // I ruoli esistenti alimentano la tendina del filtro: sono dati, non costanti, perché
             // l'amministratore può crearne di suoi.
             'ruoliDisponibili' => Role::orderBy('name')->pluck('name')
@@ -194,7 +230,9 @@ class UserController extends Controller
         return Inertia::render('utenti/NuovoUtente',[
             'roles'       => RoleResource::collection($this->ruoliAssegnabili()),
             'permissions' => PermissionResource::collection($this->permessiAssegnabili()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            // La tendina «Anagrafica» mostra il nome e, sotto, l'indirizzo (Coda 408): il resto della persona sta nella sua
+            // scheda, che chiede «Visualizza anagrafiche».
+            'anagrafiche' => AnagraficaConIndirizzoResource::collection(Anagrafica::get(['id', 'nome', 'indirizzo'])),
         ]);
 
     }
@@ -214,10 +252,19 @@ class UserController extends Controller
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to create users.
      */
-    public function store(CreateUserRequest $request): RedirectResponse
+    public function store(CreateUserRequest $request): RedirectResponse|SymfonyResponse
     {
 
         Gate::authorize('create', User::class);
+
+        // Coda 261, decisione 134.1: concedere un ruolo diverso da `utente` e `fornitore`, o un permesso aggiuntivo
+        // che non è sui propri contenuti, chiede la password ridigitata da poco. La pagina apre la finestra della
+        // conferma e rifà la richiesta con il modulo già compilato (Coda 404).
+        if (($this->concedeUnRuoloOltreIlPortale(null, $request->validated('roles'))
+                || $this->concedeUnPermessoAggiuntivo(null, $request->validated('permissions')))
+            && ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'utenti.create');
+        }
 
         try {
 
@@ -274,15 +321,26 @@ class UserController extends Controller
      */
     public function edit(User $utenti): Response
     {
-        Gate::authorize('update', User::class);
+        // Sull'istanza: la scheda di un account fuori dalla portata di chi non è amministratore è solo
+        // dell'amministratore (Coda 258, decisione 136.1).
+        Gate::authorize('update', $utenti);
 
         $utenti->load(['roles.permissions', 'permissions', 'anagrafica']);
 
+        // I ruoli che chi modifica può assegnare, più quelli che l'utente ha già: fuori dalla portata la tendina
+        // è bloccata, ma deve mostrare il ruolo che c'è, con i permessi che porta, e non un numero e «nessun
+        // permesso ereditato» (Coda 258). Rimandarlo com'è non concede niente.
+        $ruoli = $this->ruoliAssegnabili()->merge($utenti->roles)->unique('id')->values();
+
         return Inertia::render('utenti/ModificaUtente', [
             'user'        => new EditUserResource($utenti),
-            'roles'       => RoleResource::collection($this->ruoliAssegnabili()),
+            'roles'       => RoleResource::collection($ruoli),
             'permissions' => PermissionResource::collection($this->permessiAssegnabili()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+            // Come in `create()`: il nome e l'indirizzo della tendina (Coda 408).
+            'anagrafiche' => AnagraficaConIndirizzoResource::collection(Anagrafica::get(['id', 'nome', 'indirizzo'])),
+            // Coda 258: chi arriva qui ha l'account nella sua portata (la policy sopra), quindi è vero. Resta come
+            // difesa: con il valore falso la pagina blocca email, ruolo e permessi aggiuntivi.
+            'gestibile'   => (bool) Auth::user()?->haNellaPortata($utenti),
         ]);
     }
 
@@ -302,10 +360,21 @@ class UserController extends Controller
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update users.
      */
-    public function update(UpdateUserRequest $request, User $utenti): RedirectResponse
+    public function update(UpdateUserRequest $request, User $utenti): RedirectResponse|SymfonyResponse
     {
 
-        Gate::authorize('update', User::class);
+        // La richiesta l'ha già autorizzata sull'istanza (`UpdateUserRequest::authorize`); qui resta come difesa.
+        Gate::authorize('update', $utenti);
+
+        // Coda 261, decisione 134.1: come in creazione, e in più cambiare l'email di un account che non ha soltanto
+        // i ruoli `utente` e `fornitore`, o che ha un permesso aggiuntivo fuori da quelli sui propri contenuti.
+        // Rimandare i ruoli e i permessi che l'utente ha già, o togliergliene, non concede niente e non chiede niente.
+        if (($this->concedeUnRuoloOltreIlPortale($utenti, $request->validated('roles'))
+                || $this->concedeUnPermessoAggiuntivo($utenti, $request->validated('permissions'))
+                || $this->cambiaLEmailDiChiHaPoteri($utenti, $request->validated('email')))
+            && ConfermaPasswordRecente::scaduta($request)) {
+            return ConfermaPasswordRecente::richiedi($request, 'utenti.edit', ['utenti' => $utenti->getKey()]);
+        }
 
         try {
 
@@ -348,6 +417,7 @@ class UserController extends Controller
      * della beta.53): finché la tendina offriva «amministratore» a chiunque avesse `EDIT_USERS`,
      * un collaboratore si promuoveva in tre clic. Ora la lista è filtrata qui e la stessa regola
      * è ripetuta lato server in `ValidaConcessioneRuoli` — questo è comodità, quella è la difesa.
+     * Chi non è amministratore assegna solo `utente` e `fornitore` (decisione 134.1).
      */
     private function ruoliAssegnabili()
     {
@@ -357,7 +427,7 @@ class UserController extends Controller
             return $ruoli;
         }
 
-        return $ruoli->reject(fn ($ruolo) => in_array($ruolo->name, RoleEnum::privilegiati(), true))->values();
+        return $ruoli->filter(fn ($ruolo) => in_array($ruolo->name, RoleEnum::concedibiliDaTutti(), true))->values();
     }
 
     /**

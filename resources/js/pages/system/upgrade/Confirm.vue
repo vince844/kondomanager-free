@@ -128,7 +128,11 @@ async function startUpgrade() {
                         <AlertDescription>
                             {{ errors.msg }}
                             <span v-if="canBackup" class="block mt-1.5 text-xs opacity-90">
-                                Se hai creato un backup di sicurezza, puoi ripristinarlo dalla pagina Gestione backups.
+                                Se hai creato un backup di sicurezza e l'errore si ripete identico a ogni tentativo,
+                                <strong>rimetti prima i file della versione precedente</strong> e solo dopo ripristina il
+                                backup dalla pagina Gestione backups. Ripristinare il solo database mentre i file sono
+                                già quelli nuovi riporta l'installazione nello stesso errore, perché al termine del
+                                ripristino le migrazioni vengono rieseguite.
                             </span>
                         </AlertDescription>
                     </Alert>
@@ -139,7 +143,9 @@ async function startUpgrade() {
                         <AlertDescription class="text-amber-700 text-xs mt-1">
                             L'operazione eseguirà le migrazioni del database e rigenererà la cache di sistema.
                             Se la pagina si blocca o va in errore, ricaricala e premi di nuovo: l'aggiornamento
-                            riprende da dove si era interrotto.
+                            riprende da dove si era interrotto. Se invece l'errore si ripresenta <strong>identico</strong>
+                            anche al secondo e al terzo tentativo, non è un'interruzione: fermati e segui le istruzioni
+                            di ripristino qui sopra, invece di riprovare.
                         </AlertDescription>
                     </Alert>
 

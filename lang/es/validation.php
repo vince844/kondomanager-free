@@ -169,18 +169,31 @@ return [
 
     'custom' => [
         'roles' => [
-            'not_allowed' => 'No puedes asignar este rol: los roles administrativos los concede un administrador.',
+            'not_allowed' => 'No puedes asignar este rol: quien no es administrador asigna solo los roles «utente» y «fornitore».',
             'last_admin' => 'Este es el último administrador activo: cambiar su rol dejaría la instalación sin nadie que pueda gestionarla.',
+            'privileged_target' => 'Solo un administrador puede cambiar los roles de esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
         ],
         'permissions' => [
             'not_allowed' => 'No puedes conceder un permiso que tú mismo no tienes.',
+            'privileged_target' => 'Solo un administrador puede cambiar los permisos adicionales de esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
+        ],
+        'default_user_role' => [
+            'only_admin' => 'Solo un administrador puede cambiar el rol predeterminado para nuevos usuarios.',
         ],
         'email' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.',
-            'unique_email_across_tables' => 'This email address is already in use.'
+            'unique_email_across_tables' => 'This email address is already in use.',
+            'privileged_target' => 'Solo un administrador puede cambiar el email de esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
+            'own_from_profile' => 'Tu email no se cambia aquí: cámbialo desde tu perfil, donde hace falta la contraseña actual.',
+            'unique_email_across_tables_in' => 'Esta dirección de email ya está en uso: figura en :dove.',
+            'sorgenti' => [
+                'anagrafiche' => 'una ficha de persona',
+                'fornitori'   => 'otro proveedor',
+                'condomini'   => 'una comunidad',
+            ],
         ],
         'email_secondaria' => [
             'required' => 'The :attribute field is required.',
@@ -188,11 +201,18 @@ return [
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.'
         ],
+        'ruolo' => [
+            'required_with' => 'Elige también el rol del representante',
+        ],
+        'codice_ateco' => [
+            'max' => 'Escribe solo el código, sin la descripción — por ejemplo 43.22.01.',
+        ],
         'pec' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',
             'lowercase' => 'The :attribute field must be lowercase.',
-            'email' => 'The :attribute field must be a valid email address.'
+            'email' => 'The :attribute field must be a valid email address.',
+            'different' => 'El email certificado debe ser distinto del email ordinario: si la empresa tiene una sola dirección, deja vacío uno de los dos campos.',
         ],
         'name' => [
             'required' => 'The :attribute field is required.'
@@ -229,6 +249,8 @@ return [
 
     'attributes' => [
         'email' => 'email address',
+        'emails' => 'direcciones de correo electrónico',
+        'buildings' => 'condominios',
         'email_secondaria' => 'secondary email address',
         'pec' => 'certified email address',
         'name' => 'full name',
@@ -272,6 +294,7 @@ return [
             'is_published' => 'document status',
             'condomini_ids' => 'buildings',
             'category_id' => 'category',
+            'categorie' => 'categorías',
         ],
         'categorie' => [
             'name' => 'name',

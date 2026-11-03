@@ -12,6 +12,8 @@ return [
     'error_delete_user'          => 'Ocorreu um erro durante a eliminação do utilizador.',
     'success_send_user_invite'   => 'O convite foi enviado com sucesso.',
     'error_send_user_invite'     => 'Ocorreu um erro durante o envio do convite ao utilizador.',
+    'invito_gia_presente'        => 'Já existe um convite para :input. Se expirou, elimine-o da lista de convites e convide novamente.',
+    'indirizzo_non_valido'       => ':input não é um endereço de email válido.',
     'success_delete_user_invite' => 'O convite foi eliminado com sucesso.',
     'error_delete_user_invite'   => 'Ocorreu um erro durante a eliminação do convite.',
     'success_suspend_user'       => 'O utilizador foi suspenso com sucesso.',
@@ -43,6 +45,9 @@ return [
         'permissions_description_line_2'     => 'e serão atribuídas automaticamente ao utilizador',
         'additional_permissions_title'       => 'Permissões adicionais',
         'additional_permissions_description' => 'Permissões atribuídas diretamente ao utilizador, além das do papel',
+        'new_invite_head' => 'Criar novo convite',
+        'new_invite_title' => 'Convidar a registar-se',
+        'new_invite_description' => 'Quem recebe o convite regista-se com o link do email e encontra os condomínios que escolher aqui. O convite é válido durante três dias.',
     ],
 
     /* ------------------------------------------------------------------
@@ -51,7 +56,7 @@ return [
     'table' => [
         'name'               => 'Nome e apelido',
         'email'              => 'Endereço de correio eletrónico',
-        'role'               => 'Função',
+        'role'               => 'Perfil',
         'permissions'        => 'Permissões',
         'anagrafica'         => 'Registo',
         'no_anagrafica'      => 'Sem registo',
@@ -69,6 +74,23 @@ return [
         'no_permissions'     => 'Nenhuma permissão',
         'verified_tooltip'   => 'Utilizador verificado - clique para revogar verificação',
         'unverified_tooltip' => 'Utilizador não verificado - clique para verificar',
+        'verified_label'     => 'Utilizador verificado',
+        'unverified_label'   => 'Utilizador não verificado',
+        // Coda 398: il filtro «Verifica» accanto a «Stato».
+        'verification'       => 'Verificação',
+        'verified'           => 'Verificados',
+        'unverified'         => 'Não verificados',
+    ],
+    /* ------------------------------------------------------------------
+     | Stats: le card sopra l'elenco (Coda 398)
+     | ------------------------------------------------------------------ */
+    'stats' => [
+        'total'          => 'Total de utilizadores',
+        'to_verify'      => 'Por verificar',
+        'suspended'      => 'Suspensos',
+        'total_hint'     => 'Mostrar todos os utilizadores, sem filtros',
+        'to_verify_hint' => 'Mostrar os utilizadores com o correio eletrónico por verificar',
+        'suspended_hint' => 'Mostrar os utilizadores suspensos',
     ],
 
     /* ------------------------------------------------------------------
@@ -84,6 +106,10 @@ return [
         'permissions_assigned'         => 'Permissões do utilizador',
         'permissions_assigned_to_user' => 'Permissões atribuídas a :name',
         'permissions_count'            => ':count permissões',
+        'invite_emails' => 'Endereços de email',
+        'invite_buildings' => 'Condomínios',
+        // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
+        'fuori_portata' => 'Só um administrador gere esta conta: tem um papel diferente de «utente» e «fornitore», ou permissões adicionais que não tem.',
     ],
 
     /* ------------------------------------------------------------------
@@ -95,6 +121,8 @@ return [
         'role'        => 'Selecionar papel do utilizador',
         'resident'    => 'Selecionar registo',
         'permissions' => 'Selecionar permissões adicionais',
+        'invite_emails' => 'Escreva um endereço e prima Enter',
+        'invite_buildings' => 'Selecione condomínios',
     ],
 
     /* ------------------------------------------------------------------
@@ -107,17 +135,21 @@ return [
         'suspend_user'  => 'Suspender',
         'activate_user' => 'Ativar',
         'invite_user'   => 'Reenviar convite',
+        'send_invite' => 'Enviar convite',
+        'send_invites' => 'Enviar :count convites',
     ],
 
     /* ------------------------------------------------------------------
      | Tooltips / Hover cards
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'role_line_1' => 'Selecione o papel a atribuir ao utilizador. Escolha entre os papéis predefinidos ou um criado por si.',
+        'role_line_1' => 'Selecione o papel a atribuir ao utilizador. Um administrador escolhe entre todos os papéis, incluindo os personalizados; quem não é administrador atribui só «utente» e «fornitore».',
         'role_line_2' => 'As permissões associadas ao papel serão herdadas automaticamente.',
         'resident'    => 'Selecione o registo a associar ao utilizador. O registo associado poderá aceder ao sistema com as credenciais do utilizador criado e consultar os seus dados e os relacionados.',
         'permissions' => 'Selecione permissões específicas a atribuir ao utilizador além das herdadas do papel selecionado.',
         'resident_drawer_desc' => 'Detalhes do registo associado a este utilizador.',
+        'invite_emails' => 'Pode convidar várias pessoas de uma vez: escreva um endereço, prima Enter e escreva o seguinte. Cada endereço recebe o seu próprio convite.',
+        'invite_buildings' => 'Os condomínios que quem se registar poderá consultar, depois de verificar o seu endereço de email.',
     ],
 
     /* ------------------------------------------------------------------

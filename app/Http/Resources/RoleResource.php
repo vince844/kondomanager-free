@@ -24,6 +24,8 @@ class RoleResource extends JsonResource
             'description'  => $this->description, 
             'users_count'  => $this->users_count ?? 0,
             'is_protected' => $this->isProtectedRole($this->name),
+            // Il ruolo dei nuovi iscritti non si elimina (Coda 258): l'elenco lo dice prima dell'invio.
+            'is_registration_role' => $this->isRuoloDeiNuoviIscritti($this->name),
             'permissions'  => PermissionResource::collection($this->whenLoaded('permissions'))
         ];
     }

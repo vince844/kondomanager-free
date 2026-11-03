@@ -31,8 +31,26 @@ final class CodiceFiscaleDelCondominio implements VerificatoreControllo
             return EsitoControllo::risolto('Il codice fiscale del condominio è a posto.');
         }
 
+        // ⚠️ **Il messaggio nomina ENTRAMBE le conseguenze — Coda 114, 04/09/2026.**
+        // Fino a quel giorno diceva soltanto «non si emettono documenti fiscali»: vero, e
+        // incompleto da quando esiste la lettura delle fatture XML. Senza questo campo salta
+        // anche la guardia che confronta il `CessionarioCommittente` del file con il condominio
+        // aperto — cioè il controllo che intercetta «questa fattura non è di questo palazzo»,
+        // che è l'errore più caro da scoprire dopo, perché si porta dietro scritture in partita
+        // doppia e budget. Chi legge il rapporto deve capire che non è una formalità.
+        //
+        // Il caso nasce quasi solo di qui: creando un condominio a mano il campo è obbligatorio
+        // (`CreateCondominioRequest`), quindi manca proprio a chi sta caricando lo storico — che
+        // è anche quello che con più probabilità importerà XML subito dopo.
         return EsitoControllo::aperto(1, $cf === ''
-            ? 'Il condominio non ha ancora un codice fiscale: senza, non si emettono documenti fiscali.'
-            : sprintf('Il codice fiscale «%s» non ha la forma di undici cifre.', $cf));
+            ? 'Il condominio non ha ancora un codice fiscale. Senza, non si emettono documenti fiscali '
+                .'e non funziona il controllo che rifiuta una fattura XML intestata a un altro condominio: '
+                .'i documenti verrebbero accettati senza che nessuno verifichi di chi sono.'
+            : sprintf(
+                'Il codice fiscale «%s» non ha la forma di undici cifre. Finché resta così non si emettono '
+                .'documenti fiscali, e il controllo sull\'intestatario delle fatture XML importate non trova '
+                .'niente con cui confrontarsi.',
+                $cf
+            ));
     }
 }

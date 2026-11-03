@@ -38,6 +38,26 @@ enum Permission: string
     case DELETE_CONDOMINI = 'Elimina condomini';
     case VIEW_CONDOMINI = 'Visualizza condomini';
 
+    /*
+     * ⚠️ **Un permesso suo, e non «Crea condomini», deciso da Vincenzo il 30/08/2026.**
+     *
+     * L'importazione stava sotto «Crea condomini» perché era il permesso più vicino quando
+     * l'importatore è nato. Ma non crea un condominio: **crea un archivio** — unità, persone,
+     * titolarità, tabelle, saldi di apertura — e da questa beta lo **disfa** anche. Chi può
+     * registrare un condominio a mano non sta chiedendo quello.
+     *
+     * ⚠️ **Perché un permesso e non `role:amministratore`, che era la prima strada.** Perché il
+     * ruolo cancella una protezione costruita apposta: dalla 1.11.0-beta.3 un lotto **è di chi
+     * l'ha caricato**, e un collega non lo può aprire né scartare. Fra amministratori quella
+     * guardia tace di proposito — vedere tutto è il loro mestiere — quindi riservando l'import al
+     * ruolo la proprietà del lotto sarebbe diventata codice morto, con i suoi test.
+     *
+     * Col permesso invece: `AMMINISTRATORE => PermissionEnum::cases()`, quindi **oggi ce l'hanno
+     * solo gli amministratori** — che è quello che è stato chiesto — e domani si può delegare a un
+     * collaboratore senza dargli tutto il resto, con la proprietà del lotto ancora in piedi.
+     */
+    case IMPORTA_DATI = 'Importa dati';
+
     // Comunicazioni
     case CREATE_COMUNICAZIONI = 'Crea comunicazioni';
     case APPROVE_COMUNICAZIONI = 'Approva comunicazioni';
@@ -131,6 +151,7 @@ enum Permission: string
             self::EDIT_CONDOMINI => 'Permette di modificare i condomini registrati',
             self::DELETE_CONDOMINI => 'Permette di eliminare i condomini registrati',
             self::VIEW_CONDOMINI => 'Permette di visualizzare i condomini registrati',
+            self::IMPORTA_DATI => 'Permette di importare un condominio da un altro gestionale, e di annullare l\'importazione',
 
             // Comunicazioni
             self::CREATE_COMUNICAZIONI => 'Permette di creare comunicazioni in bacheca',

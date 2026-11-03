@@ -1,0 +1,8 @@
+{
+    "features": [
+        "UNA NOTA DI CREDITO DI UN ANNO CHIUSO NON VIENE PIÙ SCAMBIATA PER UNO SCOPERTO — Il programma riconosce i documenti di esercizi già chiusi guardando la sola data, quindi ci finivano dentro anche le note di credito. Da lì ne leggeva l'importo senza segno e concludeva che ci fosse un buco da coprire: chiedeva all'amministratore la motivazione legale di una spesa imprevista, su un documento che invece fa rientrare denaro. Compilandola, il programma creava per davvero un capitolo di spesa nuovo e una copertura a bilancio — un costo inventato per registrare un guadagno.",
+        "IL PANNELLO DEL DEBITO PREGRESSO NON PROMETTE PIÙ UN AIUTO CHE NON ARRIVA — Su una nota di credito mostrava l'importo pieno come scoperto, col semaforo arancione e l'annuncio di un assistente che avrebbe aiutato a giustificarlo. Adesso dice zero, perché una nota di credito non ha niente da coprire.",
+        "L'IMPORTO REGISTRATO NON CAMBIA, ED ERA GIÀ CORRETTO — La nota di credito di un esercizio chiuso si registrava, e continua a registrarsi, come credito con gli importi negativi. Sbagliato era solo ciò che il programma faceva prima di arrivarci: questa versione toglie quattro comportamenti e non ne introduce nessuno, nessun conto contabile nuovo compreso.",
+        "SU UNA FATTURA DI UN ESERCIZIO CHIUSO LA MOTIVAZIONE VIENE ANCORA CHIESTA — La protezione non si è allargata: una spesa imprevista che emerge dopo la chiusura continua a richiedere la giustificazione e il capitolo dedicato, che è il comportamento voluto."
+    ]
+}

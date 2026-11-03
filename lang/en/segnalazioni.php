@@ -209,8 +209,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'notify_update' => "Sends an email to every owner in the building who has notifications on, telling them the ticket has changed. Leave it off if you are fixing a typo.",
-        'visibility' => 'If set to private, only administrators will be able to view the ticket.',
+        'notify_update' => "Sends an email to those who were already recipients, telling them the ticket has changed. Leave it off if you are fixing a typo: anyone added now receives it anyway, because for them it is new. While it is a draft or awaiting approval nothing is sent; once it is published and approved, all recipients receive it.",
+        'visibility' => 'A draft, or a ticket awaiting approval, is not shown to residents; once published and approved, the residents it is addressed to can see it.',
         'priority'   => 'Set the priority level for this ticket to help administrators manage it accordingly.',
         'status'     => 'Set the current status of the ticket to track progress.',
         'comments'   => 'Allow users to add comments to this ticket.',
@@ -250,5 +250,41 @@ return [
         'location_desc'    => 'Accurately indicate the affected building and associate the residents\' records to facilitate communication and inspections.',
         'settings_title'   => 'Operational Parameters',
         'settings_desc'    => 'Define the level of urgency, update the processing status of the file, and adjust the visibility permissions on the bulletin board.',
-    ]
+    ],
+
+    /* ------------------------------------------------------------------
+     | Pubblicazione e privacy (Code 304 e 306)
+     | ------------------------------------------------------------------ */
+    'publication' => [
+        'pending'   => 'Awaiting approval',
+        'draft'     => 'Draft',
+        'published' => 'Published',
+        'needs_approval' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved, with the shield next to the title in the list of tickets.',
+        'waiting_approver' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved by whoever approves tickets.',
+    ],
+
+    'privacy' => [
+        'private'                 => 'Private',
+        'private_hint'            => 'Visible only to the author, the linked people and the administrator',
+        'guide_title'             => 'Who can see it',
+        'guide_private'           => 'This report is private: only the person who opened it, the people it is addressed to and the administrator can see it.',
+        'guide_not_private'       => 'This report is not private: the residents it is addressed to can see it (the whole building, if it is not addressed to anyone in particular), as can the administrator.',
+        'guide_private_pending'   => 'This report is private. For now nobody else can see it, apart from the administrator: the people it is addressed to will see it once it is published and approved.',
+        'guide_not_private_pending' => 'This report is not private. For now nobody else can see it, apart from the administrator: the residents it is addressed to (the whole building, if it is not addressed to anyone in particular) will see it once it is published and approved.',
+        'make_public'             => 'Make public',
+        'make_public_title'       => 'Make the report public?',
+        'make_public_description' => 'All the residents of :condominio will see it, with the name of :autore, and those who could not see it will receive the notice of a new report. :autore will be notified. There is no command to make it private again.',
+        'make_public_description_pending' => 'All the residents of :condominio will see it, with the name of :autore, once it is published and approved: right now it is not. :autore will be notified. There is no command to make it private again.',
+        'make_public_author_loses_access' => 'Afterwards :autore will no longer see it in the portal: they are not listed among the residents of :condominio.',
+        'make_public_confirm'     => 'Make public',
+        'already_public'          => 'The report is already public.',
+        'success_make_public'     => 'The report is now public.',
+        'success_make_public_pending' => 'The report is no longer private: all the residents will see it once it is published and approved.',
+        'error_make_public'       => 'The report could not be made public.',
+        'error_notify_author'     => 'The report is no longer private, but the notice to the author was not sent.',
+        'error_notify_residents'  => 'The report is no longer private, but the notice to the residents who could not see it was not sent.',
+        'error_notify_both'       => 'The report is no longer private, but neither the notice to the author nor the one to the residents who could not see it was sent.',
+        'residents_required'      => 'A private report must stay addressed to at least one resident. To make it visible to the whole building, use «Make public» on the report page.',
+        'residents_required_ask_approver' => 'A private report must stay addressed to at least one resident. To make it visible to the whole building, it can be made public by whoever approves reports.',
+    ],
 ];

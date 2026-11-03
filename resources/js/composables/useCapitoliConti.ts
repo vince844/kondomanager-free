@@ -5,6 +5,8 @@ import axios from 'axios'
 export interface CapitoloDropdown {
   id: number;
   nome: string;
+  /** In quale piano approvato è il capitolo («nel piano «B», approvato»): la voce non si sposta sotto di lui. Nullo se nessun piano approvato lo tiene. */
+  blocco?: string | null;
 }
 
 export function useCapitoliConti() {
@@ -36,6 +38,7 @@ export function useCapitoliConti() {
         capitoli.value = response.data.map((item: any) => ({
           id: item.id,
           nome: item.nome,
+          blocco: item.blocco ?? null,
         }))
         
         return capitoli.value

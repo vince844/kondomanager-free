@@ -20,6 +20,9 @@ const sorting = ref<SortingState>([])
 const table = useVueTable({
   get data() { return props.data },
   get columns() { return props.columns },
+  // La riga ha per chiave l'id del ruolo, non la posizione: quando l'elenco cambia sotto la tabella (un ruolo
+  // eliminato o creato) la riga segue il suo ruolo (decisione 135.1).
+  getRowId: (ruolo) => String(ruolo.id),
   getCoreRowModel: getCoreRowModel(),
   onColumnFiltersChange: updaterOrValue => valueUpdater(updaterOrValue, columnFilters),
   getPaginationRowModel: getPaginationRowModel(),

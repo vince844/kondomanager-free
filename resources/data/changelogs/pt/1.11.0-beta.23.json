@@ -1,0 +1,9 @@
+{
+    "features": [
+        "O LIVRO DIÁRIO AGORA LÊ-SE LINHA A LINHA — Um clique na linha de um lançamento abre as suas linhas de partida dobrada (conta, débito, crédito), a mesma tabela que antes só existia no detalhe. Fecha o mal-entendido que deu origem a esta alteração: a página mostrava um total único em vez do detalhe débito/crédito, e é por isso que os sinais pareciam sempre positivos.",
+        "O LIVRO DIÁRIO PODE SER IMPRESSO — Linha a linha, em ordem cronológica: data, protocolo, conta, débito, crédito. A impressão respeita os mesmos filtros da página — período, estado, tipo de movimento, texto pesquisado — e se algum estiver ativo declara-o num aviso, com o total marcado como «parcial»: um documento que pode ir a uma assembleia ou a um perito judicial não deve calar o seu próprio âmbito.",
+        "A PÁGINA DECLARA O QUE NÃO É — O Livro Diário é o registo dos lançamentos em partida dobrada, não o registo de contabilidade (receitas e despesas) previsto no art. 1130, n.º 1, ponto 7 do código civil italiano, que ainda está por construir.",
+        "UMA IMPRESSÃO GRANDE JÁ NÃO PARA A MEIO — Um exercício muito ativo podia esgotar a memória do servidor ao gerar o PDF, com um erro fatal sem qualquer rasto nos registos. A tabela é agora gerada por blocos, com o mesmo aspeto e um décimo da memória; se um exercício estiver mesmo fora de escala, a impressão avisa e pede para restringir o período em vez de falhar em silêncio.",
+        "TRÊS CORREÇÕES MENORES NA IMPRESSÃO — Um valor de filtro de data inválido deixa de bloquear a impressão; um documento de várias páginas identifica-se agora em todas, não só na primeira; um clique perto do botão de detalhe, sem lhe acertar exatamente, deixa de abrir o painel de expansão em seu lugar."
+    ]
+}

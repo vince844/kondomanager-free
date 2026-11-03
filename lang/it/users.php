@@ -12,6 +12,8 @@ return [
     'error_delete_user'          => 'Si è verificato un errore durante l\'eliminazione dell\'utente.',
     'success_send_user_invite'   => 'L\'invito è stato inviato con successo.',
     'error_send_user_invite'     => 'Si è verificato un errore durante l\'invio dell\'invito all\'utente.',
+    'invito_gia_presente'        => 'C\'è già un invito per :input. Se è scaduto, eliminalo dall\'elenco degli inviti e invita di nuovo.',
+    'indirizzo_non_valido'       => ':input non è un indirizzo email valido.',
     'success_delete_user_invite' => 'L\'invito è stato eliminato con successo.',
     'error_delete_user_invite'   => 'Si è verificato un errore durante l\'eliminazione dell\'invito.',
     'success_suspend_user'       => 'L\'utente è stato sospeso con successo.',
@@ -42,6 +44,9 @@ return [
         'permissions_description_line_2'     => 'e verranno assegnati automaticamente all\'utente',
         'additional_permissions_title'       => 'Permessi aggiuntivi',
         'additional_permissions_description' => 'Permessi assegnati direttamente all\'utente, oltre a quelli del ruolo',
+        'new_invite_head' => 'Crea nuovo invito',
+        'new_invite_title' => 'Invita utenti a registrarsi',
+        'new_invite_description' => 'Chi riceve l\'invito si registra con il link della mail e trova i condomini che scegli qui. L\'invito vale tre giorni.',
     ],
     /* ------------------------------------------------------------------
      | Table 
@@ -67,6 +72,23 @@ return [
         'no_permissions'     => 'Nessun permesso',
         'verified_tooltip'   => 'Utente verificato - clicca per revocare verifica',
         'unverified_tooltip' => 'Utente non verificato - clicca per verificare',
+        'verified_label'     => 'Utente verificato',
+        'unverified_label'   => 'Utente non verificato',
+        // Coda 398: il filtro «Verifica» accanto a «Stato».
+        'verification'       => 'Verifica',
+        'verified'           => 'Verificati',
+        'unverified'         => 'Non verificati',
+    ],
+    /* ------------------------------------------------------------------
+     | Stats: le card sopra l'elenco (Coda 398)
+     | ------------------------------------------------------------------ */
+    'stats' => [
+        'total'          => 'Totale utenti',
+        'to_verify'      => 'Da verificare',
+        'suspended'      => 'Sospesi',
+        'total_hint'     => 'Mostra tutti gli utenti, senza filtri',
+        'to_verify_hint' => 'Mostra gli utenti con l\'email da verificare',
+        'suspended_hint' => 'Mostra gli utenti sospesi',
     ],
     /* ------------------------------------------------------------------
      | Labels for fields
@@ -81,6 +103,10 @@ return [
         'permissions_assigned'         => 'Permessi utente',
         'permissions_assigned_to_user' => 'Permessi assegnati a :name',
         'permissions_count'            => ':count permessi',
+        'invite_emails' => 'Indirizzi email',
+        'invite_buildings' => 'Condomini',
+        // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
+        'fuori_portata' => 'Questo account lo gestisce solo un amministratore: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
     ],
     /* ------------------------------------------------------------------
      | Placeholders
@@ -91,6 +117,8 @@ return [
         'role'        => 'Seleziona ruolo utente',
         'resident'    => 'Seleziona anagrafica',
         'permissions' => 'Seleziona permessi aggiuntivi',
+        'invite_emails' => 'Scrivi un indirizzo e premi Invio',
+        'invite_buildings' => 'Seleziona condomini',
     ],
     /* ------------------------------------------------------------------
      | Actions
@@ -102,16 +130,20 @@ return [
         'suspend_user'  => 'Sospendi',
         'activate_user' => 'Attiva',
         'invite_user'   => 'Reinvita',
+        'send_invite' => 'Invia invito',
+        'send_invites' => 'Invia :count inviti',
     ],
     /* ------------------------------------------------------------------
      | Tooltips / Hover cards
      | ------------------------------------------------------------------ */
     'tooltip' => [
-        'role_line_1' => 'Seleziona il ruolo da assegnare all\'utente, scegli tra i ruoli di default oppure uno di quelli da te creati.',
+        'role_line_1' => 'Seleziona il ruolo da assegnare all\'utente. L\'amministratore sceglie fra tutti i ruoli, compresi quelli su misura; chi non è amministratore assegna solo «utente» e «fornitore».',
         'role_line_2' => 'I permessi associati al ruolo verranno ereditati automaticamente.',
         'resident'    => 'Seleziona l\'anagrafica da associare all\'utente. L\'anagrafica associata potrà accedere al sistema con le credenziali dell\'utente creato e consultare i propri dati e quelli a lui collegati.',
         'permissions' => 'Seleziona permessi specifici da assegnare all\'utente oltre a quelli ereditati dal ruolo selezionato.',
         'resident_drawer_desc' => 'Dettagli dell\'anagrafica associata a questo utente.',
+        'invite_emails' => 'Puoi invitare più persone insieme: scrivi un indirizzo, premi Invio e scrivi il successivo. A ogni indirizzo parte un invito suo.',
+        'invite_buildings' => 'I condomini che chi si registra potrà consultare, una volta verificato il proprio indirizzo email.',
     ],
     /* ------------------------------------------------------------------
      | Dialogs

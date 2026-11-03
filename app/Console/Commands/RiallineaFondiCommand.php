@@ -20,7 +20,7 @@ class RiallineaFondiCommand extends Command
                             {--condominio= : ID del condominio (omesso = tutti)}
                             {--dry-run : Mostra le scritture da rettificare senza crearle}';
 
-    protected $description = 'Neutralizza le righe storiche sui fondi scritte prima della beta.19 con scritture di rettifica';
+    protected $description = 'Neutralizza le righe storiche sui fondi scritte prima della 1.10.0 con scritture di rettifica';
 
     public function handle(RiallineaFondiService $service): int
     {

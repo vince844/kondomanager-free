@@ -9,6 +9,7 @@ use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Services\PDF\PdfService;
+use Illuminate\Support\Str;
 use App\Support\OrdinamentoConti;
 use Illuminate\Http\Request;
 
@@ -45,8 +46,23 @@ class PianoContiPrintController extends Controller
             $conto->setRelation('sottoconti', OrdinamentoConti::applica($conto->sottoconti, $ordina));
         });
 
+        // «Totale preventivo» è la somma delle sole voci di spesa; le voci di entrata si sommano a parte e il netto da ripartire è la
+        // differenza. Ogni voce conta come la conta il calcolo delle quote, per il valore assoluto dal lato del suo tipo
+        // (`Conto::partiDelTipo`): una spesa scritta con il meno da una versione vecchia si addebita in positivo, la sua riga porta il
+        // valore del calcolo e una nota in fondo la nomina (`speseNegative`), così righe e totali tornano fra loro.
         $totalePreventivo     = 0;
+        $totaleEntrate        = 0;
         $totaleSopravvenienze = 0;
+        $speseNegative        = [];
+
+        $contaVoce = function (Conto $voce) use (&$totalePreventivo, &$totaleEntrate, &$speseNegative) {
+            $parti = Conto::partiDelTipo((string) $voce->tipo, (int) ($voce->importo ?? 0));
+            $totalePreventivo += $parti['spese'];
+            $totaleEntrate += $parti['entrate'];
+            if (Conto::eSpesaNegativa((string) $voce->tipo, (int) ($voce->importo ?? 0))) {
+                $speseNegative[] = ['nome' => (string) $voce->nome, 'importo' => (int) $voce->importo];
+            }
+        };
 
         foreach ($conti as $conto) {
             if ($conto->is_tecnico) {
@@ -60,12 +76,12 @@ class PianoContiPrintController extends Controller
                     if ($s->is_tecnico) {
                         $totaleSopravvenienze += $s->importo ?? 0;
                     } else {
-                        $totalePreventivo += $s->importo ?? 0;
+                        $contaVoce($s);
                     }
                 }
                 // Se il conto è foglia (nessun sottoconto), conta lui stesso
                 if ($conto->sottoconti->isEmpty()) {
-                    $totalePreventivo += $conto->importo ?? 0;
+                    $contaVoce($conto);
                 }
             }
         }
@@ -76,7 +92,10 @@ class PianoContiPrintController extends Controller
             'pianoConto'           => $pianoConto,
             'conti'                => $conti,
             'totalePreventivo'     => $totalePreventivo,
+            'totaleEntrate'        => $totaleEntrate,
+            'totaleDaRipartire'    => $totalePreventivo - $totaleEntrate,
             'totaleSopravvenienze' => $totaleSopravvenienze,
+            'speseNegative'        => $speseNegative,
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.distinta_spese', $data, [
@@ -86,8 +105,15 @@ class PianoContiPrintController extends Controller
 
         $mpdf->SetHeader($condominio->nome . '||Distinta Spese – ' . $esercizio->nome);
 
-        return response($mpdf->Output('distinta_spese.pdf', 'I'))
-            ->header('Content-Type', 'application/pdf');
+        // ⚠️ `Output(..., 'I')` scrive il PDF sull'output buffer e torna vuota: il browser lo riceveva
+        // dall'echo di mPDF, la risposta Laravel era vuota e un test sullo status era verde su zero
+        // byte (beta.28, Coda 151). E «distinta_spese.pdf» era uguale per ogni condominio; il piano
+        // dei conti è uno per gestione, e un esercizio con ordinaria e straordinaria ne ha due.
+        $nomeFile = PdfService::nomeFile('distinta-spese', $condominio->nome, $esercizio->data_inizio?->format('Y'), Str::slug($pianoConto->nome));
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 
     /**
@@ -183,7 +209,11 @@ class PianoContiPrintController extends Controller
 
         $mpdf->SetHeader($condominio->nome . '||Ripartizione Spese – ' . $esercizio->nome);
 
-        return response($mpdf->Output('ripartizione_spese.pdf', 'I'))
-            ->header('Content-Type', 'application/pdf');
+        // Stessa trappola e stessa cura della distinta, qui sopra.
+        $nomeFile = PdfService::nomeFile('ripartizione-spese', $condominio->nome, $esercizio->data_inizio?->format('Y'), Str::slug($pianoConto->nome));
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
     }
 }

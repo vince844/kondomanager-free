@@ -4,6 +4,7 @@ namespace App\Services\Import;
 
 use App\Models\ImportBatch;
 use App\Models\ImportFile;
+use App\Services\Import\Parser\ModelloManualeParser;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -117,11 +118,20 @@ final class ImportUploadService
             }
         }
 
+        // ⚠️ **Il modello manuale è un report solo scritto su cinque fogli**, e qui sopra ne
+        // sopravvive uno: la copertina, che di colonne ne ha tre. Il pannello della schermata di
+        // riconoscimento avrebbe annunciato «3 colonne riconosciute» a chi ha appena compilato a
+        // mano cinque fogli — la stessa forma di bugia già corretta una volta per l'elenco unità,
+        // e per giunta sulla strada di chi si fida di meno, perché non ha un export da mostrare.
+        $riconosciute = $migliore?->tipo === ReportType::ModelloManuale
+            ? (new ModelloManualeParser)->colonne($fogli)
+            : ($migliore?->colonneRiconosciute ?? []);
+
         return [
             'tipo' => $migliore?->tipo?->value,
             'confidenza' => $migliore?->confidenza,
             'colonne' => [
-                'riconosciute' => $migliore?->colonneRiconosciute ?? [],
+                'riconosciute' => $riconosciute,
                 'ignorate' => $migliore?->colonneIgnote ?? [],
                 'foglio' => $migliore?->nomeFoglio,
                 'riga_intestazione' => $migliore?->rigaIntestazione,

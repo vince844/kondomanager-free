@@ -92,7 +92,7 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">A chi è intestato</h3>
             <p class="mb-3">
-              Alla creazione scegli se il saldo appartiene all'unità nel suo insieme o a una persona precisa. La scelta cambia chi se lo vedrà addebitato quando le rate vengono emesse.
+              Alla creazione scegli se il saldo appartiene all'unità nel suo insieme o a una persona precisa. La scelta cambia chi se lo vedrà addebitato quando le rate vengono emesse. Per ogni gestione ed esercizio l'unità può avere un solo saldo per l'intero immobile e uno per persona, senza contare quelli scritti da un passaggio né quelli legati a un passaggio: dove l'intero immobile ha già il suo, la scelta è spenta e il modulo chiede di modificare quello esistente; il menu della persona offre solo chi non ha già il suo. Con «Legato a un passaggio» il menu offre tutte le persone dell'unità, anche chi ha già il suo.
             </p>
             <div class="space-y-3">
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
@@ -104,7 +104,7 @@ defineEmits(['update:open']);
                   Il saldo resta dell'unità. All'emissione viene ripartito <strong>in automatico fra chi ha un diritto reale sull'unità</strong>, in proporzione alla quota di ciascuno. È la scelta giusta quando il pregresso è dell'appartamento e non di una persona in particolare — ed è il modo in cui il sistema regge la solidarietà del subentro (<strong>art. 63 disp. att. c.c.</strong>).
                 </p>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400 mt-2">
-                  <strong>L'inquilino non partecipa mai</strong>: verso il condominio non è debitore, il suo rapporto è con il locatore. Fra i titolari decide la natura della gestione — l'ordinaria è dell'usufruttuario (art. 1004 c.c.), la straordinaria del proprietario (art. 1005). Prima di generare il piano vedi l'anteprima di chi pagherà, e se fra le parti vale un accordo diverso puoi forzare un riparto manuale.
+                  <strong>L'inquilino non partecipa mai</strong>: verso il condominio non è debitore, il suo rapporto è con il locatore. Fra i titolari decide la natura della gestione — l'ordinaria è dell'usufruttuario (art. 1004 c.c.), la straordinaria del proprietario (art. 1005) —, e su un'unità in parte in piena proprietà il proprietario pieno paga la sua quota sia dell'ordinaria sia della straordinaria. Prima di generare il piano vedi l'anteprima di chi pagherà, e se fra le parti vale un accordo diverso puoi forzare un riparto manuale.
                 </p>
               </div>
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
@@ -157,7 +157,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Scatta all'emissione o al primo incasso.</strong> Da lì il numero è uscito dallo studio — è a giornale, o qualcuno l'ha pagato — e non si riscrive più: si rettifica.</span>
+                  <span><strong>Scatta all'emissione, al primo incasso, o quando un passaggio di titolarità prende il piano nel suo conguaglio.</strong> Da lì il numero è uscito dallo studio — è a giornale, qualcuno l'ha pagato, o un conguaglio l'ha già diviso fra chi esce e chi entra — e non si riscrive più: si rettifica.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
@@ -165,7 +165,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Si riapre da solo.</strong> Eliminando il piano rate che lo teneva, il lucchetto cade e il saldo torna disponibile per il piano successivo.</span>
+                  <span><strong>Si riapre da solo.</strong> Quando il piano rate che lo teneva torna a potersi riscrivere, il lucchetto cade e il saldo torna correggibile, ma resta di quel piano: dopo averlo corretto premi «Ricalcola» sul piano, perché le quote già generate non si aggiornano da sole. Se invece il piano viene eliminato, il saldo torna libero per il piano successivo.</span>
                 </li>
               </ul>
             </div>
@@ -175,13 +175,19 @@ defineEmits(['update:open']);
           <section>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Ho sbagliato un saldo già bloccato</h3>
             <p class="mb-3">
-              Dipende da una cosa sola: se qualcuno ha già pagato.
+              Dipende da perché il piano che l'ha assorbito non si riscrive più: il riquadro del lucchetto lo dice, con il rimedio.
             </p>
             <div class="space-y-3">
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
-                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Nessun incasso registrato</h4>
+                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Rate emesse, nessun incasso</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Apri il piano rate e <strong>annulla le emissioni</strong>: il saldo torna modificabile senza bisogno di eliminare il piano. Se invece elimini il piano, il lucchetto si riapre lo stesso.
+                  Apri il piano rate e <strong>annulla le emissioni</strong>: il saldo torna modificabile senza bisogno di eliminare il piano. Un piano con rate emesse, del resto, non si elimina finché le emissioni non sono annullate.
+                </p>
+              </div>
+              <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
+                <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Il piano è preso da un passaggio di titolarità</h4>
+                <p class="text-[13px] text-slate-600 dark:text-slate-400">
+                  Il riquadro nomina il passaggio e la sua unità. Annullare le emissioni non basta: il piano si riapre annullando il passaggio dallo storico della sua unità (e le emissioni, se ne ha); corretto il saldo, il passaggio si registra di nuovo. Se il piano non va riaperto, resta la rettifica qui sotto.
                 </p>
               </div>
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
@@ -194,7 +200,7 @@ defineEmits(['update:open']);
             <div class="mt-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex gap-3 text-[13px]">
               <TriangleAlert class="w-5 h-5 text-amber-600 shrink-0" />
               <div>
-                <strong>Non serve eliminare il piano per correggere un saldo.</strong> È la strada più drastica e quasi mai la più breve: annullare le emissioni basta, e ti lascia il piano con tutte le sue impostazioni.
+                <strong>Non serve eliminare il piano per correggere un saldo.</strong> È la strada più drastica e quasi mai la più breve: quando il piano è fermo solo per le emissioni, annullarle basta, e ti lascia il piano con tutte le sue impostazioni.
               </div>
             </div>
           </section>
@@ -216,11 +222,70 @@ defineEmits(['update:open']);
               <ul class="space-y-2">
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Se un piano lo rivendica davvero</strong>, la strada resta agire su quel piano — annullare le emissioni o eliminarlo — non forzare la riga.</span>
+                  <span><strong>Se un piano lo rivendica davvero</strong>, la strada resta agire su quel piano come dice il riquadro del lucchetto: annullare, nell'ordine che indica, ciò che lo tiene fermo (i movimenti sulle sue quote, le emissioni, il passaggio di titolarità che l'ha preso nel conguaglio), non forzare la riga.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                   <span><strong>Se è un debito verso un fornitore</strong> e non di un condòmino: vive in questa tabella ma sta volutamente fuori dai piani rate, quindi non è un lucchetto da aprire.</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <!-- 8 — B2: la coppia del conguaglio di un passaggio -->
+          <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">La coppia di un passaggio di titolarità</h3>
+            <p class="mb-3">
+              Quando registri un passaggio (vendita, successione, locazione, usufrutto) e su quell'unità ci sono rate già emesse a chi esce, il programma scrive qui <strong>righe di segno opposto che sommano zero, una coppia per ogni persona che entra</strong>: di solito un credito a chi esce e un debito uguale a chi entra (alla fine di una locazione senza un nuovo inquilino, a chi paga al posto dell'inquilino), per la parte di quota che spetta a chi entra in proporzione ai giorni, o il contrario se le rate in bozza che riceve valgono più dei suoi giorni. Portano un lucchetto viola e la dicitura «conguaglio di un passaggio». Se il piano ha emesso a giornale solo alcune rate, quel piano non si ricalcola più: nella vendita e nella successione le sue bozze che scadono dal giorno del passaggio passano a chi entra con lo stesso importo (restano a chi esce le altre, per esempio quelle già pagate), e la coppia regola la differenza.
+            </p>
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <ul class="space-y-2">
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Non si modificano e non si cancellano una alla volta</strong>: la somma non farebbe più zero. Il prossimo piano rate della gestione le assorbe nella Rata 0 come qualunque saldo.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Se le parti hanno regolato il conguaglio in un altro modo</strong> (nel prezzo, con un accordo scritto), si annulla dallo storico dell'unità — Titolari → Storico → «Passaggi registrati» — con una nota: le sue righe spariscono insieme. Solo finché nessun piano le ha assorbite; dopo, se il piano non ha emesso nulla, si riporta in bozza e si elimina, altrimenti resta un saldo manuale di segno opposto, legato a quel passaggio. Nella successione con l'arretrato a nome del defunto e alla fine di una locazione, con un nuovo inquilino o senza, quando il conguaglio ha righe da proporre, si sceglie alla registrazione se scriverlo: con «Non scriverlo» le righe non nascono affatto.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Chi esce con un credito</strong> lo vede nel suo estratto conto quando un piano ha assorbito la coppia: da lì si compensa su altre rate o si rimborsa dalla cassa.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Una parte che il programma non sposta</strong> (un passaggio che si ferma su una parte, il defunto che un piano calcola ancora) si passa a mano con saldi legati al passaggio: vedi «Il saldo legato a un passaggio», qui sotto.</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <!-- 9 — Il saldo legato a un passaggio -->
+          <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Il saldo legato a un passaggio</h3>
+            <p class="mb-3">
+              A volte un passaggio di titolarità lascia una parte che il programma <strong>non sposta da sé</strong>: lo dice con la cifra il pannello «Cosa cambierà» prima di registrarlo, e poi lo storico dell'unità. Quella parte la passi tu, da qui, con <strong>due saldi legati al passaggio</strong>: un credito a chi la deve avere e un debito della stessa cifra a chi la deve pagare.
+            </p>
+            <div class="p-4 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 text-[13px] mb-3">
+              <strong>Un esempio.</strong> Ines, inquilina di Ugo, lascia l'appartamento il 1 luglio: con «Scrivi il conguaglio» i giorni dopo la sua uscita passano a Ugo, € 181,48. Il 1 novembre Ugo vende a Elsa. I giorni dal 1 novembre ora sono di Elsa, ma il programma non sposta la coppia della fine della locazione: € 60,16 restano a carico di Ugo, e il pannello della vendita lo dice. Se toccano a Elsa, da qui apri «Aggiungi credito», scegli «Soggetto specifico» e spunta «Legato a un passaggio»: la vendita del 1 novembre, Ugo, € 60,16. Poi «Aggiungi debito»: la stessa vendita, Elsa, € 60,16. Il prossimo piano rate della gestione che applica i saldi li assorbe: a Ugo toglie € 60,16, a Elsa li chiede.
+            </div>
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <ul class="space-y-2">
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Una riga per persona</strong>, sulla stessa gestione e sulla stessa unità della parte. Il menu del passaggio offre quelli dell'unità e segnala quelli che hanno una parte da regolare a mano.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Non occupa il posto del riporto.</strong> Il Wallet tiene un solo saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio: lo scrivi anche a chi ha già il suo. Per la stessa persona e lo stesso passaggio, finché il primo si modifica, ce n'è uno solo: si corregge quello.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Se annulli il passaggio, si tolgono con lui.</strong> Se un piano rate li ha già assorbiti, il passaggio non si annulla finché quel piano non è eliminato (il lucchetto si riapre).</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Se la parte poi cambia</strong> (un inizio di locazione che la riduce o la azzera, la fine del conduttore che la fa risalire, l'annullamento di un altro passaggio o del conguaglio), il programma non tocca i saldi: la frase del passaggio dice, per ogni persona, quanto sommano oggi i suoi saldi legati e quanto vale la sua parte, e quali non si modificano più (in un piano che non si riscrive più, o in un esercizio che non è quello aperto). Chi ha un saldo legato che si modifica lo corregge qui; chi non ne ha uno registra qui la differenza con un saldo legato in più. Se la frase non sa a chi spetta la parte (una seconda vendita dopo una fermata: a chi ha le righe della coppia, o a chi esce se la fermata di prima è già stata regolata) li nomina tutti e due; se la parte non si legge da sola (per esempio una seconda vendita dopo una fermata insieme a una fermata normale sulle stesse persone), non la dice e indica che cosa correggere se i saldi non sono la parte.</span>
                 </li>
               </ul>
             </div>

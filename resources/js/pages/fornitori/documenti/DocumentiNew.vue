@@ -52,7 +52,12 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 const pageGuides = [
   {
     title: 'Caricamento',
-    description: 'Carica il documento in formato PDF o immagine (JPG/PNG).',
+    // ⚠️ **Diceva «PDF o immagine (JPG/PNG)», e il server le immagini le rifiuta**:
+    // `CreateFornitoreDocumentoRequest` valida `mimes:pdf`. Chi ci provava con un JPG lo caricava,
+    // aspettava, e si prendeva un errore su una cosa che la schermata gli aveva appena promesso.
+    // Il supporto alle immagini è una richiesta del forum e ha la sua voce in roadmap: finché non
+    // c'è, qui si dichiara quello che la macchina accetta davvero. *(Corretto il 31/08/2026.)*
+    description: 'Carica il documento in formato PDF.',
     icon: FileUp,
     colorVariant: 'blue' as const
   },

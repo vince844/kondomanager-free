@@ -40,13 +40,24 @@ class ImmobileAnagraficaResource extends JsonResource
             'indirizzo'      => $this->indirizzo,
             'codice_fiscale' => $this->codice_fiscale,
             'pivot' => [
+                // L'`id` della riga: dalla 1.11.0-beta.31 le rotte di modifica e «Dissocia» lavorano
+                // per periodo, non per persona (decisione 13 del progetto sul subentro).
+                'id'              => $this->pivot->id,
                 'tipologia'       => $this->pivot->tipologia,
                 'quota'           => $this->pivot->quota,
-                'tipologie_spese' => $this->pivot->tipologie_spese,
-                'data_inizio'     => $this->pivot->data_inizio,
-                'data_fine'       => $this->pivot->data_fine,
+                // La colonna è caduta nella 1.11.0-beta.31 (era NULL ovunque): la chiave resta nel JSON,
+                // a null, finché il tipo TS `AnagraficaPivot` la dichiara.
+                'tipologie_spese' => null,
+                // `TitolaritaImmobile` ha i cast `date:Y-m-d` dalla beta.31: qui l'attributo è un Carbon,
+                // e senza `toDateString()` il JSON passerebbe da `2026-01-01` a ISO 8601.
+                'data_inizio'     => $this->pivot->data_inizio?->toDateString(),
+                'data_fine'       => $this->pivot->data_fine?->toDateString(),
                 'attivo'          => $this->pivot->attivo,
                 'note'            => $this->pivot->note,
+                // Decisione 24: la riga è agganciata a un passaggio registrato (uscente o entrante) — il ruolo non si
+                // cambia. Lo scrive il controller che ne ha bisogno, con UNA query per unità (`ImmobileAnagraficaController::index()`);
+                // dove nessuno l'ha calcolato resta nullo — nessuna query per riga (l'elenco unità ha il test dell'N+1).
+                'agganciata_a_passaggio' => $this->pivot->getAttribute('agganciata_a_passaggio'),
             ],
 
             'saldo' => [

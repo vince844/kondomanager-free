@@ -7,9 +7,13 @@
  *
  * La beta.55 ha chiuso l'assegnazione dei ruoli privilegiati — `amministratore` e `collaboratore`
  * li concede solo un amministratore — e la concessione dei permessi singoli. Resta da verificare
- * la terza strada: `RolePolicy` lascia **creare ruoli** anche al collaboratore, e un ruolo creato
- * a mano non è privilegiato per definizione. Se dentro ci si possono mettere permessi che l'attore
- * non ha, e poi lo si può indossare, la regola sui ruoli si aggira costruendone uno nuovo.
+ * la terza strada: un ruolo creato a mano non è privilegiato per definizione, quindi la regola vale
+ * anche sul suo contenuto: nessuno mette in un ruolo un permesso che non ha, e nessuno indossa un
+ * ruolo che contiene permessi che non ha.
+ *
+ * Le pagine dei ruoli sono solo dell'amministratore (decisione 134.1), e il collaboratore riceve un
+ * rifiuto prima ancora della regola sui permessi (`ChiPuoToccareChiTest.php`): le due garanzie qui sotto
+ * restano vere per entrambe le ragioni.
  *
  * ## Cosa questo file NON copre
  *

@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Backup\Destinations\DestinationManager;
 use App\Services\Backup\Exceptions\BackupInProgressException;
 use App\Services\Backup\Support\StepBudget;
+use App\Services\Restore\MessaggiDelRipristino;
 use App\Settings\BackupSettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -39,10 +40,32 @@ class BackupManager
     ) {}
 
     /**
-     * Il backup attualmente in lavorazione, se esiste.
+     * Il backup davvero in corso, se c'è.
+     *
+     * ⚠️ **Miete i backup stantii prima di guardare**, e non è un dettaglio di pulizia: finché
+     * `failStaleBackups()` viveva solo dentro `start()`, un record rimasto `running` non veniva
+     * mai raccolto da chi lo interrogava *prima* di quel punto — cioè quasi tutti.
+     *
+     * I due chiamanti che pagavano il conto:
+     *
+     * - `SystemUpgradeController::backupStart()` controlla questo metodo **prima** di `start()`,
+     *   quindi riusava un record morto invece di sostituirlo;
+     * - `RestoreManager::start()` rifiuta di partire se questo metodo non torna `null`. Un backup
+     *   abbandonato bloccava quindi **ogni ripristino**, ed è esattamente il momento in cui il
+     *   ripristino serve: chi ha appena visto fallire un aggiornamento e ha chiuso la scheda.
+     *
+     * Riprodotto per caso il 27/08/2026: uno script morto a metà ha lasciato un record `pending`,
+     * e il tentativo successivo è stato respinto con «un altro backup è già in esecuzione».
+     *
+     * ⚠️ La finestra resta `stale_after_hours` (2 ore). Sotto quella soglia il record è considerato
+     * vivo, e per il percorso del backup è la scelta giusta — il chiamante lo riprende dal
+     * checkpoint invece di ricominciare. Per il ripristino no: due ore di attesa dopo una scheda
+     * chiusa restano un difetto, e sta nella coda come voce a sé.
      */
     public function runningBackup(): ?Backup
     {
+        $this->failStaleBackups();
+
         return Backup::running()->latest('id')->first();
     }
 
@@ -108,7 +131,9 @@ class BackupManager
             $startLock->release();
         }
 
-        File::ensureDirectoryExists($this->tmpDir($backup));
+        // La cartella dei temporanei la crea il primo passo (`advance`, PENDING): se non si crea, il backup risulta
+        // fallito con la sua ragione, come per ogni passo che non riesce, e non resta «in corso» a fermare i backup
+        // dopo, fra cui quello di sicurezza del ripristino.
 
         event(new BackupStarted($backup));
 
@@ -437,7 +462,9 @@ class BackupManager
 
         $backup->forceFill([
             'status' => BackupStatus::FAILED,
-            'error' => mb_substr($e->getMessage(), 0, 1000),
+            // L'errore arriva alla finestra dei backup e alla pagina dell'aggiornamento: senza le cartelle del server. Il
+            // messaggio intero, con il percorso, è nel log del server (`report` qui sopra).
+            'error' => mb_substr(MessaggiDelRipristino::senzaPercorsi($e->getMessage()), 0, 1000),
             // Un backup fallito non è riprendibile: il checkpoint (con
             // l'eventuale password cifrata) non deve restare nel database
             'checkpoint' => null,

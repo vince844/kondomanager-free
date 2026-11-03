@@ -1,0 +1,7 @@
+{
+    "features": [
+        "ESTA VERSÃO NÃO ACRESCENTA NADA VISÍVEL — Não é esquecimento: é a primeira de várias betas que constroem a leitura das faturas eletrónicas XML recebidas do fornecedor, pedida no fórum a 29/08/2026. Aqui está apenas a fundação: um serviço interno que sabe ler o ficheiro. Nenhum ecrã o usa ainda.",
+        "O QUE FAZ, QUANDO ALGO O USAR — Lê um ficheiro FatturaPA, XML em claro ou o envelope assinado .p7m que chega mesmo do sistema de troca da Agência Tributária italiana, e retira dele o fornecedor, as linhas, o valor tributável e o IVA declarados, os prazos de pagamento, a retenção na fonte quando existe. Não decide sozinho o que não bate certo: se as linhas de detalhe não somam ao valor tributável que a fatura declara — acontece, e nem sempre é um erro —, assinala-o em vez de escolher um valor em silêncio. Testado com os três ficheiros de exemplo que a Agência Tributária publica para este fim, incluindo um lote com duas faturas no mesmo ficheiro.",
+        "⚠️ UM FICHEIRO DE 49 KB PODIA ESGOTAR A MEMÓRIA DO SERVIDOR — A revisão antes do lançamento descobriu que um ficheiro XML construído de propósito, uma única linha de texto repetida oito mil vezes através de uma entidade XML, fazia a memória subir até desligar o processo, sem nenhuma mensagem de erro que o explicasse. Uma FatturaPA verdadeira nunca usa este mecanismo: o serviço agora rejeita de imediato qualquer ficheiro que o declare, antes sequer de tentar lê-lo."
+    ]
+}

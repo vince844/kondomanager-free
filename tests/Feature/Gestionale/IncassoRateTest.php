@@ -70,6 +70,13 @@ class IncassoRateTest extends TestCase
             'categoria' => 'crediti' // <--- VALORE CORRETTO
         ]);
     
+        // Dalla 1.11.0-beta.49 (DC1) il credito da saldi di una quota senza scrittura esce da «Passate gestioni», e senza quel
+        // conto la compensazione si rifiuta (come il rimborso): il conto del piano dei conti predefinito (`CondominioService`).
+        ContoContabile::create([
+            'condominio_id' => $condominio->id, 'codice' => '23.01', 'nome' => 'Fondo Passate Gestioni',
+            'tipo' => 'passivo', 'ruolo' => 'passate_gestioni', 'categoria' => 'fondi',
+        ]);
+
         $contoAnticipi = ContoContabile::create([
             'condominio_id' => $condominio->id,
             'codice' => '20.10', 
@@ -605,7 +612,7 @@ class IncassoRateTest extends TestCase
             'data_scadenza' => '2025-02-28'
         ]);
 
-        app(StoreIncassoRateAction::class)->execute([
+        $dati = [
             'pagante_id' => $data->anagrafica->id,
             'cassa_id' => $data->cassa->id,
             'gestione_id' => $gestioneStraordinaria->id,
@@ -617,7 +624,18 @@ class IncassoRateTest extends TestCase
                 ['rata_id' => $data->quota->id, 'importo' => -50.00],
                 ['rata_id' => $quotaStraordinaria->id, 'importo' => 50.00],
             ],
-        ], $data->condominio, $data->esercizio);
+        ];
+
+        // Dalla 1.11.0-beta.40 (decisione 30.11) il credito di una gestione passa a un'altra solo con la scelta
+        // esplicita dell'amministratore: senza, l'incasso si ferma e non resta scritto niente.
+        try {
+            app(StoreIncassoRateAction::class)->execute($dati, $data->condominio, $data->esercizio);
+            $this->fail('Senza la scelta fra gestioni la compensazione doveva fermarsi.');
+        } catch (\App\Exceptions\Gestionale\CreditoFraGestioniDaScegliereException $e) {
+            $this->assertSame(0, $quotaStraordinaria->refresh()->importo_pagato);
+        }
+
+        app(StoreIncassoRateAction::class)->execute($dati + ['credito_fra_gestioni' => true], $data->condominio, $data->esercizio);
 
         $quotaStraordinaria->refresh();
         $this->assertEquals(5000, $quotaStraordinaria->importo_pagato);

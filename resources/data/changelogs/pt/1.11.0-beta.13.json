@@ -1,0 +1,8 @@
+{
+    "features": [
+        "UM AVISO QUANDO UMA FATURA PARECE JÁ ESTAR REGISTADA — Enquanto se preenche uma fatura, tanto no Registo como na Edição, o sistema verifica agora sozinho se já existe uma semelhante: mesmo fornecedor e mesmo número no mesmo exercício, ou mesmo valor ao cêntimo dentro de uma semana. Se encontrar algo, mostra um aviso com uma ligação à fatura existente, mas nunca bloqueia — uma despesa recorrente com o mesmo valor todos os meses não é uma duplicação, e a última palavra continua a ser do administrador.",
+        "A MENSAGEM QUANDO É REALMENTE O MESMO DOCUMENTO — Diferente do aviso acima: quando fornecedor, número e data coincidem exatamente com uma fatura já registada, o registo é agora recusado. Antes, neste caso preciso, falhava sem dizer nada, sem erro visível. Agora uma mensagem explica o que aconteceu, tanto ao registar como ao estornar duas faturas gémeas no mesmo dia.",
+        "O ÍNDICE QUE BLOQUEAVA ENTRE CONDOMÍNIOS, NÃO DENTRO DE UM — A proteção contra registos duplicados já existia mas não considerava o condomínio: bloqueava também faturas legítimas do mesmo fornecedor em dois prédios diferentes do mesmo escritório. Agora mantém-se dentro de um condomínio, onde faz sentido, e deixa de se aplicar entre condomínios.",
+        "NÚMERO DO DOCUMENTO E FORNECEDOR JÁ NÃO SE MUDAM CONTORNANDO O FORMULÁRIO — Na Edição já eram apenas de leitura no ecrã; agora também o são no servidor, mais uma rede de segurança verificada nesta mesma beta."
+    ]
+}

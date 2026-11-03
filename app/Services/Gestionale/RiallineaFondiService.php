@@ -32,7 +32,12 @@ use Illuminate\Support\Facades\DB;
  */
 class RiallineaFondiService
 {
-    private const CAUSALE_MARKER = 'Riallineamento fondi (beta.19)';
+    /**
+     * Il principio della causale di ogni rettifica di questo servizio: le scritture nuove la scrivono così, e si riconoscono
+     * con `like MARKER%`. Prima della stabile il marcatore finiva con «(beta.19)»: le rettifiche già nel giornale cominciano
+     * con le stesse parole e il `like` le riconosce ancora. Non si riscrivono: il giornale non si riscrive.
+     */
+    private const CAUSALE_MARKER = 'Riallineamento fondi';
 
     /** I tipi di movimento del ciclo passivo che, nel vecchio regime, toccavano i fondi. */
     private const TIPI_STORICI = ['fattura_acquisto', 'storno_fattura'];
@@ -179,8 +184,8 @@ class RiallineaFondiService
                     'tipo_movimento' => TipoMovimentoContabile::RETTIFICA,
                     'stato' => 'registrata',
                     'created_by' => auth()->id(),
-                    'note' => 'Neutralizza le righe storiche sul fondo scritte prima della beta.19 '
-                        .'(convenzione passiva): da questa versione i fondi si muovono solo via giroconto.',
+                    'note' => 'Neutralizza le righe storiche sul fondo scritte prima della 1.10.0 '
+                        .'(convenzione passiva): dalla 1.10.0 i fondi si muovono solo via giroconto.',
                 ]);
 
                 $sbilancio = 0; // dare − avere della rettifica, da chiudere su passate gestioni

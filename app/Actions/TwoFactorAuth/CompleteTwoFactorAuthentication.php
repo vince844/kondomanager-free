@@ -2,6 +2,7 @@
 
 namespace App\Actions\TwoFactorAuth;
 
+use App\Http\Middleware\EnsureTwoFactorChallengeSession;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 
@@ -22,6 +23,6 @@ class CompleteTwoFactorAuthentication
         Auth::login($user, $remember);
 
         // Clear the session variables used for the 2FA challenge
-        Session::forget(['login.id', 'login.remember']);
+        Session::forget(EnsureTwoFactorChallengeSession::CHIAVI);
     }
 }

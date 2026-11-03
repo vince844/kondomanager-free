@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources\Evento;
 
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Carbon\Carbon;
@@ -27,7 +27,8 @@ class EditEventoResource extends JsonResource
             'recurrence_id'   => $this->recurrence_id,
             'category_id'     => $this->categoria?->id,
             'condomini_ids'   => $this->condomini->pluck('id'),
-            'anagrafiche'     => AnagraficaResource::collection($this->whenLoaded('anagrafiche')), 
+            // I destinatari già scelti: la modifica ne legge id e nome (Coda 408).
+            'anagrafiche'     => AnagraficaNomeResource::collection($this->whenLoaded('anagrafiche')),
             'recurrence'      => $this->whenLoaded('ricorrenza', function () {
                 return [
                     'frequency' => $this->ricorrenza->frequency,

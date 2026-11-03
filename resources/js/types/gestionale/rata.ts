@@ -116,6 +116,8 @@ export interface PaganteIncasso {
     altri_count: number;
     lista_completa: string;
     ruolo: string;
+    /** Coda 167: chi ha versato davvero, se non è la posizione. */
+    versato_da?: string | null;
 }
 
 export interface Incasso {

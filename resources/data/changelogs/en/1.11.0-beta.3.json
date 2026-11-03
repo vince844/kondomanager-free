@@ -1,0 +1,9 @@
+{
+ "features": [
+  "⚠️ THIS VERSION ADDS NO MIGRATIONS. It opens the Danea import to those who export their data the most natural way — «Import/Export via Excel» — and closes a pre-existing privacy defect: a colleague's half-finished import was visible and deletable by anyone who could import.",
+  "YOU CAN NOW SAY WHICH BUILDING TO IMPORT INTO — Danea offers two ways to get data out. Printouts carry the building name in their header; «Import/Export via Excel» exports do not, they are plain lists. People arriving that way saw units, people and tables read correctly, then hit a dead end with no explanation. Now, when no file says it, the verification screen asks you where to put them.",
+  "THE FINANCIAL YEAR IS NOT ASKED, IT IS RESOLVED — Choosing it by hand would have been the easiest thing to get wrong: the year's start date becomes the start date of every ownership record written, so pointing at the wrong year produces no error and no warning — it writes correct numbers in the wrong period. The open year of the building you chose is used, and stated up front.",
+  "DANEA'S EXTRAORDINARY YEARS BECOME MANAGEMENTS — In your old software an extraordinary year is a year of its own; in Kondomanager it is a management inside the year covering that period. The import now recognises this and announces it before writing.",
+  "A COLLEAGUE'S IMPORT IS NO LONGER EVERYONE'S — Anyone who could import saw anyone else's last half-finished import, building name included, and could resume or delete it. Nine endpoints had no owner check at all. If more than one person in your office uses Kondomanager, this update concerns you too."
+ ]
+}

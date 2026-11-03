@@ -2,6 +2,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Helpers\MoneyHelper;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\DataTransferObjects\RitenutaCalcolo;
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
@@ -9,6 +11,7 @@ use App\Enums\StatoPagamentoFattura;
 use App\Events\Gestionale\FatturaRegistrata;
 use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Models\CategoriaDocumento;
+use App\Models\Documento;
 use App\Models\Evento;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
@@ -16,20 +19,18 @@ use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoConto;
-use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\ScritturaContabile;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class FatturaPassivaService
 {
-    public function registraFattura(array $data, int $condominioId, ?UploadedFile $file = null): FatturaPassiva
+    public function registraFattura(array $data, int $condominioId, ?UploadedFile $file = null, ?int $stornoDellaFatturaId = null): FatturaPassiva
     {
-        return DB::transaction(function () use ($data, $condominioId, $file) {
+        return DB::transaction(function () use ($data, $condominioId, $file, $stornoDellaFatturaId) {
 
             $fornitore = Fornitore::with('referenti')->findOrFail($data['fornitore_id']);
             $isNotaCredito = ($data['tipo_documento'] === 'nota_credito');
@@ -37,11 +38,15 @@ class FatturaPassivaService
 
             $isPregresso = filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
+            // L'imposta che il documento dichiara per ogni gruppo IVA, gia ripartita fra le
+            // righe che vi appartengono. Vuota quando il documento non dichiara i propri
+            // riepiloghi (fattura digitata a mano): allora si calcola come si e sempre fatto.
+            $ivaDistribuita = self::distribuisciImpostaDichiarata($data);
+
             $imponibileTotale = 0;
             $ivaTotale = 0;
             $righeProcessate = [];
             $righeRitenuta = [];
-            $aliquotaPregressaSalvata = 22; // Default per il DB
 
             $dynamicContoComuneId = null;
             $logLegale = $data['dati_extra']['log_legale_sopravvenienza'] ?? null;
@@ -50,16 +55,35 @@ class FatturaPassivaService
             if ($isPregresso) {
                 $impPregresso = (int) round(($data['imponibile_pregresso'] ?? 0) * 100);
                 $aliqPregressa = (float) ($data['aliquota_iva_pregressa'] ?? 22);
-                $ivaPregressa = (int) round(($impPregresso * $aliqPregressa) / 100);
+                // ⚠️ **Se il documento dichiara la propria imposta, quella vince sull'aliquota.**
+                // Il pannello del debito pregresso ha un campo solo, quindi l'importazione gli
+                // passa l'aliquota MEDIA del documento, arrotondata a due decimali. Su un
+                // documento a piu aliquote quella media non ricostruisce l'imposta vera, ed e
+                // una perdita di precisione in piu rispetto al calcolo per riga.
+                // ⚠️ **Misurato l'06/09/2026: sugli undici file di collaudo la ricostruzione e
+                // esatta in tutti e undici**, quindi questa correzione non cambia nessuno di
+                // quei numeri. Ma il caso divergente esiste ed e costruibile -- imponibile
+                // 100,05 con imposta 10,00 da un'aliquota media di 10,00 che ricostruisce
+                // 10,01, un centesimo inventato su un debito che resta a bilancio. Sei degli
+                // undici file passano da questo ramo, quindi la superficie e reale anche se
+                // il corpus non la colpisce. `imposta_dichiarata` viaggiava gia nel payload
+                // dalla beta.18 e veniva buttata.
+                $ivaPregressa = self::ivaPregressaCents($data, $impPregresso);
 
                 $imponibileTotale = $impPregresso;
                 $ivaTotale = $ivaPregressa;
-                $aliquotaPregressaSalvata = $aliqPregressa;
             } else {
-                foreach ($data['righe'] as $rigaInput) {
+                foreach ($data['righe'] as $indiceRiga => $rigaInput) {
                     $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
                     $aliq = (float) $rigaInput['aliquota_iva'];
-                    $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+                    // Se il documento dichiara la propria imposta, quella vince: la somma degli
+                    // arrotondamenti di riga non e l'imposta del documento, ed e la differenza
+                    // fra 10,05 e 10,06 sulla bolletta del file 06 dei collaudi.
+                    // Priorita: (1) l'imposta dichiarata dal documento, distribuita; (2) quella che
+                    // il chiamante impone riga per riga -- e lo storno, che deve essere lo specchio
+                    // esatto della fattura e non una sua riapprossimazione; (3) il calcolo per riga
+                    // di sempre, per la fattura digitata a mano.
+                    $ivaRiga = self::ivaDellaRigaCents($ivaDistribuita, $indiceRiga, $rigaInput, $impRiga);
                     $isSopravvenienza = filter_var($rigaInput['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
                     $imponibileTotale += $impRiga;
@@ -154,6 +178,48 @@ class FatturaPassivaService
                 $statoApprovazione = 'sforo_motivato';
             }
 
+            // Coda 165 (1.11.0-beta.36): la terza porta della scala, dopo la richiesta e il modulo — la attraversano anche i
+            // test e le chiamate dirette. Prima della creazione: il netto si legge dal database, e la nota non deve
+            // esserci ancora, o conterebbe due volte. Dentro la transazione, con la fattura bloccata.
+            if ($isNotaCredito && ! empty($data['fattura_rettificata_id'])) {
+                $rettificata = FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])
+                    ->lockForUpdate()->find((int) $data['fattura_rettificata_id']);
+                if ($rettificata === null || (int) $rettificata->condominio_id !== $condominioId
+                    || (int) $rettificata->fornitore_id !== (int) $fornitore->id) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException(
+                        'La fattura che la nota rettifica dev\'essere una fattura dello stesso fornitore, registrata in questo condominio.'
+                    );
+                }
+                // Le righe vere della nota, per il «di quanto» e per l'avviso: la nota pregressa non ne ha, vale la testata
+                // ed è non attribuibile (R1 e R4 della Fase 1-bis).
+                $righeNota = $righeProcessate === []
+                    ? [['conto_id' => null, 'immobile_id' => null, 'riduzione' => abs((int) $totaleDoc)]]
+                    : array_map(fn (array $r) => [
+                        'conto_id' => $r['conto_id'] ?? null,
+                        'immobile_id' => $r['immobile_id'] ?? null,
+                        'riduzione' => -((int) $r['importo_imponibile'] + (int) $r['importo_iva']),
+                    ], $righeProcessate);
+                // La nota contestata resta fuori da scala e avviso: non conta nel netto (V3 della verifica).
+                $contestata = $statoApprovazione === 'contestata';
+                if ($motivo = $rettificata->motivoBloccoNotaCollegata(abs((int) $totaleDoc), 'registra la nota', $righeNota, $contestata)) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+                // Con un piano che ha incassato la nota si registra, ma dopo una conferma: il modulo la chiede con la spunta,
+                // e qui la si pretende — un modulo che sbaglia non passa (R3 e R7 della Fase 1-bis).
+                if (! filter_var($data['conferma_avviso_nota'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    && ($avviso = $rettificata->avvisoNotaCollegata($righeNota, $contestata))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException($avviso);
+                }
+            }
+
+            // Coda 313 (decisione 160): la nota del fornitore senza la fattura che rettifica, con una riga su un'unità a cui una rata emessa ha
+            // chiesto una spesa ad personam. La nota collegata ha la scala qui sopra, e la nota nata da uno storno la guardia dello storno
+            // (`$stornoDellaFatturaId`, lo passa `StornoFatturaController`).
+            if ($isNotaCredito && empty($data['fattura_rettificata_id']) && $stornoDellaFatturaId === null
+                && ($motivo = self::motivoNotaSenzaFatturaSuSpesaChiesta($righeProcessate, $moltiplicatore))) {
+                throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+            }
+
             // 3. Creazione Fattura
             $fattura = FatturaPassiva::create([
                 'condominio_id' => $condominioId,
@@ -161,14 +227,30 @@ class FatturaPassivaService
                 'esercizio_id' => $data['esercizio_id'],
                 'conto_corrente_id' => $data['conto_corrente_id'] ?? null,
                 'tipo_documento' => $data['tipo_documento'],
+                // Coda 165 (1.11.0-beta.36): solo sulla nota. Una chiave che manca da questo elenco si perde in silenzio
+                // (vedi il commento su imponibile_pregresso qui sotto): il test la rilegge dal database.
+                'fattura_rettificata_id' => $isNotaCredito ? ($data['fattura_rettificata_id'] ?? null) : null,
                 'numero_documento' => $data['numero_documento'],
                 'data_documento' => $data['data_documento'],
                 'data_scadenza' => $data['data_scadenza'],
+                // La competenza dichiarata (B2, S6): le due colonne, entrambe o nessuna (la Request lo
+                // garantisce). Letta da `CalcoloQuoteService::calcolaDaFattureStraordinarie` nel piano da
+                // fatture, qualunque sia la gestione (decisione 26, 1.11.0-beta.35); nel piano da capitoli
+                // resta un fatto registrato (decisione 19).
+                'competenza_dal' => $data['competenza_dal'] ?? null,
+                'competenza_al' => $data['competenza_al'] ?? null,
                 'is_pregresso' => $isPregresso,
                 'data_competenza_originaria' => $data['data_competenza_originaria'] ?? null,
                 'saldo_patrimoniale_id' => $data['saldo_patrimoniale_id'] ?? null,
-                'imponibile_pregresso' => $isPregresso ? $imponibileTotale : 0,
-                'aliquota_iva_pregressa' => $isPregresso ? $aliquotaPregressaSalvata : 0,
+                // ⚠️ **Qui c'erano `imponibile_pregresso` e `aliquota_iva_pregressa`, e non
+                // facevano niente** (Fase 1-bis della beta.18, rilievo 4). Non sono colonne di
+                // `fatture_passive` — 29 colonne, nessuna migrazione le crea — e il modello ha
+                // `$guarded = ['id']`, quindi Eloquent le scartava in silenzio: l'INSERT non le
+                // conteneva, e chi le rileggeva otteneva `null`. Lo storno di una pregressa le
+                // leggeva davvero (`StornoFatturaController`), otteneva zero, e generava una
+                // nota di credito vuota. Tolte invece di aggiungere due colonne: il dato non si
+                // perde, sta già in `importo_imponibile` e `importo_iva`, e lo storno lo legge
+                // da lì. Una riga che finge di salvare è peggio di una riga che manca.
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
                 'importo_iva' => $ivaTotale * $moltiplicatore,
                 'importo_ritenuta' => $ritenuta * $moltiplicatore,
@@ -184,10 +266,35 @@ class FatturaPassivaService
                         [
                             'ritenuta_details' => $datiRitenuta,
                             'motivo_esclusione_ritenuta' => $this->motivoEsclusioneRitenuta($ritenutaCalcolo, $data),
+                            // L'imposta che il documento dichiara per gruppo, conservata perché
+                            // modifica e storno la ritrovino invece di ricalcolarla dalle righe.
+                            // Nessuna migrazione: `dati_extra` è una colonna json che esiste già.
+                            'riepiloghi_dichiarati' => $data['riepiloghi']
+                                ?? $data['dati_extra']['fiscal']['riepiloghi_dichiarati']
+                                ?? null,
+                            // Stessa ragione, per il ramo del debito pregresso: senza questa la
+                            // nota di credito di uno storno ricostruirebbe l'imposta da
+                            // un'aliquota media arrotondata invece che dal numero dichiarato.
+                            'imposta_pregressa_dichiarata' => $data['imposta_pregressa']
+                                ?? $data['dati_extra']['fiscal']['imposta_pregressa_dichiarata']
+                                ?? null,
                         ]
                     ),
-                    'competenza' => $data['dati_extra']['competenza'] ?? null,
+                    // `competenza` non sta più qui dalla 1.11.0-beta.31: è nelle colonne
+                    // `competenza_dal/al` (la migrazione `2026_09_18_200000` ha travasato le vecchie).
                     'override_budget' => $data['dati_extra']['override_budget'] ?? null,
+                    // ⚠️ **Coda 124, 04/09/2026.** Questo array sostituisce interamente
+                    // `dati_extra`: qualunque chiave che il chiamante avesse messo lì e che non
+                    // sia elencata qui viene persa in silenzio. `StornoFatturaController` passa
+                    // `nota_storno` per marcare la nota di credito generata dallo storno come
+                    // «non è un documento vero, non compensarla» — e quella chiave arrivava fin
+                    // qui per essere scartata. `PagamentoFornitoreService::trovaNoteCreditoCompensabili()`
+                    // filtra su questa chiave (`whereNull('dati_extra->nota_storno')`), quindi la
+                    // guardia era sempre vera: la nota da storno rientrava fra quelle offerte in
+                    // compensazione, e una fattura vera poteva risultare pagata senza che un euro
+                    // uscisse dalla cassa. Misurato con una sonda end-to-end il 04/09/2026, prima
+                    // di questa correzione.
+                    'nota_storno' => $data['dati_extra']['nota_storno'] ?? null,
                 ],
             ]);
 
@@ -326,13 +433,40 @@ class FatturaPassivaService
                         'nota_amministratore' => $copertura['nota_amministratore'] ?? null,
                     ]);
                 }
+
+                // ⚠️ **Il riferimento va sciolto, e non è pedanteria: senza, la fattura non si
+                // storna.** `foreach (... as &$copertura)` lascia `$copertura` legato all'ULTIMO
+                // elemento dell'array. Il ciclo più sotto (riga ~459) itera lo stesso array **per
+                // valore** e riusa lo stesso nome: a ogni giro riscrive quell'ultimo elemento,
+                // quindi con **due** coperture l'ultima viene letta come duplicato della penultima.
+                //
+                // 📏 **Misurato**: una pregressa da € 610,00 parzialmente coperta (rata_0 € 200,00
+                // + sopravvenienza € 410,00) veniva percorsa come `rata_0 | rata_0`. Il ramo della
+                // sopravvenienza non veniva mai raggiunto e lo storno moriva con «Sbilancio
+                // rilevato tra DARE (€ 610,00) e AVERE (€ 400,00)» — cioè 2 × 200. La fattura
+                // restava viva e il capitolo inventato continuava a pesare sul rendiconto.
+                //
+                // ⚠️ **Difetto preesistente, non introdotto dalla beta.22** — quella pregressa non
+                // è mai stata stornabile. Ma è ciò che rendeva **irraggiungibile** la correzione
+                // della Coda 145 proprio nello scenario che quella coda nomina: importo che supera
+                // il debito storico dichiarato, cioè due coperture. Trovato dalla Fase 1-bis della
+                // beta.22, da quattro lenti indipendenti.
+                unset($copertura);
             }
 
             // $totaleDoc è già assoluto
             $imponibileFatturaCents = abs($totaleDoc);
-            $eccedenzaCents = $imponibileFatturaCents - $totaleCopertoPregresso;
+            // Sulla pregressa l'eccedenza viene da `eccedenzaPregressaCents()`, lo stesso metodo con cui la richiesta
+            // pretende il periodo (decisione 26): un calcolo solo, così la regola non può scattare sulla fattura sbagliata.
+            $eccedenzaCents = $isPregresso ? self::eccedenzaPregressaCents($data) : $imponibileFatturaCents - $totaleCopertoPregresso;
 
-            if ($isPregresso && $eccedenzaCents > 0 && $logLegale) {
+            // ⚠️ **Terza porta, e la più importante: è questa che scrive a giornale.** Le due
+            // guardie del modulo impediscono di arrivarci, ma questo ramo gira su qualunque
+            // richiesta — costruita a mano o da un elenco che domani dimenticasse il filtro — e
+            // qui si crea un capitolo di spesa dinamico e una copertura `sopravvenienza` con
+            // importo negativo. Su una nota di credito è un costo inventato per registrare un
+            // provento. Coda 129.
+            if (! $isNotaCredito && $isPregresso && $eccedenzaCents > 0 && $logLegale) {
                 $nuovoContoIdPregresso = $this->creaContoDinamicoSopravvenienza(
                     $condominioId,
                     $data['gestione_id'],
@@ -353,20 +487,7 @@ class FatturaPassivaService
 
             // 5. Salvataggio File
             if ($file) {
-                $path = $file->storeAs('documenti/'.$condominioId, $file->hashName(), 'local');
-                $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
-
-                $fattura->documenti()->create([
-                    'name' => $file->getClientOriginalName(),
-                    'description' => 'Fattura passiva n. '.$data['numero_documento'],
-                    'path' => $path,
-                    'mime_type' => $file->getMimeType(),
-                    'file_size' => $file->getSize(),
-                    'created_by' => Auth::id() ?? 1,
-                    'is_published' => false,
-                    'is_approved' => true,
-                    'category_id' => $categoriaFatture ? $categoriaFatture->id : null,
-                ]);
+                $this->creaDocumentoFattura($fattura, $file);
             }
 
             // 6. Contabilità (Partita Doppia)
@@ -418,6 +539,43 @@ class FatturaPassivaService
                                 'importo' => abs($importoCoperturaCents),
                                 'note' => 'Debito pregresso con copertura da fondo (in attesa di giroconto di conferma)',
                             ]);
+                        } elseif ($copertura['tipo_copertura'] === 'sopravvenienza' && ! empty($copertura['conto_id'])) {
+                            // ⚠️ **Coda 145 — una copertura di sopravvenienza non è una copertura
+                            // da rata zero, e finire in `$totaleRata0` le faceva perdere la strada
+                            // di casa.** La fattura che l'ha generata ha scritto DARE sul mastro del
+                            // capitolo dinamico **con `voce_spesa_id`** (più sotto, ramo
+                            // `$eccedenzaCents`): è quell'etichetta che porta il costo dentro
+                            // `SpesaPerVoceService`, e da lì al piano dei conti, al dettaglio voce,
+                            // al drill-down, al PDF della distinta e al cruscotto — cinque posti,
+                            // mappati in `docs/catene_fra_moduli.md` riga 181.
+                            //
+                            // Sommandola a `$totaleRata0` la contropartita veniva scritta, ma su
+                            // `passate_gestioni` e **senza `voce_spesa_id`**: il costo sul capitolo
+                            // non si azzerava mai, e `passate_gestioni` riceveva un movimento che
+                            // nessuno aveva messo dall'altra parte. Le due scritture quadravano
+                            // ciascuna per sé, quindi `DoubleEntryValidator` taceva — la firma
+                            // «quadra lo stesso» che la beta.20 ha imparato a riconoscere.
+                            //
+                            // Adesso la contropartita torna **sullo stesso mastro e con lo stesso
+                            // `voce_spesa_id`** dell'originale: `SpesaPerVoceService` legge dal
+                            // giornale, quindi il costo si azzera da sé e tutti e cinque i posti a
+                            // valle tornano a posto senza che nessuno li tocchi. È anche ciò che il
+                            // docblock di quel servizio **afferma già** — «uno storno azzera».
+                            $contoSopravvenienza = Conto::find($copertura['conto_id']);
+
+                            if ($contoSopravvenienza && $contoSopravvenienza->conto_contabile_id) {
+                                $scrittura->righe()->create([
+                                    'conto_contabile_id' => $contoSopravvenienza->conto_contabile_id,
+                                    'tipo_riga' => 'dare',
+                                    'importo' => abs($importoCoperturaCents),
+                                    'voce_spesa_id' => $contoSopravvenienza->id,
+                                    'note' => 'Storno della sopravvenienza passiva: annulla il costo sul capitolo generato dalla fattura pregressa',
+                                ]);
+                            } else {
+                                // Senza il mastro non si può scrivere la contropartita giusta: si
+                                // torna al comportamento vecchio invece di perdere la riga.
+                                $totaleRata0 += $importoCoperturaCents;
+                            }
                         } else {
                             $totaleRata0 += $importoCoperturaCents;
                         }
@@ -456,12 +614,54 @@ class FatturaPassivaService
                 }
             } else {
                 foreach ($righeProcessate as $riga) {
-                    $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
+                    // ⚠️ **Si rimoltiplica per `$moltiplicatore`, e non è un refuso.** Le righe
+                    // in `$righeProcessate` hanno il segno del DOCUMENTO già applicato (righe
+                    // 97 e 99): su una nota di credito una riga digitata positiva è qui
+                    // negativa. Ma il verso della nota lo dà già «il filtro invertitore» in
+                    // fondo a questo metodo, che gira l'intera scrittura in un colpo solo.
+                    // Quello che serve qui è il segno **naturale** della riga — quello che
+                    // l'amministratore ha digitato — altrimenti su una NC ogni riga verrebbe
+                    // girata due volte. Poiché il moltiplicatore vale ±1, rimoltiplicare lo
+                    // annulla ed è esatto al centesimo.
+                    $importoSegnatoRiga = ($riga['importo_imponibile'] + $riga['importo_iva']) * $moltiplicatore;
+                    $importoLordoRiga = abs($importoSegnatoRiga);
+
+                    // ⚠️ **Una riga da € 0,00 non produce nessuna scrittura, e non è un caso
+                    // di confine: gli XML veri ne sono pieni.** Cinque degli undici file di
+                    // collaudo portano righe puramente descrittive — numeri di protocollo,
+                    // riferimenti tecnici, intestazioni che introducono le voci successive —
+                    // con `PrezzoTotale` a 0.00. Sono contenuto del documento e restano in
+                    // `righe_fattura`; ma un DARE di € 0,00 non è una scrittura, è rumore, e
+                    // senza questa guardia una riga a zero e senza capitolo finiva nel ramo
+                    // «Impossibile allocare la riga» qui sotto: 500 con rollback, e l'intera
+                    // fattura persa (Fase 1-bis, reperto 3).
+                    //
+                    // Il confronto è con lo ZERO esatto, non con `<= 0`: una riga
+                    // legittimamente **negativa** — il conguaglio sugli oneri di sistema del
+                    // file 06 del collaudo — deve continuare a produrre la sua scrittura.
+                    if ($importoLordoRiga === 0) {
+                        continue;
+                    }
+
+                    // ⚠️ **Il segno della riga sceglie il LATO, non si butta via.** Fino alla
+                    // beta.17 qui c'era `abs()` e basta, e ogni riga finiva in DARE con il suo
+                    // valore assoluto: una riga negativa — lo storno «Oneri di sistema» che
+                    // ogni bolletta gas porta dentro una fattura ordinaria — invece di
+                    // *ridurre* il DARE lo *aumentava*. L'AVERE, che nasce da `$netto` cioè da
+                    // una somma già con segno, restava giusto: da lì lo sbilancio, pari a due
+                    // volte la riga negativa, e `DoubleEntryValidator` respingeva l'intera
+                    // fattura («Sbilancio rilevato tra DARE e AVERE»). La guardia dello zero
+                    // qui sopra dichiarava già legittima la riga negativa; mancava il passo
+                    // dopo. In partita doppia l'importo è sempre positivo ed è `tipo_riga` a
+                    // portare il verso: una riga negativa è un AVERE **sullo stesso conto**,
+                    // che è anche il modo in cui il resto del sistema già la legge
+                    // (`SpesaPerVoceService` netta dare − avere per capitolo).
+                    $versoRiga = $importoSegnatoRiga < 0 ? 'avere' : 'dare';
 
                     if (! empty($riga['immobile_id'])) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCreditiCondomini->id,
-                            'tipo_riga' => 'dare',
+                            'tipo_riga' => $versoRiga,
                             'importo' => $importoLordoRiga,
                             'voce_spesa_id' => null,
                             'immobile_id' => $riga['immobile_id'],
@@ -472,7 +672,7 @@ class FatturaPassivaService
                         if ($contoBudget && $contoBudget->conto_contabile_id) {
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                                'tipo_riga' => 'dare',
+                                'tipo_riga' => $versoRiga,
                                 'importo' => $importoLordoRiga,
                                 'voce_spesa_id' => $riga['conto_id'],
                                 'immobile_id' => null,
@@ -488,11 +688,26 @@ class FatturaPassivaService
 
             $anagraficaPrincipale = $fornitore->referenti()->first();
 
-            // AVERE 1: Debito verso Fornitore
+            // ⚠️ **Anche la testata sceglie il lato dal segno, non solo le righe di dettaglio.**
+            // Dare il verso calcolato alle righe e lasciarlo fisso qui è mezza correzione, e si
+            // rompe sul documento che vale meno di zero: la bolletta in cui il conguaglio a
+            // credito supera il consumo del periodo (riga +€ 50,00 e storno −€ 100,00). Lì le
+            // righe scrivono DARE 6100 / AVERE 12200, e una testata cablata su «avere»
+            // aggiungerebbe altri 6100 dalla parte sbagliata: ricomparirebbe «Sbilancio
+            // rilevato», cioè il messaggio che questa beta esiste per far sparire, spostato dal
+            // livello della riga a quello del documento (Fase 1-bis, rilievo 3).
+            //
+            // Il segno da guardare è quello **naturale** — prima del moltiplicatore — per la
+            // stessa ragione delle righe: il verso della nota di credito lo dà l'invertitore
+            // qui sotto, e leggere `$netto` (già moltiplicato) la farebbe girare due volte.
+            $nettoNaturale = $totaleDoc - $ritenuta;
+
+            // Debito verso Fornitore — AVERE su una fattura normale, DARE quando il documento
+            // è a credito perché gli storni di riga superano gli addebiti.
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
-                'tipo_riga' => 'avere',
-                'importo' => abs($netto),
+                'tipo_riga' => $nettoNaturale < 0 ? 'dare' : 'avere',
+                'importo' => abs($nettoNaturale),
                 'anagrafica_id' => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
             ]);
 
@@ -555,44 +770,142 @@ class FatturaPassivaService
     }
 
     /**
-     * Aggiorna una fattura passiva aperta, ricreando le scritture contabili.
+     * Quanto le righe di una nota tolgono da ogni unità, in centesimi (positivo: la nota riduce l'anticipazione dell'unità). Le righe hanno
+     * il segno del documento, come `$righeProcessate` e come le righe salvate: con `$moltiplicatore` −1 la riduzione è il loro opposto.
      *
-     * Permessa solo per fatture ordinarie completamente aperte (nessun pagamento,
-     * nessuna sopravvenienza, non pregresse, non in sforo pendente, esercizio aperto).
-     * Per tutti gli altri casi è obbligatorio lo storno.
-     *
-     * Effetti collaterali:
-     *  - Se `data_scadenza` cambia → aggiorna start_time del task Inbox `pagamento_fornitore`
-     *  - Il numero_protocollo è immutabile (identificativo contabile)
-     *  - Non riemette FatturaRegistrata (evita duplicazione task Inbox)
-     *
-     * @param  FatturaPassiva  $fattura  La fattura da aggiornare (con relazioni caricate).
-     * @param  array  $data  I nuovi dati validati (stessa struttura di registraFattura, senza fornitore_id e tipo_documento).
-     * @param  UploadedFile|null  $file  Nuovo allegato (opzionale). Se presente sostituisce il precedente.
-     *
-     * @throws FatturaModificaVietataException Se la fattura non può essere modificata direttamente.
+     * @param  iterable<array<string, mixed>>  $righe
+     * @return array<int, int> per unità
      */
+    public static function riduzioniPerUnita(iterable $righe, int $moltiplicatore): array
+    {
+        $perUnita = [];
+        foreach ($righe as $riga) {
+            if (! empty($riga['immobile_id'])) {
+                $perUnita[(int) $riga['immobile_id']] = ($perUnita[(int) $riga['immobile_id']] ?? 0)
+                    + ((int) $riga['importo_imponibile'] + (int) $riga['importo_iva']) * $moltiplicatore;
+            }
+        }
+
+        return $perUnita;
+    }
+
+    /**
+     * Perché una nota del fornitore **senza la fattura che rettifica** non si registra, o non si modifica (Coda 313, decisione 160) — o
+     * null. Una sua riga toglie da un'unità a cui una rata emessa ha chiesto una spesa ad personam (`RataQuote::rateEmesseConAdPersonam`):
+     * se la nota rettifica quella spesa, la toglie dall'unità una seconda volta, dopo la chiusura delle emissioni, e l'unità resta a credito
+     * senza persona. Il programma non sa quale fattura la nota rettifica, e non la sceglie al posto dell'amministratore: la nota si registra
+     * collegata, e la scala della nota collegata dice la strada per quella fattura (`FatturaPassiva::motivoBloccoNotaCollegata`).
+     *
+     * Con `$prima` (le riduzioni per unità prima della modifica, {@see riduzioniPerUnita()}) si guardano solo le unità che la modifica riduce
+     * di più: correggere una data o una descrizione, o ridurre la nota, riscrive la stessa scrittura, o una che toglie meno.
+     *
+     * @param  list<array<string, mixed>>  $righeProcessate  le righe della nota, con il segno del documento
+     * @param  array<int, int>|null  $prima
+     */
+    public static function motivoNotaSenzaFatturaSuSpesaChiesta(array $righeProcessate, int $moltiplicatore, ?array $prima = null): ?string
+    {
+        $unita = array_keys(array_filter(self::riduzioniPerUnita($righeProcessate, $moltiplicatore),
+            fn (int $n, int $u) => $n > 0 && $n > ($prima[$u] ?? 0), ARRAY_FILTER_USE_BOTH));
+        $voci = \App\Models\Gestionale\RataQuote::rateEmesseConAdPersonam($unita);
+        if ($voci === []) {
+            return null;
+        }
+        $sue = array_values(array_intersect($unita, array_merge(...array_column($voci, 'unita'))));
+        $una = array_sum(array_map(fn (array $v) => count($v['rate']), $voci)) === 1;
+        $apre = 'La nota non dice quale fattura rettifica, e su ' . \App\Models\Gestionale\RataQuote::elencoUnita($sue) . ' '
+            . \App\Models\Gestionale\RataQuote::fraseRateEmesse($voci) . ' con una spesa ad personam: ';
+        $chiesta = ($una ? 'quella rata ha' : 'quelle rate hanno') . ' già chiesto ai condòmini.';
+        // Se la nota rettifica una fattura di quei piani, collegata si rifiuta finché il piano non è tolto (`FatturaPassiva::motivoSpesaAdPersonamGiaChiesta`):
+        // la strada lo dice subito, non al secondo rifiuto (FS-1 della forma semplice).
+        // Un piano che un passaggio di titolarità tiene fermo non si elimina finché il passaggio c'è: i passi sono quelli del pulsante «Ricalcola».
+        $piani = \App\Models\Gestionale\PianoRate::whereIn('id', array_column($voci, 'piano_id'))->orderBy('id')->get();
+        $sePiano = count($voci) === 1
+            ? '; se è una fattura del piano rate «' . $voci[0]['piano'] . '», prima ' . ($piani->first()?->stradaDelPianoConguagliato() ?? ($piani->first()?->haIncassiRegistrati()
+                ? 'storna gli incassi registrati sulle sue rate, annulla le emissioni, riporta il piano in bozza ed eliminalo'
+                : 'annulla le emissioni, riporta il piano in bozza ed eliminalo')) . '.'
+            : '; se è una fattura di uno di quei piani, prima per quel piano storna gli incassi registrati sulle sue rate, se ce ne sono, annulla le '
+                . 'emissioni, riportalo in bozza ed eliminalo'
+                . (($fermi = \App\Models\Gestionale\PianoRate::fraseDeiPianiConguagliati($piani)) === null ? '' : '; ' . $fermi) . '.';
+
+        return $prima === null
+            ? $apre . 'senza la fattura il programma non sa se la nota toglie dall\'unità una spesa che ' . $chiesta
+                . ' Scegli la fattura che la nota rettifica («Fattura che la nota rettifica») e registrala collegata a quella fattura' . $sePiano
+            : $apre . 'la modifica toglierebbe dall\'unità più di prima, e senza la fattura il programma non sa se toglie una spesa che ' . $chiesta
+                . ' Collega prima la nota alla fattura che rettifica («Collega a una fattura»), poi modificala' . $sePiano;
+    }
+
+    /**
+     * L'eccedenza di una pregressa sulle coperture dichiarate, in centesimi: la parte che diventa una copertura
+     * «sopravvenienza» e finisce in un piano (decisione 26, 1.11.0-beta.35). La stessa aritmetica di
+     * `registraFattura()`: totale = imponibile + imposta (quella dichiarata vince sull'aliquota), meno le coperture.
+     */
+    public static function eccedenzaPregressaCents(array $data): int
+    {
+        $imponibile = (int) round(((float) ($data['imponibile_pregresso'] ?? 0)) * 100);
+        $imposta = isset($data['imposta_pregressa'])
+            ? (int) round(((float) $data['imposta_pregressa']) * 100)
+            : (int) round(($imponibile * (float) ($data['aliquota_iva_pregressa'] ?? 22)) / 100);
+        $coperto = 0;
+        // La regola della richiesta la chiama anche quando la validazione è già fallita: un `coperture` che non è una
+        // lista, o una voce che non è un array, non deve diventare un errore 500 (R8 della Fase 1-bis).
+        foreach (is_array($data['coperture'] ?? null) ? $data['coperture'] : [] as $copertura) {
+            if (is_array($copertura)) {
+                $coperto += (int) round(((float) ($copertura['importo'] ?? 0)) * 100);
+            }
+        }
+
+        return abs($imponibile + $imposta) - $coperto;
+    }
+
+    /**
+     * Il periodo di una pregressa si chiude prima dell'esercizio in cui la fattura si registra? (decisione 26). Un
+     * confronto solo per la regola della richiesta e per l'avviso del carrello. Le date passano da Carbon: la regola
+     * `date` accetta anche formati non ISO («15-06-2026»), e il confronto fra stringhe li sbagliava in tutti e due i
+     * versi (R7 della Fase 1-bis). Si confrontano giorni di calendario, non istanti: «2026-01-01T00:00:00+01:00» è il primo
+     * giorno dell'esercizio anche se in UTC è ancora il 31/12 (verifica delle correzioni). Una data che non si legge non si
+     * giudica: la segnala già la regola `date`.
+     */
+    public static function periodoChiusoPrimaDellEsercizio(mixed $al, mixed $inizioEsercizio): ?bool
+    {
+        if (blank($al) || blank($inizioEsercizio) || ! is_string($al) && ! $al instanceof \DateTimeInterface) {
+            return null;
+        }
+        try {
+            return \Carbon\Carbon::parse($al)->toDateString() < \Carbon\Carbon::parse($inizioEsercizio)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function motivoBloccoModifica(FatturaPassiva $fattura): ?string
     {
         if ($fattura->stato_pagamento === StatoPagamentoFattura::STORNATA || ($fattura->dati_extra['is_stornata'] ?? false)) {
             return 'Fattura già stornata: non modificabile.';
         }
 
+        // Le guardie qui sotto mandano allo storno. Se lo storno oggi è rifiutato — la fattura sta in un piano che non ha
+        // incassato, o ha pagamenti (`FatturaPassiva::motivoBloccoStorno()`) — il motivo lo dice, con la via: prima una
+        // pregressa in un piano in bozza si sentiva dire «usa lo storno», e lo storno la rifiutava (verifica delle
+        // correzioni della Fase 1-bis, 1.11.0-beta.35).
+        $viaStorno = fn (string $perche, string $via = 'usa lo storno.') => ($blocco = $fattura->motivoBloccoStorno())
+            ? "{$perche}: si corregge con lo storno, che però ora non è possibile. {$blocco}"
+            : "{$perche}: {$via}";
+
         if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
-            return 'La fattura ha già un pagamento registrato. Usa lo storno.';
+            return $viaStorno('La fattura ha già un pagamento registrato');
         }
 
         $statoEsercizio = DB::table('esercizi')->where('id', $fattura->esercizio_id)->value('stato');
         if ($statoEsercizio === 'chiuso') {
-            return 'La fattura appartiene a un esercizio chiuso: usa lo storno.';
+            return $viaStorno('La fattura appartiene a un esercizio chiuso');
         }
 
         if ($fattura->is_pregresso) {
-            return 'Le fatture pregresse non sono modificabili direttamente: usa lo storno.';
+            return $viaStorno('Le fatture pregresse non sono modificabili direttamente');
         }
 
         if ($fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists()) {
-            return 'La fattura ha coperture di sopravvenienza: usa lo storno.';
+            return $viaStorno('La fattura ha coperture di sopravvenienza');
         }
 
         // Beta.19: la copertura fondo — pianificata o confermata — fotografa lo sforo
@@ -600,11 +913,11 @@ class FatturaPassivaService
         // le coperture: una modifica lascerebbe un importo di copertura stantio,
         // confermabile con un giroconto sbagliato.
         if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->exists()) {
-            return 'La fattura ha una copertura dal fondo di riserva: usa lo storno e registrala di nuovo.';
+            return $viaStorno('La fattura ha una copertura dal fondo di riserva', 'usa lo storno e registrala di nuovo.');
         }
 
         if ($fattura->stato_approvazione === 'sforo_motivato') {
-            return 'La fattura ha uno sforo in attesa di ratifica assembleare: usa lo storno.';
+            return $viaStorno('La fattura ha uno sforo in attesa di ratifica assembleare');
         }
 
         // Le strategie conguaglio/rata integrativa non creano coperture, quindi il
@@ -613,30 +926,51 @@ class FatturaPassivaService
         // dello sforo in dati_extra riferiti a cifre che l'assemblea non ha mai
         // visto. Stessa regola della copertura: la ratifica fotografa la fattura.
         if (! empty($fattura->dati_extra['override_budget'])) {
-            return 'Lo sforo di questa fattura è stato motivato e ratificato in assemblea: usa lo storno e registrala di nuovo.';
+            return $viaStorno('Lo sforo di questa fattura è stato motivato e ratificato in assemblea', 'usa lo storno e registrala di nuovo.');
         }
 
-        // Controllo piano rate (replica del controllo in destroy())
-        $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
-        if ($pivotPlan) {
-            $piano = PianoRate::find($pivotPlan->piano_rate_id);
-            if ($piano instanceof PianoRate) {
-                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))->exists();
-                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
-                if ($hasPagamenti || $hasEmissioni) {
-                    return 'La fattura è in un piano straordinario con rate già emesse: usa lo storno.';
-                }
-                $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
-                if ($stato === 'approvato') {
-                    return 'La fattura è in un piano approvato: usa lo storno.';
-                }
-            }
+        // Controllo piano rate, su OGNI piano che contiene la fattura (Coda 156, 1.11.0-beta.35): una fattura si può
+        // dividere fra più piani — il carrello offre il residuo — e la guardia leggeva solo la prima riga della tabella
+        // ponte, senza ordine: con la prima parte in un piano in bozza e la seconda in uno approvato la fattura restava
+        // modificabile. Conta il piano più avanzato, con la regola unica di modifica, eliminazione e storno
+        // (`FatturaPassiva::pianiConGrado()`, R1 della Fase 1-bis): la modifica mandava allo storno anche dove lo storno
+        // lascia la fattura nel piano, che continua a chiederla. Fra i gradi del piano, solo quello che ha già incassato
+        // manda allo storno (le guardie sopra lo fanno per altre ragioni, con `$viaStorno`).
+        if ($voce = $fattura->pianoAlGrado('incassato', 'emesso', 'approvato')) {
+            $nome = $voce['piano']->nome;
+
+            return match ($voce['grado']) {
+                'incassato' => $fattura->motivoBloccoStorno()
+                    ?? "La fattura è nel piano rate «{$nome}», che ha già incassato rate, o crediti già compensati o rimborsati: usa lo storno.",
+                'emesso' => "La fattura è nel piano rate «{$nome}», che ha già rate emesse: annulla le emissioni e riportalo in bozza per modificarla.",
+                'approvato' => "La fattura è nel piano rate «{$nome}», che è approvato: riportalo in bozza per modificarla.",
+            };
         }
 
         return null;
     }
 
-    public function aggiornaFattura(FatturaPassiva $fattura, array $data, ?UploadedFile $file = null): FatturaPassiva
+    /**
+     * Aggiorna una fattura passiva aperta, ricreando le scritture contabili.
+     *
+     * Permessa solo per fatture ordinarie completamente aperte (nessun pagamento,
+     * nessuna sopravvenienza, non pregresse, non in sforo pendente, esercizio aperto):
+     * i motivi sono in `motivoBloccoModifica()`. Con la fattura in un piano rate vale la
+     * regola unica di `FatturaPassiva::pianiConGrado()` (1.11.0-beta.35): piano approvato o
+     * con rate emesse → si riporta in bozza (annullando le emissioni) e si modifica; piano
+     * che ha già incassato → storno.
+     *
+     * Effetti collaterali:
+     *  - Se `data_scadenza` cambia → aggiorna start_time del task Inbox `pagamento_fornitore`
+     *  - Il numero_protocollo è immutabile (identificativo contabile)
+     *  - Non riemette FatturaRegistrata (evita duplicazione task Inbox)
+     *
+     * @param  FatturaPassiva  $fattura  La fattura da aggiornare (con relazioni caricate).
+     * @param  array  $data  I nuovi dati validati (stessa struttura di registraFattura, senza fornitore_id e tipo_documento).
+     *
+     * @throws FatturaModificaVietataException Se la fattura non può essere modificata direttamente.
+     */
+    public function aggiornaFattura(FatturaPassiva $fattura, array $data): FatturaPassiva
     {
         if ($motivo = $this->motivoBloccoModifica($fattura)) {
             throw new FatturaModificaVietataException($motivo);
@@ -647,10 +981,21 @@ class FatturaPassivaService
         $importoBefore = $fattura->netto_a_pagare;
 
         // ── Transazione atomica ──────────────────────────────────────────────
-        return DB::transaction(function () use ($fattura, $data, $file, $dataScadenzaBefore, $importoBefore) {
+        return DB::transaction(function () use ($fattura, $data, $dataScadenzaBefore, $importoBefore) {
+
+            // Il netto della fattura che questa nota rettifica, prima della modifica (Coda 165). `false`: non serve.
+            // L'importo della nota prima della modifica: il tetto di una nota contestata scatta solo se cresce (W3).
+            $importoNotaPrima = abs((int) $fattura->totale_documento);
+            $nettoRettificataPrima = ($fattura->tipo_documento === 'nota_credito' && $fattura->fattura_rettificata_id !== null)
+                ? NettoNoteCollegate::perFattura((int) $fattura->fattura_rettificata_id)
+                : false;
 
             // 1. Pulizia scritture esistenti (identico a destroy())
             $fattura->load('righe', 'documenti', 'scritture', 'coperture');
+            // Coda 313 (decisione 160): quanto la nota toglieva da ogni unità prima della modifica (la guardia della nota senza fattura, sotto).
+            $riduzioniPrima = $fattura->tipo_documento === 'nota_credito'
+                ? self::riduzioniPerUnita($fattura->righe->map(fn ($r) => $r->only(['immobile_id', 'importo_imponibile', 'importo_iva']))->all(), -1)
+                : [];
             $scritture = $fattura->scritture;
 
             $fattura->scritture()->detach();
@@ -668,6 +1013,10 @@ class FatturaPassivaService
                 'numero_documento' => $data['numero_documento'],
                 'data_documento' => $data['data_documento'],
                 'data_scadenza' => $data['data_scadenza'],
+                // La competenza si modifica dall'edit come le altre date (B2, S6): la fattura arriva qui
+                // solo se `motivoBloccoModifica` è nullo, cioè fuori da ogni piano approvato.
+                'competenza_dal' => $data['competenza_dal'] ?? null,
+                'competenza_al' => $data['competenza_al'] ?? null,
                 'modalita_pagamento' => $data['modalita_pagamento'],
                 'iban_fornitore' => $data['iban_fornitore'] ?? null,
                 'conto_corrente_id' => $data['conto_corrente_id'] ?? $fattura->conto_corrente_id,
@@ -678,15 +1027,30 @@ class FatturaPassivaService
             $isNotaCredito = ($fattura->tipo_documento === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
 
+            // L'imposta che il documento dichiara per ogni gruppo IVA, gia ripartita fra le
+            // righe che vi appartengono. Vuota quando il documento non dichiara i propri
+            // riepiloghi (fattura digitata a mano): allora si calcola come si e sempre fatto.
+            $ivaDistribuita = self::distribuisciImpostaDichiarata($data, $fattura);
+
             $imponibileTotale = 0;
             $ivaTotale = 0;
             $righeProcessate = [];
             $righeRitenuta = [];
 
-            foreach ($data['righe'] as $rigaInput) {
+            foreach ($data['righe'] as $indiceRiga => $rigaInput) {
                 $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
                 $aliq = (float) $rigaInput['aliquota_iva'];
-                $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+                // Se il documento dichiara la propria imposta, quella vince: la somma degli
+                // arrotondamenti di riga non e l'imposta del documento, ed e la differenza
+                // fra 10,05 e 10,06 sulla bolletta del file 06 dei collaudi.
+                // Priorita: (1) l'imposta dichiarata dal documento, distribuita; (2) quella che
+                // il chiamante impone riga per riga -- e lo storno, che deve essere lo specchio
+                // esatto della fattura e non una sua riapprossimazione; (3) il calcolo per riga
+                // di sempre, per la fattura digitata a mano.
+                $ivaRiga = $ivaDistribuita[$indiceRiga]
+                    ?? (isset($rigaInput['importo_iva_dichiarata'])
+                        ? (int) round($rigaInput['importo_iva_dichiarata'] * 100)
+                        : (int) round(($impRiga * $aliq) / 100));
 
                 $imponibileTotale += $impRiga;
                 $ivaTotale += $ivaRiga;
@@ -718,13 +1082,89 @@ class FatturaPassivaService
             // storno la propaga esplicitamente (design §8 punti 2 e 3).
             $richiestaApplicazioneRitenuta = $data['applica_ritenuta'] ?? ! $isNotaCredito;
 
-            $ritenutaCalcolo = app(RitenutaService::class)->calcola(
-                $fornitore,
-                $righeRitenuta,
-                $imponibileTotale,
-                $richiestaApplicazioneRitenuta,
-                Carbon::parse($data['data_documento'] ?? $fattura->data_documento),
-            );
+            // ⚠️ **Coda 123, 04/09/2026.** Una NC nata da uno storno porta una ritenuta
+            // GIÀ CONGELATA sull'importo reale dell'originale (`StornoFatturaController`
+            // passa `ritenuta_override` a `registraFattura()`, che la persiste in
+            // `dati_extra.fiscal.ritenuta_details` — vedi il commento lì). Ricalcolarla
+            // qui con `RitenutaService::calcola()` interroga l'anagrafica **attuale** del
+            // fornitore: se cambia fra lo storno e questa modifica (es. diventa
+            // forfetario), un salvataggio che tocca solo una descrizione o una data
+            // ricalcolerebbe una ritenuta diversa da quella davvero registrata — riaprendo
+            // lo stesso residuo fantasma su 2201/2202 che l'override dello storno
+            // (design §8 punto 2) doveva chiudere, stavolta dalla porta della modifica
+            // invece che da quella dello storno. Il congelamento si applica solo se
+            // l'imponibile non è cambiato: una NC da storno non dovrebbe mai vedere le
+            // proprie righe alterate in importo (il suo imponibile è per definizione lo
+            // specchio dell'originale), ma se succede il ricalcolo dal vivo resta l'unica
+            // opzione sensata, perché un importo congelato non avrebbe più relazione con
+            // un imponibile diverso da quello per cui era stato calcolato.
+            //
+            // ⚠️ **La fonte di verità è la fattura ORIGINALE, non la nota stessa** — e non è
+            // un dettaglio di stile: è la correzione di un difetto che la prima stesura di
+            // questa coda aveva introdotto, trovato dalla revisione avversariale del
+            // 05/09/2026 e provato con una sonda. Leggendo i campi della nota si costruiva
+            // una tagliola su DUE salvataggi: il primo con l'imponibile alterato passava dal
+            // ramo dal vivo e — poiché il passo 5 riscrive `ritenuta_details` e
+            // `importo_ritenuta` in ogni caso — cancellava il valore congelato dalla nota;
+            // il secondo, tornato all'imponibile giusto, congelava lo ZERO appena scritto,
+            // rendendo **permanente** il residuo fantasma sul 2202 che questa coda esiste per
+            // impedire. Misurato: ritenuta 0 e € 40,00 di AVERE senza contropartita.
+            // L'originale non ha questo problema perché è immodificabile per costruzione —
+            // `motivoBloccoModifica()` rifiuta ogni fattura già stornata — quindi il valore
+            // congelato resta recuperabile anche dopo un salvataggio uscito dal binario.
+            $eNotaDaStorno = ! empty($fattura->dati_extra['nota_storno'] ?? null);
+
+            $originaleStornato = $eNotaDaStorno
+                ? FatturaPassiva::where('condominio_id', $fattura->condominio_id)
+                    ->where('dati_extra->stornata_da_id', $fattura->id)
+                    ->first()
+                : null;
+
+            // Il ripiego sulla nota serve alle note nate prima che lo storno scrivesse
+            // `stornata_da_id`: peggiore dell'originale, ma meglio del ricalcolo dal vivo,
+            // che su un fornitore cambiato azzera la ritenuta in silenzio.
+            $fonteCongelamento = $originaleStornato ?? $fattura;
+
+            if ($eNotaDaStorno && ! $originaleStornato) {
+                Log::warning('Coda 123: nota da storno senza originale raggiungibile, congelamento letto dai campi della nota', [
+                    'fattura_id' => $fattura->id,
+                ]);
+            }
+
+            $imponibileOriginale = abs((int) $fonteCongelamento->importo_imponibile);
+
+            if ($eNotaDaStorno && $imponibileTotale === $imponibileOriginale) {
+                $dettagliCongelati = $fonteCongelamento->dati_extra['fiscal']['ritenuta_details'] ?? [];
+                $ritenutaCalcolo = RitenutaCalcolo::override(
+                    abs((int) $fonteCongelamento->importo_ritenuta),
+                    isset($dettagliCongelati['aliquota']) ? (float) $dettagliCongelati['aliquota'] : null,
+                    $dettagliCongelati['codice_tributo'] ?? null,
+                    isset($dettagliCongelati['imponibile_calcolo']) ? (int) $dettagliCongelati['imponibile_calcolo'] : null,
+                );
+            } else {
+                if ($eNotaDaStorno) {
+                    // Caso anomalo: le righe di una NC da storno sono state alterate in
+                    // importo. Non blocchiamo il salvataggio — non è lo scenario che
+                    // questa coda chiude — ma il ricalcolo dal vivo che segue non è più
+                    // protetto dal congelamento, e vale la pena saperlo se succede.
+                    // Non è più una condanna definitiva: rimettendo l'imponibile
+                    // dell'originale, il salvataggio successivo ritrova il valore congelato
+                    // là dove nessuno può averlo toccato.
+                    Log::warning('Coda 123: NC da storno modificata con imponibile diverso dall\'originale, ritenuta ricalcolata dal vivo', [
+                        'fattura_id' => $fattura->id,
+                        'imponibile_originale' => $imponibileOriginale,
+                        'imponibile_nuovo' => $imponibileTotale,
+                    ]);
+                }
+
+                $ritenutaCalcolo = app(RitenutaService::class)->calcola(
+                    $fornitore,
+                    $righeRitenuta,
+                    $imponibileTotale,
+                    $richiestaApplicazioneRitenuta,
+                    Carbon::parse($data['data_documento'] ?? $fattura->data_documento),
+                );
+            }
 
             $ritenuta = $ritenutaCalcolo->importo;
             $datiRitenuta = $ritenutaCalcolo->toLegacyDatiExtra();
@@ -734,6 +1174,9 @@ class FatturaPassivaService
 
             // 5. Aggiorna importi sulla fattura
             $datiExtra = $fattura->dati_extra ?? [];
+            // La chiave `competenza` di prima della beta.31 (`{dal:'',al:''}` scritta a vuoto dal form): le
+            // colonne sono la sola sede, e una riga che passa dall'edit non se la porta più dietro.
+            unset($datiExtra['competenza']);
             $datiExtra['fiscal']['ritenuta_details'] = $datiRitenuta;
             $datiExtra['fiscal']['motivo_esclusione_ritenuta'] = $this->motivoEsclusioneRitenuta($ritenutaCalcolo, $data);
 
@@ -748,6 +1191,50 @@ class FatturaPassivaService
 
             // 6. Ricrea righe
             $fattura->righe()->createMany($righeProcessate);
+
+            // Coda 165 (1.11.0-beta.36): una nota collegata che, modificata, riduce di più la fattura che rettifica
+            // segue la scala della registrazione. Il confronto è fra il netto letto all'inizio della transazione e
+            // quello riletto adesso, con le righe nuove: gli stessi numeri che useranno carrello e motore.
+            if ($nettoRettificataPrima !== false) {
+                $rettificata = FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])
+                    ->lockForUpdate()->find($fattura->fattura_rettificata_id);
+                $statoNota = is_object($fattura->stato_approvazione) ? $fattura->stato_approvazione->value : $fattura->stato_approvazione;
+                $importoContestata = $statoNota === 'contestata' ? abs((int) $fattura->totale_documento) : 0;
+                if ($rettificata && ($motivo = $rettificata->motivoBloccoModificaNota($nettoRettificataPrima, 'modifica la nota', $importoContestata, $importoContestata > 0 ? $importoNotaPrima : 0))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+                // Coda 313 (decisione 160): la modifica che toglie di più da un'unità a cui una rata emessa ha chiesto la spesa ad personam
+                // della fattura. Le unità che la nota riduce come prima, o meno, non cambiano niente di quello che le rate hanno chiesto.
+                $piuDiPrima = array_filter(self::riduzioniPerUnita($righeProcessate, $moltiplicatore),
+                    fn (int $n, int $u) => $n > 0 && $n > ($riduzioniPrima[$u] ?? 0), ARRAY_FILTER_USE_BOTH);
+                // Limite L4: anche la parte che toglie da un'unità più di quanto la fattura le addebita (`FatturaPassiva::motivoNotaOltreLaFattura`).
+                if ($rettificata && $piuDiPrima !== [] && ($motivo = $rettificata->motivoSpesaAdPersonamGiaChiesta('nota', 'modifica la nota', array_keys($piuDiPrima))
+                    ?? $rettificata->motivoNotaOltreLaFattura('nota', $piuDiPrima, (int) $fattura->id))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+                // Con un piano che ha incassato: la modifica si salva dopo una conferma, chiesta con un secondo invio —
+                // il numero «dopo» esiste solo qui, a righe scritte (R5 della Fase 1-bis).
+                if ($rettificata && ! filter_var($data['conferma_avviso_nota'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    && ($avviso = $rettificata->avvisoModificaNota($nettoRettificataPrima))) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoAvvisoDaConfermareException($avviso);
+                }
+            }
+
+            // Coda 313 (decisione 160): la nota senza fattura che, modificata, toglie di più da un'unità a cui una rata emessa ha chiesto una
+            // spesa ad personam. La nota nata da uno storno no: la sua guardia è quella dello storno.
+            if ($isNotaCredito && $fattura->fattura_rettificata_id === null && ! $fattura->eNataDaStorno()
+                && ($motivo = self::motivoNotaSenzaFatturaSuSpesaChiesta($righeProcessate, $moltiplicatore, $riduzioniPrima))) {
+                throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+            }
+
+            // Coda 165: una fattura con note collegate non scende sotto quanto le note già rettificano — la stessa regola
+            // del collegamento, «mai oltre il totale» (domanda aperta della Fase 1-bis).
+            if ($fattura->tipo_documento === 'fattura') {
+                // Un'istanza fresca: importi e righe si leggono come sono adesso, dentro la transazione.
+                if ($motivo = FatturaPassiva::with('noteCollegate')->find($fattura->id)?->motivoBloccoModificaFatturaRettificata()) {
+                    throw new \App\Exceptions\Gestionale\NotaCreditoCollegamentoVietatoException($motivo);
+                }
+            }
 
             // 7. Ricrea scrittura contabile con la stessa logica di registraFattura()
             $contoDebiti = ContoContabile::where('condominio_id', $fattura->condominio_id)
@@ -774,12 +1261,35 @@ class FatturaPassivaService
             $anagraficaPrincipale = $fornitore->referenti()->first();
 
             foreach ($righeProcessate as $riga) {
-                $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
+                // ⚠️ Rimoltiplicazione per `$moltiplicatore` come nella registrazione: qui le
+                // righe hanno già il segno del documento, e il verso della nota di credito lo
+                // dà l'invertitore in fondo. Serve il segno naturale della riga — vedi il
+                // commento esteso in `registraFattura()`.
+                $importoSegnatoRiga = ($riga['importo_imponibile'] + $riga['importo_iva']) * $moltiplicatore;
+                $importoLordoRiga = abs($importoSegnatoRiga);
+
+                // ⚠️ Stessa guardia della registrazione, e per lo stesso motivo: una riga da
+                // € 0,00 — quelle puramente descrittive che gli XML veri portano — non produce
+                // nessuna scrittura, e senza questo `continue` finiva nel ramo «impossibile
+                // allocare la riga» qui sotto. Qui pesa di più che nella registrazione: una
+                // fattura importata con una riga descrittiva sarebbe diventata **non
+                // modificabile**, perché ogni tentativo di salvataggio esplodeva (Fase 1-bis,
+                // reperto 3, avvertenza del critico avversariale).
+                if ($importoLordoRiga === 0) {
+                    continue;
+                }
+
+                // ⚠️ Stesso verso della registrazione, e per la stessa ragione — vedi il
+                // commento lungo in `registraFattura()`. Qui però il difetto mordeva due
+                // volte: una fattura con una riga negativa non solo non si registrava, ma
+                // nemmeno si **rimodificava**, perché `aggiornaFattura()` ricostruisce la
+                // scrittura da zero e ripassava dallo stesso `abs()`.
+                $versoRiga = $importoSegnatoRiga < 0 ? 'avere' : 'dare';
 
                 if (! empty($riga['immobile_id'])) {
                     $scrittura->righe()->create([
                         'conto_contabile_id' => $contoCreditiCondomini->id,
-                        'tipo_riga' => 'dare',
+                        'tipo_riga' => $versoRiga,
                         'importo' => $importoLordoRiga,
                         'voce_spesa_id' => null,
                         'immobile_id' => $riga['immobile_id'],
@@ -790,7 +1300,7 @@ class FatturaPassivaService
                     if ($contoBudget && $contoBudget->conto_contabile_id) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                            'tipo_riga' => 'dare',
+                            'tipo_riga' => $versoRiga,
                             'importo' => $importoLordoRiga,
                             'voce_spesa_id' => $riga['conto_id'],
                         ]);
@@ -802,11 +1312,14 @@ class FatturaPassivaService
                 }
             }
 
-            // Riga AVERE — Debito verso Fornitore
+            // Riga Debito verso Fornitore — stesso verso calcolato della registrazione, e per
+            // la stessa ragione: vedi il commento esteso in `registraFattura()`.
+            $nettoNaturale = $totaleDoc - $ritenuta;
+
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
-                'tipo_riga' => 'avere',
-                'importo' => abs($netto),
+                'tipo_riga' => $nettoNaturale < 0 ? 'dare' : 'avere',
+                'importo' => abs($nettoNaturale),
                 'anagrafica_id' => $anagraficaPrincipale?->id,
             ]);
 
@@ -843,32 +1356,15 @@ class FatturaPassivaService
                 'tipo' => 'competenza',
             ]);
 
-            // 10. Gestione allegato: nuovo file → elimina vecchio → salva
-            if ($file) {
-                foreach ($fattura->documenti as $doc) {
-                    if (Storage::disk('local')->exists($doc->path)) {
-                        Storage::disk('local')->delete($doc->path);
-                    }
-                    $doc->delete();
-                }
-
-                $path = $file->storeAs('documenti/'.$fattura->condominio_id, $file->hashName(), 'local');
-                $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
-
-                $fattura->documenti()->create([
-                    'name' => $file->getClientOriginalName(),
-                    'description' => 'Fattura passiva n. '.$fattura->numero_documento,
-                    'path' => $path,
-                    'mime_type' => $file->getMimeType(),
-                    'file_size' => $file->getSize(),
-                    'created_by' => Auth::id() ?? 1,
-                    'is_published' => false,
-                    'is_approved' => true,
-                    'category_id' => $categoriaFatture?->id,
-                ]);
-            }
-
-            // 11. Aggiorna task Inbox `pagamento_fornitore` se data_scadenza cambiata
+            // 10. Aggiorna task Inbox `pagamento_fornitore` se data_scadenza cambiata
+            //
+            // ⚠️ La gestione dell'allegato NON vive più qui (Coda 102, 1.11.0-beta.12):
+            // allegare un documento passava da questo metodo, che riscrive tutte le
+            // scritture contabili per un file — e il ramo cancellava ogni allegato
+            // esistente prima di salvarne uno solo. I due difetti sono la stessa causa:
+            // l'allegato era saldato al form contabile. Ora si allega da
+            // FatturaPassivaService::aggiungiDocumento(), che non tocca contabilità né
+            // allegati preesistenti — vedi FatturaPassivaController::storeDocumento().
             $nuovaScadenza = $fattura->fresh()->data_scadenza;
             if ($nuovaScadenza && $dataScadenzaBefore !== $nuovaScadenza->format('Y-m-d')) {
                 Evento::where('meta->context->fattura_id', $fattura->id)
@@ -877,7 +1373,7 @@ class FatturaPassivaService
                     ->update(['start_time' => $nuovaScadenza->setTime(9, 0)]);
             }
 
-            // 12. Audit trail
+            // 11. Audit trail
             Log::info("FatturaPassiva #{$fattura->id} modificata da utente #".(Auth::id() ?? 0), [
                 'netto_a_pagare_before' => $importoBefore,
                 'netto_a_pagare_after' => $fattura->fresh()->netto_a_pagare,
@@ -887,6 +1383,89 @@ class FatturaPassivaService
 
             return $fattura->fresh();
         });
+    }
+
+    /**
+     * Allega un documento a una fattura già registrata (Coda 102, 1.11.0-beta.12).
+     *
+     * Deliberatamente FUORI dalla transazione contabile: un allegato non è un fatto
+     * contabile e non deve costare né una riscrittura delle scritture né passare dalla
+     * guardia `motivoBloccoModifica()`. È il motivo per cui questo metodo non chiama
+     * `aggiornaFattura()` — chiamarlo per un solo file avrebbe voluto dire tornare
+     * esattamente al difetto che risolve.
+     *
+     * Nessuna guardia sullo stato della fattura, di proposito: un documento è una prova,
+     * non riscrive un bilancio. Consentito anche a esercizio chiuso — decisione di
+     * Vincenzo, 01/09/2026.
+     *
+     * Non cancella gli allegati esistenti (a differenza del vecchio ramo in
+     * aggiornaFattura()): morphMany regge già più righe, il difetto era solo qui.
+     */
+    public function aggiungiDocumento(FatturaPassiva $fattura, UploadedFile $file): Documento
+    {
+        return $this->creaDocumentoFattura($fattura, $file);
+    }
+
+    /**
+     * Il salvataggio vero e proprio, condiviso fra registraFattura() e
+     * aggiungiDocumento(): stesso storage, stessa categoria per chiave stabile
+     * (Coda 106), stesso fallback silenzioso se la categoria manca.
+     */
+    private function creaDocumentoFattura(FatturaPassiva $fattura, UploadedFile $file): Documento
+    {
+        $path = app(ArchivioDocumenti::class)->salva($file, 'documenti/'.$fattura->condominio_id);
+
+        // ⚠️ **`storeAs()` non solleva se scrive fallisce — restituisce `false`.**
+        // Il disco `local` ha `'throw' => false` (config/filesystems.php): un volume
+        // pieno o una cartella non scrivibile dopo un redeploy non lanciano
+        // un'eccezione, e senza questo controllo `false` finiva a database come
+        // `path`, MySQL lo scriveva come stringa "0", e l'amministratore leggeva
+        // «Documento allegato con successo» per un file che non esiste da nessuna
+        // parte. Trovato dalla revisione avversariale della beta.12, con una sonda
+        // che ha riprodotto esattamente questo.
+        if ($path === false) {
+            throw new \RuntimeException('Impossibile scrivere il file sul disco.');
+        }
+
+        try {
+            // ⚠️ **Per chiave stabile, non per etichetta.** Cercava `where('name', 'Fatture')`,
+            // e bastava che l'amministratore rinominasse la categoria perché ogni allegato di
+            // fattura finisse in archivio **senza categoria**, in silenzio (Coda 106).
+            // `perFatture()` cerca lo slug e ricade sull'etichetta, quindi trova la categoria
+            // in più casi di prima e mai in meno.
+            $categoriaFatture = CategoriaDocumento::perFatture();
+
+            $documento = $fattura->documenti()->create([
+                'name' => $file->getClientOriginalName(),
+                'description' => 'Fattura passiva n. '.$fattura->numero_documento,
+                'path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'created_by' => Auth::id() ?? 1,
+                'is_published' => false,
+                'is_approved' => true,
+            ]);
+
+            // ⚠️ **Il legame, non più la colonna** (1.11.0-beta.10). E resta condizionato:
+            // se la categoria non c'è l'allegato si salva lo stesso, senza categoria, com'era
+            // prima. Toglierlo trasformerebbe una degradazione in un errore in faccia a chi
+            // sta allegando un documento.
+            if ($categoriaFatture) {
+                $documento->categorie()->attach($categoriaFatture->id);
+            }
+        } catch (\Throwable $e) {
+            // ⚠️ **Il file è già sul disco quando questo blocco può fallire.** Senza
+            // questo cleanup, un INSERT respinto da MySQL (per esempio un nome file
+            // con byte non-UTF-8: errore 1366, trovato dalla revisione avversariale
+            // della beta.12) lascia un file orfano che nessuna riga punta più — e
+            // ogni tentativo dell'amministratore, dopo l'errore mostrato, ne lascia
+            // un altro.
+            app(ArchivioDocumenti::class)->elimina($path);
+
+            throw $e;
+        }
+
+        return $documento;
     }
 
     /**
@@ -999,5 +1578,215 @@ class FatturaPassivaService
         }
 
         return $nuovoConto->id;
+    }
+
+    /**
+     * L'IVA di una riga in registrazione, con le priorità di sempre: (1) l'imposta dichiarata dal documento, distribuita;
+     * (2) quella che il chiamante impone riga per riga (lo storno); (3) il calcolo per riga. Estratta perché la legge
+     * anche `StoreFatturaRequest` per il tetto della nota collegata: ricalcolando da sé, rifiutava per un centesimo la
+     * nota da XML che annulla la sua fattura (V2 della verifica delle correzioni della Fase 1-bis, beta.36).
+     *
+     * @param  array<int|string, int>  $ivaDistribuita  da `distribuisciImpostaDichiarata`
+     */
+    public static function ivaDellaRigaCents(array $ivaDistribuita, int|string $indiceRiga, array $riga, int $imponibileRigaCents): int
+    {
+        return $ivaDistribuita[$indiceRiga]
+            ?? (isset($riga['importo_iva_dichiarata'])
+                ? (int) round($riga['importo_iva_dichiarata'] * 100)
+                : (int) round(($imponibileRigaCents * (float) ($riga['aliquota_iva'] ?? 0)) / 100));
+    }
+
+    /** L'IVA del pannello della pregressa: l'imposta dichiarata vince sull'aliquota (vedi `registraFattura`). */
+    public static function ivaPregressaCents(array $data, int $imponibileCents): int
+    {
+        return isset($data['imposta_pregressa'])
+            ? (int) round($data['imposta_pregressa'] * 100)
+            : (int) round(($imponibileCents * (float) ($data['aliquota_iva_pregressa'] ?? 22)) / 100);
+    }
+
+    /**
+     * Il totale lordo che `registraFattura` scriverà per questi dati, in centesimi e senza segno: la stessa formula,
+     * non una copia. Per la richiesta, che controlla il tetto della nota collegata prima del servizio (V2).
+     */
+    public static function totaleLordoCents(array $data): int
+    {
+        if (filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $imponibile = (int) round(($data['imponibile_pregresso'] ?? 0) * 100);
+
+            return abs($imponibile + self::ivaPregressaCents($data, $imponibile));
+        }
+
+        $ivaDistribuita = self::distribuisciImpostaDichiarata($data);
+        $totale = 0;
+        foreach ((array) ($data['righe'] ?? []) as $indice => $riga) {
+            $imponibile = (int) round(((float) ($riga['importo_imponibile'] ?? 0)) * 100);
+            $totale += $imponibile + self::ivaDellaRigaCents($ivaDistribuita, $indice, (array) $riga, $imponibile);
+        }
+
+        return abs($totale);
+    }
+
+    /**
+     * Ripartisce fra le righe l'imposta che il documento dichiara nei propri `DatiRiepilogo`.
+     *
+     * **Perché non basta calcolarla riga per riga.** La fattura elettronica dichiara l'imposta
+     * per ogni coppia aliquota/natura, ed è quello il numero che il fornitore chiede. Calcolarla
+     * riga per riga significa arrotondare N volte e poi sommare, invece di sommare e arrotondare
+     * una volta sola: sul file 06 dei collaudi le tre righe al 22 % (40,61 · 6,93 · −1,80) danno
+     * 8,93 + 1,52 − 0,40 = **10,05**, mentre l'imponibile del gruppo (45,74) al 22 % fa **10,06**.
+     * Il documento vale € 100,15 e veniva registrato a € 100,14.
+     *
+     * La regola era già scritta nel progetto e il motore la contraddiceva: il docblock di
+     * `FatturaPaFattura::imponibileDichiaratoCents()` dice «è questo il numero da usare per
+     * registrare», quello di `sommaRigheCents()` dice «usare questo per registrare è un difetto,
+     * non una scorciatoia».
+     *
+     * **Tre guardie, e nessuna è teorica.**
+     *
+     * 1. **Peso zero, imposta zero, sempre.** Una riga descrittiva a € 0,00 — i file 04 e 09 ne
+     *    hanno — non deve mai ricevere un centesimo: una riga con lordo zero non produce
+     *    scrittura contabile, ma con un centesimo di IVA la produrrebbe **senza capitolo**, e
+     *    finirebbe nel ramo «impossibile allocare la riga»: 500 con rollback, fattura persa.
+     * 2. **Gruppo che non si può normalizzare.** Se le righe di un gruppo sommano a zero, non
+     *    c'è proporzione da rispettare: quel gruppo torna al calcolo per riga.
+     * 3. **Gruppo senza riepilogo, o riepilogo senza righe.** Si tocca solo ciò che combacia;
+     *    tutto il resto resta com'era. Verificato il 06/09/2026 sugli undici file di collaudo:
+     *    raggruppando per (aliquota, natura) l'imponibile ricostruito coincide con quello
+     *    dichiarato in **tutti e undici**, contributi cassa previdenziale compresi.
+     *
+     * ⚠️ **La somma delle imposte distribuite vale esattamente l'imposta del gruppo**, perché
+     * `distribuisciPesiNormalizzati()` lo garantisce. Non è un dettaglio estetico: `$ivaTotale`
+     * finisce nella riga di testata della scrittura contabile, e se le righe non sommassero a
+     * quel numero `DoubleEntryValidator` respingerebbe l'intera fattura.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<int, int>  [indice della riga => imposta in centesimi]. Vuoto se il
+     *                          documento non dichiara riepiloghi utilizzabili.
+     */
+    public static function distribuisciImpostaDichiarata(array $data, ?FatturaPassiva $esistente = null): array
+    {
+        // ⚠️ **La modifica non riceve il file, quindi non riceve i riepiloghi.** Senza questo
+        // ripiego una fattura importata a € 100,15 tornerebbe a € 100,14 al primo salvataggio —
+        // bastava correggere una data. È la firma esatta del difetto ② della beta.18: nessun
+        // avviso, contabilità in quadratura, importo diverso. Per questo l'imposta dichiarata
+        // si conserva in `dati_extra.fiscal.riepiloghi_dichiarati` alla registrazione e si
+        // rilegge da lì, invece di essere ricalcolata.
+        $riepiloghi = $data['riepiloghi']
+            ?? $esistente?->dati_extra['fiscal']['riepiloghi_dichiarati']
+            ?? null;
+        if (! is_array($riepiloghi) || $riepiloghi === [] || ! isset($data['righe']) || ! is_array($data['righe'])) {
+            return [];
+        }
+
+        // La chiave del gruppo è la COPPIA aliquota/natura, non la sola aliquota: il tracciato
+        // dichiara un riepilogo per coppia, e due blocchi a 0 % con nature diverse sono due
+        // gruppi distinti — il file 06 ne ha uno al 22 % e uno a 0 %/N2.2.
+        $chiave = static fn ($aliquota, $natura): string => number_format((float) $aliquota, 2, '.', '')
+            . '|' . ($natura === null || $natura === '' ? '' : (string) $natura);
+
+        // ⚠️ **Si SOMMA, non si assegna.** Il tracciato ammette piu' blocchi `DatiRiepilogo` sulla
+        // stessa coppia (`maxOccurs="unbounded"`, nessun vincolo di unicita' nello schema): due
+        // blocchi che differiscono solo per `RiferimentoNormativo` sono legittimi. Con
+        // un'assegnazione sopravviveva solo l'ultimo, e l'imposta degli altri spariva.
+        //
+        // La ragione decisiva non e' pero' quale file possa arrivare: e' che
+        // `FatturaPaFattura::impostaDichiarataCents()` somma gia' TUTTI i blocchi con
+        // `array_sum`, ed e' quel numero che l'elenco dei file mostra. Sullo stesso documento
+        // l'elenco avrebbe detto € 183,00 e la registrazione € 161,00 — due strade dello stesso
+        // codice che si contraddicono. Trovato dalla Fase 1-bis della beta.19, da sei lenti.
+        $impostaPerGruppo = [];
+        $imponibileDichiaratoPerGruppo = [];
+        $gruppiSenzaImponibile = [];
+        foreach ($riepiloghi as $gruppo) {
+            if (! isset($gruppo['aliquota_iva'])) {
+                continue;
+            }
+            $k = $chiave($gruppo['aliquota_iva'], $gruppo['natura'] ?? null);
+            $impostaPerGruppo[$k] = ($impostaPerGruppo[$k] ?? 0) + (int) round(($gruppo['imposta'] ?? 0) * 100);
+
+            // ⚠️ **L'assenza dell'imponibile non è uno zero.** Se il gruppo non lo dichiara non
+            // abbiamo il metro per giudicare se l'imposta descriva ancora queste righe, e la
+            // guardia 4 va semplicemente non applicata — trattare l'assenza come zero la farebbe
+            // scattare sempre, spegnendo l'imposta dichiarata su ogni documento.
+            if (array_key_exists('imponibile', $gruppo) && is_numeric($gruppo['imponibile'])) {
+                $imponibileDichiaratoPerGruppo[$k] = ($imponibileDichiaratoPerGruppo[$k] ?? 0)
+                    + (int) round($gruppo['imponibile'] * 100);
+            } else {
+                $gruppiSenzaImponibile[$k] = true;
+            }
+        }
+
+        // Un gruppo in cui anche un solo blocco tace l'imponibile non ha un metro attendibile.
+        foreach (array_keys($gruppiSenzaImponibile) as $k) {
+            unset($imponibileDichiaratoPerGruppo[$k]);
+        }
+
+        $pesiPerGruppo = [];
+        foreach ($data['righe'] as $i => $riga) {
+            $k = $chiave($riga['aliquota_iva'] ?? 0, $riga['natura'] ?? null);
+            if (! array_key_exists($k, $impostaPerGruppo)) {
+                continue;   // guardia 3: riga di un gruppo che il documento non dichiara
+            }
+            $pesiPerGruppo[$k][$i] = (int) round(($riga['importo_imponibile'] ?? 0) * 100);
+        }
+
+        $distribuita = [];
+        foreach ($pesiPerGruppo as $k => $pesi) {
+            // guardia 1: le righe a peso zero restano a zero e non entrano nel riparto.
+            //
+            // ⚠️ **È difensiva, non necessaria — e va detto invece di lasciar credere il
+            // contrario.** La Fase 1-bis della beta.19 ha misurato che toglierla non cambia
+            // nessun risultato: su 400.000 casi generati con una riga a peso zero e pesi misti,
+            // quella riga non riceve mai un centesimo nemmeno senza guardia, perché ha resto 0 e
+            // i resti positivi vincono sempre la compensazione. I due test che la nominavano
+            // passavano identici senza di essa.
+            //
+            // Resta perché il costo di sbagliarsi è asimmetrico: una riga a lordo zero non
+            // produce scrittura contabile, e un centesimo di IVA sopra la produrrebbe **senza
+            // capitolo**, finendo nel ramo «impossibile allocare la riga» — 500 con rollback,
+            // fattura persa. Una guardia che non serve costa nulla; quel ramo costa una fattura.
+            $conPeso = array_filter($pesi, static fn (int $w): bool => $w !== 0);
+            foreach (array_diff_key($pesi, $conPeso) as $i => $_) {
+                $distribuita[$i] = 0;
+            }
+            if ($conPeso === []) {
+                continue;
+            }
+
+            $somma = array_sum($conPeso);
+            if ($somma === 0) {
+                continue;   // guardia 2: nessuna proporzione possibile, si torna al calcolo di riga
+            }
+
+            // ⚠️ **Guardia 4 — l'imposta dichiarata descrive un imponibile dichiarato.**
+            // «Imponibile 45,74, imposta 10,06» e' una frase sola: prenderne la seconda meta'
+            // senza controllare la prima significa applicare a righe qualsiasi un numero che
+            // descriveva righe precise. Finche' le righe del gruppo sommano all'imponibile che
+            // il gruppo dichiara, l'imposta del documento vale; appena divergono, QUEL gruppo —
+            // e solo quello — torna al calcolo per riga, che e' il comportamento della beta.18.
+            //
+            // Fa funzionare il gesto legittimo piu' comune: spezzare una riga da 44,35 in due da
+            // 20,00 e 24,35 per addebitarle a capitoli diversi non cambia la somma del gruppo,
+            // quindi non costa il centesimo. E fa cedere quello che deve cedere: cambiare un
+            // importo, aggiungere o togliere una riga.
+            //
+            // ⚠️ Il confronto e' sull'imponibile del gruppo, non sul totale del documento: toccare
+            // una riga al 22 % non deve disturbare il gruppo a 0 %/N2.2.
+            $dichiarato = $imponibileDichiaratoPerGruppo[$k] ?? null;
+            if ($dichiarato !== null && array_sum($pesi) !== $dichiarato) {
+                foreach ($pesi as $i => $_) {
+                    unset($distribuita[$i]);   // anche le righe a peso zero tornano al calcolo di riga
+                }
+
+                continue;
+            }
+
+            $normalizzati = array_map(static fn (int $w): float => $w / $somma, $conPeso);
+            foreach (MoneyHelper::distribuisciPesiNormalizzati($normalizzati, $impostaPerGruppo[$k]) as $i => $iva) {
+                $distribuita[$i] = $iva;
+            }
+        }
+
+        return $distribuita;
     }
 }

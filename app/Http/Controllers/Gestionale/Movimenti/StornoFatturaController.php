@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
-use App\Enums\StatoPagamentoFattura;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\Duplicati\CollisioneUnicaFattura;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Traits\HandleFlashMessages;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,39 +22,14 @@ class StornoFatturaController extends Controller
 
     public function __invoke(Request $request, Condominio $condominio, FatturaPassiva $fattura, FatturaPassivaService $service)
     {
-        if ($fattura->dati_extra['is_stornata'] ?? false) {
-            return back()->withErrors(['storno_vietato' => 'Questa fattura è già stata stornata in precedenza.']);
-        }
-
-        if ($fattura->netto_a_pagare < 0) {
-            return back()->withErrors(['storno_vietato' => 'Non puoi stornare una Nota di Credito.']);
-        }
-
-        // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
-        // credito: il denaro è già uscito dalla cassa e quel movimento va stornato per
-        // primo, altrimenti restano un'uscita di cassa senza debito che la giustifichi e
-        // — dopo un'eventuale eliminazione della NC — una fattura "aperta" con pagamenti
-        // ancora allocati.
-        // withErrors e non flash: in una visita Inertia il flash impostato da back()
-        // non arriva a schermo, e l'operazione veniva rifiutata in silenzio. Il canale
-        // degli errori di validazione è quello che il frontend riceve sempre.
-        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
-            return back()->withErrors([
-                'storno_vietato' => 'La fattura ha pagamenti registrati. '
-                    .'Storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.',
-            ]);
-        }
-
-        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale — il
-        // fondo è già stato decurtato per questa fattura. Stornare la fattura
-        // lasciando in piedi il giroconto consumerebbe il fondo per un debito che
-        // non esiste più. Prima si storna il giroconto (la copertura torna in
-        // attesa), poi la fattura.
-        if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->exists()) {
-            return back()->withErrors([
-                'storno_vietato' => 'La copertura dal fondo è già stata confermata con un giroconto. '
-                    .'Storna prima il giroconto di conferma dalla pagina Giroconti, poi la fattura.',
-            ]);
+        // Le guardie stanno sul model — `FatturaPassiva::motivoBloccoStorno()` — con i loro perché: l'elenco mostra lo
+        // stesso motivo che applica il server, come per l'eliminazione. Dalla 1.11.0-beta.35 guardano anche i piani rate
+        // (R1 della Fase 1-bis): una fattura annullata restava nel suo piano, e le rate la chiedevano ancora.
+        // withErrors e non flash: in una visita Inertia il flash impostato da back() non arriva a schermo, e
+        // l'operazione veniva rifiutata in silenzio. Il canale degli errori di validazione è quello che il frontend
+        // riceve sempre.
+        if ($motivo = $fattura->motivoBloccoStorno()) {
+            return back()->withErrors(['storno_vietato' => $motivo]);
         }
 
         $gestioneId = null;
@@ -85,6 +61,16 @@ class StornoFatturaController extends Controller
         try {
             DB::beginTransaction();
 
+            // Coda 165 (1.11.0-beta.36): la guardia qui sopra legge senza lucchetto. Una nota del fornitore collegata
+            // nello stesso istante da un'altra scheda («Collega a una fattura» blocca la fattura) passava lo stesso, e il
+            // credito verso il fornitore contava due volte. Si rilegge la fattura bloccata e si riguarda (Fase 1-bis).
+            $bloccata = FatturaPassiva::lockForUpdate()->find($fattura->id);
+            if ($bloccata === null || ($motivo = $bloccata->motivoBloccoStorno())) {
+                DB::rollBack();
+
+                return back()->withErrors(['storno_vietato' => $motivo ?? 'La fattura non esiste più.']);
+            }
+
             // FIX 1: LO SVUOTA-CESTINO
             // Eliminiamo fisicamente le vecchie scritture "soft-deleted" che bloccano la chiave univoca
             ScritturaContabile::onlyTrashed()
@@ -106,8 +92,37 @@ class StornoFatturaController extends Controller
                 'totale_documento'           => abs($fattura->totale_documento / 100),
                 'netto_a_pagare'             => abs($fattura->netto_a_pagare / 100),
                 'is_pregresso'               => $fattura->is_pregresso,
-                'imponibile_pregresso'       => abs((float) $fattura->imponibile_pregresso / 100),
-                'aliquota_iva_pregressa'     => $fattura->aliquota_iva_pregressa,
+                // ⚠️ **Si leggono le colonne vere, non due attributi che non esistono**
+                // (Fase 1-bis della beta.18, rilievo 4). `imponibile_pregresso` e
+                // `aliquota_iva_pregressa` venivano scritte da `registraFattura()` ma non sono
+                // colonne di `fatture_passive` (29 colonne, nessuna migrazione le crea) e il
+                // modello ha `$guarded = ['id']`: Eloquent le scartava in silenzio, quindi
+                // rileggerle dava **sempre null**. Lo storno di una fattura pregressa nasceva
+                // così a zero: la fattura veniva marcata stornata e il giornale non veniva
+                // toccato — il debito restava a bilancio senza che niente lo segnalasse.
+                'imponibile_pregresso'       => abs((int) $fattura->importo_imponibile) / 100,
+                // L'aliquota si ricava dal rapporto fra i due importi salvati: è il verso
+                // inverso del calcolo che l'ha prodotta (`iva = imponibile * aliquota / 100`),
+                // e torna al centesimo perché entrambi sono colonne reali.
+                'aliquota_iva_pregressa'     => (int) $fattura->importo_imponibile !== 0
+                    ? round(abs((int) $fattura->importo_iva) / abs((int) $fattura->importo_imponibile) * 100, 2)
+                    : 0,
+                // ⚠️ **L'aliquota qui sopra e un ripiego, non un dato.** Si ricava dal rapporto
+                // fra i due importi salvati, e dalla beta.19 quel rapporto puo non essere piu
+                // un'aliquota vera: l'imposta di una fattura importata e quella che il documento
+                // dichiara, non `imponibile x aliquota`. Se il numero dichiarato e stato
+                // conservato, lo si passa e vince; l'aliquota resta solo per i documenti vecchi.
+                'imposta_pregressa'          => $fattura->dati_extra['fiscal']['imposta_pregressa_dichiarata'] ?? null,
+
+                // ⚠️ **I riepiloghi del documento si tramandano alla nota di credito.**
+                // Senza, la nota nasceva senza memoria: le righe copiate 1:1 portano
+                // `importo_iva_dichiarata` e quindi il primo salvataggio è giusto, ma
+                // `dati_extra.fiscal.riepiloghi_dichiarati` restava vuoto — e bastava riaprire
+                // la nota per correggere una data perché l'IVA tornasse al calcolo per riga:
+                // € 100,14 contro una fattura da € 100,15, con un centesimo di credito verso il
+                // fornitore che nessuno chiude. Lo stesso ripiego che la modifica di una fattura
+                // ha già, e che alla nota mancava. Trovato dalla Fase 1-bis della beta.19.
+                'riepiloghi'                 => $fattura->dati_extra['fiscal']['riepiloghi_dichiarati'] ?? null,
                 'modalita_pagamento'         => $fattura->modalita_pagamento,
                 'gestione_id'                => $gestioneId,
                 'stato_approvazione'         => 'approvata',
@@ -131,11 +146,39 @@ class StornoFatturaController extends Controller
                     'imponibile_calcolo' => $fattura->dati_extra['fiscal']['ritenuta_details']['imponibile_calcolo'] ?? null,
                 ] : null,
 
+                // ⚠️ **Niente `abs()` qui: lo storno deve essere lo specchio dell'originale,
+                // non la somma dei suoi valori assoluti** (Fase 1-bis della beta.18, rilievo 1).
+                // Una fattura ordinaria può contenere una riga negativa — lo storno «Oneri di
+                // sistema» che ogni bolletta gas porta dentro il documento — e la beta.18 la
+                // registra correttamente. Prendendo il valore assoluto riga per riga, la nota
+                // di credito diventava **più grande** della fattura che deve annullare: su una
+                // bolletta da € 109,80 (riga +€ 100,00 e storno −€ 10,00) nasceva una NC da
+                // € 134,20: restavano € 24,40 di credito verso il fornitore a cui non
+                // corrisponde nessun denaro, e un capitolo con spesa NEGATIVA che entra nel
+                // rendiconto e si ripartisce ai condòmini. Lo scarto era esattamente 2 × il
+                // lordo della riga negativa: la stessa firma aritmetica del difetto corretto
+                // nel servizio, migrata qui.
+                //
+                // `DoubleEntryValidator` non poteva vederlo: le due scritture quadrano ciascuna
+                // per sé, lo sbilancio è **fra** i due documenti.
+                //
+                // Il segno lo mette il moltiplicatore −1 del servizio, che riceve queste righe
+                // come le riceverebbe da un modulo: naturali.
                 'righe' => $fattura->righe->map(fn($r) => [
                     'descrizione'        => '[STORNO] ' . $r->descrizione,
-                    'importo_imponibile' => abs((float) $r->importo_imponibile / 100),
+                    'importo_imponibile' => (float) $r->importo_imponibile / 100,
                     'aliquota_iva'       => (float) $r->aliquota_iva,
-                    'importo_iva'        => abs((float) $r->importo_iva / 100),
+                    'importo_iva'        => (float) $r->importo_iva / 100,
+                    // ⚠️ **Lo storno replica l'imposta registrata, non la ricalcola.**
+                    // Dalla beta.19 l'IVA di una fattura importata è quella che il documento
+                    // dichiara nei propri `DatiRiepilogo`, distribuita fra le righe: non
+                    // corrisponde più a `round(imponibile × aliquota / 100)`. Ricalcolarla qui
+                    // farebbe una nota di credito da € 100,14 contro una fattura da € 100,15,
+                    // e `DoubleEntryValidator` non se ne accorgerebbe — le due scritture
+                    // quadrano ciascuna per sé, e resterebbe un centesimo di credito verso il
+                    // fornitore che nessuno chiude. `importo_iva` da solo non basta: il
+                    // servizio lo ignora per costruzione, e questa chiave è il canale esplicito.
+                    'importo_iva_dichiarata' => (float) $r->importo_iva / 100,
                     'conto_id'           => $r->conto_id,
                     'immobile_id'        => $r->immobile_id,
                     // Propagati dall'originale per far tornare l'importo di ritenuta
@@ -147,10 +190,18 @@ class StornoFatturaController extends Controller
                 // --- INIZIO FIX: RIMBORSO FONDO E COPERTURE ---
                 // Passiamo le stesse coperture. Il Service, essendo una Nota di Credito, 
                 // invertirà il DARE/AVERE rimborsando automaticamente il Fondo Riserva!
+                // ⚠️ **`conto_id` viaggia col proprio nome, oltre che dentro `fonte_id`.**
+                // `fonte_id` appiattisce tre campi diversi — saldo, conto, fondo — in uno solo, e a
+                // valle non è più possibile sapere quale dei tre fosse. Per una copertura di
+                // **sopravvenienza** quel campo è il **capitolo di spesa** che la fattura pregressa
+                // ha fatto creare, e serve per scriverne la contropartita sul mastro giusto: senza,
+                // il costo di quel capitolo sopravviveva allo storno e continuava a ripartirsi ai
+                // condòmini per un documento annullato. Coda 145.
                 'coperture' => $fattura->coperture->map(fn($c) => [
                     'tipo_copertura' => $c->tipo_copertura,
                     'importo'        => abs($c->importo / 100),
-                    'fonte_id'       => $c->saldo_id ?? $c->conto_id ?? $c->fondo_id
+                    'fonte_id'       => $c->saldo_id ?? $c->conto_id ?? $c->fondo_id,
+                    'conto_id'       => $c->conto_id,
                 ])->toArray(),
                 // --- FINE FIX ---
 
@@ -168,7 +219,9 @@ class StornoFatturaController extends Controller
             ];
 
             // GENERIAMO IL CLONE TRAMITE IL SERVICE
-            $notaCredito = $service->registraFattura($stornoData, $condominio->id);
+            // Coda 313 (decisione 160): la nota nasce da uno storno, non è una nota del fornitore senza fattura: la guardia della spesa
+            // ad personam dello storno è `FatturaPassiva::motivoBloccoStorno`, qui sopra.
+            $notaCredito = $service->registraFattura($stornoData, $condominio->id, null, (int) $fattura->id);
 
             // FIX 2: IL POST-PROCESSING CHIRURGICO
             // Il Service forza 'fattura_acquisto' e 'FTP-'. Noi li correggiamo all'istante.
@@ -204,6 +257,48 @@ class StornoFatturaController extends Controller
                 }
             }
 
+            // ⚠️ **E il capitolo che la fattura si era INVENTATA torna a zero anche come fabbisogno.**
+            //
+            // Il blocco qui sopra ripristina i capitoli che la fattura aveva solo *alzato*. Un
+            // capitolo di sopravvenienza invece la fattura lo **crea**, con
+            // `creaContoDinamicoSopravvenienza()`, e gli scrive dentro `importo = importoCent`:
+            // per quello il valore precedente è zero, e nessun `rata_integrativa_bump` lo nomina.
+            //
+            // 📏 **Misurato a video sulla beta.22**, dopo la correzione del giornale: il consuntivo
+            // della voce tornava a «—» e il totale calava di € 610,00, ma `conti.importo` restava
+            // 61000 e l'intestazione del piano dei conti continuava a dire «Sopravvenienze:
+            // € 610,00». La scheda della Coda 145 nominava **due** misure — `SpesaPerVoceService`
+            // e `conti.importo` — e la correzione del giornale ne chiudeva una sola.
+            //
+            // ⚠️ **Qui il ricalcolo è giusto, al contrario del blocco sopra.** Lì si ripristina il
+            // valore esatto perché un budget più alto può essere stato **deliberato in assemblea** e
+            // ricalcolarlo dallo speso lo cancellerebbe. Un capitolo di sopravvenienza non è mai
+            // stato deliberato: nasce dalla fattura e vale quanto quella fattura. Se sopra non è
+            // rimasto nulla, non vale più niente.
+            //
+            // La guardia è la misura, non la fiducia: si azzera solo se sul capitolo **non resta
+            // costo a giornale**, perché un'altra fattura può esservi stata addebitata dopo.
+            foreach ($fattura->coperture as $coperturaOriginale) {
+                if ($coperturaOriginale->tipo_copertura !== 'sopravvenienza' || ! $coperturaOriginale->conto_id) {
+                    continue;
+                }
+
+                $costoResiduo = (int) DB::table('righe_scritture')
+                    ->where('voce_spesa_id', $coperturaOriginale->conto_id)
+                    ->selectRaw("COALESCE(SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE -importo END), 0) as saldo")
+                    ->value('saldo');
+
+                if ($costoResiduo !== 0) {
+                    continue;
+                }
+
+                $capitoloInventato = Conto::lockForUpdate()->find($coperturaOriginale->conto_id);
+                if ($capitoloInventato) {
+                    $capitoloInventato->importo = 0;
+                    $capitoloInventato->save();
+                }
+            }
+
             // CONGELAMENTO FATTURA ORIGINALE
             $datiExtra = $fattura->dati_extra ?? [];
             $datiExtra['is_stornata'] = true;
@@ -216,6 +311,28 @@ class StornoFatturaController extends Controller
 
             DB::commit();
             return back()->with($this->flashSuccess("Storno eseguito! Nota di Credito n. {$protocolloNC} generata."));
+
+        } catch (UniqueConstraintViolationException $e) {
+            DB::rollBack();
+
+            // ⚠️ **Preesistente, non introdotto dalla beta.13** — questo storno collide con
+            // l'indice unico su `fatture_passive` da quando l'indice esiste (24/02/2026):
+            // stornando lo stesso giorno due fatture dello stesso fornitore con lo stesso
+            // numero, la nota di credito generata (`STORNO-<numero>` più la data odierna)
+            // collide con l'altro storno. Prima di questa riga il messaggio grezzo di
+            // `$e->getMessage()` arrivava a video con host, porta e nome del database MySQL —
+            // trovato dalla revisione avversariale della beta.13. La stringa tecnica resta nel
+            // log, non più in faccia all'amministratore.
+            Log::error("Errore Storno Fattura ID {$fattura->id} (indice unico): " . $e->getMessage());
+
+            if (! CollisioneUnicaFattura::rilevata($e)) {
+                return back()->with($this->flashError('Impossibile stornare il documento: errore tecnico durante il salvataggio.'));
+            }
+
+            return back()->with($this->flashError(
+                'Esiste già uno storno di questo fornitore con lo stesso numero e la stessa data. '
+                .'Riprova, o contatta l\'assistenza se il problema persiste.'
+            ));
 
         } catch (\Exception $e) {
             DB::rollBack();

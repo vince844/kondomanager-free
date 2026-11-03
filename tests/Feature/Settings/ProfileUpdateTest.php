@@ -22,6 +22,8 @@ test('profile information can be updated', function () {
         ->patch('/settings/profile', [
             'name' => 'Test User',
             'email' => 'test@example.com',
+            // Cambiare l'email chiede la password attuale (Coda 261, decisione 127.7).
+            'current_password' => 'password',
         ]);
 
     $response

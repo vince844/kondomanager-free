@@ -23,8 +23,9 @@ use Throwable;
  * ## Cosa fa
  *
  * - **Nei test** rilancia l'eccezione: chi sta lavorando deve vedere il motivo vero, subito,
- *   invece di un messaggio tradotto. **Non in `local`**, che è l'ambiente con cui esce ogni
- *   installazione seguendo il README: lì l'utente vedrebbe una pagina d'errore al posto del banner.
+ *   invece di un messaggio tradotto. **Non in `local`**, che è l'ambiente dei contenitori Docker di
+ *   sviluppo e di qualche installazione già fatta: lì l'utente vedrebbe una
+ *   pagina d'errore al posto del banner.
  * - Con **`APP_DEBUG`** attivo il motivo vero viene aggiunto al riferimento mostrato, così chi
  *   sviluppa non deve andarlo a cercare nel log.
  * - In **produzione** registra l'eccezione con un **riferimento breve** e restituisce quel
@@ -46,9 +47,10 @@ final class ErroriDiagnosticabili
     public static function registra(Throwable $e, string $operazione, array $contesto = []): string
     {
         // ⚠️ **Solo nei test**, non in `local`. La prima stesura rilanciava anche in ambiente locale,
-        // e la revisione della beta.58 ha fatto notare che `APP_ENV=local` è la configurazione con
-        // cui **esce ogni installazione** seguendo il README o la guida Synology: quegli
-        // amministratori avrebbero visto una pagina d'errore al posto del banner che avevano prima.
+        // e la revisione della beta.58 ha fatto notare che `APP_ENV=local` è la configurazione di
+        // installazioni già fatte (il README installa un server in produzione,
+        // Coda 266): quegli amministratori
+        // avrebbero visto una pagina d'errore al posto del banner che avevano prima.
         // Un miglioramento per chi sviluppa non deve diventare un peggioramento per chi installa.
         if (app()->runningUnitTests()) {
             throw $e;

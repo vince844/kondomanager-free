@@ -8,15 +8,26 @@ use App\Models\Anagrafica;
 use App\Services\Gestionale\InboxService;
 use App\Traits\HasCondomini;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 
+/**
+ * La casella delle attività del pannello: i compiti dell'amministratore (verifiche dei pagamenti segnalati, con
+ * l'importo e il nome della persona, segnalazioni di guasto, scadenze amministrative).
+ *
+ * I compiti sono scadenze in agenda, e la casella ne segue i permessi (Coda 402): si legge con `EventoPolicy::viewAny`
+ * («Visualizza scadenze in agenda», la regola con cui la dashboard del pannello mostra le scadenze); «Rifiuta» e
+ * «Completa» chiedono `EventoPolicy::chiudiCompito` («Modifica scadenza in agenda») prima di ogni altra verifica.
+ */
 class ActionInboxController extends Controller
 {
     use HasCondomini;
 
     public function __invoke(Request $request): Response
     {
+        Gate::authorize('viewAny', Evento::class);
+
         $filter       = $request->input('filter', 'all');
         $condominioId = $request->input('condominio_id');
 
@@ -58,7 +69,9 @@ class ActionInboxController extends Controller
 
         return Inertia::scroll(
             $query
-            ->orderByRaw("CASE WHEN start_time <= NOW() THEN 0 ELSE 1 END ASC, start_time ASC")
+            // L'ora di adesso arriva come parametro, come in `InboxService::getCounts()`: la stessa query vale su ogni
+            // database, e il confronto è con l'ora dell'applicazione, quella con cui `start_time` è scritto.
+            ->orderByRaw("CASE WHEN start_time <= ? THEN 0 ELSE 1 END ASC, start_time ASC", [now()])
             ->paginate(15)
             ->withQueryString()
             ->through(function ($task) {
@@ -162,9 +175,17 @@ class ActionInboxController extends Controller
 
     /**
      * Rifiuta una segnalazione di pagamento.
+     *
+     * Si rifiuta soltanto un compito aperto della casella: uno che chiede un'azione, non privato e non già chiuso, cioè
+     * uno di quelli che la casella elenca. Una scadenza privata di un condòmino, una scadenza qualunque dell'agenda o un
+     * compito già chiuso non sono compiti da rifiutare: 404, e niente cambia, nemmeno la segnalazione collegata.
      */
     public function reject(Request $request, Evento $task)
     {
+        Gate::authorize('chiudiCompito', Evento::class);
+
+        abort_unless($this->eUnCompitoAperto($task), 404);
+
         $request->validate([
             'reason' => 'required|string|max:255', 
         ]);
@@ -205,6 +226,8 @@ class ActionInboxController extends Controller
      */
     public function complete(Request $request, Evento $task)
     {
+        Gate::authorize('chiudiCompito', Evento::class);
+
         // Evita di chiudere task già completati o task privati dei condòmini
         if ($task->is_completed || $task->visibility === 'private') {
             return back()->with('error', 'Impossibile completare questo task.');
@@ -218,5 +241,16 @@ class ActionInboxController extends Controller
         InboxService::clearAdminCache();
 
         return back()->with('success', 'Task completato.');
+    }
+
+    /**
+     * Un compito aperto della casella: chiede un'azione, non è privato, non è chiuso. Le stesse tre condizioni con cui
+     * `getTasks()` e i conteggi lo elencano.
+     */
+    private function eUnCompitoAperto(Evento $task): bool
+    {
+        return data_get($task->meta, 'requires_action') === true
+            && $task->visibility !== 'private'
+            && ! $task->is_completed;
     }
 }

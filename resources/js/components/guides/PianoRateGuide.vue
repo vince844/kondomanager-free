@@ -108,8 +108,9 @@ defineEmits(['update:open']);
                                     <strong class="text-emerald-700 dark:text-emerald-400">Rata separata (Rata 0)</strong> —
                                     consigliata. I pregressi restano una riga a sé, distinta dalle rate dell'anno,
                                     e si vede a colpo d'occhio cosa viene da prima: è la scelta migliore quando c'è
-                                    stato un <strong>subentro</strong>. Il riparto però non calcola le competenze
-                                    per periodo — quella parte va fatta a mano.
+                                    stato un <strong>subentro</strong>. Le quote già emesse a chi è uscito si
+                                    regolano con il conguaglio del passaggio (una coppia di saldi a somma zero, che
+                                    la Rata 0 assorbe); le rate nuove il riparto le divide per giorni da sé.
                                 </p>
                                 <p>
                                     <strong>Somma alla prima rata</strong> — metodo tradizionale. La prima rata
@@ -146,7 +147,7 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 <strong>Scegliendo delle voci</strong>, ne finanzi solo alcune — per esempio il solo
                                 riscaldamento — e per ciascuna puoi chiedere un <strong>importo parziale</strong>
-                                invece dell'intero.
+                                invece dell'intero. L'importo si scrive senza il segno, anche per una voce di entrata, come un affitto o un canone: ha l'etichetta <strong>«Entrata»</strong> e si sottrae alle spese, e con delle entrate il totale delle voci scelte si chiama <strong>«Da ripartire»</strong>, con le spese e le entrate fra parentesi. Le versioni precedenti permettevano una voce di spesa con un importo negativo, che il calcolo delle quote addebita in positivo: se il piano ne prenderebbe una, con le voci scelte o con tutto il preventivo, non si crea, e il messaggio dice quale voce correggere nel piano dei conti.
                             </p>
                         </section>
 
@@ -186,6 +187,42 @@ defineEmits(['update:open']);
                         </section>
 
                         <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Quando un'unità cambia titolare nell'anno</h3>
+                            <p>
+                                Il riparto legge le date di ogni titolare. Sull'<strong>ordinario</strong> la quota di un'unità
+                                che cambia mano si divide <strong>per giorni</strong> fra chi esce e chi entra, sul periodo della
+                                gestione o — se una voce ha una competenza propria, come il riscaldamento sulla sua stagione —
+                                sui giorni di quella voce. Sullo <strong>straordinario</strong> conta un giorno solo: quello della
+                                delibera dell'assemblea, che per questo il piano chiede alla creazione; chi era titolare quel
+                                giorno risponde dell'intera spesa, anche se poi vende.
+                            </p>
+                            <p class="mt-2">
+                                Nel piano che finanzia le fatture fuori preventivo conta la <strong>competenza dichiarata sulla
+                                fattura</strong>, anche su una gestione ordinaria: una fattura pregressa del 2025 resta a chi era
+                                titolare nel 2025, anche se l'unità è stata venduta quest'anno.
+                            </p>
+                            <p class="mt-2">
+                                Se generando il piano il programma vede che la competenza cambia i destinatari rispetto ai
+                                titolari di oggi, si ferma e lo mostra: chi entra, chi esce, per quanti giorni. Si ferma anche
+                                quando una fattura pregressa non ha il periodo in cui il costo è maturato: dice su quali giorni
+                                la ripartirà e come rimediare. Si va avanti con una nota — è una presa d'atto, non
+                                un'approvazione al buio.
+                            </p>
+                            <p class="mt-2">
+                                Lo stesso cancello nomina il <strong>defunto</strong>: se dopo una successione con l'arretrato
+                                agli eredi il piano calcola ancora le quote del defunto per i giorni fino al decesso, dice la
+                                cifra, la parte di ogni erede per quota e la strada — i saldi dal Wallet legati alla successione. Lo
+                                ripete a ogni ricalcolo: se il piano applica i saldi del Wallet e i saldi, legati alla successione o
+                                di prima, sono la parte di ognuno, dice che ci sono già; con saldi non legati di altra cifra dice che il
+                                programma non sa se la comprendono. Se il piano non applica i saldi non legge quelli non legati, e la
+                                strada passa da un piano creato di nuovo, che li assorbe; quelli legati alla successione li legge
+                                anche lì, e non li chiede di nuovo a chi li ha. Se un altro piano della stessa gestione, non ancora
+                                emesso, li ha già assorbiti, non li chiede di nuovo: dice in quale piano sono e le due strade,
+                                eliminare quel piano o registrare quelli di questo dopo aver emesso quell'altro.
+                            </p>
+                        </section>
+
+                        <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Ricorrenza avanzata</h3>
                             <p>
                                 Serve quando «una rata al mese al giorno X» non basta: bimestrale, trimestrale, o
@@ -197,10 +234,11 @@ defineEmits(['update:open']);
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
                             <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                             <p class="text-xs text-amber-900 dark:text-amber-200">
-                                Cambiare le date dopo aver generato le rate significa <strong>ricalcolare il
-                                piano</strong>, che le rifà da capo. Finché il piano non è emesso in contabilità non
-                                costa nulla; dopo l'emissione le regole cambiano, e conviene decidere il calendario
-                                adesso.
+                                Le date di un piano già creato non si cambiano: il ricalcolo rifà le rate con lo
+                                stesso calendario. Per cambiarle si elimina il piano (in bozza) e lo si crea di nuovo,
+                                e non si può finché il piano ha rate emesse in contabilità, un movimento su una quota
+                                (un incasso, un credito usato o rimborsato) o il conguaglio di un passaggio: conviene
+                                decidere il calendario adesso.
                             </p>
                         </div>
                     </TabsContent>

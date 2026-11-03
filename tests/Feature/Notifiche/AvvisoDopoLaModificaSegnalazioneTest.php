@@ -1,27 +1,24 @@
 <?php
 
 /**
- * # La segnalazione ha una platea *derivata*, e cambia solo cambiando condominio
+ * # La platea della segnalazione dopo una modifica
  *
  * ## Perché un file a parte e non due righe in più nell'altro
  *
- * È la lezione della beta.62, e qui vale più che altrove: *il test si scrive per rotta*, perché è
- * la simmetria fra le porte a essere l'invariante. Ma c'è una seconda ragione, più forte: le
- * segnalazioni **non funzionano come le comunicazioni**.
+ * È la lezione della beta.62: *il test si scrive per rotta*, perché è la simmetria fra le porte a
+ * essere l'invariante.
  *
- * - Una **comunicazione** ha una platea *scelta*: un elenco di anagrafiche, oppure i condomìni
- *   collegati. Modificarla può aggiungere destinatari.
- * - Una **segnalazione** ha una platea *derivata*: `SendNewSegnalazioneNotificationToUser` avvisa
- *   tutte le anagrafiche del condominio indicato da `condominio_id`, e basta.
+ * ## La platea, dopo la decisione Q1
  *
- * La pivot `anagrafiche` **esiste anche sulle segnalazioni** e viene sincronizzata in modifica — ma
- * **non decide chi riceve la notifica**. Se `DestinatariNotifica` l'avesse letta anche qui, come fa
- * per le comunicazioni, modificare quella lista avrebbe mandato mail a gente a cui il listener di
- * creazione non le manda mai: una notifica che nasce da una modifica e che la creazione non
- * avrebbe prodotto. Sarebbe stato il difetto peggiore dei due.
+ * Dalla decisione Q1 del 17/10/2026 (Coda 302) **la pivot `anagrafiche` dice a chi è indirizzata**
+ * la segnalazione (elenco, scheda, commenti, notifiche, etichette) e **`is_private` decide la
+ * privacy**, come per le comunicazioni: la platea è chi trova la segnalazione nell'elenco del
+ * portale. Una segnalazione indirizzata a persone avvisa solo loro, una privata l'autore e le
+ * persone collegate, una non indirizzata il condominio. Perché la creazione e la modifica non
+ * divergano, la platea la calcolano tutte e due da `DestinatariNotifica`.
  *
- * Il caso in cui la platea cambia davvero esiste, ed è **cambiare il condominio**: da quel momento
- * la segnalazione riguarda persone che non ne hanno mai saputo niente.
+ * Il caso in cui la platea cambia per tutto un palazzo resta **cambiare il condominio** di una
+ * segnalazione non indirizzata: da quel momento riguarda persone che non ne hanno mai saputo niente.
  */
 
 use App\Enums\NotificationType;
@@ -127,10 +124,12 @@ beforeEach(function () {
     ]);
 });
 
-it('la platea è il condominio, non la lista delle anagrafiche', function () {
-    // ⚠️ È l'asserzione che impedisce la correzione sbagliata. Se `DestinatariNotifica` leggesse la
-    // pivot `anagrafiche` anche per le segnalazioni, qui comparirebbe il solo Rossi quando la lista
-    // lo nomina — e la modifica manderebbe mail che la creazione non manda mai.
+it('la platea sono le persone a cui è indirizzata, e il condominio solo se non lo è a nessuno', function () {
+    // Coda 302, decisione Q1 del 17/10/2026: la pivot dice a chi è indirizzata. Nel condominio ci
+    // sono due persone e la lista ne nomina una: con una persona sola la lista e il condominio
+    // darebbero la stessa platea, e il test non distinguerebbe le due regole (la lista, o tutto il
+    // condominio).
+    $vicino = abitanteConNotifiche($this->condominio, 'Bianchi Anna');
     $risolutore = app(DestinatariNotifica::class);
 
     $this->segnalazione->anagrafiche()->sync([$this->abitante->id]);
@@ -138,11 +137,11 @@ it('la platea è il condominio, non la lista delle anagrafiche', function () {
     expect($risolutore->perModello($this->segnalazione->fresh())->all())
         ->toBe([$this->abitante->id]);
 
-    // E resta la stessa anche svuotando la lista: la platea non dipende da quella pivot.
+    // Senza persone collegate è di tutto il condominio.
     $this->segnalazione->anagrafiche()->sync([]);
 
-    expect($risolutore->perModello($this->segnalazione->fresh())->all())
-        ->toBe([$this->abitante->id]);
+    expect($risolutore->perModello($this->segnalazione->fresh())->sort()->values()->all())
+        ->toBe(collect([$this->abitante->id, $vicino->id])->sort()->values()->all());
 });
 
 it('cambiando condominio, chi non ne sapeva niente riceve la segnalazione', function () {

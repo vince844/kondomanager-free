@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Fornitore\Anagrafica;
 
 use Illuminate\Foundation\Http\FormRequest;
+use App\Enums\RuoloRappresentanteFornitore;
 use Illuminate\Validation\Rule;
 
 class CreateFornitoreAnagraficaRequest extends FormRequest
@@ -24,7 +25,7 @@ class CreateFornitoreAnagraficaRequest extends FormRequest
     {
         return [
             'anagrafica_id'   => ['required', 'integer', Rule::exists('anagrafiche', 'id')],
-            'ruolo'           => ['required', 'string', Rule::in(['titolare', 'amministrativo', 'commerciale', 'tecnico', 'referente', 'altro'])],
+            'ruolo'           => ['required', 'string', Rule::in(RuoloRappresentanteFornitore::valori())],
         ];
     }
 }

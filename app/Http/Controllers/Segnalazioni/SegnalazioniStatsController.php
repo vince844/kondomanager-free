@@ -6,6 +6,7 @@ use App\Enums\Permission;
 use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Segnalazione;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -41,11 +42,8 @@ class SegnalazioniStatsController extends Controller
             return response()->json($counts);
 
         } else {
-            
-            $anagrafica = $user->anagrafica;
-            $condominioIds = $anagrafica->condomini->pluck('id');
 
-            $query = $this->getUserScopedQuery($anagrafica, $condominioIds);
+            $query = $this->getUserScopedQuery($user);
 
             $counts = $query->selectRaw("
                 SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
@@ -61,33 +59,21 @@ class SegnalazioniStatsController extends Controller
     }
 
     /**
-     * Get a query scoped to the user's anagrafica and associated condomini.
+     * Le segnalazioni che l'utente trova nell'elenco del portale, per contarle.
      *
-     * This method builds a query to filter segnalazioni based on whether they are 
-     * associated with the user's anagrafica or if the segnalazione belongs to any of 
-     * the user's condominios but is not linked to any anagrafica.
+     * La regola è `Segnalazione::scopeVisibiliNelPortale()`, la stessa della scheda e dell'elenco,
+     * più «pubblicata e approvata» come l'elenco: i conteggi contano quello che l'elenco mostra, e
+     * nient'altro: nessuna copia della regola qui. Una privata la contano solo l'autore e le persone
+     * collegate, anche senza residenti (Coda 304), e per un utente senza anagrafica i conteggi non
+     * vanno in errore.
      *
-     * @param $anagrafica  The anagrafica of the currently authenticated user
-     * @param $condominioIds  The IDs of the condominios associated with the user's anagrafica
-     * 
      * @return \Illuminate\Database\Eloquent\Builder  The scoped query for segnalazioni
      */
-    private function getUserScopedQuery($anagrafica, $condominioIds)
+    private function getUserScopedQuery(User $user)
     {
         return Segnalazione::query()
+            ->visibiliNelPortale($user)
             ->where('is_published', true)
-            ->where('is_approved', true)
-            ->where(function ($query) use ($anagrafica, $condominioIds) {
-                $query
-                    ->where(function ($q) use ($anagrafica) {
-                        $q->whereHas('anagrafiche', function ($sub) use ($anagrafica) {
-                            $sub->where('anagrafica_id', $anagrafica->id);
-                        });
-                    })
-                    ->orWhere(function ($q) use ($condominioIds) {
-                        $q->whereIn('condominio_id', $condominioIds)
-                            ->whereDoesntHave('anagrafiche');
-                    });
-            });
+            ->where('is_approved', true);
     }
 }

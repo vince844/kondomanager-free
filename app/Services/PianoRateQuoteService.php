@@ -6,6 +6,8 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Saldo;
+use App\Services\Riparto\CompetenzaDelPiano;
+use App\Services\Riparto\QuotaDellaChiamata;
 use Illuminate\Support\Collection;
 
 class PianoRateQuoteService
@@ -100,22 +102,97 @@ class PianoRateQuoteService
     }
 
     /**
-     * Quanto il piano **dovrebbe** mettere in rata: i capitoli collegati, o le fatture se è
-     * straordinario.
+     * Quanto il piano chiede alle persone e quanto accredita loro, in centesimi e in valore assoluto.
+     *
+     * Le voci di spesa sommano alle spese, quelle di entrata alle entrate: il segno di ogni voce è quello con cui il motore la
+     * distribuisce (`Conto::ripartoPerSegno()`, letto alla data del piano). Un capitolo i cui sottoconti sono di tipo diverso divide
+     * l'importo della pivot fra spese ed entrate come lo divide il motore. La pivot `piano_rate_capitoli` tiene l'importo positivo,
+     * come lo scrive la pagina; il segno lo rifà chi legge. Un piano straordinario chiede la somma delle fatture collegate e non ha
+     * entrate.
+     *
+     * `id_spese` sono le voci con una parte di spesa: il già versato si legge solo su quelle. Per la riga di un capitolo senza tabelle sono anche i suoi sottoconti
+     * con una parte di spesa, quelli che il motore guarda (`sottocontiConParteDiSpesa`): il già versato sta su di loro, non sul capitolo.
+     *
+     * @return array{spese: int, entrate: int, id_spese: int[]}
      */
-    public function totaleAttesoCents(PianoRate $pianoRate): int
+    public function totaliPerSegnoCents(PianoRate $pianoRate): array
     {
         if ($pianoRate->tipo === 'straordinario') {
             $pianoRate->loadMissing('fattureStraordinarie');
 
-            return (int) $pianoRate->fattureStraordinarie
-                ->sum(fn ($fattura) => $fattura->pivot->importo_collegato);
+            return [
+                'spese' => (int) $pianoRate->fattureStraordinarie->sum(fn ($fattura) => $fattura->pivot->importo_collegato),
+                'entrate' => 0,
+                'id_spese' => [],
+            ];
         }
 
-        $pianoRate->loadMissing('capitoli');
+        $pianoRate->loadMissing(['capitoli.tabelleMillesimali', 'capitoli.sottoconti.tabelleMillesimali']);
 
-        $budget = (int) $pianoRate->capitoli
-            ->sum(fn ($capitolo) => $capitolo->pivot->importo ?? $capitolo->importo);
+        $spese = 0;
+        $entrate = 0;
+        $idSpese = [];
+
+        foreach ($pianoRate->capitoli as $capitolo) {
+            $parti = $capitolo->ripartoPerSegno((int) ($capitolo->pivot->importo ?? $capitolo->importo), $pianoRate->created_at);
+
+            $spese += $parti['spese'];
+            $entrate += $parti['entrate'];
+
+            if ($parti['spese'] > 0 || $capitolo->segno($pianoRate->created_at) > 0) {
+                $idSpese[] = $capitolo->id;
+            }
+
+            // Il motore passa la copia ai sottoconti solo se è positiva: con la copia a zero salta il capitolo, e il già versato dei sottoconti non entra.
+            if ($capitolo->tabelleMillesimali->isEmpty() && $capitolo->sottoconti->isNotEmpty() && (int) ($capitolo->pivot->importo ?? $capitolo->importo) > 0) {
+                array_push($idSpese, ...$this->sottocontiConParteDiSpesa($capitolo, $pianoRate->created_at));
+            }
+        }
+
+        return ['spese' => $spese, 'entrate' => $entrate, 'id_spese' => array_values(array_unique($idSpese))];
+    }
+
+    /**
+     * I sottoconti con una parte di spesa che il motore guarda sotto la riga di un capitolo senza tabelle con la copia positiva (il chiamante lo controlla):
+     * quelli nati fino alla creazione del piano o, se nessuno lo è, tutti quelli di adesso (come `Conto::ripartoPerSegno`); un sottoconto senza tabelle e con dei sottoconti suoi passa la parte ai suoi, a ogni livello.
+     * Il già versato di una voce con le tabelle sta su di lei, e il motore lo toglie dalle sue quote.
+     *
+     * @return list<int>
+     */
+    private function sottocontiConParteDiSpesa(Conto $capitolo, ?\Carbon\CarbonInterface $creatoIl): array
+    {
+        $figli = $creatoIl === null
+            ? $capitolo->sottoconti
+            : $capitolo->sottoconti->filter(fn (Conto $s) => $s->created_at === null || $s->created_at->lte($creatoIl));
+        if ($figli->isEmpty()) {
+            $figli = $capitolo->sottoconti;
+        }
+
+        $ids = [];
+        foreach ($figli as $figlio) {
+            if ($figlio->tabelleMillesimali->isEmpty() && $figlio->sottoconti->isNotEmpty()) {
+                array_push($ids, ...$this->sottocontiConParteDiSpesa($figlio, $creatoIl));
+            } elseif ($figlio->segno($creatoIl) > 0) {
+                $ids[] = (int) $figlio->id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Quanto il piano **dovrebbe** mettere in rata: le spese dei capitoli collegati meno le loro entrate, o le fatture se è
+     * straordinario.
+     *
+     * Con la sola entrata il netto è negativo (le persone ricevono un credito) e resta tale: il tetto a zero vale per le spese.
+     */
+    public function totaleAttesoCents(PianoRate $pianoRate): int
+    {
+        $totali = $this->totaliPerSegnoCents($pianoRate);
+
+        if ($pianoRate->tipo === 'straordinario') {
+            return $totali['spese'];
+        }
 
         // ⚠️ **Il già versato va tolto dall'atteso, o il badge grida al lupo su un piano giusto.**
         //
@@ -133,11 +210,27 @@ class PianoRateQuoteService
         // mai una quota sotto zero: se un'unità ha versato **più** della sua parte, l'applicato è
         // minore del registrato e il confronto torna a divergere. Quella sovra-contribuzione ha
         // però già la sua segnalazione dedicata nell'Inbox, e non passa di qui.
-        $giaVersato = (int) ContributoVersato::where('target_type', Conto::class)
-            ->whereIn('target_id', $pianoRate->capitoli->pluck('id'))
-            ->sum('importo_cents');
+        //
+        // Il già versato si legge sulle sole voci di spesa: la pagina «Già versato» non offre le voci di
+        // entrata, e il motore non applica il netting a una quota negativa.
+        //
+        // Si toglie quello che il motore toglie, non tutto: con un acconto (o un saldo) il piano chiede una
+        // parte della voce, e ne toglie la stessa parte del già versato, con l'arrotondamento per difetto di
+        // ogni parte (di persona o dell'unità). Togliere tutto il già versato a un acconto darebbe un atteso
+        // più basso delle quote generate, e il badge accenderebbe «Disallineato» su un piano giusto che
+        // «Ricalcola» non spegne. Non si legge il netting registrato in `righe_riparto`: un già versato
+        // scritto dopo la generazione non ci sta, e il badge acceso è quello che invita a ricalcolare.
+        $conVersato = ContributoVersato::where('target_type', Conto::class)
+            ->whereIn('target_id', $totali['id_spese'])
+            ->distinct()
+            ->pluck('target_id');
 
-        return max(0, $budget - $giaVersato);
+        $giaVersato = 0;
+        foreach ($conVersato as $contoId) {
+            $giaVersato += QuotaDellaChiamata::giaVersatoApplicato((int) $pianoRate->id, (int) $contoId);
+        }
+
+        return max(0, $totali['spese'] - $giaVersato) - $totali['entrate'];
     }
 
     /**
@@ -153,22 +246,91 @@ class PianoRateQuoteService
      * tolleranza che non scatta mai può solo nascondere.
      *
      * Un piano senza rate non è disallineato: non è ancora stato generato.
+     *
+     * Dalla 1.11.0-beta.59 (Coda 414) «disallineato» è il terzo dei tre stati di `statoAllineamento()`: un piano con una quota non
+     * assegnata accettata e mai cambiato dopo è in «quota aperta», non disallineato. Il confronto resta a tolleranza zero.
      */
     public function eDisallineato(PianoRate $pianoRate): bool
+    {
+        return $this->statoAllineamento($pianoRate) === self::DISALLINEATO;
+    }
+
+    /** Lo scarto è zero: le rate mettono in conto quello che il piano chiede (o il piano non è ancora generato). */
+    public const ALLINEATO = 'allineato';
+
+    /** Lo scarto è quello registrato alla generazione, e lo spiegano le quote non assegnate accettate: il piano non si è mosso da allora. */
+    public const QUOTA_APERTA = 'quota_aperta';
+
+    /** Lo scarto è un altro: qualcosa è cambiato dopo la generazione, o lo scarto non viene dalle quote non assegnate. */
+    public const DISALLINEATO = 'disallineato';
+
+    /**
+     * Allineato, quota aperta o disallineato (Coda 414, decisione 153.6).
+     *
+     * Lo stato si deriva dalle quote registrate da `GeneratePianoRateAction` in `piani_rate.quote_non_assegnate`, non dalla presenza di
+     * `nota_scoperti`: la nota resta sui piani accettati prima della 1.11.0-beta.59, che non hanno l'elenco e restano disallineati (lo
+     * scarto non è registrato, e dirli in quota aperta nasconderebbe un disallineamento vero).
+     *
+     * «Quota aperta» vuole tre cose: lo scarto di adesso è diverso da zero, è uguale al centesimo a quello registrato (il piano non si è
+     * mosso da quando l'amministratore ha accettato), e le voci registrate lo spiegano. L'ultima condizione esiste perché lo scarto
+     * registrato è quello di tutta la generazione: se alla generazione il piano era già scostato per un'altra ragione, la registrazione
+     * l'avrebbe messa agli atti con le quote, e la quota aperta la nasconderebbe. Le voci la spiegano se la loro somma, ognuna con il
+     * segno della sua voce (meno per una voce di entrata), è a non più di un centesimo per voce dallo scarto, e se nessuna è una quota
+     * nuova che nessuno ha accettato: il motore registra ogni quota con il suo arrotondamento e toglie dalla voce un arrotondamento solo
+     * (`CalcoloQuoteService::distribuisciSuTabelle`), e con due quote sulla stessa voce le due cifre possono differire di un centesimo.
+     * Una voce senza cifra (il millesimo non compilato) non spiega niente: la sua parte è andata alle altre.
+     */
+    public function statoAllineamento(PianoRate $pianoRate): string
     {
         $pianoRate->loadMissing('rate');
 
         if ($pianoRate->rate->isEmpty()) {
-            return false;
+            return self::ALLINEATO;
         }
 
-        return $this->totaleAttesoCents($pianoRate) !== $this->totalePuroGeneratoCents($pianoRate);
+        $scarto = $this->scartoCents($pianoRate);
+        if ($scarto === 0) {
+            return self::ALLINEATO;
+        }
+
+        return $this->scartoRegistratoCents($pianoRate) === $scarto ? self::QUOTA_APERTA : self::DISALLINEATO;
+    }
+
+    /** Quanto il piano dovrebbe mettere in rata meno quanto c'è nelle rate, in centesimi: positivo se le rate chiedono meno. */
+    public function scartoCents(PianoRate $pianoRate): int
+    {
+        return $this->totaleAttesoCents($pianoRate) - $this->totalePuroGeneratoCents($pianoRate);
+    }
+
+    /**
+     * Lo scarto registrato alla generazione, se le voci registrate lo spiegano (vedi `statoAllineamento()`); null se la colonna è vuota
+     * (nessuna quota accettata, o un piano generato prima della 1.11.0-beta.59) o se le voci non lo spiegano.
+     */
+    public function scartoRegistratoCents(PianoRate $pianoRate): ?int
+    {
+        $registrate = $pianoRate->quote_non_assegnate;
+        if (! is_array($registrate) || ! isset($registrate['scarto_cents'])) {
+            return null;
+        }
+
+        $conCifra = array_values(array_filter((array) ($registrate['voci'] ?? []), fn ($voce) => (int) ($voce['importo_cents'] ?? 0) !== 0));
+        // Una quota che nessuno ha accettato («Rimuovi voce e ricalcola» l'ha trovata nuova) non fa quota aperta.
+        if ($conCifra === [] || collect($conCifra)->contains(fn ($voce) => ($voce['accettata'] ?? true) === false)) {
+            return null;
+        }
+
+        $scarto = (int) $registrate['scarto_cents'];
+        // Con il segno della voce: la quota di una voce di entrata è un credito che nessuno riceve, e lo scarto la conta con il meno.
+        $spiegato = array_sum(array_map(fn ($voce) => ((int) ($voce['segno'] ?? 1) < 0 ? -1 : 1) * abs((int) $voce['importo_cents']), $conCifra));
+
+        return abs($scarto - $spiegato) <= count($conCifra) ? $scarto : null;
     }
 
     public function quotePerAnagrafica(PianoRate $pianoRate): Collection
     {
-        $esercizio = $pianoRate->gestione->esercizi()->wherePivot('attiva', true)->first() 
-                     ?? $pianoRate->gestione->esercizi()->first();
+        // Coda 75: l'esercizio del piano, non «il primo attivo» del pivot. La stessa gestione ordinaria si aggancia a ogni esercizio
+        // (`CondominioService::createDefaultGestione`, l'importatore) e nessuno spegne le righe vecchie: senza un ordine il primo era a caso.
+        $esercizio = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
 
         $pianoUsaSaldi = $this->determinaSePianoUsaSaldi($pianoRate);
 
@@ -271,8 +433,8 @@ class PianoRateQuoteService
 
     public function quotePerImmobile(PianoRate $pianoRate): Collection
     {
-        $esercizio = $pianoRate->gestione->esercizi()->wherePivot('attiva', true)->first() 
-                     ?? $pianoRate->gestione->esercizi()->first();
+        // Coda 75: l'esercizio del piano, come in quotePerAnagrafica.
+        $esercizio = app(CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
 
         $pianoUsaSaldi = $this->determinaSePianoUsaSaldi($pianoRate);
 

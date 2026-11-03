@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
+use App\Helpers\MoneyHelper;
 use App\Models\Gestionale\Conto;
+use App\Services\Gestionale\BloccoDellaVoce;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -136,14 +138,25 @@ class UpdateContoRequest extends FormRequest
                     // il menu lo consentiva. Dirgli «il padre selezionato» lo manda a cercare un
                     // errore che non ha commesso.
                     $padreInvariato = $conto && (int) $conto->parent_id === (int) $this->parent_id;
+                    // La frase indica il capitolo padre di primo livello e non l'eliminazione, che una voce con delle righe di fattura rifiuta. Se un piano
+                    // approvato tiene la voce, dice prima la bozza (`Conto::pianiCheBloccanoLaVoce`, `BloccoDellaVoce`).
+                    $tengono = $padreInvariato ? (Conto::pianiCheBloccanoLaVoce([(int) $conto->id])[(int) $conto->id] ?? []) : [];
 
                     $validator->errors()->add(
                         'parent_id',
-                        $padreInvariato
-                            ? 'Questa voce si trova al terzo livello, che il piano dei conti non prevede: '
-                              . 'è un residuo delle versioni precedenti. Per salvare, scegli come capitolo padre una '
-                              . 'voce di primo livello — oppure elimina la voce se non ti serve più.'
-                            : 'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello'
+                        match (true) {
+                            $padreInvariato && $tengono !== [] => BloccoDellaVoce::frase(
+                                'Questa voce si trova al terzo livello, che il piano dei conti non prevede: è un residuo delle versioni precedenti, e '
+                                . BloccoDellaVoce::COSA_NON_SI_CAMBIA . ' della voce non si cambiano finché ' . BloccoDellaVoce::chi($tengono) . ' ' . BloccoDellaVoce::nelPiano($tengono),
+                                $tengono,
+                                'scegli come capitolo padre una voce di primo livello',
+                                'la voce resta com\'è',
+                            ),
+                            $padreInvariato => 'Questa voce si trova al terzo livello, che il piano dei conti non prevede: '
+                                . 'è un residuo delle versioni precedenti. Per salvare, scegli come capitolo padre una '
+                                . 'voce di primo livello.',
+                            default => 'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello',
+                        }
                     );
                 }
 
@@ -161,6 +174,22 @@ class UpdateContoRequest extends FormRequest
                     'isCapitolo',
                     'Non è possibile trasformare un capitolo con sottoconti in una voce di spesa normale'
                 );
+            }
+
+            // Si rifiuta solo un importo cambiato in negativo: una voce già negativa (dato delle versioni precedenti) si rinomina e si porta
+            // a «Entrata» senza toccare l'importo, che il modale rimanda sempre, se nessun piano approvato la tiene (il tipo lo blocca il
+            // controller, come l'importo). Non si porta a «Spesa» da un'entrata: sarebbe una spesa negativa nuova, quella che la creazione
+            // rifiuta. Il controllo viene prima dei blocchi del controller, così un meno prende il suo testo e non quello delle rate approvate
+            // o dell'importo già impegnato.
+            if (! $this->boolean('isCapitolo') && ImportoSenzaSegno::eNegativo($this->input('importo'))) {
+                $importoInvariato = $conto && MoneyHelper::toCents($this->input('importo')) === (int) $conto->importo;
+                $entrataPortataASpesa = $conto
+                    && Conto::segnoDelTipo((string) ($conto->tipo ?? 'spesa')) !== 1
+                    && Conto::segnoDelTipo((string) $this->input('tipo')) === 1;
+
+                if (! $importoInvariato || $entrataPortataASpesa) {
+                    ImportoSenzaSegno::rifiuta($validator, 'importo', ImportoSenzaSegno::rifiutoPerIlTipo($this->input('tipo')));
+                }
             }
 
             if (!$this->boolean('isCapitolo')) {

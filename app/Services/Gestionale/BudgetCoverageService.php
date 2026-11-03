@@ -2,6 +2,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Models\Gestionale\Conto;
 use App\Models\Gestione;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -34,7 +35,7 @@ class BudgetCoverageService
         foreach ($this->appiattisciConti($contiRadice) as $conto) {
             $isLeaf = $conto->sottoconti->isEmpty();
             
-            $budgetTeorico   = (int) $conto->importo;
+            $budgetTeorico   = self::importoDellaVoce($conto, (int) $conto->importo);
             $spesoReale      = $fatturatoMap[$conto->id] ?? 0;
             $fabbisognoReale = max($budgetTeorico, $spesoReale);
 
@@ -66,6 +67,10 @@ class BudgetCoverageService
                 'nome'               => $conto->nome,
                 'padre'              => $conto->parent?->nome,
                 'is_leaf'            => $isLeaf,
+                'tipo'               => $conto->tipo,
+                'segno'              => Conto::segnoDelTipo((string) $conto->tipo),
+                // Una voce di spesa scritta con il meno: la copertura la conta in positivo, come il motore, ma un piano nuovo non la finanzia.
+                'spesa_negativa'     => Conto::eSpesaNegativa((string) $conto->tipo, (int) $conto->importo),
                 'budget'             => $fabbisognoReale,
                 'budget_teorico'     => $budgetTeorico,
                 'pianificato'        => $pianificato,
@@ -82,10 +87,12 @@ class BudgetCoverageService
         $totBudget      = 0;
         $totPianificato = 0;
         
+        // I totali contano le entrate col segno meno, come le distribuisce il motore: il fabbisogno e il pianificato
+        // sono il netto da ripartire. Per voce la copertura resta sul valore assoluto.
         foreach ($report as $r) {
             if ($r['is_leaf']) {
-                $totBudget      += $r['budget'];
-                $totPianificato += $r['pianificato'];
+                $totBudget      += $r['segno'] * $r['budget'];
+                $totPianificato += $r['segno'] * $r['pianificato'];
             }
         }
 
@@ -94,6 +101,23 @@ class BudgetCoverageService
             'items'  => $report,
             'totali' => ['budget' => $totBudget, 'pianificato' => $totPianificato],
         ];
+    }
+
+    /**
+     * L'importo di una voce come lo legge il motore: il valore assoluto, dal lato del suo tipo (`Conto::partiDelTipo`). Il motore toglie il segno a
+     * ogni voce, quindi una voce scritta con il meno (dato delle versioni dalla 1.7.0 alla 1.11.0-beta.51) conta come una positiva: un'entrata
+     * accredita, una spesa addebita, e la copertura non le deve vedere in deficit né scoperte per il loro segno.
+     * Una spesa negativa non si finanzia con un piano nuovo (`getCapitoliFinanziabili` la salta): un piano che la tiene la addebita già, e
+     * la creazione che la prende dalla voce la ferma il fermo del piano (`SpeseNegativeNelPiano`).
+     * Il tipo manca sugli oggetti semplici dei test unitari: senza tipo la voce è di spesa.
+     *
+     * @param  object  $conto  una voce del piano dei conti (o un oggetto con `tipo`)
+     */
+    public static function importoDellaVoce(object $conto, int $importo): int
+    {
+        $parti = Conto::partiDelTipo((string) ($conto->tipo ?? 'spesa'), $importo);
+
+        return $parti['spese'] + $parti['entrate'];
     }
 
     private function calcolaCoperturaReale($contiRadice, $pianiRate): array
@@ -136,20 +160,20 @@ class BudgetCoverageService
 
                     $residuoPiano = is_null($capitolo->pivot->importo)
                         ? (function () use ($capitolo, $contoModel): int {
-                            $padreBudget = (int) $capitolo->importo;
+                            $padreBudget = self::importoDellaVoce($contoModel, (int) $capitolo->importo);
                             // Mastro padre (importo=0): NULL significa "copri tutto il fabbisogno dei figli"
                             if ($padreBudget === 0) {
-                                $padreBudget = (int) $contoModel->sottoconti->sum('importo');
+                                $padreBudget = (int) $contoModel->sottoconti->sum(fn ($figlio) => self::importoDellaVoce($figlio, (int) $figlio->importo));
                             }
                             return $padreBudget;
                           })()
-                        : (int) $capitolo->pivot->importo;
+                        : self::importoDellaVoce($contoModel, (int) $capitolo->pivot->importo);
 
                     $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $residuoPiano;
 
                     $figliDaSoddisfare = [];
                     foreach ($sottocontiValidi as $figlio) {
-                        $budgetTeorico  = (int) $figlio->importo;
+                        $budgetTeorico  = self::importoDellaVoce($figlio, (int) $figlio->importo);
                         $copertoAttuale = $map[$figlio->id] ?? 0;
                         $deficit        = $budgetTeorico - $copertoAttuale;
                         if ($deficit > 0) {
@@ -196,9 +220,10 @@ class BudgetCoverageService
                 $contoModel = $contiById[$capitolo->id] ?? null;
 
                 if ($contoModel && $contoModel->sottoconti->isEmpty()) {
-                    $impegnato = !is_null($capitolo->pivot->importo)
-                        ? (int) $capitolo->pivot->importo
-                        : (int) $capitolo->importo;
+                    $impegnato = self::importoDellaVoce(
+                        $contoModel,
+                        !is_null($capitolo->pivot->importo) ? (int) $capitolo->pivot->importo : (int) $capitolo->importo
+                    );
 
                     $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $impegnato;
                 }
@@ -220,9 +245,39 @@ class BudgetCoverageService
                     ->groupBy('fattura_passiva_id');
 
                 foreach ($straordinari as $piano) {
+                    // Coda 165: un piano con una fattura rettificata da note collegate e con le quote già generate si legge
+                    // da ciò che ha registrato — le note arrivate dopo non l'hanno cambiato (W1 del terzo giro). Tutto il
+                    // piano, anche le fatture senza note: le righe di riparto non portano la fattura (X2 del quarto giro).
+                    $conNote = NettoNoteCollegate::perFatture($piano->fattureStraordinarie->pluck('id')->all()) !== [];
+                    if ($conNote) {
+                        if (($registrato = NettoNoteCollegate::ripartoRegistratoPerConto((int) $piano->id)) !== null) {
+                            foreach ($registrato as $contoId => $quota) {
+                                if (isset($contiById[$contoId])) {
+                                    $map[$contoId] = ($map[$contoId] ?? 0) + $quota;
+                                }
+                            }
+                            continue;
+                        }
+                        // Le quote ci sono ma le righe no (piano generato prima della beta.29): si legge senza note, come
+                        // la stampa ricostruita (R6) — le rate restano quelle di prima (X1 del quarto giro).
+                        $conNote = ! $piano->rate()->whereHas('rateQuote')->exists();
+                    }
+
                     foreach ($piano->fattureStraordinarie as $fattura) {
                         $importoFinanziato = (int) ($fattura->pivot->importo_collegato ?? 0);
                         if ($importoFinanziato <= 0) continue;
+
+                        // Coda 165 (1.11.0-beta.36): con note di credito collegate, quanto il piano ripartisce su ogni voce
+                        // lo dice la stessa regola del motore — la scala sul lordo qui sotto ignorava la nota, e la voce
+                        // coperta per intero risultava in deficit (V6 della verifica delle correzioni della Fase 1-bis).
+                        if ($conNote && ($riparto = NettoNoteCollegate::ripartoPerConto((int) $fattura->id, $importoFinanziato)) !== null) {
+                            foreach ($riparto as $contoId => $quota) {
+                                if (isset($contiById[$contoId])) {
+                                    $map[$contoId] = ($map[$contoId] ?? 0) + $quota;
+                                }
+                            }
+                            continue;
+                        }
 
                         $righeFattura = $righe->get($fattura->id, collect());
                         if ($righeFattura->isEmpty()) continue;
@@ -298,6 +353,12 @@ class BudgetCoverageService
 
         foreach ($analysisReport['items'] as $item) {
             if (!($item['is_leaf'] ?? false)) {
+                continue;
+            }
+
+            // Una voce di spesa scritta con il meno non si finanzia: un piano che la tiene la addebita già, e un piano nuovo la addebiterebbe in
+            // positivo. Fuori da qui la creazione ricade sull'importo della voce, negativo, e il fermo del piano la ferma con il suo testo.
+            if ($item['spesa_negativa'] ?? false) {
                 continue;
             }
 

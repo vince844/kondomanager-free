@@ -4,6 +4,7 @@ namespace App\Notifications\Segnalazioni;
 
 use App\Helpers\RouteHelper;
 use App\Models\Segnalazione;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,6 +14,7 @@ use Illuminate\Support\Str;
 class ApproveSegnalazioneNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
+    use TestoScrittoDaAltri;
 
     public $segnalazione;
 
@@ -46,13 +48,13 @@ class ApproveSegnalazioneNotification extends LocalizedNotification implements S
         return (new MailMessage)
             ->subject(__('notifications.approve_ticket.subject'))
             ->greeting(__('notifications.approve_ticket.greeting', [
-                'name' => $notifiable->name ?? $notifiable->nome
+                'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome)
             ]))
             ->line(__('notifications.approve_ticket.line_1', [
-                'user' => $this->segnalazione->createdBy->name
+                'user' => self::nomeComeTesto($this->segnalazione->createdBy->name)
             ]))
             ->line(__('notifications.approve_ticket.line_2'))
-            ->line('**' . __('notifications.approve_ticket.object') . ':** ' . $this->segnalazione->subject)
+            ->line('**' . __('notifications.approve_ticket.object') . ':** ' . self::testoComeTesto($this->segnalazione->subject))
             ->line('**' . __('notifications.approve_ticket.priority') . ':** ' . Str::ucfirst($this->segnalazione->priority))
             ->line('**' . __('notifications.approve_ticket.status') . ':** ' . Str::ucfirst($this->segnalazione->stato))
             ->action(__('notifications.approve_ticket.action'), url("/{$routePrefix}/segnalazioni/{$this->segnalazione->id}"));

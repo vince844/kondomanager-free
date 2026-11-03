@@ -22,6 +22,8 @@ return [
     'invalid_2fa_code'          => 'O código de autenticação de dois fatores fornecido é inválido.',
     'invalid_2fa_recovery_code' => 'O código de recuperação da autenticação de dois fatores fornecido é inválido.',
     'too_many_2fa_attempts'     => 'Muitas tentativas de autenticação de dois fatores. Tente novamente em :seconds segundos.',
+    'two_factor_expired'        => 'A verificação do código expirou: insira de novo o email e a palavra-passe.',
+    'two_factor_restart'        => 'Demasiados códigos errados: insira de novo o email e a palavra-passe.',
     
     /* ------------------------------------------------------------------
      | Headers, Titles and Descriptions
@@ -184,6 +186,29 @@ return [
             'toggle_recovery_code'       => 'entrar usando um código de recuperação',
             'or'                         => 'ou pode',
         ],
+    ],
+
+    /* ------------------------------------------------------------------
+     | Hints next to form fields
+     | ------------------------------------------------------------------ */
+    'hint' => [
+        // La lunghezza minima di ogni password nuova (Coda 262): `Password::defaults()`.
+        'password_min' => 'Pelo menos 10 caracteres.',
+    ],
+
+    /* ------------------------------------------------------------------
+     | A janela que volta a pedir a senha (Coda 404): aparece sobre a página
+     | quando uma ação sensível a exige, e a ação recomeça sozinha.
+     | ------------------------------------------------------------------ */
+    'confirm_password_dialog' => [
+        'title'          => 'Confirme a sua senha',
+        'description'    => 'Para continuar, introduza novamente a sua senha. Depois de confirmar, a ação que pediu recomeça sozinha, sem ter de reescrever nada. Se cancelar, não é executada e o que escreveu fica como está.',
+        'cancel'         => 'Cancelar',
+        'confirm'        => 'Confirmar',
+        'too_many'       => 'Demasiadas tentativas em pouco tempo: tente novamente dentro de um minuto.|Demasiadas tentativas em pouco tempo: tente novamente dentro de :count minutos.',
+        'too_many_later' => 'Demasiadas tentativas em pouco tempo: tente novamente mais tarde.',
+        'error_generic'  => 'Não foi possível verificar a senha. Tente novamente.',
+        'session_ended'  => 'A sessão expirou: recarregue a página e, se necessário, inicie sessão novamente.',
     ],
 
     /* ------------------------------------------------------------------

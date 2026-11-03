@@ -5,6 +5,7 @@ import type { ButtonVariants } from '@/components/ui/button'
 import { reactiveOmit } from "@vueuse/core"
 import { ChevronRightIcon } from "lucide-vue-next"
 import { PaginationLast, useForwardProps } from "reka-ui"
+import { trans } from "laravel-vue-i18n"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from '@/components/ui/button'
 
@@ -22,11 +23,12 @@ const forwarded = useForwardProps(delegatedProps)
 <template>
   <PaginationLast
     data-slot="pagination-last"
+    :aria-label="trans('pagination.controls.last_page')"
     :class="cn(buttonVariants({ variant: 'ghost', size }), 'gap-1 px-2.5 sm:pr-2.5', props.class)"
     v-bind="forwarded"
   >
     <slot>
-      <span class="hidden sm:block">Last</span>
+      <span class="hidden sm:block">{{ trans('pagination.controls.last') }}</span>
       <ChevronRightIcon />
     </slot>
   </PaginationLast>

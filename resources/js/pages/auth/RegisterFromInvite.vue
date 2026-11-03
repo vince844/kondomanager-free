@@ -12,6 +12,8 @@ import { trans } from 'laravel-vue-i18n';
 
 interface Props {
     email: string;
+    // L'URL firmato da cui è stata aperta la pagina: il salvataggio va lì, firma compresa.
+    azione: string;
 }
 
 const props = defineProps<Props>();
@@ -24,7 +26,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route('invito.register.store'), {
+    form.post(props.azione, {
         onFinish: () => form.reset('password', 'password_confirmation'),
     });
 };
@@ -79,6 +81,7 @@ const submit = () => {
                         v-model="form.password"
                         :placeholder="trans('auth.placeholder.invitation_register.password')"
                     />
+                    <p class="text-xs text-muted-foreground">{{ trans('auth.hint.password_min') }}</p>
                     <InputError :message="form.errors.password" />
                 </div>
 

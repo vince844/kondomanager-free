@@ -86,7 +86,7 @@ const startLaunch = () => {
                     </div>
                     
                     <div class="text-sm text-gray-500">
-                        <p>Questo processo scaricherà il pacchetto in sicurezza, eseguirà un backup automatico dei file critici e aggiornerà il sistema.</p>
+                        <p>Questo processo scaricherà il pacchetto in sicurezza, terrà da parte una copia del file .env e aggiornerà i file del programma. Il backup del database, quando è disponibile, si fa nella schermata successiva, prima di aggiornare il database.</p>
                     </div>
                 </div>
 

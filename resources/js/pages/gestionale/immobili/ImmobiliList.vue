@@ -45,7 +45,7 @@ const pageGuides = [
   },
   {
     title: 'Date di competenza',
-    description: 'Tieni traccia dei cambi di proprietà o inquilino. Sono per ora un\'annotazione: il calcolo dei saldi per periodo non c\'è ancora.',
+    description: 'Le date di inizio e fine di ogni titolare entrano nel riparto: chi esce paga fino al suo ultimo giorno, chi entra dal primo. Un cambio di proprietà o inquilino si registra da «Registra passaggio».',
     icon: UsersRound,
     colorVariant: 'amber' as const
   },

@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use App\Services\Riparto\RisolutoreTitolari;
 
 class SituazioneDebitoriaController extends Controller
 {
@@ -36,12 +37,19 @@ class SituazioneDebitoriaController extends Controller
         });
 
         // 3. Filtri Contestuali
+        // B2, S7: insieme alle rate, la nota di solidarietà dell'art. 63 co. 4 per chi è entrato (per persona)
+        // o sull'unità (per immobile): un fatto da sapere mentre si incassa, non una quota da incassare.
+        $note = [];
         if ($request->has('immobile_id') && $request->immobile_id) {
             $query->where('immobile_id', $request->immobile_id);
+            $immobile = \App\Models\Immobile::where('condominio_id', $condominio->id)->find($request->immobile_id);
+            $note = $immobile ? app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, null, $immobile) : [];
         } elseif ($request->has('anagrafica_id') && $request->anagrafica_id) {
             $query->where('anagrafica_id', $request->anagrafica_id);
+            $anagrafica = \App\Models\Anagrafica::find($request->anagrafica_id);
+            $note = $anagrafica ? app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica) : [];
         } else {
-            return response()->json(['rate' => []]);
+            return response()->json(['rate' => [], 'note_solidarieta' => []]);
         }
 
         // 4. Esecuzione
@@ -89,11 +97,17 @@ class SituazioneDebitoriaController extends Controller
                 // 1. RECUPERO RUOLO DALLA TUA TABELLA PIVOT
                 $ruoloIniziale = 'P'; // Default fallback
                 if ($q->anagrafica_id && $q->immobile_id) {
-                    $relazione = DB::table('anagrafica_immobile')
-                        ->where('anagrafica_id', $q->anagrafica_id)
-                        ->where('immobile_id', $q->immobile_id)
-                        ->where('attivo', true)
-                        ->first();
+                    // B1 (1.11.0-beta.30): titolarità dal risolutore, e ordine deterministico
+                    // — con una riga per coppia dall'interfaccia (guardia 1 del trait, sulle sole
+                    // FormRequest) è identico a prima; l'importatore può scriverne due con ruoli
+                    // diversi, e lì l'ordine di prima era indefinito; con due periodi (B2) non
+                    // sceglie più «la prima che capita».
+                    $titolari = app(RisolutoreTitolari::class);
+                    $relazione = $titolari->ordinePreferenza($titolari->vincolaQuery(
+                        DB::table('anagrafica_immobile')
+                            ->where('anagrafica_id', $q->anagrafica_id)
+                            ->where('immobile_id', $q->immobile_id)
+                    ))->first();
                         
                     if ($relazione) {
                         // Prende la prima lettera: 'proprietario' -> 'P', 'inquilino' -> 'I', 'usufruttuario' -> 'U'
@@ -242,6 +256,6 @@ class SituazioneDebitoriaController extends Controller
         ->filter()
         ->values();
 
-        return response()->json(['rate' => $groupedRate]);
+        return response()->json(['rate' => $groupedRate, 'note_solidarieta' => array_map(fn ($n) => $n['testo'], $note)]);
     }
 }

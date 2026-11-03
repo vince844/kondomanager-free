@@ -64,7 +64,7 @@ beforeEach(function () {
     $this->fatture = CategoriaDocumento::create(['name' => 'Fatture', 'description' => 'Ciclo passivo']);
 
     foreach ([['Verbale del 3 marzo', $this->verbali], ['Verbale del 9 luglio', $this->verbali], ['Fattura 128', $this->fatture]] as [$titolo, $categoria]) {
-        Documento::create([
+        $documento = Documento::create([
             'name'         => $titolo,
             'description'  => $titolo,
             'path'         => 'documenti/'.md5($titolo).'.pdf',
@@ -74,11 +74,15 @@ beforeEach(function () {
             // rappresentabile — solo, nessuna schermata lo produce. Annotato per la revisione.
             'mime_type'    => 'application/pdf',
             'file_size'    => 122880,
-            'category_id'  => $categoria->id,
             'is_published' => true,
             'is_approved'  => true,
             'created_by'   => $this->admin->id,
         ]);
+
+        // ⚠️ Dalla 1.11.0-beta.10 la categoria è un **legame**, non una colonna: si attacca dopo la
+        // creazione. La fixture qui ne mette una sola perché è quello che questo file prova — che
+        // l'elenco filtrato mostri i documenti della categoria chiesta e non gli altri.
+        $documento->categorie()->attach($categoria->id);
     }
 });
 

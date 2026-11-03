@@ -171,18 +171,31 @@ return [
 
     'custom' => [
         'roles' => [
-            'not_allowed' => 'You cannot assign this role: administrative roles are granted by an administrator.',
+            'not_allowed' => 'You cannot assign this role: anyone who is not an administrator assigns only the «utente» and «fornitore» roles.',
             'last_admin' => 'This is the last active administrator: changing this role would leave the installation with nobody able to manage it.',
+            'privileged_target' => 'Only an administrator can change the roles of this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
         ],
         'permissions' => [
             'not_allowed' => 'You cannot grant a permission you do not have yourself.',
+            'privileged_target' => 'Only an administrator can change the additional permissions of this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
+        ],
+        'default_user_role' => [
+            'only_admin' => 'Only an administrator can change the default role for new users.',
         ],
         'email' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.',
-            'unique_email_across_tables' => 'This email address is already in use.'
+            'unique_email_across_tables' => 'This email address is already in use.',
+            'privileged_target' => 'Only an administrator can change the email of this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
+            'own_from_profile' => 'Your own email cannot be changed here: change it from your profile, where your current password is required.',
+            'unique_email_across_tables_in' => 'This email address is already in use: it is recorded on :dove.',
+            'sorgenti' => [
+                'anagrafiche' => 'a contact record',
+                'fornitori'   => 'another supplier',
+                'condomini'   => 'a building',
+            ],
         ],
         'email_secondaria' => [
             'required' => 'The :attribute field is required.',
@@ -190,11 +203,18 @@ return [
             'lowercase' => 'The :attribute field must be lowercase.',
             'email' => 'The :attribute field must be a valid email address.'
         ],
+        'ruolo' => [
+            'required_with' => 'Also choose the representative role',
+        ],
+        'codice_ateco' => [
+            'max' => 'Enter the code only, without its description — for example 43.22.01.',
+        ],
         'pec' => [
             'required' => 'The :attribute field is required.',
             'unique' => 'The :attribute field is already in use.',
             'lowercase' => 'The :attribute field must be lowercase.',
-            'email' => 'The :attribute field must be a valid email address.'
+            'email' => 'The :attribute field must be a valid email address.',
+            'different' => 'The certified email must differ from the ordinary email: if the company has a single address, leave one of the two fields empty.',
         ],
         'name' => [
             'required' => 'The :attribute field is required.'
@@ -231,6 +251,8 @@ return [
 
     'attributes' => [
         'email' => 'email address',
+        'emails' => 'email addresses',
+        'buildings' => 'buildings',
         'email_secondaria' => 'secondary email address',
         'pec' => 'certified email address',
         'name' => 'full name',
@@ -274,6 +296,7 @@ return [
             'is_published' => 'document status',
             'condomini_ids' => 'buildings',
             'category_id' => 'category',
+            'categorie' => 'categories',
         ],
         'categorie' => [
             'name' => 'name',

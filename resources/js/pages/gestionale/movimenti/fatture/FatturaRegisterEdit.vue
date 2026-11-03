@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useForm, Head, router, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -8,13 +8,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info } from 'lucide-vue-next';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info, CalendarRange } from 'lucide-vue-next';
+import { descriviTratti } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
+import FormErrorSummary from '@/components/FormErrorSummary.vue';
+import { usePuliziaErrori } from '@/composables/usePuliziaErrori';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { useFattureSimili } from '@/composables/useFattureSimili';
+import { watchDebounced } from '@vueuse/core';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { centsToEuro } from '@/lib/gestionale/money';
-import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
-import { calcolaTotali, risolviRegimeRitenuta } from '@/lib/gestionale/fatture/totali';
+import CompetenzaFattura from '@/components/gestionale/movimenti/fatture/CompetenzaFattura.vue';
+import { descriviMargine, lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
+import { euroToCents } from '@/lib/gestionale/fatture/money';
+import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
@@ -23,7 +32,11 @@ import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 // Interfaces & Props
 // ---------------------------------------------------------------------------
 const { euro } = useCurrencyFormatter();
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+
+// La scheda di modifica del fornitore chiede «Modifica anagrafiche» (`FornitorePolicy::update`, Coda 402): senza, il
+// modulo non offre il collegamento che risponderebbe 403.
+const puoModificareFornitori = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
 
 const moneyOptions = ref({
     prefix: '€ ',
@@ -84,6 +97,8 @@ interface Gestione {
 interface Conto {
     id: number
     nome: string
+    /** Una voce senza `tipo` vale «spesa»: il capitolo di una fattura è sempre una voce di spesa. */
+    tipo?: 'spesa' | 'entrata'
     parent_nome?: string | null
     residuo_budget?: number
     is_capiente?: boolean
@@ -94,6 +109,8 @@ interface Conto {
         importo: number
         is_pregresso?: boolean
     }[]
+    /** La competenza già dichiarata sulla voce in un piano rate della gestione (decisione 20), se c'è. */
+    competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[] } | null
 }
 
 interface Banca {
@@ -123,15 +140,34 @@ const props = defineProps<{
     capienza_rata_zero: number;
     incassato_rata_zero: number;
     fattura: any; // La fattura da modificare
+    // ⚠️ Coda 123, 05/09/2026: la fattura ORIGINALE da cui questa NC nasce, quando è nata
+    // da uno storno — null se non è una NC da storno, o se l'originale non è raggiungibile
+    // (nota nata prima che lo storno scrivesse `stornata_da_id`). È la fonte del
+    // congelamento, non `fattura` stessa: la NC è mutabile, l'originale no. Vedi il
+    // commento gemello in FatturaPassivaController::edit().
+    nota_storno_originale: { importo_imponibile: number; importo_ritenuta: number; ritenuta_details: Record<string, unknown> | null } | null;
 }>();
+// La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella, non la
+// competenza dichiarata su questa fattura (decisione 19). Si dice sotto la voce, dove si sceglie.
+const competenzaPianoDi = (contoId: number | null | undefined) => {
+    if (!contoId) return null;
+    const c = props.conti.find((x) => x.id === contoId);
+    return c?.competenza_piano ?? null;
+};
+
 
 // ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
-const fileInput = ref<HTMLInputElement | null>(null);
 const showSuccessModal = ref(false);
 const showModificaVietataModal = ref(false);
 const showPresaAttoSforoModal = ref(false);
+// Coda 165 (1.11.0-beta.36): la nota collegata a una fattura in un piano. Il rifiuto della scala si legge e si corregge
+// senza lasciare la pagina (la finestra della modifica vietata porta al dettaglio e faceva perdere le modifiche); l'avviso
+// di un piano che ha incassato si conferma con un secondo invio — il server lo calcola a righe scritte (R5 della Fase 1-bis).
+const rifiutoNotaCollegata = ref<string | null>(null);
+const avvisoNotaDaConfermare = ref<string | null>(null);
+const confermaAvvisoNota = ref(false);
 const modificaVietataMsg = ref('');
 
 const form = useForm({
@@ -150,6 +186,9 @@ const form = useForm({
     conto_corrente_id:  props.fattura.conto_corrente_id,
     modalita_pagamento: props.fattura.modalita_pagamento,
     iban_fornitore:     props.fattura.iban_fornitore || '',
+    // La competenza (B2, S6) arriva dalle colonne, come 'Y-m-d' (cast del Model), non più da `dati_extra`.
+    competenza_dal:     props.fattura.competenza_dal || '',
+    competenza_al:      props.fattura.competenza_al || '',
     // FIX (revisione avversariale): un booleano esplicito qui, sempre, faceva
     // scattare required_if:applica_ritenuta,false in UpdateFatturaRequest per
     // OGNI fattura di un fornitore non soggetto a ritenuta (il caso comune) —
@@ -169,7 +208,6 @@ const form = useForm({
             motivo_esclusione_ritenuta_note: props.fattura.dati_extra?.fiscal?.motivo_esclusione_ritenuta_note || '',
             conferma_codice_tributo_mancante: props.fattura.dati_extra?.fiscal?.conferma_codice_tributo_mancante || false,
         },
-        competenza: props.fattura.dati_extra?.competenza || { dal: '', al: '' },
         override_budget: null as any,
         log_legale_sopravvenienza: null as any
     },
@@ -178,13 +216,32 @@ const form = useForm({
         descrizione: r.descrizione || '',
         conto_id: r.conto_id,
         immobile_id: r.immobile_id,
-        // Valore ASSOLUTO, e non è una difesa: su una nota di credito il database
-        // tiene le righe già negative (`FatturaPassivaService:696`), ma
-        // `aggiornaFattura()` vuole in ingresso la cifra digitata e il segno lo mette
-        // lui (`:682` e `:696`). Rimandandogli il negativo che ha scritto, `-1000 ×
-        // 100 × (-1)` torna positivo e la nota di credito diventa un costo.
-        // Il form lavora in valore assoluto: il segno appartiene al tipo di documento.
-        importo_imponibile: Math.abs(centsToEuro(r.importo_imponibile)),
+        // Valore assoluto **solo sulla nota di credito**, e la distinzione è la
+        // correzione della beta.18 (Fase 1-bis, rilievo 2). Su una NC il database tiene
+        // le righe già negative (`FatturaPassivaService:696`) mentre `aggiornaFattura()`
+        // vuole in ingresso la cifra digitata e il segno lo mette lui: rimandandogli il
+        // negativo che ha scritto, `-1000 × 100 × (-1)` torna positivo e la nota di
+        // credito diventa un costo.
+        //
+        // ⚠️ Su una fattura **ordinaria** la premessa che stava scritta qui — «il segno
+        // appartiene al tipo di documento» — non è più vera: dalla beta.18 una riga può
+        // essere legittimamente negativa (lo storno «Oneri di sistema» di una bolletta) e
+        // lì il segno appartiene alla RIGA. Con l'`abs()` incondizionato, riaprire quella
+        // bolletta per correggere una data e risalvarla la gonfiava **in silenzio** da
+        // € 109,80 a € 134,20, caricando il capitolo di € 24,40 che nessuno ha speso:
+        // la casella mostrava € 10,00 prima e dopo, e la scrittura ricostruita quadrava.
+        //
+        // Stessa forma già scelta lato server in `ImportaFatturaXmlController:164`.
+        // ⚠️ **Si moltiplica per il segno del documento, non si prende il valore assoluto.**
+        // La correzione precedente aveva reso l'`abs()` condizionale al tipo documento, e
+        // bastava finché tutte le righe di una nota di credito erano negative. Non lo sono:
+        // la nota che storna una fattura con una riga NEGATIVA porta quella riga POSITIVA
+        // (−1 × −1,80 = +1,80). L'`abs()` la lasciava positiva, il server rimoltiplicava per
+        // −1, e riaprire la nota per cambiare una data la gonfiava da −€ 100,15 a −€ 104,54:
+        // € 4,39 di credito verso il fornitore che nessuno ha chiesto e che nessuno chiude.
+        // Moltiplicare per il segno è l'inverso esatto di ciò che fa il servizio, sempre.
+        // Trovato dalla Fase 1-bis della beta.19 (lenti «segno» e «persistenza»).
+        importo_imponibile: centsToEuro(r.importo_imponibile) * (props.fattura.tipo_documento === 'nota_credito' ? -1 : 1),
         aliquota_iva: r.aliquota_iva,
         is_sopravvenienza: false, // Edit non supporta sopravvenienze per fatture esistenti
         concorre_base_ritenuta: r.concorre_base_ritenuta ?? true,
@@ -198,7 +255,8 @@ const form = useForm({
         concorre_base_ritenuta: true,
     }],
     coperture: [] as any[],
-    file: null as File | null,
+    // ⚠️ Niente più 'file' qui (Coda 102, 1.11.0-beta.12): l'allegato si carica dal
+    // Dettaglio, che non passa dalla riscrittura delle scritture contabili.
 });
 
 // Since fornitore is read-only and not passed in props.fornitori
@@ -208,6 +266,24 @@ const selectedFornitore = computed(() => props.fattura.fornitore);
 const fornitoreRitenutaAttiva = computed(() =>
     !!selectedFornitore.value?.soggetto_ritenuta && !selectedFornitore.value?.regime_forfetario
 );
+
+/**
+ * L'aliquota da MOSTRARE (badge fornitore, checkbox "Applica ritenuta d'acconto") — non
+ * quella da usare nel calcolo, che resta `risolviRegimeRitenuta`. Stesso gemello della
+ * versione in FatturaRegisterNew.vue, aggiunto il 05/09/2026 su segnalazione diretta di
+ * Vincenzo: il badge «Ritenuta» diceva che il fornitore ne era soggetto, ma non A QUALE
+ * percentuale. Qui il fornitore è già un valore fisso (`selectedFornitore`, sola lettura in
+ * modifica), quindi la funzione lo prende direttamente senza bisogno di destrutturare uno
+ * slot del v-select.
+ */
+const aliquotaRitenutaVisualizzata = (f: { tipo_ritenuta?: string | null; perc_ritenuta?: number } | null | undefined): number => {
+    if (!f) return 0;
+    if (f.tipo_ritenuta && REGIMI_RITENUTA_PREVIEW[f.tipo_ritenuta]) {
+        return REGIMI_RITENUTA_PREVIEW[f.tipo_ritenuta].aliquota;
+    }
+    const legacy = Number(f.perc_ritenuta);
+    return Number.isFinite(legacy) ? legacy : 0;
+};
 
 const applicaRitenutaEffective = computed<boolean>({
     get: () => form.applica_ritenuta ?? (form.tipo_documento !== 'nota_credito'),
@@ -239,13 +315,136 @@ const fornitoreConStorico = computed(() => props.fornitori.find(f => f.id === fo
  * registrazione: qui il rischio è anche più concreto, perché la fattura mostrata è già a
  * database e l'amministratore confronta a occhio il netto del form con quello dell'elenco.
  */
-const totali = computed(() => calcolaTotali({
-    is_pregresso:           form.is_pregresso,
-    imponibile_pregresso:   form.imponibile_pregresso,
-    aliquota_iva_pregressa: form.aliquota_iva_pregressa,
-    righe:                  form.righe,
-    ritenuta:               risolviRegimeRitenuta(selectedFornitore.value, applicaRitenutaEffective.value),
-}));
+/**
+ * ⚠️ **Coda 122, 04/09/2026.** Stessa correzione di `FatturaRegisterNew.vue`: le due pagine
+ * duplicano questo calcolo (non un componente condiviso), e il difetto segnalato dal forum
+ * vale in modifica esattamente come in registrazione — è lo stesso pannello di simulazione.
+ */
+const isNotaCredito = computed(() => form.tipo_documento === 'nota_credito');
+
+/** Coda 123, 04/09/2026: una NC nata da uno storno porta una ritenuta CONGELATA sull'importo
+ *  reale dell'originale — vedi il commento gemello in FatturaPassivaService::aggiornaFattura(). */
+const eNotaDaStorno = computed(() => !!props.fattura?.dati_extra?.nota_storno);
+
+/** La fonte del congelamento: l'originale immutabile quando è raggiungibile, altrimenti la
+ *  NC stessa (ripiego — peggiore, ma meglio del ricalcolo dal vivo). **Non `props.fattura`
+ *  direttamente**: trovato il 05/09/2026 verificando a video la correzione stessa. La NC è
+ *  mutabile — un salvataggio con l'imponibile sbagliato (il "caso anomalo" che il
+ *  congelamento non copre) le scrive sopra un imponibile e una ritenuta diversi da quelli
+ *  congelati. Se il termine di paragone del frontend restasse `props.fattura`, si
+ *  guasterebbe insieme alla NC: rimesso l'imponibile giusto, l'anteprima continuerebbe a
+ *  confrontarsi con la versione corrotta e mostrerebbe zero, mentre il backend — che legge
+ *  l'originale — salverebbe già il valore congelato corretto. Stesso identico pattern di
+ *  `FatturaPassivaService::aggiornaFattura()`. */
+const fonteCongelamento = computed(() => props.nota_storno_originale ?? props.fattura);
+
+/** Il totale imponibile delle righe salvate, l'unico termine di paragone che decide se il
+ *  congelamento si applica — sia qui che lato server (stesso confronto in
+ *  FatturaPassivaService::aggiornaFattura(), sulla fattura originale dal 05/09/2026). */
+const imponibileOriginaleCongelamento = computed(() => Math.abs(fonteCongelamento.value?.importo_imponibile ?? 0));
+
+/** Vero quando questa modifica salverà la ritenuta CONGELATA, non un ricalcolo dal vivo.
+ *  Esposto (non solo interno a `totali`) perché il template lo usa per disabilitare i due
+ *  controlli che altrimenti sembrerebbero funzionanti senza esserlo — vedi Coda 123,
+ *  revisione avversariale del 05/09/2026: il toggle "applica ritenuta" e la casella "concorre
+ *  alla base" restavano cliccabili su una NC congelata, ignorati in silenzio dal salvataggio. */
+const congelamentoRitenutaAttivo = computed(() =>
+    eNotaDaStorno.value && calcolaTotali({
+        is_pregresso:           form.is_pregresso,
+        imponibile_pregresso:   form.imponibile_pregresso,
+        aliquota_iva_pregressa: form.aliquota_iva_pregressa,
+        righe:                  form.righe,
+        ritenuta:               null,
+    }).imponibile_cents === imponibileOriginaleCongelamento.value
+);
+
+/**
+ * L'imposta che il documento ha dichiarato di sé quando è stato importato.
+ *
+ * ⚠️ **La modifica non riceve il file, ma il server la ricorda lo stesso — e l'anteprima deve
+ * ricordarla con lui.** Alla registrazione i `DatiRiepilogo` finiscono in
+ * `dati_extra.fiscal.riepiloghi_dichiarati`, e `FatturaPassivaService::aggiornaFattura()` li
+ * rilegge da lì per distribuire di nuovo l'imposta. Senza questi due campi `calcolaTotali()`
+ * qui ricadeva sul calcolo per riga: la pagina di modifica di una fattura importata mostrava
+ * € 100,14 mentre la fattura salvata, l'elenco e il dettaglio dicevano € 100,15 — e il
+ * salvataggio riscriveva 100,15, dando ragione a tutti tranne che alla schermata da cui si
+ * era salvato.
+ *
+ * È lo stesso principio già enunciato per la Coda 123 poco più sotto: **l'anteprima risponde
+ * «quanto verrà salvato», non «quanto direbbe la formula».**
+ *
+ * Le righe salvate non portano la natura IVA (non esiste una colonna che la conservi: il
+ * servizio la legge dal payload), quindi qui un gruppo distinto solo dalla natura non si
+ * riaggancia e ricade sul calcolo per riga — esattamente come fa il server sullo stesso
+ * salvataggio. È una degradazione simmetrica, non uno scostamento fra le due anteprime.
+ */
+const riepiloghiDichiarati = computed(
+    () => (props.fattura.dati_extra as any)?.fiscal?.riepiloghi_dichiarati ?? undefined,
+);
+const impostaPregressaDichiarata = computed(
+    () => (props.fattura.dati_extra as any)?.fiscal?.imposta_pregressa_dichiarata ?? undefined,
+);
+
+/**
+ * Il totale che il DOCUMENTO dichiara di sé. `null` per una fattura senza origine XML: non c'è
+ * niente con cui contraddirsi.
+ */
+const totaleDichiaratoDalDocumentoCents = computed<number | null>(() => {
+    const gruppi = riepiloghiDichiarati.value;
+    if (!Array.isArray(gruppi) || gruppi.length === 0) return null;
+
+    return Math.abs(Math.round(gruppi.reduce(
+        (s: number, g: any) => s + Number(g.imponibile ?? 0) + Number(g.imposta ?? 0), 0,
+    ) * 100));
+});
+
+/** La magnitudine di ciò che si sta per salvare. */
+const totaleRegistratoCents = computed<number>(() => Math.abs(totali.value.totale_documento_cents));
+
+/**
+ * ⚠️ **Su una fattura ricevuta il totale non è nostro**, e la modifica è il posto dove se ne
+ * perde di più il controllo: si riapre per una data e si finisce per toccare una riga. Il debito
+ * verso il fornitore è quello che il documento chiede, tutto intero. Si segnala e non si blocca —
+ * l'amministratore è l'autorità sul proprio documento — ma deve vedere tutti e due i numeri.
+ */
+const scartoDalDocumentoCents = computed<number>(() => {
+    const dichiarato = totaleDichiaratoDalDocumentoCents.value;
+    if (dichiarato === null) return 0;
+
+    return totaleRegistratoCents.value - dichiarato;
+});
+
+const scartoAssolutoCents = computed<number>(() => Math.abs(scartoDalDocumentoCents.value));
+
+const totali = computed(() => {
+    const base = calcolaTotali({
+        is_pregresso:           form.is_pregresso,
+        imponibile_pregresso:   form.imponibile_pregresso,
+        aliquota_iva_pregressa: form.aliquota_iva_pregressa,
+        imposta_pregressa:      impostaPregressaDichiarata.value,
+        riepiloghi:             riepiloghiDichiarati.value,
+        righe:                  form.righe,
+        ritenuta:               risolviRegimeRitenuta(selectedFornitore.value, applicaRitenutaEffective.value),
+    });
+
+    // ⚠️ **Coda 123, 04/09/2026.** Ricalcolare la ritenuta qui sulle percentuali
+    // dell'anagrafica ATTUALE del fornitore mostrerebbe un'anteprima diversa da quella che
+    // il salvataggio produce davvero (il backend congela l'importo, non ricalcola) — stesso
+    // difetto già chiuso per la posizione ritenuta (Coda 116): l'anteprima deve rispondere
+    // «quanto verrà salvato», non «quanto direbbe la regola di oggi». Vale solo se
+    // l'imponibile non è cambiato: se le righe sono state alterate, il congelamento non si
+    // applica nemmeno lato server, e la preview torna al ricalcolo dal vivo per coerenza.
+    if (congelamentoRitenutaAttivo.value) {
+        const ritenutaCongelata = Math.abs(fonteCongelamento.value?.importo_ritenuta ?? 0);
+        return {
+            ...base,
+            ritenuta_cents: ritenutaCongelata,
+            netto_cents: base.totale_documento_cents - ritenutaCongelata,
+        };
+    }
+
+    return base;
+});
 
 // Storico capitoli espanso
 const expandedHistory = ref<Record<number, boolean>>({});
@@ -264,13 +463,13 @@ const budgetImpacts = computed(() => {
         ultimi_movimenti: any[]
     }>();
 
-    form.righe.forEach((r: any) => {
+    form.righe.forEach((r: any, idx: number) => {
         if (!r.conto_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
 
         const residuoCents = c.residuo_budget || 0;
-        const spesaCents   = lordoRigaCents(r.importo_imponibile, r.aliquota_iva);
+        const spesaCents   = lordoRigaRegistratoCents(idx, r);
         const cur = grouped.get(r.conto_id) || {
             id:               c.id,
             nome:             c.nome,
@@ -278,13 +477,20 @@ const budgetImpacts = computed(() => {
             residuo_cents:    residuoCents,
             ultimi_movimenti: c.ultimi_movimenti || []
         };
-        cur.speso_cents += spesaCents;
+        // ⚠️ Coda 122: una nota di credito libera budget, non lo consuma.
+        cur.speso_cents += isNotaCredito.value ? -spesaCents : spesaCents;
         grouped.set(r.conto_id, cur);
     });
 
     return Array.from(grouped.values()).map(i => ({
         ...i,
-        isOk:        i.speso_cents <= i.residuo_cents,
+        // ⚠️ Coda 122, seconda metà (05/09/2026): una nota di credito non può sforare un
+        // capitolo che sta liberando, nemmeno se il capitolo era già in rosso di suo. La
+        // guardia serve QUI e non solo sul badge di riga, perché è `isOk` ad alimentare
+        // `transactionStatus` e la modale di presa d'atto. Spiegazione estesa nel gemello
+        // di `FatturaRegisterNew.vue`.
+        // La regola è una sola, in `sforaBudget` (nota di credito mai; a zero mai; poi lordo contro residuo).
+        isOk:        !sforaBudget(i.speso_cents, i.residuo_cents, isNotaCredito.value),
         delta_cents: i.residuo_cents - i.speso_cents
     }));
 });
@@ -296,12 +502,37 @@ const budgetImpacts = computed(() => {
  * conto possono sforare insieme senza che nessuna delle due sfori da sola. Il badge di riga
  * e il pannello laterale rispondono deliberatamente a domande diverse.
  */
-const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+/**
+ * Il lordo di una riga: il suo imponibile più **la sua** IVA, presa dai totali.
+ *
+ * ⚠️ **Non si ricalcola da imponibile e aliquota, e dalla beta.19 non si può.** Quando il
+ * documento dichiara la propria imposta nei `DatiRiepilogo`, l'imposta del gruppo si
+ * distribuisce fra le righe e un centesimo di compensazione finisce sulla riga col resto
+ * maggiore: `round(imponibile x aliquota / 100)` non lo vede. Misurato a schermo sul file 06
+ * dei collaudi — la riga «materia gas naturale» mostrava un totale di EUR 8,45 mentre la
+ * fattura registrata la porta a EUR 8,46.
+ *
+ * Serve a tre cose che devono dire lo stesso numero: il totale mostrato sulla riga, la spesa
+ * addebitata al capitolo nel pannello budget, e la soglia di sforo. Il ripiego su
+ * `lordoRigaCents` copre la riga appena aggiunta, prima che i totali si siano ricalcolati.
+ */
+const lordoRigaRegistratoCents = (idx: number, riga: { importo_imponibile: unknown; aliquota_iva: unknown }): number => {
+    const iva = totali.value.iva_righe_cents[idx];
+
+    return iva === undefined
+        ? lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva)
+        : euroToCents(riga.importo_imponibile) + iva;
+};
+
+const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+    // ⚠️ Coda 122: una nota di credito non può mai sforare un budget che sta liberando.
+    if (isNotaCredito.value) return false;
+
     if (!riga.conto_id) return false;
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
 
-    return lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva) > c.residuo_budget;
+    return sforaBudget(lordoRigaRegistratoCents(idx, riga), c.residuo_budget, isNotaCredito.value);
 };
 
 const bancheNormalizzate = computed(() =>
@@ -314,10 +545,12 @@ const bankForecast = computed(() => {
     if (!b) return null;
 
     const attualeCents = b.saldo_attuale_cents;
-    const spesaCents   = totali.value.netto_cents;
-    const postCents    = attualeCents - spesaCents;
+    // ⚠️ Coda 122: una nota di credito si compensa, non si incassa — nessuna uscita propria
+    // da prevedere. Il saldo giusto è quello invariato.
+    const spesaCents = isNotaCredito.value ? 0 : totali.value.netto_cents;
+    const postCents  = attualeCents - spesaCents;
 
-    return { attuale_cents: attualeCents, post_cents: postCents, isRed: postCents < 0 };
+    return { attuale_cents: attualeCents, uscita_cents: spesaCents, post_cents: postCents, isRed: postCents < 0 };
 });
 
 const transactionStatus = computed(() => {
@@ -333,9 +566,59 @@ const isDataDocumentoVecchia = computed(() => {
     return diffDays > 30;
 });
 
+// ── Duplicati (decisione D4, 1.11.0-beta.13) ────────────────────────────────
+// ⚠️ Fornitore e numero documento sono READ-ONLY in Modifica (vedi il blocco «Fornitore»
+// più sotto e il template di FatturaShow.vue): il livello FORTE, ancorato proprio a quei
+// due campi, non può mai trovare qui niente di diverso dalla fattura stessa — che
+// `escludiFatturaId` esclude comunque. Il livello che conta in questa schermata è lo
+// STANDARD: data e importi restano modificabili, ed è raggiungibile davvero — misurato in
+// Fase 0.2, `aggiornaFattura()` riscrive `data_documento` e le righe senza controllo.
+const { simili: fattureSimili, cercaSimili: cercaFattureSimili, reset: resetFattureSimili } = useFattureSimili();
+
+const formatDataBreve = (iso: string) => iso ? new Date(iso).toLocaleDateString('it-IT') : '';
+
+watchDebounced(
+    [
+        () => form.data_documento,
+        () => totali.value.totale_documento_cents,
+        // ⚠️ **Da qui non scatta più — lasciata per onestà storica, non per necessità.**
+        // Aggiunta nella beta.13 perché il toggle Fattura <-> Nota di Credito era vivo e un
+        // click non riesaminava il banner. Il 05/09/2026 (revisione avversariale della
+        // beta.17) quel toggle è stato reso non interattivo, perché pilotava tutta la
+        // simulazione di budget/cassa (Coda 122) su un `tipo_documento` che il server ignora
+        // comunque in modifica: `form.tipo_documento` non cambia più durante una sessione di
+        // modifica, quindi questa fonte non si attiva mai. Non è codice morto pericoloso — il
+        // debounce continua a rispondere alle altre due fonti — ma se un giorno
+        // `tipo_documento` tornasse modificabile qui, questa riga è la ragione per cui il
+        // banner duplicati lo saprebbe già.
+        () => form.tipo_documento,
+    ],
+    () => {
+        if (!form.fornitore_id) {
+            resetFattureSimili();
+            return;
+        }
+
+        cercaFattureSimili({
+            condominioId: props.condominio.id,
+            esercizioId: form.esercizio_id,
+            fornitoreId: form.fornitore_id,
+            numeroDocumento: form.numero_documento,
+            totaleDocumentoCents: totali.value.totale_documento_cents,
+            dataDocumento: form.data_documento,
+            tipoDocumento: form.tipo_documento,
+            escludiFatturaId: props.fattura.id,
+        });
+    },
+    { debounce: 400, immediate: true }
+);
+
 const sforoBudgetTotaleCents = computed(() =>
     budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso_cents - i.residuo_cents), 0)
 );
+
+/** La gestione scelta è straordinaria: il pannello della competenza lo dice, senza promettere che decida. */
+const gestioneSceltaStraordinaria = computed(() => props.gestioni.find(g => g.id === form.gestione_id)?.tipo === 'straordinaria');
 
 const gestioniFiltrate = computed(() => {
     if (!form.esercizio_id) return [];
@@ -426,10 +709,60 @@ const confermaPresaAttoSforo = () => {
     doSubmit();
 };
 
+const confermaAvvisoESalva = () => {
+    avvisoNotaDaConfermare.value = null;
+    confermaAvvisoNota.value = true;
+    doSubmit();
+};
+
+/**
+ * Il riepilogo dei rifiuti (`FormErrorSummary`, lo stesso della registrazione): il conto di addebito sta nel pannello laterale, e la chiave
+ * `error` del server (una scrittura che non si compone) non ha nessun campo; senza il riepilogo il salvataggio rifiutato non mostra niente.
+ * Le chiavi che hanno già la loro finestra non si ripetono.
+ */
+const etichetteErrori = computed<Record<string, string>>(() => {
+    const etichette: Record<string, string> = {
+        numero_documento: 'Numero documento',
+        data_documento: 'Data documento',
+        data_scadenza: 'Scadenza',
+        competenza_dal: 'Competenza (dal)',
+        competenza_al: 'Competenza (al)',
+        gestione_id: 'Gestione',
+        conto_corrente_id: 'Conto addebito',
+        modalita_pagamento: 'Modalità di pagamento',
+        iban_fornitore: 'IBAN fornitore',
+    };
+
+    Object.keys(form.errors).forEach((chiave) => {
+        const riga = chiave.match(/^righe\.(\d+)\./);
+        if (riga) etichette[chiave] = `Riga ${Number(riga[1]) + 1}`;
+    });
+
+    return etichette;
+});
+
+const CHIAVI_CON_FINESTRA_PROPRIA = ['modifica_vietata', 'avviso_nota', 'fattura_rettificata_id'];
+const erroriDelRiepilogo = computed<Record<string, string>>(() => Object.fromEntries(
+    Object.entries(form.errors as Record<string, string>).filter(([chiave]) => !CHIAVI_CON_FINESTRA_PROPRIA.includes(chiave)),
+));
+
+// Il riquadro va portato sotto gli occhi: il pulsante di salvataggio sta in fondo alla pagina e il riepilogo in testa.
+const riepilogoErrori = ref<HTMLElement | null>(null);
+const portaInVistaIlRiepilogo = () => nextTick(() => {
+    if (Object.keys(erroriDelRiepilogo.value).length === 0) return;
+    riepilogoErrori.value?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    riepilogoErrori.value?.focus?.();
+});
+
+// L'errore di un campo sparisce appena il campo cambia valore: corretta la riga, il rifiuto non resta a dire che ha sbagliato.
+usePuliziaErrori(form as any);
+
 const doSubmit = () => {
     form.transform((data) => {
         const payload = {
             ...data,
+            // Coda 165: vale solo per il secondo invio, dopo la conferma dell'avviso; il primo lo manda falso.
+            conferma_avviso_nota: confermaAvvisoNota.value,
             dati_extra: JSON.parse(JSON.stringify(data.dati_extra)),
             coperture: data.coperture ? JSON.parse(JSON.stringify(data.coperture)) : []
         }; 
@@ -501,7 +834,14 @@ const doSubmit = () => {
             if (errors.modifica_vietata) {
                 modificaVietataMsg.value = errors.modifica_vietata;
                 showModificaVietataModal.value = true;
+            } else if (errors.avviso_nota) {
+                avvisoNotaDaConfermare.value = errors.avviso_nota;
+            } else if (errors.fattura_rettificata_id) {
+                // Coda 165: il motivo ha la via dentro; la finestra si chiude e la modifica resta da correggere.
+                rifiutoNotaCollegata.value = errors.fattura_rettificata_id;
             }
+            confermaAvvisoNota.value = false;
+            portaInVistaIlRiepilogo();
         },
     });
 };
@@ -537,6 +877,10 @@ const pageGuides = [
                 back-text="Indietro"
             />
 
+            <div ref="riepilogoErrori" tabindex="-1" class="outline-none">
+                <FormErrorSummary :errors="erroriDelRiepilogo" :labels="etichetteErrori" />
+            </div>
+
             <!-- Banner warning -->
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
                 <div v-if="!form.is_pregresso && transactionStatus !== 'SAFE'"
@@ -548,6 +892,9 @@ const pageGuides = [
                         Questa modifica porta il capitolo oltre il budget di {{ euro(sforoBudgetTotaleCents) }}.
                         In modifica lo sforo <strong>non può essere motivato</strong>: per registrare una motivazione
                         e la relativa copertura occorre stornare la fattura e registrarla di nuovo.
+                    </p>
+                    <p v-else-if="isNotaCredito" class="text-sm font-medium">
+                        Il conto selezionato ha già un saldo negativo — indipendente da questo documento, che non genera nessuna uscita.
                     </p>
                     <p v-else class="text-sm font-medium">
                         Liquidità insufficiente sul conto selezionato.
@@ -561,18 +908,30 @@ const pageGuides = [
                 <div class="lg:col-span-4 h-full flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 shrink-0">
                         <div class="space-y-3 mb-4">
-                            <!-- Toggle Fattura / Nota Credito -->
-                            <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                                <button type="button" @click="form.tipo_documento = 'fattura'"
-                                    class="flex-1 py-2 text-[11px] font-black uppercase tracking-wider rounded-md transition-all flex items-center justify-center gap-1.5"
-                                    :class="form.tipo_documento === 'fattura' ? 'bg-white dark:bg-slate-700 text-primary shadow-sm' : 'text-slate-400'">
-                                    <FileText class="w-3.5 h-3.5" /> Fattura
-                                </button>
-                                <button type="button" @click="form.tipo_documento = 'nota_credito'"
-                                    class="flex-1 py-2 text-[11px] font-black uppercase tracking-wider rounded-md transition-all"
-                                    :class="form.tipo_documento === 'nota_credito' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-400'">
-                                    Nota Credito
-                                </button>
+                            <!-- Tipo documento — SOLO VISUALIZZAZIONE in modifica.
+                                 ⚠️ **05/09/2026, revisione avversariale, poi ridisegnata su segnalazione
+                                 diretta di Vincenzo.** `UpdateFatturaRequest` non accetta `tipo_documento`
+                                 e `aggiornaFattura()` lo rilegge sempre dal database: il tipo non cambia
+                                 MAI qui, era già così prima di Coda 122/123. La prima correzione aveva
+                                 tenuto la forma a due caselle affiancate del vecchio toggle, solo con
+                                 `cursor-not-allowed` — ma due caselle, una spenta e una colorata, dicono
+                                 ancora «puoi scegliere», anche disabilitate: è la stessa forma di un
+                                 controllo, non di uno stato. Sostituita con un'unica etichetta di sola
+                                 lettura, con il lucchetto a dirlo, sullo stesso pattern del campo
+                                 "Fornitore" qui sotto — un campo bloccato in questa pagina ha già un
+                                 aspetto, ed è quello. -->
+                            <div class="space-y-1.5">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Tipo documento</Label>
+                                <div class="flex items-center gap-2 py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md"
+                                    title="Il tipo di documento non è modificabile: storna e registra di nuovo per cambiarlo.">
+                                    <FileText v-if="form.tipo_documento === 'fattura'" class="w-4 h-4 text-blue-500 shrink-0" />
+                                    <AlertTriangle v-else class="w-4 h-4 text-rose-500 shrink-0" />
+                                    <span class="font-bold text-sm"
+                                        :class="form.tipo_documento === 'fattura' ? 'text-blue-700 dark:text-blue-400' : 'text-rose-700 dark:text-rose-400'">
+                                        {{ form.tipo_documento === 'fattura' ? 'Fattura' : 'Nota di credito' }}
+                                    </span>
+                                    <Lock class="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 ml-auto shrink-0" />
+                                </div>
                             </div>
                             <Transition mode="out-in">
                                 <div v-if="form.tipo_documento === 'fattura'" key="ft" class="flex items-start gap-2 px-2.5 py-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/30">
@@ -585,6 +944,17 @@ const pageGuides = [
                                     <AlertTriangle class="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
                                     <p class="text-[10px] text-rose-700 dark:text-rose-400 leading-relaxed">
                                         <strong>Nota di credito</strong> — documento emesso dal fornitore per rettificare una fattura.
+                                        <!-- Coda 165: il collegamento non si cambia da qui — «Scollega» e «Collega» stanno nell'elenco. -->
+                                        <template v-if="(props.fattura as any).fattura_rettificata && props.fattura.stato_approvazione === 'contestata'">
+                                            Rettifica la fattura <strong>n. {{ (props.fattura as any).fattura_rettificata.numero_documento }}</strong>,
+                                            ma è contestata: finché resta tale la fattura non ne tiene conto, e la modifica controlla solo che le
+                                            note non superino il suo totale.
+                                        </template>
+                                        <template v-else-if="(props.fattura as any).fattura_rettificata">
+                                            Rettifica la fattura <strong>n. {{ (props.fattura as any).fattura_rettificata.numero_documento }}</strong>,
+                                            che nel carrello dei piani rate vale al netto di questa nota. Se la fattura sta in un piano che non ha
+                                            ancora incassato, una modifica che la riduce di più si rifiuta.
+                                        </template>
                                     </p>
                                 </div>
                             </Transition>
@@ -608,27 +978,56 @@ const pageGuides = [
                                         <span v-else-if="selectedFornitore?.codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ selectedFornitore.codice_fiscale }}</span>
                                         <span v-else class="text-[10px] text-slate-400 italic">Nessuna P.IVA / C.F.</span>
                                         <span v-if="selectedFornitore?.soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none">
-                                            Ritenuta
+                                            Ritenuta {{ aliquotaRitenutaVisualizzata(selectedFornitore) }}%
                                         </span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Ritenuta d'acconto: toggle per documento -->
+                        <!-- Ritenuta d'acconto: toggle per documento.
+                             ⚠️ **05/09/2026, revisione avversariale.** Su una NC congelata (Coda
+                             123) il salvataggio ignora `applica_ritenuta` — legge il valore fissato
+                             sull'originale — ma il toggle restava attivo e, tolta la spunta,
+                             `UpdateFatturaRequest` rendeva obbligatorio un motivo di esclusione che
+                             il backend poi scartava: un controllo che chiede una giustificazione e
+                             non la usa per niente. Disabilitato quando il congelamento è attivo,
+                             con la spiegazione al posto della domanda. -->
                         <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="-translate-y-1 opacity-0" enter-to-class="translate-y-0 opacity-100">
-                            <div v-if="fornitoreRitenutaAttiva" class="p-3 bg-amber-50/50 dark:bg-amber-900/10 rounded-lg border border-amber-100 dark:border-amber-900/30 space-y-2.5">
-                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <!-- ⚠️ **05/09/2026, verificato a video registrando lo scenario reale della
+                                 Coda 123.** `|| congelamentoRitenutaAttivo`: senza questa clausola, un
+                                 fornitore diventato forfetario dopo lo storno fa sparire l'INTERO
+                                 riquadro — checkbox, messaggio «la ritenuta resta quella
+                                 dell'originale», tutto — proprio nello scenario che questa coda
+                                 esiste per coprire. Il riepilogo dei totali mostra comunque il numero
+                                 giusto (non dipende da `fornitoreRitenutaAttiva`), ma senza questo
+                                 riquadro l'amministratore lo vede senza alcuna spiegazione del perché
+                                 una ritenuta compare su un fornitore che sembra non soggetto. -->
+                            <div v-if="fornitoreRitenutaAttiva || congelamentoRitenutaAttivo" class="p-3 bg-amber-50/50 dark:bg-amber-900/10 rounded-lg border border-amber-100 dark:border-amber-900/30 space-y-2.5">
+                                <label class="flex items-center gap-2 select-none" :class="congelamentoRitenutaAttivo ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'">
                                     <input type="checkbox"
-                                        :checked="applicaRitenutaEffective"
+                                        :checked="congelamentoRitenutaAttivo || applicaRitenutaEffective"
+                                        :disabled="congelamentoRitenutaAttivo"
                                         @change="applicaRitenutaEffective = ($event.target as HTMLInputElement).checked"
-                                        class="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
-                                    <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
-                                        Applica ritenuta d'acconto su questo documento
+                                        class="w-4 h-4 accent-slate-900 dark:accent-slate-300 rounded border-slate-300 focus:ring-amber-500 shrink-0"
+                                        :class="congelamentoRitenutaAttivo ? 'cursor-not-allowed' : 'cursor-pointer'" />
+                                    <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400 whitespace-nowrap">
+                                        Applica ritenuta d'acconto {{ aliquotaRitenutaVisualizzata(selectedFornitore) }}%
                                     </span>
+                                    <TooltipProvider :delay-duration="200">
+                                        <Tooltip>
+                                            <TooltipTrigger as-child>
+                                                <Info class="w-3 h-3 text-amber-400 hover:text-amber-600 cursor-help" @click.prevent />
+                                            </TooltipTrigger>
+                                            <TooltipContent class="max-w-64"><p>Trattiene la ritenuta d'acconto sul totale del documento e la accantona per il versamento all'Erario. Va tolta solo per i casi previsti dalla legge — ad esempio un compenso occasionale sotto i € 25,82 annui, o un fornitore che dichiara un motivo di esclusione.</p></TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
                                 </label>
+                                <p v-if="congelamentoRitenutaAttivo" class="text-[11px] text-amber-700/80 dark:text-amber-500/80 leading-relaxed">
+                                    Nota di credito nata da uno storno: la ritenuta resta quella dell'originale, {{ euro(totali.ritenuta_cents) }}, e non si può escludere qui.
+                                </p>
 
-                                <div v-if="!applicaRitenutaEffective" class="space-y-2 pt-1">
+                                <div v-if="!applicaRitenutaEffective && !congelamentoRitenutaAttivo" class="space-y-2 pt-1">
                                     <v-select
                                         v-model="form.dati_extra.fiscal.motivo_esclusione_ritenuta"
                                         :options="MOTIVI_ESCLUSIONE_RITENUTA"
@@ -654,8 +1053,11 @@ const pageGuides = [
                             <div v-if="codiceTributoIndeterminabile" class="p-3 bg-rose-50 dark:bg-rose-900/10 rounded-lg border border-rose-200 dark:border-rose-900/30 space-y-2">
                                 <p class="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">
                                     <strong>Codice tributo indeterminabile.</strong> Manca la natura del percipiente sull'anagrafica di {{ selectedFornitore?.ragione_sociale }}: il sistema non può decidere se il codice è 1019 o 1020.
-                                    <Link :href="route(generateRoute('fornitori.edit'), { fornitore: form.fornitore_id })" target="_blank" class="underline font-semibold">Completa l'anagrafica</Link>
-                                    oppure conferma per procedere comunque.
+                                    <template v-if="puoModificareFornitori">
+                                        <Link :href="route(generateRoute('fornitori.edit'), { fornitore: form.fornitore_id })" target="_blank" class="underline font-semibold">Completa l'anagrafica</Link>
+                                        oppure conferma per procedere comunque.
+                                    </template>
+                                    <template v-else>Conferma per procedere comunque.</template>
                                 </p>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" v-model="form.dati_extra.fiscal.conferma_codice_tributo_mancante"
@@ -684,9 +1086,31 @@ const pageGuides = [
                         <!-- N. Documento (Read-Only in Edit) -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N. Documento</Label>
-                            <div class="h-9 px-3 flex items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
+                            <!-- ⚠️ **Prima era `:class="{ 'border-red-500': ... }"` accanto alle classi base,
+                                 ed era codice morto**: `border-slate-200`/`dark:border-slate-700` restavano
+                                 sempre nell'elenco delle classi, e in Tailwind v4 il CSS compilato ordina
+                                 le palette alfabeticamente (`red` prima di `slate`) — in chiaro `slate`
+                                 vinceva sempre l'ultima dichiarazione; in scuro `dark:border-slate-700`
+                                 ha specificità maggiore e vince comunque. Il bordo non cambiava mai colore.
+                                 Trovato dalla revisione avversariale della beta.13, misurato sul CSS
+                                 servito. Ora è un ternario che SOSTITUISCE le classi invece di affiancarle. -->
+                            <div class="h-9 px-3 flex items-center bg-slate-50 dark:bg-slate-800 border rounded-md"
+                                :class="form.errors.numero_documento ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'">
                                 <span class="uppercase text-base tracking-widest text-slate-700 dark:text-slate-300">{{ form.numero_documento }}</span>
                             </div>
+                            <!-- ⚠️ Il campo è read-only qui, ma la guardia server-side
+                                 (`UpdateFatturaRequest::guardiaNumeroDocumentoCollidente()`) può
+                                 comunque respingere il salvataggio — l'errore arriva sotto questa
+                                 stessa chiave. Senza questo paragrafo l'utente non vedeva niente:
+                                 nessuna riga del form era legata a `numero_documento`, quindi il
+                                 rifiuto del server passava in sessione e restava invisibile.
+                                 ⚠️ `dark:text-red-400`, non `text-red-600` da solo: su sfondo scuro
+                                 `text-red-600` misura 3,70:1 contro slate-900, sotto la soglia AA
+                                 (4,5:1) per testo piccolo — verificato calcolando il contrasto reale,
+                                 non a occhio. `red-400` sale a 6,45:1. -->
+                            <p v-if="form.errors.numero_documento" class="text-[11px] text-red-600 dark:text-red-400 font-medium">
+                                {{ form.errors.numero_documento }}
+                            </p>
                         </div>
 
                         <!-- Date -->
@@ -703,9 +1127,35 @@ const pageGuides = [
                                     class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" />
                             </div>
                         </div>
+
+                        <!-- Competenza (B2, S6): due estremi sulla testata, letti dal riparto straordinario -->
+                        <CompetenzaFattura
+                            v-model:dal="form.competenza_dal"
+                            v-model:al="form.competenza_al"
+                            :gestione-straordinaria="gestioneSceltaStraordinaria"
+                            :pregressa="form.is_pregresso"
+                            :errori="{ dal: form.errors.competenza_dal, al: form.errors.competenza_al }" />
+
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
                             <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
                             <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
+                        </div>
+
+                        <!-- Duplicati (decisione D4) — qui sotto emerge solo il livello STANDARD,
+                             perché fornitore e numero sono fissi in questa schermata. -->
+                        <div v-if="fattureSimili.length > 0" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
+                            <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                            <div class="flex flex-col gap-1">
+                                <div v-for="f in fattureSimili" :key="f.id">
+                                    <strong>{{ f.motivo === 'forte' ? 'Possibile duplicato:' : 'Fattura simile già registrata:' }}</strong>
+                                    n. {{ f.numero_documento }} del {{ formatDataBreve(f.data_documento) }}, {{ euro(f.totale_documento) }}<span v-if="f.is_pregresso"> (pregressa)</span>.
+                                    <Link
+                                        :href="route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: f.id })"
+                                        target="_blank"
+                                        class="underline font-semibold"
+                                    >Vedi la fattura</Link>
+                                </div>
+                            </div>
                         </div>
 
                         <hr class="border-slate-100 dark:border-slate-800">
@@ -735,12 +1185,11 @@ const pageGuides = [
                             <Input v-model="form.iban_fornitore" class="h-9 text-sm" placeholder="IT00 0000..." />
                         </div>
 
-                        <!-- Allegato -->
-                        <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 transition-colors" @click="fileInput?.click()">
-                            <FileText class="w-5 h-5 text-slate-300 mx-auto mb-1" />
-                            <p class="text-[11px] text-slate-400 font-medium">{{ form.file ? form.file.name : 'Allega documento (PDF, XML, P7M)' }}</p>
-                            <input type="file" ref="fileInput" class="hidden" accept=".pdf,.xml,.p7m,.jpg,.jpeg,.png" @change="(e: any) => form.file = e.target.files[0]" />
-                        </div>
+                        <!-- ⚠️ L'allegato non si carica più da qui (Coda 102, 1.11.0-beta.12):
+                             questo modulo torna a occuparsi solo di importo, fornitore,
+                             competenza — i fatti che la guardia contabile protegge davvero.
+                             Per allegare un documento vai al Dettaglio della fattura, anche
+                             a esercizio chiuso. -->
                     </div>
 
                     <!-- Footer con totali e pulsante -->
@@ -773,7 +1222,9 @@ const pageGuides = [
                             </div>
 
                             <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
-                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Netto da pagare</span>
+                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    {{ isNotaCredito ? 'Importo a credito' : 'Netto da pagare' }}
+                                </span>
                                 <span class="font-black text-2xl" :class="totali.netto_cents > 0 ? 'text-emerald-400' : 'text-white'">
                                     {{ euro(totali.netto_cents) }}
                                 </span>
@@ -835,10 +1286,11 @@ const pageGuides = [
                                                 :disabled="riga.is_sopravvenienza"
                                                 label="nome"
                                                 :reduce="(c: Conto) => c.id"
+                                                :selectable="(c: Conto) => c.tipo !== 'entrata'"
                                                 placeholder="Cerca capitolo..."
                                                 class="style-chooser w-full"
                                                 append-to-body>
-                                                <template #option="{ nome, parent_nome, residuo_budget, is_capiente }">
+                                                <template #option="{ nome, parent_nome, residuo_budget, is_capiente, tipo }">
                                                     <div class="flex items-center justify-between py-1.5 border-b border-transparent hover:border-slate-100 dark:hover:border-slate-800">
                                                         <div class="flex flex-col">
                                                             <span v-if="parent_nome" class="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-0.5">
@@ -846,6 +1298,7 @@ const pageGuides = [
                                                             </span>
                                                             <span class="font-medium text-sm text-slate-800 dark:text-slate-200" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">
                                                                 {{ nome }}
+                                                                <em v-if="tipo === 'entrata'" class="ml-1 text-[10px] font-semibold not-italic uppercase tracking-wider text-slate-400 dark:text-slate-500" title="Una voce di entrata non è il capitolo di una fattura">Entrata</em>
                                                             </span>
                                                         </div>
                                                         <span class="text-[10px] px-2 py-1 rounded-md font-semibold whitespace-nowrap ml-4 border"
@@ -861,6 +1314,13 @@ const pageGuides = [
                                                     </div>
                                                 </template>
                                             </v-select>
+                                            <p v-if="(form.errors as any)[`righe.${idx}.conto_id`]" class="text-[11px] text-red-600 font-medium mt-1">
+                                                {{ (form.errors as any)[`righe.${idx}.conto_id`] }}
+                                            </p>
+                                            <p v-if="competenzaPianoDi(riga.conto_id)" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-start gap-1">
+                                                <CalendarRange class="w-3 h-3 mt-0.5 shrink-0" />
+                                                <span>Nel piano «{{ competenzaPianoDi(riga.conto_id)!.piano }}» questa voce matura su {{ descriviTratti(competenzaPianoDi(riga.conto_id)!.tratti) }}: il riparto ordinario segue quei giorni, non la competenza dichiarata sulla fattura.</span>
+                                            </p>
                                         </div>
 
                                         <!-- Unità -->
@@ -883,6 +1343,9 @@ const pageGuides = [
                                                     </div>
                                                 </template>
                                             </v-select>
+                                            <p v-if="(form.errors as any)[`righe.${idx}.immobile_id`]" class="text-[11px] text-red-600 font-medium mt-1">
+                                                {{ (form.errors as any)[`righe.${idx}.immobile_id`] }}
+                                            </p>
                                         </div>
                                     </div>
 
@@ -907,10 +1370,19 @@ const pageGuides = [
                                                 :money-options="moneyOptions"
                                                 :lazy="false"
                                                 placeholder="0,00" />
-                                            <div v-if="rigaInSforo(riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
+                                            <div v-if="rigaInSforo(idx, riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
                                                 <span class="text-[9px] font-black uppercase">Sforo budget</span>
                                             </div>
+                                            <!-- ⚠️ Senza questa riga il divieto sull'importo negativo di una nota di
+                                                 credito (beta.18) rifiutava il salvataggio **in silenzio**: il server
+                                                 rispondeva con l'errore, ma la pagina mostrava soltanto quello sul
+                                                 numero documento e sulla causale. Si premeva «Salva» e non succedeva
+                                                 niente — la stessa forma di guasto già pagata con la Coda 102. -->
+                                            <p v-if="(form.errors as any)[`righe.${idx}.importo_imponibile`]"
+                                                class="text-[11px] text-red-600 dark:text-red-400 font-medium mt-1">
+                                                {{ (form.errors as any)[`righe.${idx}.importo_imponibile`] }}
+                                            </p>
                                         </div>
 
                                         <!-- Aliquota IVA -->
@@ -927,7 +1399,7 @@ const pageGuides = [
                                             <div class="text-right min-w-0 flex-1">
                                                 <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1 whitespace-nowrap">Totale Riga</span>
                                                 <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none whitespace-nowrap tabular-nums">
-                                                    {{ euro(lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva)) }}
+                                                    {{ euro(lordoRigaRegistratoCents(idx, riga)) }}
                                                 </span>
                                             </div>
                                             <Button variant="ghost" size="icon" type="button" @click="removeRiga(Number(idx))"
@@ -937,12 +1409,33 @@ const pageGuides = [
                                         </div>
                                     </div>
 
-                                    <label v-if="fornitoreRitenutaAttiva && applicaRitenutaEffective" class="flex items-center gap-1.5 cursor-pointer select-none w-fit">
+                                    <!-- ⚠️ **05/09/2026, revisione avversariale (Coda 123).** Su una NC
+                                         congelata questo flag viene salvato sulla riga ma la base della
+                                         ritenuta non si ricalcola più: il congelamento fissa l'importo
+                                         dell'originale a prescindere da come sono spuntate le righe qui.
+                                         Il documento finiva internamente in disaccordo — la base scritta
+                                         in `dati_extra.fiscal.ritenuta_details.imponibile_calcolo` diversa
+                                         da quella che le righe appena salvate dichiarano. Disabilitato
+                                         quando il congelamento è attivo, non nascosto: la spunta che lo
+                                         storno ha propagato riga per riga resta visibile. -->
+                                    <label v-if="(fornitoreRitenutaAttiva && applicaRitenutaEffective) || congelamentoRitenutaAttivo" class="flex items-center gap-1.5 select-none w-fit"
+                                        :class="congelamentoRitenutaAttivo ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'"
+                                        :title="congelamentoRitenutaAttivo ? 'Nota di credito da storno: la base della ritenuta è quella congelata sull\'originale.' : ''">
                                         <input type="checkbox" v-model="riga.concorre_base_ritenuta"
-                                            class="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
+                                            :disabled="congelamentoRitenutaAttivo"
+                                            class="w-3.5 h-3.5 accent-slate-900 dark:accent-slate-300 rounded border-slate-300 focus:ring-amber-500"
+                                            :class="congelamentoRitenutaAttivo ? 'cursor-not-allowed' : 'cursor-pointer'" />
                                         <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                             Concorre alla base ritenuta
                                         </span>
+                                        <TooltipProvider :delay-duration="200">
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <Info class="w-3 h-3 text-slate-300 hover:text-slate-500 cursor-help" @click.prevent />
+                                                </TooltipTrigger>
+                                                <TooltipContent class="max-w-64"><p>Include o esclude questa riga dalla base su cui si calcola la ritenuta d'acconto. Un compenso professionale di solito concorre; un contributo di cassa previdenziale (INPS, ENPAM…) o un rimborso spese documentato di solito no — lo decide il contenuto della riga, non una regola fissa.</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
                                     </label>
                                 </div>
                             </div>
@@ -979,6 +1472,15 @@ const pageGuides = [
                                     </div>
                                 </div>
                             </div>
+                            <div v-if="scartoDalDocumentoCents !== 0" class="flex items-start gap-2 px-2.5 py-2 mt-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-900/40">
+                                <TriangleAlert class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                <span class="text-[11px] text-amber-800 dark:text-amber-400">
+                                    Il documento chiede <strong>{{ euro(totaleDichiaratoDalDocumentoCents ?? 0) }}</strong>,
+                                    questa registrazione vale <strong>{{ euro(totaleRegistratoCents) }}</strong>
+                                    — {{ scartoDalDocumentoCents > 0 ? 'in più' : 'in meno' }} di {{ euro(scartoAssolutoCents) }}.
+                                    Salvandola così, il debito verso il fornitore non sarà quello che la fattura chiede.
+                                </span>
+                            </div>
                         </div>
 
                         <!-- Simulazione impatto finanziario -->
@@ -1002,7 +1504,7 @@ const pageGuides = [
                                             'bg-amber-500 animate-pulse': transactionStatus === 'WARNING_CASH',
                                             'bg-emerald-500':             transactionStatus === 'SAFE',
                                         }"></span>
-                                    {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Sforo Budget' : transactionStatus === 'WARNING_CASH' ? 'Attenzione Cassa' : 'Tutto OK' }}
+                                    {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Sforo Budget' : transactionStatus === 'WARNING_CASH' ? (isNotaCredito ? 'Conto già negativo' : 'Attenzione Cassa') : 'Tutto OK' }}
                                 </div>
                             </div>
 
@@ -1015,21 +1517,22 @@ const pageGuides = [
                                         <div v-for="impact in budgetImpacts" :key="impact.id" class="space-y-1.5 bg-slate-800/20 rounded-lg p-2.5 border border-slate-700/50">
                                             <div class="flex justify-between items-start">
                                                 <span class="text-xs font-bold truncate max-w-[60%]">{{ impact.nome }}</span>
-                                                <span class="text-xs font-black shrink-0" :class="impact.isOk ? 'text-emerald-400' : 'text-rose-400'">
-                                                    {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta_cents) }}
+                                                <!-- Coda 157: segno e tono seguono il margine, non il giudizio sul documento (che resta al semaforo). -->
+                                                <span class="text-xs font-black shrink-0" :class="{ positivo: 'text-emerald-400', negativo: 'text-rose-400', neutro: 'text-slate-400' }[descriviMargine(impact.delta_cents).tono]">
+                                                    {{ euro(impact.delta_cents, descriviMargine(impact.delta_cents).opzioni) }}
                                                 </span>
                                             </div>
 
                                             <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
                                                 <div class="h-full rounded-full transition-all duration-500"
                                                     :class="impact.isOk ? 'bg-emerald-500' : 'bg-rose-500'"
-                                                    :style="{ width: Math.min((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 100) + '%' }">
+                                                    :style="{ width: Math.min(Math.max((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 0), 100) + '%' }">
                                                 </div>
                                             </div>
 
                                             <div class="flex justify-between text-[9px] text-slate-500 font-medium">
                                                 <span>Usato: {{ euro(impact.speso_cents) }}</span>
-                                                <span>Budget: {{ euro(impact.residuo_cents) }}</span>
+                                                <span>Residuo: {{ euro(impact.residuo_cents) }}</span>
                                             </div>
 
                                             <div v-if="impact.ultimi_movimenti && impact.ultimi_movimenti.length > 0" class="mt-2 pt-2 border-t border-slate-700/50">
@@ -1066,9 +1569,13 @@ const pageGuides = [
                                                 <span class="text-slate-400">Saldo attuale</span>
                                                 <span class="text-white">{{ euro(bankForecast.attuale_cents) }}</span>
                                             </div>
-                                            <div class="flex justify-between text-xs">
+                                            <div v-if="!isNotaCredito" class="flex justify-between text-xs">
                                                 <span class="text-slate-400">Uscita prevista</span>
-                                                <span class="text-rose-400">- {{ euro(totali.netto_cents) }}</span>
+                                                <span class="text-rose-400">- {{ euro(bankForecast.uscita_cents) }}</span>
+                                            </div>
+                                            <div v-else class="flex justify-between text-xs">
+                                                <span class="text-slate-400">Uscita prevista</span>
+                                                <span class="text-slate-500 italic">nessuna: si compensa, non si incassa</span>
                                             </div>
                                         </div>
                                         <div class="pt-3 border-t border-slate-700 space-y-1">
@@ -1122,6 +1629,35 @@ const pageGuides = [
                     </div>
                 </div>
             </Transition>
+        </Teleport>
+
+        <!-- Coda 165: il rifiuto della scala sulla nota collegata (o sulla fattura con note collegate), e l'avviso di un
+             piano che ha già incassato da confermare. Tutte e due tornano al modulo, senza perdere le modifiche. -->
+        <Teleport to="body">
+            <div v-if="rifiutoNotaCollegata || avvisoNotaDaConfermare" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                    <div class="px-8 pt-8 pb-4 border-b border-slate-200 dark:border-slate-700">
+                        <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl">
+                            {{ rifiutoNotaCollegata ? 'La modifica non si può salvare' : 'Il piano rate resta com\'è' }}
+                        </h3>
+                    </div>
+                    <div class="p-8 space-y-5">
+                        <p class="text-sm leading-relaxed" :class="rifiutoNotaCollegata ? 'text-rose-700 dark:text-rose-400' : 'text-red-800 dark:text-red-300'">
+                            {{ rifiutoNotaCollegata ?? avvisoNotaDaConfermare }}
+                        </p>
+                        <div class="flex flex-col gap-3">
+                            <Button v-if="avvisoNotaDaConfermare && !rifiutoNotaCollegata" @click="confermaAvvisoESalva" :disabled="form.processing"
+                                class="w-full h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest text-[11px]">
+                                Ho letto: salvo la nota
+                            </Button>
+                            <Button variant="ghost" @click="() => { rifiutoNotaCollegata = null; avvisoNotaDaConfermare = null; }"
+                                class="w-full h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                Torno al modulo
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </Teleport>
 
         <!-- Modale di presa d'atto sforo — non chiede una motivazione (che non verrebbe

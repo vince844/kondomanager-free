@@ -16,7 +16,8 @@
  * ## Cosa questo file NON copre
  *
  * Non copre l'interfaccia: verifica cosa la query restituisce, non cosa la tendina mostra. Non
- * copre la combinazione dei filtri con l'ordinamento, coperta dai test dell'ordinamento.
+ * copre la combinazione dei filtri con l'ordinamento, coperta dai test dell'ordinamento. Il filtro
+ * «Verifica» e le card sopra l'elenco stanno in `CardElencoUtentiTest.php`.
  */
 
 use App\Enums\Role as RoleEnum;

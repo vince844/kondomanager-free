@@ -3,13 +3,14 @@
 namespace App\Http\Controllers\Documenti;
 
 use App\Events\Documenti\NotifyUserOfCreatedDocumento;
+use App\Services\Documenti\ArchivioDocumenti;
 use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Services\Notifiche\DestinatariNotifica;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\CreateDocumentoRequest;
 use App\Http\Requests\Documento\DocumentoIndexRequest;
 use App\Http\Requests\Documento\UpdateDocumentoRequest;
-use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
@@ -21,6 +22,7 @@ use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
+use App\Traits\ScaricaEApprovaDocumento;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -29,11 +31,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Storage;
 
 class DocumentoController extends Controller
 {
-    use HandleFlashMessages, PaginaElenco;
+    use HandleFlashMessages, PaginaElenco, ScaricaEApprovaDocumento;
 
     /**
      * Create a new controller instance.
@@ -114,6 +115,9 @@ class DocumentoController extends Controller
                 ...(isset($validated['condominio_id'])
                     ? ['condominio_id' => array_map('strval', $validated['condominio_id'])]
                     : []),
+                ...(isset($validated['is_published'])
+                    ? ['is_published' => array_map('boolval', $validated['is_published'])]
+                    : []),
             ],
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
@@ -174,7 +178,7 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             $uploadedFile = $request->file('file');
 
-            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+            $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
             $documento = Documento::create([
                 'name'         => $validated['name'],
@@ -183,10 +187,12 @@ class DocumentoController extends Controller
                 'mime_type'    => $uploadedFile->getClientMimeType(),
                 'file_size'    => $uploadedFile->getSize(),
                 'created_by'   => $validated['created_by'],
-                'category_id'  => $validated['category_id'],
                 'is_published' => $validated['is_published'],
                 'is_approved'  => $validated['is_approved'],
             ]);
+
+            // Le categorie sono un legame, non più una colonna: si attaccano dopo la creazione.
+            $documento->categorie()->attach($validated['categorie']);
 
             $documento->condomini()->attach($validated['condomini_ids']);
 
@@ -240,13 +246,17 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
-        $documento->loadMissing(['categoria', 'condomini', 'anagrafiche']);
+        $this->soloDellArchivio($documento);
+
+        // Delle persone la pagina legge soltanto id e nome, nell'elenco e nei destinatari già scelti (Coda 408): il resto
+        // resta nella scheda della persona.
+        $documento->loadMissing(['categorie', 'condomini', 'anagrafiche:id,nome']);
 
         return Inertia::render('documenti/DocumentiEdit', [
             'documento'   => new DocumentoResource($documento),
             'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
             'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
+            'anagrafiche' => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
             // Il limite lo decide il server, non noi: la schermata scriveva un numero fisso
             // (o non ne scriveva nessuno) mentre la regola ne accettava un altro.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
@@ -268,6 +278,8 @@ class DocumentoController extends Controller
     {
         Gate::authorize('update',$documento);
 
+        $this->soloDellArchivio($documento);
+
         $validated = $request->validated();
 
         /*
@@ -284,12 +296,10 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
-                if (Storage::disk('local')->exists($documento->path)) {
-                    Storage::disk('local')->delete($documento->path);
-                }
+                app(ArchivioDocumenti::class)->elimina($documento->path);
 
                 $uploadedFile = $request->file('file');
-                $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
 
                 // Update file related fields
                 $documento->path = $path;
@@ -303,19 +313,38 @@ class DocumentoController extends Controller
                 'path'         => $documento->path,
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
-                'created_by'   => $validated['created_by'] ?? $documento->created_by,
+                // Coda 303: né l'autore né l'approvazione cambiano in modifica. L'autore resta chi
+                // ha caricato il documento; l'approvazione cambia solo dall'interruttore, che avvisa
+                // il creatore (decisione 127.2).
                 // ⚠️ Lo mette il server, non il modulo: vedi la nota gemella negli altri due.
                 'updated_by'   => Auth::id(),
-                'category_id'  => $validated['category_id'] ?? $documento->category_id,
                 'is_published' => $validated['is_published'] ?? $documento->is_published,
-                'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
             ]);
+
+            // ⚠️ `sync` **solo se il modulo le ha mandate**: un `sync([])` su una richiesta che non
+            // le porta cancellerebbe tutte le categorie del documento senza che nessuno l'abbia
+            // chiesto. La regola di validazione è `sometimes`, quindi l'assenza è legittima.
+            if (isset($validated['categorie'])) {
+                $documento->categorie()->sync($validated['categorie']);
+            }
 
             if (isset($validated['condomini_ids'])) {
                 $documento->condomini()->sync($validated['condomini_ids']);
             }
 
-            $documento->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+            // Coda 307: come le categorie qui sopra, i destinatari si toccano solo se il modulo li
+            // manda. Una richiesta senza il campo lascia il documento indirizzato a chi lo era, con
+            // gli stessi destinatari di prima del salvataggio. La chiave presente e vuota vuol dire
+            // «nessuno».
+            //
+            // ⚠️ Con un file nuovo il modulo parte come FormData, e lì un elenco vuoto non si scrive
+            // affatto: quando la richiesta porta il segno della pagina (`anagrafiche_nel_modulo`),
+            // `UpdateDocumentoRequest::prepareForValidation()` rimette vuoti i tre elenchi assenti,
+            // quindi qui la chiave c'è e vale «nessuno», come l'elenco vuoto in JSON. Senza il segno
+            // (una richiesta che non viene dalla pagina) resta «non toccare».
+            if (array_key_exists('anagrafiche', $validated)) {
+                $documento->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+            }
 
             DB::commit();
 
@@ -352,7 +381,9 @@ class DocumentoController extends Controller
      *
      * Gemella di `Comunicazioni\ComunicazioneController::avvisaDopoLaModifica()`, dove sta la
      * spiegazione per esteso: i nuovi arrivati ricevono l'avviso di *creazione* sempre, chi c'era
-     * già riceve quello di *modifica* solo se l'amministratore spunta la casella.
+     * già riceve quello di *modifica* solo se l'amministratore spunta la casella, e l'autore non è
+     * mai un nuovo arrivato del proprio documento (come all'approvazione,
+     * `SendApprovedDocumentoNotificationToUser`).
      *
      * @param  \Illuminate\Support\Collection<int, int>  $destinatariPrima
      * @param  array<string, mixed>  $validated
@@ -361,7 +392,11 @@ class DocumentoController extends Controller
     {
         $destinatariDopo = app(DestinatariNotifica::class)->perModello($documento->fresh());
 
-        $nuovi = $destinatariDopo->diff($destinatariPrima)->values()->all();
+        $dellAutore = $documento->created_by === null
+            ? collect()
+            : Anagrafica::where('user_id', $documento->created_by)->pluck('id');
+
+        $nuovi = $destinatariDopo->diff($destinatariPrima)->diff($dellAutore)->values()->all();
 
         if ($nuovi !== []) {
             DestinatariDaAvvisare::dispatch($documento, $nuovi, 'nuovo');
@@ -392,14 +427,14 @@ class DocumentoController extends Controller
     {
         Gate::authorize('delete',$documento);
 
+        $this->soloDellArchivio($documento);
+
         try {
             // Start a transaction in case you need to roll back
             DB::beginTransaction();
 
             // Delete the file from storage
-            if (Storage::disk('local')->exists($documento->path)) {
-                Storage::disk('local')->delete($documento->path);
-            }
+            app(ArchivioDocumenti::class)->elimina($documento->path);
 
             // Delete the database record
             $documento->delete();
@@ -441,29 +476,20 @@ class DocumentoController extends Controller
     {
         Gate::authorize('view', $documento);
 
-        try {
+        $this->soloDellArchivio($documento);
 
-            if (!Storage::disk('local')->exists($documento->path)) {
-                return redirect()->back()->with(
-                    $this->flashError(__('documenti.file_not_found'))
-                );
-            }
+        return $this->scaricaIlDocumento($documento);
+    }
 
-            $percorsoAssoluto = Storage::disk('local')->path($documento->path);
-
-            return response()->download($percorsoAssoluto, $documento->nomeDiScaricamento());
-
-        } catch (\Exception $e) {
-
-            Log::error('Error downloading documento archivio', [
-                'document_id' => $documento->id,
-                'message'     => $e->getMessage(),
-            ]);
-
-            return redirect()->back()->with(
-                $this->flashError(__('documenti.error_downloading_document'))
-            );
-        }
+    /**
+     * Le rotte dell'archivio lavorano sui documenti dell'archivio: quelli senza un proprietario, come li mostrano
+     * l'elenco (`DocumentoService::getAdminBaseQuery`) e la dashboard. Un documento di una persona, di un fornitore, di
+     * un'unità o di una fattura per queste rotte non c'è (404): si apre e si cambia dalla pagina del proprietario, con il
+     * suo permesso.
+     */
+    private function soloDellArchivio(Documento $documento): void
+    {
+        abort_unless($documento->documentable_type === null, 404);
     }
 
 }

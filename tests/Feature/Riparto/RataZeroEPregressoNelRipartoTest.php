@@ -25,7 +25,8 @@ uses(RefreshDatabase::class);
  *      a stupirsi: è la forma in cui l'amministratore se ne accorge.
  *   2. **Il pregresso non entra nella colonna di una tabella millesimale.** Fino alla beta.73 il
  *      residuo di chi aveva peso in tabella finiva «sulla tabella a peso maggiore», e la colonna
- *      smetteva di valere il deliberato. Ora sta tutto in «addebito diretto».
+ *      smetteva di valere il deliberato. Dalla beta.74 stava tutto in «Addebito diretto»; dalla
+ *      1.11.0-beta.29 ha la sua colonna, «Saldi precedenti».
  *
  * Il caso ristretto al solo punto 2, con i numeri veri della segnalazione, sta in
  * `SaldiNelRipartoTabelleTest`. Qui restano insieme perché è la generazione della rata zero a
@@ -142,20 +143,24 @@ it('il riparto per tabella tiene il pregresso fuori dalla colonna della tabella'
     $matrice = (new RipartoTabelleService())->buildMatrice($s['pianoRate']);
 
     $tabId = $s['tabella']->id;
-    $diretto = RipartoTabelleService::COLONNA_DIRETTO;
+    // Dalla 1.11.0-beta.29 il pregresso ha la sua colonna, «Saldi precedenti» (COLONNA_PREGRESSO):
+    // «Addebito diretto» contiene solo le spese ad personam. Fino alla .28 il pregresso ci finiva
+    // dentro come residuo, con il nome di una spesa che non era.
+    $pregresso = RipartoTabelleService::COLONNA_PREGRESSO;
 
     // ⚠️ COMPORTAMENTO OSSERVATO, non desiderato.
     //
     // La colonna «AMMINISTRAZIONE» dovrebbe valere il budget deliberato — € 1.000,00 — e invece
     // vale € 1.502,84: dentro ci sono i saldi di apertura dei SOLI proprietari attivi
-    // Dopo la correzione della beta.74 il pregresso non entra più nella colonna della tabella:
-    // la colonna vale il deliberato (€ 1.000,00) e TUTTO il pregresso — di chi pesa in tabella
-    // e di chi non ci pesa — sta nella pseudo-colonna «Addebito diretto».
+    // Dalla beta.74 il pregresso non entra più nella colonna della tabella — la colonna vale il
+    // deliberato (€ 1.000,00) — e finiva tutto in «Addebito diretto»; dalla 1.11.0-beta.29 sta
+    // nella pseudo-colonna «Saldi precedenti», di chi pesa in tabella e di chi non ci pesa.
     //
     // Prima erano 150284 e 385095: i € 502,84 di troppo sui millesimi erano i pregressi dei
     // due proprietari attivi, appoggiati «alla tabella a peso maggiore».
     expect($matrice['tot_per_tabella'][$tabId])->toBe(100000)
-        ->and($matrice['tot_per_tabella'][$diretto])->toBe(435379)
+        ->and($matrice['tot_per_tabella'][$pregresso])->toBe(435379)
+        ->and($matrice['tot_per_tabella'][RipartoTabelleService::COLONNA_DIRETTO] ?? 0)->toBe(0)
         // La cella del proprietario attivo torna a essere la sola quota millesimale: il suo
         // credito di € 700,00 non ci sta più dentro.
         ->and($matrice['righe'][$s['immobili']['B']->id]['soggetti'][$s['pb']->id]['per_tabella'][$tabId]['importo'])->toBe(50000);

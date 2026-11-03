@@ -4,7 +4,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart, Server } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -102,6 +102,12 @@ const apps = computed(() => [
     running: backupRunning.value,
   },
   {
+    name: 'impostazioni.dialogs.installazione_title',
+    logo: Server,
+    desc: 'impostazioni.dialogs.installazione_description',
+    href: "/impostazioni/installazione",
+  },
+  {
     name: 'impostazioni.dialogs.updates_title',
     logo: RefreshCw,
     desc: updateAvailable.value 
@@ -170,7 +176,7 @@ const apps = computed(() => [
               {{ trans(app.name) }}
               <span
                 v-if="app.comingSoon"
-                class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/30"
+                class="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/30"
               >
                 In arrivo
               </span>

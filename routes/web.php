@@ -21,6 +21,7 @@ use App\Http\Middleware\CheckExternalCron;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use App\Http\Controllers\Ateco\CercaAtecoController;
 use App\Http\Controllers\Comuni\CercaComuniController;
 use Illuminate\Support\Facades\Route;
 
@@ -103,6 +104,26 @@ Route::get('/comuni/cerca', CercaComuniController::class)
 
 /*
 |--------------------------------------------------------------------------
+| Ricerca dei codici ATECO — l'aiuto accanto al campo, che resta libero
+|--------------------------------------------------------------------------
+|
+| Stessa forma e stesse ragioni della ricerca dei Comuni qui sopra, compreso il motivo per cui sta
+| fuori dal gruppo `/admin`: il pulsante vive sulle due schede del fornitore, governate
+| dall'accesso al pannello. Registrata altrove, comparirebbe a chi poi riceve un 403.
+|
+| La classificazione è dato pubblico ISTAT e non contiene niente dell'installazione: il filtro serve
+| a rispettare la convenzione di casa, non a proteggere un segreto.
+*/
+Route::get('/ateco/cerca', CercaAtecoController::class)
+    ->middleware([
+        'auth',
+        'verified',
+        'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore',
+    ])
+    ->name('ateco.cerca');
+
+/*
+|--------------------------------------------------------------------------
 | Condomini Routes
 |--------------------------------------------------------------------------
 */
@@ -111,9 +132,6 @@ Route::resource('/condomini', CondominioController::class)
     ->parameters([
         'condomini' => 'condominio',
     ]);
-
-Route::get('/condomini/options', [CondominioController::class, 'options'])
-    ->name('condomini.options');
 
 /*
  * Il condominio dimostrativo.
@@ -131,8 +149,19 @@ Route::delete('/condomini/{condominio}/dimostrativo', [CondominioController::cla
     ->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Visualizza condomini'])
     ->name('condomini.dimostrativo.elimina');
 
+/*
+ * Solo le schermate del pannello lo chiamano (`BuildingsDropdown.vue` sulla dashboard,
+ * `useCondomini.ts` nelle toolbar degli elenchi): stesso predicato di `comuni.cerca` qui sopra, non
+ * il solo `auth`. Prima della 1.11.0-beta.39 restituiva l'elenco completo a chiunque avesse fatto
+ * il login, condòmini e fornitori compresi.
+ */
 Route::get('/fetch-condomini', FetchCondominiController::class)
-    ->middleware(['auth', 'verified']);
+    ->middleware([
+        'auth',
+        'verified',
+        'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore|Visualizza condomini',
+    ])
+    ->name('fetch-condomini');
 
 /*
 |--------------------------------------------------------------------------
@@ -147,12 +176,37 @@ Route::get('/fetch-condomini', FetchCondominiController::class)
 | Il permesso è quello della creazione condomìni: chi può importare sta creando
 | condomìni, anagrafiche e unità in blocco.
 */
-Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea condomini'])
+/*
+ * ⚠️ **«Importa dati», un permesso suo — deciso da Vincenzo il 30/08/2026.**
+ *
+ * Qui c'era `Crea condomini`, che era il permesso più vicino quando l'importatore è nato ma non
+ * descrive quello che fa: l'importazione non crea un condominio, **crea un archivio** — unità,
+ * persone, titolarità, tabelle, saldi — e da questa beta lo **disfa** anche.
+ *
+ * La prima strada era `role:amministratore`, ed è stata scartata misurandone la conseguenza:
+ * avrebbe reso **codice morto** la proprietà del lotto costruita nella beta.3 (un lotto è di chi
+ * l'ha caricato, e un collega non lo apre), perché fra amministratori quella guardia tace di
+ * proposito. Il permesso ottiene la stessa cosa senza perdere la protezione: l'amministratore lo
+ * ha per costruzione (`AMMINISTRATORE => PermissionEnum::cases()`), il collaboratore no.
+ *
+ * ⚠️ **Resta un cambio di comportamento da dichiarare nel changelog:** su un'installazione dove un
+ * collaboratore ha «Crea condomini», da oggi non importa più finché qualcuno non gli dà «Importa
+ * dati». *(Misurato su questo database: zero utenti in quella condizione.)* Alle installazioni
+ * esistenti il permesso arriva con `SystemFinalizer::finalize()`, che lancia già
+ * `RolesAndPermissionsSeeder` — la trappola della beta.59 qui è già chiusa.
+ */
+Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Importa dati'])
     ->prefix('/importa-dati')
     ->name('import.')
     ->group(function () {
         Route::get('/', [ImportController::class, 'index'])->name('index');
         Route::post('/', [ImportController::class, 'store'])->name('store');
+
+        // Il modello vuoto da compilare a mano. Sta **prima** delle rotte con `{uuid}` per
+        // ragioni di ordine — `modello` sarebbe altrimenti un uuid plausibile — e si genera a
+        // ogni richiesta invece di vivere in `public/`: così non esiste il caso, che si scopre
+        // sempre tardi, del file scaricato che non corrisponde più a quello che il parser legge.
+        Route::get('/modello', [ImportController::class, 'modello'])->name('modello');
 
         Route::get('/{uuid}/riconoscimento', [ImportController::class, 'riconoscimento'])
             ->name('riconoscimento');
@@ -166,6 +220,11 @@ Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea c
         Route::put('/{uuid}/decisione', [ImportController::class, 'decidi'])
             ->name('decisione');
 
+        // «Importa dentro questo condominio»: separata da `decisione` perché porta un id, e un
+        // id va autorizzato contro la policy — non è una risposta a un elenco chiuso.
+        Route::put('/{uuid}/destinazione', [ImportController::class, 'destinazione'])
+            ->name('destinazione');
+
         Route::post('/{uuid}/conferma', [ImportController::class, 'conferma'])
             ->name('conferma');
 
@@ -176,8 +235,13 @@ Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea c
             ->name('rapporto');
 
         // Chiude una sessione lasciata a metà. Non annulla ciò che è già entrato in archivio:
-        // quello ha una condizione da valutare, e arriva con la 1.10.1.
+        // quello è l'altra rotta, qui sotto, e ha una condizione da valutare.
         Route::delete('/{uuid}', [ImportController::class, 'scarta'])->name('scarta');
+
+        // Disfa un'importazione **completata**. Sta dopo `scarta` perché sono due cose diverse e
+        // il prodotto le dice diverse: si scarta ciò che non è mai entrato, si annulla ciò che è
+        // entrato. La condizione la valuta `AnnullamentoImportazione`, non questa riga.
+        Route::delete('/{uuid}/annulla', [ImportController::class, 'annulla'])->name('annulla');
 
         Route::put('/{uuid}/file/{file}/tipo', [ImportController::class, 'forzaTipo'])
             ->name('file.tipo');
@@ -191,12 +255,18 @@ Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea c
 | Passwords Routes
 |--------------------------------------------------------------------------
 */
+// `guest` su tutte e due, come per l'invito: con un altro utente collegato nello stesso browser la
+// password veniva salvata e il messaggio si perdeva nel rimbalzo sulla sua dashboard (1.11.0-beta.45).
 Route::get('/password/new', [NewUserPasswordController::class, 'showResetForm'])
     ->name('password.new')
-    ->middleware('signed');
+    ->middleware(['guest', 'signed']);
 
+// Il `POST` porta la stessa prova del `GET`: il modulo si manda all'URL firmato da cui è stato
+// aperto. Fino alla 1.11.0-beta.44 non chiedeva né firma né limite di tentativi, e il controller
+// sceglieva l'utente dall'email del corpo (Coda 222, 1.11.0-beta.45).
 Route::post('/password/new', [NewUserPasswordController::class, 'reset'])
-    ->name('password.create');
+    ->name('password.create')
+    ->middleware(['guest', 'signed', 'throttle:modulo']);
 
 /*
 |--------------------------------------------------------------------------
@@ -212,9 +282,13 @@ Route::resource('/inviti', InvitoController::class)
     ->only(['index', 'create', 'store', 'destroy'])
     ->middleware(['auth', 'verified']);
 
+// `guest` come il `POST` di `routes/auth.php`: con un altro utente collegato nello stesso browser il
+// modulo si apriva, e il salvataggio rimbalzava in silenzio sulla sua dashboard. Il limite di
+// tentativi sta solo sul `POST`: il `GET` è firmato e non scrive, e contando anche lui ogni errore
+// di validazione pesava due volte (1.11.0-beta.45).
 Route::get('/invito/register', [InvitoRegisteredUserController::class, 'show'])
     ->name('invito.register')
-    ->middleware('signed', 'throttle:6,1');
+    ->middleware(['guest', 'signed']);
 
 /*
 |--------------------------------------------------------------------------

@@ -10,6 +10,7 @@ export interface Incasso {
     
     // 🔥 CAMPI IMPORTI AGGIORNATI
     importo_totale_raw: number;       // Float per calcoli/colori
+    importo_totale_cents: number;     // Centesimi interi: per fare i conti (1.11.0-beta.49)
     importo_totale_formatted: string; // Stringa "€ 100,00"
     
     pagante: {
@@ -17,6 +18,8 @@ export interface Incasso {
         altri_count: number;
         lista_completa: string;
         ruolo: string; 
+        /** Coda 167: chi ha versato davvero, se non è la posizione. */
+        versato_da?: string | null;
     };
 
     cassa_tipo_label: string;
@@ -26,6 +29,8 @@ export interface Incasso {
         numero: number;
         scadenza: string;
         importo_formatted: string;
+        /** Coda 167 (R6): la rata di chi ha versato che riceve la parte in più; `null` sulle rate della posizione. */
+        credito_di?: string | null;
     }>;
     
     anagrafica_id_principale: number | null; // Meglio number se l'ID è int

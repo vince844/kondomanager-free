@@ -184,9 +184,18 @@ function validaRiparto(object $s, array $importi): \Illuminate\Contracts\Validat
 
     // Gli importi arrivano qui come **stringhe mascherate** dal form ("1.200,50"): la
     // conversione in centesimi è a valle, nel controller. La regola deve saperle leggere.
+    // Dalla 1.11.0-beta.42 (decisione 44, rilievo T11) la regola legge il saldo solo nel condominio dell'indirizzo: la richiesta,
+    // costruita qui fuori da una rotta, riceve il condominio dello scenario come lo riceverebbe dalla rotta.
+    $richiesta = new \App\Http\Requests\Gestionale\PianoRate\CreatePianoRateRequest();
+    $richiesta->setRouteResolver(fn () => new class($s->condominio) {
+        public function __construct(private $condominio) {}
+
+        public function parameter($chiave, $predefinito = null) { return $chiave === 'condominio' ? $this->condominio : $predefinito; }
+    });
+
     return \Illuminate\Support\Facades\Validator::make(
         ['saldi_config' => [['saldo_id' => $s->saldo->id, 'ripartizioni' => $ripartizioni]]],
-        ['saldi_config' => (new \App\Http\Requests\Gestionale\PianoRate\CreatePianoRateRequest())->rules()['saldi_config']]
+        ['saldi_config' => $richiesta->rules()['saldi_config']]
     );
 }
 

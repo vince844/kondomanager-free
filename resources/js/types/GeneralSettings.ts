@@ -21,4 +21,6 @@ export interface GeneralSettings extends PageProps {
   condomini: CondominioOption[]
   default_user_role: string
   roles: RoleOption[]
+  /** Chi apre la pagina può cambiare il ruolo della registrazione? Solo l'amministratore (Coda 258). */
+  ruolo_registrazione_modificabile: boolean
 }

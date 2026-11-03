@@ -7,14 +7,19 @@ use App\Http\Requests\Gestionale\Saldi\CreateSaldoRequest;
 use App\Http\Requests\Gestionale\Saldi\UpdateSaldoRequest;
 use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
+use App\Models\Gestionale\Subentro;
 use App\Models\Gestione;
+use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Services\Gestionale\SaldoEsercizioService;
+use App\Services\Subentro\FermataDopoScrivi;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class SaldoInizialeController extends Controller
@@ -37,12 +42,13 @@ class SaldoInizialeController extends Controller
 
         $immobili = $condominio->immobili()
             ->with([
-                'anagrafiche',
+                // Dei titolari la pagina legge id, nome e il legame con l'unità (Coda 408).
+                'anagrafiche:id,nome',
                 'saldi' => function ($q) use ($esercizioAttivo) {
                     $q->where('esercizio_id', $esercizioAttivo->id)
                       // pianoRate serve alla UI per dire QUALE piano tiene il lucchetto,
                       // invece di limitarsi a mostrare un'icona muta.
-                      ->with(['gestione:id,nome,tipo', 'anagrafica:id,nome', 'pianoRate:id,nome']);
+                      ->with(['gestione:id,nome,tipo', 'anagrafica:id,nome', 'pianoRate:id,nome', 'subentro:id,decorrenza,tipo_passaggio']);
                 },
                 'palazzina',
                 'scala',
@@ -50,6 +56,7 @@ class SaldoInizialeController extends Controller
             ->get();
 
         $this->esponiLucchettoCalcolato($immobili);
+        $this->esponiILegami($immobili, $condominio);
 
         $gestioni = Gestione::where('condominio_id', $condominio->id)
             ->where('attiva', true)
@@ -91,9 +98,23 @@ class SaldoInizialeController extends Controller
     {
         $saldi = $immobili->pluck('saldi')->flatten();
 
-        $immutabilita = PianoRate::whereIn('id', $saldi->pluck('piano_rate_id')->filter()->unique())
-            ->get()
-            ->mapWithKeys(fn (PianoRate $piano): array => [$piano->id => $piano->eImmutabile()]);
+        $piani = PianoRate::whereIn('id', $saldi->pluck('piano_rate_id')->filter()->unique())->get()->keyBy('id');
+        $immutabilita = $piani->map(fn (PianoRate $piano): bool => $piano->eImmutabile());
+        // Rilievo V9 del giro di verifica della .42: la ragione vera del fermo e il suo rimedio, per i soli piani fermi. Il riquadro
+        // diceva «già emesso o con incassi» e consigliava di annullare le emissioni anche a un piano fermo solo per un conguaglio.
+        $fermi = $piani->filter(fn (PianoRate $p) => $immutabilita[$p->id])->map(fn (PianoRate $p) => ['perche' => $p->fraseDelFermo(), 'rimedi' => $p->rimediDelFermo(), 'ragioni' => $p->ragioniDelFermo()]);
+        // Le righe dell'arretrato delle successioni, in una query: il passaggio caricato con il saldo non porta il registro, che alla
+        // pagina non serve.
+        $successioni = \App\Models\Gestionale\Subentro::whereIn('id', $saldi->pluck('subentro_id')->filter()->unique())->where('tipo_passaggio', 'successione')
+            ->get(['id', 'tipo_passaggio', 'registro']);
+        $dellArretrato = $successioni->flatMap(fn ($s) => $s->saldiDellArretrato())->flip();
+        // Rilievo GC8 del giro sulle correzioni: le gambe della coppia di una successione con l'arretrato agli eredi non si tolgono con il
+        // solo conguaglio, e la modale lo dice.
+        $conArretrato = $successioni->filter(fn ($s) => $s->arretratoAgliEredi())->pluck('id')->flip();
+        // Ultima revisione (UE7): le righe di passaggi precedenti fra le fonti dell'arretrato di una successione non si tolgono con il
+        // loro conguaglio (`AnnullaConguaglioAction` lo rifiuta), e la modale lo dice.
+        $fonti = \App\Models\Gestionale\Subentro::where('condominio_id', $immobili->first()?->condominio_id)->where('tipo_passaggio', 'successione')
+            ->get(['id', 'tipo_passaggio', 'registro'])->filter(fn ($s) => $s->arretratoAgliEredi())->flatMap(fn ($s) => $s->fontiDellArretrato())->flip();
 
         foreach ($saldi as $saldo) {
             // Un `piano_rate_id` che non risolve è un lucchetto orfano: si resta prudenti e
@@ -101,6 +122,60 @@ class SaldoInizialeController extends Controller
             $saldo->e_bloccato = $saldo->piano_rate_id !== null
                 ? ($immutabilita[$saldo->piano_rate_id] ?? true)
                 : (bool) $saldo->is_applicato;
+            // B2 (S5, inv. 19): una gamba della coppia di conguaglio di un passaggio. Stato **a parte** da
+            // `e_bloccato`: non è un lucchetto da riaprire né un piano da annullare, e resta vero anche
+            // dopo che un piano l'ha assorbita (verifica S5, R4).
+            $saldo->e_conguaglio = $saldo->subentro_id !== null;
+            // 1.11.0-beta.44: fra le righe di un passaggio, quelle dell'arretrato di una successione, che si tolgono solo con il passaggio.
+            $saldo->e_arretrato = $dellArretrato->has((int) $saldo->id);
+            $saldo->e_conguaglio_con_arretrato = ! $saldo->e_arretrato && $saldo->subentro_id !== null && $conArretrato->has((int) $saldo->subentro_id);
+            $saldo->e_fonte_arretrato = $fonti->has((int) $saldo->id);
+            $saldo->fermo_del_piano = $saldo->piano_rate_id !== null ? ($fermi[$saldo->piano_rate_id] ?? null) : null;
+        }
+    }
+
+    /**
+     * 1.11.0-beta.53 (Coda 244): il legame di ogni riga a un passaggio (`e_legata`, `passaggio_in_parole`) e, per ogni unità, i passaggi a cui
+     * il modale può legare una riga (`passaggi_legabili`): i passaggi padre non annullati la cui famiglia comprende l'unità, con il registro
+     * (quelli di prima della 1.11.0-beta.37 non si annullano dal programma, e una riga legata a loro non si toglierebbe), dal più recente
+     * registrato. Per ognuno l'id, le parole, i nomi di chi esce e di chi entra, e se il registro ha una parte da regolare a mano su
+     * quell'unità: un'informazione, non un filtro. Del passaggio non si manda altro, e il registro resta sul server.
+     */
+    private function esponiILegami(Collection $immobili, Condominio $condominio): void
+    {
+        $capi = Subentro::where('condominio_id', $condominio->id)->whereNull('subentro_padre_id')
+            ->with(['uscente:id,nome', 'pertinenze:id,subentro_padre_id,immobile_id'])->orderByDesc('id')->get()
+            ->filter(fn (Subentro $p) => is_array($p->registro))->values();
+        $nomiEntranti = \App\Models\Anagrafica::whereIn('id', $capi->flatMap(fn (Subentro $p) => $p->entranti())->unique()->values()->all() ?: [0])->pluck('nome', 'id');
+        $persone = fn (Subentro $p): array => array_values(array_filter(array_map('strval', [
+            $p->uscente?->nome ?? ($p->registro['nomi']['uscente'] ?? null),
+            ...($p->entranti() !== []
+                ? array_map(fn (int $id) => $nomiEntranti[$id] ?? null, $p->entranti())
+                : [$p->registro['nomi']['entrante'] ?? null]),
+        ]), fn (string $n) => $n !== ''));
+        // Una fermata che non vale più (il conguaglio su cui si era fermata è stato annullato) o che un inizio ha azzerato non lascia una parte
+        // da regolare a mano: né nel registro dell'inizio, né in quello del passaggio che l'ha lasciata.
+        // Coda 245 (1.11.0-beta.55): anche il resto della regola del piano di un passaggio con la regola del piano, quando la sua strada è il Wallet
+        // (`wallet`: tutte le sue persone possono avere una riga in saldi). È la differenza del piano del passaggio (decisione 111.3): «Annulla il
+        // conguaglio», della fine di prima o di questo passaggio, non lo toglie.
+        $conParteAMano = fn (Subentro $p, int $immobileId): bool => collect(['fermata_dopo_scrivi', 'fermata_risale', 'fermata_ridotta', 'fermata_coinquilino', 'resto_del_piano'])
+            ->contains(fn (string $chiave) => collect($p->registro[$chiave] ?? [])->contains(fn ($f) => is_array($f) && (int) ($f['immobile_id'] ?? 0) === $immobileId
+                && ($chiave === 'resto_del_piano' ? ! empty($f['wallet'])
+                    : ! FermataDopoScrivi::fineSenzaConguaglio($f) && ! FermataDopoScrivi::nienteDaRegolare($chiave, $f, $p, $capi))));
+
+        $legati = Subentro::conAnnullati()->whereIn('id', $immobili->pluck('saldi')->flatten()->pluck('passaggio_id')->filter()->unique()->values()->all() ?: [0])->get()
+            ->mapWithKeys(fn (Subentro $p) => [(int) $p->id => FermataDopoScrivi::passaggioInParole($p)]);
+
+        foreach ($immobili as $immobile) {
+            $id = (int) $immobile->id;
+            $immobile->passaggi_legabili = $capi
+                ->filter(fn (Subentro $p) => (int) $p->immobile_id === $id || $p->pertinenze->contains(fn (Subentro $f) => (int) $f->immobile_id === $id))
+                ->map(fn (Subentro $p) => ['id' => (int) $p->id, 'parole' => FermataDopoScrivi::passaggioInParole($p), 'persone' => $persone($p), 'con_parte_a_mano' => $conParteAMano($p, $id)])
+                ->values()->all();
+            foreach ($immobile->saldi as $saldo) {
+                $saldo->e_legata = $saldo->passaggio_id !== null;
+                $saldo->passaggio_in_parole = $saldo->passaggio_id !== null ? ($legati[(int) $saldo->passaggio_id] ?? null) : null;
+            }
         }
     }
 
@@ -119,7 +194,7 @@ class SaldoInizialeController extends Controller
             403, 'Gestione non appartiene a questo condominio.'
         );
 
-        Saldo::create([
+        $riga = [
             'esercizio_id'   => $esercizioAttivo->id,
             'condominio_id'  => $condominio->id,
             'immobile_id'    => $validated['immobile_id'],
@@ -127,9 +202,44 @@ class SaldoInizialeController extends Controller
             'gestione_id'    => $validated['gestione_id'],
             'saldo_iniziale' => $validated['saldo_iniziale'],
             'origine'        => 'manuale',
-        ]);
+        ];
+
+        if (! empty($validated['passaggio_id'])) {
+            $this->scriviLegata($riga, (int) $validated['passaggio_id']);
+        } else {
+            Saldo::create($riga);
+        }
 
         return back()->with($this->flashSuccess('Saldo aggiunto al Wallet con successo.'));
+    }
+
+    /**
+     * 1.11.0-beta.53 (Coda 244): la riga legata a un passaggio, con il controllo del doppione nella transazione e i blocchi nell'ordine
+     * dell'annullamento (`AnnullaPassaggioAction::execute`): prima le unità della famiglia, poi i passaggi, poi i saldi. La famiglia si legge
+     * prima della transazione, come fa l'annullamento: le righe figlie nascono solo con il padre e le loro unità non cambiano più. Un passaggio
+     * annullato nel frattempo si rifiuta; il doppione (passaggio, persona, gestione, unità ed esercizio) conta solo le righe legate che si
+     * possono ancora modificare: una riga ferma in un piano con quote a giornale non impedisce quella che la corregge.
+     *
+     * @param array<string, mixed> $riga
+     */
+    private function scriviLegata(array $riga, int $passaggioId): void
+    {
+        $famiglia = Subentro::conAnnullati()->where(fn ($q) => $q->whereKey($passaggioId)->orWhere('subentro_padre_id', $passaggioId))->pluck('immobile_id', 'id');
+
+        DB::transaction(function () use ($riga, $passaggioId, $famiglia) {
+            Immobile::bloccaPerScrivere($famiglia->values());
+            $bloccati = Subentro::conAnnullati()->whereIn('id', $famiglia->keys()->all())->lockForUpdate()->get();
+            if ($bloccati->firstWhere('id', $passaggioId)?->annullato() ?? true) {
+                throw ValidationException::withMessages(['passaggio_id' => CreateSaldoRequest::FRASE_PASSAGGIO_ALTRUI]);
+            }
+            $doppione = Saldo::where('passaggio_id', $passaggioId)->where('anagrafica_id', $riga['anagrafica_id'])->where('gestione_id', $riga['gestione_id'])
+                ->where('immobile_id', $riga['immobile_id'])->where('esercizio_id', $riga['esercizio_id'])->lockForUpdate()->with('pianoRate')->get()
+                ->reject(fn (Saldo $x) => $x->eBloccato());
+            if ($doppione->isNotEmpty()) {
+                throw ValidationException::withMessages(['anagrafica_id' => 'Questa persona ha già un saldo legato a questo passaggio su questa gestione e su questa unità: modifica quello.']);
+            }
+            Saldo::create($riga + ['passaggio_id' => $passaggioId]);
+        }, 3);
     }
 
     public function update(UpdateSaldoRequest $request, Condominio $condominio, Saldo $saldo)
@@ -171,6 +281,10 @@ class SaldoInizialeController extends Controller
             "Questo saldo è intestato al piano rate «{$saldo->pianoRate?->nome}»: per liberarlo agisci su quel piano, non a mano."
         );
 
+        abort_if($saldo->subentro_id !== null, 403, $saldo->dellArretrato()
+            ? 'Questa riga fa parte dell\'arretrato di una successione: il lucchetto lo mette e lo toglie il piano che la assorbe.'
+            : 'Questa riga fa parte del conguaglio di un passaggio: il lucchetto lo mette e lo toglie il piano che la assorbe.');
+
         abort_unless($saldo->is_applicato, 400, 'Questo saldo è già libero.');
 
         $saldo->update(['is_applicato' => false]);
@@ -195,6 +309,24 @@ class SaldoInizialeController extends Controller
     {
         abort_unless($saldo->condominio_id === $condominio->id, 403);
 
+        // B2 (inv. 19): una gamba sola della coppia di conguaglio non si cancella — la somma non farebbe
+        // più zero. 422 e non 403: è un errore di campo che il pannello sa mostrare, come per «Modifica».
+        if ($saldo->dellArretrato()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['saldo' => Saldo::FRASE_ARRETRATO]);
+        }
+        // Decisione 67 (3): un saldo da cui una successione ha calcolato l'arretrato agli eredi.
+        if (($frase = $saldo->fraseFonteDellArretrato()) !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['saldo' => $frase]);
+        }
+        if ($saldo->subentro_id !== null && $saldo->subentro?->arretratoAgliEredi()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['saldo' => Saldo::FRASE_CONGUAGLIO_CON_ARRETRATO]);
+        }
+        if ($saldo->subentro_id !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'saldo' => 'Questa riga fa parte del conguaglio di un passaggio di titolarità (righe di segno opposto che sommano zero): non si cancella da sola. Se le parti hanno regolato diversamente, annulla il conguaglio dallo storico dell\'unità («Passaggi registrati»): toglie tutte le sue righe insieme, con la tua nota.',
+            ]);
+        }
+
         // La riga, non la gestione. Il flag `gestioni.saldo_applicato` è un
         // derivato dalla beta.32: usarlo qui come autorità significava vietare
         // di cancellare un saldo LIBERO solo perché un altro saldo della stessa
@@ -204,7 +336,8 @@ class SaldoInizialeController extends Controller
             $saldo->eBloccato(),
             403,
             $saldo->pianoRate
-                ? "Non puoi eliminare questo saldo: è incluso nel piano rate «{$saldo->pianoRate->nome}», già emesso o incassato."
+                ? "Non puoi eliminare questo saldo: è incluso nel piano rate «{$saldo->pianoRate->nome}», che " . ($saldo->pianoRate->fraseDelFermo() ?? 'non si riscrive più') . '.'
+                    . (($rimedi = $saldo->pianoRate->rimediDelFermo()) !== [] ? ' Per eliminarlo: ' . implode('; ', $rimedi) . '.' : '')
                 : 'Non puoi eliminare un saldo già applicato a un piano rate.'
         );
 

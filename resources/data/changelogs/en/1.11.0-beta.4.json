@@ -1,0 +1,8 @@
+{
+ "features": [
+  "⚠️ THIS VERSION ADDS NO MIGRATIONS. The Danea import learns to read a printout it used to recognise and throw away: the «Bilancio consuntivo per conto», the source of the building's expense structure.",
+  "EXPENSE CHAPTERS COME IN BY THEMSELVES — Before, an import gave you units, people, tables and balances, and an empty chart of accounts: chapters had to be retyped one by one, looking at a printout that had already been uploaded. Now the chapters and their line items come from the year-end statement. On a real building that is 4 chapters and 17 items, read without a single error.",
+  "AMOUNTS COME IN AS ZERO, AND THAT IS DELIBERATE — What a year-end statement carries is a photograph of last year's spending, not this year's budget: writing it as a budget would mean resolving in the assembly's place. Last year's figure goes into each item's description, where it is found exactly when it is needed — when you write the real budget.",
+  "PERSONAL EXPENSES DO NOT COME IN TWICE — The statement prints «Personal expenses» as if it were a chapter. It is not: those are charges to individual owners, and they are already inside the opening balances the import writes. Importing them as a chapter too would have counted them twice, and split by thousandths they would have made everyone pay what individuals owe."
+ ]
+}

@@ -7,6 +7,7 @@ use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use App\Services\Riparto\RisolutoreTitolari;
 
 /**
  * Diagnosi dei riparti automatici dei saldi solidali già emessi — **sola lettura**.
@@ -37,7 +38,7 @@ class VerificaSaldiSolidaliCommand extends Command
     protected $signature = 'kondomanager:verifica-saldi-solidali
                             {--condominio= : ID del condominio (omesso = tutti)}';
 
-    protected $description = 'Elenca i riparti automatici di saldi solidali già emessi che la beta.43 avrebbe fatto diversamente. Non modifica nulla.';
+    protected $description = 'Elenca i riparti automatici di saldi solidali già emessi che la 1.11 avrebbe fatto diversamente. Non modifica nulla.';
 
     public function handle(): int
     {
@@ -215,11 +216,13 @@ class VerificaSaldiSolidaliCommand extends Command
             return null;
         }
 
-        return DB::table('anagrafica_immobile')
-            ->where('anagrafica_id', $anagraficaId)
-            ->where('immobile_id', $immobileId)
-            ->where('attivo', true)
-            ->value('tipologia');
+        $titolari = app(RisolutoreTitolari::class);
+
+        return $titolari->ordinePreferenza($titolari->vincolaQuery(
+            DB::table('anagrafica_immobile')
+                ->where('anagrafica_id', $anagraficaId)
+                ->where('immobile_id', $immobileId)
+        ))->value('tipologia');
     }
 
     private function nomeImmobile(?int $immobileId): string

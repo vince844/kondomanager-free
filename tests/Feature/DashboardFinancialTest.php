@@ -71,7 +71,9 @@ test('dashboard calcola correttamente un deficit di budget', function () {
         ->assertStatus(200)
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('copertura', fn ($json) => $json
-                ->where('preventivo', 100000)
+                ->where('spese', 100000)
+                ->where('entrate', 0)
+                ->where('da_ripartire', 100000)
                 ->where('pianificato', 80000)
                 ->where('delta', 20000)
                 ->etc()
@@ -132,7 +134,9 @@ test('dashboard somma correttamente rate da più piani per la stessa voce (Scena
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('gestionale/dashboard/Dashboard')
             ->has('copertura', fn ($json) => $json
-                ->where('preventivo', 100000)   
+                ->where('spese', 100000)
+                ->where('entrate', 0)
+                ->where('da_ripartire', 100000)
                 ->where('pianificato', 100000) 
                 ->where('delta', 0)
                 ->where('is_completo', true)
