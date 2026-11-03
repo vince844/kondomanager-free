@@ -31,7 +31,7 @@
         "concurrently": "^9.2.5",
         "eslint": "^9.17.0",
         "eslint-config-prettier": "^10.0.1",
-        "eslint-plugin-vue": "^9.32.0",
+        "eslint-plugin-vue": "^10.12.0",
         "jsdom": "^30.0.1",
         "laravel-vite-plugin": "^3.0.0",
         "prettier": "^3.4.2",
