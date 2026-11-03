@@ -78,7 +78,7 @@ RUN composer dump-autoload --no-dev --optimize --no-interaction
 # e di lang/ (il plugin i18n compila le traduzioni PHP dentro il bundle), quindi copia il sorgente
 # intero più quel pacchetto dallo stadio vendor. Picco di memoria misurato: ~1,1 GB.
 # ---------------------------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS assets
+FROM node:26-bookworm-slim AS assets
 
 WORKDIR /app
 COPY package.json package-lock.json ./
