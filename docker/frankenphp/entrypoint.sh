@@ -59,6 +59,13 @@ if [ "$USER_COUNT" = "0" ]; then
     php artisan db:seed --force
 fi
 
+# Coda 435: gli stessi passi dell'aggiornamento dal gestionale e dell'immagine di produzione
+# (permessi e ruoli, elenco dei Comuni, classificazione ATECO, versione registrata). Le sole
+# migrazioni non bastano: dopo un `git pull` il contenitore partiva con i permessi e i dati di
+# riferimento della versione di prima, in silenzio. Dopo il seeder, come nell'immagine di
+# produzione dopo `kondomanager:installa`; sul database appena seminato non cambia niente.
+php artisan kondomanager:aggiorna
+
 # Gli asset si ricostruiscono quando il manifest manca oppure quando un ingresso del
 # bundle e' piu' recente del manifest. Il controllo «la cartella public/build esiste»
 # serviva a non ricompilare a ogni riavvio, ma serviva anche asset della versione

@@ -36,3 +36,25 @@ it('il Dockerfile ricrea la struttura di storage/app che .dockerignore esclude',
         expect($dockerfile)->toContain($cartella);
     }
 });
+
+it('Coda 449 — i Dockerfile di sviluppo hanno un contesto loro, che lascia entrare ogni file che copiano', function (string $dockerfile) {
+    // Il `.dockerignore` della radice è dell'immagine di produzione e toglie `docker/supervisord.conf`:
+    // senza un file proprio accanto al Dockerfile, `docker compose up --build` si fermava.
+    $ignora = base_path($dockerfile.'.dockerignore');
+    expect(file_exists($ignora))->toBeTrue();
+
+    $righe = array_values(array_filter(
+        array_map('trim', file($ignora, FILE_IGNORE_NEW_LINES)),
+        fn (string $riga) => $riga !== '' && ! str_starts_with($riga, '#'),
+    ));
+    preg_match_all('/^COPY\s+(?!--from)(\S+)\s+/m', file_get_contents(base_path($dockerfile)), $copie);
+
+    expect($righe[0] ?? null)->toBe('*')
+        ->and($copie[1])->not->toBeEmpty();
+    foreach ($copie[1] as $sorgente) {
+        expect($righe)->toContain('!'.$sorgente);
+    }
+})->with([
+    'standard'   => 'docker/standard/Dockerfile',
+    'frankenphp' => 'docker/frankenphp/Dockerfile',
+]);

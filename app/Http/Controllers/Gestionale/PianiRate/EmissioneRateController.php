@@ -753,7 +753,7 @@ class EmissioneRateController extends Controller
                 // Rilievo T-A del terzo giro: la ragione vera — una scrittura entro l'ora del passaggio, oppure (dati della .41) la
                 // rata segnata «emessa» senza scritture che quel conguaglio ha preso così.
                 // Rilievo T1: dopo una rinuncia o un conguaglio annullato, quella parte l'hanno regolata le parti, non il conguaglio.
-                . sprintf("\n\n%s prima della versione 1.11.0-beta.42: il piano risulta preso grazie %s. Annullare l'emissione lo riaprirebbe al ricalcolo, che rifarebbe per giorni ciò che %s.",
+                . sprintf("\n\n%s da una versione più vecchia: il piano risulta preso grazie %s. Annullare l'emissione lo riaprirebbe al ricalcolo, che rifarebbe per giorni ciò che %s.",
                     $uno ? 'È un passaggio registrato' : 'Sono passaggi registrati',
                     collect($passaggi)->contains(fn ($p) => $pianoRate->presoSoloInParteDa($p))
                         ? ($uno ? 'a una rata segnata «emessa», senza scritture, che quel conguaglio ha preso così' : 'a una rata segnata «emessa», senza scritture, che quei conguagli hanno preso così')

@@ -132,7 +132,7 @@ defineEmits(['update:open']);
               <p class="text-[13px] text-slate-500 dark:text-slate-400">
                 <strong>Da non confondere col riallineamento</strong>: le coperture in attesa riguardano fatture
                 <em>di oggi</em> che aspettano il loro giroconto; il riallineamento (scheda successiva) è una
-                correzione <em>una tantum</em> delle scritture storiche precedenti alla versione beta.19.
+                correzione <em>una tantum</em> delle scritture storiche precedenti alla 1.10.0.
               </p>
             </section>
             <div class="p-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800/50 flex gap-3">
@@ -150,7 +150,7 @@ defineEmits(['update:open']);
             <section>
               <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">L'avviso "Scritture storiche da riallineare"</h3>
               <p class="mb-3">
-                Prima della versione 1.10.0-beta.19 le coperture dal fondo scrivevano righe contabili direttamente
+                Prima della 1.10.0 le coperture dal fondo scrivevano righe contabili direttamente
                 sul conto del fondo, con una convenzione di segno poi unificata. Se hai fatture di quel periodo,
                 quelle righe oggi <strong>gonfierebbero il saldo del fondo</strong>: l'avviso in cima a questa
                 pagina compare solo in quel caso, con l'elenco esatto delle scritture coinvolte.
@@ -160,7 +160,7 @@ defineEmits(['update:open']);
                     alle originali: niente viene modificato o cancellato, il giornale resta intatto.</li>
                 <li>Si fa <strong>una volta sola</strong>: a rettifiche create l'avviso sparisce da solo e i saldi
                     dei fondi tornano a riflettere i soli giroconti.</li>
-                <li>Se non hai mai registrato sfori coperti dal fondo prima della beta.19, non vedrai mai l'avviso.</li>
+                <li>Se non hai mai registrato sfori coperti dal fondo prima della 1.10.0, non vedrai mai l'avviso.</li>
               </ul>
             </section>
             <div class="p-4 rounded-lg border border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800/50 flex gap-3">

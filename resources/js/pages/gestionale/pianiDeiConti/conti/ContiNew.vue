@@ -146,7 +146,7 @@ const stradaBloccata = (bloccano: PianoCheBlocca[], poi: string): PezzoDellaFras
   if (fermi.length > 0) {
     return [
       ...premessa,
-      { testo: `, ${uno ? 'approvato' : 'approvati'}, e un passaggio di titolarità registrato prima della 1.11.0-beta.37, che dal programma non si annulla, ferma l'annullamento delle emissioni ` },
+      { testo: `, ${uno ? 'approvato' : 'approvati'}, e un passaggio di titolarità registrato da una versione più vecchia, che dal programma non si annulla, ferma l'annullamento delle emissioni ` },
       ...(fermi.length < piani.length ? [{ testo: 'di ' }, ...pezziDeiPiani(fermi)] : [{ testo: uno ? 'del piano' : 'dei piani' }]),
       { testo: ': la voce resta com\'è.' },
     ]

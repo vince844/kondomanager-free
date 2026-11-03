@@ -277,14 +277,14 @@ it('senza persona: rifiuto, un saldo legato a un passaggio è di una persona', f
         ->and(Saldo::count())->toBe($prima);
 });
 
-it('un passaggio registrato senza registro (prima della 1.11.0-beta.37): rifiuto sul passaggio, un saldo per lui si scrive senza legame', function () {
+it('un passaggio registrato senza registro (di una versione più vecchia): rifiuto sul passaggio, un saldo per lui si scrive senza legame', function () {
     $s = sl53Scenario($this);
     $s['vendita']->forceFill(['registro' => null])->save();
     $prima = Saldo::count();
 
     $r = sl53Posta($this, $s, 'Elsa', 6016, (int) $s['vendita']->id);
 
-    expect(sl53pErrore($r, 'passaggio_id'))->toBe('Questo passaggio è stato registrato prima della 1.11.0-beta.37 e non si annulla dal programma: un saldo per lui si scrive senza legame.')
+    expect(sl53pErrore($r, 'passaggio_id'))->toBe('Questo passaggio è stato registrato da una versione che non teneva il registro di ciò che scriveva e non si annulla dal programma: un saldo per lui si scrive senza legame.')
         ->and(Saldo::count())->toBe($prima);
 });
 

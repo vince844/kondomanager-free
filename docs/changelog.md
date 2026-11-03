@@ -7,6 +7,33 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.11.0] - Ogni giorno al suo titolare
+
+> **Stable release.**
+> I passaggi di titolarità (vendita o donazione, inizio e fine di una locazione, usufrutto, successione), con la quota
+> divisa sui giorni di titolarità e il prospetto degli oneri accessori; le fatture elettroniche XML e P7M lette dal file,
+> con le note di credito collegate alla fattura che rettificano; la prima nota, i mastrini e lo stato patrimoniale con
+> sei controlli; il riparto scritto alla generazione del piano; l'importazione da Danea anche dai suoi elenchi Excel, e
+> dal modello Excel; accesso, ruoli e permessi rivisti.
+>
+> ⚠️ **Tocca il database rispetto alla 1.10.0**: 26 migrazioni, che creano tabelle e colonne e travasano o riscrivono
+> questi dati: la categoria di ogni documento, che passa nei legami fra documenti e categorie; le categorie iniziali dei
+> documenti e dei fornitori che mancano, e la chiave interna della categoria «Fatture»; la posizione sulla ritenuta dei
+> fornitori già dichiarata; il periodo di competenza che una fattura portava già; l'esercizio dei piani rate su una
+> gestione con un solo esercizio; la frase del credito e, nel caso misto, il versato e il residuo nei promemoria del
+> portale. Tolgono tre colonne che il programma non ha mai riempito, e cambiano il controllo della fattura doppia (ora
+> dentro un condominio) e quello del già versato (anche per persona). Rispetto alla 1.11.0-beta.60 nessuna migrazione nuova. I requisiti sono quelli della 1.10.0:
+> PHP 8.4.1 e le stesse estensioni. Dopo l'aggiornamento si controlla `APP_URL` nel `.env`.
+>
+> Rispetto alla 1.11.0-beta.60: il Docker di sviluppo, dopo un `git pull`, si ricompila con `--build`, e a ogni avvio allinea ruoli e permessi,
+> l'elenco dei Comuni, la classificazione ATECO e la versione registrata; le azioni suggerite dal riquadro «Tesoreria a
+> 30gg» aprono la loro pagina; le guide del gestionale e i messaggi del programma non citano numeri di versioni di prova; il testo dello scheduler
+> nelle impostazioni e quello della pagina degli aggiornamenti dicono ciò che il programma fa; i README seguono la stabile.
+>
+> 60 beta release (beta.1 → beta.60) prima della stable: il dettaglio di ognuna è nelle voci qui sotto.
+
+---
+
 ## [1.11.0-beta.60] - Ogni piano nel suo anno
 
 **Non cambia lo schema del database e non riscrive nessun dato.** Nessuna migrazione nuova: una migrazione che c'era (i documenti in più categorie) toglie ora la

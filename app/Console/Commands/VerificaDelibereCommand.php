@@ -47,7 +47,7 @@ class VerificaDelibereCommand extends Command
         }
 
         $this->line('');
-        $this->info('La data della delibera che il riparto straordinario legge dalla 1.11.0-beta.31 — sola lettura, niente viene modificato.');
+        $this->info('La data della delibera che il riparto straordinario legge dalla 1.11 — sola lettura, niente viene modificato.');
         $this->line('');
 
         $totale = 0;

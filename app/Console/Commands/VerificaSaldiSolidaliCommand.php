@@ -38,7 +38,7 @@ class VerificaSaldiSolidaliCommand extends Command
     protected $signature = 'kondomanager:verifica-saldi-solidali
                             {--condominio= : ID del condominio (omesso = tutti)}';
 
-    protected $description = 'Elenca i riparti automatici di saldi solidali già emessi che la beta.43 avrebbe fatto diversamente. Non modifica nulla.';
+    protected $description = 'Elenca i riparti automatici di saldi solidali già emessi che la 1.11 avrebbe fatto diversamente. Non modifica nulla.';
 
     public function handle(): int
     {

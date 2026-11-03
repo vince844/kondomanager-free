@@ -306,7 +306,7 @@ return [
         'test_unsaved_warning' => 'You have unsaved changes. Save the configuration before sending the test.',
 
         'cron_guide_1_title' => 'El Motor Invisible',
-        'cron_guide_1_desc' => 'El demonio ejecuta automáticamente tareas en segundo plano: verifica plazos, emite cuotas y gestiona alertas sin intervención manual.',
+        'cron_guide_1_desc' => 'El demonio ejecuta en segundo plano, sin intervención manual, el mantenimiento del sistema: elimina los eventos terminados hace más de un año y la caché caducada, comprueba si hay una nueva versión disponible y, donde está activada la opción para hostings compartidos, también procesa la cola de tareas.',
         'cron_guide_2_title' => 'Webhook (Externo)',
         'cron_guide_2_desc' => 'Identificado por el punto naranja. Permite activar el programador a través de una URL cifrada llamada por servicios externos (por ejemplo, cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Nativo)',

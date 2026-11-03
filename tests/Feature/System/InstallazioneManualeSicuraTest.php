@@ -131,6 +131,25 @@ it('Coda 266 — i contenitori Docker di sviluppo restano in `local` quando crea
     'frankenphp' => 'docker/frankenphp/entrypoint.sh',
 ]);
 
+it('Coda 435 — i contenitori Docker di sviluppo lanciano `kondomanager:aggiorna` dopo le migrazioni e il seeder', function (string $entrypoint) {
+    // Prima facevano solo `migrate --force`: dopo un `git pull` permessi, Comuni, ATECO e versione
+    // restavano quelli di prima (provato il 02/11/2026: 64 permessi invece di 65, ATECO vuota).
+    $testo = file_get_contents(base_path($entrypoint));
+
+    $migra = strpos($testo, "\nphp artisan migrate --force\n");
+    $seme = strpos($testo, 'php artisan db:seed --force');
+    $aggiorna = strpos($testo, "\nphp artisan kondomanager:aggiorna\n");
+    $avvio = strpos($testo, 'exec "$@"');
+
+    expect($migra)->not->toBeFalse()
+        ->and($seme)->toBeGreaterThan($migra)
+        ->and($aggiorna)->toBeGreaterThan($seme)
+        ->and($avvio)->toBeGreaterThan($aggiorna);
+})->with([
+    'standard'   => 'docker/standard/entrypoint.sh',
+    'frankenphp' => 'docker/frankenphp/entrypoint.sh',
+]);
+
 it('Coda 266 — il README installa un server con `kondomanager:installa`, non con l\'amministratore di sviluppo', function (string $readme) {
     $testo = file_get_contents(base_path($readme));
 

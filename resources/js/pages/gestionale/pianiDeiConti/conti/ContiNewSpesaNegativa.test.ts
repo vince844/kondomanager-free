@@ -200,7 +200,7 @@ describe('la frase della voce di spesa negativa sotto i totali', () => {
 
         // `Beta53SpesaNegativaTestiTest` (T297.56): il passaggio non si annulla dal programma, l'emissione resta rifiutata, e la correzione e il provento si rifiutano.
         expect(testo()).toContain('il preventivo la conta in positivo, per € 100,00. L\'importo, il padre e il tipo non si cambiano finché la voce è nel piano «Preventivo 2026», '
-            + 'approvato, e un passaggio di titolarità registrato prima della 1.11.0-beta.37, che dal programma non si annulla, ferma l\'annullamento delle emissioni del '
+            + 'approvato, e un passaggio di titolarità registrato da una versione più vecchia, che dal programma non si annulla, ferma l\'annullamento delle emissioni del '
             + 'piano: la voce resta com\'è.');
         expect(testo()).not.toContain('bozza');
         expect(testo()).not.toContain('provento');
@@ -212,7 +212,7 @@ describe('la frase della voce di spesa negativa sotto i totali', () => {
             { id: 7, nome: 'Preventivo 2026', capitolo: null, movimenti: ['passaggio_senza_registro'] }, { id: 9, nome: 'Integrativo 2026', capitolo: null, movimenti: ['incasso'] },
         ] }] });
 
-        expect(testo()).toContain('nei piani «Preventivo 2026» e «Integrativo 2026», approvati, e un passaggio di titolarità registrato prima della 1.11.0-beta.37, che '
+        expect(testo()).toContain('nei piani «Preventivo 2026» e «Integrativo 2026», approvati, e un passaggio di titolarità registrato da una versione più vecchia, che '
             + 'dal programma non si annulla, ferma l\'annullamento delle emissioni di «Preventivo 2026»: la voce resta com\'è.');
         expect(testo()).not.toContain('bozza');
         expect(pagina!.findAll('a').filter((a) => a.text() === 'Preventivo 2026')).toHaveLength(2);

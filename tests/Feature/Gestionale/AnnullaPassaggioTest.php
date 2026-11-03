@@ -413,13 +413,13 @@ it('il conguaglio già assorbito da un piano ferma l\'annullamento con la via, c
 |--------------------------------------------------------------------------
 */
 
-it('un passaggio registrato prima della beta.37, senza registro, non si annulla: il messaggio dice di correggerlo a mano', function () {
+it('un passaggio registrato da una versione senza registro non si annulla: il messaggio dice di correggerlo a mano', function () {
     $s = apScenario();
     apEmetti($s);
     $subentro = apRegistra($this, $s, apVendita($s['rigaV'], $s['a']));
     DB::table('subentri')->where('id', $subentro->id)->update(['registro' => null]);
 
-    expect(apAnnulla($this, $s, $subentro)->assertUnprocessable()->json('errors.passaggio.0'))->toContain('prima della 1.11.0-beta.37')->toContain('a mano');
+    expect(apAnnulla($this, $s, $subentro)->assertUnprocessable()->json('errors.passaggio.0'))->toContain('registrato da una versione che non teneva il registro')->not->toContain('beta')->toContain('a mano');
 });
 
 it('la nota dell\'annullamento è obbligatoria, di almeno dieci caratteri, e un passaggio annullato non si annulla una seconda volta', function () {

@@ -402,7 +402,7 @@ it('R1 — un passaggio retroattivo (decorrenza prima della generazione del pian
         // Verifica a video della .42: il passaggio in elenco e la strada in tre passi numerati, nell'ordine dei rilievi T4 e W9.
         expect($risposta->getSession()->get('message')['type'])->toBe('error')
             ->and($risposta->getSession()->get('message')['message'])->toStartWith("Un passaggio di titolarità registrato dopo l'emissione ha preso questo piano nel conguaglio:\n• ")
-            ->toContain("\n\nÈ un passaggio registrato prima della versione 1.11.0-beta.42: il piano risulta preso grazie alle quote già a giornale. Annullare l'emissione")
+            ->toContain("\n\nÈ un passaggio registrato da una versione più vecchia: il piano risulta preso grazie alle quote già a giornale. Annullare l'emissione")
             ->toEndWith("\n\nPer annullare l'emissione:\n1. Annulla quel passaggio dallo storico della sua unità («Passaggi registrati», dall'ultimo). Se dopo il passaggio sono state emesse altre rate, l'annullamento chiede di annullare prima quelle.\n2. Annulla l'emissione.\n3. Solo a questo punto registra di nuovo il passaggio.")
             ->and(DB::table('rate')->where('id', $rataId)->value('stato'))->toBe('emessa');
     } else {

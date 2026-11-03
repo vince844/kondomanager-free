@@ -242,8 +242,8 @@ describe('PassaggioProprietaGuide — il coinquilino che resta e i passaggi dopo
         // Cambiato con la decisione 111.2 applicata anche alla fine con una coppia: dopo una fine delle beta la fine di dopo non scrive niente, neanche la coppia di chi esce, e il prospetto
         // resta alla regola dei giorni (prima: «quella segue la regola del piano … altrimenti la differenza la regolano le parti con il prospetto degli oneri accessori»).
         // Caso 9: non scrive niente solo se trova una fine con la fermata del coinquilino (le beta .50–.54, RegolaDelPiano::finiConLaFermataDelCoinquilino); una fine di prima della .50 non ha né la fermata né `conguaglio.piano`.
-        expect(testo).toContain('Una fine con un coinquilino che resta registrata prima della 1.11.0-beta.55, senza la scelta, resta com\'era. Se è una fine con la fermata del coinquilino (dalla 1.11.0-beta.50 '
-            + 'alla 1.11.0-beta.54) e dopo c\'è la fine di un altro conduttore con un coinquilino che resta, il pannello dice la regola del piano a partire dalle rate di allora e che cosa ne resterebbe fra le parti, con le persone e le cifre, ma nei saldi non scrive niente, neanche la '
+        expect(testo).toContain('Una fine con un coinquilino che resta registrata da una versione più vecchia, senza la scelta, resta com\'era. Se è una fine con la fermata del coinquilino '
+            + 'e dopo c\'è la fine di un altro conduttore con un coinquilino che resta, il pannello dice la regola del piano a partire dalle rate di allora e che cosa ne resterebbe fra le parti, con le persone e le cifre, ma nei saldi non scrive niente, neanche la '
             + 'coppia di chi esce, e il prospetto degli oneri accessori resta alla regola dei giorni: per avere la regola del piano anche per la fine di prima si annulla dallo storico dell\'unità la fine '
             + 'di prima e la si registra di nuovo, prima di quella di dopo (se quella di dopo c\'è già, si annulla prima lei: lo storico lo dice); altrimenti la differenza la regolano le parti. Dove non '
             + 'resta nessun coinquilino i passaggi dopo seguono la regola dei giorni.');
@@ -266,7 +266,7 @@ describe('PassaggioProprietaGuide — il prospetto con la regola del piano (Coda
         expect(testo).toContain('Dove la locazione è continuata con un coinquilino divide con la regola del piano le voci che un passaggio ha cambiato (le altre restano come nelle rate), per quota e '
             + 'per giorni sull\'intera voce, e accanto a ogni conduttore '
             + 'dice ciò che ne ha nelle sue rate, «con il conguaglio della fine locazione del …» ciò che un passaggio ha scritto in saldi e, con il nome e il passaggio, chi rimborsa chi; '
-            + 'per le fini registrate prima della 1.11.0-beta.55 dice ancora che chi paga i giorni dopo l\'uscita lo decidono le parti, con i saldi del Wallet legati a quella fine.');
+            + 'per le fini registrate da una versione più vecchia dice ancora che chi paga i giorni dopo l\'uscita lo decidono le parti, con i saldi del Wallet legati a quella fine.');
         expect(testo).not.toContain('Dove la locazione continua con un coinquilino non indica chi paga quei giorni, che lo decidono le parti.');
     });
 

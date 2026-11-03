@@ -13,7 +13,7 @@ describe('blocchiMessaggio — i rifiuti della pagina del piano in capoversi, el
             'Un passaggio di titolarità registrato dopo l\'emissione ha preso questo piano nel conguaglio:',
             '• Ugo → Elsa, Interno 1, dal 1 maggio 2026',
             '',
-            'È un passaggio registrato prima della versione 1.11.0-beta.42.',
+            'È un passaggio registrato da una versione più vecchia.',
             '',
             'Per annullare l\'emissione:',
             '1. Annulla quel passaggio.',
@@ -23,7 +23,7 @@ describe('blocchiMessaggio — i rifiuti della pagina del piano in capoversi, el
 
         expect(c).toEqual([
             [{ tipo: 'testo', testo: 'Un passaggio di titolarità registrato dopo l\'emissione ha preso questo piano nel conguaglio:' }, { tipo: 'punti', voci: ['Ugo → Elsa, Interno 1, dal 1 maggio 2026'] }],
-            [{ tipo: 'testo', testo: 'È un passaggio registrato prima della versione 1.11.0-beta.42.' }],
+            [{ tipo: 'testo', testo: 'È un passaggio registrato da una versione più vecchia.' }],
             [{ tipo: 'testo', testo: 'Per annullare l\'emissione:' }, { tipo: 'passi', voci: ['Annulla quel passaggio.', 'Annulla l\'emissione.', 'Solo a questo punto registra di nuovo il passaggio.'] }],
         ]);
         expect(messaggioArticolato(c)).toBe(true);

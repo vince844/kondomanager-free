@@ -163,7 +163,7 @@ final class BloccoDellaVoce
         $uno = count($piani) === 1;
         $fermi = self::fermi($bloccano);
         if ($fermi !== []) {
-            return $premessa . ', e un passaggio di titolarità registrato prima della 1.11.0-beta.37, che dal programma non si annulla, ferma l\'annullamento delle emissioni '
+            return $premessa . ', e un passaggio di titolarità registrato da una versione più vecchia, che dal programma non si annulla, ferma l\'annullamento delle emissioni '
                 . (count($fermi) < count($piani) ? 'di ' . self::nomi($fermi) : ($uno ? 'del piano' : 'dei piani')) . ": {$resta}.";
         }
 

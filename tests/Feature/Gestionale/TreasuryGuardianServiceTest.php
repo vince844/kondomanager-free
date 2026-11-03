@@ -6,6 +6,7 @@ use App\Support\Treasury\TreasuryStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use App\Models\Condominio;
+use Illuminate\Support\Facades\Route;
 
 uses(RefreshDatabase::class);
 
@@ -354,4 +355,73 @@ test('Storno di pagamento: la fattura torna come uscita con residuo corretto (§
     expect($status->uscitePredittiveCents)->toBe(100000)
         ->and($status->fattureInScadenza)->toHaveCount(1)
         ->and($status->fattureInScadenza[0]['importoCents'])->toBe(100000);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Le righe d'azione del widget si aprono davvero
+|--------------------------------------------------------------------------
+|
+| `TreasuryActionRow.vue` chiama `route(azione.route, azione.routeParams)` di Ziggy: con un nome che non
+| esiste, o con un parametro che la rotta pretende e non c'è, Ziggy solleva, il componente prende
+| l'eccezione e la riga diventa un testo che non porta da nessuna parte. Le tre azioni chiamavano
+| `gestionale.rate.index`, `gestionale.piani-rate.index` e `gestionale.fatture.index`: nomi senza il
+| prefisso `admin.` (e il primo non è mai esistito), senza il condominio e, per i piani rate, senza
+| l'esercizio. La guardia sui nomi di rotta delle schermate legge solo i sorgenti `.vue` e `.ts`, e i
+| nomi che il server manda dentro un payload non li vede.
+*/
+
+/**
+ * Prova a costruire l'indirizzo come lo costruirebbe Ziggy: il nome deve esistere, e i parametri devono
+ * bastare. Laravel solleva `UrlGenerationException` dove Ziggy solleva in JavaScript.
+ */
+function indirizzoDellAzione(array $azione): string
+{
+    expect(Route::has($azione['route']))->toBeTrue("la rotta «{$azione['route']}» non esiste");
+
+    return route($azione['route'], $azione['routeParams'] ?? []);
+}
+
+test('Azioni suggerite: «Emetti Nuove Rate» e «Gestisci Debiti Pregressi» puntano a rotte che esistono, con i parametri che pretendono', function () {
+    assegnaLiquidita($this->condominio->id, $this->contoLiquiditaId, 50000, $this->gestioneId);
+    creaFattura($this->condominio->id, $this->fornitoreId, $this->esercizioId, 100000, 0, 'aperta', 'approvata', now()->addDays(5));
+    // Un debito pregresso già scaduto, che sta a parte e fa comparire la terza riga.
+    creaFattura($this->condominio->id, $this->fornitoreId, $this->esercizioId, 20000, 0, 'aperta', 'approvata', now()->subDays(10), true);
+
+    $azioni = collect($this->service->perCondominio($this->condominio->id)->toArray()['azioniSuggerite'])->keyBy('tipo');
+
+    expect($azioni->keys()->all())->toBe(['emissione_rate', 'gestione_pregressi']);
+
+    $piani = indirizzoDellAzione($azioni['emissione_rate']);
+    expect($piani)->toEndWith("/gestionale/{$this->condominio->id}/esercizi/{$this->esercizioId}/piani-rate");
+
+    $fatture = indirizzoDellAzione($azioni['gestione_pregressi']);
+    expect($fatture)->toContain("/gestionale/{$this->condominio->id}/fatture");
+});
+
+test('Azioni suggerite: senza un esercizio aperto «Emetti Nuove Rate» apre l\'elenco degli esercizi, non una rotta che manca di parametri', function () {
+    DB::table('esercizi')->where('id', $this->esercizioId)->update(['stato' => 'chiuso']);
+    assegnaLiquidita($this->condominio->id, $this->contoLiquiditaId, 50000, $this->gestioneId);
+    creaFattura($this->condominio->id, $this->fornitoreId, $this->esercizioId, 100000, 0, 'aperta', 'approvata', now()->addDays(5));
+
+    $azioni = $this->service->perCondominio($this->condominio->id)->toArray()['azioniSuggerite'];
+
+    expect($azioni)->toHaveCount(1)
+        ->and($azioni[0]['tipo'])->toBe('emissione_rate')
+        ->and(indirizzoDellAzione($azioni[0]))->toEndWith("/gestionale/{$this->condominio->id}/esercizi");
+});
+
+test('Azioni suggerite: la riga sugli incassi apre l\'elenco degli incassi e non promette promemoria che il programma non invia', function () {
+    assegnaLiquidita($this->condominio->id, $this->contoLiquiditaId, 50000, $this->gestioneId);
+    creaRata($this->pianoRateId, 100000, 0, 'emessa', now()->addDays(2));
+    creaFattura($this->condominio->id, $this->fornitoreId, $this->esercizioId, 100000, 0, 'aperta', 'approvata', now()->addDays(5));
+
+    $azioni = $this->service->perCondominio($this->condominio->id)->toArray()['azioniSuggerite'];
+
+    expect($azioni)->toHaveCount(1)
+        ->and($azioni[0]['tipo'])->toBe('sollecito')
+        ->and(indirizzoDellAzione($azioni[0]))->toEndWith("/gestionale/{$this->condominio->id}/movimenti-rate")
+        // Nel programma non esiste nessun promemoria ai ritardatari: la descrizione non lo promette.
+        // (L'etichetta «Verifica o Sollecita Incassi» resta, la cita la pagina del sito sulla Tesoreria.)
+        ->and($azioni[0]['descrizione'])->not->toMatch('/promemoria|ritardatar/i');
 });

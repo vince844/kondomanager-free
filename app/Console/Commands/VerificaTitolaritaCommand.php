@@ -60,7 +60,7 @@ class VerificaTitolaritaCommand extends Command
         }
 
         $this->line('');
-        $this->info('Date di competenza che il riparto legge dalla 1.11.0-beta.31 — sola lettura, niente viene modificato.');
+        $this->info('Date di competenza che il riparto legge dalla 1.11 — sola lettura, niente viene modificato.');
         $this->line('');
 
         $totaleSegnali = 0;

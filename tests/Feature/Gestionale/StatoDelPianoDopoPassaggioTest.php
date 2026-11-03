@@ -1406,7 +1406,7 @@ it('revisione della verifica a video — il rifiuto dell\'annullamento con due p
     $m = $annulla();
     expect($m['type'])->toBe('error')
         ->and($m['message'])->toStartWith("Più passaggi di titolarità registrati dopo l'emissione hanno preso questo piano nel conguaglio:\n• Ugo Venditore → Elsa Acquirente, Interno 1, dal 1 maggio 2026\n• Elsa Acquirente → Zeta Terza, Interno 1, dal 1 settembre 2026\n\n")
-        ->toContain("Sono passaggi registrati prima della versione 1.11.0-beta.42: il piano risulta preso grazie alle quote già a giornale. Annullare l'emissione lo riaprirebbe al ricalcolo, che rifarebbe per giorni ciò che quei conguagli hanno già regolato.")
+        ->toContain("Sono passaggi registrati da una versione più vecchia: il piano risulta preso grazie alle quote già a giornale. Annullare l'emissione lo riaprirebbe al ricalcolo, che rifarebbe per giorni ciò che quei conguagli hanno già regolato.")
         ->toContain("\n1. Annulla tutti quei passaggi, ognuno dallo storico della sua unità")
         ->toContain("\n3. Solo a questo punto registrali di nuovo.")
         ->and(DB::table('rate')->where('id', spRata($s, 1))->value('stato'))->toBe('emessa');

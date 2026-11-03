@@ -682,7 +682,7 @@ it('decisione 60 — un anello registrato prima della .43 che ha preso il piano 
     $an = cdcAnteprima($this, $s, $s['unita'], ruPassaggio('vendita', cdcRiga($s['unita'], $carlo), $dora, '2026-09-01', 100));
 
     if ($siFerma) {
-        expect(cdcFermo($an))->toContain('la quota è passata con il passaggio del 1 luglio 2026, registrato prima della 1.11.0-beta.43 senza una coppia di conguaglio su questa unità: non si sa se la parte di quel tratto è stata regolata a mano');
+        expect(cdcFermo($an))->toContain('la quota è passata con il passaggio del 1 luglio 2026, registrato da una versione più vecchia senza una coppia di conguaglio su questa unità: non si sa se la parte di quel tratto è stata regolata a mano');
     } else {
         expect(cdcFermo($an))->toBeNull();
     }

@@ -407,7 +407,7 @@ final class GenealogiaDellaQuota
                     $diChiEsce = $a['u'] !== null && $p['riga'] === $a['u'];
                     $chiusaQuelGiorno = ($titolarita[$p['riga']]->data_fine ?? null) !== null && substr((string) $titolarita[$p['riga']]->data_fine, 0, 10) === $vigilia;
                     if (($diChiEsce && (! in_array($a['tipo'], [self::VENDITA, self::FINE_LOCAZIONE], true) || $a['e'] === null)) || (! $diChiEsce && $chiusaQuelGiorno)) {
-                        return ['indecidibile' => sprintf('la quota è passata con il passaggio del %s, registrato da una versione che non annotava le righe toccate (prima della 1.11.0-beta.37)', $this->data($a['giorno']))];
+                        return ['indecidibile' => sprintf('la quota è passata con il passaggio del %s, registrato da una versione che non annotava le righe toccate', $this->data($a['giorno']))];
                     }
                     if ($diChiEsce) {
                         $pacchi[$i] = $this->sposta($p, $a['e'], $a['giorno'], $titolarita);
@@ -433,7 +433,7 @@ final class GenealogiaDellaQuota
                 // passava si regolava a mano: se e come, il programma non lo sa. La quota che lo attraversa cambiando persona non si
                 // segue; con una coppia scritta sull'unità quel passaggio non si era fermato, e la si segue.
                 if ($a['prima_43'] && $this->cambiaPersona($p, $mossi, $titolarita) && $this->senzaCoppia($a, (int) $r->piano_rate_id, (int) $r->immobile_id)) {
-                    return ['indecidibile' => sprintf('la quota è passata con il passaggio del %s, registrato prima della 1.11.0-beta.43 senza una coppia di conguaglio su questa unità: non si sa se la parte di quel tratto è stata regolata a mano', $this->data($a['giorno']))];
+                    return ['indecidibile' => sprintf('la quota è passata con il passaggio del %s, registrato da una versione più vecchia senza una coppia di conguaglio su questa unità: non si sa se la parte di quel tratto è stata regolata a mano', $this->data($a['giorno']))];
                 }
                 // Un pacco passato per una riga di chi esce lo ricorda: se poi va a un altro, chi esce l'ha ceduto (rilievo T6).
                 foreach ($mossi as $i => $m) {

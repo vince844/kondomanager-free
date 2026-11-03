@@ -126,7 +126,7 @@ defineEmits(['update:open']);
                                 (una successione o una fine locazione con il conguaglio non scritto), perché ricalcolarlo rifarebbe per giorni ciò che
                                 il conguaglio ha già regolato, o la posizione che il passaggio ha lasciato com'era. Il messaggio dice
                                 quale, e la strada: per un passaggio, togliere prima le quote a giornale e i movimenti, se ce
-                                ne sono, poi annullarlo dallo storico della sua unità, registrarlo di nuovo e ricalcolare (con un passaggio registrato prima della versione 1.11.0-beta.42 l'ordine è un altro, e lo dice il messaggio). Al
+                                ne sono, poi annullarlo dallo storico della sua unità, registrarlo di nuovo e ricalcolare (con un passaggio registrato da una versione più vecchia l'ordine è un altro, e lo dice il messaggio). Al
                                 contrario, dopo una vendita o un usufrutto registrati quando il piano si ricalcolava ancora,
                                 emissioni, incassi e rimborsi si rifiutano finché non lo ricalcoli; dopo un cambio d'inquilino no, e un
                                 piano emesso senza ricalcolo lascia le quote all'inquilino di prima. Lo stesso vale se il passaggio
@@ -311,11 +311,11 @@ defineEmits(['update:open']);
                                 compensazione (anche per pagare un'altra rata) o rimborsato: va prima stornato quel movimento.
                             </p>
                             <p class="mt-2">
-                                Con un <strong>passaggio di titolarità</strong> registrato prima della versione
-                                1.11.0-beta.42 che ha preso il piano nel conguaglio dopo l'emissione, si blocca anche per quello:
+                                Con un <strong>passaggio di titolarità</strong>, registrato da una versione più vecchia,
+                                che ha preso il piano nel conguaglio dopo l'emissione, si blocca anche per quello:
                                 il messaggio dice quale passaggio annullare prima, dallo storico della sua unità; poi si annulla
-                                l'emissione, e solo dopo si registra di nuovo il passaggio. Con i passaggi registrati da quella
-                                versione l'annullamento non si blocca: il piano preso resta fermo comunque, e la rata riemessa
+                                l'emissione, e solo dopo si registra di nuovo il passaggio. Con i passaggi registrati dalla
+                                1.11 in poi l'annullamento non si blocca: il piano preso resta fermo comunque, e la rata riemessa
                                 ha le stesse quote.
                             </p>
                         </section>
@@ -393,9 +393,7 @@ defineEmits(['update:open']);
                                 <p><strong>2. Strapagamento</strong> — un condòmino che ha versato <strong>più
                                 della sua quota</strong>: la rata risulta comunque «pagata» (il dovuto è
                                 coperto), ma l'eccedenza resta a suo credito e compare qui, nella card
-                                «Crediti (Anticipi)» e nel totale di riga. Riconosciuto dalla beta.73 — prima
-                                la pagina vedeva solo il primo caso, e un'eccedenza versata restava invisibile
-                                sia nel totale crediti sia nell'incassato dichiarato.</p>
+                                «Crediti (Anticipi)» e nel totale di riga.</p>
                                 <p class="text-blue-700/80 dark:text-blue-300/80">In entrambi i casi il credito
                                 si spende con «Usa credito» al prossimo incasso di quel condòmino.</p>
                             </div>

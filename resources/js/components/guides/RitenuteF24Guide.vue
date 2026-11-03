@@ -243,8 +243,7 @@ const soglia = (cents: number) =>
                             </div>
                             <p class="mt-2">
                                 Il debito verso l'Erario si estingue e il denaro esce dal conto. È il movimento
-                                che <strong>chiude il conto 2202</strong>: prima di questa versione quel conto
-                                accumulava soltanto, perché la riga che lo chiude non esisteva.
+                                che <strong>chiude il conto 2202</strong>.
                             </p>
                         </section>
 

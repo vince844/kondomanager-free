@@ -664,8 +664,8 @@ it('T297.56 con un passaggio di prima della 1.11.0-beta.37, che dal programma no
     expect(\App\Models\Gestionale\Conto::pianiCheBloccanoLaVoce([(int) $s['rimborso']->id])[(int) $s['rimborso']->id][0]['movimenti'])->toBe(['passaggio_senza_registro'])
         ->and(b53snVoceDelSelettore($this, $s, $s['rimborso']->id)['note'])
         ->toBe('La voce di spesa «Rimborso» ha un importo negativo (meno € 100,00) e il piano la addebiterebbe in positivo, per € 100,00. L\'importo, il padre e '
-            .'il tipo della voce non si cambiano finché la voce è nel piano «Preventivo 2026», approvato, e un passaggio di titolarità registrato prima della '
-            .'1.11.0-beta.37, che dal programma non si annulla, ferma l\'annullamento delle emissioni del piano: la voce resta com\'è.');
+            .'il tipo della voce non si cambiano finché la voce è nel piano «Preventivo 2026», approvato, e un passaggio di titolarità registrato da una versione '
+            .'più vecchia, che dal programma non si annulla, ferma l\'annullamento delle emissioni del piano: la voce resta com\'è.');
 
     // La strada della bozza è chiusa: il passaggio non si annulla dal programma, l'emissione resta rifiutata e l'importo non si cambia.
     $passaggio = b53snAnnullaPassaggio($this, $s);
@@ -690,7 +690,7 @@ it('T297.56 la frase con il passaggio di prima della 1.11.0-beta.37 su uno solo 
     ]);
 
     expect($nota)->toEndWith('L\'importo, il padre e il tipo della voce non si cambiano finché la voce è nei piani «Preventivo 2026» e «Integrativo 2026», approvati, '
-        .'e un passaggio di titolarità registrato prima della 1.11.0-beta.37, che dal programma non si annulla, ferma l\'annullamento delle emissioni di '
+        .'e un passaggio di titolarità registrato da una versione più vecchia, che dal programma non si annulla, ferma l\'annullamento delle emissioni di '
         .'«Preventivo 2026»: la voce resta com\'è.')
         ->and($nota)->not->toContain('bozza');
 });

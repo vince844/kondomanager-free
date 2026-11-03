@@ -314,7 +314,7 @@ class ImmobileAnagraficaController extends Controller
         $ruoloCambiato = (string) $data['tipologia'] !== (string) $titolarita->tipologia;
         if ($ruoloCambiato && $titolarita->faParteDiUnPassaggio()) {
             throw ValidationException::withMessages([
-                'tipologia' => 'Questa riga fa parte di un passaggio registrato e il suo ruolo non si cambia da qui: è la chiave con cui il programma lega il passaggio a chi c\'era prima e dopo. Se il passaggio è sbagliato, annullalo dallo storico dell\'unità («Chi ha avuto questa unità» → «Annulla il passaggio…»): si può se è l\'ultimo e le sue rate sono intatte, e rimette come prima anche le rate passate a chi era entrato e il conguaglio. Un passaggio registrato prima della 1.11.0-beta.37 non si annulla: chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.',
+                'tipologia' => 'Questa riga fa parte di un passaggio registrato e il suo ruolo non si cambia da qui: è la chiave con cui il programma lega il passaggio a chi c\'era prima e dopo. Se il passaggio è sbagliato, annullalo dallo storico dell\'unità («Chi ha avuto questa unità» → «Annulla il passaggio…»): si può se è l\'ultimo e le sue rate sono intatte, e rimette come prima anche le rate passate a chi era entrato e il conguaglio. Un passaggio registrato da una versione più vecchia non si annulla: chiudi questa riga con una data di fine e registra da «Associa soggetto» la titolarità giusta.',
             ]);
         }
 

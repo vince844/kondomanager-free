@@ -214,18 +214,18 @@ const formattatoreGiorno = computed(() => {
                 <span class="text-xs font-black text-slate-700">{{ euro(treasury.debitiPregressiScadutiCents) }}</span>
             </div>
 
-            <!-- Avviso fondi vincolati MVP — §6.4 -->
+            <!-- Fondo riserva presente ma senza somme accantonate — §6.4 -->
             <div v-if="treasury.hasFondoRiserva && treasury.liquiditaVincolataCents === 0" 
                  class="flex items-center gap-2 p-2.5 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-800/30">
                 <Lock class="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                 <div class="flex flex-col">
                     <span class="text-[10px] font-bold text-indigo-700 dark:text-indigo-300">Fondi vincolati</span>
-                    <span class="text-[9px] text-indigo-500">Il calcolo non distingue ancora i fondi vincolati dal disponibile</span>
+                    <span class="text-[9px] text-indigo-500">Il fondo riserva non ha somme accantonate</span>
                 </div>
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger><Info class="w-3 h-3 text-indigo-400/60 cursor-help shrink-0" /></TooltipTrigger>
-                        <TooltipContent><p class="text-xs max-w-[200px]">Il condominio ha un fondo riserva, ma la separazione precisa sarà disponibile con la funzione Voci Accantonamento.</p></TooltipContent>
+                        <TooltipContent><p class="text-xs max-w-[200px]">Il condominio ha un fondo riserva, ma senza somme accantonate: il disponibile coincide con la liquidità. Le somme versate nel fondo con un giroconto vengono tolte dal disponibile.</p></TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
             </div>

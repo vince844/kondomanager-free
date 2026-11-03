@@ -530,7 +530,7 @@ class RiallineaCreditiService
                 $suo = RataQuote::registroRicostruito($piano);
                 if ($suo === null) {
                     $nonCalcolabili[] = ['piano_id' => (int) $piano->id, 'piano' => (string) $piano->nome, 'motivo' => sprintf(
-                        'il piano «%s» non ha il registro del riparto (lo scrivono le versioni dalla 1.11.0-beta.29), e la ricostruzione con i '
+                        'il piano «%s» non ha il registro del riparto (lo scrivono le versioni dalla 1.11), e la ricostruzione con i '
                         . 'titolari di oggi non torna con le sue quote: quanta parte delle sue emissioni è spesa ad personam addebitata due volte '
                         . 'non si può calcolare. Si controlla nel libro giornale, sulle righe «Anticipazione spesa ad personam (Art. 63)» delle sue '
                         . 'fatture e sulle emissioni delle sue rate', $piano->nome)];

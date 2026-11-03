@@ -341,7 +341,7 @@ it('il passaggio di prima della 1.11.0-beta.37 ferma la bozza: il rifiuto non la
     $bloccano = [['id' => 7, 'nome' => 'Preventivo B', 'capitolo' => 'Impianti', 'movimenti' => ['passaggio_senza_registro']]];
 
     expect(BloccoDellaVoce::rifiutoDellaModifica($bloccano))->toBe('Modifica inibita: l\'importo, il padre, il tipo, la tabella e le percentuali della voce non si cambiano finché il suo capitolo '
-        .'«Impianti» è nel piano «Preventivo B», approvato, e un passaggio di titolarità registrato prima della 1.11.0-beta.37, che dal programma non si annulla, ferma '
+        .'«Impianti» è nel piano «Preventivo B», approvato, e un passaggio di titolarità registrato da una versione più vecchia, che dal programma non si annulla, ferma '
         .'l\'annullamento delle emissioni del piano: la voce resta com\'è.')
         ->and(BloccoDellaVoce::rifiutoDellEliminazione($bloccano))->toEndWith('ferma l\'annullamento delle emissioni del piano: la voce resta.');
 });

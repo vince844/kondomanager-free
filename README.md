@@ -11,7 +11,7 @@
 
 # KondoManager - Software gratuito e open source per la gestione condominiale
 
-**KondoManager** è il primo software open source e self-hosted per la gestione condominiale, **sviluppato in Laravel, Vue 3, Inertia.js e MySQL**. Progettato per amministratori di condominio che vogliono uno strumento serio: contabilità in partita doppia, piani rate con validazione legale, portale digitale per i condòmini e aggiornamenti automatici — senza abbonamenti, senza vendor lock-in.
+**KondoManager** è il primo software open source e self-hosted per la gestione condominiale, **sviluppato in Laravel, Vue 3, Inertia.js e MySQL**. Progettato per amministratori di condominio che vogliono uno strumento serio: contabilità in partita doppia, piani rate, portale digitale per i condòmini e aggiornamenti automatici — senza abbonamenti, senza vendor lock-in.
 
 ---
 
@@ -65,7 +65,7 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Notifiche email automatiche
 - Login con protezione a due fattori
 - Sistema di inviti per la registrazione utenti
-- Localizzazione: Italiano, Inglese, Portoghese
+- Lingua dell'installazione a scelta fra italiano, inglese, portoghese e spagnolo; le pagine del gestionale sono in gran parte solo in italiano
 - Importazione di un condominio intero da un altro gestionale (prima sorgente: Danea Domustudio)
 - Backup completo e ripristino dal pannello, riprendibili e cifrabili in AES-256
 
@@ -78,7 +78,7 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Gestioni ordinarie e straordinarie
 - Creazione piano dei conti con separazione preventivo deliberato e sopravvenienze
 - Generazione piano rateale anche con ricorrenze avanzate e snapshot temporale
-- Piani rate straordinari con scudo legale delibera assembleare (Art. 1135 c.c.)
+- Piani rate straordinari autorizzati da una delibera assembleare o da un intervento d'urgenza (Art. 1135 c.c.)
 - Registrazione fatture passive multi-riga con addebito diretto su singola unità immobiliare (Art. 63 c.c.)
 - Gestione sopravvenienze passive e spese fuori preventivo (Art. 1130-bis c.c.)
 - Gestione debiti pregressi e fatture di esercizi precedenti con allarme prescrizione (Art. 2948 c.c.)
@@ -95,7 +95,7 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Smart inbox intelligente per scadenze in agenda interattive
 - Modulo pagamento fatture fornitori con bonifici cumulativi, storno e Ledger immutabile
 - Widget Treasury Guardian per l'analisi predittiva della liquidità a 30 giorni
-- Motore a cascata dinamico (Inquilino → Usufruttuario → Proprietario) conforme al Codice Civile
+- Motore a cascata dinamico (Inquilino → Usufruttuario → Proprietario)
 - Gestione intelligente scoperti documentati per unità immobiliari vuote
 - Libro giornale sfogliabile con ricerca, filtri per periodo e stato, e verifica del pareggio
 - Stato patrimoniale con diagnosi in linguaggio corrente degli sbilanci e correzione sul posto
@@ -112,7 +112,7 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Personalizzazione dei documenti con l'inserimento della firma dell'amministratore e note legali a piè di pagina
 - **Distinta Preventivo / Piano dei Conti:** stampa completa di capitoli, sottoconti e importi preventivati
 - **Ripartizione Spese:** documento che illustra la ripartizione del piano dei conti sulle tabelle millesimali
-- **Riparto Bilancio per Tabella (Piano Rate):** documento dettagliato (A4/A3) che incrocia unità immobiliari, soggetti (proprietario, inquilino, ecc.) e tabelle millesimali
+- **Riparto Bilancio per Tabella (Piano Rate):** documento dettagliato (A4 orizzontale) che incrocia unità immobiliari, soggetti (proprietario, inquilino, ecc.) e tabelle millesimali
 - **Prospetto Rate e Scadenziari:** con aggregazione dinamica per Condòmino o per Unità Immobiliare
 - **Distinta Pagamento Fornitore:** riepilogo importi con causali e dettagli per bonifici parlanti
 - **Riparto per Capitolo di Spesa:** la lettura per voce di bilancio, affiancata al riparto per tabella
@@ -163,7 +163,7 @@ Per maggiori dettagli, visita la [guida ufficiale all'installazione](https://kon
 
 ### 2. Aggiornamento automatico da pannello amministratore
 
-Il sistema di aggiornamento automatico gestisce automaticamente il ciclo di vita degli aggiornamenti, garantendo la sicurezza dei dati e tutto con pochi click direttamente dal pannello di amministrazione.
+Il sistema di aggiornamento automatico porta l'installazione alla versione nuova dal pannello di amministrazione, in due passaggi: «Scarica e Installa» mette i file nuovi, poi «Avvia aggiornamento» aggiorna il database, con la copia di sicurezza del database proposta prima delle migrazioni, se si parte dalla 1.10.0 o da una versione successiva.
 
 **Attenzione:** Se non configuri i processi `CronJob`, l'aggiornamento automatico non funzionerà.
 
@@ -171,7 +171,7 @@ Il sistema di aggiornamento automatico gestisce automaticamente il ciclo di vita
 
 **Opzione A — Da pannello di controllo (consigliata per hosting condivisi)**
 
-A partire dalla v1.9.0 puoi configurare i processi pianificati direttamente dal pannello di amministrazione di KondoManager, senza accedere al server. Il sistema è compatibile con servizi esterni come [cron-job.org](https://cron-job.org), utile su hosting condivisi privi di cron nativo. Trovi la configurazione in **Impostazioni → Processi pianificati**.
+A partire dalla v1.9.0 puoi configurare i processi pianificati direttamente dal pannello di amministrazione di KondoManager, senza accedere al server. Il sistema è compatibile con servizi esterni come [cron-job.org](https://cron-job.org), utile su hosting condivisi privi di cron nativo. Trovi la configurazione in **Impostazioni → Automazione cloud**.
 
 **Opzione B — Da pannello hosting (cPanel / Plesk)**
 
@@ -205,7 +205,7 @@ Assicurati di usare il percorso assoluto all'eseguibile PHP 8.4+, ad esempio `/u
 
 A partire dalla v1.9.0 le credenziali email si configurano direttamente dal pannello di amministrazione, senza modificare il file `.env`.
 
-Trovi la configurazione in **Impostazioni → Configurazione Email**.
+Trovi la configurazione in **Impostazioni → Configurazione email**.
 
 | Campo | Descrizione |
 | :--- | :--- |
@@ -219,7 +219,7 @@ Trovi la configurazione in **Impostazioni → Configurazione Email**.
 
 La configurazione salvata dal pannello ha **precedenza** sul file `.env` e può essere modificata in qualsiasi momento senza riavviare il server.
 
-**Nota per hosting condivisi (es. Altervista):** se il provider non consente connessioni SMTP esterne, seleziona il driver `Sendmail` per utilizzare il mailer PHP locale, che nella maggior parte dei casi non richiede credenziali aggiuntive.
+**Nota sul metodo di invio:** il gestionale consiglia `SMTP` con un server esterno (Gmail, Brevo, ecc.); `Sendmail` è solo per VPS o server dedicati con Postfix e i record SPF e DKIM configurati.
 
 ---
 
@@ -327,7 +327,7 @@ php artisan serve
 
 Visita http://localhost:8000.
 
-**Credenziali di sviluppo:** `admin@km.com` / `password`, solo con `APP_ENV=local`. Con un altro ambiente `db:seed` crea l'amministratore con una password casuale e la stampa una volta sola. Per lo sviluppo con Docker vedi [docs/docker_local_dev.it.md](docs/docker_local_dev.it.md).
+**Credenziali di sviluppo:** `admin@km.com` / `password`, solo con `APP_ENV=local`. Con un altro ambiente `db:seed` crea l'amministratore con una password casuale e la stampa una volta sola. Per lo sviluppo con Docker vedi [docs/docker_local_dev.it.md](docs/docker_local_dev.it.md): dopo un `git pull`, `docker compose up -d --build` ricompila l'immagine, e a ogni avvio il contenitore fa le migrazioni e allinea ruoli e permessi, l'elenco dei Comuni, la classificazione ATECO e la versione registrata.
 
 ---
 
@@ -337,6 +337,8 @@ Se preferisci aggiornare manualmente, segui rigorosamente questi passaggi per ga
 
 > ⚠️ **Se stai salendo dalla 1.9.x alla 1.10.0, il `composer install` non è facoltativo.** La 1.10 porta Livewire dalla versione 3 alla 4: finché le dipendenze restano quelle vecchie, ogni comando `php artisan` si ferma con `Attribute [livewire] does not exist`. Il database non viene toccato — l'errore arriva prima delle migrazioni — e si esce completando l'aggiornamento delle dipendenze. Per questo i comandi qui sotto sono **una catena sola**.
 
+> ⚠️ **Se stai salendo dalla 1.10.0 alla 1.11.0**, la catena usa `php artisan kondomanager:aggiorna` al posto di `php artisan migrate --force`: con le sole migrazioni resterebbero indietro il permesso nuovo «Importa dati» e i codici della classificazione ATECO. Dopo l'aggiornamento controlla nel `.env` che `APP_URL` sia l'indirizzo con cui apri il gestionale, con `https://` se il gestionale è in https: lo usano i link delle mail del reset della password e della verifica dell'email. Se il gestionale sta dietro un proxy, per `TRUSTED_PROXIES` il valore consigliato è `PRIVATE_SUBNETS`, che però non copre un proxy con un indirizzo pubblico: per quello si scrive l'elenco dei suoi indirizzi; `.env.example` sconsiglia `*`.
+
 1. **Backup database (Raccomandato)**
 ```bash
 mysqldump -u username -p database_name > backup_$(date +%Y%m%d).sql
@@ -344,7 +346,7 @@ mysqldump -u username -p database_name > backup_$(date +%Y%m%d).sql
 
 2. **Aggiornamento, in un comando solo**
 
-I passaggi sono legati da `&&`: se composer o npm falliscono — capita, per un download interrotto o per memoria insufficiente sul server — la catena si ferma lì e **le migrazioni non partono**. La `config:clear` prima di `migrate` è necessaria perché le migrazioni delle impostazioni leggono la configurazione.
+I passaggi sono legati da `&&`: se composer o npm falliscono — capita, per un download interrotto o per memoria insufficiente sul server — la catena si ferma lì e **le migrazioni non partono**. La `config:clear` prima di `kondomanager:aggiorna` è necessaria perché le migrazioni delle impostazioni leggono la configurazione. `kondomanager:aggiorna` fa le migrazioni e allinea ruoli e permessi, l'elenco dei Comuni, la classificazione ATECO e la versione registrata, come l'aggiornamento dal pannello.
 
 ```bash
 git pull origin main \
@@ -352,13 +354,14 @@ git pull origin main \
  && npm install \
  && npm run build \
  && php artisan config:clear \
- && php artisan migrate --force \
+ && php artisan kondomanager:aggiorna \
  && php artisan optimize:clear \
  && php artisan storage:link \
+ && php artisan queue:restart \
  && echo "OK - aggiornamento completato"
 ```
 
-Se non compare `OK - aggiornamento completato`, l'aggiornamento non è finito: leggi l'ultimo messaggio, risolvi il problema e rilancia la stessa catena — è rieseguibile.
+Se non compare `OK - aggiornamento completato`, l'aggiornamento non è finito: leggi l'ultimo messaggio, risolvi il problema e rilancia la stessa catena — è rieseguibile. `queue:restart` fa ripartire con il codice nuovo il worker delle code tenuto attivo da Supervisor (punto 3); senza un worker non fa niente. Ruoli e permessi, elenco dei Comuni e classificazione ATECO, se non riescono, lo scrivono nel registro (`storage/logs`) senza fermare la catena: se dopo l'aggiornamento manca un permesso o un codice ATECO, guarda lì e rilancia `php artisan kondomanager:aggiorna`.
 
 3. **Configurazione e avvio delle code (Queues)**
 

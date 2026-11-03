@@ -306,7 +306,7 @@ return [
         'test_unsaved_warning' => 'Tem alterações não guardadas. Guarde a configuração antes de enviar o teste.',
 
         'cron_guide_1_title' => 'O Motor Invisível',
-        'cron_guide_1_desc' => 'O daemon executa automaticamente tarefas em segundo plano: verifica prazos, emite parcelas e gerencia alertas sem intervenção manual.',
+        'cron_guide_1_desc' => 'O daemon executa em segundo plano, sem intervenção manual, a manutenção do sistema: remove eventos encerrados há mais de um ano e o cache expirado, verifica se há uma nova versão disponível e, onde a opção para hospedagens compartilhadas está ativada, também processa a fila de tarefas.',
         'cron_guide_2_title' => 'Webhook (Externo)',
         'cron_guide_2_desc' => 'Identificado pelo ponto laranja. Permite acionar o agendador por meio de uma URL criptografada chamada por serviços externos (por exemplo, cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Nativo)',

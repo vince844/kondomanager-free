@@ -35,7 +35,7 @@ defineEmits(['update:open']);
               Quando su un appartamento esiste un usufrutto, inserisci due anagrafiche: una come <strong>Nudo proprietario</strong> e una come <strong>Usufruttuario</strong>.
             </p>
             <p class="mb-3 text-[13px] text-slate-500 dark:text-slate-400">
-              Fino alla versione 1.10.0-beta.43 il ruolo «Nudo proprietario» non esisteva, e la strada era registrarlo come
+              Prima della 1.10.0 il ruolo «Nudo proprietario» non esisteva, e la strada era registrarlo come
               «Proprietario». Le unità già inserite così <strong>continuano a funzionare esattamente come prima</strong> — non
               c'è niente da rifare. Con il ruolo giusto il programma sa chi è usufruttuario e chi nudo proprietario: lo usano le
               voci (qui sotto), i saldi pregressi e i passaggi di proprietà.
@@ -162,7 +162,7 @@ defineEmits(['update:open']);
             <div class="p-4 rounded-lg bg-slate-100 dark:bg-slate-800 flex gap-3 text-[13px]">
               <Info class="w-5 h-5 text-slate-500 shrink-0" />
               <div>
-                Le quote devono tornare in ogni periodo: Bice 50 % ed Elsa 50 % fanno l'unità intera, e così Bice 50 % e Ugo 50 %. Se non tornano, il programma non indovina: divide ogni ruolo fra le sue sole persone, come prima. Succede, per esempio, dopo un'estinzione registrata prima della 1.11.0-beta.43 con un altro usufrutto ancora in corso: tutti i nudi proprietari tornavano proprietari pieni e la somma superava il 100 %. Correggi le quote nella scheda dell'unità. Fanno eccezione, per ora, i saldi pregressi intestati all'unità quando l'unità è diventata così con un passaggio registrato: si ripartiscono come prima. Controllali nell'anteprima del piano e, se serve, usa il riparto manuale.
+                Le quote devono tornare in ogni periodo: Bice 50 % ed Elsa 50 % fanno l'unità intera, e così Bice 50 % e Ugo 50 %. Se non tornano, il programma non indovina: divide ogni ruolo fra le sue sole persone, come prima. Succede, per esempio, dopo un'estinzione registrata da una versione più vecchia, con un altro usufrutto ancora in corso: tutti i nudi proprietari tornavano proprietari pieni e la somma superava il 100 %. Correggi le quote nella scheda dell'unità. Fanno eccezione, per ora, i saldi pregressi intestati all'unità quando l'unità è diventata così con un passaggio registrato: si ripartiscono come prima. Controllali nell'anteprima del piano e, se serve, usa il riparto manuale.
               </div>
             </div>
           </section>

@@ -167,8 +167,8 @@ class TestContabilitaController extends Controller
                 'non_quadrano'       => $confrontoDocumento['non_quadrano'],
                 'nota'               => $confrontoDocumento['verificate'] === 0
                     ? 'Nessuna fattura importata da XML conserva i totali dichiarati dal fornitore: '
-                      .'il confronto è possibile solo sui documenti registrati dalla 1.11.0-beta.19 in poi.'
-                    : 'Una differenza non è per forza un errore: dalla beta.19 il modulo avvisa e non '
+                      .'il confronto è possibile solo sui documenti registrati dalla 1.11 in poi.'
+                    : 'Una differenza non è per forza un errore: dalla 1.11 il modulo avvisa e non '
                       .'blocca, quindi un importo diverso può essere stato registrato di proposito.',
                 'controlli'          => $confrontoDocumento['controlli'],
             ],

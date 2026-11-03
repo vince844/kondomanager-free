@@ -95,7 +95,7 @@ final class AnnullaPassaggioAction
         $famiglia = $this->famiglia($padre);
 
         if ($famiglia->contains(fn (Subentro $s) => ! is_array($s->registro))) {
-            return 'Questo passaggio è stato registrato prima della 1.11.0-beta.37, che non teneva il registro di ciò che '
+            return 'Questo passaggio è stato registrato da una versione che non teneva il registro di ciò che '
                 . 'scriveva: non si annulla dal programma. Si corregge a mano, da «Modifica associazione» e «Associa soggetto», come prima.';
         }
 

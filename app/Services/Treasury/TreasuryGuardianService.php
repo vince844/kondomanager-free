@@ -119,7 +119,7 @@ final class TreasuryGuardianService
         }
 
         // 7. Generazione Azioni Suggerite
-        $azioni = $this->generaAzioniSuggerite($livello, $risultato['scenarioPessimisticoCents'], $incassiAttesiCents, $debitiPregressiScadutiCents);
+        $azioni = $this->generaAzioniSuggerite($condominioId, $livello, $risultato['scenarioPessimisticoCents'], $incassiAttesiCents, $debitiPregressiScadutiCents);
 
         return new TreasuryStatus(
             condominioId: $condominioId,
@@ -271,27 +271,44 @@ final class TreasuryGuardianService
         return $query->get();
     }
 
-    private function generaAzioniSuggerite(string $livello, int $scenarioPessimisticoCents, int $incassiAttesiCents, int $debitiPregressiScadutiCents): array
+    /**
+     * Le righe d'azione del widget aprono una pagina: `route` è il nome vero della rotta, con il prefisso
+     * `admin.` (il gestionale esiste solo lì) e con i parametri che la rotta pretende, a partire dal
+     * condominio. Un nome senza prefisso o un parametro che manca fa sollevare Ziggy, e la riga non si apre.
+     */
+    private function generaAzioniSuggerite(int $condominioId, string $livello, int $scenarioPessimisticoCents, int $incassiAttesiCents, int $debitiPregressiScadutiCents): array
     {
         $azioni = [];
+        $delCondominio = ['condominio' => $condominioId];
 
         if ($livello !== 'verde') {
             if ($incassiAttesiCents > 0) {
+                // Il programma non manda promemoria ai ritardatari: la riga porta all'elenco degli incassi, dove si
+                // registra ciò che è già arrivato in banca.
                 $azioni[] = new AzioneSuggerita(
                     tipo: 'sollecito',
                     label: 'Verifica o Sollecita Incassi',
-                    descrizione: 'Registra eventuali versamenti bancari già ricevuti o invia promemoria ai ritardatari',
+                    descrizione: 'Registra eventuali versamenti bancari già ricevuti',
                     impattoCents: $incassiAttesiCents,
-                    route: 'gestionale.rate.index', // Esempio
+                    route: 'admin.gestionale.movimenti-rate.index',
+                    routeParams: $delCondominio,
                 );
             } else {
-                // Se non ci sono rate emesse, l'unica soluzione per coprire le uscite è emetterle
+                // Se non ci sono rate emesse, l'unica soluzione per coprire le uscite è emetterle.
+                // I piani rate stanno sotto un esercizio: si apre quello aperto, o l'elenco degli esercizi se non ce n'è.
+                $esercizioId = DB::table('esercizi')
+                    ->where('condominio_id', $condominioId)
+                    ->where('stato', 'aperto')
+                    ->orderBy('id')
+                    ->value('id');
+
                 $azioni[] = new AzioneSuggerita(
                     tipo: 'emissione_rate',
                     label: 'Emetti Nuove Rate',
                     descrizione: 'Non ci sono incassi attesi sufficienti per coprire le uscite',
                     impattoCents: 0,
-                    route: 'gestionale.piani-rate.index',
+                    route: $esercizioId ? 'admin.gestionale.esercizi.piani-rate.index' : 'admin.gestionale.esercizi.index',
+                    routeParams: $esercizioId ? $delCondominio + ['esercizio' => $esercizioId] : $delCondominio,
                 );
             }
         }
@@ -303,8 +320,8 @@ final class TreasuryGuardianService
                 label: 'Gestisci Debiti Pregressi',
                 descrizione: 'Hai esposizioni storiche che non rientrano nel budget corrente',
                 impattoCents: 0, // Nessun impatto a 30gg
-                route: 'gestionale.fatture.index', 
-                routeParams: ['pregresso' => 1]
+                route: 'admin.gestionale.fatture.index',
+                routeParams: $delCondominio + ['pregresso' => 1]
             );
         }
 

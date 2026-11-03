@@ -303,7 +303,7 @@ return [
         'test_error_message' => 'Impossibile inviare l\'email. Controlla i parametri e riprova.',
         'test_unsaved_warning' => 'Hai modifiche non salvate. Salva la configurazione prima di inviare il test.',
         'cron_guide_1_title' => 'Il Motore Invisibile',
-        'cron_guide_1_desc' => 'Il demone esegue automaticamente i task in background: controlla le scadenze, emette le rate e gestisce gli alert senza intervento manuale.',
+        'cron_guide_1_desc' => 'Il demone esegue in background, senza intervento manuale, la manutenzione del sistema: toglie gli eventi finiti da più di un anno e la cache scaduta, controlla se è disponibile una nuova versione e, dove è attivata l\'opzione per gli hosting condivisi, elabora anche la coda dei lavori.',
         'cron_guide_2_title' => 'Webhook (Esterno)',
         'cron_guide_2_desc' => 'Identificato dal pallino arancione. Permette di attivare lo scheduler tramite un URL criptato chiamato da servizi esterni (es. cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Nativo)',

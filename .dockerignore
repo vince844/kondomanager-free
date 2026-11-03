@@ -67,6 +67,8 @@ Homestead.*
 
 # Gli altri stack Docker (sviluppo con bind mount, FrankenPHP) e il compose di
 # sviluppo non servono dentro l'immagine di produzione.
+# Quegli stack hanno il loro file accanto al Dockerfile (`docker/standard/Dockerfile.dockerignore`,
+# `docker/frankenphp/Dockerfile.dockerignore`): questo vale solo per il `Dockerfile` della radice (Coda 449).
 docker-compose*.yml
 docker/standard
 docker/frankenphp

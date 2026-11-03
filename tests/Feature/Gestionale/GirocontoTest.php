@@ -498,6 +498,62 @@ test('riallineamento: la coppia storica dello sforo viene neutralizzata con una 
         ->and($service->rileva($condominio))->toHaveCount(0);
 });
 
+test('riallineamento: la causale delle rettifiche nuove non cita nessuna beta, e quelle già scritte col marcatore di prima restano riconosciute e intatte', function () {
+    [$condominio, $esercizio, $gestione] = setupContabile();
+    $fondo = creaCassaConConto($condominio->id, 'fondo', 100000);
+    $contoSopravv = \App\Models\Gestionale\ContoContabile::where('condominio_id', $condominio->id)
+        ->where('ruolo', 'sopravvenienze_passive')->first();
+
+    $storica = function (string $causale) use ($condominio, $esercizio, $gestione, $fondo, $contoSopravv) {
+        $s = ScritturaContabile::create([
+            'condominio_id' => $condominio->id,
+            'esercizio_id' => $esercizio->id,
+            'gestione_id' => $gestione->id,
+            'data_registrazione' => now()->toDateString(),
+            'data_competenza' => now()->toDateString(),
+            'causale' => $causale,
+            'tipo_movimento' => 'fattura_acquisto',
+            'stato' => 'registrata',
+        ]);
+        $s->righe()->create(['conto_contabile_id' => $fondo->conto_contabile_id, 'tipo_riga' => 'dare', 'importo' => 30000, 'note' => 'Utilizzo fondo riserva per sforo budget (storico)']);
+        $s->righe()->create(['conto_contabile_id' => $contoSopravv->id, 'tipo_riga' => 'avere', 'importo' => 30000, 'note' => 'Giroconto copertura sforo (storico)']);
+
+        return $s;
+    };
+
+    $giaRettificata = $storica('Ft. storica già riallineata');
+    $daRettificare = $storica('Ft. storica ancora da riallineare');
+
+    // Una rettifica scritta prima della stabile: la causale porta ancora il vecchio marcatore, e nel giornale resta com'è.
+    $vecchia = ScritturaContabile::create([
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'gestione_id' => $gestione->id,
+        'scrittura_padre_id' => $giaRettificata->id,
+        'data_registrazione' => now()->toDateString(),
+        'data_competenza' => now()->toDateString(),
+        'causale' => 'Riallineamento fondi (beta.19) — rettifica PROT-VECCHIA',
+        'tipo_movimento' => TipoMovimentoContabile::RETTIFICA,
+        'stato' => 'registrata',
+    ]);
+
+    $service = app(RiallineaFondiService::class);
+
+    // La rettifica di prima si riconosce: resta da fare solo l'altra.
+    expect($service->rileva($condominio)->pluck('scrittura_id')->all())->toBe([$daRettificare->id]);
+
+    expect($service->esegui($condominio)['rettificate'])->toEqual(1);
+
+    $nuova = ScritturaContabile::where('scrittura_padre_id', $daRettificare->id)->where('tipo_movimento', 'rettifica')->firstOrFail();
+    expect($nuova->causale)->toStartWith('Riallineamento fondi')
+        ->not->toContain('beta')
+        ->and($nuova->note)->not->toContain('beta')
+        // Quella già scritta non si riscrive, e non ne nasce una seconda per la stessa scrittura.
+        ->and($vecchia->fresh()->causale)->toBe('Riallineamento fondi (beta.19) — rettifica PROT-VECCHIA')
+        ->and(ScritturaContabile::where('scrittura_padre_id', $giaRettificata->id)->where('tipo_movimento', 'rettifica')->count())->toBe(1)
+        ->and($service->rileva($condominio))->toHaveCount(0);
+});
+
 test('riallineamento: il DARE storico del pregresso si chiude su passate gestioni', function () {
     $ctx = setupContabile();
     [$condominio, $esercizio, $gestione] = $ctx;

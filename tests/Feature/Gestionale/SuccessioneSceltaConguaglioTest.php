@@ -716,7 +716,7 @@ it('P4 e decisione 49: con il conguaglio non scritto di una successione della .4
         ->and($m['message'])->toContain('Emissione annullata')
         ->and(DB::table('rate')->where('id', $rata)->value('stato'))->toBe('bozza')
         ->and(DB::table('rate_quote')->where('rata_id', $rata)->whereNotNull('scrittura_contabile_id')->count())->toBe(0);
-    expect($m['message'])->not->toContain('prima della versione 1.11.0-beta.42');
+    expect($m['message'])->not->toContain('da una versione più vecchia');
 });
 
 it('P4, controllo: il rifiuto di annullare l\'emissione con il conguaglio scritto dice, come oggi, che il conguaglio ha già regolato', function () {

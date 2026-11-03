@@ -127,7 +127,7 @@ class CreateSaldoRequest extends FormRequest
         }
         if (! is_array($passaggio->registro)) {
             // Un passaggio senza registro non si annulla dal programma (`AnnullaPassaggioAction::motivoBlocco`): una riga legata a lui non si toglierebbe.
-            $validator->errors()->add('passaggio_id', 'Questo passaggio è stato registrato prima della 1.11.0-beta.37 e non si annulla dal programma: un saldo per lui si scrive senza legame.');
+            $validator->errors()->add('passaggio_id', 'Questo passaggio è stato registrato da una versione che non teneva il registro di ciò che scriveva e non si annulla dal programma: un saldo per lui si scrive senza legame.');
 
             return;
         }

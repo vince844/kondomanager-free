@@ -306,7 +306,7 @@ return [
         'test_unsaved_warning' => 'You have unsaved changes. Save the configuration before sending the test.',
 
         'cron_guide_1_title' => 'The Invisible Engine',
-        'cron_guide_1_desc' => 'The daemon automatically runs background tasks: it checks deadlines, issues installments, and manages alerts without manual intervention.',
+        'cron_guide_1_desc' => 'The daemon runs system maintenance in the background, with no manual intervention: it removes events that ended more than a year ago and expired cache, checks whether a new version is available and, where the shared-hosting option is turned on, also processes the job queue.',
         'cron_guide_2_title' => 'Webhook (External)',
         'cron_guide_2_desc' => 'Identified by the orange dot. It allows you to trigger the scheduler via an encrypted URL called by external services (e.g., cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Native)',
