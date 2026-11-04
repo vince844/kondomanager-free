@@ -355,10 +355,11 @@ class FatturaPassivaService
                 $bumpRegistrati = [];
 
                 foreach ($contiCoinvolti as $contoId) {
-                    $haGiaVersato = ContributoVersato::where('target_type', Conto::class)
-                        ->where('target_id', $contoId)
-                        ->exists();
-                    if (! $haGiaVersato) {
+                    // Coda 438: il già versato che vale nei piani dell'esercizio della fattura (decisione 183.1). Se nessuno vale lì, la voce non si
+                    // tocca, come per una voce senza già versato: alzarla cambierebbe la quota con cui i piani di un altro esercizio lo tolgono. Se è
+                    // tutto di quell'esercizio contano le sole sue fatture; con una riga senza esercizio (tutti i piani della voce) tutte, com'era.
+                    $ambito = ContributoVersato::ambitoNellEsercizio((int) $contoId, $fattura->esercizio_id !== null ? (int) $fattura->esercizio_id : null);
+                    if ($ambito === null) {
                         continue;
                     }
 
@@ -387,6 +388,7 @@ class FatturaPassivaService
                         ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                         ->where('righe_fattura.conto_id', $contoId)
                         ->where('fatture_passive.is_pregresso', false)
+                        ->when($ambito === ContributoVersato::AMBITO_ESERCIZIO, fn ($q) => $q->where('fatture_passive.esercizio_id', $fattura->esercizio_id))
                         ->selectRaw('COALESCE(SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva), 0) as tot')
                         ->value('tot');
 

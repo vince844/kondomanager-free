@@ -1,8 +1,8 @@
 <?php
 
 /**
- * 1.11.0-beta.50 — le correzioni rimaste dalla .49 che si provano in PHP (verbale `docs/piano_esecutivo_beta49.md`, «Chiusura»:
- * «Da fare nella .50»; verbale `docs/piano_esecutivo_beta50.md`, perimetro).
+ * 1.11.0-beta.50 — le correzioni rimaste dalla .49 che si provano in PHP (verbale `docs/verbali/1.11/piano_esecutivo_beta49.md`, «Chiusura»:
+ * «Da fare nella .50»; verbale `docs/verbali/1.11/piano_esecutivo_beta50.md`, perimetro).
  *
  * Che cosa copre: la nota che il riallineamento dei crediti salva nel libro giornale, sulla scrittura d'emissione della quota a credito
  * rimasta fuori da una rata mista (`RiallineaCreditiService.php`:192), non porta più la versione («come la scrive l'emissione dalla

@@ -36,7 +36,7 @@ use App\Services\Riparto\MatriceRipartoBuilder;
  *
  * - v1.9.1 distribuiva il totale di riga sui pesi e scaricava il resto sull'ultima tabella, anche
  *   a peso zero («€ 0,01 su TUNNEL a chi non c'entra»); vedi
- *   docs/ripartotabelle_discrepanza_centesimale.md.
+ *   docs/archivio/ripartotabelle_discrepanza_centesimale.md.
  * - 1.10.0-beta.8 («penny-perfect»): le celle ricostruite conto per conto con lo stesso algoritmo
  *   del motore — colonne al budget, righe uguali a `rate_quote` — e un riallineamento di sicurezza
  *   del residuo. Fino alla beta.73 il residuo finiva su una tabella millesimale; poi sempre in

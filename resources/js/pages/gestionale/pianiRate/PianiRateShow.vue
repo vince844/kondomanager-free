@@ -840,9 +840,11 @@ const pageGuides = [
   },
   {
     title: 'Stato Incassi',
-    description: 'Monitora costantemente il saldo netto. Le rate emesse possono essere incassate dalla sezione Prima Nota o importando i movimenti bancari.',
+    description: 'Monitora costantemente il saldo netto. Le rate emesse si incassano da «Incassi rate», nei movimenti.',
     icon: PieChart,
-    colorVariant: 'amber' as const
+    colorVariant: 'amber' as const,
+    // La voce del menu dei movimenti dove si registrano gli incassi delle rate (Coda 464): la Prima nota ha solo l'elenco e la stampa.
+    link: { label: 'Vai agli incassi rate', href: generatePath('gestionale/:condominio/movimenti-rate', { condominio: props.condominio.id }) }
   }
 ];
 

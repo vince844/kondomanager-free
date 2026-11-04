@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.50 — l'inizio di una locazione dopo una fine con «Scrivi il conguaglio» e dopo una fermata (decisione 45; scelte
- * tecniche del verbale `docs/piano_esecutivo_beta50.md`, correzioni (2) e (3) della revisione, misure S3 e S7).
+ * tecniche del verbale `docs/verbali/1.11/piano_esecutivo_beta50.md`, correzioni (2) e (3) della revisione, misure S3 e S7).
  *
  * Il rinnovo con la stessa persona non è una fermata: la fine «Scrivi» del 1/7 ha dato a Ugo i giorni dopo l'uscita (coppia Ines
  * −18148, Ugo +18148); se Ines rientra, quei giorni gliela rimborsa lei con il prospetto degli oneri accessori (decisione 45: la

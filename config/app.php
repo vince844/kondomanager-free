@@ -26,7 +26,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.11.0'),
+    'version' => env('APP_VERSION', '1.12.0-beta.1'),
 
     /*
     |--------------------------------------------------------------------------
@@ -156,14 +156,16 @@ return [
     | Impostazioni Specifiche Gestionale
     |--------------------------------------------------------------------------
     |
-    | scheduler_queue_worker:
-    | - TRUE (default distro): Shared Hosting senza accesso CLI
-    |   (cPanel, Altervista, Netsons). Lancia un worker sincrono
-    |   ogni minuto dentro lo scheduler. Richiede cron-job.org.
+    | scheduler_queue_worker: il valore di serie è FALSE (Plesk, VPS o
+    | qualsiasi server con cron nativi CLI): il worker gira come cron
+    | separato (queue:work --stop-when-empty) o, nelle immagini Docker,
+    | sotto Supervisor.
     |
-    | - FALSE: Plesk, VPS o qualsiasi server con cron nativi CLI.
-    |   Il worker gira come cron separato (queue:work --stop-when-empty).
-    |   Impostare SCHEDULE_QUEUE_WORKER=false nel .env.
+    | TRUE serve all'hosting condiviso senza accesso CLI (cPanel,
+    | Altervista, Netsons): lo scheduler lancia un worker sincrono ogni
+    | minuto e richiede un cron esterno (cron-job.org).
+    |
+    | Si imposta con SCHEDULE_QUEUE_WORKER nel .env.
     |
     */
     'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false),

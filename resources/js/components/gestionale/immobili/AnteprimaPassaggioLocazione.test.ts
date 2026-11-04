@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.50 — il pannello «Cosa cambierà» alla fine di una locazione, montato (decisioni 77, 79 e 80; verbale
- * `docs/piano_esecutivo_beta50.md`).
+ * `docs/verbali/1.11/piano_esecutivo_beta50.md`).
  *
  * Alla fine di una locazione, senza un nuovo inquilino o con uno (il cambio d'inquilino), quando il pannello propone coppie ci sono
  * le due voci della successione della .48, «Scrivi il conguaglio» e «Non scriverlo», senza nessuna già scelta, al posto della casella

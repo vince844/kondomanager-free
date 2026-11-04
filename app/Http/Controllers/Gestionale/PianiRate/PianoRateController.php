@@ -355,8 +355,10 @@ class PianoRateController extends Controller
                         }
                     }
 
+                    // Coda 438: il pianificato dei soli piani di questo esercizio, come lo speso: sulla gestione usata in più esercizi l'importo da
+                    // finanziare di una voce non scala quello che ne chiede il piano di un altro anno.
                     $coverageService = app(BudgetCoverageService::class);
-                    $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap);
+                    $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap, (int) $esercizio->id);
                     $capitoliFinanziabili = collect($coverageService->getCapitoliFinanziabili($analisiBilancio))->keyBy('id');
 
                     /* if (!empty($validated['capitoli_ids'])) {
@@ -386,15 +388,23 @@ class PianoRateController extends Controller
                         }
                     }else {
 
+                        // Coda 438, decisione 183.2: il piano creato senza scegliere le voci prende tutte le voci che non sono già in un piano dello
+                        // stesso esercizio. Sulla gestione usata in più esercizi le voci del piano dell'anno prima entrano nel piano dell'anno dopo.
+                        $competenzaDelPiano = app(\App\Services\Riparto\CompetenzaDelPiano::class);
+                        $pianiDelloStessoEsercizio = PianoRate::where('gestione_id', $gestione->id)->whereIn('stato', ['bozza', 'approvato'])
+                            ->where('id', '!=', $pianoRate->id)->get()
+                            ->filter(fn (PianoRate $p) => $competenzaDelPiano->esercizioDelPiano($p)?->id === (int) $esercizio->id)
+                            ->pluck('id')->all();
+
                         $capitoliOrfani = $gestione->pianoConto->conti()
                         ->visibili()
                         ->whereNull('parent_id')
-                        ->where(function ($q) {
-                            // Il padre stesso non deve essere in un piano attivo (caso padre=foglia)
-                            $q->whereDoesntHave('pianiRate', fn($q2) => $q2->whereIn('stato', ['bozza', 'approvato']))
-                            // E nessuno dei suoi sottoconti deve essere in un piano attivo (caso snapshot)
+                        ->where(function ($q) use ($pianiDelloStessoEsercizio) {
+                            // Il padre stesso non deve essere in un piano attivo dell'esercizio (caso padre=foglia)
+                            $q->whereDoesntHave('pianiRate', fn($q2) => $q2->whereIn('piani_rate.id', $pianiDelloStessoEsercizio))
+                            // E nessuno dei suoi sottoconti deve essere in un piano attivo dell'esercizio (caso snapshot)
                             ->whereDoesntHave('sottoconti', fn($sub) =>
-                                $sub->whereHas('pianiRate', fn($q2) => $q2->whereIn('stato', ['bozza', 'approvato']))
+                                $sub->whereHas('pianiRate', fn($q2) => $q2->whereIn('piani_rate.id', $pianiDelloStessoEsercizio))
                             );
                         })
                         ->with(['sottoconti' => fn($q) => $q->visibili()])
@@ -1071,6 +1081,26 @@ class PianoRateController extends Controller
         // Decisione 38 (1.11.0-beta.42): togliere una voce rigenera il piano, e un piano conguagliato da un passaggio non si riscrive.
         if (($fraseConguagliato = $pianoRate->fraseConguagliato('Togliere una voce e ricalcolarlo', 'togli la voce')) !== null) {
             return back()->with($this->flashError($fraseConguagliato));
+        }
+
+        // Coda 438, decisione 192.1: togliere una voce ricalcola il piano, e il piano senza l'esercizio salvato, o con la riga delle voci vuota mentre la
+        // gestione ha un piano in un altro esercizio, non si ricalcola: si elimina e si crea di nuovo. Prima di «Sposta spesa», che riguarda la voce.
+        if (($daRifare = $pianoRate->fraseDaRifare('Impossibile togliere la voce')) !== null) {
+            return back()->with($this->flashError($daRifare));
+        }
+
+        // Coda 438 (decisione 183.2): un piano senza voci, al ricalcolo, prende tutte le voci che nessun piano del suo esercizio ha già, compresa quella
+        // appena tolta, e sulla gestione usata in più esercizi anche quelle del piano dell'altro esercizio, senza impegnarle: l'ultima voce non si toglie.
+        $vociDelPiano = DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id);
+        if ($pianoRate->tipo !== 'straordinario' && (clone $vociDelPiano)->exists() && ! (clone $vociDelPiano)->where('conto_id', '!=', $capitoloId)->exists()) {
+            return back()->with($this->flashError(sprintf(
+                'Impossibile togliere la voce: «%s» è l\'ultima voce del piano rate «%s». Un piano senza voci, al ricalcolo, prende tutte le voci della gestione '
+                . 'che nessun altro piano del suo esercizio ha già. Se deve chiedere un\'altra voce, aggiungila prima con «Sincronizza», se è libera, e poi togli '
+                . 'questa; se il piano non serve più, %seliminalo dall\'elenco dei piani rate.',
+                Conto::find($capitoloId)?->nome ?? 'la voce',
+                $pianoRate->nome,
+                $pianoRate->stato === \App\Enums\StatoPianoRate::APPROVATO ? 'riportalo in bozza dalla sua pagina ed ' : ''
+            )));
         }
 
         // ⚠️ Il saldo NETTO, non la semplice esistenza di righe storiche — beta.73.

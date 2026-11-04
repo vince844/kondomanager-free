@@ -1,6 +1,6 @@
 /**
  * 1.11.0-beta.50 — la scelta sul conguaglio alla fine di una locazione: le regole della pagina (decisioni 77 e 79, verbale
- * `docs/piano_esecutivo_beta50.md`, «Le scelte tecniche del progetto»).
+ * `docs/verbali/1.11/piano_esecutivo_beta50.md`, «Le scelte tecniche del progetto»).
  *
  * Alla fine di una locazione, con un nuovo inquilino (il cambio d'inquilino) o senza, la casella «Le parti hanno regolato il conguaglio
  * fra loro» lascia il posto alle due voci della successione della .48, «Scrivi il conguaglio» e «Non scriverlo», senza nessuna già

@@ -8,7 +8,7 @@
  * spese con la menzione dei criteri di ripartizione» dell'art. 9 co. 3 L. 392/1978 — e lo fa sui numeri del piano
  * rate, cioè sul **preventivo** (decisione di Vincenzo del 26/09/2026: il consuntivo arriva con il rendiconto 1.12).
  *
- * Il disegno sta in `docs/piano_esecutivo_beta34_b3a.md` («passo (3)»). Tre fatti del codice lo hanno deciso:
+ * Il disegno sta in `docs/verbali/1.11/piano_esecutivo_beta34_b3a.md` («passo (3)»). Tre fatti del codice lo hanno deciso:
  * le voci «inquilino» sono già intestate all'inquilino nelle rate; quando nessun inquilino è registrato nei giorni del
  * piano le paga il proprietario per ripiego, ed è quella la parte da farsi rimborsare; la percentuale inquilino non è
  * congelata, gli importi per ruolo sì.

@@ -34,8 +34,12 @@ const headerBreadcrumbs = computed(() => [
   { title: 'Piani Rate' }
 ]);
 
+// I saldi iniziali lavorano sull'esercizio aperto del condominio: senza un esercizio aperto la loro pagina rifiuta
+// («Nessun esercizio aperto trovato»), e il rimando non si offre (Coda 349).
+const esisteUnEsercizioAperto = computed(() => props.esercizi.some((e) => e.stato === 'aperto'));
+
 // Configurazione della guida per i Piani Rate
-const pageGuides = [
+const pageGuides = computed(() => [
   {
     title: 'Emissione Rate',
     description: 'Pianifica le scadenze per la riscossione delle quote. Puoi creare piani rateizzati per la gestione ordinaria o per fondi straordinari.',
@@ -52,9 +56,13 @@ const pageGuides = [
     title: 'Gestione Saldi Pregressi',
     description: 'Consigliamo di isolare il "Saldo Iniziale" dell\'anno precedente in una rata separata. Questa best practice è fondamentale per gestire i subentri in modo impeccabile.',
     icon: Coins,
-    colorVariant: 'emerald' as const
+    colorVariant: 'emerald' as const,
+    // Il titolo sembra un accesso: porta davvero ai saldi iniziali (Coda 349).
+    ...(esisteUnEsercizioAperto.value
+      ? { link: { label: 'Vai ai saldi iniziali', href: generatePath('gestionale/:condominio/saldi', { condominio: props.condominio.id }) } }
+      : {})
   }
-];
+]);
 </script>
 
 <template>

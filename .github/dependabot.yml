@@ -2,6 +2,9 @@
 # per ecosistema, così che arrivi una richiesta sola e non una per pacchetto. Dependabot legge
 # questo file solo dal ramo predefinito: vale da quando il ramo di versione è unito a main.
 # Gli avvisi di sicurezza (security updates) si attivano nelle impostazioni del repository.
+# Le versioni maggiori non si propongono: un salto maggiore (o una linea nuova di PHP o di Node
+# nell'immagine) è un lavoro a sé, con le due suite. Il gruppo da solo non basta a escluderle,
+# perché decide soltanto che cosa va nella richiesta di gruppo: serve `ignore`.
 version: 2
 updates:
   - package-ecosystem: composer
@@ -13,6 +16,9 @@ updates:
       php:
         patterns: ['*']
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: npm
     directory: /
@@ -23,11 +29,23 @@ updates:
       javascript:
         patterns: ['*']
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # PHP resta sulla 8.4: si accettano solo i correttivi 8.4.x.
+      - dependency-name: php
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
+      # Node: la linea si cambia a mano, con le dipendenze del frontend.
+      - dependency-name: node
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
+      - dependency-name: composer
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
@@ -36,3 +54,6 @@ updates:
     groups:
       azioni:
         patterns: ['*']
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']

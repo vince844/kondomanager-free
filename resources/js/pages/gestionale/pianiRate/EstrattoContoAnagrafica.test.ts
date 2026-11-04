@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.50 — la card «Addebiti» dell'estratto conto dice che cosa entra davvero in «Totale addebiti» (correzione rimasta
- * dalla .49, verbale `docs/piano_esecutivo_beta49.md`, «Chiusura», «Da fare nella .50, dalla Fase 5»).
+ * dalla .49, verbale `docs/verbali/1.11/piano_esecutivo_beta49.md`, «Chiusura», «Da fare nella .50, dalla Fase 5»).
  *
  * La card della guida in testa alla pagina diceva «Tutte le rate emesse a carico del condòmino e gli eventuali ripristini di
  * debito». Dalla .49 (decisione 75.5) una scrittura stornata e la sua rettifica restano nell'elenco ma non nei totali

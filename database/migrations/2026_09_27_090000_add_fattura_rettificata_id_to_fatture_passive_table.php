@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Schema;
  * Fino a qui la nota che il fornitore emette per correggere una fattura elettronica sbagliata non si collegava a
  * niente: la fattura restava «aperta» e nel suo piano rate, il piano continuava a chiederla, e la fattura nuova entrava
  * in un secondo piano — la stessa spesa chiesta due volte (sonda del 27/09/2026, verbale in
- * `docs/piano_esecutivo_beta35.md`). Decisione 26, punto 6, in `docs/subentro_e_competenza_temporale.md` §9.
+ * `docs/verbali/1.11/piano_esecutivo_beta35.md`). Decisione 26, punto 6, in `docs/subentro_e_competenza_temporale.md` §9.
  *
  * Una colonna sola sulla nota, facoltativa, verso una fattura dello stesso fornitore di **qualunque esercizio** (su un
  * file vero il legame attraversa l'esercizio). `nullOnDelete`: l'eliminazione di una fattura con note collegate la

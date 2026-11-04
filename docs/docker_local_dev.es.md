@@ -1,11 +1,13 @@
 # 🐳 Desarrollo Local con Docker
 
 <!-- verifica-documentazione -->
-> **Estado:** Coincide con el código — verificado y corregido el 31/07/2026 en 1.10.0-beta.32, ampliado el **18/08/2026 en 1.10.0-beta.58** con la sección «Carga de archivos y persistencia de los documentos»
-> Se han corregido las cuatro afirmaciones erróneas detectadas en la auditoría: la rama de clonación (era `v1.9.1-beta`, que no existe), el `chmod` que faltaba en `docker/frankenphp/worker-entrypoint.sh`, la reescritura de APP_URL (es condicional) y el extracto de supervisord.conf, ahora con `[inet_http_server]` y el scheduler.
+> **Estado:** Coincide con el código — releída el 04/11/2026 en 1.12.0-beta.1, contrastada con `docker-compose.yml`, `docker-compose-franken.yml` y los scripts de `docker/standard/` y `docker/frankenphp/`. **Reescrita el 04/11/2026:** el clon ya no apunta a la rama de una versión antigua sino a la rama predeterminada (`main`); los puertos de la stack están abiertos solo en `127.0.0.1`; al principio hay un aviso de que esta stack sirve para desarrollar KondoManager, no para usarlo; se han quitado las referencias a Synology NAS (para un NAS está la [guía de Synology](synology_nas_install.es.md)) y se han corregido las frases que los scripts de inicio ya no confirmaban (qué se instala al arrancar y cuándo se recompila el frontend).
+> No probada en esta reescritura en un ordenador limpio: las líneas de los puertos se han validado con `docker compose config`, no se han arrancado.
 <!-- /verifica-documentazione -->
 
-> **Plataformas compatibles:** Windows (WSL2), macOS, Linux, Synology NAS
+> **Plataformas compatibles:** Windows (WSL2), macOS, Linux
+
+> ⚠️ **Esta guía sirve para desarrollar KondoManager en tu ordenador. No es la forma de instalarlo para usarlo.** En esta stack el entorno es `local`, la depuración está activada y las contraseñas son las escritas más abajo: las conoce cualquiera que lea la guía. Por eso los puertos (aplicación, MySQL, Supervisor) están abiertos **solo en `127.0.0.1`**, es decir, solo desde el ordenador en el que funciona. Para usar KondoManager en un despacho, en un servidor o en un NAS existe la imagen de producción: la [guía de Docker (producción)](https://kondomanager.com/docs/installation-docker-produzione.html), escrita en italiano, y para Synology la [guía para Synology NAS](synology_nas_install.es.md).
 
 ---
 
@@ -14,12 +16,12 @@
 | Stack | Archivo Compose | Puerto | Recomendado para |
 |-------|----------------|--------|------------------|
 | **Standard** — PHP-FPM + Nginx | `docker-compose.yml` | `8889` | ✅ Windows / macOS / Linux |
-| **FrankenPHP** — Laravel Octane | `docker-compose-franken.yml` | `8889` | 🧪 Synology NAS *(pendiente de pruebas)* |
+| **FrankenPHP** — Laravel Octane | `docker-compose-franken.yml` | `8889` | 🧪 Experimental |
 
-> ℹ️ El `Dockerfile` en la raíz del repositorio se usa **únicamente para Coolify (producción)** — no es necesario para el desarrollo local.
+> ℹ️ El `Dockerfile` en la raíz del repositorio construye la **imagen de producción** (`ghcr.io/vince844/kondomanager-core`, publicada con cada versión): para desarrollar no hace falta. Las dos stacks de desarrollo usan `docker/standard/Dockerfile` y `docker/frankenphp/Dockerfile`.
 
-**¿Por qué usar Standard en Windows/macOS/Linux?**  
-La stack PHP-FPM + Nginx es robusta, fácil de depurar y ampliamente documentada. FrankenPHP funciona con un único proceso (menor uso de memoria), lo que puede ser interesante en un Synology NAS, pero aún no ha sido completamente validado en ese entorno.
+**¿Por qué Standard?**
+La stack PHP-FPM + Nginx es robusta, fácil de depurar y ampliamente documentada. FrankenPHP atiende las peticiones web con un único proceso, pero la stack es experimental: si no tienes un motivo para probarla, usa Standard.
 
 ---
 
@@ -49,15 +51,21 @@ git clone ...
 Abre tu terminal (en macOS/Linux) o el terminal WSL (en Windows) y ejecuta:
 
 ```bash
-git clone -b v1.9.1 https://github.com/vince844/kondomanager-free.git
+git clone https://github.com/vince844/kondomanager-free.git
 cd kondomanager-free
+```
+
+Sin más opciones, git descarga la rama predeterminada, `main`: en la guía no hay un número de versión que mantener al día. Para partir de una versión concreta (por ejemplo para reproducir un problema) usa la etiqueta, escrita completa porque `v1.11.0` es también el nombre de una rama:
+
+```bash
+git checkout refs/tags/v1.11.0
 ```
 
 ---
 
-## Paso 2 — Establecer permisos en los scripts de inicio
+## Paso 2 — Comprobar los permisos de los scripts de inicio
 
-Antes de hacer el build, haz que los scripts de inicio sean ejecutables. Esto es obligatorio en Linux/WSL — sin este paso obtendrás un error `permission denied`.
+Los scripts de inicio llegan del repositorio con el permiso de ejecución ya establecido: git lo conserva. Puede perderse si has descargado el ZIP o has clonado desde el sistema de archivos de Windows, y entonces el arranque se detiene con el error `permission denied`. Hacer ejecutables los scripts es inofensivo aunque ya lo sean, así que puedes hacerlo igualmente antes del build.
 
 **Si usas la stack Standard (Nginx):**
 ```bash
@@ -78,16 +86,16 @@ chmod +x docker/frankenphp/worker-entrypoint.sh
 ### Stack Standard (recomendado)
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 ### Stack FrankenPHP
 
 ```bash
-docker-compose -f docker-compose-franken.yml up --build -d
+docker compose -f docker-compose-franken.yml up --build -d
 ```
 
-> El primer build tarda aproximadamente **3–5 minutos** — Docker instala las extensiones de PHP, Node.js, las dependencias de Composer y compila los assets del frontend.
+> El primer arranque tarda unos minutos: Docker construye la imagen (extensiones de PHP y Node.js) y después el container de la aplicación, en su primer arranque, instala las dependencias de Composer y npm y compila el frontend. La compilación del frontend llega a unos **1,1 GB de memoria**: si la memoria concedida a Docker es menor, ese paso se interrumpe. En ese caso la base de datos ya está al día, pero el script de arranque se detiene con un error y el container de la aplicación no arranca: la aplicación no responde hasta que le des más memoria a Docker y vuelvas a arrancar la stack (`docker compose up -d`; para FrankenPHP `docker compose -f docker-compose-franken.yml up -d`).
 
 ---
 
@@ -113,27 +121,34 @@ Busca: `✅ KondoManager FrankenPHP Pronto!`
 
 Una vez que aparezca el mensaje de éxito:
 
-| Servicio | URL | Credenciales |
+| Servicio | URL | Credenciales de desarrollo |
 |----------|-----|--------------|
 | **Aplicación Web** | http://localhost:8889 | Email: `admin@km.com` / Contraseña: `password` |
 | **Base de Datos MySQL** | `127.0.0.1:3307` | Usuario: `root` / Contraseña: `root` / DB: `kondomanager_dev` |
 
 Puedes conectarte a la base de datos con cualquier cliente MySQL (TablePlus, DBeaver, MySQL Workbench, etc.) usando las credenciales anteriores.
 
+> ⚠️ **Son credenciales de desarrollo, y funcionan solo porque la stack está en el entorno `local`.** El administrador `admin@km.com` lo crea el seeder únicamente con `APP_ENV=local`; con otro entorno el seeder genera una contraseña aleatoria. No uses estas contraseñas, ni esta stack, para los datos de un despacho.
+>
+> Los puertos responden **solo desde este ordenador** (`127.0.0.1`): desde el móvil o desde otro ordenador de la red no se abren. Si necesitas usarlos desde otro dispositivo, quita `127.0.0.1:` delante del puerto en `docker-compose.yml` (o en `docker-compose-franken.yml`) y vuelve a crear los containers: desde ese momento cualquiera que esté en tu red puede alcanzarlo, con esas contraseñas.
+
 ---
 
-## Qué ocurre automáticamente en el primer inicio
+## Qué ocurre en cada inicio
 
-El script de entrypoint ejecuta los siguientes pasos sin ninguna intervención manual:
+El script de entrypoint ejecuta los siguientes pasos sin ninguna intervención manual. Algunos son solo del primer inicio, otros se repiten en cada arranque del container:
 
-1. Copia `.env.example` → `.env` (si no existe aún)
-2. Configura la conexión a la base de datos para apuntar al container `db`
-3. Instala las dependencias PHP mediante Composer
-4. Genera la `APP_KEY`
-5. Espera a que MySQL esté disponible
-6. Instala las dependencias de Node.js y compila los assets del frontend *(solo en el primer inicio)*
-7. Ejecuta las migraciones de la base de datos
-8. Ejecuta los seeders *(solo si la base de datos está vacía — seguro reiniciar)*
+1. Copia `.env.example` → `.env` si no existe aún, y lo pone en el entorno de desarrollo: `APP_ENV=local` y `APP_DEBUG=true` *(solo cuando crea el archivo: un `.env` que ya existe no se toca, salvo las líneas de la base de datos y `APP_URL`, más abajo)*
+2. Configura la conexión a la base de datos para apuntar al container `db` *(en cada inicio)*
+3. Establece `APP_URL=http://localhost:8889` si está vacío, es exactamente `http://localhost` o contiene `kondomanager-free.test`; cualquier otro valor se queda como está
+4. Instala las dependencias PHP mediante Composer *(en cada inicio: cuesta pocos segundos cuando no hay nada que hacer)*
+5. Genera la `APP_KEY` si falta
+6. Espera a que MySQL esté disponible
+7. Instala las dependencias de Node.js con `npm install` *(en cada inicio)*
+8. Vacía las cachés (`php artisan optimize:clear`) y ejecuta las migraciones de la base de datos
+9. Ejecuta los seeders *(solo si todavía no hay ningún usuario — seguro reiniciar)*
+10. Alinea roles y permisos, la lista de municipios, la clasificación ATECO y la versión registrada (`php artisan kondomanager:aggiorna`)
+11. Compila los assets del frontend *(solo si `public/build/manifest.json` falta, o si un archivo de `resources`, `lang`, `vite.config.ts` o `package-lock.json` es más reciente que el manifest)*
 
 ---
 
@@ -154,7 +169,7 @@ El container `kondo_worker` inicia Supervisor al arrancar, que a su vez inicia y
 
 ### Configuración de Supervisor
 
-El archivo de configuración se encuentra en [`docker/supervisord.conf`](../docker/supervisord.conf):
+El archivo de configuración se encuentra en [`docker/supervisord.conf`](../docker/supervisord.conf). A continuación, un extracto (faltan las secciones `[rpcinterface:supervisor]` y `[supervisorctl]`, que sirven al comando `supervisorctl`). **El usuario y la contraseña de la interfaz web son los de desarrollo, escritos en el archivo:**
 
 ```ini
 [supervisord]
@@ -184,6 +199,8 @@ redirect_stderr=true
 stdout_logfile=/var/www/storage/logs/scheduler.log
 ```
 
+> ℹ️ La interfaz web de Supervisor (puerto 9001) existe solo en esta stack de desarrollo, y responde solo desde este ordenador porque el puerto está publicado en `127.0.0.1`. La imagen de producción no la abre: su Supervisor tiene solo un socket local y ningún puerto HTTP.
+
 **Parámetros principales:**
 - `--sleep=3` — espera 3 segundos entre jobs cuando la cola está vacía
 - `--tries=3` — un job fallido se reintenta hasta 3 veces
@@ -195,7 +212,7 @@ stdout_logfile=/var/www/storage/logs/scheduler.log
 **1. Interfaz Web (Recomendado)**
 Puedes comprobar cómodamente el estado de los procesos y leer los logs desde tu navegador:
 - Ve a: `http://localhost:9001`
-- Usuario: `admin` / Contraseña: `password`
+- Usuario: `admin` / Contraseña: `password` *(credenciales de desarrollo)*
 
 **2. Línea de comandos**
 ```bash
@@ -232,12 +249,12 @@ docker compose up --build -d worker
 
 ```bash
 # Detener la stack Standard antes de cambiar a FrankenPHP
-docker-compose down
+docker compose down
 
 # — o —
 
 # Detener la stack FrankenPHP antes de cambiar a Standard
-docker-compose -f docker-compose-franken.yml down
+docker compose -f docker-compose-franken.yml down
 ```
 
 ---
@@ -282,13 +299,15 @@ docker compose exec app php artisan db:seed --force
 
 Hasta la beta.57 ninguna de las tres imágenes declaraba un límite, por lo que se aplicaba el valor
 predeterminado de nginx — **1 MB** — y un PDF de 1,5 MB era rechazado mientras la aplicación
-prometía 20. Ahora los valores están escritos en los `Dockerfile` y son coherentes entre sí:
+prometía 20. Ahora los valores están declarados en la configuración de cada imagen — `docker/standard/Dockerfile` y `docker/standard/nginx/default.conf`, `docker/frankenphp/Dockerfile`, `docker/production/php.ini` y `docker/production/nginx.conf` — y son coherentes entre sí:
 
 | | Valor |
 | :--- | :--- |
 | `upload_max_filesize` (PHP) | 20M |
 | `post_max_size` (PHP) | 25M |
 | `client_max_body_size` (nginx) | 30M |
+
+En la stack FrankenPHP no hay nginx: valen los dos valores de PHP.
 
 El orden no es casual: nginx es el más alto, así quien rechaza es **PHP**, que sabe decirlo con un
 mensaje comprensible en lugar de un error del servidor web. La aplicación no tiene un límite propio:
@@ -308,8 +327,8 @@ docker compose exec app php artisan kondomanager:verifica-persistenza
 ```
 
 Responde diciendo cuántos archivos y cuántos megabytes están en juego, y si la carpeta está dentro
-del contenedor explica dónde declarar el volumen. Con `--rigoroso` sale con código de error, de modo
-que puede ponerse en una tubería de despliegue.
+del contenedor explica dónde declarar el volumen. Fuera del entorno de desarrollo, con `--rigoroso` sale con código de error cuando falta el volumen, de modo
+que puede ponerse en una tubería de despliegue; en la stack de desarrollo (entorno `local`) responde que no hace falta un volumen y no falla.
 
 ---
 
@@ -339,7 +358,7 @@ docker compose logs db
 ```
 
 ### Los assets del frontend no se actualizan tras cambios en el código
-El build se omite si la carpeta `public/build/` ya existe. Fuerza un rebuild:
+El frontend se recompila en cada arranque del container, pero solo si `public/build/manifest.json` falta o si un archivo de `resources`, `lang`, `vite.config.ts` o `package-lock.json` es más reciente que el manifest: reinicia el container (`docker compose restart app`). Para forzar la recompilación:
 ```bash
 docker compose exec app rm -rf public/build
 docker compose exec app npm run build
@@ -352,6 +371,9 @@ Otro proceso o stack de Docker está usando ese puerto. Ejecuta `docker compose 
 lsof -i :8889
 lsof -i :3307
 ```
+
+### La aplicación no se abre desde el móvil ni desde otro ordenador
+Los puertos de la stack están publicados solo en `127.0.0.1`, así que responden únicamente desde el ordenador en el que funciona Docker. Es a propósito: mira el Paso 5 para saber qué ocurre si quitas `127.0.0.1:` delante del puerto.
 
 ### Error CORS / redirección a `https://` en lugar de `http://`
 Si el navegador muestra un error `Cross-Origin Request Blocked` o la página intenta abrir `https://localhost:8889`, el problema está en `APP_URL` dentro del archivo `.env`.

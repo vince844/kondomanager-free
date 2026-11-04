@@ -125,7 +125,9 @@ class FetchCapitoliPerGestioneController extends Controller
             }
 
             // Chiamata al servizio
-            $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap);
+            // Coda 438: il pianificato dei soli piani di questo esercizio, come lo speso (`$fatturatoMap`): sulla gestione usata in più esercizi le voci
+            // del piano dell'anno prima si scelgono nel piano dell'anno dopo.
+            $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap, (int) $esercizioId);
             $capitoliFinanziabiliRaw = collect($coverageService->getCapitoliFinanziabili($analisiBilancio, $vociDaSpostaSpesa))->keyBy('id');
 
             // La competenza già dichiarata sulla voce in un piano di questa gestione (decisione 20): la scheda

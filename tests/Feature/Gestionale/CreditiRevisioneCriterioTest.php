@@ -1,7 +1,7 @@
 <?php
 
 /**
- * 1.11.0-beta.49, Fase 1-bis (`docs/piano_esecutivo_beta49.md`, «Fase 1-bis (11/10/2026)»): i rilievi del criterio del credito e
+ * 1.11.0-beta.49, Fase 1-bis (`docs/verbali/1.11/piano_esecutivo_beta49.md`, «Fase 1-bis (11/10/2026)»): i rilievi del criterio del credito e
  * dello storno. Decisioni 71, 75 e 76 del registro (`docs/subentro_e_competenza_temporale.md`).
  *
  * K2 (alto) — la voce di tipo «entrata». Il motore rende negativa la quota di una voce di entrata (`CalcoloQuoteService`, «: -abs»):

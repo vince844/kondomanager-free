@@ -4,7 +4,9 @@ namespace App\Models\Gestionale;
 
 use App\Models\Anagrafica;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Immobile;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -29,6 +31,7 @@ class ContributoVersato extends Model
         'target_id',
         'immobile_id',
         'anagrafica_id',
+        'esercizio_id',
         'importo_cents',
         'natura',
         'origine',
@@ -39,7 +42,17 @@ class ContributoVersato extends Model
 
     protected $casts = [
         'importo_cents' => 'integer',
+        'esercizio_id'  => 'integer',
     ];
+
+    /**
+     * Il già versato che vale nei piani di un esercizio si divide fra tutti i piani della voce, di ogni esercizio: c'è almeno una riga senza
+     * esercizio (decisione 183.1, «vuoto vuol dire tutti i piani della voce», il fondo lavori su più anni).
+     */
+    public const AMBITO_TUTTI_GLI_ESERCIZI = 'tutti';
+
+    /** Il già versato che vale nei piani di un esercizio è tutto di quell'esercizio: si divide fra i soli piani di quell'esercizio. */
+    public const AMBITO_ESERCIZIO = 'esercizio';
 
     /** Vincolo di destinazione deliberato (fondo speciale art. 1135, riserva). */
     public const NATURA_FONDO_VINCOLATO = 'fondo_vincolato';
@@ -95,6 +108,39 @@ class ContributoVersato extends Model
         return $this->belongsTo(Anagrafica::class);
     }
 
+    /** L'esercizio per cui vale (Coda 438): nullo, vale per tutti i piani della voce. */
+    public function esercizio(): BelongsTo
+    {
+        return $this->belongsTo(Esercizio::class);
+    }
+
+    /**
+     * Le righe che valgono nei piani di un esercizio (Coda 438, decisione 183.1): quelle di quell'esercizio e quelle senza esercizio, che valgono in
+     * tutti i piani della voce: una riga «del 2026» vale solo nei piani del 2026. L'esercizio è quello che il programma legge per il piano (il salvato o
+     * il dedotto, `CompetenzaDelPiano::esercizioDelPiano`); nullo, cioè un piano che non ha un esercizio nemmeno dedotto (la gestione senza esercizi), dà
+     * le sole righe senza esercizio.
+     */
+    public function scopeValeNellEsercizio(Builder $query, ?int $esercizioId): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereNull('esercizio_id')
+            ->when($esercizioId !== null, fn (Builder $q2) => $q2->orWhere('esercizio_id', $esercizioId)));
+    }
+
+    /**
+     * Fra quali piani si divide il già versato di una voce che vale nei piani di un esercizio: `null` se nessuno vale lì; `AMBITO_TUTTI_GLI_ESERCIZI`
+     * se c'è una riga senza esercizio (si divide fra tutti i piani della voce, di ogni esercizio: la guardia del motore conta tutti i piani e tutte
+     * le fatture della voce); `AMBITO_ESERCIZIO` se sono tutte righe di quell'esercizio (contano i soli piani e le sole fatture di quell'esercizio).
+     */
+    public static function ambitoNellEsercizio(int $contoId, ?int $esercizioId): ?string
+    {
+        $righe = static::query()->where('target_type', Conto::class)->where('target_id', $contoId)->valeNellEsercizio($esercizioId);
+        if (! (clone $righe)->exists()) {
+            return null;
+        }
+
+        return (clone $righe)->whereNull('esercizio_id')->exists() ? self::AMBITO_TUTTI_GLI_ESERCIZI : self::AMBITO_ESERCIZIO;
+    }
+
     /**
      * Totale già versato per ciascuna unità verso un target (voce di spesa o gestione).
      *
@@ -124,13 +170,17 @@ class ContributoVersato extends Model
      * (le righe storiche, scritte per unità) resta della unità, come prima. La chiave nulla raccoglie
      * queste ultime.
      *
+     * Solo le righe che valgono nei piani dell'esercizio dato (Coda 438, `valeNellEsercizio`): chi legge il già versato per un piano passa
+     * l'esercizio del piano.
+     *
      * @return array<int, array<int|string, int>> immobile_id => [anagrafica_id|'' => centesimi]
      */
-    public static function perImmobileESoggetto(string $targetType, int $targetId): array
+    public static function perImmobileESoggetto(string $targetType, int $targetId, ?int $esercizioId): array
     {
         $righe = static::query()
             ->where('target_type', $targetType)
             ->where('target_id', $targetId)
+            ->valeNellEsercizio($esercizioId)
             ->selectRaw('immobile_id, anagrafica_id, SUM(importo_cents) as totale')
             ->groupBy('immobile_id', 'anagrafica_id')
             ->get();

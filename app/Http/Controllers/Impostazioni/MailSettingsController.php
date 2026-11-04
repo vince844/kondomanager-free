@@ -11,6 +11,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
@@ -190,6 +191,15 @@ class MailSettingsController extends Controller
             return response()->json(['success' => true]);
 
         } catch (\Exception $e) {
+            // Il motivo va anche nel registro del programma (storage/logs/laravel.log), il primo posto dove si guarda: il messaggio
+            // dell'eccezione può nominare destinatario e mittente, la password non c'è mai (Coda 121).
+            Log::error('Prova di invio email fallita: ' . $e->getMessage(), [
+                'driver' => $driver,
+                'host' => $driver === 'smtp' ? $request->mail_host : null,
+                'porta' => $driver === 'smtp' ? (int) $request->mail_port : null,
+                'cifratura' => $driver === 'smtp' ? $request->mail_encryption : null,
+            ]);
+
             // Salva il fallimento nel log email per diagnostica
             MailLog::create([
                 'recipient'     => $request->test_email,
@@ -200,8 +210,38 @@ class MailSettingsController extends Controller
                 'sent_at'       => now(),
             ]);
 
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            // Il suggerimento è una chiave a parte: il motivo della libreria resta quello che il registro delle email e quello del programma hanno scritto.
+            $risposta = ['success' => false, 'message' => $e->getMessage()];
+
+            if (($suggerimento = $this->suggerimentoDelRifiuto($e->getMessage(), (int) $request->mail_port)) !== null) {
+                $risposta['suggerimento'] = $suggerimento;
+            }
+
+            return response()->json($risposta, 500);
         }
+    }
+
+    /**
+     * Sotto la prova fallita, quando la connessione è stata rifiutata e la porta non è la 587: una frase che dice le due cause possibili (il server di
+     * posta non accetta quella porta, o il provider del server blocca le connessioni in uscita su quella porta) e la strada che di solito apre (Coda 121).
+     *
+     * Il rifiuto esce dal sistema operativo prima di qualsiasi byte SMTP e la libreria lo scrive «Connection could not be established with host …
+     * (Connection refused)»: solo quella forma conta. Un tempo scaduto, la risposta di un server che si è raggiunto (anche se il suo testo nomina un
+     * rifiuto) e la 587 rifiutata non hanno il suggerimento, e neppure una porta vuota: la prova non sa quale porta ha usato. Con sendmail la richiesta
+     * porta lo stesso la porta del modulo, ma il messaggio non ha quella forma: non serve un controllo a parte sul driver.
+     */
+    private function suggerimentoDelRifiuto(string $motivo, int $porta): ?string
+    {
+        if ($porta <= 0 || $porta === 587) {
+            return null;
+        }
+
+        $eUnRifiutoDellaConnessione = str_starts_with($motivo, 'Connection could not be established with host')
+            && str_ends_with($motivo, '(Connection refused)');
+
+        return $eUnRifiutoDellaConnessione
+            ? __('impostazioni.error_test_mail_connection_refused', ['porta' => $porta])
+            : null;
     }
 
     /**

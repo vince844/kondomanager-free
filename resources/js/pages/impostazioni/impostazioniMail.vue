@@ -54,6 +54,8 @@ const isTesting      = ref(false);
 const testEmail      = ref('');
 const testStatus     = ref<'success' | 'error' | null>(null);
 const errorMessage   = ref('');
+// Coda 121: sotto il motivo della prova fallita, quando la connessione è stata rifiutata, la frase che il server manda a parte (`suggerimento`).
+const errorHint      = ref('');
 
 const breadcrumbs = computed(() => [
     {
@@ -164,6 +166,7 @@ const inviaProva = async (corpo: Record<string, unknown>) => {
         errorMessage.value = error.response?.status === 429
             ? trans('impostazioni.error_test_mail_too_many')
             : error.response?.data?.message || 'Errore di connessione';
+        errorHint.value = error.response?.data?.suggerimento || '';
     } finally {
         isTesting.value = false;
     }
@@ -433,6 +436,7 @@ const inviaProva = async (corpo: Record<string, unknown>) => {
                                     {{ trans('impostazioni.dialogs.test_error_title') }}
                                 </p>
                                 <p class="text-xs opacity-80">{{ errorMessage }}</p>
+                                <p v-if="errorHint" data-suggerimento-prova class="mt-2 text-xs">{{ errorHint }}</p>
                             </div>
                         </div>
 

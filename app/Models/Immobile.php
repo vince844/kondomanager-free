@@ -169,6 +169,12 @@ class Immobile extends Model
         // la riga di titolarità ha un'identità propria, perché B2 registrerà più periodi per la stessa
         // persona e le rotte dovranno lavorare per periodo, non per persona. Nessun cast: vedi il
         // docblock di `TitolaritaImmobile`.
+        //
+        // L'ordine è fisso (Coda 301, decisione 183.3): chi è titolare da prima, poi chi è registrato
+        // prima. È l'ordine dei pesi che il motore passa a `MoneyHelper`, e a pari resto il centesimo
+        // va al primo: senza `orderBy` lo decideva il piano con cui il database legge la pivot (su
+        // sqlite l'indice per tipologia e data, su MySQL quello che sceglie l'ottimizzatore), e
+        // nessuna regola lo fissava.
         return $this->belongsToMany(Anagrafica::class, 'anagrafica_immobile')
             ->using(TitolaritaImmobile::class)
             ->withPivot([
@@ -181,7 +187,9 @@ class Immobile extends Model
                 'attivo',
                 'note',
             ])
-            ->withTimestamps();
+            ->withTimestamps()
+            ->orderByPivot('data_inizio')
+            ->orderByPivot('id');
     }
 
     /**

@@ -40,6 +40,12 @@ use Illuminate\Support\Facades\DB;
 class AnteprimaPassaggio
 {
     /**
+     * Coda 455 (6a): come si divide la quota ordinaria quando il netto del conguaglio è un'entrata. L'art. 1004 c.c. riguarda le spese; un'entrata che è un
+     * frutto civile (un affitto, un canone) segue l'art. 984 c.c. Le due parti si dicono tutte e due: un netto di entrata non vuol dire che non passino spese.
+     */
+    private const SPESE_E_ENTRATE = 'le spese per l\'art. 1004 c.c., le entrate, se sono frutti civili, per l\'art. 984 c.c.';
+
+    /**
      * @param array{
      *   tipo: string, sottotipo?: ?string, riga_uscente?: ?TitolaritaImmobile, entrante?: ?Anagrafica,
      *   decorrenza: CarbonImmutable, quota: float, tipologia: string, copia_autentica: bool,
@@ -3320,10 +3326,11 @@ class AnteprimaPassaggio
         } elseif ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
             $frasi[] = sprintf('Nessuna rata emessa è intestata %s: non c\'è niente da conguagliare fra chi esce e chi entra. Le %d quote dell\'unità restano a chi le ha ricevute (%s).', $this->frasiObbligati->a((string) $uscente), $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
         } elseif ($estinzione && ! empty($dati['accrescimento'])) {
-            // 1.11.0-beta.44: l'usufrutto si accresce agli usufruttuari che restano; la nuda resta nuda.
+            // 1.11.0-beta.44: l'usufrutto si accresce agli usufruttuari che restano; la nuda resta nuda. Coda 455 (6a): con un netto di entrata anche l'art. 984 c.c.
             $frasi[] = $senzaCoppie
                 ? 'Le rate già emesse non si toccano.'
-                : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, a cui l\'usufrutto si accresce, è proposto come righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni (art. 1004 c.c.), la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $this->elencoUsufruttuari());
+                : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, a cui l\'usufrutto si accresce, è proposto come righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni (%s), la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $this->elencoUsufruttuari(),
+                    self::nettoDiEntrata($conguaglio) ? self::SPESE_E_ENTRATE : 'art. 1004 c.c.');
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
                 $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
@@ -3339,11 +3346,15 @@ class AnteprimaPassaggio
                 ? (! empty($conguaglio['ordinaria_per_voce_dal'])
                     // Rilievo D4: l'usufrutto è nato «come dice ogni voce»; le voci sul «Proprietario» erano già del nudo proprietario.
                     ? sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che %s, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: l\'ordinaria segue la voce, per la scelta «come dice ogni voce» del passaggio del %s — le voci sul «Proprietario» sono già del nudo proprietario, le altre divise in proporzione ai giorni —, e la quota straordinaria resta al nudo proprietario (art. 63 disp. att. c.c.; art. 1005 c.c.).', $uscente, $entrante, $tornaPienoChi, $this->data(CarbonImmutable::parse($conguaglio['ordinaria_per_voce_dal'])))
-                    : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che %s, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni, la quota straordinaria resta al nudo proprietario (art. 63 disp. att. c.c.; artt. 1004-1005 c.c.).', $uscente, $entrante, $tornaPienoChi))
+                    : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s, che %s, è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni, la quota straordinaria resta al nudo proprietario (art. 63 disp. att. c.c.; artt. 1004-1005 c.c.%s).', $uscente, $entrante, $tornaPienoChi,
+                        // Coda 455 (6a): con un netto di entrata le entrate dei giorni dell'usufrutto, se sono frutti civili, seguono l'art. 984 c.c.
+                        self::nettoDiEntrata($conguaglio) ? '; per le entrate, se sono frutti civili, art. 984 c.c.' : ''))
                 : ($this->sceltaOrdinaria($dati) === Subentro::ORDINARIA_COME_LA_VOCE
                     // Decisione 31.5: «come dice ogni voce».
                     ? sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s, che resta come nudo proprietario, e %s è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: l\'ordinaria segue la voce, come hai scelto — le voci che non sono sul «Proprietario» divise in proporzione ai giorni (dal %s all\'usufruttuario), quelle sul «Proprietario» restano al nudo proprietario —, e la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $entrante ?? 'chi entra', $this->data($dal))
-                    : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s, che resta come nudo proprietario, e %s è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni (dal %s all\'usufruttuario, art. 1004 c.c.), la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $entrante ?? 'chi entra', $this->data($dal)));
+                    // Coda 455 (6a): l'art. 1004 c.c. riguarda le spese; con un netto di entrata la frase dice anche l'art. 984 c.c. dei frutti civili.
+                    : sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s, che resta come nudo proprietario, e %s è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria divisa in proporzione ai giorni (dal %s all\'usufruttuario%s), la quota straordinaria resta al nudo proprietario (art. 1005 c.c.).', $uscente, $entrante ?? 'chi entra', $this->data($dal),
+                        self::nettoDiEntrata($conguaglio) ? ': ' . self::SPESE_E_ENTRATE : ', art. 1004 c.c.'));
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
                 $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
@@ -3970,8 +3981,17 @@ class AnteprimaPassaggio
             // DL3 (1.11.0-beta.47): il destinatario cambia solo nei piani che si ricalcolano ancora; quelli fermi si dicono a parte, come
             // informazione, piano per piano. Contano solo i piani con una parte dell'inquilino e con giorni dall'inizio in poi
             // (Fase 1-bis: non il piano dei lavori tutto sul proprietario, non il preventivo dell'anno prima).
-            if ($this->pianiRicalcolabiliQui !== []) {
-                $motivi[] = sprintf('un piano rate già generato ha voci a carico dell\'inquilino: il destinatario cambierebbe ricalcolandolo (%s)', $this->nomiDeiPiani($this->pianiRicalcolabiliQui));
+            // Coda 438, decisione 192.1: sulla gestione usata in più esercizi il piano senza l'esercizio
+            // salvato, o con la riga delle voci vuota, non si ricalcola: si elimina e si crea di nuovo. Il motivo dice quella strada, non il ricalcolo.
+            $daRifare = $this->pianiRicalcolabiliQui === [] ? [] : \App\Models\Gestionale\PianoRate::whereIn('id', $this->pianiRicalcolabiliQui)->orderBy('id')->get()
+                ->filter(fn (\App\Models\Gestionale\PianoRate $p) => $p->fraseDaRifare('') !== null)->map(fn ($p) => (int) $p->id)->values()->all();
+            $siRicalcolano = array_values(array_diff($this->pianiRicalcolabiliQui, $daRifare));
+            if ($siRicalcolano !== []) {
+                $motivi[] = sprintf('un piano rate già generato ha voci a carico dell\'inquilino: il destinatario cambierebbe ricalcolandolo (%s)', $this->nomiDeiPiani($siRicalcolano));
+            }
+            if ($daRifare !== []) {
+                $motivi[] = sprintf('un piano rate già generato ha voci a carico dell\'inquilino: il destinatario cambierebbe rifacendolo, cioè eliminandolo e creandolo di nuovo dalla '
+                    . 'pagina dei piani rate del suo esercizio, perché sulla gestione usata in più esercizi non si ricalcola (%s)', $this->nomiDeiPiani($daRifare));
             }
             foreach ($this->gruppiDeiPianiFermi() as ['ids' => $ids, 'parti' => $piano]) {
                 $giornoInizio = $decorrenza !== null ? $this->data($decorrenza) : 'giorno dell\'inizio';
@@ -4106,5 +4126,17 @@ class AnteprimaPassaggio
         $nomi = $titolari->map(fn ($t) => $t->anagrafica?->nome)->filter()->values()->all();
 
         return $nomi === [] ? $clausola : $this->elenco($nomi);
+    }
+
+    /**
+     * Coda 455 (6a): su una gestione il netto del conguaglio per chi entra è un credito, cioè nei suoi giorni le entrate superano le spese (la coppia di quella
+     * gestione ha l'importo negativo, come `totale_entrante` per la frase della fine di una locazione): la frase della quota ordinaria non cita da sola l'art.
+     * 1004 c.c. La coppia è per gestione e la frase dice «sulla gestione di ciascun piano»: un'entrata su una gestione non si compensa con le spese di un'altra.
+     *
+     * @param array<string, mixed> $conguaglio
+     */
+    private static function nettoDiEntrata(array $conguaglio): bool
+    {
+        return collect($conguaglio['coppie'] ?? [])->contains(fn ($c) => (int) ($c['importo'] ?? 0) < 0);
     }
 }

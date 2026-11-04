@@ -9,7 +9,12 @@ use Illuminate\Support\Facades\DB;
 
 class BudgetCoverageService
 {
-    public function analyze(Gestione $gestione, array $fatturatoMap = [], array $coperturaVirtualeMap = []): array
+    /**
+     * @param  int|null  $esercizioId  Coda 438: con l'esercizio, il pianificato conta i soli piani di quell'esercizio (`CompetenzaDelPiano::esercizioDelPiano`):
+     *                                 sulla gestione usata in più esercizi una voce del piano dell'anno prima resta da finanziare nell'anno dopo. Senza,
+     *                                 tutti i piani della gestione, com'era.
+     */
+    public function analyze(Gestione $gestione, array $fatturatoMap = [], array $coperturaVirtualeMap = [], ?int $esercizioId = null): array
     {
         $gestione->load(['pianoConto.conti.sottoconti', 'pianiRate.capitoli', 'pianiRate.fattureStraordinarie']);
         
@@ -27,6 +32,10 @@ class BudgetCoverageService
             $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
             return in_array($stato, ['bozza', 'approvato']);
         });
+        if ($esercizioId !== null) {
+            $competenza = app(\App\Services\Riparto\CompetenzaDelPiano::class);
+            $pianiRateAttivi = $pianiRateAttivi->filter(fn ($piano) => $competenza->esercizioDelPiano($piano)?->id === $esercizioId);
+        }
         
         $coperturaRealeMap = $this->calcolaCoperturaReale($contiRadice, $pianiRateAttivi);
 

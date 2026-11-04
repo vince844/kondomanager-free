@@ -175,6 +175,9 @@ it('un capitolo con sottoconti di spesa e di entrata si rifiuta anche come sorge
 it('due capitoli misti: la frase li nomina tutti e due', function () {
     $s = b52tScenarioConPadreMisto($this);
     $piano = $s['piano'];
+    // Coda 437: lo scenario ha bisogno dell'orologio che corre, i due sottoconti di «Antenna» no. Fermato qui, nascono nello
+    // stesso secondo, e il piano li legge tutti e due o nessuno (allora tutti): «Antenna» resta mista comunque scatti il secondo.
+    $this->freezeSecond();
     $altro = b52tVoce($this, $s, 'Antenna', 'spesa', '0,00', $s['tabella'], null, ['isCapitolo' => true, 'tabella_millesimale_id' => null, 'percentuale_proprietario' => null, 'percentuale_inquilino' => null, 'percentuale_usufruttuario' => null]);
     b52tVoce($this, $s, 'Manutenzione antenna', 'spesa', '100,00', $s['tabella'], $altro->id, ['isSottoConto' => true]);
     b52tVoce($this, $s, 'Affitto antenna', 'entrata', '500,00', $s['box'] ?? $s['tabella'], $altro->id, ['isSottoConto' => true]);
@@ -293,6 +296,9 @@ it('verso un sottoconto il cui capitolo è già nel piano si rifiuta, nomina il 
 });
 
 it('un capitolo con più di tre sottoconti nel piano ne nomina tre e dice che ce n\'è un altro', function () {
+    // Coda 437: i sottoconti del piano si leggono dal `created_at`, al secondo (`Conto::sottocontiDelPiano`). Con l'orologio fermo
+    // il piano e i quattro sottoconti nascono nello stesso secondo, e la frase non dipende da quando scatta il secondo dopo.
+    $this->freezeSecond();
     $s = b52sScenarioCapitoloConFigliNelPiano($this);
     $piano = $s['piano'];
     foreach (['Balconi', 'Cancello'] as $nome) {

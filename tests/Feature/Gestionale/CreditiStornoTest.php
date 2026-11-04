@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.49, la contabilità dei crediti — l'incasso, il rimborso e lo storno (voci P2, P4 e P8 del verbale,
- * `docs/piano_esecutivo_beta49.md`; decisioni 71, 75 e 76 del registro).
+ * `docs/verbali/1.11/piano_esecutivo_beta49.md`; decisioni 71, 75 e 76 del registro).
  *
  * - P2, DC1: il credito riportato da un esercizio precedente (quota a importo negativo) finché la sua quota non ha scrittura
  *   non è nei conti dell'anno: usato in compensazione, riaccreditato o rimborsato, esce da «Passate gestioni». Dopo

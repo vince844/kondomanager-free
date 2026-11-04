@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.49, la contabilità dei crediti — i rilievi della Fase 1-bis dell'area «emissione dei piani della 1.7 e testi»
- * (`docs/piano_esecutivo_beta49.md`, «Fase 1-bis (11/10/2026)» e «La risposta su LDA-2»; decisioni 71, 75 e 76 del registro,
+ * (`docs/verbali/1.11/piano_esecutivo_beta49.md`, «Fase 1-bis (11/10/2026)» e «La risposta su LDA-2»; decisioni 71, 75 e 76 del registro,
  * con il ritocco della 76.3 dell'11/10/2026).
  *
  * - LDA-2 (ritocco della 76.3): una quota a credito senza il dettaglio del calcolo (piani generati con la 1.7.x) ferma **la

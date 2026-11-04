@@ -1,3 +1,6 @@
+# Stack di sviluppo con FrankenPHP, da usare sul proprio computer: stesse regole di
+# docker-compose.yml — ambiente `local`, debug acceso, password di sviluppo — e quindi ogni porta è
+# pubblicata solo su `127.0.0.1`. Vedi docs/docker_local_dev.it.md.
 services:
   app:
     build:
@@ -5,7 +8,7 @@ services:
       dockerfile: docker/frankenphp/Dockerfile
     container_name: kondo_app_franken
     ports:
-      - "8889:80"
+      - "127.0.0.1:8889:80"
     volumes:
       - ./:/var/www
     environment:
@@ -21,7 +24,7 @@ services:
       MYSQL_DATABASE: kondomanager_dev
       MYSQL_ROOT_PASSWORD: root
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - dbdata:/var/lib/mysql
   worker:
@@ -32,7 +35,7 @@ services:
     volumes:
       - ./:/var/www
     ports:
-      - "9002:9001" # Mappato su 9002 per evitare conflitti con la stack Standard
+      - "127.0.0.1:9002:9001" # Mappato su 9002 per evitare conflitti con la stack Standard
     environment:
       - SERVER_NAME=:80
     entrypoint: ["/var/www/docker/frankenphp/worker-entrypoint.sh"]

@@ -17,6 +17,7 @@ return [
     'error_test_mail_password_required' => 'El servidor, el puerto o el cifrado son distintos de los guardados: para la prueba vuelve a escribir la contraseña SMTP. La contraseña guardada solo se usa con el servidor para el que se guardó.',
     'error_save_mail_password_required' => 'El servidor, el puerto o el cifrado han cambiado: vuelve a escribir la contraseña SMTP. La contraseña guardada solo vale para el servidor para el que se guardó.',
     'error_test_mail_too_many' => 'Demasiadas pruebas en poco tiempo: espera un minuto y vuelve a intentarlo.',
+    'error_test_mail_connection_refused' => 'La conexión al puerto :porta ha sido rechazada: o el servidor de correo no la acepta en ese puerto, o las conexiones salientes por ese puerto están bloqueadas por tu servidor o por su proveedor (algunos proveedores lo hacen con los puertos 25 y 465). Prueba el puerto 587 con el cifrado TLS.',
     'success_save_print_settings' => 'Print settings have been saved successfully.',
     'success_save_backup_settings' => 'La configuración de copias de seguridad se ha guardado correctamente',
     'error_save_backup_settings' => 'Se ha producido un error al guardar la configuración de copias de seguridad',
@@ -303,7 +304,7 @@ return [
         'test_success_message' => 'The test email was sent successfully to the recipient.',
         'test_error_title' => 'Connection error',
         'test_error_message' => 'Unable to send the email. Check the parameters and try again.',
-        'test_unsaved_warning' => 'You have unsaved changes. Save the configuration before sending the test.',
+        'test_unsaved_warning' => 'Tienes cambios sin guardar. La prueba usa los valores que ves en el formulario, pero no los guarda: para conservarlos, guarda la configuración.',
 
         'cron_guide_1_title' => 'El Motor Invisible',
         'cron_guide_1_desc' => 'El demonio ejecuta en segundo plano, sin intervención manual, el mantenimiento del sistema: elimina los eventos terminados hace más de un año y la caché caducada, comprueba si hay una nueva versión disponible y, donde está activada la opción para hostings compartidos, también procesa la cola de tareas.',

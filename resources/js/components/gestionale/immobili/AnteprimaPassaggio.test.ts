@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.48 — il pannello «Cosa cambierà» della successione, montato (rilievi R1, R2 e R5 della lente testi della Fase 1-bis di
- * `docs/piano_esecutivo_beta48.md`).
+ * `docs/verbali/1.11/piano_esecutivo_beta48.md`).
  *
  * Il verbale della Fase 1 diceva che il pannello «non ha test di componente: si guardano a video». La revisione ha trovato tre difetti
  * che vivono solo lì, e che un montaggio con jsdom e un JSON di anteprima coglie senza il browser:

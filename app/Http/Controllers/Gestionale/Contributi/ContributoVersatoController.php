@@ -62,6 +62,16 @@ class ContributoVersatoController extends Controller
             ->get()
             ->keyBy('target_id');
 
+        // Coda 438: per quale esercizio vale il già versato di ogni voce (decisione 183.1), a parole.
+        $eserciziDelVersato = ContributoVersato::query()
+            ->where('condominio_id', $condominio->id)
+            ->where('target_type', Conto::class)
+            ->select('target_id', 'esercizio_id')
+            ->distinct()
+            ->get()
+            ->groupBy('target_id');
+        $nomiEsercizi = \App\Models\Esercizio::where('condominio_id', $condominio->id)->pluck('nome', 'id');
+
         return Inertia::render('gestionale/contributi/ContributiList', [
             'condominio' => $condominio,
             // GestionaleHeader legge page.props.esercizio?.id per costruire i link
@@ -71,8 +81,9 @@ class ContributoVersatoController extends Controller
             // su questa pagina. Stesso pattern (HasEsercizio) già usato altrove
             // nel gestionale (es. FatturaPassivaController).
             'esercizio' => $this->getEsercizioCorrente($condominio),
-            'voci' => $voci->map(function (Conto $c) use ($coperture) {
+            'voci' => $voci->map(function (Conto $c) use ($coperture, $eserciziDelVersato, $nomiEsercizi) {
                 $cop = $coperture->get($c->id);
+                $esercizi = collect($eserciziDelVersato->get($c->id, []))->pluck('esercizio_id')->unique()->values();
 
                 return [
                     'id'              => $c->id,
@@ -82,6 +93,12 @@ class ContributoVersatoController extends Controller
                     'importo_cents'   => (int) $c->importo,
                     'coperto_cents'   => (int) ($cop->totale ?? 0),
                     'unita_coperte'   => (int) ($cop->unita ?? 0),
+                    'vale_per'        => match (true) {
+                        $esercizi->isEmpty() => null,
+                        $esercizi->count() > 1 => 'Più esercizi',
+                        $esercizi->first() === null => self::TUTTI_GLI_ESERCIZI,
+                        default => (string) ($nomiEsercizi[$esercizi->first()] ?? ''),
+                    },
                 ];
             })->values(),
         ]);
@@ -292,6 +309,26 @@ class ContributoVersatoController extends Controller
             return [$rigaPer($proprietari->count() === 1 ? (int) $proprietari->first()['id'] : null, null)];
         })->sortBy([['interno', 'asc'], ['anagrafica_id', 'asc']])->values();
 
+        // Coda 438 (decisione 183.1): per quale esercizio vale il già versato della voce, una scelta per voce come la natura, dell'amministratore. Gli
+        // esercizi sono quelli a cui la gestione della voce è agganciata; «tutti» vuol dire tutti i piani della voce (il fondo lavori su più anni). Senza
+        // righe non si propone niente: se il versamento è per la spesa di un anno o di più lo sa solo l'amministratore, anche su una gestione di un
+        // esercizio solo (un fondo lavori continua nell'anno dopo). Righe con esercizi diversi (scritte fuori da questa pagina): niente, e la pagina
+        // dice quali sono.
+        $esercizi = $this->eserciziDellaVoce($conto, $condominio);
+        $valoriDelleRighe = $giaVersato->flatten()->map(fn (ContributoVersato $cv) => $cv->esercizio_id)->unique()->values();
+        $valePer = match (true) {
+            $valoriDelleRighe->isEmpty(), $valoriDelleRighe->count() > 1 => null,
+            $valoriDelleRighe->first() === null => 'tutti',
+            default => (int) $valoriDelleRighe->first(),
+        };
+        $valePerDiversi = [];
+        if ($valoriDelleRighe->count() > 1) {
+            $valePerDiversi = \App\Models\Esercizio::whereIn('id', $valoriDelleRighe->filter()->all())->orderBy('data_inizio')->orderBy('id')->pluck('nome')->all();
+            if ($valoriDelleRighe->containsStrict(null)) {
+                $valePerDiversi[] = self::TUTTI_GLI_ESERCIZI;
+            }
+        }
+
         // La natura e la nota sono per-VOCE, non per-riga: tutte le righe di uno
         // stesso salvataggio le condividono (vedi update()). Una qualunque basta.
         $primaRiga           = $giaVersato->flatten()->first();
@@ -343,7 +380,29 @@ class ContributoVersatoController extends Controller
             'liquidita_stato'    => $liquiditaStato,
             'cassa_id'           => $cassaIdCorrente,
             'casse'              => $casse,
+            'esercizi'           => $esercizi->map(fn ($e) => ['id' => (int) $e->id, 'nome' => $e->nome, 'stato' => $e->stato])->values(),
+            'vale_per'           => $valePer,
+            'vale_per_diversi'   => $valePerDiversi,
         ]);
+    }
+
+    /** Come la pagina chiama «tutti i piani della voce, di ogni esercizio». */
+    private const TUTTI_GLI_ESERCIZI = 'Tutti gli esercizi';
+
+    /**
+     * Gli esercizi del condominio a cui la gestione della voce è agganciata, in ordine di data: le scelte di «Vale per» (Coda 438).
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\Esercizio>
+     */
+    private function eserciziDellaVoce(Conto $conto, Condominio $condominio): \Illuminate\Support\Collection
+    {
+        $gestione = $conto->pianoConto?->gestione;
+        if ($gestione === null) {
+            return collect();
+        }
+
+        return $gestione->esercizi()->where('esercizi.condominio_id', $condominio->id)
+            ->orderBy('esercizi.data_inizio')->orderBy('esercizi.id')->get(['esercizi.id', 'esercizi.nome', 'esercizi.stato', 'esercizi.data_inizio']);
     }
 
     /** Salva i contributi: una riga per unità, sostituendo quanto già presente. */
@@ -362,8 +421,17 @@ class ContributoVersatoController extends Controller
             ->whereNotNull('liquidita_stato')
             ->exists();
 
+        $eserciziDellaVoce = $this->eserciziDellaVoce($conto, $condominio)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
         $dati = $request->validate([
             'natura'                 => ['required', 'in:fondo_vincolato,avanzo'],
+            // Coda 438: per quale esercizio vale («tutti», o un esercizio della gestione della voce). La pagina lo manda sempre, e vuoto si rifiuta;
+            // chi non lo manda lascia l'esercizio che le righe hanno (vedi sotto).
+            'vale_per'               => ['sometimes', 'required', function (string $attribute, mixed $valore, \Closure $fail) use ($eserciziDellaVoce) {
+                if ($valore !== 'tutti' && ! (is_numeric($valore) && in_array((int) $valore, $eserciziDellaVoce, true))) {
+                    $fail('La gestione di questa voce non è nell\'esercizio scelto: scegli uno degli esercizi della gestione, oppure «Tutti gli esercizi».');
+                }
+            }],
             'righe'                  => ['required', 'array'],
             // Scopato al condominio della rotta: senza questo vincolo un
             // amministratore multi-condominio potrebbe (per errore o payload
@@ -395,7 +463,21 @@ class ContributoVersatoController extends Controller
                 Rule::exists('casse', 'id')->where('condominio_id', $condominio->id),
             ],
             'nota_acconto'           => ['nullable', 'string', 'max:1000'],
+        ], [
+            'vale_per.required' => 'Scegli per quale esercizio vale il già versato.',
         ]);
+
+        // L'esercizio delle righe che si scrivono. Senza la scelta nella richiesta (una chiamata che non viene dalla pagina) non cambia niente: quello che
+        // le righe hanno già; senza righe nessuno, cioè tutti i piani della voce, com'era prima della scelta; con righe di esercizi diversi non si indovina.
+        if (array_key_exists('vale_per', $dati)) {
+            $esercizioId = $dati['vale_per'] === 'tutti' ? null : (int) $dati['vale_per'];
+        } else {
+            $esistenti = ContributoVersato::where('target_type', Conto::class)->where('target_id', $conto->id)->pluck('esercizio_id')->unique()->values();
+            if ($esistenti->count() > 1) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['vale_per' => 'Le righe di questa voce valgono per esercizi diversi: scegli per quale esercizio vale il già versato.']);
+            }
+            $esercizioId = $esistenti->first() === null ? null : (int) $esistenti->first();
+        }
 
         // La persona di ogni riga è un titolare in corso dell'unità, e la coppia (unità, persona) è una sola.
         $oggi = DateHelper::oggiUtenteImmutable();
@@ -475,7 +557,7 @@ class ContributoVersatoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($dati, $condominio, $conto, $liquiditaGiaDichiarata) {
+        DB::transaction(function () use ($dati, $condominio, $conto, $liquiditaGiaDichiarata, $esercizioId) {
             // Sostituzione integrale: l'insieme inviato è la nuova verità per questa voce.
             ContributoVersato::where('target_type', Conto::class)
                 ->where('target_id', $conto->id)
@@ -500,6 +582,7 @@ class ContributoVersatoController extends Controller
                     'target_id'       => $conto->id,
                     'immobile_id'     => $riga['immobile_id'],
                     'anagrafica_id'   => $riga['anagrafica_id'] ?? null,
+                    'esercizio_id'    => $esercizioId,
                     'importo_cents'   => (int) $riga['gia_versato'],
                     'natura'          => $dati['natura'],
                     'origine'         => 'migrazione',

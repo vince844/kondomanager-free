@@ -11,7 +11,7 @@
  * (`(string)` su un array, la stessa classe di errore del «pippo» già corretto); nella successione la data si chiamava ancora «la data
  * dell'atto»; sul box le righe degli eredi non dicevano «non scritto»; la successione registrata fra la .44 e la .47 con la casella
  * diceva ancora «€ 5,48», la somma di coppie di segno diverso; i messaggi dei saldi dicevano «una delle due» righe dove le righe sono
- * sei. Il verbale (`docs/piano_esecutivo_beta48.md`, «Fase 1-bis») ha deciso che si correggono tutti, con i test prima: questi.
+ * sei. Il verbale (`docs/verbali/1.11/piano_esecutivo_beta48.md`, «Fase 1-bis») ha deciso che si correggono tutti, con i test prima: questi.
  *
  * Il caso di riferimento è quello di Fresco e della .44. € 1.200,00 l'anno in dodici rate da € 100,00, rate 1–4 a giornale e non
  * pagate, otto bozze; Ugo muore il 1° maggio; eredi Anna 33,34 %, Bruno 33,33 % e Carla 33,33 %, Anna erede di riferimento, arretrato a

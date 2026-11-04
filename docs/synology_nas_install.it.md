@@ -1,159 +1,229 @@
 # 💾 Installazione su Synology NAS (Container Manager)
 
 <!-- verifica-documentazione -->
-> **Stato:** Descrive il codice — verificato e corretto il 31/07/2026 su 1.10.0-beta.32
-> Corretti i due punti sbagliati trovati nell'audit: il Passo 1 puntava a un branch e a uno ZIP `v1.9.1-beta` inesistenti (ora `v1.9.1`), e la correzione automatica di APP_URL è dichiarata per quello che è — avviene solo se il valore attuale è vuoto, `http://localhost` o contiene `kondomanager-free.test`.
+> **Stato:** Descrive il codice — **riscritta il 04/11/2026 su 1.12.0-beta.1, e non ancora provata su un NAS Synology.** Descrive l'immagine `ghcr.io/vince844/kondomanager-core` della 1.11.0, la stessa della [guida Docker (produzione)](https://kondomanager.com/docs/installation-docker-produzione.html) del sito, che è stata provata su Docker Desktop (macOS, in emulazione) e non su un NAS. I passi dell'interfaccia di DSM sono scritti da come Synology documenta Container Manager (DSM 7.2) e non sono stati verificati su un apparecchio vero. La versione precedente di questa guida faceva costruire il codice dai sorgenti con la stack di sviluppo (debug acceso, password di prova, porte aperte sulla rete): è stata sostituita.
 <!-- /verifica-documentazione -->
 
-KondoManager può essere facilmente ospitato sul tuo NAS Synology sfruttando **Container Manager** (precedentemente noto come Docker). 
-Questa guida utilizza lo stack **Standard** (Nginx + PHP-FPM + Supervisor per i processi in background), che è la soluzione più affidabile.
+> ⚠️ **Questa guida non è ancora stata provata su un NAS Synology.** I file e i comandi vengono dall'immagine di produzione, provata altrove; i passi dell'interfaccia di DSM no. La prima volta falla in una cartella nuova, senza toccare le cartelle condivise che hai già: la sezione «Per togliere la prova», in fondo, dice come levare tutto.
 
-## Prerequisiti
-1. Un NAS Synology compatibile con **Container Manager** (solitamente i modelli "Plus" come DS220+, DS923+, ecc.).
-2. **Container Manager** installato tramite il "Centro pacchetti" (Package Center).
-3. Accesso alle cartelle condivise (assicurati di avere la cartella `docker` creata nel tuo NAS).
+KondoManager gira su un NAS Synology come immagine Docker già pronta (`ghcr.io/vince844/kondomanager-core`): non si scarica il codice e non si compila niente. In **Container Manager** si crea un progetto da due file, un `docker-compose.yml` e un `.env`, e il contenitore fa il resto: al primo avvio si installa da solo, a ogni avvio allinea il database.
 
----
+## Che cosa serve
 
-## Passo 1 — Ottenere i file del progetto
+1. Un NAS Synology con **DSM 7.2 o successivo** e **Container Manager**, che si installa dal Centro pacchetti. Prima della 7.2 il pacchetto si chiama «Docker»: questa guida non è scritta per quello.
+2. Un modello con processore **x86-64** (Intel o AMD). L'immagine è costruita solo per `linux/amd64` (verificato sul registro il 04/11/2026): sui modelli con processore ARM Docker può emularla, ma non l'abbiamo provato e non lo consigliamo. Il processore del tuo modello è nelle specifiche, sul sito di Synology.
+3. Memoria libera per MySQL e PHP insieme. Non l'abbiamo misurata, quindi non c'è un numero: prima di cominciare controlla quanta ne resta libera sul NAS.
+4. Un computer, per preparare due file di testo e per creare la chiave e le password con `openssl` (macOS e Linux; su Windows il terminale di Git o WSL).
+5. Solo se vuoi aprire KondoManager da fuori casa, in https: un nome di dominio, e il reverse proxy di DSM (ultima sezione).
 
-Hai due opzioni: usare l'interfaccia web (File Station) o usare SSH.
+## Prima di cominciare: dove vanno i file, e che cosa non viene toccato
 
-### Opzione A: Tramite File Station (Più semplice, niente riga di comando)
-1. Scarica il file ZIP di KondoManager da GitHub: [Scarica v1.9.1](https://github.com/vince844/kondomanager-free/archive/refs/heads/v1.9.1.zip).
-2. Apri **File Station** nel tuo Synology.
-3. Naviga nella cartella condivisa `docker`.
-4. Crea una nuova sottocartella chiamata `kondomanager-free`.
-5. Carica il file ZIP all'interno di questa cartella ed estrailo (tasto destro -> Estrai qui).
-6. Assicurati che tutti i file (incluso `docker-compose.yml`) siano direttamente dentro `docker/kondomanager-free/` (e non in un'ulteriore sottocartella nidificata).
-
-### Opzione B: Tramite SSH (Per utenti avanzati)
-1. Abilita SSH dal Pannello di controllo Synology (Terminale e SNMP).
-2. Accedi al NAS tramite terminale (`ssh tuoutente@ip-del-nas`).
-3. Esegui:
-   ```bash
-   cd /volume1/docker
-   git clone -b v1.9.1 https://github.com/vince844/kondomanager-free.git
-   ```
+- I due file stanno in **una cartella nuova, tutta per KondoManager**: la sottocartella `kondomanager` della cartella condivisa `docker`, quella che Container Manager usa per i suoi progetti (di solito la crea lui quando lo installi; se non c'è, crea una nuova cartella condivisa solo per questo). Non usare una cartella che contiene i tuoi documenti. Il file `.env` contiene le password: controlla che la cartella `docker` non sia condivisa con altri utenti.
+- **Prima di creare la cartella, controlla che il nome sia libero.** In File Station non deve esserci già una cartella `docker/kondomanager`, e in Container Manager, scheda **Progetto**, non deve esserci già un progetto `kondomanager`: la versione precedente di questa guida lo creava con questo nome, nella cartella `docker/kondomanager-free`. Docker riconosce un progetto dal suo nome, e due progetti con lo stesso nome li tratta come uno solo: i comandi di questa guida agirebbero anche sui contenitori dell'altro. Se il nome è già preso, usa `kondomanager-prova` per la cartella e per il progetto, e leggilo al posto di `kondomanager` nei percorsi, nel nome del progetto e nei nomi dei volumi di tutta la guida.
+- **Nessuna cartella condivisa che hai già viene collegata al contenitore.** Il database e i documenti caricati stanno in due *volumi* che Docker crea per conto suo, di solito sotto `@docker` (l'area di Docker sul volume del NAS), e non in una cartella condivisa visibile da File Station.
+- **Non serve nessun `chmod` e nessun permesso da cambiare**: il contenitore prepara da solo le sue cartelle. Se altrove leggi di dare i permessi `777` a una cartella condivisa, per questa guida non è necessario: non farlo.
+- A prova finita si toglie tutto, senza lasciare niente: vedi «Per togliere la prova».
 
 ---
 
-## Passo 2 — Permessi di esecuzione (Fondamentale!)
+## Passo 1 — I due file
 
-Per permettere a Docker di avviare KondoManager, i file di avvio devono avere i permessi di esecuzione. Questo è il passaggio in cui molti utenti si bloccano con l'errore `permission denied`.
+Su un computer crea una cartella `kondomanager` e dentro due file.
 
-Se sei collegato in **SSH**, esegui semplicemente:
-```bash
-cd /volume1/docker/kondomanager-free
-chmod +x docker/standard/entrypoint.sh
-chmod +x docker/standard/worker-entrypoint.sh
+### `docker-compose.yml`
+
+È lo stesso file della guida Docker (produzione) del sito:
+
+```yaml
+services:
+  app:
+    image: ghcr.io/vince844/kondomanager-core:${KONDOMANAGER_VERSIONE}
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      DB_HOST: db
+      DB_DATABASE: kondomanager
+      DB_USERNAME: kondomanager
+      DB_PASSWORD: ${DB_PASSWORD}
+      INSTALL_ADMIN_NAME: ${INSTALL_ADMIN_NAME}
+      INSTALL_ADMIN_EMAIL: ${INSTALL_ADMIN_EMAIL}
+      INSTALL_ADMIN_PASSWORD: ${INSTALL_ADMIN_PASSWORD}
+    volumes:
+      - storage:/var/www/storage
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: kondomanager
+      MYSQL_USER: kondomanager
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - database:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  storage:
+  database:
 ```
 
-**Se non vuoi usare SSH**, puoi usare l'Utilità di pianificazione (Task Scheduler) del Synology:
-1. Vai su **Pannello di controllo** -> **Utilità di pianificazione**.
-2. Crea -> **Attività pianificata** -> **Script definito dall'utente**.
-3. Generale: Nome "Permessi KondoManager", Utente: `root`.
-4. Impostazioni script: Inserisci questo codice:
-   ```bash
-   chmod +x /volume1/docker/kondomanager-free/docker/standard/entrypoint.sh
-   chmod +x /volume1/docker/kondomanager-free/docker/standard/worker-entrypoint.sh
-   ```
-5. Clicca OK.
-6. Seleziona l'attività appena creata e clicca **Esegui**. Una volta eseguita, puoi eliminarla.
+- `app` è KondoManager: risponde sulla porta 8080 del NAS. Se la 8080 è già usata da un altro servizio, cambia il numero a sinistra (per esempio `"8090:80"`) e usalo anche negli indirizzi di questa guida. Quando avrai l'https con il reverse proxy di DSM, scrivi `"127.0.0.1:8080:80"`: così la porta risponde solo dal NAS stesso e non dalla rete.
+- `platform: linux/amd64` dice a Docker che l'immagine esiste solo per x86-64.
+- `db` è il database, MySQL 8.4 (la versione provata). **Non ha `ports:`**: non si raggiunge dalla rete, solo da KondoManager.
+- `storage` e `database` sono i due volumi: lì stanno i documenti, i backup e i dati, e sopravvivono quando i contenitori vengono ricreati.
+- **Non c'è nessuna riga `volumes:` che punti a una cartella del NAS**: è voluto.
 
----
+### `.env`
 
-## Passo 3 — Creare il Progetto in Container Manager
-
-1. Apri **Container Manager** sul tuo Synology.
-2. Vai nella scheda **Progetto** (Project) sulla sinistra.
-3. Clicca su **Crea**.
-4. Compila i campi:
-   * **Nome progetto:** `kondomanager`
-   * **Percorso:** Seleziona la cartella `docker/kondomanager-free`
-   * **Sorgente:** Seleziona "Usa docker-compose.yml esistente"
-5. Clicca su **Avanti**.
-6. (Opzionale) Nella schermata successiva, se desideri modificare le porte per evitare conflitti con altri servizi sul tuo NAS, puoi modificare il file YAML direttamente dall'interfaccia. Di default KondoManager userà la porta `8889`.
-7. Clicca **Avanti** e poi **Fatto** (assicurati che la spunta "Avvia progetto una volta creato" sia selezionata).
-
-Container Manager inizierà a scaricare le immagini e a costruire il progetto. **L'operazione richiederà circa 3-5 minuti**.
-
----
-
-## Passo 4 — Controllare lo stato e i processi in background
-
-Nel Container Manager, clicca sul progetto `kondomanager` appena creato per visualizzare i 4 container che lo compongono:
-- `kondo_app` (Il cuore di Laravel)
-- `kondo_nginx` (Il server web)
-- `kondo_db` (Il database MySQL)
-- `kondo_worker` (Supervisor che gestisce i processi in background)
-
-### Come accedere:
-1. Apri il browser e vai a `http://IP-DEL-TUO-NAS:8889`
-2. Effettua il login con le credenziali di default:
-   - Email: `admin@km.com`
-   - Password: `password`
-
-### Interfaccia Worker (Supervisor):
-Per assicurarti che i processi in background stiano funzionando correttamente (invio email in background, fatturazione automatica, ecc.):
-1. Vai a `http://IP-DEL-TUO-NAS:9001`
-2. Inserisci utente `admin` e password `password`.
-3. Vedrai il processo `laravel-worker` in esecuzione (RUNNING).
-
----
-
-## Troubleshooting su Synology
-
-### Il container `kondo_app` si ferma in continuazione
-Controlla i log dal Container Manager. Se vedi un errore relativo a `permission denied` su `entrypoint.sh`, significa che il Passo 2 non è andato a buon fine. Ripeti l'operazione con il Task Scheduler assicurandoti di usare l'utente `root`.
-
-### Errore di connessione / CORS nel browser (Reindirizza a localhost o test)
-Se avevi usato questa cartella in precedenza in altri ambienti, il file `.env` potrebbe contenere configurazioni errate. Il nostro script corregge questo problema impostando `APP_URL=http://localhost:8889`, ma **solo se** il valore attuale è vuoto, è esattamente `http://localhost` o contiene `kondomanager-free.test`: qualsiasi altro valore viene preservato, ed è voluto — è ciò che permette di usare un dominio reale dietro reverse proxy. Se il tuo `.env` ne conteneva già uno diverso, correggilo a mano come indicato qui sotto. 
-Tuttavia, siccome sei su un NAS, potresti voler impostare l'IP reale del tuo NAS.
-1. Da File Station, apri la cartella `kondomanager-free`
-2. Modifica il file `.env` con l'editor di testo del NAS
-3. Cambia `APP_URL=http://localhost:8889` in `APP_URL=http://192.168.x.x:8889` (usa l'IP del tuo NAS).
-4. Riavvia il progetto da Container Manager.
-
-### Errore di permessi di scrittura
-Se ricevi errori del tipo `The stream or file "/var/www/storage/logs/laravel.log" could not be opened`, il container non ha i permessi di scrittura sulla cartella condivisa.
-Dal terminale o tramite Task Scheduler esegui:
-```bash
-chmod -R 777 /volume1/docker/kondomanager-free/storage
-chmod -R 777 /volume1/docker/kondomanager-free/bootstrap/cache
+```
+KONDOMANAGER_VERSIONE=1.11.0
+APP_KEY=
+APP_URL=http://192.168.1.50:8080
+DB_PASSWORD=
+DB_ROOT_PASSWORD=
+INSTALL_ADMIN_NAME=Mario Rossi
+INSTALL_ADMIN_EMAIL=mario@esempio.it
+INSTALL_ADMIN_PASSWORD=
 ```
 
----
+Le righe vuote sono la chiave e le password: **le scrivi tu**, e nessuna sta in questa pagina. Finché restano vuote il contenitore non si installa. `APP_URL` è l'indirizzo con cui apri KondoManager: per la prima prova, `http://` più l'indirizzo IP del tuo NAS e `:8080` (qui un esempio). Il nome e l'email dell'amministratore, scrivi i tuoi.
 
-## Esporre KondoManager su Internet (Synology Reverse Proxy)
+Il nome del file è esattamente `.env`, con il punto davanti e nessuna altra estensione (alcuni editor di Windows aggiungono `.txt`).
 
-Se desideri accedere a KondoManager dall'esterno (es. `https://gestionale.miodominio.com`) usando certificati SSL validi, il metodo migliore è utilizzare il Reverse Proxy integrato in DSM.
+## Passo 2 — La chiave e le password
 
-1. Vai nel **Pannello di controllo** -> **Portale di accesso** -> **Avanzate** -> **Proxy inverso** (Reverse Proxy).
-2. Clicca su **Crea**.
-3. Configura le regole:
-   - **Origine:**
-     - Protocollo: `HTTPS`
-     - Nome host: `gestionale.miodominio.com` (o il dominio che hai scelto)
-     - Porta: `443`
-   - **Destinazione:**
-     - Protocollo: `HTTP`
-     - Nome host: `localhost`
-     - Porta: `8889` (o quella configurata in Container Manager)
-4. (Opzionale) Nella scheda **Intestazioni personalizzate** (Custom Headers), clicca su *Crea* -> *WebSocket* per permettere al proxy di far passare correttamente le connessioni real-time di Laravel.
-5. Clicca su **Salva**.
+Sul computer, nel terminale:
 
-**ATTENZIONE: Aggiornare il file `.env`**
-Dopo aver configurato il proxy inverso, devi dire a KondoManager di generare i link (CSS, JS, immagini) utilizzando il tuo nuovo dominio sicuro, altrimenti il frontend tenterà di caricare i file su `http://localhost` bloccando tutto.
+```bash
+echo "base64:$(openssl rand -base64 32)"
+openssl rand -hex 16
+```
 
-1. Usa File Station o l'editor di testo di Synology per aprire il file `docker/kondomanager-free/.env`.
-2. Trova la riga `APP_URL=`
-3. Modificala inserendo il tuo dominio ESATTO (incluso https):
-   ```env
-   APP_URL=https://gestionale.miodominio.com
+- Il primo comando stampa una riga che comincia con `base64:`: incollala intera in `APP_KEY`.
+- Il secondo stampa una password di 32 caratteri: lancialo due volte, una per `DB_PASSWORD` e una per `DB_ROOT_PASSWORD`. Va bene anche per `INSTALL_ADMIN_PASSWORD`; se ne scegli una tu, che sia di almeno 10 caratteri e senza il carattere `$` (Docker Compose lo legge come l'inizio di una variabile).
+
+**Conserva la chiave e il file `.env`.** Senza `APP_KEY` il contenitore non parte e lo dice nel registro; con una chiave diversa da quella del primo avvio i dati cifrati non si leggono più. Tieni una copia del file `.env` fuori dal NAS.
+
+Se hai l'accesso SSH al NAS e non hai `openssl` sul computer, la chiave si crea anche con l'immagine stessa: `sudo docker run --rm --entrypoint php ghcr.io/vince844/kondomanager-core:1.11.0 artisan key:generate --show`.
+
+## Passo 3 — Mettere i file sul NAS e creare il progetto
+
+I nomi dei pulsanti sono quelli di Container Manager su DSM 7.2 come li documenta Synology: **non sono stati verificati su un NAS**.
+
+1. Apri **File Station**, vai nella cartella condivisa `docker`, crea la cartella `kondomanager` e caricaci dentro i due file, `docker-compose.yml` e `.env`. Se File Station non mostra il `.env`, è un file nascosto (comincia con il punto): attiva la visualizzazione dei file nascosti nelle impostazioni di File Station.
+2. Apri **Container Manager** e vai nella scheda **Progetto**, poi **Crea**.
+3. Compila i campi:
+   * **Nome progetto:** `kondomanager`, lo stesso nome della cartella: i comandi da SSH di questa guida trovano il progetto dal nome della cartella del suo `docker-compose.yml`
+   * **Percorso:** la cartella `docker/kondomanager`
+   * **Sorgente:** «Usa docker-compose.yml esistente»
+4. **Avanti.** Se Container Manager propone di impostare un portale web (Web Station), non attivarlo: il reverse proxy di DSM è l'ultima sezione di questa guida.
+5. **Avanti** e poi **Fatto**, con la spunta «Avvia il progetto una volta creato» selezionata.
+
+Container Manager scarica le due immagini (`kondomanager-core` e `mysql:8.4`) e avvia i due contenitori. Quanto ci mette sul tuo NAS non lo sappiamo: non l'abbiamo misurato.
+
+Se preferisci il terminale e hai l'accesso SSH, basta `sudo docker compose -f /volume1/docker/kondomanager/docker-compose.yml up -d`. La cartella condivisa `docker` sta di solito su `/volume1`; se l'hai creata su un altro volume del NAS, il percorso comincia con quello (`/volume2/…`). I comandi da SSH di questa guida portano il percorso del file per intero: così agiscono su questo progetto da qualunque cartella li lanci.
+
+## Passo 4 — Controllare che sia partito
+
+1. In Container Manager, nel progetto `kondomanager`, apri il registro del contenitore `app`. A ogni avvio il contenitore controlla la chiave, prepara le cartelle, aspetta il database, e al primo avvio installa KondoManager con l'amministratore del tuo `.env`: nel registro trovi, fra le altre righe, «KondoManager installato. Accedi con mario@esempio.it.» (con la tua email).
+2. Dal browser di un computer della tua rete apri `http://IP-DEL-NAS:8080/up`: risponde con `"stato":"ok"`, `"documenti":"su_volume"` e la versione. Il dettaglio compare perché chiami direttamente, da una rete privata e senza proxy; attraverso un proxy risponde solo con `"stato"`.
+3. Apri `http://IP-DEL-NAS:8080` ed entra con l'email e la password che hai scritto in `INSTALL_ADMIN_EMAIL` e `INSTALL_ADMIN_PASSWORD`. Il contenitore le legge solo su un database vuoto, al primo avvio: dopo il primo accesso puoi togliere la password dal `.env` e la cambi dall'applicazione.
+4. **Non c'è nessuna interfaccia di Supervisor da aprire.** L'immagine di produzione tiene nello stesso contenitore il server web, PHP, il lavoratore delle code e lo scheduler, e non apre nessuna porta per controllarli: lo stato lo dà il registro.
+
+## Se qualcosa non va
+
+**Il contenitore si riavvia di continuo, e il registro dice «APP_KEY manca».**
+La chiave non è arrivata al contenitore: scrivila come nel Passo 2 nel file `.env`, nella stessa cartella del `docker-compose.yml`.
+
+**Compare «invalid reference format» e il progetto non parte.**
+Il `.env` non è stato letto e il numero della versione dell'immagine (`KONDOMANAGER_VERSIONE`) è rimasto vuoto: l'immagine si chiamerebbe `ghcr.io/vince844/kondomanager-core:`, senza versione. Controlla che il file si chiami `.env` e stia accanto al `docker-compose.yml`.
+
+**Il registro del progetto dice «The "APP_KEY" variable is not set» (o lo stesso per un'altra variabile).**
+Il `.env` non è stato letto. Questi avvisi li scrive Docker Compose nel registro del *progetto*, non in quello del contenitore `app`. Controlla che si chiami `.env` e che stia accanto al `docker-compose.yml`. Se Container Manager non lo legge lo stesso, scrivi i valori direttamente nel `docker-compose.yml` al posto dei `${...}`.
+
+**«Mancano i dati dell'amministratore: nessuna scrittura».**
+Il database è vuoto e i dati dell'amministratore mancano o non vanno bene: serve un'email valida in `INSTALL_ADMIN_EMAIL`, una password di almeno 10 caratteri in `INSTALL_ADMIN_PASSWORD` e, se lo scrivi, un nome di almeno 2. Le righe prima dicono quale. Il contenitore non ha scritto niente: correggi il `.env` e ricrea il progetto.
+
+**«Il database non risponde: nessuna scrittura».**
+Il database non ha risposto entro 120 secondi. Controlla il registro del contenitore `db`.
+
+**`/up` risponde 503 e il registro dice «storage/app NON è su un volume separato».**
+Manca il volume `storage` nel `docker-compose.yml`: rimettilo com'è nel Passo 1. Senza, documenti e backup sparirebbero alla prima ricreazione del contenitore.
+
+**La porta 8080 è già in uso.**
+Cambia il numero a sinistra nella riga `ports:` (per esempio `"8090:80"`) e ricrea il progetto.
+
+**L'avviso «The requested image's platform (linux/amd64) does not match the detected host platform».**
+Il tuo NAS ha un processore ARM: l'immagine è solo per x86-64. Vedi «Che cosa serve».
+
+## Esporre KondoManager su Internet (reverse proxy di DSM)
+
+Per aprire KondoManager da fuori casa, per esempio `https://gestionale.miodominio.com`, con un certificato valido, il metodo migliore è il reverse proxy integrato in DSM. Il certificato lo gestisce DSM.
+
+1. Vai in **Pannello di controllo** → **Portale di accesso** → **Avanzate** → **Proxy inverso**, poi **Crea**.
+2. Configura la regola:
+   - **Origine:** protocollo `HTTPS`, nome host `gestionale.miodominio.com` (o il dominio che hai scelto), porta `443`.
+   - **Destinazione:** protocollo `HTTP`, nome host `127.0.0.1` (non `localhost`: con `"127.0.0.1:8080:80"` la porta risponde solo su quell'indirizzo), porta `8080` (o quella che hai scelto nel compose).
+3. Salva.
+4. Nel file `.env` scrivi in `APP_URL` il tuo dominio **esatto**, https compreso (`APP_URL=https://gestionale.miodominio.com`): è l'indirizzo che KondoManager mette nei link e da cui carica le pagine. Poi ricrea il progetto, perché un semplice riavvio non rilegge il `.env`: con SSH, `sudo docker compose -f /volume1/docker/kondomanager/docker-compose.yml up -d`; in Container Manager è l'azione del progetto che ricostruisce i contenitori (il nome del pulsante non è verificato).
+5. **`TRUSTED_PROXIES`: non scrivere niente.** Nell'immagine vale già `PRIVATE_SUBNETS`, che si fida di un proxy collegato da una rete privata, comprese le reti di Docker: il proxy di DSM si collega dal NAS stesso. **Non usare mai `*`**: con `*` chi arriva da fuori sceglie il proprio indirizzo, e il blocco dei tentativi di accesso non lavora più. Gli altri casi sono nella pagina [Proxy e HTTPS](https://kondomanager.com/docs/configurazione-proxy-https.html) del sito.
+6. Quando l'https funziona, nel `docker-compose.yml` scrivi `"127.0.0.1:8080:80"`, così la porta in http non risponde più dalla rete di casa, e ricrea il progetto.
+
+## Aggiornare
+
+Nel contenitore l'aggiornamento dal pannello è spento: aggiornare vuol dire usare l'immagine di una versione nuova.
+
+1. Dal programma: **Impostazioni → Gestione backups**, «Crea backup», e scaricalo.
+2. Nel file `.env` scrivi la versione nuova in `KONDOMANAGER_VERSIONE`.
+3. Scarica l'immagine nuova e ricrea il contenitore di KondoManager. Con SSH:
+   ```bash
+   sudo docker compose -f /volume1/docker/kondomanager/docker-compose.yml pull app
+   sudo docker compose -f /volume1/docker/kondomanager/docker-compose.yml up -d
    ```
-4. Se vuoi che i log di sicurezza registrino l'indirizzo IP reale degli utenti (invece dell'IP interno del NAS), cerca nel file `.env` la voce sui proxy e impostala così:
-   ```env
-   TRUSTED_PROXIES=*
-   ```
-5. Riavvia il progetto da Container Manager per applicare le modifiche. Il nostro script di avvio intelligente riconoscerà che hai impostato un dominio personalizzato e non lo sovrascriverà.
+   `pull app` scarica solo l'immagine di KondoManager: il database resta quello che è (un `pull` senza nome scaricherebbe anche un MySQL nuovo). Quale pulsante di Container Manager faccia la stessa cosa non è verificato.
+
+All'avvio il contenitore applica le migrazioni e allinea permessi, Comuni, ATECO e versione, prima di servire una sola pagina.
+
+## Il backup e i volumi
+
+- Il backup del programma (**Impostazioni → Gestione backups**) contiene il database e i documenti e sta in `storage/app/backups`, cioè nel volume `storage`: si scarica dall'interfaccia. Come funziona è nella guida [Backup e ripristino](https://kondomanager.com/docs/backup.html) del sito. Il ripristino dentro il contenitore non l'abbiamo ancora provato.
+- Il file `.env` non è nell'archivio: nel contenitore la configurazione sta fuori, accanto al compose. Tieni una copia del `.env`, con la sua `APP_KEY`, insieme agli archivi.
+- Un archivio che resta sul NAS non ti protegge se perdi il NAS: scaricalo e conservalo altrove.
+- I volumi `storage` e `database` non stanno in una cartella condivisa. Non abbiamo verificato se i programmi di copia del NAS (per esempio Hyper Backup) li includono: non contarci, e scarica gli archivi del programma.
+
+## Se hai già installato con la versione precedente di questa guida
+
+La versione precedente faceva costruire il codice dai sorgenti, in una cartella `kondomanager-free`, con la stack di sviluppo. Quella stack lascia **sulla rete del NAS** la porta del database e quella dell'interfaccia dei processi in background, con le credenziali di prova che la guida stessa pubblicava, un amministratore con la password scritta nella guida e il debug acceso. Chiunque sia sulla tua rete può provarle.
+
+Finché non passi a questa guida, almeno questi tre passi, che **non abbiamo provato su un NAS**:
+
+1. Dal programma, cambia la password dell'amministratore che la vecchia guida faceva creare.
+2. Nel `docker-compose.yml` di quella cartella togli il blocco `ports:` dei servizi `db` e `worker`, cioè la riga `ports:` e quella sotto (il programma resta raggiungibile dalla porta del servizio `nginx`), e ricrea il progetto.
+3. Nel `.env` della stessa cartella scrivi `APP_DEBUG=false` e ricrea il progetto.
+
+Poi, appena puoi, fai un backup dal programma, scaricalo e passa a questa guida. Il passaggio dei dati nel contenitore nuovo non è provato. Il progetto della versione precedente si chiama anch'esso `kondomanager`: per questa guida usa l'altro nome, `kondomanager-prova`, come dice «Prima di cominciare».
+
+## Per togliere la prova
+
+Tutto ciò che questa guida crea sta in una cartella e in due volumi, e si toglie senza toccare altro. Non cancella nessuna cartella condivisa che avevi.
+
+1. **Il progetto e i dati della prova.** Con SSH, prima `sudo docker compose ls -a`: accanto al progetto `kondomanager` deve comparire il file `/volume1/docker/kondomanager/docker-compose.yml`. Poi `sudo docker compose -f /volume1/docker/kondomanager/docker-compose.yml down -v` ferma e rimuove i contenitori e **cancella i due volumi**, cioè il database e i documenti della prova; i volumi degli altri progetti no, perché il percorso del file dice a Docker di quale progetto si parla. Un `down -v` senza `-f`, lanciato dalla cartella di un altro progetto, cancellerebbe i volumi di quello. Senza SSH: in Container Manager, scheda **Progetto**, `kondomanager`, **Arresta** e poi **Elimina**; i due volumi (`kondomanager_database` e `kondomanager_storage`) però restano finché non li cancelli, e occupano spazio sul volume del NAS ma non toccano nessuna cartella condivisa.
+2. **Le immagini.** In Container Manager, **Immagine**: elimina `ghcr.io/vince844/kondomanager-core` e `mysql:8.4`, quest'ultima solo se nessun altro progetto la usa.
+3. **I file.** In File Station elimina la cartella `docker/kondomanager`: contiene soltanto i due file di questa guida.
+4. **Il proxy, se l'hai creato.** **Pannello di controllo** → **Portale di accesso** → **Avanzate** → **Proxy inverso**: elimina la regola di KondoManager.
+
+## Che cosa questa guida non copre
+
+Non l'abbiamo provato, quindi non lo promettiamo: i passi di Container Manager su un NAS vero, DSM prima della 7.2, i modelli con processore ARM, quanta memoria serve e quanto tempo richiede il primo avvio, l'indirizzo che KondoManager vede dietro il proxy di DSM, il ripristino di un backup nel contenitore, e il trasloco di un'installazione che hai già (documenti compresi): in quel caso, prima un backup.

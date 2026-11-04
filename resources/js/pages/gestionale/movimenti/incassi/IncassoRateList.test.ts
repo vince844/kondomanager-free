@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.50 — la conferma del riallineamento dei crediti dice la data vera (correzione rimasta dalla .49, verbale
- * `docs/piano_esecutivo_beta49.md`, «Chiusura», «Da fare nella .50, dalla Fase 5»).
+ * `docs/verbali/1.11/piano_esecutivo_beta49.md`, «Chiusura», «Da fare nella .50, dalla Fase 5»).
  *
  * La finestra «Riallinea i crediti» della card «Crediti da riallineare» diceva che le scritture si scrivono «nella data e
  * nell'esercizio della scrittura che correggono». Non è vero per la data: `RiallineaCreditiService` scrive la **data di

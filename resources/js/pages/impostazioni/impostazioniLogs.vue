@@ -1,25 +1,22 @@
 <script setup lang="ts">
 
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { debounce } from 'lodash'; 
-import { Mail, Activity, Search, Server, CheckCircle2, FileText, AlertCircle, LayoutList } from 'lucide-vue-next';
+import { Mail, Search, CheckCircle2, FileText, AlertCircle } from 'lucide-vue-next';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 
 // Props
 const props = defineProps<{
     mailLogs: any;
-    activityLogs: any;
     filters: { search: string };
 }>();
 
-// Stato Tab e Ricerca
-const activeTab = ref('mail');
+// Ricerca
 const search = ref(props.filters.search || '');
 
 // Gestione Ricerca
@@ -43,11 +40,6 @@ const formatDate = (dateString: string) => {
         hour: '2-digit', minute: '2-digit'
     });
 };
-
-const getInitials = (name: string) => {
-    if (!name) return 'SY';
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-};
 </script>
 
 <template>
@@ -62,7 +54,7 @@ const getInitials = (name: string) => {
                         Audit & Logs
                     </h1>
                     <p class="text-muted-foreground text-sm mt-1">
-                        Centro di monitoraggio unificato per email e attività di sistema.
+                        Il registro delle email inviate dal programma, con il motivo di quelle non partite.
                     </p>
                 </div>
                 
@@ -78,11 +70,10 @@ const getInitials = (name: string) => {
 
             <nav class="inline-flex items-center space-x-2 shadow ring-1 ring-black/5 md:rounded-lg p-2 mb-4 bg-white dark:bg-card w-full sm:w-auto overflow-x-auto">
                 
+                <!-- Una sola scheda finché «Attività Sistema» non ha dati (Coda 465): è quella aperta. -->
                 <Button
                     variant="ghost"
-                    class="justify-start gap-2"
-                    :class="{ 'bg-muted': activeTab === 'mail' }"
-                    @click="activeTab = 'mail'"
+                    class="justify-start gap-2 bg-muted"
                 >
                     <Mail class="h-4 w-4" />
                     Email Logs
@@ -91,24 +82,11 @@ const getInitials = (name: string) => {
                     </Badge>
                 </Button>
 
-                <Button
-                    variant="ghost"
-                    class="justify-start gap-2"
-                    :class="{ 'bg-muted': activeTab === 'activity' }"
-                    @click="activeTab = 'activity'"
-                >
-                    <Activity class="h-4 w-4" />
-                    Attività Sistema
-                    <Badge variant="secondary" class="ml-1 h-5 px-1.5 text-[10px] pointer-events-none">
-                        {{ props.activityLogs.total }}
-                    </Badge>
-                </Button>
-
             </nav>
 
             <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4 bg-white dark:bg-card">
                 
-                <section v-if="activeTab === 'mail'" class="w-full">
+                <section class="w-full">
                     <div class="rounded-md border">
                         <Table>
                             <TableHeader>
@@ -135,6 +113,11 @@ const getInitials = (name: string) => {
                                     </TableCell>
                                     <TableCell class="font-medium text-sm">
                                         {{ log.recipient }}
+                                        <!-- Coda 121: il motivo di un invio fallito, sotto il destinatario (si legge anche con «Oggetto» e «Driver» nascosti). -->
+                                        <div v-if="log.error_message" data-motivo-invio :title="log.error_message"
+                                             class="mt-0.5 max-w-[420px] break-words text-xs font-normal text-red-600 dark:text-red-400">
+                                            {{ log.error_message }}
+                                        </div>
                                     </TableCell>
                                     <TableCell class="hidden md:table-cell text-sm max-w-[250px]">
                                         <div class="truncate" :title="log.subject">{{ log.subject }}</div>
@@ -164,91 +147,17 @@ const getInitials = (name: string) => {
                             Pag. {{ mailLogs.current_page }} di {{ mailLogs.last_page }}
                         </div>
                         <div class="flex gap-1">
+                            <!-- Coda 464: «precedente» e «successiva» si riconoscono dalla posizione, perché l'etichetta arriva nella lingua dell'applicazione
+                                 (e con le entità HTML); senza un indirizzo (prima e ultima pagina) non sono un collegamento. -->
                             <Button 
                                 v-for="(link, i) in mailLogs.links" :key="i"
-                                :as="Link" 
-                                :href="link.url || '#'" 
+                                :as="link.url ? Link : 'button'" 
+                                :href="link.url ?? undefined" 
                                 :variant="link.active ? 'default' : 'outline'"
                                 size="icon"
                                 class="h-8 w-8"
                                 :disabled="!link.url"
-                                v-html="link.label.includes('Previous') ? '<' : link.label.includes('Next') ? '>' : link.label"
-                            />
-                        </div>
-                    </div>
-                </section>
-
-                <section v-if="activeTab === 'activity'" class="w-full">
-                    <div class="rounded-md border">
-                        <Table>
-                            <TableHeader>
-                                <TableRow class="bg-muted/50">
-                                    <TableHead class="w-[60px]"></TableHead>
-                                    <TableHead>Utente</TableHead>
-                                    <TableHead>Azione</TableHead>
-                                    <TableHead class="hidden md:table-cell">Dettagli</TableHead>
-                                    <TableHead class="text-right">Data</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow v-for="log in activityLogs.data" :key="log.id" class="hover:bg-muted/50">
-                                    <TableCell class="p-2">
-                                        <Avatar class="h-8 w-8 border">
-                                            <AvatarImage v-if="log.causer?.profile_photo_url" :src="log.causer.profile_photo_url" />
-                                            <AvatarFallback class="text-xs">{{ log.causer ? getInitials(log.causer.name) : 'SYS' }}</AvatarFallback>
-                                        </Avatar>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div v-if="log.causer">
-                                            <div class="font-medium text-sm">{{ log.causer.name }}</div>
-                                            <div class="text-[10px] text-muted-foreground">{{ log.causer.email }}</div>
-                                        </div>
-                                        <div v-else class="flex items-center gap-2 text-muted-foreground text-sm">
-                                            <Server class="w-3 h-3" /> Sistema
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="secondary" class="font-medium capitalize text-xs">
-                                            {{ log.description || log.event }}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell class="hidden md:table-cell">
-                                        <span v-if="log.subject_type" class="text-xs font-mono text-muted-foreground bg-muted px-2 py-1 rounded">
-                                            {{ log.subject_type.split('\\').pop() }} <span class="text-primary">#{{ log.subject_id }}</span>
-                                        </span>
-                                        <span v-else class="text-muted-foreground">-</span>
-                                    </TableCell>
-                                    <TableCell class="text-right text-xs text-muted-foreground whitespace-nowrap">
-                                        {{ formatDate(log.created_at) }}
-                                    </TableCell>
-                                </TableRow>
-                                
-                                <TableRow v-if="activityLogs.data.length === 0">
-                                    <TableCell colspan="5" class="h-32 text-center text-muted-foreground">
-                                        <div class="flex flex-col items-center gap-2">
-                                            <LayoutList class="w-8 h-8 opacity-20" />
-                                            <span>Nessuna attività registrata</span>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
-                    </div>
-
-                    <div v-if="activityLogs.links.length > 3" class="flex items-center justify-between pt-4">
-                        <div class="text-xs text-muted-foreground">
-                            Pag. {{ activityLogs.current_page }} di {{ activityLogs.last_page }}
-                        </div>
-                        <div class="flex gap-1">
-                            <Button 
-                                v-for="(link, i) in activityLogs.links" :key="i"
-                                :as="Link" 
-                                :href="link.url || '#'" 
-                                :variant="link.active ? 'default' : 'outline'"
-                                size="icon"
-                                class="h-8 w-8"
-                                :disabled="!link.url"
-                                v-html="link.label.includes('Previous') ? '<' : link.label.includes('Next') ? '>' : link.label"
+                                v-html="i === 0 ? '<' : i === mailLogs.links.length - 1 ? '>' : link.label"
                             />
                         </div>
                     </div>

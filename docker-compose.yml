@@ -1,3 +1,10 @@
+# Stack di sviluppo, da usare sul proprio computer: l'ambiente è `local`, il debug è acceso e le
+# password sono quelle di sviluppo (MySQL root/root, Supervisor admin/password, amministratore
+# admin@km.com/password). Per questo ogni porta è pubblicata solo su `127.0.0.1`: senza l'indirizzo
+# davanti, Docker la apre su tutte le interfacce, e MySQL con `root`/`root` risponderebbe a chiunque
+# sia sulla stessa rete. Per usare la stack da un altro dispositivo (il telefono sulla porta 8889)
+# si toglie il prefisso a quella porta, sapendo che la raggiunge chiunque sia sulla rete.
+# Per usare KondoManager, non per svilupparlo, c'è l'immagine di produzione: vedi docs/docker_local_dev.it.md.
 services:
   app:
     build:
@@ -17,7 +24,7 @@ services:
     volumes:
       - ./:/var/www
     ports:
-      - "9001:9001"
+      - "127.0.0.1:9001:9001"
     entrypoint: ["/var/www/docker/standard/worker-entrypoint.sh"]
     command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
     depends_on:
@@ -27,7 +34,7 @@ services:
     image: nginx:alpine
     container_name: kondo_nginx
     ports:
-      - "8889:80"
+      - "127.0.0.1:8889:80"
     volumes:
       - ./:/var/www
       - ./docker/standard/nginx/default.conf:/etc/nginx/conf.d/default.conf
@@ -41,7 +48,7 @@ services:
       MYSQL_DATABASE: kondomanager_dev
       MYSQL_ROOT_PASSWORD: root
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - dbdata:/var/lib/mysql
 

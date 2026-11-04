@@ -863,7 +863,9 @@ it('DL3, gestione riusata, controllo — la stessa gestione nata sul 2025, «Pre
     $motivo = (string) collect($cancello['motivi'])->first(fn ($m) => str_contains($m, 'il destinatario cambierebbe'));
 
     expect($cancello['richiesto'])->toBeTrue()
-        ->and($motivo)->toContain('Preventivo 2026');
+        ->and($motivo)->toContain('Preventivo 2026')
+        // Coda 438: il piano con l'esercizio salvato si ricalcola, e il motivo resta quello di sempre.
+        ->and($motivo)->toBe('un piano rate già generato ha voci a carico dell\'inquilino: il destinatario cambierebbe ricalcolandolo («Preventivo 2026»)');
 
     // Il destinatario cambia davvero: 36000 × 184/365 = 18147,95 → 18148 a Luca; a Ugo 120000 − 18148 = 101852 (84000 della parte
     // proprietario + 17852 dei 181 giorni senza inquilino, 36000 × 181/365 = 17852,05 → 17852: 84000 + 17852 = 101852).
@@ -1530,14 +1532,38 @@ it('DL3, gestione riusata, piano della 1.10 non emesso — lo stesso piano senza
     $motivo = (string) collect($cancello['motivi'])->first(fn ($m) => str_contains($m, 'il destinatario cambierebbe'));
 
     expect($cancello['richiesto'])->toBeTrue()
-        ->and($motivo)->toContain('Preventivo 2026');
+        ->and($motivo)->toContain('Preventivo 2026')
+        // Coda 438: il piano non si ricalcola più, e il motivo non lo chiede: dice la strada che il
+        // ricalcolo rifiutato dà, e che qui sotto si percorre.
+        ->and($motivo)->toBe('un piano rate già generato ha voci a carico dell\'inquilino: il destinatario cambierebbe rifacendolo, cioè eliminandolo e creandolo di nuovo '
+            . 'dalla pagina dei piani rate del suo esercizio, perché sulla gestione usata in più esercizi non si ricalcola («Preventivo 2026»)')
+        ->and(collect($cancello['motivi'])->filter(fn ($m) => str_contains($m, 'ricalcolandolo'))->values()->all())->toBe([]);
 
-    // Il destinatario cambia davvero: 36000 × 184/365 = 18147,95 → 18148 a Luca; a Ugo 120000 − 18148 = 101852 (84000 della parte
-    // proprietario + 17852 dei 181 giorni senza inquilino: 84000 + 17852 = 101852).
     ilpfRegistra($this, $s);
-    expect(ilpfRicalcola($this, $s, $piano)['type'])->toBe('success')
-        ->and(ilpfQuote($piano, $s['luca'])[1])->toBe(18148)
-        ->and(ilpfQuote($piano, $s['ugo'])[1])->toBe(101852);
+    // Coda 438, decisione 192.1: sulla gestione usata in più esercizi il piano senza l'esercizio salvato non si ricalcola più (prima il ricalcolo gli dava
+    // l'esercizio della pagina); il messaggio dice la strada, e il piano resta com'era.
+    $rifiuto = ilpfRicalcola($this, $s, $piano);
+    expect($rifiuto['type'])->toBe('error')
+        ->and($rifiuto['message'])->toStartWith('Impossibile ricalcolare: il piano rate «Preventivo 2026» non ha il suo esercizio salvato')
+        ->and(ilpfQuote($piano, $s['ugo']))->toBe([12, 120000]);
+
+    // La strada del messaggio, dalle rotte: in bozza, eliminato, creato di nuovo dalla pagina del 2026 con la stessa voce, con la presa d'atto del cancello (2)
+    // che la creazione chiede come il ricalcolo (i giorni di Luca). Il destinatario cambia davvero:
+    // 36000 × 184/365 = 18147,95 → 18148 a Luca; a Ugo 120000 − 18148 = 101852 (84000 della parte proprietario + 17852 dei 181 giorni senza inquilino:
+    // 84000 + 17852 = 101852).
+    $this->actingAs($this->user)->put(route('admin.gestionale.piani-rate.update-stato', [$s['c'], $s['e'], $piano]), ['approvato' => false])->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->delete(route('admin.gestionale.esercizi.piani-rate.destroy', [$s['c'], $s['e'], $piano]))->assertSessionHasNoErrors();
+    expect(PianoRate::find($piano->id))->toBeNull();
+    $voce = Conto::where('nome', 'Spese generali')->whereIn('piano_conto_id', PianoConto::where('gestione_id', $s['gestione']->id)->pluck('id'))->firstOrFail();
+    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store', [$s['c'], $s['e']]), [
+        'tipo' => 'ordinario', 'gestione_id' => $s['gestione']->id, 'nome' => 'Preventivo 2026', 'metodo_distribuzione' => 'prima_rata', 'numero_rate' => 12,
+        'giorno_scadenza' => 5, 'data_prima_scadenza' => '2026-01-05', 'genera_subito' => 1, 'capitoli_config' => [['id' => $voce->id, 'importo' => '1.200,00']],
+        'accetta_destinatari' => true, 'nota_destinatari' => 'Inizio locazione registrato, quote da rifare per giorni',
+    ])->assertSessionHasNoErrors();
+    $nuovo = PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Preventivo 2026')->firstOrFail();
+    expect($nuovo->esercizio_id)->toBe($s['e']->id)
+        ->and(ilpfQuote($nuovo, $s['luca'])[1])->toBe(18148)
+        ->and(ilpfQuote($nuovo, $s['ugo'])[1])->toBe(101852);
 });
 
 // Secondo giro, rilievo «Rinnovo più ripiego: dal 1 luglio è già nelle rate di Ines anche per i giorni che Ines rimborsa» (testi,

@@ -7,7 +7,7 @@
  * troppo presto (alla generazione del piano, non alla sua emissione) e agisce
  * troppo largo (sull'intera gestione, non sulla riga assorbita).
  *
- * Il documento `docs/rettifiche_saldo_in_corso_gestione.md` avverte che il
+ * Il documento `docs/archivio/rettifiche_saldo_in_corso_gestione.md` avverte che il
  * lucchetto del saldo di apertura NON va allentato, e ha ragione: protegge il
  * rendiconto. Ma dalla beta.32 quel compito lo assolve il lucchetto per riga
  * (`saldi.piano_rate_id`), che impedisce il doppio assorbimento a monte. Il flag

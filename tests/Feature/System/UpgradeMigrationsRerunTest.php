@@ -235,7 +235,36 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // Beta.10, in dataset dalla beta.60 (Coda 436): la tabella dei legami documento-categoria, il travaso e poi la chiave esterna e la colonna `documenti.category_id`
     // tolte con due guardie separate (su MySQL sono due statement). Lo stato a metà, con il suo travaso, lo prova il test sotto.
     '2026_08_31_140000_documenti_in_piu_categorie',
+    // 1.12.0-beta.1 (Coda 438): l'esercizio del già versato — colonna più chiave esterna verso `esercizi`, due statement su MySQL. Nessun travaso: le righe
+    // già salvate restano vuote (valgono per tutti i piani della voce, decisione 187). Lo stato a metà lo prova il test sotto.
+    '2026_11_04_100000_add_esercizio_id_to_contributi_versati_table',
 ]);
+
+it('Coda 438 — la migrazione dell\'esercizio del già versato interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera l\'esercizio', function () {
+    $path = database_path('migrations/2026_11_04_100000_add_esercizio_id_to_contributi_versati_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_04_100000_add_esercizio_id_to_contributi_versati_table');
+    $migration = require $path;
+    $legame = fn () => collect(Schema::getForeignKeys('contributi_versati'))->filter(fn ($k) => $k['columns'] === ['esercizio_id'])->values();
+    Schema::table('contributi_versati', fn ($table) => $table->dropForeign(['esercizio_id']));
+    expect($legame())->toHaveCount(0)
+        ->and(Schema::hasColumn('contributi_versati', 'esercizio_id'))->toBeTrue();
+
+    $migration->up();
+    $migration->up();
+
+    expect($legame())->toHaveCount(1)
+        ->and($legame()->first()['foreign_table'])->toBe('esercizi')
+        ->and($legame()->first()['foreign_columns'])->toBe(['id'])
+        ->and(strtolower((string) $legame()->first()['on_delete']))->toBe('set null');
+
+    // E il ritorno indietro, due volte, toglie colonna e chiave; rifatta, le rimette.
+    $migration->down();
+    $migration->down();
+    expect(Schema::hasColumn('contributi_versati', 'esercizio_id'))->toBeFalse();
+    $migration->up();
+    expect(Schema::hasColumn('contributi_versati', 'esercizio_id'))->toBeTrue()
+        ->and($legame())->toHaveCount(1);
+});
 
 it('decisione 55 — la migrazione del legame interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera il legame', function () {
     $migration = require database_path('migrations/2026_10_04_120000_add_anagrafica_immobile_id_to_righe_riparto_table.php');

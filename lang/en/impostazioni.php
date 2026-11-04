@@ -17,6 +17,7 @@ return [
     'error_test_mail_password_required' => 'The server, port or encryption differ from the saved ones: retype the SMTP password to run the test. The saved password is only used with the server it was saved for.',
     'error_save_mail_password_required' => 'The server, port or encryption have changed: retype the SMTP password. The saved password only applies to the server it was saved for.',
     'error_test_mail_too_many' => 'Too many tests in a short time: wait a minute and try again.',
+    'error_test_mail_connection_refused' => 'The connection to port :porta was refused: either the mail server does not accept connections on that port, or outgoing connections on that port are blocked by your server or its provider (some providers do so for ports 25 and 465). Try port 587 with TLS encryption.',
     'success_save_print_settings' => 'Print settings have been saved successfully.',
     'success_save_backup_settings' => 'Backup settings have been saved successfully.',
     'error_save_backup_settings' => 'An error occurred while saving the backup settings.',
@@ -303,7 +304,7 @@ return [
         'test_success_message' => 'The test email was sent successfully to the recipient.',
         'test_error_title' => 'Connection error',
         'test_error_message' => 'Unable to send the email. Check the parameters and try again.',
-        'test_unsaved_warning' => 'You have unsaved changes. Save the configuration before sending the test.',
+        'test_unsaved_warning' => 'You have unsaved changes. The test uses the values you see in the form but does not save them: to keep them, save the configuration.',
 
         'cron_guide_1_title' => 'The Invisible Engine',
         'cron_guide_1_desc' => 'The daemon runs system maintenance in the background, with no manual intervention: it removes events that ended more than a year ago and expired cache, checks whether a new version is available and, where the shared-hosting option is turned on, also processes the job queue.',

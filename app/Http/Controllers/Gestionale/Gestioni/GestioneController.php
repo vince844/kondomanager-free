@@ -164,21 +164,8 @@ class GestioneController extends Controller
             // Crea la gestione
             $gestione = Gestione::create($data);
 
-            // Calcola il periodo di validità in base all’esercizio selezionato
-            $pivotInizio = $gestione->data_inizio->greaterThan($esercizio->data_inizio)
-                ? $gestione->data_inizio
-                : $esercizio->data_inizio;
-
-            $pivotFine = $gestione->data_fine->lessThan($esercizio->data_fine)
-                ? $gestione->data_fine
-                : $esercizio->data_fine;
-
-            // Associa la gestione all’esercizio selezionato (non per forza aperto)
-            $esercizio->gestioni()->attach($gestione->id, [
-                'attiva'      => true,
-                'data_inizio' => $pivotInizio,
-                'data_fine'   => $pivotFine,
-            ]);
+            // Associa la gestione all’esercizio selezionato (non per forza aperto), con il periodo della gestione dentro l'esercizio
+            $esercizio->gestioni()->attach($gestione->id, ['attiva' => true] + $this->periodoNellEsercizio($gestione, $esercizio));
 
             DB::commit();
 
@@ -259,22 +246,9 @@ class GestioneController extends Controller
 
             $gestione->update($data);
 
-            // Calcolo intervallo di validità della gestione nell’esercizio corrente
-            $pivotInizio = $gestione->data_inizio->greaterThan($esercizio->data_inizio) 
-                ? $gestione->data_inizio 
-                : $esercizio->data_inizio;
-
-            $pivotFine = $gestione->data_fine->lessThan($esercizio->data_fine) 
-                ? $gestione->data_fine 
-                : $esercizio->data_fine;
-
-            // Associa/aggiorna la gestione all’esercizio aperto
+            // Associa/aggiorna la gestione all’esercizio aperto, con il periodo della gestione dentro l'esercizio
             $esercizio->gestioni()->syncWithoutDetaching([
-                $gestione->id => [
-                    'attiva'      => true,
-                    'data_inizio' => $pivotInizio,
-                    'data_fine'   => $pivotFine,
-                ]
+                $gestione->id => ['attiva' => true] + $this->periodoNellEsercizio($gestione, $esercizio),
             ]);
 
             DB::commit();
@@ -352,21 +326,27 @@ class GestioneController extends Controller
             // compare, e l'amministratore leggeva un'istruzione che non poteva eseguire.
             // Si gestiscono dalla situazione debitoria del fornitore, che ha la sua rotta di
             // eliminazione. Il divieto resta: a cambiare è che ora dice dove andare.
+            //
+            // Coda 464: la sezione «Saldi Iniziali» mostra i saldi del solo esercizio aperto (`SaldoInizialeController::index`), mentre qui si
+            // contano quelli di ogni esercizio: la frase dice quanti sono e che cosa la sezione mostra, e non manda a eliminare da lì saldi
+            // che lì possono non comparire (come il rifiuto dell'eliminazione di un esercizio, `EsercizioController::datiCheTrattengonoLEsercizio`).
             $saldiCondomini = Saldo::where('gestione_id', $gestione->id)->whereNull('fornitore_id')->count();
             $saldiFornitori = Saldo::where('gestione_id', $gestione->id)->whereNotNull('fornitore_id')->count();
 
             if ($saldiCondomini + $saldiFornitori > 0) {
                 $dove = [];
                 if ($saldiCondomini > 0) {
-                    $dove[] = "{$saldiCondomini} pregressi dei condòmini, che si eliminano dalla sezione «Saldi»";
+                    $dove[] = ($saldiCondomini === 1 ? '1 saldo di un condòmino' : "{$saldiCondomini} saldi dei condòmini")
+                        . ' (la sezione «Saldi Iniziali» mostra solo quelli dell\'esercizio aperto)';
                 }
                 if ($saldiFornitori > 0) {
-                    $dove[] = "{$saldiFornitori} debiti verso fornitori, che si eliminano dalla situazione debitoria del fornitore — nella sezione «Saldi» non compaiono";
+                    $dove[] = ($saldiFornitori === 1 ? '1 debito verso un fornitore' : "{$saldiFornitori} debiti verso fornitori")
+                        . ' (nella situazione debitoria del fornitore, non nella sezione «Saldi Iniziali»)';
                 }
 
                 return back()->with($this->flashError(
-                    'Impossibile eliminare: la gestione contiene saldi iniziali pregressi ('
-                    . implode(' e ', $dove) . ').'
+                    'Impossibile eliminare: la gestione contiene saldi iniziali pregressi: '
+                    . implode(' e ', $dove) . '.'
                 ));
             }
             // -------------------------------------------------------------------
@@ -407,5 +387,21 @@ class GestioneController extends Controller
 
             return back()->with($this->flashError(__('gestionale.error_delete_gestione')));
         }
+    }
+
+    /**
+     * Coda 439 (decisione 183.4): il periodo della gestione dentro l'esercizio, per la riga di `esercizio_gestione`: l'intersezione fra le date della
+     * gestione e quelle dell'esercizio, il più tardo degli inizi e il più presto delle fini. Se non hanno un giorno in comune (la gestione del 2026
+     * agganciata al 2027 da «Modifica gestione», un cantiere del 2028 creato dal 2027) il periodo è vuoto, le due date nulle come le lascia
+     * l'importatore: prima usciva rovesciato, «dal 01/01/2027 al 31/12/2026».
+     *
+     * @return array{data_inizio: ?\Carbon\Carbon, data_fine: ?\Carbon\Carbon}
+     */
+    private function periodoNellEsercizio(Gestione $gestione, Esercizio $esercizio): array
+    {
+        $inizio = $gestione->data_inizio->greaterThan($esercizio->data_inizio) ? $gestione->data_inizio : $esercizio->data_inizio;
+        $fine = $gestione->data_fine->lessThan($esercizio->data_fine) ? $gestione->data_fine : $esercizio->data_fine;
+
+        return $inizio->greaterThan($fine) ? ['data_inizio' => null, 'data_fine' => null] : ['data_inizio' => $inizio, 'data_fine' => $fine];
     }
 }

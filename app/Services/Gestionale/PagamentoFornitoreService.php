@@ -93,6 +93,9 @@ use Illuminate\Support\Str;
  */
 class PagamentoFornitoreService
 {
+    /** Antiriciclaggio (D.Lgs. 231/2007): un pagamento in contanti da questo importo in su, € 5.000,00 compresi, è vietato. In centesimi. */
+    private const LIMITE_CONTANTI_CENTS = 500000;
+
     // ════════════════════════════════════════════════════════════════════════
     // INTERFACCIA PUBBLICA
     // ════════════════════════════════════════════════════════════════════════
@@ -587,6 +590,16 @@ class PagamentoFornitoreService
                     numFattura: $fattura->numero_documento ?? "#{$fattura->id}"
                 );
             }
+        }
+
+        // ── Limite dei contanti (antiriciclaggio) ────────────────────────────
+        // Lo stesso controllo e lo stesso messaggio della registrazione, ma solo dove la modifica porta il pagamento in contanti o ne fa crescere
+        // l'importo in contanti (Coda 466). Un pagamento già in contanti sopra soglia, salvato dalla modifica prima di questo controllo, si corregge
+        // nella nota o nella data senza essere rifiutato; un importo che non cresce non lo peggiora. L'importo in contanti è il netto: quello che la
+        // modifica riscrive sull'allocazione alla fattura e sull'uscita di cassa, e quello che la registrazione confronta con la soglia.
+        if ($nuovoMetodo === MetodoPagamento::CONTANTI
+            && ($pagamento->metodo_pagamento !== MetodoPagamento::CONTANTI || $nuovoImportoNetto > (int) $pagamento->importo_netto)) {
+            $this->verificaLimiteContanti($nuovoImportoNetto);
         }
 
         // ── Capienza conto (bloccante senza override esplicito) ──────────────
@@ -1222,15 +1235,7 @@ class PagamentoFornitoreService
                 ->where('tipo', TipoAllocazioneFattura::PAGAMENTO->value)
                 ->sum('importo_allocato_cents');
 
-            if ($totalePagamentoCash >= 500000) { // 5.000€ in centesimi
-                throw new IllegalCashAmountException(
-                    sprintf(
-                        'Pagamento in contanti di € %s non consentito: supera il limite di € 5.000 '.
-                        '(D.Lgs. 231/2007 antiriciclaggio).',
-                        number_format($totalePagamentoCash / 100, 2, ',', '.')
-                    )
-                );
-            }
+            $this->verificaLimiteContanti((int) $totalePagamentoCash);
         }
 
         // 6. Capienza conto (bloccante senza override esplicito)
@@ -1276,6 +1281,27 @@ class PagamentoFornitoreService
         //    Score completo (CRO/TRN, 7gg, IBAN+importo) rimandato a v1.16 Treasury.
         if (! ($data['conferma_duplicato_verificato'] ?? false)) {
             $this->rilevaDuplicato($data);
+        }
+    }
+
+    /**
+     * Antiriciclaggio (D.Lgs. 231/2007): un pagamento in contanti da € 5.000,00 compresi in su è vietato. Un solo controllo e un solo messaggio per la
+     * registrazione (`validaInput`) e per la modifica (`aggiornaPagamento`).
+     *
+     * @param  int  $importoCents  L'importo pagato in contanti, in centesimi.
+     *
+     * @throws IllegalCashAmountException
+     */
+    private function verificaLimiteContanti(int $importoCents): void
+    {
+        if ($importoCents >= self::LIMITE_CONTANTI_CENTS) {
+            throw new IllegalCashAmountException(
+                sprintf(
+                    'Pagamento in contanti di € %s non consentito: è pari o superiore al limite di € 5.000,00 '.
+                    '(D.Lgs. 231/2007 antiriciclaggio).',
+                    number_format($importoCents / 100, 2, ',', '.')
+                )
+            );
         }
     }
 

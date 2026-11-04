@@ -4,7 +4,7 @@
  * 1.11.0-beta.48 — i testi lato server della successione (P6 del progetto) e la cifra «a credito» della coppia (P5).
  *
  * Nasce da: il confronto della risposta di Fresco (forum t=150, 07/10/2026) con il codice, e la Fase 0.2 della .48
- * (`docs/piano_esecutivo_beta48.md`): una dozzina di frasi della successione, nate nella .44, sono false o fuorvianti. Le più
+ * (`docs/verbali/1.11/piano_esecutivo_beta48.md`): una dozzina di frasi della successione, nate nella .44, sono false o fuorvianti. Le più
  * serie: le righe di saldo degli altri eredi «entrano nel piano dopo», mentre il piano rate prende solo i saldi della stessa
  * gestione; il conguaglio «che gli eredi rinunciano», quando per non scriverlo basta non scriverlo; la parentesi «credito a chi
  * esce, debito a chi entra» sulle righe del conguaglio, falsa per l'erede di riferimento (la sua riga è un credito di chi entra);

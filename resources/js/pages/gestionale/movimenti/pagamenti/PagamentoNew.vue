@@ -1784,10 +1784,10 @@ const pageGuides = [
                                 <AlertOctagon class="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                                 <div>
                                     <p class="text-xs font-bold text-red-800 dark:text-red-300 mb-1">Normativa antiriciclaggio obbligatoria</p>
+                                    <p v-if="illegalCashMsg" class="text-[11px] font-semibold text-red-800 dark:text-red-300 leading-relaxed mb-1">{{ illegalCashMsg }}</p>
                                     <p class="text-[11px] text-red-700 dark:text-red-400 leading-relaxed">
                                         Il <strong>D.Lgs. 231/2007</strong> vieta i pagamenti in contanti di importo pari o superiore a
-                                        <strong>5.000€</strong> (soglia vigente dal 01/01/2023). La violazione comporta sanzioni
-                                        amministrative da <strong>1.000€ a 50.000€</strong>. Questo blocco non può essere aggirato.
+                                        <strong>€ 5.000,00</strong> (soglia vigente dal 01/01/2023).
                                     </p>
                                 </div>
                             </div>
@@ -1797,7 +1797,6 @@ const pageGuides = [
                                 <ul class="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-1 leading-relaxed">
                                     <li>🏦 <strong>Bonifico bancario</strong> — metodo preferito, tracciabile</li>
                                     <li>📋 <strong>Assegno non trasferibile</strong> — sempre intestato al beneficiario</li>
-                                    <li>💳 <strong>Carta di credito/bancomat</strong> — con ricevuta elettronica</li>
                                 </ul>
                             </div>
 

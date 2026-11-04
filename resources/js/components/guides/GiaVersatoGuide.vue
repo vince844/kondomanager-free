@@ -17,11 +17,13 @@
  *
  * Sono il motivo per cui questa guida non è un adempimento:
  *
- * 1. **La copertura è per immobile, non per soggetto.** Su una voce ripartita fra proprietario e
- *    inquilino il versamento viene tolto dal lordo dell'unità **prima** della spaccatura fra i due:
- *    un versamento del solo proprietario finisce per scontare anche l'inquilino. È una decisione
- *    presa e dichiarata (D8 in `docs/fondo_accantonato_e_quadratura_sp.md`, «segnalare, non
- *    correggere»), non un difetto — e va detta a chi la subisce.
+ * 1. **La copertura di una riga «dell'unità» è per immobile, non per soggetto.** Su una voce
+ *    ripartita fra proprietario e inquilino il versamento viene tolto dal lordo dell'unità
+ *    **prima** della spaccatura fra i due: un versamento del solo proprietario finisce per
+ *    scontare anche l'inquilino. È una decisione presa e dichiarata (D8 in
+ *    `docs/fondo_accantonato_e_quadratura_sp.md`, «segnalare, non correggere»), non un difetto —
+ *    e va detta a chi la subisce. Con «Versato da» (decisione 17) la riga ha una persona e lo
+ *    sconto va solo alla sua quota: la guida dice le due strade.
  * 2. **La quota non scende mai sotto zero.** Chi ha versato più della sua parte non ottiene un
  *    credito automatico: l'eccedenza viene rilevata e finisce come attività nell'Inbox, con
  *    l'importo per unità.
@@ -69,7 +71,7 @@ defineEmits(['update:open']);
                     <TabsList class="mb-6 grid w-full grid-cols-3">
                         <TabsTrigger value="cosa">A cosa serve</TabsTrigger>
                         <TabsTrigger value="riparto">Nel riparto</TabsTrigger>
-                        <TabsTrigger value="decisioni">Le due scelte</TabsTrigger>
+                        <TabsTrigger value="decisioni">Le scelte</TabsTrigger>
                         <TabsTrigger value="attenzione">Da sapere</TabsTrigger>
                     </TabsList>
 
@@ -102,8 +104,9 @@ defineEmits(['update:open']);
                                 <li>Generi il piano rate: a ogni unità viene chiesto solo il residuo.</li>
                             </ol>
                             <p class="mt-2 text-xs text-slate-500">
-                                Si registra per <strong>unità immobiliare</strong>, non per persona: è il
-                                dettaglio da cui discende tutto il resto di questa guida.
+                                Si registra per <strong>unità immobiliare</strong>, e puoi dire anche
+                                <strong>chi ha versato</strong> («Versato da»): senza una persona il versamento
+                                è dell'unità, ed è il dettaglio da cui dipende lo sconto, spiegato in «Da sapere».
                             </p>
                         </section>
 
@@ -176,9 +179,9 @@ defineEmits(['update:open']);
                     <!-- ── DA SAPERE ───────────────────────────────────────────── -->
                     <TabsContent value="decisioni" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
                         <p>
-                            La pagina di dettaglio ti chiede <strong>due cose che il programma non può
-                            dedurre</strong>: che natura hanno quei soldi, e dove si trovano oggi. Sbagliarle
-                            non produce un errore — produce un bilancio che non torna, mesi dopo.
+                            La pagina di dettaglio ti chiede <strong>tre cose che il programma non può
+                            dedurre</strong>: che natura hanno quei soldi, dove si trovano oggi, e per quale
+                            esercizio valgono. Sbagliarle non produce un errore — produce un bilancio che non torna, mesi dopo.
                         </p>
 
                         <section>
@@ -240,6 +243,19 @@ defineEmits(['update:open']);
                                 </p>
                             </div>
                         </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">3. Per quale esercizio vale?</h3>
+                            <p>
+                                Il piano rate di un esercizio toglie solo il già versato di quell'esercizio: se il versamento
+                                era per la spesa del 2026, il piano del 2027 sulla stessa voce lo chiede per intero. Con
+                                <strong>«Tutti gli esercizi»</strong> lo tolgono tutti i piani della voce, ognuno per la sua
+                                parte, ed è il caso di un fondo lavori chiesto in più anni: la somma degli importi che quei
+                                piani chiedono sulla voce non può superare l'importo della voce. Per una voce senza versamenti
+                                la pagina non propone nessun esercizio e non salva finché non ne scegli uno; i versamenti
+                                registrati prima di questa scelta valgono per «Tutti gli esercizi», come prima.
+                            </p>
+                        </section>
                     </TabsContent>
 
                     <TabsContent value="attenzione" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
@@ -247,16 +263,18 @@ defineEmits(['update:open']);
                             <Users class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                             <div class="space-y-2 text-xs text-amber-900 dark:text-amber-200">
                                 <p>
-                                    <strong>Su una voce divisa fra proprietario e inquilino, lo sconto vale per
-                                    tutti e due.</strong> Il versamento è registrato sull'<strong>unità</strong>,
-                                    e viene tolto dal totale dell'unità <strong>prima</strong> che questo venga
-                                    diviso fra i due ruoli.
+                                    <strong>Su una voce divisa fra proprietario e inquilino, lo sconto dipende da
+                                    «Versato da».</strong> Se la riga è dell'<strong>unità</strong> (senza persona),
+                                    il versamento viene tolto dal totale dell'unità <strong>prima</strong> che questo
+                                    venga diviso fra i due ruoli: lo sconto vale per tutti e due.
                                 </p>
                                 <p>
-                                    In pratica: se ha versato solo il proprietario, l'inquilino si trova la
-                                    quota ridotta anche lui, in proporzione. Non è un errore di calcolo — è
-                                    una conseguenza del fatto che il dato è per unità — ma se nel tuo caso i
-                                    due versamenti vanno tenuti distinti, questa non è la strada.
+                                    In pratica: se ha versato solo il proprietario e la riga è dell'unità,
+                                    l'inquilino si trova la quota ridotta anche lui, in proporzione. Non è un
+                                    errore di calcolo: è una conseguenza del fatto che quel versamento è
+                                    dell'unità. Se i due versamenti vanno tenuti distinti, scegli la persona in
+                                    «Versato da»: lo sconto va solo alla sua quota, e l'eventuale avanzo resta a
+                                    suo nome.
                                 </p>
                             </div>
                         </div>

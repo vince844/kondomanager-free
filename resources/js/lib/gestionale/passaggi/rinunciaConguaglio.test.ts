@@ -1,6 +1,6 @@
 /**
  * 1.11.0-beta.48 — la scelta sul conguaglio della successione: le regole della pagina (P5 del progetto, Fase 1 di
- * `docs/piano_esecutivo_beta48.md`).
+ * `docs/verbali/1.11/piano_esecutivo_beta48.md`).
  *
  * Nasce dalla risposta di Fresco (07/10/2026) e dalla decisione 72: il conguaglio fra il defunto e gli eredi, che oggi il
  * programma propone di partenza, va contro gli studi che hanno risposto, e per non scriverlo si spunta «Gli eredi hanno
@@ -152,7 +152,7 @@ describe('rinunciaConguaglio — la frase dell\'arretrato con il conguaglio non 
 
 /**
  * 1.11.0-beta.48 — la frase dell'arretrato prima della scelta: il terzo stato (rilievo R1 della lente testi, Fase 1-bis di
- * `docs/piano_esecutivo_beta48.md`).
+ * `docs/verbali/1.11/piano_esecutivo_beta48.md`).
  *
  * Nasce dal caso di Fresco senza nessuna delle due voci scelta. Il pannello e il modulo dicono «€ 394,52 resta a nome di Ugo»: ma
  * € 394,52 = € 400,00 − € 5,48 è la cifra di «Scrivi», e senza conguaglio la cifra è € 400,00. La regola a due stati di oggi

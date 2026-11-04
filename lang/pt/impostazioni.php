@@ -17,6 +17,7 @@ return [
     'error_test_mail_password_required' => 'O servidor, a porta ou a encriptação são diferentes dos guardados: para o teste, volte a escrever a palavra-passe SMTP. A palavra-passe guardada só é usada com o servidor para o qual foi guardada.',
     'error_save_mail_password_required' => 'O servidor, a porta ou a encriptação mudaram: volte a escrever a palavra-passe SMTP. A palavra-passe guardada só vale para o servidor para o qual foi guardada.',
     'error_test_mail_too_many' => 'Demasiados testes em pouco tempo: aguarde um minuto e tente novamente.',
+    'error_test_mail_connection_refused' => 'A ligação à porta :porta foi recusada: ou o servidor de correio não a aceita nessa porta, ou as ligações de saída nessa porta estão bloqueadas pelo seu servidor ou pelo respetivo fornecedor (alguns fornecedores fazem-no nas portas 25 e 465). Experimente a porta 587 com a encriptação TLS.',
     'success_save_print_settings' => 'Configurações de impressão guardadas com sucesso.',
     'success_save_backup_settings' => 'Configurações de backup guardadas com sucesso.',
     'error_save_backup_settings' => 'Ocorreu um erro ao guardar as configurações de backup.',
@@ -303,7 +304,7 @@ return [
         'test_success_message' => 'O email de teste foi enviado com sucesso para o destinatário.',
         'test_error_title' => 'Erro de ligação',
         'test_error_message' => 'Não foi possível enviar o email. Verifique os parâmetros e tente novamente.',
-        'test_unsaved_warning' => 'Tem alterações não guardadas. Guarde a configuração antes de enviar o teste.',
+        'test_unsaved_warning' => 'Tem alterações não guardadas. O teste usa os valores que vê no formulário mas não os guarda: para os manter, guarde a configuração.',
 
         'cron_guide_1_title' => 'O Motor Invisível',
         'cron_guide_1_desc' => 'O daemon executa em segundo plano, sem intervenção manual, a manutenção do sistema: remove eventos encerrados há mais de um ano e o cache expirado, verifica se há uma nova versão disponível e, onde a opção para hospedagens compartilhadas está ativada, também processa a fila de tarefas.',

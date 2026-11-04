@@ -186,7 +186,7 @@ it('Coda 332 — due defunti sulla stessa unità, la riga non legata di Anna è 
     expect($s->somme('Preventivo 2026', ['ugo', 'ada', 'anna', 'bruno']))->toBe(['ugo' => 0, 'ada' => 0, 'anna' => 72001, 'bruno' => 47999]);
 });
 
-it('controprova — due defunti sulla stessa unità, una riga non legata di Anna per ognuno e nessuna riga legata di Anna: le voci dicono che i saldi ci sono già, come prima', function () {
+it('controprova — due defunti sulla stessa unità, una riga non legata di Anna per ognuno e nessuna riga legata di Anna: le voci non sanno se i saldi comprendono la parte (V5), come prima', function () {
     [$s, $subU, $subA] = b60ddScenario($this);
     // La porta del Wallet tiene una riga non legata per persona nell'esercizio: la seconda come la scrive l'importatore, nel 2026.
     b60ddWallet($this, $s, 'anna', B60DD_PARTE['anna']);

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * 1.11.0-beta.49, la contabilità dei crediti — il giro stretto sulle correzioni della Fase 1-bis (`docs/piano_esecutivo_beta49.md`,
+ * 1.11.0-beta.49, la contabilità dei crediti — il giro stretto sulle correzioni della Fase 1-bis (`docs/verbali/1.11/piano_esecutivo_beta49.md`,
  * «Giro stretto sulle correzioni (11/10/2026)»; decisioni 71, 75 e 76 del registro, con il ritocco della 76.3 dell'11/10/2026: si
  * ferma la sola quota della 1.7 senza il dettaglio del calcolo).
  *

@@ -125,6 +125,8 @@ interface Conto {
     residuo_budget?: number
     is_capiente?: boolean
     gia_versato_cents?: number
+    /** Coda 438: il già versato della voce per esercizio (`tutti` = vale in tutti i piani della voce, decisione 183.1). */
+    gia_versato_per_esercizio?: Record<string, number>
     ultimi_movimenti?: {
         data: string
         fornitore: string
@@ -1345,6 +1347,16 @@ const toggleHistory = (contoId: number) => {
 };
 
 // Calcoli Budget in centesimi
+/**
+ * Coda 438 (decisione 183.1): il già versato della voce che vale nell'esercizio della fattura, quello di quell'esercizio e quello che vale per tutti
+ * gli esercizi. Il già versato di un altro esercizio la rata integrativa di questo esercizio non lo toglie, e la stima del modale dello sforo nemmeno.
+ */
+const giaVersatoNellEsercizio = (c: { gia_versato_cents?: number; gia_versato_per_esercizio?: Record<string, number> }, esercizioId: number | null): number => {
+    const per = c.gia_versato_per_esercizio;
+    if (!per) return c.gia_versato_cents || 0;
+    return (per['tutti'] || 0) + (esercizioId ? (per[String(esercizioId)] || 0) : 0);
+};
+
 const budgetImpacts = computed(() => {
     // Le fatture pregresse non impattano il budget corrente
     if (form.is_pregresso) return [];
@@ -1368,7 +1380,7 @@ const budgetImpacts = computed(() => {
             nome:              c.nome,
             speso_cents:       0,
             residuo_cents:     residuoCents,
-            gia_versato_cents: c.gia_versato_cents || 0,
+            gia_versato_cents: giaVersatoNellEsercizio(c, form.esercizio_id),
             ultimi_movimenti:  c.ultimi_movimenti || []
         };
         // ⚠️ **Coda 122.** Una nota di credito rettifica una spesa già fatta: sul capitolo

@@ -4,7 +4,7 @@
  * B2, S3 — «Registra passaggio»: la pagina, l'anteprima «Cosa cambierà» e le rotte per periodo.
  *
  * Progetto `docs/subentro_e_competenza_temporale.md` (decisioni 13 e 14) e §6 di
- * `docs/pertinenze_vendita_locazione.md`, piano `docs/piano_esecutivo_beta31_b2.md` (S3).
+ * `docs/pertinenze_vendita_locazione.md`, piano `docs/verbali/1.11/piano_esecutivo_beta31_b2.md` (S3).
  *
  * Cosa si prova qui:
  * - la pagina rende con i **titolari attuali** e il tipo di passaggio scelto;

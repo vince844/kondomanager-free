@@ -75,6 +75,17 @@ class MoneyHelper
      * manderebbe `floor()` dalla parte sbagliata, quindi si lavora sul valore assoluto e il
      * segno si riapplica alla fine.
      *
+     * **A pari resto il centesimo va a chi viene prima nell'array** (Coda 301, decisione
+     * 183.3). Perché la regola valga davvero, i resti si confrontano in aritmetica intera: fino
+     * alla 1.11.0 erano differenze in virgola mobile, e con quote 10/30/60 su 6 centesimi i
+     * resti di x e di z — tutti e due 0,6 a mano — uscivano 0,5999… e 0,6000…: il centesimo
+     * andava a z qualunque fosse l'ordine (x 0, y 2, z 4 invece di x 1, y 2, z 3). Quando i
+     * pesi sono decimali (millesimi, quote, giorni, centesimi: `pesiInteri()`) il conto è
+     * esatto; altrimenti le parti si arrotondano all'ottava cifra e il resto si confronta come
+     * intero di quell'ordine (`restiInteriDaVirgola()`). L'ordine dell'array lo dà il chiamante:
+     * per i titolari di un'unità è quello di `Immobile::anagrafiche()`, chi è titolare da prima
+     * e poi chi è registrato prima.
+     *
      * @param  array<int|string, float>  $pesi  [chiave => peso]. Pesi tutti a zero o assenti
      *                                          → riparto in parti uguali.
      * @return array<int|string, int>           [chiave => centesimi]. La somma è esattamente
@@ -100,35 +111,147 @@ class MoneyHelper
         $segno = $totaleCents < 0 ? -1 : 1;
         $assoluto = abs($totaleCents);
 
-        $quote = [];
-        $resti = [];
-        $assegnato = 0;
+        [$interi] = self::pesiInteri($pesi, $assoluto) ?? [null];
+        $denominatore = $interi === null ? 0 : array_sum($interi);
 
-        foreach ($pesi as $chiave => $peso) {
-            $esatto = $assoluto * ((float) $peso) / $sommaPesi;
-            $intero = (int) floor($esatto);
-
-            $quote[$chiave] = $intero;
-            $resti[$chiave] = $esatto - $intero;
-            $assegnato += $intero;
+        if ($interi !== null && $denominatore > 0) {
+            [$quote, $resti] = self::partiEResti($assoluto, $interi, $denominatore);
+        } else {
+            [$quote, $resti] = self::restiInteriDaVirgola(
+                array_map(fn ($peso): float => $assoluto * ((float) $peso) / $sommaPesi, $pesi),
+            );
         }
 
-        // `arsort` conserva le chiavi ed è stabile da PHP 8: a parità di resto vince chi
-        // viene prima, quindi il risultato è deterministico e i test lo possono fissare.
-        arsort($resti);
+        $quote = self::assegnaAvanzo($quote, $resti, $assoluto - array_sum($quote));
 
-        $avanzo = $assoluto - $assegnato;
+        return $segno === 1 ? $quote : array_map(fn (int $c): int => -$c, $quote);
+    }
+
+    /**
+     * I pesi come interi esatti, quando lo sono: ognuno moltiplicato per 10^k, con il k più
+     * piccolo (da 0 a 8) che li rende tutti interi. Millesimi a quattro decimali, quote a due,
+     * giorni e centesimi passano tutti di qui; una frazione come 1/3 o una quota per giorni
+     * normalizzata no, e la funzione dà `null`.
+     *
+     * Un peso «è intero» se dista dall'intero meno di un millesimo di miliardesimo del suo
+     * valore, e comunque meno di un milionesimo: assorbe l'errore di rappresentazione di un
+     * decimale in virgola mobile (0,1 non è esatto in binario), ed è così stretto che lo scarto
+     * sulle parti resta sotto il millesimo di centesimo anche su un importo di dieci milioni di
+     * euro. Il tetto del milionesimo serve ai pesi grandi: in scala 10^8 un peso da 5.000 in su
+     * supera 5 × 10^11, e lì la tolleranza relativa da sola supera mezza unità e prende per
+     * intero qualunque numero; un peso come 8.833,33… (26.500 / 3) diventerebbe 883333333333,
+     * e un pari resto esatto si romperebbe per l'arrotondamento invece di andare al primo.
+     *
+     * Dà `null` anche quando i numeri non stanno negli interi a 64 bit: oltre 2^53 un peso non
+     * è più esatto in virgola mobile, e `$assoluto` per il peso più grande non deve superare
+     * `PHP_INT_MAX`.
+     *
+     * Il secondo elemento è la scala, 10^k: `distribuisciPesiNormalizzati()` divide per lei,
+     * perché i suoi pesi sono già frazioni dell'importo.
+     *
+     * @param  array<int|string, mixed>  $pesi
+     * @return array{0: array<int|string, int>, 1: int}|null
+     */
+    private static function pesiInteri(array $pesi, int $assoluto): ?array
+    {
+        $scala = 1.0;
+        for ($k = 0, $unita = 1; $k <= 8; $k++, $scala *= 10.0, $unita *= 10) {
+            $interi = [];
+            foreach ($pesi as $chiave => $peso) {
+                $x = ((float) $peso) * $scala;
+                if (! is_finite($x) || abs($x) > 9007199254740992.0) {
+                    return null;
+                }
+                $n = round($x);
+                if (abs($x - $n) > min(1e-6, 1e-12 * max(1.0, abs($x)))) {
+                    continue 2;
+                }
+                $interi[$chiave] = (int) $n;
+            }
+
+            $massimo = $interi === [] ? 0 : max(array_map('abs', $interi));
+            if ($massimo > 0 && $assoluto > intdiv(PHP_INT_MAX, $massimo)) {
+                return null;
+            }
+
+            return [$interi, $unita];
+        }
+
+        return null;
+    }
+
+    /**
+     * Parte intera e resto di ognuno, in interi: `$assoluto × p = parte × $denominatore + resto`,
+     * con il resto in [0, $denominatore) anche per un peso negativo (la parte è il `floor`,
+     * come nella via in virgola mobile).
+     *
+     * @param  array<int|string, int>  $pesi
+     * @return array{0: array<int|string, int>, 1: array<int|string, int>}
+     */
+    private static function partiEResti(int $assoluto, array $pesi, int $denominatore): array
+    {
+        $parti = [];
+        $resti = [];
+        foreach ($pesi as $chiave => $p) {
+            $prodotto = $assoluto * $p;
+            $parte = intdiv($prodotto, $denominatore);
+            $resto = $prodotto % $denominatore;
+            if ($resto < 0) {
+                $parte--;
+                $resto += $denominatore;
+            }
+            $parti[$chiave] = $parte;
+            $resti[$chiave] = $resto;
+        }
+
+        return [$parti, $resti];
+    }
+
+    /**
+     * La via per i pesi che non sono decimali: le parti esatte in virgola mobile, arrotondate
+     * all'ottava cifra, e il resto come intero in centomilionesimi di centesimo. Due resti che a
+     * mano sono uguali e che l'aritmetica binaria scrive 0,5999… e 0,6000… diventano lo stesso
+     * intero, e decide l'ordine.
+     *
+     * @param  array<int|string, float>  $esatti
+     * @return array{0: array<int|string, int>, 1: array<int|string, int>}
+     */
+    private static function restiInteriDaVirgola(array $esatti): array
+    {
+        $parti = [];
+        $resti = [];
+        foreach ($esatti as $chiave => $esatto) {
+            $esatto = round($esatto, 8);
+            $parte = (int) floor($esatto);
+            $parti[$chiave] = $parte;
+            $resti[$chiave] = (int) round(($esatto - $parte) * 100_000_000);
+        }
+
+        return [$parti, $resti];
+    }
+
+    /**
+     * Un centesimo ciascuno ai resti più grandi, finché l'avanzo non finisce. `arsort` su interi
+     * è stabile da PHP 8: a pari resto vince chi viene prima nell'array.
+     *
+     * @param  array<int|string, int>  $parti
+     * @param  array<int|string, int>  $resti
+     * @return array<int|string, int>
+     */
+    private static function assegnaAvanzo(array $parti, array $resti, int $avanzo): array
+    {
+        arsort($resti);
         foreach (array_keys($resti) as $chiave) {
             if ($avanzo <= 0) {
                 break;
             }
-
-            $quote[$chiave]++;
+            $parti[$chiave]++;
             $avanzo--;
         }
 
-        return $segno === 1 ? $quote : array_map(fn (int $c): int => -$c, $quote);
+        return $parti;
     }
+
 
     /**
      * Un importo spezzato come lo vuole il modello F24: euro da una parte, centesimi
@@ -178,10 +301,15 @@ class MoneyHelper
      * di credito, o il documento in cui gli storni di riga superano gli addebiti — e lì la
      * proporzione va mantenuta: usa questa.
      *
-     * Il corpo è la copia letterale del `distribuisciImporto()` privato che viveva in
+     * Il corpo nasce come copia letterale del `distribuisciImporto()` privato che viveva in
      * `CalcoloQuoteService` e, identico byte per byte, in `RipartoTabelleService`, con la
      * dichiarazione «COPIA 1:1 — DEVE rimanere allineata». Estratto qui nella 1.11.0-beta.19
      * senza cambiare una virgola, perché la terza copia sarebbe nata nel ciclo passivo.
+     *
+     * Dalla 1.12.0 (Coda 301, decisione 183.3) i resti si confrontano in interi, come in
+     * `ripartisciPerQuote()`: a pari resto vince chi viene prima nell'array, anche quando la
+     * virgola mobile scrive i due resti 0,5999… e 0,6000…. È il riparto principale delle spese
+     * sulle tabelle (`CalcoloQuoteService`): con quote 10/30/60 e 6 centesimi dà x 1, y 2, z 3.
      *
      * @param  array<int|string, float>  $pesiNormalizzati  [chiave => peso]. Devono sommare a 1.
      * @param  int  $importoTotale  centesimi, con segno.
@@ -197,26 +325,20 @@ class MoneyHelper
 
         $sign    = $importoTotale < 0 ? -1 : 1;
         $totAbs  = abs($importoTotale);
-        $bases      = [];
-        $remainders = [];
-        $sumBase    = 0;
 
-        foreach ($pesiNormalizzati as $key => $w) {
-            $raw   = round($totAbs * $w, 8);
-            $base  = (int) floor($raw);
-            $bases[$key]      = $base;
-            $remainders[$key] = $raw - $base;
-            $sumBase += $base;
+        // In interi quando i pesi sono decimali (`pesiInteri()`): la parte di ognuno è
+        // `$totAbs × p / 10^k`, cioè `$totAbs × $w` senza errore; altrimenti la via di sempre,
+        // con il resto confrontato come intero (Coda 301).
+        [$interi, $unita] = self::pesiInteri($pesiNormalizzati, $totAbs) ?? [null, 0];
+        if ($interi !== null) {
+            [$bases, $remainders] = self::partiEResti($totAbs, $interi, $unita);
+        } else {
+            [$bases, $remainders] = self::restiInteriDaVirgola(
+                array_map(fn ($w): float => $totAbs * $w, $pesiNormalizzati),
+            );
         }
 
-        $diff = $totAbs - $sumBase;
-        if ($diff > 0) {
-            arsort($remainders);
-            $keys = array_keys($remainders);
-            for ($i = 0; $i < $diff && $i < count($keys); $i++) {
-                $bases[$keys[$i]]++;
-            }
-        }
+        $bases = self::assegnaAvanzo($bases, $remainders, $totAbs - array_sum($bases));
 
         foreach ($bases as $key => $b) {
             $result[$key] = $b * $sign;

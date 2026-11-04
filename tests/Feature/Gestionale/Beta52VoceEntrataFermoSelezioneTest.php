@@ -76,7 +76,10 @@ it('controprova — una radice negativa già impegnata in un altro piano attivo 
     expect(be52RicalcolaETotale($this, $s, $piano))->toBe(['success', 144000]);
 });
 
-it('togliere l\'unica voce di un piano, quando è negativa, si rifiuta: senza voci la pivot si legge come piano globale e la voce tornerebbe dentro', function () {
+// Coda 438 (1.12.0-beta.1): il cestino non toglie più l'ultima voce di un piano, e il rifiuto viene prima del fermo delle voci negative (come le due prove
+// riscritte in `Beta52VoceEntrataFermoCasiTest`). La prova teneva la frase del fermo per il piano senza voci: ora tiene il rifiuto dell'ultima voce e che niente
+// cambia; la frase del fermo per il piano senza voci resta provata qui sopra, dal ricalcolo del piano senza pivot.
+it('togliere l\'unica voce di un piano, quando è negativa, si rifiuta prima del fermo: è l\'ultima voce, e il piano resta com\'è', function () {
     $s = be52Vuoto($this);
     be52Voce($this, $s, $s['pc'], 'Spese generali', 'spesa', '1.200,00');
     $voce = be52Voce($this, $s, $s['pc'], 'Rimborso', 'spesa', '240,00');
@@ -90,8 +93,8 @@ it('togliere l\'unica voce di un piano, quando è negativa, si rifiuta: senza vo
     be52Detach($this, $s, $piano->fresh(), $voce->id);
 
     expect(be52Flash()['type'] ?? null)->toBe('error')
-        ->and(be52SelezioneMessaggio())->toContain('«Rimborso»')
-        ->and(be52SelezioneMessaggio())->toContain(BE52_FERMO_SENZA_VOCI)
+        ->and(be52SelezioneMessaggio())->toStartWith('Impossibile togliere la voce: «Rimborso» è l\'ultima voce del piano rate «Solo il rimborso».')
+        ->and(be52SelezioneMessaggio())->not->toContain(BE52_FERMO_SENZA_VOCI)
         ->and(be52Pivot($piano->fresh()))->toBe([$voce->id => -24000])
         ->and($piano->fresh()->stato->value)->toBe('bozza')
         ->and(be52Quote($piano))->toBe($quote);

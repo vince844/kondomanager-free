@@ -4,6 +4,7 @@ namespace App\Services\Riparto;
 
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\RigaRiparto;
 use Illuminate\Support\Facades\DB;
 
@@ -68,7 +69,7 @@ final class QuotaDellaChiamata
         $quota = self::perConto($pianoRateId, $contoId) ?? 1.0;
         $totale = 0;
 
-        foreach (ContributoVersato::perImmobileESoggetto(Conto::class, $contoId) as $parti) {
+        foreach (ContributoVersato::perImmobileESoggetto(Conto::class, $contoId, self::esercizioDelPiano($pianoRateId)) as $parti) {
             if (array_sum($parti) <= 0) {
                 continue;
             }
@@ -80,5 +81,16 @@ final class QuotaDellaChiamata
         }
 
         return $totale;
+    }
+
+    /**
+     * Coda 438: l'esercizio del piano per il già versato, come lo legge il motore (`CompetenzaDelPiano::esercizioDelPiano`): valgono le righe di quell'esercizio
+     * e quelle senza esercizio (`ContributoVersato::valeNellEsercizio`). Nullo per un piano che non c'è o che non ha un esercizio.
+     */
+    public static function esercizioDelPiano(int $pianoRateId): ?int
+    {
+        $piano = PianoRate::query()->whereKey($pianoRateId)->first();
+
+        return $piano === null ? null : app(CompetenzaDelPiano::class)->esercizioDelPiano($piano)?->id;
     }
 }

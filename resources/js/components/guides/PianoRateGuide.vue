@@ -218,7 +218,12 @@ defineEmits(['update:open']);
                                 strada passa da un piano creato di nuovo, che li assorbe; quelli legati alla successione li legge
                                 anche lì, e non li chiede di nuovo a chi li ha. Se un altro piano della stessa gestione, non ancora
                                 emesso, li ha già assorbiti, non li chiede di nuovo: dice in quale piano sono e le due strade,
-                                eliminare quel piano o registrare quelli di questo dopo aver emesso quell'altro.
+                                eliminare quel piano o registrare quelli di questo dopo aver emesso quell'altro. Con due defunti
+                                sulla stessa unità i saldi non legati di un erede sono gli stessi in tutte e due le voci: se sono già la sua
+                                parte per un defunto, per l'altro la voce chiede il saldo legato e lo dice; se il programma non sa se
+                                comprendono le parti, le voci dopo la prima dicono che le comprendono solo se le comprendono
+                                insieme. Se un defunto è anche erede dell'altro, e tutte e due le successioni passano l'arretrato agli eredi, il cancello lo dice: la sua parte da erede della cifra
+                                dell'altro non passa ai suoi eredi, la divisione la decide l'amministratore e le righe del Wallet non chiudono la voce.
                             </p>
                         </section>
 

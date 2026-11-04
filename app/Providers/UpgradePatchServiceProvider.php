@@ -65,7 +65,9 @@ use Illuminate\Support\ServiceProvider;
  *   aver scritto (`BLOCCO_DEL_PONTE`), riconosciuto come righe intere.
  * - Il blocco nuovo **dice cosa è successo, quando e come tornare indietro**, perché modificare
  *   un'impostazione di sicurezza sul server di qualcun altro senza dirglielo non si fa.
- * - Non si cancella mai niente: si sostituisce un blocco nostro o si aggiunge in coda.
+ * - Non si cancella mai niente che non sia nostro: si sostituisce un blocco nostro, si aggiunge in
+ *   coda, e si tolgono le tre righe del database che il ponte aveva scritto sotto il suo blocco
+ *   (vedi `RIGHE_DB_DEL_PONTE`), lasciando al loro posto una nota che dice cosa è successo.
  *
  * ## Quando gira
  *
@@ -111,6 +113,26 @@ class UpgradePatchServiceProvider extends ServiceProvider
 
     /** L'intestazione del blocco nuovo, che serve anche a riconoscerlo la prossima volta. */
     private const INTESTAZIONE_NUOVA = '# --- KondoManager: proxy fidati (scritto automaticamente) ---';
+
+    /** L'intestazione con cui il ponte apriva il suo blocco dalla v1.9 alla 1.11.0-beta.59 (poi ha aperto con quella nuova). */
+    private const INTESTAZIONE_DEL_PONTE = '# --- AUTO-CONFIGURED BY V1.9 UPGRADER ---';
+
+    /**
+     * Le tre righe che il ponte di una versione già installata (dalla v1.9 alla 1.11.0) aggiungeva
+     * sotto il suo blocco quando il `.env` non nominava `DB_ENGINE`: la connessione a `utf8` a 3 byte
+     * per carattere, che non salva le emoji, mentre `config/database.php` usa `utf8mb4` di serie. Il
+     * ponte di questa versione non le scrive più; qui si tolgono a chi le ha già, e solo se sono
+     * queste tre, intere, consecutive, subito sotto la riga `TRUSTED_PROXIES` di un blocco nostro.
+     *
+     * Le tabelle create mentre le righe erano attive restano come sono: l'aggiornamento non le converte.
+     */
+    private const RIGHE_DB_DEL_PONTE = "DB_CHARSET=utf8\nDB_COLLATION=utf8_unicode_ci\nDB_ENGINE=\"InnoDB ROW_FORMAT=DYNAMIC\"";
+
+    /** La nota che prende il posto delle tre righe: solo righe di commento, che l'analizzatore del `.env` salta. */
+    private const NOTA_RIGHE_DB_TOLTE = "# Qui c'erano le righe DB_CHARSET, DB_COLLATION e DB_ENGINE, scritte automaticamente da una\n"
+        ."# versione precedente dell'aggiornamento e tolte da questa: portavano la connessione al database\n"
+        ."# a utf8, che non accetta i caratteri a 4 byte (alcune emoji). Il programma, di serie, usa utf8mb4.\n"
+        ."# L'aggiornamento non ha convertito le tabelle già create: in quelle tabelle un testo con un'emoji non si salva, e il salvataggio dà un errore.";
 
     public function register(): void
     {
@@ -161,7 +183,9 @@ class UpgradePatchServiceProvider extends ServiceProvider
      * avrebbe dovuto scrivere sul `.env` vero del progetto. È il motivo per cui un difetto di
      * sicurezza è vissuto in questo file per due versioni senza che niente lo segnalasse.
      *
-     * @return 'assente'|'aggiunto'|'migrato'|'gia-configurato' cosa è stato fatto
+     * @return 'assente'|'aggiunto'|'migrato'|'ripulito'|'gia-configurato' cosa è stato fatto (`migrato`
+     *         se si è migrato un blocco, anche quando si sono tolte pure le righe del database; `ripulito`
+     *         se si sono tolte solo quelle)
      */
     public function sistemaIlFileEnv(string $percorso): string
     {
@@ -171,12 +195,17 @@ class UpgradePatchServiceProvider extends ServiceProvider
 
         $contenuto = (string) file_get_contents($percorso);
 
-        // 1. I blocchi che avevamo scritto noi, ancora intatti: si migrano a PRIVATE_SUBNETS, tutti
+        // 1. Le tre righe del database che il ponte aveva scritto sotto il suo blocco (Coda 447): si tolgono
+        //    per prime, anche sotto un blocco ancora da migrare, così un blocco del ponte con le righe
+        //    sotto si sistema in un giro solo.
+        $senzaRighe = $this->senzaLeRigheDelDatabaseDelPonte($contenuto);
+
+        // 2. I blocchi che avevamo scritto noi, ancora intatti: si migrano a PRIVATE_SUBNETS, tutti
         //    nello stesso passaggio. Quello del ponte vale solo come righe intere (`^…$` con `m`):
         //    un valore allungato a mano (`*,10.0.0.1`) è una scelta di chi amministra e resta.
         //    Se l'espressione non si può valutare (`preg_replace_callback` restituisce null) quel
         //    blocco resta com'è: il file non si riscrive mai con un contenuto che non si è calcolato.
-        $migrato = str_replace(self::BLOCCO_VECCHIO, $this->bloccoNuovo(migrazione: true), $contenuto);
+        $migrato = str_replace(self::BLOCCO_VECCHIO, $this->bloccoNuovo(migrazione: true), $senzaRighe);
         $migrato = preg_replace_callback(
             '/^'.preg_quote(self::BLOCCO_DEL_PONTE, '/').'$/m',
             fn () => $this->bloccoNuovo(migrazione: true),
@@ -186,10 +215,10 @@ class UpgradePatchServiceProvider extends ServiceProvider
         if ($migrato !== $contenuto) {
             file_put_contents($percorso, $migrato);
 
-            return 'migrato';
+            return $migrato !== $senzaRighe ? 'migrato' : 'ripulito';
         }
 
-        // 2. Qualunque altra menzione di TRUSTED_PROXIES è di chi amministra: non si tocca.
+        // 3. Qualunque altra menzione di TRUSTED_PROXIES è di chi amministra: non si tocca.
         //    Ci rientra anche il commento `# TRUSTED_PROXIES=null` di `.env.example`, ed è voluto:
         //    quell'installazione ha già una riga da scommentare, e scriverne una seconda più sotto
         //    darebbe due righe che dicono cose diverse.
@@ -197,10 +226,36 @@ class UpgradePatchServiceProvider extends ServiceProvider
             return 'gia-configurato';
         }
 
-        // 3. Non c'è niente: si aggiunge in coda, senza toccare una riga di quelle esistenti.
+        // 4. Non c'è niente: si aggiunge in coda, senza toccare una riga di quelle esistenti.
         file_put_contents($percorso, "\n\n".$this->bloccoNuovo(migrazione: false)."\n", FILE_APPEND);
 
         return 'aggiunto';
+    }
+
+    /**
+     * Toglie le tre righe del database che il ponte aveva scritto sotto il suo blocco (Coda 447) e
+     * lascia una nota al loro posto.
+     *
+     * Le toglie solo se stanno subito sotto la riga `TRUSTED_PROXIES` di un blocco nostro — quello che
+     * apre con l'intestazione del ponte o con quella del provider, e ha solo commenti prima del
+     * valore — e sono esattamente quelle tre, intere e consecutive. Il valore di `TRUSTED_PROXIES`
+     * può essere qualunque: il blocco invita a scrivere la lista dei proxy, e chi lo fa non ha scelto
+     * le righe del database. Due righe sole, un altro valore, una riga in mezzo o staccate dal blocco:
+     * sono di chi amministra e restano. Se l'espressione non si può valutare, il contenuto resta com'è.
+     */
+    private function senzaLeRigheDelDatabaseDelPonte(string $contenuto): string
+    {
+        $intestazioni = preg_quote(self::INTESTAZIONE_DEL_PONTE, '/').'|'.preg_quote(self::INTESTAZIONE_NUOVA, '/');
+        $righeDb = preg_quote(self::RIGHE_DB_DEL_PONTE, '/');
+
+        // Un'intestazione nostra, i commenti, la riga del valore (qualunque) e subito sotto le tre righe.
+        $schema = "/^((?:{$intestazioni})\n(?:#[^\n]*\n)*TRUSTED_PROXIES=[^\n]*)\n{$righeDb}\$/m";
+
+        return preg_replace_callback(
+            $schema,
+            fn (array $trovato) => $trovato[1]."\n".self::NOTA_RIGHE_DB_TOLTE,
+            $contenuto
+        ) ?? $contenuto;
     }
 
     /**

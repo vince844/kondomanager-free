@@ -66,13 +66,28 @@ use Carbon\CarbonImmutable;
  * dal Wallet, la tabella (`due_serie`) per persona le due serie, con la cifra, l'esercizio e se il Wallet le mostra; finché ci sono tutte e due, la
  * voce torna a ogni generazione. Un riporto accanto alle righe legate che non è la parte continua a non contare. Con più
  * defunti sulla stessa unità i saldi non legati di una persona sono gli stessi in ogni voce: sono la seconda serie in una voce sola, e in nessuna
- * se in un'altra voce sono la sua parte (`secondaSerieAltrove`).
+ * se in un'altra voce sono la sua parte (`secondaSerieAltrove`). E sono la parte di una voce sola (Coda 440, decisione 167): nelle altre la persona
+ * manca, la voce chiede la sua riga legata e dice di quale voce quei saldi sono già la parte. La stessa regola vale dove il programma non sa se
+ * comprendono la parte (Coda 463, decisione 188.1): se in un'altra voce sono la sua parte, qui la persona manca; se non lo sono in nessuna e la persona è
+ * incerta in più voci, nelle voci dopo la prima la frase dice che sono gli stessi saldi, che comprendono la sua parte in tutte solo se comprendono le sue
+ * parti insieme, e che per quella che non comprendono serve il saldo legato.
  *
  * Più successioni dello stesso defunto sulla stessa unità (la proprietà e la nuda proprietà, due ruoli): la cifra del motore è per persona e
  * unità, e si divide per ruolo leggendo il dettaglio del riparto che il motore ha appena calcolato — la riga di titolarità di ogni riga di
  * riparto dice a quale successione appartiene —, ognuna con i suoi eredi per quota. Se un pezzo non si attribuisce (un già versato, un
  * addebito diretto, un dettaglio che non c'è, una successione con l'arretrato a suo nome), la voce nomina tutte le successioni e dice che la
  * divisione la decide l'amministratore: senza cifre per erede, senza la strada del Wallet.
+ *
+ * Il defunto che è anche erede di un altro defunto sulla stessa unità (Coda 480, decisione 190.1): la parte da erede di un erede che ha a sua volta una
+ * successione sull'unità, con l'arretrato agli eredi, resterebbe nel piano a nome suo, e ai suoi eredi non passa: né la cifra di una voce né una riga del Wallet la
+ * mettono a posto, e la strada di una voce (le righe a nome di chi è morto, «Non serve registrare altro») la lascerebbe lì senza dirlo. Le voci del caso, quella
+ * del defunto che è anche erede (`come_erede`) e quella del defunto di cui è erede (`defunti_eredi`), sono nello stato della divisione da decidere: nominano il caso,
+ * la parte da erede (con la cifra, se la divisione dell'altro defunto è fatta) che il programma non passa agli eredi del secondo, e dicono che la divisione la decide
+ * l'amministratore, senza cifre per erede e senza la strada del Wallet. Non si chiudono con le righe: tornano a ogni generazione finché l'erede è defunto sull'unità.
+ * La parte non si sposta: le somme del piano sono quelle di sempre. Il caso è riconosciuto sulla stessa unità, per un erede con una successione che passa l'arretrato
+ * agli eredi, qualunque sia la sua cifra del motore; con l'arretrato a nome dell'erede (decisione dell'amministratore) la parte resta a nome suo e il caso non c'è.
+ * I saldi le voci del caso li leggono come prima, con la divisione del motore: chi ha la parte due volte la voce lo dice, con la tabella (decisioni 164.1 e 170), e
+ * per le altre voci della stessa unità i saldi non legati di una persona restano la sua parte in una voce sola (`secondaSerieAltrove`).
  *
  * Seconde fonti dichiarate: chi ha già un saldo non legato è `FermataDopoScrivi::conUnSaldo` (la stessa regola del posto del Wallet);
  * le righe di V1 sono le gemelle di quelle di `FermataDopoScrivi::stradaAMano`, che è privata; la divisione per quota è
@@ -123,11 +138,24 @@ final class DefuntoNelPiano
             return [];
         }
 
+        // Coda 480 (decisione 190.1): chi, fra gli eredi di un defunto della voce, è a sua volta defunto sulla stessa unità (`successioniDegliEredi`), e le voci che
+        // ne vengono (`fermate`). I suoi eredi servono ai nomi della frase.
+        $erediDefunti = self::successioniDegliEredi($piano, $gruppi);
+        $fermate = $this->fermate($gruppi, $cifre, $erediDefunti, $righeDettaglio);
+
         $persone = [];
         foreach ($gruppi as $successioni) {
             foreach ($successioni as $s) {
                 $persone[] = (int) $s->anagrafica_uscente_id;
                 array_push($persone, ...array_column($s->eredi(), 'anagrafica_id'));
+            }
+        }
+        foreach ($erediDefunti as $perPersona) {
+            foreach ($perPersona as $successioni) {
+                foreach ($successioni as $s) {
+                    $persone[] = (int) $s->anagrafica_uscente_id;
+                    array_push($persone, ...array_column($s->eredi(), 'anagrafica_id'));
+                }
             }
         }
         $nomiPersone = Anagrafica::whereIn('id', array_values(array_unique($persone)))->pluck('nome', 'id');
@@ -137,14 +165,28 @@ final class DefuntoNelPiano
         $serie = [];
         foreach ($gruppi as $chiave => $successioni) {
             $cifra = $cifre[(int) $successioni[0]->anagrafica_uscente_id][(int) $successioni[0]->immobile_id];
-            $voci[$chiave] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all(), [], $serie[$chiave]);
+            $voci[$chiave] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all(), [], $serie[$chiave], fermata: $fermate[$chiave] ?? []);
         }
         // Decisione 164.1 con più defunti sulla stessa unità: i saldi non legati di una persona si leggono per unità, non per successione, e sono
-        // gli stessi in ogni voce. Sono la seconda serie in una voce sola, e in nessuna se in un'altra voce sono la sua parte.
-        foreach (self::secondaSerieAltrove($gruppi, $serie) as $chiave => $escludi) {
+        // gli stessi in ogni voce. Sono la seconda serie in una voce sola, e in nessuna se in un'altra voce sono la sua parte. Coda 440 (decisione
+        // 167): e sono la parte di una voce sola; nelle altre la persona manca, e la voce chiede la sua riga legata. Coda 463 (decisione 188.1): anche
+        // dove il programma non sa se la comprendono; e chi è incerto in più voci, senza che nessuna li legga come la sua parte, nelle voci dopo la
+        // prima si sente dire che sono gli stessi saldi.
+        $nomeDelDefunto = fn (string $k): string => (string) ($nomiPersone[(int) $gruppi[$k][0]->anagrafica_uscente_id] ?? ($gruppi[$k][0]->registro['nomi']['uscente'] ?? 'il defunto'));
+        foreach (self::secondaSerieAltrove($gruppi, $serie) as $chiave => $altrove) {
             $successioni = $gruppi[$chiave];
             $cifra = $cifre[(int) $successioni[0]->anagrafica_uscente_id][(int) $successioni[0]->immobile_id];
-            $voci[$chiave] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all(), $escludi);
+            $diChi = array_map($nomeDelDefunto, $altrove['senza_la_parte']);
+            $stessi = [];
+            foreach ($altrove['stessi_saldi'] as $id => $chiavi) {
+                $stessi[$id] = [
+                    'altri'   => array_values(array_map($nomeDelDefunto, array_filter($chiavi, fn (string $k) => $k !== $chiave))),
+                    'tutti'   => array_map($nomeDelDefunto, $chiavi),
+                    'insieme' => (int) array_sum(array_map(fn (string $k) => (int) ($serie[$k]['parti'][$id] ?? 0), $chiavi)),
+                ];
+            }
+            // Anche una voce del caso del defunto che è anche erede si rifà (legge i saldi come le altre): il caso non si perde nella voce rifatta.
+            $voci[$chiave] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all(), $altrove['senza_seconda_serie'], senzaLaParte: $diChi, stessiSaldi: $stessi, fermata: $fermate[$chiave] ?? []);
         }
         $voci = array_values($voci);
         usort($voci, fn (array $a, array $b) => [$a['immobile_id'], $a['defunto']['id']] <=> [$b['immobile_id'], $b['defunto']['id']]);
@@ -159,18 +201,110 @@ final class DefuntoNelPiano
     }
 
     /**
-     * Decisione 164.1, più defunti sulla stessa unità (due voci): i saldi non legati di una persona (`saldiCheEntrano`) sono gli stessi in ogni voce
-     * dell'unità. Se in una voce sono la sua parte (chi non ha righe legate e ha la parte nei saldi non legati), in nessun'altra sono la seconda
-     * serie; altrimenti lo sono nella prima voce, nell'ordine delle successioni, e non nelle altre. Per ogni voce da rileggere, chi non ha la parte
-     * due volte.
+     * Coda 480 (decisione 190.1): le successioni con l'arretrato agli eredi, non annullate, degli eredi dei defunti delle voci, sulle unità delle voci: chi, fra gli
+     * eredi di un defunto, è a sua volta defunto sulla stessa unità. Anche senza una cifra del motore su quell'unità: la parte da erede c'è lo stesso. Quale erede sia
+     * erede di un arretrato che passa lo dice `fermate`.
      *
      * @param array<string, list<Subentro>> $gruppi
-     * @param array<string, array{immobile_id: int, doppie: list<int>, parte_non_legata: list<int>}|null> $serie
-     * @return array<string, list<int>>
+     * @return array<int, array<int, list<Subentro>>> id dell'unità => id dell'erede defunto => le sue successioni
+     */
+    private static function successioniDegliEredi(PianoRate $piano, array $gruppi): array
+    {
+        $unita = [];
+        $eredi = [];
+        foreach ($gruppi as $successioni) {
+            foreach ($successioni as $s) {
+                $unita[] = (int) $s->immobile_id;
+                array_push($eredi, ...array_map('intval', array_column($s->eredi(), 'anagrafica_id')));
+            }
+        }
+        $trovate = [];
+        foreach (Subentro::with('padre')->where('condominio_id', $piano->condominio_id)->where('tipo_passaggio', 'successione')
+            ->whereIn('immobile_id', array_values(array_unique($unita)))->whereIn('anagrafica_uscente_id', array_values(array_unique($eredi)))
+            ->orderBy('riga_uscente_id')->orderBy('id')->get() as $s) {
+            if (self::agliEredi($s)) {
+                $trovate[(int) $s->immobile_id][(int) $s->anagrafica_uscente_id][] = $s;
+            }
+        }
+
+        return $trovate;
+    }
+
+    /**
+     * Coda 480 (decisione 190.1): per ogni voce che c'entra col caso, i defunti che sono anche eredi di un altro defunto della stessa unità. Per la voce del defunto di
+     * cui qualcuno è erede, `defunti_eredi`: chi è, i suoi decessi e quante successioni ha, i suoi eredi (i nomi della frase) e la sua parte da erede, con il segno della cifra (`null` se la
+     * divisione di questo defunto non si fa: una successione con l'arretrato a suo nome, un pezzo che non si attribuisce). Per la voce del defunto che è anche erede
+     * (se ha una cifra del motore e quindi una voce), `come_erede`: di chi è erede, i suoi decessi e la stessa parte.
+     *
+     * @param array<string, list<Subentro>> $gruppi
+     * @param array<int, array<int, int>> $cifre [anagrafica_id][immobile_id] => centesimi, solo le cifre non nulle
+     * @param array<int, array<int, list<Subentro>>> $erediDefunti `successioniDegliEredi`
+     * @param list<array<string, mixed>> $righeDettaglio
+     * @return array<string, array{defunti_eredi?: list<array{id: int, decessi: list<string>, successioni: int, eredi: list<int>, parte: int|null}>, come_erede?: list<array{da: int, decessi: list<string>, parte: int|null}>}>
+     */
+    private function fermate(array $gruppi, array $cifre, array $erediDefunti, array $righeDettaglio): array
+    {
+        $fermate = [];
+        foreach ($gruppi as $chiave => $successioni) {
+            $defuntoId = (int) $successioni[0]->anagrafica_uscente_id;
+            $immobileId = (int) $successioni[0]->immobile_id;
+            $erediDelDefunto = [];
+            foreach ($successioni as $s) {
+                if (self::agliEredi($s)) {
+                    foreach ($s->eredi() as $e) {
+                        $erediDelDefunto[(int) $e['anagrafica_id']] = true;
+                    }
+                }
+            }
+            $secondi = array_values(array_filter(array_keys($erediDelDefunto), fn (int $id) => isset($erediDefunti[$immobileId][$id])));
+            if ($secondi === []) {
+                continue;
+            }
+            [, $perErede] = $this->dividi($successioni, $cifre[$defuntoId][$immobileId], $righeDettaglio, $defuntoId, $immobileId);
+            $decessiDelDefunto = self::decessi($successioni);
+            foreach ($secondi as $id) {
+                $parte = $perErede === null ? null : ($perErede[$id]['cifra'] ?? null);
+                $fermate[$chiave]['defunti_eredi'][] = ['id' => $id, 'decessi' => self::decessi($erediDefunti[$immobileId][$id]), 'successioni' => count($erediDefunti[$immobileId][$id]),
+                    'eredi' => array_keys(self::soloLeQuote($erediDefunti[$immobileId][$id])), 'parte' => $parte];
+                // Per la voce dell'erede, se ne ha una (senza una cifra del motore non c'è: il caso lo dice la voce di chi lo ha come erede).
+                $fermate[$id . ':' . $immobileId]['come_erede'][] = ['da' => $defuntoId, 'decessi' => $decessiDelDefunto, 'parte' => $parte];
+            }
+        }
+
+        return $fermate;
+    }
+
+    /**
+     * I giorni dei decessi delle successioni, senza ripetizioni, nell'ordine delle successioni.
+     *
+     * @param list<Subentro> $successioni
+     * @return list<string>
+     */
+    private static function decessi(array $successioni): array
+    {
+        return array_values(array_unique(array_map(fn (Subentro $x) => $x->decorrenza->toDateString(), $successioni)));
+    }
+
+    /**
+     * Decisione 164.1, più defunti sulla stessa unità (più voci): i saldi non legati di una persona (`saldiCheEntrano`) sono gli stessi in ogni voce
+     * dell'unità. Se in una voce sono la sua parte (chi non ha righe legate e ha la parte nei saldi non legati), in nessun'altra sono la seconda
+     * serie; altrimenti lo sono nella prima voce, nell'ordine delle successioni, e non nelle altre. Coda 440 (decisione 167): sono anche la parte di
+     * una voce sola. Se lo sono in più voci (la persona non ha righe legate in nessuna di loro e le parti hanno la stessa cifra), la parte è della
+     * prima, nello stesso ordine; nelle altre la persona manca, e la voce chiede la sua riga legata. Coda 463 (decisione 188.1), la stessa regola dove
+     * il programma non sa: se in una voce sono la sua parte e in un'altra la persona, senza righe legate, è incerta (le parti hanno cifre diverse), lì
+     * manca. E chi è incerto in più voci senza che nessuna legga quei saldi come la sua parte ha, nelle voci dopo la prima, la frase che dice che sono gli
+     * stessi saldi (`stessi_saldi`, con le chiavi di tutte le voci dove è incerto, nello stesso ordine). Per ogni voce da rileggere, chi non ha la parte
+     * due volte (`senza_seconda_serie`), chi non ha la parte nei saldi non legati perché è di un'altra voce (`senza_la_parte`, con la chiave di quella
+     * voce) e chi ha gli stessi saldi incerti anche in altre voci (`stessi_saldi`).
+     *
+     * @param array<string, list<Subentro>> $gruppi
+     * @param array<string, array{immobile_id: int, doppie: list<int>, parte_non_legata: list<int>, incerti: list<int>, parti: array<int, int>}|null> $serie
+     * @return array<string, array{senza_seconda_serie: list<int>, senza_la_parte: array<int, string>, stessi_saldi: array<int, list<string>>}>
      */
     private static function secondaSerieAltrove(array $gruppi, array $serie): array
     {
-        $escludi = [];
+        $altrove = [];
+        $vuota = ['senza_seconda_serie' => [], 'senza_la_parte' => [], 'stessi_saldi' => []];
         foreach (collect(array_keys($gruppi))->groupBy(fn (string $k) => (int) $gruppi[$k][0]->immobile_id) as $chiavi) {
             if ($chiavi->count() < 2) {
                 continue;
@@ -180,12 +314,29 @@ final class DefuntoNelPiano
                 $doppie = $chiavi->filter(fn (string $k) => in_array($id, $serie[$k]['doppie'] ?? [], true))->values();
                 $parteAltrove = $chiavi->contains(fn (string $k) => in_array($id, $serie[$k]['parte_non_legata'] ?? [], true));
                 foreach ($parteAltrove ? $doppie : $doppie->slice(1) as $k) {
-                    $escludi[$k][] = (int) $id;
+                    $altrove[$k] ??= $vuota;
+                    $altrove[$k]['senza_seconda_serie'][] = (int) $id;
+                }
+            }
+            foreach ($chiavi->flatMap(fn (string $k) => array_merge($serie[$k]['parte_non_legata'] ?? [], $serie[$k]['incerti'] ?? []))->unique() as $id) {
+                $conLaParte = $chiavi->filter(fn (string $k) => in_array($id, $serie[$k]['parte_non_legata'] ?? [], true))->values()->all();
+                $incerta = $chiavi->filter(fn (string $k) => in_array($id, $serie[$k]['incerti'] ?? [], true))->values()->all();
+                if ($conLaParte !== []) {
+                    // La parte è della prima voce che legge quei saldi come la parte; nelle altre dove li legge così, o dove la persona è incerta, manca.
+                    foreach ($chiavi->filter(fn (string $k) => $k !== $conLaParte[0] && (in_array($k, $conLaParte, true) || in_array($k, $incerta, true))) as $k) {
+                        $altrove[$k] ??= $vuota;
+                        $altrove[$k]['senza_la_parte'][(int) $id] = $conLaParte[0];
+                    }
+                } elseif (count($incerta) > 1) {
+                    foreach (array_slice($incerta, 1) as $k) {
+                        $altrove[$k] ??= $vuota;
+                        $altrove[$k]['stessi_saldi'][(int) $id] = $incerta;
+                    }
                 }
             }
         }
 
-        return $escludi;
+        return $altrove;
     }
 
     /**
@@ -197,28 +348,38 @@ final class DefuntoNelPiano
      * @param array<int, string> $nomiPersone
      * @param array<int, string> $nomiUnita
      * @param list<int> $senzaSecondaSerie chi non ha la parte due volte in questa voce (`secondaSerieAltrove`)
-     * @param array{immobile_id: int, doppie: list<int>, parte_non_legata: list<int>}|null $serie chi ha la parte due volte e chi ce l'ha nei saldi non legati
+     * @param array{immobile_id: int, doppie: list<int>, parte_non_legata: list<int>, incerti: list<int>, parti: array<int, int>}|null $serie chi ha la parte due
+     *        volte, chi ce l'ha nei saldi non legati, chi è incerto e la parte di ognuno
+     * @param array<int, string> $senzaLaParte chi qui non ha la parte nei saldi non legati, perché sono la sua parte nella voce di un altro defunto della
+     *        stessa unità (`secondaSerieAltrove`, Coda 440 e Coda 463): id della persona => il nome di quel defunto
+     * @param array<int, array{altri: list<string>, tutti: list<string>, insieme: int}> $stessiSaldi chi qui è incerto con gli stessi saldi non legati che
+     *        lo fanno incerto nelle voci di altri defunti della stessa unità (`secondaSerieAltrove`, Coda 463): id della persona => i nomi di quei defunti,
+     *        di tutti quelli delle voci dove è incerto, e la somma delle sue parti in quelle voci
+     * @param array{defunti_eredi?: list<array{id: int, decessi: list<string>, successioni: int, eredi: list<int>, parte: int|null}>, come_erede?: list<array{da: int, decessi: list<string>, parte: int|null}>} $fermata
+     *        il caso del defunto che è anche erede di un altro defunto della stessa unità (`fermate`, Coda 480): la voce è nello stato della divisione da decidere, con la sua frase
      * @return array<string, mixed>
      */
-    private function voce(PianoRate $piano, array $successioni, int $cifra, bool $pianoApplicaSaldi, bool $allaCreazione, array $righeDettaglio, array $nomiPersone, array $nomiUnita, array $senzaSecondaSerie = [], ?array &$serie = null): array
+    private function voce(PianoRate $piano, array $successioni, int $cifra, bool $pianoApplicaSaldi, bool $allaCreazione, array $righeDettaglio, array $nomiPersone, array $nomiUnita, array $senzaSecondaSerie = [], ?array &$serie = null, array $senzaLaParte = [], array $stessiSaldi = [], array $fermata = []): array
     {
         $s = $successioni[count($successioni) - 1];
         $defuntoId = (int) $s->anagrafica_uscente_id;
         $immobileId = (int) $s->immobile_id;
         $defunto = $nomiPersone[$defuntoId] ?? ($s->registro['nomi']['uscente'] ?? 'il defunto');
         $unita = $nomiUnita[$immobileId] ?? 'un\'unità';
-        $decessi = array_values(array_unique(array_map(fn (Subentro $x) => $x->decorrenza->toDateString(), $successioni)));
+        $decessi = self::decessi($successioni);
 
         // La parte di ogni erede per la sua quota ereditata (i pesi dell'arretrato, nell'ordine del modulo: il centesimo di resto al primo
         // dei resti maggiori), con il segno della cifra, che la primitiva riapplica sul valore assoluto. Con più successioni, per ruolo:
-        // `null` se la divisione per ruolo non si può fare.
-        $pezzi = count($successioni) === 1 ? [(int) $s->id => $cifra] : $this->pezziPerSuccessione($successioni, $righeDettaglio, $defuntoId, $immobileId, $cifra);
-        $perErede = $pezzi === null ? null : self::perErede($successioni, $pezzi);
-        $eredi = [];
-        foreach ($perErede ?? self::soloLeQuote($successioni) as $id => $e) {
-            $eredi[] = ['id' => $id, 'nome' => $nomiPersone[$id] ?? ('Anagrafica #' . $id), 'quota' => $e['quota'], 'cifra' => $e['cifra'],
-                'cifra_formattata' => $e['cifra'] === null ? null : self::cifra($e['cifra'])];
-        }
+        // `null` se la divisione per ruolo non si può fare. Nel caso del defunto che è anche erede di un altro (Coda 480) la divisione la decide
+        // l'amministratore, come quando non si può fare: gli eredi hanno la quota e nessuna parte.
+        // I saldi si leggono con la divisione del motore anche nel caso (Coda 480): la parte due volte si dice lo stesso, e le altre voci della stessa unità
+        // trovano i saldi non legati di una persona come prima (`secondaSerieAltrove`).
+        [$pezzi, $divisa] = $this->dividi($successioni, $cifra, $righeDettaglio, $defuntoId, $immobileId);
+        $perErede = $fermata === [] ? $divisa : null;
+        $righeEredi = fn (array $perId): array => array_map(fn ($id, array $e) => ['id' => $id, 'nome' => $nomiPersone[$id] ?? ('Anagrafica #' . $id), 'quota' => $e['quota'],
+            'cifra' => $e['cifra'], 'cifra_formattata' => $e['cifra'] === null ? null : self::cifra($e['cifra'])], array_keys($perId), array_values($perId));
+        $eredi = $righeEredi($perErede ?? self::soloLeQuote($successioni));
+        $erediLetti = $divisa === null ? $eredi : $righeEredi($divisa);
 
         // Chi ha già un saldo su quella gestione, quell'unità e quell'esercizio, senza contare quelli scritti da un passaggio né quelli legati a un
         // passaggio (il posto del Wallet): la strada è sempre il Wallet con i saldi legati alla successione, e questi saldi dicono chi, senza la
@@ -234,16 +395,18 @@ final class DefuntoNelPiano
         $passaggiIds = array_values(array_unique(array_map(fn (Subentro $x) => (int) $x->capo()->id, $successioni)));
         // Le righe legate alla successione si leggono anche con il piano che non applica i saldi: chi le ha già non se le vede chiedere di nuovo
         // (la porta del Wallet le rifiuterebbe come doppione), e il piano creato di nuovo le assorbe.
-        $legati = $perErede !== null ? self::saldiLegati($persone, $piano, $immobileId, $passaggiIds) : [];
+        $legati = $divisa !== null ? self::saldiLegati($persone, $piano, $immobileId, $passaggiIds) : [];
         // Le righe legate già assorbite da un altro piano della stessa gestione che si riscrive ancora: questo piano non le assorbe, e la porta del
         // Wallet rifiuta una seconda riga per le stesse persone finché sono lì.
-        $altrove = $perErede !== null ? self::saldiLegatiAltrove($persone, $piano, $immobileId, $passaggiIds) : [];
+        $altrove = $divisa !== null ? self::saldiLegatiAltrove($persone, $piano, $immobileId, $passaggiIds) : [];
         // Coda 332: i saldi che la generazione assorbe, di ogni esercizio della gestione, come li prende `GenerateSaldiAction`.
-        $saldiCheEntrano = $pianoApplicaSaldi && $perErede !== null ? self::saldiCheEntrano($persone, $piano, $immobileId) : [];
-        $strada = self::chiHaLaParte($persone, $defuntoId, $cifra, $eredi, $legati, $saldiCheEntrano, $conUnSaldo, $pianoApplicaSaldi && $perErede !== null, $altrove, $senzaSecondaSerie)
+        $saldiCheEntrano = $pianoApplicaSaldi && $divisa !== null ? self::saldiCheEntrano($persone, $piano, $immobileId) : [];
+        $strada = self::chiHaLaParte($persone, $defuntoId, $cifra, $erediLetti, $legati, $saldiCheEntrano, $conUnSaldo, $pianoApplicaSaldi && $divisa !== null, $altrove, $senzaSecondaSerie, array_keys($senzaLaParte))
             + ['successione' => self::allaSuccessione($decessi, count($successioni) > 1)];
         $partePassata = $strada['parte_passata'];
-        $serie = ['immobile_id' => $immobileId, 'doppie' => $strada['doppie'], 'parte_non_legata' => $strada['parte_non_legata']];
+        // Coda 463: anche chi qui è incerto, solo dove la voce dice la strada (con la cifra divisa per erede), e la parte di ognuno nel verso del Wallet.
+        $serie = ['immobile_id' => $immobileId, 'doppie' => $strada['doppie'], 'parte_non_legata' => $strada['parte_non_legata'],
+            'incerti' => $divisa === null ? [] : $strada['incerti'], 'parti' => self::attesi($defuntoId, $cifra, $erediLetti)];
         // Gli esercizi dei saldi che questa generazione assorbe di chi ha già la sua parte, e quelli non legati di chi è incerto (decisione 164.3),
         // quando non sono quello aperto: il Wallet non li mostra, e la frase lo dice. Solo con il piano che applica i saldi: senza, questo piano non
         // li assorbe. Senza nessuno con la sua parte né incerti (anche quando la cifra non si divide) non c'è nessuna riga da cercare. Le due serie di
@@ -276,10 +439,29 @@ final class DefuntoNelPiano
             'parti_da_decidere'   => $perErede === null,
             // Decisione 170: chi ha la parte due volte, una riga per persona (vuota se nessuno).
             'due_serie'           => $dueSerie['righe'],
-            'frase'               => $perErede === null
-                ? $this->fraseDaDecidere($defunto, $decessi, $unita, $cifra, $successioni, $nomiPersone)
-                : $this->frase($defunto, $decessi, $unita, $cifra, $eredi, $pianoApplicaSaldi, $allaCreazione, $strada, $partePassata, count($successioni) > 1 ? $this->divisionePerRuolo($successioni, $pezzi) : null, $fuoriDalWallet, $dueSerie['frase']),
+            'frase'               => match (true) {
+                $fermata !== [] => $this->fraseFermata($defunto, $decessi, $unita, $cifra, $successioni, $eredi, $fermata, $nomiPersone, $dueSerie['frase']),
+                $perErede === null => $this->fraseDaDecidere($defunto, $decessi, $unita, $cifra, $successioni, $nomiPersone),
+                default => $this->frase($defunto, $decessi, $unita, $cifra, $eredi, $pianoApplicaSaldi, $allaCreazione, $strada, $partePassata, count($successioni) > 1 ? $this->divisionePerRuolo($successioni, $pezzi) : null, $fuoriDalWallet, $dueSerie['frase'],
+                    self::parteInUnAltraVoce(array_intersect_key($senzaLaParte, array_flip($strada['senza_la_parte'])), $saldiCheEntrano, [$defuntoId => $defunto] + array_column($eredi, 'nome', 'id'), $defunto, $piano, $immobileId),
+                    self::stessiSaldi(self::nellOrdine($stessiSaldi, $strada['incerti']), [$defuntoId => $defunto] + array_column($eredi, 'nome', 'id'), $piano, $immobileId)),
+            },
         ];
+    }
+
+    /**
+     * La cifra di un defunto divisa per successione (`pezziPerSuccessione`) e la parte di ogni erede (`perErede`); `[null, null]` se la divisione per ruolo non si
+     * può fare.
+     *
+     * @param list<Subentro> $successioni
+     * @param list<array<string, mixed>> $righeDettaglio
+     * @return array{0: array<int, int>|null, 1: array<int, array{quota: float, cifra: int}>|null}
+     */
+    private function dividi(array $successioni, int $cifra, array $righeDettaglio, int $defuntoId, int $immobileId): array
+    {
+        $pezzi = count($successioni) === 1 ? [(int) $successioni[0]->id => $cifra] : $this->pezziPerSuccessione($successioni, $righeDettaglio, $defuntoId, $immobileId, $cifra);
+
+        return [$pezzi, $pezzi === null ? null : self::perErede($successioni, $pezzi)];
     }
 
     /**
@@ -593,6 +775,11 @@ final class DefuntoNelPiano
      * sua parte nei saldi non legati, anche se a un altro manca ancora la sua: con più defunti sulla stessa unità quei saldi sono la sua parte in
      * questa voce, e in un'altra non sono una seconda serie (`secondaSerieAltrove`). Con `$siLegge` falso `$saldiCheEntrano` arriva vuoto, e nessuno ce l'ha.
      *
+     * Coda 440 (decisione 167) e Coda 463 (decisione 188.1): chi senza righe legate ha saldi non legati che sono la sua parte nella voce di un altro defunto
+     * della stessa unità (`$senzaLaParte`) qui non ce l'ha, che quei saldi tornino anche con la parte di qui o no: manca (`senza_la_parte` e `mancanti`), anche se
+     * quei saldi stanno nel posto del Wallet, e la parte non è passata. Non entra nel confronto di chi non ha righe legate: gli altri restano fra chi ha la sua
+     * parte, se ce l'hanno.
+     *
      * @param list<int> $persone il defunto e gli eredi, nell'ordine della frase
      * @param list<array<string, mixed>> $eredi
      * @param array<int, array{cents: int, righe: int}> $legati
@@ -600,9 +787,10 @@ final class DefuntoNelPiano
      * @param list<int> $conUnSaldo
      * @param array<int, array{cents: int, righe: int, piani: list<PianoRate>}> $altrove
      * @param list<int> $senzaSecondaSerie chi non ha la parte due volte qui, perché i suoi saldi non legati sono di un'altra voce della stessa unità
-     * @return array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, doppie: list<int>, parte_non_legata: list<int>, incerti: list<int>, mancanti: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, altrove: list<int>, righe_altrove: int, piani_altrove: list<PianoRate>}
+     * @param list<int> $senzaLaParte chi non ha la parte qui nei saldi non legati, perché sono la sua parte in un'altra voce della stessa unità
+     * @return array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, doppie: list<int>, parte_non_legata: list<int>, incerti: list<int>, mancanti: list<int>, senza_la_parte: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, altrove: list<int>, righe_altrove: int, piani_altrove: list<PianoRate>}
      */
-    private static function chiHaLaParte(array $persone, int $defuntoId, int $cifra, array $eredi, array $legati, array $saldiCheEntrano, array $conUnSaldo, bool $siLegge, array $altrove = [], array $senzaSecondaSerie = []): array
+    private static function chiHaLaParte(array $persone, int $defuntoId, int $cifra, array $eredi, array $legati, array $saldiCheEntrano, array $conUnSaldo, bool $siLegge, array $altrove = [], array $senzaSecondaSerie = [], array $senzaLaParte = []): array
     {
         $attesi = self::attesi($defuntoId, $cifra, $eredi);
         $torna = fn (int $cents, int $id): bool => abs($cents - ($attesi[$id] ?? 0)) <= 1;
@@ -610,9 +798,12 @@ final class DefuntoNelPiano
         $daCorreggere = [];
         $senzaLegate = [];
         $inUnAltroPiano = [];
+        $parteInUnAltraVoce = [];
         foreach ($persone as $id) {
             if (! isset($legati[$id]) && isset($altrove[$id])) {
                 $inUnAltroPiano[] = $id;
+            } elseif (! isset($legati[$id]) && in_array($id, $senzaLaParte, true)) {
+                $parteInUnAltraVoce[] = $id;
             } elseif (! isset($legati[$id])) {
                 $senzaLegate[] = $id;
             } elseif ($torna($legati[$id]['cents'], $id)) {
@@ -632,7 +823,7 @@ final class DefuntoNelPiano
         $conSaldiNonLegati = array_merge($conUnSaldo, array_keys($saldiCheEntrano));
 
         return [
-            'parte_passata' => $siLegge && $daCorreggere === [] && $inUnAltroPiano === [] && $doppie === [] && ($senzaLegate === [] || $senzaLegateOk),
+            'parte_passata' => $siLegge && $daCorreggere === [] && $inUnAltroPiano === [] && $doppie === [] && $parteInUnAltraVoce === [] && ($senzaLegate === [] || $senzaLegateOk),
             'defunto_id' => $defuntoId,
             'altrove' => $inUnAltroPiano,
             'righe_altrove' => (int) array_sum(array_map(fn (int $id) => $altrove[$id]['righe'], $inUnAltroPiano)),
@@ -642,7 +833,9 @@ final class DefuntoNelPiano
             'doppie' => $doppie,
             'parte_non_legata' => array_values(array_filter($senzaLegate, fn (int $id) => array_key_exists($id, $saldiCheEntrano) && $torna($saldiCheEntrano[$id], $id))),
             'incerti' => array_values(array_filter($restano, fn (int $id) => in_array($id, $conSaldiNonLegati, true))),
-            'mancanti' => array_values(array_filter($restano, fn (int $id) => ! in_array($id, $conSaldiNonLegati, true))),
+            // Chi ha la parte nella voce di un altro defunto manca qui, anche con i saldi non legati nel posto del Wallet: quei saldi sono già l'altra parte.
+            'mancanti' => array_values(array_filter($persone, fn (int $id) => in_array($id, $parteInUnAltraVoce, true) || (in_array($id, $restano, true) && ! in_array($id, $conSaldiNonLegati, true)))),
+            'senza_la_parte' => $parteInUnAltraVoce,
             'da_correggere' => $daCorreggere,
         ];
     }
@@ -673,15 +866,69 @@ final class DefuntoNelPiano
      */
     private function fraseDaDecidere(string $defunto, array $decessi, string $unita, int $cifra, array $successioni, array $nomiPersone): string
     {
-        $quali = implode('; ', array_map(function (Subentro $s) use ($nomiPersone) {
+        return self::apertura($defunto, $decessi, $unita, $cifra, count($successioni) > 1) . sprintf(' %s ha su quest\'unità più di una successione (%s) e il programma non sa quale parte della cifra spetti a ciascuna: la divisione fra gli eredi la decide l\'amministratore, e il programma non ne propone le parti né le righe del Wallet.',
+            $defunto, self::quali($successioni, $nomiPersone));
+    }
+
+    /**
+     * Le successioni di un defunto sulla stessa unità, ognuna con il suo ruolo e i suoi eredi: «la proprietà, con gli eredi Anna e Bruno; la nuda proprietà, con l'erede
+     * Carla (l'arretrato resta a suo nome)».
+     *
+     * @param list<Subentro> $successioni
+     * @param array<int, string> $nomiPersone
+     */
+    private static function quali(array $successioni, array $nomiPersone): string
+    {
+        return implode('; ', array_map(function (Subentro $s) use ($nomiPersone) {
             $eredi = array_map(fn (array $e) => $nomiPersone[$e['anagrafica_id']] ?? ('Anagrafica #' . $e['anagrafica_id']), $s->eredi());
 
             return sprintf('%s, %s %s%s', self::ruolo((string) $s->tipologia), count($eredi) === 1 ? 'con l\'erede' : 'con gli eredi', self::elenco($eredi),
                 self::agliEredi($s) ? '' : ' (l\'arretrato resta a suo nome)');
         }, $successioni));
+    }
 
-        return self::apertura($defunto, $decessi, $unita, $cifra, count($successioni) > 1) . sprintf(' %s ha su quest\'unità più di una successione (%s) e il programma non sa quale parte della cifra spetti a ciascuna: la divisione fra gli eredi la decide l\'amministratore, e il programma non ne propone le parti né le righe del Wallet.',
-            $defunto, $quali);
+    /**
+     * Coda 480 (decisione 190.1): la voce del defunto che è anche erede di un altro defunto della stessa unità, o di quello di cui è erede. L'apertura di ogni voce; poi,
+     * per ogni caso, la parte da erede che il programma non passa agli eredi del secondo defunto, con la cifra se la divisione dell'altro è fatta: «Ada è anche erede di Ugo
+     * su quest'unità (decesso del 1 marzo 2026): la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Anna e Bruno.», e nella voce di Ugo «Ada, erede
+     * di Ugo, ha a sua volta una successione su quest'unità (decesso del 1 maggio 2026) con l'arretrato passato agli eredi: …». Infine che la divisione la decide
+     * l'amministratore, senza cifre per erede e senza la strada del Wallet, e che nessuna riga chiude la voce. Mai «Non serve registrare altro». Se qualcuno ha
+     * la parte due volte, in fondo la frase delle due serie (`dueSerie`), come nelle altre voci.
+     *
+     * @param list<string> $decessi
+     * @param list<Subentro> $successioni
+     * @param list<array<string, mixed>> $eredi gli eredi del defunto della voce, con la sola quota
+     * @param array{defunti_eredi?: list<array{id: int, decessi: list<string>, successioni: int, eredi: list<int>, parte: int|null}>, come_erede?: list<array{da: int, decessi: list<string>, parte: int|null}>} $fermata
+     * @param array<int, string> $nomiPersone
+     */
+    private function fraseFermata(string $defunto, array $decessi, string $unita, int $cifra, array $successioni, array $eredi, array $fermata, array $nomiPersone, string $dueSerie = ''): string
+    {
+        $nome = fn (int $id): string => (string) ($nomiPersone[$id] ?? ('Anagrafica #' . $id));
+        $quando = fn (array $giorni): string => (count($giorni) === 1 ? 'decesso del ' : 'decessi del ')
+            . implode(' e del ', array_map(fn (string $g) => CarbonImmutable::parse($g)->locale('it')->translatedFormat('j F Y'), $giorni));
+        $laParte = fn (?int $cents): string => $cents === null ? 'la sua parte da erede' : sprintf('la sua parte da erede, %s,', self::cifra($cents));
+        $suoiEredi = self::elenco(array_column($eredi, 'nome'));
+
+        $frasi = [self::apertura($defunto, $decessi, $unita, $cifra, count($successioni) > 1)];
+        // Con più successioni la voce dice quali, e per quale l'arretrato resta a nome del defunto: l'apertura dice che passa agli eredi.
+        if (count($successioni) > 1) {
+            $frasi[] = sprintf('%s ha su quest\'unità più di una successione (%s).', $defunto, self::quali($successioni, $nomiPersone));
+        }
+        foreach ($fermata['come_erede'] ?? [] as $x) {
+            $frasi[] = sprintf('%s è anche erede di %s su quest\'unità (%s): %s il programma non la passa ai suoi eredi, %s.',
+                $defunto, $nome($x['da']), $quando($x['decessi']), $laParte($x['parte']), $suoiEredi);
+        }
+        foreach ($fermata['defunti_eredi'] ?? [] as $x) {
+            $frasi[] = sprintf('%s, erede di %s, ha a sua volta %s su quest\'unità (%s) con l\'arretrato passato agli eredi: %s il programma non la passa ai suoi eredi, %s.',
+                $nome($x['id']), $defunto, $x['successioni'] > 1 ? 'più successioni' : 'una successione', $quando($x['decessi']), $laParte($x['parte']),
+                self::elenco(array_map($nome, $x['eredi'])));
+        }
+        $frasi[] = 'La divisione fra gli eredi la decide l\'amministratore: il programma non ne propone le parti né le righe del Wallet, e nessuna riga del Wallet chiude questa voce, che torna a ogni generazione.';
+        if ($dueSerie !== '') {
+            $frasi[] = $dueSerie;
+        }
+
+        return implode(' ', $frasi);
     }
 
     /**
@@ -717,8 +964,10 @@ final class DefuntoNelPiano
      * @param array{parte_passata: bool, defunto_id: int, ok: list<int>, ok_legati: list<int>, incerti: list<int>, mancanti: list<int>, da_correggere: array<int, array{cents: int, righe: int, atteso: int}>, successione: string} $strada
      * @param array{righe: int, esercizi: list<string>} $fuoriDalWallet i saldi di chi ha già la sua parte, e degli incerti, che il Wallet non mostra (`fuoriDalWallet`)
      * @param string $dueSerie la frase delle due serie di chi ha la parte due volte (`dueSerie`: i nomi e la strada; le serie sono nella tabella), vuota se nessuno
+     * @param string $parteAltrove perché la voce chiede la riga legata di chi ha saldi non legati che sono la sua parte per un altro defunto (`parteInUnAltraVoce`), vuota se nessuno
+     * @param string $stessiSaldi che i saldi non legati di chi qui è incerto sono gli stessi delle voci di altri defunti (`stessiSaldi`), vuota se nessuno
      */
-    private function frase(string $defunto, array $decessi, string $unita, int $cifra, array $eredi, bool $pianoApplicaSaldi, bool $allaCreazione, array $strada, bool $partePassata, ?string $perRuolo, array $fuoriDalWallet = ['righe' => 0, 'esercizi' => []], string $dueSerie = ''): string
+    private function frase(string $defunto, array $decessi, string $unita, int $cifra, array $eredi, bool $pianoApplicaSaldi, bool $allaCreazione, array $strada, bool $partePassata, ?string $perRuolo, array $fuoriDalWallet = ['righe' => 0, 'esercizi' => []], string $dueSerie = '', string $parteAltrove = '', string $stessiSaldi = ''): string
     {
         $credito = $cifra < 0;
         $parteDegliEredi = self::elenco(array_map(fn (array $e) => sprintf('%s %s', $e['nome'], MoneyHelper::format(abs($e['cifra']))), $eredi));
@@ -848,7 +1097,95 @@ final class DefuntoNelPiano
         // Le due serie di chi ha la parte due volte, dopo la variante che chiede ciò che manca. Poi, Coda 332: i saldi di chi ha già la sua parte stanno
         // in un esercizio che non è quello aperto. Il Wallet non li mostra e la frase lo dice, in ogni variante: chi li cerca nel Wallet e non li trova li
         // registrerebbe di nuovo. `voce()` li cerca solo con il piano che applica i saldi.
-        return $comune . ' ' . $unite($variante, $soloDueSerie ? '' : $dueSerie, self::nonNelWallet($fuoriDalWallet));
+        // Coda 440: la voce chiede la riga legata di chi ha già saldi non legati della cifra della sua parte; la frase dice di quale voce sono la parte.
+        // Coda 463: anche di chi qui era incerto; e di chi è incerto anche in altre voci, che sono gli stessi saldi.
+        return $comune . ' ' . $unite($variante, $soloDueSerie ? '' : $dueSerie, $parteAltrove, $stessiSaldi, self::nonNelWallet($fuoriDalWallet));
+    }
+
+    /**
+     * Coda 440 (decisione 167): perché la voce chiede la riga legata di chi ha già, sulla stessa gestione e la stessa unità, saldi non legati della cifra della
+     * sua parte: sono la sua parte nella voce di un altro defunto della stessa unità (`secondaSerieAltrove`), e per questa ne serve un'altra. «Il saldo non
+     * legato di Anna (€ 118,36 a debito) è già la sua parte per Ugo: per quella di Ada serve il saldo legato.» Con più righe non legate della stessa persona,
+     * che sommano la parte, «I saldi non legati di Anna (€ 118,36 a debito in tutto)». Una frase per defunto che tiene la parte; vuota se nessuno.
+     *
+     * @param array<int, string> $diChi id della persona => il defunto nella cui voce i suoi saldi non legati sono la parte
+     * @param array<int, int> $saldiCheEntrano
+     * @param array<int, string> $nomeDi
+     */
+    private static function parteInUnAltraVoce(array $diChi, array $saldiCheEntrano, array $nomeDi, string $defunto, PianoRate $piano, int $immobileId): string
+    {
+        if ($diChi === []) {
+            return '';
+        }
+        $righe = self::righeCheEntrano(array_keys($diChi), $piano, $immobileId)->countBy('anagrafica_id')->mapWithKeys(fn (int $n, $id) => [(int) $id => $n])->all();
+        $frasi = [];
+        foreach (collect($diChi)->groupBy(fn (string $chi) => $chi, true) as $diQuale => $gruppo) {
+            $ids = $gruppo->keys()->map(fn ($id) => (int) $id)->all();
+            $nomi = self::elenco(array_map(fn (int $id) => $nomeDi[$id] ?? '', $ids));
+            $cifre = self::elenco(array_map(fn (int $id) => self::inVerso((int) ($saldiCheEntrano[$id] ?? 0)), $ids));
+            $frasi[] = match (true) {
+                count($ids) > 1 => sprintf('I saldi non legati di %s (%s) sono già le loro parti per %s: per quelle di %s servono i saldi legati.', $nomi, $cifre, $diQuale, $defunto),
+                ($righe[$ids[0]] ?? 1) > 1 => sprintf('I saldi non legati di %s (%s in tutto) sono già la sua parte per %s: per quella di %s serve il saldo legato.', $nomi, $cifre, $diQuale, $defunto),
+                default => sprintf('Il saldo non legato di %s (%s) è già la sua parte per %s: per quella di %s serve il saldo legato.', $nomi, $cifre, $diQuale, $defunto),
+            };
+        }
+
+        return implode(' ', $frasi);
+    }
+
+    /**
+     * Coda 463 (decisione 188.1): chi senza righe legate è incerto in più voci della stessa unità, e nessuna legge i suoi saldi non legati come la sua parte, ha
+     * in ogni voce gli stessi saldi e la stessa domanda; possono comprendere la sua parte in tutte quelle voci solo se comprendono le sue parti insieme. Nelle
+     * voci dopo la prima la frase lo dice, con la somma delle parti: «I saldi non legati di Anna sono gli stessi anche per Ugo: comprendono la sua parte per Ugo
+     * e per Ada solo se comprendono le due parti insieme, € 236,72 a debito; se ne comprendono una sola, per l'altra serve il saldo legato.» Con tre o più voci
+     * «… solo se le comprendono tutte insieme, …; per ogni parte che non comprendono serve il saldo legato». Una frase per persona; vuota se nessuno. Con una riga sola
+     * la frase è al singolare, come quella della parte in un'altra voce (`parteInUnAltraVoce`): «Il saldo non legato di Anna è lo stesso anche per Ugo: comprende la sua
+     * parte per Ugo e per Ada solo se comprende le due parti insieme, € 236,72 a debito; se ne comprende una sola, per l'altra serve il saldo legato.»
+     *
+     * @param array<int, array{altri: list<string>, tutti: list<string>, insieme: int}> $chi id della persona => i defunti delle altre voci, di tutte, e la somma delle parti
+     * @param array<int, string> $nomeDi
+     */
+    private static function stessiSaldi(array $chi, array $nomeDi, PianoRate $piano, int $immobileId): string
+    {
+        if ($chi === []) {
+            return '';
+        }
+        $righe = self::righeCheEntrano(array_keys($chi), $piano, $immobileId)->countBy('anagrafica_id')->mapWithKeys(fn (int $n, $id) => [(int) $id => $n])->all();
+        $frasi = [];
+        foreach ($chi as $id => $x) {
+            $quante = count($x['tutti']);
+            $piu = ($righe[$id] ?? 1) > 1;
+            $frasi[] = sprintf('%s di %s %s anche per %s: %s la sua parte %s solo se %s, %s; %s',
+                $piu ? 'I saldi non legati' : 'Il saldo non legato', $nomeDi[$id] ?? '', $piu ? 'sono gli stessi' : 'è lo stesso', self::elenco($x['altri']), $piu ? 'comprendono' : 'comprende',
+                self::elenco(array_map(fn (string $d) => 'per ' . $d, $x['tutti'])),
+                $quante === 2 ? ($piu ? 'comprendono le due parti insieme' : 'comprende le due parti insieme') : ($piu ? 'le comprendono tutte insieme' : 'le comprende tutte insieme'),
+                self::inVerso($x['insieme']),
+                $quante === 2
+                    ? ($piu ? 'se ne comprendono una sola, per l\'altra serve il saldo legato.' : 'se ne comprende una sola, per l\'altra serve il saldo legato.')
+                    : ($piu ? 'per ogni parte che non comprendono serve il saldo legato.' : 'per ogni parte che non comprende serve il saldo legato.'));
+        }
+
+        return implode(' ', $frasi);
+    }
+
+    /**
+     * I valori di `$perId` delle persone di `$ids`, nell'ordine di `$ids` (quello delle persone della voce: il defunto, poi gli eredi).
+     *
+     * @template T
+     * @param array<int, T> $perId
+     * @param list<int> $ids
+     * @return array<int, T>
+     */
+    private static function nellOrdine(array $perId, array $ids): array
+    {
+        $out = [];
+        foreach ($ids as $id) {
+            if (array_key_exists($id, $perId)) {
+                $out[$id] = $perId[$id];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -938,6 +1275,7 @@ final class DefuntoNelPiano
         }
         $ultima = array_pop($voci);
 
-        return implode(', ', $voci) . ' e ' . $ultima;
+        // Davanti a un nome che comincia per «e» l'italiano scrive «ed» («Ugo ed Eva»).
+        return implode(', ', $voci) . (preg_match('/^e/iu', $ultima) === 1 ? ' ed ' : ' e ') . $ultima;
     }
 }

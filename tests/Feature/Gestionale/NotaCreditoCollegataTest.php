@@ -8,7 +8,7 @@
 | La nota di credito che emette il fornitore è la strada normale per correggere una fattura elettronica sbagliata, e
 | fino alla beta.35 non si collegava alla fattura che annulla: la fattura restava «aperta» e nel suo piano, il piano
 | continuava a chiederla, e la fattura nuova entrava in un secondo piano. La stessa spesa chiesta due volte — misurato
-| con una sonda sulla beta.34 e sulla beta.35 (verbale in `docs/piano_esecutivo_beta35.md`).
+| con una sonda sulla beta.34 e sulla beta.35 (verbale in `docs/verbali/1.11/piano_esecutivo_beta35.md`).
 |
 | Decisione 26, punto 6 (`docs/subentro_e_competenza_temporale.md` §9), presa da Vincenzo il 27/09/2026:
 | - la nota porta la fattura che rettifica (`fattura_rettificata_id`), facoltativa, di qualunque esercizio;

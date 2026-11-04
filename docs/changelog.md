@@ -7,6 +7,39 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.1] - Il già versato nel suo anno
+
+**Tocca il database.** Una migrazione nuova aggiunge alla tabella del «Già versato» (`contributi_versati`) una colonna con l'esercizio per cui il già versato vale e il collegamento verso gli esercizi;
+non riscrive nessun dato: il già versato registrato prima vale per tutti gli esercizi, come prima, e dopo l'aggiornamento nessuna cifra cambia. Nessun permesso nuovo. Due librerie PHP salgono alla
+versione con le correzioni (laravel/framework 13.40.0 e inertiajs/inertia-laravel 3.6.0); i requisiti non cambiano. Dopo l'aggiornamento: se il piano rate dell'anno dopo, su una voce con un già versato,
+si ferma con il messaggio che rimanda alla pagina «Già versato», lì si sceglie in «Vale per» l'esercizio del versamento; l'aggiornamento toglie dal `.env` le tre righe `DB_CHARSET`, `DB_COLLATION` e `DB_ENGINE` che una versione
+precedente dell'aggiornamento dal pannello aveva scritto, e lascia una nota; il motore dell'aggiornamento non si ferma più se la pagina si chiude, per gli aggiornamenti che partono da questa versione; chi ha
+installato su un Synology NAS con la guida di prima legge la sezione «Se hai già installato con la versione precedente di questa guida» della guida nuova.
+
+**Che cosa fa la beta.**
+- **Il già versato vale per un esercizio, e lo scegli tu.** Il piano rate di un esercizio toglie il già versato di quell'esercizio e quello che vale per «Tutti gli esercizi», non quello di un altro esercizio;
+  prima si divideva fra tutti i piani della voce, di qualunque esercizio. Anche i rifiuti e le stime che ne dipendono (la fattura con lo sforo, il modale dello sforo, il selettore delle voci del piano)
+  leggono l'esercizio. Un piano che ha già il suo esercizio lo tiene anche se lo ricalcoli dalla pagina di un altro esercizio.
+- **Il piano rate creato senza scegliere le voci** prende le voci della gestione che non sono già in un altro piano dello stesso esercizio, e non più soltanto quelle che non sono in nessun piano della gestione.
+- **I piani nati prima di questa versione su una gestione usata in più esercizi non si ricalcolano** quando il programma non sa a quale esercizio appartengono o quali voci spettano loro; il messaggio dice il fatto
+  e la strada (eliminarli e crearli di nuovo dalla pagina del loro esercizio), con tre cose che il piano tiene e la creazione non riprende da sola, quando ci sono (il riparto a mano di un
+  saldo fra più titolari, i tratti di competenza, gli spostamenti di «Sposta spesa»). Gli altri messaggi che chiedevano di ricalcolare quei piani dicono la stessa strada, o prima i passi di un altro fermo.
+- **Il cestino non toglie l'ultima voce di un piano ordinario**: un piano senza voci, al ricalcolo, prenderebbe tutte le voci della gestione libere nel suo esercizio, anche quella tolta se nessun altro piano dell'esercizio la ha.
+- **A pari resto il centesimo va a chi viene prima nell'elenco della divisione**: fra i titolari dell'unità, a chi è titolare da prima, poi a chi è registrato prima, con il confronto dei resti fatto in numeri interi; prima decideva un errore di arrotondamento o l'ordine in cui il database
+  leggeva le righe. Dei dati già scritti cambia solo un piano non emesso, al prossimo «Genera» o «Ricalcola»; nella prova di 2.520 combinazioni di quote e piccoli importi, 36 davano un centesimo diverso.
+- **Il cancello della successione**: con due defunti sulla stessa unità, le voci non fanno più la stessa domanda sugli stessi saldi e non lasciano passare la parte di un erede una volta sola; si ferma se un defunto è anche
+  erede di un altro defunto della stessa unità e le due successioni passano l'arretrato agli eredi, e dice che la divisione la decide l'amministratore.
+- **Il prospetto degli oneri accessori** con più conduttori insieme dice la regola per quota e per giorni, e per chi è entrato dopo la generazione di un piano aggiunge una frase; **l'anteprima del passaggio di un usufrutto**
+  cita l'art. 984 c.c. per le entrate che sono frutti civili.
+- **La prova di invio della posta** dice perché fallisce (nel registro delle email e nel registro del programma), suggerisce la porta 587 quando la connessione è rifiutata, e l'avviso e la guida del mittente dicono il vero.
+- **«Audit & Logs»** ha la sola scheda «Email Logs», con le pagine che si sfogliano. **Il limite dei contanti** (da € 5.000,00 compresi) vale anche nella modifica di un pagamento fornitore, con un messaggio e una finestra più chiari.
+- **Testi che promettevano più del programma**: la Certificazione Unica nella scheda del fornitore, il rimando ai saldi iniziali, lo «Stato Incassi» del piano rate, il rifiuto dell'eliminazione di una gestione, la guida delle fatture.
+- **«Modifica gestione»** non scrive più le date del periodo dell'anno nuovo rovesciate; **l'eliminazione di un esercizio** con saldi, crediti, piani, già versato, fatture o deleghe si rifiuta.
+- **Le guide Docker e Synology**: la guida di sviluppo clona `main` e apre le porte solo su `127.0.0.1`; la guida Synology è riscritta sull'immagine di produzione e dice in testa che non è ancora provata su un NAS.
+  L'immagine Docker costruisce il frontend con Node 22, e Dependabot non propone più le versioni maggiori.
+
+---
+
 ## [1.11.0] - Ogni giorno al suo titolare
 
 > **Stable release.**
@@ -78,7 +111,7 @@ Una libreria della posta (symfony/mime) è aggiornata alla versione 8.1.10, per 
 - **Le spese a carico di una sola unità nelle rate emesse** da questa versione in poi non sono più addebitate due volte; per le rate già emesse la card
   «Crediti da riallineare» elenca la cifra addebitata due volte, senza correggerla. Lo storno di una fattura, o una nota di credito, che toglierebbe una
   spesa già chiesta ai condòmini si rifiuta, e il messaggio dice la strada.
-- **Il piano rate con una quota senza destinatario** ha tre stati («Allineato», «Quota aperta», «Disallineato») e un riquadro che elenca le quote una per una, con il
+- **Il piano rate con una quota senza destinatario** segna «Quota aperta», con la cifra, quando c'è, finché resta com'è stato accettato, e «Disallineato» se poi cambia; un riquadro elenca le quote una per una, con il
   perché e che cosa fare.
 - **La prima scadenza** scelta con le regole di ricorrenza avanzate è la prima rata del piano.
 - **Il prospetto degli oneri accessori** dice chi rimborsa chi in altre storie con un accordo fra le parti (l'uscita di chi ha preso il posto della parte, il rientro,

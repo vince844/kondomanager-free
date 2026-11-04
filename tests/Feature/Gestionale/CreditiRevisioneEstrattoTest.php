@@ -1,7 +1,7 @@
 <?php
 
 /**
- * 1.11.0-beta.49, Fase 1-bis — i rilievi dell'estratto conto (`docs/piano_esecutivo_beta49.md`, «Fase 1-bis (11/10/2026)»):
+ * 1.11.0-beta.49, Fase 1-bis — i rilievi dell'estratto conto (`docs/verbali/1.11/piano_esecutivo_beta49.md`, «Fase 1-bis (11/10/2026)»):
  * K1, K3, K5 e S1, nelle forme riviste dopo le verifiche.
  *
  * - K1: un saldo dell'esercizio assorbito dal piano dell'esercizio dopo sparisce dall'estratto conto dell'esercizio di partenza.

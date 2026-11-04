@@ -13,7 +13,8 @@
  * - togliere una voce dal piano ne cancella i tratti di competenza (decisione 20), che nessuna rotta riscrive dopo la creazione: si riscrivono solo ricreando il piano;
  * - riportare in bozza un piano approvato azzera il numero del verbale e la nota dell'approvazione;
  * - «Sincronizza» di una voce negativa che non è ancora nel piano non ha nessuna copia da togliere: il rifiuto dice solo di correggere la voce;
- * - togliere l'unica voce del piano riporta il piano a leggere tutte le voci del piano dei conti, e il rifiuto lo dice.
+ * - togliere l'unica voce del piano si rifiuta: dalla 1.12.0-beta.1 (Coda 438) il cestino non toglie l'ultima voce, prima del fermo; il fermo del piano senza
+ *   voci resta per la creazione e il ricalcolo (`Beta52VoceEntrataFermoSelezioneTest`).
  *
  * Fonte dell'atteso: i conti a mano di ogni test (spesa base € 1.200,00, copia del capitolo € 400,00, i figli indicati), il comportamento del motore
  * (`processaConti`), che qui non cambia, e gli effetti scritti da `PianoRateController::detachCapitolo` e `updateStato`.
@@ -254,7 +255,10 @@ it('controprova — «Sincronizza» con una voce positiva e un\'altra negativa g
 
 // ─── Togliere l'unica voce del piano ────────────────────────────────────────────────────────────────────────────
 
-it('togliere l\'unica voce del piano si rifiuta e dice che senza voci il piano ripartisce tutte le voci del piano dei conti', function () {
+// Coda 438 (1.12.0-beta.1): il cestino non toglie più l'ultima voce di un piano, e il rifiuto viene prima del fermo delle voci negative. Le due prove
+// tenevano la frase del fermo per il piano senza voci: ora tengono il rifiuto dell'ultima voce e che niente cambia; la frase del fermo per il piano senza
+// voci la prova `Beta52VoceEntrataFermoSelezioneTest`, dalla creazione e dal ricalcolo.
+it('togliere l\'unica voce del piano si rifiuta prima del fermo: è l\'ultima voce, e il piano resta com\'è', function () {
     $s = be52Vuoto($this);
     $spese = be52Voce($this, $s, $s['pc'], 'Spese generali', 'spesa', '1.200,00');
     $vecchia = be52Voce($this, $s, $s['pc'], 'Vecchio rimborso', 'spesa', '240,00');
@@ -265,13 +269,14 @@ it('togliere l\'unica voce del piano si rifiuta e dice che senza voci il piano r
 
     be52Detach($this, $s, $piano->fresh(), $spese->id);
 
-    expect(be52Flash())->toBe(['type' => 'error', 'message' => 'Il piano non si ricalcola: la voce di spesa «Vecchio rimborso» ha un importo negativo (meno € 240,00) e il piano la addebiterebbe in positivo, per € 240,00.'
-        .' Senza voci nel piano, il piano ripartisce tutte le voci del piano dei conti: «Vecchio rimborso» ne fa parte.'.BE52_FERMO_CORREGGI_LA_VOCE])
+    expect(be52Flash()['type'] ?? null)->toBe('error')
+        ->and(be52CasiMessaggio())->toStartWith('Impossibile togliere la voce: «Spese generali» è l\'ultima voce del piano rate «' . $piano->nome . '».')
+        ->and(be52CasiMessaggio())->not->toContain('Vecchio rimborso')
         ->and(be52Pivot($piano->fresh()))->toBe($pivot)
         ->and(be52Quote($piano))->toBe($quote);
 });
 
-it('togliere l\'unica voce con due voci negative fuori dal piano le nomina tutte e due, al plurale', function () {
+it('togliere l\'unica voce con due voci negative fuori dal piano: lo stesso rifiuto, e il piano resta com\'è', function () {
     $s = be52Vuoto($this);
     $spese = be52Voce($this, $s, $s['pc'], 'Spese generali', 'spesa', '1.200,00');
     $a = be52Voce($this, $s, $s['pc'], 'Vecchio rimborso', 'spesa', '240,00');
@@ -279,10 +284,12 @@ it('togliere l\'unica voce con due voci negative fuori dal piano le nomina tutte
     $piano = be52PianoConVoci($this, $s, [$spese->id]);
     DB::table('conti')->where('id', $a->id)->update(['importo' => -24000]);
     DB::table('conti')->where('id', $b->id)->update(['importo' => -10000]);
+    $pivot = be52Pivot($piano->fresh());
 
     be52Detach($this, $s, $piano->fresh(), $spese->id);
 
-    expect(be52CasiMessaggio())->toContain(' Senza voci nel piano, il piano ripartisce tutte le voci del piano dei conti: «Vecchio rimborso» e «Vecchio ristorno» ne fanno parte.');
+    expect(be52CasiMessaggio())->toStartWith('Impossibile togliere la voce: «Spese generali» è l\'ultima voce del piano rate')
+        ->and(be52Pivot($piano->fresh()))->toBe($pivot);
 });
 
 it('controprova — togliere una voce da un piano che ne ha altre non dice niente sul piano senza voci', function () {

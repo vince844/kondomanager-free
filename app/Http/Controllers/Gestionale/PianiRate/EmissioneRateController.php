@@ -462,6 +462,12 @@ class EmissioneRateController extends Controller
         if ($fermo !== null) {
             $capoversi[] = $fermo;
         }
+        // Coda 438, decisione 192.1: il piano senza l'esercizio salvato, o con la riga delle voci vuota,
+        // sulla gestione usata in più esercizi non si ricalcola, si rifà, e il piano nuovo nasce dopo il passaggio. Il capoverso dice che il ricalcolo si
+        // rifiuta, perché e la strada, come quello del fermo; con un fermo vengono prima i suoi passi, e il rifiuto della forma arriva al ricalcolo.
+        if ($fermo === null && ($daRifare = $piano->fraseDaRifare('Oggi il ricalcolo si rifiuta')) !== null) {
+            $capoversi[] = $daRifare;
+        }
         $riserve = PianoRate::senzaPertinenze(collect($attivi)->filter(fn (Subentro $p) => $p->riservaUsufrutto() && ($p->registro['ordinaria_dopo_atto'] ?? null) === Subentro::ORDINARIA_ALL_USUFRUTTUARIO));
         if ($riserve !== []) {
             // Non «metti le voci su Usufruttuario dalla loro pagina» (rilievo T-B2 della .41): fuori dal passaggio lo spostamento

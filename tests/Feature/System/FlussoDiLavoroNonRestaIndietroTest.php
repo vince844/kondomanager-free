@@ -83,6 +83,15 @@
  * «beta»; le righe dentro un blocco di codice non contano. Il giorno che un ciclo nuovo (1.12) arrivasse alla beta.30 con i
  * verbali della 1.11 ancora in `docs/`, la guardia leggerebbe N + 1 per sbaglio: sbaglierebbe verso il rosso, non verso il
  * cieco, e la correzione sarebbe archiviare i verbali.
+ *
+ * ## Dalla 1.12.0-beta.1: le lezioni nello storico
+ *
+ * Il 04/11/2026 il flusso è diventato una checklist (decisione 181.1): le 118 sezioni di lezioni sono scese, intere e con i
+ * titoli di sempre, in `docs/flusso_storico_riletture.md`, e nel flusso ogni lezione è una casella nel blocco della sua fase.
+ * Le tre guardie sulle lezioni (quante sezioni si riconoscono, la sezione della beta precedente, le intestazioni senza il ciclo)
+ * leggono quindi il flusso e lo storico insieme. Lo storico che manca non fa saltare niente: si guarda il solo flusso, come prima.
+ * Limite: la guardia non dice in quale dei due file la sezione sta, né che la casella della lezione sia nel flusso. Quella è la
+ * Fase 0.3, a mano.
  */
 
 use Illuminate\Support\Facades\Artisan;
@@ -91,6 +100,31 @@ use Illuminate\Support\Facades\Artisan;
 function documentoDiProcesso(): string
 {
     return dirname(__DIR__, 3).'/docs/flusso_di_lavoro_rilascio.md';
+}
+
+/**
+ * Lo storico del documento di processo, dove stanno le lezioni delle beta.
+ *
+ * Dal 04/11/2026 (1.12.0-beta.1, decisione 181.1) il flusso è una checklist: ogni lezione porta una casella nel blocco della sua
+ * fase, e la sezione con il perché sta in `flusso_storico_riletture.md`, con il titolo di sempre. Le guardie sulle lezioni
+ * leggono quindi i due file insieme; prima di quel giorno le sezioni stavano tutte nel flusso, e lo storico non ne aveva.
+ */
+function documentoDelleLezioni(): string
+{
+    return dirname(__DIR__, 3).'/docs/flusso_storico_riletture.md';
+}
+
+/**
+ * Il testo in cui si cercano le sezioni delle lezioni: il flusso e, se c'è, lo storico.
+ *
+ * Il flusso resta dentro anche se dal 04/11/2026 non ha più sezioni di lezioni: una sezione scritta lì per abitudine conta
+ * lo stesso, e la guardia non deve diventare rossa per il posto, ma per la mancanza.
+ */
+function testoDelleLezioni(): string
+{
+    $testo = file_get_contents(documentoDiProcesso());
+
+    return file_exists(documentoDelleLezioni()) ? $testo."\n".file_get_contents(documentoDelleLezioni()) : $testo;
 }
 
 /**
@@ -247,13 +281,13 @@ it('trova davvero delle sezioni di lezioni, invece di guardare il vuoto', functi
     // ⚠️ Senza questo, il giorno che le intestazioni cambiano forma la guardia diventa verde perché
     // non riconosce più niente — la forma di guasto peggiore, perché si presenta come un successo.
     // È la lezione della beta.61: tre guardie scritte nella .60 si svuotavano tutte senza che un
-    // test diventasse rosso.
-    $sezioni = betaConSezioneDiLezioni(file_get_contents(documentoDiProcesso()));
+    // test diventasse rosso. Dalla 1.12.0-beta.1 le sezioni stanno nello storico: si contano nei due file.
+    $sezioni = betaConSezioneDiLezioni(testoDelleLezioni());
 
     expect(count($sezioni) > 15)->toBeTrue(
         "Riconosciute solo ".count($sezioni)." sezioni di lezioni: il riconoscitore non funziona più.\n".
-        "Il documento ne ha una per quasi ogni beta dalla .34 in poi. Se le intestazioni hanno\n".
-        "cambiato forma, va aggiornato `betaConSezioneDiLezioni()` — non allentata questa soglia."
+        "Il flusso e il suo storico ne hanno una per quasi ogni beta dalla .34 in poi. Se le intestazioni\n".
+        "hanno cambiato forma, va aggiornato `betaConSezioneDiLezioni()` — non allentata questa soglia."
     );
 })->skip(fn () => ! file_exists(documentoDiProcesso()), 'docs/ è gitignorato: il documento non è su questa macchina');
 
@@ -267,17 +301,19 @@ it('ha la sezione delle lezioni della beta precedente', function () {
     }
 
     $precedente = cicloInSviluppo() . '-beta.' . ($beta - 1);
-    $sezioni = betaConSezioneDiLezioni(file_get_contents(documentoDiProcesso()));
+    $sezioni = betaConSezioneDiLezioni(testoDelleLezioni());
 
     expect(in_array($precedente, $sezioni, true))->toBeTrue(
-        "La versione in sviluppo è la beta.{$beta}, ma in `docs/flusso_di_lavoro_rilascio.md` non\n".
-        "c'è nessuna sezione con le lezioni della {$precedente}, scritta con la versione intera.\n\n".
+        "La versione in sviluppo è la beta.{$beta}, ma né in `docs/flusso_di_lavoro_rilascio.md` né in\n".
+        "`docs/flusso_storico_riletture.md` c'è una sezione con le lezioni della {$precedente}, scritta\n".
+        "con la versione intera.\n\n".
         "È la **Fase 0.3** del processo, e non è un adempimento: è il passo che tiene vero l'unico\n".
         "documento che tiene in riga tutti gli altri. Si è già perso due volte — aprendo la .58 e\n".
         "poi nella .62 e nella .63 — e tutte e due le volte se ne è accorto qualcuno per caso.\n\n".
-        "Da fare adesso, non dopo: rileggere il documento dall'inizio alla fine, scrivere le\n".
-        "lezioni della {$precedente} **con il perché e non solo la regola**, e ricontrollare\n".
-        "una per una le cifre che il documento dichiara — non ricordarle.\n\n".
+        "Da fare adesso, non dopo: rileggere il flusso dall'inizio alla fine, scrivere le lezioni\n".
+        "della {$precedente} in fondo allo storico **con il perché e non solo la regola**, dare a ognuna\n".
+        "la sua casella nel blocco della fase, e ricontrollare una per una le cifre che il flusso\n".
+        "dichiara — non ricordarle.\n\n".
         "Sezioni presenti oggi: ".implode(', ', $sezioni)
     );
 })->skip(fn () => ! file_exists(documentoDiProcesso()), 'docs/ è gitignorato: il documento non è su questa macchina');
@@ -386,13 +422,20 @@ it('il comando che misura i documenti non sostituisce questa guardia', function 
     Artisan::call('kondomanager:verifica-documentazione');
     $uscita = Artisan::output();
 
-    expect(str_contains($uscita, 'età'))->toBeTrue(
-        'Il comando non parla più di età: verificare se ora presidia da sé il documento di processo.'
+    // La parola «età» sta in ogni uscita (la legenda di ogni cartella, l'ultima riga): non prova niente. Quello che conta è che il primo livello, dove sta
+    // il documento di processo, abbia l'età fra le cose che si guardano: la legenda lo dice riga per riga.
+    expect(preg_match('/^\s*primo livello\s+\d+\s+intestazione, età, riferimenti, link$/mu', $uscita) === 1)->toBeTrue(
+        'Il comando non guarda più l\'età dei documenti del primo livello: verificare se ora presidia da sé il documento di processo.'
     );
 
     // L'elenco per età mostra i più vecchi in assoluto. Il documento di processo, anche quando è
     // indietro, ha un'età di una o due beta: non ci entra mai. È esattamente questo il buco.
-    expect(str_contains($uscita, 'flusso_di_lavoro_rilascio.md'))->toBeFalse(
+    // Si guarda solo l'elenco per età: dalla Coda 458 il comando legge anche le sottocartelle, e un
+    // link o un riferimento rotto che nomina il flusso, in un documento qualunque, compare fra i
+    // link rotti senza che il comando abbia imparato a presidiare il documento di processo.
+    preg_match_all('/^\s*-?\d+ beta fa\s+(\S+)\s*$/mu', $uscita, $elencoPerEta);
+
+    expect(in_array('flusso_di_lavoro_rilascio.md', $elencoPerEta[1], true))->toBeFalse(
         "Il comando ora nomina da sé il documento di processo nell'elenco predefinito.\n".
         'Se lo fa perché ha imparato a presidiarlo, questa guardia va rivista.'
     );
@@ -407,14 +450,20 @@ it('nessuna intestazione nomina la beta in corso senza il ciclo: «beta.N» da s
         return;
     }
 
-    $senzaCiclo = intestazioniSenzaCiclo(file_get_contents(documentoDiProcesso()), $n);
+    // Dalla 1.12.0-beta.1 le lezioni stanno nello storico: chi cerca quelle della .N le cerca anche lì.
+    $senzaCiclo = [];
+    foreach (array_filter([documentoDiProcesso(), documentoDelleLezioni()], 'file_exists') as $documento) {
+        foreach (intestazioniSenzaCiclo(file_get_contents($documento), $n) as $riga) {
+            $senzaCiclo[] = basename($documento).': '.$riga;
+        }
+    }
 
     expect($senzaCiclo)->toBe([],
-        "In `docs/flusso_di_lavoro_rilascio.md` ci sono intestazioni che scrivono «beta.{$n}» senza il ciclo, e la beta in corso\n".
+        "Nel flusso o nel suo storico ci sono intestazioni che scrivono «beta.{$n}» senza il ciclo, e la beta in corso\n".
         "è la {$n}: fino alla .77 ogni numero della 1.11 ha un omonimo nella 1.10, e chi cerca le lezioni della .{$n} trova\n".
         "quelle dell'altro ciclo.\n\n".
         "È la casella «Le sezioni omonime della 1.10 prendono il prefisso adesso» della **Fase 0.1**: ogni riga prende il\n".
-        "prefisso del ciclo di cui parla (`1.10.0-` o `1.11.0-`), poi si aggiornano i contatori del riquadro delle omonimie.\n\n".
+        "prefisso del ciclo di cui parla (`1.10.0-`, `1.11.0-` o `1.12.0-`), poi si aggiornano i contatori del riquadro delle omonimie.\n\n".
         "Righe: ".implode(' | ', $senzaCiclo)
     );
 })->skip(fn () => ! file_exists(documentoDiProcesso()), 'docs/ è gitignorato: il documento non è su questa macchina');

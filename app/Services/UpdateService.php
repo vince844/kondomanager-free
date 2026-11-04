@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Auth;
  *   - Manuale      (run_installer = false): questo service è disabilitato,
  *                                           l'utente aggiorna via FTP/setup.php
  *
- * @see resources/installer/index.php  Bridge installer (v14.1)
+ * @see resources/installer/index.php  Bridge installer (v14.2)
  * @see SystemUpgradeController        Controller post-update
  */
 class UpdateService

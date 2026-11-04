@@ -421,6 +421,121 @@ class PianoRate extends Model
     }
 
     /**
+     * Coda 438, decisione 192.1: il rifiuto di ricalcolare — da «Ricalcola» o togliendo una voce — un piano che il programma non sa leggere sulla
+     * gestione usata in più esercizi, con il fatto, il perché e la strada; o null. `$impossibile` apre la frase («Impossibile ricalcolare»).
+     *
+     * Due forme, che vengono dalle versioni più vecchie (la seconda anche da un piano creato senza generarlo quando le voci del suo esercizio erano già
+     * tutte in altri piani):
+     * - **senza l'esercizio salvato** (`esercizio_id` nullo: la generazione lo scrive dalla migrazione 9, la creazione dalla Coda 75) su una gestione
+     *   agganciata a più esercizi. Ricalcolato, il piano prende l'esercizio della pagina da cui si ricalcola (`GeneratePianoRateAction`), e con lui il
+     *   già versato che vale lì; la deduzione dalle date (`CompetenzaDelPiano::esercizioDelPiano`) sbaglia altri piani. Vale per ogni tipo di piano;
+     * - **non straordinario con la riga delle voci vuota** (`piano_rate_capitoli` senza righe) mentre un altro piano della gestione, in bozza o
+     *   approvato come li legge la creazione, è di un altro esercizio. Dalla decisione 183.2 la riga vuota prende le voci che nessun piano del suo
+     *   esercizio ha già, anche quelle del piano dell'altro esercizio, senza impegnarle per la creazione, il motore e la copertura dei piani dopo, e
+     *   la guardia del già versato non le vede. Non si guarda quali voci prenderebbe: basta la riga vuota.
+     *
+     * Il controllo è uno per tutte e due le rotte che ricalcolano (`PianoRateGenerationController`, `PianoRateController::detachCapitolo`), come
+     * `fraseConguagliato()`: sta qui perché le due rotte lo chiedono uguale, prima di ogni scrittura e dopo i rifiuti che ci sono già (incassi,
+     * emissioni, il conguaglio di un passaggio), che fermano anche l'eliminazione e hanno il loro messaggio. La generazione e la creazione non
+     * cambiano: un piano creato dalla pagina ha l'esercizio dalla creazione e la riga scritta. La strada è eliminarlo e crearlo di nuovo: dopo i
+     * rifiuti di prima l'eliminazione chiede solo, per un piano approvato, di riportarlo in bozza (`PianoRateController::destroy`). In coda, ciò che
+     * l'eliminazione perde e la creazione non riprende (`cioCheLaStradaPerde`). Lo chiedono anche le frasi che dicevano di ricalcolare prima, perché
+     * dicano la strada al posto del ricalcolo: l'incasso e il rimborso (`fraseRicalcolaPrima`), l'emissione (`EmissioneRateController::fraseDaRicalcolare`)
+     * e il cancello dell'inizio di una locazione (`AnteprimaPassaggio`).
+     */
+    public function fraseDaRifare(string $impossibile): ?string
+    {
+        // La gestione c'è sempre: `piani_rate.gestione_id` è obbligatoria, con la chiave esterna.
+        $gestione = $this->gestione;
+        $strada = fn (string $dove) => sprintf('Per rifarlo, %seliminalo dall\'elenco dei piani rate e crealo di nuovo dalla pagina dei piani rate %s, scegliendo %s.',
+            $this->stato === StatoPianoRate::APPROVATO ? 'riportalo in bozza dalla sua pagina, ' : '', $dove, $this->tipo === 'straordinario' ? 'le fatture' : 'le voci');
+
+        if ($this->esercizio_id === null) {
+            $esercizi = $gestione->esercizi()->orderBy('esercizi.data_inizio')->orderBy('esercizi.id')->pluck('esercizi.nome');
+            if ($esercizi->count() > 1) {
+                return sprintf('%s: il piano rate «%s» non ha il suo esercizio salvato, e la gestione «%s» è usata in più esercizi (%s). Il programma non sa a quale di '
+                    . 'questi appartiene il piano: ricalcolarlo, anche togliendo una voce, lo legherebbe all\'esercizio della pagina da cui lo fai, e se non è il suo il '
+                    . 'piano perderebbe il già versato del suo esercizio o prenderebbe quello di un altro. %s',
+                    $impossibile, $this->nome, $gestione->nome, self::traVirgolette($esercizi), $strada('del suo esercizio')) . $this->cioCheLaStradaPerde();
+            }
+        }
+
+        if ($this->tipo === 'straordinario' || \Illuminate\Support\Facades\DB::table('piano_rate_capitoli')->where('piano_rate_id', $this->id)->exists()) {
+            return null;
+        }
+        // L'esercizio che il programma legge per ogni piano della gestione; è nullo solo per una gestione senza esercizi, e allora lo è per tutti i suoi piani
+        // (nessuna pagina stacca una gestione da un esercizio, e la creazione la vuole agganciata all'esercizio della pagina).
+        $competenza = app(\App\Services\Riparto\CompetenzaDelPiano::class);
+        $mio = $competenza->esercizioDelPiano($this);
+        $altri = self::where('gestione_id', $this->gestione_id)->where('id', '!=', $this->id)
+            ->whereIn('stato', [StatoPianoRate::BOZZA->value, StatoPianoRate::APPROVATO->value])->orderBy('id')->get()
+            ->map(fn (self $p) => ['piano' => $p, 'esercizio' => $competenza->esercizioDelPiano($p)])
+            ->filter(fn (array $x) => $x['esercizio']?->id !== $mio?->id)
+            ->values();
+        if ($altri->isEmpty()) {
+            return null;
+        }
+        $uno = $altri->count() === 1;
+
+        return sprintf('%s: il piano rate «%s» non ha voci associate, e la gestione «%s» %s: %s. Il programma non sa quali voci spettano a questo piano: ricalcolato senza '
+            . 'voci prenderebbe tutte quelle che nessun piano del suo esercizio ha già, e potrebbe chiedere di nuovo quelle %s o togliere due volte il già versato. %s',
+            $impossibile, $this->nome, $gestione->nome, $uno ? 'ha un piano in un altro esercizio' : 'ha piani in altri esercizi',
+            self::elencoSemplice($altri->map(fn (array $x) => '«' . $x['piano']->nome . '» («' . $x['esercizio']->nome . '»)')),
+            $uno ? 'del piano dell\'altro esercizio' : 'dei piani degli altri esercizi',
+            $strada('dell\'esercizio «' . $mio?->nome . '»')) . $this->cioCheLaStradaPerde();
+    }
+
+    /**
+     * La coda di `fraseDaRifare()`: la strada elimina il piano, e con lui
+     * ciò che il piano tiene e la creazione non riprende da sola. Il riparto a mano di un saldo solidale (`saldi_config`, scritto solo alla
+     * creazione e mostrato da nessuna pagina dopo) con le sue cifre, perché rifatto con il riparto proposto sposta denaro fra i comproprietari;
+     * i tratti di competenza delle voci (`competenze_capitolo`, anche loro solo dalla creazione); gli spostamenti di «Sposta spesa». Il riparto e
+     * i tratti si riscrivono nella creazione, gli spostamenti con «Sposta spesa» sul piano nuovo. Vuota se il piano non tiene niente di questo.
+     */
+    private function cioCheLaStradaPerde(): string
+    {
+        $parti = [];
+        foreach ((array) ($this->saldi_config ?? []) as $conf) {
+            $saldo = \App\Models\Saldo::with('immobile')->find((int) ($conf['saldo_id'] ?? 0));
+            $ripartizioni = collect($conf['ripartizioni'] ?? []);
+            if ($saldo === null || $ripartizioni->isEmpty()) {
+                continue;
+            }
+            $nomi = \App\Models\Anagrafica::whereIn('id', $ripartizioni->pluck('anagrafica_id')->all())->pluck('nome', 'id');
+            $righe = $ripartizioni->map(fn ($r) => ($nomi[(int) ($r['anagrafica_id'] ?? 0)] ?? 'un condòmino') . ' ' . \App\Helpers\MoneyHelper::format(abs((int) ($r['importo'] ?? 0))))->values()->all();
+            $ultima = array_pop($righe);
+            // Davanti a un nome che comincia per «e» l'italiano scrive «ed».
+            $elenco = $righe === [] ? $ultima : implode(', ', $righe) . (preg_match('/^e/iu', $ultima) === 1 ? ' ed ' : ' e ') . $ultima;
+            $parti[] = sprintf('il riparto a mano del saldo di %s (%s%s: %s)', $saldo->immobile?->nome ?? 'un\'unità',
+                \App\Helpers\MoneyHelper::format(abs((int) $saldo->saldo_iniziale)), (int) $saldo->saldo_iniziale < 0 ? ' a credito' : '', $elenco);
+        }
+        if (\Illuminate\Support\Facades\DB::table('competenze_capitolo')->join('piano_rate_capitoli', 'piano_rate_capitoli.id', '=', 'competenze_capitolo.piano_rate_capitolo_id')
+            ->where('piano_rate_capitoli.piano_rate_id', $this->id)->exists()) {
+            $parti[] = 'i tratti di competenza delle voci';
+        }
+        if (\Illuminate\Support\Facades\DB::table('budget_movements')->where('piano_rate_id', $this->id)->exists()) {
+            $parti[] = 'gli spostamenti fra le voci fatti con «Sposta spesa»';
+        }
+
+        return $parti === [] ? '' : sprintf(' Eliminandolo si perde anche ciò che il piano tiene e la creazione non riprende da sola: %s. Annotalo prima di eliminarlo e rimettilo nel piano nuovo.',
+            self::elencoSemplice($parti));
+    }
+
+    /** «A» e «B»; «A», «B» e «C». */
+    private static function traVirgolette(iterable $nomi): string
+    {
+        return self::elencoSemplice(collect($nomi)->map(fn ($n) => '«' . $n . '»'));
+    }
+
+    /** A e B; A, B e C. */
+    private static function elencoSemplice(iterable $parti): string
+    {
+        $parti = collect($parti)->values()->all();
+
+        return count($parti) > 1 ? implode(', ', array_slice($parti, 0, -1)) . ' e ' . $parti[count($parti) - 1] : ($parti[0] ?? '');
+    }
+
+    /**
      * Decisione 46 (rilievo W2): un passaggio che ha preso il piano con la rinuncia, o con il conguaglio poi annullato — le parti
      * hanno regolato fra loro. La strada della 43 rifà per giorni quella parte: il programma non la impedisce e non la compensa, lo
      * dice, con la cifra della gestione del piano quando il registro la conserva. Null se non c'è niente da dire.
@@ -675,18 +790,23 @@ class PianoRate extends Model
         [$attivi, $annullati] = self::divisiPerStato($passaggi);
         $annullatiInParole = $annullati === [] ? '' : sprintf('con la titolarità %s, che poi %s', self::descriviPassaggi($annullati),
             count(self::senzaPertinenze($annullati)) === 1 ? 'è stato annullato' : 'sono stati annullati');
+        // Coda 438, decisione 192.1: il piano che non si ricalcola più si rifà. La frase non chiede il
+        // ricalcolo che la pagina rifiuta: dice che si rifiuta, perché, e la strada; il movimento si registra poi sul piano nuovo, nato dopo il passaggio.
+        $daRifare = $this->fraseDaRifare('Oggi il ricalcolo si rifiuta');
+        $fai = $daRifare === null ? 'Ricalcola' : 'Rifai';
+        $dopo = $daRifare === null ? sprintf('Dopo il ricalcolo registra %s.', $cosa[1]) : sprintf('%s Dopo registra %s sul piano nuovo.', $daRifare, $cosa[1]);
 
         if ($annullati === []) {
-            return sprintf('Ricalcola prima il piano «%s»: le sue quote sono state calcolate prima %s, e %s su una sua quota lo fermerebbe prima che ne tenga conto. Dopo il ricalcolo registra %s.',
-                $this->nome, self::descriviPassaggi($attivi), $cosa[0], $cosa[1]);
+            return sprintf('%s prima il piano «%s»: le sue quote sono state calcolate prima %s, e %s su una sua quota lo fermerebbe prima che ne tenga conto. %s',
+                $fai, $this->nome, self::descriviPassaggi($attivi), $cosa[0], $dopo);
         }
         if ($attivi === []) {
-            return sprintf('Ricalcola prima il piano «%s»: le sue quote sono state calcolate %s, e %s su una sua quota lo fermerebbe prima che torni alla titolarità di prima. Dopo il ricalcolo registra %s.',
-                $this->nome, $annullatiInParole, $cosa[0], $cosa[1]);
+            return sprintf('%s prima il piano «%s»: le sue quote sono state calcolate %s, e %s su una sua quota lo fermerebbe prima che torni alla titolarità di prima. %s',
+                $fai, $this->nome, $annullatiInParole, $cosa[0], $dopo);
         }
 
-        return sprintf('Ricalcola prima il piano «%s»: le sue quote sono state calcolate prima %s, e %s; %s su una sua quota lo fermerebbe prima che il ricalcolo ne tenga conto e le riporti alla titolarità di prima. Dopo il ricalcolo registra %s.',
-            $this->nome, self::descriviPassaggi($attivi), $annullatiInParole, $cosa[0], $cosa[1]);
+        return sprintf('%s prima il piano «%s»: le sue quote sono state calcolate prima %s, e %s; %s su una sua quota lo fermerebbe prima che %s ne tenga conto e le riporti alla titolarità di prima. %s',
+            $fai, $this->nome, self::descriviPassaggi($attivi), $annullatiInParole, $cosa[0], $daRifare === null ? 'il ricalcolo' : 'il piano nuovo', $dopo);
     }
 
     /**

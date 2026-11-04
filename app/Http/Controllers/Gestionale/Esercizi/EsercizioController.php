@@ -19,6 +19,7 @@ use App\Traits\HasEsercizio;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class EsercizioController extends Controller
@@ -257,6 +258,10 @@ class EsercizioController extends Controller
      * - Prevents deletion if it's the last exercise for the condominium
      * - Prevents deletion if the exercise is currently in 'open' state
      * - Only allows deletion of closed exercises when multiple exercises exist
+     * - Prevents deletion if the exercise holds scritture contabili (also those deleted with the old
+     *   soft-delete method) or other rows the database would delete or detach with it: saldi, crediti
+     *   residui, piani rate, gestioni attached only to this exercise, già versato, fatture passive,
+     *   deleghe F24
      * 
      * @param Condominio $condominio The condominium to which the exercise belongs
      * @param Esercizio $esercizio The exercise to be deleted
@@ -309,13 +314,40 @@ class EsercizioController extends Controller
             // importo_pagato materializzato e nessun movimento a giustificarlo.
             // Un esercizio chiuso che contiene scritture è il dato più sigillato che
             // esista: non si cancella, si conserva.
-            $numeroScritture = ScritturaContabile::where('esercizio_id', $esercizio->id)->count();
+            //
+            // `ScritturaContabile` usa SoftDeletes: la query di un modello non vede le righe con
+            // `deleted_at` (eliminate con il metodo di prima della 1.9.1), ma la cascata del vincolo le
+            // porta via lo stesso. Si contano tutte, e il messaggio lo dice.
+            $numeroScritture = ScritturaContabile::withTrashed()->where('esercizio_id', $esercizio->id)->count();
 
             if ($numeroScritture > 0) {
+                $haEliminate = ScritturaContabile::onlyTrashed()->where('esercizio_id', $esercizio->id)->exists();
+                $quante = $numeroScritture === 1 ? '1 scrittura contabile' : "{$numeroScritture} scritture contabili";
+                $comprese = match (true) {
+                    ! $haEliminate => '',
+                    $numeroScritture === 1 => ' (compresa quella eliminata in passato, che l\'elenco non mostra più ma il database conserva)',
+                    default => ' (comprese quelle eliminate in passato, che l\'elenco non mostra più ma il database conserva)',
+                };
+
                 return to_route('admin.gestionale.esercizi.index', $condominio)
                     ->with($this->flashError(
-                        "Operazione negata: l'esercizio contiene {$numeroScritture} scritture contabili. "
+                        "Operazione negata: l'esercizio contiene {$quante}{$comprese}. "
                         .'Eliminarlo distruggerebbe il libro giornale di quel periodo, che va conservato.'
+                    ));
+            }
+
+            // Coda 275: il vincolo del database porta via in cascata i saldi, i crediti residui e i legami
+            // con le gestioni dell'esercizio, e azzera l'esercizio dei piani rate. Un solo rifiuto, che
+            // dice quanti sono e dove si vedono.
+            $datiCheTrattengono = $this->datiCheTrattengonoLEsercizio($esercizio);
+
+            if ($datiCheTrattengono !== []) {
+                return to_route('admin.gestionale.esercizi.index', $condominio)
+                    ->with($this->flashError(
+                        "Impossibile eliminare l'esercizio «{$esercizio->nome}»: l'eliminazione cancellerebbe dati che non sono "
+                        ."scritture contabili, li staccherebbe dall'esercizio o il database la rifiuterebbe. "
+                        .'Contiene: '.implode('; ', $datiCheTrattengono).'. '
+                        ."L'esercizio si elimina solo quando questi dati non ci sono più; finché ci sono, si conserva."
                     ));
             }
 
@@ -338,4 +370,78 @@ class EsercizioController extends Controller
         }
     }
 
+    /**
+     * Che cosa, dentro l'esercizio, l'eliminazione cancellerebbe, staccherebbe dall'esercizio o il database
+     * rifiuterebbe (Coda 275), una frase per ogni genere di dato che c'è; vuoto se non c'è niente.
+     *
+     * Si conta con le tabelle e non con i modelli: interessa ciò che il vincolo del database vede, non
+     * ciò che un modello mostra. Le righe del solo legame `esercizio_gestione` non trattengono (un
+     * esercizio importato ha sempre la gestione agganciata a ogni esercizio); trattiene la gestione che
+     * resterebbe senza nessun esercizio, perché le sue pagine si aprono dall'esercizio.
+     *
+     * @return list<string>
+     */
+    private function datiCheTrattengonoLEsercizio(Esercizio $esercizio): array
+    {
+        $frasi = [];
+        $nomi = fn (iterable $elenco): string => collect($elenco)->map(fn ($nome) => "«{$nome}»")->implode(', ');
+
+        $saldiCondomini = DB::table('saldi')->where('esercizio_id', $esercizio->id)->whereNull('fornitore_id')->count();
+        if ($saldiCondomini > 0) {
+            $frasi[] = ($saldiCondomini === 1 ? '1 saldo iniziale di un condòmino' : "{$saldiCondomini} saldi iniziali dei condòmini")
+                // La sezione «Saldi Iniziali» mostra i saldi del solo esercizio aperto (`SaldoInizialeController::index`), e qui
+                // l'esercizio non è aperto: lì questi saldi non compaiono, e la frase non deve mandarci a cercarli.
+                .' (la sezione «Saldi Iniziali» mostra solo quelli dell\'esercizio aperto)';
+        }
+
+        $debitiFornitori = DB::table('saldi')->where('esercizio_id', $esercizio->id)->whereNotNull('fornitore_id')->count();
+        if ($debitiFornitori > 0) {
+            $frasi[] = ($debitiFornitori === 1 ? '1 debito iniziale verso un fornitore' : "{$debitiFornitori} debiti iniziali verso fornitori")
+                .' (nella situazione debitoria del fornitore, non nella sezione «Saldi Iniziali»)';
+        }
+
+        $creditiResidui = DB::table('crediti_residui')->where('esercizio_id', $esercizio->id)->count();
+        if ($creditiResidui > 0) {
+            $frasi[] = $creditiResidui === 1 ? '1 credito residuo' : "{$creditiResidui} crediti residui";
+        }
+
+        $piani = DB::table('piani_rate')->where('esercizio_id', $esercizio->id)->orderBy('nome')->pluck('nome');
+        if ($piani->isNotEmpty()) {
+            $frasi[] = ($piani->count() === 1 ? '1 piano rate' : "{$piani->count()} piani rate").' ('.$nomi($piani).')';
+        }
+
+        $gestioniSoloSue = DB::table('esercizio_gestione as questo')
+            ->join('gestioni', 'gestioni.id', '=', 'questo.gestione_id')
+            ->where('questo.esercizio_id', $esercizio->id)
+            ->whereNotExists(fn ($altro) => $altro->select(DB::raw(1))
+                ->from('esercizio_gestione as altro')
+                ->whereColumn('altro.gestione_id', 'questo.gestione_id')
+                ->where('altro.esercizio_id', '!=', $esercizio->id))
+            ->orderBy('gestioni.nome')
+            ->pluck('gestioni.nome');
+        if ($gestioniSoloSue->isNotEmpty()) {
+            $frasi[] = ($gestioniSoloSue->count() === 1 ? '1 gestione che resterebbe senza esercizio' : "{$gestioniSoloSue->count()} gestioni che resterebbero senza esercizio")
+                .' ('.$nomi($gestioniSoloSue).')';
+        }
+
+        // Il già versato con un esercizio suo: la chiave azzera l'esercizio (`nullOnDelete`) e la riga passerebbe a valere in tutti
+        // i piani della voce, cioè la cifra che i piani degli altri esercizi tolgono cambierebbe senza che nessuno l'abbia deciso.
+        $giaVersato = DB::table('contributi_versati')->where('esercizio_id', $esercizio->id)->count();
+        if ($giaVersato > 0) {
+            $frasi[] = ($giaVersato === 1 ? '1 importo già versato per questo esercizio' : "{$giaVersato} importi già versati per questo esercizio")
+                .' (pagina «Già versato»)';
+        }
+
+        $fatture = DB::table('fatture_passive')->where('esercizio_id', $esercizio->id)->count();
+        if ($fatture > 0) {
+            $frasi[] = $fatture === 1 ? '1 fattura passiva' : "{$fatture} fatture passive";
+        }
+
+        $deleghe = DB::table('deleghe_f24')->where('esercizio_id', $esercizio->id)->count();
+        if ($deleghe > 0) {
+            $frasi[] = $deleghe === 1 ? '1 delega F24' : "{$deleghe} deleghe F24";
+        }
+
+        return $frasi;
+    }
 }

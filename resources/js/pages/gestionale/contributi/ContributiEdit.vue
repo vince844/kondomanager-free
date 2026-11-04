@@ -36,6 +36,9 @@ interface Riga {
 /** `chiusa_il`: la titolarità è finita (ha venduto) ma la persona ha un versato registrato su questa voce e resta in elenco (S6, R15). */
 interface Titolare { id: number; nome: string | null; tipologia: string; quota: number; chiusa_il?: string | null }
 
+/** Un esercizio del condominio a cui la gestione della voce è agganciata: le scelte di «Vale per» (Coda 438). */
+interface EsercizioOpzione { id: number; nome: string; stato: string }
+
 interface CassaOpzione {
   id: number;
   nome: string;
@@ -68,6 +71,15 @@ const props = defineProps<{
   liquidita_stato: 'registrata_in_cassa' | 'gia_speso_acconto' | null;
   cassa_id: number | null;
   casse: CassaOpzione[];
+  /** Coda 438: gli esercizi della gestione della voce, in ordine di data. */
+  esercizi: EsercizioOpzione[];
+  /**
+   * Per quale esercizio vale il già versato: «tutti» (tutti i piani della voce, di ogni esercizio: il fondo lavori su più anni) o un esercizio.
+   * Nullo quando la scelta manca: una voce ancora senza già versato su una gestione di più esercizi, o righe con esercizi diversi.
+   */
+  vale_per: 'tutti' | number | null;
+  /** Le righe valgono per esercizi diversi (scritte fuori da questa pagina): i loro esercizi, a parole. */
+  vale_per_diversi: string[];
 }>();
 
 const { euro } = useCurrencyFormatter({ fromCents: true });
@@ -124,10 +136,23 @@ const togliRiga = (r: Riga) => {
 
 // La guida in header: qui si prendono le due decisioni che il programma non può dedurre
 // (natura del versamento e stato della liquidità), ed era l'unica delle tre pagine del
-// già-versato a non averla — vedi GiaVersatoGuide, scheda «Le due scelte».
+// già-versato a non averla — vedi GiaVersatoGuide, scheda «Le scelte».
 const mostraGuida = ref(false);
 
 const natura = ref(props.natura);
+// Coda 438: una scelta per voce, come la natura. Si rimanda a ogni salvataggio: il backend sostituisce le righe della voce.
+const valePer = ref<'tutti' | number | null>(props.vale_per);
+const piuEsercizi = computed(() => props.esercizi.length > 1);
+// Il riquadro dell'effetto dice per quali piani vale il già versato (Coda 438): con un esercizio scelto lo tolgono solo i suoi piani,
+// e il «prossimo piano rate» può essere quello di un altro esercizio.
+const titoloEffetto = computed(() => {
+  if (typeof valePer.value === 'number') {
+    const esercizio = props.esercizi.find(e => e.id === valePer.value);
+    if (esercizio) return `Effetto sui piani rate di «${esercizio.nome}»`;
+  }
+  if (valePer.value === 'tutti' && piuEsercizi.value) return 'Effetto sui piani rate della voce, in tutti gli esercizi';
+  return 'Effetto sul prossimo piano rate';
+});
 // Riparte da quanto già salvato: senza questo, ogni ri-salvataggio che non
 // tocca il campo lo azzererebbe (il backend sostituisce, non fa merge).
 const descrizione = ref(props.descrizione ?? '');
@@ -236,6 +261,10 @@ const richiedeDichiarazioneLiquidita = computed(() =>
 );
 
 const salva = () => {
+  if (valePer.value === null) {
+    toast({ title: 'Scegli l\'esercizio', description: 'Scegli per quale esercizio vale il già versato.', variant: 'destructive' });
+    return;
+  }
   if (richiedeDichiarazioneLiquidita.value) {
     mostraModaleLiquidita.value = true;
     return;
@@ -264,6 +293,7 @@ const eseguiSalvataggio = () => {
     }),
     {
       natura: natura.value,
+      vale_per: valePer.value,
       descrizione: descrizione.value || null,
       righe: righe.value.map(r => ({
         immobile_id: r.immobile_id,
@@ -426,6 +456,44 @@ const guide = [
         </div>
       </div>
 
+      <!-- ═══ Coda 438: PER QUALE ESERCIZIO VALE — un fatto che sa solo l'amministratore ═══ -->
+      <div class="bg-white border rounded-2xl p-6">
+        <div class="flex items-start gap-2 mb-1">
+          <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">
+            Per quale esercizio vale?
+          </span>
+        </div>
+        <p class="text-xs text-slate-500 mb-4">
+          Il piano rate di un esercizio toglie solo il già versato di quell'esercizio. Con «Tutti gli esercizi» lo tolgono tutti i piani della
+          voce, ognuno per la sua parte: è il caso di un fondo lavori che si chiede in più anni.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
+          <Label for="vale-per" class="text-[11px] font-bold text-slate-600">Vale per</Label>
+          <select id="vale-per" :value="valePer ?? ''"
+            @change="valePer = ($event.target as HTMLSelectElement).value === '' ? null : (($event.target as HTMLSelectElement).value === 'tutti' ? 'tutti' : Number(($event.target as HTMLSelectElement).value))"
+            class="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 max-w-xs">
+            <option value="" disabled>Scegli l'esercizio…</option>
+            <option v-for="e in esercizi" :key="e.id" :value="e.id">{{ e.nome }}</option>
+            <option value="tutti">Tutti gli esercizi</option>
+          </select>
+        </div>
+        <div v-if="vale_per_diversi.length > 0"
+          class="mt-3 flex gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p class="text-[11px] text-amber-800 leading-relaxed">
+            Le righe di questa voce valgono per esercizi diversi: {{ vale_per_diversi.join(', ') }}. Salvando, varranno tutte per l'esercizio che scegli qui.
+          </p>
+        </div>
+        <div v-else-if="piuEsercizi && valePer === 'tutti'"
+          class="mt-3 flex gap-2.5 p-3 bg-slate-50 border border-slate-100 rounded-xl">
+          <Info class="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            La gestione di questa voce è in più esercizi: con «Tutti gli esercizi» i piani di ogni esercizio si dividono questo già versato, e la loro
+            somma sulla voce non può superare l'importo della voce. Se il versamento era per la spesa di un anno solo, scegli quell'esercizio.
+          </p>
+        </div>
+      </div>
+
       <!-- ═══ 2. IL GESTO CHE FA RISPARMIARE TEMPO ═══ -->
       <div class="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-2xl p-6">
         <div class="flex items-center gap-2 mb-1">
@@ -579,7 +647,7 @@ const guide = [
 
         <div class="relative z-10">
           <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">
-            Effetto sul prossimo piano rate
+            {{ titoloEffetto }}
           </span>
 
           <div class="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">

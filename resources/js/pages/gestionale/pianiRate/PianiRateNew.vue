@@ -1103,7 +1103,7 @@ const submit = () => {
               <div class="text-sm text-blue-900 dark:text-blue-100 space-y-2 leading-relaxed">
                 <p>
                   <strong class="font-bold text-blue-950 dark:text-white">Emissione globale (Default):</strong> 
-                  Se lasci il campo sottostante vuoto, il sistema includerà automaticamente <strong>tutte le voci di spesa</strong> previste dal bilancio per questa gestione.
+                  Se lasci il campo sottostante vuoto, il piano include <strong>le voci del bilancio di questa gestione</strong> che non sono già in un altro piano rate di questo esercizio.
                 </p>
                 <p>
                   <strong class="font-bold text-blue-950 dark:text-white">Emissione parziale:</strong> 
@@ -1113,7 +1113,7 @@ const submit = () => {
             </div>
 
             <div>
-              <Label :class="{ 'opacity-50': !form.gestione_id }" class="mb-1.5 block">Voci di bilancio incluse (Lascia vuoto per includere tutto)</Label>
+              <Label :class="{ 'opacity-50': !form.gestione_id }" class="mb-1.5 block">Voci di bilancio incluse (lascia vuoto per includere tutte le voci libere in questo esercizio)</Label>
               <v-select
                 multiple
                 v-model="form.capitoli_ids"

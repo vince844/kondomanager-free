@@ -57,6 +57,10 @@ use Illuminate\Support\Facades\DB;
  * lì la regola del piano non si ricalcola più, il piano resta fuori e si dice perché. Dopo una fermata (Coda 352) i giorni della quota che il
  * passaggio non ha spostato li ha pagati chi è rimasto a carico della fermata, e la voce lo dice.
  *
+ * Dalla 1.12.0-beta.1 (Coda 298, decisione 183.4) la testa dice il caso anche senza una fine: con più conduttori insieme nell'anno la regola è per quota
+ * e per giorni sull'intera voce, e chi è entrato dopo la generazione di un piano mentre un altro era in carica ha una frase sua (le voci di quei giorni sono
+ * nelle rate di chi c'era); nessuna sezione e nessuna cifra nuova.
+ *
  * Il già versato «dell'unità» (decisione 17, D8) sconta anche le righe dell'inquilino, come nel conguaglio: le righe «nelle sue rate»
  * e quelle di ripiego si dividono al netto della loro parte, gruppo per gruppo (1.11.0-beta.47). I giorni di una voce che somma pezzi
  * della stessa persona sono l'unione dei loro tratti, non la somma.
@@ -110,6 +114,8 @@ final class ProspettoOneriAccessori
         $approvatiFuori = [];
         // Coda 245 (1.11.0-beta.55): i gruppi (la fine con la regola del piano e la gestione) dei piani letti con la regola del piano.
         $gruppiDelPiano = [];
+        // Coda 298: per ogni piano letto senza la regola del piano, chi ha la parte dell'inquilino nelle sue rate.
+        $nelleRateDi = [];
         $conduttoriIds = $righeInquilino->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
 
         foreach ($piani as $piano) {
@@ -189,6 +195,20 @@ final class ProspettoOneriAccessori
             $pianiLetti[] = $letto;
             $vociDelInquilino = $riparto->where('ruolo_richiesto', 'inquilino')->values();
             [$nelleRate, $ripieghi] = $vociDelInquilino->partition(fn ($r) => ($r['ruolo_risolto'] ?? null) === 'inquilino');
+            // Coda 298: chi ha la parte dell'inquilino nelle sue rate di questo piano, e per quali giorni (il tratto congelato della riga, o la sua competenza
+            // quando il tratto è tutto l'anno), per riconoscere chi è entrato dopo la sua generazione.
+            $trattiNelleRate = [];
+            foreach ($nelleRate as $r) {
+                $dal = ($r['titolarita_dal'] ?? null) ?: (($r['competenza_dal'] ?? null) ?: $periodoEsercizio?->dal->toDateString());
+                $al = ($r['titolarita_al'] ?? null) ?: (($r['competenza_al'] ?? null) ?: $periodoEsercizio?->al->toDateString());
+                if ($dal === null || $al === null || $al < $dal) {
+                    continue;
+                }
+                $id = (int) $r['anagrafica_id'];
+                $t = InsiemePeriodi::uno(new PeriodoCompetenza($dal, $al));
+                $trattiNelleRate[$id] = isset($trattiNelleRate[$id]) ? $trattiNelleRate[$id]->unione($t) : $t;
+            }
+            $nelleRateDi[] = ['nome' => (string) $piano->nome, 'tratti' => $trattiNelleRate];
 
             // Le righe «nelle sue rate» della stessa voce e dello stesso tratto, su più tabelle, si dividono insieme: il conguaglio
             // le somma e arrotonda una volta sola (Fase 1-bis della .47; DV1, decisione 59), e il prospetto fa lo stesso.
@@ -344,6 +364,8 @@ final class ProspettoOneriAccessori
                 - (int) array_sum(array_column($senzaDelPiano['conguagli'], 'importo')) - (int) array_sum(array_column($senzaDelPiano['regolati'], 'importo'));
         }
         $frasiDellUscita = [...$this->frasiDellUscita($voci, $senza, (int) $unita->id, count($pianiLetti) > 1), ...$frasiDelPiano];
+        // Coda 298 (decisione 183.4): i conduttori che nell'esercizio sono stati insieme a un altro, con i giorni in comune.
+        $insieme = $this->conduttoriInsieme($partecipanti, $righeInquilino, $periodoEsercizio);
         // Il «pagata da …» della fine di una locazione: chi è uscito (strada A′) o chi paga al posto dell'inquilino (strada B).
         $pagateAllaFine = collect([...array_merge([], ...array_values($voci)), ...$senza])->contains(fn ($v) => in_array($v['strada'] ?? null, ['A', 'B'], true) && ! empty($v['pagato_da']));
         // Coda 364: e chi è entrato con il conguaglio di un cambio d'inquilino, per i giorni di un conduttore entrato dopo. Coda 366: o con la parte regolata fra le parti.
@@ -352,7 +374,8 @@ final class ProspettoOneriAccessori
         return [
             'unita'         => ['id' => (int) $unita->id, 'etichetta' => $unita->etichetta_estesa],
             'esercizio'     => ['id' => (int) $esercizio->id, 'nome' => $esercizio->nome, 'dal' => $periodoEsercizio?->dal->toDateString(), 'al' => $periodoEsercizio?->al->toDateString()],
-            'intestazione'  => [...$this->intestazione($pianiLetti, $esclusi, $pagateAllaFine, $gruppiDelPiano !== [], $this->soloConLaRegolaDelPiano($voci, $senza), $approvatiFuori, $pagateDopoIlCambio), ...$frasiDellUscita],
+            'intestazione'  => [...$this->intestazione($pianiLetti, $esclusi, $pagateAllaFine, $gruppiDelPiano !== [], $this->soloConLaRegolaDelPiano($voci, $senza), $approvatiFuori, $pagateDopoIlCambio,
+                $insieme !== [], $this->entratiDopoIlPiano($insieme, $nelleRateDi)), ...$frasiDellUscita],
             'piani'         => $pianiLetti,
             'piani_esclusi' => $esclusi,
             'piani_approvati_fuori' => $approvatiFuori,
@@ -2494,12 +2517,18 @@ final class ProspettoOneriAccessori
      * (Coda 364) chi è entrato con il conguaglio di un cambio d'inquilino, per i giorni di un conduttore entrato dopo, o (Coda 366) con un cambio regolato fra le parti:
      * i modi delle voci `entrato_dopo` (`modiDegliEntratiDopo`).
      *
+     * Coda 298 (decisione 183.4): con `$insieme` (più conduttori insieme nell'anno, senza una fine con la regola del piano) la frase della regola dice la quota
+     * e i giorni; `$entratiDopo` sono i conduttori entrati dopo la generazione di un piano mentre un altro era in carica (`entratiDopoIlPiano`), una frase
+     * ciascuno subito dopo la regola. Nessuna sezione e nessuna cifra nuova.
+     *
      * @param list<array{nome: string, fonte: string}> $piani
      * @param list<array{nome: string, motivo: string}> $esclusi
      * @param list<string> $dopoIlCambio
+     * @param list<array{chi: string, dal: string, con: list<string>, piani: list<string>}> $entratiDopo
      * @return list<string>
      */
-    private function intestazione(array $piani, array $esclusi, bool $conLaFine = false, bool $conIlPiano = false, bool $soloIlPiano = false, array $approvatiFuori = [], array $dopoIlCambio = []): array
+    private function intestazione(array $piani, array $esclusi, bool $conLaFine = false, bool $conIlPiano = false, bool $soloIlPiano = false, array $approvatiFuori = [], array $dopoIlCambio = [],
+        bool $insieme = false, array $entratiDopo = []): array
     {
         // Coda 364 (1.11.0-beta.55): chi ha pagato i giorni di un conduttore entrato dopo un cambio d'inquilino con il conguaglio scritto. Coda 366: o con il cambio
         // d'inquilino regolato fra le parti (decisione 83.3), detto solo se c'è; con tutti e due i modi la frase li dice tutti e due.
@@ -2521,9 +2550,12 @@ final class ProspettoOneriAccessori
                 $piani === [] => 'Nessun piano rate approvato in questo esercizio: il prospetto è vuoto.',
                 default => sprintf('Gli importi sono quelli del preventivo, dal piano rate approvato («%s»): il conguaglio definitivo si fa sul rendiconto approvato dell\'esercizio.', $nomi),
             },
-            $conIlPiano
+            // Coda 298 (decisione 183.4): con più conduttori insieme nell'anno la regola del riparto è per quota e per giorni, anche senza una fine.
+            $conIlPiano || $insieme
                 ? 'Le spese si dividono con la stessa regola del riparto: per giorni di conduzione e, dove più conduttori sono stati insieme nell\'anno, per quota e per giorni sull\'intera voce; non per consumi: dove c\'è la contabilizzazione del calore il risultato è un altro.'
                 : 'Le spese si dividono per giorni di conduzione, con la stessa regola del riparto, e non per consumi: dove c\'è la contabilizzazione del calore il risultato è un altro.',
+            // Coda 298: subito dopo la regola, chi è entrato dopo la generazione di un piano mentre un altro conduttore era in carica.
+            ...array_map(fn (array $e) => self::fraseDellEntratoDopo($e), $entratiDopo),
             $soloIlPiano
                 ? 'Accanto a ogni voce: ' . $legendaDelPiano . ' Ciò che è nelle rate del conduttore è un pagamento diretto, che non lo rende debitore del condominio (Cass. 19650/2006).'
                 : 'Accanto a ogni voce: «nelle sue rate» se la voce è già intestata al conduttore nelle rate — un pagamento diretto, che non lo rende debitore del condominio (Cass. 19650/2006); «con il conguaglio del cambio d\'inquilino del …» se un cambio d\'inquilino registrato dopo la generazione del piano ha dato quei giorni al nuovo conduttore con il conguaglio — anche questo è un pagamento diretto; '
@@ -2549,5 +2581,136 @@ final class ProspettoOneriAccessori
         }
 
         return $frasi;
+    }
+
+    /**
+     * Coda 298 (decisione 183.4): i conduttori dell'unità che nell'esercizio sono stati insieme a un altro, con i giorni in comune. Le righe sono quelle
+     * che il prospetto divide (`$partecipanti`, attive e con una quota), ognuna nel suo tratto effettivo (la regola del motore, `RisolutoreTitolari`); due
+     * righe della stessa persona non sono due conduttori, e i giorni in comune di più righe si uniscono.
+     *
+     * @param Collection<int, object> $partecipanti
+     * @param Collection<int, object> $righeInquilino
+     * @return array<int, array<int, InsiemePeriodi>> id del conduttore => id dell'altro => i giorni in comune
+     */
+    private function conduttoriInsieme(Collection $partecipanti, Collection $righeInquilino, ?PeriodoCompetenza $esercizio): array
+    {
+        if ($esercizio === null) {
+            return [];
+        }
+        $tratti = [];
+        foreach ($partecipanti as $r) {
+            $t = $this->titolari->trattoEffettivo($r, $esercizio, $righeInquilino);
+            if ($t !== null) {
+                $tratti[] = [(int) $r->anagrafica_id, $t];
+            }
+        }
+        $insieme = [];
+        foreach ($tratti as [$x, $tx]) {
+            foreach ($tratti as [$y, $ty]) {
+                $comune = $x === $y ? null : $tx->intersezione($ty);
+                if ($comune !== null) {
+                    $insieme[$x][$y] = isset($insieme[$x][$y]) ? $insieme[$x][$y]->unione(InsiemePeriodi::uno($comune)) : InsiemePeriodi::uno($comune);
+                }
+            }
+        }
+
+        return $insieme;
+    }
+
+    /**
+     * Coda 298: chi è entrato dopo la generazione di un piano mentre un altro conduttore era in carica. Per ogni piano letto senza la regola del piano, i giorni
+     * in cui è stato insieme a chi ha voci nelle sue rate, dentro il tratto di quelle voci, e in cui lui non ne ha: le voci di quei giorni sono nelle rate di
+     * chi c'era, e lui per quei giorni non ne ha. Il confronto è per giorni, non per persona: chi aveva voci nelle rate in un altro tratto (è uscito ed è
+     * rientrato) conta per i giorni senza, e chi c'era conta solo nei giorni che le sue rate coprono. Sui piani letti con la regola del piano ogni conduttore
+     * dell'anello ha la sua parte, e non contano.
+     *
+     * @param array<int, array<int, InsiemePeriodi>> $insieme `conduttoriInsieme`
+     * @param list<array{nome: string, tratti: array<int, InsiemePeriodi>}> $nelleRateDi per piano, chi ha la parte dell'inquilino nelle sue rate e per quali giorni
+     * @return list<array{chi: string, dal: string, giorno: string, con: list<string>, piani: list<string>}>
+     */
+    private function entratiDopoIlPiano(array $insieme, array $nelleRateDi): array
+    {
+        // I giorni di `$a` dentro `$b`, e i giorni di `$a` fuori da `$b`; null se non ne resta nessuno.
+        $dentro = function (InsiemePeriodi $a, InsiemePeriodi $b): ?InsiemePeriodi {
+            $parti = null;
+            foreach ($b->periodi() as $t) {
+                $i = $a->intersezione($t);
+                $parti = $i === null ? $parti : ($parti === null ? $i : $parti->unione($i));
+            }
+
+            return $parti;
+        };
+        $fuori = function (?InsiemePeriodi $a, InsiemePeriodi $b): ?InsiemePeriodi {
+            foreach ($b->periodi() as $t) {
+                $a = $a?->meno($t);
+            }
+
+            return $a;
+        };
+        $entrati = [];
+        foreach ($insieme as $x => $con) {
+            $piani = [];
+            $chi = [];
+            $dal = null;
+            foreach ($nelleRateDi as $p) {
+                $nelPiano = false;
+                foreach ($con as $y => $giorni) {
+                    if (! isset($p['tratti'][$y])) {
+                        continue;
+                    }
+                    $scoperti = $dentro($giorni, $p['tratti'][$y]);
+                    if (isset($p['tratti'][$x])) {
+                        $scoperti = $fuori($scoperti, $p['tratti'][$x]);
+                    }
+                    if ($scoperti === null) {
+                        continue;
+                    }
+                    $nelPiano = true;
+                    $chi[$y] = true;
+                    $dal = $dal === null || $scoperti->dal()->lt($dal) ? $scoperti->dal() : $dal;
+                }
+                if ($nelPiano) {
+                    $piani[] = $p['nome'];
+                }
+            }
+            if ($piani !== []) {
+                $nomi = Anagrafica::whereIn('id', [$x, ...array_keys($chi)])->pluck('nome', 'id');
+                // Chi c'era, in ordine di nome: l'ordine delle righe d'inquilino a pari data è quello del database.
+                $con = array_map(fn (int $y) => (string) ($nomi[$y] ?? '—'), array_keys($chi));
+                sort($con);
+                $entrati[] = ['chi' => (string) ($nomi[$x] ?? '—'), 'dal' => $dal->format('d/m/Y'), 'giorno' => $dal->toDateString(), 'con' => $con, 'piani' => array_values(array_unique($piani))];
+            }
+        }
+        usort($entrati, fn (array $a, array $b) => [$a['giorno'], $a['chi']] <=> [$b['giorno'], $b['chi']]);
+
+        return $entrati;
+    }
+
+    /**
+     * Coda 298: la frase di testa di chi è entrato dopo la generazione di un piano, insieme a chi c'era. «Dal 01/07/2026 Luca è inquilino insieme a Ines, ma il
+     * piano «Preventivo 2026» è stato generato prima: le cifre sono quelle del piano com'era, con la parte dell'inquilino di quei giorni nelle rate di Ines, e
+     * Luca, per quei giorni, non ha voci. Un piano generato dopo dividerà quelle voci fra Ines e Luca, per quota e per giorni.»
+     *
+     * @param array{chi: string, dal: string, con: list<string>, piani: list<string>} $e
+     */
+    private static function fraseDellEntratoDopo(array $e): string
+    {
+        $uno = count($e['piani']) === 1;
+        $con = self::elenco($e['con']);
+
+        return sprintf('Dal %s %s è inquilino insieme a %s, ma %s %s %s generat%s prima: le cifre sono quelle %s, con la parte dell\'inquilino di quei giorni nelle rate di %s, e %s, per quei giorni, non ha voci. Un piano generato dopo dividerà quelle voci fra %s, per quota e per giorni.',
+            $e['dal'], $e['chi'], $con, $uno ? 'il piano' : 'i piani', self::elenco(array_map(fn (string $n) => '«' . $n . '»', $e['piani'])), $uno ? 'è stato' : 'sono stati', $uno ? 'o' : 'i',
+            $uno ? 'del piano com\'era' : 'dei piani com\'erano', $con, $e['chi'], self::elenco([...$e['con'], $e['chi']]));
+    }
+
+    /** «Ines», «Ines e Dora», «Ines, Dora e Luca». @param list<string> $voci */
+    private static function elenco(array $voci): string
+    {
+        if (count($voci) <= 1) {
+            return $voci[0] ?? '';
+        }
+        $ultima = array_pop($voci);
+
+        return implode(', ', $voci) . ' e ' . $ultima;
     }
 }

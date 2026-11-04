@@ -2829,7 +2829,8 @@ final class ConguaglioPassaggio
                 continue;
             }
             $applicato = fn (int $versato) => QuotaDellaChiamata::applica($versato, $quota);
-            $versati = array_map($applicato, ContributoVersato::perImmobileESoggetto(Conto::class, $contoId)[$immobileId] ?? []);
+            // Coda 438: il già versato che vale nell'esercizio del piano, quello che un piano generato dopo il passaggio toglierebbe.
+            $versati = array_map($applicato, ContributoVersato::perImmobileESoggetto(Conto::class, $contoId, QuotaDellaChiamata::esercizioDelPiano($pianoRateId))[$immobileId] ?? []);
             $altri = DB::table('righe_riparto')->where('piano_rate_id', $pianoRateId)->where('immobile_id', $immobileId)->where('conto_id', $contoId)->where('tipo', RigaRiparto::TIPO_RIPARTO)
                 ->where('anagrafica_id', '!=', $uscenteId)->selectRaw('anagrafica_id, SUM(importo) as lordo')->groupBy('anagrafica_id')->pluck('lordo', 'anagrafica_id');
             if ($altri->has($entranteId)) {

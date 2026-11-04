@@ -133,6 +133,16 @@ defineEmits(['update:open']);
                                 è stato annullato dopo il ricalcolo del piano: le quote hanno ancora la titolarità di un passaggio
                                 che non c'è più, e il messaggio dice quale passaggio e di chi andrebbero a giornale le quote.
                             </p>
+                            <p class="mt-2">
+                                Sulla gestione usata in più esercizi il pulsante non è bloccato, ma si rifiuta per due forme di piano che vengono di
+                                solito dalle versioni più vecchie: il piano <strong>senza il suo esercizio salvato</strong> (anche dal cestino delle voci), e il
+                                piano <strong>ordinario senza voci associate</strong> quando la gestione ha un piano in un altro esercizio. Il programma
+                                non sa a quale esercizio appartiene, o quali voci gli spettano, e ricalcolandolo potrebbe spostare il già versato
+                                da un esercizio all'altro o chiedere due volte le stesse voci. Il messaggio nomina il piano, la gestione e gli
+                                esercizi, e dice la strada: eliminarlo dall'elenco dei piani rate (un piano approvato si riporta prima in bozza) e
+                                crearlo di nuovo dalla pagina dei piani rate del suo esercizio, scegliendo le voci. È la strada anche quando un
+                                altro messaggio chiede di ricalcolare quel piano, per esempio prima di emetterlo dopo una vendita.
+                            </p>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
@@ -224,7 +234,12 @@ defineEmits(['update:open']);
                                 l'icona dell'orologio accanto all'importo apre lo storico dei movimenti, e
                                 ognuno ha il proprio pulsante per restituire esattamente quella cifra. La voce
                                 rimossa torna disponibile fra le «orfane» e si può reintrodurre in seguito con
-                                «Sincronizza».
+                                «Sincronizza». Sul piano senza il suo esercizio salvato, che «Ricalcola» rifiuta sulla gestione usata in più
+                                esercizi (vedi sopra), il cestino non è disabilitato ma si rifiuta, con lo stesso fatto e la stessa strada.
+                                L'ultima voce di un piano ordinario non si toglie: un piano senza voci, al ricalcolo, prende tutte le voci della gestione
+                                che nessun altro piano del suo esercizio ha già, quindi anche quella appena tolta se nessun altro piano l'ha. Se il
+                                piano deve chiedere un'altra voce, si aggiunge prima con «Sincronizza», se è libera, e poi si toglie questa; se non
+                                serve più, si elimina dall'elenco dei piani rate.
                             </p>
                             <p class="mt-2">
                                 Le versioni precedenti permettevano una voce di spesa con un importo

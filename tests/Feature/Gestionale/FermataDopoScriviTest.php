@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.50 — la fermata dopo «Scrivi il conguaglio» (decisione 77 punto 3, allargata dalla 79 e precisata l'11/10/2026
- * notte; la strada a mano della decisione 80; verbale `docs/piano_esecutivo_beta50.md`, «Le scelte tecniche del progetto»).
+ * notte; la strada a mano della decisione 80; verbale `docs/verbali/1.11/piano_esecutivo_beta50.md`, «Le scelte tecniche del progetto»).
  *
  * Il fatto: alla fine della locazione di Ines il 1/7, senza un nuovo inquilino e con «Scrivi il conguaglio», chi paga al posto
  * dell'inquilino (Ugo, il proprietario) prende i 184 giorni dopo l'uscita: la coppia è Ines −18148, Ugo +18148. Se poi un

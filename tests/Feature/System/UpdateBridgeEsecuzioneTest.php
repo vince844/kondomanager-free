@@ -32,8 +32,15 @@ use Symfony\Component\Process\Process;
  * - un errore durante l'aggiornamento chiude il ponte: il file di scambio si cancella, il file si
  *   riduce alla firma che la finalizzazione riconosce (`410 Gone`), e la schermata indica
  *   l'installatore a file singolo;
+ * - un invio valido non si ferma se la pagina si chiude: l'aggiornamento arriva in fondo anche con la
+ *   scheda chiusa subito dopo l'avvio o durante lo scarico, mentre la pagina aperta senza invio e l'invio
+ *   rifiutato non cambiano il modo in cui PHP tratta la pagina chiusa (Coda 446);
  * - a buon fine, un `.env` senza `TRUSTED_PROXIES` riceve `PRIVATE_SUBNETS`, con lo stesso blocco
- *   che scrive `UpgradePatchServiceProvider`.
+ *   che scrive `UpgradePatchServiceProvider`, e nessuna riga `DB_CHARSET`, `DB_COLLATION` o `DB_ENGINE`
+ *   (Coda 447).
+ *
+ * Le prove della pagina chiusa avviano il server web integrato di PHP su 127.0.0.1, con un solo
+ * processo, e leggono la risposta da una presa aperta a mano che poi si chiude.
  */
 
 /** Un indirizzo locale su cui non risponde nessuno: lo scarico fallisce subito, senza rete. */
@@ -69,6 +76,7 @@ $ponte = $base.'/'.$r['ponte'];
 
 register_shutdown_function(function () use ($ponte) {
     echo '<!--km-codice:'.var_export(http_response_code(), true).'-->';
+    echo '<!--km-abort:'.(int) ignore_user_abort().'-->';
 
     if (function_exists('opcache_is_script_cached')) {
         echo '<!--km-opcache:'.var_export(opcache_is_script_cached($ponte), true).'-->';
@@ -216,6 +224,107 @@ function ponteEsecAssegnazioniProxy(string $env): array
         fn ($riga) => str_starts_with($riga, 'TRUSTED_PROXIES=')
     ));
 }
+
+/**
+ * Un archivio con i tre file che il controllo di salute cerca: il pacchetto più piccolo che il ponte accetta.
+ * Con `$riempitivo` (in byte) porta anche un file non compresso di quella dimensione, per uno scarico lungo.
+ */
+function ponteEsecPacchetto(string $base, int $riempitivo = 0): string
+{
+    $archivio = $base.'/pacchetto.zip';
+    $zip = new ZipArchive;
+    $zip->open($archivio, ZipArchive::CREATE);
+    $zip->addFromString('artisan', "#!/usr/bin/env php\n");
+    $zip->addFromString('public/index.php', "<?php // front controller del pacchetto\n");
+    $zip->addFromString('config/app.php', "<?php return [];\n");
+
+    if ($riempitivo > 0) {
+        $zip->addFromString('public/riempitivo.bin', random_bytes($riempitivo));
+        $zip->setCompressionName('public/riempitivo.bin', ZipArchive::CM_STORE);
+    }
+
+    $zip->close();
+
+    return $archivio;
+}
+
+/**
+ * Un aggiornamento che va a buon fine su un `.env` di partenza, con le intestazioni indicate:
+ * restituisce la pagina e il `.env` com'è dopo.
+ *
+ * @return array{pagina: string, env: string}
+ */
+function ponteEsecAggiornaConEnv(string $base, string $envPrima, array $server): array
+{
+    $archivio = ponteEsecPacchetto($base);
+    file_put_contents($base.'/radice/.env', $envPrima);
+
+    $token = ponteEsecToken();
+    ponteEsecScambio($base, ['token' => $token, 'expires_at' => time() + 600], ['url' => 'file://'.$archivio, 'hash' => hash_file('sha256', $archivio)]);
+
+    $esito = ponteEsegui($base, 'POST', ['token' => $token, 'mode' => 'update'], [], $server);
+
+    return ['pagina' => $esito['pagina'], 'env' => (string) file_get_contents($base.'/radice/.env')];
+}
+
+/** Una porta libera su 127.0.0.1, chiesta al sistema. */
+function ponteEsecPortaLibera(): int
+{
+    $presa = stream_socket_server('tcp://127.0.0.1:0', $codice, $messaggio);
+    $porta = (int) substr((string) strrchr((string) stream_socket_get_name($presa, false), ':'), 1);
+    fclose($presa);
+
+    return $porta;
+}
+
+/**
+ * Il server web integrato di PHP, pronto ad accettare richieste: sulla cartella pubblica della prova, o con uno
+ * script `$router` che risponde a ogni richiesta (con le variabili d'ambiente `$ambiente`).
+ *
+ * @return array{0: Process, 1: int} il processo e la porta
+ */
+function ponteEsecAvviaServer(string $base, ?string $router = null, array $ambiente = []): array
+{
+    $porta = ponteEsecPortaLibera();
+    $comando = [PHP_BINARY, '-S', '127.0.0.1:'.$porta];
+    $comando = $router === null ? [...$comando, '-t', $base.'/radice/public'] : [...$comando, $router];
+
+    // Un processo solo: il `.env` del progetto può chiedere più processi di lavoro (`PHP_CLI_SERVER_WORKERS`), e fermando il
+    // principale gli altri resterebbero in vita con la porta aperta.
+    $server = new Process($comando, $base, ['PHP_CLI_SERVER_WORKERS' => false] + $ambiente, null, null);
+    $server->disableOutput();
+    $server->start();
+
+    for ($i = 0; $i < 50; $i++) {
+        $presa = @stream_socket_client('tcp://127.0.0.1:'.$porta, $codice, $messaggio, 0.2);
+
+        if ($presa !== false) {
+            fclose($presa);
+
+            return [$server, $porta];
+        }
+
+        usleep(100000);
+    }
+
+    $server->stop(0);
+
+    throw new RuntimeException('Il server di prova non risponde.');
+}
+
+/** Lo script di un server che serve il pacchetto a pezzi di un megabyte, con una pausa fra l'uno e l'altro: uno scarico lungo. */
+const PONTE_ESEC_ORIGINE_LENTA = <<<'PHP'
+<?php
+$archivio = getenv('KM_PACCHETTO');
+header('Content-Type: application/zip');
+header('Content-Length: '.filesize($archivio));
+$file = fopen($archivio, 'rb');
+while (! feof($file)) {
+    echo fread($file, 1048576);
+    flush();
+    usleep(700000);
+}
+PHP;
 
 /**
  * La richiesta è stata rifiutata senza toccare niente: la pagina lo dice con 403, nessuno scarico
@@ -548,6 +657,142 @@ it('a buon fine aggiorna i file, toglie sé stesso e il file di scambio, e scriv
     } finally {
         @unlink($confronto);
     }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4-bis. La pagina chiusa durante l'aggiornamento
+// ─────────────────────────────────────────────────────────────────────────────
+
+it('Coda 446 — il ponte che ha ricevuto un invio valido non si ferma se la pagina si chiude', function () {
+    $token = ponteEsecToken();
+    ponteEsecScambio($this->ponteBase, ['token' => $token, 'expires_at' => time() + 600]);
+
+    $esito = ponteEsegui($this->ponteBase, 'POST', ['token' => $token, 'mode' => 'update']);
+
+    // Lo scarico parte (e fallisce sull'indirizzo muto): l'impostazione vale per tutta l'esecuzione.
+    expect($esito['pagina'])->toContain('Download failed')
+        ->and($esito['pagina'])->toContain('<!--km-abort:1-->');
+});
+
+it('Coda 446 — la pagina aperta senza invio e l invio rifiutato non cambiano il modo in cui PHP tratta la pagina chiusa', function (string $metodo, array $campi, bool $conScambio) {
+    if ($conScambio) {
+        ponteEsecScambio($this->ponteBase, ['token' => ponteEsecToken(), 'expires_at' => time() + 600]);
+    }
+
+    $esito = ponteEsegui($this->ponteBase, $metodo, $campi);
+
+    expect($esito['pagina'])->toContain('<!--km-abort:0-->');
+})->with([
+    'pagina aperta senza invio' => ['GET', [], true],
+    'invio con un token che non è quello del file di scambio' => ['POST', ['token' => str_repeat('a', 64)], true],
+    'invio senza token' => ['POST', [], true],
+    'invio senza file di scambio' => ['POST', ['token' => str_repeat('a', 64)], false],
+]);
+
+it('Coda 446 — con la pagina chiusa, l aggiornamento arriva in fondo', function (bool $chiudeSubito) {
+    // Un pacchetto di tre megabyte e mezzo, servito a pezzi di un megabyte: lo scarico dura quasi tre secondi e il ponte scrive
+    // l'avanzamento a ogni megabyte, cioè scrive sulla pagina mentre l'amministratore l'ha già chiusa.
+    $archivio = ponteEsecPacchetto($this->ponteBase, 3_500_000);
+    file_put_contents($this->ponteBase.'/origine.php', PONTE_ESEC_ORIGINE_LENTA);
+
+    [$origine, $portaOrigine] = ponteEsecAvviaServer($this->ponteBase, $this->ponteBase.'/origine.php', ['KM_PACCHETTO' => $archivio]);
+
+    $token = ponteEsecToken();
+    ponteEsecScambio($this->ponteBase, ['token' => $token, 'expires_at' => time() + 600], ['url' => 'http://127.0.0.1:'.$portaOrigine.'/pacchetto.zip', 'hash' => hash_file('sha256', $archivio)]);
+
+    [$server, $porta] = ponteEsecAvviaServer($this->ponteBase);
+    $ponte = $this->ponteBase.'/radice/public/km-update.php';
+
+    try {
+        // L'amministratore avvia l'aggiornamento...
+        $corpo = http_build_query(['token' => $token, 'mode' => 'update']);
+        $presa = stream_socket_client('tcp://127.0.0.1:'.$porta, $codice, $messaggio, 5);
+        fwrite($presa, "POST /km-update.php HTTP/1.1\r\nHost: 127.0.0.1:{$porta}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ".strlen($corpo)."\r\nConnection: close\r\n\r\n".$corpo);
+
+        if (! $chiudeSubito) {
+            // ...legge la pagina finché lo scarico non parte...
+            stream_set_timeout($presa, 1);
+            $letto = '';
+            $inizio = microtime(true);
+            while (! str_contains($letto, 'updateProgress(10,') && microtime(true) - $inizio < 10) {
+                $letto .= (string) fread($presa, 8192);
+            }
+
+            expect($letto)->toContain('updateProgress(10,');
+        }
+
+        // ...e chiude la scheda, con il pacchetto ancora in arrivo.
+        fclose($presa);
+
+        $fine = microtime(true) + 12;
+        while (file_exists($ponte) && microtime(true) < $fine) {
+            usleep(100000);
+        }
+    } finally {
+        $server->stop(0);
+        $origine->stop(0);
+    }
+
+    // L'aggiornamento è arrivato in fondo da solo: i file nuovi al loro posto, il ponte e il file di scambio tolti.
+    expect(file_exists($ponte))->toBeFalse('Il ponte è ancora lì: l aggiornamento si è fermato a metà.')
+        ->and((string) @file_get_contents($this->ponteBase.'/radice/public/index.php'))->toContain('front controller del pacchetto')
+        ->and(filesize($this->ponteBase.'/radice/public/riempitivo.bin'))->toBe(3_500_000)
+        ->and(file_exists(ponteEsecPercorsoScambio($this->ponteBase)))->toBeFalse()
+        ->and(file_exists($this->ponteBase.'/radice/update_temp.zip'))->toBeFalse();
+})->with([
+    'la scheda si chiude subito dopo l invio' => [true],
+    'la scheda si chiude durante lo scarico' => [false],
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4-ter. Le righe del database che il ponte non scrive più
+// ─────────────────────────────────────────────────────────────────────────────
+
+it('Coda 447 — l aggiornamento dietro un proxy scrive il blocco dei proxy e non le righe del database', function (array $server) {
+    $envPrima = "APP_NAME=Kondomanager\nAPP_ENV=production\nDB_HOST=localhost\n";
+
+    $esito = ponteEsecAggiornaConEnv($this->ponteBase, $envPrima, $server);
+
+    expect($esito['pagina'])->toContain('Aggiornamento completato!')
+        ->and(ponteEsecAssegnazioniProxy($esito['env']))->toBe(['TRUSTED_PROXIES='.UpgradePatchServiceProvider::VALORE])
+        ->and($esito['env'])->not->toContain('DB_CHARSET')
+        ->and($esito['env'])->not->toContain('DB_COLLATION')
+        ->and($esito['env'])->not->toContain('DB_ENGINE');
+
+    // Il blocco è quello che il provider aggiunge, byte per byte, a un `.env` uguale: nient'altro.
+    $confronto = tempnam(sys_get_temp_dir(), 'env');
+    file_put_contents($confronto, $envPrima);
+
+    try {
+        expect((new UpgradePatchServiceProvider(app()))->sistemaIlFileEnv($confronto))->toBe('aggiunto')
+            ->and($esito['env'])->toBe(file_get_contents($confronto));
+    } finally {
+        @unlink($confronto);
+    }
+})->with([
+    'dietro un proxy' => [['HTTP_HOST' => 'condominio.example.it', 'HTTP_X_FORWARDED_PROTO' => 'https']],
+    'dietro un proxy che manda l indirizzo del visitatore' => [['HTTP_HOST' => 'condominio.example.it', 'HTTP_X_FORWARDED_FOR' => '203.0.113.7']],
+    'su un hosting della lista' => [['HTTP_HOST' => 'studio.altervista.org']],
+]);
+
+it('Coda 447 — le righe del database scritte a mano restano dove sono e non si duplicano', function () {
+    $envPrima = "APP_NAME=Kondomanager\nDB_CHARSET=utf8mb4\nDB_COLLATION=utf8mb4_unicode_ci\n";
+
+    $esito = ponteEsecAggiornaConEnv($this->ponteBase, $envPrima, ['HTTP_HOST' => 'condominio.example.it', 'HTTP_X_FORWARDED_PROTO' => 'https']);
+
+    expect(substr_count($esito['env'], 'DB_CHARSET'))->toBe(1)
+        ->and(substr_count($esito['env'], 'DB_COLLATION'))->toBe(1)
+        ->and($esito['env'])->toStartWith($envPrima)
+        ->and(ponteEsecAssegnazioniProxy($esito['env']))->toBe(['TRUSTED_PROXIES='.UpgradePatchServiceProvider::VALORE]);
+});
+
+it('Coda 447 — fuori da un proxy il .env resta com era', function () {
+    $envPrima = "APP_NAME=Kondomanager\nAPP_ENV=production\n";
+
+    $esito = ponteEsecAggiornaConEnv($this->ponteBase, $envPrima, ['HTTP_HOST' => 'condominio.example.it']);
+
+    expect($esito['pagina'])->toContain('Aggiornamento completato!')
+        ->and($esito['env'])->toBe($envPrima);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

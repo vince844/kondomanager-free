@@ -1,7 +1,7 @@
 <?php
 
 /**
- * 1.11.0-beta.49, voce P9 del verbale (`docs/piano_esecutivo_beta49.md`), decisioni 75.1 e 76.1 del registro
+ * 1.11.0-beta.49, voce P9 del verbale (`docs/verbali/1.11/piano_esecutivo_beta49.md`), decisioni 75.1 e 76.1 del registro
  * (`docs/subentro_e_competenza_temporale.md`): il comando `kondomanager:riallinea-crediti` e la card «Crediti da riallineare»
  * nella pagina «Incassi rate».
  *

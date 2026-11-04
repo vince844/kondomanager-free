@@ -1,6 +1,6 @@
 /**
  * 1.11.0-beta.48 — «a» o «ad» davanti al nome di una persona: la regola della pagina (rilievo R5 della lente testi della Fase 1-bis
- * di `docs/piano_esecutivo_beta48.md`).
+ * di `docs/verbali/1.11/piano_esecutivo_beta48.md`).
  *
  * Nasce dalla successione di Fresco: l'erede di riferimento si chiama Anna, e il pannello «Cosa cambierà» scrive «€ 268,55 a Anna»,
  * «vanno a Anna», «passano a Anna». La decisione 73 (4) aveva corretto due frasi del server con l'aiuto `FrasiObbligati::a()`, ma le

@@ -2,7 +2,7 @@
 
 /**
  * 1.11.0-beta.49 — la contabilità dei crediti, parte «emissione ed estratto conto» (decisioni 71, 75 e 76; voci P1, P3, P5
- * e P6 di `docs/piano_esecutivo_beta49.md`).
+ * e P6 di `docs/verbali/1.11/piano_esecutivo_beta49.md`).
  *
  * Coperti: la rata di soli crediti, la rata mista e la quota a zero che vanno a giornale con la spesa in DARE e il credito
  * riportato in AVERE (DC2, DC2-b, DC2-c, O10, S5); la rata zero fatta di un debito e di un credito uguali; il credito già

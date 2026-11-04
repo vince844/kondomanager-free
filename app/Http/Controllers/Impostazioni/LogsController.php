@@ -27,8 +27,8 @@ class LogsController extends Controller
                 ->paginate(10, ['*'], 'mail_page')
                 ->withQueryString(),
 
-            // TAB 2: Activity Logs (Spatie)
-            'activityLogs' => ''
+            // TAB 2: Activity Logs (Spatie). La scheda «Attività Sistema» non c'è finché la query qui sotto non ha dati da mostrare: non si manda una
+            // proprietà vuota, che la pagina leggerebbe come un elenco. Quando la query torna, torna con la scheda in `impostazioniLogs.vue`.
            /*  'activityLogs' => Activity::query()
                 ->with('causer') // Carica l'utente che ha fatto l'azione
                 ->when($search, function ($query, $search) {

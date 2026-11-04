@@ -148,6 +148,13 @@ class GeneratePianoRateAction
         // atemporale, com'era.
         // Il piano ricorda l'esercizio con cui è generato (migrazione 9): è ciò che il conguaglio del
         // passaggio e l'anteprima leggeranno, così la competenza è una sola per tutti (verifica S5, R8).
+        // Un piano che ha già il suo esercizio resta in quello anche se si genera dalla pagina di un altro: l'elenco dei piani di un
+        // esercizio mostra tutti i piani delle gestioni agganciate, e dalla Coda 438 l'esercizio del piano decide quale già versato toglie. Un piano senza il
+        // suo esercizio, su una gestione usata in più esercizi, qui non arriva dal ricalcolo né dal cestino: lo rifiutano prima (`PianoRate::fraseDaRifare`,
+        // decisione 192.1); quello che arriva prende l'esercizio della pagina.
+        if ($esercizio !== null && $pianoRate->esercizio_id !== null && (int) $pianoRate->esercizio_id !== (int) $esercizio->id) {
+            $esercizio = Esercizio::find($pianoRate->esercizio_id) ?? $esercizio;
+        }
         if ($esercizio !== null && (int) $pianoRate->esercizio_id !== (int) $esercizio->id) {
             $pianoRate->esercizio_id = $esercizio->id;
             $pianoRate->save();

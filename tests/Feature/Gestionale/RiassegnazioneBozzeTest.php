@@ -6,7 +6,7 @@
  * La prassi degli amministratori (forum p=552, Fresco 21/09 e Gabriele 22/09/2026): alla vendita «le rate non
  * ancora emesse si intestano all'acquirente cambiando il nome su quelle che restano, senza rifare il riparto; il
  * passato si regola con il conguaglio». Supera la decisione 21 nel solo punto delle bozze. Tre decisioni di Vincenzo
- * del 25/09/2026, dopo il conto eseguito sul motore (`docs/piano_esecutivo_beta34_b3a.md`):
+ * del 25/09/2026, dopo il conto eseguito sul motore (`docs/verbali/1.11/piano_esecutivo_beta34_b3a.md`):
  *
  * 1. il conguaglio si calcola sull'**intero piano** e toglie ciò che chi entra paga già con le bozze — calcolato
  *    sulle sole emesse farebbe pagare all'acquirente più dei suoi giorni su € 1.200 (€ 263,01 con il rogito il 1/5,

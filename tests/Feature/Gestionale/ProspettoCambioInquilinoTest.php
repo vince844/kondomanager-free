@@ -474,6 +474,15 @@ function pciStampa(array $s): string
     return preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 }
 
+/**
+ * Il testo nomina la persona come parola intera? Il nome e l'indirizzo del condominio li fa Faker: «Ivo» è dentro «Ivory», e un confronto
+ * sulla sottostringa dà un rosso che dipende dal caso.
+ */
+function pciNomina(string $testo, string $nome): bool
+{
+    return preg_match('/(?<![\p{L}\p{N}])'.preg_quote($nome, '/').'(?![\p{L}\p{N}])/u', $testo) === 1;
+}
+
 // Rilievo «unità mista, ripiego in due tratti, vendita della metà piena» (alto, lente denaro): prima della correzione Ivo
 // rimborsava tutto a Elsa. NON copre: la vendita della nuda o con riserva (la riserva la provano i test del giro sulle
 // correzioni, in coda), due persone diverse sui due ruoli del godimento, la stampa. La forma in un tratto solo la provano T12 e
@@ -1721,6 +1730,8 @@ it('rilievo già versato del ripiego in stampa, T5 — Ivo ha la voce «Spese ge
 // locazione (InizioLocazionePianoFermoTest), due condomini, la vendita fra due unità, l'anteprima del passaggio.
 it('controllo del perimetro della catena dei pagatori — Ugo usufruttuario dell\'Interno 1 (Bice e Carla nude al 50 %) e dell\'Interno 2 (Zeno nudo), estinzione sull\'Interno 2 il 1/6 e sull\'Interno 1 il 1/7, Ivo nell\'Interno 1 dal 1/7 e Kai nell\'Interno 2 dal 1/6: il prospetto dell\'Interno 1 non nomina Zeno, quello dell\'Interno 2 non nomina Bice, Carla né Ivo', function () {
     $s = pciScenario(['inquilino' => 100]);
+    // Il nome del condominio contiene «Ivo» dentro un'altra parola («Ivory»): non è la persona, e il confronto per parola intera lo sa.
+    $s['c']->forceFill(['nome' => 'Residenza Ivory'])->save();
     DB::table('anagrafica_immobile')->where('id', $s['rigaV'])->update(['tipologia' => 'usufruttuario']);
     pciTitolare($s, pciPersona($s, 'Bice Nuda'), 'nuda_proprietario', 50);
     pciTitolare($s, pciPersona($s, 'Carla Nuda'), 'nuda_proprietario', 50);
@@ -1754,12 +1765,17 @@ it('controllo del perimetro della catena dei pagatori — Ugo usufruttuario dell
     // Interno 2: Kai 35178 per 214 giorni, pagati da Zeno; a Ugo 24822 per 151 (1/1–31/5). 35178 + 24822 = 60000.
     expect(pciVociDi(pciSezione($pb, 'Kai Inquilino')))->toBe([['Spese generali', 'proprietario', 'Zeno Altrui', 35178, 214]])
         ->and(pciSenza($pb))->toBe([['Venditore Ugo', 24822, 151]]);
-    // Nessun nome dell'altra unità, né nel prospetto né nella stampa (un `not->toContain` per nome).
-    expect(json_encode($pa, JSON_UNESCAPED_UNICODE))->not->toContain('Zeno');
-    expect(pciStampa($s))->not->toContain('Zeno');
+    // Nessun nome dell'altra unità, né nel prospetto né nella stampa (un confronto per parola intera per nome).
+    expect(pciNomina(json_encode($pa, JSON_UNESCAPED_UNICODE), 'Zeno'))->toBeFalse();
+    expect(pciNomina(pciStampa($s), 'Zeno'))->toBeFalse();
     foreach (['Bice', 'Carla', 'Ivo'] as $nome) {
-        expect(json_encode($pb, JSON_UNESCAPED_UNICODE))->not->toContain($nome);
-        expect(pciStampa($sb))->not->toContain($nome);
+        expect(pciNomina(json_encode($pb, JSON_UNESCAPED_UNICODE), $nome))->toBeFalse();
+        expect(pciNomina(pciStampa($sb), $nome))->toBeFalse();
+    }
+    // Il confronto trova i nomi dove ci sono (l'Interno 1 nomina Ivo, Bice e Carla) e non scambia «Ivo» per «Ivory», che la stampa porta nel nome del condominio.
+    expect(pciStampa($sb))->toContain('Ivory');
+    foreach (['Bice', 'Carla', 'Ivo'] as $nome) {
+        expect(pciNomina(pciStampa($s), $nome))->toBeTrue();
     }
 });
 

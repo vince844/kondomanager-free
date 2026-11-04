@@ -190,7 +190,7 @@ describe('TitolaritaSheet — chi paga l\'ordinaria dal giorno dell\'atto (beta.
 
 /**
  * 1.11.0-beta.48 — «Conguaglio non scritto» nello storico di una successione (P2 del progetto, Fase 1 di
- * `docs/piano_esecutivo_beta48.md`).
+ * `docs/verbali/1.11/piano_esecutivo_beta48.md`).
  *
  * Nasce dalla decisione 72/73: nella successione e nel legato il conguaglio diventa una scelta, «Scrivi il conguaglio» o «Non
  * scriverlo: la posizione resta com'è», e con la seconda non si scrive nessuna riga in saldi e non si dichiara nessun accordo fra
@@ -337,7 +337,7 @@ describe('TitolaritaSheet — il conguaglio non scritto della successione (beta.
 
 /**
  * 1.11.0-beta.48 — la strada «Non scriverlo» nella scheda dello storico, per il conguaglio già scritto (rilievo R3 della lente testi,
- * Fase 1-bis di `docs/piano_esecutivo_beta48.md`).
+ * Fase 1-bis di `docs/verbali/1.11/piano_esecutivo_beta48.md`).
  *
  * Nasce dal caso di Fresco registrato con «Scrivi il conguaglio», quando poi gli eredi dicono che il conguaglio non lo vogliono. Nella
  * scheda dello storico c'è il pulsante «Le parti hanno regolato diversamente: annulla il conguaglio…», che dichiara un accordo che non

@@ -21,6 +21,8 @@ interface Voce {
   importo_cents: number;
   coperto_cents: number;
   unita_coperte: number;
+  /** Coda 438: per quale esercizio vale il già versato, a parole («Tutti gli esercizi», il nome di un esercizio); nullo senza già versato. */
+  vale_per: string | null;
 }
 
 const props = defineProps<{
@@ -145,6 +147,7 @@ const guide = [
                             su {{ v.unita_coperte }} {{ v.unita_coperte === 1 ? 'unità' : 'unità' }}
                           </span>
                         </div>
+                        <div v-if="v.vale_per" class="text-[10px] text-slate-500 mb-1">Vale per: {{ v.vale_per }}</div>
                         <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                           <div class="h-full bg-emerald-500 rounded-full transition-all"
                             :style="{ width: percentuale(v) + '%' }"></div>

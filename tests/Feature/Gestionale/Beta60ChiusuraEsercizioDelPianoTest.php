@@ -11,7 +11,8 @@
  *
  * Fonte dell'atteso: la decisione 163.2 (D3, la strada B: i cinque punti leggono l'esercizio del piano) e la regola di «Sposta spesa»
  * (`BudgetMovementService::moveBudget`: disponibile = importo della voce nel piano − speso registrato); per i messaggi della guardia del già versato
- * e del piano senza voci, sulla gestione usata in più esercizi, le decisioni 166 e 168. Le cifre si rifanno a mano accanto a ogni test.
+ * e del piano senza voci, sulla gestione usata in più esercizi, le decisioni 166 e 168, e dalla Coda 438 (1.12.0-beta.1) la decisione 183: il piano
+ * senza voci scelte prende quelle libere nel suo esercizio, il già versato vale nei piani del suo esercizio. Le cifre si rifanno a mano accanto a ogni test.
  *
  * Lo scenario lo costruisce come l'importatore (`LivelloEsercizi`): gli esercizi nascono aperti e a ognuno si aggancia la gestione ordinaria con
  * `createDefaultGestione`. Ogni test gira con i due ordini d'importazione, perché senza un ordine il «primo» del pivot dipende da quale riga c'è prima.
@@ -285,11 +286,16 @@ it('Coda 75 — «Sposta spesa» sul piano del 2026 creato ad aprile 2027 senza 
         ->and($p26->fresh()->esercizio_id)->toBe($s['es']['2026']->id);
 })->with(B60E_ORDINI);
 
-// --- Decisione 166: i messaggi sulla gestione usata in più esercizi -----------------------------------------------------------
+// --- Decisioni 166 e 183: i piani della gestione usata in più esercizi ---------------------------------------------------------
+//
+// Coda 438 (1.12.0-beta.1): i test che fissavano i rifiuti e i messaggi delle decisioni 166 e 168 sono riscritti con la regola della decisione 183. Un
+// piano creato senza scegliere le voci prende quelle che non sono in un piano dello stesso esercizio (183.2); il già versato vale nei piani del suo
+// esercizio, e quello senza esercizio — `b60eGiaVersato`, come le righe scritte prima — in tutti i piani della voce (183.1): con lui i rifiuti fra
+// esercizi restano, e il messaggio dice dove si indica l'esercizio.
 
 /**
  * Un piano dell'esercizio dalla rotta di creazione con «genera subito»; con `$capitoli` le voci scelte e il loro importo nel piano, senza le voci
- * non scelte (il piano prende quelle che nessun altro piano attivo della gestione ha già). Restituisce la risposta, anche quando la rotta rifiuta.
+ * non scelte (il piano prende quelle che nessun altro piano dello stesso esercizio ha già). Restituisce la risposta, anche quando la rotta rifiuta.
  *
  * @param array<string, string>|null $capitoli chiave dello scenario della voce => importo nel piano, in euro come lo scrive il modulo
  */
@@ -307,7 +313,7 @@ function b60eErrore($r): ?string
     return $r->getSession()->get('message')['message'] ?? null;
 }
 
-/** Ugo ha già versato € 300,00 per «Spese generali» (unità A). */
+/** Ugo ha già versato € 300,00 per «Spese generali» (unità A), senza esercizio: vale per tutti i piani della voce. */
 function b60eGiaVersato(array $s): void
 {
     ContributoVersato::create(['condominio_id' => $s['c']->id, 'target_type' => \App\Models\Gestionale\Conto::class, 'target_id' => $s['spesa']->id,
@@ -317,20 +323,43 @@ function b60eGiaVersato(array $s): void
 
 const B60E_NESSUNA_QUOTA = 'Impossibile generare il piano rate: nessuna quota calcolata. Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, (2) ogni immobile abbia almeno un condòmino attivo associato, (3) ogni voce di spesa sia collegata a una tabella millesimale.';
 
-const B60E_VOCI_DEL_2026 = 'Impossibile generare il piano rate: tutte le voci di questa gestione sono già nel piano «Preventivo 2026» dell\'esercizio «Esercizio 2026», attivo sulla stessa gestione, e un piano creato senza scegliere le voci prende solo quelle che nessun altro piano attivo della gestione ha già, di qualunque esercizio. Sulla gestione usata in più esercizi il programma non tiene ancora separati i piani di esercizi diversi.';
+/** Il rifiuto di un piano senza voci scelte quando le voci sono tutte nei piani nominati, dello stesso esercizio (Coda 438, AD3). */
+function b60eVociNeiPiani(string $piani): string
+{
+    $piu = str_contains($piani, ' e ');
 
-it('Coda 75, decisione 166 — il piano del 2027 creato senza scegliere le voci, quando sono tutte nel piano del 2026: il rifiuto dice la causa e nomina il piano, e nessuna cifra cambia', function (array $ordine) {
+    return 'Impossibile generare il piano rate: tutte le voci di questa gestione sono già '.($piu ? 'nei piani ' : 'nel piano ').$piani.', '.($piu ? 'attivi' : 'attivo')
+        .' nello stesso esercizio, e un piano creato senza scegliere le voci prende solo quelle che nessun altro piano attivo dello stesso esercizio ha già: non resta nessuna voce da chiedere.';
+}
+
+/** Il rifiuto della guardia quando il già versato vale per tutti gli esercizi e la voce si supera con i piani di un altro esercizio (decisione 166, Coda 438). */
+function b60eGiaVersatoDiTutti(string $piani, string $somma, string $volte): string
+{
+    return 'Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato che vale per tutti gli esercizi, ed è già '.$piani
+        .', attiv'.(str_contains($piani, 'nei piani') ? 'i' : 'o').' sulla stessa gestione: con questo piano la somma degli importi richiesti sulla voce (€ '.$somma
+        .') supera il suo budget (€ 1.200,00), e il già versato verrebbe tolto '.$volte.'. Se il già versato è di un esercizio solo, indicalo nella pagina «Già versato» della voce: varrà solo nei piani di quell\'esercizio.';
+}
+
+/** Il rifiuto della guardia quando la voce si supera con i piani che hanno il già versato (Coda 438, AD2: senza «disattiva»). */
+function b60eSommaSuperaLaVoce(string $somma, string $piani): string
+{
+    return 'Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato, ma la somma degli importi richiesti sulla voce dai piani rate attivi che hanno quel già versato (€ '
+        .$somma.', con '.$piani.') supera il suo budget (€ 1.200,00): il già versato verrebbe tolto più volte e parte della spesa non verrebbe mai richiesta ai condòmini. '
+        .'Aggiorna prima l\'importo della voce al fabbisogno reale, oppure chiedi la voce con un importo più basso, o toglila dalla pagina di un piano che ha anche altre voci.';
+}
+
+it('Coda 438, decisione 183.2 — il piano del 2027 creato senza scegliere le voci, quando sono tutte nel piano del 2026, le prende tutte e due: € 700,00 a testa', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     $p26 = b60ePiano($this, $s, '2026');
 
     $r = b60eCrea($this, $s, '2027', 'Preventivo 2027', null);
-    expect(b60eErrore($r))->toBe(B60E_VOCI_DEL_2026)
-        ->and(PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Preventivo 2027')->count())->toBe(0)
-        // Conto a mano: € 1.400,00 × 500/1000 = € 700,00 a testa, come prima del tentativo.
+    // Conto a mano: € 1.400,00 × 500/1000 = € 700,00 a testa, in tutti e due i piani.
+    expect(b60eErrore($r))->toBeNull()
+        ->and(b60eChiesto(PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Preventivo 2027')->firstOrFail(), $s))->toBe(['ugo' => 70000, 'bice' => 70000])
         ->and(b60eChiesto($p26, $s))->toBe(['ugo' => 70000, 'bice' => 70000]);
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 166 — il piano del 2027 creato senza generarlo e poi generato dalla sua pagina: il ricalcolo dice la stessa causa', function (array $ordine) {
+it('Coda 438, decisione 183.2 — il piano del 2027 creato senza generarlo nasce con le voci del piano del 2026, e il ricalcolo dalla sua pagina lo genera', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60ePiano($this, $s, '2026');
     $this->actingAs($this->user)->from('/crea')->post(route('admin.gestionale.esercizi.piani-rate.store', [$s['c'], $s['es']['2027']]), [
@@ -338,42 +367,43 @@ it('Coda 75, decisione 166 — il piano del 2027 creato senza generarlo e poi ge
         'giorno_scadenza' => 5, 'data_prima_scadenza' => '2027-01-05', 'genera_subito' => 0,
     ])->assertSessionHasNoErrors();
     $p27 = PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Preventivo 2027')->firstOrFail();
+    expect(b60ePivot($p27))->toBe([$s['spesa']->id => 120000, $s['pulizie']->id => 20000]);
 
     $r = $this->actingAs($this->user)->from('/piano')->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$s['c'], $s['es']['2027'], $p27]));
-    expect(b60eErrore($r))->toBe('Errore durante il ricalcolo: '.B60E_VOCI_DEL_2026)
-        ->and($p27->rate()->count())->toBe(0);
+    expect(($r->getSession()->get('message')['type'] ?? null))->not->toBe('error')
+        ->and(b60eChiesto($p27, $s))->toBe(['ugo' => 70000, 'bice' => 70000]);
 })->with(B60E_ORDINI);
 
-it('controprova — decisione 166: le voci tutte in un altro piano dello stesso esercizio: il rifiuto resta quello di prima', function (array $ordine) {
+it('Coda 438, AD3 — le voci tutte in un altro piano dello stesso esercizio: il rifiuto dice la causa al posto delle tre verifiche', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60ePiano($this, $s, '2026');
 
-    expect(b60eErrore(b60eCrea($this, $s, '2026', 'Integrativo 2026', null)))->toBe(B60E_NESSUNA_QUOTA);
+    expect(b60eErrore(b60eCrea($this, $s, '2026', 'Integrativo 2026', null)))->toBe(b60eVociNeiPiani('«Preventivo 2026»'));
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 166 — il già versato e la stessa voce nel piano del 2026: il piano del 2027 si ferma, e il messaggio dice il fatto senza proporre di disattivare un piano né di alzare la voce; nessuna cifra cambia', function (array $ordine) {
+it('Coda 438 — il già versato senza esercizio e la stessa voce nel piano del 2026: il piano del 2027 si ferma, e il messaggio dice dove si indica l\'esercizio; nessuna cifra cambia', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     $p26 = b60ePiano($this, $s, '2026');
 
     $r = b60eCrea($this, $s, '2027', 'Preventivo 2027', ['spesa' => '1.200,00', 'pulizie' => '200,00']);
     // Conto a mano: € 1.200,00 del piano del 2026 + € 1.200,00 di questo = € 2.400,00 sulla voce da € 1.200,00.
-    expect(b60eErrore($r))->toBe('Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato ed è già nel piano «Preventivo 2026» dell\'esercizio «Esercizio 2026», attivo sulla stessa gestione: con questo piano la somma degli importi richiesti sulla voce (€ 2.400,00) supera il suo budget (€ 1.200,00), e il già versato verrebbe tolto in tutti e due. Sulla gestione usata in più esercizi il programma non divide ancora il già versato di una voce fra i piani di esercizi diversi.')
+    expect(b60eErrore($r))->toBe(b60eGiaVersatoDiTutti('nel piano «Preventivo 2026» dell\'esercizio «Esercizio 2026»', '2.400,00', 'in tutti e due'))
         ->and(PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Preventivo 2027')->count())->toBe(0)
         // Conto a mano: Ugo € 600,00 − € 300,00 già versati + € 100,00 = € 400,00; Bice € 600,00 + € 100,00 = € 700,00.
         ->and(b60eChiesto($p26, $s))->toBe(['ugo' => 40000, 'bice' => 70000]);
 })->with(B60E_ORDINI);
 
-it('controprova — decisione 166: il già versato e due piani dello stesso esercizio sulla stessa voce: il messaggio resta quello di prima', function (array $ordine) {
+it('Coda 438, AD2 — il già versato e due piani dello stesso esercizio sulla stessa voce: il messaggio non propone più di disattivare un piano', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     b60ePiano($this, $s, '2026');
 
     expect(b60eErrore(b60eCrea($this, $s, '2026', 'Integrativo 2026', ['spesa' => '1.200,00'])))
-        ->toBe('Impossibile generare: la voce di spesa "Spese generali" ha un già-versato registrato, ma la somma degli importi richiesti dai piani rate attivi su questa voce (€ 2.400,00) supera il suo budget (€ 1.200,00). Aggiorna prima l\'importo della voce al fabbisogno reale, oppure disattiva uno dei piani rate in conflitto: altrimenti il già versato verrebbe conteggiato più volte e parte della spesa non verrebbe mai richiesta ai condòmini.');
+        ->toBe(b60eSommaSuperaLaVoce('2.400,00', 'il piano «Preventivo 2026»'));
 })->with(B60E_ORDINI);
 
-it('controprova — decisione 166: il già versato, un piano del 2026 e due del 2027 che già fra loro superano la voce: il messaggio resta quello di prima', function (array $ordine) {
+it('Coda 438, AD2 — il già versato senza esercizio, un piano del 2026 e due del 2027 che già fra loro superano la voce: il messaggio è quello della voce superata', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     // € 600,00 nel 2027 e € 600,00 nel 2026: insieme € 1.200,00, la voce basta e tutti e due si generano.
@@ -383,19 +413,19 @@ it('controprova — decisione 166: il già versato, un piano del 2026 e due del 
 
     // Conto a mano: nel solo 2027 € 600,00 + € 700,00 = € 1.300,00 superano già € 1.200,00; con il 2026 la somma è € 1.900,00.
     expect(b60eErrore(b60eCrea($this, $s, '2027', 'Secondo 2027', ['spesa' => '700,00'])))
-        ->toBe('Impossibile generare: la voce di spesa "Spese generali" ha un già-versato registrato, ma la somma degli importi richiesti dai piani rate attivi su questa voce (€ 1.900,00) supera il suo budget (€ 1.200,00). Aggiorna prima l\'importo della voce al fabbisogno reale, oppure disattiva uno dei piani rate in conflitto: altrimenti il già versato verrebbe conteggiato più volte e parte della spesa non verrebbe mai richiesta ai condòmini.');
+        ->toBe(b60eSommaSuperaLaVoce('1.900,00', 'i piani «Primo 2027» e «Preventivo 2026»'));
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 166 — le voci in due piani del 2026, una per piano: il rifiuto del piano del 2027 senza voci scelte li nomina tutti e due', function (array $ordine) {
+it('Coda 438, decisione 183.2 — le voci in due piani del 2026, una per piano: il piano del 2027 senza voci scelte le prende tutte e due', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eCrea($this, $s, '2026', 'Spese 2026', ['spesa' => '1.200,00'])->assertSessionHasNoErrors();
     b60eCrea($this, $s, '2026', 'Pulizie 2026', ['pulizie' => '200,00'])->assertSessionHasNoErrors();
 
-    expect(b60eErrore(b60eCrea($this, $s, '2027', 'Preventivo 2027', null)))
-        ->toBe('Impossibile generare il piano rate: tutte le voci di questa gestione sono già nei piani «Spese 2026» dell\'esercizio «Esercizio 2026» e «Pulizie 2026» dell\'esercizio «Esercizio 2026», attivi sulla stessa gestione, e un piano creato senza scegliere le voci prende solo quelle che nessun altro piano attivo della gestione ha già, di qualunque esercizio. Sulla gestione usata in più esercizi il programma non tiene ancora separati i piani di esercizi diversi.');
+    expect(b60eErrore(b60eCrea($this, $s, '2027', 'Preventivo 2027', null)))->toBeNull()
+        ->and(b60eChiesto(PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Preventivo 2027')->firstOrFail(), $s))->toBe(['ugo' => 70000, 'bice' => 70000]);
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 166 — il già versato e la voce divisa in due piani del 2026: il piano del 2027 si ferma, e il messaggio li nomina tutti e due', function (array $ordine) {
+it('Coda 438 — il già versato senza esercizio e la voce divisa in due piani del 2026: il piano del 2027 si ferma, e il messaggio li nomina tutti e due', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     // € 600,00 e € 600,00 nel 2026: insieme € 1.200,00, la voce basta.
@@ -404,32 +434,28 @@ it('Coda 75, decisione 166 — il già versato e la voce divisa in due piani del
 
     // Conto a mano: € 600,00 + € 600,00 + € 600,00 = € 1.800,00 sulla voce da € 1.200,00; nel solo 2027 € 600,00 bastano.
     expect(b60eErrore(b60eCrea($this, $s, '2027', 'Preventivo 2027', ['spesa' => '600,00'])))
-        ->toBe('Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato ed è già nei piani «Acconto 2026» dell\'esercizio «Esercizio 2026» e «Saldo 2026» dell\'esercizio «Esercizio 2026», attivi sulla stessa gestione: con questo piano la somma degli importi richiesti sulla voce (€ 1.800,00) supera il suo budget (€ 1.200,00), e il già versato verrebbe tolto in ognuno. Sulla gestione usata in più esercizi il programma non divide ancora il già versato di una voce fra i piani di esercizi diversi.');
+        ->toBe(b60eGiaVersatoDiTutti('nei piani «Acconto 2026» dell\'esercizio «Esercizio 2026» e «Saldo 2026» dell\'esercizio «Esercizio 2026»', '1.800,00', 'in ognuno'));
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 166 — le voci in un piano del 2026 e in uno del 2027: il rifiuto di un integrativo del 2027 senza voci scelte li nomina tutti e due e dice quale è dell\'esercizio di questo piano', function (array $ordine) {
+it('Coda 438, AD3 — le voci in un piano del 2026 e in uno del 2027: il rifiuto di un integrativo del 2027 senza voci scelte nomina solo il piano del 2027', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60ePiano($this, $s, '2026');
     b60ePiano($this, $s, '2027');
 
-    // Le voci sono nel piano del 2026 e anche in quello del 2027, che è dell'esercizio dell'integrativo: la frase non lascia credere che basti il limite
-    // sugli esercizi diversi.
-    expect(b60eErrore(b60eCrea($this, $s, '2027', 'Integrativo 2027', null)))
-        ->toBe('Impossibile generare il piano rate: tutte le voci di questa gestione sono già nei piani «Preventivo 2026» dell\'esercizio «Esercizio 2026» e «Preventivo 2027» dell\'esercizio «Esercizio 2027», attivi sulla stessa gestione, e un piano creato senza scegliere le voci prende solo quelle che nessun altro piano attivo della gestione ha già, di qualunque esercizio. Fra questi, «Preventivo 2027» è dello stesso esercizio di questo piano. Sulla gestione usata in più esercizi il programma non tiene ancora separati i piani di esercizi diversi.')
+    expect(b60eErrore(b60eCrea($this, $s, '2027', 'Integrativo 2027', null)))->toBe(b60eVociNeiPiani('«Preventivo 2027»'))
         ->and(PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Integrativo 2027')->count())->toBe(0);
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 166 — le voci in due piani del 2027 e in uno del 2026: la frase dice quali piani sono dell\'esercizio di questo piano, al plurale', function (array $ordine) {
+it('Coda 438, AD3 — le voci in due piani del 2027 e in uno del 2026: il rifiuto nomina i due del 2027, al plurale', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eCrea($this, $s, '2027', 'Spese 2027', ['spesa' => '1.200,00'])->assertSessionHasNoErrors();
     b60eCrea($this, $s, '2027', 'Pulizie 2027', ['pulizie' => '200,00'])->assertSessionHasNoErrors();
     b60eCrea($this, $s, '2026', 'Spese 2026', ['spesa' => '600,00'])->assertSessionHasNoErrors();
 
-    expect(b60eErrore(b60eCrea($this, $s, '2027', 'Integrativo 2027', null)))
-        ->toBe('Impossibile generare il piano rate: tutte le voci di questa gestione sono già nei piani «Spese 2027» dell\'esercizio «Esercizio 2027», «Pulizie 2027» dell\'esercizio «Esercizio 2027» e «Spese 2026» dell\'esercizio «Esercizio 2026», attivi sulla stessa gestione, e un piano creato senza scegliere le voci prende solo quelle che nessun altro piano attivo della gestione ha già, di qualunque esercizio. Fra questi, «Spese 2027» e «Pulizie 2027» sono dello stesso esercizio di questo piano. Sulla gestione usata in più esercizi il programma non tiene ancora separati i piani di esercizi diversi.');
+    expect(b60eErrore(b60eCrea($this, $s, '2027', 'Integrativo 2027', null)))->toBe(b60eVociNeiPiani('«Spese 2027» e «Pulizie 2027»'));
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 166 — il già versato, un acconto del 2027, un piano del 2026 e il saldo del 2027: il messaggio nomina i tre piani della voce, e il già versato viene tolto in ognuno', function (array $ordine) {
+it('Coda 438 — il già versato senza esercizio, un acconto del 2027, un piano del 2026 e il saldo del 2027: il messaggio nomina i due piani della voce, e il già versato viene tolto in ognuno', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     // € 600,00 nel 2027 e € 600,00 nel 2026: insieme € 1.200,00, la voce basta e tutti e due si generano.
@@ -437,9 +463,8 @@ it('Coda 75, decisione 166 — il già versato, un acconto del 2027, un piano de
     b60eCrea($this, $s, '2026', 'Preventivo 2026', ['spesa' => '600,00'])->assertSessionHasNoErrors();
 
     // Conto a mano: € 600,00 + € 600,00 + € 600,00 = € 1.800,00 sulla voce da € 1.200,00. Nel solo 2027 € 600,00 + € 600,00 = € 1.200,00 bastano.
-    // I piani che hanno la voce sono tre con questo, e il già versato si toglie in ognuno, non «in tutti e due».
     expect(b60eErrore(b60eCrea($this, $s, '2027', 'Saldo 2027', ['spesa' => '600,00'])))
-        ->toBe('Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato ed è già nei piani «Acconto 2027» dell\'esercizio «Esercizio 2027» e «Preventivo 2026» dell\'esercizio «Esercizio 2026», attivi sulla stessa gestione: con questo piano la somma degli importi richiesti sulla voce (€ 1.800,00) supera il suo budget (€ 1.200,00), e il già versato verrebbe tolto in ognuno. Sulla gestione usata in più esercizi il programma non divide ancora il già versato di una voce fra i piani di esercizi diversi.')
+        ->toBe(b60eGiaVersatoDiTutti('nei piani «Acconto 2027» dell\'esercizio «Esercizio 2027» e «Preventivo 2026» dell\'esercizio «Esercizio 2026»', '1.800,00', 'in ognuno'))
         ->and(PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Saldo 2027')->count())->toBe(0);
 })->with(B60E_ORDINI);
 
@@ -453,30 +478,30 @@ it('Coda 75, decisione 166 — il messaggio del già versato parla di un già ve
         ->and($messaggio)->not->toContain('già-versato');
 })->with(B60E_ORDINI);
 
-/** Il «Preventivo 2027» creato dalla pagina del 2027 senza generarlo, quando le voci sono tutte nel piano del 2026: nasce senza voci. */
+/** Un integrativo del 2027 creato dalla pagina del 2027 senza generarlo, quando le voci sono tutte nel piano del 2027: nasce senza voci. */
 function b60eSenzaVoci2027($test, array $s): PianoRate
 {
     $test->actingAs($test->user)->from('/crea')->post(route('admin.gestionale.esercizi.piani-rate.store', [$s['c'], $s['es']['2027']]), [
-        'tipo' => 'ordinario', 'gestione_id' => $s['g']->id, 'nome' => 'Preventivo 2027', 'metodo_distribuzione' => 'tutte_rate', 'numero_rate' => 12,
+        'tipo' => 'ordinario', 'gestione_id' => $s['g']->id, 'nome' => 'Integrativo 2027', 'metodo_distribuzione' => 'tutte_rate', 'numero_rate' => 12,
         'giorno_scadenza' => 5, 'data_prima_scadenza' => '2027-01-05', 'genera_subito' => 0,
     ])->assertSessionHasNoErrors();
-    $p27 = PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Preventivo 2027')->firstOrFail();
+    $p27 = PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Integrativo 2027')->firstOrFail();
     expect(DB::table('piano_rate_capitoli')->where('piano_rate_id', $p27->id)->count())->toBe(0);
 
     return $p27;
 }
 
-it('controprova — decisione 166: la stampa del riparto del piano del 2027 senza voci è un\'anteprima, e non si ferma', function (array $ordine) {
+it('controprova — la stampa del riparto di un piano del 2027 senza voci è un\'anteprima, e non si ferma', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
-    b60ePiano($this, $s, '2026');
+    b60ePiano($this, $s, '2027');
     $p27 = b60eSenzaVoci2027($this, $s);
 
     $this->actingAs($this->user)->get(route('admin.gestionale.esercizi.piani-rate.print-riparto-tabelle', [$s['c'], $s['es']['2027'], $p27]))->assertOk();
 })->with(B60E_ORDINI);
 
-it('controprova — decisione 166: una voce nuova, non in altri piani, accanto alle voci del 2026: il ricalcolo del piano del 2027 senza voci fa ciò che faceva prima', function (array $ordine) {
+it('controprova — una voce nuova, non in altri piani, accanto alle voci del piano del 2027: il ricalcolo dell\'integrativo senza voci fa ciò che faceva prima', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
-    b60ePiano($this, $s, '2026');
+    b60ePiano($this, $s, '2027');
     $p27 = b60eSenzaVoci2027($this, $s);
     be52Voce($this, $s, $s['pc'], 'Varie', 'spesa', '0,00');
 
@@ -486,7 +511,7 @@ it('controprova — decisione 166: una voce nuova, non in altri piani, accanto a
         ->and($p27->rate()->count())->toBe(0);
 })->with(B60E_ORDINI);
 
-// --- Decisione 168: il già versato e le fatture reali di più esercizi sulla stessa voce ------------------------------------------
+// --- Decisioni 168 e 183: il già versato e le fatture reali di più esercizi sulla stessa voce --------------------------------------
 
 /**
  * Una fattura reale dell'esercizio dato, con una riga sulla voce, dalla rotta delle fatture. Con `$sforo` porta la motivazione che la rotta chiede
@@ -521,18 +546,21 @@ function b60eRicalcola($test, array $s, PianoRate $piano, string $anno)
     return $test->actingAs($test->user)->from('/piano')->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$s['c'], $s['es'][$anno], $piano]));
 }
 
-/** Il messaggio della guardia quando le fatture reali della voce sono di più esercizi; l'elenco è già scritto, ognuno con la sua somma: «Esercizio 2026» (€ 1.000,00) e … */
+/**
+ * Il messaggio della guardia quando il già versato vale per tutti gli esercizi e le fatture reali della voce sono di più esercizi; l'elenco è già scritto,
+ * ognuno con la sua somma: «Esercizio 2026» (€ 1.000,00) e …
+ */
 function b60eFattureDiPiuEsercizi(string $elenco, string $somma, string $budget = '1.200,00'): string
 {
-    return 'Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato, e le fatture reali registrate su questa voce sono di più esercizi: '.$elenco
-        .'. La loro somma (€ '.$somma.') supera il budget della voce (€ '.$budget.'), e sulla gestione usata in più esercizi il programma non divide ancora il già versato di una voce fra gli esercizi.';
+    return 'Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato che vale per tutti gli esercizi, e le fatture reali registrate su questa voce sono di più esercizi: '.$elenco
+        .'. La loro somma (€ '.$somma.') supera il budget della voce (€ '.$budget.'). Se il già versato è di un esercizio solo, indicalo nella pagina «Già versato» della voce: conteranno solo le fatture di quell\'esercizio.';
 }
 
-/** Il messaggio della guardia quando le fatture reali della voce sono di un esercizio solo, diverso da quello del piano: «Esercizio 2027». */
+/** Il messaggio della guardia quando il già versato vale per tutti gli esercizi e le fatture reali della voce sono di un esercizio solo, diverso da quello del piano. */
 function b60eFattureDiUnAltroEsercizio(string $esercizio, string $somma, string $budget = '1.200,00'): string
 {
-    return 'Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato, e le fatture reali registrate su questa voce sono di un esercizio diverso da quello di questo piano, «'.$esercizio
-        .'»: la loro somma (€ '.$somma.') supera il budget della voce (€ '.$budget.'), e sulla gestione usata in più esercizi il programma non divide ancora il già versato di una voce fra gli esercizi.';
+    return 'Impossibile generare: la voce di spesa "Spese generali" ha un già versato registrato che vale per tutti gli esercizi, e le fatture reali registrate su questa voce sono di un esercizio diverso da quello di questo piano, «'.$esercizio
+        .'»: la loro somma (€ '.$somma.') supera il budget della voce (€ '.$budget.'). Se il già versato è di un esercizio solo, indicalo nella pagina «Già versato» della voce: conteranno solo le fatture di quell\'esercizio.';
 }
 
 /** Il messaggio di sempre, quando le fatture reali della voce sono tutte dell'esercizio del piano. */
@@ -542,7 +570,7 @@ function b60eFattureDelPiano(string $somma, string $budget = '1.200,00'): string
         .'Aggiorna prima l\'importo della voce al costo reale della spesa: altrimenti il già versato viene applicato contro un budget sbagliato, e la quota calcolata — qualunque sia il piano rate — non corrisponde a quanto realmente dovuto.';
 }
 
-it('Coda 75, decisione 168 — il già versato e le fatture di due esercizi, ognuna dentro la voce: il ricalcolo del piano del 2026 si ferma, e il messaggio nomina i due esercizi e la somma senza mandare ad alzare la voce', function (array $ordine) {
+it('Coda 438 — il già versato senza esercizio e le fatture di due esercizi, ognuna dentro la voce: il ricalcolo del piano del 2026 si ferma, e il messaggio nomina i due esercizi e la somma senza mandare ad alzare la voce', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     $p26 = b60ePiano($this, $s, '2026');
@@ -558,7 +586,7 @@ it('Coda 75, decisione 168 — il già versato e le fatture di due esercizi, ogn
         ->and(b60eChiesto($p26, $s))->toBe(['ugo' => 40000, 'bice' => 70000]);
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 168 — il piano del 2027 creato quando le fatture di due esercizi superano la voce: il messaggio è lo stesso e il piano non nasce', function (array $ordine) {
+it('Coda 438 — il piano del 2027 creato quando le fatture di due esercizi superano la voce e il già versato è senza esercizio: il messaggio è lo stesso e il piano non nasce', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     $p26 = b60ePiano($this, $s, '2026');
@@ -634,7 +662,7 @@ it('controprova — decisione 168: le fatture tutte dell\'esercizio del piano ch
         ->and(b60eChiesto($p26, $s))->toBe(['ugo' => 40000, 'bice' => 70000]);
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 168 — le fatture di un esercizio solo, diverso da quello del piano: il ricalcolo si ferma, e il messaggio dice di quale esercizio sono senza mandare ad alzare la voce', function (array $ordine) {
+it('Coda 438 — il già versato senza esercizio e le fatture di un esercizio solo, diverso da quello del piano: il ricalcolo si ferma, e il messaggio dice di quale esercizio sono senza mandare ad alzare la voce', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     $p26 = b60ePiano($this, $s, '2026');
@@ -648,7 +676,7 @@ it('Coda 75, decisione 168 — le fatture di un esercizio solo, diverso da quell
         ->and(b60eChiesto($p26, $s))->toBe(['ugo' => 40000, 'bice' => 70000]);
 })->with(B60E_ORDINI);
 
-it('Coda 75, decisione 168 — il piano del 2027 creato quando le fatture sono tutte del 2026 e superano la voce: il messaggio nomina il 2026, e il piano non nasce', function (array $ordine) {
+it('Coda 438 — il piano del 2027 creato quando le fatture sono tutte del 2026 e superano la voce, con il già versato senza esercizio: il messaggio nomina il 2026, e il piano non nasce', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
     b60eGiaVersato($s);
     $p26 = b60ePiano($this, $s, '2026');

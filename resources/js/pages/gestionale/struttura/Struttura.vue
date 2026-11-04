@@ -29,7 +29,7 @@ const headerBreadcrumbs = computed(() => [
 const pageGuides = [
   {
     title: 'Dati Fiscali',
-    description: 'Mantieni sempre aggiornato il Codice Fiscale. È il dato fondamentale per la generazione delle Certificazioni Uniche (CU) e dei modelli F24.',
+    description: 'Mantieni sempre aggiornato il Codice Fiscale. È il codice del contribuente nelle deleghe F24 per versare le ritenute, e l\'importazione di una fattura elettronica lo confronta con quello del destinatario.',
     icon: FileText,
     colorVariant: 'blue' as const
   },

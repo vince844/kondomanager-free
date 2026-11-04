@@ -14,6 +14,12 @@ use App\Helpers\MoneyHelper;
  * tornano»: si prova che la funzione estratta è **la stessa funzione**, confrontandola con una
  * copia congelata dell'originale su casi generati. Se un domani qualcuno la ottimizza e cambia
  * anche un solo arrotondamento, questo file diventa rosso prima che se ne accorga un condòmino.
+ *
+ * Dalla 1.12.0 (Coda 301, decisione 183.3) la funzione non è più la stessa **a pari resto**: i
+ * resti si confrontano in interi e il centesimo va a chi viene prima, dove la copia congelata
+ * lo dava a chi la virgola mobile favoriva (0,6000… contro 0,5999…). Fuori dal pari resto resta
+ * identica, ed è quello che il primo test controlla: nei duemila casi del seme nessun centesimo
+ * cambia di mano. I pari resti li fissa `tests/Feature/Riparto/Beta1_112CentesimoRestiInteriTest.php`.
  */
 
 /**

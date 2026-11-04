@@ -538,10 +538,10 @@ function categoriaCreata(nome: string) {
                     <div v-if="form.soggetto_ritenuta" class="pt-5 border-t border-dashed border-slate-200 dark:border-slate-800">
                         
                         <div class="mb-5">
-                            <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">Automazioni Fiscali (F24 e CU)</h4>
+                            <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">Ritenuta e delega F24</h4>
                             <div class="flex items-start gap-3 bg-blue-50/50 dark:bg-blue-900/20 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/30">
                                 <p class="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                                    Questi parametri permettono al sistema di <strong>calcolare automaticamente la trattenuta</strong> in fase di registrazione fattura. Il software scorporerà in automatico il <em>netto da pagare</em> per il fornitore e alimenterà lo scadenziario fiscale per la <strong>generazione automatica del Modello F24 e della Certificazione Unica</strong>.
+                                    Questi parametri permettono al sistema di <strong>calcolare automaticamente la trattenuta</strong> in fase di registrazione fattura. Il software scorporerà in automatico il <em>netto da pagare</em> per il fornitore e alimenterà lo scadenzario delle ritenute, da cui prepara la <strong>delega F24</strong> per versarle.
                                 </p>
                             </div>
                         </div>

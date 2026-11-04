@@ -908,6 +908,14 @@ class FatturaPassivaController extends Controller
             ->groupBy('target_id')
             ->selectRaw('target_id, SUM(importo_cents) as totale')
             ->pluck('totale', 'target_id');
+        // Coda 438 (decisione 183.1): lo stesso per esercizio, `tutti` per le righe senza esercizio. La pagina toglie quello che vale nell'esercizio
+        // scelto sul modulo: il già versato di un altro esercizio la rata integrativa di questo non lo toglie.
+        $giaVersatoPerEsercizio = ContributoVersato::where('target_type', Conto::class)
+            ->groupBy('target_id', 'esercizio_id')
+            ->selectRaw('target_id, esercizio_id, SUM(importo_cents) as totale')
+            ->get()
+            ->groupBy('target_id')
+            ->map(fn ($righe) => $righe->mapWithKeys(fn ($r) => [$r->esercizio_id === null ? 'tutti' : (string) $r->esercizio_id => (int) $r->totale])->all());
 
         // 5. Conti con residuo budget e storico movimenti recenti
         // Il capitolo di una fattura è una voce di spesa: le entrate non si offrono. In modifica restano le voci che le righe hanno già, anche
@@ -926,7 +934,7 @@ class FatturaPassivaController extends Controller
             $conti->mapWithKeys(fn ($c) => [(int) $c->id => $c->parent_id !== null ? (int) $c->parent_id : null])->all(),
         );
         $conti = $conti
-            ->map(function ($conto) use ($ultimeSpese, $spesePerConto, $giaVersatoPerConto, $competenzePiano) {
+            ->map(function ($conto) use ($ultimeSpese, $spesePerConto, $giaVersatoPerConto, $giaVersatoPerEsercizio, $competenzePiano) {
                 $budgetApprovato = $conto->importo ?? 0;
                 $spesaAttuale = $spesePerConto->get($conto->id, 0);
                 $residuo = $budgetApprovato - $spesaAttuale;
@@ -955,6 +963,7 @@ class FatturaPassivaController extends Controller
                     'is_capiente' => $residuo >= 0,
                     'ultimi_movimenti' => $storicoRecente,
                     'gia_versato_cents' => (int) ($giaVersatoPerConto->get($conto->id) ?? 0),
+                    'gia_versato_per_esercizio' => (object) ($giaVersatoPerEsercizio->get($conto->id) ?? []),
                     'competenza_piano' => $competenzePiano[(int) $conto->id] ?? null,
                 ];
             })

@@ -115,6 +115,21 @@ describe('la strada a mano nelle guide: il Wallet, con i saldi legati al passagg
         expect(testo(PianoRateGuide)).toContain('Se un altro piano della stessa gestione, non ancora emesso, li ha già assorbiti, non li chiede di nuovo: dice in quale piano sono e le due strade, eliminare quel piano o registrare quelli di questo dopo aver emesso quell\'altro.');
     });
 
+    // Coda 463 e Coda 480: con due defunti sulla stessa unità la voce non dice solo «il programma non sa se comprendono la parte». Se il saldo non legato di un erede è già
+    // la sua parte per l'altro defunto chiede il saldo legato; se è lo stesso in più voci dice che comprende le parti solo se le comprende insieme; se un defunto è anche
+    // erede dell'altro il cancello lo dice in una voce che le righe non chiudono. Le frasi sono quelle di `DefuntoNelPiano`.
+    test('il cancello del defunto con due defunti sulla stessa unità: la parte nell\'altra voce, gli stessi saldi, il defunto che è anche erede dell\'altro', () => {
+        const t = testo(PassaggioProprietaGuide);
+
+        expect(t).toContain('Con due defunti sulla stessa unità i saldi non legati di un erede sono gli stessi in ogni voce: se un erede senza saldo legato ha un saldo non legato che è già la sua parte per un defunto, per l\'altro la voce chiede il saldo legato e lo dice; se non è la parte per nessuno e il programma non sa se la comprende, le voci dopo la prima dicono che sono gli stessi saldi, che comprendono le parti solo se le comprendono insieme (con la somma) e che per la parte che non comprendono serve il saldo legato.');
+        expect(t).toContain('Se un defunto è anche erede di un altro defunto della stessa unità, e tutte e due le successioni passano l\'arretrato agli eredi, il cancello lo dice nella voce di chi muore per primo e, se il piano calcola ancora qualcosa per l\'erede, anche nella sua: la sua parte da erede della cifra dell\'altro non passa ai suoi eredi, la divisione la decide l\'amministratore e le righe del Wallet non chiudono la voce.');
+
+        const p = testo(PianoRateGuide);
+
+        expect(p).toContain('Con due defunti sulla stessa unità i saldi non legati di un erede sono gli stessi in tutte e due le voci: se sono già la sua parte per un defunto, per l\'altro la voce chiede il saldo legato e lo dice; se il programma non sa se comprendono le parti, le voci dopo la prima dicono che le comprendono solo se le comprendono insieme.');
+        expect(p).toContain('Se un defunto è anche erede dell\'altro, e tutte e due le successioni passano l\'arretrato agli eredi, il cancello lo dice: la sua parte da erede della cifra dell\'altro non passa ai suoi eredi, la divisione la decide l\'amministratore e le righe del Wallet non chiudono la voce.');
+    });
+
     test('nessuna delle tre guide dice più «altrimenti la parte si regola fra le parti» per chi ha già un saldo', () => {
         expect(testo(PassaggioProprietaGuide).match(/altrimenti (?:dice che )?la parte si regola fra le parti/g)).toBeNull();
         expect(testo(SaldiGuide)).not.toContain('altrimenti dicono che la parte si regola fra le parti');

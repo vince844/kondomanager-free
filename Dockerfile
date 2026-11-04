@@ -77,8 +77,10 @@ RUN composer dump-autoload --no-dev --optimize --no-interaction
 # assets: il bundle Vite. Ha bisogno di vendor/tightenco/ziggy (alias `ziggy-js` in vite.config.ts)
 # e di lang/ (il plugin i18n compila le traduzioni PHP dentro il bundle), quindi copia il sorgente
 # intero più quel pacchetto dallo stadio vendor. Picco di memoria misurato: ~1,1 GB.
+# Node 22: è la linea che le dipendenze del frontend chiedono (jsdom ^22.22.2) e quella con cui si
+# costruisce il pacchetto; la linea si cambia a mano, insieme alle dipendenze.
 # ---------------------------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS assets
+FROM node:22-bookworm-slim AS assets
 
 WORKDIR /app
 COPY package.json package-lock.json ./

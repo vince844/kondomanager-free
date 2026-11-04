@@ -1,13 +1,13 @@
 <?php
 /**
- * KondoManager Auto-Update Engine - v14.1 Bridge (Root Aware)
+ * KondoManager Auto-Update Engine - v14.2 Bridge (Root Aware)
  * QUESTO FILE È GESTITO DA GIT - NON CONTIENE HASH/URL HARDCODED
  * Funziona SOLO in modalità aggiornamento automatico via Laravel bridge
  * Posizione: resources/installer/index.php
  * Attivazione: copiato in public/km-update.php da UpdateService quando necessario
- * @version 14.1.0
+ * @version 14.2.0
  * @author KondoManager Team
- * @date 31 Ottobre 2026
+ * @date 4 Novembre 2026
  *
  * IL FILE DI SCAMBIO
  * - Laravel lo scrive in storage/app/update_bridge.json della radice del progetto:
@@ -30,6 +30,18 @@
  *   cancella, questo file si riduce alla firma 410 Gone che la finalizzazione
  *   riconosce, e la schermata indica l'installatore a file singolo. Si riparte
  *   dalla dashboard, che prepara un ponte nuovo.
+ *
+ * NOVITÀ v14.2 (rispetto alla v14.1)
+ * 1. Un invio valido non si ferma se la pagina si chiude: l'aggiornamento è
+ *    una sola richiesta, e senza ignore_user_abort PHP la interrompe alla
+ *    prima scrittura dopo la chiusura, lasciando i file a metà. Resta la
+ *    richiesta di non chiudere la pagina, ma chiuderla non è più un danno.
+ * 2. Il blocco dei proxy fidati nel .env non porta più con sé le righe
+ *    DB_CHARSET, DB_COLLATION e DB_ENGINE: servivano a MySQL 5.5, il
+ *    programma richiede MySQL 5.7 o MariaDB 10.3 e usa utf8mb4 di serie.
+ *    Dove un .env le ha già sotto un blocco nostro, le toglie
+ *    UpgradePatchServiceProvider; quelle che l'installatore a file singolo
+ *    scrive in un altro punto del .env restano.
  *
  * NOVITÀ v14.0 (rispetto alla v13.2 "Proxy Aware")
  * 1. La radice del progetto non è più __DIR__ ma arriva da paths.base dentro
@@ -295,7 +307,7 @@ define('BACKUP_DIR', KM_ROOT . '/_km_safe_zone');
 
 $bridgeToken = $bridge['security']['token'] ?? null;
 
-logTech("=== AUTO-UPDATE ENGINE v14.1 ===");
+logTech("=== AUTO-UPDATE ENGINE v14.2 ===");
 logTech("Project root: " . KM_ROOT);
 logTech("Target version: " . APP_VERSION);
 logTech("Package URL: " . PACKAGE_URL);
@@ -502,6 +514,16 @@ if (!$tokenValido) {
     logTech("Rejected: token does not match the bridge file");
     paginaDiRimando(403, '<div class="error-alert">' . t('err_csrf') . '</div>');
 }
+
+// Da qui l'aggiornamento è partito: la pagina che lo ha avviato può chiudersi (la scheda
+// chiusa, il timeout del server web o del proxy), ma l'esecuzione deve arrivare in fondo.
+// Senza questa riga PHP si accorge della pagina chiusa alla prima scrittura (le righe di
+// avanzamento) e interrompe lo script fra due passi: la copia dei file resta a metà, il
+// rollback e l'autodistruzione, che stanno nel catch e in una funzione di chiusura
+// registrata più sotto, non partono. Sta dopo il confronto del token perché una pagina
+// aperta senza invio, o un invio rifiutato, non avviano niente e non devono cambiare
+// come PHP tratta la loro risposta.
+ignore_user_abort(true);
 
 // ============================================================================
 // 7. EXECUTION (POST Request) - UI AGGIORNATA STYLE V12.4
@@ -960,11 +982,12 @@ try {
                 $patch .= "# PRIVATE_SUBNETS si fida solo di proxy su reti private o loopback: da internet non è\n";
                 $patch .= "# falsificabile. Se il tuo proxy ha un IP pubblico, scrivi qui la sua lista esplicita.\n";
                 $patch .= "TRUSTED_PROXIES=PRIVATE_SUBNETS\n";
-                
-                // Opzionale: Fix DB se mancano le definizioni moderne
-                if (strpos($envContent, 'DB_ENGINE') === false) {
-                    $patch .= "DB_CHARSET=utf8\nDB_COLLATION=utf8_unicode_ci\nDB_ENGINE=\"InnoDB ROW_FORMAT=DYNAMIC\"\n";
-                }
+
+                // Nessuna riga DB_CHARSET, DB_COLLATION o DB_ENGINE: fino alla v14.1 si
+                // aggiungevano qui sotto, per MySQL 5.5. Portavano la connessione a utf8
+                // (3 byte per carattere) e ogni tabella creata mentre c'erano nasceva
+                // utf8, mentre config/database.php usa utf8mb4 di serie. I motori richiesti
+                // (MySQL 5.7, MariaDB 10.3) hanno già utf8mb4 e ROW_FORMAT=DYNAMIC.
 
                 file_put_contents(KM_ROOT . '/.env', $patch, FILE_APPEND);
             } else {

@@ -138,7 +138,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>È in un piano rate che ha già incassato</strong> → usa lo storno: le rate del piano restano, e quanto i condòmini hanno versato per quella spesa si regola con una delibera.</span>
+                  <span><strong>È in un piano rate che ha già incassato</strong> → usa lo storno: le rate del piano restano, e quanto i condòmini hanno versato per quella spesa si regola con una delibera. Se però la fattura ha righe su unità specifiche (una spesa ad personam) che una rata emessa ha già chiesto, anche lo storno si rifiuta: il motivo dice la strada, che passa dal piano.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
@@ -166,6 +166,12 @@ defineEmits(['update:open']);
               non si storna: le rate del piano la chiederebbero ancora. Prima si toglie dal piano — lo si riporta in bozza, annullando le
               emissioni se ce ne sono, e lo si elimina — poi si storna la fattura, e le altre fatture del piano tornano disponibili per un
               piano nuovo.
+            </p>
+            <p class="mt-3">
+              Con gli incassi lo storno resta possibile, tranne un caso: la fattura con righe su unità specifiche (una spesa ad personam) che
+              una rata emessa ha già chiesto non si storna nemmeno così, perché lo storno toglierebbe la spesa dall'unità una seconda volta. Si
+              risale dal piano come dice il motivo: di norma si stornano gli incassi delle sue rate, si annullano le emissioni, si riporta il
+              piano in bozza e lo si elimina; poi si storna la fattura.
             </p>
           </section>
 
