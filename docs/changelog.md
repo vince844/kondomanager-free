@@ -7,6 +7,24 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.2] - La ricevuta dell'incasso
+
+**Tocca il database.** Una migrazione nuova crea una tabella, `registro_invii`, dove il programma scrive ogni ricevuta stampata o mandata per email: a chi, quando, con quali scelte e come è andata. Non cambia nessuna tabella che c'era e non riscrive nessun dato: dopo l'aggiornamento nessuna cifra cambia, e gli incassi registrati prima risultano «mai emessa» finché non emetti la loro ricevuta. Nessun permesso nuovo; i requisiti non cambiano. Per mandare le ricevute per email serve il server di posta configurato nelle impostazioni; senza, la ricevuta si stampa o si prepara da mandare dal tuo programma di posta. Dopo l'aggiornamento ricarica le pagine già aperte.
+
+**Che cosa fa la beta.**
+- **«Stampa o invia ricevuta», dal menu di ogni incasso, fa quello che dice.** Prima la voce «Stampa Ricevuta» apriva un avviso, «Funzionalità stampa ricevuta in arrivo!». Ora apre una finestra con il bollo, la nota, a chi mandarla e i pulsanti «Anteprima», «Stampa» e «Invia».
+- **La ricevuta dice a che cosa va il versamento.** Il numero (il protocollo dell'incasso) e la data del versamento, chi ha versato e per conto di chi, la cassa in cui è entrato il denaro e, per ogni quota, l'importo, il già versato prima, quanto è imputato e quanto resta; poi il credito usato, la parte in più e la nota che scrivi tu. Di un incasso annullato lo dice in testa.
+- **L'imposta di bollo la scegli tu**: assolta (con il contrassegno o in modo virtuale, e gli estremi), non dovuta o da assolvere. Se e come la ricevuta sconta il bollo lo decidi tu, con il tuo commercialista: il programma non lo calcola e non lo assolve. Sopra € 77,47 la finestra scrive solo «Importo sopra € 77,47».
+- **La prima ricevuta emessa è l'originale, le altre escono come «Copia»**, con le cifre dell'originale. «Anteprima» fa vedere il PDF senza emetterlo.
+- **Una pagina per tutte le ricevute.** Il pulsante «Ricevute» dell'elenco degli incassi, con quante ne mancano, apre l'elenco delle ricevute mai emesse dei versamenti dal primo del mese scorso. Si filtra per periodo, gestione, cassa, persone, importo, con o senza email e per le già inviate; si sceglie «solo questa persona» o tutte quelle dei filtri.
+- **Dalla pagina, tre strade.** Stampa le selezionate in un PDF solo, nell'ordine della busta, con l'indirizzo sulla prima ricevuta di ogni persona; un PDF per persona in un archivio .zip con l'elenco degli indirizzi; invio per email, un messaggio per indirizzo con tutte le ricevute di quella persona.
+- **Prima di mandare vedi chi riceve che cosa.** L'anteprima conta persone, ricevute e indirizzi, e per ogni persona mostra gli indirizzi, i numeri delle ricevute e i messaggi; avvisa dei versamenti più vecchi di 60 giorni e delle ricevute già inviate, che puoi escludere; «Mandane una a me» manda a te il messaggio della prima persona.
+- **A chi va la ricevuta.** La primaria e la secondaria sono già spuntate; la PEC e chi ha versato per un altro li spunti tu; nell'invio di una ricevuta puoi scrivere un altro indirizzo. Chi non ha un'email è nell'elenco delle ricevute senza indirizzo, con il pulsante per stamparle.
+- **Dopo l'invio.** La pagina dell'incasso ha la scheda «Ricevuta», con le emissioni, «Invia di nuovo» e «Riprova le non partite». Lo storno di un incasso con la ricevuta già uscita lo dice nella conferma; la ricevuta si ristampa o, se era partita per email, si manda di nuovo, con «INCASSO ANNULLATO» in testa.
+- **Senza un server di posta**, «Prepara l'email» prepara il PDF e l'email da mandare dal tuo programma di posta; il registro delle email segna «Non partita» i messaggi che il programma ha solo registrato, e la guida della posta lo dice.
+
+---
+
 ## [1.12.0-beta.1] - Il già versato nel suo anno
 
 **Tocca il database.** Una migrazione nuova aggiunge alla tabella del «Già versato» (`contributi_versati`) una colonna con l'esercizio per cui il già versato vale e il collegamento verso gli esercizi;

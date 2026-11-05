@@ -28,6 +28,7 @@ use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
 use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\RateDiChiHaVersatoController;
+use App\Http\Controllers\Gestionale\Movimenti\RicevuteIncassiController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoPagamentoController;
@@ -424,6 +425,32 @@ Route::prefix('/gestionale/{condominio}')
     // Coda 209 (1.11.0-beta.49, decisione 75.5): l'avviso della conferma dello storno, in sola lettura.
     Route::get('movimenti-rate/{scrittura}/storno/anteprima', [StornoIncassoController::class, 'anteprima'])
         ->name('movimenti-rate.storno.anteprima');
+
+    // 1.12.0-beta.2 (decisioni 197, 200, 201): le ricevute degli incassi, una o tante, stampate o inviate per email. `{scrittura}` e `{invio}`
+    // arrivano grezzi, come nelle rotte degli incassi: il controllo che siano di questo condominio lo fa il controller (404).
+    Route::get('ricevute', [RicevuteIncassiController::class, 'index'])->name('ricevute.index');
+    // I PDF si chiedono con un POST (la stampa scrive il registro). Un GET sullo stesso indirizzo è la scheda di un PDF ricaricata, riaperta
+    // dalla cronologia o copiata: non rifà niente e non scrive niente, riporta alla pagina delle ricevute con una frase, invece del 405. Stanno
+    // prima delle rotte con `{scrittura}`, perché nessuna le prenda; i nomi sono loro, perché quelli delle POST restano dei POST.
+    Route::get('ricevute/stampa', [RicevuteIncassiController::class, 'riapriPdf'])->defaults('pdf', 'stampa')->name('ricevute.stampa.riapri');
+    Route::get('ricevute/pdf-anteprima', [RicevuteIncassiController::class, 'riapriPdf'])->defaults('pdf', 'pdf-anteprima')->name('ricevute.pdf-anteprima.riapri');
+    Route::get('ricevute/pdf-per-persona', [RicevuteIncassiController::class, 'riapriPdf'])->defaults('pdf', 'pdf-per-persona')->name('ricevute.pdf-per-persona.riapri');
+    Route::get('ricevute/{scrittura}/opzioni', [RicevuteIncassiController::class, 'opzioni'])->name('ricevute.opzioni');
+    Route::post('ricevute/anteprima', [RicevuteIncassiController::class, 'anteprima'])->name('ricevute.anteprima');
+    Route::post('ricevute/stampa', [RicevuteIncassiController::class, 'stampa'])->name('ricevute.stampa');
+    // Lo stesso PDF della stampa, che non è una ricevuta: non scrive il registro, quindi non brucia l'originale (decisione 204).
+    Route::post('ricevute/pdf-anteprima', [RicevuteIncassiController::class, 'anteprimaPdf'])->name('ricevute.pdf-anteprima');
+    // Un PDF per persona in un archivio .zip, con l'elenco degli indirizzi, per chi le manda dal suo programma di posta (decisione 207.2).
+    Route::post('ricevute/pdf-per-persona', [RicevuteIncassiController::class, 'pdfPerPersona'])->name('ricevute.pdf-per-persona');
+    Route::post('ricevute/invia', [RicevuteIncassiController::class, 'invia'])->name('ricevute.invia');
+    Route::post('ricevute/prova', [RicevuteIncassiController::class, 'provaAMe'])->name('ricevute.prova');
+    Route::post('ricevute/riprova', [RicevuteIncassiController::class, 'riprova'])->name('ricevute.riprova');
+    // L'invio a un indirizzo scritto a mano ha un limite di dieci al minuto per utente (decisione 204), che il controller conta per questa rotta, per
+    // «Invia di nuovo» e per «Riprova» (`LimiteAltroIndirizzo`).
+    Route::post('ricevute/{scrittura}/invia', [RicevuteIncassiController::class, 'inviaUna'])->name('ricevute.invia-una');
+    Route::post('ricevute/invii/{invio}/di-nuovo', [RicevuteIncassiController::class, 'inviaDiNuovo'])->name('ricevute.invia-di-nuovo');
+    // «Non serve comunicarla»: l'avviso delle annullate da comunicare per questa ricevuta si spegne (decisione 205).
+    Route::post('ricevute/{scrittura}/non-serve-comunicarla', [RicevuteIncassiController::class, 'nonServeComunicarla'])->name('ricevute.non-serve-comunicarla');
 
     // La conferma della card «Crediti da riallineare» della pagina «Incassi rate» (decisioni 75.1 e 76.1).
     Route::post('/riallinea-crediti', RiallineaCreditiController::class)

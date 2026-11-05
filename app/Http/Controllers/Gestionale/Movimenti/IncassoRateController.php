@@ -136,6 +136,9 @@ class IncassoRateController extends Controller
             // qualcosa da scrivere, una rata da emettere o una voce che resta com'è (questa in sola lettura: rilievo LDA-8 della
             // Fase 1-bis). Fatte le rettifiche ed emesse le rate, sparisce da sola; le voci che restano come sono la tengono accesa.
             'riallineamento_crediti' => $this->riallineamentoCrediti($condominio),
+            // Accanto al pulsante «Ricevute»: quante ricevute mancano, contate come la pagina che si apre (i versamenti dal primo del mese
+            // scorso), con il giorno da cui conta (decisione 201).
+            'ricevute_mancanti' => app(\App\Services\Gestionale\Ricevute\ElencoRicevute::class)->senzaRicevuta($condominio),
         ]);
     }
 
@@ -376,6 +379,10 @@ class IncassoRateController extends Controller
             'incassoFormatted' => $formattato,
             'utenteCreatore'   => $utenteCreatore,
             'utenteStornatore' => $utenteStornatore,
+            // Le emissioni della sua ricevuta, dalla più recente: stampata, inviata a chi, in coda, non partita (decisione 201).
+            'emissioni'        => RicevuteIncassiController::emissioniDi($scrittura),
+            // Gli invii della ricevuta che «Riprova» può ancora rimandare: senza, il pulsante non c'è.
+            'da_riprovare'     => app(\App\Services\Gestionale\Ricevute\EmissioneRicevute::class)->daRiprovare($condominio, [(int) $scrittura->id])->count(),
         ]);
     }
 }

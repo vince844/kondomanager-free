@@ -89,3 +89,15 @@ describe('il registro delle email scrive il motivo degli invii falliti (Coda 121
         expect(trDi('vecchia@studio.example').find('[data-motivo-invio]').exists()).toBe(false);
     });
 });
+
+describe('senza un server di posta il registro dice che il messaggio non è partito (la guida della posta lo promette)', () => {
+    test('la riga solo registrata (trasporto log) si legge «Non partita», e le altre no', () => {
+        apri();
+        const registrata = trDi('registrata@studio.example').find('[data-non-partita]');
+        expect(registrata.exists()).toBe(true);
+        expect(pulisci(registrata.text())).toBe('Non partita');
+        expect(registrata.attributes('title')).toContain('Nessun server di posta');
+        expect(trDi('riuscita@studio.example').find('[data-non-partita]').exists()).toBe(false);
+        expect(trDi('fallita@studio.example').find('[data-non-partita]').exists()).toBe(false);
+    });
+});

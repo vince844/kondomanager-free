@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
+import axios from 'axios';
+import RicevutaDialog from '@/components/gestionale/movimenti/incassi/RicevutaDialog.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { frasePerErrore, testoConfermaInviaDiNuovo, testoConfermaRiprova, testoEmissione, testoLimiteRiprova, testoRestantiRiprova, testoRiepilogo, TIPI_INDIRIZZO, type Emissione } from '@/lib/gestionale/incassi/ricevute';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -9,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Landmark, Calendar, User, FileText, Banknote, Coins, RotateCcw } from "lucide-vue-next";
+import { ArrowLeft, Landmark, Calendar, User, FileText, Banknote, Coins, RotateCcw, Mail, Printer } from "lucide-vue-next";
 
 const props = defineProps<{
     condominio: any;
@@ -19,7 +23,45 @@ const props = defineProps<{
     incassoFormatted: any;
     utenteCreatore: string | null;
     utenteStornatore: string | null;
+    emissioni?: Array<Emissione & { id: number; tipo_indirizzo: string | null; in_coda_da_tempo: boolean; manda_a: string | null }>;
+    da_riprovare?: number;
 }>();
+
+// La ricevuta (1.12.0-beta.2): le sue emissioni, la finestra per stamparla o inviarla, «Invia di nuovo» e «Riprova le non partite».
+const isRicevutaOpen = ref(false);
+const esitoRicevuta = ref<string | null>(null);
+const emissioni = computed(() => props.emissioni ?? []);
+// «Riprova» solo se il server trova un invio da rimandare: uno non partito e poi partito allo stesso indirizzo non conta.
+const nonPartite = computed(() => (props.da_riprovare ?? 0) > 0);
+const ricarica = () => router.reload({ only: ['emissioni', 'da_riprovare'] });
+
+// «Invia di nuovo» e «Riprova» mandano un'email con un clic: prima una conferma breve, con l'indirizzo e lo stato del bollo.
+const conferma = ref<{ aperta: boolean; testo: string; azione: () => void }>({ aperta: false, testo: '', azione: () => {} });
+const chiedi = (testo: string, azione: () => void) => { conferma.value = { aperta: true, testo, azione }; };
+const confermaInviaDiNuovo = (e: Emissione & { id: number }) => chiedi(testoConfermaInviaDiNuovo(e), () => inviaDiNuovo(e.id));
+const confermaRiprova = () => chiedi(testoConfermaRiprova(props.da_riprovare ?? 0), riprova);
+
+async function inviaDiNuovo(id: number) {
+    esitoRicevuta.value = null;
+    try {
+        const r = await axios.post(route(generateRoute('gestionale.ricevute.invia-di-nuovo'), { condominio: props.condominio.id, invio: id }));
+        esitoRicevuta.value = testoRiepilogo(r.data);
+    } catch (e: any) {
+        esitoRicevuta.value = frasePerErrore(e, 'Invio non riuscito. Riprova.');
+    }
+    ricarica();
+}
+
+async function riprova() {
+    esitoRicevuta.value = null;
+    try {
+        const r = await axios.post(route(generateRoute('gestionale.ricevute.riprova'), { condominio: props.condominio.id }), { incassi: [props.incasso.id] });
+        esitoRicevuta.value = [testoRiepilogo(r.data), testoRestantiRiprova(r.data), testoLimiteRiprova(r.data)].filter(Boolean).join(' ');
+    } catch (e: any) {
+        esitoRicevuta.value = frasePerErrore(e, 'Invio non riuscito. Riprova.');
+    }
+    ricarica();
+}
 
 const { generateRoute, generatePath } = usePermission();
 
@@ -109,6 +151,43 @@ const modalitaVersamento = computed(() => {
                     </div>
                 </div>
             </div>
+
+            <!-- LA RICEVUTA: le sue emissioni, dove l'amministratore già guarda -->
+            <Card class="shadow-sm border-slate-200 dark:border-slate-800">
+                <CardHeader class="pb-3 flex flex-row flex-wrap items-center justify-between gap-2">
+                    <CardTitle class="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+                        <FileText class="w-5 h-5 text-slate-400" /> Ricevuta
+                    </CardTitle>
+                    <div class="flex flex-wrap gap-2">
+                        <Button v-if="nonPartite && props.incasso.stato !== 'annullata'" variant="outline" size="sm" @click="confermaRiprova">
+                            <Mail class="w-4 h-4 mr-2" /> Riprova le non partite
+                        </Button>
+                        <Button variant="outline" size="sm" @click="isRicevutaOpen = true">
+                            <Printer class="w-4 h-4 mr-2" /> Stampa o invia
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent class="space-y-2 text-sm">
+                    <p v-if="emissioni.length === 0" class="text-slate-500 dark:text-slate-400">Mai emessa.</p>
+                    <div v-for="e in emissioni" :key="e.id" class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2 last:border-0">
+                        <span :class="e.stato === 'non_partita' ? 'text-rose-700 dark:text-rose-300' : 'text-slate-700 dark:text-slate-300'">
+                            {{ testoEmissione(e) }}<template v-if="e.tipo_indirizzo"> ({{ TIPI_INDIRIZZO[e.tipo_indirizzo] ?? e.tipo_indirizzo }})</template>
+                            <span v-if="e.errore_completo" class="block break-words text-xs text-slate-500 dark:text-slate-400">Dal server: {{ e.errore_completo }}</span>
+                            <span v-if="e.in_coda_da_tempo" class="block text-xs text-amber-700 dark:text-amber-300">
+                                In coda da più di un'ora: di solito vuol dire che sul server non gira il servizio che manda le email in coda. Chi gestisce
+                                l'installazione controlla che sia attivo (SCHEDULE_QUEUE_WORKER nel file .env, o un processo queue:work).
+                            </span>
+                        </span>
+                        <!-- Di un incasso annullato si rimanda solo una ricevuta che era partita; senza un indirizzo a cui mandarla (la persona non ce l'ha più) il pulsante non c'è. -->
+                        <Button v-if="e.canale === 'email' && e.manda_a && (props.incasso.stato !== 'annullata' || e.stato === 'inviata')" variant="ghost" size="sm" class="h-7 text-xs" @click="confermaInviaDiNuovo(e)">
+                            Invia di nuovo
+                        </Button>
+                    </div>
+                    <p v-if="esitoRicevuta" class="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-2 text-xs text-slate-700 dark:text-slate-200">{{ esitoRicevuta }}</p>
+                </CardContent>
+            </Card>
+            <RicevutaDialog v-model:open="isRicevutaOpen" :condominio-id="props.condominio.id" :incasso-id="props.incasso.id" @emessa="ricarica" />
+            <ConfirmDialog v-model="conferma.aperta" title="Mandare di nuovo?" :description="conferma.testo" confirm-text="Manda" @confirm="conferma.azione()" />
 
             <!-- HEADER INCASSO -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -17,6 +17,8 @@ export interface VoceAvvisoStorno {
 export interface AnteprimaStorno {
     voci: VoceAvvisoStorno[];
     frase: string | null;
+    /** La ricevuta dell'incasso già stampata o inviata (1.12.0-beta.2): la frase da dire nella conferma, o null. */
+    ricevuta?: string | null;
 }
 
 /**

@@ -7,6 +7,7 @@ import { ATTESA_ANTEPRIMA_MS, confermaDelloStorno, importoDaStornare as centesim
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import RicevutaDialog from './RicevutaDialog.vue'
 import { usePermission } from "@/composables/permissions";
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { RotateCcw, MoreHorizontal, Eye, Printer, AlertTriangle } from 'lucide-vue-next'
@@ -66,11 +67,10 @@ function confirmStorno() {
   })
 }
 
-const printRicevuta = () => {
-    // Apri una nuova finestra per la stampa (da implementare rotta backend)
-    // window.open(route(generateRoute('gestionale.incassi.stampa'), { ... }), '_blank');
-    alert("Funzionalità stampa ricevuta in arrivo!");
-}
+// La ricevuta (1.12.0-beta.2): una voce sola, «Stampa o invia ricevuta», come «Stampa o invia» nel dettaglio dell'incasso; la finestra ha il
+// bollo, la nota, i destinatari e i pulsanti per stampare e per inviare (Vincenzo, 05/11: due voci per la stessa finestra non servono).
+const isRicevutaOpen = ref(false)
+const apriRicevuta = () => { isRicevutaOpen.value = true }
 </script>
 
 <template>
@@ -81,15 +81,16 @@ const printRicevuta = () => {
         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-[160px]">
+    <DropdownMenuContent align="end" class="w-[200px]">
       <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Azioni su Prot. {{ incasso.numero_protocollo }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.movimenti-rate.show'), { condominio: condominioId, scrittura: incasso.id }))">
         <Eye class="w-4 h-4 mr-2" /> Dettagli
       </DropdownMenuItem>
       
-      <DropdownMenuItem @click="printRicevuta">
-        <Printer class="w-4 h-4 mr-2" /> Stampa Ricevuta
+      <!-- Anche di un incasso annullato: la finestra dice se la ricevuta era già partita per email e si può rimandare. -->
+      <DropdownMenuItem @click="apriRicevuta">
+        <Printer class="w-4 h-4 mr-2" /> {{ incasso.stato === 'annullata' ? 'Stampa o invia ricevuta (annullato)' : 'Stampa o invia ricevuta' }}
       </DropdownMenuItem>
 
       <DropdownMenuSeparator />
@@ -124,5 +125,12 @@ const printRicevuta = () => {
       <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
       <span>{{ conferma.avviso }}</span>
     </span>
+    <!-- La ricevuta già uscita: la persona ha in mano la ricevuta di un versamento che non risulterà più. -->
+    <span v-if="anteprima?.ricevuta" class="mt-3 flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">
+      <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+      <span>{{ anteprima.ricevuta }}</span>
+    </span>
   </ConfirmDialog>
+
+  <RicevutaDialog v-model:open="isRicevutaOpen" :condominio-id="condominioId" :incasso-id="incasso.id" />
 </template>

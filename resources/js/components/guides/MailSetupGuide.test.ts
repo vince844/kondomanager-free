@@ -46,3 +46,13 @@ describe('MailSetupGuide — il mittente (Coda 121)', () => {
         expect(sorgente).toContain('Host: <code>mail.smtp2go.com</code>');
     });
 });
+
+describe('MailSetupGuide — che cosa registra il programma (ricevute, 1.12.0-beta.2)', () => {
+    test('dice quello che è vero: registra ogni messaggio che il server accetta, e senza un server lo segna come non partito; «accettato» non è «consegnato»', () => {
+        expect(sorgente).toContain('Il programma registra ogni messaggio che il server accetta, e senza un server lo segna come non partito; «accettato» non vuol dire «consegnato».');
+    });
+
+    test('non promette più una tracciabilità totale', () => {
+        expect(sorgente).not.toContain('100% di tracciabilità');
+    });
+});

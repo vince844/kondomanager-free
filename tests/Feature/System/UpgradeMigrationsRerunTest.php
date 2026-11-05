@@ -238,7 +238,60 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // 1.12.0-beta.1 (Coda 438): l'esercizio del già versato — colonna più chiave esterna verso `esercizi`, due statement su MySQL. Nessun travaso: le righe
     // già salvate restano vuote (valgono per tutti i piani della voce, decisione 187). Lo stato a metà lo prova il test sotto.
     '2026_11_04_100000_add_esercizio_id_to_contributi_versati_table',
+    // 1.12.0-beta.2 (decisione 200): il registro dei documenti mandati a una persona — la tabella, due indici e quattro chiavi esterne, sette statement
+    // su MySQL (la `create table` porta solo le colonne), ognuno con la sua guardia. Gli stati a metà li provano i due test sotto.
+    '2026_11_05_100000_create_registro_invii_table',
 ]);
+
+it('la migrazione del registro degli invii interrotta dopo la tabella e prima degli indici si riprende e li mette, uno per nome', function () {
+    $migration = require database_path('migrations/2026_11_05_100000_create_registro_invii_table.php');
+    $indici = fn () => collect(Schema::getIndexes('registro_invii'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'registro_invii_'))->sort()->values()->all();
+    $attesi = ['registro_invii_condominio_tipo_index', 'registro_invii_documento_index'];
+    expect($indici())->toBe($attesi);
+
+    Schema::table('registro_invii', function ($table) {
+        $table->dropIndex('registro_invii_documento_index');
+        $table->dropIndex('registro_invii_condominio_tipo_index');
+    });
+    $migration->up();
+    $migration->up();
+
+    expect($indici())->toBe($attesi);
+});
+
+it('la migrazione del registro degli invii interrotta dopo la tabella e prima delle chiavi esterne si riprende e mette una chiave sola per colonna', function () {
+    $path = database_path('migrations/2026_11_05_100000_create_registro_invii_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_05_100000_create_registro_invii_table');
+    $migration = require $path;
+    $chiavi = fn () => collect(Schema::getForeignKeys('registro_invii'))
+        ->mapWithKeys(fn ($k) => [implode(',', $k['columns']) => $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete'])])
+        ->sortKeys()->all();
+    $attese = [
+        'anagrafica_id' => 'anagrafiche set null',
+        'condominio_id' => 'condomini cascade',
+        'emesso_da'     => 'users set null',
+        'mail_log_id'   => 'mail_logs set null',
+    ];
+    expect($chiavi())->toBe($attese);
+
+    Schema::table('registro_invii', function ($table) {
+        foreach (['condominio_id', 'anagrafica_id', 'mail_log_id', 'emesso_da'] as $colonna) {
+            $table->dropForeign([$colonna]);
+        }
+    });
+    expect($chiavi())->toBe([]);
+
+    $migration->up();
+    $migration->up();
+    expect($chiavi())->toBe($attese)
+        ->and(collect(Schema::getForeignKeys('registro_invii')))->toHaveCount(4);
+
+    $migration->down();
+    $migration->down();
+    expect(Schema::hasTable('registro_invii'))->toBeFalse();
+    $migration->up();
+    expect($chiavi())->toBe($attese);
+});
 
 it('Coda 438 — la migrazione dell\'esercizio del già versato interrotta fra i due statement (colonna sì, chiave esterna no) si riprende e mette una chiave sola, che azzera l\'esercizio', function () {
     $path = database_path('migrations/2026_11_04_100000_add_esercizio_id_to_contributi_versati_table.php');

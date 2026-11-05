@@ -71,7 +71,7 @@ const breadcrumbs = computed(() => [
 const pageGuides = computed(() => [
     {
         title: 'Posta in Uscita',
-        description: 'Configura il server per l\'invio di avvisi, solleciti di pagamento e ricevute ai condòmini.',
+        description: 'Configura il server per l\'invio delle notifiche e delle ricevute di pagamento ai condòmini.',
         icon: Mail,
         colorVariant: 'blue' as const,
     },

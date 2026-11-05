@@ -117,6 +117,30 @@ class StornoIncassoController extends Controller
         }
         $scrittura->load(['quotePagate', 'figlie.quotePagate']);
 
-        return response()->json($avviso->perIncasso($scrittura));
+        return response()->json($avviso->perIncasso($scrittura) + ['ricevuta' => self::fraseDellaRicevuta($scrittura)]);
+    }
+
+    /**
+     * Se la ricevuta dell'incasso è già stata stampata o inviata, la conferma dello storno lo dice: la persona ha in mano la ricevuta di un
+     * versamento che non risulterà più (1.12.0-beta.2). Null se la ricevuta non è mai uscita.
+     */
+    private static function fraseDellaRicevuta(ScritturaContabile $incasso): ?string
+    {
+        $uscite = \App\Models\Gestionale\RegistroInvio::where('documentabile_type', ScritturaContabile::class)
+            ->where('documentabile_id', $incasso->id)
+            ->whereIn('stato', [\App\Models\Gestionale\RegistroInvio::STATO_STAMPATA, \App\Models\Gestionale\RegistroInvio::STATO_INVIATA])
+            ->orderByDesc('id')
+            ->get();
+        if ($uscite->isEmpty()) {
+            return null;
+        }
+
+        $giorno = fn ($e) => $e->emesso_il?->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('d/m/Y');
+        $inviata = $uscite->firstWhere('stato', \App\Models\Gestionale\RegistroInvio::STATO_INVIATA);
+        $prima = $inviata
+            ? 'La ricevuta di questo incasso è stata inviata a ' . $inviata->destinatario . ' il ' . $giorno($inviata) . '.'
+            : 'La ricevuta di questo incasso è stata stampata il ' . $giorno($uscite->first()) . '.';
+
+        return $prima . ' Dopo lo storno la ricevuta si può ristampare o, se era partita per email, rimandare: esce con «INCASSO ANNULLATO». Se e come dirlo alla persona lo decidi tu.';
     }
 }

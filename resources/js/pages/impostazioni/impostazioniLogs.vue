@@ -104,8 +104,12 @@ const formatDate = (dateString: string) => {
                                         <div v-if="log.status === 'sent'" class="inline-flex items-center justify-center w-8 h-8 rounded-full text-green-600">
                                             <CheckCircle2 class="w-4 h-4" />
                                         </div>
-                                        <div v-else-if="log.status === 'logged'" class="inline-flex items-center justify-center w-8 h-8 rounded-full text-blue-600">
+                                        <!-- Senza un server di posta (trasporto log) il messaggio non è partito: lo dice il registro, come la guida della posta. -->
+                                        <div v-else-if="log.status === 'logged'" data-non-partita
+                                             title="Nessun server di posta configurato: il messaggio è stato solo registrato, non è partito."
+                                             class="inline-flex flex-col items-center justify-center rounded-full text-blue-600">
                                             <FileText class="w-4 h-4" />
+                                            <span class="text-[10px] leading-tight">Non partita</span>
                                         </div>
                                         <div v-else class="inline-flex items-center justify-center w-8 h-8 rounded-full text-red-600">
                                             <AlertCircle class="w-4 h-4" />

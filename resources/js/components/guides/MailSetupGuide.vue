@@ -38,7 +38,7 @@ defineEmits(['update:open']);
                 <div>
                   <h4 class="font-bold text-slate-900 dark:text-white mb-1">SMTP (Raccomandato per produzione)</h4>
                   <p class="text-[13px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Si collega direttamente al server del tuo gestore posta (Aruba, Gmail, Outlook, SMTP2GO, ecc.). Offre il 100% di tracciabilità, cifratura SSL/TLS sicura e previene il blocco delle notifiche di sollecito e ricevuta.
+                    Si collega direttamente al server del tuo gestore posta (Aruba, Gmail, Outlook, SMTP2GO, ecc.), con cifratura SSL/TLS. Il programma registra ogni messaggio che il server accetta, e senza un server lo segna come non partito; «accettato» non vuol dire «consegnato». Riduce il rischio che notifiche e ricevute finiscano nella posta indesiderata.
                   </p>
                 </div>
               </div>

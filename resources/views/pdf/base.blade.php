@@ -8,6 +8,8 @@
     </style>
 </head>
 <body>
+    {{-- `$intestazione_propria`: la vista scrive da sé chi emette il documento (la ricevuta dell'incasso), e qui non si ripete. --}}
+    @if(empty($intestazione_propria ?? null))
     <htmlpageheader name="KondoHeader">
         <div class="header">
             @if(isset($condominio))
@@ -33,6 +35,7 @@
     </htmlpageheader>
 
     <sethtmlpageheader name="KondoHeader" page="O" value="on" show-this-page="1" />
+    @endif
 
     <htmlpagefooter name="KondoFooter">
         @if(!empty($piede_compatto ?? null))
@@ -45,9 +48,11 @@
                 <table style="width: 100%; font-size: 7pt; line-height: 1.15; border-collapse: collapse;">
                     <tr>
                         <td style="text-align: left; width: 75%; padding: 0;">
-                            <span style="color: #555;">Documento emesso il {{ ($data_emissione_stampe ?? now())->format('d/m/Y') }}</span>
+                            @if(empty($piede_senza_data ?? null))
+                                <span style="color: #555;">Documento emesso il {{ ($data_emissione_stampe ?? now())->format('d/m/Y') }}</span>
+                            @endif
                             @if(!empty($nota_legale_stampe))
-                                <br>{!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}
+                                @if(empty($piede_senza_data ?? null))<br>@endif{!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}
                             @endif
                         </td>
                         <td style="text-align: right; width: 25%; padding: 0;">
@@ -62,9 +67,11 @@
             <table style="width: 100%;">
                 <tr>
                     <td style="text-align: left; width: 75%;">
-                        <span style="color: #555;">Documento emesso il {{ ($data_emissione_stampe ?? now())->format('d/m/Y') }}</span>
+                        @if(empty($piede_senza_data ?? null))
+                            <span style="color: #555;">Documento emesso il {{ ($data_emissione_stampe ?? now())->format('d/m/Y') }}</span>
+                        @endif
                         @if(!empty($nota_legale_stampe))
-                            <br>{!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}
+                            @if(empty($piede_senza_data ?? null))<br>@endif{!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}
                         @endif
                     </td>
                     <td style="text-align: right; width: 25%;">
