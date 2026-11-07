@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Head, useForm, usePage } from '@inertiajs/vue3'
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { ref, computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Printer, Trash, Upload } from 'lucide-vue-next'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import { trans } from 'laravel-vue-i18n'
@@ -33,7 +34,9 @@ const {
   firma_stampe_url,
   /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server. */
   limiteFirma,
-} = page.props
+  /** Lo studio che scrive le lettere ai condòmini (1.12.0-beta.4). */
+  studio,
+} = page.props as any
 
 const flashMessage = computed(() => (page.props as any).flash?.message)
 
@@ -62,7 +65,23 @@ const form = useForm({
   nota_legale_stampe: (nota_legale_stampe as string) || '',
   firma_stampe: null as File | null,
   delete_firma_stampe: false,
+  studio_nome: studio?.nome ?? '',
+  studio_indirizzo: studio?.indirizzo ?? '',
+  studio_email: studio?.email ?? '',
+  studio_pec: studio?.pec ?? '',
+  studio_telefono: studio?.telefono ?? '',
+  studio_comune: studio?.comune ?? '',
 })
+
+/** I campi dello studio: in testa alle lettere ai condòmini, accanto al condominio. */
+const campiStudio = [
+  { campo: 'studio_nome', etichetta: 'Nome dello studio', tipo: 'text' },
+  { campo: 'studio_indirizzo', etichetta: 'Indirizzo', tipo: 'text' },
+  { campo: 'studio_email', etichetta: 'Email (le risposte alle lettere arrivano qui)', tipo: 'email' },
+  { campo: 'studio_pec', etichetta: 'PEC', tipo: 'email' },
+  { campo: 'studio_telefono', etichetta: 'Telefono', tipo: 'text' },
+  { campo: 'studio_comune', etichetta: 'Comune (il luogo in testa alle lettere; senza, quello del condominio)', tipo: 'text' },
+] as const
 
 const showGuide = ref(false)
 
@@ -207,6 +226,37 @@ const submit = () => {
                 <p v-if="form.errors.firma_stampe" class="text-sm text-red-500 mt-1">
                   {{ form.errors.firma_stampe }}
                 </p>
+              </div>
+            </div>
+
+            <div class="pt-4 space-y-3" data-testid="studio-delle-lettere">
+              <div>
+                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Lo studio, sulle lettere ai condòmini</h3>
+                <p class="text-sm text-muted-foreground">
+                  Promemoria, solleciti, diffide e messe in mora portano in testa lo studio e il condominio. Senza il nome dello studio la lettera porta il solo condominio.
+                </p>
+              </div>
+              <div class="grid gap-3 sm:grid-cols-2">
+                <label v-for="c in campiStudio" :key="c.campo" class="space-y-1">
+                  <span class="block text-xs text-slate-500 dark:text-slate-400">{{ c.etichetta }}</span>
+                  <Input v-model="(form as any)[c.campo]" :type="c.tipo" class="h-9 text-sm" :data-testid="c.campo" />
+                  <span v-if="(form.errors as any)[c.campo]" class="block text-sm text-red-500">{{ (form.errors as any)[c.campo] }}</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- I modelli delle lettere hanno la loro pagina: un riquadro per arrivarci. -->
+            <div class="pt-4" data-testid="riquadro-modelli-lettere">
+              <div class="flex flex-wrap items-center gap-3 rounded-lg border p-4">
+                <div class="min-w-0 flex-1">
+                  <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Modelli delle lettere</h3>
+                  <p class="text-sm text-muted-foreground">
+                    I modelli delle lettere (promemoria, solleciti, diffide e messe in mora), per tutti i condomini o per uno: nella finestra della lettera li scegli, e il testo resta modificabile per ogni invio.
+                  </p>
+                </div>
+                <Link :href="route('impostazioni.stampe.modelli-lettere')" class="inline-flex h-9 items-center rounded-md border px-4 text-sm font-medium hover:bg-accent">
+                  Apri i modelli delle lettere
+                </Link>
               </div>
             </div>
 

@@ -19,6 +19,10 @@ use Illuminate\Support\Facades\Log;
  * data o una persona. È la stessa colonna che la chiave esterna azzerava nella stessa transazione: il legame si rimette, non si
  * inventa. Vale anche per le righe senza pivot (la rettifica del riallineamento dei crediti e il suo storno).
  *
+ * Allo stesso modo le rate coperte da un accordo di rientro (`accordo_rientro_rate`, a cascata sulla rata): si annotano prima e si rimettono
+ * sulla rata nuova con lo stesso numero, con la stessa unità e lo stesso importo riconosciuto. Senza, l'accordo resterebbe senza rate e, dopo
+ * l'emissione nuova, la rata tornerebbe intera nelle lettere.
+ *
  * Le quote rimesse non si ricalcolano (`ricalcolaStato()`): la pivot di ognuna somma a zero, e la quota resta com'è nata —
  * `importo_pagato` 0 e lo stato del generatore. Ricalcolata, una quota a credito diventerebbe «pagata» (0 ≥ importo), e il
  * conguaglio di un passaggio dopo la leggerebbe come una bozza pagata (`ConguaglioPassaggio`, motivo «pagata»).
@@ -44,6 +48,7 @@ final class RigeneraRateTenendoILegami
                 'quota_scrittura.created_at', 'quota_scrittura.updated_at', 'rate_quote.rata_id', 'rate_quote.anagrafica_id',
                 'rate_quote.immobile_id', 'rate_quote.tipo', 'rate_quote.importo']);
         $righe = DB::table('righe_scritture')->whereIn('rata_id', $numeroDi->keys())->get(['id', 'rata_id']);
+        $coperte = DB::table('accordo_rientro_rate')->whereIn('rata_id', $numeroDi->keys())->orderBy('id')->get();
 
         $piano->rate()->delete();
         $esito = $genera();
@@ -53,6 +58,18 @@ final class RigeneraRateTenendoILegami
             if (($nuova = $rataNuova[$numeroDi[$vecchia]] ?? null) !== null) {
                 DB::table('righe_scritture')->whereIn('id', $gruppo->pluck('id'))->update(['rata_id' => $nuova]);
             }
+        }
+
+        $persiAccordi = 0;
+        foreach ($coperte as $c) {
+            if (($nuova = $rataNuova[$numeroDi[$c->rata_id]] ?? null) === null) {
+                $persiAccordi++;
+                continue;
+            }
+            DB::table('accordo_rientro_rate')->insert(['rata_id' => $nuova] + (array) $c);
+        }
+        if ($persiAccordi > 0) {
+            Log::info("Ricalcolo del piano {$piano->id}: {$persiAccordi} rate coperte da un accordo di rientro senza una rata con lo stesso numero.");
         }
 
         $quoteNuove = DB::table('rate_quote')->whereIn('rata_id', $rataNuova->values())->get(['id', 'rata_id', 'anagrafica_id', 'immobile_id', 'tipo', 'importo'])

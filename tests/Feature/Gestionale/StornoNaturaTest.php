@@ -89,7 +89,8 @@ it('versamento tornato indietro: la rettifica e anche la riga negativa della piv
     lcdStorna($this, $s, $s['incasso'], ['natura_storno' => 'versamento_tornato']);
 
     expect(snRettifica($s['incasso']))->toBe(['data' => '2027-01-15', 'pivot' => ['2027-01-15'], 'chi' => (int) $this->user->id, 'natura' => 'versamento_tornato'])
-        ->and(lcdRiga(lcdLeggi($s, 'bianca', '2026-12-31'), $s, 'B', 1))->toMatchArray(['residuo' => 0]);
+        // Saldata al 31/12: la lettura sommata nel database (dalla 1.12.0-beta.4) non porta più la chiave a zero.
+        ->and(lcdRiga(lcdLeggi($s, 'bianca', '2026-12-31'), $s, 'B', 1))->toBeNull();
 });
 
 it('per un incasso lo storno senza la natura, o con una natura che non c\'è, non si fa', function () {

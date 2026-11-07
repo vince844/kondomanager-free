@@ -39,6 +39,9 @@ class CreateSaldoRequest extends FormRequest
             'gestione_id'    => ['required', 'integer', 'exists:gestioni,id'],
             'saldo_iniziale' => ['required', 'integer'],
             'passaggio_id'   => ['nullable', 'integer'],
+            // L'origine del pregresso (1.12.0-beta.4): facoltativa e senza una risposta già scelta; un esercizio solo con l'esercizio.
+            'origine_dichiarata'   => ['nullable', 'string', \Illuminate\Validation\Rule::in(\App\Services\Gestionale\Debiti\OriginePregresso::VOCI)],
+            'esercizio_origine_id' => ['nullable', 'integer', 'required_if:origine_dichiarata,' . \App\Services\Gestionale\Debiti\OriginePregresso::ESERCIZIO],
         ];
     }
 
@@ -55,6 +58,14 @@ class CreateSaldoRequest extends FormRequest
                 }
 
                 $condominio = $this->route('condominio');
+
+                // L'esercizio d'origine dichiarato è uno del condominio.
+                if ($this->input('origine_dichiarata') === \App\Services\Gestionale\Debiti\OriginePregresso::ESERCIZIO
+                    && ! $condominio->esercizi()->whereKey((int) $this->input('esercizio_origine_id'))->exists()) {
+                    $validator->errors()->add('esercizio_origine_id', 'Scegli l\'esercizio d\'origine fra quelli del condominio.');
+
+                    return;
+                }
                 
                 // 2. Usiamo il metodo del Trait passandogli il condominio
                 $esercizio = $this->getEsercizioCorrente($condominio);

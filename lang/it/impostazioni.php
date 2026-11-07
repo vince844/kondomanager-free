@@ -160,7 +160,7 @@ return [
         'cron_settings_title' => 'Automazione cloud (Cron esterno)',
         'cron_settings_description' => 'Utilizza questa funzione se il tuo hosting non supporta cron jobs ogni minuto. Servizi supportati: cron-job.org',
         'mail_settings_title' => 'Configurazione email',
-        'mail_settings_description' => 'Configura il metodo di invio per rate, solleciti e comunicazioni ufficiali ai condomini.',
+        'mail_settings_description' => 'Configura il metodo di invio per rate, solleciti e comunicazioni ai condòmini.',
         'backups_settings_description' => 'Crea, scarica e gestisci i backup completi dell\'applicazione: database, documenti e configurazione.',
     ],
 

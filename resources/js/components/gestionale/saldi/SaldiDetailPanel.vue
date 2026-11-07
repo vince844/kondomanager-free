@@ -10,6 +10,7 @@ import vSelect from "vue-select";
 import type { ImmobileConSaldi, PassaggioLegabile } from "@/types/gestionale/saldi";
 import type { Building } from "@/types/buildings";
 import { etichettaRuolo } from "@/lib/gestionale/ruoli-immobile";
+import { daScelta, etichettaOrigine, opzioniOrigine, type EsercizioDellOrigine } from "@/lib/gestionale/debiti/originePregresso";
 
 const props = defineProps<{
   immobile: ImmobileConSaldi;
@@ -17,7 +18,12 @@ const props = defineProps<{
   esercizio: any;
   condominio: Building;
   valoriInCentesimi?: boolean;
+  /** Gli esercizi del condominio, per l'origine del pregresso; la frase accanto al campo. */
+  esercizi?: EsercizioDellOrigine[];
+  fraseOrigine?: string;
 }>();
+// «Dichiara l'origine» di un saldo: la finestra sta nella pagina, che la usa anche in blocco.
+const emit = defineEmits<{ (e: 'dichiara-origine', saldoId: number): void }>();
 
 // Opzioni per l'input valuta (Standard Italiano)
 const moneyOptions = ref({
@@ -207,6 +213,8 @@ const modalForm = ref({
   // 1.11.0-beta.53: «Legato a un passaggio», spento di partenza; il passaggio lo sceglie l'amministratore, senza preselezioni.
   legato: false,
   passaggioId: null as number | null,
+  // L'origine del pregresso (1.12.0-beta.4): facoltativa, senza una risposta già scelta.
+  origine: '',
 });
 
 // Chi ha già un saldo sulla gestione. Il server (`CreateSaldoRequest`) non conta né le righe che un passaggio ha scritto
@@ -260,6 +268,7 @@ function openAddModal(gestioneId: number, tipo: 'credito' | 'debito') {
     importo: '',
     legato: false,
     passaggioId: null,
+    origine: '',
   };
   showAddModal.value = true;
 }
@@ -305,6 +314,9 @@ function submitAddModal() {
       gestione_id:    modalForm.value.gestioneId,
       saldo_iniziale: finalCents,
       ...(legato.value ? { passaggio_id: modalForm.value.passaggioId } : {}),
+      ...(modalForm.value.tipo === 'debito' && daScelta(modalForm.value.origine).origine
+        ? { origine_dichiarata: daScelta(modalForm.value.origine).origine, esercizio_origine_id: daScelta(modalForm.value.origine).esercizio_origine_id }
+        : {}),
     },
     {
       preserveScroll: true,
@@ -562,6 +574,11 @@ function submitAddModal() {
                       <span class="text-xs font-semibold text-red-600 dark:text-red-400 shrink-0">
                         {{ euro(item.saldo.saldo_iniziale) }}
                       </span>
+                      <!-- L'origine del pregresso: si dichiara anche su un saldo fermo, perché non tocca l'importo. -->
+                      <button type="button" data-testid="dichiara-origine" @click="emit('dichiara-origine', item.saldo.id)"
+                              class="text-[10px] text-slate-400 hover:text-indigo-600 underline decoration-dotted shrink-0">
+                        {{ etichettaOrigine(item.saldo, esercizi ?? []) }}
+                      </button>
                       <button v-if="item.saldo.e_conguaglio"
                               @click.prevent="apriModaleLucchetto(item.saldo)"
                               class="text-indigo-400 hover:text-indigo-600 transition-colors shrink-0"
@@ -723,6 +740,16 @@ function submitAddModal() {
 
             <div v-if="erroreModale" role="alert" class="rounded-lg border border-rose-200 bg-rose-50 dark:border-rose-900/40 dark:bg-rose-900/10 px-4 py-3 text-sm text-rose-900 dark:text-rose-200 flex items-start gap-2">
               <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" /><span>{{ erroreModale }}</span>
+            </div>
+
+            <div v-if="modalForm.tipo === 'debito'" class="space-y-1.5">
+              <label class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400" for="origine-del-saldo">Origine del pregresso (facoltativa)</label>
+              <select id="origine-del-saldo" v-model="modalForm.origine" data-testid="campo-origine"
+                      class="w-full text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 dark:text-white rounded-lg px-3 py-2">
+                <option value="">Non dichiarata</option>
+                <option v-for="o in opzioniOrigine(esercizi ?? [])" :key="o.value" :value="o.value">{{ o.text }}</option>
+              </select>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400" data-testid="frase-origine">{{ fraseOrigine }}</p>
             </div>
 
             <div class="space-y-1.5">

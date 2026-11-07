@@ -5,7 +5,7 @@
 @section('content')
 
     <div style="text-align: right; margin-bottom: 20px; color: #555;">
-        Data di stampa: {{ now()->format('d/m/Y H:i') }}
+        Data di stampa: {{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y H:i') }}
     </div>
 
     <h1>Distinta di Pagamento Fornitore</h1>

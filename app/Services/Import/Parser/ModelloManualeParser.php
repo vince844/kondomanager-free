@@ -83,7 +83,8 @@ final class ModelloManualeParser
         'copertina' => [['campo', 'valore'], 2],
         'unita' => [['unita', 'palazzina', 'interno', 'piano', 'tipo'], 3],
         'persone' => [['unita', 'nome', 'ruolo', 'indirizzo'], 3],
-        'saldi' => [['unita', 'persona', 'importo', 'causale'], 3],
+        // «esercizio» dalla 1.12.0-beta.4: un file di prima, senza la colonna, ha quattro etichette e il quorum lo riconosce ancora.
+        'saldi' => [['unita', 'persona', 'importo', 'causale', 'esercizio'], 3],
     ];
 
     /** Come si scrivono i ruoli, con i sinonimi che un amministratore usa davvero. */
@@ -987,6 +988,9 @@ final class ModelloManualeParser
                 importoCents: MoneyHelper::toCents($importo),
                 rigaSorgente: $rigaUtente,
                 causale: trim((string) $this->cella($riga, $mappa, 'causale')) ?: null,
+                // L'esercizio d'origine del pregresso, come lo scrive chi compila (l'anno o il nome): lo cerca il livello dei saldi, dopo
+                // quello degli esercizi. Una colonna che manca (un file di prima) dà nullo: «origine non dichiarata».
+                esercizioOrigine: trim((string) $this->cella($riga, $mappa, 'esercizio')) ?: null,
             );
         }
 

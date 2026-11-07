@@ -150,7 +150,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span><strong>Pagata o parzialmente pagata</strong> → storna prima il pagamento, da Pagamenti fornitori.</span>
+                  <span><strong>Pagata o parzialmente pagata</strong> → storna prima il pagamento, da Pagamenti.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />

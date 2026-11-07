@@ -213,18 +213,18 @@ final class ModelloManualeWriter
             .'disp. att. c.c.). Più righe per la stessa unità vanno bene se sono di persone '
             .'diverse; due righe della STESSA persona le sommo in una posizione sola, unendo le '
             .'causali, perché in Kondomanager ognuno ha una posizione per esercizio.',
-            'D',
+            'E',
         );
 
-        $this->intestazione($f, ['unita', 'persona', 'importo', 'causale'], 'D');
+        $this->intestazione($f, ['unita', 'persona', 'importo', 'causale', 'esercizio'], 'E');
 
         $this->righe($f, [
-            ['B1/1', 'ROSSI MARIO', 120.50, 'conguaglio 2024/2025'],
-            ['B1/2', '', -45.00, 'credito a favore dell\'unità'],
-        ], nota: 'la seconda riga non ha persona: il credito resta sull\'unità.');
+            ['B1/1', 'ROSSI MARIO', 120.50, 'conguaglio 2024/2025', '2025'],
+            ['B1/2', '', -45.00, 'credito a favore dell\'unità', ''],
+        ], nota: 'la seconda riga non ha persona: il credito resta sull\'unità. «esercizio» (facoltativa): l\'anno o il nome dell\'esercizio di cui è il debito; se contiene debiti di più esercizi, scrivi il più vecchio.');
 
         $this->chiaveTestuale($f);
-        $this->larghezze($f, ['A' => 18, 'B' => 26, 'C' => 14, 'D' => 36]);
+        $this->larghezze($f, ['A' => 18, 'B' => 26, 'C' => 14, 'D' => 36, 'E' => 14]);
     }
 
     /** Titolo in riga 1 e due righe di guida, gialle e a capo automatico. */

@@ -92,7 +92,7 @@
         <td class="doc">
             <b>{{ $esercizio->nome }}</b><br>
             @if($futuro)comincia il <b>{{ $dal }}</b>, fotografia al <b>{{ $al }}</b>@else dal <b>{{ $dal }}</b> al <b>{{ $al }}</b>@endif<br>
-            Stampato il <b>{{ now()->format('d/m/Y') }}</b>
+            Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>

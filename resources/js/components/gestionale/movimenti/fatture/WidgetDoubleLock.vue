@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import vSelect from 'vue-select';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { usePermission } from '@/composables/permissions';
 import { 
     AlertTriangle, History, Scale, Info, 
     AlertOctagon, CheckCircle, Trash2, FileText, Calculator, Activity, Zap
@@ -34,7 +35,11 @@ const props = defineProps<{
     isNotaCredito?: boolean;
     bankForecast: { attuale_cents: number, post_cents: number, isRed: boolean } | null; 
     fatturePregresseRegistrate: any[];
+    /** Il condominio della fattura: il consiglio sul conto in negativo porta alle sue rate scadute. */
+    condominioId?: number;
 }>();
+
+const { generateRoute } = usePermission();
 
 // --- COMPUTED ---
 const debitiFiltrati = computed(() => {
@@ -137,7 +142,8 @@ const fiscalAssistant = computed(() => {
     if (props.bankForecast?.isRed) {
         return {
             title: 'Allerta liquidità: Rischio scoperto bancario',
-            desc: `Contabilmente l'operazione è corretta, ma il pagamento di questa fattura porterebbe il conto corrente selezionato in negativo.\nPuoi registrare tranquillamente il documento a bilancio ora, ma ti suggeriamo di attendere nuovi incassi o sollecitare i morosi prima di disporre il bonifico in banca.`,
+            desc: `Contabilmente l'operazione è corretta, ma il pagamento di questa fattura porterebbe il conto corrente selezionato in negativo.\nPuoi registrare tranquillamente il documento a bilancio ora, ma ti suggeriamo di attendere nuovi incassi, o di scrivere a chi ha rate scadute, prima di disporre il bonifico in banca.`,
+            rateScadute: props.condominioId ? route(generateRoute('gestionale.rate-scadute.index'), { condominio: props.condominioId }) : null,
             icon: AlertTriangle,
             colorClass: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800/50',
             iconColor: 'text-yellow-600 dark:text-yellow-400'
@@ -336,6 +342,7 @@ const rischioPrescrizione = computed(() => {
                 <div>
                     <h4 class="font-bold text-base mb-1" :class="fiscalAssistant.iconColor">{{ fiscalAssistant.title }}</h4>
                     <p class="text-sm leading-relaxed opacity-90 whitespace-pre-line">{{ fiscalAssistant.desc }}</p>
+                    <a v-if="(fiscalAssistant as any).rateScadute" :href="(fiscalAssistant as any).rateScadute" class="text-sm underline" data-testid="vedi-rate-scadute">Vedi le rate scadute</a>
                 </div>
             </div>
         </div>

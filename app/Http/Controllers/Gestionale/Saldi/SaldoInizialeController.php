@@ -72,6 +72,9 @@ class SaldoInizialeController extends Controller
             'esercizio'  => $esercizioAttivo,
             'immobili'   => $immobili,
             'gestioni'   => $gestioni,
+            // Per l'origine del pregresso (1.12.0-beta.4): gli esercizi del condominio, dal più recente, e la frase accanto al campo.
+            'esercizi'   => $condominio->esercizi()->orderByDesc('data_inizio')->get(['id', 'nome', 'data_inizio', 'data_fine', 'stato']),
+            'frase_origine' => \App\Services\Gestionale\Debiti\OriginePregresso::FRASE_PIU_ESERCIZI,
         ]);
     }
 
@@ -203,6 +206,15 @@ class SaldoInizialeController extends Controller
             'saldo_iniziale' => $validated['saldo_iniziale'],
             'origine'        => 'manuale',
         ];
+        // L'origine del pregresso, se l'amministratore l'ha dichiarata nel modulo: con chi e quando.
+        if (! empty($validated['origine_dichiarata'])) {
+            $riga += [
+                'origine_dichiarata'    => $validated['origine_dichiarata'],
+                'esercizio_origine_id'  => $validated['origine_dichiarata'] === \App\Services\Gestionale\Debiti\OriginePregresso::ESERCIZIO ? (int) $validated['esercizio_origine_id'] : null,
+                'origine_dichiarata_da' => $request->user()?->id,
+                'origine_dichiarata_il' => now(),
+            ];
+        }
 
         if (! empty($validated['passaggio_id'])) {
             $this->scriviLegata($riga, (int) $validated['passaggio_id']);

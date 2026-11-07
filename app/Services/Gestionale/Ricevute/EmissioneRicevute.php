@@ -11,6 +11,7 @@ use App\Models\Gestionale\RegistroInvio;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\User;
 use App\Notifications\Gestionale\RicevutaIncassoNotification;
+use App\Services\Gestionale\Invii\InviiPerPersona;
 use App\Services\PDF\PdfService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -277,7 +278,7 @@ class EmissioneRicevute
     }
 
     /** Il file dell'archivio con gli indirizzi email delle persone. */
-    public const FILE_DEGLI_INDIRIZZI = 'Indirizzi email.txt';
+    public const FILE_DEGLI_INDIRIZZI = InviiPerPersona::FILE_DEGLI_INDIRIZZI;
 
     /**
      * «Scarica un PDF per persona» (decisione 207.2): per chi manda le ricevute dal suo programma di posta (il server di posta non c'è, o non
@@ -338,19 +339,20 @@ class EmissioneRicevute
                 RegistroInvio::whereIn('id', $ids)->update(['impronta' => hash('sha256', $pdf)]);
 
                 $posizione = $gruppo->first()['posizione'] ?? null;
-                $nome = self::nomeLibero(self::nomeFileDellaPersona($posizione['nome'] ?? 'Senza persona'), $usati) . '.pdf';
+                $nome = InviiPerPersona::nomeLibero(self::nomeFileDellaPersona($posizione['nome'] ?? 'Senza persona'), $usati) . '.pdf';
                 $file[$nome] = $pdf;
                 $elenco[] = [
                     'nome'      => $posizione['nome'] ?? 'Senza persona',
                     'indirizzi' => self::indirizzi(isset($posizione['id']) ? Anagrafica::find($posizione['id']) : null),
-                    'ricevute'  => count($ids),
+                    'documenti' => count($ids),
                     'file'      => $nome,
                 ];
             }
-            $file[self::FILE_DEGLI_INDIRIZZI] = self::elencoDegliIndirizzi($condominio, $elenco, $adesso);
+            $file[self::FILE_DEGLI_INDIRIZZI] = InviiPerPersona::elencoDegliIndirizzi('Ricevute di pagamento', (string) $condominio->nome, $elenco, $adesso,
+                fn (int $n) => $n === 1 ? '1 ricevuta' : $n . ' ricevute', self::TIPI_INDIRIZZO);
 
             return [
-                'zip'  => self::archivio($file),
+                'zip'  => InviiPerPersona::archivio($file, RicevutaNonEmettibileException::class),
                 'nome' => Str::replaceLast('.pdf', '.zip', PdfService::nomeFile('ricevute-per-persona', $condominio->nome,
                     $adesso->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('Y-m-d'))),
             ];
@@ -373,76 +375,6 @@ class EmissioneRicevute
         }
 
         return preg_match('/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i', $testo) ? $testo . '_' : $testo;
-    }
-
-    /**
-     * Un nome di file non ancora usato nell'archivio: due persone con lo stesso nome hanno «Anna Bruni» e «Anna Bruni (2)». Il confronto non
-     * guarda le maiuscole, come i dischi di Windows e del Mac.
-     *
-     * @param array<int, string> $usati
-     */
-    private static function nomeLibero(string $base, array &$usati): string
-    {
-        $nome = $base;
-        for ($n = 2; in_array(mb_strtolower($nome . '.pdf'), $usati, true); $n++) {
-            $nome = $base . ' (' . $n . ')';
-        }
-        $usati[] = mb_strtolower($nome . '.pdf');
-
-        return $nome;
-    }
-
-    /**
-     * L'elenco degli indirizzi dell'archivio: per ogni persona quante ricevute, il nome del suo file e i suoi indirizzi per tipo (la PEC
-     * compresa: l'email la manda l'amministratore dal suo programma, e sceglie lui); chi non ne ha nessuno lo dice. A capo come in Windows e con
-     * il segno UTF-8 in testa, così il Blocco note legge anche gli accenti dei nomi.
-     *
-     * @param array<int, array{nome: string, indirizzi: array<string, string>, ricevute: int, file: string}> $elenco
-     */
-    private static function elencoDegliIndirizzi(Condominio $condominio, array $elenco, CarbonInterface $adesso): string
-    {
-        $righe = [
-            'Ricevute di pagamento — ' . $condominio->nome . ' — ' . self::giorno($adesso),
-            'Un PDF per persona, da mandare dal tuo programma di posta.',
-        ];
-        foreach ($elenco as $p) {
-            $righe[] = '';
-            $righe[] = $p['nome'] . ' — ' . ($p['ricevute'] === 1 ? '1 ricevuta' : $p['ricevute'] . ' ricevute') . ' — ' . $p['file'];
-            if ($p['indirizzi'] === []) {
-                $righe[] = '  nessun indirizzo email: da stampare per la posta';
-            }
-            foreach ($p['indirizzi'] as $tipo => $indirizzo) {
-                $righe[] = '  ' . self::TIPI_INDIRIZZO[$tipo] . ': ' . $indirizzo;
-            }
-        }
-
-        return "\u{FEFF}" . implode("\r\n", $righe) . "\r\n";
-    }
-
-    /**
-     * L'archivio .zip dei file dati (nome => contenuto), scritto in un file temporaneo e letto in memoria.
-     *
-     * @param array<string, string> $file
-     */
-    private static function archivio(array $file): string
-    {
-        $percorso = tempnam(sys_get_temp_dir(), 'ricevute');
-        $zip = new \ZipArchive;
-        if ($percorso === false || $zip->open($percorso, \ZipArchive::OVERWRITE) !== true) {
-            throw new RicevutaNonEmettibileException('Non è stato possibile preparare l\'archivio sul server. Riprova; se si ripete, avvisa chi gestisce l\'installazione.');
-        }
-        try {
-            foreach ($file as $nome => $contenuto) {
-                $zip->addFromString($nome, $contenuto);
-            }
-            if (! $zip->close()) {
-                throw new RicevutaNonEmettibileException('Non è stato possibile preparare l\'archivio sul server. Riprova; se si ripete, avvisa chi gestisce l\'installazione.');
-            }
-
-            return (string) file_get_contents($percorso);
-        } finally {
-            @unlink($percorso);
-        }
     }
 
     /**
@@ -947,7 +879,8 @@ class EmissioneRicevute
     /**
      * «Non serve comunicarla» (decisione 205): di una ricevuta già uscita (stampata o partita) il cui incasso è stato annullato, l'amministratore
      * dice che alla persona non serve dirlo. Scrive una riga nel registro, di canale `nessuno`, con chi e quando; la ricevuta esce dall'avviso
-     * delle annullate da comunicare e la riga resta fra le emissioni dell'incasso. Una seconda volta non scrive un'altra riga.
+     * delle annullate da comunicare e la riga resta fra le emissioni dell'incasso. Una seconda volta non scrive un'altra riga. Lo stesso per un
+     * incasso di cui era uscito solo l'avviso di compensazione: la riga è del tipo dell'avviso, e lo decide l'amministratore caso per caso.
      *
      * @return array{segnata: bool}
      */
@@ -958,16 +891,18 @@ class EmissioneRicevute
         }
         $sue = fn () => RegistroInvio::where('documentabile_type', ScritturaContabile::class)
             ->where('documentabile_id', $incasso->id)
-            ->where('tipo', RegistroInvio::TIPO_RICEVUTA);
-        $uscita = $sue()->whereIn('stato', RegistroInvio::STATI_USCITI)->orderBy('id')->first();
+            ->whereIn('tipo', [RegistroInvio::TIPO_RICEVUTA, RegistroInvio::TIPO_AVVISO_COMPENSAZIONE]);
+        // La ricevuta uscita; senza, l'avviso di compensazione uscito: anche quello diceva un fatto che con l'annullamento non è più vero.
+        $uscita = $sue()->where('tipo', RegistroInvio::TIPO_RICEVUTA)->whereIn('stato', RegistroInvio::STATI_USCITI)->orderBy('id')->first()
+            ?? $sue()->where('tipo', RegistroInvio::TIPO_AVVISO_COMPENSAZIONE)->whereIn('stato', RegistroInvio::STATI_USCITI)->orderBy('id')->first();
         if ($uscita === null) {
-            throw new RicevutaNonEmettibileException('Questa ricevuta non è mai uscita: non c\'è niente da comunicare.');
+            throw new RicevutaNonEmettibileException('Per questo incasso non è uscita né una ricevuta né un avviso di compensazione: non c\'è niente da comunicare.');
         }
         if (! $sue()->where('stato', RegistroInvio::STATO_NON_DA_COMUNICARE)->exists()) {
             RegistroInvio::create([
                 'condominio_id'      => $incasso->condominio_id,
                 'anagrafica_id'      => $uscita->anagrafica_id,
-                'tipo'               => RegistroInvio::TIPO_RICEVUTA,
+                'tipo'               => $uscita->tipo,
                 'canale'             => RegistroInvio::CANALE_NESSUNO,
                 'documentabile_type' => ScritturaContabile::class,
                 'documentabile_id'   => $incasso->id,
@@ -1404,22 +1339,10 @@ class EmissioneRicevute
             'quote'           => isset($unita[$r['id']]) ? [['unita' => $unita[$r['id']]]] : [],
         ]);
 
-        $parti = [];
-        $corrente = [];
-        foreach (self::gruppiPerBusta($leggere, $ordine) as $gruppo) {
-            foreach (array_chunk($gruppo->pluck('incasso_id')->all(), self::TETTO_PDF) as $pezzo) {
-                if ($corrente !== [] && count($corrente) + count($pezzo) > self::TETTO_PDF) {
-                    $parti[] = $corrente;
-                    $corrente = [];
-                }
-                $corrente = array_merge($corrente, $pezzo);
-            }
-        }
-        if ($corrente !== []) {
-            $parti[] = $corrente;
-        }
-
-        return $parti;
+        return InviiPerPersona::partiPerPersone(
+            array_map(fn ($gruppo) => $gruppo->pluck('incasso_id')->all(), self::gruppiPerBusta($leggere, $ordine)),
+            self::TETTO_PDF,
+        );
     }
 
     /**
@@ -1469,30 +1392,18 @@ class EmissioneRicevute
      */
     private static function dentroIlTetto(array $gruppi): array
     {
-        $tetto = self::tettoMessaggi();
-        if ($tetto === null) {
-            return [$gruppi, null];
+        [$dentro, $fuori] = InviiPerPersona::dentroIlTetto($gruppi, self::tettoMessaggi(), fn (array $g) => self::messaggiDi($g));
+        if ($fuori === null) {
+            return [$dentro, null];
         }
+        $incassi = array_values(array_unique(array_merge(...array_map(fn ($r) => array_column($r['voci'], 'id'), $fuori))));
 
-        $dentro = [];
-        $contati = 0;
-        foreach ($gruppi as $i => $g) {
-            if ($dentro !== [] && $contati + self::messaggiDi($g) > $tetto) {
-                $fuori = array_slice($gruppi, $i);
-                $incassi = array_values(array_unique(array_merge(...array_map(fn ($r) => array_column($r['voci'], 'id'), $fuori))));
-
-                return [$dentro, [
-                    'persone'  => array_map(fn ($r) => (int) $r['persona']->id, $fuori),
-                    'incassi'  => $incassi,
-                    'ricevute' => count($incassi),
-                    'messaggi' => array_sum(array_map(fn ($r) => self::messaggiDi($r), $fuori)),
-                ]];
-            }
-            $dentro[] = $g;
-            $contati += self::messaggiDi($g);
-        }
-
-        return [$dentro, null];
+        return [$dentro, [
+            'persone'  => array_map(fn ($r) => (int) $r['persona']->id, $fuori),
+            'incassi'  => $incassi,
+            'ricevute' => count($incassi),
+            'messaggi' => array_sum(array_map(fn ($r) => self::messaggiDi($r), $fuori)),
+        ]];
     }
 
     /** Il server di posta c'è? Con il trasporto `log` no: il messaggio non parte. È la regola di `LogSentMessage`. */

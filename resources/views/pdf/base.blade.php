@@ -37,6 +37,9 @@
     <sethtmlpageheader name="KondoHeader" page="O" value="on" show-this-page="1" />
     @endif
 
+    {{-- Il giorno dell'emissione è quello dell'amministratore, non quello del server: fra le 00:00 e le 02:00 di Roma il server (UTC) è
+         ancora a ieri. Una stampa che passa la sua data (`data_emissione_stampe`) tiene la sua. --}}
+    @php($giornoDelPiede = ($data_emissione_stampe ?? \Illuminate\Support\Carbon::parse(\App\Helpers\DateHelper::oggiUtente()))->format('d/m/Y'))
     <htmlpagefooter name="KondoFooter">
         @if(!empty($piede_compatto ?? null))
             {{-- Beta.27: le stampe del riparto chiedono un piede che stia nel margine. mPDF ancora il
@@ -49,7 +52,7 @@
                     <tr>
                         <td style="text-align: left; width: 75%; padding: 0;">
                             @if(empty($piede_senza_data ?? null))
-                                <span style="color: #555;">Documento emesso il {{ ($data_emissione_stampe ?? now())->format('d/m/Y') }}</span>
+                                <span style="color: #555;">Documento emesso il {{ $giornoDelPiede }}</span>
                             @endif
                             @if(!empty($nota_legale_stampe))
                                 @if(empty($piede_senza_data ?? null))<br>@endif{!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}
@@ -68,7 +71,7 @@
                 <tr>
                     <td style="text-align: left; width: 75%;">
                         @if(empty($piede_senza_data ?? null))
-                            <span style="color: #555;">Documento emesso il {{ ($data_emissione_stampe ?? now())->format('d/m/Y') }}</span>
+                            <span style="color: #555;">Documento emesso il {{ $giornoDelPiede }}</span>
                         @endif
                         @if(!empty($nota_legale_stampe))
                             @if(empty($piede_senza_data ?? null))<br>@endif{!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}

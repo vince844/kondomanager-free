@@ -4,7 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import NavSezione from '@/components/NavSezione.vue';
 import { usePermission } from "@/composables/permissions";
-import { LogIn, LogOut, Wallet, Repeat2, FileText, BookOpen, Percent, Scale } from 'lucide-vue-next';
+import { LogIn, LogOut, Wallet, Repeat2, FileText, BookOpen, Percent, Scale, CalendarClock } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -14,23 +14,34 @@ const condominio = computed(() => page.props.condominio);
 const esercizio = computed(() => page.props.esercizio);
 const { generatePath } = usePermission();
 
-const topbarNavItems: (LinkItem & { badge?: string })[] = [
+// Su una riga, con le icone: tre voci hanno il nome corto nella riga (`breve`) e il nome intero della pagina al passaggio del mouse e nella tendina.
+const topbarNavItems: (LinkItem & { badge?: string; breve?: string })[] = [
     {
         type:  'link',
         icon:  LogIn,
         title: 'Incassi rate',
+        breve: 'Incassi',
         href:  generatePath('gestionale/:condominio/movimenti-rate', { condominio: condominio.value.id }),
+    },
+    {
+        type:  'link',
+        icon:  CalendarClock,
+        // Le persone con rate scadute, accanto agli incassi: chi deve ancora pagare, e da quanto.
+        title: 'Rate scadute',
+        href:  generatePath('gestionale/:condominio/rate-scadute', { condominio: condominio.value.id }),
     },
     {
         type:  'link',
         icon:  FileText,
         title: 'Fatture passive',
+        breve: 'Fatture',
         href:  generatePath('gestionale/:condominio/fatture', { condominio: condominio.value.id }),
     },
     {
         type:  'link',
         icon:  LogOut,
         title: 'Pagamenti fornitori',
+        breve: 'Pagamenti',
         href:   generatePath('gestionale/:condominio/pagamenti-fornitori', { condominio: condominio.value.id }),
     },
     {
@@ -99,7 +110,7 @@ const currentPath = window.location.pathname;
 
 <template>
     <div class="">
-        <NavSezione :items="topbarNavItems" class="mb-4" />
+        <NavSezione :items="topbarNavItems" una-riga class="mb-4" />
 
         <!-- Main content -->
         <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">

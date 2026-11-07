@@ -432,7 +432,9 @@ test('Azioni suggerite: senza un esercizio aperto «Emetti Nuove Rate» apre l\'
         ->and(indirizzoDellAzione($azioni[0]))->toEndWith("/gestionale/{$this->condominio->id}/esercizi");
 });
 
-test('Azioni suggerite: la riga sugli incassi apre l\'elenco degli incassi e non promette promemoria che il programma non invia', function () {
+// Dalla 1.12.0-beta.4 la riga porta all'elenco delle rate scadute, e il nome non promette un sollecito: prima portava agli incassi con
+// «Verifica o Sollecita Incassi», un nome che prometteva ciò che la pagina non faceva (la pagina del sito sulla Tesoreria si allinea).
+test('Azioni suggerite: la riga sugli incassi apre l\'elenco delle rate scadute e non promette solleciti né promemoria', function () {
     assegnaLiquidita($this->condominio->id, $this->contoLiquiditaId, 50000, $this->gestioneId);
     creaRata($this->pianoRateId, 100000, 0, 'emessa', now()->addDays(2));
     creaFattura($this->condominio->id, $this->fornitoreId, $this->esercizioId, 100000, 0, 'aperta', 'approvata', now()->addDays(5));
@@ -441,8 +443,7 @@ test('Azioni suggerite: la riga sugli incassi apre l\'elenco degli incassi e non
 
     expect($azioni)->toHaveCount(1)
         ->and($azioni[0]['tipo'])->toBe('sollecito')
-        ->and(indirizzoDellAzione($azioni[0]))->toEndWith("/gestionale/{$this->condominio->id}/movimenti-rate")
-        // Nel programma non esiste nessun promemoria ai ritardatari: la descrizione non lo promette.
-        // (L'etichetta «Verifica o Sollecita Incassi» resta, la cita la pagina del sito sulla Tesoreria.)
-        ->and($azioni[0]['descrizione'])->not->toMatch('/promemoria|ritardatar/i');
+        ->and(indirizzoDellAzione($azioni[0]))->toEndWith("/gestionale/{$this->condominio->id}/rate-scadute")
+        ->and($azioni[0]['label'])->toBe('Vedi le rate scadute')
+        ->and($azioni[0]['label'] . ' ' . $azioni[0]['descrizione'])->not->toMatch('/sollecit|promemoria|ritardatar/i');
 });

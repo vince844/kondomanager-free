@@ -14,7 +14,7 @@
         &nbsp;|&nbsp;
         (dal {{ $esercizio->data_inizio->format('d/m/Y') }} al {{ $esercizio->data_fine->format('d/m/Y') }})
         &nbsp;|&nbsp;
-        Stampato il <strong>{{ now()->format('d/m/Y H:i') }}</strong>
+        Stampato il <strong>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y H:i') }}</strong>
     </div>
 </div>
 

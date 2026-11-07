@@ -24,6 +24,10 @@ namespace App\Traits;
  * annidamento del Libro Giornale). Finché non esiste una misura propria di un template, il tetto
  * corretto è quello già misurato, non uno inventato per ottimismo — è esattamente il difetto che
  * questa formula esiste per evitare.
+ *
+ * La stampa dell'elenco delle rate scadute ha la sua misura (la base e il costo per persona sono
+ * scritti in `RateScaduteController`): con la misura del Libro Giornale moriva a 300 persone con
+ * 128M, dieci volte prima del tetto.
  */
 trait PdfRigheStampabili
 {
@@ -40,9 +44,12 @@ trait PdfRigheStampabili
      * to set memory limit to 134217728 bytes, current usage is 210763776»). Il calcolo non ha
      * bisogno dello stato del processo: gli basta la stringa.
      *
+     * Una stampa con una misura propria passa la sua base e il suo costo per riga (la stampa dell'elenco delle rate scadute,
+     * `RateScaduteController::personeStampabiliCon()`); le altre restano sulla misura del Libro Giornale, con il minimo simbolico.
+     *
      * @param string|false $limite il valore grezzo di `memory_limit` ('128M', '1G', '-1', …)
      */
-    private static function righeStampabiliCon($limite): int
+    private static function righeStampabiliCon($limite, float $baseMb = 78, float $mbPerRiga = 0.0105, int $minimo = 200): int
     {
         // '-1' = nessun limite (tipico da riga di comando): nessun tetto da applicare.
         if ($limite === false || (int) $limite === -1) {
@@ -57,10 +64,10 @@ trait PdfRigheStampabili
             default => $unita === 'M' ? $valore : $valore / 1048576,
         };
 
-        $disponibiliMb = ($mb * 0.85) - 78;
+        $disponibiliMb = ($mb * 0.85) - $baseMb;
 
         // Sotto la base non si stampa comunque nulla: si lascia un minimo simbolico, così
         // l'errore che l'amministratore riceve resta questo messaggio e non un fatale.
-        return max(200, (int) ($disponibiliMb / 0.0105));
+        return max($minimo, (int) ($disponibiliMb / $mbPerRiga));
     }
 }

@@ -832,7 +832,7 @@ const pageGuides = [
   },
   {
     title: 'Stato Incassi',
-    description: 'Monitora costantemente il saldo netto. Le rate emesse si incassano da «Incassi rate», nei movimenti.',
+    description: 'Monitora costantemente il saldo netto. Le rate emesse si incassano da «Incassi», nei movimenti.',
     icon: PieChart,
     colorVariant: 'amber' as const,
     // La voce del menu dei movimenti dove si registrano gli incassi delle rate (Coda 464): la Prima nota ha solo l'elenco e la stampa.

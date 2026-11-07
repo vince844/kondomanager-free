@@ -377,6 +377,20 @@ describe('gli avvisi della pagina', () => {
         expect(pulsante('Stampa o invia')).toBeDefined();
     });
 
+    test('un incasso annullato dopo il solo avviso di compensazione si dice «avviso»: niente da ristampare, e «Non serve comunicarla» c\'è', async () => {
+        await monta({ annullate_da_comunicare: [{ id: 6, numero: 'INC-2026-00006', data: '2026-09-03', documento: 'avviso' }] });
+
+        expect(testo()).toContain('N. INC-2026-00006 del 03/09/2026: avviso di compensazione');
+        expect(testo()).toContain('Annullati dopo l\'avviso di compensazione: l\'avviso diceva alla persona che il suo credito aveva coperto una rata, e con l\'annullamento non è più vero.');
+        expect(testo()).not.toContain('Annullate dopo l\'uscita della ricevuta');
+        expect(pulsante('Stampa o invia')).toBeUndefined();
+        axiosPost.mockResolvedValueOnce({ data: { segnata: true } });
+        await clic('Non serve comunicarla');
+        await clic('Segna');
+        expect(percorsi.at(-1)).toEqual({ nome: 'gestionale.ricevute.non-serve-comunicarla', parametri: { condominio: 3, scrittura: 6 } });
+        expect(testo()).toContain('Segnata: alla persona non serve comunicare l\'annullamento. L\'avviso resta nel registro dell\'incasso.');
+    });
+
     test('«Non serve comunicarla» chiede una conferma con il numero, poi scrive la scelta dell\'amministratore per quella ricevuta e ricarica l\'avviso', async () => {
         const { router } = await import('@inertiajs/vue3');
         await monta({ annullate_da_comunicare: [{ id: 4, numero: 'INC-2026-00004', data: '2026-09-01' }, { id: 5, numero: 'INC-2026-00005', data: '2026-09-02' }] });

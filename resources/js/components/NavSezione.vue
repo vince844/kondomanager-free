@@ -19,6 +19,12 @@
  * contenitore `hidden md:flex` — così le due si leggono come la stessa cosa invece che come due
  * invenzioni diverse. Chiusa occupa una riga e dice comunque **dove sei**, perché porta il nome
  * della sezione corrente.
+ *
+ * ## Su una riga (`unaRiga`)
+ *
+ * Il menu dei Movimenti ha nove voci con le icone: andando a capo occupava due righe. Con `unaRiga`, da `md` in su la barra non va a capo e, se
+ * non ci sta, scorre di lato; le voci hanno meno spazio fra loro, e una voce può avere un nome corto (`breve`) per la riga, con il nome intero al
+ * passaggio del mouse e nella tendina. Le altre barre non usano l'opzione e restano come sono.
  */
 import { computed, ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
@@ -34,6 +40,8 @@ export interface VoceSezione {
     badge?: string;
     /** Una voce senza destinazione: si mostra, non si clicca. Nei movimenti è `href: '#'`. */
     disabled?: boolean;
+    /** Il nome corto nella riga, da `md` in su: il nome intero (`title`) resta nella tendina e al passaggio del mouse. */
+    breve?: string;
     /**
      * Si accende **solo** sul percorso esatto. Serve alla voce di base di una scheda — «Fornitore»
      * sta a `/fornitori/5` e le sue sorelle a `/fornitori/5/documenti`: con il confronto per
@@ -50,6 +58,8 @@ const props = defineProps<{
      * una per una sarebbe stato ripetere cinque volte la stessa cosa.
      */
     esatte?: boolean;
+    /** Da `md` in su una riga che non va a capo: se le voci non ci stanno, scorre di lato. */
+    unaRiga?: boolean;
 }>();
 
 const aperta = ref(false);
@@ -90,7 +100,8 @@ const sezioneCorrente = computed(() => props.items.find(attiva) ?? props.items[0
 
         <nav
             :class="[
-                'flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-2 w-full md:w-fit max-w-full shadow ring-1 ring-black/5 md:rounded-lg p-2',
+                'flex-col md:flex-row items-stretch md:items-center w-full md:w-fit max-w-full shadow ring-1 ring-black/5 md:rounded-lg p-2',
+                unaRiga ? 'gap-2 md:gap-1 md:flex-nowrap md:overflow-x-auto' : 'md:flex-wrap gap-2',
                 aperta ? 'flex' : 'hidden md:flex',
             ]"
         >
@@ -98,13 +109,18 @@ const sezioneCorrente = computed(() => props.items.find(attiva) ?? props.items[0
                 v-for="voce in items"
                 :key="voce.title"
                 variant="ghost"
-                :class="['justify-start', { 'bg-muted': attiva(voce) }]"
+                :class="['justify-start', { 'bg-muted': attiva(voce), 'md:shrink-0 md:px-2 md:has-[>svg]:px-2': unaRiga }]"
                 :disabled="voce.disabled || voce.href === '#'"
                 as-child
             >
-                <Link :href="voce.href">
-                    <component v-if="voce.icon" :is="voce.icon" class="mr-1 h-4 w-4" />
-                    {{ voce.title }}
+                <Link :href="voce.href" :title="voce.breve ? voce.title : undefined">
+                    <!-- Su una riga l'icona sta alla distanza del pulsante (`gap-2`), senza il margine in più. -->
+                    <component v-if="voce.icon" :is="voce.icon" :class="['h-4 w-4', { 'mr-1': !unaRiga }]" />
+                    <template v-if="voce.breve">
+                        <span class="md:hidden">{{ voce.title }}</span>
+                        <span class="hidden md:inline">{{ voce.breve }}</span>
+                    </template>
+                    <template v-else>{{ voce.title }}</template>
                     <Badge
                         v-if="voce.badge"
                         class="ml-2 text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 rounded-md border-blue-200 hover:bg-blue-100"

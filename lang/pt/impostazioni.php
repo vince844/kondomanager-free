@@ -157,7 +157,7 @@ return [
         'cron_settings_title' => 'Automação cloud (Cron externo)',
         'cron_settings_description' => 'Utilize esta função se o seu alojamento não suporta cron jobs a cada minuto. Serviços suportados: cron-job.org',
         'mail_settings_title' => 'Configuração de email',
-        'mail_settings_description' => 'Configure o método de envio para recibos, avisos e comunicações oficiais aos condóminos.',
+        'mail_settings_description' => 'Configure o método de envio para recibos, avisos e comunicações aos condóminos.',
         'backups_settings_description' => 'Crie, descarregue e faça a gestão dos backups completos da aplicação: base de dados, documentos e configuração.',
     ],
 

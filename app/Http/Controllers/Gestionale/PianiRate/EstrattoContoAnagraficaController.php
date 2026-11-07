@@ -63,7 +63,34 @@ class EstrattoContoAnagraficaController extends Controller
             'solidarieta' => app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica),
             // Coda 167, beta.40: i versamenti fatti per il debito di un altro — un riquadro, non righe del libro.
             'versamenti_per_altri' => app(\App\Services\Gestionale\VersamentiPerContoDiAltri::class)->per($condominio, $anagrafica),
+            // 1.12.0-beta.4: le lettere e le comunicazioni a questa persona in questo condominio, con il residuo di oggi delle stesse rate.
+            'lettere' => app(\App\Services\Gestionale\Lettere\RegistroLettere::class)->perPersona($condominio, $anagrafica),
+            // Il giorno dell'amministratore, per le date della spedizione (non dopo oggi).
+            'oggi' => \App\Helpers\DateHelper::oggiUtente(),
+            // Gli accordi di rientro della persona in questo condominio, anche chiusi o riusciti, con il segno e i versati oltre il capitale.
+            'accordi_rientro' => $this->accordiRientro($condominio, $anagrafica),
         ]);
+    }
+
+    /**
+     * Gli accordi di rientro della persona, dal più recente, con le cifre di oggi: il segno, «fino al» passato, la parte versata oltre il
+     * capitale riconosciuto (che è un credito della persona). Ci sono anche quando la persona non ha più rate scadute e non è nell'elenco.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function accordiRientro(Condominio $condominio, Anagrafica $anagrafica): array
+    {
+        $accordi = \App\Models\Gestionale\AccordoRientro::with('rate')->where('condominio_id', $condominio->id)->where('anagrafica_id', $anagrafica->id)
+            ->orderByDesc('data_accordo')->orderByDesc('id')->get();
+        if ($accordi->isEmpty()) {
+            return [];
+        }
+        $oggi = \App\Helpers\DateHelper::oggiUtente();
+        $lettura = app(\App\Services\Gestionale\Debiti\LetturaDebiti::class)->perPersona((int) $condominio->id, (int) $anagrafica->id)['rate'];
+        $inCorso = $accordi->keyBy('id');
+
+        return array_map(fn (array $a) => $a + ['in_corso' => $inCorso[$a['id']]->inCorsoIl($oggi)],
+            app(\App\Services\Gestionale\Debiti\AccordiRientro::class)->segni($accordi, $lettura, $oggi)['accordi']);
     }
 
     /**

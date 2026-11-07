@@ -10,7 +10,8 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
  * L'errore del server di posta come lo legge chi lavora (decisione 204). L'errore che il server dà può dire l'utente della posta o l'indirizzo
  * del server (un errore di autenticazione, di connessione): lo vede intero solo chi gestisce le impostazioni generali, come il registro delle
  * email. Tutti gli altri leggono una frase semplice, con il codice quando il server lo dà. Le frasi che scrive il programma stesso (senza
- * server di posta, incasso annullato prima dell'invio) si leggono come sono.
+ * server di posta, incasso annullato prima dell'invio, il debito di una lettera cambiato prima dell'invio) si leggono come sono: ogni frase
+ * nuova del programma che può finire nella colonna dell'errore va nell'elenco qui sotto, altrimenti si leggerebbe come un rifiuto del server.
  *
  * Il registro degli invii tiene l'errore intero: la frase si fa quando lo si mostra.
  */
@@ -31,6 +32,11 @@ class ErroreDiPosta
             EmissioneRicevute::SENZA_SERVER_POSTA,
             EmissioneRicevute::NON_PARTITO_SENZA_SERVER,
             RicevutaIncassoNotification::ANNULLATO_PRIMA_DELL_INVIO,
+            // Le lettere: il debito cambiato fra l'accodamento e la partenza, e il server di posta che non c'è.
+            \App\Notifications\Gestionale\LetteraNotification::CAMBIATO_PRIMA_DELL_INVIO,
+            \App\Services\Gestionale\Lettere\EmissioneLettere::SENZA_SERVER_POSTA,
+            // L'avviso di compensazione il cui incasso è stato annullato fra l'accodamento e la partenza.
+            \App\Notifications\Gestionale\AvvisoCompensazioneNotification::ANNULLATO_PRIMA_DELL_INVIO,
         ];
     }
 

@@ -31,6 +31,15 @@ class ImpostazioniStampeController extends Controller
             // Il limite lo decide il server, non noi: il testo d'aiuto scriveva «max 2MB» a mano in
             // quattro lingue, e su uno spazio web che ne accetta uno prometteva il doppio.
             'limiteFirma'        => \App\Support\LimiteCaricamento::etichetta(2.0),
+            // Lo studio che scrive le lettere ai condòmini.
+            'studio'             => [
+                'nome'      => (string) $settings->studio_nome,
+                'indirizzo' => (string) $settings->studio_indirizzo,
+                'email'     => (string) $settings->studio_email,
+                'pec'       => (string) $settings->studio_pec,
+                'telefono'  => (string) $settings->studio_telefono,
+                'comune'    => (string) $settings->studio_comune,
+            ],
         ]);
     }
 
@@ -45,6 +54,13 @@ class ImpostazioniStampeController extends Controller
             $validated = $request->validated();
 
             $settings->nota_legale_stampe = $validated['nota_legale_stampe'] ?? null;
+            // Un campo che la richiesta non porta resta com'era: la pagina li manda tutti, ma una richiesta di prima di questi campi no.
+            foreach (['studio_nome', 'studio_indirizzo', 'studio_email', 'studio_pec', 'studio_telefono', 'studio_comune'] as $campo) {
+                if ($request->has($campo)) {
+                    $valore = trim((string) ($validated[$campo] ?? ''));
+                    $settings->{$campo} = $valore === '' ? null : $valore;
+                }
+            }
             
             $archivio = app(ArchivioDocumenti::class);
 

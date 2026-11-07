@@ -147,6 +147,18 @@ Route::prefix('/gestionale/{condominio}')
     Route::post('saldi/{saldo}/sblocca', [SaldoInizialeController::class, 'sblocca'])
         ->name('saldi.sblocca');
 
+    // 1.12.0-beta.4: «Dichiara l'origine» del pregresso, su uno o più saldi; non tocca l'importo, quindi vale anche per un saldo fermo in un
+    // piano emesso. I saldi arrivano nella richiesta: che siano di questo condominio lo controlla il controller (404).
+    Route::post('saldi/origine', \App\Http\Controllers\Gestionale\Saldi\DichiaraOrigineSaldiController::class)
+        ->name('saldi.origine');
+
+    // 1.12.0-beta.4: la dispensa dell'assemblea dall'agire entro sei mesi (art. 1129 c. 9): l'elenco, la registrazione, la revoca, il verbale.
+    // `{dispensa}` arriva grezzo: che sia di questo condominio lo controlla il controller (404).
+    Route::get('dispense-sei-mesi', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'index'])->name('dispense.index');
+    Route::post('dispense-sei-mesi', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'store'])->name('dispense.store');
+    Route::post('dispense-sei-mesi/{dispensa}/revoca', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'revoca'])->name('dispense.revoca');
+    Route::get('dispense-sei-mesi/{dispensa}/verbale', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'verbale'])->name('dispense.verbale');
+
     // Già versato per voce di spesa: alimenta il netting del riparto (beta.26).
     Route::get('contributi', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'index'])
         ->name('contributi.index');
@@ -455,6 +467,50 @@ Route::prefix('/gestionale/{condominio}')
     Route::post('ricevute/invii/{invio}/di-nuovo', [RicevuteIncassiController::class, 'inviaDiNuovo'])->name('ricevute.invia-di-nuovo');
     // «Non serve comunicarla»: l'avviso delle annullate da comunicare per questa ricevuta si spegne (decisione 205).
     Route::post('ricevute/{scrittura}/non-serve-comunicarla', [RicevuteIncassiController::class, 'nonServeComunicarla'])->name('ricevute.non-serve-comunicarla');
+
+    // 1.12.0-beta.4: gli avvisi di compensazione, dalla sezione «Compensazioni senza avviso» della pagina delle ricevute: la stampa (un POST: scrive il
+    // registro) e l'invio per email. Le compensazioni arrivano nella richiesta: che siano di questo condominio lo controlla il servizio (404).
+    Route::post('compensazioni/avvisi/stampa', [\App\Http\Controllers\Gestionale\Movimenti\AvvisiCompensazioneController::class, 'stampa'])->name('ricevute.avvisi-compensazione.stampa');
+    Route::post('compensazioni/avvisi/invia', [\App\Http\Controllers\Gestionale\Movimenti\AvvisiCompensazioneController::class, 'invia'])->name('ricevute.avvisi-compensazione.invia');
+
+    // 1.12.0-beta.4: le rate scadute, una riga per persona, con i filtri nell'indirizzo; la vista «In scadenza nei prossimi N giorni»; la
+    // stampa dell'elenco (un GET: non scrive niente). Solo nel pannello, mai fra le rotte del portale.
+    Route::get('rate-scadute', [\App\Http\Controllers\Gestionale\Movimenti\RateScaduteController::class, 'index'])->name('rate-scadute.index');
+    Route::get('rate-scadute/stampa', [\App\Http\Controllers\Gestionale\Movimenti\RateScaduteController::class, 'stampa'])->name('rate-scadute.stampa');
+
+    // 1.12.0-beta.4: l'accordo di rientro di una persona, dalla riga delle rate scadute: gli accordi e le rate che un accordo può coprire, la
+    // registrazione, l'autorizzazione dell'assemblea arrivata dopo, la chiusura, la scansione firmata. `{accordo}` arriva grezzo: che sia di
+    // questo condominio lo controlla il controller (404).
+    Route::get('accordi-rientro', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'index'])->name('accordi-rientro.index');
+    Route::post('accordi-rientro', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'store'])->name('accordi-rientro.store');
+    Route::post('accordi-rientro/{accordo}/autorizza', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'autorizza'])->name('accordi-rientro.autorizza');
+    Route::post('accordi-rientro/{accordo}/chiudi', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'chiudi'])->name('accordi-rientro.chiudi');
+    Route::get('accordi-rientro/{accordo}/documento', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'documento'])->name('accordi-rientro.documento');
+
+    // 1.12.0-beta.4: le lettere ai condòmini (promemoria, sollecito, diffida, messa in mora) dalle rate scadute e dall'estratto conto. Il PDF si
+    // chiede con un POST (la stampa scrive il registro); un GET sugli stessi indirizzi riporta alle rate scadute con una frase. `{invio}` e
+    // `{documento}` arrivano grezzi: che siano di questo condominio e di una lettera lo controlla il controller (404).
+    Route::get('lettere/opzioni', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'opzioni'])->name('lettere.opzioni');
+    Route::post('lettere/anteprima', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'anteprima'])->name('lettere.anteprima');
+    Route::get('lettere/stampa', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'riapriPdf'])->name('lettere.stampa.riapri');
+    Route::get('lettere/pdf-anteprima', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'riapriPdf'])->name('lettere.pdf-anteprima.riapri');
+    Route::get('lettere/pdf-per-persona', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'riapriPdf'])->name('lettere.pdf-per-persona.riapri');
+    Route::post('lettere/stampa', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'stampa'])->name('lettere.stampa');
+    Route::post('lettere/pdf-anteprima', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'anteprimaPdf'])->name('lettere.pdf-anteprima');
+    Route::post('lettere/pdf-per-persona', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'pdfPerPersona'])->name('lettere.pdf-per-persona');
+    Route::post('lettere/invia', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'invia'])->name('lettere.invia');
+    Route::post('lettere/prova', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'prova'])->name('lettere.prova');
+    Route::post('lettere/riprova', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'riprova'])->name('lettere.riprova');
+    // «Salva come modello…» e «Aggiorna» dalla finestra. `{modello}` arriva grezzo: che sia di questo condominio, o per tutti, lo controlla il controller (404).
+    Route::post('lettere/modelli', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'salvaModello'])->name('lettere.modelli.store');
+    Route::put('lettere/modelli/{modello}', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'aggiornaModello'])->name('lettere.modelli.update');
+    Route::post('lettere/spedizione', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'spedizione'])->name('lettere.spedizione');
+    Route::post('lettere/invii/{invio}/di-nuovo', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'inviaDiNuovo'])->name('lettere.invia-di-nuovo');
+    Route::post('lettere/invii/{invio}/spedizione', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'correggiSpedizione'])->name('lettere.spedizione.correggi');
+    Route::get('lettere/invii/{invio}/pdf', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'pdfConservato'])->name('lettere.pdf');
+    Route::post('lettere/invii/{invio}/prove', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'allegaProva'])->name('lettere.prove.store');
+    Route::get('lettere/invii/{invio}/prove/{documento}', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'scaricaProva'])->name('lettere.prove.scarica');
+    Route::delete('lettere/invii/{invio}/prove/{documento}', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'togliProva'])->name('lettere.prove.togli');
 
     // La conferma della card «Crediti da riallineare» della pagina «Incassi rate» (decisioni 75.1 e 76.1).
     Route::post('/riallinea-crediti', RiallineaCreditiController::class)

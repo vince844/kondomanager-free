@@ -109,11 +109,28 @@ class RicevuteIncassiController extends Controller
             'tetto'            => EmissioneRicevute::TETTO_PDF,
             'senza_server_posta' => EmissioneRicevute::senzaServerPosta(),
             // Le ricevute, non le righe: una ricevuta mandata a due indirizzi è una.
-            'in_coda_da_tempo' => RegistroInvio::where('condominio_id', $condominio->id)->where('stato', RegistroInvio::STATO_IN_CODA)
-                ->where('emesso_il', '<', now()->subHour())->distinct()->count('documentabile_id'),
+            // Solo le ricevute: il registro porta anche le lettere, e un sollecito in coda non è «una ricevuta in coda».
+            'in_coda_da_tempo' => RegistroInvio::where('condominio_id', $condominio->id)->where('tipo', RegistroInvio::TIPO_RICEVUTA)
+                ->where('stato', RegistroInvio::STATO_IN_CODA)->where('emesso_il', '<', now()->subHour())->distinct()->count('documentabile_id'),
             'non_partite'      => $this->emissione->daRiprovare($condominio)->count(),
             'annullate_da_comunicare' => $this->annullateDaComunicare($condominio),
+            // Le compensazioni del periodo e della gestione dei filtri: il credito ha coperto le rate di una persona che non riceve la ricevuta
+            // di quell'incasso. Quante sono ancora senza avviso.
+            'compensazioni'    => $this->compensazioni($condominio, $filtri),
         ]);
+    }
+
+    /** @return array{righe: array<int, array<string, mixed>>, senza_avviso: int, frase_bollo: string, bollo_ricordato: ?string} */
+    private function compensazioni(Condominio $condominio, array $filtri): array
+    {
+        $righe = app(\App\Services\Gestionale\Ricevute\AvvisiCompensazione::class)->righe($condominio, [
+            'data_da' => $filtri['data_da'] ?? null, 'data_a' => $filtri['data_a'] ?? null, 'gestione_id' => $filtri['gestione_id'] ?? null,
+        ]);
+
+        return ['righe' => $righe->all(), 'senza_avviso' => $righe->where('avvisata', false)->count(),
+            'frase_bollo' => \App\Services\Gestionale\Ricevute\AvvisiCompensazione::FRASE_BOLLO,
+            // Lo stato del bollo dell'ultimo avviso di chi lavora in questo condominio, come la ricevuta: la sua ultima scelta, da cambiare.
+            'bollo_ricordato' => \App\Services\Gestionale\Ricevute\AvvisiCompensazione::bolloRicordato($condominio, request()->user())];
     }
 
     /**
@@ -439,33 +456,40 @@ class RicevuteIncassiController extends Controller
 
     /**
      * Gli incassi annullati la cui ricevuta era già stata stampata o inviata, e che dopo l'annullamento non è uscita di nuovo, per stampa o per
-     * email: la persona ha in mano la ricevuta di un versamento che non risulta più. Non ci sono quelli per cui l'amministratore ha detto che non
-     * serve comunicarlo.
+     * email: la persona ha in mano la ricevuta di un versamento che non risulta più. E quelli per cui era uscito solo l'avviso di compensazione
+     * (`documento` = «avviso»): l'avviso diceva che il credito ha coperto una rata, e annullato l'incasso non è più vero; il programma non lo
+     * rifà, e se e come dirlo lo decide l'amministratore. Non ci sono quelli per cui l'amministratore ha detto che non serve comunicarlo.
      *
      * @return array<int, array<string, mixed>>
      */
     private function annullateDaComunicare(Condominio $condominio): array
     {
+        $uscite = fn ($q, array $tipi) => $q->selectRaw('1')->from('registro_invii')
+            ->whereColumn('registro_invii.documentabile_id', 'scritture_contabili.id')
+            ->where('registro_invii.documentabile_type', ScritturaContabile::class)
+            ->whereIn('registro_invii.tipo', $tipi)
+            ->whereIn('registro_invii.stato', [RegistroInvio::STATO_STAMPATA, RegistroInvio::STATO_INVIATA]);
         $annullati = ScritturaContabile::where('condominio_id', $condominio->id)
             ->where('tipo_movimento', TipoMovimentoContabile::INCASSO_RATA->value)
             ->where('stato', 'annullata')
-            ->whereExists(fn ($q) => $q->selectRaw('1')->from('registro_invii')
-                ->whereColumn('registro_invii.documentabile_id', 'scritture_contabili.id')
-                ->where('registro_invii.documentabile_type', ScritturaContabile::class)
-                ->whereIn('registro_invii.stato', [RegistroInvio::STATO_STAMPATA, RegistroInvio::STATO_INVIATA]))
+            ->whereExists(fn ($q) => $uscite($q, [RegistroInvio::TIPO_RICEVUTA, RegistroInvio::TIPO_AVVISO_COMPENSAZIONE]))
+            ->addSelect(['ricevuta_uscita' => fn ($q) => $uscite($q, [RegistroInvio::TIPO_RICEVUTA])->limit(1)])
             ->get(['id', 'numero_protocollo', 'data_competenza', 'updated_at']);
 
         // Dopo l'annullamento la ricevuta è uscita di nuovo (stampata, o mandata per email: in coda o partita), o l'amministratore ha detto che non
-        // serve comunicarlo (in ogni momento: la riga resta): l'avviso si spegne.
+        // serve comunicarlo (in ogni momento: la riga resta): l'avviso si spegne. Un avviso di compensazione non esce di nuovo per un incasso
+        // annullato: si spegne solo con «Non serve comunicarla».
         return $annullati->filter(fn (ScritturaContabile $i) => ! RegistroInvio::where('documentabile_type', ScritturaContabile::class)
                 ->where('documentabile_id', $i->id)
-                ->where(fn ($q) => $q->where(fn ($uscita) => $uscita->whereIn('stato', RegistroInvio::STATI_EMESSI)->where('emesso_il', '>=', $i->updated_at))
+                ->where(fn ($q) => $q->where(fn ($uscita) => $uscita->where('tipo', RegistroInvio::TIPO_RICEVUTA)->whereIn('stato', RegistroInvio::STATI_EMESSI)
+                    ->where('emesso_il', '>=', $i->updated_at))
                     ->orWhere('stato', RegistroInvio::STATO_NON_DA_COMUNICARE))
                 ->exists())
             ->map(fn (ScritturaContabile $i) => [
-                'id'     => $i->id,
-                'numero' => $i->numero_protocollo,
-                'data'   => $i->data_competenza?->format('Y-m-d'),
+                'id'        => $i->id,
+                'numero'    => $i->numero_protocollo,
+                'data'      => $i->data_competenza?->format('Y-m-d'),
+                'documento' => $i->ricevuta_uscita !== null ? 'ricevuta' : 'avviso',
             ])
             ->values()->all();
     }

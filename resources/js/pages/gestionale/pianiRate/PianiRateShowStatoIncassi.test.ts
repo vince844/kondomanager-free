@@ -5,7 +5,8 @@
  *
  * Diceva che le rate emesse si incassano «dalla sezione Prima Nota o importando i movimenti bancari». La Prima nota ha solo l'elenco e la stampa
  * (`registroContabilita/List.vue`: nessuna azione che registri un incasso), e l'importazione dei movimenti bancari non esiste: nessuna rotta e nessuna
- * classe. Gli incassi delle rate si registrano da «Incassi rate», la prima voce del menu dei movimenti (`MovimentiLayout.vue`, rotta `movimenti-rate`).
+ * classe. Gli incassi delle rate si registrano da «Incassi», la prima voce del menu dei movimenti (`MovimentiLayout.vue`, rotta `movimenti-rate`; la pagina si
+ * chiama «Incassi rate», la voce del menu è corta).
  * Ora il riquadro lo dice, con un rimando che porta lì.
  *
  * La pagina è quella vera, con la cornice, la guida in testa e i riquadri: si stubbano le parti che non c'entrano (la cornice del gestionale, il
@@ -74,10 +75,10 @@ afterEach(() => {
 });
 
 describe('il riquadro «Stato Incassi» dice dove si incassano le rate (Coda 464)', () => {
-    test('dice che le rate emesse si incassano da «Incassi rate», nei movimenti', async () => {
+    test('dice che le rate emesse si incassano da «Incassi», la voce del menu dei movimenti', async () => {
         await monta('approvato');
 
-        expect(pulito(riquadro('Stato Incassi').find('p').text())).toBe('Monitora costantemente il saldo netto. Le rate emesse si incassano da «Incassi rate», nei movimenti.');
+        expect(pulito(riquadro('Stato Incassi').find('p').text())).toBe('Monitora costantemente il saldo netto. Le rate emesse si incassano da «Incassi», nei movimenti.');
     });
 
     test('non manda più alla Prima nota né a un\'importazione dei movimenti bancari, che non c\'è', async () => {
@@ -104,7 +105,7 @@ describe('il riquadro «Stato Incassi» dice dove si incassano le rate (Coda 464
     test('il riquadro è lo stesso con il piano in bozza: le rate si incasseranno da lì appena emesse', async () => {
         await monta('bozza');
 
-        expect(pulito(riquadro('Stato Incassi').find('p').text())).toContain('Le rate emesse si incassano da «Incassi rate», nei movimenti.');
+        expect(pulito(riquadro('Stato Incassi').find('p').text())).toContain('Le rate emesse si incassano da «Incassi», nei movimenti.');
         expect(riquadro('Stato Incassi').find('a').attributes('href')).toBe('/admin/gestionale/7/movimenti-rate');
     });
 

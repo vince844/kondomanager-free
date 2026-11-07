@@ -47,7 +47,14 @@ describe('una rata non emessa nel portale', () => {
         }
     });
 
-    test('la rata 0 non emessa resta «Debito Pregresso»', () => {
-        expect(getEventStyle(rata('2020-01-10T00:00:00Z', { is_emitted: false, numero_rata: 0 })).label).toBe('Debito Pregresso');
+    // Dalla 1.12.0-beta.4 la rata 0 non emessa dice anche lei «In attesa di emissione»: prima diceva «Debito Pregresso» di un importo che il
+    // programma non ha ancora chiesto. Emessa, resta in ambra con «Debito Pregresso».
+    test('la rata 0 non emessa dice «In attesa di emissione», non «Debito Pregresso»', () => {
+        expect(getEventStyle(rata('2020-01-10T00:00:00Z', { is_emitted: false, numero_rata: 0 })).label).toBe('In attesa di emissione');
+    });
+
+    test('la rata 0 emessa resta «Debito Pregresso», e un promemoria di prima senza `is_emitted` anche', () => {
+        expect(getEventStyle(rata('2020-01-10T00:00:00Z', { is_emitted: true, numero_rata: 0 })).label).toBe('Debito Pregresso');
+        expect(getEventStyle(rata('2020-01-10T00:00:00Z', { numero_rata: 0 })).label).toBe('Debito Pregresso');
     });
 });

@@ -155,9 +155,9 @@ function lcdProvaChiavi($test, $admin, int $condominioId, array $persone, array 
             $lette["{$persona}|{$r['immobile_id']}|{$r['rata_id']}"] = $r['dovuto'] - $r['versato'];
         }
     }
-    // (a)
+    // (a) Dalla 1.12.0-beta.4 la lettura somma nel database e tiene le sole chiavi a saldo diverso da zero: una chiave emessa che manca vale zero.
     foreach ($perChiave as $k => $g) {
-        if ($g['emessa'] && ($lette[$k] ?? null) !== $g['quote']) {
+        if ($g['emessa'] && ($lette[$k] ?? 0) !== $g['quote']) {
             $differenze[] = "chiave {$k} (rata {$g['n']}): lettura " . json_encode($lette[$k] ?? null) . " contro quote {$g['quote']}";
         }
     }
@@ -204,6 +204,139 @@ function lcdProvaChiavi($test, $admin, int $condominioId, array $persone, array 
             if (! isset($situazione[$rata]) && $v !== 0) {
                 $differenze[] = "{$chi}, rata_id {$rata}: netto della lettura {$v}, nessuna riga emessa nella situazione debitoria";
             }
+        }
+    }
+
+    // (d) La seconda fonte: la lettura di prima, che caricava le righe in memoria, sulla stessa data.
+    return [...$differenze, ...lcdProvaSecondaFonte($condominioId)];
+}
+
+/**
+ * La lettura comune com'era fino alla 1.12.0-beta.3: tutte le righe del giornale caricate in memoria e sommate in PHP, la gestione dalla rata,
+ * l'emissione con una query a parte. È la seconda fonte del confronto della lettura sommata nel database ({@see lcdProvaSecondaFonte()}):
+ * non ha la regola del pregresso (i giorni della rata 0 sono quelli della sua scadenza). Resta qui com'era, non si corregge.
+ *
+ * @return array<int, array<string,mixed>>
+ */
+function lcdLetturaInMemoria(int $condominioId, string $alla, ?int $gestioneId = null): array
+{
+    $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
+    $righe = DB::table('righe_scritture as rs')
+        ->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
+        ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
+        ->whereNull('sc.deleted_at')->where('sc.condominio_id', $condominioId)->where('sc.data_competenza', '<', $dopo)
+        ->whereIn('cc.ruolo', ['crediti_condomini', 'anticipi_condomini'])->whereNotNull('rs.anagrafica_id')
+        ->get(['cc.ruolo', 'rs.anagrafica_id', 'rs.immobile_id', 'rs.rata_id', 'rs.tipo_riga', 'rs.importo', 'sc.gestione_id']);
+    $rataIds = $righe->pluck('rata_id')->filter()->unique()->values()->all();
+    $rate = $rataIds === [] ? collect() : DB::table('rate')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')->whereIn('rate.id', $rataIds)
+        ->get(['rate.id', 'rate.numero_rata', 'rate.data_scadenza', 'piani_rate.gestione_id'])->keyBy('id');
+    $chiave = fn ($a, $i, $r) => ((int) $a) . '|' . ($i === null ? '' : (int) $i) . '|' . ($r === null ? '' : (int) $r);
+    $emesse = $rataIds === [] ? [] : DB::table('rate_quote as q')->join('scritture_contabili as em', 'em.id', '=', 'q.scrittura_contabile_id')
+        ->whereIn('q.rata_id', $rataIds)->whereNull('em.deleted_at')->where('em.tipo_movimento', 'emissione_rata')->where('em.data_competenza', '<', $dopo)
+        ->get(['q.rata_id', 'q.anagrafica_id', 'q.immobile_id'])->mapWithKeys(fn ($q) => [$chiave($q->anagrafica_id, $q->immobile_id, $q->rata_id) => true])->all();
+    $gruppi = [];
+    $anticipi = [];
+    foreach ($righe as $r) {
+        $rata = $r->rata_id !== null ? $rate->get($r->rata_id) : null;
+        $gestione = $rata !== null ? (int) $rata->gestione_id : ($r->gestione_id !== null ? (int) $r->gestione_id : null);
+        if ($gestioneId !== null && $gestione !== $gestioneId) {
+            continue;
+        }
+        $segno = $r->tipo_riga === 'dare' ? 1 : -1;
+        $persona = (int) $r->anagrafica_id;
+        if ($r->ruolo === 'anticipi_condomini') {
+            $anticipi[$persona] = ($anticipi[$persona] ?? 0) + $segno * (int) $r->importo;
+
+            continue;
+        }
+        $k = $chiave($r->anagrafica_id, $r->immobile_id, $r->rata_id);
+        $gruppi[$persona][$k] ??= ['rata' => $rata, 'rata_id' => $r->rata_id === null ? null : (int) $r->rata_id, 'immobile_id' => $r->immobile_id === null ? null : (int) $r->immobile_id, 'dovuto' => 0, 'versato' => 0];
+        $gruppi[$persona][$k][$segno > 0 ? 'dovuto' : 'versato'] += (int) $r->importo;
+    }
+    $esito = [];
+    foreach (array_unique([...array_keys($gruppi), ...array_keys($anticipi)]) as $persona) {
+        $l = ['rate' => [], 'non_emesse' => [], 'anticipi' => $anticipi[$persona] ?? 0];
+        foreach ($gruppi[$persona] ?? [] as $k => $g) {
+            if ($g['rata'] !== null && isset($emesse[$k])) {
+                $scadenza = substr((string) $g['rata']->data_scadenza, 0, 10);
+                $l['rate'][$k] = ['dovuto' => $g['dovuto'], 'versato' => $g['versato'], 'residuo' => max(0, $g['dovuto'] - $g['versato']), 'credito' => max(0, $g['versato'] - $g['dovuto']),
+                    'scadenza' => $scadenza, 'scaduta' => $scadenza < $alla];
+            } else {
+                $l['non_emesse'][$k] = $g['dovuto'] - $g['versato'];
+            }
+        }
+        $esito[$persona] = $l;
+    }
+
+    return $esito;
+}
+
+/**
+ * Il confronto della lettura sommata nel database con la seconda fonte, alla data D (di serie oggi): per chiave il dovuto, il versato, il
+ * residuo, il credito, la scadenza e se è scaduta; per persona le righe su rate non emesse (per unità e rata), gli anticipi e i totali che non
+ * dipendono dalla regola del pregresso. Le due differenze volute si controllano anche loro: una chiave a zero non c'è più, e una persona con
+ * tutte le chiavi a zero e nessun credito di oggi non è più fra le persone. Vuoto se tornano.
+ *
+ * @return list<string>
+ */
+function lcdProvaSecondaFonte(int $condominioId, ?string $alla = null, ?int $gestioneId = null): array
+{
+    $alla ??= \App\Helpers\DateHelper::oggiUtente();
+    $prima = lcdLetturaInMemoria($condominioId, $alla, $gestioneId);
+    $ora = app(LetturaDebiti::class)->perCondominio($condominioId, $alla, $gestioneId);
+    $differenze = [];
+    foreach (array_unique([...array_keys($prima), ...array_keys($ora)]) as $persona) {
+        $p = $prima[$persona] ?? ['rate' => [], 'non_emesse' => [], 'anticipi' => 0];
+        $aperte = array_filter($p['rate'], fn ($r) => $r['dovuto'] !== $r['versato']);
+        $nonEmessePrima = [];
+        foreach ($p['non_emesse'] as $k => $saldo) {
+            [, $i, $r] = explode('|', $k);
+            $nonEmessePrima["{$i}|{$r}"] = ($nonEmessePrima["{$i}|{$r}"] ?? 0) + $saldo;
+        }
+        $nonEmessePrima = array_filter($nonEmessePrima);
+        if (! isset($ora[$persona])) {
+            if ($aperte !== [] || $nonEmessePrima !== [] || $p['anticipi'] !== 0) {
+                $differenze[] = "persona {$persona}: c'era con righe aperte, ora non c'è";
+            }
+
+            continue;
+        }
+        $l = $ora[$persona];
+        $righe = [];
+        foreach ($l['rate'] as $r) {
+            $righe["{$persona}|{$r['immobile_id']}|{$r['rata_id']}"] = ['dovuto' => $r['dovuto'], 'versato' => $r['versato'], 'residuo' => $r['residuo'], 'credito' => $r['credito'],
+                'scadenza' => $r['scadenza'], 'scaduta' => $r['scaduta']];
+        }
+        foreach ($aperte as $k => $r) {
+            if (($righe[$k] ?? null) !== $r) {
+                $differenze[] = "persona {$persona}, chiave {$k}: prima " . json_encode($r) . ' ora ' . json_encode($righe[$k] ?? null);
+            }
+        }
+        foreach ($righe as $k => $r) {
+            if (! isset($aperte[$k])) {
+                $differenze[] = "persona {$persona}, chiave {$k}: ora " . json_encode($r) . ($r['dovuto'] === $r['versato'] ? ' (a zero: non doveva esserci)' : ', prima non c\'era');
+            }
+        }
+        $nonEmesseOra = [];
+        foreach ($l['non_emesse'] as $r) {
+            $nonEmesseOra["{$r['immobile_id']}|{$r['rata_id']}"] = ($nonEmesseOra["{$r['immobile_id']}|{$r['rata_id']}"] ?? 0) + $r['saldo'];
+        }
+        $nonEmesseOra = array_filter($nonEmesseOra);
+        ksort($nonEmessePrima);
+        ksort($nonEmesseOra);
+        if ($nonEmessePrima !== $nonEmesseOra) {
+            $differenze[] = "persona {$persona}: rate non emesse prima " . json_encode($nonEmessePrima) . ' ora ' . json_encode($nonEmesseOra);
+        }
+        $emesso = (int) array_sum(array_column($aperte, 'residuo'));
+        $crediti = (int) array_sum(array_column($aperte, 'credito'));
+        $scaduto = (int) array_sum(array_map(fn ($r) => $r['scaduta'] ? $r['residuo'] : 0, $aperte));
+        $attesi = ['emesso_non_pagato' => $emesso, 'crediti' => $crediti, 'scaduto' => $scaduto, 'non_emesse' => (int) array_sum($nonEmessePrima),
+            'anticipi' => $p['anticipi'], 'netto' => $emesso - $crediti + (int) array_sum($nonEmessePrima) + $p['anticipi']];
+        $letti = array_intersect_key($l['totali'], $attesi);
+        ksort($attesi);
+        ksort($letti);
+        if ($attesi !== $letti) {
+            $differenze[] = "persona {$persona}: totali prima " . json_encode($attesi) . ' ora ' . json_encode($letti);
         }
     }
 

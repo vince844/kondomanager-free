@@ -157,7 +157,7 @@ describe('i testi', () => {
 
     test('un\'emissione: stampata, inviata a chi, in coda, non partita con l\'errore', () => {
         expect(testoEmissione({ canale: 'stampa', stato: 'stampata', quando: '2026-11-05 10:30', destinatario: null, errore: null })).toBe('Stampata il 05/11/2026 alle 10:30');
-        expect(testoEmissione({ canale: 'email', stato: 'inviata', quando: '2026-11-05 10:30', destinatario: 'a@x.it', errore: null })).toBe('Inviata il 05/11/2026 alle 10:30 a a@x.it');
+        expect(testoEmissione({ canale: 'email', stato: 'inviata', quando: '2026-11-05 10:30', destinatario: 'a@x.it', errore: null })).toBe('Inviata il 05/11/2026 alle 10:30 a a@x.it, consegna non provata');
         expect(testoEmissione({ canale: 'email', stato: 'in_coda', quando: '2026-11-05 10:30', destinatario: 'a@x.it', errore: null })).toBe('In coda dal 05/11/2026 alle 10:30, per a@x.it');
         expect(testoEmissione({ canale: 'email', stato: 'non_partita', quando: '2026-11-05 10:30', destinatario: 'a@x.it', errore: 'Casella piena' })).toBe('Non partita il 05/11/2026 alle 10:30, per a@x.it: Casella piena');
         expect(testoEmissione(null)).toBe('Mai emessa');
@@ -916,6 +916,13 @@ describe('il PDF in una scheda nuova', () => {
         expect(testoDelPdf({ modo: 'scaricato', nome: 'a.pdf' }, { stampa: false, una: true })).toBe('La scheda nuova non si è aperta, o era già chiusa: il PDF si scarica con '
             + 'il nome «a.pdf». Se il browser chiede dove salvarlo, arriva quando rispondi.');
         expect(testoDelPdf({ modo: 'scaricato', nome: 'a.pdf' }, { stampa: false, una: true })).not.toContain('scaricato come');
+    });
+
+    test('le lettere usano la stessa frase con la loro parola: una lettera stampata non è una ricevuta', () => {
+        expect(testoDelPdf({ modo: 'scaricato', nome: 's.pdf' }, { stampa: true, una: true, documento: 'lettera' })).toContain('La lettera risulta già stampata, anche se il file arriva dopo.');
+        expect(testoDelPdf({ modo: 'scaricato', nome: 's.pdf' }, { stampa: true, una: false, documento: 'lettera' })).toContain('Le lettere risultano già stampate, anche se il file arriva dopo.');
+        expect(testoDelPdf({ modo: 'scheda', nome: 's.pdf' }, { stampa: true, una: true, documento: 'lettera' })).toBe('Il PDF è aperto in una scheda nuova. La lettera risulta stampata.');
+        expect(testoDelPdf({ modo: 'scaricato', nome: 's.pdf' }, { stampa: true, una: true, documento: 'lettera' })).not.toContain('ricevut');
     });
 
     test('chi chiama sa subito, prima della risposta, se la scheda si è aperta: può dire mentre aspetta dove andrà il PDF', async () => {

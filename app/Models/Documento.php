@@ -80,8 +80,10 @@ class Documento extends Model
     /**
      * Il nome con cui il file va consegnato al browser.
      *
-     * Il file su disco nasce da `hashName()`, che **preserva** l'estensione originale
-     * (`documenti/a1b2c3.pdf`); `name` è invece il titolo scritto dall'amministratore, che di
+     * Il file su disco nasce da `hashName()`, che prende l'estensione dal contenuto (`finfo`), quasi
+     * sempre quella del file (`documenti/a1b2c3.pdf`); le prove delle lettere, gli accordi di rientro
+     * e i verbali della dispensa si salvano invece con l'estensione del nome, dopo aver controllato
+     * che un PDF, un JPG o un PNG lo siano davvero. `name` è il titolo scritto dall'amministratore, che di
      * estensione non ne ha. Passare il titolo così com'era faceva arrivare al browser un file
      * senza estensione — su macOS non si nota, perché il tipo lo indovina dal contenuto, su
      * Windows sì. Il difetto è arrivato dal forum due volte: nel maggio 2026 dal lato

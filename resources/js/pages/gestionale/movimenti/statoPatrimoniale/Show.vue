@@ -107,6 +107,9 @@ const hrefMastrino = (contoId: number) => generatePath('gestionale/:condominio/e
     condominio: props.condominio.id, esercizio: props.esercizio.id, contoContabile: contoId,
 });
 const hrefFatture = generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id });
+// L'elenco delle persone con rate scadute, alla data di questa pagina (per un esercizio chiuso la data di fine, non oggi): lo scaduto di
+// ognuno, senza togliere il credito. Una data dopo oggi l'elenco la porta a oggi.
+const hrefRateScadute = computed(() => `${generatePath('gestionale/:condominio/rate-scadute', { condominio: props.condominio.id })}?alla=${p.value.data}`);
 const hrefPaga = (f: Fattura) => generatePath('gestionale/:condominio/pagamenti-fornitori/create', { condominio: props.condominio.id }) + `?fattura_id=${f.id}`;
 const hrefF24 = generatePath('gestionale/:condominio/f24', { condominio: props.condominio.id });
 const scaduta = (f: Fattura) => !!f.scadenza && f.scadenza < oggiISO;
@@ -191,6 +194,7 @@ const pageGuides = [
                                     <div class="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Crediti verso i condòmini</div>
                                     <div class="text-lg font-bold tabular-nums" :class="importo(p.sintesi.crediti_condomini)">{{ euro(p.sintesi.crediti_condomini) }}</div>
                                     <div class="text-[11px] text-slate-500">quote emesse e non incassate</div>
+                                    <Link :href="hrefRateScadute" data-testid="collegamento-rate-scadute" class="text-[11px] text-sky-700 underline">Chi deve che cosa: le rate scadute</Link>
                                 </div>
                             </div>
                             <div class="border rounded-xl p-4 shadow-sm flex items-start gap-3 bg-rose-50/50 border-rose-200">
@@ -469,7 +473,7 @@ const pageGuides = [
                         <!-- ═══ Cosa questa pagina non fa ═══════════════════════════════════════════ -->
                         <div class="rounded-md border border-dashed bg-slate-50/50 p-4 text-[12px] text-slate-600 leading-relaxed space-y-1.5">
                             <div class="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Cosa questa pagina non fa ancora, e con quale modulo lo farà</div>
-                            <p><b>Non elenca i condòmini che devono soldi</b> — solo il totale. L'elenco per unità arriva con il modulo morosi e solleciti, e si aprirà da qui.</p>
+                            <p><b>Non elenca i condòmini che devono soldi</b> — solo il totale. L'elenco per persona, con le sue unità, è nella pagina <Link :href="hrefRateScadute" class="underline">Rate scadute</Link>: lì lo scaduto di ognuno è lordo, senza togliere il credito, e non è la voce «Crediti verso i condòmini», che è il saldo di tutte le quote emesse.</p>
                             <p><b>Non confronta con l'estratto conto della banca.</b> È un controllo tuo finché non ci sarà la riconciliazione bancaria, che diventerà un controllo di questa pagina.</p>
                             <p><b>Non chiude l'esercizio.</b> Quote e costi si accumulano dal primo esercizio: il cumulato da conguagliare è {{ euro(p.risultato_gestione.cumulato) }}. La fotografia al 31/12 di un esercizio chiuso diventerà definitiva con la chiusura guidata.</p>
                             <p><b>Non ha conti di ricavo</b>, per questo non dichiara mai i conti «in pari». <b>Non sceglie una data qualunque</b>: oggi per l'esercizio aperto, la data di fine per uno chiuso.</p>

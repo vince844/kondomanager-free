@@ -121,7 +121,7 @@
     <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;">
         <tr>
             <td style="border: 0; padding: 5px 0 0 0; font-size: 7pt; color: #5A6B7B;">
-                Documento emesso il {{ ($data_emissione_stampe ?? now())->format('d/m/Y') }}
+                Documento emesso il {{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}
                 @if(!empty($nota_legale_stampe))
                     <br>{!! nl2br(e($nota_legale_stampe)) !!}
                 @endif
@@ -177,7 +177,7 @@
         <td class="doc">
             <b>{{ $esercizio->nome }}</b><br>
             dal <b>{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b>{{ $esercizio->data_fine->format('d/m/Y') }}</b><br>
-            Stampato il <b>{{ now()->format('d/m/Y') }}</b>
+            Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>

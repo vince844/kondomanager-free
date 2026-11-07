@@ -28,6 +28,8 @@ final readonly class TreasuryStatus
         public int     $incassiInScadenzaCents = 0,
         public int     $morositaAltri = 0,
         public array   $scadutoPerFasce = ['1_30' => 0, '31_90' => 0, 'oltre_90' => 0],
+        // Dalla 1.12.0-beta.4: l'elenco delle rate scadute del condominio, per il «Vedi tutte» del blocco delle persone.
+        public ?array  $elencoRateScadute = null,
     ) {}
 
     public function toArray(): array
@@ -52,6 +54,7 @@ final readonly class TreasuryStatus
             'morositaImpattanti'          => $this->morositaImpattanti,
             'morositaAltri'               => $this->morositaAltri,
             'scadutoPerFasce'             => $this->scadutoPerFasce,
+            'elencoRateScadute'           => $this->elencoRateScadute,
             'azioniSuggerite'             => array_map(fn(AzioneSuggerita $a) => $a->toArray(), $this->azioniSuggerite),
             'fattureSenzaScadenza'        => $this->fattureSenzaScadenza,
             'hasFondoRiserva'             => $this->hasFondoRiserva,

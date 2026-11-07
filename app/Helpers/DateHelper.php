@@ -26,6 +26,15 @@ class DateHelper
     }
 
     /**
+     * L'istante di adesso nel fuso dell'amministratore: il giorno e l'ora che una stampa scrive («Stampato il …», «Documento emesso il …»).
+     * Fra le 00:00 e le 02:00 di Roma `now()` (UTC) è ancora il giorno prima, e alle 00:30 del 01/01 una stampa di fine anno diceva il 31/12.
+     */
+    public static function adessoUtente(): Carbon
+    {
+        return Carbon::now(config('app.user_timezone', 'Europe/Rome'));
+    }
+
+    /**
      * Lo stesso «oggi» dell'utente, come data immutabile: per `inCorsoIl()` e i confronti fra date. Fra le 00:00 e
      * le 02:00 di Roma `CarbonImmutable::today()` (UTC) è ancora ieri: una titolarità che decorre da oggi
      * risulterebbe non ancora in corso, e una finita ieri ancora in corso.

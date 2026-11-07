@@ -9,6 +9,7 @@ use App\Http\Controllers\Impostazioni\ImpostazioniStampeController;
 use App\Http\Controllers\Impostazioni\InstallazioneController;
 use App\Http\Controllers\Impostazioni\LogsController;
 use App\Http\Controllers\Impostazioni\MailSettingsController;
+use App\Http\Controllers\Impostazioni\ModelliLettereController;
 use App\Http\Controllers\Impostazioni\RestoreController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -36,6 +37,20 @@ Route::middleware('auth')->group(function () {
 
     Route::get('impostazioni/stampe', [ImpostazioniStampeController::class, 'index'])
         ->name('impostazioni.stampe');
+
+    // I modelli delle lettere ai condòmini (1.12.0-beta.4), da «Impostazioni → Stampe»: li vede chi entra nel pannello, come nella finestra
+    // delle lettere; crearli, cambiarli ed eliminarli è di chi gestisce le impostazioni di stampa (il controllo sta nel controller).
+    // `{modello}` arriva grezzo: che sia un modello delle lettere lo controlla il controller (404).
+    Route::middleware('role_or_permission:amministratore|collaboratore|'.Permission::ACCESS_ADMIN_PANEL->value)->group(function () {
+        Route::get('impostazioni/stampe/modelli-lettere', [ModelliLettereController::class, 'index'])
+            ->name('impostazioni.stampe.modelli-lettere');
+        Route::post('impostazioni/stampe/modelli-lettere', [ModelliLettereController::class, 'store'])
+            ->name('impostazioni.stampe.modelli-lettere.store');
+        Route::put('impostazioni/stampe/modelli-lettere/{modello}', [ModelliLettereController::class, 'update'])
+            ->name('impostazioni.stampe.modelli-lettere.update');
+        Route::delete('impostazioni/stampe/modelli-lettere/{modello}', [ModelliLettereController::class, 'destroy'])
+            ->name('impostazioni.stampe.modelli-lettere.destroy');
+    });
 
     // «Questa installazione»: limiti, spazio, funzioni accese (1.11.0-beta.33).
     Route::get('impostazioni/installazione', InstallazioneController::class)

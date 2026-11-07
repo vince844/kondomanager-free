@@ -35,7 +35,11 @@ const props = defineProps<{
             immobile: string;
             condomino: string;
             importoCents: number;
-            giorniRitardo: number;
+            /** I giorni della rata più vecchia che il programma sa contare; nullo con il solo pregresso di anzianità non nota. */
+            giorniRitardo: number | null;
+            /** Il ritardo in parole, scritto dal server: «in ritardo di N giorni», o con il pregresso di anzianità non nota. */
+            ritardoTesto?: string;
+            anzianitaNonNota?: boolean;
             /** Il credito della persona (lo stesso che «Rate scadute» toglie): l'importo resta lordo, il credito si mostra accanto. */
             creditoCents?: number;
             route: string;
@@ -45,6 +49,8 @@ const props = defineProps<{
         morositaAltri: number;
         /** Lo scaduto di tutte le persone, per giorni di ritardo. */
         scadutoPerFasce: { '1_30': number; '31_90': number; oltre_90: number };
+        /** L'elenco delle rate scadute del condominio, per «Vedi tutte». */
+        elencoRateScadute?: { route: string; routeParams: Record<string, number> } | null;
         azioniSuggerite: Array<{
             tipo: string;
             label: string;
@@ -73,7 +79,8 @@ const widgetTheme = computed(() => {
                 text: 'text-red-700 dark:text-red-400',
                 icon: 'text-red-600',
                 badgeBg: 'bg-red-100 text-red-800',
-                title: 'Rischio ingiunzione',
+                // Un titolo sulla liquidità del condominio: niente parole di effetto legale accanto all'elenco dei condòmini.
+                title: 'Liquidità insufficiente',
                 desc: 'La liquidità non copre le uscite previste nei prossimi 30 giorni.'
             };
         case 'giallo':
@@ -100,6 +107,16 @@ const widgetTheme = computed(() => {
     }
 });
 
+const elencoRateScadute = computed(() => {
+    const e = props.treasury.elencoRateScadute;
+    if (!e) return null;
+    try {
+        return route(e.route, e.routeParams);
+    } catch {
+        return null;
+    }
+});
+
 const estrattoConto = (m: { route: string; routeParams: Record<string, number> }) => {
     try {
         return route(m.route, m.routeParams);
@@ -107,6 +124,10 @@ const estrattoConto = (m: { route: string; routeParams: Record<string, number> }
         return null;
     }
 };
+
+/** Il ritardo di una persona: le parole del server; una risposta di prima, senza, i giorni. */
+const ritardo = (m: { giorniRitardo: number | null; ritardoTesto?: string }) =>
+    m.ritardoTesto ?? (m.giorniRitardo === null ? '' : `in ritardo di ${m.giorniRitardo} ${m.giorniRitardo === 1 ? 'giorno' : 'giorni'}`);
 
 const FASCE: Array<{ chiave: '1_30' | '31_90' | 'oltre_90'; etichetta: string }> = [
     { chiave: '1_30', etichetta: '1–30 giorni' },
@@ -235,13 +256,16 @@ const formattatoreGiorno = computed(() => {
                         class="flex justify-between items-center px-2 py-1 rounded text-[10px] bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 hover:border-slate-300">
                         <span class="flex flex-col min-w-0 mr-2">
                             <span class="text-slate-600 dark:text-slate-400 truncate">{{ m.condomino }} — {{ m.immobile }}</span>
-                            <span class="text-[9px] text-slate-400">in ritardo di {{ m.giorniRitardo }} {{ m.giorniRitardo === 1 ? 'giorno' : 'giorni' }}</span>
+                            <span class="text-[9px] text-slate-400">{{ ritardo(m) }}</span>
                             <span v-if="(m.creditoCents ?? 0) > 0" class="text-[9px] text-sky-600 dark:text-sky-400">credito {{ euro(m.creditoCents ?? 0) }}</span>
                         </span>
                         <span class="font-bold text-slate-700 dark:text-slate-300 shrink-0">{{ euro(m.importoCents) }}</span>
                     </component>
                     <p v-if="treasury.morositaAltri > 0" class="text-[9px] text-slate-400 text-center pt-1">e altri {{ treasury.morositaAltri }}: lo scaduto di tutti è nelle fasce qui sotto</p>
                 </div>
+                <!-- Sempre, anche con il semaforo verde: l'elenco di tutte le persone con rate scadute. -->
+                <component :is="elencoRateScadute ? Link : 'span'" v-if="treasury.elencoRateScadute" :href="elencoRateScadute ?? undefined" data-testid="vedi-tutte"
+                    class="block text-[10px] font-semibold text-primary text-right mt-1 hover:underline">Vedi tutte le rate scadute</component>
                 <div class="mt-2 grid grid-cols-3 gap-1">
                     <div v-for="f in FASCE" :key="f.chiave" class="text-[9px] text-slate-500 text-center">
                         {{ f.etichetta }} <span class="font-bold text-slate-700 dark:text-slate-300">{{ euro(treasury.scadutoPerFasce[f.chiave]) }}</span>

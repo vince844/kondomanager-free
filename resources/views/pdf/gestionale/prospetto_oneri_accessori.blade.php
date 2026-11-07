@@ -54,7 +54,7 @@
         &nbsp;|&nbsp;
         (dal {{ $data($prospetto['esercizio']['dal']) }} al {{ $data($prospetto['esercizio']['al']) }})
         &nbsp;|&nbsp;
-        Stampato il <strong>{{ now()->format('d/m/Y') }}</strong>
+        Stampato il <strong>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</strong>
     </div>
 </div>
 

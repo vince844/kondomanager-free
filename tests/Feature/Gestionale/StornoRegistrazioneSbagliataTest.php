@@ -67,7 +67,8 @@ it('registrazione sbagliata: il versamento vero registrato sulla rata sbagliata 
 
     $l = lcdLeggi($s, 'ugo', '2026-12-31');
 
-    expect(lcdRiga($l, $s, 'A', 1)['residuo'])->toBe(0)
+    // La rata 1 è saldata: la lettura sommata nel database (dalla 1.12.0-beta.4) non porta più la chiave a zero.
+    expect(lcdRiga($l, $s, 'A', 1))->toBeNull()
         ->and(lcdRiga($l, $s, 'A', 2)['residuo'])->toBe(10000)
         ->and(srsBanca($s, '2026-12-31'))->toBe(10000)
         ->and(srsPagina($this, $s, $sbagliato)['storno'])->toMatchArray([
@@ -82,7 +83,8 @@ it('versamento tornato indietro: vale da oggi, quindi fino allo storno il versam
 
     $l = lcdLeggi($s, 'ugo', '2026-12-31');
 
-    expect(lcdRiga($l, $s, 'A', 2)['residuo'])->toBe(0)
+    // La rata 2 è saldata: la lettura sommata nel database (dalla 1.12.0-beta.4) non porta più la chiave a zero.
+    expect(lcdRiga($l, $s, 'A', 2))->toBeNull()
         ->and(srsBanca($s, '2026-12-31'))->toBe(20000)
         ->and(srsPagina($this, $s, $sbagliato)['storno'])->toMatchArray([
             'vale_dal'     => '2027-01-15',

@@ -216,8 +216,9 @@ export function useEventStyling() {
 
         // 4.2 L'ANTI-TRAUMA (Rata 0 Scaduta)
         // Se è la Rata 0, è tecnicamente scaduta nel passato (es. 1 Gennaio),
-        // ma non vogliamo mostrare l'allarme rosso "Scaduto".
-        if (type === 'scadenza_rata_condomino' && meta.numero_rata === 0 && status !== 'paid') {
+        // ma non vogliamo mostrare l'allarme rosso "Scaduto". Solo se è emessa: la rata 0 non ancora emessa non è un debito chiesto, e dice
+        // «In attesa di emissione» come le altre rate non emesse (sotto). Un promemoria di prima, senza `is_emitted`, resta com'era.
+        if (type === 'scadenza_rata_condomino' && meta.numero_rata === 0 && status !== 'paid' && meta.is_emitted !== false) {
             return { 
                 color: 'text-amber-600 dark:text-amber-500 font-bold', 
                 bgColor: 'bg-amber-50 dark:bg-amber-900/20', 

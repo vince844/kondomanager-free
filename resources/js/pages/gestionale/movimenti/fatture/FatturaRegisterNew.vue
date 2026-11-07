@@ -2960,7 +2960,8 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                             :incassato-rata-zero="incassato_rata_zero"
                             :totale-fattura-lordo-cents="totali.totale_documento_cents"
                                     :is-nota-credito="isNotaCredito"
-                            :bank-forecast="bankForecast" />
+                            :bank-forecast="bankForecast"
+                            :condominio-id="condominio.id" />
                     </div>
 
                     <!-- Vista corrente -->

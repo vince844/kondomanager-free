@@ -200,6 +200,10 @@ final class LivelloSaldi implements LivelloImport
             );
         }
 
+        // Gli esercizi del condominio, dopo il livello degli esercizi: fra questi si cerca l'esercizio d'origine scritto sul foglio.
+        $this->esercizi = Esercizio::where('condominio_id', $condominio->id)->get();
+        // Gli esercizi scritti sul foglio e non trovati, anche quelli delle righe fuse in una sola posizione.
+        $this->nonTrovati = [];
         $daScrivere = $this->accorpaPerPosizione($daScrivere, $avvisi);
 
         $creati = 0;
@@ -220,6 +224,12 @@ final class LivelloSaldi implements LivelloImport
                 continue;
             }
 
+            // L'esercizio d'origine del pregresso, se il foglio lo scrive e il condominio lo ha; altrimenti «origine non dichiarata», mai un rifiuto.
+            $origine = $this->esercizioOrigine($saldo->esercizioOrigine);
+            if ($saldo->esercizioOrigine !== null && $origine === null) {
+                $this->nonTrovati[] = $saldo->esercizioOrigine;
+            }
+
             $riga = Saldo::create([
                 'esercizio_id' => $esercizio->id,
                 'condominio_id' => $condominio->id,
@@ -237,7 +247,12 @@ final class LivelloSaldi implements LivelloImport
                     // saldo è finito lì, che a distanza di un anno conta di più.
                     default => $saldo->causale,
                 },
-            ]);
+            ] + ($origine === null ? [] : [
+                'origine_dichiarata' => 'esercizio',
+                'esercizio_origine_id' => $origine->id,
+                'origine_dichiarata_da' => auth()->id(),
+                'origine_dichiarata_il' => now(),
+            ]));
 
             $ctx->registra(self::CHIAVE, ImportBatchItem::AZIONE_CREATO, $riga, $saldo->rigaSorgente);
             $creati++;
@@ -288,7 +303,51 @@ final class LivelloSaldi implements LivelloImport
             );
         }
 
+        if ($this->nonTrovati !== []) {
+            $nonTrovati = array_values(array_unique($this->nonTrovati));
+            $avvisi[] = Rilievo::avviso(
+                'saldi.esercizio_origine_non_trovato',
+                sprintf(
+                    'Non ho trovato fra gli esercizi del condominio %s scritto nella colonna «esercizio»: %s.',
+                    count($nonTrovati) === 1 ? 'l\'esercizio' : 'gli esercizi',
+                    implode(', ', array_map(fn ($e) => "«{$e}»", array_slice($nonTrovati, 0, 5))) . (count($nonTrovati) > 5 ? ', …' : ''),
+                ),
+                'Quei saldi sono entrati con l\'origine non dichiarata: nell\'elenco delle rate scadute contano oltre 90 giorni. Se l\'esercizio è '
+                .'più vecchio del primo che hai in Kondomanager, dichiara «prima del primo esercizio»; altrimenti crealo e dichiara l\'origine '
+                .'dalla pagina dei saldi.',
+            );
+        }
+
         return new EsitoCommit(creati: $creati, saltati: $saltati, avvisi: $avvisi);
+    }
+
+    /** @var \Illuminate\Support\Collection<int, Esercizio> */
+    private \Illuminate\Support\Collection $esercizi;
+
+    /** @var list<string> */
+    private array $nonTrovati = [];
+
+    /**
+     * L'esercizio d'origine scritto sul foglio: il nome dell'esercizio (senza badare alle maiuscole), oppure l'anno, se uno solo degli
+     * esercizi del condominio finisce in quell'anno. Nessuno, o più d'uno: null.
+     */
+    private function esercizioOrigine(?string $scritto): ?Esercizio
+    {
+        if ($scritto === null || trim($scritto) === '' || ! isset($this->esercizi)) {
+            return null;
+        }
+        $cercato = mb_strtolower(trim($scritto));
+        $perNome = $this->esercizi->filter(fn (Esercizio $e) => mb_strtolower(trim((string) $e->nome)) === $cercato);
+        if ($perNome->count() === 1) {
+            return $perNome->first();
+        }
+        if (preg_match('/^\d{4}$/', $cercato) === 1) {
+            $perAnno = $this->esercizi->filter(fn (Esercizio $e) => $e->data_fine !== null && $e->data_fine->format('Y') === $cercato);
+
+            return $perAnno->count() === 1 ? $perAnno->first() : null;
+        }
+
+        return null;
     }
 
     /**
@@ -358,6 +417,8 @@ final class LivelloSaldi implements LivelloImport
                 // Due posizioni che si fondono sulla stessa unità hanno due motivi diversi, e
                 // tenerne uno solo sarebbe scegliere a caso quale metà della storia raccontare.
                 causale: $this->uniscoCausali($accumulato->causale, $saldo->causale),
+                // Due righe della stessa posizione: vale l'esercizio d'origine più vecchio, e nessuno se anche una sola non lo dichiara.
+                esercizioOrigine: $this->origineDellaFusione($accumulato->esercizioOrigine, $saldo->esercizioOrigine),
             );
         }
 
@@ -378,6 +439,26 @@ final class LivelloSaldi implements LivelloImport
         }
 
         return array_values($accumulate);
+    }
+
+    /**
+     * L'esercizio d'origine di due righe fuse: il più vecchio dei due trovati; nessuno se una non lo scrive o non si trova. Uno scritto e non
+     * trovato va nell'avviso dell'esito, come quello di una riga sola: la fusione non lo fa sparire.
+     */
+    private function origineDellaFusione(?string $prima, ?string $seconda): ?string
+    {
+        $a = $this->esercizioOrigine($prima);
+        $b = $this->esercizioOrigine($seconda);
+        foreach ([[$prima, $a], [$seconda, $b]] as [$scritto, $trovato]) {
+            if ($scritto !== null && trim($scritto) !== '' && $trovato === null) {
+                $this->nonTrovati[] = $scritto;
+            }
+        }
+        if ($a === null || $b === null) {
+            return null;
+        }
+
+        return $a->data_fine <= $b->data_fine ? $prima : $seconda;
     }
 
     /**

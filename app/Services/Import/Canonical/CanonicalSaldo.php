@@ -46,6 +46,12 @@ final readonly class CanonicalSaldo
          * fra un anno sarà l'unico a saperlo. Finisce in `saldi.descrizione`.
          */
         public ?string $causale = null,
+        /**
+         * L'esercizio d'origine del pregresso, come l'ha scritto chi compila il modello: l'anno («2025») o il nome dell'esercizio. Lo
+         * risolve il livello dei saldi fra gli esercizi del condominio; non trovato, il saldo resta «origine non dichiarata», con un avviso.
+         * Le stampe di Danea non lo portano.
+         */
+        public ?string $esercizioOrigine = null,
     ) {}
 
     public function isSolidale(): bool
@@ -62,6 +68,7 @@ final readonly class CanonicalSaldo
             'solidale' => $this->isSolidale(),
             'da_titolare_cessato' => $this->daTitolareCessato,
             'causale' => $this->causale,
+            'esercizio_origine' => $this->esercizioOrigine,
             'riga' => $this->rigaSorgente,
         ];
     }

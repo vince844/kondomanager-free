@@ -1743,7 +1743,6 @@ return [
             'quick_recording_title' => 'Registrazione rapida',
             'quick_recording_description' => 'Registra gli incassi delle rate ordinarie e straordinarie. Il sistema calcola automaticamente il residuo per condòmino.',
             'partial_payments_title' => 'Pagamenti parziali',
-            'partial_payments_description' => 'Puoi registrare incassi parziali. Il residuo resta aperto e tracciato per futuri solleciti.',
             'settle_previous_balances_title' => 'Saldo pregressi',
             'settle_previous_balances_description' => 'Usa l\'interfaccia per saldare velocemente la quota di "Saldo Iniziale" (debito anno precedente).',
         ],

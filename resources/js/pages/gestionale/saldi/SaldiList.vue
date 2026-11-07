@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
@@ -8,6 +8,8 @@ import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import SaldiGuide from '@/components/guides/SaldiGuide.vue';
 import SaldiDetailPanel from '@/components/gestionale/saldi/SaldiDetailPanel.vue';
+import DichiaraOrigineDialog, { type SaldoDaDichiarare } from '@/components/gestionale/saldi/DichiaraOrigineDialog.vue';
+import { saldiDellaPersonaSenzaOrigine } from '@/lib/gestionale/saldi/origineDaDichiarare';
 import { Coins, Lock, Search, Building2, Users, ChevronLeft } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { ImmobileConSaldi } from '@/types/gestionale/saldi';
@@ -18,7 +20,31 @@ const props = defineProps<{
   esercizio: any;
   immobili: ImmobileConSaldi[];
   gestioni: any[];
+  esercizi?: Array<{ id: number; nome: string }>;
+  frase_origine?: string;
 }>();
+
+// «Dichiara l'origine» del pregresso, per un saldo o in blocco: i saldi a debito dei condòmini, di tutte le unità.
+const origineAperta = ref(false);
+const originePartenza = ref<number[]>([]);
+const saldiDaDichiarare = computed<SaldoDaDichiarare[]>(() => props.immobili.flatMap((i) => (i.saldi ?? [])
+  .filter((s: any) => (s.saldo_iniziale ?? 0) > 0 && !s.fornitore_id)
+  .map((s: any) => ({
+    id: s.id,
+    etichetta: [i.nome, s.anagrafica?.nome ?? 'intera unità', s.gestione?.nome].filter(Boolean).join(' · '),
+    importo: s.saldo_iniziale,
+    origine_dichiarata: s.origine_dichiarata ?? null,
+    esercizio_origine_id: s.esercizio_origine_id ?? null,
+  }))));
+const apriOrigine = (partenza: number[] = []) => { originePartenza.value = partenza; origineAperta.value = true; };
+// Dall'elenco delle rate scadute («dichiarala dai saldi», `origine_di` nell'indirizzo): la finestra si apre con i saldi di quella persona.
+onMounted(() => {
+  const persona = Number(new URLSearchParams(window.location.search).get('origine_di'));
+  const suoi = saldiDellaPersonaSenzaOrigine(props.immobili, persona);
+  if (suoi.length) {
+    apriOrigine(suoi);
+  }
+});
 
 const { generatePath } = usePermission();
 
@@ -98,6 +124,13 @@ const pageGuides = [
         text-guide-title="Guida"
         @open-text-guide="showGuide = true"
       />
+
+      <div class="flex justify-end">
+        <button type="button" data-testid="origine-in-blocco" @click="apriOrigine()"
+                class="text-xs font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md px-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">
+          Dichiara l'origine del pregresso, in blocco
+        </button>
+      </div>
 
       <StrutturaLayout>
         <!-- Split layout container -->
@@ -190,6 +223,9 @@ const pageGuides = [
               :esercizio="esercizio"
               :condominio="condominio"
               :valori-in-centesimi="true"
+              :esercizi="esercizi ?? []"
+              :frase-origine="frase_origine ?? ''"
+              @dichiara-origine="(id: number) => apriOrigine([id])"
             />
           </div>
 
@@ -198,5 +234,7 @@ const pageGuides = [
     </div>
 
     <SaldiGuide v-model:open="showGuide" />
+    <DichiaraOrigineDialog v-model:open="origineAperta" :condominio-id="condominio.id" :saldi="saldiDaDichiarare" :esercizi="esercizi ?? []"
+                           :frase-origine="frase_origine ?? ''" :partenza="originePartenza" />
   </GestionaleLayout>
 </template>

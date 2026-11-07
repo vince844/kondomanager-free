@@ -57,6 +57,8 @@ const props = defineProps<{
       /** C'è un totale con cui confrontarsi? Senza, non c'è né verde né rosso: non c'è giudizio. */
       verificabile: boolean;
       da_titolari_cessati: number; importo_cessati: string;
+      /** Quanti saldi dichiarano l'esercizio d'origine, e quali esercizi scritti non sono quello del file (si cercano in archivio). */
+      con_esercizio_origine?: number; esercizi_origine_da_cercare?: string[];
     };
     totale_record: number;
   };
@@ -367,6 +369,19 @@ const puoConfermare = computed(
             >
               <span>di cui su titolari cessati, portati sull'unità (art. 63)</span>
               <span>{{ props.anteprima.saldi.importo_cessati }}</span>
+            </div>
+            <div v-if="props.anteprima.saldi.con_esercizio_origine" data-testid="saldi-esercizio-origine" class="py-0.5 text-muted-foreground">
+              {{ props.anteprima.saldi.con_esercizio_origine === 1 ? '1 saldo dichiara' : `${props.anteprima.saldi.con_esercizio_origine} saldi dichiarano` }} l'esercizio d'origine.
+              <template v-if="props.anteprima.saldi.esercizi_origine_da_cercare?.length">
+                <template v-if="props.anteprima.saldi.esercizi_origine_da_cercare.length === 1">
+                  «{{ props.anteprima.saldi.esercizi_origine_da_cercare[0] }}» non è l'esercizio di questo file: lo cerco fra gli esercizi del condominio quando
+                  importi; se non c'è, quei saldi entrano con l'origine non dichiarata.
+                </template>
+                <template v-else>
+                  {{ props.anteprima.saldi.esercizi_origine_da_cercare.map((e) => `«${e}»`).join(', ') }} non sono esercizi di questo file: li cerco fra gli
+                  esercizi del condominio quando importi; se non ci sono, quei saldi entrano con l'origine non dichiarata.
+                </template>
+              </template>
             </div>
             <div
               v-if="props.anteprima.saldi.verificabile"

@@ -35,6 +35,13 @@ class UpdatePrintSettingsRequest extends FormRequest
             // Quel che cambia è che su un server più stretto la regola non ne promette più due.
             'firma_stampe'               => 'nullable|image|mimes:jpeg,png,jpg|max:'.LimiteCaricamento::regolaMax(2.0),
             'delete_firma_stampe'        => 'nullable|boolean',
+            // Lo studio che scrive le lettere ai condòmini: in testa alla lettera, accanto al condominio. Facoltativi.
+            'studio_nome'                => 'nullable|string|max:150',
+            'studio_indirizzo'           => 'nullable|string|max:255',
+            'studio_email'               => 'nullable|email|max:150',
+            'studio_pec'                 => 'nullable|email|max:150',
+            'studio_telefono'            => 'nullable|string|max:50',
+            'studio_comune'              => 'nullable|string|max:100',
         ];
     }
 }

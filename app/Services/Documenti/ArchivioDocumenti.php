@@ -73,6 +73,53 @@ final class ArchivioDocumenti
         return $path;
     }
 
+    /**
+     * Salva un file caricato con un nome casuale e l'estensione del nome che il file aveva (già controllata da chi chiama, con `extensions:` e
+     * {@see \App\Support\FileComeIlNome}), non quella che `hashName()` indovina dal contenuto: un file che dice di essere un PDF resta `.pdf`,
+     * e uno che `finfo` non riconosce non resta senza estensione. Se la scrittura fallisce, solleva, come {@see salva()}.
+     *
+     * @throws \RuntimeException
+     */
+    public function salvaConLEstensioneDelNome(UploadedFile $file, string $cartella = self::CARTELLA): string
+    {
+        $estensione = strtolower($file->getClientOriginalExtension());
+        $path = $file->storeAs($cartella, \Illuminate\Support\Str::random(40) . ($estensione !== '' ? '.' . $estensione : ''), $this->nomeDisco());
+
+        if ($path === false || $path === '') {
+            throw new \RuntimeException("Impossibile scrivere il file sul disco «{$this->nomeDisco()}».");
+        }
+
+        return $path;
+    }
+
+    /**
+     * Salva un contenuto fatto dal programma (non caricato: per esempio il PDF di una lettera, conservato come la lettera è partita) con un
+     * nome casuale e restituisce il percorso relativo al disco. Se la scrittura fallisce, solleva, come {@see salva()}.
+     *
+     * @throws \RuntimeException
+     */
+    public function salvaContenuto(string $contenuto, string $estensione, string $cartella = self::CARTELLA): string
+    {
+        $path = trim($cartella, '/') . '/' . \Illuminate\Support\Str::random(40) . '.' . ltrim($estensione, '.');
+
+        if (! $this->disco()->put($path, $contenuto)) {
+            throw new \RuntimeException("Impossibile scrivere il file sul disco «{$this->nomeDisco()}».");
+        }
+
+        return $path;
+    }
+
+    /** Il contenuto di un file del disco dei documenti, o null se non c'è. */
+    public function leggi(?string $path): ?string
+    {
+        if (! $this->esiste($path)) {
+            return null;
+        }
+        $contenuto = $this->disco()->get($path);
+
+        return is_string($contenuto) ? $contenuto : null;
+    }
+
     public function esiste(?string $path): bool
     {
         return $path !== null && $path !== '' && $this->disco()->exists($path);

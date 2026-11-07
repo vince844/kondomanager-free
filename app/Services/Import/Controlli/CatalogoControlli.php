@@ -109,6 +109,15 @@ final class CatalogoControlli
                     .'una morosità — la strada non è il saldo di apertura ma un movimento, e quale '
                     .'delle due sia lo sai solo tu.',
             ),
+            'saldi.esercizio_origine_non_trovato' => new VoceCatalogo(
+                rotta: $saldi,
+                etichettaAzione: 'Dichiara l\'origine dai saldi',
+                perche: 'Il foglio scriveva un esercizio che fra quelli del condominio non c\'è, e '
+                    .'quei saldi sono entrati con l\'origine non dichiarata. Quale esercizio '
+                    .'intendesse chi ha compilato il foglio lo sai tu: se è più vecchio del primo, '
+                    .'dichiara «prima del primo esercizio»; altrimenti crea l\'esercizio e dichiara '
+                    .'l\'origine dalla pagina dei saldi.',
+            ),
             'saldi.da_nome_diviso' => new VoceCatalogo(
                 rotta: $saldi,
                 etichettaAzione: 'Vai ai saldi',

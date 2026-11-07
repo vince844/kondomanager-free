@@ -1286,3 +1286,74 @@ it('un\'importazione appena fatta è sempre annullabile: nessun impedimento scat
         'una voce di SEGNI_DI_LAVORO nomina qualcosa che l\'importazione crea da sé.'
     )->and($verdetto->possibile)->toBeTrue();
 });
+
+// ─── La colonna «esercizio» del foglio dei saldi: l'esercizio d'origine del pregresso (1.12.0-beta.4) ────────────────────────────
+
+it('il modello generato ha la colonna «esercizio» nel foglio dei saldi, e il parser la legge', function () {
+    $percorso = modelloDiProva(['saldi' => [['B1/1', 'ROSSI MARIO', 120.50, 'conguaglio 2025', '2025']]]);
+    $libro = IOFactory::load($percorso);
+    $intestazione = $libro->getSheetByName('4 saldi')->rangeToArray('A5:E5')[0];
+    $libro->disconnectWorksheets();
+
+    expect($intestazione)->toBe(['unita', 'persona', 'importo', 'causale', 'esercizio'])
+        ->and(leggiModello($percorso)['saldi']->righe[0]->esercizioOrigine)->toBe('2025');
+});
+
+it('un file del modello di prima, senza la colonna, si legge come prima: i saldi entrano con l\'origine non dichiarata', function () {
+    $percorso = modelloDiProva();
+    $libro = IOFactory::load($percorso);
+    $libro->getSheetByName('4 saldi')->setCellValue('E5', null);
+    (new Xlsx($libro))->save($percorso);
+    $libro->disconnectWorksheets();
+    expect(leggiModello($percorso)['saldi']->righe)->toHaveCount(2);
+
+    $utente = utenteModello();
+    $batch = caricaModello($utente, $percorso);
+    $this->actingAs($utente)->post(route('import.conferma', $batch->uuid));
+
+    expect(Saldo::count())->toBe(2)
+        ->and(Saldo::whereNotNull('origine_dichiarata')->count())->toBe(0);
+});
+
+it('con la colonna: l\'esercizio del file scrive l\'origine; uno che non c\'è dà un avviso, non un rifiuto, e il saldo entra non dichiarato', function () {
+    $utente = utenteModello();
+    $batch = caricaModello($utente, modelloDiProva(['saldi' => [
+        ['B1/1', 'ROSSI MARIO', 120.50, 'conguaglio 2026', '2026'],
+        ['B1/2', '', -45, 'credito', '2019'],
+    ]]));
+
+    $anteprima = $this->actingAs($utente)->get(route('import.anteprima', $batch->uuid))->assertOk()->viewData('page')['props']['anteprima']['saldi'];
+    expect($anteprima['con_esercizio_origine'])->toBe(2)
+        ->and($anteprima['esercizi_origine_da_cercare'])->toBe(['2019']);
+
+    $this->actingAs($utente)->post(route('import.conferma', $batch->uuid));
+
+    $esercizio = Esercizio::first();
+    $rossi = Saldo::where('saldo_iniziale', 12050)->first();
+    $unita = Saldo::where('saldo_iniziale', -4500)->first();
+    $saldi = collect($batch->fresh()->rapporto['livelli'] ?? [])->firstWhere('livello', 'saldi');
+    expect($batch->fresh()->stato)->toBe(ImportBatch::STATO_COMPLETATO)
+        ->and($rossi->origine_dichiarata)->toBe('esercizio')
+        ->and((int) $rossi->esercizio_origine_id)->toBe((int) $esercizio->id)
+        ->and((int) $rossi->origine_dichiarata_da)->toBe((int) $utente->id)
+        ->and($unita->origine_dichiarata)->toBeNull()
+        ->and(collect($saldi['avvisi'])->pluck('codice'))->toContain('saldi.esercizio_origine_non_trovato');
+});
+
+it('due righe della stessa posizione fuse in una: se l\'esercizio di una non si trova, l\'avviso c\'è lo stesso, e il saldo entra non dichiarato', function () {
+    $utente = utenteModello();
+    $batch = caricaModello($utente, modelloDiProva(['saldi' => [
+        ['B1/1', 'ROSSI MARIO', 120.50, 'conguaglio 2026', '2026'],
+        ['B1/1', 'ROSSI MARIO', 30, 'conguaglio vecchio', '2019'],
+    ]]));
+
+    $this->actingAs($utente)->post(route('import.conferma', $batch->uuid));
+
+    $saldi = collect($batch->fresh()->rapporto['livelli'] ?? [])->firstWhere('livello', 'saldi');
+    $rossi = Saldo::where('saldo_iniziale', 15050)->first();
+    expect($batch->fresh()->stato)->toBe(ImportBatch::STATO_COMPLETATO)
+        ->and($rossi)->not->toBeNull()
+        ->and($rossi->origine_dichiarata)->toBeNull()
+        ->and(collect($saldi['avvisi'])->pluck('codice'))->toContain('saldi.esercizio_origine_non_trovato')
+        ->and(collect($saldi['avvisi'])->firstWhere('codice', 'saldi.esercizio_origine_non_trovato')['messaggio'] ?? '')->toContain('«2019»');
+});

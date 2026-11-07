@@ -96,8 +96,9 @@ it('al 31/12 conta il versamento con data 20/12 registrato il 10/01, non quello 
     expect(lcdRiga($ugo, $s, 'A', 1))->toMatchArray(['dovuto' => 30000, 'versato' => 20000, 'residuo' => 10000, 'credito' => 0, 'scaduta' => true, 'giorni_ritardo' => 31])
         ->and($ugo['totali'])->toMatchArray(['emesso_non_pagato' => 10000, 'crediti' => 0, 'scaduto' => 10000, 'non_emesse' => 0, 'anticipi' => 0, 'netto' => 10000])
         ->and($ugo['totali']['fasce'])->toBe(['1_30' => 0, '31_90' => 10000, 'oltre_90' => 0])
-        // Bianca al 31/12: il versamento c'era, lo storno è del 15/01.
-        ->and(lcdRiga($biancaL, $s, 'B', 1))->toMatchArray(['dovuto' => 30000, 'versato' => 30000, 'residuo' => 0, 'credito' => 0])
+        // Bianca al 31/12: il versamento c'era, lo storno è del 15/01. La chiave è a zero, e dalla 1.12.0-beta.4 la lettura (sommata nel
+        // database) non la porta più: nessuna riga, niente residuo né credito.
+        ->and(lcdRiga($biancaL, $s, 'B', 1))->toBeNull()
         ->and($biancaL['totali']['scaduto'])->toBe(0)
         // Carla: € 350,00 su € 300,00, il credito di € 50,00 sta sulla rata; mai sommato al debito di un altro.
         ->and(lcdRiga($carla, $s, 'C', 1))->toMatchArray(['dovuto' => 30000, 'versato' => 35000, 'residuo' => 0, 'credito' => 5000])

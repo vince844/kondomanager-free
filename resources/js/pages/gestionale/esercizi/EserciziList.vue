@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from "vue";
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import DataTable from '@/components/gestionale/esercizi/DataTable.vue';
 import { getColumns } from '@/components/gestionale/esercizi/columns';
@@ -80,6 +80,11 @@ const pageGuides = [
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>
 
+          <div class="flex justify-end pb-2">
+            <!-- La dispensa dell'assemblea dall'agire entro sei mesi: per esercizio, e per alcune persone se la delibera lo dice. -->
+            <Link :href="generatePath('gestionale/:condominio/dispense-sei-mesi', { condominio: props.condominio.id })" data-testid="dispense-sei-mesi"
+                  class="text-xs font-semibold text-indigo-700 dark:text-indigo-300 underline">Dispense dei sei mesi</Link>
+          </div>
           <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4">
             <DataTable 
               :columns="columns" 

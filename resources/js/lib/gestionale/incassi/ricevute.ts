@@ -70,7 +70,7 @@ export const NOTA_CONTRASSEGNO_EMAIL =
     + 'lo decidi tu con il commercialista.';
 
 /** Quello che legge chi lavora quando il limite sugli indirizzi scritti a mano scatta (la stessa frase che scrive il server). */
-export const FRASE_LIMITE_ALTRO_INDIRIZZO = 'Hai già mandato dieci ricevute a indirizzi scritti a mano nell\'ultimo minuto: aspetta un momento e riprova.';
+export const FRASE_LIMITE_ALTRO_INDIRIZZO = 'Hai già mandato dieci messaggi a indirizzi scritti a mano nell\'ultimo minuto: aspetta un momento e riprova.';
 
 /** La sessione è finita (401) o il gettone è scaduto (419): la stessa frase dell'accesso. */
 export const FRASE_SESSIONE_SCADUTA = 'La sessione è scaduta: ricarica la pagina e, se serve, accedi di nuovo.';
@@ -480,7 +480,8 @@ export function testoEmissione(e: Emissione | null | undefined): string {
         case 'stampata':
             return `Stampata il ${quando(e.quando)}${conBollo}`;
         case 'inviata':
-            return `Inviata il ${quando(e.quando)}${e.destinatario ? ` a ${e.destinatario}` : ''}${conBollo}`;
+            // Il server di posta l'ha accettata: che sia arrivata, il programma non lo sa.
+            return `Inviata il ${quando(e.quando)}${e.destinatario ? ` a ${e.destinatario}` : ''}, consegna non provata${conBollo}`;
         case 'in_coda':
             return `In coda dal ${quando(e.quando)}${per}${conBollo}`;
         case 'non_partita':
@@ -704,16 +705,17 @@ export async function apriPdfInUnaScheda(
 /**
  * Che cosa è successo, dopo un PDF arrivato: la scheda aperta o il file scaricato, e per la stampa che le ricevute risultano stampate.
  * L'anteprima nella sua scheda non ha niente da dire. Il file scaricato non è ancora sul computer quando la frase compare: il browser
- * può chiedere prima dove salvarlo. La stampa invece è già nel registro.
+ * può chiedere prima dove salvarlo. La stampa invece è già nel registro. Le lettere usano la stessa frase con la loro parola.
  */
-export function testoDelPdf(p: PdfArrivato, cosa: { stampa: boolean; una: boolean }): string | null {
+export function testoDelPdf(p: PdfArrivato, cosa: { stampa: boolean; una: boolean; documento?: 'ricevuta' | 'lettera' }): string | null {
+    const [una, piu] = cosa.documento === 'lettera' ? ['La lettera', 'Le lettere'] : ['La ricevuta', 'Le ricevute'];
     if (p.modo === 'chiusa') {
         return 'Hai chiuso la scheda: l\'anteprima non si è aperta.';
     }
     if (p.modo === 'scheda') {
-        return cosa.stampa ? `Il PDF è aperto in una scheda nuova. ${cosa.una ? 'La ricevuta risulta stampata.' : 'Le ricevute risultano stampate.'}` : null;
+        return cosa.stampa ? `Il PDF è aperto in una scheda nuova. ${cosa.una ? `${una} risulta stampata.` : `${piu} risultano stampate.`}` : null;
     }
-    const stampate = cosa.una ? 'La ricevuta risulta già stampata' : 'Le ricevute risultano già stampate';
+    const stampate = cosa.una ? `${una} risulta già stampata` : `${piu} risultano già stampate`;
 
     return `La scheda nuova non si è aperta, o era già chiusa: il PDF si scarica con il nome «${p.nome}». Se il browser chiede dove salvarlo, `
         + `arriva quando rispondi.${cosa.stampa ? ` ${stampate}, anche se il file arriva dopo.` : ''}`;

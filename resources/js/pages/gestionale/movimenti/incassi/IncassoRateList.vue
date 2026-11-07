@@ -119,7 +119,7 @@ const pageGuides = [
   },
   {
     title: 'Pagamenti Parziali',
-    description: 'Puoi registrare tranquillamente incassi parziali. Il debito residuo rimarrà aperto e tracciato per i futuri solleciti.',
+    description: 'Puoi registrare tranquillamente incassi parziali. Il residuo resta aperto: lo ritrovi fra le rate in scadenza e, dopo la scadenza, fra le rate scadute.',
     icon: Coins,
     colorVariant: 'amber' as const
   },

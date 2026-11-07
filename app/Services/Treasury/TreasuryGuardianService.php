@@ -10,6 +10,7 @@ use App\Models\Anagrafica;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Immobile;
 use App\Services\Gestionale\Debiti\LetturaDebiti;
+use App\Services\Gestionale\Debiti\OriginePregresso;
 use App\Services\Gestionale\Debiti\Scadenza;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -141,6 +142,7 @@ final class TreasuryGuardianService
             hasFondoRiserva: $hasFondoRiserva,
             incassiScadutiCents: $attesi['scaduti'],
             incassiInScadenzaCents: $attesi['in_scadenza'],
+            elencoRateScadute: ['route' => 'admin.gestionale.rate-scadute.index', 'routeParams' => ['condominio' => $condominioId]],
             morositaAltri: $attesi['altri'],
             scadutoPerFasce: $attesi['fasce'],
         );
@@ -203,8 +205,9 @@ final class TreasuryGuardianService
                 }
                 // Le unità delle rate scadute; una riga con l'unità cancellata non ne ha (`nullOnDelete`).
                 $unita = array_values(array_unique(array_filter(array_column(array_filter($l['rate'], fn ($r) => $r['scaduta'] && $r['residuo'] > 0), 'immobile_id'), fn ($id) => $id !== null)));
+                // Il ritardo più vecchio che la lettura sa contare: un pregresso senza un numero di giorni non lo sposta, e la riga lo dice.
                 $morosi[] = ['anagraficaId' => (int) $persona, 'unita' => $unita, 'importoCents' => $l['totali']['scaduto'], 'giorniRitardo' => $l['totali']['ritardo_massimo'],
-                    'creditoCents' => (int) array_sum($creditoPerGestione)];
+                    'anzianitaNonNota' => (bool) $l['totali']['anzianita_non_nota'], 'creditoCents' => (int) array_sum($creditoPerGestione)];
             }
         }
 
@@ -221,7 +224,10 @@ final class TreasuryGuardianService
                 'condomino' => (string) ($nomi[$m['anagraficaId']] ?? ''),
                 'immobile' => implode(', ', array_map(fn ($id) => $immobili[$id]->etichetta, $m['unita'])),
                 'importoCents' => $m['importoCents'],
-                'giorniRitardo' => $m['giorniRitardo'],
+                // Nullo quando la persona ha solo un pregresso di cui il programma non sa l'anzianità: mai «in ritardo di N giorni» per quello.
+                'giorniRitardo' => $m['giorniRitardo'] > 0 || ! $m['anzianitaNonNota'] ? $m['giorniRitardo'] : null,
+                'anzianitaNonNota' => $m['anzianitaNonNota'],
+                'ritardoTesto' => OriginePregresso::fraseRitardo($m['giorniRitardo'], $m['anzianitaNonNota']),
                 'creditoCents' => $m['creditoCents'],
                 'route' => 'admin.gestionale.anagrafiche.estratto-conto',
                 'routeParams' => ['condominio' => $condominioId, 'anagrafica' => $m['anagraficaId']],
@@ -341,14 +347,14 @@ final class TreasuryGuardianService
 
         if ($livello !== 'verde') {
             if ($incassiAttesiCents > 0) {
-                // Il programma non manda promemoria ai ritardatari: la riga porta all'elenco degli incassi, dove si
-                // registra ciò che è già arrivato in banca.
+                // Un consiglio sulla liquidità: la riga porta all'elenco delle rate scadute, una riga per persona, da cui si vede chi deve che
+                // cosa. Il nome dice quello che la pagina fa; l'elenco si apre anche dal blocco delle persone, con «Vedi tutte», sempre.
                 $azioni[] = new AzioneSuggerita(
                     tipo: 'sollecito',
-                    label: 'Verifica o Sollecita Incassi',
-                    descrizione: 'Registra eventuali versamenti bancari già ricevuti',
+                    label: 'Vedi le rate scadute',
+                    descrizione: 'Chi deve ancora pagare, persona per persona: prima di scrivere, registra i versamenti già arrivati in banca',
                     impattoCents: $incassiAttesiCents,
-                    route: 'admin.gestionale.movimenti-rate.index',
+                    route: 'admin.gestionale.rate-scadute.index',
                     routeParams: $delCondominio,
                 );
             } else {
@@ -372,7 +378,8 @@ final class TreasuryGuardianService
         }
 
         if ($debitiPregressiScadutiCents > 0) {
-            // Un'azione informativa o per proporre piano di rientro
+            // I debiti del condominio verso i fornitori rimasti dalle gestioni passate: l'azione porta alle loro fatture. Riguarda i fornitori,
+            // non i condòmini: l'accordo di rientro di un condòmino è un'altra cosa e sta nell'elenco delle rate scadute.
              $azioni[] = new AzioneSuggerita(
                 tipo: 'gestione_pregressi',
                 label: 'Gestisci Debiti Pregressi',

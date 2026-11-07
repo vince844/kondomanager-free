@@ -40,8 +40,9 @@ it('alle 00:30 del 01/01/2027 a Roma la rettifica dello storno ha la data del 01
 
     $rettifica = DB::table('scritture_contabili')->where('scrittura_padre_id', $incasso)->where('tipo_movimento', 'rettifica')->first();
     expect(substr((string) $rettifica->data_competenza, 0, 10))->toBe('2027-01-01')
-        // Al 31/12 il versamento c'era: lo storno, un versamento tornato indietro, vale dal giorno in cui si fa.
-        ->and(lcdRiga(lcdLeggi($s, 'ugo', '2026-12-31'), $s, 'A', 1))->toMatchArray(['residuo' => 0])
+        // Al 31/12 il versamento c'era: lo storno, un versamento tornato indietro, vale dal giorno in cui si fa. La rata saldata non è fra le
+        // righe: la lettura sommata nel database (dalla 1.12.0-beta.4) non porta più la chiave a zero.
+        ->and(lcdRiga(lcdLeggi($s, 'ugo', '2026-12-31'), $s, 'A', 1))->toBeNull()
         ->and(lcdRiga(lcdLeggi($s, 'ugo', '2027-01-01'), $s, 'A', 1))->toMatchArray(['residuo' => 30000]);
 });
 

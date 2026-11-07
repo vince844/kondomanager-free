@@ -157,7 +157,7 @@ return [
         'cron_settings_title' => 'Cloud automation (External Cron)',
         'cron_settings_description' => 'Use this feature if your hosting does not support cron jobs every minute. Supported services: cron-job.org',
         'mail_settings_title' => 'Email configuration',
-        'mail_settings_description' => 'Configure the sending method for invoices, reminders and official communications to residents.',
+        'mail_settings_description' => 'Configure the sending method for invoices, reminders and communications to residents.',
         'backups_settings_description' => 'Create, download and manage full application backups: database, documents and configuration.',
     ],
 

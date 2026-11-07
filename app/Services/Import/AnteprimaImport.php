@@ -285,6 +285,13 @@ final class AnteprimaImport
         }
 
         $cessati = array_filter($saldi->righe, fn (CanonicalSaldo $s) => $s->daTitolareCessato);
+        // L'esercizio d'origine scritto nella colonna «esercizio» (1.12.0-beta.4). Nel file si conosce solo l'esercizio che si importa: un
+        // valore diverso dal suo nome e dal suo anno si cerca fra gli esercizi già in archivio quando importi, e se non c'è il saldo entra con
+        // l'origine non dichiarata (un avviso, mai un rifiuto).
+        $esercizio = $canonici[LivelloEsercizi::CHIAVE] ?? null;
+        $scritti = array_values(array_unique(array_filter(array_map(fn (CanonicalSaldo $s) => $s->esercizioOrigine, $saldi->righe))));
+        $delFile = $esercizio === null ? [] : [mb_strtolower($esercizio->etichetta), $esercizio->dataFine->format('Y')];
+        $daCercare = array_values(array_filter($scritti, fn ($e) => ! in_array(mb_strtolower(trim($e)), $delFile, true)));
 
         return [
             'righe' => count($saldi->righe),
@@ -299,6 +306,8 @@ final class AnteprimaImport
             'scarto' => $saldi->scartoCents() === null ? null : MoneyHelper::format($saldi->scartoCents()),
             'quadra' => $saldi->quadra(),
             'da_titolari_cessati' => count($cessati),
+            'con_esercizio_origine' => count(array_filter($saldi->righe, fn (CanonicalSaldo $s) => $s->esercizioOrigine !== null)),
+            'esercizi_origine_da_cercare' => $daCercare,
             'importo_cessati' => MoneyHelper::format(
                 array_sum(array_map(fn (CanonicalSaldo $s) => $s->importoCents, $cessati)),
             ),

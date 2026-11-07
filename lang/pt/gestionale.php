@@ -2087,7 +2087,6 @@ return [
             'quick_recording_title' => 'Registo rápido',
             'quick_recording_description' => 'Registe recebimentos de prestações ordinárias e extraordinárias. O sistema calcula automaticamente o valor em aberto por condómino.',
             'partial_payments_title' => 'Pagamentos parciais',
-            'partial_payments_description' => 'Pode registar recebimentos parciais. O valor residual mantém-se aberto e rastreado para cobranças futuras.',
             'settle_previous_balances_title' => 'Regularizar saldos anteriores',
             'settle_previous_balances_description' => 'Use a interface para liquidar rapidamente a quota de "Saldo Inicial" (débito do ano anterior).',
         ],

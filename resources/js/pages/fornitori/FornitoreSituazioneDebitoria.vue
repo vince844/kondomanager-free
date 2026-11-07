@@ -98,8 +98,8 @@ const pageGuides = [
     colorVariant: 'blue' as const
   },
   {
-    title: 'Gestione Morosità',
-    description: 'Il sistema incrocia questi dati con i saldi dei condòmini per identificare chi non sta coprendo il debito.',
+    title: 'I condòmini che devono',
+    description: 'Questa pagina riguarda solo il debito verso il fornitore: non guarda i condòmini. Chi deve ancora pagare le rate è nell\'elenco «Rate scadute» del condominio.',
     icon: ReceiptText,
     colorVariant: 'emerald' as const
   }

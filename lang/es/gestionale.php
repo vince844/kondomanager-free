@@ -1734,7 +1734,6 @@ return [
             'quick_recording_title' => 'Quick recording',
             'quick_recording_description' => 'Record ordinary and extraordinary installment receipts. The system automatically calculates the remaining balance per resident.',
             'partial_payments_title' => 'Partial payments',
-            'partial_payments_description' => 'You can record partial collections. The remaining balance stays open and tracked for future reminders.',
             'settle_previous_balances_title' => 'Settle previous balances',
             'settle_previous_balances_description' => 'Use the interface to quickly settle the "Initial Balance" share (previous year debt).',
         ],

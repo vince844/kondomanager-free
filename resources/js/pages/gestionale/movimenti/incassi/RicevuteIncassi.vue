@@ -11,6 +11,7 @@ import axios from 'axios';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import RicevutaDialog from '@/components/gestionale/movimenti/incassi/RicevutaDialog.vue';
+import CompensazioniSenzaAvviso from '@/components/gestionale/movimenti/incassi/CompensazioniSenzaAvviso.vue';
 import SceltaBollo from '@/components/gestionale/movimenti/incassi/SceltaBollo.vue';
 import EstremiBollo from '@/components/gestionale/movimenti/incassi/EstremiBollo.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
@@ -60,7 +61,10 @@ const props = defineProps<{
     senza_server_posta: boolean;
     in_coda_da_tempo: number;
     non_partite: number;
-    annullate_da_comunicare: Array<{ id: number; numero: string; data: string | null }>;
+    /** `documento`: «ricevuta» se la ricevuta era uscita, «avviso» se era uscito solo l'avviso di compensazione. */
+    annullate_da_comunicare: Array<{ id: number; numero: string; data: string | null; documento?: 'ricevuta' | 'avviso' }>;
+    /** Le compensazioni del periodo: il credito ha coperto le rate di una persona che non riceve la ricevuta di quell'incasso. */
+    compensazioni?: { righe: any[]; senza_avviso: number; frase_bollo: string };
 }>();
 
 const { generateRoute, generatePath } = usePermission();
@@ -115,7 +119,7 @@ const paginaSpuntata = computed(() => idsPagina.value.length > 0 && idsPagina.va
 const incassoAperto = ref<number | null>(null);
 const finestraAperta = ref(false);
 const apri = (id: number) => { incassoAperto.value = id; finestraAperta.value = true; };
-const ricarica = () => router.reload({ only: ['incassi', 'totale', 'non_partite', 'in_coda_da_tempo', 'annullate_da_comunicare', 'scelta_ricordata', 'registrati_di_recente'] });
+const ricarica = () => router.reload({ only: ['incassi', 'totale', 'non_partite', 'in_coda_da_tempo', 'annullate_da_comunicare', 'scelta_ricordata', 'registrati_di_recente', 'compensazioni'] });
 // Le mai emesse di incassi registrati da poco con un versamento più vecchio: l'amministratore le include con un clic.
 const includiLeRecenti = () => { if (props.registrati_di_recente) f.value.data_da = props.registrati_di_recente.dal; };
 
@@ -397,7 +401,10 @@ async function mandaneUnaAMe() {
 // scrive una riga che resta: anche lei chiede prima, con il numero dell'incasso.
 const conferma = ref<{ aperta: boolean; titolo: string; testo: string; pulsante: string; azione: () => void }>({ aperta: false, titolo: '', testo: '', pulsante: '', azione: () => {} });
 const chiedi = (testo: string, azione: () => void, titolo = 'Mandare di nuovo?', pulsante = 'Manda') => { conferma.value = { aperta: true, titolo, testo, pulsante, azione }; };
-const confermaNonServe = (a: { id: number; numero: string }) => chiedi(testoConfermaNonServe(a.numero), () => nonServeComunicarla(a.id), 'Non serve comunicarla?', 'Segna');
+const confermaNonServe = (a: { id: number; numero: string; documento?: string }) => chiedi(testoConfermaNonServe(a.numero), () => nonServeComunicarla(a.id, a.documento === 'avviso'), 'Non serve comunicarla?', 'Segna');
+// Le annullate dopo una ricevuta uscita, e quelle dopo il solo avviso di compensazione: il programma ristampa la ricevuta, l'avviso no.
+const annullateRicevute = computed(() => props.annullate_da_comunicare.filter((a) => a.documento !== 'avviso'));
+const annullateAvvisi = computed(() => props.annullate_da_comunicare.filter((a) => a.documento === 'avviso'));
 const confermaRiprova = () => chiedi(testoConfermaRiprova(props.non_partite), riprovaNonPartite);
 // La conferma legge l'ultima email (non l'ultima emissione di qualunque canale): è la riga che «Invia di nuovo» rimanda.
 const confermaInviaDiNuovo = (r: Riga) => { const e = r.ultima_email; if (e) chiedi(testoConfermaInviaDiNuovo(e), () => inviaDiNuovo(e.id)); };
@@ -421,10 +428,12 @@ async function inviaDiNuovo(id: number) {
 }
 
 // «Non serve comunicarla»: della ricevuta di un incasso annullato che era uscita, l'amministratore dice che alla persona non serve dirlo (decisione 205).
-async function nonServeComunicarla(id: number) {
+async function nonServeComunicarla(id: number, avviso = false) {
     try {
         await axios.post(route(generateRoute('gestionale.ricevute.non-serve-comunicarla'), { condominio: props.condominio.id, scrittura: id }));
-        messaggio.value = 'Segnata: alla persona non serve comunicare l\'annullamento. La ricevuta resta fra le emissioni dell\'incasso.';
+        messaggio.value = avviso
+            ? 'Segnata: alla persona non serve comunicare l\'annullamento. L\'avviso resta nel registro dell\'incasso.'
+            : 'Segnata: alla persona non serve comunicare l\'annullamento. La ricevuta resta fra le emissioni dell\'incasso.';
     } catch (e: any) {
         messaggio.value = frasePerErrore(e, 'Non è stato possibile segnarla. Riprova.');
     }
@@ -470,14 +479,22 @@ const breadcrumbs = computed(() => [
                 <span>{{ non_partite === 1 ? '1 invio non è partito' : `${non_partite} invii non sono partiti` }}: l'errore del server è accanto a ogni ricevuta.</span>
                 <Button size="sm" variant="outline" @click="confermaRiprova"><Mail class="w-4 h-4 mr-2" /> Riprova le non partite</Button>
             </div>
-            <div v-if="annullate_da_comunicare.length" class="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3 text-sm text-sky-900 dark:text-sky-100 space-y-1">
+            <div v-if="annullateRicevute.length" class="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3 text-sm text-sky-900 dark:text-sky-100 space-y-1">
                 <p class="font-medium">Annullate dopo l'uscita della ricevuta: la persona l'ha avuta, poi l'incasso è stato annullato. La ricevuta si ristampa o, se era partita per email, si rimanda: esce con «INCASSO ANNULLATO». Se e come dirlo alla persona lo decidi tu. Se non serve, segnalalo: l'avviso si toglie.</p>
-                <p v-for="a in annullate_da_comunicare" :key="a.id" class="flex flex-wrap items-center gap-2">
+                <p v-for="a in annullateRicevute" :key="a.id" class="flex flex-wrap items-center gap-2">
                     N. {{ a.numero }} del {{ giorno(a.data) }}
                     <Button size="sm" variant="ghost" class="h-7 text-xs" @click="apri(a.id)"><Printer class="w-3.5 h-3.5 mr-1" /> Stampa o invia</Button>
                     <Button size="sm" variant="ghost" class="h-7 text-xs" @click="confermaNonServe(a)">Non serve comunicarla</Button>
                 </p>
             </div>
+            <div v-if="annullateAvvisi.length" class="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-3 text-sm text-sky-900 dark:text-sky-100 space-y-1" data-testid="annullati-dopo-avviso">
+                <p class="font-medium">Annullati dopo l'avviso di compensazione: l'avviso diceva alla persona che il suo credito aveva coperto una rata, e con l'annullamento non è più vero. Il programma non rifà l'avviso: se e come dirlo alla persona lo decidi tu, caso per caso. Se non serve, segnalalo: la riga si toglie da qui.</p>
+                <p v-for="a in annullateAvvisi" :key="a.id" class="flex flex-wrap items-center gap-2">
+                    N. {{ a.numero }} del {{ giorno(a.data) }}: avviso di compensazione
+                    <Button size="sm" variant="ghost" class="h-7 text-xs" @click="confermaNonServe(a)">Non serve comunicarla</Button>
+                </p>
+            </div>
+            <CompensazioniSenzaAvviso v-if="compensazioni" :condominio-id="condominio.id" :compensazioni="compensazioni" @fatto="router.reload({ only: ['compensazioni'] })" />
             <div v-if="registrati_di_recente" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3 text-sm text-slate-700 dark:text-slate-200">
                 <span>{{ testoRegistratiDiRecente(registrati_di_recente) }}</span>
                 <Button size="sm" variant="outline" @click="includiLeRecenti">Includile</Button>

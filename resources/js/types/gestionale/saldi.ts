@@ -7,6 +7,9 @@ export interface Gestione {
 export interface Saldo {
   id: number;
   saldo_iniziale: number;
+  /** L'origine del pregresso dichiarata dall'amministratore (1.12.0-beta.4); nulla = non dichiarata. */
+  origine_dichiarata?: 'esercizio' | 'con_il_piano' | 'prima_del_primo' | null;
+  esercizio_origine_id?: number | null;
   /**
    * Il flag **grezzo**, acceso alla generazione del piano. Non usarlo per decidere se
    * mostrare il lucchetto: fra generazione ed emissione è acceso mentre il saldo è ancora

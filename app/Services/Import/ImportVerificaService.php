@@ -612,6 +612,7 @@ final class ImportVerificaService
                         // precedenza — ma perderla qui significa perderla anche per la fusione
                         // solidale a valle, che la userebbe.
                         causale: $r->causale,
+                        esercizioOrigine: $r->esercizioOrigine,
                     );
                 }
 

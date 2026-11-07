@@ -465,7 +465,7 @@ describe('un invio che il limite ferma', () => {
         pulsante('Invia')!.click();
         await flushPromises();
 
-        expect(testo()).toContain('Hai già mandato dieci ricevute a indirizzi scritti a mano nell\'ultimo minuto');
+        expect(testo()).toContain('Hai già mandato dieci messaggi a indirizzi scritti a mano nell\'ultimo minuto');
         expect(testo()).not.toContain('Too Many Attempts');
     });
 });
@@ -1045,7 +1045,7 @@ describe('«Invia»: la finestra è una sola per tutte le righe della pagina', (
         await flushPromises();
 
         expect(testo()).toContain('INC-2026-00006');
-        expect(testo()).not.toContain('Hai già mandato dieci ricevute');
+        expect(testo()).not.toContain('Hai già mandato dieci messaggi');
         expect(testo()).not.toContain('Invio non riuscito');
         expect(w.emitted('emessa')).toBeUndefined();
     });
@@ -1480,8 +1480,8 @@ describe('la finestra è una sola: chiusa e riaperta su un altro incasso mentre 
         viaggio.fallisce({ response: { status: 429, data: { message: 'Too Many Attempts.' } } });
         await flushPromises();
 
-        expect(testo()).not.toContain('Hai già mandato dieci ricevute');
-        expect(w.emitted('avviso')).toEqual([['Ricevuta n. INC-2026-00005: Hai già mandato dieci ricevute a indirizzi scritti a mano nell\'ultimo minuto: aspetta un momento e riprova.']]);
+        expect(testo()).not.toContain('Hai già mandato dieci messaggi');
+        expect(w.emitted('avviso')).toEqual([['Ricevuta n. INC-2026-00005: Hai già mandato dieci messaggi a indirizzi scritti a mano nell\'ultimo minuto: aspetta un momento e riprova.']]);
     });
 
     test('«Non serve comunicarla»: l\'errore per Anna non si legge nella finestra di Ugo; la pagina lo legge, con il numero della ricevuta', async () => {

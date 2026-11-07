@@ -207,7 +207,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                         'end_time'    => $scadenzaDeficit->copy()->addHour(),
                         'created_by'  => $userId,
                         // FORMATTAZIONE CORRETTA: Passiamo i centesimi al MoneyHelper
-                        'description' => "Il debito ereditato ({$fornitore->ragione_sociale}) è scoperto per " . MoneyHelper::format($bucoCents) . ". Poiché non hai creato sopravvenienze, questi soldi mancheranno dal conto corrente ordinario. Valutare azione di recupero morosità pregresse.",
+                        'description' => "Il debito ereditato ({$fornitore->ragione_sociale}) è scoperto per " . MoneyHelper::format($bucoCents) . ". Poiché non hai creato sopravvenienze, questi soldi mancheranno dal conto corrente ordinario. Chi deve ancora pagare le rate è nell'elenco delle rate scadute del condominio.",
                         'category_id' => $catAdmin->id,
                         'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden',
                         'is_approved' => true,
@@ -216,8 +216,9 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                             'requires_action' => true,
                             'condominio_nome' => $condominio->nome,
                             'importo_buco'    => $bucoCents, // Salviamo sempre in centesimi
-                            'titolo_azione'   => 'Gestisci Morosità',
-                            'action_url'      => $urlAzione,
+                            // Il deficit si recupera dai condòmini che devono ancora pagare: l'azione porta al loro elenco, non alle fatture.
+                            'titolo_azione'   => 'Vedi le rate scadute',
+                            'action_url'      => route('admin.gestionale.rate-scadute.index', ['condominio' => $condominio->id]),
                             'context'         => [
                                 'saldo_id' => $fattura->saldo_patrimoniale_id,
                             ],

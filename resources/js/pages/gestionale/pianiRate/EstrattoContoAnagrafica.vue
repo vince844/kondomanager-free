@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed, ref, watch } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide, { type GuideItem } from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
@@ -25,6 +25,10 @@ import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import { statoRigaEstratto, type TonoStato } from '@/lib/gestionale/pianiRate/statoRigaEstratto';
 import { oggiLocale } from '@/lib/giorno';
+import LettereDialog from '@/components/gestionale/lettere/LettereDialog.vue';
+import RegistroLettere, { type LetteraDelRegistro } from '@/components/gestionale/lettere/RegistroLettere.vue';
+import AccordiDellaPersona from '@/components/gestionale/accordi/AccordiDellaPersona.vue';
+import type { AccordoRientro } from '@/lib/gestionale/debiti/accordiRientro';
 
 const props = defineProps<{
   condominio: Building;
@@ -63,7 +67,17 @@ const props = defineProps<{
   solidarieta?: Array<{ subentro_id: number; immobile: string; uscente: string | null; entrante: string | null; decorrenza: string; esercizi: string; residuo_uscente_cents: number; residuo_uscente_formattato: string; residuo_lordo_cents: number; coppia_cents: number; testo: string }>;
   /** Coda 167, beta.40: i versamenti che questa persona ha fatto per il debito di un'altra — fuori dal libro, perché non erano suo debito. */
   versamenti_per_altri?: Array<{ scrittura_id: number; data: string | null; protocollo: string | null; per_conto_di: string; importo_cents: number; importo_formattato: string; stornato: boolean }>;
+  /** 1.12.0-beta.4: le lettere a questa persona in questo condominio, dalla più recente. */
+  lettere?: LetteraDelRegistro[];
+  /** Il giorno dell'amministratore, dal server. */
+  oggi?: string;
+  /** Gli accordi di rientro della persona in questo condominio, anche chiusi o riusciti, con il segno di oggi. */
+  accordi_rientro?: Array<AccordoRientro & { in_corso: boolean }>;
 }>();
+
+// Le lettere: «Prepara una lettera» apre la finestra per questa persona sola.
+const finestraLettera = ref(false);
+const oggiDellaPagina = props.oggi ?? oggiLocale();
 
 // --- Rimborso del credito (B2, S6, voce 9) ------------------------------------------------------------
 const rimborsoAperto = ref(false);
@@ -139,6 +153,8 @@ const goBack = () => {
     if (window.history.length > 1) window.history.back();
     else router.visit(generatePath('gestionale/:condominio/piani-rate', { condominio: props.condominio.id }));
 };
+
+const rateScaduteDellaPersona = computed(() => route(generateRoute('gestionale.rate-scadute.index'), { condominio: props.condominio.id, anagrafica_id: props.anagrafica.id }));
 
 const printPDF = () => {
     const url = route('admin.gestionale.anagrafiche.estratto-conto.print', {
@@ -281,6 +297,15 @@ const getImportoStyle = (riga: any) => {
                 backText="Indietro"
             >
                 <template #actions>
+                    <button type="button" data-testid="prepara-una-lettera" @click="finestraLettera = true"
+                       class="inline-flex items-center h-8 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white dark:bg-slate-900 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm shrink-0">
+                        Prepara una lettera
+                    </button>
+                    <!-- L'elenco delle rate scadute, con la sola persona di questa pagina. -->
+                    <Link :href="rateScaduteDellaPersona" data-testid="rate-scadute-della-persona"
+                       class="inline-flex items-center h-8 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white dark:bg-slate-900 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm shrink-0">
+                        Rate scadute
+                    </Link>
                     <DropdownMenu>
                         <DropdownMenuTrigger as-child>
                             <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
@@ -448,6 +473,13 @@ const getImportoStyle = (riga: any) => {
                     </ul>
                 </div>
             </div>
+
+            <!-- Le lettere a questa persona: il registro, con il residuo di oggi delle stesse rate. -->
+            <RegistroLettere :condominio-id="Number(condominio.id)" :lettere="lettere ?? []" :oggi="oggiDellaPagina" />
+
+            <!-- Gli accordi di rientro della persona, anche quando non ha più rate scadute: il segno e i versati oltre il capitale. -->
+            <AccordiDellaPersona :condominio-id="Number(condominio.id)" :persona="{ id: Number(anagrafica.id), nome: anagrafica.nome }" :accordi="accordi_rientro ?? []"
+                :oggi="oggiDellaPagina" @fatto="router.reload({ only: ['accordi_rientro', 'lettere'] })" />
 
             <!-- B2, S7: la nota calcolata dell'art. 63 co. 4 — chi è entrato risponde in solido con chi è uscito. Non è una quota né un sollecito. -->
             <div v-if="solidarieta && solidarieta.length" class="space-y-2">
@@ -753,6 +785,9 @@ const getImportoStyle = (riga: any) => {
                 </form>
             </DialogContent>
         </Dialog>
+
+        <LettereDialog v-model:open="finestraLettera" :condominio-id="Number(condominio.id)" :persona="{ id: Number(anagrafica.id), nome: anagrafica.nome }" :oggi="oggiDellaPagina"
+            @fatto="router.reload({ only: ['lettere'] })" />
 
         <ConfirmDialog
             :model-value="stornoAperto"
