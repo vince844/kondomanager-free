@@ -130,7 +130,7 @@ function b59sfCapitolo(array $s): int
 function b59sfViaIlPiano($test, array $s, PianoRate $piano, array $incassi = []): void
 {
     foreach ($incassi as $incasso) {
-        $test->actingAs($test->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+        $test->actingAs($test->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     }
     $emesse = DB::table('rate')->where('piano_rate_id', $piano->id)->orderByDesc('numero_rata')->pluck('id')
         ->filter(fn ($id) => DB::table('rate_quote')->where('rata_id', $id)->whereNotNull('scrittura_contabile_id')->exists());
@@ -398,7 +398,7 @@ test('Coda 313 — con l\'altra fattura della stessa unità già emessa, lo stor
     $incasso = b59apIncassa($this, $s, $p1, $rossi, [1 => 61000]);
 
     expect(b59sfStornoRifiutato($this, $s, $f1))->toStartWith('Il piano rate «Balcone interno 1» ha già emesso la rata n. 1 con la spesa ad personam della fattura n. FT-313');
-    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     session()->forget(['message', 'errors']);
     $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $p1->id, 'rata' => b59apRata($p1, 1)->id]))
         ->assertSessionHas('message.type', 'success');
@@ -457,7 +457,7 @@ test('Coda 313 — stornato l\'incasso, l\'annullamento della rata della fattura
     b59apEmetti($this, $s, $piano, [1]);
     $incasso = b59apIncassa($this, $s, $piano, $rossi, [1 => 61000]);
     b59sfStornoRifiutato($this, $s, $fattura);
-    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
 
     session()->forget(['message', 'errors']);
     $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $piano->id, 'rata' => b59apRata($piano, 1)->id]))
@@ -491,7 +491,7 @@ test('Coda 313 — una fattura stornata con le versioni di prima e rimasta nel p
         . 'non compaiono più. Nessuna rata di questa richiesta è stata emessa.');
     expect(b59sfGiornale($s))->toBe($prima)->and(b59sfSenzaPersona($s))->toBe(0)->and(b59apRata($piano, 2)->stato)->not->toBe('emessa');
 
-    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     session()->forget(['message', 'errors']);
     $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $piano->id, 'rata' => b59apRata($piano, 1)->id]))
         ->assertSessionHas('message.type', 'success');
@@ -528,7 +528,7 @@ test('Coda 313 — una nota collegata con le versioni di prima, dopo la generazi
         . 'carrello la fattura compare al netto della nota. Nessuna rata di questa richiesta è stata emessa.');
     expect(b59sfGiornale($s))->toBe($prima);
 
-    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     session()->forget(['message', 'errors']);
     $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $piano->id, 'rata' => b59apRata($piano, 1)->id]))
         ->assertSessionHas('message.type', 'success');
@@ -1043,7 +1043,7 @@ test('Coda 313 — dopo una vendita che ha preso il piano nel conguaglio, il pia
     // Il pulsante li elenca davvero (la prop `fermo_del_piano` della pagina del piano), e la strada di prima si ferma all'eliminazione: è il motivo della frase.
     expect($piano->fresh()->fermoPerLaPagina()['rimedi'])->toContain('annulla quel passaggio dallo storico della sua unità («Passaggi registrati», dall\'ultimo) e registralo di nuovo');
     foreach ([$incassoAnna, $incassoRossi] as $incasso) {
-        $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+        $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     }
     foreach ([2, 1] as $numero) {
         $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $piano->id, 'rata' => b59apRata($piano, $numero)->id]))

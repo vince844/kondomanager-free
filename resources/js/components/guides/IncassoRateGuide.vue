@@ -150,8 +150,9 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Automatico e manuale</h3>
                             <p>
                                 In <strong>automatico</strong> i campi delle righe sono spenti e la cifra si spalma
-                                partendo dalla rata <strong>più vecchia</strong> — la più vecchia, non la più
-                                scaduta — riempiendone il residuo prima di passare alla successiva.
+                                nell'ordine che il programma propone: dalla scadenza più vecchia, emesse o no; a pari
+                                scadenza prima il pregresso (la rata 0), poi le rate emesse. Ogni rata si riempie fino
+                                al suo residuo prima di passare alla successiva.
                             </p>
                             <p class="mt-2">
                                 In <strong>manuale</strong> scrivi riga per riga, e ogni valore viene tagliato al
@@ -195,6 +196,30 @@ defineEmits(['update:open']);
                         </div>
 
                         <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Quando il versamento non segue l'ordine delle scadenze</h3>
+                            <p>
+                                Prima di confermare il modulo chiede al programma se la distribuzione segue l'ordine. Se una
+                                rata più vecchia resta aperta, anche di un'altra unità o di un'altra gestione, sopra
+                                «Conferma incasso» compare quale, e la domanda «Chi ha scelto a che cosa va?»:
+                                <strong>«Indicata da chi ha versato»</strong> (la causale del bonifico, una telefonata) o
+                                <strong>«Scelta da te»</strong>. Niente è già scelto, salvo quando arrivi da un pagamento
+                                segnalato dal portale e il versamento va sulla rata segnalata.
+                            </p>
+                            <p class="mt-2">
+                                La nota è facoltativa per tutte e due. Quella di «Indicata da chi ha versato» va sulla
+                                ricevuta: scrivi le parole di chi ha versato. Quella di «Scelta da te» resta nella pagina
+                                dell'incasso e non va sulla ricevuta.
+                            </p>
+                            <p class="mt-2 text-xs text-slate-500">
+                                Nel modulo «Conferma incasso» si accende quando hai scelto. Il programma però non rifiuta
+                                l'incasso: se la scelta non arriva (la verifica dell'ordine non è riuscita, o la richiesta
+                                non viene da questo modulo) lo segna «fuori ordine, non dichiarata» nella pagina
+                                dell'incasso. Una dichiarazione sbagliata si corregge stornando l'incasso
+                                (menu della riga, «Storna», «Registrazione sbagliata») e registrandolo di nuovo.
+                            </p>
+                        </section>
+
+                        <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">«Resetta» non riporta all'inizio</h3>
                             <p>
                                 Svuota l'importo e azzera tutte le righe, ma lascia la pagina in
@@ -208,8 +233,9 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">I due filtri dell'elenco</h3>
                             <p>
                                 <strong>«Mostra scadute»</strong>, nonostante il nome, non evidenzia: <strong>nasconde
-                                tutto il resto</strong>. Restano le righe già scadute più quelle che nella descrizione
-                                contengono «saldo», «rata 0» o «pregresso».
+                                tutto il resto</strong>. Restano le rate con la scadenza passata, anche quelle non ancora
+                                emesse (il badge «Scaduta» lo portano solo le emesse). Il giorno della scadenza non è
+                                ancora scaduto. «Paga scadute» prende le stesse righe.
                             </p>
                             <p class="mt-2">
                                 Il menu <strong>«Gestione»</strong> filtra l'elenco, ma non è solo un filtro: il
@@ -380,8 +406,12 @@ defineEmits(['update:open']);
                         <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Se poi l'incasso si storna</h3>
                             <p>
-                                Lo storno, dall'elenco degli incassi, scrive lo specchio dell'incasso e della sua
-                                compensazione, sugli stessi conti, e le rate tornano da pagare. Se il credito usato era
+                                Lo storno, dall'elenco degli incassi, chiede perché: una registrazione sbagliata (il
+                                versamento non c'è mai stato, o va registrato di nuovo in un altro modo) vale dal giorno del
+                                versamento; un versamento tornato indietro (assegno insoluto, addebito respinto, bonifico
+                                richiamato) vale da oggi. Se l'esercizio che contiene la data del versamento è chiuso, o non c'è,
+                                vale da oggi in tutti e due i casi. Poi scrive lo specchio dell'incasso e della sua compensazione, sugli
+                                stessi conti, e le rate tornano da pagare. Se il credito usato era
                                 riportato da una rata ancora in bozza e nel frattempo quella rata è stata emessa, una seconda
                                 scrittura, legata all'emissione, porta il credito restituito fra i crediti verso condomini,
                                 come l'avrebbe portato l'emissione.

@@ -7,6 +7,24 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.3] - Il debito letto una volta sola
+
+**Tocca il database.** Una migrazione nuova aggiunge tre colonne alla tabella delle scritture contabili (`scritture_contabili`): `imputazione` e `imputazione_nota`, dove il programma scrive a che cosa è andato un versamento e, se chi registra la lascia, una nota; e `natura_storno`, dove scrive perché un incasso è stato stornato. Non riscrive nessun dato: gli incassi e gli storni registrati prima restano senza, e la pagina dell'incasso lo dice; nessun importo registrato cambia. Cambiano invece due cifre che il programma calcola: lo scaduto della pagina del piano rate (non conta più le rate non emesse né quella che scade oggi) e il denaro atteso della previsione di cassa, dove una rata mescola il debito di una persona e il credito di un'altra; con questo può cambiare il colore del semaforo. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.
+
+**Che cosa fa la beta.**
+- **Lo storno di un incasso chiede perché.** «Registrazione sbagliata» vale dal giorno del versamento (da oggi se l'esercizio di quel giorno è chiuso o non c'è); «Il versamento c'era ed è tornato indietro» vale da oggi. Nessuna risposta è già scelta. Lo storno di un rimborso non chiede niente.
+- **Il modulo dell'incasso chiede chi ha scelto a che cosa va il versamento**, quando lascia aperta una rata più vecchia, anche di un'altra unità o di un'altra gestione: «Indicata da chi ha versato» o «Scelta da te», con una nota facoltativa. Nel modulo «Conferma incasso» si accende quando hai scelto; il programma però non rifiuta l'incasso: se la scelta non arriva (la verifica dell'ordine non è riuscita, o la richiesta non viene dal modulo) la pagina dell'incasso lo segna «Fuori ordine, non dichiarata», e l'elenco degli incassi ha il filtro per ritrovarli. Il riparto automatico procede per scadenza, dalla più vecchia, emesse o no.
+- **Il badge «Scaduta» compare davvero** nel modulo dell'incasso, e «Mostra scadute» e «Paga scadute» prendono le rate con la scadenza passata.
+- **Lo scaduto si legge con una regola sola nella pagina del piano rate, nel modulo dell'incasso e nella previsione di cassa.** Una rata è scaduta dal giorno dopo la sua scadenza, nel giorno di chi amministra; le cifre dello scaduto contano le rate emesse. La pagina del piano rate dice «Scaduto da incassare» e non conta più le rate non emesse né quelle che scadono oggi.
+- **La previsione di cassa nomina le persone in ritardo**: «Rate scadute» e «Rate in scadenza», le prime cinque persone con i giorni di ritardo e il collegamento al loro estratto conto, e le fasce 1–30, 31–90 e oltre 90 giorni.
+- **Il portale dice «In attesa di emissione»** per una rata non ancora emessa (non la rata 0, che resta «Debito Pregresso»), invece di «Scaduta».
+- **Le date di oggi nei moduli** sono quelle di chi li usa: un incasso, una fattura o un pagamento registrati dopo mezzanotte non partono più dal giorno prima. La scadenza di una fattura non perde più un giorno a marzo.
+- **La pagina dell'incasso** dice chi l'ha registrato, a che cosa va e, se è stornato, quando, da quando vale, perché e da chi. **La ricevuta** stampa il criterio dell'imputazione.
+- **«Pagato il»** dice la data dell'ultimo versamento non stornato.
+- **Le ricevute**: il menu «Stampa o invia ricevuta» sta su una riga; la sessione scaduta, un file che non è un PDF e un permesso mancante hanno una frase in italiano; riaprendo l'indirizzo di una stampa si torna alla pagina delle ricevute con i filtri che avevi scelto.
+
+---
+
 ## [1.12.0-beta.2] - La ricevuta dell'incasso
 
 **Tocca il database.** Una migrazione nuova crea una tabella, `registro_invii`, dove il programma scrive ogni ricevuta stampata o mandata per email: a chi, quando, con quali scelte e come è andata. Non cambia nessuna tabella che c'era e non riscrive nessun dato: dopo l'aggiornamento nessuna cifra cambia, e gli incassi registrati prima risultano «mai emessa» finché non emetti la loro ricevuta. Nessun permesso nuovo; i requisiti non cambiano. Per mandare le ricevute per email serve il server di posta configurato nelle impostazioni; senza, la ricevuta si stampa o si prepara da mandare dal tuo programma di posta. Dopo l'aggiornamento ricarica le pagine già aperte.

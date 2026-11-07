@@ -109,8 +109,10 @@ const COMPENSAZIONE_MISTA = {
     descrizione: 'Rata n.2',
     residuo: 0, // il NETTO: è questo numero che oggi manda la riga su «N/D»
     importo_totale: 250,
-    data_scadenza: '2026-04-30',
+    // La forma vera della risposta: `scadenza_human`, `scaduta` e `pregresso` dal server, mai `data_scadenza`.
     scadenza_human: '30/04/2026',
+    scaduta: true,
+    pregresso: false,
     gestione_id: GESTIONE.id,
     gestione: GESTIONE.nome,
     intestatario: 'Rossi Mario',
@@ -152,8 +154,9 @@ const DEBITO_APERTO = {
     descrizione: 'Rata n.3',
     residuo: 400,
     importo_totale: 400,
-    data_scadenza: '2026-06-30',
     scadenza_human: '30/06/2026',
+    scaduta: true,
+    pregresso: false,
     gestione_id: GESTIONE.id,
     gestione: GESTIONE.nome,
     intestatario: 'Rossi Mario',
@@ -423,6 +426,7 @@ describe('il credito offerto è sempre e solo quello di chi sta incassando', () 
         id: 777,
         rata_padre_id: 777,
         descrizione: 'Saldo pregresso',
+        pregresso: true,
         residuo: -250,
         importo_totale: -250,
         intestatario: 'Bianchi Anna',
@@ -520,7 +524,7 @@ describe('«Usa credito» funziona anche in modalità manuale', () => {
         // arrivavano a superare il debito.
         const SECONDO_CREDITO = {
             ...DEBITO_APERTO,
-            id: 900, rata_padre_id: 900, descrizione: 'Saldo pregresso',
+            id: 900, rata_padre_id: 900, descrizione: 'Saldo pregresso', pregresso: true,
             residuo: -400, importo_totale: -400,
             dettaglio_quote: [{
                 unita: 'Int. 1', anagrafica: 'Rossi Mario', anagrafica_id: 5, ruolo: 'P',

@@ -864,8 +864,22 @@ class RataQuote extends Model
             return;
         }
 
-        // 3. Data ultimo pagamento (CORRETTA)
+        // 3. La data dell'ultimo versamento non stornato: non la rettifica di uno storno (che ha la data dello storno), non
+        // il versamento che una rettifica rovescia, non la riga negativa di un credito preso da questa quota. Fino alla
+        // 1.12.0-beta.2 era la data più recente fra tutte le scritture legate, e dopo lo storno di un versamento la pagina del
+        // piano diceva «Pagato il» con la data dello storno. Lo stornato si riconosce dalla sua rettifica, non dallo stato
+        // «annullata»: lo storno ricalcola la quota prima di sigillare l'originale. Anche il riallineamento dei crediti scrive una
+        // rettifica con il padre (la compensazione che riallinea, `RiallineaCreditiService`), ma non la storna: le sue rettifiche, che
+        // cominciano con il marcatore, non contano (lo stesso criterio di `StornoIncassoRateAction::famiglia()`).
+        $stornate = ScritturaContabile::query()
+            ->where('tipo_movimento', 'rettifica')
+            ->whereNotNull('scrittura_padre_id')
+            ->where(fn ($q) => $q->whereNull('causale')->orWhere('causale', 'not like', \App\Services\Gestionale\RiallineaCreditiService::MARCATORE . '%'))
+            ->select('scrittura_padre_id');
         $ultimoMovimento = $this->pagamenti()
+            ->where('quota_scrittura.importo_pagato', '>', 0)
+            ->where('scritture_contabili.tipo_movimento', '!=', 'rettifica')
+            ->whereNotIn('scritture_contabili.id', $stornate)
             ->orderByDesc('data_competenza')
             ->first();
 

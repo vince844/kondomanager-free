@@ -23,6 +23,11 @@ final readonly class TreasuryStatus
         public array   $azioniSuggerite,
         public array   $fattureSenzaScadenza = [],   // Anomalia §6.2: fatture aperte con data_scadenza NULL
         public bool    $hasFondoRiserva = false,     // Avviso MVP §6.4: fondi vincolati non ancora separati
+        // Dalla 1.12.0-beta.3 (decisione 217 D4): gli incassi attesi divisi, le persone oltre le prime cinque, lo scaduto per fasce.
+        public int     $incassiScadutiCents = 0,
+        public int     $incassiInScadenzaCents = 0,
+        public int     $morositaAltri = 0,
+        public array   $scadutoPerFasce = ['1_30' => 0, '31_90' => 0, 'oltre_90' => 0],
     ) {}
 
     public function toArray(): array
@@ -35,6 +40,8 @@ final readonly class TreasuryStatus
             'liquiditaDisponibileCents'   => $this->liquiditaDisponibileCents,
             'uscitePredittiveCents'       => $this->uscitePredittiveCents,
             'incassiAttesiCents'          => $this->incassiAttesiCents,
+            'incassiScadutiCents'         => $this->incassiScadutiCents,
+            'incassiInScadenzaCents'      => $this->incassiInScadenzaCents,
             'debitiPregressiScadutiCents' => $this->debitiPregressiScadutiCents,
             'scenarioPessimisticoCents'   => $this->scenarioPessimisticoCents,
             'scenarioOttimisticoCents'    => $this->scenarioOttimisticoCents,
@@ -43,6 +50,8 @@ final readonly class TreasuryStatus
             'livello'                     => $this->livello,
             'fattureInScadenza'           => $this->fattureInScadenza,
             'morositaImpattanti'          => $this->morositaImpattanti,
+            'morositaAltri'               => $this->morositaAltri,
+            'scadutoPerFasce'             => $this->scadutoPerFasce,
             'azioniSuggerite'             => array_map(fn(AzioneSuggerita $a) => $a->toArray(), $this->azioniSuggerite),
             'fattureSenzaScadenza'        => $this->fattureSenzaScadenza,
             'hasFondoRiserva'             => $this->hasFondoRiserva,

@@ -36,6 +36,8 @@ import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
 import type { Flash } from '@/types/flash';
 import { creditoDisponibileCents, haCreditoDisponibile, versatoRataCents } from '@/lib/gestionale/pianiRate/credito';
+import { rataScaduta, scadutoDaIncassare } from '@/lib/gestionale/pianiRate/scaduto';
+import { oggiLocale } from '@/lib/giorno';
 import { saldoNettoMovimenti } from '@/lib/gestionale/pianiRate/budgetMovements';
 import { blocchiMessaggio, messaggioArticolato } from '@/lib/gestionale/pianiRate/blocchiMessaggio';
 import { RIGHE_VISIBILI, etichettaBadge, fraseUnitaSenzaMillesimo, gruppiPerCausa, quoteConCifra as conCifra, rigaDellaVoce, totaleConSegno, type GruppoPerCausa, type QuotaNonAssegnata, type VoceConQuote } from '@/lib/gestionale/pianiRate/quoteNonAssegnate';
@@ -453,8 +455,6 @@ const eseguiCambioStato = (newValue: boolean, extra: object) => {
 };
 
 const tab = ref<"anagrafica" | "immobile">("anagrafica");
-const today = new Date();
-today.setHours(0, 0, 0, 0);
 
 const selectedRateIds = ref<number[]>([]);
 const isEmissionModalOpen = ref(false);
@@ -477,7 +477,8 @@ const toggleSelection = (id: number, checked: boolean) => {
 
 const formEmissione = useForm({
     rate_ids: [] as number[],
-    data_emissione: new Date().toISOString().split('T')[0],
+    // Il giorno di chi emette, non quello di Greenwich: la data di emissione fa nascere il dovuto della rata.
+    data_emissione: oggiLocale(),
     descrizione_personalizzata: '',
     invia_notifiche: true,
 });
@@ -695,7 +696,8 @@ const handleProcediDestinatari = (nota: string) => {
 };
 
 const getRataStyle = (rata: any) => {
-  const scaduta = new Date(rata.scadenza) < new Date() && rata.stato === 'da_pagare';
+  // `emessa` e `scaduta` li manda il server (il giorno della scadenza non è scaduto, nel giorno dell'amministratore).
+  const scaduta = rataScaduta(rata);
   if (rata.stato === 'annullata') return { container: 'bg-gray-50 border-gray-200 text-gray-400 opacity-60 dark:bg-neutral-900 dark:border-neutral-800', text: 'line-through decoration-gray-400', icon: Ban, label: 'Annullata' };
   // Coda 69: anche una rata 'pagata' in eccedenza porta credito, non solo il saldo negativo.
   if (rata.stato === 'credito' || haCreditoDisponibile(rata)) return { container: 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300', text: 'font-bold', icon: Coins, label: 'Credito' };
@@ -755,19 +757,14 @@ const dataWithMap = computed(() => {
   return src.map((item: any) => {
     const rate = item.rate || [];
     const rateMap = Object.fromEntries(rate.map((r: any) => [r.numero, r]));
-    let scadute = 0; let versato = 0;
+    let versato = 0;
     rate.forEach((r: any) => {
-      const importo = r.importo ?? 0;
-      const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
-      const isScaduta = scadenzaTime <= today.getTime();
       // Coda 69: importo_pagato, non l'importo teorico — una rata strapagata risulta 'pagata'
       // ma ha versato più del dovuto, e la differenza va contata.
       versato += versatoRataCents(r);
-      if (isScaduta && r.stato !== 'pagata' && r.stato !== 'annullata' && r.stato !== 'credito') {
-        if(r.stato === 'parzialmente_pagata') scadute += (importo - (r.importo_pagato ?? 0));
-        else scadute += importo;
-      }
     });
+    // Lo scaduto: le rate emesse che il server dice scadute, al netto di quanto versato; non le bozze, non il giorno stesso.
+    const scadute = scadutoDaIncassare(rate);
     // Coda 69: il credito ha due forme (RataQuote::credito_disponibile) — il saldo iniziale
     // negativo e lo strapagamento — non solo la prima.
     const creditiRiga = rate.reduce((sum: number, r: any) => sum + creditoDisponibileCents(r.importo ?? 0, r.importo_pagato ?? 0), 0);
@@ -785,18 +782,13 @@ const aggregates = computed(() => {
   const perRata: Record<number, number> = {};
   let scadute = 0; let versato = 0; let crediti = 0; let totaleTeorico = 0;
   (src || []).forEach((item: any) => {
+    scadute += scadutoDaIncassare(item.rate || []);
     (item.rate || []).forEach((r: any) => {
       const importo = r.importo ?? 0;
-      const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
-      const isScaduta = scadenzaTime <= today.getTime();
       perRata[r.numero] = (perRata[r.numero] || 0) + importo;
       totaleTeorico += importo;
       // Coda 69: stessa correzione di dataWithMap — importo_pagato, non l'importo teorico.
       versato += versatoRataCents(r);
-      if (isScaduta && r.stato !== 'pagata' && r.stato !== 'annullata' && r.stato !== 'credito') {
-         if(r.stato === 'parzialmente_pagata') scadute += (importo - (r.importo_pagato ?? 0));
-         else scadute += importo;
-      }
       crediti += creditoDisponibileCents(importo, r.importo_pagato ?? 0);
     });
   });
@@ -1492,7 +1484,7 @@ const printRipartoCapitoli = () => {
 
             <div v-if="isReady" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 <Card class="bg-white shadow-sm border dark:bg-card"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-400 tracking-wider">Totale Piano</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-gray-900 dark:text-neutral-100">{{ euro(aggregates.totaleTeorico) }}</CardContent></Card>
-                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group dark:bg-red-950/30 dark:border-red-900/60"><CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle class="text-xs uppercase text-red-400 tracking-wider">Da Incassare</CardTitle><TooltipProvider><Tooltip><TooltipTrigger><Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" /></TooltipTrigger><TooltipContent><p class="text-xs">Include rate scadute e <strong>debiti pregressi</strong>.</p><p class="text-xs text-muted-foreground">Non sottrae i crediti.</p></TooltipContent></Tooltip></TooltipProvider></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-red-600 dark:text-red-400">{{ euro(aggregates.totaleRateScadute) }}</CardContent></Card>
+                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group dark:bg-red-950/30 dark:border-red-900/60"><CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle class="text-xs uppercase text-red-400 tracking-wider">Scaduto da incassare</CardTitle><TooltipProvider><Tooltip><TooltipTrigger><Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" /></TooltipTrigger><TooltipContent><p class="text-xs">Le rate emesse con la scadenza passata, meno quanto già versato: anche il <strong>pregresso</strong> della rata 0, se è emessa.</p><p class="text-xs text-muted-foreground">Una rata è scaduta dal giorno dopo la sua scadenza. Le rate non ancora emesse restano fuori. Non sottrae i crediti di altre rate; dentro una rata, sì.</p></TooltipContent></Tooltip></TooltipProvider></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-red-600 dark:text-red-400">{{ euro(aggregates.totaleRateScadute) }}</CardContent></Card>
                 <Card class="bg-emerald-50/40 shadow-sm border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/60"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-emerald-400 tracking-wider">Incassato</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ euro(aggregates.totaleVersato) }}</CardContent></Card>
                 <Card class="bg-blue-50/40 shadow-sm border-blue-100 dark:bg-blue-950/30 dark:border-blue-900/60"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-blue-400 tracking-wider">Crediti (Anticipi)</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-blue-600 dark:text-blue-400">{{ aggregates.creditiTotali > 0 ? euro(aggregates.creditiTotali) : "—" }}</CardContent></Card>
                 <Card class="bg-gray-50 shadow-sm border dark:bg-neutral-900"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600 dark:text-red-400' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
@@ -1688,7 +1680,7 @@ const printRipartoCapitoli = () => {
                           </div>
                         </th>
 
-                        <th class="text-right px-4 py-3 bg-red-50/20 text-red-600 border-l border-red-100 min-w-[100px] dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/60">Scadute</th>
+                        <th class="text-right px-4 py-3 bg-red-50/20 text-red-600 border-l border-red-100 min-w-[100px] dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/60">Scaduto</th>
                         <th class="text-right px-4 py-3 bg-emerald-50/20 text-emerald-600 min-w-[100px] dark:bg-emerald-950/20 dark:text-emerald-400">Versato</th>
                         <th class="text-right px-4 py-3 min-w-[100px]">Crediti</th>
                         <th class="text-right px-4 py-3 min-w-[100px] text-xs">Tot. Rate</th>

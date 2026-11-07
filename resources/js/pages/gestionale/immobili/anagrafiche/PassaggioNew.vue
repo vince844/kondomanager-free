@@ -375,7 +375,10 @@ const nessunEntrante = ref(false);
  * quota (le righe in corso oggi, guardate alla data scritta; senza data, quelle di oggi). Con loro l'unità non resta sfitta, e la casella
  * «Nessuno», la card e ciò che manca lo dicono come il pannello del server («Dal … resta inquilino Dora»).
  */
-/** Il giorno prima di una data «AAAA-MM-GG». */
+/**
+ * Il giorno prima di una data «AAAA-MM-GG». Tutto in UTC (da `T00:00:00Z`, con `setUTCDate`, il giorno UTC): non passa dal fuso locale, ed è
+ * l'unica eccezione scritta al divieto di `toISOString()` per i giorni (`resources/js/lib/giornoDivieto.test.ts`).
+ */
 const giornoPrimaDi = (g: string) => {
   const d = new Date(`${g}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() - 1);

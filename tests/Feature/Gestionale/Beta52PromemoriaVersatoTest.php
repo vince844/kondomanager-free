@@ -64,7 +64,7 @@ function b52vRimborsa($test, array $s, int $quotaId, string $euro): void
 
 function b52vStorna($test, array $s, ScritturaContabile $incasso): void
 {
-    $test->actingAs($test->user)->post("/admin/gestionale/{$s['c']->id}/movimenti-rate/{$incasso->id}/storno")->assertSessionHasNoErrors();
+    $test->actingAs($test->user)->post("/admin/gestionale/{$s['c']->id}/movimenti-rate/{$incasso->id}/storno", stornoVersamentoTornato())->assertSessionHasNoErrors();
 }
 
 // ── Il credito usato altrove o restituito prima del versamento ───────────────────────────────────────────────────

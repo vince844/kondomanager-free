@@ -53,7 +53,17 @@ import {
     preparaEmail,
     testoConfermaNonServe,
     fraseDaErroreConFile,
+    sessioneScaduta,
+    testoEsitoInvio,
     FRASE_SESSIONE_SCADUTA,
+    FRASE_NON_PERMESSO,
+    FRASE_NON_E_UN_PDF,
+    FRASE_NON_E_UN_ARCHIVIO,
+    FRASE_FILE_NON_PDF,
+    FRASE_FILE_NON_ARCHIVIO,
+    RispostaNonValida,
+    verificaTipoRisposta,
+    verificaIlFile,
     RIGA_ATTESA_PDF,
     apriPdfInUnaScheda,
     apriSchedaDiAttesa,
@@ -311,12 +321,63 @@ describe('gli errori delle richieste', () => {
         expect(frasePerErrore(new Error('rete'), 'Invio non riuscito.')).toBe('Invio non riuscito.');
     });
 
+    test('la sessione scaduta si legge in italiano e dice che cosa fare: un 401 («Unauthenticated.») e un 419 («CSRF token mismatch.») non arrivano come li scrive il framework', async () => {
+        const json = (status: number, message: string) => ({ response: { status, data: { message } } });
+        const comeFile = (status: number, message: string) => ({ response: { status, data: new Blob([JSON.stringify({ message })], { type: 'application/json' }) } });
+
+        for (const [stato, messaggio] of [[401, 'Unauthenticated.'], [419, 'CSRF token mismatch.']] as const) {
+            expect(frasePerErrore(json(stato, messaggio), 'Invio non riuscito.')).toBe(FRASE_SESSIONE_SCADUTA);
+            expect(await fraseDaErroreConFile(comeFile(stato, messaggio), 'Non riuscito.')).toBe(FRASE_SESSIONE_SCADUTA);
+            // Anche con un testo semplice, come lo manda il server quando rifiuta una richiesta che aspettava un file.
+            expect(await fraseDaErroreConFile({ response: { status: stato, data: new Blob([messaggio], { type: 'text/plain' }) } }, 'Non riuscito.')).toBe(FRASE_SESSIONE_SCADUTA);
+        }
+        expect(FRASE_SESSIONE_SCADUTA).toMatch(/sessione è scaduta.*ricarica la pagina.*accedi di nuovo/);
+        expect(FRASE_SESSIONE_SCADUTA).not.toMatch(/unauthenticated|csrf/i);
+        // Gli altri rifiuti restano come sono: la frase del server (in italiano), o quella di riserva.
+        expect(frasePerErrore(json(422, 'Scegli a chi mandare la ricevuta.'), 'Invio non riuscito.')).toBe('Scegli a chi mandare la ricevuta.');
+        expect(sessioneScaduta(json(401, ''))).toBe(true);
+        expect(sessioneScaduta(json(419, ''))).toBe(true);
+        expect(sessioneScaduta(json(422, ''))).toBe(false);
+        expect(sessioneScaduta(new Error('rete'))).toBe(false);
+        expect(sessioneScaduta(null)).toBe(false);
+    });
+
+    test('un 403 si legge in italiano e dice che non c\'è il permesso, mai come lo scrive il framework («This action is unauthorized.»); anche quando il corpo arriva come file', async () => {
+        const json = (message: string) => ({ response: { status: 403, data: { message } } });
+        const comeFile = (corpo: string, tipo: string) => ({ response: { status: 403, data: new Blob([corpo], { type: tipo }) } });
+
+        for (const messaggio of ['This action is unauthorized.', 'User does not have the right permissions.', 'Forbidden', '']) {
+            expect(frasePerErrore(json(messaggio), 'Invio non riuscito.')).toBe(FRASE_NON_PERMESSO);
+            expect(await fraseDaErroreConFile(comeFile(JSON.stringify({ message: messaggio }), 'application/json'), 'Non riuscito.')).toBe(FRASE_NON_PERMESSO);
+            expect(await fraseDaErroreConFile(comeFile(messaggio, 'text/plain'), 'Non riuscito.')).toBe(FRASE_NON_PERMESSO);
+        }
+        expect(FRASE_NON_PERMESSO).toBe('Non hai il permesso di fare questa operazione. Se ti serve, chiedilo a chi ti ha dato l\'accesso.');
+        expect(FRASE_NON_PERMESSO).not.toMatch(/unauthorized|forbidden|permissions/i);
+        // Non è la sessione scaduta: lì ricaricare la pagina non serve a niente.
+        expect(sessioneScaduta(json(''))).toBe(false);
+        expect(FRASE_NON_PERMESSO).not.toBe(FRASE_SESSIONE_SCADUTA);
+    });
+
     test('dopo «Riprova» dice quanti invii a indirizzi scritti a mano il limite ha fermato; se nessuno, niente', () => {
         expect(testoLimiteRiprova({ limite_altro_indirizzo: 0 })).toBeNull();
         expect(testoLimiteRiprova({})).toBeNull();
         expect(testoLimiteRiprova({ limite_altro_indirizzo: 1 })).toContain('1 invio a un indirizzo scritto a mano è rimasto fermo per il limite di dieci al minuto');
         expect(testoLimiteRiprova({ limite_altro_indirizzo: 2 })).toContain('2 invii a indirizzi scritti a mano sono rimasti fermi per il limite di dieci al minuto');
         expect(testoLimiteRiprova({ limite_altro_indirizzo: 2 })).not.toContain('rimasti fermo');
+    });
+});
+
+describe('l\'esito di un invio in blocco quando la finestra non c\'è più', () => {
+    const base = { inviate: 0, in_coda: 3, non_partite: 0, senza_indirizzo: 0 };
+
+    test('il riepilogo, poi gli errori dei singoli invii, poi quanto resta da mandare: una riga sola', () => {
+        expect(testoEsitoInvio(base)).toBe('In coda 3.');
+        expect(testoEsitoInvio({ ...base, errori: ['Ugo Neri: l\'indirizzo non è valido.', 'Carlo Bruni: la casella è piena.'] }))
+            .toBe('In coda 3. Ugo Neri: l\'indirizzo non è valido. Carlo Bruni: la casella è piena.');
+        expect(testoEsitoInvio({ ...base, inviate: 50, in_coda: 0, restanti: { ricevute: 2 } })).toBe('Partite 50. Restano 2 ricevute da mandare.');
+        expect(testoEsitoInvio({ ...base, restanti: { ricevute: 1 } })).toBe('In coda 3. Resta 1 ricevuta da mandare.');
+        expect(testoEsitoInvio({ ...base, restanti: null, errori: [] })).toBe('In coda 3.');
+        expect(testoEsitoInvio({ inviate: 0, in_coda: 0, non_partite: 0, senza_indirizzo: 0 })).toBe('Niente da inviare.');
     });
 });
 
@@ -598,6 +659,54 @@ describe('il PDF in una scheda nuova', () => {
         expect(fatti.at(-1)).toBe('scarica ricevuta-condominio-via-dei-pini-inc-2026-00005.pdf');
     });
 
+    describe('la scheda chiusa a mano prima che il PDF arrivi, quando il file non serve (l\'anteprima)', () => {
+        test('niente si scarica e niente si apre: chi chiama sa che la scheda è stata chiusa; senza la richiesta di non scaricare, si scarica come prima', async () => {
+            const scheda = schedaFinta();
+            const { fatti, ambiente: a } = ambiente(scheda);
+            const r = richiesta(fatti);
+
+            const esito = apriPdfInUnaScheda(r.chiedi, 'anteprima.pdf', a, undefined, { scaricaSeChiusa: false });
+            scheda.closed = true;
+            r.arriva(pdf);
+
+            expect(await esito).toEqual({ modo: 'chiusa', nome: 'ricevuta-condominio-via-dei-pini-inc-2026-00005.pdf' });
+            expect(scheda.location.href).toBe('');
+            expect(fatti).toEqual(['scheda', 'richiesta']);
+
+            // La stampa (il registro è già scritto) tiene il file: è la scelta di prima, ed è anche quella di chi non dice niente.
+            for (const opzioni of [{ scaricaSeChiusa: true }, undefined]) {
+                const altra = schedaFinta();
+                const prova = ambiente(altra);
+                const s2 = richiesta(prova.fatti);
+                const e2 = apriPdfInUnaScheda(s2.chiedi, 'ricevuta.pdf', prova.ambiente, undefined, opzioni);
+                altra.closed = true;
+                s2.arriva(pdf);
+                expect((await e2).modo).toBe('scaricato');
+                expect(prova.fatti.at(-1)).toBe('scarica ricevuta-condominio-via-dei-pini-inc-2026-00005.pdf');
+            }
+        });
+
+        test('se la scheda non si è mai aperta (il browser l\'ha bloccata) il PDF si scarica comunque: chi lavora non l\'ha chiusa', async () => {
+            const { fatti, ambiente: a } = ambiente(null);
+
+            expect((await apriPdfInUnaScheda(async () => pdf, 'anteprima.pdf', a, undefined, { scaricaSeChiusa: false })).modo).toBe('scaricato');
+            expect(fatti.at(-1)).toBe('scarica ricevuta-condominio-via-dei-pini-inc-2026-00005.pdf');
+        });
+
+        test('la scheda ancora aperta riceve il PDF, anche per l\'anteprima', async () => {
+            const scheda = schedaFinta();
+            const { ambiente: a } = ambiente(scheda);
+
+            expect((await apriPdfInUnaScheda(async () => pdf, 'anteprima.pdf', a, undefined, { scaricaSeChiusa: false })).modo).toBe('scheda');
+            expect(scheda.location.href).toBe('blob:pdf-1');
+        });
+
+        test('la frase dice che la scheda è stata chiusa e che l\'anteprima non si è aperta; non dice che il PDF si scarica', () => {
+            expect(testoDelPdf({ modo: 'chiusa', nome: 'a.pdf' }, { stampa: false, una: true })).toBe('Hai chiuso la scheda: l\'anteprima non si è aperta.');
+            expect(testoDelPdf({ modo: 'chiusa', nome: 'a.pdf' }, { stampa: false, una: false })).toBe('Hai chiuso la scheda: l\'anteprima non si è aperta.');
+        });
+    });
+
     test('se la richiesta fallisce la scheda si chiude e l\'errore torna a chi chiama, che scrive la frase', async () => {
         const scheda = schedaFinta();
         const { fatti, ambiente: a } = ambiente(scheda);
@@ -612,12 +721,148 @@ describe('il PDF in una scheda nuova', () => {
         expect(fatti).toEqual(['scheda', 'richiesta']);
     });
 
-    test('una risposta di un altro tipo si apre come PDF, mai come una pagina', async () => {
-        const { fatti, ambiente: a } = ambiente(schedaFinta());
+    describe('una risposta di buon esito che non è un PDF', () => {
+        const pagina = (tipo: string, intestazioni: Record<string, unknown> = {}) => ({ data: new Blob(['<html>Accedi</html>'], { type: tipo }), headers: intestazioni });
 
-        await apriPdfInUnaScheda(async () => ({ data: new Blob(['<html>'], { type: 'text/html' }) }), 'ricevuta.pdf', a);
+        test.each([
+            ['una pagina HTML (la pagina di accesso, dopo un rimando seguito)', pagina('text/html')],
+            ['una pagina HTML, detto dall\'intestazione', { data: new Blob(['<!DOCTYPE html><title>Accedi</title>']), headers: { 'content-type': 'text/html; charset=UTF-8' } }],
+            ['una pagina HTML con il tipo generico di un file', { data: new Blob(['\n<!DOCTYPE html><title>Accedi</title>']), headers: { 'content-type': 'application/octet-stream' } }],
+            ['un JSON', pagina('application/json')],
+            ['un file senza tipo', pagina('')],
+        ])('%s: la scheda si chiude, il file non si apre e non si scarica, e chi chiama riceve una frase in italiano', async (_caso, risposta) => {
+            for (const aperta of [true, false]) {
+                const scheda = schedaFinta();
+                const { fatti, ambiente: a } = ambiente(aperta ? scheda : null);
 
-        expect(fatti).toContain('indirizzo application/pdf');
+                const errore = await apriPdfInUnaScheda(async () => risposta, 'ricevuta.pdf', a).then(() => null, (e) => e);
+
+                expect(errore).toBeInstanceOf(RispostaNonValida);
+                expect(await fraseDaErroreConFile(errore, 'Non riuscito.')).toBe(FRASE_NON_E_UN_PDF);
+                // Né un indirizzo del file, né un file scaricato: la scheda (se c'era) è chiusa e vuota.
+                expect(fatti).toEqual(['scheda']);
+                expect(scheda.closed).toBe(aperta);
+                expect(scheda.location.href).toBe('');
+            }
+        });
+
+        test('il PDF vero passa, anche con un tipo scritto in un altro modo o con i parametri', async () => {
+            for (const tipo of ['application/pdf', 'Application/PDF', 'application/pdf; charset=binary']) {
+                const { fatti, ambiente: a } = ambiente(schedaFinta());
+
+                expect((await apriPdfInUnaScheda(async () => ({ data: new Blob(['%PDF-1.4']), headers: { 'content-type': tipo } }), 'ricevuta.pdf', a)).modo).toBe('scheda');
+                expect(fatti).toContain('indirizzo application/pdf');
+            }
+        });
+
+        test.each([
+            ['application/octet-stream'],
+            ['binary/octet-stream'],
+            ['application/x-download'],
+            [''],
+            ['text/html'],
+            ['application/json'],
+        ])('un PDF vero arrivato con il tipo «%s» (lo cambia un proxy, un antivirus) si apre come PDF: fa fede il file, che comincia con «%PDF»', async (tipo) => {
+            for (const aperta of [true, false]) {
+                const scheda = schedaFinta();
+                const { fatti, ambiente: a } = ambiente(aperta ? scheda : null);
+
+                const esito = await apriPdfInUnaScheda(async () => ({ data: new Blob(['%PDF-1.7\n%âãÏÓ'], { type: tipo }), headers: tipo ? { 'content-type': tipo } : {} }), 'ricevuta.pdf', a);
+
+                expect(esito.modo).toBe(aperta ? 'scheda' : 'scaricato');
+                // Il file porta il tipo PDF con sé, qualunque cosa abbia detto l\'intestazione.
+                expect(fatti).toContain(aperta ? 'indirizzo application/pdf' : 'scarica ricevuta.pdf');
+                expect(scheda.closed).toBe(false);
+            }
+        });
+
+        test.each([
+            ['un file che non è un PDF né una pagina (il tipo è generico)', { data: new Blob(['ciao, non sono un PDF'], { type: 'application/octet-stream' }), headers: { 'content-type': 'application/octet-stream' } }, FRASE_FILE_NON_PDF],
+            ['un JSON', { data: new Blob(['{"message":"No"}'], { type: 'application/json' }), headers: {} }, FRASE_FILE_NON_PDF],
+            ['un file vuoto', { data: new Blob([], { type: 'application/octet-stream' }), headers: {} }, FRASE_FILE_NON_PDF],
+            ['un archivio al posto del PDF', { data: new Blob(['PK\u0003\u0004'], { type: 'application/zip' }), headers: {} }, FRASE_FILE_NON_PDF],
+            ['quasi un PDF (manca un carattere)', { data: new Blob(['%PD-1.4'], { type: 'application/octet-stream' }), headers: {} }, FRASE_FILE_NON_PDF],
+            ['una pagina, preceduta da un segno di ordine dei byte (che la lettura toglie) e da spazi', { data: new Blob(['\uFEFF  <html>Accedi</html>'], { type: 'application/octet-stream' }), headers: {} }, FRASE_NON_E_UN_PDF],
+            ['una pagina dichiarata tale dall\'intestazione, anche se non comincia con «<»', { data: new Blob(['Accedi per continuare'], { type: 'text/html' }), headers: {} }, FRASE_NON_E_UN_PDF],
+        ])('%s: non si apre e non si scarica, e la frase non dice che la sessione è scaduta quando non c\'è motivo', async (_caso, risposta, frase) => {
+            const scheda = schedaFinta();
+            const { fatti, ambiente: a } = ambiente(scheda);
+
+            const errore = await apriPdfInUnaScheda(async () => risposta, 'ricevuta.pdf', a).then(() => null, (e) => e);
+
+            expect(errore).toBeInstanceOf(RispostaNonValida);
+            expect(await fraseDaErroreConFile(errore, 'Non riuscito.')).toBe(frase);
+            expect(fatti).toEqual(['scheda']);
+            expect(scheda.closed).toBe(true);
+        });
+
+        test('l\'intestazione giusta basta: il file non si legge', async () => {
+            const letto = vi.spyOn(Blob.prototype, 'slice');
+
+            await expect(verificaIlFile({ data: new Blob(['non un PDF'], { type: 'application/pdf' }), headers: { 'content-type': 'application/pdf' } }, 'pdf')).resolves.toBeUndefined();
+            expect(letto).not.toHaveBeenCalled();
+            letto.mockRestore();
+        });
+
+        test('l\'archivio .zip: il tipo giusto passa; con un altro tipo fa fede l\'inizio del file («PK» e due byte); un PDF, una pagina o un file qualunque no', async () => {
+            const zip = 'PK\u0003\u0004\u0014\u0000';
+            await expect(verificaIlFile({ data: new Blob(['x'], { type: 'application/zip' }) }, 'zip')).resolves.toBeUndefined();
+            await expect(verificaIlFile({ data: new Blob(['x']), headers: { 'content-type': 'application/x-zip-compressed' } }, 'zip')).resolves.toBeUndefined();
+            await expect(verificaIlFile({ data: new Blob([zip]), headers: { 'content-type': 'application/octet-stream' } }, 'zip')).resolves.toBeUndefined();
+            await expect(verificaIlFile({ data: new Blob([zip]), headers: {} }, 'zip')).resolves.toBeUndefined();
+            await expect(verificaIlFile({ data: new Blob(['<html>Accedi</html>'], { type: 'text/html' }) }, 'zip')).rejects.toMatchObject({ frase: FRASE_NON_E_UN_ARCHIVIO });
+            await expect(verificaIlFile({ data: new Blob(['PK senza i due byte'], { type: 'application/octet-stream' }) }, 'zip')).rejects.toMatchObject({ frase: FRASE_FILE_NON_ARCHIVIO });
+            await expect(verificaIlFile({ data: pdf.data, headers: { 'content-type': 'application/octet-stream' } }, 'zip')).rejects.toMatchObject({ frase: FRASE_FILE_NON_ARCHIVIO });
+            // Un archivio non è un PDF, anche se l\'intestazione è generica.
+            await expect(verificaIlFile({ data: new Blob([zip]), headers: { 'content-type': 'application/octet-stream' } }, 'pdf')).rejects.toBeInstanceOf(RispostaNonValida);
+        });
+
+        test('il file può arrivare anche in un altro contenitore (un testo, un ArrayBuffer): si guarda lo stesso come comincia', async () => {
+            await expect(verificaIlFile({ data: '%PDF-1.4 ...', headers: { 'content-type': 'application/octet-stream' } }, 'pdf')).resolves.toBeUndefined();
+            await expect(verificaIlFile({ data: new TextEncoder().encode('%PDF-1.4').buffer, headers: { 'content-type': 'application/octet-stream' } }, 'pdf')).resolves.toBeUndefined();
+            await expect(verificaIlFile({ data: undefined, headers: { 'content-type': 'application/octet-stream' } }, 'pdf')).rejects.toBeInstanceOf(RispostaNonValida);
+        });
+
+        test('le frasi: la pagina al posto del file dice che forse la sessione è scaduta e che cosa fare; un altro file dice solo che non è quello chiesto e di riprovare', () => {
+            expect(FRASE_NON_E_UN_PDF).toBe('Non è arrivato un PDF: forse la sessione è scaduta. Ricarica la pagina e, se serve, accedi di nuovo.');
+            expect(FRASE_NON_E_UN_ARCHIVIO).toBe('Non è arrivato l\'archivio: forse la sessione è scaduta. Ricarica la pagina e, se serve, accedi di nuovo.');
+            expect(FRASE_FILE_NON_PDF).toBe('Il file arrivato non è un PDF. Riprova; se succede ancora, ricarica la pagina.');
+            expect(FRASE_FILE_NON_ARCHIVIO).toBe('Il file arrivato non è un archivio .zip. Riprova; se succede ancora, ricarica la pagina.');
+            for (const frase of [FRASE_FILE_NON_PDF, FRASE_FILE_NON_ARCHIVIO]) {
+                expect(frase).not.toMatch(/sessione|accedi/i);
+            }
+        });
+
+        test('la sola intestazione (chi non può leggere il file): un tipo che è chiaramente un\'altra cosa non passa, uno generico o assente sì, perché senza leggere il file non si può dire di più', () => {
+            const prova = (tipo: string | null, atteso: 'pdf' | 'zip' = 'pdf') => verificaTipoRisposta({ data: new Blob(['x']), headers: tipo === null ? {} : { 'content-type': tipo } }, atteso);
+
+            expect(() => prova('application/pdf')).not.toThrow();
+            expect(() => prova('application/octet-stream')).not.toThrow();
+            expect(() => prova('binary/octet-stream')).not.toThrow();
+            expect(() => prova(null)).not.toThrow();
+            expect(() => prova('text/html')).toThrow(RispostaNonValida);
+            expect(() => prova('application/json')).toThrow(RispostaNonValida);
+            expect(() => prova('application/zip')).toThrow(RispostaNonValida);
+            expect(() => prova('application/pdf', 'zip')).toThrow(RispostaNonValida);
+            // La frase: la pagina dice della sessione; un altro tipo no.
+            expect(() => prova('text/html')).toThrow(FRASE_NON_E_UN_PDF);
+            expect(() => prova('application/json')).toThrow(FRASE_FILE_NON_PDF);
+            expect(() => prova('application/json', 'zip')).toThrow(FRASE_FILE_NON_ARCHIVIO);
+        });
+
+        test('l\'archivio .zip: il tipo giusto passa, una pagina HTML no; vale lo stesso per un PDF che arriva per l\'email', () => {
+            expect(() => verificaTipoRisposta({ data: new Blob(['PK'], { type: 'application/zip' }) }, 'zip')).not.toThrow();
+            expect(() => verificaTipoRisposta({ data: new Blob(['PK']), headers: { 'content-type': 'application/x-zip-compressed' } }, 'zip')).not.toThrow();
+            expect(() => verificaTipoRisposta({ data: new Blob(['<html>'], { type: 'text/html' }) }, 'zip')).toThrow(RispostaNonValida);
+            // Un PDF non è l\'archivio, e un archivio non è un PDF.
+            expect(() => verificaTipoRisposta({ data: pdf.data }, 'zip')).toThrow(RispostaNonValida);
+            expect(() => verificaTipoRisposta({ data: new Blob(['PK'], { type: 'application/zip' }) }, 'pdf')).toThrow(RispostaNonValida);
+            try {
+                verificaTipoRisposta({ data: new Blob(['<html>'], { type: 'text/html' }) }, 'zip');
+            } catch (e) {
+                expect((e as RispostaNonValida).frase).toBe(FRASE_NON_E_UN_ARCHIVIO);
+            }
+        });
     });
 
     test('la scheda vuota del clic ha la riga d\'attesa e non sa da quale pagina è stata aperta; se il browser la blocca, niente', () => {

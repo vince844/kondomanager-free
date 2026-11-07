@@ -28,7 +28,7 @@ uses(RefreshDatabase::class);
  */
 function partenzaStorna(ScritturaContabile $incasso, object $s): void
 {
-    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::with(['righe', 'quotePagate', 'figlie'])->find($incasso->id), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::with(['righe', 'quotePagate', 'figlie'])->find($incasso->id), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 }
 
 function partenzaTrasportoCheSbaglia(\Throwable $errore): void

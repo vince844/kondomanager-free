@@ -39,7 +39,7 @@ function incassoMandatoEPoiAnnullato($test, object $s, array $tipi = ['email']):
             ['destinatari' => [['anagrafica_id' => $s->anna->id, 'tipi' => $tipi]], 'bollo' => 'assolta'])->assertOk();
     RegistroInvio::query()->update(['stato' => 'inviata']);
     $test->travel(1)->minutes();
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     return $incasso->fresh();
 }
@@ -102,7 +102,7 @@ test('un indirizzo scritto a mano a cui la ricevuta era andata si propone anche 
     $incasso = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
     inviaUnaAnnullata($this, $s, $incasso, ['destinatari' => [], 'altro_indirizzo' => 'studio.legale@prova.it', 'bollo' => 'assolta'])->assertOk();
     RegistroInvio::query()->update(['stato' => 'inviata']);
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     $indirizzi = opzioniAnnullata($this, $s, $incasso->fresh())['destinatari'][0]['indirizzi'];
     expect($indirizzi)->toBe([['tipo' => 'altro', 'indirizzo' => 'studio.legale@prova.it', 'proposto' => true, 'chiave' => 'altro|studio.legale@prova.it']]);
@@ -120,7 +120,7 @@ test('se la ricevuta era solo stampata, o l\'invio non è partito o è ancora in
     inviaUnaAnnullata($this, $s, $nonPartita, ['destinatari' => [$s->anna->id], 'bollo' => 'assolta'])->assertOk();
     RegistroInvio::where('documentabile_id', $nonPartita->id)->update(['stato' => 'non_partita', 'errore' => 'Rifiutato']);
     foreach ([$stampata, $nonPartita] as $i) {
-        app(StornoIncassoRateAction::class)->execute($i->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+        app(StornoIncassoRateAction::class)->execute($i->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     }
 
     foreach ([$stampata, $nonPartita] as $i) {
@@ -172,7 +172,7 @@ test('l\'avviso «annullate da comunicare» si spegne quando la ricevuta esce di
     $perStampa = incassaPerRicevuta($s, $s->anna, [[$s->anna2, 120.50]], '2026-03-01', 120.50);
     $this->actingAs($u)->post(route('admin.gestionale.ricevute.stampa', ['condominio' => $s->condominio->id]), ['incassi' => [$perStampa->id], 'bollo' => 'assolta'])->assertOk();
     $this->travel(1)->minutes();
-    app(StornoIncassoRateAction::class)->execute($perStampa->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($perStampa->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     $daComunicare = fn () => collect($this->actingAs($u)->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id]))
         ->viewData('page')['props']['annullate_da_comunicare'])->pluck('id')->sort()->values()->all();
 

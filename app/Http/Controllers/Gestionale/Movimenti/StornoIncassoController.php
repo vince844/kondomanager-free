@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Enums\NaturaStorno;
 use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
@@ -60,6 +61,18 @@ class StornoIncassoController extends Controller
             return back();
         }
 
+        // La natura dello storno di un incasso la dice chi storna (decisione 217, D1), senza una risposta già scelta: senza, lo storno
+        // non si fa. Lo storno di un rimborso, che passa da qui dall'estratto conto, non la chiede (decisione 218, punto 5).
+        $natura = null;
+        if ($scrittura->tipo_movimento === TipoMovimentoContabile::INCASSO_RATA) {
+            // Le parole della decisione 219; per un incasso fatto solo di credito, quelle della compensazione.
+            $domanda = NaturaStorno::domanda(NaturaStorno::soloCredito($scrittura));
+            $natura = NaturaStorno::from($request->validate(
+                ['natura_storno' => ['required', 'string', \Illuminate\Validation\Rule::enum(NaturaStorno::class)]],
+                ['natura_storno.required' => $domanda, 'natura_storno.string' => $domanda, 'natura_storno.enum' => $domanda],
+            )['natura_storno']);
+        }
+
         // 2. EAGER LOAD COMPLETO: Il controller prepara tutti i dati necessari per la vista e per l'Action
         $scrittura->load(['figlie.righe', 'figlie.quotePagate', 'righe', 'quotePagate']);
 
@@ -72,7 +85,7 @@ class StornoIncassoController extends Controller
         $rateIds = $coppie->pluck(0)->unique()->values()->all();
 
         // 4. ESEGUIAMO L'AZIONE DI STORNO (Che inverte sia padre che figlie)
-        $action->execute($scrittura, $condominio);
+        $action->execute($scrittura, $condominio, $natura);
 
         // 5. AGGIORNIAMO LO SCADENZIARIO UTENTI
         $eventiRata->allineaPagato($coppie);
@@ -117,7 +130,23 @@ class StornoIncassoController extends Controller
         }
         $scrittura->load(['quotePagate', 'figlie.quotePagate']);
 
-        return response()->json($avviso->perIncasso($scrittura) + ['ricevuta' => self::fraseDellaRicevuta($scrittura)]);
+        return response()->json($avviso->perIncasso($scrittura) + [
+            'ricevuta' => self::fraseDellaRicevuta($scrittura),
+            // Da quale data vale ognuna delle due nature, nel giorno dell'amministratore: la conferma lo scrive accanto alla scelta, e dice
+            // prima di confermare se l'errore, in un esercizio chiuso, vale da oggi (decisione 217, D1).
+            'natura'   => self::dateDelloStorno($condominio, $scrittura),
+        ]);
+    }
+
+    /** @return array{errore_registrazione: array{vale_dal: string, esercizio_chiuso: bool}, versamento_tornato: array{vale_dal: string}} */
+    private static function dateDelloStorno(Condominio $condominio, ScritturaContabile $incasso): array
+    {
+        $data = $incasso->data_competenza?->format('Y-m-d') ?? \App\Helpers\DateHelper::oggiUtente();
+
+        return [
+            'errore_registrazione' => StornoIncassoRateAction::valeDal($condominio->id, NaturaStorno::ERRORE_REGISTRAZIONE, $data),
+            'versamento_tornato'   => ['vale_dal' => StornoIncassoRateAction::valeDal($condominio->id, NaturaStorno::VERSAMENTO_TORNATO, $data)['vale_dal']],
+        ];
     }
 
     /**

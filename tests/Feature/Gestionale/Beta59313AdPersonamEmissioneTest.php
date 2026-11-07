@@ -200,7 +200,7 @@ test('Coda 313 — lo storno dell\'incasso rimette il debito di Rossi e lascia l
     b59apEmetti($this, $s, $piano, [1, 2])->assertSessionHas('message.type', 'success');
     $incasso = b59apIncassa($this, $s, $piano, $rossi, [1 => 61000, 2 => 61000]);
 
-    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     expect(b59apCreditiUnita($s))->toBe(122000)
         ->and(b59apEstratto($this, $s, $rossi))->toBe(122000)
         ->and(b59apGestioneRate($s))->toBe(0);
@@ -283,7 +283,7 @@ test('Coda 313 — lo storno di una compensazione scrive la quota a credito rima
     ])->assertSessionHasNoErrors();
     $incasso = (int) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->max('id');
 
-    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     $figlia = (int) $q1->fresh()->scrittura_contabile_id;
     $u1 = $s['unita']['1']->id;
     expect($figlia)->toBeGreaterThan(0)
@@ -528,7 +528,7 @@ test('Coda 313 (decisione 160) — dopo una compensazione la nota collegata si r
     b59apNotaSuInterno1($this, $s, $fattura)->assertSessionHasErrors('fattura_rettificata_id');
     expect((string) session('errors')->first('fattura_rettificata_id'))->toStartWith('Il piano rate «Balcone con saldi» ha già emesso le rate n. 1 e 2');
 
-    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
 
     $figlia = (int) $q1->fresh()->scrittura_contabile_id;
     $anticipiRossi = (int) DB::table('righe_scritture')->join('scritture_contabili as sc', 'sc.id', '=', 'righe_scritture.scrittura_id')->whereNull('sc.deleted_at')
@@ -599,7 +599,7 @@ test('Coda 313 (decisione 160, limite L1) — dopo lo storno o la nota delle ver
 
     // La strada della card, dalle rotte: stornato l'incasso di Bice, annullata la rata 1, il piano in bozza ed eliminato. Le unità senza persona
     // restano quelle di prima (l'emissione della 1.10 non le chiudeva), e la card non elenca più la quota.
-    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     session()->forget(['message', 'errors']);
     $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $piano->id, 'rata' => b59apRata($piano, 1)->id]))
         ->assertSessionHas('message.type', 'success');
@@ -639,7 +639,7 @@ test('Coda 313 (decisione 160, limite L1) — con lo storno delle versioni di pr
     b59apComeLa58($this, $s, $piano);
     expect([b59apSenzaPersona($s, '1'), b59apSenzaPersona($s, '2')])->toBe([0, 0]);
 
-    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
 
     $card = $this->actingAs($this->user)->get(route('admin.gestionale.movimenti-rate.index', [$s['c']]))->assertOk()->viewData('page')['props']['riallineamento_crediti'];
     expect($q1->fresh()->scrittura_contabile_id)->toBeNull()

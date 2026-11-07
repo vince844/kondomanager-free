@@ -27,6 +27,7 @@ import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import { piuGiorni } from '@/lib/giorno';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -653,9 +654,9 @@ watch(
         if (!f) return;
 
         if (newFornitoreId !== oldFornitoreId || newDataDoc !== oldDataDoc) {
-            const d = new Date(newDataDoc);
-            d.setDate(d.getDate() + (f.giorni_scadenza || 30));
-            form.data_scadenza = d.toISOString().substring(0, 10);
+            // La data del documento più i giorni del fornitore, sui numeri della data (1.12.0-beta.3): passando da un istante, a marzo
+            // l'ora legale la faceva uscire un giorno prima.
+            form.data_scadenza = piuGiorni(newDataDoc, f.giorni_scadenza || 30);
         }
 
         if (newFornitoreId !== oldFornitoreId) {

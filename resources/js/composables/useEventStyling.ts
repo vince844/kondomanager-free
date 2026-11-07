@@ -235,8 +235,22 @@ export function useEventStyling() {
         // ---------------------------------------------------------
         // 5. SCADENZE TEMPORALI DEFAULT
         // ---------------------------------------------------------
+        // Una rata non ancora emessa non è mai «Scaduta», né rossa o gialla nei giorni prima: il promemoria nasce all'approvazione del
+        // piano, prima dell'emissione. Dice il fatto che il programma sa, con le parole della finestra del portale: è in attesa di
+        // emissione (che non sia stata chiesta, per esempio con un avviso per posta, il programma non lo sa). Oltre i 14 giorni resta la
+        // frase di sempre. Un promemoria scritto prima del campo `is_emitted` non ce l'ha, e resta com'era.
+        if (days <= 14 && type === 'scadenza_rata_condomino' && meta.is_emitted === false) {
+            return {
+                color: 'text-slate-600 dark:text-slate-400',
+                bgColor: 'bg-slate-50 dark:bg-slate-900/20',
+                borderColor: 'border-slate-200 dark:border-slate-800',
+                icon: CalendarDays,
+                label: 'In attesa di emissione'
+            };
+        }
+
         if (days < 0) {
-            return { 
+            return {
                 color: 'text-red-700 dark:text-red-500 font-bold', 
                 bgColor: 'bg-red-100 dark:bg-red-900/30', 
                 borderColor: 'border-red-300 dark:border-red-700', 

@@ -2,7 +2,9 @@
 
 namespace App\Services\Treasury;
 
+use App\Helpers\DateHelper;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
@@ -87,7 +89,8 @@ final class TreasuryTimelineBuilder
      */
     public function build(): array
     {
-        $limitDate = Carbon::today()->addDays($this->giorni);
+        // «Oggi» è il giorno dell'amministratore: fra le 00:00 e le 02:00 di Roma il giorno UTC è ancora ieri.
+        $limitDate = CarbonImmutable::parse(DateHelper::oggiUtente())->addDays($this->giorni);
         
         // Filtriamo gli eventi fuori finestra per sicurezza (dovrebbero già essere filtrati a monte)
         $validEvents = $this->events->filter(function ($e) use ($limitDate) {
@@ -140,16 +143,14 @@ final class TreasuryTimelineBuilder
 
     private function normalizeDate($data): string
     {
-        $today = Carbon::today();
+        $oggi = DateHelper::oggiUtente();
         if (!$data) {
-            return $today->toDateString();
+            return $oggi;
         }
 
-        $parsed = Carbon::parse($data)->startOfDay();
-        if ($parsed->isPast()) {
-            return $today->toDateString(); // Day-0 clamp per il pregresso scaduto o fatture appena scadute
-        }
+        $giorno = $data instanceof \DateTimeInterface ? $data->format('Y-m-d') : Carbon::parse($data)->toDateString();
 
-        return $parsed->toDateString();
+        // Day-0 clamp per il pregresso scaduto o fatture appena scadute
+        return $giorno < $oggi ? $oggi : $giorno;
     }
 }

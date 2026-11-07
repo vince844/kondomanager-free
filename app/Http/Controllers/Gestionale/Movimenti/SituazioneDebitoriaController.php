@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Services\Riparto\RisolutoreTitolari;
+use App\Services\Gestionale\Debiti\Scadenza;
+use App\Services\Gestionale\Incassi\OrdineImputazione;
 
 class SituazioneDebitoriaController extends Controller
 {
@@ -231,6 +233,11 @@ class SituazioneDebitoriaController extends Controller
                                && $eventoRata->visibility !== 'hidden';
             }
 
+            // La scadenza della rata, letta dal predicato comune: il giorno della scadenza non è scaduto, e il giorno è quello
+            // dell'amministratore. Il campo guarda solo la data: che la rata sia emessa lo dice `is_emitted` (il badge «Scaduta» del
+            // modulo li guarda tutti e due; «Mostra scadute» e «Paga scadute» solo la data, per restare in testa all'ordine).
+            $scadenza = Scadenza::giorno($first->rata->data_scadenza);
+
             return [
                 'id'              => $first->id,
                 'rata_padre_id'   => $first->rata_id,
@@ -246,15 +253,31 @@ class SituazioneDebitoriaController extends Controller
                 'tipologia'       => 'Aggregato',
                 'da_pagare'       => 0,     
                 'selezionata'     => false, 
-                'scaduta'         => $first->data_scadenza && Carbon::parse($first->data_scadenza)->isPast(),
+                'scaduta'         => Scadenza::scaduta($scadenza),
                 'is_credito'      => $residuoNetto < 0,
                 'is_emitted'      => $isEmitted,
+                // Il pregresso è la rata 0, non la descrizione né `rate_quote.tipo` (i piani di prima del 19/02/2026 hanno la rata 0
+                // a `tipo = 'ordinaria'`, e il passaggio scrive gemelle `saldo_iniziale` su qualunque rata).
+                'pregresso'       => (int) $first->rata->numero_rata === 0,
+                // La posizione nell'ordine proposto: solo le righe con una quota a debito (sotto, dopo l'ordinamento).
+                'chiave_ordine'   => OrdineImputazione::chiave($scadenza, (int) $first->rata->numero_rata, $isEmitted, (int) $first->rata_id),
+                'a_debito'        => $gruppoQuotes->contains(fn ($q) => ($q->importo - $q->importo_pagato) > 0),
                 'is_published'    => $isPublished,
                 'dettaglio_quote' => $dettaglioTooltip 
             ];
         })
         ->filter()
+        ->sortBy('chiave_ordine')
         ->values();
+
+        // Le righe nell'ordine che il programma propone, con la posizione fra quelle a debito (una riga solo a credito non ne ha).
+        $posizione = 0;
+        $groupedRate = $groupedRate->map(function (array $r) use (&$posizione) {
+            $r['ordine'] = $r['a_debito'] ? ++$posizione : null;
+            unset($r['chiave_ordine'], $r['a_debito']);
+
+            return $r;
+        });
 
         return response()->json(['rate' => $groupedRate, 'note_solidarieta' => array_map(fn ($n) => $n['testo'], $note)]);
     }

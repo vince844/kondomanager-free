@@ -50,7 +50,8 @@ class IncassoRateController extends Controller
     use HandleFlashMessages, HasEsercizio, HasCondomini, PaginaElenco;
 
     /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
-    private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
+    /** Le scelte del filtro dello stato; l'ultima guarda l'imputazione: «fuori ordine, non dichiarata» (1.12.0-beta.3). */
+    private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata', \App\Services\Gestionale\Incassi\OrdineImputazione::FUORI_ORDINE];
 
     /**
      * Inizializza il controller iniettando il servizio per la gestione incassi.
@@ -348,18 +349,16 @@ class IncassoRateController extends Controller
             'figlie.righe.anagrafica',
         ]);
 
-        // Caricamento del nome utente creatore per l'audit trail
-        $utenteCreatore = DB::table('users')
-            ->where('id', $scrittura->created_by)
-            ->value('name');
+        // Chi l'ha registrato (1.12.0-beta.3: il salvataggio scrive `created_by`; gli incassi di prima non l'hanno).
+        $utenteCreatore = $scrittura->created_by ? DB::table('users')->where('id', $scrittura->created_by)->value('name') : null;
 
-        // Idem per l'utente che ha effettuato un eventuale storno
-        $utenteStornatore = null;
-        if ($scrittura->stato === 'stornato' && !empty($scrittura->dati_extra['stornato_da_user_id'])) {
-            $utenteStornatore = DB::table('users')
-                ->where('id', $scrittura->dati_extra['stornato_da_user_id'])
-                ->value('name');
-        }
+        // Lo storno: chi l'ha fatto e quando, dalla rettifica; perché, dall'incasso (la natura, decisione 217). Il ramo di prima leggeva
+        // `stato === 'stornato'`, un valore che la colonna non ammette (lo storno scrive «annullata»): non trovava mai niente.
+        $rettifica = $scrittura->stato === 'annullata'
+            ? ScritturaContabile::where('scrittura_padre_id', $scrittura->id)->where('tipo_movimento', TipoMovimentoContabile::RETTIFICA->value)->orderBy('id')->first()
+            : null;
+        $utenteStornatore = $rettifica?->created_by ? DB::table('users')->where('id', $rettifica->created_by)->value('name') : null;
+        $natura = \App\Enums\NaturaStorno::tryFrom((string) $scrittura->natura_storno);
 
         // Recuperiamo anche i formati frontend se vogliamo riciclare le stesse strutture logiche
         $formattato = clone $scrittura;
@@ -379,6 +378,20 @@ class IncassoRateController extends Controller
             'incassoFormatted' => $formattato,
             'utenteCreatore'   => $utenteCreatore,
             'utenteStornatore' => $utenteStornatore,
+            // A che cosa va il versamento e chi l'ha dichiarato (decisioni 217 e 218). Si corregge stornando e registrando di nuovo.
+            'imputazione'      => [
+                'codice' => $scrittura->imputazione,
+                'testo'  => \App\Services\Gestionale\Incassi\OrdineImputazione::etichetta($scrittura->imputazione),
+                'nota'   => $scrittura->imputazione_nota,
+            ],
+            // Le date come `Y-m-d`: il giorno in cui si è stornato (nel calendario dell'amministratore) e quello da cui lo storno vale.
+            'storno'           => $rettifica ? [
+                'stornato_il'  => $rettifica->created_at?->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('Y-m-d'),
+                'vale_dal'     => $rettifica->data_competenza?->format('Y-m-d'),
+                'protocollo'   => $rettifica->numero_protocollo,
+                'natura'       => $natura?->value,
+                'natura_testo' => $natura?->etichetta(($formattato['importo_totale_cents'] ?? 0) === 0) ?? 'Natura non dichiarata: stornato prima che il programma la chiedesse',
+            ] : null,
             // Le emissioni della sua ricevuta, dalla più recente: stampata, inviata a chi, in coda, non partita (decisione 201).
             'emissioni'        => RicevuteIncassiController::emissioniDi($scrittura),
             // Gli invii della ricevuta che «Riprova» può ancora rimandare: senza, il pulsante non c'è.

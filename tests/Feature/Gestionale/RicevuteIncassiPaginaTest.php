@@ -46,7 +46,7 @@ test('la pagina si apre con «mai emessa» e i versamenti dal primo del mese sco
     $stampato = incassaPerRicevuta($s, $s->anna, [[$s->anna2, 120.50]], $giorni(3), 120.50);
     $fallito = incassaPerRicevuta($s, $s->ugo, [[$s->ugo1, 60.00]], $giorni(4), 60.00);
     $annullato = incassaPerRicevuta($s, $s->ugo, [[$s->ugo2, 60.00]], $giorni(5), 60.00);
-    app(StornoIncassoRateAction::class)->execute($annullato->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($annullato->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     // Un versamento di prima del mese scorso: è «mai emessa», ma all'apertura non c'è.
     $vecchio = incassaPerRicevuta($s, $s->anna, [[$s->anna3, 150.00]], $giorni(70), 150.00);
     segnaEmissione($s, $stampato, 'stampa', 'stampata');

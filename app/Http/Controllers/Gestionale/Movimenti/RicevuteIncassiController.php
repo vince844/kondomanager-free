@@ -61,6 +61,14 @@ class RicevuteIncassiController extends Controller
             $grezzi += ElencoRicevute::periodoDiApertura();
         }
         $filtri = $this->elenco->filtriNormalizzati($grezzi);
+        // I filtri scelti da chi lavora si ricordano: se un indirizzo di un PDF viene riaperto con un GET (`riapriPdf`), si torna a questi. Quelli
+        // di serie no: portano le date di quel giorno, e il giorno dopo il rimando riporterebbe il periodo di ieri. L'apertura di serie, essendo
+        // l'ultima pagina aperta, toglie anche quelli di prima.
+        if ($request->has('ricevuta')) {
+            $request->session()->put(self::chiaveFiltri($condominio), $filtri);
+        } else {
+            $request->session()->forget(self::chiaveFiltri($condominio));
+        }
         $righe = $this->elenco->righe($condominio, $filtri);
 
         $perPagina = $this->righePerPagina($request);
@@ -147,6 +155,8 @@ class RicevuteIncassiController extends Controller
             'quote'            => array_map(fn (array $q) => ['rata' => RicevutaIncasso::nomeBreve((string) $q['rata'], $q['piano'] ?? null), 'scadenza' => $q['scadenza'] ?? null]
                 + array_intersect_key($q, array_flip(['piano', 'gestione', 'unita', 'importo', 'imputato', 'dal_credito', 'dopo'])), $contenuto['quote']),
             'parte_in_piu'     => array_map(fn (array $e) => array_intersect_key($e, array_flip(['importo', 'persona', 'rata', 'riduce', 'a_credito'])), $contenuto['eccedenze']),
+            // La riga del criterio dell'imputazione che la ricevuta stampa (1.12.0-beta.3), o null: una copia emessa prima non l'ha.
+            'imputazione'      => $contenuto['imputazione'] ?? null,
             // La soglia del bollo si guarda sul solo denaro versato; il credito usato la finestra lo dice a parte.
             'credito_usato'    => $contenuto['credito_usato'],
             'sopra_soglia'     => $contenuto['sopra_soglia'],
@@ -215,11 +225,23 @@ class RicevuteIncassiController extends Controller
      * Un GET su un indirizzo dei PDF (la stampa, l'anteprima, l'archivio per persona): la scheda del PDF ricaricata, riaperta dalla cronologia o
      * copiata. Il PDF si chiede solo con un POST, perché la stampa scrive il registro: qui non si rifà niente e non si scrive niente. Si torna
      * alla pagina delle ricevute dello stesso condominio, con la frase che dice da dove si riapre; senza questa rotta il browser mostrava un 405.
+     * La pagina si riapre con i filtri che chi lavora aveva scelto nell'ultima apertura (`index` li ricorda in sessione, uno per condominio). Se
+     * l'ultima apertura è stata di serie, o la pagina non è stata aperta prima, si riapre di serie: le ricevute mai emesse, dal primo del mese scorso
+     * a oggi, con il periodo di quel giorno. In quel caso la ricevuta appena stampata non c'è nell'elenco, perché non è più «mai emessa»: si trova
+     * scegliendo «Già stampata» o «Tutte».
      */
-    public function riapriPdf(Condominio $condominio, string $pdf): RedirectResponse
+    public function riapriPdf(Request $request, Condominio $condominio, string $pdf): RedirectResponse
     {
-        return to_route('admin.gestionale.ricevute.index', ['condominio' => $condominio->id])
+        $filtri = (array) $request->session()->get(self::chiaveFiltri($condominio), []);
+
+        return to_route('admin.gestionale.ricevute.index', ['condominio' => $condominio->id] + $filtri)
             ->with($this->flashWarning(self::FRASI_RIAPRI_PDF[$pdf] ?? self::FRASI_RIAPRI_PDF['stampa']));
+    }
+
+    /** La chiave della sessione dove la pagina ricorda i suoi ultimi filtri, uno per condominio. */
+    private static function chiaveFiltri(Condominio $condominio): string
+    {
+        return 'ricevute.filtri.' . $condominio->id;
     }
 
     private function pdf(Request $request, Condominio $condominio, bool $anteprima): Response

@@ -102,7 +102,7 @@ it('Coda 317 — lo storno sta alla sua data: l\'incasso del 10/03 stornato il 2
     $this->travelTo('2026-03-10 10:00:00');
     $incasso = b59eIncassa($s, 1, '2026-03-10', '500.00');
     $this->travelTo('2026-04-20 10:00:00');
-    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     $this->travelTo('2026-04-25 10:00:00');
     b59eEmetti($s, [2], '2026-04-05');
     $this->travelTo('2026-10-30 09:00:00');
@@ -128,7 +128,7 @@ it('Coda 317 — lo storno fatto lo stesso giorno dell\'incasso sta dopo l\'inca
     $this->travelTo('2026-03-15 10:00:00');
     $incasso = b59eIncassa($s, 1, '2026-03-15', '500.00');
     $this->travelTo('2026-03-15 11:00:00');
-    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     $this->travelTo('2026-10-30 09:00:00');
 
     // A mano: rata (05/01) +50000 → 50000. Il 15/03 l'incasso −50000 → 0 e, dopo di lui, lo storno che lo annulla (la rettifica in dare) +50000 → 50000.
@@ -156,7 +156,7 @@ it('Coda 317 — lo storno sta subito dopo l\'incasso che annulla, non dopo un a
     $this->travelTo('2026-03-15 10:00:00');
     $primo = b59eIncassa($s, 1, '2026-03-15', '500.00');
     $this->travelTo('2026-03-15 11:00:00');
-    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $primo]))->assertSessionHasNoErrors();
+    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $primo]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     $this->travelTo('2026-03-15 12:00:00');
     b59eIncassa($s, 2, '2026-03-15', '500.00');
     $this->travelTo('2026-10-30 09:00:00');
@@ -185,7 +185,7 @@ it('Coda 317 — lo storno di un incasso di un altro giorno resta nel giorno del
     $this->travelTo('2026-04-20 11:00:00');
     $primo = b59eIncassa($s, 1, '2026-03-10', '500.00');
     $this->travelTo('2026-04-20 12:00:00');
-    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $primo]))->assertSessionHasNoErrors();
+    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $primo]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     $this->travelTo('2026-10-30 09:00:00');
 
     // A mano: le due rate del 05/01 → 100000. Il 10/03 il primo incasso (inserito il 20/04, dopo il secondo) −50000 → 50000. Il 20/04 lo storno è del 20/04 e
@@ -211,7 +211,7 @@ it('Coda 317 — l\'incasso pagato anche con il credito e stornato lo stesso gio
     b59eCompensa($s, '2026-03-10', [1 => '500.00', 2 => '200.00', 0 => '-600.00'], '100.00');
     $incasso = (int) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->max('id');
     $this->travelTo('2026-03-10 10:00:00');
-    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     if ($righeInvertite) {
         // L'ordine in cui lo storno scrive le righe segue quello in cui il database restituisce le righe della scrittura che annulla, e non è un
         // contratto: qui le righe in avere di ogni storno sono scritte prima di quelle in dare, e dentro ogni lato dall'importo più piccolo al più
@@ -268,7 +268,7 @@ it('Coda 317 — due storni della stessa scrittura (archivio di prima della 1.11
     b59eCompensa($s, '2026-03-15', [1 => '300.00', 2 => '200.00'], '500.00');
     $incasso = (int) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->max('id');
     $this->travelTo('2026-03-15 11:00:00');
-    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($s['admin'])->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     $primo = (int) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'rettifica')->max('id');
 
     // Il doppio storno concorrente dello stesso incasso è bloccato dalla rotta; prima della 1.11.0-beta.49 si poteva fare, e l'archivio può averlo.

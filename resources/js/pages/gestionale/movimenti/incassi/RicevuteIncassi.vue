@@ -29,7 +29,7 @@ import {
     estremiDaMandare, etichettaParteDelPdf, fraseDaErroreConFile, frasePerErrore, nomeDalContentDisposition, payloadSelezione, pronteDaEmettere, quanteSelezionate,
     riepilogoDelleScelte, scaricaFile, selezionaPagina, selezioneVuota, soloPersoneDaMandare, statoConModo, testoAltriIndirizzi, testoAnteprima, testoCausali,
     testoConfermaInviaDiNuovo, testoConfermaNonServe, testoConfermaRiprova, testoDelPdf, testoEmissione,
-    testoLimiteRiprova, testoRegistratiDiRecente, testoRestantiBlocco, testoRestantiRiprova, testoRiepilogo, testoTetto, tutteDeiFiltri, unisciEsiti,
+    testoLimiteRiprova, testoEsitoInvio, testoRegistratiDiRecente, testoRestantiBlocco, testoRestantiRiprova, testoRiepilogo, testoTetto, tutteDeiFiltri, unisciEsiti, verificaIlFile,
     type Emissione, type PersonaAnteprima, type Selezione,
 } from '@/lib/gestionale/incassi/ricevute';
 import type { Flash } from '@/types/flash';
@@ -131,6 +131,20 @@ let anteprimaChiesta = 0;
 const errore = ref<string | null>(null);
 const esito = ref<any>(null);
 const prova = ref<string | null>(null);
+// La riga in testa alla pagina: dove si legge l'esito di una richiesta quando la finestra che l'ha chiesta non c'è più, e quello di «Invia di
+// nuovo», «Riprova» e «Non serve comunicarla», che non sono della finestra.
+const messaggio = ref<string | null>(null);
+// Ogni apertura della finestra del blocco ha il suo numero. Una richiesta partita in un'apertura, quando risponde, trova la finestra ancora
+// quella (l'esito si scrive lì), chiusa, o riaperta da capo: allora la finestra è un'altra, con un'altra anteprima, e l'esito non è suo. Si
+// legge in testa alla pagina.
+let aperturaBlocco = 0;
+const stessaApertura = (apertura: number) => blocco.value.aperto && apertura === aperturaBlocco;
+// Una richiesta del blocco che scrive nel registro o manda email (l'archivio, l'invio) è in corso: finché non risponde un'altra uguale non parte,
+// neanche da una finestra riaperta nel frattempo.
+const richiestaInCorso = ref(false);
+// L'esito di una richiesta partita da un'apertura precedente, arrivato a una finestra riaperta da capo: la finestra non l'ha vista partire, e la
+// riga in testa alla pagina sta sotto il suo sfondo scuro. Si legge in una riga della finestra, finché non si riapre o non parte un'altra richiesta.
+const esitoDiPrima = ref<{ frase: string; riuscito: boolean } | null>(null);
 const scelte = ref({
     bollo_sopra: statoConModo(props.scelta_ricordata.bollo_sopra, props.scelta_ricordata.modo_bollo),
     bollo_sotto: statoConModo(props.scelta_ricordata.bollo_sotto, props.scelta_ricordata.modo_bollo),
@@ -203,7 +217,19 @@ async function caricaAnteprima() {
         }
     }
 }
+// La risposta di una richiesta del blocco arriva e la finestra non è più quella che l'ha chiesta. Se è chiusa, l'esito si legge in testa alla
+// pagina. Se è stata riaperta da capo, la frase sta anche nella finestra; e se la richiesta ha scritto qualcosa (`rifai`: la stampa, l'archivio,
+// l'invio), la finestra rilegge il registro con un'anteprima nuova, perché quella a video è di prima: finché non arriva i pulsanti che la leggono
+// restano fermi (`caricamento`). Un errore non cambia niente: l'anteprima di prima è ancora buona, come nella stessa finestra.
+function inUnAltraApertura(frase: string | null, riuscito: boolean, rifai = false) {
+    if (frase) messaggio.value = frase;
+    if (!blocco.value.aperto) return;
+    if (frase) esitoDiPrima.value = { frase, riuscito };
+    if (riuscito && rifai) caricaAnteprima();
+}
 function apriBlocco(modo: 'stampa' | 'invio' | 'persone') {
+    aperturaBlocco++;
+    esitoDiPrima.value = null;
     blocco.value = { aperto: true, modo };
     anteprima.value = null;
     esito.value = null;
@@ -232,9 +258,11 @@ const pdfSenzaScheda = ref(false);
 const pdfArrivato = ref<string | null>(null);
 async function apriIlPdf(stampa: boolean, campi: Record<string, unknown>): Promise<boolean> {
     if (pdfInArrivo.value) return false;
+    const apertura = aperturaBlocco;
     pdfInArrivo.value = true;
     errore.value = null;
     pdfArrivato.value = null;
+    esitoDiPrima.value = null;
     try {
         const pdf = await apriPdfInUnaScheda(
             () => axios.post(route(generateRoute(stampa ? 'gestionale.ricevute.stampa' : 'gestionale.ricevute.pdf-anteprima'), { condominio: props.condominio.id }),
@@ -242,13 +270,19 @@ async function apriIlPdf(stampa: boolean, campi: Record<string, unknown>): Promi
             stampa ? 'ricevute.pdf' : 'anteprima-ricevute.pdf',
             undefined,
             (aperta) => { pdfSenzaScheda.value = !aperta; },
+            // L'anteprima non scrive niente: se chi lavora ha chiuso la scheda non la voleva più, e il file non si scarica.
+            { scaricaSeChiusa: stampa },
         );
-        pdfArrivato.value = testoDelPdf(pdf, { stampa, una: false });
+        const frase = testoDelPdf(pdf, { stampa, una: false });
+        if (stessaApertura(apertura)) pdfArrivato.value = frase;
+        else inUnAltraApertura(frase, true, stampa);
         if (stampa) ricarica();
 
         return true;
     } catch (e: any) {
-        errore.value = await fraseDaErroreConFile(e, stampa ? 'Non è stato possibile stampare le ricevute. Riprova.' : 'Non è stato possibile aprire l\'anteprima. Riprova.');
+        const frase = await fraseDaErroreConFile(e, stampa ? 'Non è stato possibile stampare le ricevute. Riprova.' : 'Non è stato possibile aprire l\'anteprima. Riprova.');
+        if (stessaApertura(apertura)) errore.value = frase;
+        else inUnAltraApertura(frase, false);
 
         return false;
     } finally {
@@ -263,28 +297,38 @@ function stampaInBlocco(soloIncassi?: number[]): Promise<boolean> {
 // Più ricevute del tetto di un PDF: una parte per volta, ogni parte con le persone intere. Si passa alla parte dopo quando questa è stampata:
 // se il server la rifiuta, resta da stampare.
 async function stampaLaParte() {
+    const apertura = aperturaBlocco;
     const indice = partePdf.value;
     const parte = partiPdf.value[indice];
     if (!parte || pdfInArrivo.value) return;
-    if (await stampaInBlocco(parte)) partePdf.value = indice < partiPdf.value.length - 1 ? indice + 1 : partiPdf.value.length;
+    // La parte è di questa apertura: una finestra riaperta nel frattempo riparte dalla prima.
+    if (await stampaInBlocco(parte) && stessaApertura(apertura)) partePdf.value = indice < partiPdf.value.length - 1 ? indice + 1 : partiPdf.value.length;
 }
 
 // «Scarica un PDF per persona»: l'archivio .zip arriva come file e si salva; ogni ricevuta risulta stampata.
 const scaricato = ref<string | null>(null);
 async function scaricaPerPersona() {
-    caricamento.value = true;
+    if (richiestaInCorso.value) return;
+    const apertura = aperturaBlocco;
+    richiestaInCorso.value = true;
     errore.value = null;
     scaricato.value = null;
+    esitoDiPrima.value = null;
     try {
         const risposta = await axios.post(route(generateRoute('gestionale.ricevute.pdf-per-persona'), { condominio: props.condominio.id }), corpo(), { responseType: 'blob' });
+        await verificaIlFile(risposta, 'zip');
         const nome = nomeDalContentDisposition(risposta.headers?.['content-disposition'], 'ricevute-per-persona.zip');
         scaricaFile(risposta.data as Blob, nome);
-        scaricato.value = `Archivio scaricato: ${nome}. Le ricevute risultano stampate. Aprilo, e manda a ogni persona il suo PDF dal tuo programma di posta; gli indirizzi sono in «Indirizzi email.txt».`;
+        const frase = `Archivio scaricato: ${nome}. Le ricevute risultano stampate. Aprilo, e manda a ogni persona il suo PDF dal tuo programma di posta; gli indirizzi sono in «Indirizzi email.txt».`;
+        if (stessaApertura(apertura)) scaricato.value = frase;
+        else inUnAltraApertura(frase, true, true);
         ricarica();
     } catch (e: any) {
-        errore.value = await fraseDaErroreConFile(e, 'Non è stato possibile preparare l\'archivio. Riprova.');
+        const frase = await fraseDaErroreConFile(e, 'Non è stato possibile preparare l\'archivio. Riprova.');
+        if (stessaApertura(apertura)) errore.value = frase;
+        else inUnAltraApertura(frase, false);
     } finally {
-        caricamento.value = false;
+        richiestaInCorso.value = false;
     }
 }
 
@@ -298,40 +342,57 @@ function guardaLeRicevute() {
 const senzaIndirizzoPrima = ref<{ senza_indirizzo: number; senza_indirizzo_incassi: number[]; senza_indirizzo_persone: string[] } | null>(null);
 
 async function inviaInBlocco(restanti?: { persone: number[]; incassi: number[] }) {
-    caricamento.value = true;
+    if (richiestaInCorso.value) return;
+    const apertura = aperturaBlocco;
+    richiestaInCorso.value = true;
     errore.value = null;
+    esitoDiPrima.value = null;
     try {
         // «Invia le altre»: dopo il tetto dei messaggi, le persone rimaste con le loro ricevute, e niente di più.
         const richiesta = restanti
             ? { ...corpo(), tutte: undefined, filtri: undefined, incassi: restanti.incassi, solo_persone: restanti.persone, escludi_gia_inviate: 0 }
             : { ...corpo(), escludi_gia_inviate: escludiGiaInviate.value ? 1 : 0, solo_persone: soloPersone.value };
         const nuovo = (await axios.post(route(generateRoute('gestionale.ricevute.invia'), { condominio: props.condominio.id }), richiesta)).data;
-        if (!restanti) senzaIndirizzoPrima.value = null;
-        esito.value = restanti ? unisciEsiti(senzaIndirizzoPrima.value, nuovo) : nuovo;
-        senzaIndirizzoPrima.value = esito.value && esito.value.senza_indirizzo > 0
-            ? { senza_indirizzo: esito.value.senza_indirizzo, senza_indirizzo_incassi: esito.value.senza_indirizzo_incassi, senza_indirizzo_persone: esito.value.senza_indirizzo_persone }
-            : senzaIndirizzoPrima.value;
-        selezione.value = selezioneVuota();
+        if (stessaApertura(apertura)) {
+            if (!restanti) senzaIndirizzoPrima.value = null;
+            esito.value = restanti ? unisciEsiti(senzaIndirizzoPrima.value, nuovo) : nuovo;
+            senzaIndirizzoPrima.value = esito.value && esito.value.senza_indirizzo > 0
+                ? { senza_indirizzo: esito.value.senza_indirizzo, senza_indirizzo_incassi: esito.value.senza_indirizzo_incassi, senza_indirizzo_persone: esito.value.senza_indirizzo_persone }
+                : senzaIndirizzoPrima.value;
+            selezione.value = selezioneVuota();
+        } else {
+            // La finestra è chiusa, o è un'altra: l'esito si legge in testa alla pagina, e nella finestra se è aperta. La scelta delle righe si
+            // toglie solo se nessuna finestra è aperta; una finestra riaperta nel frattempo è fatta su quella scelta, e la tiene.
+            inUnAltraApertura(testoEsitoInvio(nuovo), true, true);
+            if (!blocco.value.aperto) selezione.value = selezioneVuota();
+        }
         ricarica();
     } catch (e: any) {
-        errore.value = frasePerErrore(e, 'Invio non riuscito. Riprova.');
+        const frase = frasePerErrore(e, 'Invio non riuscito. Riprova.');
+        if (stessaApertura(apertura)) errore.value = frase;
+        else inUnAltraApertura(frase, false);
     } finally {
-        caricamento.value = false;
+        richiestaInCorso.value = false;
     }
 }
 
 async function mandaneUnaAMe() {
+    const apertura = aperturaBlocco;
     prova.value = null;
     errore.value = null;
+    esitoDiPrima.value = null;
     try {
         const r = (await axios.post(route(generateRoute('gestionale.ricevute.prova'), { condominio: props.condominio.id }), { ...corpo(), solo_persone: soloPersone.value })).data;
-        prova.value = `Mandato a ${r.indirizzo} il messaggio di ${r.persona}, con ${r.ricevute === 1 ? '1 ricevuta' : `${r.ricevute} ricevute`}.`;
+        const frase = `Mandato a ${r.indirizzo} il messaggio di ${r.persona}, con ${r.ricevute === 1 ? '1 ricevuta' : `${r.ricevute} ricevute`}.`;
+        if (stessaApertura(apertura)) prova.value = frase;
+        else inUnAltraApertura(frase, true);
     } catch (e: any) {
-        errore.value = frasePerErrore(e, 'La prova non è partita.');
+        const frase = frasePerErrore(e, 'La prova non è partita.');
+        if (stessaApertura(apertura)) errore.value = frase;
+        else inUnAltraApertura(frase, false);
     }
 }
 
-const messaggio = ref<string | null>(null);
 // «Invia di nuovo» e «Riprova» mandano email con un clic: prima una conferma breve, con l'indirizzo e lo stato del bollo. «Non serve comunicarla»
 // scrive una riga che resta: anche lei chiede prima, con il numero dell'incasso.
 const conferma = ref<{ aperta: boolean; titolo: string; testo: string; pulsante: string; azione: () => void }>({ aperta: false, titolo: '', testo: '', pulsante: '', azione: () => {} });
@@ -421,7 +482,7 @@ const breadcrumbs = computed(() => [
                 <span>{{ testoRegistratiDiRecente(registrati_di_recente) }}</span>
                 <Button size="sm" variant="outline" @click="includiLeRecenti">Includile</Button>
             </div>
-            <p v-if="messaggio" class="rounded-lg border bg-slate-50 dark:bg-slate-800/60 p-2 text-sm">{{ messaggio }}</p>
+            <p v-if="messaggio" data-testid="messaggio-pagina" class="rounded-lg border bg-slate-50 dark:bg-slate-800/60 p-2 text-sm">{{ messaggio }}</p>
 
             <!-- I filtri -->
             <div class="flex flex-wrap items-end gap-3 rounded-xl border bg-white dark:bg-slate-900 p-3 text-xs">
@@ -545,7 +606,7 @@ const breadcrumbs = computed(() => [
             </div>
         </div>
 
-        <RicevutaDialog v-model:open="finestraAperta" :condominio-id="condominio.id" :incasso-id="incassoAperto" @emessa="ricarica" />
+        <RicevutaDialog v-model:open="finestraAperta" :condominio-id="condominio.id" :incasso-id="incassoAperto" @emessa="ricarica" @avviso="(frase: string) => (messaggio = frase)" />
         <ConfirmDialog v-model="conferma.aperta" :title="conferma.titolo" :description="conferma.testo" :confirm-text="conferma.pulsante" @confirm="conferma.azione()" />
 
         <!-- La finestra del blocco -->
@@ -703,7 +764,7 @@ const breadcrumbs = computed(() => [
                                 Senza un indirizzo fra quelli scelti, da stampare per la posta: {{ anteprima.senza_indirizzo.persone.join(', ') }}.
                                 <template v-if="testoAltriIndirizzi(anteprima.altri_indirizzi)">{{ testoAltriIndirizzi(anteprima.altri_indirizzi) }}</template>
                             </span>
-                            <Button size="sm" variant="outline" class="h-7 text-xs" :disabled="!pronta || pdfInArrivo" @click="stampaInBlocco(anteprima.senza_indirizzo.incassi)">Stampa le {{ anteprima.senza_indirizzo.ricevute }} senza indirizzo</Button>
+                            <Button size="sm" variant="outline" class="h-7 text-xs" :disabled="!pronta || pdfInArrivo || anteprimaInCorso" @click="stampaInBlocco(anteprima.senza_indirizzo.incassi)">Stampa le {{ anteprima.senza_indirizzo.ricevute }} senza indirizzo</Button>
                         </div>
                         <p v-if="prova" class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-xs text-emerald-800 dark:text-emerald-200">{{ prova }}</p>
                     </template>
@@ -714,7 +775,7 @@ const breadcrumbs = computed(() => [
                     <p v-if="esito.errori?.length" class="text-xs text-rose-700 dark:text-rose-300">{{ esito.errori.join(' ') }}</p>
                     <div v-if="esito.restanti" class="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-800 dark:text-amber-200">
                         <span>{{ testoRestantiBlocco(esito) }}</span>
-                        <Button size="sm" :disabled="caricamento" @click="inviaInBlocco(esito.restanti)"><Mail class="w-4 h-4 mr-2" /> Invia le altre</Button>
+                        <Button size="sm" :disabled="caricamento || richiestaInCorso" @click="inviaInBlocco(esito.restanti)"><Mail class="w-4 h-4 mr-2" /> Invia le altre</Button>
                     </div>
                     <div v-if="esito.senza_indirizzo > 0" class="flex flex-wrap items-center gap-2">
                         <span>{{ esito.senza_indirizzo_persone.join(', ') }}: senza indirizzo.</span>
@@ -722,6 +783,15 @@ const breadcrumbs = computed(() => [
                     </div>
                 </div>
 
+                <!-- L'esito di una richiesta partita prima che la finestra si riaprisse: la stessa frase che sta in testa alla pagina, dietro lo sfondo scuro. -->
+                <p
+                    v-if="esitoDiPrima"
+                    data-testid="esito-di-prima"
+                    class="rounded-md border p-2 text-sm"
+                    :class="esitoDiPrima.riuscito
+                        ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
+                        : 'border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200'"
+                >{{ esitoDiPrima.frase }}</p>
                 <p v-if="pdfInArrivo" role="status" class="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 class="w-3.5 h-3.5 animate-spin" /> {{ pdfSenzaScheda ? 'Sto preparando il PDF: la scheda nuova non si è aperta, quindi si scarica.' : 'Sto preparando il PDF: si apre nella scheda nuova.' }}</p>
                 <p v-if="pdfArrivato" class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-sm text-emerald-800 dark:text-emerald-200">{{ pdfArrivato }}</p>
                 <p v-if="errore" class="rounded-md border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 p-2 text-sm text-rose-800 dark:text-rose-200">{{ errore }}</p>
@@ -740,14 +810,14 @@ const breadcrumbs = computed(() => [
                         </template>
                         <template v-else-if="blocco.modo === 'persone'">
                             <Button variant="outline" :disabled="anteprima.ricevute === 0 || anteprima.oltre_tetto || anteprimaInCorso || pdfInArrivo" @click="guardaLeRicevute"><Eye class="w-4 h-4 mr-2" /> Anteprima</Button>
-                            <Button :disabled="!pronta || caricamento || anteprima.oltre_tetto || anteprima.ricevute === 0" @click="scaricaPerPersona">
-                                <Loader2 v-if="caricamento" class="w-4 h-4 mr-2 animate-spin" /><Archive v-else class="w-4 h-4 mr-2" /> Scarica lo .zip
+                            <Button :disabled="!pronta || caricamento || richiestaInCorso || anteprima.oltre_tetto || anteprima.ricevute === 0" @click="scaricaPerPersona">
+                                <Loader2 v-if="caricamento || richiestaInCorso" class="w-4 h-4 mr-2 animate-spin" /><Archive v-else class="w-4 h-4 mr-2" /> Scarica lo .zip
                             </Button>
                         </template>
                         <template v-else>
                             <Button variant="outline" :disabled="!pronta || anteprima.senza_server_posta || riepilogoInvio.persone === 0" @click="mandaneUnaAMe">Mandane una a me</Button>
-                            <Button :disabled="!pronta || caricamento || anteprima.senza_server_posta || riepilogoInvio.persone === 0 || indirizzi.length === 0" @click="inviaInBlocco()">
-                                <Loader2 v-if="caricamento" class="w-4 h-4 mr-2 animate-spin" /><Mail v-else class="w-4 h-4 mr-2" /> Invia
+                            <Button :disabled="!pronta || caricamento || richiestaInCorso || anteprima.senza_server_posta || riepilogoInvio.persone === 0 || indirizzi.length === 0" @click="inviaInBlocco()">
+                                <Loader2 v-if="caricamento || richiestaInCorso" class="w-4 h-4 mr-2 animate-spin" /><Mail v-else class="w-4 h-4 mr-2" /> Invia
                             </Button>
                         </template>
                     </template>

@@ -66,7 +66,7 @@ test('il già versato prima conta gli incassi registrati prima di questo, e un i
 
     // € 30,00 il 05/02, poi annullato; € 20,00 il 10/02; la ricevuta guardata è quella del 20/02 (€ 40,00).
     $annullato = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 30.00]], '2026-02-05', 30.00);
-    app(StornoIncassoRateAction::class)->execute($annullato->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($annullato->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     incassaPerRicevuta($s, $s->anna, [[$s->anna1, 20.00]], '2026-02-10', 20.00);
     $incasso = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 40.00]], '2026-02-20', 40.00);
     // Un incasso dopo, che non deve entrare nel «prima».
@@ -130,7 +130,7 @@ test('un incasso annullato: la ricevuta lo dice, con il protocollo e la data del
     $s = scenarioRicevutaIncasso();
 
     $incasso = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     $r = ricevutaDi($incasso);
 
@@ -232,7 +232,7 @@ test('una quota tornata a debito oltre il suo importo: il già versato prima si 
     // € 170,00 sulla rata 1 (€ 150,00): € 20,00 a credito, poi usati sulla rata 2; poi il primo incasso si storna: la rata 1 torna a debito per € 170,00.
     $a = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 170.00);
     incassaPerRicevuta($s, $s->anna, [[$s->anna1->fresh(), -20.00], [$s->anna2, 120.50]], '2026-03-01', 100.50);
-    app(StornoIncassoRateAction::class)->execute($a->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($a->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     $d = incassaPerRicevuta($s, $s->anna, [[$s->anna1->fresh(), 170.00]], '2026-04-01', 170.00);
 
     $q = ricevutaDi($d)['quote'][0];

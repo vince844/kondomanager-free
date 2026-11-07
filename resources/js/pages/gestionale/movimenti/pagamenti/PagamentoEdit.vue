@@ -22,6 +22,7 @@ import { usePermission } from '@/composables/permissions';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import { oggiLocale } from '@/lib/giorno';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -104,7 +105,8 @@ const form = useForm({
     fornitore_id:                   props.pagamento.fornitore?.id,
     esercizio_id:                   props.esercizio?.id || null,
     conto_corrente_id:              props.pagamento.conto_corrente?.id,
-    data_pagamento:                 props.pagamento.data_pagamento ? new Date(props.pagamento.data_pagamento).toISOString().substring(0, 10) : new Date().toISOString().substring(0, 10),
+    // La data del server è un giorno (aaaa-mm-gg, o con l'ora a mezzanotte): se ne leggono i primi dieci caratteri; senza, oggi locale (1.12.0-beta.3).
+    data_pagamento:                 props.pagamento.data_pagamento ? String(props.pagamento.data_pagamento).slice(0, 10) : oggiLocale(),
     metodo_pagamento:               props.pagamento.metodo_pagamento || 'bonifico',
     iban_beneficiario:              props.pagamento.iban_beneficiario || '',
     // La prop arriva dalla Resource ed è già in centesimi, come importo_lordo/ritenuta/netto

@@ -193,6 +193,8 @@ class RicevutaIncasso
                 'tipo' => self::ETICHETTE_CASSA[$rigaCassa->cassa->tipo] ?? ucfirst((string) $rigaCassa->cassa->tipo),
             ] : null,
             'gestione'        => $incasso->gestione?->nome,
+            // A che cosa va il versamento, con quale criterio (decisione 218, punto 4): una riga, o niente.
+            'imputazione'     => self::fraseImputazione($incasso->imputazione, $incasso->imputazione_nota),
             'quote'           => $righeQuote,
             'totali'          => [
                 'importo'  => array_sum(array_column($righeQuote, 'importo')),
@@ -259,6 +261,24 @@ class RicevutaIncasso
             'a_credito'         => $aCredito,
             'di_chi_ha_versato' => $diChiHaVersato,
         ];
+    }
+
+    /**
+     * La riga del criterio dell'imputazione sotto «A che cosa va il versamento» (decisione 218, punto 4): l'ordine delle scadenze, la
+     * dichiarazione di chi ha versato con la sua nota (è sua), la scelta dell'amministratore **senza** la sua nota (può essere interna, come
+     * la causale: decisione 202.1), la compensazione. Niente per «fuori ordine» e per gli incassi di prima. Nessuna frase di effetto legale.
+     */
+    public static function fraseImputazione(?string $imputazione, ?string $nota): ?string
+    {
+        $nota = trim((string) $nota);
+
+        return match ($imputazione) {
+            \App\Services\Gestionale\Incassi\OrdineImputazione::ORDINE_SCADENZE => 'Imputazione: secondo l\'ordine delle scadenze.',
+            \App\Services\Gestionale\Incassi\OrdineImputazione::INDICATA_DAL_VERSANTE => 'Imputazione: indicata da chi ha versato' . ($nota !== '' ? ": «{$nota}»." : '.'),
+            \App\Services\Gestionale\Incassi\OrdineImputazione::SCELTA_AMMINISTRATORE => 'Imputazione: scelta dall\'amministratore.',
+            \App\Services\Gestionale\Incassi\OrdineImputazione::COMPENSAZIONE => 'Imputazione: compensazione con il credito.',
+            default => null,
+        };
     }
 
     public static function sopraSoglia(int $importoCents): bool

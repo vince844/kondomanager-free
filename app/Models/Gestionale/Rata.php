@@ -64,8 +64,9 @@ class Rata extends Model
 
     /**
      * Le righe del giornale con questa rata, fuori dall'emissione: incassi, compensazioni, rimborsi, i loro storni e le rettifiche
-     * del riallineamento dei crediti. Si sommano **al netto** (AVERE − DARE, `TreasuryGuardianService::queryRateEmesse()`), e il
-     * netto è quanto della rata è già stato incassato.
+     * del riallineamento dei crediti. Si sommano **al netto** (AVERE − DARE), e il netto è quanto della rata è già stato incassato.
+     * Dalla 1.12.0-beta.3 la previsione di cassa non la usa più (legge la lettura comune dei debiti, `LetturaDebiti`), e nessun altro la
+     * chiama: resta per chi la vorrà, con le due correzioni sotto.
      *
      * Due correzioni della 1.11.0-beta.49 (decisione 76.3). L'emissione scrive in AVERE, con la rata, il credito riportato di una
      * quota a credito (decisione 71): non è un incasso, e senza il filtro sull'emissione la previsione di cassa lo contava come

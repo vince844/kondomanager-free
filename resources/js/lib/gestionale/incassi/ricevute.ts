@@ -72,12 +72,112 @@ export const NOTA_CONTRASSEGNO_EMAIL =
 /** Quello che legge chi lavora quando il limite sugli indirizzi scritti a mano scatta (la stessa frase che scrive il server). */
 export const FRASE_LIMITE_ALTRO_INDIRIZZO = 'Hai già mandato dieci ricevute a indirizzi scritti a mano nell\'ultimo minuto: aspetta un momento e riprova.';
 
+/** La sessione è finita (401) o il gettone è scaduto (419): la stessa frase dell'accesso. */
+export const FRASE_SESSIONE_SCADUTA = 'La sessione è scaduta: ricarica la pagina e, se serve, accedi di nuovo.';
+
+/** La richiesta è stata rifiutata perché a chi lavora manca il permesso (403): il framework lo scrive in inglese («This action is unauthorized.»). */
+export const FRASE_NON_PERMESSO = 'Non hai il permesso di fare questa operazione. Se ti serve, chiedilo a chi ti ha dato l\'accesso.';
+
+/** La richiesta è stata rifiutata perché la sessione è finita: 401 («Unauthenticated.») o 419 («CSRF token mismatch.»). */
+export function sessioneScaduta(e: unknown): boolean {
+    const stato = (e as { response?: { status?: number } } | null)?.response?.status;
+
+    return stato === 401 || stato === 419;
+}
+
 /**
- * La frase di un errore di una richiesta: il messaggio del server, oppure `predefinita` se non ce n'è. Un 429 si legge sempre in italiano, mai
- * come lo scrive il framework («Too Many Attempts.»).
+ * Una risposta di buon esito (2xx) che non è il file chiesto: per esempio la pagina di accesso, arrivata con un rimando seguito dopo che la
+ * sessione è finita. Non è un errore del server, ma il file non c'è: `frase` dice che cosa fare.
+ */
+export class RispostaNonValida extends Error {
+    constructor(readonly frase: string) {
+        super(frase);
+        this.name = 'RispostaNonValida';
+    }
+}
+
+/** Al posto del file è arrivata una pagina web (di solito la pagina di accesso, dopo che la sessione è finita): la sessione è il primo sospetto. */
+export const FRASE_NON_E_UN_PDF = 'Non è arrivato un PDF: forse la sessione è scaduta. Ricarica la pagina e, se serve, accedi di nuovo.';
+export const FRASE_NON_E_UN_ARCHIVIO = 'Non è arrivato l\'archivio: forse la sessione è scaduta. Ricarica la pagina e, se serve, accedi di nuovo.';
+/** È arrivato un file, ma non quello chiesto e non una pagina web: non c'è motivo di parlare della sessione. */
+export const FRASE_FILE_NON_PDF = 'Il file arrivato non è un PDF. Riprova; se succede ancora, ricarica la pagina.';
+export const FRASE_FILE_NON_ARCHIVIO = 'Il file arrivato non è un archivio .zip. Riprova; se succede ancora, ricarica la pagina.';
+
+const TIPI_ATTESI = { pdf: ['application/pdf'], zip: ['application/zip', 'application/x-zip-compressed'] } as const;
+/** Come comincia un file di ciascun tipo: un PDF con «%PDF», un archivio .zip con «PK» e i byte 3 e 4. */
+const INIZIO_DEL_FILE = { pdf: '%PDF', zip: 'PK\u0003\u0004' } as const;
+/** I tipi che dicono soltanto «un file»: un proxy o un antivirus li mette anche a un PDF vero. Senza leggere il file non si può dire di più. */
+const TIPI_GENERICI = ['', 'application/octet-stream', 'binary/octet-stream', 'application/x-download', 'application/download', 'application/force-download'];
+
+type Risposta = { data: unknown; headers?: Record<string, unknown> };
+
+/** Il tipo che la risposta dichiara: l'intestazione `Content-Type` senza i parametri e in minuscolo, o il tipo del file se l'intestazione manca. */
+function tipoDichiarato(risposta: Risposta): string {
+    const intestazione = risposta.headers?.['content-type'];
+    const dichiarato = typeof intestazione === 'string' && intestazione.trim() !== '' ? intestazione : (risposta.data instanceof Blob ? risposta.data.type : '');
+
+    return dichiarato.split(';')[0].trim().toLowerCase();
+}
+
+/** Una pagina web al posto del file: lo dice il tipo dichiarato, o l'inizio del file (la pagina di accesso comincia con «<!DOCTYPE» o «<html»). */
+const unaPaginaWeb = (tipo: string, inizio = ''): boolean => tipo === 'text/html' || /^\s*</.test(inizio);
+
+function nonValida(atteso: keyof typeof TIPI_ATTESI, paginaWeb: boolean): RispostaNonValida {
+    if (atteso === 'pdf') {
+        return new RispostaNonValida(paginaWeb ? FRASE_NON_E_UN_PDF : FRASE_FILE_NON_PDF);
+    }
+
+    return new RispostaNonValida(paginaWeb ? FRASE_NON_E_UN_ARCHIVIO : FRASE_FILE_NON_ARCHIVIO);
+}
+
+/** Come comincia il file, in poche lettere: basta per riconoscerlo. Il contenitore può essere un file, un testo o dei byte. */
+async function inizioDelFile(dati: unknown): Promise<string> {
+    const file = dati instanceof Blob ? dati : new Blob([dati as BlobPart]);
+
+    return file.slice(0, 64).text();
+}
+
+/**
+ * Il file arrivato è quello chiesto? Se il tipo dichiarato è quello giusto, sì, senza leggerlo. Altrimenti fa fede il file: un proxy o un
+ * antivirus può cambiare il tipo a un PDF vero (`application/octet-stream`), e allora basta che cominci come un PDF (o come un archivio .zip).
+ * Se non comincia così non è il file: `RispostaNonValida`, e chi chiama non lo apre né lo scarica. La frase dice della sessione solo se al
+ * posto del file è arrivata una pagina web.
+ */
+export async function verificaIlFile(risposta: Risposta, atteso: keyof typeof TIPI_ATTESI): Promise<void> {
+    const tipo = tipoDichiarato(risposta);
+    if ((TIPI_ATTESI[atteso] as readonly string[]).includes(tipo)) {
+        return;
+    }
+    const inizio = await inizioDelFile(risposta.data);
+    if (!inizio.startsWith(INIZIO_DEL_FILE[atteso])) {
+        throw nonValida(atteso, unaPaginaWeb(tipo, inizio));
+    }
+}
+
+/**
+ * Lo stesso controllo, sulla sola intestazione, per chi non può aspettare di leggere il file: un tipo dichiarato che è chiaramente un'altra cosa
+ * (una pagina, un JSON, un archivio al posto del PDF) non passa; uno generico o assente sì. Chi può aspettare usa `verificaIlFile`.
+ */
+export function verificaTipoRisposta(risposta: Risposta, atteso: keyof typeof TIPI_ATTESI): void {
+    const tipo = tipoDichiarato(risposta);
+    if (!(TIPI_ATTESI[atteso] as readonly string[]).includes(tipo) && !TIPI_GENERICI.includes(tipo)) {
+        throw nonValida(atteso, unaPaginaWeb(tipo));
+    }
+}
+
+/**
+ * La frase di un errore di una richiesta: il messaggio del server, oppure `predefinita` se non ce n'è. Il 429, la sessione scaduta (401, 419) e
+ * il permesso che manca (403) si leggono sempre in italiano, mai come li scrive il framework («Too Many Attempts.», «Unauthenticated.»,
+ * «CSRF token mismatch.», «This action is unauthorized.»).
  */
 export function frasePerErrore(e: unknown, predefinita: string): string {
     const risposta = (e as { response?: { status?: number; data?: { message?: string } } } | null)?.response;
+    if (sessioneScaduta(e)) {
+        return FRASE_SESSIONE_SCADUTA;
+    }
+    if (risposta?.status === 403) {
+        return FRASE_NON_PERMESSO;
+    }
 
     // `||`: un 404 o un 500 arrivano con il messaggio vuoto, e la finestra deve comunque dire qualcosa.
     return risposta?.status === 429 ? FRASE_LIMITE_ALTRO_INDIRIZZO : risposta?.data?.message || predefinita;
@@ -281,6 +381,18 @@ export function testoRiepilogo(r: { inviate: number; in_coda: number; non_partit
 }
 
 /**
+ * L'esito di un invio in blocco quando la finestra che l'ha chiesto non c'è più (chiusa, o riaperta da capo): il riepilogo, gli errori dei
+ * singoli invii e quanto resta da mandare, in una riga sola, in testa alla pagina.
+ */
+export function testoEsitoInvio(r: {
+    inviate: number; in_coda: number; non_partite: number; senza_indirizzo: number; errori?: string[]; restanti?: { ricevute: number } | null;
+}): string {
+    const resto = r.restanti ? (r.restanti.ricevute === 1 ? 'Resta 1 ricevuta da mandare.' : `Restano ${r.restanti.ricevute} ricevute da mandare.`) : null;
+
+    return [testoRiepilogo(r), ...(r.errori ?? []), resto].filter((p): p is string => !!p).join(' ');
+}
+
+/**
  * Come è stato assolto il bollo, come la richiesta lo porta: il modo solo se una delle ricevute ha il bollo «assolta»; gli estremi solo con il
  * modo, e in blocco solo quelli del modo virtuale (un'autorizzazione vale per tutte; il numero di un contrassegno è di una ricevuta sola, e il
  * server lo rifiuterebbe su più ricevute).
@@ -481,8 +593,11 @@ export function etichettaParteDelPdf(parti: number[][], indice: number): string 
 /** La riga che la scheda nuova mostra mentre il PDF si prepara. */
 export const RIGA_ATTESA_PDF = 'Sto preparando il PDF: si apre qui fra un momento.';
 
-/** Com'è andata: il PDF è nella scheda aperta dal clic, oppure (scheda bloccata, o chiusa prima che arrivasse) è scaricato con il suo nome. */
-export interface PdfArrivato { modo: 'scheda' | 'scaricato'; nome: string }
+/**
+ * Com'è andata: il PDF è nella scheda aperta dal clic; oppure (scheda bloccata, o chiusa prima che arrivasse) è scaricato con il suo nome; oppure
+ * chi lavora ha chiuso la scheda e il file non serviva (l'anteprima): niente si è aperto e niente si è scaricato.
+ */
+export interface PdfArrivato { modo: 'scheda' | 'scaricato' | 'chiusa'; nome: string }
 
 export interface AmbientePdf {
     apriScheda: () => Window | null;
@@ -537,23 +652,30 @@ const ambientePdfDelBrowser = (): AmbientePdf => ({
  * Un PDF del server (stampa o anteprima) in una scheda nuova. La scheda si apre subito, prima di ogni attesa: i blocchi dei popup lasciano
  * aprire solo la scheda chiesta nel gesto del clic, e chi chiama deve arrivare qui senza un `await` prima. Poi il PDF si chiede con una
  * richiesta in sottofondo (`chiedi`, un POST: la stampa scrive il registro) e arrivato si mostra nella scheda. Prima, con un modulo
- * nascosto mandato nella scheda nuova, un browser che riapre la scheda con un GET riceveva un 405. Se la scheda non c'è (bloccata, o
- * chiusa prima che il PDF arrivasse) il PDF si scarica con il nome che dà il server. Se la richiesta fallisce la scheda si chiude e
- * l'errore torna a chi chiama, che scrive la frase dove scrive gli altri errori. `seLaScheda` sa subito, prima dell'attesa, se la scheda
- * si è aperta: chi chiama può dire mentre aspetta dove andrà il PDF (qualche browser integrato in un'applicazione non apre mai la
- * scheda, neanche nel clic: lì il PDF si scarica sempre).
+ * nascosto mandato nella scheda nuova, un browser che riapre la scheda con un GET riceveva un 405.
+ *
+ * - Se la richiesta fallisce la scheda si chiude e l'errore torna a chi chiama, che scrive la frase dove scrive gli altri errori. Lo stesso se
+ *   la risposta arriva ma non è un PDF (`RispostaNonValida`).
+ * - Se la scheda non c'è (bloccata) il PDF si scarica con il nome che dà il server. Se chi lavora la chiude prima che il PDF arrivi, il PDF si
+ *   scarica (`scaricaSeChiusa`, di serie): la stampa ha già scritto il registro e il file serve. L'anteprima non scrive niente, e chi ha chiuso
+ *   la scheda non la voleva più: con `scaricaSeChiusa: false` niente si scarica e l'esito è `chiusa`.
+ * - `seLaScheda` sa subito, prima dell'attesa, se la scheda si è aperta: chi chiama può dire mentre aspetta dove andrà il PDF (qualche browser
+ *   integrato in un'applicazione non apre mai la scheda, neanche nel clic: lì il PDF si scarica sempre).
  */
 export async function apriPdfInUnaScheda(
     chiedi: () => Promise<{ data: unknown; headers?: Record<string, unknown> }>,
     riserva: string,
     ambiente: AmbientePdf = ambientePdfDelBrowser(),
     seLaScheda?: (aperta: boolean) => void,
+    { scaricaSeChiusa = true }: { scaricaSeChiusa?: boolean } = {},
 ): Promise<PdfArrivato> {
     const scheda = ambiente.apriScheda();
     seLaScheda?.(scheda !== null);
     let risposta: { data: unknown; headers?: Record<string, unknown> };
     try {
         risposta = await chiedi();
+        // Una risposta di buon esito che non è un PDF (la pagina di accesso, arrivata con un rimando seguito) non va nella scheda né fra i file.
+        await verificaIlFile(risposta, 'pdf');
     } catch (e) {
         if (scheda && !scheda.closed) {
             scheda.close();
@@ -561,7 +683,7 @@ export async function apriPdfInUnaScheda(
         throw e;
     }
     const dati = risposta.data;
-    // Sempre come PDF: la scheda lo apre con il visore, e una risposta di altro tipo non diventa una pagina della nostra applicazione.
+    // Il file porta il tipo PDF con sé, perché il visore della scheda lo riconosca anche se l'intestazione era l'unica a dirlo.
     const pdf = dati instanceof Blob ? dati.slice(0, dati.size, 'application/pdf') : new Blob([dati as BlobPart], { type: 'application/pdf' });
     const nome = nomeDalContentDisposition(risposta.headers?.['content-disposition'] as string | undefined, riserva);
     if (scheda && !scheda.closed) {
@@ -570,6 +692,9 @@ export async function apriPdfInUnaScheda(
         ambiente.liberaAllaChiusura(scheda, url);
 
         return { modo: 'scheda', nome };
+    }
+    if (scheda && !scaricaSeChiusa) {
+        return { modo: 'chiusa', nome };
     }
     ambiente.scarica(pdf, nome);
 
@@ -582,6 +707,9 @@ export async function apriPdfInUnaScheda(
  * può chiedere prima dove salvarlo. La stampa invece è già nel registro.
  */
 export function testoDelPdf(p: PdfArrivato, cosa: { stampa: boolean; una: boolean }): string | null {
+    if (p.modo === 'chiusa') {
+        return 'Hai chiuso la scheda: l\'anteprima non si è aperta.';
+    }
     if (p.modo === 'scheda') {
         return cosa.stampa ? `Il PDF è aperto in una scheda nuova. ${cosa.una ? 'La ricevuta risulta stampata.' : 'Le ricevute risultano stampate.'}` : null;
     }
@@ -685,20 +813,24 @@ export async function preparaEmail(
     return 'scaricata';
 }
 
-/** La sessione è scaduta (419): la stessa frase dell'accesso. */
-export const FRASE_SESSIONE_SCADUTA = 'La sessione è scaduta: ricarica la pagina e, se serve, accedi di nuovo.';
-
 /**
- * L'errore di una richiesta che aspettava un file: il server risponde con un testo, che arriva come file anch'esso. Il 419 e gli errori
- * del server (500 e oltre) arrivano con la frase inglese del framework: si leggono in italiano, come il 429.
+ * L'errore di una richiesta che aspettava un file: il server risponde con un testo, che arriva come file anch'esso. La sessione scaduta (401,
+ * 419), il permesso che manca (403) e gli errori del server (500 e oltre) arrivano con la frase inglese del framework: si leggono in italiano,
+ * come il 429.
  */
 export async function fraseDaErroreConFile(e: unknown, predefinita: string): Promise<string> {
+    if (e instanceof RispostaNonValida) {
+        return e.frase;
+    }
     const risposta = (e as { response?: { status?: number; data?: unknown } } | null)?.response;
     if (risposta?.status === 429) {
         return FRASE_LIMITE_ALTRO_INDIRIZZO;
     }
-    if (risposta?.status === 419) {
+    if (sessioneScaduta(e)) {
         return FRASE_SESSIONE_SCADUTA;
+    }
+    if (risposta?.status === 403) {
+        return FRASE_NON_PERMESSO;
     }
     if ((risposta?.status ?? 0) >= 500) {
         return predefinita;

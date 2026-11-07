@@ -12,8 +12,6 @@ export function useDebitiLoader() {
         routeFn: any,
         condominioId: number,
         params: { anagrafica_id?: number | null; immobile_id?: number | null },
-        isScadutaFn: (data: string | null) => boolean
-
     ): Promise<Rata[]> => {
         
         if (!params.anagrafica_id && !params.immobile_id) {
@@ -30,11 +28,13 @@ export function useDebitiLoader() {
             const res = await axios.get(url);
             noteSolidarieta.value = Array.isArray(res.data.note_solidarieta) ? res.data.note_solidarieta : [];
             
+            // `scaduta`, `is_emitted`, `pregresso` e `ordine` sono del server (il predicato comune del giorno, la rata 0,
+            // l'ordine proposto): si usano come arrivano. Fino alla 1.12.0-beta.2 qui si riscriveva `scaduta` con una chiave
+            // che il server non manda, e il badge «Scaduta» non compariva mai.
             return res.data.rate.map((r: any) => ({
                 ...r,
                 da_pagare: 0,
                 selezionata: false,
-                scaduta: isScadutaFn(r.data_scadenza ?? null),
             }));
         } catch (error) {
             console.error('Errore nel caricamento dei debiti:', error);

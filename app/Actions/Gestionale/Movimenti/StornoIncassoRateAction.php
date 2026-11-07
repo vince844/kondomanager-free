@@ -2,8 +2,11 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Enums\NaturaStorno;
 use App\Enums\TipoMovimentoContabile;
+use App\Helpers\DateHelper;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\ScritturaContabile;
@@ -40,10 +43,22 @@ use Illuminate\Support\Facades\DB;
  * della Fase 1-bis, G1: la figlia la scriveva con spesa 0 e tutto l'importo come riporto).
  * Il credito delle entrate dell'anno (la spesa negativa di una voce di tipo «entrata», rilievo K2) non passa da «Passate
  * gestioni»: lo specchio lo rimette fra i crediti verso condomini, e la figlia non serve.
+ *
+ * La natura dello storno di un incasso (1.12.0-beta.3, decisione 217, D1) la dice chi storna, e decide le date:
+ * - **errore di registrazione** (il versamento non c'è mai stato): ogni rettifica della famiglia ha la data della scrittura che storna, e
+ *   la riga negativa della pivot la stessa; la figlia dell'emissione la data più tarda fra quella dell'emissione e quella dell'incasso.
+ *   Un errore non si retrodata dentro un esercizio chiuso: se l'esercizio che **contiene la data** è chiuso, o non c'è, vale da oggi
+ *   (non l'esercizio della scrittura, che è quello aperto quando la si è registrata);
+ * - **versamento tornato indietro**: la rettifica, la riga negativa della pivot e la figlia hanno la data dello storno.
+ * «Oggi» è il giorno dell'amministratore. La natura si scrive sull'incasso stornato; la rettifica e la figlia dicono chi ha stornato.
+ * Lo storno di un rimborso non ha natura e resta com'era: la rettifica di oggi, la riga negativa della pivot alla data del rimborso.
  */
 class StornoIncassoRateAction
 {
-    public function execute(ScritturaContabile $scrittura, Condominio $condominio): void
+    /**
+     * @throws \InvalidArgumentException se si storna un incasso senza dire la natura: è l'unica porta, e il programma non sceglie per chi storna
+     */
+    public function execute(ScritturaContabile $scrittura, Condominio $condominio, ?NaturaStorno $natura = null): void
     {
         // 1. GUARD CLAUSE: Preveniamo lo "Storno dello Storno" (Inception contabile)
         // tipo_movimento è castato all'enum: il confronto con la stringa era sempre
@@ -52,7 +67,16 @@ class StornoIncassoRateAction
             throw new \RuntimeException('Non è possibile stornare una scrittura di rettifica.');
         }
 
-        DB::transaction(function () use ($scrittura, $condominio) {
+        // La natura vale solo per un incasso; un rimborso resta com'era (decisione 218, punto 5).
+        $incasso = $scrittura->tipo_movimento === TipoMovimentoContabile::INCASSO_RATA;
+        if ($incasso && $natura === null) {
+            throw new \InvalidArgumentException('Lo storno di un incasso dice la sua natura: registrazione sbagliata o versamento tornato indietro.');
+        }
+        $natura = $incasso ? $natura : null;
+        $oggi = DateHelper::oggiUtente();
+        $radice = $scrittura->data_competenza?->format('Y-m-d') ?? $oggi;
+
+        DB::transaction(function () use ($scrittura, $condominio, $natura, $oggi, $radice) {
             // 2. Il blocco contro il doppio storno concorrente (1.11.0-beta.49, P4): la scrittura bloccata e il suo stato riletto
             // dal database, non preso dal modello che arriva. Una seconda richiesta partita con la scrittura ancora valida aspetta
             // la prima, poi la trova annullata e non scrive niente: prima scriveva un'altra rettifica (e un'altra figlia
@@ -67,6 +91,10 @@ class StornoIncassoRateAction
 
                 // Protezione contro i doppi click, sullo stato riletto
                 if (ScritturaContabile::whereKey($scr->id)->value('stato') === 'annullata') continue;
+
+                // La data da cui vale la rettifica di questa scrittura (la natura), e quella della riga negativa della pivot.
+                $dataRettifica = $natura === null ? $oggi : self::valeDal($condominio->id, $natura, $scr->data_competenza?->format('Y-m-d') ?? $oggi, $oggi)['vale_dal'];
+                $dataPivot = $natura === null ? $scr->data_competenza : $dataRettifica;
 
                 // 3. Creiamo la Scrittura speculare di Rettifica
                 $rettifica = ScritturaContabile::create([
@@ -84,12 +112,17 @@ class StornoIncassoRateAction
                     // legge le rettifiche non dipende da questa data: l'estratto conto per
                     // anagrafica ordina per `created_at` e `scrittura_id`, il sigillo si ancora
                     // a `created_at`. Punto aperto di Coda 93, chiuso dalla revisione della
-                    // beta.24.
-                    'data_competenza'    => now(),
+                    // beta.24. Il giorno è quello dell'amministratore (1.12.0-beta.3), non il giorno UTC del server: alle 00:30
+                    // del 01/01 a Roma `now()` è ancora il 31/12, e lo storno finiva nell'anno prima.
+                    // Con la natura (1.12.0-beta.3, decisione 217): così vale per un versamento tornato indietro; un errore di
+                    // registrazione ha invece la data della scrittura che storna, se il suo esercizio è aperto (`valeDal`).
+                    'data_competenza'    => $dataRettifica,
                     'causale'            => 'Storno: ' . $scr->causale,
                     'tipo_movimento'     => 'rettifica',
                     'stato'              => 'registrata',
                     'note'               => 'Annullamento prot. ' . $scr->numero_protocollo,
+                    // Chi ha stornato: «Stornato da» nel riquadro dello storno della pagina dell'incasso.
+                    'created_by'         => auth()->id(),
                 ]);
 
                 // 4. Invertiamo le righe (Partita Doppia): lo specchio, sugli stessi conti
@@ -112,9 +145,11 @@ class StornoIncassoRateAction
                     $importoStorico = $quota->pivot->importo_pagato;
 
                     // Attach() con importo negativo per stornare
+                    // La riga negativa ha la data da cui vale lo storno: quella del versamento per un errore, quella dello storno per un
+                    // versamento tornato indietro (prima era sempre retroattiva). Lo storno di un rimborso resta com'era.
                     $quota->pagamenti()->attach($rettifica->id, [
                         'importo_pagato' => -$importoStorico,
-                        'data_pagamento' => $scr->data_competenza,
+                        'data_pagamento' => $dataPivot,
                     ]);
 
                     // Ricalcolo dello stato leggendo la nuova pivot aggiornata
@@ -126,14 +161,44 @@ class StornoIncassoRateAction
                 // un'inversione incompleta prima che entri nel giornale.
                 DoubleEntryValidator::validateOrFail($rettifica->id);
 
-                // 6. Sigilliamo la scrittura originale
-                $scr->update(['stato' => 'annullata']);
+                // 6. Sigilliamo la scrittura originale. La natura sta sull'incasso stornato, una riga sola da leggere.
+                $scr->update(['stato' => 'annullata'] + ($scr->id === $scrittura->id && $natura !== null ? ['natura_storno' => $natura->value] : []));
                 $stornate->push($scr);
             }
 
-            // 7. Il credito riportato restituito, se la sua rata è ormai a giornale (vedi il docblock della classe)
-            $this->riportaFraICrediti($stornate, $condominio);
+            // 7. Il credito riportato restituito, se la sua rata è ormai a giornale (vedi il docblock della classe). La figlia non sta
+            // prima della rettifica che restituisce il credito, né prima dell'emissione di cui è figlia: con l'errore la data più tarda fra
+            // l'emissione e il giorno da cui vale la rettifica dell'incasso (che con l'esercizio del versamento chiuso è oggi), dentro un
+            // esercizio aperto; altrimenti la più tarda fra l'emissione e oggi.
+            $valeLaRettifica = $natura === NaturaStorno::ERRORE_REGISTRAZIONE ? self::valeDal($condominio->id, $natura, $radice, $oggi)['vale_dal'] : $oggi;
+            $dataFiglia = fn (?string $emissione) => $natura === NaturaStorno::ERRORE_REGISTRAZIONE
+                ? max((string) $emissione, self::valeDal($condominio->id, $natura, max((string) $emissione, $valeLaRettifica), $oggi)['vale_dal'])
+                : max((string) $emissione, $oggi);
+            $this->riportaFraICrediti($stornate, $condominio, $dataFiglia);
         });
+    }
+
+    /**
+     * Da quale data vale lo storno di una scrittura con quella data, per la natura: l'errore di registrazione dalla data stessa, se
+     * l'esercizio che la contiene è aperto (`esercizi.data_inizio ≤ data ≤ data_fine`, non l'esercizio della scrittura, che è quello aperto quando la si è registrata); altrimenti,
+     * e per un versamento tornato indietro, da oggi. La usa anche la conferma dello storno, per scriverlo accanto a ogni scelta.
+     *
+     * @return array{vale_dal: string, esercizio_chiuso: bool}
+     */
+    public static function valeDal(int $condominioId, NaturaStorno $natura, string $data, ?string $oggi = null): array
+    {
+        $oggi ??= DateHelper::oggiUtente();
+        if ($natura === NaturaStorno::VERSAMENTO_TORNATO) {
+            return ['vale_dal' => $oggi, 'esercizio_chiuso' => false];
+        }
+
+        $esercizi = Esercizio::where('condominio_id', $condominioId)
+            ->whereDate('data_inizio', '<=', $data)
+            ->whereDate('data_fine', '>=', $data)
+            ->pluck('stato');
+        $aperto = $esercizi->isNotEmpty() && ! $esercizi->contains('chiuso');
+
+        return ['vale_dal' => $aperto ? substr($data, 0, 10) : $oggi, 'esercizio_chiuso' => ! $aperto];
     }
 
     /**
@@ -170,11 +235,15 @@ class StornoIncassoRateAction
      * Lo specchio basta con la rata ancora in bozza (il credito è tornato dove la quota lo cerca, e l'emissione lo porterà) e con
      * una quota ferma della 1.7.x (`RataQuote::fermaSenzaDettaglio`, decisione 76.3 ritoccata): resta fuori anche dopo lo storno,
      * con il credito fra le «Passate gestioni», come la tengono l'emissione e il comando.
-     * La figlia ha la data dello storno, non quella dell'emissione: i periodi già passati non cambiano.
+     * La figlia ha la data dello storno, non quella dell'emissione: i periodi già passati non cambiano; ma non sta prima dell'emissione
+     * di cui è figlia (un'emissione con data futura). Con lo storno di un errore di registrazione, la data più tarda fra quella
+     * dell'emissione e quella da cui vale la rettifica dell'incasso stornato: se il versamento non c'è mai stato, l'emissione avrebbe
+     * portato quel credito allora; se l'esercizio del versamento è chiuso, la rettifica vale da oggi e la figlia non la precede
+     * (`$dataFiglia`).
      *
      * @param Collection<int, ScritturaContabile> $stornate
      */
-    private function riportaFraICrediti(Collection $stornate, Condominio $condominio): void
+    private function riportaFraICrediti(Collection $stornate, Condominio $condominio, \Closure $dataFiglia): void
     {
         $passate = (int) ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'passate_gestioni')->whereNull('deleted_at')->value('id');
         if ($passate === 0 || $stornate->isEmpty()) {
@@ -205,7 +274,7 @@ class StornoIncassoRateAction
                 ->get();
             $quota = $quote->first(fn (RataQuote $q) => $q->scrittura_contabile_id !== null);
             if ($quota === null) {
-                $this->scriviLaQuotaRimastaFuori($quote->first(), (int) $rataId, $passate, $condominio);
+                $this->scriviLaQuotaRimastaFuori($quote->first(), (int) $rataId, $passate, $condominio, $dataFiglia);
 
                 continue;
             }
@@ -218,11 +287,12 @@ class StornoIncassoRateAction
                 'gestione_id'        => $emissione->gestione_id,
                 'scrittura_padre_id' => $emissione->id,
                 'data_registrazione' => now(),
-                'data_competenza'    => now(),
+                'data_competenza'    => $dataFiglia($emissione->data_competenza?->format('Y-m-d')),
                 'causale'            => 'Credito riportato restituito da uno storno — ' . $emissione->causale,
                 'tipo_movimento'     => 'emissione_rata',
                 'stato'              => 'registrata',
                 'note'               => 'Il credito riportato usato prima dell\'emissione della rata è tornato con lo storno: si porta fra i crediti verso condomini, come avrebbe fatto l\'emissione.',
+                'created_by'         => auth()->id(),
             ]);
             $figlia->righe()->create([
                 'conto_contabile_id' => $crediti->id,
@@ -251,7 +321,7 @@ class StornoIncassoRateAction
      * (decisione 76.3 ritoccata), e scriverla qui vorrebbe dire indovinare spesa 0 e tutto l'importo come riporto (giro stretto
      * sulle correzioni della Fase 1-bis, G1, LT-1 e GS-1).
      */
-    private function scriviLaQuotaRimastaFuori(?RataQuote $quota, int $rataId, int $passate, Condominio $condominio): void
+    private function scriviLaQuotaRimastaFuori(?RataQuote $quota, int $rataId, int $passate, Condominio $condominio, \Closure $dataFiglia): void
     {
         if ($quota === null || $quota->scrittura_contabile_id !== null || $quota->fermaSenzaDettaglio()) {
             return;
@@ -287,11 +357,12 @@ class StornoIncassoRateAction
             'gestione_id'        => $emissione->gestione_id,
             'scrittura_padre_id' => $emissione->id,
             'data_registrazione' => now(),
-            'data_competenza'    => now(),
+            'data_competenza'    => $dataFiglia($emissione->data_competenza?->format('Y-m-d')),
             'causale'            => 'Credito riportato restituito da uno storno — ' . $emissione->causale,
             'tipo_movimento'     => 'emissione_rata',
             'stato'              => 'registrata',
             'note'               => 'La quota era rimasta fuori dall\'emissione della rata: il credito tornato con lo storno va a giornale con lei, come l\'avrebbe scritta l\'emissione.',
+            'created_by'         => auth()->id(),
         ]);
         foreach ($calcolo['righe'] as $i => [$verso, $importoRiga]) {
             $figlia->righe()->create([

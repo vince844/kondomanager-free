@@ -474,6 +474,14 @@ describe('credito misto rimborsato oltre il netto: la quota da pagare resta da v
         expect(titolo!.className).toContain('text-red-600');
     });
 
+    test('una rata non ancora emessa con la scadenza passata: il titolo senza l\'allarme rosso', async () => {
+        await monta({ ...misto({ importo_pagato: -7500, importo_restante: 5000, is_emitted: false }), start_time: '2020-01-05T00:00:00' });
+        const titolo = [...document.body.querySelectorAll('h2')].find((h) => normalizza(h.textContent).includes('Scadenza rata 1'));
+
+        expect(titolo, 'il titolo non c\'è').toBeDefined();
+        expect(titolo!.className).not.toContain('text-red-600');
+    });
+
     test('rimborso di € 40,00 (restano € 15,00 da versare e € 35,00 da compensare): «Totale da versare € 15,00», non «Non devi versare altro»', async () => {
         await monta(misto({ importo_pagato: -4000, importo_restante: 1500, da_compensare: 3500 }));
         const t = testo();

@@ -6,6 +6,7 @@ import DropdownAction from '@/components/gestionale/immobili/DataTableRowActions
 import DataTableColumnHeader from '@/components/gestionale/immobili/DataTableColumnHeader.vue'
 import AnagraficheStack from '@/components/AnagraficheStack.vue'
 import { misuraLeggibile } from '@/lib/gestionale/misure'
+import { oggiLocale } from '@/lib/giorno'
 import { Home, ArrowRight, MapPin, FileSearch, Hash } from 'lucide-vue-next'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Immobile } from '@/types/gestionale/immobili'
@@ -245,7 +246,8 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
          * l'anagrafe dichiara. Il giorno in cui il motore leggerà le date, questo filtro cambierà
          * con lui — e il commento è qui perché quel giorno si sappia perché.
          */
-        const oggi = new Date().toISOString().slice(0, 10)
+        // Il giorno di chi guarda la pagina, non quello di Greenwich (1.12.0-beta.3).
+        const oggi = oggiLocale()
 
         const anagrafiche = (immobile.anagrafiche ?? [])
           .filter((a) => a.pivot?.attivo !== false)

@@ -39,6 +39,7 @@ import { euroToCents } from '@/lib/gestionale/fatture/money';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import { oggiLocale, piuGiorni } from '@/lib/giorno';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -835,7 +836,7 @@ const form = useForm({
     imposta_pregressa:          null as number | null,
     riepiloghi:                 null as RiepilogoIva[] | null,
     numero_documento:   '',
-    data_documento:     new Date().toISOString().substring(0, 10),
+    data_documento:     oggiLocale(),
     data_scadenza:      '',
     // La competenza (B2, S6): due estremi sulla testata, entrambi o nessuno. «Deliberata il» = stessa
     // data nei due campi. Non sta più in `dati_extra`: il service scrive le colonne.
@@ -1636,9 +1637,9 @@ watch(
         if (!f) return;
 
         if ((fornitoreCambiato || newDataDoc !== oldDataDoc) && !daPreservare?.scadenza) {
-            const d = new Date(newDataDoc);
-            d.setDate(d.getDate() + (f.giorni_scadenza || 30));
-            form.data_scadenza = d.toISOString().substring(0, 10);
+            // La data del documento più i giorni del fornitore, sui numeri della data (1.12.0-beta.3): passando da un istante, a marzo
+            // l'ora legale la faceva uscire un giorno prima.
+            form.data_scadenza = piuGiorni(newDataDoc, f.giorni_scadenza || 30);
         }
 
         if (fornitoreCambiato) {
@@ -1974,7 +1975,7 @@ function resettaFormPerNuovoDocumento() {
     pregressoComeImportato.value = null;
     form.riepiloghi = null;
     form.numero_documento = '';
-    form.data_documento = new Date().toISOString().substring(0, 10);
+    form.data_documento = oggiLocale();
     form.data_scadenza = '';
     form.competenza_dal = '';
     form.competenza_al = '';

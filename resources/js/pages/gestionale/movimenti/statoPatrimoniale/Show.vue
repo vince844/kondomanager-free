@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Camera, Scale, ListChecks, Printer, Landmark, Users, Receipt, TrendingUp, CheckCircle2, XCircle, AlertTriangle, ArrowRight, ListTree, CalendarClock, ChevronDown } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
+import { oggiLocale } from '@/lib/giorno';
 
 /* ─── I tipi rispecchiano StatoPatrimonialePaginaService::costruisci() — tutto in centesimi ─── */
 interface Voce { id: number; codice: string; nome: string; tipo: string; categoria: string; ruolo: string | null; saldo: number }
@@ -53,7 +54,8 @@ const props = defineProps<{ condominio: Building; condomini: Building[]; eserciz
 const { generatePath, generateRoute } = usePermission();
 const { euro } = useCurrencyFormatter();
 const p = computed(() => props.pagina);
-const oggiISO = new Date().toISOString().slice(0, 10);
+// Oggi nel calendario di chi usa la pagina, non il giorno di Greenwich (1.12.0-beta.3): alle 00:30 del 01/01 era ancora il 31/12.
+const oggiISO = oggiLocale();
 
 const formatData = (iso: string | null) => { if (!iso) return '—'; const [a, m, g] = iso.split('-'); return `${g}/${m}/${a}`; };
 const importo = (v: number) => v < 0 ? 'text-rose-600' : 'text-slate-800';

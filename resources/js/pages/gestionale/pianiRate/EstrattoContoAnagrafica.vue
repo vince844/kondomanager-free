@@ -24,6 +24,7 @@ import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import { statoRigaEstratto, type TonoStato } from '@/lib/gestionale/pianiRate/statoRigaEstratto';
+import { oggiLocale } from '@/lib/giorno';
 
 const props = defineProps<{
   condominio: Building;
@@ -71,7 +72,8 @@ const formRimborso = useForm({
     cassa_id: (props.rimborso?.casse.length === 1 ? props.rimborso.casse[0].id : null) as number | null,
     // Non `data`: `useForm()` espone già un metodo `data()`, e un campo con quel nome lo copre — il
     // v-model legava una funzione e il campo restava vuoto.
-    data_rimborso: new Date().toISOString().substring(0, 10),
+    // Oggi nel calendario di chi usa la pagina (1.12.0-beta.3), non il giorno di Greenwich.
+    data_rimborso: oggiLocale(),
     importo: props.rimborso?.quote[0]?.credito_euro ?? '',
     nota: '',
 });

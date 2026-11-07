@@ -492,6 +492,35 @@ class CreditoService
     }
 
     /**
+     * Il credito disponibile di oggi di più persone, per gestione, in una query sola: [anagrafica_id => [gestione_id => centesimi]].
+     * La stessa regola di {@see perAnagrafica()} (le stesse quote, `credito_disponibile`), senza il consiglio del «compensabile»:
+     * serve alla lettura comune dei debiti, che lo mostra accanto alla persona, e alla previsione di cassa, che toglie dal denaro
+     * atteso da una persona il suo credito nella stessa gestione, mai quello di un altro.
+     *
+     * Con `$soloFuoriGiornale` solo le quote senza la scrittura di emissione (la rata 0 in bozza a credito e simili): il credito di una
+     * quota a giornale è già nel giornale, come credito della sua (persona, unità, rata) o nettato nel residuo di una gemella a debito
+     * sulla stessa chiave (una vendita seguita da una ricompra, decisione 25). La previsione di cassa somma i due e non lo conta due volte.
+     *
+     * @param  list<int>|null  $anagraficheIds  null = tutte
+     * @return array<int, array<int, int>>
+     */
+    public function disponibilePerGestione(int $condominioId, ?array $anagraficheIds = null, bool $soloFuoriGiornale = false): array
+    {
+        $esito = [];
+        $quote = $this->queryCreditoBase($condominioId)
+            ->whereNotNull('anagrafica_id')
+            ->when($anagraficheIds !== null, fn ($q) => $q->whereIn('anagrafica_id', $anagraficheIds))
+            ->when($soloFuoriGiornale, fn ($q) => $q->whereNull('scrittura_contabile_id'))
+            ->get();
+        foreach ($quote as $q) {
+            $gestione = (int) ($q->rata->pianoRate->gestione_id ?? 0);
+            $esito[(int) $q->anagrafica_id][$gestione] = ($esito[(int) $q->anagrafica_id][$gestione] ?? 0) + (int) $q->credito_disponibile;
+        }
+
+        return $esito;
+    }
+
+    /**
      * Query di base: tutte le quote che portano credito (strapagamento o
      * saldo iniziale/anticipo negativo) in un condominio, con le relazioni
      * verso gestione già caricate per evitare N+1 nei consumer.

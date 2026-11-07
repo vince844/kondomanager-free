@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, nextTick } from 'vue';
+import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import axios from 'axios';
 import { useForm, Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -21,6 +21,8 @@ import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Rata } from '@/types/gestionale/rata';
 import { pianificaCoperture } from '@/lib/gestionale/incassi/pianoCreditoIncasso';
+import { firmaOrdine, fraseFuoriOrdine, imputazioneMancante, SCELTE_IMPUTAZIONE, type RispostaOrdine, type SceltaImputazione } from '@/lib/gestionale/incassi/imputazione';
+import { oggiLocale } from '@/lib/giorno';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 
 const props = defineProps<{
@@ -34,6 +36,8 @@ const props = defineProps<{
 }>();
 
 const { euro } = useCurrencyFormatter({ fromCents: false });
+// I centesimi interi del server (la rata che resta aperta, `OrdineImputazione`): formattati come sono, senza dividerli a mano.
+const { euro: euroDaCentesimi } = useCurrencyFormatter();
 const { generateRoute } = usePermission();
 
 const breadcrumbs = computed<Breadcrumb[]>(() => [
@@ -94,7 +98,6 @@ const {
     rawRateList,
     loadingRate,
     mode,
-    isScaduta,
     priorityRataId,
     setPriorityRataId,
     getRateListByGestione,
@@ -120,7 +123,8 @@ const form = useForm({
     versato_da_id: null as number | null,
     cassa_id: null as number | null,
     gestione_id: null as number | null,
-    data_pagamento: new Date().toISOString().substring(0, 10),
+    // Oggi nel calendario di chi usa la pagina: alle 00:30 del 01/01 `toISOString()` dava ancora il 31/12 (1.12.0-beta.3).
+    data_pagamento: oggiLocale(),
     importo_totale: '' as string | number,
     descrizione: '',
     dettaglio_pagamenti: [] as any[],
@@ -140,6 +144,12 @@ const form = useForm({
     credito_fra_gestioni: null as boolean | null,
     /** Decisione 30.12: la gestione dell'incasso, quando le rate pagate sono di più gestioni e il filtro è vuoto. */
     gestione_incasso_id: null as number | null,
+    /**
+     * L'imputazione dichiarata (decisioni 217 e 218): quando la distribuzione non segue l'ordine delle scadenze, chi ha scelto a che cosa va
+     * il versamento. `null` finché l'amministratore non sceglie; dal collegamento del portale è già «indicata da chi ha versato».
+     */
+    imputazione_scelta: null as SceltaImputazione | null,
+    imputazione_nota: '',
 });
 
 const rateList = ref<Rata[]>([]);
@@ -167,7 +177,35 @@ watch(() => form.pagante_id, (v) => {
     form.quota_parte_in_piu_id = null;
     sceltaParteInPiuAMano.value = false;
     creditiCliccati.clear();
+    // La dichiarazione dell'imputazione è un fatto di quel versamento: non passa a un'altra persona. Per chi ha segnalato il pagamento dal
+    // portale è già «indicata da chi ha versato».
+    sceltaDalPortale = v !== null && v === paganteDelPortale;
+    form.imputazione_scelta = sceltaDalPortale ? 'indicata_dal_versante' : null;
+    form.imputazione_nota = '';
 });
+
+/**
+ * «Indicata da chi ha versato», già scelta arrivando dal portale, vale finché la rata segnalata riceve denaro: spostato il versamento su
+ * un'altra rata, la segnalazione non dice più niente e la scelta torna vuota (torna se il denaro torna lì). Una scelta fatta a mano non
+ * si tocca.
+ */
+let sceltaDalPortale = false;
+watch(() => form.dettaglio_pagamenti, (righe) => {
+    if (!sceltaDalPortale || priorityRataId.value === null) return;
+    const padri = new Map(rateList.value.map((r) => [r.id, r.rata_padre_id]));
+    const riceve = righe.some((p) => Number(p.importo) > 0 && padri.get(p.rata_id) === priorityRataId.value);
+    form.imputazione_scelta = riceve ? 'indicata_dal_versante' : null;
+}, { deep: true });
+
+/** Cambiata la scelta, la nota di prima non passa all'altra: quella di «Scelta da te» resta interna, l'altra va sulla ricevuta. */
+const cambiaSceltaImputazione = () => {
+    sceltaDalPortale = false;
+    form.clearErrors('imputazione_nota');
+    form.imputazione_nota = '';
+};
+
+/** La persona del pagamento segnalato dal portale (il collegamento porta `related_task_id`): per lei l'imputazione è già indicata. */
+let paganteDelPortale: number | null = null;
 
 const parseResiduoQuota = (value: string | number) => {
     if (typeof value === 'number') return value;
@@ -189,10 +227,8 @@ const hasSaldoMisto = (r: any) => {
     return false;
 };
 
-const isRataZero = (r: any) => {
-    const desc = (r.descrizione || '').toLowerCase();
-    return desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso');
-};
+/** Il pregresso è la rata 0: lo dice il server (`pregresso`), non la descrizione della rata. */
+const isPregresso = (r: any) => r.pregresso === true;
 
 /**
  * Il credito che una riga mette a disposizione **di chi sta incassando**, in euro.
@@ -378,8 +414,67 @@ const sceltaMancante = computed<string | null>(() => {
     if (mostraParteInPiu.value && !form.quota_parte_in_piu_id) {
         return `Scegli su quale rata di ${versatoDa.value?.nome ?? ''} va la parte in più.`;
     }
-    return null;
+    return imputazioneMancante(esitoOrdine.value, form.imputazione_scelta, form.imputazione_nota);
 });
+
+/**
+ * L'ordine delle scadenze (decisioni 217 e 218). Il server lo calcola, una volta: qui si chiede se la distribuzione a schermo lo segue, poco
+ * dopo che cambia e comunque prima di salvare. La risposta vale solo per la distribuzione per cui è stata chiesta (la firma): una risposta
+ * per una distribuzione cambiata nel frattempo, o arrivata dopo una più recente, non si usa.
+ */
+const datiOrdine = () => ({
+    pagante_id: form.pagante_id,
+    versato_da_id: form.versato_da_id,
+    gestione_id: gestioneDaMandare.value,
+    importo_totale: parseFloat(Number(importoNumerico.value).toFixed(2)),
+    eccedenza: form.eccedenza,
+    credito_prima: form.credito_prima,
+    credito_fra_gestioni: form.credito_fra_gestioni,
+    dettaglio_pagamenti: form.dettaglio_pagamenti,
+});
+const firmaCorrente = computed(() => firmaOrdine(datiOrdine()));
+const rispostaOrdine = ref<{ firma: string; risposta: RispostaOrdine | null; fallita: boolean } | null>(null);
+const verificandoOrdine = ref(false);
+let richiestaOrdine = 0;
+let attesaOrdine: ReturnType<typeof setTimeout> | null = null;
+
+/** La risposta che vale per la distribuzione a schermo, o null. */
+const ordineCorrente = computed(() => rispostaOrdine.value?.firma === firmaCorrente.value ? rispostaOrdine.value : null);
+const esitoOrdine = computed<RispostaOrdine | null>(() => ordineCorrente.value?.risposta ?? null);
+const verificaOrdineFallita = computed(() => ordineCorrente.value?.fallita === true);
+// Con la verifica fallita la scelta si mostra lo stesso, facoltativa: chi sa a che cosa va il versamento lo può dire, e il server la usa se
+// la distribuzione si discosta.
+const mostraSceltaImputazione = computed(() => esitoOrdine.value?.esito === 'fuori_ordine' || verificaOrdineFallita.value);
+const testoFuoriOrdine = computed(() => fraseFuoriOrdine(esitoOrdine.value, euroDaCentesimi, (rataId) => rateList.value.some((r) => r.rata_padre_id === rataId), versatoDa.value?.nome ?? null));
+
+const verificaOrdine = async (): Promise<RispostaOrdine | null> => {
+    if (attesaOrdine) { clearTimeout(attesaOrdine); attesaOrdine = null; }
+    const firma = firmaCorrente.value;
+    if (!form.pagante_id || form.dettaglio_pagamenti.length === 0) {
+        rispostaOrdine.value = null;
+        return null;
+    }
+    const mia = ++richiestaOrdine;
+    verificandoOrdine.value = true;
+    try {
+        // Con un limite di attesa: una risposta che non arriva diventa «non verificata», e il pulsante non resta spento.
+        const r = await axios.post(route(generateRoute('gestionale.movimenti-rate.ordine'), props.condominio.id), datiOrdine(), { timeout: 15000 });
+        // Solo l'ultima richiesta, e solo se la distribuzione è ancora quella per cui è partita.
+        if (mia === richiestaOrdine && firma === firmaCorrente.value) rispostaOrdine.value = { firma, risposta: r.data as RispostaOrdine, fallita: false };
+    } catch {
+        if (mia === richiestaOrdine && firma === firmaCorrente.value) rispostaOrdine.value = { firma, risposta: null, fallita: true };
+    } finally {
+        if (mia === richiestaOrdine) verificandoOrdine.value = false;
+    }
+
+    return firma === firmaCorrente.value ? (rispostaOrdine.value?.risposta ?? null) : null;
+};
+
+watch(firmaCorrente, () => {
+    if (attesaOrdine) clearTimeout(attesaOrdine);
+    attesaOrdine = setTimeout(() => { attesaOrdine = null; verificaOrdine(); }, 400);
+});
+onBeforeUnmount(() => { if (attesaOrdine) clearTimeout(attesaOrdine); });
 
 const totalAllocato = computed(() => {
     return form.dettaglio_pagamenti.reduce((sum, p) => sum + p.importo, 0);
@@ -400,7 +495,7 @@ const creditiRifiutati = ref(new Set<number>());
 const hasSaldoPregressoInLista = computed(() => {
     // Stesso criterio del pulsante: la fascia verde «Situazione pregressa regolare» non deve
     // accendersi proprio dove c'è del credito da compensare.
-    return rateList.value.some(r => isRataZero(r) || creditoRiga(r) > 0);
+    return rateList.value.some(r => isPregresso(r) || creditoRiga(r) > 0);
 });
 
 /**
@@ -556,7 +651,6 @@ const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?
             (name: string, params: any) => route(generateRoute(name), params),
             props.condominio.id,
             params,
-            isScaduta
         );
 
         // Una ricerca più recente ha già vinto: questa risposta descrive una persona o un'unità
@@ -914,7 +1008,20 @@ const erroriIncasso = computed<string[]>(() =>
     Object.values(form.errors).filter((m): m is string => typeof m === 'string' && m.length > 0)
 );
 
-const submit = () => {
+const submit = async () => {
+    // L'ordine delle scadenze, prima di salvare: se il modulo non ha ancora la risposta per questa distribuzione, la chiede adesso. Se la
+    // distribuzione si discosta e la scelta manca, non si invia: la scelta compare sopra il pulsante. Se la verifica non riesce si invia lo
+    // stesso: il server rifà il calcolo e lo segna.
+    if (!ordineCorrente.value) {
+        const firma = firmaCorrente.value;
+        await verificaOrdine();
+        if (firma !== firmaCorrente.value) return;
+    }
+    if (imputazioneMancante(esitoOrdine.value, form.imputazione_scelta, form.imputazione_nota)) return;
+    // La dichiarazione parte solo quando la distribuzione si discosta, o quando non si è potuto saperlo: con l'ordine rispettato una scelta
+    // rimasta indietro non deve arrivare al server.
+    const dichiarare = esitoOrdine.value?.esito === 'fuori_ordine' || verificaOrdineFallita.value;
+
     // 🟢 FIX: Clean total prima dell'invio
     const cleanTotal = parseFloat(Number(importoNumerico.value).toFixed(2));
 
@@ -923,6 +1030,8 @@ const submit = () => {
         importo_totale: cleanTotal,
         // Decisione 30.12: la gestione scelta dall'amministratore, quando il filtro è vuoto e le rate sono di più gestioni.
         gestione_id: gestioneDaMandare.value,
+        imputazione_scelta: dichiarare ? data.imputazione_scelta : null,
+        imputazione_nota: dichiarare && data.imputazione_scelta ? (data.imputazione_nota.trim() || null) : null,
     }));
 
     payload.post(route(generateRoute('gestionale.movimenti-rate.store'), props.condominio.id), {
@@ -1049,7 +1158,8 @@ watch([rawRateList, () => form.gestione_id, showOnlyOverdue], async () => {
     let list = getRateListByGestione(form.gestione_id);
 
     if (showOnlyOverdue.value) {
-        list = list.filter(r => isScaduta(r.data_scadenza || r.scadenza_human) || isRataZero(r));
+        // Le righe che il server dice scadute: la testa dell'ordine proposto, che va per scadenza (emesse o no).
+        list = list.filter(r => r.scaduta === true);
     }
 
     if (intentUsaCredito.value && !creditoAutoApplicato.value) {
@@ -1090,6 +1200,8 @@ onMounted(async () => {
     }
 
     if (taskId) form.related_task_id = parseInt(taskId);
+    // Il pagamento segnalato dal portale: chi ha versato ha detto a che cosa va (decisione 218). Prima di `pagante_id`, che lo legge.
+    if (taskId && prefillAnagrafica) paganteDelPortale = parseInt(prefillAnagrafica);
     if (prefillDesc) form.descrizione = prefillDesc;
     if (prefillRataId) setPriorityRataId(parseInt(prefillRataId)); else setPriorityRataId(null);
     if (prefillImporto) form.importo_totale = parseFloat(prefillImporto);
@@ -1475,6 +1587,30 @@ onMounted(async () => {
                                 </li>
                             </ul>
                         </div>
+                        <!-- L'imputazione (decisioni 217 e 218): la distribuzione non segue l'ordine delle scadenze, e chi ha scelto lo dice
+                             l'amministratore. Niente è già scelto, salvo il pagamento segnalato dal portale. -->
+                        <div v-if="mostraSceltaImputazione" data-testid="scelta-imputazione" class="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                            <p v-if="testoFuoriOrdine" class="text-xs leading-snug text-amber-900 dark:text-amber-100">{{ testoFuoriOrdine }}</p>
+                            <p class="mt-2 text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200">Chi ha scelto a che cosa va?</p>
+                            <div class="mt-1 space-y-1" role="radiogroup" aria-label="Chi ha scelto a che cosa va il versamento">
+                                <label v-for="s in SCELTE_IMPUTAZIONE" :key="s.valore" class="flex cursor-pointer items-center gap-2 text-xs text-slate-800 dark:text-slate-100">
+                                    <input v-model="form.imputazione_scelta" type="radio" name="imputazione_scelta" :value="s.valore" @change="cambiaSceltaImputazione" />
+                                    {{ s.titolo }}
+                                </label>
+                            </div>
+                            <Input
+                                v-if="form.imputazione_scelta"
+                                v-model="form.imputazione_nota"
+                                data-testid="nota-imputazione"
+                                maxlength="255"
+                                class="mt-2 h-8 bg-white text-xs dark:bg-slate-900"
+                                :placeholder="SCELTE_IMPUTAZIONE.find(s => s.valore === form.imputazione_scelta)?.invito"
+                            />
+                            <p v-if="form.imputazione_scelta" class="mt-1 text-[11px] leading-snug text-amber-800 dark:text-amber-200">{{ SCELTE_IMPUTAZIONE.find(s => s.valore === form.imputazione_scelta)?.dove }}</p>
+                        </div>
+                        <p v-if="verificaOrdineFallita" class="mb-2 px-1 text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+                            Non è stato possibile verificare l'ordine delle scadenze: l'incasso si registra lo stesso. Se non lo segue e non rispondi alla domanda qui sopra, resta segnato «fuori ordine, non dichiarata».
+                        </p>
                         <p v-if="sceltaMancante" class="mb-2 px-1 text-[11px] leading-snug text-sky-800 dark:text-sky-200">{{ sceltaMancante }}</p>
                         <div class="flex justify-between items-center text-xs mb-2 px-1">
                             <span class="text-slate-500 uppercase tracking-wider font-semibold">Totale allocato:</span>
@@ -1482,7 +1618,7 @@ onMounted(async () => {
                         </div>
                         <Button
                             @click="submit"
-                            :disabled="form.processing || !previewContabile.hasData || !form.pagante_id || !!sceltaMancante"
+                            :disabled="form.processing || verificandoOrdine || !previewContabile.hasData || !form.pagante_id || !!sceltaMancante"
                             class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md transition-all text-sm"
                         >
                             <CheckCircle2 class="w-4 h-4 mr-2" /> Conferma incasso
@@ -1542,7 +1678,9 @@ onMounted(async () => {
                                         v-model="showOnlyOverdue"
                                         class="w-3.5 h-3.5 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
                                     >
-                                    <label for="toggle-scadute" class="text-[10px] font-bold uppercase text-slate-500 cursor-pointer select-none">
+                                    <!-- Le scadute sono quelle con la scadenza passata, emesse o no (decisione 218): il badge «Scaduta» c'è solo sulle emesse,
+                                         e il titolo lo dice. -->
+                                    <label for="toggle-scadute" title="Le rate con la scadenza passata, anche quelle non ancora emesse" class="text-[10px] font-bold uppercase text-slate-500 cursor-pointer select-none">
                                         Mostra scadute
                                     </label>
                                 </div>
@@ -1550,7 +1688,7 @@ onMounted(async () => {
                             <div class="flex items-center gap-2" v-if="rateList.length">
                                 <Button size="sm" variant="ghost" @click="resetAllocation" class="h-7 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 px-2"><RotateCcw class="w-3 h-3 mr-1"/> Resetta</Button>
                                 <div class="h-3 w-px bg-gray-300 mx-1"></div>
-                                <Button size="sm" variant="outline" @click="pagaScadute" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga scadute</Button>
+                                <Button size="sm" variant="outline" @click="pagaScadute" title="Le rate con la scadenza passata, anche quelle non ancora emesse" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga scadute</Button>
                                 <Button size="sm" variant="outline" @click="pagaTutto" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga tutto</Button>
                             </div>
                         </div>
@@ -1703,7 +1841,7 @@ onMounted(async () => {
                                                         </span>
                                                     </template>
 
-                                                    <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0"
+                                                    <span v-if="r.scaduta && r.is_emitted && parseResiduoQuota(r.residuo) > 0"
                                                         class="text-[9px] text-red-500 font-bold uppercase flex items-center bg-red-50 border border-red-100 w-fit px-1.5 py-0.5 rounded tracking-tighter">
                                                         <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
                                                     </span>
@@ -1796,22 +1934,22 @@ onMounted(async () => {
                                                 <div v-if="parseResiduoQuota(r.residuo) < 0" class="flex flex-col items-end pt-1">
                                                     <span class="text-sm font-bold text-emerald-600">{{ euro(r.residuo) }}</span>
                                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 mt-1 uppercase">
-                                                        {{ isRataZero(r) ? 'CREDITO PREGRESSO' : 'CREDITO' }}
+                                                        {{ isPregresso(r) ? 'CREDITO PREGRESSO' : 'CREDITO' }}
                                                     </span>
                                                 </div>
 
                                                 <div v-else class="flex flex-col items-end pt-1">
-                                                    <span class="text-sm" :class="isRataZero(r) ? 'font-bold text-red-600' : 'font-semibold text-slate-700'">
+                                                    <span class="text-sm" :class="isPregresso(r) ? 'font-bold text-red-600' : 'font-semibold text-slate-700'">
                                                         {{ euro(r.residuo) }}
                                                     </span>
 
-                                                    <div v-if="isRataZero(r) && parseResiduoQuota(r.residuo) > 0" class="mt-1">
+                                                    <div v-if="isPregresso(r) && parseResiduoQuota(r.residuo) > 0" class="mt-1">
                                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200">
                                                             DEBITO PREGRESSO
                                                         </span>
                                                     </div>
 
-                                                    <div v-if="parseResiduoQuota(r.residuo) > 0 && parseResiduoQuota(r.residuo) < r.importo_totale && !isRataZero(r)" class="mt-1">
+                                                    <div v-if="parseResiduoQuota(r.residuo) > 0 && parseResiduoQuota(r.residuo) < r.importo_totale && !isPregresso(r)" class="mt-1">
                                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200" :title="'Importo originale: ' + euro(r.importo_totale)">
                                                             <RotateCcw class="w-2.5 h-2.5 mr-1" /> PARZIALE
                                                         </span>

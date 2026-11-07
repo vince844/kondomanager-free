@@ -154,7 +154,7 @@ function ceIncassa($test, array $s, string $chi, array $righe, string $data): in
 
 function ceStorna($test, array $s, int $scritturaId): void
 {
-    $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $scritturaId]))->assertSessionHasNoErrors();
+    $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $scritturaId]), stornoVersamentoTornato())->assertSessionHasNoErrors();
 }
 
 function ceAnnullaEmissione($test, array $s, int $numero)
@@ -663,7 +663,10 @@ it('la previsione di cassa non conta come incassato il credito riportato scritto
 
     // Con il solo filtro sull'emissione: 0 (l'incasso annullato conta ancora: 3000 − 5000 < 0). Con la sola forma netta, senza il
     // filtro: 6000 (le righe d'emissione con la rata entrano nel netto: 7000 − 5000 − 5000 = −3000, e 3000 + 3000 = 6000).
-    expect(cePrevisione($s))->toBe(3000);
+    // Dalla 1.12.0-beta.3 (decisione 217 D4) gli incassi attesi sono per persona, dalla lettura comune: Bice 5000 (l'incasso stornato
+    // non conta), Ugo niente (il suo credito di 2000 toglie solo dal suo denaro atteso, e lui non ne ha). Prima il netto dentro la rata
+    // toglieva il credito di Ugo dal debito di Bice: 3000.
+    expect(cePrevisione($s))->toBe(5000);
 });
 
 // ─── Mutazioni sopravvissute (fase finale della 1.11.0-beta.49): i test che le prendono ────────────────────────────────────

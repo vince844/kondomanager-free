@@ -17,6 +17,7 @@ import { Zap, Landmark, AlertTriangle, ArrowRight, FileText, Info } from 'lucide
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import { oggiLocale } from '@/lib/giorno';
 
 interface Capitolo { id: number; nome: string; parent_nome: string | null; label: string }
 interface Cassa { id: number; nome: string; tipo: string | null }
@@ -65,7 +66,8 @@ const pageGuides = [
     },
 ];
 
-const oggi = new Date().toISOString().slice(0, 10);
+// Oggi nel calendario di chi usa la pagina, non il giorno di Greenwich (1.12.0-beta.3): alle 00:30 del 01/01 era ancora il 31/12.
+const oggi = oggiLocale();
 
 interface FormRegolazioneImmediata {
     esercizio_id: number | null;

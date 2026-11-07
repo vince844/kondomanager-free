@@ -5,21 +5,29 @@ namespace App\Services\Treasury;
 use App\Support\Treasury\TreasuryStatus;
 use App\Support\Treasury\AzioneSuggerita;
 use App\Enums\TipoAllocazioneFattura;
+use App\Helpers\DateHelper;
+use App\Models\Anagrafica;
 use App\Models\Gestionale\FatturaPassiva;
-use App\Models\Gestionale\Rata;
+use App\Models\Immobile;
+use App\Services\Gestionale\Debiti\LetturaDebiti;
+use App\Services\Gestionale\Debiti\Scadenza;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 
 final class TreasuryGuardianService
 {
     public function __construct(
         private readonly TreasuryTimelineBuilder $timeline,
+        private readonly LetturaDebiti $lettura,
+        private readonly \App\Services\Gestionale\CreditoService $crediti,
     ) {}
 
     public function perCondominio(int $condominioId, ?int $gestioneId = null, int $giorni = 30): TreasuryStatus
     {
-        $oggi = Carbon::today();
-        $limite = $oggi->copy()->addDays($giorni);
+        // «Oggi» è il giorno dell'amministratore, non quello UTC del server.
+        $oggi = CarbonImmutable::parse(DateHelper::oggiUtente());
+        $limite = $oggi->addDays($giorni);
 
         // 1. Liquidità derivata dal giornale
         $liquiditaTotaleCents = $this->calcolaLiquidita($condominioId, $gestioneId);
@@ -40,11 +48,9 @@ final class TreasuryGuardianService
 
         // 2. Inizializza variabili
         $uscitePredittiveCents = 0;
-        $incassiAttesiCents = 0;
         $debitiPregressiScadutiCents = 0;
         $fattureInScadenza = [];
         $fattureSenzaScadenza = [];
-        $morositaImpattanti = []; // TODO: In MVP sarà vuoto o calcolato base rate
 
         $this->timeline->reset()
                        ->setLiquiditaIniziale($liquiditaDisponibileCents)
@@ -96,16 +102,9 @@ final class TreasuryGuardianService
             ];
         }
 
-        // 4. Incassi Attesi (Rate Emesse)
-        $rate = $this->queryRateEmesse($condominioId, $gestioneId, $limite);
-        
-        foreach ($rate as $r) {
-            $residuoRata = $r->importo_totale - ($r->incassi_sum_importo ?? 0);
-            if ($residuoRata <= 0) continue;
-
-            $this->timeline->addEntrataAttesa('Rata ' . $r->numero_rata, $residuoRata, $r->data_scadenza);
-            $incassiAttesiCents += $residuoRata;
-        }
+        // 4. Incassi attesi e rate scadute, dalla lettura comune dei debiti
+        $attesi = $this->incassiAttesi($condominioId, $gestioneId, $oggi, $limite);
+        $incassiAttesiCents = $attesi['scaduti'] + $attesi['in_scadenza'];
 
         // 5. Build Timeline
         $risultato = $this->timeline->build();
@@ -136,11 +135,100 @@ final class TreasuryGuardianService
             scopertoMaxCents: $risultato['scopertoMaxCents'],
             livello: $livello,
             fattureInScadenza: $fattureInScadenza,
-            morositaImpattanti: $morositaImpattanti,
+            morositaImpattanti: $attesi['morosita'],
             azioniSuggerite: $azioni,
             fattureSenzaScadenza: $fattureSenzaScadenza,
             hasFondoRiserva: $hasFondoRiserva,
+            incassiScadutiCents: $attesi['scaduti'],
+            incassiInScadenzaCents: $attesi['in_scadenza'],
+            morositaAltri: $attesi['altri'],
+            scadutoPerFasce: $attesi['fasce'],
         );
+    }
+
+    /**
+     * Gli incassi attesi dalle rate emesse, per persona, dalla lettura comune dei debiti (decisione 217 D4): le rate con un residuo che
+     * scadono entro la finestra, le già scadute senza limite all'indietro (entrano nella timeline al giorno 0). Il denaro atteso da una
+     * persona è il suo residuo meno il suo credito **nella stessa gestione** (il perimetro del pianificatore del credito), tolto dalla
+     * rata più vecchia; mai il credito di un altro. Il credito è quello del giornale (il credito delle sue rate emesse, nella lettura) più
+     * quello delle sue quote fuori dal giornale (la rata 0 in bozza a credito): il credito di una quota a giornale è già nel giornale, e
+     * quando sta sulla stessa (persona, unità, rata) di una quota a debito (vendita e ricompra, decisione 25) è già nettato nel residuo.
+     * Contato anche dal credito disponibile delle quote, si toglieva due volte. Fino alla 1.12.0-beta.2 il residuo era per rata, netto dentro la rata:
+     * il credito di una persona toglieva denaro atteso dal debito di un'altra (tipicamente sulla rata 0), e il colore del semaforo di un
+     * condominio con la rata 0 mista può cambiare.
+     *
+     * Le persone con rate scadute: le prime cinque per scaduto (lordo: il credito si mostra, non si netta), con l'unità, i giorni di
+     * ritardo della rata più vecchia, il loro credito (lo stesso che la riga «Rate scadute» toglie, in tutto il perimetro) e il
+     * collegamento al loro estratto conto; quante altre; lo scaduto di tutte per fasce.
+     *
+     * @return array{scaduti:int, in_scadenza:int, morosita:list<array<string,mixed>>, altri:int, fasce:array<string,int>}
+     */
+    private function incassiAttesi(int $condominioId, ?int $gestioneId, CarbonImmutable $oggi, CarbonImmutable $limite): array
+    {
+        $fino = $limite->toDateString();
+        $scaduti = 0;
+        $inScadenza = 0;
+        $fasce = Scadenza::FASCE;
+        $morosi = [];
+        $fuoriGiornale = $this->crediti->disponibilePerGestione($condominioId, null, soloFuoriGiornale: true);
+
+        foreach ($this->lettura->perCondominio($condominioId, $oggi->toDateString(), $gestioneId) as $persona => $l) {
+            $perGestione = [];
+            $creditoPerGestione = [];
+            foreach ($l['rate'] as $r) {
+                if ($r['residuo'] > 0 && $r['scadenza'] <= $fino) {
+                    $perGestione[$r['gestione_id']][] = $r;
+                }
+                $creditoPerGestione[$r['gestione_id']] = ($creditoPerGestione[$r['gestione_id']] ?? 0) + (int) $r['credito'];
+            }
+            foreach ($fuoriGiornale[$persona] ?? [] as $gestione => $importo) {
+                if ($gestioneId === null || $gestione === $gestioneId) {
+                    $creditoPerGestione[$gestione] = ($creditoPerGestione[$gestione] ?? 0) + $importo;
+                }
+            }
+            foreach ($perGestione as $gestione => $righe) {
+                $credito = (int) ($creditoPerGestione[$gestione] ?? 0);
+                foreach ($righe as $r) {
+                    $coperto = min($credito, $r['residuo']);
+                    $credito -= $coperto;
+                    $atteso = $r['residuo'] - $coperto;
+                    $this->timeline->addEntrataAttesa('Rata ' . $r['numero_rata'], $atteso, $r['scadenza']);
+                    $r['scaduta'] ? $scaduti += $atteso : $inScadenza += $atteso;
+                }
+            }
+
+            if ($l['totali']['scaduto'] > 0) {
+                foreach ($l['totali']['fasce'] as $fascia => $importo) {
+                    $fasce[$fascia] += $importo;
+                }
+                // Le unità delle rate scadute; una riga con l'unità cancellata non ne ha (`nullOnDelete`).
+                $unita = array_values(array_unique(array_filter(array_column(array_filter($l['rate'], fn ($r) => $r['scaduta'] && $r['residuo'] > 0), 'immobile_id'), fn ($id) => $id !== null)));
+                $morosi[] = ['anagraficaId' => (int) $persona, 'unita' => $unita, 'importoCents' => $l['totali']['scaduto'], 'giorniRitardo' => $l['totali']['ritardo_massimo'],
+                    'creditoCents' => (int) array_sum($creditoPerGestione)];
+            }
+        }
+
+        usort($morosi, fn ($a, $b) => [$b['importoCents'], $b['giorniRitardo'], $a['anagraficaId']] <=> [$a['importoCents'], $a['giorniRitardo'], $b['anagraficaId']]);
+        $primi = array_slice($morosi, 0, 5);
+        $nomi = Anagrafica::whereIn('id', array_column($primi, 'anagraficaId'))->pluck('nome', 'id');
+        $immobili = Immobile::whereIn('id', array_merge([], ...array_column($primi, 'unita')))->get()->keyBy('id');
+
+        return [
+            'scaduti' => $scaduti,
+            'in_scadenza' => $inScadenza,
+            'morosita' => array_map(fn ($m) => [
+                'anagraficaId' => $m['anagraficaId'],
+                'condomino' => (string) ($nomi[$m['anagraficaId']] ?? ''),
+                'immobile' => implode(', ', array_map(fn ($id) => $immobili[$id]->etichetta, $m['unita'])),
+                'importoCents' => $m['importoCents'],
+                'giorniRitardo' => $m['giorniRitardo'],
+                'creditoCents' => $m['creditoCents'],
+                'route' => 'admin.gestionale.anagrafiche.estratto-conto',
+                'routeParams' => ['condominio' => $condominioId, 'anagrafica' => $m['anagraficaId']],
+            ], $primi),
+            'altri' => max(0, count($morosi) - 5),
+            'fasce' => $fasce,
+        ];
     }
 
     private function calcolaLiquidita(int $condominioId, ?int $gestioneId): int
@@ -239,36 +327,6 @@ final class TreasuryGuardianService
             ->whereIn('stato_pagamento', ['aperta', 'parziale'])
             ->where('stato_approvazione', '!=', 'contestata')
             ->get();
-    }
-
-    /**
-     * Rate emesse con il totale incassato calcolato via subquery (withSum), senza GROUP BY.
-     *
-     * Il totale è il **netto** delle righe con la rata fuori dall'emissione (`Rata::incassi`): AVERE − DARE, su ogni conto. Dalla
-     * 1.11.0-beta.49 (decisione 76.3) non conta il credito riportato che l'emissione scrive in AVERE con la rata (decisione 71),
-     * e sottrae lo storno di un incasso: fino alla beta.48 si sommavano le sole righe in AVERE, e un incasso stornato contava
-     * ancora come incassato. Una rettifica del riallineamento dei crediti, che sposta il credito fra due conti con la stessa rata,
-     * pesa zero.
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<Rata>
-     */
-    private function queryRateEmesse(int $condominioId, ?int $gestioneId, Carbon $limite): \Illuminate\Database\Eloquent\Collection
-    {
-        $query = Rata::query()
-            ->withSum('incassi as incassi_sum_importo', \Illuminate\Support\Facades\DB::raw("CASE WHEN tipo_riga = 'avere' THEN importo ELSE -importo END"))
-            ->where('stato', 'emessa')
-            ->where(function($q) use ($limite) {
-                $q->whereNull('data_scadenza')
-                  ->orWhere('data_scadenza', '<=', $limite->toDateString());
-            })
-            ->whereHas('pianoRate.gestione', function ($q) use ($condominioId, $gestioneId) {
-                $q->where('condominio_id', $condominioId);
-                if ($gestioneId) {
-                    $q->where('gestioni.id', $gestioneId);
-                }
-            });
-
-        return $query->get();
     }
 
     /**

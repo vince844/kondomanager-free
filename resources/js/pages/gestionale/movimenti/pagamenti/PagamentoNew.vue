@@ -26,6 +26,7 @@ import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import axios from 'axios';
+import { oggiLocale } from '@/lib/giorno';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -124,7 +125,7 @@ const form = useForm({
     fornitore_id:                   props.preselected_fornitore_id || null,
     esercizio_id:                   props.esercizio?.id || null,
     conto_corrente_id:              null as number | null,
-    data_pagamento:                 new Date().toISOString().substring(0, 10),
+    data_pagamento:                 oggiLocale(),
     metodo_pagamento:               'bonifico',
     iban_beneficiario:              '',
     importo_commissioni_cents:      0,

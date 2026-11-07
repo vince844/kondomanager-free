@@ -297,7 +297,7 @@ test('il riquadro di chi ha versato elenca i versamenti per conto di altri, e di
         // Il debitore non ha versato niente per nessuno: il suo legame è la nota della riga.
         ->and(app(VersamentiPerContoDiAltri::class)->per($s->condominio, $s->venditore))->toBe([]);
 
-    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::where('tipo_movimento', 'incasso_rata')->firstOrFail(), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::where('tipo_movimento', 'incasso_rata')->firstOrFail(), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     expect(app(VersamentiPerContoDiAltri::class)->per($s->condominio, $s->compratore)[0]['stornato'])->toBeTrue();
 });
@@ -973,7 +973,7 @@ test('nel registro lo storno di un versamento per conto di altri ha la contropar
     // Lo storno è l'annullamento di una registrazione, non una restituzione: deve dire chi ha versato come l'incasso.
     $s = scenarioPerContoDi();
     incassaPerConto($s, ['versato_da_id' => $s->compratore->id]);
-    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::where('tipo_movimento', 'incasso_rata')->firstOrFail(), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::where('tipo_movimento', 'incasso_rata')->firstOrFail(), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     $servizio = app(\App\Services\Gestionale\RegistroContabilitaService::class);
     $crediti = ContoContabile::where('ruolo', 'crediti_condomini')->firstOrFail();
@@ -991,7 +991,7 @@ test('lo storno della compensazione resta del debitore: il credito era suo (R8)'
         'versato_da_id' => $s->compratore->id, 'importo_totale' => 200.00,
         'dettaglio_pagamenti' => [['rata_id' => $s->debitoVenditore->id, 'importo' => 300.00], ['rata_id' => $credito->id, 'importo' => -100.00]],
     ]);
-    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::where('tipo_movimento', 'incasso_rata')->firstOrFail(), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::where('tipo_movimento', 'incasso_rata')->firstOrFail(), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     $registro = app(\App\Services\Gestionale\RegistroContabilitaService::class);
     $crediti = ContoContabile::where('ruolo', 'crediti_condomini')->firstOrFail();
@@ -1183,7 +1183,7 @@ test('lo storno riallinea i promemoria delle sole persone che l\'incasso aveva t
     $incasso = ScritturaContabile::where('tipo_movimento', 'incasso_rata')->latest('id')->firstOrFail();
 
     $this->actingAs($utente)
-        ->post("/admin/gestionale/{$s->condominio->id}/movimenti-rate/{$incasso->id}/storno")
+        ->post("/admin/gestionale/{$s->condominio->id}/movimenti-rate/{$incasso->id}/storno", stornoVersamentoTornato())
         ->assertSessionHasNoErrors();
 
     expect($delVenditore->refresh()->meta['status'])->toBe('pending')

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { ShieldAlert, TrendingDown, AlertTriangle, WalletCards, Activity, Lock, Info } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -12,6 +13,10 @@ const props = defineProps<{
         liquiditaDisponibileCents: number;
         uscitePredittiveCents: number;
         incassiAttesiCents: number;
+        /** Gli incassi attesi da rate già scadute (al netto del credito della persona nella stessa gestione). */
+        incassiScadutiCents: number;
+        /** Gli incassi attesi da rate che scadono entro 30 giorni. */
+        incassiInScadenzaCents: number;
         debitiPregressiScadutiCents: number;
         scenarioPessimisticoCents: number;
         scenarioOttimisticoCents: number;
@@ -24,11 +29,22 @@ const props = defineProps<{
             dataScadenza: string | null;
             importoCents: number;
         }>;
+        /** Le prime cinque persone per scaduto, con i giorni di ritardo della rata più vecchia e il loro estratto conto. */
         morositaImpattanti: Array<{
+            anagraficaId: number;
             immobile: string;
             condomino: string;
             importoCents: number;
+            giorniRitardo: number;
+            /** Il credito della persona (lo stesso che «Rate scadute» toglie): l'importo resta lordo, il credito si mostra accanto. */
+            creditoCents?: number;
+            route: string;
+            routeParams: Record<string, number>;
         }>;
+        /** Quante altre persone hanno rate scadute, oltre alle cinque. */
+        morositaAltri: number;
+        /** Lo scaduto di tutte le persone, per giorni di ritardo. */
+        scadutoPerFasce: { '1_30': number; '31_90': number; oltre_90: number };
         azioniSuggerite: Array<{
             tipo: string;
             label: string;
@@ -83,6 +99,20 @@ const widgetTheme = computed(() => {
             };
     }
 });
+
+const estrattoConto = (m: { route: string; routeParams: Record<string, number> }) => {
+    try {
+        return route(m.route, m.routeParams);
+    } catch {
+        return null;
+    }
+};
+
+const FASCE: Array<{ chiave: '1_30' | '31_90' | 'oltre_90'; etichetta: string }> = [
+    { chiave: '1_30', etichetta: '1–30 giorni' },
+    { chiave: '31_90', etichetta: '31–90 giorni' },
+    { chiave: 'oltre_90', etichetta: 'oltre 90 giorni' },
+];
 
 const formattatoreGiorno = computed(() => {
     if (!props.treasury.giornoScopertoPrevisto) return null;
@@ -145,11 +175,18 @@ const formattatoreGiorno = computed(() => {
                     <div class="space-y-1">
                         <div class="flex justify-between items-center text-xs">
                             <span class="text-slate-500 font-medium">Uscite</span>
-                            <span class="font-black text-rose-600">-{{ euro(treasury.uscitePredittiveCents) }}</span>
+                            <span class="font-black text-rose-600 whitespace-nowrap shrink-0">-{{ euro(treasury.uscitePredittiveCents) }}</span>
                         </div>
                         <div class="flex justify-between items-center text-xs border-t border-slate-200 dark:border-slate-700/50 pt-1 mt-1">
-                            <span class="text-slate-500 font-medium">Rate in Arr.</span>
-                            <span class="font-black text-emerald-600">+{{ euro(treasury.incassiAttesiCents) }}</span>
+                            <span class="flex flex-col min-w-0 pr-2">
+                                <span class="text-slate-500 font-medium">Rate scadute</span>
+                                <span class="text-[9px] text-slate-400 leading-tight">al netto del credito di ognuno nella stessa gestione</span>
+                            </span>
+                            <span class="font-black text-emerald-600 whitespace-nowrap shrink-0">+{{ euro(treasury.incassiScadutiCents) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="text-slate-500 font-medium">Rate in scadenza</span>
+                            <span class="font-black text-emerald-600 whitespace-nowrap shrink-0">+{{ euro(treasury.incassiInScadenzaCents) }}</span>
                         </div>
                     </div>
                 </div>
@@ -188,6 +225,30 @@ const formattatoreGiorno = computed(() => {
                 </div>
             </div>
 
+            <!-- Le persone con rate scadute: le prime cinque, poi quante altre e lo scaduto per fasce -->
+            <div v-if="treasury.morositaImpattanti.length > 0" class="mb-3">
+                <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Rate scadute dei condòmini</p>
+                <p class="text-[9px] text-slate-400 mb-2">Lo scaduto di ognuno, senza togliere il suo credito: il credito è scritto sotto il nome.</p>
+                <div class="space-y-1">
+                    <component :is="estrattoConto(m) ? Link : 'div'" v-for="m in treasury.morositaImpattanti" :key="m.anagraficaId"
+                        :href="estrattoConto(m) ?? undefined"
+                        class="flex justify-between items-center px-2 py-1 rounded text-[10px] bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 hover:border-slate-300">
+                        <span class="flex flex-col min-w-0 mr-2">
+                            <span class="text-slate-600 dark:text-slate-400 truncate">{{ m.condomino }} — {{ m.immobile }}</span>
+                            <span class="text-[9px] text-slate-400">in ritardo di {{ m.giorniRitardo }} {{ m.giorniRitardo === 1 ? 'giorno' : 'giorni' }}</span>
+                            <span v-if="(m.creditoCents ?? 0) > 0" class="text-[9px] text-sky-600 dark:text-sky-400">credito {{ euro(m.creditoCents ?? 0) }}</span>
+                        </span>
+                        <span class="font-bold text-slate-700 dark:text-slate-300 shrink-0">{{ euro(m.importoCents) }}</span>
+                    </component>
+                    <p v-if="treasury.morositaAltri > 0" class="text-[9px] text-slate-400 text-center pt-1">e altri {{ treasury.morositaAltri }}: lo scaduto di tutti è nelle fasce qui sotto</p>
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-1">
+                    <div v-for="f in FASCE" :key="f.chiave" class="text-[9px] text-slate-500 text-center">
+                        {{ f.etichetta }} <span class="font-bold text-slate-700 dark:text-slate-300">{{ euro(treasury.scadutoPerFasce[f.chiave]) }}</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Anomalia: fatture senza scadenza — §6.2 -->
             <div v-if="treasury.fattureSenzaScadenza && treasury.fattureSenzaScadenza.length > 0" 
                  class="flex items-center gap-2 p-2.5 rounded-lg bg-orange-50/80 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/30 mb-3">
@@ -207,8 +268,8 @@ const formattatoreGiorno = computed(() => {
                 <div class="flex items-center gap-2">
                     <TrendingDown class="w-3.5 h-3.5 text-slate-400" />
                     <div class="flex flex-col">
-                        <span class="text-[10px] font-bold text-slate-700 dark:text-slate-300">Pregressi non pagati</span>
-                        <span class="text-[9px] text-slate-500">Debiti storici accumulati</span>
+                        <span class="text-[10px] font-bold text-slate-700 dark:text-slate-300">Fatture pregresse non pagate</span>
+                        <span class="text-[9px] text-slate-500">Debiti verso i fornitori, scaduti da prima</span>
                     </div>
                 </div>
                 <span class="text-xs font-black text-slate-700">{{ euro(treasury.debitiPregressiScadutiCents) }}</span>

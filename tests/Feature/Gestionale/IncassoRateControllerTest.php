@@ -143,7 +143,7 @@ test('lo stat "stornati" conta le scritture annullata, non un valore stato inesi
         ->assertInertia(fn ($page) => $page->where('stats.stornati', 2));
 });
 
-test('index espone i 4 stati ammessi come prop stati', function () {
+test('index espone i 4 stati ammessi come prop stati, più «fuori ordine, non dichiarata» (sull\'imputazione)', function () {
     $user = adminIncassiRate();
     $ctx = setupContabile();
     [$condominio] = $ctx;
@@ -152,6 +152,6 @@ test('index espone i 4 stati ammessi come prop stati', function () {
         ->get(route('admin.gestionale.movimenti-rate.index', ['condominio' => $condominio->id]))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->where('stati', ['bozza', 'registrata', 'riconciliata', 'annullata'])
+            ->where('stati', ['bozza', 'registrata', 'riconciliata', 'annullata', 'fuori_ordine'])
         );
 });

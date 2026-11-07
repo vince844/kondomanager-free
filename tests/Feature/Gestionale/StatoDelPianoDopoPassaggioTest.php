@@ -403,7 +403,7 @@ function spIncassa(array $s, int $numeroRata, float $euro, string $data = '2026-
 function spStornaIncassi(array $s): void
 {
     foreach (\App\Models\Gestionale\ScritturaContabile::where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->get() as $incasso) {
-        app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($incasso, $s['c']);
+        app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($incasso, $s['c'], \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     }
 }
 

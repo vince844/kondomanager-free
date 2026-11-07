@@ -148,7 +148,7 @@ function lgmRimborsa($test, array $s, int $quotaId, int $importo, string $il): i
 
 function lgmStorna($test, array $s, int $id): void
 {
-    $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]))->assertSessionHasNoErrors();
+    $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]), stornoVersamentoTornato())->assertSessionHasNoErrors();
 }
 
 function lgmAnnullaEmissione($test, array $s, int $numero): void

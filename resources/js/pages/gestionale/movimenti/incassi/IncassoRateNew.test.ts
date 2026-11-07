@@ -112,8 +112,10 @@ function rata(overrides: Record<string, unknown> = {}) {
         descrizione: 'Rata 1',
         residuo: 200,
         importo_totale: 200,
-        data_scadenza: '2026-03-31',
+        // La forma vera della risposta: `scadenza_human`, `scaduta` e `pregresso` dal server, mai `data_scadenza`.
         scadenza_human: '31/03/2026',
+        scaduta: true,
+        pregresso: false,
         gestione_id: GESTIONE.id,
         gestione: GESTIONE.nome,
         intestatario: 'Rossi Mario',
@@ -140,8 +142,8 @@ const CREDITO = rata({
     descrizione: 'Saldo iniziale 2026',
     residuo: -150,
     importo_totale: 150,
-    data_scadenza: '2026-01-01',
     scadenza_human: '01/01/2026',
+    pregresso: true,
 });
 
 const DEBITO = rata();
@@ -276,7 +278,7 @@ describe('il banner della richiesta non deve mentire sullo stato della selezione
      */
     test('quando la selezione viene azzerata il banner smette di darla per fatta', async () => {
         const wrapper = await apriDaSegnalazione(
-            [rata({ id: 1, descrizione: 'Saldo pregresso', residuo: -150 }), rata({ id: 2, residuo: 200 })],
+            [rata({ id: 1, descrizione: 'Saldo pregresso', residuo: -150, pregresso: true }), rata({ id: 2, residuo: 200 })],
             '?intent_usa_credito=true&prefill_anagrafica_id=5',
         );
 
@@ -294,7 +296,7 @@ describe('il banner della richiesta non deve mentire sullo stato della selezione
     });
 
     test('mentre le rate si caricano il banner non dichiara che il credito non esiste', async () => {
-        server.rate = [rata({ id: 1, descrizione: 'Saldo pregresso', residuo: -150 })];
+        server.rate = [rata({ id: 1, descrizione: 'Saldo pregresso', residuo: -150, pregresso: true })];
         window.history.replaceState({}, '', '/gestionale/incassi/nuovo?intent_usa_credito=true&prefill_anagrafica_id=5');
 
         const wrapper = mount(IncassoRateNew, {
@@ -321,7 +323,7 @@ describe('il banner della richiesta non deve mentire sullo stato della selezione
 
     test('cambiando il condòmino pagante la richiesta non lo segue', async () => {
         const wrapper = await apriDaSegnalazione(
-            [rata({ id: 1, descrizione: 'Saldo pregresso', residuo: -150 }), rata({ id: 2, residuo: 200 })],
+            [rata({ id: 1, descrizione: 'Saldo pregresso', residuo: -150, pregresso: true }), rata({ id: 2, residuo: 200 })],
             '?intent_usa_credito=true&prefill_anagrafica_id=5',
         );
 
@@ -396,10 +398,9 @@ describe('il banner guarda tutto il credito, non solo quello a schermo', () => {
     test('con il credito nascosto da un filtro il banner non lo dichiara inesistente', async () => {
         const wrapper = await apriDaSegnalazione(
             [
-                // Non «saldo pregresso»: quella descrizione è riconosciuta da `isRataZero` e il
-                // filtro la tiene comunque. Qui serve un credito che il filtro nasconda davvero
-                // — una rata strapagata, non scaduta.
-                rata({ id: 1, descrizione: 'Rata 3', residuo: -150, data_scadenza: '2099-01-01', scadenza_human: '01/01/2099' }),
+                // Un credito che il filtro nasconde davvero: una rata strapagata che per il server non
+                // è scaduta.
+                rata({ id: 1, descrizione: 'Rata 3', residuo: -150, scaduta: false, scadenza_human: '01/01/2099' }),
                 rata({ id: 2, residuo: 200 }),
             ],
             '?intent_usa_credito=true&prefill_anagrafica_id=5',

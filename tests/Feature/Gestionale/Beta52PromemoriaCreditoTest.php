@@ -116,7 +116,7 @@ it('T2.2c lo storno dell\'incasso da € 40,00 riporta il promemoria alla creazi
     b52tIncasso($this, $s, 'bice', [$qC => 4000], 4000);
     $incasso = App\Models\Gestionale\ScritturaContabile::where('tipo_movimento', 'incasso_rata')->latest('id')->firstOrFail();
 
-    $this->actingAs($this->user)->post("/admin/gestionale/{$s['c']->id}/movimenti-rate/{$incasso->id}/storno")->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->post("/admin/gestionale/{$s['c']->id}/movimenti-rate/{$incasso->id}/storno", stornoVersamentoTornato())->assertSessionHasNoErrors();
 
     expect(b52tBice($s, $piano))->toBe(['status' => 'pending', 'originale' => 4000, 'pagato' => 0, 'restante' => 4000, 'da_compensare' => 1000, 'descrizione' => B52T_SCADENZA . B52T_NETTO_CON_CREDITO]);
 });
@@ -207,7 +207,7 @@ it('T2.2e lo storno di «Usa credito» riporta il promemoria in attesa della com
     expect(b52tBice($s, $piano)['status'])->toBe('paid');
     $usaCredito = App\Models\Gestionale\ScritturaContabile::where('tipo_movimento', 'incasso_rata')->latest('id')->firstOrFail();
 
-    $this->actingAs($this->user)->post("/admin/gestionale/{$s['c']->id}/movimenti-rate/{$usaCredito->id}/storno")->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->post("/admin/gestionale/{$s['c']->id}/movimenti-rate/{$usaCredito->id}/storno", stornoVersamentoTornato())->assertSessionHasNoErrors();
 
     $b = b52tBice($s, $piano);
     expect([$b['status'], $b['originale'], $b['pagato'], $b['restante'], $b['da_compensare']])->toBe(['partial', 4000, 4000, 0, 1000]);

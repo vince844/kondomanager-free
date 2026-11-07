@@ -62,9 +62,11 @@ const quota = (anagrafica_id: number, residuo: number) => ({
     is_credito: residuo < 0, componente_saldo: residuo < 0 ? residuo : 0, componente_spesa: residuo > 0 ? residuo : 0,
 });
 
+// La forma vera della risposta: `scadenza_human` (gg/mm/aaaa), `scaduta` e `pregresso` dal server, mai `data_scadenza`.
+// Le scadenze di queste righe sono tutte passate; il credito «Saldo iniziale» è la rata 0.
 const riga = (id: number, padre: number, descrizione: string, residuo: number, scadenza: string) => ({
-    id, rata_padre_id: padre, descrizione, residuo, importo_totale: Math.abs(residuo), data_scadenza: scadenza,
-    scadenza_human: scadenza, gestione_id: ORDINARIA.id, gestione: ORDINARIA.nome, intestatario: 'Ugo Venditore',
+    id, rata_padre_id: padre, descrizione, residuo, importo_totale: Math.abs(residuo),
+    scadenza_human: scadenza.split('-').reverse().join('/'), scaduta: true, pregresso: descrizione.startsWith('Saldo'), gestione_id: ORDINARIA.id, gestione: ORDINARIA.nome, intestatario: 'Ugo Venditore',
     intestatari_full: 'Ugo Venditore', unita: 'Interno 3', tipologia: 'Appartamento', is_credito: residuo < 0,
     is_emitted: true, is_published: true, dettaglio_quote: [quota(UGO, residuo)],
 });

@@ -241,7 +241,32 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // 1.12.0-beta.2 (decisione 200): il registro dei documenti mandati a una persona — la tabella, due indici e quattro chiavi esterne, sette statement
     // su MySQL (la `create table` porta solo le colonne), ognuno con la sua guardia. Gli stati a metà li provano i due test sotto.
     '2026_11_05_100000_create_registro_invii_table',
+    // 1.12.0-beta.3 (decisioni 217 e 218): l'imputazione dell'incasso, la sua nota e la natura dello storno — tre colonne su `scritture_contabili`,
+    // tre statement su MySQL, una guardia per colonna. Nessun travaso: gli incassi e gli storni di prima restano senza. Lo stato a metà lo prova il test sotto.
+    '2026_11_06_100000_add_imputazione_e_natura_storno_to_scritture_contabili_table',
 ]);
+
+it('la migrazione dell\'imputazione e della natura dello storno interrotta dopo la prima colonna si riprende e mette le altre, una per nome; rifatta dopo il ritorno indietro le rimette', function () {
+    $path = database_path('migrations/2026_11_06_100000_add_imputazione_e_natura_storno_to_scritture_contabili_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_06_100000_add_imputazione_e_natura_storno_to_scritture_contabili_table');
+    $migration = require $path;
+    $colonne = fn () => collect(Schema::getColumnListing('scritture_contabili'))->filter(fn ($c) => in_array($c, ['imputazione', 'imputazione_nota', 'natura_storno'], true))->sort()->values()->all();
+    $tutte = ['imputazione', 'imputazione_nota', 'natura_storno'];
+    expect($colonne())->toBe($tutte);
+
+    // Interrotta dopo la prima: le altre due mancano.
+    Schema::table('scritture_contabili', fn ($table) => $table->dropColumn(['imputazione_nota', 'natura_storno']));
+    $migration->up();
+    $migration->up();
+    expect($colonne())->toBe($tutte);
+
+    $migration->down();
+    $migration->down();
+    expect($colonne())->toBe([]);
+
+    $migration->up();
+    expect($colonne())->toBe($tutte);
+});
 
 it('la migrazione del registro degli invii interrotta dopo la tabella e prima degli indici si riprende e li mette, uno per nome', function () {
     $migration = require database_path('migrations/2026_11_05_100000_create_registro_invii_table.php');

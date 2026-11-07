@@ -28,8 +28,12 @@ export interface Rata {
     da_pagare: number;
     /** Indica se la rata è stata selezionata per il pagamento */
     selezionata: boolean;
-    /** Indica se la rata è scaduta */
+    /** La rata è scaduta: lo dice il server (il giorno della scadenza non è scaduto, nel giorno dell'amministratore). */
     scaduta: boolean;
+    /** La rata 0, il pregresso: lo dice il server dal numero della rata, non dalla descrizione. */
+    pregresso?: boolean;
+    /** La posizione nell'ordine che il programma propone, fra le righe a debito; null per una riga solo a credito. */
+    ordine?: number | null;
     /** Data di scadenza della rata */
     data_scadenza: string | null;
     /** ID della gestione a cui appartiene la rata */

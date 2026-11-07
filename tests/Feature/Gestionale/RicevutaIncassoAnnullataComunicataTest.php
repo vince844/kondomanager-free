@@ -24,7 +24,7 @@ function annullataUrl(string $nome, object $s, array $altro = []): string
 
 function annullataStorna(ScritturaContabile $incasso, object $s): void
 {
-    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::with(['righe', 'quotePagate', 'figlie'])->find($incasso->id), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::with(['righe', 'quotePagate', 'figlie'])->find($incasso->id), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 }
 
 /** L'avviso della pagina delle ricevute: i numeri degli incassi annullati dopo l'uscita della ricevuta. */

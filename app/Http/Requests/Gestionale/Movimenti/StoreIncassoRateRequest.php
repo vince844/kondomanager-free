@@ -83,6 +83,13 @@ class StoreIncassoRateRequest extends FormRequest
             // motore lo pretende quando cambierebbe il risultato (`PianoCreditoIncasso`, `serve_scelta`).
             'credito_fra_gestioni' => ['nullable', 'boolean'],
 
+            // L'imputazione dichiarata (decisioni 217 e 218): quando la distribuzione non segue l'ordine delle scadenze, chi ha scelto a che
+            // cosa va il versamento. «Indicata da chi ha versato» o «scelta da te», tutte e due con la nota facoltativa (decisione 219: chi
+            // registra cento incassi fuori ordine non scrive cento volte la stessa frase). Il server rifà il calcolo (`OrdineImputazione`) e
+            // usa la scelta solo se la distribuzione si discosta: senza, l'incasso si registra lo stesso, «fuori ordine, non dichiarata».
+            'imputazione_scelta' => ['nullable', 'string', \Illuminate\Validation\Rule::in(\App\Services\Gestionale\Incassi\OrdineImputazione::SCELTE)],
+            'imputazione_nota' => ['nullable', 'string', 'max:255'],
+
             // L'attività della posta in arrivo che l'incasso chiude (arrivo da una segnalazione). Il perimetro del
             // condominio lo applica `IncassoRateController::store()` cercandola fra le attività di questo condominio:
             // un'attività sparita nel frattempo non deve impedire di registrare l'incasso.
@@ -144,6 +151,7 @@ class StoreIncassoRateRequest extends FormRequest
         return [
             'credito_prima.required' => 'Il pagante ha un credito e il versamento è di un\'altra persona: scegli se il credito si usa adesso o resta suo.',
             'quota_parte_in_piu_id.exists' => 'La rata scelta per la parte in più deve essere di chi ha versato, emessa e di questo condominio.',
+            'imputazione_nota.max' => 'La nota sull\'imputazione sta in 255 caratteri.',
         ];
     }
 

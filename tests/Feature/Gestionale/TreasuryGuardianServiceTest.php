@@ -58,7 +58,7 @@ beforeEach(function () {
         'updated_at' => now(),
     ]);
 
-    $this->service = new TreasuryGuardianService(new TreasuryTimelineBuilder());
+    $this->service = new TreasuryGuardianService(new TreasuryTimelineBuilder(), app(\App\Services\Gestionale\Debiti\LetturaDebiti::class), app(\App\Services\Gestionale\CreditoService::class));
 });
 
 /**
@@ -137,9 +137,23 @@ function creaFattura(
 }
 
 /**
- * Helper per creare una rata emessa
+ * Helper per creare una rata emessa.
+ *
+ * Dalla 1.12.0-beta.3 gli incassi attesi vengono dalla lettura comune dei debiti, che legge le quote e il giornale come li scrive il
+ * programma: una persona con un'unità, la sua quota sulla rata, la scrittura di emissione (DARE «Crediti verso condomini» a nome della
+ * persona, con la rata) e, se c'è un pagato, l'incasso (AVERE sullo stesso conto). Prima bastava `rate.importo_totale`, che la lettura
+ * non guarda.
  */
 function creaRata($pianoRateId, $importoCents, $pagatoCents = 0, $stato = 'emessa', $scadenza = null) {
+    $piano = DB::table('piani_rate')->where('id', $pianoRateId)->first();
+    $esercizioId = (int) DB::table('esercizi')->where('condominio_id', $piano->condominio_id)->value('id');
+    $crediti = DB::table('conti_contabili')->where('condominio_id', $piano->condominio_id)->where('ruolo', 'crediti_condomini')->value('id')
+        ?? DB::table('conti_contabili')->insertGetId(['condominio_id' => $piano->condominio_id, 'nome' => 'Crediti verso condomini', 'categoria' => 'crediti',
+            'tipo' => 'attivo', 'ruolo' => 'crediti_condomini', 'codice' => '1201', 'created_at' => now(), 'updated_at' => now()]);
+    $n = DB::table('rate')->count() + 1;
+    $persona = \App\Models\Anagrafica::forceCreate(['nome' => "Condomino {$n}", 'email' => "tgs-{$n}@test.it", 'indirizzo' => 'Via Roma 1', 'codice_fiscale' => 'TGSCND' . str_pad((string) $n, 10, '0', STR_PAD_LEFT)]);
+    $immobile = \App\Models\Immobile::create(['condominio_id' => $piano->condominio_id, 'tipo' => 'appartamento', 'codice_immobile' => "TGS-{$n}", 'nome' => "Interno {$n}", 'interno' => (string) $n]);
+
     $rataId = DB::table('rate')->insertGetId([
         'piano_rate_id' => $pianoRateId,
         'importo_totale' => $importoCents,
@@ -151,26 +165,31 @@ function creaRata($pianoRateId, $importoCents, $pagatoCents = 0, $stato = 'emess
         'updated_at' => now(),
     ]);
 
+    $scrittura = function (string $tipo) use ($piano, $esercizioId) {
+        return DB::table('scritture_contabili')->insertGetId([
+            'condominio_id' => $piano->condominio_id, 'gestione_id' => $piano->gestione_id, 'esercizio_id' => $esercizioId,
+            'data_registrazione' => now()->toDateString(), 'data_competenza' => now()->toDateString(), 'numero_protocollo' => 'PROT-' . rand(1000, 99999),
+            'causale' => $tipo, 'tipo_movimento' => $tipo, 'stato' => 'registrata',
+        ]);
+    };
+    $riga = fn (int $scritturaId, string $tipo, int $importo) => DB::table('righe_scritture')->insert([
+        'scrittura_id' => $scritturaId, 'conto_contabile_id' => $crediti, 'anagrafica_id' => $persona->id, 'immobile_id' => $immobile->id, 'rata_id' => $rataId,
+        'tipo_riga' => $tipo, 'importo' => $importo,
+    ]);
+
+    $emissione = null;
+    if ($stato === 'emessa') {
+        $emissione = $scrittura('emissione_rata');
+        $riga($emissione, 'dare', $importoCents);
+    }
+    DB::table('rate_quote')->insert([
+        'rata_id' => $rataId, 'anagrafica_id' => $persona->id, 'immobile_id' => $immobile->id, 'importo' => $importoCents, 'importo_pagato' => $pagatoCents,
+        'stato' => $pagatoCents > 0 ? 'parzialmente_pagata' : 'da_pagare', 'data_scadenza' => $scadenza, 'scrittura_contabile_id' => $emissione,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
     if ($pagatoCents > 0) {
-        $scritturaId = DB::table('scritture_contabili')->insertGetId([
-            'condominio_id' => 1,
-            'gestione_id' => 1,
-            'esercizio_id' => 1,
-            'data_registrazione' => now(),
-            'data_competenza' => now(),
-            'numero_protocollo' => 'PROT-' . rand(1000, 9999),
-            'causale' => 'Incasso rata',
-            'tipo_movimento' => 'incasso_rata',
-            'stato' => 'registrata'
-        ]);
-        
-        DB::table('righe_scritture')->insert([
-            'rata_id' => $rataId,
-            'scrittura_id' => $scritturaId,
-            'conto_contabile_id' => 1, // Assume existence of conto 1 for test setup
-            'tipo_riga' => 'avere',
-            'importo' => $pagatoCents,
-        ]);
+        $riga($scrittura('incasso_rata'), 'avere', $pagatoCents);
     }
 
     return $rataId;
@@ -249,6 +268,8 @@ test('Debiti pregressi scaduti: evitano l\'alert fatigue e si contano a parte', 
 });
 
 test('Fatture scadute ma non pregresse vengono clampate ad "oggi" (Giorno 0)', function () {
+    // Alle 00:30 di Roma è già il giorno dopo di quello di Greenwich: «oggi» è il giorno dell'amministratore, come lo usa il servizio.
+    $this->travelTo(\Carbon\Carbon::parse('2026-11-07 00:30:00', 'Europe/Rome'));
     // Fattura ordinaria appena scaduta (es. scaduta ieri)
     creaFattura($this->condominio->id, $this->fornitoreId, $this->esercizioId, 100000, 0, 'aperta', 'approvata', now()->subDays(2), false);
 
@@ -256,7 +277,7 @@ test('Fatture scadute ma non pregresse vengono clampate ad "oggi" (Giorno 0)', f
 
     // Essendo non pregresso, va nelle uscite predittive
     expect($status->uscitePredittiveCents)->toBe(100000)
-        ->and($status->giornoScopertoPrevisto)->toBe(now()->toDateString()); // Lo scoperto si calcola da "oggi"
+        ->and($status->giornoScopertoPrevisto)->toBe(\App\Helpers\DateHelper::oggiUtente()); // Lo scoperto si calcola da "oggi", il giorno dell'amministratore
 });
 
 

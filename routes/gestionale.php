@@ -419,6 +419,10 @@ Route::prefix('/gestionale/{condominio}')
         ->only(['index', 'create', 'store', 'show'])
         ->parameters(['movimenti-rate' => 'scrittura']);
 
+    // 1.12.0-beta.3 (decisioni 217 e 218): prima di salvare, il modulo chiede se la distribuzione segue l'ordine delle scadenze. Sola lettura.
+    Route::post('movimenti-rate/ordine', \App\Http\Controllers\Gestionale\Movimenti\OrdineImputazioneController::class)
+        ->name('movimenti-rate.ordine');
+
     Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)
         ->name('movimenti-rate.storno');
 

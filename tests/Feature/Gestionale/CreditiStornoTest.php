@@ -164,7 +164,7 @@ function cstRimborsa($test, array $s, int $importo, int $daRata, string $il): in
 
 function cstStorna($test, array $s, int $id)
 {
-    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]));
+    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]), stornoVersamentoTornato());
 }
 
 function cstAnnullaEmissione($test, array $s, int $numero)
@@ -523,7 +523,7 @@ it('P4 — lo storno rilegge lo stato della scrittura dentro la transazione: una
     cstStorna($this, $s, $incasso)->assertSessionHasNoErrors();
 
     try {
-        app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($lettaPrima, $s['c']);
+        app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($lettaPrima, $s['c'], \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     } catch (\Throwable) {
         // Rifiutare va bene quanto non fare niente: conta che niente sia scritto due volte.
     }
@@ -545,7 +545,7 @@ it('P4 — la stessa seconda richiesta, sullo storno di S1, non scrive una secon
     cstStorna($this, $s, $incasso)->assertSessionHasNoErrors();
 
     try {
-        app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($lettaPrima, $s['c']);
+        app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($lettaPrima, $s['c'], \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     } catch (\Throwable) {
     }
 

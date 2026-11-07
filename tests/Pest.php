@@ -83,3 +83,17 @@ function kmDatabaseDiProva(string $base): string
 {
     return $base.'_'.kmSuffissoDatabaseDiProva();
 }
+
+/*
+|--------------------------------------------------------------------------
+| Lo storno di un incasso dice la sua natura (1.12.0-beta.3, decisione 217)
+|--------------------------------------------------------------------------
+|
+| Senza la natura il server non storna un incasso. I test che stornavano prima che ci fosse passano «versamento tornato indietro»:
+| tiene il giornale com'era (la rettifica alla data dello storno); cambia solo la data della riga negativa della pivot, che ora è
+| anche lei quella dello storno. Lo storno di un rimborso non la chiede, e i test dei rimborsi restano come sono.
+*/
+function stornoVersamentoTornato(): array
+{
+    return ['natura_storno' => 'versamento_tornato'];
+}

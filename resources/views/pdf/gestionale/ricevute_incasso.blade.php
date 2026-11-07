@@ -170,6 +170,11 @@
     <div style="font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; color: #1e3a5f; border-bottom: 1px solid #cbd5e0; padding-bottom: 3px; margin-bottom: 4px;">
         {{ $r['credito_usato'] > 0 ? 'Quote a cui sono imputati il versamento e il credito usato' : 'Quote a cui è imputato il versamento' }}
     </div>
+    {{-- Il criterio dell'imputazione (decisione 218, punto 4), una riga: la nota solo se è di chi ha versato. Niente per «fuori ordine» e per gli
+         incassi di prima, e niente in una copia di un originale emesso prima (il suo contenuto non ha la chiave). --}}
+    @if(filled($r['imputazione'] ?? null))
+        <div style="font-size: 8pt; color: #333; margin-bottom: 4px;">{{ $r['imputazione'] }}</div>
+    @endif
     {{-- Titoli brevi, come nella finestra; la rata è la colonna più larga, gli importi sono quattro colonne uguali, allineate a destra.
          Una tabella per piano e gestione (decisione 206.1): il loro nome una volta sola, e sotto i titoli delle colonne, così si leggono come
          colonne di quel piano; tutti e due nel thead, che mPDF ripete in cima alla pagina dopo quando il gruppo va a capo. Nelle righe il nome

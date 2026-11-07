@@ -121,7 +121,7 @@ test('il PDF di «Mandane una a me» porta PROVA in testa, e quello dell\'invio 
 test('la ricevuta di un incasso annullato dice che le quote non risultano più pagate con questo incasso, non che il versamento non c\'è', function () {
     $s = scenarioRicevutaIncasso();
     $incasso = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     $voce = ['contenuto' => app(RicevutaIncasso::class)->per($incasso->fresh()), 'bollo' => 'non_dovuta', 'nota' => null, 'emessa_il' => '05/11/2026', 'indirizzo_per_posta' => false];
 
     $html = View::make('pdf.gestionale.ricevute_incasso', ['condominio' => $s->condominio, 'ricevute' => [$voce]])->render();

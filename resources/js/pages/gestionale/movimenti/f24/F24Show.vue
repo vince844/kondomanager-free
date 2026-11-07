@@ -35,6 +35,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { descrizioneMotivo, righeProspetto, testoScadenza, totaleDebito } from '@/lib/gestionale/f24/prospetto';
 import type { Building } from '@/types/buildings';
 import type { Flash } from '@/types/flash';
+import { oggiLocale } from '@/lib/giorno';
 
 const props = defineProps<{
     condominio: Building;
@@ -202,13 +203,14 @@ const mostraVersamento = ref(false);
 const mostraStorno = ref(false);
 
 const formVersamento = useForm({
-    data_versamento: new Date().toISOString().substring(0, 10),
+    data_versamento: oggiLocale(),
     conto_corrente_id: props.banche[0]?.id ?? null,
     cassa_id: props.banche[0]?.cassa_id ?? null,
     note: '',
 });
 
-const formStorno = useForm({ motivo: '', data_storno: new Date().toISOString().substring(0, 10) });
+// Oggi nel calendario di chi usa la pagina, non il giorno di Greenwich (1.12.0-beta.3): alle 00:30 del 01/01 era ancora il 31/12.
+const formStorno = useForm({ motivo: '', data_storno: oggiLocale() });
 
 const scegliBanca = (id: number) => {
     formVersamento.conto_corrente_id = id;
@@ -301,7 +303,7 @@ const storna = () => {
                 </p>
                 <p class="mt-0.5 text-xs text-slate-500">
                     Scadenza {{ dataIt(props.delega.data_scadenza) }} · totale {{ euro(totaleRighe) }}
-                    · stampato il {{ dataIt(new Date().toISOString()) }}
+                    · stampato il {{ dataIt(oggiLocale()) }}
                 </p>
             </div>
 

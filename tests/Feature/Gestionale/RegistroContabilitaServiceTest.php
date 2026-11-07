@@ -918,7 +918,7 @@ test('lo storno di un incasso ha la data dello storno, e il saldo fra le due dat
     RigaScrittura::create(['scrittura_id' => $incasso->id, 'conto_contabile_id' => $contoDebiti, 'cassa_id' => null, 'tipo_riga' => 'avere', 'importo' => 50000]);
 
     \Carbon\Carbon::setTestNow('2026-04-20 10:00:00');
-    app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($incasso, $condominio);
+    app(\App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::class)->execute($incasso, $condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     \Carbon\Carbon::setTestNow();
 
     $rettifica = \App\Models\Gestionale\ScritturaContabile::where('scrittura_padre_id', $incasso->id)->firstOrFail();

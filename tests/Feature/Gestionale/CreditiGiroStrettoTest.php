@@ -238,7 +238,7 @@ function crgsRimborsa($test, array $s, string $chi, RataQuote $da, int $importo,
 /** Lo storno dalla rotta vera (incassi e rimborsi passano dalla stessa). */
 function crgsStorna($test, array $s, int $id)
 {
-    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]));
+    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]), stornoVersamentoTornato());
 }
 
 /** Il saldo di un conto per ruolo, dare − avere, sulle scritture vive (con `$chi`, solo le righe di quella persona). */

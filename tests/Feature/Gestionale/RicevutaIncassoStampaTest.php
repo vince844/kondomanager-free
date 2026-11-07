@@ -90,7 +90,7 @@ test('la stampa in blocco tiene insieme le ricevute della stessa persona, nell\'
 test('un incasso annullato si stampa, e la ricevuta lo dice in testa', function () {
     $s = scenarioRicevutaIncasso();
     $incasso = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     stampaRicevute($this, $s, ['incassi' => [$incasso->id], 'bollo' => 'non_dovuta'])->assertOk()->assertHeader('Content-Type', 'application/pdf');
     expect(RegistroInvio::count())->toBe(1);
@@ -221,7 +221,7 @@ test('lo storno di un incasso con la ricevuta già uscita lo dice nella conferma
     expect($anteprima())->toStartWith('La ricevuta di questo incasso è stata stampata il ');
 
     $this->travel(1)->minutes();
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     $daComunicare = fn () => $this->actingAs($utente)->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id]))
         ->viewData('page')['props']['annullate_da_comunicare'];
     expect(collect($daComunicare())->pluck('id')->all())->toBe([$incasso->id]);
@@ -259,7 +259,7 @@ test('la copia riproduce l\'originale: dopo lo storno di un incasso precedente l
     expect(cifreDellaQuota($originale->dati['contenuto']['quote'][0]))->toBe([15000, 6000, 4000, 5000])
         ->and($opzioni()['copia'])->toBe(['del' => now()->setTimezone(config('app.user_timezone'))->format('Y-m-d'), 'cambiata' => false]);
 
-    app(StornoIncassoRateAction::class)->execute($a->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($a->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     // Oggi le cifre della quota sono altre: il primo versamento non c'è più.
     expect(cifreDellaQuota(app(RicevutaIncasso::class)->per($b->fresh())['quote'][0]))->toBe([15000, 0, 4000, 11000]);
 
@@ -277,7 +277,7 @@ test('la copia di un incasso annullato dopo l\'originale porta le cifre dell\'or
     stampaRicevute($this, $s, ['incassi' => [$incasso->id], 'bollo' => 'assolta'])->assertOk();
     $originale = RegistroInvio::sole()->dati['contenuto'];
 
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     $emessa = app(RicevutaIncasso::class)->daIstantanea($originale, $incasso->fresh());
 
     expect($emessa['annullato'])->toBeTrue()

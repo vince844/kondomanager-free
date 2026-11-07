@@ -54,7 +54,11 @@ class IncassoRateService
             });
         }
 
-        if ($stato) {
+        // «Fuori ordine, non dichiarata» (1.12.0-beta.3) è una scelta in più del filtro dello stato: gli incassi che non seguono l'ordine
+        // delle scadenze senza che nessuno abbia detto perché, ancora in piedi (uno annullato non c'è più da guardare).
+        if ($stato === \App\Services\Gestionale\Incassi\OrdineImputazione::FUORI_ORDINE) {
+            $query->where('imputazione', \App\Services\Gestionale\Incassi\OrdineImputazione::FUORI_ORDINE)->where('stato', '!=', 'annullata');
+        } elseif ($stato) {
             $query->where('stato', $stato);
         }
 

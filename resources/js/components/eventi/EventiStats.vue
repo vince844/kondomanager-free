@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertTriangle, ClockAlert, ClockArrowUp, Clock } from 'lucide-vue-next';
+import { oggiLocale, piuGiorni } from '@/lib/giorno';
 
 const emit = defineEmits<{
   (e: 'setFilter', payload: { date_from: string; date_to: string }): void;
@@ -14,16 +15,16 @@ defineProps<{
   }
 }>();
 
-const now = new Date();
-const formatDate = (d: Date) => d.toISOString().slice(0, 10);
+// I giorni nel calendario di chi guarda (1.12.0-beta.3): oggi locale, e i giorni contati sui numeri della data.
+const oggi = oggiLocale();
 
 const displayStats = {
   expired_last_seven_days: {
     title: 'Scaduti ultimi 7 giorni',
     icon: AlertTriangle,
     range: {
-      date_from: formatDate(new Date(now.getTime() - 7 * 86400000)),
-      date_to: formatDate(now),
+      date_from: piuGiorni(oggi, -7),
+      date_to: oggi,
     },
     cardStyle: 'bg-red-50/50 border-red-100 hover:border-red-300 dark:bg-red-900/10 dark:border-red-900/30 dark:hover:border-red-800',
     titleColor: 'text-red-600/70 dark:text-red-500/70',
@@ -34,8 +35,8 @@ const displayStats = {
     title: 'Scadenza prossimi 7 giorni',
     icon: ClockAlert,
     range: {
-      date_from: formatDate(now),
-      date_to: formatDate(new Date(now.getTime() + 7 * 86400000)),
+      date_from: oggi,
+      date_to: piuGiorni(oggi, 7),
     },
     cardStyle: 'bg-amber-50/50 border-amber-100 hover:border-amber-300 dark:bg-amber-900/10 dark:border-amber-900/30 dark:hover:border-amber-800',
     titleColor: 'text-amber-600/70 dark:text-amber-500/70',
@@ -46,8 +47,8 @@ const displayStats = {
     title: 'Scadenza prossimi 14 giorni',
     icon: ClockArrowUp,
     range: {
-      date_from: formatDate(now),
-      date_to: formatDate(new Date(now.getTime() + 14 * 86400000)),
+      date_from: oggi,
+      date_to: piuGiorni(oggi, 14),
     },
     cardStyle: 'bg-blue-50/50 border-blue-100 hover:border-blue-300 dark:bg-blue-900/10 dark:border-blue-900/30 dark:hover:border-blue-800',
     titleColor: 'text-blue-600/70 dark:text-blue-500/70',
@@ -58,8 +59,8 @@ const displayStats = {
     title: 'Scadenza prossimi 30 giorni',
     icon: Clock,
     range: {
-      date_from: formatDate(now),
-      date_to: formatDate(new Date(now.getTime() + 28 * 86400000)),
+      date_from: oggi,
+      date_to: piuGiorni(oggi, 28),
     },
     cardStyle: 'bg-emerald-50/50 border-emerald-100 hover:border-emerald-300 dark:bg-emerald-900/10 dark:border-emerald-900/30 dark:hover:border-emerald-800',
     titleColor: 'text-emerald-600/70 dark:text-emerald-500/70',

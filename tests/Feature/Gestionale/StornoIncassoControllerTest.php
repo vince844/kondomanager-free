@@ -101,7 +101,7 @@ test('lo storno funziona regolarmente per un vero incasso_rata', function () {
         ->post(route('admin.gestionale.movimenti-rate.storno', [
             'condominio' => $condominio->id,
             'scrittura'  => $incasso->id,
-        ]))
+        ]), stornoVersamentoTornato())
         ->assertRedirect();
 
     expect($incasso->fresh()->stato)->toBe('annullata');

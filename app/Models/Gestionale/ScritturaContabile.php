@@ -54,6 +54,11 @@ class ScritturaContabile extends Model
         // Il service lo imposta prima del DB::transaction().
         // Su duplicato: QueryException su UNIQUE → IdempotencyKeyDuplicateException.
         'idempotency_key',
+        // 1.12.0-beta.3 (decisioni 217 e 218): a che cosa va un incasso e chi l'ha dichiarato (`OrdineImputazione`), e perché un incasso
+        // è stato stornato (`StornoIncassoRateAction`), sull'incasso stornato.
+        'imputazione',
+        'imputazione_nota',
+        'natura_storno',
     ];
 
     protected $casts = [

@@ -70,7 +70,7 @@ it('D143 — controprova: le rate emesse con un incasso: l\'emissione non si ann
     expect(session('message')['message'] ?? null)->toBe('Impossibile annullare: ci sono già incassi registrati, o crediti già usati o rimborsati su questa rata.');
 
     $incasso = ScritturaContabile::where('condominio_id', $s['c']->id)->where('tipo_movimento', TipoMovimentoContabile::INCASSO_RATA)->latest('id')->firstOrFail();
-    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso->id]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso->id]), stornoVersamentoTornato())->assertSessionHasNoErrors();
 
     b59dAnnullaEmissione($this, $s, $piano, 1)->assertSessionHasNoErrors();
     b59pCensisci($s, 'Cantina', 'ugo');

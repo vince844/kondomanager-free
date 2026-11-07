@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Landmark, Calendar, User, FileText, Banknote, Coins, RotateCcw, Mail, Printer } from "lucide-vue-next";
+import { giornoItaliano } from '@/lib/giorno';
 
 const props = defineProps<{
     condominio: any;
@@ -23,6 +24,10 @@ const props = defineProps<{
     incassoFormatted: any;
     utenteCreatore: string | null;
     utenteStornatore: string | null;
+    /** A che cosa va il versamento e chi l'ha dichiarato (1.12.0-beta.3): il testo lo compone il server. */
+    imputazione?: { codice: string | null; testo: string; nota: string | null };
+    /** Lo storno, dalla rettifica e dall'incasso: le date come `aaaa-mm-gg`, la natura e il suo testo. */
+    storno?: { stornato_il: string | null; vale_dal: string | null; protocollo: string | null; natura: string | null; natura_testo: string } | null;
     emissioni?: Array<Emissione & { id: number; tipo_indirizzo: string | null; in_coda_da_tempo: boolean; manda_a: string | null }>;
     da_riprovare?: number;
 }>();
@@ -84,6 +89,11 @@ const statoVariant = computed(() => {
 // Il totale versato da solo non basta a capire se una rata è stata saldata
 // con denaro reale o con credito pregresso (specialmente a cassa zero, dove
 // l'importo è correttamente € 0,00 ma non è affatto ovvio perché).
+// La via per correggere l'imputazione: solo per una dichiarazione («indicata», «scelta») o per «fuori ordine, non dichiarata», e mai su un
+// incasso già annullato. «Secondo l'ordine» e «compensazione» sono un calcolo, non una dichiarazione.
+const mostraViaPerCorreggere = computed(() => props.incasso.stato !== 'annullata'
+    && ['indicata_dal_versante', 'scelta_amministratore', 'fuori_ordine'].includes(props.imputazione?.codice ?? ''));
+
 const modalitaVersamento = computed(() => {
     const righe = props.incassoFormatted.dettagli_rate || [];
     const haCredito = righe.some((r: any) => r.tipo === 'credito');
@@ -104,7 +114,7 @@ const modalitaVersamento = computed(() => {
         <div class="px-6 py-8 space-y-6">
             <PageHeaderGuide
                 pageTitle="Dettaglio Incasso"
-                :pageSubtitle="`Protocollo ${props.incasso.numero_protocollo} — Registrato da ${utenteCreatore || 'Sistema'}`"
+                :pageSubtitle="utenteCreatore ? `Protocollo ${props.incasso.numero_protocollo} — Registrato da ${utenteCreatore}` : `Protocollo ${props.incasso.numero_protocollo}`"
                 icon="Banknote"
                 :guides="[]"
                 :breadcrumbs="(breadcrumbs as any)"
@@ -126,7 +136,7 @@ const modalitaVersamento = computed(() => {
                 <section class="w-full space-y-6">
 
             <!-- AUDIT TRAIL STORNO (Se presente) -->
-            <div v-if="props.incasso.stato === 'annullata'" class="bg-gradient-to-r from-rose-50 to-red-50 dark:from-rose-950/30 dark:to-red-950/20 border border-rose-200 dark:border-rose-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
+            <div v-if="props.incasso.stato === 'annullata'" data-testid="riquadro-storno" class="bg-gradient-to-r from-rose-50 to-red-50 dark:from-rose-950/30 dark:to-red-950/20 border border-rose-200 dark:border-rose-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
                 <div class="w-14 h-14 shrink-0 bg-rose-100 dark:bg-rose-900/50 rounded-full flex items-center justify-center border-4 border-rose-50/50 dark:border-rose-900/30">
                     <RotateCcw class="w-7 h-7 text-rose-600 dark:text-rose-400" />
                 </div>
@@ -139,14 +149,24 @@ const modalitaVersamento = computed(() => {
                     </p>
                 </div>
                 <div class="shrink-0 bg-white/60 dark:bg-slate-900/40 rounded-xl p-4 border border-rose-100 dark:border-rose-900/30 min-w-[280px]">
+                    <!-- Le date dal server come aaaa-mm-gg (il giorno dello storno nel calendario dell'amministratore, quello da cui vale),
+                         la natura dall'incasso, chi ha stornato dalla rettifica (1.12.0-beta.3). -->
                     <div class="grid grid-cols-1 gap-2 text-xs">
-                        <div class="flex justify-between items-center border-b border-rose-100/50 dark:border-rose-900/30 pb-2">
+                        <div class="flex justify-between items-center gap-3 border-b border-rose-100/50 dark:border-rose-900/30 pb-2">
                             <span class="text-rose-600/70 dark:text-rose-400/70 font-medium uppercase tracking-wider text-[10px]">Stornato il</span>
-                            <span class="font-bold text-rose-900 dark:text-rose-200">{{ new Date(props.incasso.updated_at).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) }}</span>
+                            <span class="font-bold text-rose-900 dark:text-rose-200">{{ giornoItaliano(storno?.stornato_il) || '—' }}</span>
                         </div>
-                        <div class="flex justify-between items-center border-b border-rose-100/50 dark:border-rose-900/30 pb-2">
-                            <span class="text-rose-600/70 dark:text-rose-400/70 font-medium uppercase tracking-wider text-[10px]">Operatore</span>
-                            <span class="font-bold text-rose-900 dark:text-rose-200">{{ utenteStornatore || 'Sconosciuto' }}</span>
+                        <div class="flex justify-between items-center gap-3 border-b border-rose-100/50 dark:border-rose-900/30 pb-2">
+                            <span class="text-rose-600/70 dark:text-rose-400/70 font-medium uppercase tracking-wider text-[10px]">Vale dal</span>
+                            <span class="font-bold text-rose-900 dark:text-rose-200">{{ giornoItaliano(storno?.vale_dal) || '—' }}</span>
+                        </div>
+                        <div class="flex justify-between items-start gap-3 border-b border-rose-100/50 dark:border-rose-900/30 pb-2">
+                            <span class="text-rose-600/70 dark:text-rose-400/70 font-medium uppercase tracking-wider text-[10px]">Perché</span>
+                            <span class="font-bold text-right text-rose-900 dark:text-rose-200">{{ storno?.natura_testo ?? 'Natura non dichiarata' }}</span>
+                        </div>
+                        <div class="flex justify-between items-center gap-3 border-b border-rose-100/50 dark:border-rose-900/30 pb-2">
+                            <span class="text-rose-600/70 dark:text-rose-400/70 font-medium uppercase tracking-wider text-[10px]">Stornato da</span>
+                            <span class="font-bold text-rose-900 dark:text-rose-200">{{ utenteStornatore || 'non indicato' }}</span>
                         </div>
                     </div>
                 </div>
@@ -233,6 +253,17 @@ const modalitaVersamento = computed(() => {
                                     <Landmark class="w-4 h-4 text-slate-400" />
                                     {{ props.incassoFormatted.cassa_nome }}
                                 </p>
+                            </div>
+                            <!-- A che cosa va il versamento (decisioni 217 e 218). Un incasso non si modifica: una dichiarazione sbagliata si corregge
+                                 stornando e registrando di nuovo. -->
+                            <div class="space-y-1 sm:col-span-4 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Imputazione</p>
+                                <p class="text-sm text-slate-800 dark:text-slate-200" data-testid="imputazione">
+                                    {{ props.imputazione?.testo ?? 'Non dichiarata' }}<template v-if="props.imputazione?.nota">: {{ props.imputazione.nota }}</template>
+                                </p>
+                                <!-- Solo dove c'è una dichiarazione da correggere, e non su un incasso già annullato: la pagina non ha lo storno, che sta
+                                     nel menu della riga dell'elenco degli incassi. -->
+                                <p v-if="mostraViaPerCorreggere" class="text-xs text-slate-500 dark:text-slate-400">Se la dichiarazione non è giusta: nell'elenco degli incassi, dal menu della riga, «Storna» con «Registrazione sbagliata», poi registralo di nuovo con la data del versamento.</p>
                             </div>
                             <div class="space-y-1 sm:col-span-2 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Causale Contabile</p>

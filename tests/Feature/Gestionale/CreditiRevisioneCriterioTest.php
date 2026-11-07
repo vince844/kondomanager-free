@@ -239,7 +239,7 @@ function crit49Rimborsa($test, array $s, string $chi, RataQuote $da, int $import
 
 function crit49Storna($test, array $s, int $id)
 {
-    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]));
+    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $id]), stornoVersamentoTornato());
 }
 
 function crit49AnnullaEmissione($test, array $s, int $n)

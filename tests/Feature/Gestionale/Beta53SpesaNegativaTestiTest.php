@@ -385,7 +385,7 @@ it('T297.52 con un incasso su una rata emessa l\'emissione non si annulla: la fr
 
     // La strada della frase: l'incasso annullato dalla pagina «Incassi rate», poi l'emissione, la bozza e la correzione.
     $incasso = DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->latest('id')->value('id');
-    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     expect(b53snAnnullaEmissione($this, $s)['type'] ?? null)->toBe('success');
     $this->actingAs($this->user)->from('/pagina-del-piano')->put(route('admin.gestionale.piani-rate.update-stato', [$s['c'], $s['e'], $s['piano']]), ['approvato' => false])
         ->assertSessionHasNoErrors();
@@ -439,7 +439,7 @@ it('T297.52 con un credito usato su una rata emessa la frase nomina anche i cred
     // Le emissioni rifiutano, finché c'è il credito usato; annullato quel movimento, le emissioni si annullano, poi la bozza e la correzione.
     expect(b53snAnnullaEmissione($this, $s)['type'] ?? null)->toBe('error');
     $movimento = DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->latest('id')->value('id');
-    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $movimento]))->assertSessionHasNoErrors();
+    $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $movimento]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     foreach ([1, 0] as $n) {
         session()->forget('message');
         $this->actingAs($this->user)->from('/pagina-del-piano')->delete(route('admin.gestionale.piani-rate.annulla-emissione', [$s['c'], $s['piano'], b52tRata($s['piano'], $n)]));

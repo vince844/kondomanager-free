@@ -453,7 +453,7 @@ it('S1 — un incasso stornato con il marcatore del riallineamento nella descriz
         ])->assertSessionHasNoErrors();
         $incasso = DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->latest('id')->first();
         expect($incasso->causale)->toBe($descrizione);
-        $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso->id]))->assertSessionHasNoErrors();
+        $this->actingAs($this->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso->id]), stornoVersamentoTornato())->assertSessionHasNoErrors();
         $quota = RataQuote::findOrFail(rveQuota($s, $s['piano'], 'ugo', 1));
         $pagina = rveEstratto($this, $s, 'ugo');
         $pdf = rvePdf($this, $s, 'ugo');

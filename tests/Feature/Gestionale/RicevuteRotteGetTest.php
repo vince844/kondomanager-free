@@ -75,6 +75,97 @@ test('le frasi dicono da quale pulsante il PDF si riapre, in italiano, e la stam
     }
 });
 
+test('il rimando riporta ai filtri che aveva chi lavorava, quelli dell\'ultima volta che ha aperto la pagina: non a quelli di serie, che non mostrano le ricevute appena stampate', function () {
+    $s = scenarioRicevutaIncasso();
+    $u = amministratoreRicevute();
+    $filtri = ['ricevuta' => 'tutte', 'data_da' => '2026-01-01', 'data_a' => '2026-03-31', 'persone' => [$s->anna->id], 'email' => 'con', 'soglia' => 'sopra', 'gestione_id' => 7, 'cassa_id' => 9];
+    $pagina = fn (array $filtri) => route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id] + $filtri);
+    // I filtri come la pagina li normalizza: nell\'ordine del server, e senza la pagina né le righe per pagina, che non sono filtri.
+    $attesi = ['data_da' => '2026-01-01', 'data_a' => '2026-03-31', 'gestione_id' => 7, 'cassa_id' => 9, 'persone' => [$s->anna->id], 'email' => 'con', 'soglia' => 'sopra', 'ricevuta' => 'tutte'];
+
+    $this->actingAs($u)->get($pagina($filtri + ['page' => 2, 'per_page' => 50]))->assertOk();
+
+    foreach (array_keys(ROTTE_GET_RICEVUTE) as $pdf) {
+        $this->actingAs($u)->get(indirizzoDelPdfDelleRicevute($s, $pdf))
+            ->assertRedirect($pagina($attesi))
+            ->assertSessionHas('message', ['type' => 'warning', 'message' => RicevuteIncassiController::FRASI_RIAPRI_PDF[$pdf]]);
+    }
+
+    // E chi arriva lì vede la pagina con quei filtri.
+    $this->actingAs($u)->followingRedirects()->get(indirizzoDelPdfDelleRicevute($s, 'stampa'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('filters.ricevuta', 'tutte')->where('filters.data_da', '2026-01-01')->where('filters.data_a', '2026-03-31')
+            ->where('filters.persone', [$s->anna->id])->where('filters.email', 'con')->where('filters.soglia', 'sopra')
+            ->where('filters.gestione_id', 7)->where('filters.cassa_id', 9)
+            ->where('flash.message.type', 'warning'));
+    expect(RegistroInvio::count())->toBe(0);
+});
+
+test('i filtri ricordati sono quelli dell\'ultima apertura e di quel condominio; senza un\'apertura prima il rimando è come prima, e dei filtri sporchi non si ricordano com\'erano', function () {
+    $s = scenarioRicevutaIncasso();
+    $altro = scenarioRicevutaIncasso('Condominio Corso Italia');
+    $u = amministratoreRicevute();
+    $semplice = fn (object $c) => route('admin.gestionale.ricevute.index', ['condominio' => $c->condominio->id]);
+
+    // Nessuna apertura prima: la pagina di serie.
+    $this->actingAs($u)->get(indirizzoDelPdfDelleRicevute($s, 'stampa'))->assertRedirect($semplice($s));
+
+    // Un\'apertura per il primo condominio: l\'altro non ne sa niente.
+    $this->actingAs($u)->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id, 'ricevuta' => 'stampata', 'data_da' => '2026-02-01']))->assertOk();
+    $this->actingAs($u)->get(indirizzoDelPdfDelleRicevute($altro, 'stampa'))->assertRedirect($semplice($altro));
+
+    // La volta dopo vale l\'ultima, e solo quello che la pagina capisce: un valore sporco non viene ricordato com\'è.
+    $this->actingAs($u)->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id, 'ricevuta' => 'boh', 'data_da' => 'ieri', 'persone' => ['abc', '0', (string) $s->anna->id], 'soglia' => 'tanto']))->assertOk();
+    $risposta = $this->actingAs($u)->get(indirizzoDelPdfDelleRicevute($s, 'pdf-anteprima'));
+    $risposta->assertRedirect(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id, 'persone' => [$s->anna->id], 'ricevuta' => 'mai']));
+    expect($risposta->headers->get('Location'))->not->toContain('boh')->not->toContain('ieri')->not->toContain('tanto');
+});
+
+test('i filtri di serie non si ricordano: il giorno dopo il rimando non riporta il periodo di ieri', function () {
+    $s = scenarioRicevutaIncasso();
+    $u = amministratoreRicevute();
+    $semplice = route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id]);
+
+    // La pagina si apre di serie la sera del 31 ottobre: dal primo di settembre al 31 ottobre.
+    $this->travelTo('2026-10-31 18:00:00');
+    $this->actingAs($u)->get($semplice)->assertOk()
+        ->assertInertia(fn ($page) => $page->where('filters.data_da', '2026-09-01')->where('filters.data_a', '2026-10-31')->where('filters.ricevuta', 'mai'));
+
+    // L'indomani chi riapre la scheda di un PDF trova la pagina di serie di quel giorno, non il periodo di ieri: gli incassi di oggi ci sono.
+    $this->travelTo('2026-11-01 08:00:00');
+    foreach (array_keys(ROTTE_GET_RICEVUTE) as $pdf) {
+        $risposta = $this->actingAs($u)->get(indirizzoDelPdfDelleRicevute($s, $pdf));
+        $risposta->assertRedirect($semplice);
+        expect($risposta->headers->get('Location'))->not->toContain('2026-09-01')->not->toContain('data_da');
+    }
+    $this->actingAs($u)->followingRedirects()->get(indirizzoDelPdfDelleRicevute($s, 'stampa'))
+        ->assertInertia(fn ($page) => $page->where('filters.data_da', '2026-10-01')->where('filters.data_a', '2026-11-01'));
+
+    $this->travelBack();
+});
+
+test('un\'apertura senza «ricevuta» nell\'indirizzo è di serie anche se porta altri filtri (il periodo è quello del giorno): non si ricorda, e toglie quello che c\'era', function () {
+    $s = scenarioRicevutaIncasso();
+    $u = amministratoreRicevute();
+    $semplice = route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id]);
+    $chiave = 'ricevute.filtri.' . $s->condominio->id;
+
+    // Chi lavora sceglie dei filtri: si ricordano.
+    $this->actingAs($u)->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id, 'ricevuta' => 'stampata', 'data_da' => '2026-02-01']))->assertOk();
+    expect(session($chiave))->toMatchArray(['ricevuta' => 'stampata', 'data_da' => '2026-02-01']);
+
+    // Poi apre la pagina di serie: l'ultima pagina aperta è lei, e il rimando non riporta ai filtri di prima.
+    $this->actingAs($u)->get($semplice)->assertOk();
+    expect(session()->has($chiave))->toBeFalse();
+    $this->actingAs($u)->get(indirizzoDelPdfDelleRicevute($s, 'stampa'))->assertRedirect($semplice);
+
+    // Un indirizzo con una persona ma senza «ricevuta» (scritto a mano, un collegamento): la pagina aggiunge il periodo del giorno, quindi è di serie.
+    $this->actingAs($u)->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id, 'persone' => [$s->anna->id]]))->assertOk();
+    expect(session()->has($chiave))->toBeFalse();
+    $this->actingAs($u)->get(indirizzoDelPdfDelleRicevute($s, 'stampa'))->assertRedirect($semplice);
+});
+
 test('la pagina delle ricevute riceve la frase fra le sue proprietà, dove la legge il suo avviso', function () {
     $s = scenarioRicevutaIncasso();
     $u = amministratoreRicevute();

@@ -30,7 +30,7 @@ vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRo
 (globalThis as unknown as { route: unknown }).route = (nome: string, parametri?: Record<string, unknown>) => `/${nome}${parametri?.anagrafica ? `/${parametri.anagrafica}` : ''}`;
 
 const RicevutaDialog = (await import('./RicevutaDialog.vue')).default;
-const { FRASE_BOLLO, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, RIGA_ORIGINALE } = await import('@/lib/gestionale/incassi/ricevute');
+const { FRASE_BOLLO, FRASE_SESSIONE_SCADUTA, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, RIGA_ORIGINALE } = await import('@/lib/gestionale/incassi/ricevute');
 
 const anna = { anagrafica_id: 1, nome: 'Anna Bruni', ruolo: 'posizione', indirizzi: [{ tipo: 'email', indirizzo: 'anna@esempio.it', proposto: true }] };
 
@@ -764,8 +764,41 @@ describe('«Prepara l\'email»', () => {
         expect(clic).toEqual([]);
     });
 
+    test('se arriva una pagina e non un PDF (la pagina di accesso), la finestra dice che il PDF non è arrivato, e non scarica né apre l\'email', async () => {
+        await apri(opzioni({ senza_server_posta: true, bozza_email: bozza, ...conBollo }));
+        axiosPost.mockResolvedValueOnce({ data: new Blob(['<html>Accedi</html>'], { type: 'text/html' }), headers: {} });
+
+        pulsante('Prepara l\'email')!.click();
+        await flushPromises();
+
+        expect(testo()).toContain('Non è arrivato un PDF: forse la sessione è scaduta. Ricarica la pagina e, se serve, accedi di nuovo.');
+        expect(clic).toEqual([]);
+        expect([...document.body.querySelectorAll('a')].find((a) => (a.textContent ?? '').includes('Apri l\'email'))).toBeUndefined();
+        expect(testo()).not.toContain('Allega il PDF scaricato');
+        expect(finestra!.emitted('emessa')).toBeUndefined();
+        expect(pulsante('Prepara l\'email')?.disabled).toBe(false);
+    });
+
+    test('un file che non è un PDF arrivato con un tipo generico non si scarica e non apre l\'email; un PDF vero con lo stesso tipo sì', async () => {
+        await apri(opzioni({ senza_server_posta: true, bozza_email: bozza, ...conBollo }));
+        axiosPost.mockResolvedValueOnce({ data: new Blob(['{"esito":"no"}'], { type: 'application/octet-stream' }), headers: { 'content-type': 'application/octet-stream' } });
+
+        pulsante('Prepara l\'email')!.click();
+        await flushPromises();
+
+        expect(clic).toEqual([]);
+        expect(testo()).not.toContain('Allega il PDF scaricato');
+        expect(finestra!.emitted('emessa')).toBeUndefined();
+
+        axiosPost.mockResolvedValueOnce({ data: new Blob(['%PDF-1.4'], { type: 'application/octet-stream' }), headers: { 'content-type': 'application/octet-stream', 'content-disposition': 'inline; filename="ricevuta.pdf"' } });
+        pulsante('Prepara l\'email')!.click();
+        await flushPromises();
+
+        expect(clic.length).toBeGreaterThan(0);
+    });
+
     // La finestra è una sola per tutte le righe della pagina delle ricevute: mentre il PDF si prepara si può chiuderla e aprirne un'altra.
-    const ugo = { anagrafica_id: 2, nome: 'Ugo Neri', ruolo: 'posizione', indirizzi: [{ tipo: 'email', indirizzo: 'ugo@esempio.it', proposto: true }] };
+    const ugo ={ anagrafica_id: 2, nome: 'Ugo Neri', ruolo: 'posizione', indirizzi: [{ tipo: 'email', indirizzo: 'ugo@esempio.it', proposto: true }] };
     const opzioniDiUgo = () => opzioni({
         id: 6, numero: 'INC-2026-00006', posizione: { id: 2, nome: 'Ugo Neri' }, destinatari: [ugo], senza_server_posta: true,
         bozza_email: { ...bozza, oggetto: 'Condominio Via dei Pini — Ricevuta n. INC-2026-00006 del 05/02/2026', saluti: { 2: 'Gentile Ugo Neri,' } },
@@ -1025,8 +1058,18 @@ describe('«Anteprima» e «Stampa»: la scheda nuova si apre nel clic, il PDF a
     let fatti: string[] = [];
     let scheda: { closed: boolean; opener: unknown; location: { href: string }; document: Document; close: () => void } | null = null;
     let bloccata = false;
+    // I controlli che liberano l'indirizzo di un PDF (uno ogni 5 secondi) finiscono con la prova che li ha avviati: uno rimasto aperto
+    // libererebbe, a prova già cambiata, l'indirizzo di un'altra.
+    const controlli: Array<ReturnType<typeof setInterval>> = [];
 
     beforeEach(() => {
+        const vero = globalThis.setInterval;
+        vi.spyOn(globalThis, 'setInterval').mockImplementation(((...a: Parameters<typeof setInterval>) => {
+            const id = vero(...a);
+            controlli.push(id);
+
+            return id;
+        }) as typeof setInterval);
         fatti = [];
         bloccata = false;
         scheda = null;
@@ -1044,7 +1087,7 @@ describe('«Anteprima» e «Stampa»: la scheda nuova si apre nel clic, il PDF a
         });
     });
     afterEach(() => {
-        // Il controllo che libera l'indirizzo del PDF si ferma da sé quando la scheda si chiude.
+        controlli.splice(0).forEach((id) => clearInterval(id));
         if (scheda) scheda.closed = true;
     });
 
@@ -1131,7 +1174,22 @@ describe('«Anteprima» e «Stampa»: la scheda nuova si apre nel clic, il PDF a
         expect(finestra!.emitted('emessa')).toHaveLength(1);
     });
 
-    test('se la scheda è stata chiusa prima che il PDF arrivasse, il PDF si scarica', async () => {
+    test('«Stampa»: se la scheda è stata chiusa prima che il PDF arrivasse, il PDF si scarica: il registro è già scritto, e il file serve', async () => {
+        await apri(opzioni(conBollo));
+        const viaggio = pdfInViaggio();
+
+        pulsante('Stampa')!.click();
+        scheda!.closed = true;
+        viaggio.arriva({ ...pdf, headers: { 'content-disposition': 'inline; filename="ricevuta-inc-2026-00005.pdf"' } });
+        await flushPromises();
+
+        expect(fatti).toEqual(['scheda', 'richiesta', 'scarica ricevuta-inc-2026-00005.pdf']);
+        expect(scheda!.location.href).toBe('');
+        expect(testo()).toContain('il PDF si scarica con il nome «ricevuta-inc-2026-00005.pdf»');
+        expect(testo()).toContain('La ricevuta risulta già stampata, anche se il file arriva dopo.');
+    });
+
+    test('«Anteprima»: se la scheda è stata chiusa prima che il PDF arrivasse, niente si scarica: la finestra dice che l\'anteprima non si è aperta', async () => {
         await apri(opzioni());
         const viaggio = pdfInViaggio();
 
@@ -1140,10 +1198,27 @@ describe('«Anteprima» e «Stampa»: la scheda nuova si apre nel clic, il PDF a
         viaggio.arriva({ ...pdf, headers: { 'content-disposition': 'inline; filename="anteprima-ricevuta-inc-2026-00005.pdf"' } });
         await flushPromises();
 
-        expect(fatti).toEqual(['scheda', 'richiesta', 'scarica anteprima-ricevuta-inc-2026-00005.pdf']);
+        expect(fatti).toEqual(['scheda', 'richiesta']);
         expect(scheda!.location.href).toBe('');
-        expect(testo()).toContain('il PDF si scarica con il nome «anteprima-ricevuta-inc-2026-00005.pdf»');
+        expect(testo()).toContain('Hai chiuso la scheda: l\'anteprima non si è aperta.');
+        expect(testo()).not.toContain('si scarica');
         expect(testo()).not.toContain('stampata');
+        // L'anteprima non scrive niente: niente si rilegge e la pagina non ricarica. Si può rifare.
+        expect(axiosGet).toHaveBeenCalledTimes(1);
+        expect(finestra!.emitted('emessa')).toBeUndefined();
+        expect(pulsante('Anteprima')!.disabled).toBe(false);
+    });
+
+    test('«Anteprima» con la scheda che il browser non ha aperto: il PDF si scarica comunque, come per la stampa', async () => {
+        bloccata = true;
+        await apri(opzioni());
+        axiosPost.mockImplementationOnce(() => { fatti.push('richiesta'); return Promise.resolve(pdf); });
+
+        pulsante('Anteprima')!.click();
+        await flushPromises();
+
+        expect(fatti).toEqual(['scheda', 'richiesta', 'scarica ricevuta-condominio-via-dei-pini-inc-2026-00005.pdf']);
+        expect(testo()).not.toContain('Hai chiuso la scheda');
     });
 
     test.each([
@@ -1170,6 +1245,26 @@ describe('«Anteprima» e «Stampa»: la scheda nuova si apre nel clic, il PDF a
         expect(pulsante('Stampa')!.disabled).toBe(false);
     });
 
+    test.each([['Anteprima', false], ['Stampa', true]])('%s: se arriva una pagina e non un PDF (la pagina di accesso) la scheda si chiude, niente si apre né si scarica, e la finestra dice che il PDF non è arrivato', async (nome, stampa) => {
+        await apri(opzioni(conBollo));
+        const viaggio = pdfInViaggio();
+
+        pulsante(nome)!.click();
+        viaggio.arriva({ data: new Blob(['<html>Accedi</html>'], { type: 'text/html' }), headers: { 'content-type': 'text/html; charset=UTF-8' } });
+        await flushPromises();
+
+        expect(fatti).toEqual(['scheda', 'richiesta', 'scheda chiusa']);
+        expect(scheda!.location.href).toBe('');
+        expect(URL.createObjectURL).not.toHaveBeenCalled();
+        expect(testo()).toContain('Non è arrivato un PDF: forse la sessione è scaduta. Ricarica la pagina e, se serve, accedi di nuovo.');
+        expect(testo()).not.toContain('risulta');
+        // Non è una stampa riuscita: niente si rilegge e la pagina non ricarica. Si può riprovare.
+        expect(axiosGet).toHaveBeenCalledTimes(1);
+        expect(finestra!.emitted('emessa')).toBeUndefined();
+        expect(pulsante(nome)!.disabled).toBe(false);
+        expect(stampa).toBe(nome === 'Stampa');
+    });
+
     test('un secondo clic mentre il PDF si prepara non apre un\'altra scheda e non chiede un altro PDF: per la stampa sarebbe una seconda riga nel registro', async () => {
         await apri(opzioni(conBollo));
         const viaggio = pdfInViaggio();
@@ -1190,5 +1285,236 @@ describe('«Anteprima» e «Stampa»: la scheda nuova si apre nel clic, il PDF a
         expect(axiosPost).toHaveBeenCalledTimes(1);
         expect(finestra!.emitted('emessa')).toHaveLength(1);
         expect(pulsante('Stampa')!.disabled).toBe(false);
+    });
+});
+
+describe('la sessione scaduta mentre si lavora', () => {
+    const non401 = { response: { status: 401, data: { message: 'Unauthenticated.' } } };
+    const non419 = { response: { status: 419, data: { message: 'CSRF token mismatch.' } } };
+    const scelta = { scelta_ricordata: { bollo_sopra: 'non_dovuta', bollo_sotto: null, modo_bollo: null, estremi_bollo: null, stampa_causale: null } };
+
+    test('se la finestra non riesce a leggere i dati perché la sessione è finita, lo dice, invece di far riprovare', async () => {
+        axiosGet.mockRejectedValue(non401);
+        finestra = mount(RicevutaDialog, { attachTo: document.body, props: { open: false, condominioId: 3, incassoId: 5 } });
+        await finestra.setProps({ open: true });
+        await flushPromises();
+
+        expect(testo()).toContain(FRASE_SESSIONE_SCADUTA);
+        expect(testo()).not.toContain('Riprova');
+
+        // Un altro errore della lettura resta quello di prima.
+        finestra.unmount();
+        document.body.innerHTML = '';
+        axiosGet.mockRejectedValue(new Error('Network Error'));
+        finestra = mount(RicevutaDialog, { attachTo: document.body, props: { open: false, condominioId: 3, incassoId: 5 } });
+        await finestra.setProps({ open: true });
+        await flushPromises();
+        expect(testo()).toContain('Non è stato possibile leggere i dati della ricevuta. Riprova.');
+    });
+
+    test('«Invia» con la sessione finita (401 o 419) lo dice in italiano', async () => {
+        await apri(opzioni(scelta));
+        axiosPost.mockRejectedValueOnce(non419);
+        pulsante('Invia')!.click();
+        await flushPromises();
+        expect(testo()).toContain(FRASE_SESSIONE_SCADUTA);
+        expect(testo()).not.toContain('CSRF');
+
+        axiosPost.mockRejectedValueOnce(non401);
+        pulsante('Invia')!.click();
+        await flushPromises();
+        expect(testo()).toContain(FRASE_SESSIONE_SCADUTA);
+        expect(testo()).not.toContain('Unauthenticated');
+    });
+});
+
+describe('la finestra è una sola: chiusa e riaperta su un altro incasso mentre una richiesta viaggia', () => {
+    const ugo = { anagrafica_id: 2, nome: 'Ugo Neri', ruolo: 'posizione', indirizzi: [{ tipo: 'email', indirizzo: 'ugo@esempio.it', proposto: true }] };
+    const scelta = { scelta_ricordata: { bollo_sopra: 'non_dovuta', bollo_sotto: null, modo_bollo: null, estremi_bollo: null, stampa_causale: null } };
+    const bozza = {
+        oggetto: 'Ricevuta', saluto: 'Buongiorno,', saluti: { 1: 'Gentile Anna Bruni,', 2: 'Gentile Ugo Neri,' }, righe: ['In allegato la ricevuta.'], chiusura: 'Cordiali saluti',
+    };
+    const diAnna = (extra: Record<string, unknown> = {}) => opzioni({ ...scelta, bozza_email: bozza, ...extra });
+    const diUgo = () => opzioni({ id: 6, numero: 'INC-2026-00006', posizione: { id: 2, nome: 'Ugo Neri' }, destinatari: [ugo], ...scelta, bozza_email: bozza });
+    const pdf = { data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }), headers: { 'content-disposition': 'inline; filename="ricevuta.pdf"' } };
+
+    beforeEach(() => {
+        (URL as unknown as { createObjectURL: unknown }).createObjectURL = vi.fn(() => 'blob:ricevuta');
+        (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn();
+        vi.spyOn(window, 'open').mockImplementation(() => {
+            const scheda = { closed: false, opener: null, location: { href: '' }, document: document.implementation.createHTMLDocument(''), close() { scheda.closed = true; } };
+
+            return scheda as unknown as Window;
+        });
+    });
+
+    /** La finestra di Anna aperta; `passaAUgo()` la chiude e la riapre su Ugo, come fa la pagina con un altro «Apri». */
+    async function apertaSuAnna(dati: () => Record<string, unknown> = diAnna) {
+        let quale = 5;
+        axiosGet.mockImplementation(() => Promise.resolve({ data: quale === 5 ? dati() : diUgo() }));
+        const w: VueWrapper = mount(RicevutaDialog, { attachTo: document.body, props: { open: false, condominioId: 3, incassoId: 5 } });
+        finestra = w;
+        await w.setProps({ open: true });
+        await flushPromises();
+        const passaAUgo = async () => {
+            quale = 6;
+            await w.setProps({ open: false });
+            await w.setProps({ incassoId: 6 });
+            await w.setProps({ open: true });
+            await flushPromises();
+            expect(testo()).toContain('INC-2026-00006');
+        };
+
+        return { w, passaAUgo };
+    }
+    const inViaggio = () => {
+        let consegna: (v: unknown) => void = () => {};
+        let rifiuta: (e: unknown) => void = () => {};
+        axiosPost.mockImplementationOnce(() => new Promise((ok, no) => { consegna = ok; rifiuta = no; }));
+
+        return { arriva: (r: unknown) => consegna(r), fallisce: (e: unknown) => rifiuta(e) };
+    };
+
+    test.each([[true], [false]])('la lettura dei dati di Anna che arriva dopo la finestra di Ugo non prende il suo posto (la vecchia arriva prima: %s)', async (laVecchiaArrivaPrima) => {
+        let consegnaAnna: (v: unknown) => void = () => {};
+        let consegnaUgo: (v: unknown) => void = () => {};
+        axiosGet.mockImplementationOnce(() => new Promise((ok) => { consegnaAnna = ok; }));
+        axiosGet.mockImplementationOnce(() => new Promise((ok) => { consegnaUgo = ok; }));
+        finestra = mount(RicevutaDialog, { attachTo: document.body, props: { open: false, condominioId: 3, incassoId: 5 } });
+        await finestra.setProps({ open: true });
+        await flushPromises();
+        await finestra.setProps({ open: false });
+        await finestra.setProps({ incassoId: 6 });
+        await finestra.setProps({ open: true });
+        await flushPromises();
+
+        if (laVecchiaArrivaPrima) {
+            consegnaAnna({ data: diAnna() });
+            await flushPromises();
+            consegnaUgo({ data: diUgo() });
+        } else {
+            consegnaUgo({ data: diUgo() });
+            await flushPromises();
+            consegnaAnna({ data: diAnna() });
+        }
+        await flushPromises();
+
+        expect(testo()).toContain('INC-2026-00006');
+        expect(testo()).not.toContain('INC-2026-00005');
+        expect(testo()).toContain('ugo@esempio.it');
+    });
+
+    test('l\'errore della lettura di Anna, arrivato dopo la finestra di Ugo, non si legge nella finestra di Ugo', async () => {
+        let rifiutaAnna: (e: unknown) => void = () => {};
+        axiosGet.mockImplementationOnce(() => new Promise((_ok, no) => { rifiutaAnna = no; }));
+        axiosGet.mockResolvedValueOnce({ data: diUgo() });
+        finestra = mount(RicevutaDialog, { attachTo: document.body, props: { open: false, condominioId: 3, incassoId: 5 } });
+        await finestra.setProps({ open: true });
+        await flushPromises();
+        await finestra.setProps({ open: false });
+        await finestra.setProps({ incassoId: 6 });
+        await finestra.setProps({ open: true });
+        await flushPromises();
+
+        rifiutaAnna(new Error('Network Error'));
+        await flushPromises();
+
+        expect(testo()).toContain('INC-2026-00006');
+        expect(testo()).not.toContain('Non è stato possibile leggere i dati');
+    });
+
+    test.each([['Anteprima', 0], ['Stampa', 1]])('%s: il PDF di Anna arrivato nella finestra di Ugo non lascia niente nella finestra di Ugo; la stampa lo dice alla pagina, perché ricarichi', async (nome, volteEmessa) => {
+        const { w, passaAUgo } = await apertaSuAnna();
+        const viaggio = inViaggio();
+        pulsante(nome)!.click();
+        await flushPromises();
+        await passaAUgo();
+
+        viaggio.arriva(pdf);
+        await flushPromises();
+
+        expect(testo()).not.toContain('Il PDF è aperto');
+        expect(testo()).not.toContain('risulta stampata');
+        expect(w.emitted('emessa')?.length ?? 0).toBe(volteEmessa);
+        expect(w.emitted('avviso')).toBeUndefined();
+    });
+
+    test.each([['Anteprima', 'Non è stato possibile aprire l\'anteprima. Riprova.'], ['Stampa', 'Ricevuta non stampata. Scegli lo stato dell\'imposta di bollo.']])('%s: l\'errore per Anna non si legge nella finestra di Ugo; la pagina lo legge, con il numero della ricevuta', async (nome, frase) => {
+        const { w, passaAUgo } = await apertaSuAnna();
+        const viaggio = inViaggio();
+        pulsante(nome)!.click();
+        await flushPromises();
+        await passaAUgo();
+
+        viaggio.fallisce(nome === 'Stampa'
+            ? { response: { status: 422, data: new Blob([frase], { type: 'text/plain' }) } }
+            : { response: { status: 500, data: new Blob(['{"message":"Server Error"}'], { type: 'application/json' }) } });
+        await flushPromises();
+
+        expect(testo()).not.toContain('Scegli lo stato');
+        expect(testo()).not.toContain('Non è stato possibile aprire');
+        expect(w.emitted('avviso')).toEqual([[`Ricevuta n. INC-2026-00005: ${frase}`]]);
+        expect(w.emitted('emessa')).toBeUndefined();
+    });
+
+    test('nella stessa finestra l\'errore sta nella finestra, e la pagina non riceve un avviso', async () => {
+        const { w } = await apertaSuAnna();
+        const viaggio = inViaggio();
+        pulsante('Stampa')!.click();
+        await flushPromises();
+
+        viaggio.fallisce({ response: { status: 422, data: new Blob(['Ricevuta non stampata. Scegli lo stato dell\'imposta di bollo.'], { type: 'text/plain' }) } });
+        await flushPromises();
+
+        expect(testo()).toContain('Ricevuta non stampata. Scegli lo stato dell\'imposta di bollo.');
+        expect(w.emitted('avviso')).toBeUndefined();
+    });
+
+    test('«Invia»: l\'errore per Anna non si legge nella finestra di Ugo; la pagina lo legge, con il numero della ricevuta', async () => {
+        const { w, passaAUgo } = await apertaSuAnna();
+        const viaggio = inViaggio();
+        pulsante('Invia')!.click();
+        await flushPromises();
+        await passaAUgo();
+
+        viaggio.fallisce({ response: { status: 429, data: { message: 'Too Many Attempts.' } } });
+        await flushPromises();
+
+        expect(testo()).not.toContain('Hai già mandato dieci ricevute');
+        expect(w.emitted('avviso')).toEqual([['Ricevuta n. INC-2026-00005: Hai già mandato dieci ricevute a indirizzi scritti a mano nell\'ultimo minuto: aspetta un momento e riprova.']]);
+    });
+
+    test('«Non serve comunicarla»: l\'errore per Anna non si legge nella finestra di Ugo; la pagina lo legge, con il numero della ricevuta', async () => {
+        const annullato = () => diAnna({
+            annullato: true, storno: { protocollo: 'RET-2026-00001', data: '2026-02-10' }, copia: { del: '2026-02-02', cambiata: false },
+            emissioni: [{ id: 1, canale: 'stampa', stato: 'stampata', quando: '2026-02-02 10:00', destinatario: null, errore: null }], inviabile: false, destinatari: [],
+        });
+        const { w, passaAUgo } = await apertaSuAnna(annullato);
+        pulsante('Non serve comunicarla')!.click();
+        await flushPromises();
+        const viaggio = inViaggio();
+        pulsante('Sì, segna')!.click();
+        await flushPromises();
+        await passaAUgo();
+
+        viaggio.fallisce({ response: { status: 500, data: { message: '' } } });
+        await flushPromises();
+
+        expect(testo()).not.toContain('Non è stato possibile segnarla');
+        expect(w.emitted('avviso')).toEqual([['Ricevuta n. INC-2026-00005: Non è stato possibile segnarla. Riprova.']]);
+    });
+
+    test('«Prepara l\'email»: l\'errore per Anna non si legge nella finestra di Ugo; la pagina lo legge, con il numero della ricevuta', async () => {
+        const { w, passaAUgo } = await apertaSuAnna(() => diAnna({ senza_server_posta: true }));
+        const viaggio = inViaggio();
+        pulsante('Prepara l\'email')!.click();
+        await flushPromises();
+        await passaAUgo();
+
+        viaggio.fallisce({ response: { status: 422, data: new Blob(['Ricevuta non stampata. Questo incasso copre le rate di più persone.'], { type: 'text/plain' }) } });
+        await flushPromises();
+
+        expect(testo()).not.toContain('Questo incasso copre le rate');
+        expect(w.emitted('avviso')).toEqual([['Ricevuta n. INC-2026-00005: Ricevuta non stampata. Questo incasso copre le rate di più persone.']]);
     });
 });

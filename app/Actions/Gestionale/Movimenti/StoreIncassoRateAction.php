@@ -21,6 +21,7 @@ use App\Models\Anagrafica;
 use App\Helpers\MoneyHelper;
 use App\Models\Esercizio;
 use App\Services\Gestionale\DoubleEntryValidator;
+use App\Services\Gestionale\Incassi\OrdineImputazione;
 use App\Services\Gestionale\PianoCreditoIncasso;
 use App\Services\Subentro\FrasiObbligati;
 use Illuminate\Support\Facades\DB;
@@ -152,6 +153,35 @@ class StoreIncassoRateAction
         throw new ParteInPiuSenzaRateException($nome, $parteInPiuCents, $debitoCents);
     }
 
+    /**
+     * Il piano del credito per le righe della richiesta (decisioni 30.7 e 30.11): quanto credito va su quale riga e quanto della
+     * riga paga il denaro, con la regola di `PianoCreditoIncasso`. Lo usa anche la rotta che dice al modulo, prima di salvare, a che
+     * cosa andrà il versamento (`OrdineImputazione::perRichiesta`): le due risposte vengono dallo stesso calcolo.
+     *
+     * @param  array<string, mixed>  $validated
+     * @param  \Closure(array): ?int  $gestioneDi  la gestione della rata di una riga
+     * @return array{credito: array<int|string, array<int|string, int>>, contante: array<int|string, int>, usato: int, serve_scelta: bool}
+     */
+    public static function pianoDelCredito(array $validated, \Closure $gestioneDi): array
+    {
+        $paganteId = (int) $validated['pagante_id'];
+        $versatoDa = ! empty($validated['versato_da_id']) && (int) $validated['versato_da_id'] !== $paganteId;
+        $fraGestioni = array_key_exists('credito_fra_gestioni', $validated) && $validated['credito_fra_gestioni'] !== null
+            ? (bool) $validated['credito_fra_gestioni']
+            : null;
+
+        return PianoCreditoIncasso::pianifica(
+            collect($validated['dettaglio_pagamenti'])->filter(fn ($p) => $p['importo'] > 0)
+                ->map(fn ($p, $k) => ['chiave' => $k, 'importo' => MoneyHelper::toCents($p['importo']), 'gestione' => $gestioneDi($p)])->values()->all(),
+            collect($validated['dettaglio_pagamenti'])->filter(fn ($p) => $p['importo'] < 0)
+                ->map(fn ($p, $c) => ['chiave' => $c, 'importo' => MoneyHelper::toCents(abs($p['importo'])), 'gestione' => $gestioneDi($p)])->values()->all(),
+            MoneyHelper::toCents($validated['importo_totale']),
+            // Decisione 30.7: «Si usa adesso» vale solo con «Versato da».
+            $versatoDa && ! empty($validated['credito_prima']),
+            $fraGestioni,
+        );
+    }
+
     public function execute(array $validated, Condominio $condominio, Esercizio $esercizio): ScritturaContabile
     {
         $pagamentiOrdinari = array_filter(
@@ -197,15 +227,15 @@ class StoreIncassoRateAction
 
         // Decisione 30.7: con «Versato da» e un credito della posizione l'amministratore sceglie se il credito si usa
         // adesso, **prima** dei soldi versati («Si usa adesso»), o resta suo («Resta a X»: prima i soldi, il credito solo
-        // sullo scoperto — il motore di sempre). Senza «Versato da» l'ordine è sempre quello di sempre.
-        $creditoPrima = $versatoDaId !== null && ! empty($validated['credito_prima']);
+        // sullo scoperto — il motore di sempre). Senza «Versato da» l'ordine è sempre quello di sempre (`pianoDelCredito`).
 
         // La gestione di ogni riga, per le decisioni 30.11 e 30.12. Si legge una volta, prima della transazione.
         $quoteRighe = RataQuote::with('rata.pianoRate.gestione:id,nome')
             ->whereIn('id', collect($validated['dettaglio_pagamenti'])->pluck('rata_id'))
             ->get()
             ->keyBy('id');
-        $gestioneDi = fn (array $p) => $quoteRighe[$p['rata_id']]?->rata?->pianoRate?->gestione_id;
+        // L'id come il numero che `integer` ha validato: «+5» o « 5» passano la regola, e non sono una chiave della raccolta.
+        $gestioneDi = fn (array $p) => ($quoteRighe[(int) $p['rata_id']] ?? null)?->rata?->pianoRate?->gestione_id;
 
         // Decisione 41 (1.11.0-beta.42): un piano che deve ancora seguire un passaggio di titolarità, anche annullato dopo il ricalcolo
         // (beta.51), non riceve incassi né compensazioni finché non si ricalcola. L'incasso lo fermerebbe (34.1), il ricalcolo si
@@ -241,13 +271,7 @@ class StoreIncassoRateAction
         $fraGestioni = array_key_exists('credito_fra_gestioni', $validated) && $validated['credito_fra_gestioni'] !== null
             ? (bool) $validated['credito_fra_gestioni']
             : null;
-        $piano = PianoCreditoIncasso::pianifica(
-            collect($pagamentiOrdinari)->map(fn ($p, $k) => ['chiave' => $k, 'importo' => MoneyHelper::toCents($p['importo']), 'gestione' => $gestioneDi($p)])->values()->all(),
-            collect($pagamentiCredito)->map(fn ($p, $c) => ['chiave' => $c, 'importo' => MoneyHelper::toCents(abs($p['importo'])), 'gestione' => $gestioneDi($p)])->values()->all(),
-            $importoTotaleCents,
-            $creditoPrima,
-            $fraGestioni,
-        );
+        $piano = self::pianoDelCredito($validated, $gestioneDi);
         if ($piano['serve_scelta'] && $fraGestioni === null) {
             $gestioniCredito = collect($pagamentiCredito)->map($gestioneDi)->filter()->unique()->values();
             throw new CreditoFraGestioniDaScegliereException(
@@ -256,7 +280,18 @@ class StoreIncassoRateAction
             );
         }
 
+        // L'imputazione (decisioni 217 e 218): il server rifà il calcolo dell'ordine sulle quote di prima dell'incasso e scrive che cosa
+        // ha visto, con la dichiarazione del modulo se la distribuzione si discosta. Non rifiuta: un incasso fuori ordine senza una
+        // dichiarazione resta «fuori ordine, non dichiarata». Qui, nell'azione, perché è l'unica porta del motore: anche chi la chiama senza la richiesta lo vede.
+        [$imputazione, $imputazioneNota] = OrdineImputazione::daScrivere(
+            app(OrdineImputazione::class)->esito($condominio->id, $paganteId, $pagamentiOrdinari, $piano['contante'], $importoTotaleCents),
+            $validated['imputazione_scelta'] ?? null,
+            $validated['imputazione_nota'] ?? null,
+        );
+
         return DB::transaction(function () use (
+            $imputazione,
+            $imputazioneNota,
             $validated,
             $condominio,
             $esercizio,
@@ -312,6 +347,10 @@ class StoreIncassoRateAction
                 'causale'            => $validated['descrizione'] ?: 'Incasso rate',
                 'tipo_movimento'     => 'incasso_rata',
                 'stato'              => 'registrata',
+                'imputazione'        => $imputazione,
+                'imputazione_nota'   => $imputazioneNota,
+                // Chi l'ha registrato: «Registrato da» sulla pagina dell'incasso.
+                'created_by'         => auth()->id(),
             ]);
 
             $rigaCassa = null;
@@ -516,6 +555,7 @@ class StoreIncassoRateAction
                     'causale'            => 'Compensazione con il credito - ' . ($validated['descrizione'] ?: 'Incasso rate'),
                     'tipo_movimento'     => 'storno_credito',
                     'stato'              => 'registrata',
+                    'created_by'         => auth()->id(),
                 ]);
 
                 foreach ($pagamentiCredito as $c => $pagamentoCredito) {

@@ -315,7 +315,7 @@ function rlcEmetti($test, array $s, array $numeri, string $il)
 /** Lo storno vero di un incasso, dalla sua rotta. */
 function rlcStorna($test, array $s, int $incassoId)
 {
-    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incassoId]));
+    return $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incassoId]), stornoVersamentoTornato());
 }
 
 function rlcUltimoId(): int
@@ -978,7 +978,7 @@ it('R21 — la pagina dello stato patrimoniale, prima e dopo il comando (lo scen
         ->and($dopo['controlli'])->toBe(['PD' => 'quadra', 'R6' => 'quadra']);
 });
 
-it('R22 — la previsione di cassa: il riallineamento non muove denaro, e gli incassi attesi restano 15000 prima e dopo', function () {
+it('R22 — la previsione di cassa: il riallineamento non muove denaro, e gli incassi attesi restano 16000 prima e dopo', function () {
     // Unità A di Ugo (200 millesimi) e B di Bice (800): per rata Ugo 2000, Bice 8000. Ugo ha −5000, «prima rata»: rata 1 di Ugo
     // 2000 − 5000 = −3000 (fuori dal giornale con la 1.10), totale della rata 1 = 8000 − 3000 = 5000; rata 2 = 10000.
     $s = rlcScenario(12, 'prima_rata', ['ugo' => -5000], 200, 800);
@@ -995,9 +995,12 @@ it('R22 — la previsione di cassa: il riallineamento non muove denaro, e gli in
     // tutte le righe con la rata (anche «Passate»), come la previsione netta della parte dell'emissione: contato solo su «Crediti»,
     // l'AVERE della rettifica sembrerebbe un incasso e la rata 1 scenderebbe da 7000 a 5000, totale 13000 (misurato). Con la
     // relazione di oggi (solo gli AVERE fuori dall'emissione, niente netto) la rata 1 passerebbe da 5000 a 3000: 13000 → 11000.
+    // Dalla 1.12.0-beta.3 (decisione 217 D4) gli incassi attesi vengono dalla lettura comune, per persona: Bice 8000 + 8000 = 16000;
+    // Ugo niente (la rata 2 l'ha pagata con il credito, e il credito che gli resta, 1000, toglie solo dal suo denaro atteso, mai da
+    // quello di Bice). Prima il netto dentro la rata 1 toglieva il credito di Ugo dal debito di Bice: 15000.
     expect(rlcSp($s))->toBe([15000, 20000, -5000])
         ->and(rlcPrevisione($s))->toBe($prima)
-        ->and(rlcPrevisione($s))->toBe(15000);
+        ->and(rlcPrevisione($s))->toBe(16000);
 });
 
 it('R23 — sonda S1: la pagina della scrittura dà ai riquadri i dati per non dire «annullata» la compensazione, prima e dopo il comando: tipo e stato del padre e delle figlie', function () {
@@ -1089,4 +1092,18 @@ it('R27 — una rata «emessa» senza scritture che ha anche una quota da pagare
     rlcComando($s);
     expect(rlcImpronta($s))->toBe($impronta)
         ->and(rlcCard($this, $s))->toBeNull();
+});
+
+it('la compensazione riallineata dal comando non è uno storno: «Pagato il» resta la sua data dopo un ricalcolo della quota', function () {
+    $s = rlcScenario(12, 'prima_rata', ['ugo' => -5000], 200, 800);
+    rlcEmettiComeLa110($s, [1, 2], '2026-02-28');
+    rlcCompensaComeLa110($s, 'ugo', 1, [2 => 2000], '2026-03-10');
+    rlcQuota($s, 'ugo', 2)->ricalcolaStato();
+    expect(substr((string) rlcQuota($s, 'ugo', 2)->fresh()->data_pagamento, 0, 10))->toBe('2026-03-10');
+
+    rlcComando($s);
+    // Quello che fa ogni incasso o storno successivo sulla quota: la rettifica del riallineamento ha per padre la compensazione, ma non la storna.
+    rlcQuota($s, 'ugo', 2)->ricalcolaStato();
+
+    expect(substr((string) rlcQuota($s, 'ugo', 2)->fresh()->data_pagamento, 0, 10))->toBe('2026-03-10');
 });

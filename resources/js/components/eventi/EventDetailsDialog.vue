@@ -96,11 +96,20 @@ const daysDiff = computed(() => {
     return differenceInDays(new Date(props.evento.start_time), new Date()); 
 });
 
-// Mostriamo l'allarme rosso solo se c'è effettivamente un debito residuo sulla rata: il restante positivo, anche con il netto a credito
+// Mostriamo l'allarme rosso solo se c'è effettivamente un debito residuo sulla rata: il restante positivo, anche con il netto a credito.
+// Mai per una rata non ancora emessa: è in attesa di emissione, non scaduta (un promemoria di prima, senza il campo, resta com'era).
+const nonEmessa = computed(() => {
+    // Solo il promemoria del condòmino: quello dell'amministratore («Emettere rata N») ha `is_emitted` falso finché non emette, e a data
+    // passata deve restare rosso, con «Emetti subito».
+    if (!isCondomino.value) return false;
+    const val = props.evento?.meta?.is_emitted;
+    return val === false || val === 0 || val === '0' || val === 'false';
+});
 const isExpired = computed(() => 
     daysDiff.value < 0 && 
     !isPaid.value && 
     !isReported.value && 
+    !nonEmessa.value &&
     importoRestante.value > 0.01
 );
 

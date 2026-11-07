@@ -2,6 +2,7 @@
 
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, usePage, InfiniteScroll } from '@inertiajs/vue3';
+import { oggiLocale, piuGiorni } from '@/lib/giorno';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { House, TriangleAlert, CalendarClock, HardDrive, Bell, ArrowRight, AlertCircle, Mail, X, Check, Loader2, Heart } from 'lucide-vue-next';
@@ -147,12 +148,11 @@ const navigateToOpenSegnalazioni = () => {
 
 const navigateToUpcomingEventi = () => {
     if (hasPermission([Permission.VIEW_EVENTS])) {
-        const today = new Date();
-        const sevenDaysLater = new Date();
-        sevenDaysLater.setDate(today.getDate() + 7);
+        // Oggi e fra sette giorni, nel calendario di chi guarda (1.12.0-beta.3).
+        const oggi = oggiLocale();
         router.visit(route(generateRoute('eventi.index'), {
-            date_from: today.toISOString().split('T')[0],
-            date_to: sevenDaysLater.toISOString().split('T')[0]
+            date_from: oggi,
+            date_to: piuGiorni(oggi, 7)
         }));
     }
 };

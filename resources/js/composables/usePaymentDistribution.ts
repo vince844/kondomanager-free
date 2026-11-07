@@ -7,27 +7,6 @@ export function usePaymentDistribution() {
     const mode = ref<'auto' | 'manual'>('auto');
     const priorityRataId = ref<number | null>(null);
 
-    const isRataZero = (r: Rata) => {
-        const desc = (r.descrizione || '').toLowerCase();
-        
-        const isSaldo = desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso');
-        const isContabilizzata = r.is_emitted === true;
-        const isInBozza = r.is_emitted === false;
-
-        return isSaldo || isContabilizzata || isInBozza;
-    }; 
-
-    const getValidTime = (dateStr: string | null) => {
-        if (!dateStr) return 0; 
-        let parsed = dateStr;
-        if (dateStr.includes('/')) { 
-            const [d, m, y] = dateStr.split('/'); 
-            parsed = `${y}-${m}-${d}`; 
-        }
-        const time = new Date(parsed).getTime();
-        return isNaN(time) ? 0 : time;
-    };
-    
     const parseMoney = (val: any) => { 
         if (typeof val === 'number') return val;
         if (!val) return 0;
@@ -41,23 +20,11 @@ export function usePaymentDistribution() {
     
     const setPriorityRataId = (id: number | null) => { priorityRataId.value = id; };
 
-    const isScaduta = (dateStr: string | null) => {
-        if (!dateStr) return false;
-        
-        const oggi = new Date();
-        oggi.setHours(0, 0, 0, 0);
-
-        if (dateStr.includes('/')) {
-            const [d, m, y] = dateStr.split('/');
-            const dataRata = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-            return dataRata < oggi;
-        }
-        
-        const dataRata = new Date(dateStr);
-        dataRata.setHours(0, 0, 0, 0);
-        return dataRata < oggi;
-    };
-
+    /**
+     * Le righe da mostrare e da riempire, copiate, nell'ordine in cui le manda il server: l'ordine che il programma propone (decisione 218,
+     * `OrdineImputazione`: per scadenza, emesse o no; a pari scadenza la rata 0, poi le emesse, poi le bozze). Il browser non riordina: il
+     * riparto automatico paga dalla prima riga, e il salvataggio rifà lo stesso calcolo. Il filtro per gestione toglie righe e lascia l'ordine.
+     */
     const getRateListByGestione = (gestioneId: number | null) => {
         if (!rawRateList.value) return [];
         
@@ -66,17 +33,6 @@ export function usePaymentDistribution() {
         if (gestioneId) {
             list = list.filter(r => r.gestione_id === gestioneId);
         }
-
-        const cronologicalSort = (a: Rata, b: Rata) => {
-            if (isRataZero(a) && !isRataZero(b)) return -1;
-            if (!isRataZero(a) && isRataZero(b)) return 1;
-            const timeA = getValidTime(a.scadenza_human || a.data_scadenza);
-            const timeB = getValidTime(b.scadenza_human || b.data_scadenza);
-            if (timeA !== timeB) return timeA - timeB;
-            return (a.id || 0) - (b.id || 0);
-        };
-        
-        list.sort(cronologicalSort);
 
         return list;
     };
@@ -181,12 +137,16 @@ export function usePaymentDistribution() {
         }); return parseFloat(somma.toFixed(2)); 
     };
 
+    /**
+     * Le righe che il server dice scadute (`scaduta`: la data, emesse o no). Sono la testa dell'ordine proposto, che va per
+     * scadenza: pagarle non lascia aperta davanti a loro una rata più vecchia.
+     */
     const pagaScadute = (rateList: Rata[]) => { 
         mode.value = 'manual'; 
         let somma = 0; 
         rateList.forEach(r => { 
             const res = parseMoney(r.residuo);
-            if (isScaduta(r.data_scadenza || r.scadenza_human) && res > 0) { 
+            if (r.scaduta === true && res > 0) { 
                 r.da_pagare = res; 
                 r.selezionata = true; 
                 somma += res; 
@@ -206,7 +166,6 @@ export function usePaymentDistribution() {
         rawRateList, 
         loadingRate, 
         mode, 
-        isScaduta, 
         priorityRataId, // 🟢 FIX: Esportato correttamente
         setPriorityRataId, 
         getRateListByGestione, 

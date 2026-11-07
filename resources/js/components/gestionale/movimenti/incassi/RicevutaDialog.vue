@@ -25,9 +25,9 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Eye, Loader2, Mail, Printer, Share2 } from 'lucide-vue-next';
 import {
     AVVISO_PEC, FRASE_BOLLO, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, RIGA_ORIGINALE, TESTO_COPIA_CAMBIATA, TESTO_IMPUTAZIONE, TIPI_INDIRIZZO, apriPdfInUnaScheda,
-    chiaveIndirizzo, destinatariScelti, estremiDaMandare, fraseDaErroreConFile, frasePerErrore, gruppiDelleQuote, indirizziIniziali, indirizzoMailto,
-    nomeDalContentDisposition, preparaEmail, scaricaFile, statoConModo, testoConfermaNonServe, testoDelPdf, testoDellaBozza, testoEmissione, testoParteInPiu, testoRiepilogo,
-    testoSogliaCredito, totaliDelleQuote, type BozzaEmail, type Destinatario, type Emissione, type QuotaDellaRicevuta,
+    chiaveIndirizzo, destinatariScelti, estremiDaMandare, FRASE_SESSIONE_SCADUTA, fraseDaErroreConFile, frasePerErrore, gruppiDelleQuote, indirizziIniziali, indirizzoMailto,
+    nomeDalContentDisposition, preparaEmail, scaricaFile, sessioneScaduta, statoConModo, testoConfermaNonServe, testoDelPdf, testoDellaBozza, testoEmissione, testoParteInPiu, testoRiepilogo,
+    testoSogliaCredito, totaliDelleQuote, verificaIlFile, type BozzaEmail, type Destinatario, type Emissione, type QuotaDellaRicevuta,
 } from '@/lib/gestionale/incassi/ricevute';
 
 interface Opzioni {
@@ -39,6 +39,8 @@ interface Opzioni {
     compensazioni_escluse: Array<{ persona: string; importo: number }>;
     quote: QuotaDellaRicevuta[];
     parte_in_piu: Array<{ importo: number; persona: string | null; rata: string | null; riduce: number; a_credito: number }>;
+    /** La riga del criterio dell'imputazione che la ricevuta stampa (1.12.0-beta.3), o null. */
+    imputazione?: string | null;
     credito_usato: number;
     sopra_soglia: boolean;
     annullato: boolean;
@@ -62,7 +64,7 @@ interface Opzioni {
 
 const props = defineProps<{ condominioId: number; incassoId: number | null }>();
 const aperta = defineModel<boolean>('open', { default: false });
-const emit = defineEmits<{ (e: 'emessa'): void }>();
+const emit = defineEmits<{ (e: 'emessa'): void; (e: 'avviso', frase: string): void }>();
 
 const { generateRoute } = usePermission();
 const { euro } = useCurrencyFormatter();
@@ -83,12 +85,19 @@ const giorno = (d: string | null | undefined) => (d ? d.split('-').reverse().joi
 // La finestra è una sola per tutte le righe della pagina delle ricevute: una richiesta partita per un incasso, quando risponde, trova la finestra
 // ancora aperta su quell'incasso, o chiusa, o passata a un altro.
 const stessaFinestra = (incassoId: number) => aperta.value && opzioni.value?.id === incassoId;
+// Un errore arrivato quando la finestra è chiusa o è passata a un altro incasso non si scrive nella finestra dell'altro: lo legge la pagina, con il
+// numero della ricevuta a cui si riferisce.
+const avvisaLaPagina = (numero: string, frase: string) => emit('avviso', `Ricevuta n. ${numero}: ${frase}`);
 
+// Quale lettura dei dati è l'ultima chiesta: una più vecchia che arriva dopo (la finestra intanto è passata a un altro incasso) non la sostituisce.
+let letturaChiesta = 0;
 async function carica() {
     if (!props.incassoId) return;
+    const questa = ++letturaChiesta;
     errore.value = null;
     try {
         const risposta = await axios.get(route(generateRoute('gestionale.ricevute.opzioni'), { condominio: props.condominioId, scrittura: props.incassoId }));
+        if (questa !== letturaChiesta) return;
         const o = risposta.data as Opzioni;
         const primaVolta = opzioni.value?.id !== o.id;
         opzioni.value = o;
@@ -106,8 +115,9 @@ async function carica() {
             chiediSegna.value = false;
             preparata.value = null;
         }
-    } catch {
-        errore.value = 'Non è stato possibile leggere i dati della ricevuta. Riprova.';
+    } catch (e) {
+        // Con la sessione finita riprovare non serve: la frase dice che cosa fare.
+        if (questa === letturaChiesta) errore.value = sessioneScaduta(e) ? FRASE_SESSIONE_SCADUTA : 'Non è stato possibile leggere i dati della ricevuta. Riprova.';
     }
 }
 
@@ -159,6 +169,10 @@ async function apriIlPdf(quale: 'anteprima' | 'stampa') {
             () => axios.post(route(generateRoute(stampa ? 'gestionale.ricevute.stampa' : 'gestionale.ricevute.pdf-anteprima'), { condominio: props.condominioId }),
                 { incassi: [o.id], ...scelte() }, { responseType: 'blob' }),
             `${stampa ? 'ricevuta' : 'anteprima-ricevuta'}-${o.numero}.pdf`,
+            undefined,
+            undefined,
+            // L'anteprima non scrive niente: se chi lavora ha chiuso la scheda non la voleva più, e il file non si scarica.
+            { scaricaSeChiusa: stampa },
         );
         // La finestra è una sola per tutte le righe della pagina: l'esito si legge nella finestra di questa ricevuta.
         if (stessaFinestra(o.id)) {
@@ -169,6 +183,7 @@ async function apriIlPdf(quale: 'anteprima' | 'stampa') {
     } catch (e: any) {
         const frase = await fraseDaErroreConFile(e, stampa ? 'Non è stato possibile stampare la ricevuta. Riprova.' : 'Non è stato possibile aprire l\'anteprima. Riprova.');
         if (stessaFinestra(o.id)) errore.value = frase;
+        else avvisaLaPagina(o.numero, frase);
     } finally {
         pdfInArrivo.value = null;
     }
@@ -183,6 +198,7 @@ const puoSegnare = computed(() => !!opzioni.value?.annullato && haOriginale.valu
 async function segnaNonServe() {
     if (!opzioni.value || segnando.value) return;
     const id = opzioni.value.id;
+    const numero = opzioni.value.numero;
     segnando.value = true;
     errore.value = null;
     try {
@@ -196,7 +212,9 @@ async function segnaNonServe() {
         }
         emit('emessa');
     } catch (e: any) {
-        if (stessaFinestra(id)) errore.value = frasePerErrore(e, 'Non è stato possibile segnarla. Riprova.');
+        const frase = frasePerErrore(e, 'Non è stato possibile segnarla. Riprova.');
+        if (stessaFinestra(id)) errore.value = frase;
+        else avvisaLaPagina(numero, frase);
     } finally {
         segnando.value = false;
     }
@@ -235,6 +253,8 @@ async function preparaLEmail() {
     try {
         // Il PDF è un'emissione, come la stampa: la riga del registro con le scelte della finestra. Va per email: senza l'indirizzo per la busta.
         const risposta = await axios.post(route(generateRoute('gestionale.ricevute.stampa'), { condominio: props.condominioId }), { incassi: [o.id], per_email: 1, ...scelte() }, { responseType: 'blob' });
+        // Una pagina al posto del PDF (la pagina di accesso), o un file che non comincia come un PDF, non si allega all'email e non si scarica.
+        await verificaIlFile(risposta, 'pdf');
         // La ricevuta è uscita (una riga nel registro): la pagina lo sa. Ma se la finestra è stata chiusa o è passata a un altro incasso, il PDF
         // e l'email di questa ricevuta non si danno a chi guarda un'altra: niente scaricamento, niente email, niente riquadro.
         if (!stessaFinestra(o.id)) {
@@ -253,6 +273,7 @@ async function preparaLEmail() {
     } catch (e: any) {
         const frase = await fraseDaErroreConFile(e, 'Non è stato possibile preparare il PDF. Riprova.');
         if (stessaFinestra(o.id)) errore.value = frase;
+        else avvisaLaPagina(o.numero, frase);
     } finally {
         preparando.value = false;
     }
@@ -265,6 +286,7 @@ const cambiaApertura = (v: boolean) => { if (!v && preparando.value) return; ape
 async function invia() {
     if (!opzioni.value || !puoInviare.value) return;
     const id = opzioni.value.id;
+    const numero = opzioni.value.numero;
     inviando.value = true;
     esito.value = null;
     errore.value = null;
@@ -284,7 +306,9 @@ async function invia() {
         emit('emessa');
     } catch (e: any) {
         // Un 404 o un 500 arrivano con il messaggio vuoto, e un 429 con quello del framework: la finestra dice comunque una frase in italiano.
-        if (stessaFinestra(id)) errore.value = frasePerErrore(e, 'Invio non riuscito. Riprova.');
+        const frase = frasePerErrore(e, 'Invio non riuscito. Riprova.');
+        if (stessaFinestra(id)) errore.value = frase;
+        else avvisaLaPagina(numero, frase);
     } finally {
         inviando.value = false;
     }
@@ -356,6 +380,8 @@ async function invia() {
                      strette: sul telefono l'unità e la rata vanno a capo, le cifre no. -->
                 <div class="space-y-1">
                     <p class="font-medium">A che cosa va il versamento</p>
+                    <!-- Il criterio dell'imputazione, come la ricevuta lo stampa: la frase la compone il server (decisione 218, punto 4). -->
+                    <p v-if="opzioni.imputazione" class="text-xs" data-testid="criterio-imputazione">{{ opzioni.imputazione }}</p>
                     <table v-if="opzioni.quote.length" class="w-full text-xs" data-testid="quote-del-versamento">
                         <tbody v-for="(g, gi) in gruppiQuote" :key="`gruppo-${gi}`">
                             <tr v-if="g.titolo"><th colspan="4" scope="colgroup" class="pb-1 text-left font-medium" :class="{ 'pt-3': gi > 0 }">{{ g.titolo }}</th></tr>

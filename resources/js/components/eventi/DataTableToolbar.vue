@@ -14,6 +14,7 @@ import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.v
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RangeCalendar } from '@/components/ui/range-calendar';
 import { getLocalTimeZone, DateFormatter } from '@internationalized/date';
+import { giornoDelCalendario } from '@/lib/giorno';
 import type { Table } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 
@@ -34,13 +35,9 @@ const handleOpenDropdown = () => {
   loadCategorie()
 }
 
-const convertCalendarDateToString = (date: any): string | undefined => {
-  // Defensive: date can be undefined
-  if (!date) return undefined
-  // Convert to JS Date using getLocalTimeZone
-  const jsDate = typeof date.toDate === 'function' ? date.toDate(getLocalTimeZone()) : new Date(date)
-  return jsDate.toISOString().split('T')[0]
-}
+// Il giorno scelto nel calendario, sui suoi numeri (1.12.0-beta.3): passando dalla mezzanotte locale e da Greenwich il filtro partiva
+// sempre dal giorno prima.
+const convertCalendarDateToString = (date: any): string | undefined => giornoDelCalendario(date)
 
 const { filtra } = useTabellaServer(() => route(generateRoute('eventi.index')))
 

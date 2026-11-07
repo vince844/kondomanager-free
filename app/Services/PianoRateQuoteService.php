@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Services\Gestionale\Debiti\Scadenza;
+
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
@@ -407,6 +409,10 @@ class PianoRateQuoteService
                         return [
                             'numero'          => $rata->numero_rata,
                             'scadenza'        => optional($rata->data_scadenza)->format('Y-m-d'),
+                            // Emessa: una quota a giornale. Scaduta: il predicato del giorno (il giorno della scadenza non
+                            // è scaduto, nel giorno dell'amministratore). La pagina li usa e non ricalcola nel browser.
+                            'emessa'          => $q->contains(fn ($quota) => $quota->scrittura_contabile_id !== null),
+                            'scaduta'         => Scadenza::scaduta($rata->data_scadenza),
                             'importo'         => $importo,
                             'importo_pagato'  => $pagato,
                             'residuo'         => $residuo, 
@@ -507,6 +513,8 @@ class PianoRateQuoteService
                         return [
                             'numero'   => $rata->numero_rata,
                             'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
+                            'emessa'   => $q->contains(fn ($quota) => $quota->scrittura_contabile_id !== null),
+                            'scaduta'  => Scadenza::scaduta($rata->data_scadenza),
                             'importo'  => $importo,
                             'importo_pagato' => $pagato,
                             'residuo'         => $residuo, 

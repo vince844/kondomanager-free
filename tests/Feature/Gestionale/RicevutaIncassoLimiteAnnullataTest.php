@@ -25,7 +25,7 @@ function limiteAnnullataUrl(string $nome, object $s, array $altro = []): string
 
 function limiteAnnullataStorna(ScritturaContabile $incasso, object $s): void
 {
-    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::with(['righe', 'quotePagate', 'figlie'])->find($incasso->id), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute(ScritturaContabile::with(['righe', 'quotePagate', 'figlie'])->find($incasso->id), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 }
 
 test('la ricevuta annullata rimandata all\'indirizzo scritto a mano a cui era partita conta nel limite: dieci al minuto, poi 429 con la frase', function () {

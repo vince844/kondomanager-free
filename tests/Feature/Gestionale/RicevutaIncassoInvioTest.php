@@ -272,7 +272,7 @@ test('un incasso annullato non si invia: rifiutato da solo, saltato nel blocco',
     Notification::fake();
     $s = scenarioRicevutaIncasso();
     $incasso = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
 
     inviaUnaRicevuta($this, $s, $incasso, ['destinatari' => [$s->anna->id], 'bollo' => 'assolta'])->assertStatus(422);
     inviaRicevuteInBlocco($this, $s, ['incassi' => [$incasso->id], 'indirizzi' => ['email'], 'bollo_sopra' => 'assolta'])->assertOk()->assertJson(['ricevute' => 0, 'annullati' => 1]);
@@ -319,7 +319,7 @@ test('«invia di nuovo» rimanda la stessa ricevuta con le stesse scelte allo st
         ->and($nuova->destinatario)->toBe($prima->destinatario);
     expect(notificheRicevutaA($s->anna->email))->toHaveCount(2);
 
-    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($incasso->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     $this->actingAs(amministratoreRicevute())
         ->postJson(route('admin.gestionale.ricevute.invia-di-nuovo', ['condominio' => $s->condominio->id, 'invio' => $prima->id]))
         ->assertStatus(422);
@@ -448,7 +448,7 @@ test('per email e con «invia di nuovo» la copia porta le cifre dell\'originale
     $utente = amministratoreRicevute();
     $this->actingAs($utente)->post(route('admin.gestionale.ricevute.stampa', ['condominio' => $s->condominio->id]), ['incassi' => [$b->id], 'bollo' => 'non_dovuta'])->assertOk();
 
-    app(StornoIncassoRateAction::class)->execute($a->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($a->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     inviaUnaRicevuta($this, $s, $b, ['destinatari' => [['anagrafica_id' => $s->anna->id, 'tipi' => ['email']]], 'bollo' => 'non_dovuta'], $utente)->assertOk();
 
     // L'anteprima del blocco conta le copie: escono con le cifre dell'originale.
@@ -499,7 +499,7 @@ test('un invio non partito che non si può più rimandare (l\'incasso annullato,
     $pagina = fn () => $this->actingAs($utente)->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id, 'ricevuta' => 'tutte']))->viewData('page')['props']['non_partite'];
 
     expect($pagina())->toBe(2);
-    app(StornoIncassoRateAction::class)->execute($annullato->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio);
+    app(StornoIncassoRateAction::class)->execute($annullato->fresh(['righe', 'quotePagate', 'figlie']), $s->condominio, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO);
     $s->ugo->update(['email' => null]);
 
     expect($pagina())->toBe(0);
