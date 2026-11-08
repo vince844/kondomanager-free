@@ -62,3 +62,22 @@ describe('le altre barre non cambiano', () => {
         expect(w.get('nav a').classes()).not.toContain('md:px-2');
     });
 });
+
+describe('una voce accesa anche su un altro indirizzo', () => {
+    test('«anche»: la voce si accende sul suo indirizzo, sotto di lui e sugli indirizzi in più; non altrove', () => {
+        const rendiconto = [{ title: 'Libro Giornale', href: '/g/7/esercizi/3/scritture' },
+            { title: 'Rendiconto', href: '/g/7/esercizi/3/rendiconto', anche: ['/g/7/esercizi/3/stato-patrimoniale'] }];
+        const accesa = (percorso: string) => {
+            window.history.pushState({}, '', percorso);
+            w?.unmount();
+            w = mount(NavSezione, { props: { items: rendiconto, unaRiga: true } });
+            return w.findAll('nav a').filter((a) => a.classes().includes('bg-muted')).map((a) => a.text());
+        };
+        expect(accesa('/g/7/esercizi/3/rendiconto')).toEqual(['Rendiconto']);
+        expect(accesa('/g/7/esercizi/3/rendiconto/controlli')).toEqual(['Rendiconto']);
+        expect(accesa('/g/7/esercizi/3/stato-patrimoniale')).toEqual(['Rendiconto']);
+        expect(accesa('/g/7/esercizi/3/stato-patrimoniale-altro')).toEqual([]);
+        expect(accesa('/g/7/esercizi/3/scritture')).toEqual(['Libro Giornale']);
+        window.history.pushState({}, '', '/');
+    });
+});

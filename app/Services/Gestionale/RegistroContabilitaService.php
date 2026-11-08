@@ -30,6 +30,10 @@ use Illuminate\Support\Facades\DB;
  * accantonamento uniti nella stessa registrazione), la riga di cassa reale ne uscirebbe
  * esclusa per errore. Da ricontrollare quando nasce una scrittura così.
  *
+ * IL RIPORTO. Il saldo progressivo parte dalla cassa all'inizio dell'esercizio ({@see RiportoDiCassa}, la forma per cassa reale): la colonna
+ * `saldo_iniziale` più le righe di cassa degli esercizi che cominciano prima, oppure l'apertura di questo esercizio su quella cassa. L'apertura è la riga
+ * del riporto, non un movimento: non ha un numero e non entra in «Totale entrate». La stessa regola dà la disponibilità iniziale del prospetto per cassa.
+ *
  * ESCLUSIONE ELIMINATE, NON ANNULLATE. Una scrittura con `stato = 'annullata'` è l'originale
  * di uno storno (`StornoIncassoRateAction`): resta nel registro, intatta, mentre una seconda
  * scrittura "rettifica" ne inverte dare e avere. Le due si annullano da sole nella somma. Il
@@ -57,8 +61,6 @@ class RegistroContabilitaService
     /** Tipi di cassa che rappresentano liquidità reale — D15. */
     private const CASSE_REALI = ['banca', 'contanti'];
 
-    /** Tipi di cassa che sono partizioni contabili, non liquidità propria — D15. */
-    private const CASSE_PARTIZIONE = ['fondo', 'virtuale'];
 
     /**
      * Il registro di contabilità dell'esercizio: righe cronologiche, numerate, con saldo
@@ -82,6 +84,12 @@ class RegistroContabilitaService
     public function registro(Esercizio $esercizio, array $filtri = []): array
     {
         return $this->applicaFiltri($this->calcola($esercizio), $filtri);
+    }
+
+    /** Le righe del registro dell'esercizio senza filtri, contate senza leggerle: le stesse del registro (le righe di cassa reale, senza le aperture e gli accantonamenti). */
+    public function numeroRighe(Esercizio $esercizio): int
+    {
+        return $this->queryBase($esercizio)->count();
     }
 
     /**
@@ -112,7 +120,8 @@ class RegistroContabilitaService
      */
     public function registroConRiepilogo(Esercizio $esercizio, array $filtri = []): array
     {
-        $tutte = $this->calcola($esercizio);
+        $riporto = app(RiportoDiCassa::class)->perCassaReale($esercizio);
+        $tutte = $this->calcola($esercizio, $riporto);
         $righe = $this->applicaFiltri($tutte, $filtri);
 
         $dataRiferimento = $righe !== []
@@ -123,8 +132,12 @@ class RegistroContabilitaService
         // Il saldo a quella data, per cassa e in totale, sull'esercizio intero: l'ultima riga
         // di ogni cassa con data ≤ riferimento porta il progressivo giusto. Le righe sono già
         // in ordine cronologico, quindi basta sovrascrivere.
-        $saldoFinale = 0;
+        // Prima di ogni movimento c'è il riporto: una cassa che non si è mossa nell'anno ha il suo saldo, ed è il riporto.
+        $saldoFinale = $riporto['totale'];
         $saldi = [];
+        foreach ($riporto['per_cassa'] as $r) {
+            $saldi[$r['cassa']] = ['cassa' => $r['cassa'], 'saldo' => $r['riporto'], 'movimenti' => 0, 'entrate' => 0, 'uscite' => 0, 'riporto' => $r['riporto']];
+        }
         foreach ($tutte as $riga) {
             if ($dataRiferimento !== null && $riga['data'] > $dataRiferimento) {
                 break;
@@ -136,6 +149,7 @@ class RegistroContabilitaService
                 'movimenti' => 0,
                 'entrate' => 0,
                 'uscite' => 0,
+                'riporto' => $saldi[$riga['cassa']]['riporto'] ?? 0,
             ];
         }
 
@@ -157,7 +171,102 @@ class RegistroContabilitaService
             'data_riferimento' => $dataRiferimento,
             'saldo_finale' => $saldoFinale,
             'saldi_per_cassa' => array_values($saldi),
+            // Nel primo esercizio il riporto è l'apertura, e la riga lo dice con il suo nome.
+            'riporto' => $riporto + ['etichetta' => $riporto['per_cassa'] !== [] && collect($riporto['per_cassa'])->every('da_apertura')
+                ? 'Saldo di apertura' : 'Riporto dall\'esercizio precedente'],
+            'totali_per_tipo' => $this->totaliPerTipo($righe),
+            'saldi_fine_mese' => $this->saldiFineMese($righe, $tutte, $riporto['totale']),
         ];
+    }
+
+    /**
+     * I versamenti dei condòmini dell'esercizio: le entrate delle righe di incasso delle rate, sul perimetro del registro (`queryBase`), sommate nel
+     * database senza costruire le righe. È il numero del gruppo «Versamenti dei condòmini» dei totali per tipo dell'esercizio intero, per chi lo legge
+     * fuori dal registro (il riepilogo per competenza).
+     */
+    public function versamentiDeiCondomini(Esercizio $esercizio): int
+    {
+        return (int) $this->queryBase($esercizio)
+            ->whereIn('sc.tipo_movimento', self::GRUPPI_PER_TIPO['versamenti_condomini'][1])
+            ->where('rs.tipo_riga', 'dare')
+            ->sum('rs.importo');
+    }
+
+    /**
+     * I gruppi dei totali per tipo, nell'ordine in cui il registro li dice: dal `tipo_movimento` che ogni riga ha già. «Altri movimenti» prende tutto il
+     * resto, così la somma dei gruppi è sempre il totale del registro.
+     */
+    private const GRUPPI_PER_TIPO = [
+        'versamenti_condomini' => ['Versamenti dei condòmini', ['incasso_rata']],
+        'entrate_terzi' => ['Entrate da terzi', ['incasso_diverso', 'rimborso_assicurativo']],
+        'pagamenti_fornitori' => ['Pagamenti ai fornitori', ['pagamento_fornitore']],
+        'regolazioni' => ['Regolazioni immediate', ['regolazione_immediata']],
+        'f24' => ['Versamenti F24', ['pagamento_f24']],
+        'giroconti' => ['Giroconti fra le casse', ['giroconto']],
+        'rimborsi' => ['Rimborsi ai condòmini', ['rimborso_condomino']],
+        'storni' => ['Storni', ['rettifica', 'storno_fattura', 'storno_pagamento_fornitore', 'storno_regolazione_immediata', 'storno_pagamento_f24', 'storno_giroconto', 'storno_incasso_diverso']],
+    ];
+
+    /**
+     * I totali per tipo delle righe mostrate (come i due totali in testa: con un filtro sono un parziale). Per i pagamenti ai fornitori, la parte che paga
+     * fatture di un altro esercizio (l'esercizio della fattura pagata): «di cui fatture di esercizi precedenti».
+     *
+     * @param  array<int, array<string, mixed>>  $righe
+     * @return list<array{chiave:string, etichetta:string, movimenti:int, entrate:int, uscite:int, di_cui_esercizi_precedenti:int}>
+     */
+    private function totaliPerTipo(array $righe): array
+    {
+        $gruppo = [];
+        foreach (self::GRUPPI_PER_TIPO as $chiave => [, $tipi]) {
+            foreach ($tipi as $t) {
+                $gruppo[$t] = $chiave;
+            }
+        }
+        $esito = [];
+        foreach ([...array_keys(self::GRUPPI_PER_TIPO), 'altri'] as $chiave) {
+            $esito[$chiave] = ['chiave' => $chiave, 'etichetta' => self::GRUPPI_PER_TIPO[$chiave][0] ?? 'Altri movimenti', 'movimenti' => 0, 'entrate' => 0, 'uscite' => 0,
+                'di_cui_esercizi_precedenti' => 0];
+        }
+        foreach ($righe as $r) {
+            $chiave = $gruppo[(string) $r['tipo_movimento']] ?? 'altri';
+            $esito[$chiave]['movimenti']++;
+            $esito[$chiave]['entrate'] += (int) ($r['entrata'] ?? 0);
+            $esito[$chiave]['uscite'] += (int) ($r['uscita'] ?? 0);
+            $esito[$chiave]['di_cui_esercizi_precedenti'] += (int) ($r['pagato_esercizi_precedenti'] ?? 0);
+        }
+
+        return array_values(array_filter($esito, fn ($g) => $g['movimenti'] > 0));
+    }
+
+    /**
+     * Il saldo a fine mese: una riga per ogni mese con movimenti mostrati, con le entrate e le uscite di quei movimenti e il saldo vero alla fine del mese
+     * (il progressivo dell'esercizio intero all'ultimo movimento entro quel giorno, o il riporto se prima non ce ne sono).
+     *
+     * @param  array<int, array<string, mixed>>  $righe
+     * @param  array<int, array<string, mixed>>  $tutte
+     * @return list<array{mese:string, fine:string, movimenti:int, entrate:int, uscite:int, saldo:int}>
+     */
+    private function saldiFineMese(array $righe, array $tutte, int $riporto): array
+    {
+        $mesi = [];
+        foreach ($righe as $r) {
+            $mese = substr((string) $r['data'], 0, 7);
+            $mesi[$mese] ??= ['mese' => $mese, 'fine' => Carbon::parse($mese.'-01')->endOfMonth()->format('Y-m-d'), 'movimenti' => 0, 'entrate' => 0, 'uscite' => 0, 'saldo' => $riporto];
+            $mesi[$mese]['movimenti']++;
+            $mesi[$mese]['entrate'] += (int) ($r['entrata'] ?? 0);
+            $mesi[$mese]['uscite'] += (int) ($r['uscita'] ?? 0);
+        }
+        foreach ($mesi as &$m) {
+            foreach ($tutte as $r) {
+                if ($r['data'] > $m['fine']) {
+                    break;
+                }
+                $m['saldo'] = $r['saldo_progressivo'];
+            }
+        }
+        unset($m);
+
+        return array_values($mesi);
     }
 
     /**
@@ -173,7 +282,7 @@ class RegistroContabilitaService
      * perché è un registro **numerato** dentro l'esercizio (D5, D15). Due nature, dichiarate.
      *
      * Il **riporto** è la somma di tutto ciò che precede il periodo, su tutti gli esercizi: è
-     * da lì che il saldo progressivo parte, non da zero come nel registro. Il saldo è nel verso
+     * da lì che il saldo progressivo parte (il riporto del registro è un'altra cosa: per esercizio, sulle sole casse reali). Il saldo è nel verso
      * naturale del conto — dare − avere per attivo e costo, avere − dare per passivo e ricavo —
      * cioè la stessa convenzione di `StatoPatrimonialeService::saldiPerConto()`: il numero in
      * fondo al mastrino è quello della riga da cui si è cliccato, senza conversioni.
@@ -550,8 +659,9 @@ class RegistroContabilitaService
      *
      * @return array<int, array<string, mixed>>
      */
-    private function calcola(Esercizio $esercizio): array
+    private function calcola(Esercizio $esercizio, ?array $riporto = null): array
     {
+        $riporto ??= app(RiportoDiCassa::class)->perCassaReale($esercizio);
         $righe = $this->queryBase($esercizio)
             ->orderBy('sc.data_competenza')
             ->orderBy('sc.id')
@@ -578,16 +688,24 @@ class RegistroContabilitaService
             ])
             ->get();
 
-        $saldo = 0;
+        // Il saldo parte dal riporto, in totale e per cassa: la cassa all'inizio dell'esercizio.
+        $saldo = $riporto['totale'];
         $numero = 0;
+        $pagamenti = $this->documentiDeiPagamenti(
+            $righe->where('tipo_movimento', TipoMovimentoContabile::PAGAMENTO_FORNITORE->value)->pluck('scrittura_id')->map(fn ($id) => (int) $id)->unique()->values()->all(),
+            (int) $esercizio->id
+        );
 
         // Un secondo saldo, uno per cassa. Serve a una domanda che quello complessivo non può
         // rispondere — «e su QUESTO conto quanto c'era?» — quando le casse reali sono più di una
         // (banca + contanti, o due conti bancari). Non è una colonna: vive nel pannello che si
         // apre sulla riga, perché è una domanda che si fa su un movimento, non su tutti.
         $saldiPerCassa = [];
+        foreach ($riporto['per_cassa'] as $r) {
+            $saldiPerCassa[$r['cassa']] = $r['riporto'];
+        }
 
-        $tutte = $righe->map(function ($r) use (&$saldo, &$numero, &$saldiPerCassa) {
+        $tutte = $righe->map(function ($r) use (&$saldo, &$numero, &$saldiPerCassa, $pagamenti) {
             $entrata = $r->tipo_riga === 'dare' ? (int) $r->importo : null;
             $uscita = $r->tipo_riga === 'avere' ? (int) $r->importo : null;
             $saldo += ($entrata ?? 0) - ($uscita ?? 0);
@@ -620,13 +738,15 @@ class RegistroContabilitaService
                 // non è un'annotazione tardiva.
                 'oltre_trenta_giorni' => $dataCompetenza->diffInDays($dataRegistrazione) > 30,
                 'protocollo' => $r->numero_protocollo,
-                'descrizione' => $r->causale,
+                'descrizione' => $this->descrizioneDelPagamento($pagamenti[(int) $r->scrittura_id] ?? null, $r->controparte) ?? $r->causale,
                 'controparte' => $this->conChiHaVersato($r->controparte, $r->versato_da, $r->versato_da_id, $r->riga_anagrafica_id),
                 // Coda 167 (R9): le due metà della controparte composta, per la cella a schermo che le mette su due righe.
                 // `controparte` resta intera per il PDF e per la ricerca.
                 ...$this->metaDellaControparte($r),
                 'stato' => $r->stato,
                 'stornata' => (bool) $r->stornata,
+                // La parte di un pagamento che paga fatture di un altro esercizio: i totali per tipo la dicono a parte.
+                'pagato_esercizi_precedenti' => min((int) ($pagamenti[(int) $r->scrittura_id]['altri_esercizi'] ?? 0), (int) ($uscita ?? 0)),
                 // Quale cassa reale ha effettivamente mosso il denaro — non deducibile dal
                 // resto della riga quando il condominio ne ha più di una (due conti bancari,
                 // banca + contanti): senza questo campo un saldo combinato in calo non direbbe
@@ -721,10 +841,12 @@ class RegistroContabilitaService
         return checkdate((int) $m[2], (int) $m[3], (int) $m[1]) ? trim($valore) : null;
     }
 
-    /** Il perimetro del registro: righe di cassa reale dell'esercizio, in ordine cronologico. */
+    /** Il perimetro del registro: righe di cassa reale dell'esercizio, in ordine cronologico, senza le aperture, che sono il riporto. */
     private function queryBase(Esercizio $esercizio)
     {
-        return DB::table('righe_scritture as rs')
+        // La riga vera di un accantonamento verso una partizione (D15): esclusa guardando le sorelle, non il tipo_movimento — vedi il docblock della
+        // classe. Lo stesso filtro del riporto, da un posto solo.
+        return RiportoDiCassa::senzaAccantonamenti(DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', function ($join) {
                 $join->on('rs.scrittura_id', '=', 'sc.id')
                     ->whereNull('sc.deleted_at');
@@ -732,16 +854,55 @@ class RegistroContabilitaService
             ->join('casse as ca', 'ca.id', '=', 'rs.cassa_id')
             ->where('sc.esercizio_id', $esercizio->id)
             ->whereIn('ca.tipo', self::CASSE_REALI)
-            // La riga vera di un accantonamento verso una partizione (D15): esclusa
-            // guardando le sorelle, non il tipo_movimento — vedi il docblock della classe.
-            ->whereNotExists(function ($sub) {
-                $sub->select(DB::raw(1))
-                    ->from('righe_scritture as rs2')
-                    ->join('casse as ca2', 'ca2.id', '=', 'rs2.cassa_id')
-                    ->whereColumn('rs2.scrittura_id', 'rs.scrittura_id')
-                    ->whereColumn('rs2.id', '!=', 'rs.id')
-                    ->whereIn('ca2.tipo', self::CASSE_PARTIZIONE);
-            });
+            ->where(fn ($q) => $q->whereNull('sc.tipo_movimento')->orWhere('sc.tipo_movimento', '<>', TipoMovimentoContabile::APERTURA->value)));
+    }
+
+    /**
+     * I documenti pagati da ogni scrittura di pagamento, dalle allocazioni (`fattura_scrittura`): le fatture pagate, le note di credito compensate (il
+     * segno del documento: il netto a pagare negativo) e quanto paga fatture di un altro esercizio. La causale scritta dice «Pag. cumulativo N fatture» e
+     * conta anche la nota: il registro legge i documenti, così dice i numeri anche per i pagamenti scritti prima. Una query per tutte le scritture.
+     *
+     * @param  list<int>  $scrittureIds
+     * @return array<int, array{fatture:list<string>, note:list<string>, altri_esercizi:int}>
+     */
+    private function documentiDeiPagamenti(array $scrittureIds, int $esercizioId): array
+    {
+        if ($scrittureIds === []) {
+            return [];
+        }
+        $esito = [];
+        foreach (DB::table('fattura_scrittura as fs')->join('fatture_passive as fp', 'fp.id', '=', 'fs.fattura_passiva_id')
+            ->whereIn('fs.scrittura_contabile_id', $scrittureIds)->whereIn('fs.tipo', ['pagamento', 'compensazione'])
+            ->orderBy('fs.id')
+            ->get(['fs.scrittura_contabile_id', 'fs.tipo', 'fs.importo_allocato', 'fp.id', 'fp.numero_documento', 'fp.netto_a_pagare', 'fp.esercizio_id']) as $a) {
+            $e = &$esito[(int) $a->scrittura_contabile_id];
+            $e ??= ['fatture' => [], 'note' => [], 'altri_esercizi' => 0];
+            $numero = (string) ($a->numero_documento ?? 'FT#'.$a->id);
+            if ((int) $a->netto_a_pagare < 0) {
+                $e['note'][$numero] = $numero;
+            } else {
+                $e['fatture'][$numero] = $numero;
+                if ($a->tipo === 'pagamento' && (int) $a->esercizio_id !== $esercizioId) {
+                    $e['altri_esercizi'] += (int) $a->importo_allocato;
+                }
+            }
+            unset($e);
+        }
+
+        return array_map(fn ($e) => ['fatture' => array_values($e['fatture']), 'note' => array_values($e['note']), 'altri_esercizi' => $e['altri_esercizi']], $esito);
+    }
+
+    /** «Pag. FT-12, FT-15 (nota NC-3 compensata) — Rossi srl», o null se il pagamento non ha documenti (resta la causale scritta). */
+    private function descrizioneDelPagamento(?array $documenti, ?string $fornitore): ?string
+    {
+        if ($documenti === null || $documenti['fatture'] === []) {
+            return null;
+        }
+        $note = $documenti['note'];
+        $testo = 'Pag. '.implode(', ', $documenti['fatture'])
+            .($note === [] ? '' : (count($note) === 1 ? " (nota {$note[0]} compensata)" : ' (note '.implode(', ', $note).' compensate)'));
+
+        return $fornitore ? "{$testo} — {$fornitore}" : $testo;
     }
 
     /**

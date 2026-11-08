@@ -447,6 +447,21 @@ it('pretende che ogni voce di coda aperta stia nell\'indice della roadmap', func
     expect(Artisan::output())->toContain('Voci di coda che l\'indice della roadmap non elenca: nessuno');
 })->skip(fn () => ! file_exists(base_path('docs/roadmap.md')), 'docs/ è gitignorato: la roadmap non è su questa macchina');
 
+it('trova il blocco dell\'indice della roadmap anche quando è più grande di quanto un\'espressione regolare sa attraversare', function () {
+    // La roadmap cresce a ogni beta: con l'indice oltre il milione di caratteri un'espressione regolare con «.*?» si fermava
+    // per il limite di PCRE, e il comando diceva che il blocco mancava del tutto.
+    $voce = "> la voce di una Coda, con le sue parole chiave, abbastanza lunga da contare.\n";
+    progettoDiProvaPerLaDocumentazione($this, [
+        'docs/roadmap.md' => "# Roadmap\n\n<!-- indice-roadmap -->\n".str_repeat($voce, 20000)."<!-- /indice-roadmap -->\n\n#### ⑲ Una voce aperta\n",
+    ]);
+
+    Artisan::call('kondomanager:verifica-documentazione');
+    $uscita = Artisan::output();
+
+    expect($uscita)->not->toContain('manca del tutto il blocco dell\'indice')
+        ->and($uscita)->toContain('⑲');
+});
+
 it('non chiede al changelog un\'intestazione di stato', function () {
     // Il changelog non descrive codice: descrive cosa è cambiato, e ogni voce porta la sua
     // versione. Segnalarlo era un rilievo che nessuno avrebbe mai chiuso — e un elenco con dentro

@@ -18,7 +18,9 @@ use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\OverpaymentException;
 use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
 use App\Exceptions\Pagamenti\PossibilePagamentoDuplicatoException;
+use App\Exceptions\Pagamenti\VoceCommissioneNonAmmessaException;
 use App\Http\Controllers\Controller;
+use App\Services\Gestionale\VoceDellaCommissione;
 use App\Http\Requests\Gestionale\Movimenti\StorePagamentoFornitoreRequest;
 use App\Http\Requests\Gestionale\Movimenti\UpdatePagamentoFornitoreRequest;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -145,7 +147,21 @@ class PagamentoFornitoreController extends Controller
                 'label' => $c->label(),
             ])->values(),
             'filters' => $request->only(['search', 'metodo_pagamento', 'has_ritenuta', 'stato', 'data_da', 'data_a']),
+            // Le commissioni dell'esercizio aperto scritte prima senza voce, a cui la voce si può dare: un collegamento all'elenco dove assegnarla.
+            // Le altre (uno storno di un anno chiuso, una commissione stornata nello stesso anno che insieme fa zero) non accendono il riquadro.
+            'commissioni_senza_voce' => $this->commissioniDaAssegnare($condominio, $esercizio),
         ]);
+    }
+
+    /** Le commissioni senza voce dell'esercizio aperto a cui la voce si può dare, o nulla se non ce ne sono. */
+    private function commissioniDaAssegnare(Condominio $condominio, $esercizio): ?array
+    {
+        if (! $esercizio) {
+            return null;
+        }
+        $assegnabili = app(\App\Services\Gestionale\CommissioniSenzaVoce::class)->perEsercizio($condominio, $esercizio)['assegnabili'];
+
+        return $assegnabili['numero'] > 0 ? ['esercizio_id' => $esercizio->id] + $assegnabili : null;
     }
 
     /**
@@ -220,6 +236,9 @@ class PagamentoFornitoreController extends Controller
             'gestioni' => $gestioni,
             'preselected_fornitore_id' => $preselectedFornitoreId,
             'preselected_fattura_id' => $preselectedFatturaId,
+            // La voce della commissione: le voci di spesa con la loro gestione, e per ogni gestione quella dell'ultima commissione.
+            'voci_commissione' => app(VoceDellaCommissione::class)->elenco($condominio->id),
+            'voce_commissione_proposta' => app(VoceDellaCommissione::class)->proposte($condominio->id),
         ]);
     }
 
@@ -319,6 +338,10 @@ class PagamentoFornitoreController extends Controller
             // catch generico finirebbe a Log::error con lo stack trace, cioè come
             // rumore in mezzo agli errori veri.
             return back()->withErrors(['idempotency_key_conflitto' => $e->getMessage()]);
+
+        } catch (VoceCommissioneNonAmmessaException $e) {
+            // La voce della commissione manca o non è della gestione del pagamento: il rifiuto sta sul campo della voce.
+            return back()->withErrors(['voce_commissione_id' => $e->getMessage()]);
 
         } catch (NotaStornoNonCompensabileException $e) {
             // Coda 124: un'allocazione punta a una nota nata da uno storno. Non dovrebbe
@@ -556,6 +579,9 @@ class PagamentoFornitoreController extends Controller
                 ];
             });
 
+        // La voce della commissione di questo pagamento: nulla per uno scritto prima senza voce, che la modifica chiede (e lo dice) se la commissione cambia.
+        $voceCommissione = $pagamento->scrittura ? app(VoceDellaCommissione::class)->voceDellaScrittura((int) $pagamento->scrittura->id) : null;
+
         return Inertia::render('gestionale/movimenti/pagamenti/PagamentoEdit', [
             'condominio' => $condominio,
             'condomini' => $listaCondomini,
@@ -563,6 +589,16 @@ class PagamentoFornitoreController extends Controller
             'pagamento' => new PagamentoFornitoreResource($pagamento),
             'banche' => $banche,
             'fornitori' => Fornitore::all(),
+            'voci_commissione' => app(VoceDellaCommissione::class)->elenco($condominio->id),
+            'commissione' => [
+                'voce_id' => $voceCommissione,
+                'gestione_id' => $pagamento->scrittura?->gestione_id === null ? null : (int) $pagamento->scrittura->gestione_id,
+                'senza_voce' => (int) $pagamento->importo_commissione > 0 && $voceCommissione === null,
+                // Scritto prima senza voce, sulle «Spese bancarie» di sistema: la modifica lo può lasciare così finché la commissione non cambia.
+                'puo_restare_senza_voce' => app(VoceDellaCommissione::class)->puoRestareSenzaVoce($pagamento, (int) $pagamento->importo_commissione),
+                // Un pagamento di un esercizio chiuso non si modifica (si storna): la pagina non chiede la voce e non lo dice.
+                'esercizio_chiuso' => $pagamento->scrittura?->esercizio?->stato === 'chiuso',
+            ],
         ]);
     }
 
@@ -633,6 +669,9 @@ class PagamentoFornitoreController extends Controller
             // In modifica le allocazioni sono immutabili, quindi la ritenuta non può
             // cambiare: un valore diverso da quello registrato è sempre un errore.
             return back()->withErrors(['ritenuta_incoerente' => $e->getMessage()]);
+
+        } catch (VoceCommissioneNonAmmessaException $e) {
+            return back()->withErrors(['voce_commissione_id' => $e->getMessage()]);
 
         } catch (\Exception $e) {
             Log::error("Errore modifica pagamento ID {$pagamento->id}: ".$e->getMessage());

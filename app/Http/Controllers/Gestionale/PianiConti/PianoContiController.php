@@ -468,7 +468,10 @@ class PianoContiController extends Controller
         ContoResource::$addebitiMap = $addebitiMap; // Passata
         ContoResource::$strategieSforoMap = $strategieSforoMap; // Passata
         ContoResource::$budgetOriginaliMap = $budgetOriginaliMap; // Passata
-        ContoResource::$spesoMap = $fatturatoMap;
+        // L'incassato degli incassi da terzi si dice come tale, mai come uno speso negativo; il resto della voce resta speso, come prima.
+        $perTipo = $spesaPerVoce->perTipo($fatturatoMap, $esercizio);
+        ContoResource::$spesoMap = $perTipo['spese'];
+        ContoResource::$incassatoMap = $perTipo['incassato'];
         ContoResource::$pianiStraordinariMap = $pianiStraordinariMap;
         // Il blocco dei piani approvati per ogni voce dell'albero, a ogni livello, letto una volta.
         $idDellAlbero = [];
@@ -497,6 +500,8 @@ class PianoContiController extends Controller
         $totaleEntrate = 0;
         $totaleSopravvenienze = 0;
         $totaleConsuntivo = 0;
+        // L'incassato delle voci di entrata ha il suo totale: il consuntivo è la somma delle sole voci di spesa.
+        $totaleIncassato = (int) array_sum($perTipo['incassato']);
         $speseNegative = [];
 
         // Il budget originale vale per il PREVENTIVO. Non per le sopravvenienze: quelle
@@ -504,7 +509,7 @@ class PianoContiController extends Controller
         // sommarlo darebbe un badge sempre a € 0,00 — inutile. Lì il numero che informa
         // resta l'importo corrente, come prima di questa modifica.
         $preventivoDi = fn ($c) => (int) ($budgetOriginaliMap[$c->id] ?? $c->importo);
-        $spesoDi = fn ($c) => (int) ($fatturatoMap[$c->id] ?? 0);
+        $spesoDi = fn ($c) => (int) ($perTipo['spese'][$c->id] ?? 0);
 
         // I cicli scendono a QUALSIASI profondità, non a due livelli.
         //
@@ -567,6 +572,7 @@ class PianoContiController extends Controller
             'totaleDaRipartire'     => $totalePreventivo - $totaleEntrate,
             'totaleSopravvenienze'  => $totaleSopravvenienze,
             'totaleConsuntivo'      => $totaleConsuntivo,
+            'totaleIncassato'       => $totaleIncassato,
             'speseNegative'         => $speseNegative,
         ]);
     }

@@ -27,6 +27,7 @@ import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import axios from 'axios';
 import { oggiLocale } from '@/lib/giorno';
+import { FRASE_ALTRA_GESTIONE, FRASE_SENZA_VOCE, gestioneDelPagamento, mancaLaVoce, voceDopoIlCambio, vociDellaGestione, type PropostaCommissione, type VoceCommissione } from '@/lib/gestionale/pagamenti/voceCommissione';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -116,6 +117,10 @@ const props = defineProps<{
     gestioni: Gestione[];
     preselected_fornitore_id?: number | null;
     preselected_fattura_id?: number | null;
+    /** Le voci di spesa del condominio con la loro gestione (`VoceDellaCommissione::elenco`). */
+    voci_commissione?: VoceCommissione[];
+    /** Per ogni gestione, la voce dell'ultima commissione registrata (`VoceDellaCommissione::proposte`). */
+    voce_commissione_proposta?: PropostaCommissione[];
 }>();
 
 // ---------------------------------------------------------------------------
@@ -128,7 +133,10 @@ const form = useForm({
     data_pagamento:                 oggiLocale(),
     metodo_pagamento:               'bonifico',
     iban_beneficiario:              '',
-    importo_commissioni_cents:      0,
+    // In euro, come si digita: all'invio diventa `importo_commissioni_cents`, una volta sola.
+    importo_commissioni_euro:       0,
+    // La voce della commissione: proposta dall'ultima commissione della gestione delle fatture scelte.
+    voce_commissione_id:            null as number | null,
     bonifico_parlante:              false,
     tipo_detrazione:                null as string | null,
     beneficiari_detrazione:         [] as any[],
@@ -227,6 +235,8 @@ const CHIAVI_CON_FINESTRA_PROPRIA = [
     'fiscal_year_closed', 'illegal_cash',
     'fattura_non_approvata', 'allocazioni_inconsistenti',
     'error',
+    // Il rifiuto della voce della commissione si mostra sotto il suo campo.
+    'voce_commissione_id',
 ];
 
 /** I motivi del rifiuto che nessuna finestra dedicata mostrerebbe. */
@@ -323,8 +333,17 @@ const creditoNonUtilizzato = computed(() => esitoNetting.value.creditoNonUtilizz
 const bonificoEffettivo = computed(() => esitoNetting.value.uscitaCassaCents / 100);
 
 const uscitaCassaTotale = computed(() =>
-    bonificoEffettivo.value + (Number(form.importo_commissioni_cents) || 0)
+    bonificoEffettivo.value + (Number(form.importo_commissioni_euro) || 0)
 );
+
+// La voce della commissione è della gestione delle fatture scelte: quando la gestione cambia, una voce dell'altra gestione lascia il posto alla
+// proposta della nuova (o al campo vuoto, se la voce ricordata non c'è più).
+const gestioneDelPagamentoScelta = computed(() => gestioneDelPagamento(pendenze.value.filter(p => p.selezionata)));
+const vociDellaCommissione = computed(() => vociDellaGestione(props.voci_commissione ?? [], gestioneDelPagamentoScelta.value));
+const haCommissione = computed(() => (Number(form.importo_commissioni_euro) || 0) > 0);
+watch(gestioneDelPagamentoScelta, (gestione) => {
+    form.voce_commissione_id = voceDopoIlCambio(form.voce_commissione_id, props.voci_commissione ?? [], props.voce_commissione_proposta ?? [], gestione);
+}, { immediate: true });
 
 const bancheNormalizzate = computed(() =>
     props.banche.map(b => ({ ...b, saldo_attuale_cents: b.saldo_attuale || 0 }))
@@ -520,9 +539,17 @@ const syncAllocazioni = () => {
 const handleSubmit = () => {
     syncAllocazioni();
 
+    // Con una commissione più di zero la voce si sceglie: il modulo non parte, e lo dice sul campo con la frase del server.
+    if (mancaLaVoce(Number(form.importo_commissioni_euro), form.voce_commissione_id)) {
+        form.setError('voce_commissione_id', FRASE_SENZA_VOCE);
+        return;
+    }
+    form.clearErrors('voce_commissione_id');
+
     form.transform((data) => {
         const payload = JSON.parse(JSON.stringify(data));
-        payload.importo_commissioni_cents = Math.round((Number(data.importo_commissioni_cents) || 0) * 100);
+        payload.importo_commissioni_cents = Math.round((Number(data.importo_commissioni_euro) || 0) * 100);
+        delete payload.importo_commissioni_euro;
         return payload;
     }).post(route(generateRoute('gestionale.pagamenti-fornitori.store'), { condominio: props.condominio.id }), {
         preserveScroll: true,
@@ -897,11 +924,32 @@ const pageGuides = [
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Commissioni Bancarie</Label>
                             <MoneyInput
                                 id="commissioni"
-                                v-model="form.importo_commissioni_cents"
+                                v-model="form.importo_commissioni_euro"
                                 :money-options="moneyOptions"
                                 :lazy="false"
                                 class="h-9 text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
                                 placeholder="0,00" />
+                        </div>
+
+                        <!-- La voce della commissione: entra nel consuntivo della voce, come una regolazione immediata. -->
+                        <div v-if="haCommissione" class="space-y-1.5">
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Voce della commissione *</Label>
+                            <v-select
+                                id="voce_commissione"
+                                v-model="form.voce_commissione_id"
+                                :options="vociDellaCommissione"
+                                :reduce="(v: VoceCommissione) => v.id"
+                                label="label"
+                                :disabled="gestioneDelPagamentoScelta === null"
+                                placeholder="Su quale voce di spesa va la commissione?"
+                            ></v-select>
+                            <p v-if="gestioneDelPagamentoScelta === null" class="text-[10.5px] text-slate-500">
+                                Scegli prima le fatture: la voce è una voce di spesa della loro gestione.
+                            </p>
+                            <p v-else class="text-[10.5px] text-slate-500">
+                                Se c'è, la voce proposta è quella dell'ultima commissione di questa gestione: la commissione entra nel consuntivo della voce. {{ FRASE_ALTRA_GESTIONE }} <a :href="route(generateRoute('gestionale.regolazioni-immediate.create'), { condominio: props.condominio.id })" target="_blank" rel="noopener" class="underline" data-test="regolazione-immediata">Registra una regolazione immediata</a>
+                            </p>
+                            <p v-if="form.errors.voce_commissione_id" class="text-[10.5px] font-medium text-rose-600">{{ form.errors.voce_commissione_id }}</p>
                         </div>
 
                         <!-- Fiscal Sentinel (Bonifico Parlante) — richiede un bonifico tracciabile (art. 16-bis TUIR) -->
@@ -977,9 +1025,9 @@ const pageGuides = [
                                 </div>
                             </Transition>
 
-                            <div v-if="Number(form.importo_commissioni_cents) > 0" class="flex justify-between text-xs">
+                            <div v-if="Number(form.importo_commissioni_euro) > 0" class="flex justify-between text-xs">
                                 <span class="text-slate-400">Commissioni bancarie</span>
-                                <span>{{ euro(form.importo_commissioni_cents, { fromCents: false }) }}</span>
+                                <span>{{ euro(form.importo_commissioni_euro, { fromCents: false }) }}</span>
                             </div>
 
                             <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
@@ -1728,9 +1776,6 @@ const pageGuides = [
                                 <Lock class="w-8 h-8 text-slate-500" />
                             </div>
                             <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Esercizio Contabile Chiuso</h3>
-                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 px-2.5 py-1 rounded-full">
-                                <Scale class="w-3 h-3" /> Art. 1130-bis c.c.
-                            </span>
                         </div>
 
                         <div class="p-8 space-y-5">
@@ -1739,7 +1784,7 @@ const pageGuides = [
                                 <div>
                                     <p class="text-xs font-bold text-blue-800 dark:text-blue-300 mb-1">Perché non posso procedere?</p>
                                     <p class="text-[11px] text-blue-700 dark:text-blue-400 leading-relaxed">
-                                        Le scritture contabili devono essere attribuite all'esercizio corretto (art. 1130-bis c.c.).
+                                        Una scrittura sta nell'esercizio aperto in cui la registri.
                                         Un esercizio chiuso non può ricevere nuove scritture — questo è un requisito contabile fondamentale,
                                         non una limitazione del software.
                                     </p>

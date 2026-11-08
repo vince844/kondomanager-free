@@ -51,9 +51,28 @@ trait PdfRigheStampabili
      */
     private static function righeStampabiliCon($limite, float $baseMb = 78, float $mbPerRiga = 0.0105, int $minimo = 200): int
     {
+        $disponibiliMb = self::megabyteOltreLaBase($limite, $baseMb);
+
         // '-1' = nessun limite (tipico da riga di comando): nessun tetto da applicare.
-        if ($limite === false || (int) $limite === -1) {
+        if ($disponibiliMb === null) {
             return PHP_INT_MAX;
+        }
+
+        // Sotto la base non si stampa comunque nulla: si lascia un minimo simbolico, così
+        // l'errore che l'amministratore riceve resta questo messaggio e non un fatale.
+        return max($minimo, (int) ($disponibiliMb / $mbPerRiga));
+    }
+
+    /**
+     * I MB che restano oltre la base, con il margine dell'85%: la stessa formula, per chi somma più stampe (il fascicolo del rendiconto). Negativo quando
+     * la base non ci sta; nullo senza limite ('-1').
+     *
+     * @param string|false $limite il valore grezzo di `memory_limit`
+     */
+    private static function megabyteOltreLaBase($limite, float $baseMb): ?float
+    {
+        if ($limite === false || (int) $limite === -1) {
+            return null;
         }
 
         $unita = strtoupper(substr(trim((string) $limite), -1));
@@ -64,10 +83,6 @@ trait PdfRigheStampabili
             default => $unita === 'M' ? $valore : $valore / 1048576,
         };
 
-        $disponibiliMb = ($mb * 0.85) - $baseMb;
-
-        // Sotto la base non si stampa comunque nulla: si lascia un minimo simbolico, così
-        // l'errore che l'amministratore riceve resta questo messaggio e non un fatale.
-        return max($minimo, (int) ($disponibiliMb / $mbPerRiga));
+        return ($mb * 0.85) - $baseMb;
     }
 }

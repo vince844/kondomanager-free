@@ -601,21 +601,23 @@ it('storno pagamento con netting NC: riapre fattura e nota di credito', function
 // GRUPPO 4 — COMMISSIONI BANCARIE
 // ════════════════════════════════════════════════════════════════════════════
 
-it('pagamento con commissioni: DARE spese bancarie + quadratura corretta', function () {
+it('pagamento con commissioni: DARE sul mastro della voce della commissione, con la voce, + quadratura corretta', function () {
     $ctx = setupPagamentiService();
     $service = new PagamentoFornitoreService;
-    [$condominio, , , , $contoCorrenteId] = $ctx;
+    [$condominio, , , , $contoCorrenteId, $capitolo] = $ctx;
     $fattura = registraFatturaServiceTest($ctx);
 
     $commissioni = 500; // 5€
 
+    // Dalla 1.12 la commissione ha una voce (qui la voce di spesa dello scenario) e va sul suo mastro, come la regolazione immediata.
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'importo_commissioni_cents' => $commissioni,
+        'voce_commissione_id' => $capitolo->id,
     ]));
 
     assertQuadraturaPerfetta($pagamento->scrittura_contabile_id);
 
-    // DARE Spese Bancarie deve essere 500 cents
+    // DARE sul mastro della voce, con la voce: 500 cents; niente sulle «Spese bancarie» di sistema, che restano ai pagamenti di prima
     $contoSpese = ContoContabile::where('condominio_id', $condominio->id)
         ->where('ruolo', 'spese_bancarie')
         ->first();
@@ -623,10 +625,12 @@ it('pagamento con commissioni: DARE spese bancarie + quadratura corretta', funct
     $dareSpese = (int) DB::table('righe_scritture')
         ->where('scrittura_id', $pagamento->scrittura_contabile_id)
         ->where('tipo_riga', 'dare')
-        ->where('conto_contabile_id', $contoSpese->id)
+        ->where('conto_contabile_id', $capitolo->conto_contabile_id)
+        ->where('voce_spesa_id', $capitolo->id)
         ->value('importo');
 
-    expect($dareSpese)->toEqual($commissioni);
+    expect($dareSpese)->toEqual($commissioni)
+        ->and(DB::table('righe_scritture')->where('scrittura_id', $pagamento->scrittura_contabile_id)->where('conto_contabile_id', $contoSpese->id)->exists())->toBeFalse();
 
     // AVERE Banca = netto_a_pagare + commissioni
     $averkBanca = (int) DB::table('righe_scritture')
@@ -986,7 +990,7 @@ it('aggiorna pagamento riscrivendo record bancario', function () {
     expect($scrittura->data_registrazione->toDateString())->toBe(now()->addDay()->toDateString());
 });
 
-it('aggiorna pagamento con commissioni bancarie: ricrea riga spese bancarie e mantiene la quadratura', function () {
+it('aggiorna pagamento con commissioni bancarie: ricrea la riga della commissione sulla sua voce e mantiene la quadratura', function () {
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiService();
 
     $fattura = (new FatturaPassivaService)->registraFattura(
@@ -1018,24 +1022,25 @@ it('aggiorna pagamento con commissioni bancarie: ricrea riga spese bancarie e ma
     // Creato SENZA commissioni
     $pagamento = $service->registraPagamento($pagamentoData);
 
-    // Modificato AGGIUNGENDO 5€ di commissioni
+    // Modificato AGGIUNGENDO 5€ di commissioni, con la loro voce (dalla 1.12 obbligatoria quando la commissione è più di zero)
     $commissioni = 500;
     $pagamentoAggiornato = $service->aggiornaPagamento($pagamento, array_merge($pagamentoData, [
         'importo_commissioni_cents' => $commissioni,
+        'voce_commissione_id' => $capitolo->id,
     ]));
 
     assertQuadraturaPerfetta($pagamentoAggiornato->scrittura_contabile_id);
 
     expect($pagamentoAggiornato->importo_commissione)->toEqual($commissioni);
 
-    $contoSpese = ContoContabile::where('condominio_id', $condominio->id)
-        ->where('ruolo', 'spese_bancarie')
-        ->first();
+    // La riga della commissione: sul mastro della voce, con la voce
+    $contoSpese = ContoContabile::where('id', $capitolo->conto_contabile_id)->first();
 
     $dareSpese = (int) DB::table('righe_scritture')
         ->where('scrittura_id', $pagamentoAggiornato->scrittura_contabile_id)
         ->where('tipo_riga', 'dare')
         ->where('conto_contabile_id', $contoSpese->id)
+        ->where('voce_spesa_id', $capitolo->id)
         ->value('importo');
 
     expect($dareSpese)->toEqual($commissioni);

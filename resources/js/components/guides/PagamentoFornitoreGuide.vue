@@ -94,8 +94,19 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Le commissioni non chiudono debito</h3>
                             <p>
                                 Le spese bancarie che scrivi si sommano all'uscita di cassa ma non vanno sul debito
-                                verso il fornitore: finiscono su un conto di spesa a parte. È il motivo per cui il
-                                totale che esce dal conto può essere più alto della somma delle fatture.
+                                verso il fornitore. È il motivo per cui il totale che esce dal conto può essere più
+                                alto della somma delle fatture.
+                            </p>
+                            <p class="mt-2">
+                                La commissione va sulla <strong>voce di spesa</strong> che scegli, della gestione delle
+                                fatture: entra nel consuntivo di quella voce, come una regolazione immediata. Il modulo
+                                propone la voce dell'ultima commissione di quella gestione.
+                            </p>
+                            <p class="mt-2 text-xs text-slate-500">
+                                Le commissioni registrate prima senza voce restano fuori dal consuntivo delle voci:
+                                negli esercizi aperti puoi assegnare loro la voce dall'elenco «Commissioni senza voce».
+                                Se modifichi un pagamento registrato così senza cambiare la commissione, puoi lasciarla
+                                senza voce, come era; se la cambi, la voce si sceglie.
                             </p>
                         </section>
                     </TabsContent>
@@ -221,8 +232,8 @@ defineEmits(['update:open']);
                                 Una fattura registrata sopra il preventivo del suo capitolo resta in attesa: sulla sua
                                 riga compare «Ratifica richiesta» e non è pagabile finché non usi «Approva sforo»,
                                 dove si registra la delibera assembleare o la motivazione d'urgenza dell'art. 1135
-                                c.c. Non è un cavillo del programma: è la traccia che serve al rendiconto per
-                                spiegare perché si è speso più di quanto approvato.
+                                c.c. Non è un cavillo del programma: è la traccia della delibera o dell'urgenza,
+                                che resta scritta con la fattura. Il rendiconto non la stampa: in assemblea la porti tu.
                             </p>
                         </section>
                     </TabsContent>

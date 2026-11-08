@@ -56,8 +56,10 @@ export interface Conto {
   impegnato?: number
   /** Preventivo vero, prima che il controller lo gonfi allo speso in caso di sforo. */
   budget_originale_raw?: number
-  /** Speso reale in centesimi: fatture registrate (anche non pagate) + regolazioni immediate. */
+  /** Speso reale in centesimi: fatture registrate (anche non pagate) + regolazioni immediate + commissioni. Zero per una voce di entrata. */
   speso_raw?: number
+  /** L'incassato di una voce di entrata (l'incasso da terzi), positivo, in centesimi. Zero per una voce di spesa. */
+  incassato_raw?: number
   percentuale_copertura?: number
   stato_copertura?: 'empty' | 'partial' | 'full' | 'over'
   piani_collegati?: string[]

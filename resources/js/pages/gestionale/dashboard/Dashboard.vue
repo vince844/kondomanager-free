@@ -856,7 +856,7 @@ onUnmounted(() => {
                                                     La spesa ha superato il preventivo. Emetti una rata integrativa per recuperare la differenza.
                                                 </template>
                                                 <template v-else-if="orfano.strategia === 'conguaglio'">
-                                                    Verrà conguagliata a fine esercizio nel rendiconto consuntivo.
+                                                    Va conguagliata a fine esercizio: il conguaglio per persona non è ancora nel programma.
                                                 </template>
                                                 <template v-else-if="orfano.strategia === 'fondo_riserva'">
                                                     Coperta dal fondo di riserva patrimoniale. Nessuna azione richiesta.

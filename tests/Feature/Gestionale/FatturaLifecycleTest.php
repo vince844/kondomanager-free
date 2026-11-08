@@ -211,6 +211,8 @@ it('esegue il ciclo completo E2E: Registrazione Fattura (Competenza) -> Pagament
             ]
         ],
         'importo_commissioni_cents' => 150, // 1,50 € di commissioni bancarie
+        // Dalla 1.12 la commissione ha una voce di spesa della gestione del pagamento: qui l'unica dello scenario.
+        'voce_commissione_id' => $capitolo->id,
         'allow_overdraft' => true, // La banca parte da 0, forziamo l'addebito
     ];
 

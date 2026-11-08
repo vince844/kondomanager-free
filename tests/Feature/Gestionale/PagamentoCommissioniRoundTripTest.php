@@ -60,7 +60,7 @@ beforeEach(function () {
 function scenarioPagamentoConCommissioni(int $commissioniCents = COMMISSIONI_CENTS): array
 {
     $ctx = setupPagamentiHttp();
-    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId] = $ctx;
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
     $fattura = registraFatturaServiceTest($ctx);
 
@@ -75,6 +75,8 @@ function scenarioPagamentoConCommissioni(int $commissioniCents = COMMISSIONI_CEN
         'importo_lordo_cents' => 122000,
         'importo_netto_cents' => 122000,
         'importo_commissioni_cents' => $commissioniCents,
+        // Dalla 1.12 la commissione ha una voce, e la pagina di modifica la rimanda insieme all'importo.
+        'voce_commissione_id' => $capitolo->id,
         'allocazioni' => [[
             'fattura_id' => $fattura->id,
             'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
@@ -186,14 +188,14 @@ test('dopo il risalvataggio la banca esce del netto più le sole commissioni ver
 
     expect($uscitaBanca)->toEqual(122000 + COMMISSIONI_CENTS);
 
-    $contoSpese = ContoContabile::where('condominio_id', $condominio->id)
-        ->where('ruolo', 'spese_bancarie')
-        ->first();
+    // La commissione sta sul mastro della sua voce, con la voce (dalla 1.12), non più sulle «Spese bancarie» di sistema.
+    $voce = $ctx[5];
 
     $dareSpeseBancarie = (int) DB::table('righe_scritture')
         ->where('scrittura_id', $scritturaId)
         ->where('tipo_riga', 'dare')
-        ->where('conto_contabile_id', $contoSpese->id)
+        ->where('conto_contabile_id', $voce->conto_contabile_id)
+        ->where('voce_spesa_id', $voce->id)
         ->sum('importo');
 
     expect($dareSpeseBancarie)->toEqual(COMMISSIONI_CENTS);

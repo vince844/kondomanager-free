@@ -20,6 +20,7 @@ namespace App\Enums;
  *
  * Aggiunto in v1.9.1: storno_pagamento_fornitore
  * Aggiunto in v1.10.0-beta.21: storno_pagamento_f24
+ * Aggiunto in v1.12.0-beta.5: storno_incasso_diverso (e `incasso_diverso` ha un movimento che lo scrive)
  */
 enum TipoMovimentoContabile: string
 {
@@ -36,7 +37,15 @@ enum TipoMovimentoContabile: string
     case STORNO_CREDITO              = 'storno_credito';
     case STRALCIO_CREDITO            = 'stralcio_credito';
     case RIMBORSO_CONDOMINO          = 'rimborso_condomino';
+    /**
+     * L'incasso da terzi (`RegistraIncassoDaTerziAction`): denaro che entra in una cassa reale da chi non è un condòmino (l'affitto
+     * dell'antenna, gli interessi del conto, un rimborso), in diminuzione della voce di entrata del piano dei conti.
+     */
     case INCASSO_DIVERSO             = 'incasso_diverso';
+
+    /** Scrittura inversa che annulla un incasso da terzi (giornale append-only), come lo storno della regolazione immediata. */
+    case STORNO_INCASSO_DIVERSO      = 'storno_incasso_diverso';
+
     case RIMBORSO_ASSICURATIVO       = 'rimborso_assicurativo';
 
     // ─── Prima nota diretta (Scrittura senza Fattura a monte) ────────────────
@@ -97,7 +106,8 @@ enum TipoMovimentoContabile: string
             self::STORNO_CREDITO             => 'Storno credito',
             self::STRALCIO_CREDITO           => 'Stralcio credito',
             self::RIMBORSO_CONDOMINO         => 'Rimborso condòmino',
-            self::INCASSO_DIVERSO            => 'Incasso diverso',
+            self::INCASSO_DIVERSO            => 'Incasso da terzi',
+            self::STORNO_INCASSO_DIVERSO     => 'Storno incasso da terzi',
             self::RIMBORSO_ASSICURATIVO      => 'Rimborso assicurativo',
             self::REGOLAZIONE_IMMEDIATA      => 'Regolazione immediata',
             self::STORNO_REGOLAZIONE_IMMEDIATA => 'Storno regolazione immediata',
@@ -122,6 +132,8 @@ enum TipoMovimentoContabile: string
             self::REGOLAZIONE_IMMEDIATA,
             // Dalla 1.11.0-beta.31 (B2, S6) è una scrittura vera: denaro che esce per un credito rimborsato.
             self::RIMBORSO_CONDOMINO,
+            // Lo storno di un'entrata di cassa è un'uscita.
+            self::STORNO_INCASSO_DIVERSO,
         ]);
     }
 
@@ -144,7 +156,7 @@ enum TipoMovimentoContabile: string
      * originale e storno si annullano, e il registro marca l'originale «stornata». Elenco
      * esplicito, non `LIKE 'storno_%'`: `storno_credito` comincia allo stesso modo ma è la quota
      * pagata con un credito — figlia di un incasso che resta valido — e con il LIKE quell'incasso
-     * usciva «stornato» dalla Prima nota e sparivano 24,57 dal riepilogo finanziario (trovato il
+     * usciva «stornato» dal registro di contabilità e sparivano 24,57 dal riepilogo finanziario (trovato il
      * 12/09/2026 sul condominio «Via roma»). `storno_fattura` non porta il padre ma è uno storno
      * vero, e sta nell'elenco per coerenza. Lo storno di un incasso non è qui: è una `rettifica`
      * con l'originale in stato `annullata`.
@@ -157,6 +169,7 @@ enum TipoMovimentoContabile: string
             self::STORNO_REGOLAZIONE_IMMEDIATA,
             self::STORNO_PAGAMENTO_F24,
             self::STORNO_GIROCONTO,
+            self::STORNO_INCASSO_DIVERSO,
         ]);
     }
 

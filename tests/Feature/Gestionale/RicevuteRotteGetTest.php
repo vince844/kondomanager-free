@@ -268,3 +268,13 @@ test('in JSON la stampa e l\'anteprima leggono gli stessi campi del modulo di pr
         ->and($scelte($righe[1]))->toBe($scelte($righe[0]))
         ->and($scelte($righe[1]))->toBe(['bollo' => 'assolta', 'modo_bollo' => 'contrassegno', 'estremi_bollo' => '0117', 'stampa_causale' => false]);
 });
+
+test('un numero di pagina enorme scritto a mano nell\'indirizzo è la pagina vuota dopo l\'ultima delle ricevute, non un errore del server', function () {
+    $this->withoutVite();
+    $s = scenarioRicevutaIncasso();
+    $p = $this->actingAs(amministratoreRicevute())->get(route('admin.gestionale.ricevute.index', ['condominio' => $s->condominio->id, 'page' => '9223372036854775807']))
+        ->assertOk()->viewData('page')['props'];
+
+    // Senza ricevute la prima pagina è già quella dopo l'ultima (zero righe): vuota, come ogni pagina che non c'è.
+    expect($p['incassi']['meta']['current_page'])->toBe(1)->and($p['incassi']['meta']['total'])->toBe(0)->and($p['incassi']['data'])->toBe([]);
+});

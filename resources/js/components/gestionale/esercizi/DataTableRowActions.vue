@@ -3,14 +3,14 @@
 import { Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { FilePenLine, MoreHorizontal, Scale } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Esercizio } from '@/types/gestionale/esercizi'
 import type { Building } from '@/types/buildings'
 
 const { esercizio, condominio } = defineProps<{ esercizio: Esercizio, condominio: Building }>()
 
-const { generateRoute } = usePermission()
+const { generateRoute, generatePath } = usePermission()
 </script>
 
 <template>
@@ -31,6 +31,18 @@ const { generateRoute } = usePermission()
         >
           <FilePenLine class="w-4 h-4 text-xs" />
           Modifica
+        </Link>
+      </DropdownMenuItem>
+
+      <!-- Il rendiconto dell'esercizio, dalla sua riga: chi chiude cento condomini apre il rendiconto di ognuno da qui. -->
+      <DropdownMenuItem>
+        <Link
+          :href="generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto', { condominio: condominio.id, esercizio: esercizio.id })"
+          class="flex items-center gap-2"
+          data-test="rendiconto"
+        >
+          <Scale class="w-4 h-4 text-xs" />
+          Rendiconto
         </Link>
       </DropdownMenuItem>
 

@@ -467,10 +467,22 @@ class ScritturaContabileController extends Controller
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
+        // L'incasso da terzi si storna dalla sua pagina, con la natura: la data da cui varrebbe lo storno per ognuna delle due, letta con la
+        // regola dello storno (`StornoIncassoRateAction::valeDal`), in `aaaa-mm-gg`.
+        $stornoValeDal = null;
+        if ($scrittura->tipo_movimento === \App\Enums\TipoMovimentoContabile::INCASSO_DIVERSO) {
+            $data = $scrittura->data_competenza?->format('Y-m-d') ?? \App\Helpers\DateHelper::oggiUtente();
+            $stornoValeDal = [
+                'errore_registrazione' => \App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::valeDal($condominio->id, \App\Enums\NaturaStorno::ERRORE_REGISTRAZIONE, $data)['vale_dal'],
+                'versamento_tornato' => \App\Actions\Gestionale\Movimenti\StornoIncassoRateAction::valeDal($condominio->id, \App\Enums\NaturaStorno::VERSAMENTO_TORNATO, $data)['vale_dal'],
+            ];
+        }
+
         return Inertia::render('gestionale/movimenti/scritture/Show', [
             'condominio' => $condominio,
             'condomini'  => $listaCondomini,
             'esercizio'  => $esercizio,
+            'storno_vale_dal' => $stornoValeDal,
             'scrittura'  => [
                 'id'                   => $scrittura->id,
                 'data_registrazione'   => $scrittura->data_registrazione?->format('d/m/Y'),

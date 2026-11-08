@@ -103,6 +103,19 @@ trait PaginaElenco
         return $chiesto;
     }
 
+    /**
+     * La pagina chiesta, al più quella subito dopo l'ultima. Una pagina oltre l'ultima resta vuota, come una pagina che non c'è più (l'elenco di «Rate
+     * scadute» dopo una spedizione con il filtro «Mai scritto»: le persone ricominciano dalla pagina 1, e la pagina 2 è vuota); ma un numero enorme scritto a
+     * mano nell'indirizzo non arriva al calcolo: `(pagina − 1) × righe` supererebbe il più grande intero, diventerebbe un numero con la virgola, e
+     * `array_slice` lo rifiuterebbe con un errore del server.
+     */
+    protected static function paginaDentro(int $chiesta, int $totale, int $perPagina): int
+    {
+        $perPagina = max(1, $perPagina);
+
+        return max(1, min($chiesta, intdiv($totale + $perPagina - 1, $perPagina) + 1));
+    }
+
     /** Un valore ammesso resta tale; tutto il resto vale `null`, cioè «passo al gradino dopo». */
     private function normalizza(mixed $valore): ?int
     {

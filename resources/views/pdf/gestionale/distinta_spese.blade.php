@@ -139,8 +139,8 @@
 
 {{-- NOTE LEGALI --}}
 <div style="margin-top: 24px; font-size: 7.5pt; color: #666; border-top: 1px solid #ccc; padding-top: 8px;">
-    Documento generato ai sensi dell'art. 1135 c.c. e dell'art. 1130-bis c.c. (rendiconto condominiale).<br>
-    Gli importi sono espressi in Euro (€) e si riferiscono al preventivo di spesa approvato dall'assemblea.
+    Documento generato ai sensi dell'art. 1135 c.c.: è il preventivo di spesa, non il rendiconto.<br>
+    Gli importi sono espressi in Euro (€) e si riferiscono al preventivo di spesa.
     @if($conEntrate)
         <br>Le entrate si sottraggono alle spese: il preventivo da ripartire fra i condòmini è la differenza.
     @endif

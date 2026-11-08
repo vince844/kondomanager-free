@@ -205,7 +205,6 @@ class FatturaPassivaController extends Controller
      *
      * Prepara e calcola dinamicamente:
      * - I saldi residui reali per il controllo sfori (Budget Cap).
-     * - Il protocollo contabile suggerito per l'anno in corso.
      * - I fondi di riserva e le capienze per le fatture pregresse (Rata 0).
      * - Lo storico recente per la prevenzione dei duplicati.
      *
@@ -216,22 +215,6 @@ class FatturaPassivaController extends Controller
     {
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
-
-        // --- AUTOGENERAZIONE NUMERO PROTOCOLLO ---
-        $annoInCorso = date('Y');
-        $ultimoProtocollo = FatturaPassiva::where('condominio_id', $condominio->id)
-            ->whereYear('created_at', $annoInCorso)
-            ->whereNotNull('numero_protocollo')
-            ->orderBy('id', 'desc')
-            ->value('numero_protocollo');
-
-        if ($ultimoProtocollo && preg_match('/-(\d+)$/', $ultimoProtocollo, $matches)) {
-            $nextNum = str_pad((int) $matches[1] + 1, 4, '0', STR_PAD_LEFT);
-            $protocolloSuggerito = "PR-{$annoInCorso}-{$nextNum}";
-        } else {
-            $protocolloSuggerito = "PR-{$annoInCorso}-0001";
-        }
-        // ------------------------------------------
 
         $contestoBudget = $this->prepareContestoBudget($condominio, $esercizio);
 

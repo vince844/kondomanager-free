@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Link } from '@inertiajs/vue3'
 import { ExternalLink, Loader2, AlertCircle } from 'lucide-vue-next'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { Conto } from '@/types/gestionale/conti'
+import { consuntivoDellaVoce } from '@/lib/gestionale/pianiConti/consuntivoDellaVoce'
 
 interface Movimento {
   id: number
@@ -28,6 +29,12 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+// Il riepilogo della voce con la regola dell'albero: una voce di entrata dice l'incassato, mai uno speso negativo.
+const consuntivo = computed(() => consuntivoDellaVoce(props.conto ?? {}))
+// Il server manda i movimenti con il segno del costo (dare meno avere): per una voce di entrata con i soli incassi da terzi l'incasso è negativo.
+// La finestra li gira, così le righe e il totale dicono lo stesso numero della testa («Incassato»); gli storni degli incassi restano in meno.
+const segno = computed(() => (consuntivo.value.entrata ? -1 : 1))
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>()
 
 const { euro } = useCurrencyFormatter()
@@ -96,13 +103,13 @@ watch(() => props.open, (aperta) => { if (aperta) carica() })
           <div class="font-medium">{{ euro(props.conto.budget_originale_raw ?? props.conto.importo_raw ?? 0) }}</div>
         </div>
         <div>
-          <div class="text-[10px] uppercase text-muted-foreground font-semibold">Consuntivo</div>
-          <div class="font-medium">{{ euro(props.conto.speso_raw ?? 0) }}</div>
+          <div class="text-[10px] uppercase text-muted-foreground font-semibold">{{ consuntivo.etichetta }}</div>
+          <div class="font-medium">{{ euro(consuntivo.importo) }}</div>
         </div>
         <div>
           <div class="text-[10px] uppercase text-muted-foreground font-semibold">Differenza</div>
-          <div class="font-bold" :class="(props.conto.speso_raw ?? 0) > (props.conto.budget_originale_raw ?? props.conto.importo_raw ?? 0) ? 'text-red-600' : 'text-emerald-600'">
-            {{ euro(Math.abs((props.conto.budget_originale_raw ?? props.conto.importo_raw ?? 0) - (props.conto.speso_raw ?? 0))) }}
+          <div class="font-bold" :class="consuntivo.isSforo ? 'text-red-600' : 'text-emerald-600'">
+            {{ euro(Math.abs(consuntivo.differenza)) }}
           </div>
         </div>
       </div>
@@ -146,22 +153,22 @@ watch(() => props.open, (aperta) => { if (aperta) carica() })
               </td>
               <td class="py-2.5">
                 <span class="text-[10px] px-1.5 py-0.5 rounded border"
-                      :class="m.importo < 0
+                      :class="m.importo * segno < 0
                         ? 'bg-amber-50 text-amber-700 border-amber-200'
                         : 'bg-slate-50 text-slate-600 border-slate-200'">
                   {{ m.tipo_movimento_label }}
                 </span>
               </td>
               <td class="py-2.5 text-right font-medium whitespace-nowrap"
-                  :class="m.importo < 0 ? 'text-amber-700' : 'text-slate-900 dark:text-slate-100'">
-                {{ m.importo < 0 ? '−' : '' }}{{ euro(Math.abs(m.importo)) }}
+                  :class="m.importo * segno < 0 ? 'text-amber-700' : 'text-slate-900 dark:text-slate-100'">
+                {{ m.importo * segno < 0 ? '−' : '' }}{{ euro(Math.abs(m.importo)) }}
               </td>
             </tr>
           </tbody>
           <tfoot class="border-t-2">
             <tr>
               <td colspan="3" class="py-2.5 text-right text-xs uppercase font-semibold text-muted-foreground">Totale</td>
-              <td class="py-2.5 text-right font-bold whitespace-nowrap">{{ euro(totale) }}</td>
+              <td class="py-2.5 text-right font-bold whitespace-nowrap">{{ euro(totale * segno) }}</td>
             </tr>
           </tfoot>
         </table>
@@ -174,7 +181,10 @@ watch(() => props.open, (aperta) => { if (aperta) carica() })
           </span>
         </p>
 
-        <p class="text-xs text-muted-foreground pt-3">
+        <p v-if="consuntivo.entrata" class="text-xs text-muted-foreground pt-3">
+          Gli incassi compaiono in positivo, i loro storni in negativo: sono la storia che spiega l'incassato della voce.
+        </p>
+        <p v-else class="text-xs text-muted-foreground pt-3">
           Gli storni compaiono con importo negativo: sono parte della storia che spiega il totale, non righe da nascondere.
         </p>
       </div>

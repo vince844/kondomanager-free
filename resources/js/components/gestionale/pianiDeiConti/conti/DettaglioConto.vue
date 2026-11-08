@@ -12,6 +12,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ContoHelpers, type Conto } from '@/types/gestionale/conti'
+import { consuntivoDellaVoce } from '@/lib/gestionale/pianiConti/consuntivoDellaVoce'
 
 interface TabellaAssociata {
   id: number
@@ -92,19 +93,19 @@ const isCapitolo = (conto: Conto) => ContoHelpers.isCapitolo(conto)
  * Stesso criterio di `AlberoDeiConti.spesoInfo`, che è la fonte di questi numeri a sinistra.
  */
 const bilancioVoce = computed(() => {
-  const speso = props.conto?.speso_raw ?? 0
-  const preventivo = props.conto?.budget_originale_raw ?? props.conto?.importo_raw ?? 0
-  const differenza = preventivo - speso
+  // Una voce senza preventivo non «sfora» (le sopravvenienze nascono fuori preventivo); una voce di entrata ha l'incassato, mai uno speso
+  // negativo, e non sfora: `consuntivoDellaVoce`, la stessa regola dell'albero.
+  const c = consuntivoDellaVoce(props.conto ?? {})
 
   return {
-    speso,
-    preventivo,
-    differenza,
-    hasPreventivo: preventivo !== 0,
-    hasSpesa: speso !== 0,
-    // Una voce senza preventivo non «sfora»: non ha un budget da superare. Sono le
-    // sopravvenienze, che nascono fuori preventivo per definizione.
-    isSforo: differenza < 0 && preventivo > 0,
+    speso: c.importo,
+    preventivo: c.preventivo,
+    differenza: c.differenza,
+    hasPreventivo: c.preventivo !== 0,
+    hasSpesa: c.haMovimenti,
+    isSforo: c.isSforo,
+    entrata: c.entrata,
+    etichetta: c.etichetta,
   }
 })
 
@@ -188,7 +189,7 @@ const statusColorClass = computed(() => {
         <div>
           <h4 class="font-bold text-amber-900 text-sm">Voce tecnica — Sopravvenienza passiva</h4>
           <p class="text-xs text-amber-700/80 mt-1 leading-relaxed">
-            Generata automaticamente dalla registrazione di una fattura fuori preventivo (Art. 1130-bis c.c.).
+            Generata automaticamente dalla registrazione di una fattura fuori preventivo.
             Non modificabile direttamente. Non finanziabile tramite piano ordinario.
           </p>
         </div>
@@ -275,13 +276,14 @@ const statusColorClass = computed(() => {
                 </p>
               </div>
               <div class="space-y-1">
-                <label class="text-xs font-medium text-muted-foreground uppercase">Consuntivo</label>
+                <label class="text-xs font-medium text-muted-foreground uppercase">{{ bilancioVoce.etichetta }}</label>
                 <p class="text-base sm:text-lg font-bold tabular-nums"
                    :class="bilancioVoce.isSforo ? 'text-red-600 dark:text-red-400' : 'text-foreground'">
                   {{ bilancioVoce.hasSpesa ? euro(bilancioVoce.speso) : '—' }}
                 </p>
               </div>
-              <div v-if="bilancioVoce.hasPreventivo" class="space-y-1">
+              <!-- Per una voce di entrata niente «residuo»: il programma non ha un credito verso chi deve ancora versare. -->
+              <div v-if="bilancioVoce.hasPreventivo && !bilancioVoce.entrata" class="space-y-1">
                 <label class="text-xs font-medium text-muted-foreground uppercase">
                   {{ bilancioVoce.isSforo ? 'Eccedenza' : 'Residuo' }}
                 </label>

@@ -50,6 +50,8 @@ const props = defineProps<{
   totaleDaRipartire?: number
   totaleSopravvenienze: number
   totaleConsuntivo: number
+  /** L'incassato delle voci di entrata (l'incasso da terzi): il consuntivo è delle sole spese. */
+  totaleIncassato?: number
   /**
    * Le voci di spesa scritte con il meno da una versione vecchia: il preventivo le conta in positivo, come il calcolo delle quote, mentre la
    * riga le mostra col meno. `importo` è quello scritto, in centesimi; `piani` sono i piani della gestione che la addebitano, e `avviso` dice se
@@ -544,6 +546,12 @@ const printRiparto = () => {
                   <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
                     <Receipt class="w-3 h-3" />
                     Consuntivo: {{ euro(props.totaleConsuntivo) }}
+                  </span>
+                  <span v-if="(props.totaleIncassato ?? 0) !== 0" data-totale="incassato"
+                        class="bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm"
+                        title="Gli incassi da terzi sulle voci di entrata: l'affitto dell'antenna, gli interessi.">
+                    <TrendingUp class="w-3 h-3" />
+                    Incassato: {{ euro(props.totaleIncassato ?? 0) }}
                   </span>
                 </div>
                 <!-- Una voce di spesa scritta con il meno: la riga dice il meno e il preventivo la conta in positivo. La frase la nomina. -->

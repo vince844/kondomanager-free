@@ -14,7 +14,7 @@ const condominio = computed(() => page.props.condominio);
 const esercizio = computed(() => page.props.esercizio);
 const { generatePath } = usePermission();
 
-// Su una riga, con le icone: tre voci hanno il nome corto nella riga (`breve`) e il nome intero della pagina al passaggio del mouse e nella tendina.
+// Su una riga, con le icone: quattro voci hanno il nome corto nella riga (`breve`) e il nome intero della pagina al passaggio del mouse e nella tendina.
 const topbarNavItems: (LinkItem & { badge?: string; breve?: string })[] = [
     {
         type:  'link',
@@ -61,7 +61,7 @@ const topbarNavItems: (LinkItem & { badge?: string; breve?: string })[] = [
         icon:  BookOpen,
         title: 'Libro Giornale',
         // Senza un esercizio aperto (es. l'amministratore lo ha appena chiuso) non c'è un
-        // esercizio su cui costruire la rotta annidata: link disabilitato, come "Prima nota",
+        // esercizio su cui costruire la rotta annidata: link disabilitato, come il registro di contabilità,
         // invece di un href con id 0 che il route model binding rifiuterebbe con un 404.
         href:  esercizio.value
             ? generatePath('gestionale/:condominio/esercizi/:esercizio/scritture', {
@@ -76,9 +76,11 @@ const topbarNavItems: (LinkItem & { badge?: string; breve?: string })[] = [
     {
         type:  'link',
         icon:  Wallet,
-        title: 'Prima nota',
+        title: 'Registro di contabilità',
+        // Il nome intero al passaggio del mouse e nella tendina: la riga del menu è piena.
+        breve: 'Registro',
         // È il registro di contabilità ex art. 1130 n. 7 c.c. (punto 1 di
-        // docs/registri_contabili.md): stesso nome della voce, stessa regola di
+        // docs/registri_contabili.md): il nome della legge, stessa regola di
         // disabilitazione senza esercizio aperto di "Libro Giornale" qui sopra.
         href:  esercizio.value
             ? generatePath('gestionale/:condominio/esercizi/:esercizio/registro-contabilita', {
@@ -91,16 +93,20 @@ const topbarNavItems: (LinkItem & { badge?: string; breve?: string })[] = [
     {
         type:  'link',
         icon:  Scale,
-        title: 'Stato patrimoniale',
-        // Punto 3 di docs/registri_contabili.md (D16–D20): la fotografia dei conti alla data,
-        // il riepilogo finanziario dell'esercizio e i controlli di quadratura. Stessa regola di
+        title: 'Rendiconto',
+        // La pagina di fine esercizio, con sei schede: la sintesi (la prima), il riepilogo finanziario per
+        // competenza, la situazione patrimoniale alla data (punto 3 di docs/registri_contabili.md, D16–D20,
+        // sul suo indirizzo di sempre), la cassa, i condòmini e i controlli. Stessa regola di
         // disabilitazione delle due voci sopra.
         href:  esercizio.value
-            ? generatePath('gestionale/:condominio/esercizi/:esercizio/stato-patrimoniale', {
+            ? generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto', {
                   condominio: condominio.value.id,
                   esercizio:  esercizio.value.id,
               })
             : '#',
+        anche: esercizio.value
+            ? [generatePath('gestionale/:condominio/esercizi/:esercizio/stato-patrimoniale', { condominio: condominio.value.id, esercizio: esercizio.value.id })]
+            : [],
         badge: esercizio.value ? undefined : 'Nessun esercizio aperto',
     },
 ];

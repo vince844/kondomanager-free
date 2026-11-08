@@ -98,14 +98,23 @@ class PdfService
         // comando artisan o una suite che genera più PDF morirebbe con un fatale che prima non
         // esisteva. È il difetto che la Fase 1-bis della beta.23 ha trovato nella prima
         // stesura di questa riga.
-        $limiteCorrente = (int) ini_get('max_execution_time');
-        if ($limiteCorrente > 0 && $limiteCorrente < 120) {
-            @set_time_limit(120);
-        }
+        self::alzaIlLimiteDiTempo();
 
         $mpdf->WriteHTML($html);
 
         return $mpdf;
+    }
+
+    /**
+     * Porta il limite di tempo del processo a 120 s dove è finito e più basso (vedi il commento in `generate`). Dove l'hosting vieta `set_time_limit`
+     * (`disable_functions`) in PHP 8 la funzione non esiste, e chiamarla è un errore che `@` non tace: lì il limite resta quello del processo.
+     */
+    public static function alzaIlLimiteDiTempo(): void
+    {
+        $limiteCorrente = (int) ini_get('max_execution_time');
+        if ($limiteCorrente > 0 && $limiteCorrente < 120 && function_exists('set_time_limit')) {
+            @set_time_limit(120);
+        }
     }
 
     /**

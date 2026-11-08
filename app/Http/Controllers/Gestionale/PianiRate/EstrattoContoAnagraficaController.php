@@ -65,6 +65,10 @@ class EstrattoContoAnagraficaController extends Controller
             'versamenti_per_altri' => app(\App\Services\Gestionale\VersamentiPerContoDiAltri::class)->per($condominio, $anagrafica),
             // 1.12.0-beta.4: le lettere e le comunicazioni a questa persona in questo condominio, con il residuo di oggi delle stesse rate.
             'lettere' => app(\App\Services\Gestionale\Lettere\RegistroLettere::class)->perPersona($condominio, $anagrafica),
+            // Coda 533: nella scheda «Corrispondenza», con le lettere, le ricevute, gli avvisi di compensazione e «non serve comunicarla»; e in testa
+            // l'ultima lettera, letta come la colonna di «Rate scadute».
+            'documenti' => app(\App\Services\Gestionale\Lettere\CorrispondenzaDellaPersona::class)->documenti($condominio, $anagrafica),
+            'ultima_lettera' => app(\App\Services\Gestionale\Lettere\CorrispondenzaDellaPersona::class)->ultimaLettera($condominio, $anagrafica),
             // Il giorno dell'amministratore, per le date della spedizione (non dopo oggi).
             'oggi' => \App\Helpers\DateHelper::oggiUtente(),
             // Gli accordi di rientro della persona in questo condominio, anche chiusi o riusciti, con il segno e i versati oltre il capitale.
@@ -573,7 +577,7 @@ class EstrattoContoAnagraficaController extends Controller
         })->values();
 
         // --- STEP 3: L'ORDINE DEL LIBRO ---
-        // Coda 317 (decisione 153.6): per data di competenza, la data del fatto, come la Prima nota (D6 di `registri_contabili.md`); un incasso
+        // Coda 317 (decisione 153.6): per data di competenza, la data del fatto, come il registro di contabilità (D6 di `registri_contabili.md`); un incasso
         // del 10/07 inserito il 18/10 sta al 10/07. Nello stesso giorno il dare prima dell'avere, anche fra scritture diverse: il saldo
         // progressivo non scende sotto il vero dentro il giorno. Poi la scrittura, e a parità di riga l'importo decrescente. Lo storno sta
         // alla sua data. Totali e saldo finale non dipendono dall'ordine. Fino alla 1.11.0-beta.58 l'ordine era per scrittura.

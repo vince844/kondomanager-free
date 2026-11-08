@@ -54,7 +54,8 @@ defineEmits(['update:open']);
                     non movimenta il mastro Debiti verso Fornitori.</li>
                 <li>Il capitolo non mostra il residuo, a differenza della fattura: la spesa alza il consuntivo della voce.</li>
                 <li>Il capitolo è sempre una voce di spesa: un'entrata non si registra qui, perché la regolazione
-                    è un'uscita di cassa.</li>
+                    è un'uscita di cassa. L'incasso di un'entrata (l'affitto dell'antenna, gli interessi del conto) si registra
+                    con «Altro incasso», nella pagina degli incassi.</li>
                 <li>I <strong>fondi non compaiono</strong> fra le casse: sono partizioni contabili del conto
                     corrente, non casse da cui esce denaro — un'uscita reale parte da banca o contanti.</li>
                 <li>Con più operazioni in fila, <strong>"Registra e nuova"</strong> salva e riapre il modulo

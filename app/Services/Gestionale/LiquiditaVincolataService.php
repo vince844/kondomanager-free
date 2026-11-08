@@ -35,11 +35,16 @@ use Illuminate\Support\Facades\DB;
  *
  * ⚠️ **I contributi versati non hanno una data di competenza.** `created_at` è quando sono stati
  * dichiarati — e viene azzerato da un risalvataggio — quindi non si taglia per data: R8 è un
- * controllo «a oggi». Per un esercizio chiuso resta esposto come segnalazione, con la nota.
+ * controllo «a oggi». Hanno un esercizio (`esercizio_id`), ma i vincoli già scritti senza non ne
+ * prendono uno (nessun riempimento): per un esercizio finito R8 resta da leggere, con la nota, e il
+ * residuo vincolato alla data si leggerà con il consuntivo dei fondi.
  */
 class LiquiditaVincolataService
 {
     private const SOTTOTIPI = ['generico' => 'generico', 'vincolato_lavori' => 'vincolato ai lavori', 'tfr' => 'TFR', 'morosita' => 'morosità'];
+
+    /** L'etichetta di un fondo che non ha il sottotipo: la pagina la mostra, la stampa non scrive niente al suo posto ({@see ParoleDellaStampa::fondo()}). */
+    public const SOTTOTIPO_NON_INDICATO = 'sottotipo non indicato';
 
     /**
      * @param  array<int, array<string, mixed>>  $vociAttivo  le voci dell'attivo della fotografia
@@ -84,7 +89,7 @@ class LiquiditaVincolataService
                 $fondi[] = [
                     'cassa' => $cassa->nome,
                     'sottotipo' => $cassa->sottotipo_fondo,
-                    'sottotipo_label' => self::SOTTOTIPI[$cassa->sottotipo_fondo ?? ''] ?? 'sottotipo non indicato',
+                    'sottotipo_label' => self::SOTTOTIPI[$cassa->sottotipo_fondo ?? ''] ?? self::SOTTOTIPO_NON_INDICATO,
                     'saldo' => $saldo,
                     'vincolato' => $vincolato,
                     'vincolo_registrato' => $vincoloSuQuesto,

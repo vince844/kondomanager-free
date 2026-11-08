@@ -616,11 +616,17 @@ class VerificaDocumentazioneCommand extends Command
 
         $testo = file_get_contents($roadmap);
 
-        if (! preg_match('#<!-- indice-roadmap -->(?<indice>.*?)<!-- /indice-roadmap -->#s', $testo, $m)) {
+        // I due segnaposto si cercano come testo: l'indice supera il milione di caratteri, e un'espressione
+        // regolare con «.*?» lì si ferma per il limite di PCRE e fa credere che il blocco non ci sia.
+        $apertura = '<!-- indice-roadmap -->';
+        $inizio = strpos($testo, $apertura);
+        $fine = $inizio === false ? false : strpos($testo, '<!-- /indice-roadmap -->', $inizio);
+
+        if ($inizio === false || $fine === false) {
             return ['roadmap.md → manca del tutto il blocco dell\'indice'];
         }
 
-        $indice = $m['indice'];
+        $indice = substr($testo, $inizio + strlen($apertura), $fine - $inizio - strlen($apertura));
         $fuori = [];
 
         foreach (preg_split('#\n#', $testo) as $riga) {

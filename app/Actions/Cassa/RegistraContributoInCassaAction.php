@@ -3,6 +3,7 @@
 namespace App\Actions\Cassa;
 
 use App\Enums\TipoMovimentoContabile;
+use App\Helpers\DateHelper;
 use App\Models\Esercizio;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\ContoContabile;
@@ -64,13 +65,16 @@ class RegistraContributoInCassaAction
             return false;
         }
 
-        DB::transaction(function () use ($cassa, $esercizio, $contropartita, $importoCents, $causale) {
+        // Il giorno è quello dell'amministratore, non il giorno UTC del server: alle 00:30 di Roma del 01/01 `now()` è ancora il 31/12.
+        $oggi = DateHelper::oggiUtente();
+
+        DB::transaction(function () use ($cassa, $esercizio, $contropartita, $importoCents, $causale, $oggi) {
             $scrittura = ScritturaContabile::create([
                 'condominio_id'      => $cassa->condominio_id,
                 'gestione_id'        => null,
                 'esercizio_id'       => $esercizio->id,
-                'data_registrazione' => now()->format('Y-m-d'),
-                'data_competenza'    => now()->format('Y-m-d'),
+                'data_registrazione' => $oggi,
+                'data_competenza'    => $oggi,
                 'causale'            => mb_substr($causale, 0, 255),
                 'tipo_movimento'     => TipoMovimentoContabile::ACCANTONAMENTO,
                 'stato'              => 'registrata',

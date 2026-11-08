@@ -7,7 +7,7 @@
  * condominio (`RegolazioniSuVoceDiEntrata::delCondominio`). La pagina le mostra in un blocco a sé, sopra il ponte delle regolazioni: quante sono e
  * su quante voci (le voci si contano per id: due voci con lo stesso nome sono due voci), che cosa hanno scritto (un'uscita di cassa al posto di
  * un'entrata), la strada (aprirle e premere «Storna», che per un esercizio chiuso si registra in un esercizio aperto: con più esercizi aperti il
- * programma non dice quale), e che l'incasso vero di un'entrata oggi non si registra. Non si nasconde: sparisce quando l'elenco è vuoto. Senza un
+ * programma non dice quale), e dove registrare poi l'incasso vero («Incasso da terzi», con il collegamento). Non si nasconde: sparisce quando l'elenco è vuoto. Senza un
  * esercizio aperto non indica lo storno, che si rifiuterebbe (`StornaRegolazioneImmediataAction::execute`).
  *
  * Fonte dell'atteso: la decisione 163.2 (D2: un blocco a sé, per condominio, senza il nascondimento di sei mesi, che si spegne quando l'ultima è
@@ -76,7 +76,18 @@ describe('Coda 287 — il blocco delle regolazioni su una voce di entrata', () =
         expect(testo(w, 'titolo')).toBe('2 regolazioni immediate sono registrate su voci di entrata');
         expect(testo(w, 'fatto')).toBe("La regolazione immediata registra un'uscita di cassa: queste sono state scritte come spese, e la banca o la cassa è scesa dell'importo invece di salire.");
         expect(testo(w, 'strada')).toBe("Per correggere, apri ognuna e premi «Storna»: lo storno scrive la scrittura inversa e la banca o la cassa torna com'era. Se l'esercizio della regolazione è chiuso, lo storno si registra in un esercizio aperto.");
-        expect(testo(w, 'entrata')).toBe("L'incasso vero di un'entrata, per esempio l'affitto dell'antenna, oggi non si registra nel programma.");
+        expect(testo(w, 'entrata')).toBe("Poi registra l'incasso vero da qui: «Incasso da terzi», che va sulla voce di entrata ed entra in banca.");
+        expect(w.find('[data-blocco="regolazioni-su-entrata"] [data-testo="entrata"] a').attributes('href')).toBe('/admin.gestionale.incassi-da-terzi.create/28/');
+    });
+
+    test('il collegamento all\'incasso da terzi porta con sé la pagina da cui si parte, per tornarci dopo', () => {
+        const prima = (globalThis as Record<string, unknown>).route;
+        (globalThis as Record<string, unknown>).route = (nome: string, p: Record<string, unknown> = {}) => `/${nome}/${p.condominio ?? ''}?da=${p.da ?? ''}`;
+        try {
+            expect(pagina([PRIMA]).find('[data-blocco="regolazioni-su-entrata"] [data-testo="entrata"] a').attributes('href')).toBe('/admin.gestionale.incassi-da-terzi.create/28?da=fatture');
+        } finally {
+            (globalThis as Record<string, unknown>).route = prima;
+        }
     });
 
     test('due regolazioni sulla stessa voce: il conteggio è al plurale e la voce è una sola, non «voci di entrata»', () => {
@@ -137,6 +148,10 @@ describe('Coda 287 — il blocco delle regolazioni su una voce di entrata', () =
 
     test('senza un esercizio aperto non indica lo storno, che si rifiuterebbe, e dice perché', () => {
         const w = pagina([PRIMA], null);
+
+        // Nemmeno l'incasso da terzi, che si registra nell'esercizio aperto: la frase lo dice senza il collegamento.
+        expect(testo(w, 'entrata')).toBe("L'incasso vero, per esempio l'affitto dell'antenna, si registra con «Altro incasso», nella pagina degli incassi, quando il condominio ha un esercizio aperto.");
+        expect(w.find('[data-blocco="regolazioni-su-entrata"] [data-testo="entrata"] a').exists()).toBe(false);
 
         expect(testo(w, 'strada')).toBe("Per correggere serve lo storno, che per una regolazione di un esercizio chiuso si registra in un esercizio aperto: oggi il condominio non ha un esercizio aperto, e lo storno si rifiuta.");
         expect(testo(w, 'strada')).not.toContain('premi «Storna»');

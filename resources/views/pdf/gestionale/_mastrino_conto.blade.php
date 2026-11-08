@@ -43,7 +43,7 @@
 @if($altri_esercizi > 0)
 <div class="avviso">
     {{ $altri_esercizi }} {{ $altri_esercizi === 1 ? 'riga appartiene' : 'righe appartengono' }} a un altro esercizio ma {{ $altri_esercizi === 1 ? 'porta' : 'portano' }} una data dentro questo periodo:
-    {{ $altri_esercizi === 1 ? 'è marcata' : 'sono marcate' }} con il nome del suo esercizio. È la stessa anomalia che il controllo «liquidità e riepilogo» dello Stato patrimoniale segnala.
+    {{ $altri_esercizi === 1 ? 'è marcata' : 'sono marcate' }} con il nome del suo esercizio: le elenca il controllo «Registrazioni oltre il confine dell'esercizio» del rendiconto.
 </div>
 @endif
 

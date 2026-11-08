@@ -30,6 +30,9 @@ class ContoResource extends JsonResource
      */
     public static array $spesoMap = [];
 
+    /** L'incassato delle voci di entrata (`SpesaPerVoceService::perTipo`), positivo: una voce di entrata non ha uno speso. */
+    public static array $incassatoMap = [];
+
     /**
      * I piani approvati che tengono ciascuna voce (`Conto::pianiCheBloccanoLaVoce`), letti una volta per la pagina: voce => piani. Nullo, la riga li
      * legge da sé. La scheda della voce li usa per l'importo, il padre, il tipo, la tabella e le percentuali, e il pannello delle tabelle per i suoi pulsanti,
@@ -237,6 +240,7 @@ class ContoResource extends JsonResource
             // Speso reale: si confronta con budget_originale_raw, non con importo_raw
             // (che il controller gonfia allo speso quando lo sforo è già avvenuto).
             'speso_raw'             => (int) (self::$spesoMap[$this->id] ?? 0),
+            'incassato_raw'         => (int) (self::$incassatoMap[$this->id] ?? 0),
             'addebiti_personali'    => self::$addebitiMap[$this->id] ?? [],
             'strategie_sforo'       => self::$strategieSforoMap[$this->id] ?? [],
             // ------------------------------------

@@ -29,7 +29,7 @@ interface Riepilogo {
     /** In centesimi, sulle sole righe mostrate. */
     totale_dare: number;
     totale_avere: number;
-    /** In centesimi: l'ultimo saldo del periodo intero = la fotografia dello Stato patrimoniale. */
+    /** In centesimi: l'ultimo saldo del periodo intero = la fotografia della situazione patrimoniale. */
     saldo_finale: number;
     /** In centesimi: il saldo alla data dell'ultima riga mostrata, sul periodo intero. */
     saldo_alla_data: number;
@@ -75,22 +75,27 @@ const hrefStatoPatrimoniale = computed(() => generatePath('gestionale/:condomini
     esercizio: props.esercizio.id,
 }));
 
+const hrefControlli = computed(() => `${generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/controlli', {
+    condominio: props.condominio.id,
+    esercizio: props.esercizio.id,
+})}#controllo-AC`);
+
 // Corto apposta: con il nome del conto in coda e cinque pulsanti a destra la barra usciva dallo
 // schermo anche a 2000px (visto da Vincenzo a video). Il nome del conto è già nel titolo.
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-    { title: 'Stato patrimoniale', href: hrefStatoPatrimoniale.value },
+    { title: 'Situazione patrimoniale', href: hrefStatoPatrimoniale.value },
     { title: 'Mastrino' },
 ]);
 
 // Il pulsante «indietro» porta dove si era: alle casse se si è entrati da lì (`?da=casse`,
-// che viaggia con i filtri), altrimenti allo Stato patrimoniale, che è la porta principale.
+// che viaggia con i filtri), altrimenti alla situazione patrimoniale, che è la porta principale.
 const backUrl = computed(() => {
     if (props.filters.da === 'casse') return generatePath('gestionale/:condominio/casse', { condominio: props.condominio.id });
     if (props.filters.da === 'libro-giornale') return generatePath('gestionale/:condominio/esercizi/:esercizio/scritture', { condominio: props.condominio.id, esercizio: props.esercizio.id });
     return hrefStatoPatrimoniale.value;
 });
-const backText = computed(() => ({ 'casse': 'Risorse e fondi', 'libro-giornale': 'Libro Giornale' } as Record<string, string>)[props.filters.da ?? ''] ?? 'Stato patrimoniale');
+const backText = computed(() => ({ 'casse': 'Risorse e fondi', 'libro-giornale': 'Libro Giornale' } as Record<string, string>)[props.filters.da ?? ''] ?? 'Situazione patrimoniale');
 
 const columns = createColumns();
 
@@ -127,14 +132,14 @@ const controNatura = computed(() => props.conto.natura_dare
 const pageGuides = computed(() => [
     {
         title: 'Il mastrino di un conto',
-        description: `Tutte le righe di partita doppia registrate su «${props.conto.nome}» con data nel periodo, in ordine di data, con dare, avere e saldo progressivo. È il dettaglio della riga dello Stato patrimoniale da cui sei arrivato: l'ultimo saldo è quello.`,
+        description: `Tutte le righe di partita doppia registrate su «${props.conto.nome}» con data nel periodo, in ordine di data, con dare, avere e saldo progressivo. È il dettaglio della riga della situazione patrimoniale da cui sei arrivato: l'ultimo saldo è quello.`,
         icon: BookOpen,
         colorVariant: 'blue' as const,
-        link: { label: 'Torna allo Stato patrimoniale', href: hrefStatoPatrimoniale.value },
+        link: { label: 'Torna alla situazione patrimoniale', href: hrefStatoPatrimoniale.value },
     },
     {
         title: 'Il saldo parte dal riporto',
-        description: `La prima riga è il riporto: quanto c'era sul conto il ${formatData(giornoPrima.value)}, con dentro tutto ciò che precede il periodo. Diversamente dalla Prima nota, che parte da zero a ogni esercizio e non mostra i trasferimenti verso i fondi, qui il saldo parte dal riporto, gli accantonamenti sono righe, e l'ultimo saldo è la fotografia dello Stato patrimoniale ${props.periodo.stato === 'chiuso' ? `al ${formatData(props.periodo.al)}` : 'di oggi'}.`,
+        description: `La prima riga è il riporto: quanto c'era sul conto il ${formatData(giornoPrima.value)}, con dentro tutto ciò che precede il periodo. Diversamente dal registro di contabilità, che parte dal riporto dell'esercizio e non mostra i trasferimenti verso i fondi, qui il saldo parte dalla fotografia del giorno prima, gli accantonamenti sono righe, e l'ultimo saldo è la fotografia della situazione patrimoniale ${props.periodo.stato === 'chiuso' ? `al ${formatData(props.periodo.al)}` : 'di oggi'}.`,
         icon: CornerDownRight,
         colorVariant: 'emerald' as const,
     },
@@ -245,8 +250,8 @@ const pageGuides = computed(() => [
                         <div v-if="riepilogo.altri_esercizi > 0" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-900 flex items-start gap-2">
                             <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" />
                             <div>
-                                <b>{{ riepilogo.altri_esercizi }} {{ riepilogo.altri_esercizi === 1 ? 'riga appartiene' : 'righe appartengono' }} a un altro esercizio</b> ma con una data dentro questo periodo: {{ riepilogo.altri_esercizi === 1 ? 'è marcata' : 'sono marcate' }} con il nome del suo esercizio. È la stessa anomalia che il controllo «liquidità e riepilogo» dello
-                                <Link :href="hrefStatoPatrimoniale" class="font-semibold underline">Stato patrimoniale</Link> segnala.
+                                <b>{{ riepilogo.altri_esercizi }} {{ riepilogo.altri_esercizi === 1 ? 'riga appartiene' : 'righe appartengono' }} a un altro esercizio</b> ma con una data dentro questo periodo: {{ riepilogo.altri_esercizi === 1 ? 'è marcata' : 'sono marcate' }} con il nome del suo esercizio. Le elenca il controllo «Registrazioni oltre il confine dell'esercizio», nella scheda
+                                <Link :href="hrefControlli" class="font-semibold underline">«Controlli»</Link> del rendiconto.
                             </div>
                         </div>
                         <div v-if="riepilogo.riporto_proprie > 0" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-900 flex items-start gap-2">

@@ -91,7 +91,10 @@ describe('l\'elenco, l\'accordo, l\'origine', () => {
         expect(elenco).toContain('La più vicina senza una dispensa è in evidenza;');
         expect(elenco).toContain('Mai scritto (contano le lettere partite o spedite)');
         expect(elenco).toContain('Stampate o scaricate, spedizione da registrare');
-        expect(sorgente('resources/js/components/gestionale/lettere/RegistroLettere.vue')).toContain('<h3 class="text-sm font-semibold">Lettere</h3>');
+        // Dalla Coda 533 (decisione 231) il registro sta nella scheda «Corrispondenza (N)» dell'estratto conto, con le ricevute e gli avvisi: il titolo
+        // «Lettere» (che dalla beta.4 aveva preso il posto di «Lettere e comunicazioni») è il nome della scheda.
+        expect(sorgente('resources/js/pages/gestionale/pianiRate/EstrattoContoAnagrafica.vue')).toContain('Corrispondenza ({{ numeroCorrispondenza }})');
+        expect(sorgente('resources/js/components/gestionale/lettere/RegistroLettere.vue')).not.toContain('Lettere e comunicazioni');
         expect(sorgente('resources/js/components/gestionale/accordi/AccordoRientroDialog.vue')).toContain('Le rate che può coprire: quelle già scadute al');
         const origine = sorgente('resources/js/components/gestionale/saldi/DichiaraOrigineDialog.vue');
         expect(origine).toContain('L\\\'origine non è stata dichiarata. Riprova.');

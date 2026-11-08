@@ -56,6 +56,7 @@ export const CATEGORIA_PER_TIPO: Record<string, 'passivo' | 'attivo' | 'prima_no
   stralcio_credito: 'attivo',
   rimborso_condomino: 'attivo',
   incasso_diverso: 'attivo',
+  storno_incasso_diverso: 'attivo',
   rimborso_assicurativo: 'attivo',
   regolazione_immediata: 'prima_nota',
   storno_regolazione_immediata: 'prima_nota',

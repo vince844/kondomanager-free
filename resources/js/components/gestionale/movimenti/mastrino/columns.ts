@@ -1,7 +1,7 @@
 import { h } from 'vue'
 import { Calendar } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
-// Stessa palette del Libro Giornale e della Prima nota, importata e non ricopiata: sono tre
+// Stessa palette del Libro Giornale e del registro di contabilità, importata e non ricopiata: sono tre
 // letture dello stesso giornale, e un badge deve avere lo stesso colore in tutte e tre.
 import { badgeBase, CATEGORIA_PER_TIPO, COLORI_CATEGORIA, COLORI_STATO, STATO_LABELS } from '../scritture/columns'
 import type { ColumnDef } from '@tanstack/vue-table'
@@ -56,7 +56,7 @@ function formatData(iso: string): string {
 }
 
 /**
- * Nessuna colonna «azioni», come nel Libro Giornale e nella Prima nota: il rimando alla
+ * Nessuna colonna «azioni», come nel Libro Giornale e nel registro di contabilità: il rimando alla
  * scrittura vive nel pannello che si apre sulla riga.
  */
 export function createColumns(): ColumnDef<MastrinoRow>[] {
@@ -92,8 +92,8 @@ export function createColumns(): ColumnDef<MastrinoRow>[] {
             r.stornata
               ? h('span', { class: `${badgeBase} ${COLORI_STATO.annullata}` }, STATO_LABELS.annullata)
               : null,
-            // La riga di un altro esercizio dentro questo periodo: è l'anomalia che il controllo
-            // «liquidità e riepilogo» dello Stato patrimoniale segnala, vista dal conto.
+            // La riga di un altro esercizio dentro questo periodo: la elenca il controllo «Registrazioni oltre
+            // il confine dell'esercizio» del rendiconto, vista dal conto.
             r.altro_esercizio
               ? h('span', {
                   class: `${badgeBase} bg-amber-50 text-amber-800 border border-amber-200`,

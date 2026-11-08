@@ -119,7 +119,7 @@ const table = useVueTable({
     v-else
     :icon="Layers"
     title="Nessuna gestione"
-    description="Non è ancora stata creata nessuna gestione per questo esercizio. Le gestioni separano ordinaria e straordinaria, come richiesto dall'art. 1130-bis c.c."
+    description="Non è ancora stata creata nessuna gestione per questo esercizio. Le gestioni separano ordinaria e straordinaria."
     media-class="bg-emerald-50/50 dark:bg-emerald-900/20 text-emerald-500"
   />
   <div v-if="table.getRowModel().rows?.length" class="flex items-center justify-end py-4 space-x-2">

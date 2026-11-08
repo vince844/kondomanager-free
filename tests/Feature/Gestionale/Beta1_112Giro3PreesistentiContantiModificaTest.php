@@ -180,7 +180,7 @@ test('Coda 466 — le commissioni bancarie non fanno parte dell\'importo in cont
     $fattura = giro3Fattura($ctx);
     // La registrazione dello stesso pagamento in contanti, con le stesse commissioni, passa.
     $registrato = (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $fattura, [
-        'metodo_pagamento' => MetodoPagamento::CONTANTI->value, 'importo_commissioni_cents' => 1000,
+        'metodo_pagamento' => MetodoPagamento::CONTANTI->value, 'importo_commissioni_cents' => 1000, 'voce_commissione_id' => $ctx[5]->id,
         'allocazioni' => [['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => 499999]],
     ]));
     expect($registrato->metodo_pagamento->value)->toBe('contanti');
@@ -188,7 +188,7 @@ test('Coda 466 — le commissioni bancarie non fanno parte dell\'importo in cont
     $pagamento = giro3Pagamento($ctx, giro3Fattura($ctx), MetodoPagamento::BONIFICO->value, 499999);
 
     // Le commissioni aumentano l'uscita dal conto, e la modifica chiede il consenso allo scoperto come sempre: qui interessa il limite dei contanti.
-    giro3Modifica($this, $ctx, $pagamento, giro3CorpoDellaPagina($this, $ctx, $pagamento, ['metodo_pagamento' => 'contanti', 'importo_commissioni_cents' => 1000, 'allow_overdraft' => true]))
+    giro3Modifica($this, $ctx, $pagamento, giro3CorpoDellaPagina($this, $ctx, $pagamento, ['metodo_pagamento' => 'contanti', 'importo_commissioni_cents' => 1000, 'voce_commissione_id' => $ctx[5]->id, 'allow_overdraft' => true]))
         ->assertSessionHasNoErrors();
 
     expect($pagamento->fresh()->metodo_pagamento->value)->toBe('contanti')->and((int) $pagamento->fresh()->importo_commissione)->toBe(1000);

@@ -835,7 +835,7 @@ const pageGuides = [
     description: 'Monitora costantemente il saldo netto. Le rate emesse si incassano da «Incassi», nei movimenti.',
     icon: PieChart,
     colorVariant: 'amber' as const,
-    // La voce del menu dei movimenti dove si registrano gli incassi delle rate (Coda 464): la Prima nota ha solo l'elenco e la stampa.
+    // La voce del menu dei movimenti dove si registrano gli incassi delle rate (Coda 464): il registro di contabilità ha solo l'elenco e la stampa.
     link: { label: 'Vai agli incassi rate', href: generatePath('gestionale/:condominio/movimenti-rate', { condominio: props.condominio.id }) }
   }
 ];

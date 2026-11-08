@@ -81,6 +81,20 @@ describe('le lettere nell\'elenco', () => {
             .toContain('Nessuna lettera');
     });
 
+    test('Coda 533: «Vedi la corrispondenza» porta all\'estratto conto della persona con la scheda «Corrispondenza»; senza lettere non c\'è', () => {
+        const id = proprieta().righe.data[0].anagrafica_id;
+        const link = monta().get(`[data-testid="corrispondenza-${id}"]`);
+        expect(link.text()).toBe('Vedi la corrispondenza');
+        expect(link.attributes('href')).toContain('gestionale.anagrafiche.estratto-conto');
+        expect(link.attributes('href')).toMatch(/\?scheda=corrispondenza$/);
+        w!.unmount();
+        expect(monta({ righe: { data: [riga({ ultima_lettera: null, lettera_in_sospeso: null })], meta: proprieta().righe.meta } }).find(`[data-testid="corrispondenza-${id}"]`).exists()).toBe(false);
+        w!.unmount();
+        // Con la sola lettera in coda o non partita il collegamento c'è: nella scheda la lettera c'è.
+        const inCoda = { tipo: 'diffida', data: '2026-03-18', canale: 'email', stato: 'in_coda' };
+        expect(monta({ righe: { data: [riga({ ultima_lettera: null, lettera_in_sospeso: inCoda })], meta: proprieta().righe.meta } }).find(`[data-testid="corrispondenza-${id}"]`).exists()).toBe(true);
+    });
+
     test('i filtri «Nessuna lettera negli ultimi N giorni» e «Mai scritto» vanno nell\'indirizzo', async () => {
         vi.useFakeTimers();
         const p = monta();

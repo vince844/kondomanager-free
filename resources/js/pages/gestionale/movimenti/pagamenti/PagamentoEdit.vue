@@ -23,6 +23,9 @@ import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import { oggiLocale } from '@/lib/giorno';
+import {
+    ETICHETTA_LASCIA_SENZA_VOCE, FRASE_ALTRA_GESTIONE, FRASE_SENZA_VOCE, LASCIA_SENZA_VOCE, mancaLaVoce, puoLasciareSenzaVoce, voceDaInviare, vociDellaGestione, type VoceCommissione,
+} from '@/lib/gestionale/pagamenti/voceCommissione';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -96,6 +99,13 @@ const props = defineProps<{
     fornitori: Fornitore[];
     banche: Banca[];
     pagamento: PagamentoFornitore;
+    /** Le voci di spesa del condominio con la loro gestione (`VoceDellaCommissione::elenco`). */
+    voci_commissione?: VoceCommissione[];
+    /**
+     * La voce della commissione di questo pagamento; `senza_voce` per un pagamento scritto prima senza voce, e `puo_restare_senza_voce` se la modifica lo può
+     * lasciare così (sulle «Spese bancarie» di sistema), finché la commissione non cambia.
+     */
+    commissione?: { voce_id: number | null; gestione_id: number | null; senza_voce: boolean; puo_restare_senza_voce?: boolean; esercizio_chiuso?: boolean };
 }>();
 
 // ---------------------------------------------------------------------------
@@ -112,7 +122,11 @@ const form = useForm({
     // La prop arriva dalla Resource ed è già in centesimi, come importo_lordo/ritenuta/netto
     // qui sotto: la casella però si digita in euro, quindi qui si DIVIDE. Moltiplicare
     // sarebbe la seconda conversione della stessa cifra — il bug del ×100 della beta.32.
-    importo_commissioni_cents:      centsToEuro(props.pagamento.importo_commissione),
+    // Il nome dice l'unità della casella: all'invio diventa `importo_commissioni_cents`, una volta sola.
+    importo_commissioni_euro:       centsToEuro(props.pagamento.importo_commissione),
+    // La voce della commissione: quella del pagamento; per un pagamento scritto prima senza voce, «Lascia senza voce, come era» se la modifica può lasciarlo
+    // così, altrimenti nessuna.
+    voce_commissione_id:            (props.commissione?.voce_id ?? (props.commissione?.puo_restare_senza_voce ? LASCIA_SENZA_VOCE : null)) as number | null,
     importo_lordo_cents:            props.pagamento.importo_lordo,
     importo_ritenuta_cents:         props.pagamento.importo_ritenuta,
     importo_netto_cents:            props.pagamento.importo_netto,
@@ -196,6 +210,8 @@ const CHIAVI_CON_FINESTRA_PROPRIA = [
     'fiscal_year_closed', 'illegal_cash',
     'fattura_non_approvata', 'allocazioni_inconsistenti',
     'modifica_vietata', 'error',
+    // Il rifiuto della voce della commissione si mostra sotto il suo campo.
+    'voce_commissione_id',
 ];
 
 /** I motivi del rifiuto che nessuna finestra dedicata mostrerebbe. */
@@ -238,8 +254,23 @@ const tipiDetrazione = [
 // Computed — Totali
 // ---------------------------------------------------------------------------
 const commissioniCents = computed(() =>
-    Math.round((Number(form.importo_commissioni_cents) || 0) * 100)
+    Math.round((Number(form.importo_commissioni_euro) || 0) * 100)
 );
+
+// La voce della commissione: solo le voci della gestione del pagamento.
+const vociDellaCommissione = computed(() => vociDellaGestione(props.voci_commissione ?? [], props.commissione?.gestione_id ?? null));
+const haCommissione = computed(() => (Number(form.importo_commissioni_euro) || 0) > 0);
+// «Lascia senza voce, come era»: per un pagamento scritto prima senza voce, finché la commissione è quella registrata. Non in un esercizio chiuso, che non si modifica.
+const lasciabileSenzaVoce = computed(() => !props.commissione?.esercizio_chiuso
+    && puoLasciareSenzaVoce(props.commissione?.puo_restare_senza_voce === true, props.pagamento.importo_commissione, Number(form.importo_commissioni_euro)));
+const opzioniVoce = computed<VoceCommissione[]>(() => lasciabileSenzaVoce.value
+    ? [{ id: LASCIA_SENZA_VOCE, label: ETICHETTA_LASCIA_SENZA_VOCE, gestione_id: props.commissione?.gestione_id ?? 0 }, ...vociDellaCommissione.value]
+    : vociDellaCommissione.value);
+// Se la commissione cambia la scelta sparisce, e con lei il valore; se torna com'era e il campo è vuoto, torna la scelta.
+watch(lasciabileSenzaVoce, (ora) => {
+    if (!ora && form.voce_commissione_id === LASCIA_SENZA_VOCE) form.voce_commissione_id = null;
+    else if (ora && form.voce_commissione_id === null) form.voce_commissione_id = LASCIA_SENZA_VOCE;
+});
 
 const uscitaCassaTotale = computed(() =>
     (props.pagamento.importo_netto || 0) / 100 + commissioniCents.value / 100
@@ -272,10 +303,20 @@ const isDataPagamentoVecchia = computed(() => {
 // Submit
 // ---------------------------------------------------------------------------
 const handleSubmit = () => {
+    // Con una commissione più di zero la voce si sceglie: il modulo non parte, e lo dice sul campo con la frase del server.
+    // Non per un pagamento di un esercizio chiuso, che non si modifica comunque: il server risponde che si storna.
+    if (!props.commissione?.esercizio_chiuso && mancaLaVoce(Number(form.importo_commissioni_euro), form.voce_commissione_id)) {
+        form.setError('voce_commissione_id', FRASE_SENZA_VOCE);
+        return;
+    }
+    form.clearErrors('voce_commissione_id');
 
     form.transform((data) => {
         const payload = JSON.parse(JSON.stringify(data));
-        payload.importo_commissioni_cents = Math.round((Number(data.importo_commissioni_cents) || 0) * 100);
+        payload.importo_commissioni_cents = Math.round((Number(data.importo_commissioni_euro) || 0) * 100);
+        delete payload.importo_commissioni_euro;
+        // «Lascia senza voce, come era» non è una voce: al server parte come nessuna voce.
+        payload.voce_commissione_id = voceDaInviare(payload.voce_commissione_id);
         // Non passiamo fornitore_id per evitare manipolazioni (lato backend è ignorato comunque)
         delete payload.fornitore_id;
         return payload;
@@ -627,12 +668,37 @@ const pageGuides: never[] = [];
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Commissioni Bancarie</Label>
                                 <MoneyInput
                                     id="commissioni"
-                                    v-model="form.importo_commissioni_cents"
+                                    v-model="form.importo_commissioni_euro"
                                     :money-options="moneyOptions"
                                     :lazy="false"
                                     class="h-9 text-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
                                     placeholder="0,00" />
                             </div>
+                        </div>
+                        <!-- La voce della commissione: entra nel consuntivo della voce, come una regolazione immediata. -->
+                        <div v-if="haCommissione" class="space-y-1.5">
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Voce della commissione *</Label>
+                            <v-select
+                                id="voce_commissione"
+                                v-model="form.voce_commissione_id"
+                                :options="opzioniVoce"
+                                :reduce="(v: VoceCommissione) => v.id"
+                                :clearable="!lasciabileSenzaVoce"
+                                label="label"
+                                placeholder="Su quale voce di spesa va la commissione?"
+                            ></v-select>
+                            <p v-if="props.commissione?.senza_voce && !props.commissione?.esercizio_chiuso" class="text-[10.5px] text-amber-700" data-test="frase-senza-voce">
+                                <template v-if="lasciabileSenzaVoce">
+                                    Questo pagamento è stato registrato senza la voce della commissione, che resta fuori dal consuntivo delle voci. Puoi lasciarlo così, finché non
+                                    cambi la commissione, o scegliere la voce.
+                                </template>
+                                <template v-else>
+                                    Questo pagamento è stato registrato senza la voce della commissione. Per salvarlo con questa commissione scegli la voce: la commissione entrerà
+                                    nel suo consuntivo.
+                                </template>
+                            </p>
+                            <p class="text-[10.5px] text-slate-500">{{ FRASE_ALTRA_GESTIONE }} <a :href="route(generateRoute('gestionale.regolazioni-immediate.create'), { condominio: props.condominio.id })" target="_blank" rel="noopener" class="underline" data-test="regolazione-immediata">Registra una regolazione immediata</a></p>
+                            <p v-if="form.errors.voce_commissione_id" class="text-[10.5px] font-medium text-rose-600">{{ form.errors.voce_commissione_id }}</p>
                         </div>
                         <div v-if="isDataPagamentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
                             <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
@@ -724,9 +790,9 @@ const pageGuides: never[] = [];
                     <!-- Footer — Riepilogo Uscita Cassa -->
                     <div class="p-5 bg-slate-900 dark:bg-slate-950 text-white border-t border-slate-700 shrink-0 space-y-4">
                         <div class="space-y-2">
-                            <div v-if="Number(form.importo_commissioni_cents) > 0" class="flex justify-between text-xs">
+                            <div v-if="Number(form.importo_commissioni_euro) > 0" class="flex justify-between text-xs">
                                 <span class="text-slate-400">Commissioni bancarie</span>
-                                <span>{{ euro(form.importo_commissioni_cents, { fromCents: false }) }}</span>
+                                <span>{{ euro(form.importo_commissioni_euro, { fromCents: false }) }}</span>
                             </div>
                                             <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
                                 <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Importo Pagamento</span>
@@ -1036,9 +1102,6 @@ const pageGuides: never[] = [];
                                 <Lock class="w-8 h-8 text-slate-500" />
                             </div>
                             <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Esercizio Contabile Chiuso</h3>
-                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 px-2.5 py-1 rounded-full">
-                                <Scale class="w-3 h-3" /> Art. 1130-bis c.c.
-                            </span>
                         </div>
 
                         <div class="p-8 space-y-5">
@@ -1047,7 +1110,7 @@ const pageGuides: never[] = [];
                                 <div>
                                     <p class="text-xs font-bold text-blue-800 dark:text-blue-300 mb-1">Perché non posso procedere?</p>
                                     <p class="text-[11px] text-blue-700 dark:text-blue-400 leading-relaxed">
-                                        Le scritture contabili devono essere attribuite all'esercizio corretto (art. 1130-bis c.c.).
+                                        Una scrittura sta nell'esercizio aperto in cui la registri.
                                         Un esercizio chiuso non può ricevere nuove scritture — questo è un requisito contabile fondamentale,
                                         non una limitazione del software.
                                     </p>

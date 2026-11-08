@@ -297,19 +297,47 @@ test('i controlli: R6, R7, R2 quadrano; R8 segnala un vincolo non accantonato e 
         ->and($r8['azione'])->toBe('giroconti');
 });
 
-test('R2 riconosce l\'esercizio con le date sbagliate: tutte le scritture fuori periodo → «modifica l\'esercizio», non il giornale', function () {
+test('Via delle Acacie com\'era: un esercizio «2025» con le operazioni del 2026, letto il 12/09/2026 → R2 rosso, le due cause possibili (le date dell\'esercizio sbagliate, o un esercizio che non c\'è), «Modifica l\'esercizio»', function () {
+    // Il caso vero del 12/09/2026: l'esercizio creato con le date del 2025, l'apertura al suo inizio, tre emissioni e tre incassi del 2026. La fotografia
+    // al 31/12/2025 ha la sola apertura; il prospetto conta anche gli incassi, che sono dell'esercizio: la cassa non torna, e le sei scritture con la data
+    // del 2026 non stanno in nessun esercizio del condominio.
+    $condominio = Condominio::factory()->create();
+    $es = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'aperto']);
+    $ctx = ['condominio' => $condominio, 'gestione' => Gestione::factory()->create(['condominio_id' => $condominio->id])];
+    $banca = spdConto($condominio->id, 'conto_bancario', '1010', 'attivo', 'liquidita');
+    $crediti = spdConto($condominio->id, 'crediti_condomini', '1101', 'attivo', 'crediti');
+    $gestioneRate = spdConto($condominio->id, 'gestione_rate', '3001', 'passivo', 'fondi');
+    $passate = spdConto($condominio->id, 'passate_gestioni', '3002', 'passivo', 'fondi');
+    spdCassaBanca($condominio->id, $banca);
+    spdScrittura($ctx, $es, '2025-01-01', $banca, $passate, 500000, 'Apertura banca', 'apertura');
+    foreach (['2026-02-01', '2026-03-01', '2026-04-01'] as $d) {
+        spdScrittura($ctx, $es, $d, $crediti, $gestioneRate, 30000, 'Emissione rate', 'emissione_rata');
+        spdScrittura($ctx, $es, $d, $banca, $crediti, 20000, 'Incasso', 'incasso_rata');
+    }
+
+    $r2 = collect(app(\App\Services\Gestionale\StatoPatrimonialePaginaService::class)->costruisci($condominio, $es->fresh(), oggi: '2026-09-12')['controlli'])->firstWhere('id', 'R2');
+
+    expect($r2['esito'])->toBe('non_quadra')
+        ->and($r2['nota'])->toContain('le date dell\'esercizio sono sbagliate, oppure sono registrazioni di un esercizio che nel programma non c\'è')
+        ->and($r2['azione'])->toBe('esercizio');
+});
+
+test('l\'esercizio con le date sbagliate: il prospetto per cassa conta le sue scritture una volta sola, e R2 torna con la fotografia', function () {
     [$condominio, $es2025, $es2026, $c] = spdScenario();
     spdCassaBanca($condominio->id, $c['banca']);
     // L'esercizio «2026» viene spostato al 2027: le sue scritture restano datate 2026, cioè tutte fuori
     // dal periodo. È il caso «Via delle Acacie» (12/09/2026): un esercizio «2025» con tutte le operazioni
-    // del 2026. Consigliare di correggere dodici scritture una per una sarebbe il consiglio sbagliato.
+    // del 2026. Finché la disponibilità iniziale del prospetto era per data, quelle scritture contavano due
+    // volte (nell'iniziale, per la data, e nei flussi, per l'esercizio) e R2 era rosso per quello. Con il
+    // riporto per esercizio (la regola del registro) contano una volta: la liquidità torna con la fotografia,
+    // e le date fuori dal periodo sono un fatto dell'anno a cavallo, non della cassa.
     $es2026->update(['data_inizio' => '2027-01-01', 'data_fine' => '2027-12-31']);
 
-    $r2 = collect(app(\App\Services\Gestionale\StatoPatrimonialePaginaService::class)->costruisci($condominio, $es2026->fresh(), oggi: '2027-06-01')['controlli'])->firstWhere('id', 'R2');
+    $p = app(\App\Services\Gestionale\StatoPatrimonialePaginaService::class)->costruisci($condominio, $es2026->fresh(), oggi: '2027-06-01');
+    $r2 = collect($p['controlli'])->firstWhere('id', 'R2');
 
-    expect($r2['esito'])->toBe('non_quadra')
-        ->and($r2['nota'])->toContain('sono le date dell\'esercizio a essere sbagliate')
-        ->and($r2['azione'])->toBe('esercizio');
+    expect($r2['esito'])->toBe('quadra')
+        ->and($p['riepilogo']['totale']['finale'])->toBe($p['liquidita']['liquidita_totale']);
 });
 
 test('CN distingue la banca senza apertura né incassi (→ saldo iniziale) dal movimento sulla cassa sbagliata (→ Prima nota)', function () {

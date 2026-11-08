@@ -52,8 +52,9 @@ class FetchCapitoliPerGestioneController extends Controller
             // Speso reale letto dal libro giornale: include regolazioni immediate e
             // fatture pregresse. Le spese ad personam restano fuori da sé (nascono
             // con voce_spesa_id = null), il filtro esplicito non serve più.
+            $esercizioDelPiano = Esercizio::findOrFail($esercizioId);
             $fatturatoMap = $spesaPerVoce->perEsercizio(
-                Esercizio::findOrFail($esercizioId),
+                $esercizioDelPiano,
                 $allContiIds
             );
 
@@ -145,7 +146,10 @@ class FetchCapitoliPerGestioneController extends Controller
             $bloccoDelleNegative = Conto::pianiCheBloccanoLaVoce($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all());
             $negativeAlTerzoLivello = VoceDiSpesaNegativa::alTerzoLivello($speseNegative->pluck('id')->map(fn ($id) => (int) $id)->all());
 
-            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $fatturatoMap, $dichiarate, $pianiDelleNegative, $bloccoDelleNegative, $negativeAlTerzoLivello) {
+            // Lo speso senza gli incassi da terzi: l'incasso di una voce di entrata non è uno speso negativo da sommare al capitolo.
+            $spesoDelleSpese = $spesaPerVoce->perTipo($fatturatoMap, $esercizioDelPiano)['spese'];
+
+            $capitoli = $conti->map(function($c) use ($capitoliFinanziabiliRaw, $spesoDelleSpese, $dichiarate, $pianiDelleNegative, $bloccoDelleNegative, $negativeAlTerzoLivello) {
                 // Troviamo il budget per l'interfaccia
                 // Ogni voce vale il suo valore assoluto, come per il motore e per la copertura: un'entrata scritta con il meno non è uno sforo,
                 // e una spesa scritta con il meno il motore la addebita in positivo.
@@ -154,7 +158,7 @@ class FetchCapitoliPerGestioneController extends Controller
                     $budgetTeorico = (int) $c->sottoconti->sum(fn ($figlio) => BudgetCoverageService::importoDellaVoce($figlio, (int) $figlio->importo));
                 }
 
-                $spesoReale = $this->getSpesoRealeRicorsivo($c, $fatturatoMap);
+                $spesoReale = $this->getSpesoRealeRicorsivo($c, $spesoDelleSpese);
 
                 // Se il capitolo è tra quelli restituito dal servizio come 'finanziabile'
                 $finanziabileData = $capitoliFinanziabiliRaw->get($c->id);

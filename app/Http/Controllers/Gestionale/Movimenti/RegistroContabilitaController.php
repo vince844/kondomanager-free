@@ -82,6 +82,10 @@ class RegistroContabilitaController extends Controller
                 'saldo_finale' => $registro['saldo_finale'],
                 'saldo_alla_data' => $registro['data_riferimento'],
                 'saldi_per_cassa' => $registro['saldi_per_cassa'],
+                // La cassa all'inizio dell'esercizio, in totale e per cassa: il saldo parte da qui (RiportoDiCassa).
+                'riporto' => $registro['riporto'],
+                'totali_per_tipo' => $registro['totali_per_tipo'],
+                'saldi_fine_mese' => $registro['saldi_fine_mese'],
             ],
             'filters' => $filtri,
         ]);
@@ -110,10 +114,60 @@ class RegistroContabilitaController extends Controller
             ));
         }
 
+        $mpdf = $pdfService->generate('pdf.gestionale.registro_contabilita', self::datiDellaStampa($condominio, $esercizio, $registro, [
+            'data_da' => $this->dataFiltroLeggibile($filtri['data_da'] ?? null),
+            'data_a' => $this->dataFiltroLeggibile($filtri['data_a'] ?? null),
+            'search' => $filtri['search'] ?? null,
+        ], $request->boolean('annotazioni')), self::OPZIONI_STAMPA);
+
+        $nomeFile = PdfService::nomeFile('registro-contabilita', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
+
+        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
+    }
+
+    /** La misura della stampa: quella del Libro Giornale ({@see PdfRigheStampabili}), 78 MB di base e 0,0105 MB a riga. La usa anche il fascicolo. */
+    public const BASE_MB_STAMPA = 78;
+    public const MB_PER_RIGA = 0.0105;
+
+    /** Quante righe la stampa del registro regge con un `memory_limit` dato (la misura del Libro Giornale). La usa anche il fascicolo del rendiconto. */
+    public static function righeStampabiliDelRegistro($limite): int
+    {
+        return self::righeStampabiliCon($limite, self::BASE_MB_STAMPA, self::MB_PER_RIGA);
+    }
+
+    /**
+     * Le opzioni di mPDF della stampa del registro: la vista porta la sua carta intestata, in orizzontale. Le usa anche il fascicolo del rendiconto.
+     */
+    public const OPZIONI_STAMPA = [
+        // ⚠️ La vista NON estende `pdf.base`: porta la propria carta intestata e i propri
+        // header/footer di pagina, nel sistema tipografico del fac-simile (§7-quinquies).
+        // Da qui i margini più stretti e il carattere di base diverso dal resto delle stampe.
+        'default_font' => 'inter',
+        // Orizzontale come il Libro Giornale: le nove colonne di questo registro su A4
+        // verticale mandano a capo ogni descrizione tre o quattro volte, e un registro che
+        // si consulta a colpo d'occhio — è la ragione per cui la norma lo vuole — non regge
+        // righe alte quattro linee. Visto a video, non dedotto.
+        'orientation' => 'L',
+        'margin_top' => 22,
+        'margin_bottom' => 20,
+        'margin_header' => 8,
+        'margin_footer' => 8,
+    ];
+
+    /**
+     * I dati della vista della stampa del registro, dal registro già letto: li usa anche il fascicolo del rendiconto, che stampa la copia per l'assemblea.
+     *
+     * @param  array{data_da:?string, data_a:?string, search:?string}  $filtri  i filtri come si leggono nella fascia
+     */
+    public static function datiDellaStampa(Condominio $condominio, Esercizio $esercizio, array $registro, array $filtri, bool $annotazioni): array
+    {
+        $righe = $registro['righe'];
         $totaleEntrate = (int) array_sum(array_column($righe, 'entrata'));
         $totaleUscite = (int) array_sum(array_column($righe, 'uscita'));
 
-        $mpdf = $pdfService->generate('pdf.gestionale.registro_contabilita', [
+        return [
             'condominio' => $condominio,
             'esercizio' => $esercizio,
             'righe' => $righe,
@@ -123,11 +177,7 @@ class RegistroContabilitaController extends Controller
             // estratto senza righe la vista diceva «€ 0,00» su un conto a −370,56.
             'saldo_finale' => $registro['saldo_finale'],
             'saldo_alla_data' => $registro['data_riferimento'],
-            'filtri' => [
-                'data_da' => $this->dataFiltroLeggibile($filtri['data_da'] ?? null),
-                'data_a' => $this->dataFiltroLeggibile($filtri['data_a'] ?? null),
-                'search' => $filtri['search'] ?? null,
-            ],
+            'filtri' => $filtri,
             // È il registro di legge, non un atto da sottoscrivere — stesso trattamento del
             // Libro Giornale (§10.5 di docs/registri_contabili.md).
             'senza_firma' => true,
@@ -140,32 +190,15 @@ class RegistroContabilitaController extends Controller
             // l'eccezione: «in stampa entra solo se l'amministratore lo chiede», ed è questo
             // parametro. `boolean()` fa sì che l'assenza valga `false`: chi arriva qui con un
             // indirizzo battuto a mano ottiene la copia d'assemblea, non quella di controllo.
-            'mostra_annotazione' => $request->boolean('annotazioni'),
+            'mostra_annotazione' => $annotazioni,
             // La stessa scomposizione della pagina: se il documento che finisce in assemblea
             // mostrasse solo il totale, nasconderebbe un conto scoperto proprio a chi deve
             // controllarlo.
             'saldi_per_cassa' => $registro['saldi_per_cassa'],
-        ], [
-            // ⚠️ La vista NON estende `pdf.base`: porta la propria carta intestata e i propri
-            // header/footer di pagina, nel sistema tipografico del fac-simile (§7-quinquies).
-            // Da qui i margini più stretti e il carattere di base diverso dal resto delle stampe.
-            'default_font' => 'inter',
-            // Orizzontale come il Libro Giornale: le nove colonne di questo registro su A4
-            // verticale mandano a capo ogni descrizione tre o quattro volte, e un registro che
-            // si consulta a colpo d'occhio — è la ragione per cui la norma lo vuole — non regge
-            // righe alte quattro linee. Visto a video, non dedotto.
-            'orientation' => 'L',
-            'margin_top' => 22,
-            'margin_bottom' => 20,
-            'margin_header' => 8,
-            'margin_footer' => 8,
-        ]);
-
-        $nomeFile = PdfService::nomeFile('prima-nota', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
-
-        return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
-            ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
+            'riporto' => $registro['riporto'],
+            'totali_per_tipo' => $registro['totali_per_tipo'],
+            'saldi_fine_mese' => $registro['saldi_fine_mese'],
+        ];
     }
 
     /**

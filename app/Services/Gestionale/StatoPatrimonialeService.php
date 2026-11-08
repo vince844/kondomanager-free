@@ -110,6 +110,46 @@ class StatoPatrimonialeService
         ];
     }
 
+    /**
+     * La divisione per gestione di ciò che si divide, con i perimetri della pagina, così la somma delle gestioni è il numero della pagina:
+     * - **i costi dell'esercizio** (le righe dei conti di costo delle scritture dell'esercizio, senza le aperture: i flussi), per la gestione della
+     *   voce (la voce → il suo piano dei conti → la gestione); una riga senza voce sta sotto la chiave 0;
+     * - **le quote emesse nell'esercizio** («Gestione rate», stessi flussi), per la gestione della scrittura (l'emissione la prende dal piano);
+     * - **i crediti verso i condòmini alla data** (tutti gli esercizi, come la fotografia), per la gestione del piano della rata e, per una riga senza
+     *   rata, per quella della scrittura.
+     * Una scrittura senza gestione sta sotto la chiave 0. La liquidità e i fondi non si dividono: sono del condominio.
+     *
+     * @return array{costi: array<int,int>, quote_emesse: array<int,int>, crediti: array<int,int>}
+     */
+    public function perGestione(Condominio $condominio, Esercizio $esercizio, string $allaData): array
+    {
+        $base = fn () => DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', fn ($j) => $j->on('sc.id', '=', 'rs.scrittura_id')->whereNull('sc.deleted_at'))
+            ->join('conti_contabili as cc', fn ($j) => $j->on('cc.id', '=', 'rs.conto_contabile_id')->whereNull('cc.deleted_at'))
+            ->where('cc.condominio_id', $condominio->id);
+        $dellEsercizio = fn ($q) => $q->where('sc.esercizio_id', $esercizio->id)->where('sc.tipo_movimento', '<>', 'apertura');
+        // La chiave 0 raccoglie la riga senza gestione (una riga di costo senza voce, una scrittura senza gestione).
+        $somma = fn ($q) => $q->get()->groupBy(fn ($r) => (int) $r->gestione_id)->map(fn ($g) => (int) $g->sum('saldo'))->filter(fn ($v) => $v !== 0)->all();
+
+        $costi = $dellEsercizio($base())->where('cc.tipo', 'costo')
+            ->leftJoin('conti as v', 'v.id', '=', 'rs.voce_spesa_id')
+            ->leftJoin('piani_conti as pc', 'pc.id', '=', 'v.piano_conto_id')
+            ->groupBy('pc.gestione_id')->select('pc.gestione_id')
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END) as saldo");
+        $quote = $dellEsercizio($base())->where('cc.ruolo', 'gestione_rate')
+            ->groupBy('sc.gestione_id')->select('sc.gestione_id')
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE -rs.importo END) as saldo");
+        $crediti = $base()->where('cc.ruolo', 'crediti_condomini')
+            ->where('sc.data_competenza', '<', \Carbon\Carbon::parse($allaData)->addDay()->format('Y-m-d'))
+            ->leftJoin('rate as r', 'r.id', '=', 'rs.rata_id')
+            ->leftJoin('piani_rate as pr', 'pr.id', '=', 'r.piano_rate_id')
+            ->groupByRaw('COALESCE(pr.gestione_id, sc.gestione_id)')
+            ->selectRaw('COALESCE(pr.gestione_id, sc.gestione_id) as gestione_id')
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END) as saldo");
+
+        return ['costi' => $somma($costi), 'quote_emesse' => $somma($quote), 'crediti' => $somma($crediti)];
+    }
+
     /** Lo Stato Patrimoniale chiude? Scorciatoia per test e controlli di integrità. */
     public function quadra(Condominio $condominio, ?Esercizio $esercizio = null): bool
     {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Il pannello sotto una riga del mastrino — stesso idioma della Prima nota (RigaEspansa.vue) e
+ * Il pannello sotto una riga del mastrino — stesso idioma del registro di contabilità (RigaEspansa.vue) e
  * del Libro Giornale (RigheEspanse.vue). Mostra ciò che la riga non dice: le **righe sorelle**
  * della stessa scrittura — la contropartita vera, anche quando sono più di una (D21.4) —, la
  * data di registrazione, lo stato, la nota e il rimando alla scrittura in partita doppia.

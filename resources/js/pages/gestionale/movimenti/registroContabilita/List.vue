@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import Alert from '@/components/Alert.vue';
 import type { Flash } from '@/types/flash';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -30,9 +30,41 @@ interface SaldoCassa {
     /** In centesimi: il saldo dopo l'ultimo movimento di QUESTA cassa. */
     saldo: number;
     movimenti: number;
+    /** In centesimi: la cassa all'inizio dell'esercizio. */
+    riporto: number;
     /** In centesimi, sulla sola cassa: serve a confrontare il registro con l'estratto conto. */
     entrate: number;
     uscite: number;
+}
+
+interface RiportoCassa {
+    cassa_id: number;
+    cassa: string;
+    /** In centesimi: la cassa all'inizio dell'esercizio. */
+    riporto: number;
+    /** Vero se il riporto è l'apertura di questo esercizio (il primo nel programma, o la chiusura scritta). */
+    da_apertura: boolean;
+}
+
+interface TotalePerTipo {
+    chiave: string;
+    etichetta: string;
+    movimenti: number;
+    entrate: number;
+    uscite: number;
+    di_cui_esercizi_precedenti: number;
+}
+
+interface SaldoFineMese {
+    /** `Y-m` */
+    mese: string;
+    /** `Y-m-d`, l'ultimo giorno del mese. */
+    fine: string;
+    movimenti: number;
+    entrate: number;
+    uscite: number;
+    /** Il saldo vero alla fine del mese, anche con un filtro. */
+    saldo: number;
 }
 
 interface Riepilogo {
@@ -46,6 +78,12 @@ interface Riepilogo {
     saldo_alla_data: string | null;
     /** Un saldo per ogni cassa reale che si è mossa: il totale da solo può nasconderne uno scoperto. */
     saldi_per_cassa: SaldoCassa[];
+    /** La cassa all'inizio dell'esercizio: il saldo progressivo parte da qui. */
+    /** `etichetta`: «Saldo di apertura» nel primo esercizio (il riporto è l'apertura), altrimenti «Riporto dall'esercizio precedente». */
+    riporto: { totale: number; per_cassa: RiportoCassa[]; etichetta: string };
+    /** Sui movimenti mostrati; la somma è il totale del registro. */
+    totali_per_tipo: TotalePerTipo[];
+    saldi_fine_mese: SaldoFineMese[];
 }
 
 const props = defineProps<{
@@ -68,10 +106,13 @@ const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash?.message);
 const { euro } = useCurrencyFormatter();
 
+// Il registro è una delle porte del rendiconto: la scheda «Cassa» porta qui, e da qui si torna alla sintesi.
+const hrefRendiconto = computed(() => generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto', { condominio: props.condominio.id, esercizio: props.esercizio.id }));
+
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Movimenti' },
-    { title: 'Prima nota' },
+    { title: 'Registro di contabilità' },
 ]);
 
 const columns = createColumns();
@@ -99,6 +140,11 @@ const formatData = (iso: string) => {
  */
 const piuCasse = computed(() => props.riepilogo.saldi_per_cassa.length > 1);
 const dettaglioSaldoAperto = ref(false);
+
+const nomeMese = (ym: string) => {
+    const [anno, mese] = ym.split('-').map(Number);
+    return new Date(anno, mese - 1, 1).toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+};
 
 const etichettaSaldo = computed(() => props.riepilogo.saldo_alla_data
     ? `Saldo di cassa al ${formatData(props.riepilogo.saldo_alla_data)}`
@@ -129,7 +175,7 @@ function stampaRegistro(conAnnotazioni = false) {
 const pageGuides = [
     {
         title: 'Registro di contabilità',
-        description: 'Le entrate e le uscite reali dell\'esercizio, in ordine cronologico, come richiesto dall\'art. 1130, comma 1, n. 7 c.c. — non le scritture in partita doppia: quelle sono nel Libro Giornale. Il saldo parte da zero all\'inizio dell\'esercizio: il riporto dall\'anno precedente non è ancora compreso.',
+        description: 'Le entrate e le uscite reali dell\'esercizio, in ordine cronologico, come richiesto dall\'art. 1130, comma 1, n. 7 c.c. — non le scritture in partita doppia: quelle sono nel Libro Giornale. Il saldo parte dal riporto: la cassa all\'inizio dell\'esercizio, come la lasciano i registri degli anni prima (nel primo esercizio, il saldo di apertura, che non è un\'entrata).',
         icon: BookOpenCheck,
         colorVariant: 'blue' as const,
         // Il rimando al Libro Giornale era testuale in una scheda che dichiara la differenza fra
@@ -148,19 +194,19 @@ const pageGuides = [
     // ESCLUSO dal registro (queryBase, D15), quindi la riga banca continua a contarlo — come la
     // banca. Al netto resta solo il denaro mai passato dalla cassa banca (un fondo aperto con un
     // saldo suo). Le ragioni vere per cui non coincide: registro unico su tutte le casse reali (un
-    // prelievo verso i contanti compare due volte) e saldo che parte da zero a ogni esercizio.
-    { title: 'Solo denaro che si muove davvero', description: 'Compaiono i movimenti su banca e contanti. Un accantonamento verso un fondo di riserva non è né un\'entrata né un\'uscita — il denaro resta sullo stesso conto corrente — e non compare: la riga della banca continua a contarlo, come la banca. Il saldo in testa somma tutte le casse reali e parte da zero a ogni esercizio: per il confronto con l\'estratto conto vale il saldo della cassa nello Stato patrimoniale, che porta dentro anche il riporto.', icon: Landmark, colorVariant: 'emerald' as const },
+    // prelievo verso i contanti compare due volte) e, per un movimento con la data di un altro anno, il registro per esercizio contro la cassa per data.
+    { title: 'Solo denaro che si muove davvero', description: 'Compaiono i movimenti su banca e contanti. Un accantonamento verso un fondo di riserva non è né un\'entrata né un\'uscita — il denaro resta sullo stesso conto corrente — e non compare: la riga della banca continua a contarlo, come la banca. Il saldo in testa somma tutte le casse reali e parte dal riporto. Un movimento con la data di un altro anno conta nel registro dell\'esercizio in cui è scritto, una volta sola: per il confronto con l\'estratto conto a una data vale il saldo della cassa nella situazione patrimoniale, che taglia per data.', icon: Landmark, colorVariant: 'emerald' as const },
     { title: 'Due date per ogni riga', description: 'La data del movimento, su cui il registro è ordinato, e accanto la data in cui è stato annotato: la norma dà trenta giorni, e uno scarto più lungo è segnalato.', icon: Scale3D, colorVariant: 'amber' as const },
 ];
 </script>
 
 <template>
-    <Head title="Prima nota" />
+    <Head title="Registro di contabilità" />
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
-                page-title="Prima nota"
-                page-subtitle="Registro di contabilità: entrate e uscite reali dell'esercizio, in ordine cronologico."
+                page-title="Registro di contabilità"
+                page-subtitle="Entrate e uscite reali dell'esercizio, in ordine cronologico, dal riporto dell'esercizio precedente."
                 :guides="pageGuides"
                 :breadcrumbs="(headerBreadcrumbs as any)"
                 :condominio="(props.condominio as any)"
@@ -169,22 +215,25 @@ const pageGuides = [
                 :esercizi="(props.esercizi as any)"
             >
                 <template #actions>
+                    <Button as-child variant="outline" class="h-8 px-3 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 shadow-sm shrink-0 gap-2">
+                        <Link :href="hrefRendiconto" data-test="torna-al-rendiconto">Torna al rendiconto</Link>
+                    </Button>
                     <DropdownMenu>
                         <DropdownMenuTrigger as-child>
-                            <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
+                            <Button variant="outline" class="h-8 px-3 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 shadow-sm shrink-0 gap-2">
                                 <Printer class="w-4 h-4" />
                                 <span class="hidden sm:inline">Stampa</span>
-                                <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
+                                <ChevronDown class="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" class="w-72">
                             <DropdownMenuItem class="flex-col items-start gap-0.5 py-2" @click="stampaRegistro(false)">
                                 <span class="font-medium">Stampa per l'assemblea</span>
-                                <span class="text-[11px] text-slate-500 leading-snug">Le date dei movimenti, come chiede la norma.</span>
+                                <span class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">Le date dei movimenti, come chiede la norma.</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem class="flex-col items-start gap-0.5 py-2" @click="stampaRegistro(true)">
                                 <span class="font-medium">Copia di controllo</span>
-                                <span class="text-[11px] text-slate-500 leading-snug">Aggiunge le date di annotazione e segnala i ritardi oltre i trenta giorni. Per te, non per i condòmini.</span>
+                                <span class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">Aggiunge le date di annotazione e segnala i ritardi oltre i trenta giorni. Per te, non per i condòmini.</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -198,33 +247,42 @@ const pageGuides = [
                             <Alert :message="flashMessage.message" :type="flashMessage.type" />
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                            <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-emerald-50/50 border-emerald-200">
-                                <div class="p-2.5 rounded-lg border shrink-0 bg-emerald-100 border-emerald-200">
-                                    <ArrowDownCircle class="w-5 h-5 text-emerald-600" />
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                            <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-slate-50/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800" data-test="riporto">
+                                <div class="p-2.5 rounded-lg border shrink-0 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-800">
+                                    <Landmark class="w-5 h-5 text-slate-500 dark:text-slate-400" />
                                 </div>
                                 <div>
-                                    <div class="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Totale entrate{{ filtrato ? ' (parziale)' : '' }}</div>
-                                    <div class="text-lg font-bold tabular-nums text-emerald-700">{{ euro(riepilogo.totale_entrate) }}</div>
+                                    <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">{{ riepilogo.riporto.etichetta }}</div>
+                                    <div class="text-lg font-bold tabular-nums" :class="riepilogo.riporto.totale < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'">{{ euro(riepilogo.riporto.totale) }}</div>
                                 </div>
                             </div>
-                            <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-rose-50/50 border-rose-200">
-                                <div class="p-2.5 rounded-lg border shrink-0 bg-rose-100 border-rose-200">
-                                    <ArrowUpCircle class="w-5 h-5 text-rose-600" />
+                            <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900">
+                                <div class="p-2.5 rounded-lg border shrink-0 bg-emerald-100 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-900">
+                                    <ArrowDownCircle class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                                 </div>
                                 <div>
-                                    <div class="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Totale uscite{{ filtrato ? ' (parziale)' : '' }}</div>
-                                    <div class="text-lg font-bold tabular-nums text-rose-700">{{ euro(riepilogo.totale_uscite) }}</div>
+                                    <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Totale entrate{{ filtrato ? ' (parziale)' : '' }}</div>
+                                    <div class="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-400">{{ euro(riepilogo.totale_entrate) }}</div>
                                 </div>
                             </div>
-                            <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-slate-50/50 border-slate-200">
-                                <div class="p-2.5 rounded-lg border shrink-0 bg-slate-100 border-slate-200">
-                                    <Landmark class="w-5 h-5 text-slate-600" />
+                            <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-rose-50/50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-900">
+                                <div class="p-2.5 rounded-lg border shrink-0 bg-rose-100 dark:bg-rose-900/30 border-rose-200 dark:border-rose-900">
+                                    <ArrowUpCircle class="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                                </div>
+                                <div>
+                                    <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Totale uscite{{ filtrato ? ' (parziale)' : '' }}</div>
+                                    <div class="text-lg font-bold tabular-nums text-rose-700 dark:text-rose-400">{{ euro(riepilogo.totale_uscite) }}</div>
+                                </div>
+                            </div>
+                            <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-slate-50/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800">
+                                <div class="p-2.5 rounded-lg border shrink-0 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-800">
+                                    <Landmark class="w-5 h-5 text-slate-600 dark:text-slate-400" />
                                 </div>
                                 <div class="min-w-0">
-                                    <div class="text-[11px] uppercase tracking-wider text-slate-500 font-bold">{{ etichettaSaldo }}</div>
+                                    <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">{{ etichettaSaldo }}</div>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-lg font-bold tabular-nums" :class="riepilogo.saldo_finale < 0 ? 'text-rose-600' : 'text-slate-700'">{{ euro(riepilogo.saldo_finale) }}</span>
+                                        <span class="text-lg font-bold tabular-nums" :class="riepilogo.saldo_finale < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'">{{ euro(riepilogo.saldo_finale) }}</span>
                                         <button
                                             v-if="piuCasse"
                                             type="button"
@@ -246,6 +304,54 @@ const pageGuides = [
                             :esercizio="props.esercizio"
                             :meta="righe.meta"
                         />
+
+                        <div v-if="riepilogo.totali_per_tipo.length || riepilogo.saldi_fine_mese.length" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                            <section v-if="riepilogo.totali_per_tipo.length" data-test="totali-per-tipo">
+                                <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Totali per tipo di movimento{{ filtrato ? ' (parziale)' : '' }}</h3>
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            <th class="text-left py-2">Tipo</th>
+                                            <th class="text-right py-2">Mov.</th>
+                                            <th class="text-right py-2">Entrate</th>
+                                            <th class="text-right py-2">Uscite</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="t in riepilogo.totali_per_tipo" :key="t.chiave" class="border-b border-slate-100 dark:border-slate-800">
+                                            <td class="py-2 text-slate-700 dark:text-slate-300">
+                                                {{ t.etichetta }}
+                                                <span v-if="t.di_cui_esercizi_precedenti" class="block text-[11px] text-slate-500 dark:text-slate-400">di cui {{ euro(t.di_cui_esercizi_precedenti) }} per fatture di esercizi precedenti</span>
+                                            </td>
+                                            <td class="py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ t.movimenti }}</td>
+                                            <td class="py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{{ t.entrate ? euro(t.entrate) : '' }}</td>
+                                            <td class="py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">{{ t.uscite ? euro(t.uscite) : '' }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </section>
+                            <section v-if="riepilogo.saldi_fine_mese.length" data-test="saldi-fine-mese">
+                                <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Saldo a fine mese, nei mesi con movimenti</h3>
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            <th class="text-left py-2">Mese</th>
+                                            <th class="text-right py-2">Entrate{{ filtrato ? ' (parziale)' : '' }}</th>
+                                            <th class="text-right py-2">Uscite{{ filtrato ? ' (parziale)' : '' }}</th>
+                                            <th class="text-right py-2">Saldo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="m in riepilogo.saldi_fine_mese" :key="m.mese" class="border-b border-slate-100 dark:border-slate-800">
+                                            <td class="py-2 text-slate-700 dark:text-slate-300">{{ nomeMese(m.mese) }}</td>
+                                            <td class="py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{{ euro(m.entrate) }}</td>
+                                            <td class="py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">{{ euro(m.uscite) }}</td>
+                                            <td class="py-2 text-right tabular-nums font-semibold" :class="m.saldo < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'" :title="'Saldo al ' + formatData(m.fine)">{{ euro(m.saldo) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </section>
+                        </div>
                     </MovimentiLayout>
                 </section>
             </div>
@@ -275,40 +381,43 @@ const pageGuides = [
                         «mov.», dove «(parziale)» in un'intestazione abbreviata a 11px non ci sta.
                     -->
                     <thead>
-                        <tr class="border-b border-slate-200">
-                            <th class="text-left font-bold text-[11px] uppercase tracking-wider text-slate-500 py-2">Cassa</th>
-                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 py-2">Mov.</th>
-                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 py-2">Entrate{{ filtrato ? ' (parziale)' : '' }}</th>
-                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 py-2">Uscite{{ filtrato ? ' (parziale)' : '' }}</th>
-                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 py-2">Saldo</th>
+                        <tr class="border-b border-slate-200 dark:border-slate-800">
+                            <th class="text-left font-bold text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Cassa</th>
+                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Riporto</th>
+                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Mov.</th>
+                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Entrate{{ filtrato ? ' (parziale)' : '' }}</th>
+                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Uscite{{ filtrato ? ' (parziale)' : '' }}</th>
+                            <th class="text-right font-bold text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Saldo</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="s in riepilogo.saldi_per_cassa" :key="s.cassa" class="border-b border-slate-100">
-                            <td class="py-2 text-slate-700">{{ s.cassa }}</td>
-                            <td class="py-2 text-right tabular-nums text-slate-500">{{ s.movimenti }}</td>
-                            <td class="py-2 text-right tabular-nums text-emerald-700">{{ euro(s.entrate) }}</td>
-                            <td class="py-2 text-right tabular-nums text-rose-700">{{ euro(s.uscite) }}</td>
-                            <td class="py-2 text-right tabular-nums font-semibold" :class="s.saldo < 0 ? 'text-rose-600' : 'text-slate-700'">{{ euro(s.saldo) }}</td>
+                        <tr v-for="s in riepilogo.saldi_per_cassa" :key="s.cassa" class="border-b border-slate-100 dark:border-slate-800">
+                            <td class="py-2 text-slate-700 dark:text-slate-300">{{ s.cassa }}</td>
+                            <td class="py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ euro(s.riporto) }}</td>
+                            <td class="py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ s.movimenti }}</td>
+                            <td class="py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{{ euro(s.entrate) }}</td>
+                            <td class="py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">{{ euro(s.uscite) }}</td>
+                            <td class="py-2 text-right tabular-nums font-semibold" :class="s.saldo < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'">{{ euro(s.saldo) }}</td>
                         </tr>
                     </tbody>
                     <tfoot>
-                        <tr class="border-t-2 border-slate-300">
-                            <td class="py-2 font-bold text-slate-800">Totale</td>
-                            <td class="py-2 text-right tabular-nums text-slate-500">{{ riepilogo.saldi_per_cassa.reduce((t, s) => t + s.movimenti, 0) }}</td>
-                            <td class="py-2 text-right tabular-nums font-bold text-emerald-700">{{ euro(riepilogo.totale_entrate) }}</td>
-                            <td class="py-2 text-right tabular-nums font-bold text-rose-700">{{ euro(riepilogo.totale_uscite) }}</td>
-                            <td class="py-2 text-right tabular-nums font-bold" :class="riepilogo.saldo_finale < 0 ? 'text-rose-600' : 'text-slate-800'">{{ euro(riepilogo.saldo_finale) }}</td>
+                        <tr class="border-t-2 border-slate-300 dark:border-slate-700">
+                            <td class="py-2 font-bold text-slate-800 dark:text-slate-200">Totale</td>
+                            <td class="py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ euro(riepilogo.riporto.totale) }}</td>
+                            <td class="py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ riepilogo.saldi_per_cassa.reduce((t, s) => t + s.movimenti, 0) }}</td>
+                            <td class="py-2 text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-400">{{ euro(riepilogo.totale_entrate) }}</td>
+                            <td class="py-2 text-right tabular-nums font-bold text-rose-700 dark:text-rose-400">{{ euro(riepilogo.totale_uscite) }}</td>
+                            <td class="py-2 text-right tabular-nums font-bold" :class="riepilogo.saldo_finale < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-200'">{{ euro(riepilogo.saldo_finale) }}</td>
                         </tr>
                     </tfoot>
                 </table>
 
-                <p class="text-[12px] text-slate-500 leading-relaxed">
+                <p class="text-[12px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     Compaiono solo le casse di liquidità reale — banca e contanti. Un fondo di riserva
                     non è una cassa a sé: quel denaro sta sullo stesso conto corrente, e per questo
                     non ha una riga qui né movimenti propri nel registro. Le entrate e le uscite della
                     cassa banca sono la riga con cui confrontare l'estratto conto; un prelievo verso i
-                    contanti compare in entrambe le casse, ed è corretto — quel denaro si è mosso
+                    contanti compare in entrambe le casse, ed è giusto così: quel denaro si è mosso
                     davvero, due volte.
                 </p>
             </DialogContent>

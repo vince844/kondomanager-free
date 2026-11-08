@@ -331,7 +331,8 @@ class DashboardController extends Controller
             }
 
             // 1. Calcolo Fatturato Reale Condiviso
-            $totFatturatoCondiviso = array_sum($fatturatoMap);
+            // Senza gli incassi da terzi: l'incasso dell'antenna non è una spesa da sottrarre alle uscite; tutto il resto conta come prima.
+            $totFatturatoCondiviso = array_sum($spesaPerVoce->perTipo($fatturatoMap, $esercizio)['spese']);
 
             // 2. Il delta è purissimo (Totale Fabbisogno - Rate Pianificate)
             $deltaReale = $totPrev - ($totPian + $totVirtualeGlobale);

@@ -69,7 +69,7 @@ export function testoCredito(c: { nome: string; credito: number }): string {
 const participio = (tipo: string, maschile: string): string => (FEMMINILE[tipo] ? `${maschile.slice(0, -1)}a` : maschile);
 
 /** «05/11/2026 10:30» → «05/11/2026 alle 10:30». */
-function quando(valore: string | null | undefined): string {
+export function quando(valore: string | null | undefined): string {
     if (!valore) {
         return '';
     }

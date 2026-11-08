@@ -1503,7 +1503,7 @@ class FatturaPassivaService
                 'nome' => 'Sopravvenienze passive',
                 'tipo' => ContoContabileTipo::COSTO->value,
                 'categoria' => ContoContabileCategoria::COSTI->value,
-                'descrizione' => 'Costi imprevisti o relativi a esercizi precedenti. Art. 1130-bis c.c.',
+                'descrizione' => 'Costi imprevisti o relativi a esercizi precedenti.',
                 'di_sistema' => true,
                 'attivo' => true,
                 'livello' => 1,

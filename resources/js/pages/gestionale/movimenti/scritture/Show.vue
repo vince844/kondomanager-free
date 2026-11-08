@@ -18,6 +18,7 @@ import {
 } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import { eStornoDelPadre, figlieCheStornano } from '@/lib/gestionale/scritture/storniScrittura';
+import { giornoItaliano } from '@/lib/giorno';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 const props = defineProps<{
@@ -78,6 +79,8 @@ const props = defineProps<{
             stato_approvazione?: string;
         }>;
     };
+    /** Per un incasso da terzi: da quale giorno varrebbe lo storno per ognuna delle due nature (`aaaa-mm-gg`). */
+    storno_vale_dal?: { errore_registrazione: string; versamento_tornato: string } | null;
 }>();
 
 const { euro } = useCurrencyFormatter();
@@ -198,10 +201,11 @@ const figlieDiStorno = computed(() => figlieCheStornano(props.scrittura));
 const altreFiglie = computed(() => (props.scrittura.figlie ?? []).filter((f) => !figlieDiStorno.value.includes(f)));
 const eStorno = computed(() => eStornoDelPadre(props.scrittura));
 
-// ── Storno regolazione immediata ─────────────────────────────────────────────
-// Stornabile solo una regolazione immediata non ancora stornata: se una sua figlia la storna, lo storno è stato fatto.
+// ── Storno regolazione immediata e incasso da terzi ──────────────────────────
+// Stornabili una regolazione immediata e un incasso da terzi non ancora stornati: se una figlia li storna, lo storno è stato fatto.
+const eIncassoDaTerzi = computed(() => props.scrittura.tipo_movimento === 'incasso_diverso');
 const puoStornare = computed(() =>
-    props.scrittura.tipo_movimento === 'regolazione_immediata'
+    (props.scrittura.tipo_movimento === 'regolazione_immediata' || eIncassoDaTerzi.value)
     && props.scrittura.stato !== 'annullata'
     && figlieDiStorno.value.length === 0
 );
@@ -209,21 +213,28 @@ const puoStornare = computed(() =>
 const mostraModaleStorno = ref(false);
 const motivoStorno = ref('');
 const stornoInCorso = ref(false);
+// La natura dello storno di un incasso da terzi la dice chi storna: decide da quale giorno vale.
+const naturaStorno = ref<'errore_registrazione' | 'versamento_tornato' | null>(null);
+const erroreStorno = ref<string | null>(null);
 
 const motivoValido = computed(() => motivoStorno.value.trim().length >= 10);
+const stornoPronto = computed(() => motivoValido.value && (!eIncassoDaTerzi.value || naturaStorno.value !== null));
 
 const confermaStorno = () => {
-    if (!motivoValido.value || stornoInCorso.value) return;
+    if (!stornoPronto.value || stornoInCorso.value) return;
     stornoInCorso.value = true;
+    erroreStorno.value = null;
 
-    router.post(
-        route(generateRoute('gestionale.regolazioni-immediate.storno'), {
-            condominio: props.condominio.id,
-            scrittura: props.scrittura.id,
-        }),
-        { motivo: motivoStorno.value },
-        { onFinish: () => { stornoInCorso.value = false; mostraModaleStorno.value = false; } }
-    );
+    const url = eIncassoDaTerzi.value
+        ? route(generateRoute('gestionale.incassi-da-terzi.storno'), { condominio: props.condominio.id, scrittura: props.scrittura.id })
+        : route(generateRoute('gestionale.regolazioni-immediate.storno'), { condominio: props.condominio.id, scrittura: props.scrittura.id });
+    const corpo = eIncassoDaTerzi.value ? { natura_storno: naturaStorno.value, motivo: motivoStorno.value } : { motivo: motivoStorno.value };
+
+    router.post(url, corpo, {
+        onError: (errori: Record<string, string>) => { erroreStorno.value = errori.natura_storno ?? errori.motivo ?? Object.values(errori)[0] ?? null; },
+        onSuccess: () => { mostraModaleStorno.value = false; },
+        onFinish: () => { stornoInCorso.value = false; },
+    });
 };
 </script>
 
@@ -788,10 +799,28 @@ const confermaStorno = () => {
                             Il libro giornale non si riscrive: la scrittura
                             <span class="font-mono">{{ scrittura.numero_protocollo }}</span>
                             resta e viene neutralizzata da una scrittura inversa.
-                            L'effetto sul capitolo di spesa e sulla cassa torna a zero.
+                            {{ eIncassoDaTerzi ? 'L\'effetto sulla voce di entrata e sulla cassa torna a zero.' : 'L\'effetto sul capitolo di spesa e sulla cassa torna a zero.' }}
                         </p>
                     </div>
                 </div>
+
+                <fieldset v-if="eIncassoDaTerzi" class="mb-4 space-y-2" data-blocco="natura-storno">
+                    <legend class="mb-1.5 text-sm font-medium">Perché lo storni? *</legend>
+                    <label class="flex items-start gap-2 rounded-md border border-slate-200 p-2 text-sm">
+                        <input v-model="naturaStorno" type="radio" name="natura_storno" value="errore_registrazione" class="mt-0.5" />
+                        <span>
+                            Registrazione sbagliata: il denaro non è mai entrato, o va registrato di nuovo in un altro modo.
+                            <span v-if="props.storno_vale_dal" class="block text-xs text-slate-500">Lo storno vale dal {{ giornoItaliano(props.storno_vale_dal.errore_registrazione) }}.</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2 rounded-md border border-slate-200 p-2 text-sm">
+                        <input v-model="naturaStorno" type="radio" name="natura_storno" value="versamento_tornato" class="mt-0.5" />
+                        <span>
+                            L'incasso c'era ed è tornato indietro (bonifico richiamato, accredito respinto).
+                            <span v-if="props.storno_vale_dal" class="block text-xs text-slate-500">Lo storno vale dal {{ giornoItaliano(props.storno_vale_dal.versamento_tornato) }}.</span>
+                        </span>
+                    </label>
+                </fieldset>
 
                 <label for="motivo-storno" class="mb-1.5 block text-sm font-medium">
                     Motivo dello storno *
@@ -808,10 +837,12 @@ const confermaStorno = () => {
                     Almeno 10 caratteri. Resta nella causale della scrittura di storno, visibile nel giornale.
                 </p>
 
+                <p v-if="erroreStorno" class="mt-2 text-sm font-medium text-rose-600">{{ erroreStorno }}</p>
+
                 <div class="mt-5 flex items-center justify-end gap-3">
                     <Button variant="ghost" @click="mostraModaleStorno = false">Annulla</Button>
                     <Button
-                        :disabled="!motivoValido || stornoInCorso"
+                        :disabled="!stornoPronto || stornoInCorso"
                         class="bg-amber-600 hover:bg-amber-700"
                         @click="confermaStorno"
                     >

@@ -72,7 +72,7 @@ class RicevuteIncassiController extends Controller
         $righe = $this->elenco->righe($condominio, $filtri);
 
         $perPagina = $this->righePerPagina($request);
-        $pagina = LengthAwarePaginator::resolveCurrentPage();
+        $pagina = self::paginaDentro(LengthAwarePaginator::resolveCurrentPage(), $righe->count(), $perPagina);
         $paginate = new LengthAwarePaginator($righe->forPage($pagina, $perPagina)->values(), $righe->count(), $perPagina, $pagina, [
             'path'  => $request->url(),
             'query' => $request->query(),

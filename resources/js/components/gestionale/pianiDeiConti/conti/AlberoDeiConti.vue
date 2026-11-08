@@ -5,6 +5,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { Conto } from '@/types/gestionale/conti'
+import { consuntivoDellaVoce } from '@/lib/gestionale/pianiConti/consuntivoDellaVoce'
 
 interface Props {
   conti: Conto[]
@@ -111,28 +112,22 @@ const getBarColor = (conto: Conto) => {
 // scoperta pur avendo già pagato. Il confronto è col preventivo vero
 // (budget_originale_raw), non con `importo_raw`: quest'ultimo viene gonfiato allo
 // speso dal controller quando lo sforo è già avvenuto, e darebbe sempre "resta 0".
+// Una voce senza preventivo non "sfora": non ha un budget da superare (le sopravvenienze nascono fuori preventivo, e marcarle in rosso
+// toglierebbe forza al rosso dove indica uno sforo vero). Una voce di entrata ha l'incassato, non uno speso: non sfora mai, e il suo numero
+// non è mai uno speso negativo. La regola sta in `consuntivoDellaVoce`, la stessa della scheda della voce.
+// Le percentuali hanno il separatore col punto, come il badge «Copertura X%» del pannello di dettaglio.
 const spesoInfo = (conto: Conto) => {
-  const speso = conto.speso_raw ?? 0
-  const preventivo = conto.budget_originale_raw ?? conto.importo_raw ?? 0
-  const differenza = preventivo - speso
-  // Una voce senza preventivo non "sfora": non ha un budget da superare. Sono le
-  // sopravvenienze e gli imprevisti, che nascono fuori preventivo e stanno già in una
-  // sezione dedicata che lo dichiara. Marcarle tutte in rosso sarebbe rumore, e
-  // toglierebbe forza al rosso dove indica uno sforo vero.
-  const isSforo = differenza < 0 && preventivo > 0
+  const c = consuntivoDellaVoce(conto)
 
   return {
-    speso,
-    preventivo,
-    hasSpesa: speso !== 0,
-    isSforo,
-    eccedenza: Math.abs(differenza),
-    // Separatore decimale col punto, coerente con il badge "Copertura X%" del
-    // pannello di dettaglio: le percentuali sono valori numerici, non importi
-    // monetari, e nel prodotto seguono una convenzione loro.
-    percentuale: isSforo
-      ? Math.round((Math.abs(differenza) / preventivo) * 1000) / 10
-      : null,
+    speso: c.importo,
+    preventivo: c.preventivo,
+    hasSpesa: c.haMovimenti,
+    isSforo: c.isSforo,
+    entrata: c.entrata,
+    etichetta: c.etichetta,
+    eccedenza: Math.abs(c.differenza),
+    percentuale: c.percentuale,
   }
 }
 
@@ -258,6 +253,9 @@ const getTextColor = (conto: Conto) => {
                     <TooltipContent class="text-center">
                       <div v-if="spesoInfo(conto).isSforo" class="font-semibold">
                         Sfora di {{ euro(spesoInfo(conto).eccedenza) }}<span v-if="spesoInfo(conto).percentuale !== null"> ({{ spesoInfo(conto).percentuale }}%)</span>
+                      </div>
+                      <div v-if="spesoInfo(conto).entrata" class="font-semibold" data-testo="incassato">
+                        Incassato {{ euro(spesoInfo(conto).speso) }}
                       </div>
                       <div class="text-background/75">Clicca per i movimenti</div>
                     </TooltipContent>

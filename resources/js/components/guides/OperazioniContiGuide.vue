@@ -83,7 +83,7 @@ defineEmits(['update:open']);
               <div class="p-4 bg-white dark:bg-slate-900 rounded-lg border shadow-sm">
                 <h4 class="font-bold text-slate-800 dark:text-slate-200 mb-1">Consuntivo — «quanto ho speso davvero»</h4>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Comprende le <strong>fatture registrate</strong> — anche quelle non ancora pagate, perché il costo è di competenza dal momento della registrazione — e le <strong>regolazioni immediate</strong>. Le note di credito scomputano, gli storni azzerano. Restano fuori le fatture contestate e le spese addebitate a singole unità.
+                  Comprende le <strong>fatture registrate</strong> — anche quelle non ancora pagate, perché il costo è di competenza dal momento della registrazione — e le <strong>regolazioni immediate</strong>. Le note di credito scomputano, gli storni azzerano. Ci sono anche le commissioni dei pagamenti, sulla voce scelta. Restano fuori le fatture contestate, le spese addebitate a singole unità e le commissioni registrate senza voce. Su una voce di entrata la colonna dice l'incassato: l'affitto dell'antenna, gli interessi, registrati con «Altro incasso», nella pagina degli incassi; se sulla voce ci sono spese registrate prima, la colonna dice il consuntivo, come prima.
                   Un trattino significa che su quella voce non è ancora stato speso nulla.
                 </p>
               </div>

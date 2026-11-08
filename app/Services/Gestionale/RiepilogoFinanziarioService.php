@@ -10,20 +10,21 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Il riepilogo finanziario dell'esercizio — D19 di docs/registri_contabili.md — la sezione 3b della
+ * Le entrate e le uscite per cassa dell'esercizio — D19 di docs/registri_contabili.md — la sezione 3b della
  * pagina Stato patrimoniale e il § 4 del fac-simile: per ciascuna cassa, disponibilità iniziale,
- * entrate, uscite, disponibilità finale. Art. 1130-bis c.c.: «la disponibilità iniziale di ciascuna
- * risorsa e di ciascun fondo, il totale delle entrate e delle uscite, la disponibilità finale».
+ * entrate, uscite, disponibilità finale. È un prospetto per cassa: il «riepilogo finanziario» dell'art.
+ * 1130-bis c.c. è un'altra cosa, per competenza ({@see RiepilogoPerCompetenza}).
  *
- * DUE PERIMETRI, DICHIARATI. L'INIZIALE è uno stock per data (D16): tutto ciò che è stato registrato
- * con data precedente all'inizio dell'esercizio, su tutti gli esercizi, più il `saldo_iniziale` in
- * colonna se l'apertura non è ancora a giornale. I FLUSSI (entrate, uscite) sono le righe delle
- * scritture DELL'ESERCIZIO — per `esercizio_id`, non per data — perché è il perimetro del Libro
- * Giornale e del consuntivo per voce: una fattura è costo dell'esercizio a cui è stata registrata,
- * ovunque cada la sua data. La revisione della beta.25 ha trovato che il taglio per data faceva
- * dire alla stessa fattura «costo 2025» qui e «costo 2026» nel giornale. Il finale è iniziale +
- * entrate − uscite; se non coincide con lo stock alla data di fine è perché ci sono movimenti datati
- * fuori dal periodo del loro esercizio — ed è R2 a misurarlo, non questa classe a nasconderlo.
+ * UN PERIMETRO, PER ESERCIZIO. L'INIZIALE è il riporto ({@see RiportoDiCassa}, la forma per cassa): le
+ * righe di cassa delle scritture degli esercizi che cominciano prima (o l'apertura di questo esercizio
+ * su quella cassa), più il `saldo_iniziale` in colonna se l'apertura non è ancora a giornale. È lo
+ * stesso fatto del riporto del registro di contabilità, con la stessa regola. I FLUSSI (entrate,
+ * uscite) sono le righe delle scritture DELL'ESERCIZIO — per `esercizio_id`, non per data — perché è il
+ * perimetro del Libro Giornale e del consuntivo per voce. Fino alla 1.12 l'iniziale era per data, e un
+ * incasso del 28/12 scritto nell'esercizio dopo contava due volte: nell'iniziale (la data) e nelle
+ * entrate (l'esercizio). Il finale è iniziale + entrate − uscite; se non coincide con lo stock alla
+ * data di fine è perché ci sono movimenti datati fuori dal periodo del loro esercizio — ed è R2 a
+ * misurarlo, non questa classe a nasconderlo.
  *
  * ⚠️ **L'apertura vale come iniziale, mai come flusso.** La scrittura di apertura di una cassa (tipo
  * `apertura`) è la disponibilità con cui si comincia: entra nell'iniziale a qualunque data sia
@@ -119,14 +120,8 @@ class RiepilogoFinanziarioService
             $stornate = ['coppie' => $padriConCassa->count(), 'importo' => (int) $padriConCassa->sum('importo')];
         }
 
-        // 1. Iniziale per conto: apertura (a qualunque data) + righe datate prima dell'inizio.
-        $iniziali = DB::table('righe_scritture as rs')
-            ->join('scritture_contabili as sc', fn ($j) => $j->on('rs.scrittura_id', '=', 'sc.id')->whereNull('sc.deleted_at'))
-            ->whereIn('rs.conto_contabile_id', $contiCassa)
-            ->where(fn ($q) => $q->where('sc.tipo_movimento', 'apertura')->orWhere('sc.data_competenza', '<', $dal))
-            ->groupBy('rs.conto_contabile_id')
-            ->select('rs.conto_contabile_id', DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END), 0) as netto"))
-            ->pluck('netto', 'conto_contabile_id');
+        // 1. Iniziale per conto: il riporto, la stessa regola del registro di contabilità (per esercizio).
+        $iniziali = app(RiportoDiCassa::class)->perConto($esercizio);
 
         // 2. Flussi per conto: le scritture dell'esercizio, senza le aperture.
         $flussi = DB::table('righe_scritture as rs')

@@ -79,6 +79,8 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
             'importo_ritenuta_cents' => 'nullable|integer|min:0',
             'importo_netto_cents' => 'required|integer|min:1',
             'importo_commissioni_cents' => 'nullable|integer|min:0',
+            // La voce della commissione: obbligatoria se la commissione è più di zero, salvo per un pagamento scritto prima senza voce la cui commissione non cambia.
+            'voce_commissione_id' => 'nullable|integer',
             'causale_bonifico' => 'nullable|string|max:500',
             'riferimento_bancario' => 'nullable|string|max:100',
             'iban_beneficiario' => 'nullable|string|max:50',
@@ -111,6 +113,27 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
             'importo_netto_cents.required' => "L'importo netto è obbligatorio.",
             'tipo_detrazione.required_if' => 'Per il Bonifico Parlante è necessario specificare il tipo di detrazione.',
         ];
+    }
+
+    /**
+     * Con una commissione più di zero la voce si sceglie: il rifiuto sta sul campo della voce, con la frase del servizio. Non per un pagamento di un
+     * esercizio chiuso, che non si modifica comunque: lì il servizio risponde «usa lo storno», e chiedere prima la voce direbbe una strada che non c'è.
+     * Non per un pagamento scritto prima senza voce la cui commissione non cambia: resta senza voce, com'era.
+     */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $pagamento = $this->route('pagamento');
+            $esercizioChiuso = $pagamento instanceof \App\Models\Gestionale\PagamentoFornitore
+                && \Illuminate\Support\Facades\DB::table('esercizi')->where('id', $pagamento->scrittura?->esercizio_id)->value('stato') === 'chiuso';
+            $commissioni = (int) $this->input('importo_commissioni_cents', 0);
+            $restaSenzaVoce = $pagamento instanceof \App\Models\Gestionale\PagamentoFornitore
+                && app(\App\Services\Gestionale\VoceDellaCommissione::class)->puoRestareSenzaVoce($pagamento, $commissioni);
+            if (! $esercizioChiuso && ! $restaSenzaVoce && $commissioni > 0 && ! $validator->errors()->has('voce_commissione_id')
+                && in_array($this->input('voce_commissione_id'), [null, ''], true)) {
+                $validator->errors()->add('voce_commissione_id', \App\Services\Gestionale\VoceDellaCommissione::SENZA_VOCE);
+            }
+        });
     }
 
     /**

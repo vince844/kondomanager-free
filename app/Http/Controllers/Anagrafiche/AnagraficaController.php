@@ -398,6 +398,20 @@ class AnagraficaController extends Controller
             );
         }
 
+        // Chi ha versato un incasso da terzi (l'affitto dell'antenna, gli interessi) è scritto sulle righe dell'incasso e del suo storno, da cui il
+        // registro di contabilità legge la controparte; di solito non è del condominio, e la guardia qui sopra non lo ferma. La chiave esterna è
+        // `nullOnDelete`: cancellandolo, il registro perderebbe il suo nome in silenzio.
+        if (\App\Models\Gestionale\RigaScrittura::where('anagrafica_id', $anagrafica->id)
+            ->whereHas('scrittura', fn ($q) => $q->whereIn('tipo_movimento', [
+                \App\Enums\TipoMovimentoContabile::INCASSO_DIVERSO->value,
+                \App\Enums\TipoMovimentoContabile::STORNO_INCASSO_DIVERSO->value,
+            ]))
+            ->exists()) {
+            return back()->with(
+                $this->flashError('Questa anagrafica compare come «chi ha versato» in un incasso da terzi: non si può eliminare, perché il registro di contabilità la nomina.')
+            );
+        }
+
         try {
 
             $anagrafica->delete();

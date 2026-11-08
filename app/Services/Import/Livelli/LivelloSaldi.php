@@ -84,7 +84,7 @@ final class LivelloSaldi implements LivelloImport
             );
         }
 
-        // La gestione è il «cassetto» su cui il saldo si appoggia (art. 1130-bis): senza,
+        // La gestione è il «cassetto» su cui il saldo si appoggia: senza,
         // il wallet non saprebbe a quale gestione riferire il pregresso. La crea il livello
         // «Esercizi» riusando il servizio dell'applicazione — ma si verifica **a database**,
         // non si dà per fatto.

@@ -81,6 +81,6 @@ test('stampa risponde con un PDF valido e senza firma', function () {
     expect($catturati['senza_firma'])->toBeTrue()
         ->and(view('pdf.gestionale.stato_patrimoniale', $catturati)->render())
             ->toContain('Situazione al')
-            ->toContain('Controlli di quadratura')
+            ->toContain('<span class="sec">§ 7</span>I controlli</h2>')
             ->not->toContain('pareggio');
 });

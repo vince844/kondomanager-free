@@ -15,6 +15,8 @@ use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\FetchFattureSimiliController;
 use App\Http\Controllers\Gestionale\Movimenti\ImportaFatturaXmlController;
 use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
+use App\Http\Controllers\Gestionale\Movimenti\CommissioniSenzaVoceController;
+use App\Http\Controllers\Gestionale\Movimenti\IncassoDaTerziController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
@@ -22,6 +24,7 @@ use App\Http\Controllers\Gestionale\Movimenti\MastrinoController;
 use App\Http\Controllers\Gestionale\Movimenti\RegistroContabilitaController;
 use App\Http\Controllers\Gestionale\Movimenti\RiallineaCreditiController;
 use App\Http\Controllers\Gestionale\Movimenti\StatoPatrimonialeController;
+use App\Http\Controllers\Gestionale\Movimenti\RiepilogoPerCompetenzaController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
@@ -388,7 +391,7 @@ Route::prefix('/gestionale/{condominio}')
         ->name('esercizi.scritture.print');
 
     // Registro di contabilità (art. 1130, comma 1, n. 7 c.c.) — punto 1 della sequenza di
-    // docs/registri_contabili.md. È la voce "Prima nota" del menu Movimenti.
+    // docs/registri_contabili.md. È la voce «Registro di contabilità» del menu Movimenti.
     Route::get('esercizi/{esercizio}/registro-contabilita', [RegistroContabilitaController::class, 'index'])
         ->name('esercizi.registro-contabilita.index');
 
@@ -401,6 +404,32 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('esercizi/{esercizio}/stato-patrimoniale/print', [StatoPatrimonialeController::class, 'stampa'])
         ->name('esercizi.stato-patrimoniale.print');
+
+    // Il rendiconto: la sintesi (l'esito dei controlli, i riquadri, il prospetto della gestione), la cassa e i controlli, una scheda per richiesta;
+    // il fascicolo per l'assemblea in un PDF solo. Dietro il pannello, mai fra le rotte del portale.
+    Route::get('esercizi/{esercizio}/rendiconto', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoController::class, 'sintesi'])
+        ->name('esercizi.rendiconto.sintesi');
+    Route::get('esercizi/{esercizio}/rendiconto/cassa', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoController::class, 'cassa'])
+        ->name('esercizi.rendiconto.cassa');
+    Route::get('esercizi/{esercizio}/rendiconto/controlli', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoController::class, 'controlli'])
+        ->name('esercizi.rendiconto.controlli');
+    Route::get('esercizi/{esercizio}/rendiconto/fascicolo', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoController::class, 'fascicolo'])
+        ->name('esercizi.rendiconto.fascicolo');
+
+    // Il rendiconto: il riepilogo finanziario per competenza, una scheda con la sua richiesta, e la sua stampa.
+    Route::get('esercizi/{esercizio}/rendiconto/riepilogo-finanziario', [RiepilogoPerCompetenzaController::class, 'index'])
+        ->name('esercizi.rendiconto.riepilogo');
+    Route::get('esercizi/{esercizio}/rendiconto/riepilogo-finanziario/stampa', [RiepilogoPerCompetenzaController::class, 'stampa'])
+        ->name('esercizi.rendiconto.riepilogo.stampa');
+
+    // Il rendiconto: la scheda «Condòmini», le posizioni (§ 9) e i crediti per anzianità (§ 10), con le loro stampe. Sono i dati di tutti i
+    // condòmini: qui, dietro il pannello, mai fra le rotte del portale.
+    Route::get('esercizi/{esercizio}/rendiconto/condomini', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoCondominiController::class, 'index'])
+        ->name('esercizi.rendiconto.condomini');
+    Route::get('esercizi/{esercizio}/rendiconto/condomini/posizioni/stampa', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoCondominiController::class, 'stampaPosizioni'])
+        ->name('esercizi.rendiconto.condomini.posizioni.stampa');
+    Route::get('esercizi/{esercizio}/rendiconto/condomini/crediti/stampa', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoCondominiController::class, 'stampaCrediti'])
+        ->name('esercizi.rendiconto.condomini.crediti.stampa');
 
     // Il mastrino di un conto contabile — punto 2 di docs/registri_contabili.md (D21), beta.26.
     // Pagina figlia dello Stato patrimoniale, non una voce della barra. Il conto si risolve
@@ -528,6 +557,23 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/regolazioni-immediate/{scrittura}/storno', [RegolazioneImmediataController::class, 'storno'])
         ->name('regolazioni-immediate.storno');
+
+    // --- INCASSO DA TERZI: l'affitto dell'antenna, gli interessi, un rimborso (cassa → voce di entrata, senza rate) ---
+    Route::get('/incassi-da-terzi/create', [IncassoDaTerziController::class, 'create'])
+        ->name('incassi-da-terzi.create');
+
+    Route::post('/incassi-da-terzi', [IncassoDaTerziController::class, 'store'])
+        ->name('incassi-da-terzi.store');
+
+    Route::post('/incassi-da-terzi/{scrittura}/storno', [IncassoDaTerziController::class, 'storno'])
+        ->name('incassi-da-terzi.storno');
+
+    // Le commissioni dei pagamenti scritte senza voce, per assegnarla a mano negli esercizi aperti: un elenco per esercizio.
+    Route::get('esercizi/{esercizio}/commissioni-senza-voce', [CommissioniSenzaVoceController::class, 'index'])
+        ->name('esercizi.commissioni-senza-voce.index');
+
+    Route::post('esercizi/{esercizio}/commissioni-senza-voce/assegna', [CommissioniSenzaVoceController::class, 'assegna'])
+        ->name('esercizi.commissioni-senza-voce.assegna');
 
     // --- GIROCONTI: spostamenti di liquidità fra casse (fondi = partizioni del c/c) ---
     Route::get('/giroconti', [GirocontoController::class, 'index'])

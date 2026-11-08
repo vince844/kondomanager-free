@@ -10,7 +10,7 @@
  *
  * Il criterio è quello del registro di contabilità (`RegistroContabilitaService::stornataSql`): una figlia annulla il padre se è
  * uno degli storni di scrittura (`TipoMovimentoContabile::isStornoDiScrittura()`: giroconto, regolazione immediata, F24,
- * pagamento al fornitore e fattura lasciano l'originale «registrata»), oppure se è la rettifica viva di un padre «annullata»
+ * pagamento al fornitore, fattura e incasso da terzi lasciano l'originale «registrata»), oppure se è la rettifica viva di un padre «annullata»
  * (lo storno di un incasso o di un rimborso sigilla l'originale e tutta la sua famiglia; la rettifica del riallineamento, sigillata
  * con la compensazione, non è lei lo storno). Il server passa tipo e stato di padre e figlie (`ScritturaContabileController::show`).
  */
@@ -22,6 +22,7 @@ export const STORNI_DI_SCRITTURA: readonly string[] = [
     'storno_regolazione_immediata',
     'storno_pagamento_f24',
     'storno_giroconto',
+    'storno_incasso_diverso',
 ];
 
 export interface ScritturaCollegata {

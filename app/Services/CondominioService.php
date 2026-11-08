@@ -353,7 +353,7 @@ class CondominioService
                 'parent_id' => null, // Nessun parent patrimoniale, è un conto economico
                 'codice' => '4001',
                 'nome' => 'Sopravvenienze Passive',
-                'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati (Art. 1130-bis c.c.)',
+                'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati',
                 'tipo' => ContoContabileTipo::COSTO->value,
                 'categoria' => ContoContabileCategoria::COSTI->value,
                 'di_sistema' => true,

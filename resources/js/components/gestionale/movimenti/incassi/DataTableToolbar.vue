@@ -122,6 +122,18 @@ const resetFilter = () => {
         </Link>
     </Button>
 
+    <!-- L'incasso da terzi: l'affitto dell'antenna, gli interessi, un rimborso. Dopo la registrazione si torna qui. -->
+    <Button as-child variant="outline">
+        <Link
+          :href="route(generateRoute('gestionale.incassi-da-terzi.create'), { condominio: condominioId, da: 'incassi' })"
+          class="inline-flex items-center gap-2 px-3 py-2 h-auto text-xs font-medium"
+          data-azione="altro-incasso"
+        >
+          <Plus class="w-3.5 h-3.5 text-emerald-600" />
+          Altro incasso
+        </Link>
+    </Button>
+
     <Button as-child>
         <Link
           :href="route(generateRoute('gestionale.movimenti-rate.create'), { condominio: condominioId })"

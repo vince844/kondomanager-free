@@ -91,8 +91,8 @@ describe('eStornoDelPadre — il riquadro «Movimento di storno» della figlia',
 });
 
 describe('STORNI_DI_SCRITTURA — lo stesso elenco di TipoMovimentoContabile::isStornoDiScrittura()', () => {
-    it('cinque tipi, nessuno di quelli che non annullano', () => {
-        expect([...STORNI_DI_SCRITTURA].sort()).toEqual(['storno_fattura', 'storno_giroconto', 'storno_pagamento_f24', 'storno_pagamento_fornitore', 'storno_regolazione_immediata']);
+    it('sei tipi, nessuno di quelli che non annullano', () => {
+        expect([...STORNI_DI_SCRITTURA].sort()).toEqual(['storno_fattura', 'storno_giroconto', 'storno_incasso_diverso', 'storno_pagamento_f24', 'storno_pagamento_fornitore', 'storno_regolazione_immediata']);
         expect(STORNI_DI_SCRITTURA).not.toContain('storno_credito');
         expect(STORNI_DI_SCRITTURA).not.toContain('rettifica');
     });

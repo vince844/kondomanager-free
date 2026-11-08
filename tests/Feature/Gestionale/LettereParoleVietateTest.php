@@ -18,6 +18,7 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 require_once __DIR__.'/LettereScenario.php';
+require_once __DIR__.'/RendicontoViaRomaScenario.php';
 
 uses(RefreshDatabase::class);
 
@@ -174,6 +175,76 @@ it('i testi scritti dentro il codice delle rate scadute e delle lettere, non sol
             foreach (lttVietateIn($testo) as $p) {
                 $trovate[] = "{$f}: {$p} in «" . mb_substr(trim($testo), 0, 60) . '»';
             }
+        }
+    }
+
+    expect($trovate)->toBe([]);
+});
+
+/**
+ * Le parole che il programma non scrive mai del rendiconto o dei controlli: un elenco solo. Il rendiconto lo approva l'assemblea, e i controlli dicono
+ * che i numeri tornano fra loro, non che il rendiconto va bene.
+ */
+const LTT_PAROLE_DEL_RENDICONTO = ['pronto', 'conforme', 'corretto', 'approvabile', 'in regola', 'tutto in ordine'];
+
+/** Le parole del rendiconto che un testo contiene, intere. */
+function lttRendicontoVietateIn(string $testo): array
+{
+    $pulito = mb_strtolower(html_entity_decode(strip_tags($testo)));
+
+    return array_values(array_filter(LTT_PAROLE_DEL_RENDICONTO, fn ($p) => preg_match('/(?<![\\p{L}])'.preg_quote($p, '/').'(?![\\p{L}])/u', $pulito) === 1));
+}
+
+it('i testi del rendiconto non dicono che il rendiconto va bene: le frasi del server, i controlli con le loro note, le stampe e il frontespizio', function () {
+    \Illuminate\Support\Facades\Event::fake([\App\Events\Gestionale\FatturaRegistrata::class]);
+    $s = vrmScenario($this);
+    $this->travelTo(\Illuminate\Support\Carbon::parse('2027-01-15 10:00', 'Europe/Rome'));
+    $testi = [];
+    foreach ([\App\Services\Gestionale\ControlliDelRendiconto::class, \App\Services\Gestionale\AnnoACavallo::class, \App\Services\Gestionale\SintesiDelRendiconto::class] as $classe) {
+        $testi += lttCostantiDi($classe);
+    }
+    $c = app(\App\Services\Gestionale\ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e']);
+    $testi['controlli'] = json_encode([$c['controlli'], $c['esito'], $c['anno_a_cavallo']], JSON_UNESCAPED_UNICODE);
+    $sintesi = app(\App\Services\Gestionale\SintesiDelRendiconto::class)->perEsercizio($s['c'], $s['e']);
+    $testi['sintesi'] = json_encode($sintesi, JSON_UNESCAPED_UNICODE);
+    $posizioni = app(\App\Services\Gestionale\PosizioniDeiCondomini::class);
+    $testi['stampa del riepilogo'] = View::make('pdf.gestionale.rendiconto_riepilogo', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'riepilogo' => $c['riepilogo'], 'dettaglio' => true])->render();
+    $testi['stampa della situazione'] = View::make('pdf.gestionale.stato_patrimoniale', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'pagina' => $c['pagina'], 'controlli' => $c['controlli'],
+        'esito' => $c['esito'], 'anno_a_cavallo' => $c['anno_a_cavallo']])->render();
+    $testi['frontespizio'] = View::make('pdf.gestionale.rendiconto_frontespizio', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'sintesi' => $sintesi, 'studio' => app(\App\Settings\PrintSettings::class),
+        'indice' => [['parte' => 'condomini', 'titolo' => 'Crediti per anzianità', 'pagina' => null, 'pagine' => 0, 'nota' => 'vuota: nessuna rata non pagata alla data']]])->render();
+    $testi['posizioni'] = View::make('pdf.gestionale.rendiconto_posizioni', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'posizioni' => $posizioni->posizioni($s['c'], $s['e']), 'titolo' => 'x', 'titolo_stampa' => 'x'])->render();
+    $testi['crediti'] = View::make('pdf.gestionale.rendiconto_crediti', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'crediti' => $posizioni->crediti($s['c'], $s['e']), 'titolo' => 'x', 'titolo_stampa' => 'x'])->render();
+
+    $trovate = [];
+    foreach ($testi as $nome => $testo) {
+        foreach (lttRendicontoVietateIn($testo) as $p) {
+            $trovate[] = "{$nome}: {$p}";
+        }
+    }
+
+    expect($trovate)->toBe([])->and(lttRendicontoVietateIn('Il rendiconto è pronto e conforme'))->toBe(['pronto', 'conforme']);
+});
+
+it('i file del rendiconto non hanno le sei parole, nemmeno nei commenti', function () {
+    $file = [
+        'app/Services/Gestionale/AnnoACavallo.php', 'app/Services/Gestionale/ControlliDelRendiconto.php', 'app/Services/Gestionale/SintesiDelRendiconto.php',
+        'app/Services/Gestionale/FascicoloDelRendiconto.php', 'app/Services/Gestionale/RiepilogoPerCompetenza.php', 'app/Services/Gestionale/PosizioniDeiCondomini.php',
+        'app/Services/Gestionale/StatoPatrimonialePaginaService.php', 'app/Services/Gestionale/PagatoAllaData.php', 'app/Services/Gestionale/RiportoDiCassa.php',
+        'app/Http/Controllers/Gestionale/Movimenti/RendicontoController.php', 'app/Http/Controllers/Gestionale/Movimenti/RiepilogoPerCompetenzaController.php',
+        'app/Http/Controllers/Gestionale/Movimenti/RendicontoCondominiController.php', 'app/Http/Controllers/Gestionale/Movimenti/StatoPatrimonialeController.php',
+        'resources/views/pdf/gestionale/rendiconto_riepilogo.blade.php', 'resources/views/pdf/gestionale/rendiconto_frontespizio.blade.php',
+        'resources/views/pdf/gestionale/rendiconto_posizioni.blade.php', 'resources/views/pdf/gestionale/rendiconto_crediti.blade.php',
+        'resources/views/pdf/gestionale/stato_patrimoniale.blade.php', 'resources/views/pdf/gestionale/registro_contabilita.blade.php',
+        'resources/js/pages/gestionale/movimenti/rendiconto/Sintesi.vue', 'resources/js/pages/gestionale/movimenti/rendiconto/Cassa.vue',
+        'resources/js/pages/gestionale/movimenti/rendiconto/Controlli.vue', 'resources/js/pages/gestionale/movimenti/rendiconto/Condomini.vue',
+        'resources/js/pages/gestionale/movimenti/rendiconto/RiepilogoFinanziario.vue', 'resources/js/pages/gestionale/movimenti/statoPatrimoniale/Show.vue',
+        'resources/js/pages/gestionale/movimenti/registroContabilita/List.vue', 'resources/js/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue',
+    ];
+    $trovate = [];
+    foreach ($file as $f) {
+        foreach (lttRendicontoVietateIn((string) file_get_contents(base_path($f))) as $p) {
+            $trovate[] = "{$f}: {$p}";
         }
     }
 

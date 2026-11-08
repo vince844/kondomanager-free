@@ -78,7 +78,8 @@
                         @endif
                     </td>
                     <td style="text-align: right; width: 25%;">
-                        Pagina {PAGENO} di {nbpg}
+                        {{-- Nel fascicolo del rendiconto il nome della parte accanto al numero; chi non lo passa vede il piede di sempre. --}}
+                        @if(! empty($parte_del_fascicolo ?? null)) {{ $parte_del_fascicolo }}, pagina {PAGENO} di {nbpg} @else Pagina {PAGENO} di {nbpg} @endif
                     </td>
                 </tr>
             </table>

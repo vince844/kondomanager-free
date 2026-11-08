@@ -48,6 +48,8 @@ export interface VoceSezione {
      * prefisso resterebbe accesa ovunque, e la barra direbbe che sei in due posti insieme.
      */
     exact?: boolean;
+    /** Altri percorsi che accendono la voce: una sezione con una pagina che sta su un indirizzo suo da prima (la situazione patrimoniale del rendiconto). */
+    anche?: string[];
 }
 
 const props = defineProps<{
@@ -75,9 +77,11 @@ const attiva = (voce: VoceSezione) => {
         return false;
     }
 
+    const sotto = (href: string) => currentPath === href || currentPath.startsWith(href + '/');
+
     return (voce.exact || props.esatte)
         ? currentPath === voce.href
-        : currentPath === voce.href || currentPath.startsWith(voce.href + '/');
+        : sotto(voce.href) || (voce.anche ?? []).some(sotto);
 };
 
 /** La voce in cui ci si trova: dà il nome al pulsante della tendina. */

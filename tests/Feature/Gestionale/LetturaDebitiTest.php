@@ -55,6 +55,54 @@ function lcdAccetta($test, array $s): void
     }
     expect(lcdProvaPersone($test, $test->user, (int) $s['c']->id, (int) $s['e']->id, $persone))->toBe([])
         ->and(lcdProvaChiavi($test, $test->user, (int) $s['c']->id, $persone, $s['immobili']))->toBe([]);
+
+    // Le quote dei piani (il riepilogo per competenza): le non pagate e i crediti sulle rate sono quelli della lettura per persona, sulle stesse
+    // rate e alla stessa data; le chiavi a zero, che la lettura per persona non tiene, non cambiano né le une né gli altri.
+    $quote = app(LetturaDebiti::class)->quoteDeiPiani((int) $s['c']->id, DB::table('piani_rate')->where('condominio_id', $s['c']->id)->pluck('id')->all());
+    $somma = fn (string $k) => array_sum(array_map(fn ($g) => $g['quote'][$k] + $g['pregresso'][$k], $quote));
+    $residui = 0;
+    $crediti = 0;
+    $scaduto = 0;
+    foreach (app(LetturaDebiti::class)->perCondominio((int) $s['c']->id) as $p) {
+        $residui += (int) array_sum(array_column($p['rate'], 'residuo'));
+        $crediti += (int) array_sum(array_column($p['rate'], 'credito'));
+        $scaduto += (int) $p['totali']['scaduto'];
+    }
+    expect([$somma('non_pagate'), $somma('crediti'), $somma('scadute')])->toBe([$residui, $crediti, $scaduto])
+        ->and($somma('emesse'))->toBe($somma('pagate') + $somma('non_pagate') - $somma('crediti') + $somma('credito_riportato'));
+
+    // Le posizioni del rendiconto (§ 9) e i crediti per anzianità (§ 10): la lettura per persona sommata per unità, alla data del rendiconto.
+    $servizio = app(\App\Services\Gestionale\PosizioniDeiCondomini::class);
+    $posizioni = $servizio->posizioni($s['c'], $s['e']);
+    $attese = [];
+    $scadutoAlla = 0;
+    $residuiAlla = 0;
+    foreach (app(LetturaDebiti::class)->perCondominio((int) $s['c']->id, $posizioni['alla']) as $persona => $p) {
+        foreach ($p['rate'] as $r) {
+            $attese["{$persona}|{$r['immobile_id']}"]['totale'] = ($attese["{$persona}|{$r['immobile_id']}"]['totale'] ?? 0) + $r['residuo'] - $r['credito'];
+            $residuiAlla += $r['residuo'];
+        }
+        foreach ($p['non_emesse'] as $r) {
+            $attese["{$persona}|{$r['immobile_id']}"]['totale'] = ($attese["{$persona}|{$r['immobile_id']}"]['totale'] ?? 0) + $r['saldo'];
+        }
+        if ($p['anticipi'] !== 0) {
+            $attese["{$persona}|"]['anticipi'] = $p['anticipi'];
+        }
+        $scadutoAlla += $p['totali']['scaduto'];
+    }
+    $lette = [];
+    foreach ($posizioni['righe'] as $r) {
+        $lette["{$r['anagrafica_id']}|{$r['immobile_id']}"] = array_filter(['totale' => $r['totale'], 'anticipi' => $r['anticipi']]);
+    }
+    // Una riga con il totale a zero (un residuo e un credito sulla stessa unità) c'è nel § 9 con le sue colonne: qui conta il totale.
+    $attese = array_filter(array_map(fn ($a) => array_filter($a), $attese));
+    $lette = array_filter($lette);
+    ksort($attese);
+    ksort($lette);
+    $c = $servizio->crediti($s['c'], $s['e']);
+    expect($lette)->toBe($attese)
+        ->and([$c['totali']['importo'], $c['totali']['scaduto']])->toBe([$residuiAlla, $scadutoAlla])
+        ->and($posizioni['riga_crediti']['differenza'])->toBe(0);
 }
 
 // ─── «Alla data»: registrato dopo, con la data prima; il credito; lo storno ───────────────────────────────────────────────

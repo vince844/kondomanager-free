@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -19,6 +19,8 @@ const props = defineProps<{
     pagamenti:  { data: any[]; meta: any };
     stats:      { totale_pagato_mese: number; totale_stornati: number; totale_ritenute: number };
     filters:    { search?: string; metodo_pagamento?: string; has_ritenuta?: boolean | string; stato?: string };
+    /** Le commissioni dell'esercizio aperto scritte prima senza voce (numero e importo in centesimi). */
+    commissioni_senza_voce?: { esercizio_id: number; numero: number; importo: number } | null;
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -103,6 +105,20 @@ const pageGuides = [
 
                         <div v-if="flashMessage" class="mb-3">
                             <Alert :message="flashMessage.message" :type="flashMessage.type" />
+                        </div>
+
+                        <!-- Le commissioni scritte prima senza voce restano fuori dal consuntivo delle voci: la voce si assegna a mano, negli esercizi aperti. -->
+                        <div v-if="(props.commissioni_senza_voce?.numero ?? 0) > 0" data-blocco="commissioni-senza-voce"
+                             class="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0" />
+                            <span class="flex-1 min-w-0">
+                                {{ props.commissioni_senza_voce!.numero === 1 ? '1 commissione di questo esercizio è senza voce e può ancora prenderla' : `${props.commissioni_senza_voce!.numero} commissioni di questo esercizio sono senza voce e possono ancora prenderla` }}
+                                ({{ euro(props.commissioni_senza_voce!.importo) }}): {{ props.commissioni_senza_voce!.numero === 1 ? 'resta fuori' : 'restano fuori' }} dal consuntivo delle voci.
+                            </span>
+                            <Link :href="route(generateRoute('gestionale.esercizi.commissioni-senza-voce.index'), { condominio: props.condominio.id, esercizio: props.commissioni_senza_voce!.esercizio_id })"
+                                  class="font-semibold underline underline-offset-2 hover:text-amber-950">
+                                Assegna la voce
+                            </Link>
                         </div>
 
                         <div>

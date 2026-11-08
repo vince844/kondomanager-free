@@ -53,6 +53,10 @@ trait HasProtocolNumber
             // 1.11.0-beta.31 (B2, S6): il rimborso del credito a chi esce. `RIM` era già della
             // regolazione immediata, quindi `RMB`: due famiglie diverse non condividono un prefisso.
             'rimborso_condomino'          => 'RMB',
+            // 1.12.0-beta.5: l'incasso da terzi ha un movimento suo e un prefisso suo (in `SCR` sarebbe «non classificata»); il suo storno
+            // è `STO`, come gli altri storni di scrittura.
+            'incasso_diverso'             => 'ENT',
+            'storno_incasso_diverso'      => 'STO',
             default                       => 'SCR',
         };
 
@@ -73,7 +77,9 @@ trait HasProtocolNumber
 
     private static function nextNumberFor(int $condominioId, string $prefix): string
     {
-        $year = now()->format('Y');
+        // L'anno è quello del giorno dell'amministratore, non dell'ora UTC del server: fra le 00:00 e le 01:00 (o le 02:00) di Roma del 01/01
+        // `now()` è ancora l'anno prima, e una scrittura del nuovo anno prendeva il numero di quello vecchio.
+        $year = \App\Helpers\DateHelper::adessoUtente()->format('Y');
 
         $maxInFatture = DB::table('fatture_passive')
             ->where('condominio_id', $condominioId)

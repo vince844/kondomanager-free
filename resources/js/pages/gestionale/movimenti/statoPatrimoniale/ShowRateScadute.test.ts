@@ -26,7 +26,7 @@ const vuoto = { gruppi: [], totale: 0 };
 const pagina = (extra: Record<string, unknown> = {}) => ({
     data: '2026-12-31', dal: '2026-01-01', stato_esercizio: 'chiuso',
     situazione: { attivo: vuoto, passivo: vuoto, costi_voci: [], ricavi_voci: [], liquidita_non_contabilizzata: 0, costi: 0, ricavi: 0, risultato_motore: 0, sbilancio: 0, quadra: true },
-    sintesi: { liquidita: 0, in_fondi: 0, crediti_condomini: 26000, debiti_fornitori: 0, debiti_erario: 0 },
+    sintesi: { liquidita: 0, in_fondi: 0, crediti_condomini: 26000, debiti_fornitori: 0, debiti_erario: 0, spese_anticipate: 0 },
     risultato_gestione: { quote_emesse: 0, costi: 0, risultato: 0, cumulato: 0 },
     riepilogo: {
         dal: '2026-01-01', al: '2026-12-31', stato_esercizio: 'chiuso', righe: [], totale: { iniziale: 0, entrate: 0, uscite: 0, finale: 0 },
@@ -37,7 +37,11 @@ const pagina = (extra: Record<string, unknown> = {}) => ({
         vincolo_non_accantonato: 0, scoperto_fondi: 0, avanzo_registrato: 0, gia_speso_acconto: 0, esito_r8: 'quadra',
     },
     raccordo: { righe: [], somma: 0, variazione_liquidita: 0, scarto: 0, quadra: true },
-    debiti: { disponibile: true, fatture: [], totale_residui: 0, saldo_fornitori: 0, saldo_erario: 0, scarto: 0 },
+    debiti: { alla: '2026-12-31', fatture: [], totale_residui: 0, saldo_fornitori: 0, saldo_erario: 0, erario_su_fatture_non_pagate: 0, scarto: 0, scarto_voci: [] },
+    per_gestione: {
+        righe: [], senza_voce: 0, senza_gestione: { quote_emesse: 0, crediti: 0, debiti: 0 }, differenza_debiti: 0, totale: { costi: 0, quote_emesse: 0, crediti: 0, debiti: 0 },
+        fatture_altra_gestione: [], nota_altra_gestione: null, nota_liquidita: 'La liquidità è del condominio.',
+    },
     controlli: [],
     ...extra,
 });

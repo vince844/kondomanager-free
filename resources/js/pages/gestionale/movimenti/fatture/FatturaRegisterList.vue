@@ -86,6 +86,10 @@ const suUnaVoce = computed(() => new Set(regolazioniSuEntrata.value.map((r) => r
 const linkScrittura = (id: number) =>
     route(generateRoute('gestionale.scritture.show'), { condominio: props.condominio.id, scrittura: id });
 
+// Dopo lo storno della regolazione scritta a rovescio, l'incasso vero si registra con «Altro incasso»; dopo si torna qui.
+const linkIncassoDaTerzi = computed(() =>
+    route(generateRoute('gestionale.incassi-da-terzi.create'), { condominio: props.condominio.id, da: 'fatture' }));
+
 // L'avviso è già silenzioso per chi non usa le regolazioni immediate (compare solo
 // se ce ne sono). Ma chi le usa come strumento abituale lo vedrebbe a ogni visita,
 // e per lui non è un aiuto: è un promemoria di una cosa che sa già. Chiuderlo è una
@@ -243,8 +247,13 @@ const filterSfori = () => {
                                         Per correggere serve lo storno, che per una regolazione di un esercizio chiuso si registra in un esercizio aperto:
                                         oggi il condominio non ha un esercizio aperto, e lo storno si rifiuta.
                                     </p>
-                                    <p data-testo="entrata">
-                                        L'incasso vero di un'entrata, per esempio l'affitto dell'antenna, oggi non si registra nel programma.
+                                    <p v-if="props.esercizio" data-testo="entrata">
+                                        Poi registra l'incasso vero da qui:
+                                        <Link :href="linkIncassoDaTerzi" class="font-semibold underline underline-offset-2 hover:text-amber-950">«Incasso da terzi»</Link>,
+                                        che va sulla voce di entrata ed entra in banca.
+                                    </p>
+                                    <p v-else data-testo="entrata">
+                                        L'incasso vero, per esempio l'affitto dell'antenna, si registra con «Altro incasso», nella pagina degli incassi, quando il condominio ha un esercizio aperto.
                                     </p>
                                     <ul class="divide-y divide-amber-200 rounded-lg border border-amber-200 bg-white/70">
                                         <li

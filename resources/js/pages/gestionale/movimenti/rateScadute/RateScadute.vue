@@ -447,6 +447,9 @@ const breadcrumbs = computed(() => [
                                         <td class="p-2" data-testid="ultima-lettera">
                                             {{ testoUltimaLettera(r.ultima_lettera) }}
                                             <span v-if="r.lettera_in_sospeso" class="block text-[11px] text-amber-700 dark:text-amber-400">poi: {{ testoUltimaLettera(r.lettera_in_sospeso) }}</span>
+                                            <!-- Coda 533: lo storico della persona, nella scheda «Corrispondenza» del suo estratto conto. -->
+                                            <Link v-if="r.ultima_lettera || r.lettera_in_sospeso" :href="`${estrattoConto(r.anagrafica_id)}?scheda=corrispondenza`" class="block text-[11px] underline"
+                                                :data-testid="`corrispondenza-${r.anagrafica_id}`">Vedi la corrispondenza</Link>
                                             <button type="button" class="block text-[11px] underline" :data-testid="`scrivi-${r.anagrafica_id}`" @click="scriviA(r)">Prepara una lettera</button>
                                             <button v-if="!inScadenza" type="button" class="block text-[11px] underline" :data-testid="`accordo-${r.anagrafica_id}`" @click="apriAccordo(r)">
                                                 {{ (r.accordi ?? []).length ? 'Accordo di rientro' : 'Registra un accordo di rientro' }}

@@ -272,3 +272,12 @@ it('alle 00:30 del 21/03/2027 a Roma (le 23:30 del 20/03 in UTC) la dispensa del
     expect($p['filtri']['alla'])->toBe('2027-03-21')
         ->and($p['righe']['data'][0]['sei_mesi']['dispensa'])->toMatchArray(['data_delibera' => '2027-03-21', 'revocata_il' => null]);
 });
+
+it('un numero di pagina enorme scritto a mano nell\'indirizzo è la pagina vuota dopo l\'ultima, come una pagina che non c\'è più, non un errore del server', function () {
+    $this->withoutVite();
+    $s = smPiano($this);
+    $this->travelTo('2027-02-10 10:00:00');
+    $p = $this->actingAs($this->user)->get(route('admin.gestionale.rate-scadute.index', ['condominio' => $s['c']->id, 'page' => '9223372036854775807']))->assertOk()->viewData('page')['props'];
+
+    expect($p['righe']['meta']['current_page'])->toBe($p['righe']['meta']['last_page'] + 1)->and($p['righe']['data'])->toBe([])->and($p['righe']['meta']['total'])->toBeGreaterThan(0);
+});

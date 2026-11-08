@@ -66,8 +66,9 @@ describe('il registro', () => {
         expect(pulito(w!.text())).toContain('Lettera rifatta con le cifre di oggi e rimandata.');
     });
 
-    test('senza lettere lo dice', () => {
-        expect(pulito(monta([]).text())).toContain('Nessuna lettera a questa persona in questo condominio.');
+    test('senza lettere né altri documenti lo dice (dalla Coda 533 la scheda porta anche ricevute e avvisi), e non mostra i filtri', () => {
+        expect(pulito(monta([]).text())).toContain('Nessuna lettera, ricevuta o avviso a questa persona in questo condominio.');
+        expect(w!.find('[data-testid="filtri-corrispondenza"]').exists()).toBe(false);
     });
 });
 

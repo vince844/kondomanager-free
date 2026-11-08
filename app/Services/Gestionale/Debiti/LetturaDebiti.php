@@ -54,6 +54,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class LetturaDebiti
 {
+    /** Quante regole di calcolo delle quote si leggono insieme (il pregresso): una prova lo abbassa per passare dai confini dei blocchi. */
+    private static int $bloccoRegole = 500;
+
     public function __construct(private readonly CreditoService $crediti) {}
 
     /**
@@ -77,6 +80,66 @@ final class LetturaDebiti
         return $this->leggi($condominioId, Scadenza::giorno($alla ?? DateHelper::oggiUtente()), $gestioneId, null);
     }
 
+    /**
+     * La stessa lettura di {@see perCondominio()}, fatta per gruppi di persone: ogni gruppo è l'esito di `perCondominio` ristretto alle sue
+     * persone, con le stesse regole, e la memoria resta quella di un gruppo. Per chi legge tutto il condominio e tiene solo ciò che mostra (le
+     * posizioni dei condòmini e i crediti per anzianità del rendiconto). Le persone sono quelle con righe sui due mastri fino alla data e, oggi,
+     * quelle con un credito disponibile: le stesse di `perCondominio`.
+     *
+     * @return \Generator<int, array<int, array<string,mixed>>>
+     */
+    public function perCondominioABlocchi(int $condominioId, ?string $alla = null, int $persone = 250): \Generator
+    {
+        $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
+        $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
+        $ids = DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
+            ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
+            ->whereNull('sc.deleted_at')
+            ->where('sc.condominio_id', $condominioId)
+            ->where('sc.data_competenza', '<', $dopo)
+            ->whereIn('cc.ruolo', ['crediti_condomini', 'anticipi_condomini'])
+            ->whereNotNull('rs.anagrafica_id')
+            ->distinct()->pluck('rs.anagrafica_id')->map(fn ($id) => (int) $id)->all();
+        if ($alla === DateHelper::oggiUtente()) {
+            $ids = [...$ids, ...array_keys(array_filter($this->creditoDi($condominioId, $alla, null, null), fn ($c) => $c['totale'] > 0))];
+        }
+        $ids = array_values(array_unique($ids));
+        sort($ids);
+        foreach (array_chunk($ids, max(1, $persone)) as $blocco) {
+            yield $this->leggi($condominioId, $alla, null, $blocco);
+        }
+    }
+
+    /**
+     * Le righe di «Crediti verso condomini» senza una persona, alla data: le spese anticipate per singole unità e non ancora chieste a nessuno (la
+     * parte ad personam di una fattura, art. 63, prima che un piano la emetta), il complemento esatto delle righe che la lettura per persona
+     * legge. Il saldo (dare − avere), in tutto e per gestione della scrittura.
+     *
+     * @return array{totale:int, per_gestione: array<int, int>}
+     */
+    public function senzaPersona(int $condominioId, ?string $alla = null): array
+    {
+        $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
+        $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
+        $perGestione = DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
+            ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
+            ->whereNull('sc.deleted_at')
+            ->where('sc.condominio_id', $condominioId)
+            ->where('sc.data_competenza', '<', $dopo)
+            ->where('cc.ruolo', 'crediti_condomini')
+            ->whereNull('rs.anagrafica_id')
+            ->groupBy('sc.gestione_id')
+            ->select('sc.gestione_id')
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END) as saldo")
+            ->get()
+            ->filter(fn ($r) => (int) $r->saldo !== 0)
+            ->mapWithKeys(fn ($r) => [(int) $r->gestione_id => (int) $r->saldo])->all();
+
+        return ['totale' => (int) array_sum($perGestione), 'per_gestione' => $perGestione];
+    }
+
     /** @param list<int>|null $anagraficheIds */
     private function leggi(int $condominioId, string $alla, ?int $gestioneId, ?array $anagraficheIds): array
     {
@@ -91,23 +154,7 @@ final class LetturaDebiti
             ->get(['rate.id', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'piani_rate.gestione_id', 'piani_rate.metodo_distribuzione'])
             ->keyBy('id');
 
-        // Emessa entro D: la quota (rata, persona, unità) ha la sua scrittura di emissione con data ≤ D. Con il tipo di ogni quota: una chiave
-        // fatta di sole quote di saldi è un pregresso.
-        $emesse = [];
-        $tipi = [];
-        if ($rataIds !== []) {
-            foreach (DB::table('rate_quote as q')
-                ->leftJoin('scritture_contabili as em', 'em.id', '=', 'q.scrittura_contabile_id')
-                ->whereIn('q.rata_id', $rataIds)
-                ->get(['q.id', 'q.rata_id', 'q.anagrafica_id', 'q.immobile_id', 'q.tipo', 'em.deleted_at', 'em.tipo_movimento', 'em.data_competenza']) as $q) {
-                $k = self::chiave($q->anagrafica_id, $q->immobile_id, $q->rata_id);
-                $tipi[$k][(int) $q->id] = (string) $q->tipo;
-                $tipo = $q->tipo_movimento instanceof \BackedEnum ? $q->tipo_movimento->value : $q->tipo_movimento;
-                if ($q->data_competenza !== null && $q->deleted_at === null && $tipo === 'emissione_rata' && substr((string) $q->data_competenza, 0, 10) < $dopo) {
-                    $emesse[$k] = true;
-                }
-            }
-        }
+        [$emesse, $tipi] = $this->emesseAllaData($rataIds, $dopo, $anagraficheIds);
 
         $gruppi = [];
         $anticipi = [];
@@ -172,6 +219,128 @@ final class LetturaDebiti
             $l['anticipi'] = $anticipi[$persona] ?? 0;
             $l['totali'] = $this->totali($l);
             $esito[$persona] = $l;
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Emessa entro D: la quota (rata, persona, unità) ha la sua scrittura di emissione con data ≤ D. Con il tipo di ogni quota: una chiave fatta di sole
+     * quote di saldi è un pregresso. Una regola sola per «emessa alla data», per la lettura per persona e per le quote dei piani. Con le persone date,
+     * solo le loro quote: la chiave porta la persona, e la lettura di un gruppo non legge le quote degli altri.
+     *
+     * @param  list<int>  $rataIds
+     * @param  list<int>|null  $anagraficheIds
+     * @return array{0: array<string,true>, 1: array<string, array<int,string>>}
+     */
+    private function emesseAllaData(array $rataIds, string $dopo, ?array $anagraficheIds = null): array
+    {
+        $emesse = [];
+        $tipi = [];
+        if ($rataIds !== []) {
+            foreach (DB::table('rate_quote as q')
+                ->leftJoin('scritture_contabili as em', 'em.id', '=', 'q.scrittura_contabile_id')
+                ->whereIn('q.rata_id', $rataIds)
+                ->when($anagraficheIds !== null, fn ($q) => $q->whereIn('q.anagrafica_id', $anagraficheIds))
+                ->get(['q.id', 'q.rata_id', 'q.anagrafica_id', 'q.immobile_id', 'q.tipo', 'em.deleted_at', 'em.tipo_movimento', 'em.data_competenza']) as $q) {
+                $k = self::chiave($q->anagrafica_id, $q->immobile_id, $q->rata_id);
+                $tipi[$k][(int) $q->id] = (string) $q->tipo;
+                $tipo = $q->tipo_movimento instanceof \BackedEnum ? $q->tipo_movimento->value : $q->tipo_movimento;
+                if ($q->data_competenza !== null && $q->deleted_at === null && $tipo === 'emissione_rata' && substr((string) $q->data_competenza, 0, 10) < $dopo) {
+                    $emesse[$k] = true;
+                }
+            }
+        }
+
+        return [$emesse, $tipi];
+    }
+
+    /**
+     * Le quote delle rate dei piani dati, alla data D, per gestione (la gestione del piano), con il pregresso a parte: le chiavi di sole quote di saldi.
+     * Stessi predicati della lettura per persona: emessa alla data D (`emesseAllaData`), le righe del mastro dei condòmini con la persona e la rata, di
+     * scritture non cancellate con data ≤ D, di tutti gli esercizi. Le chiavi a zero **non** si scartano: servono le emesse e le pagate.
+     *
+     * - emesse: il DARE delle scritture di emissione;
+     * - non pagate: il residuo di ogni chiave, max(0, dare − avere), lordo come nella lettura per persona (il credito di un'altra rata non lo riduce);
+     * - crediti sulle rate: max(0, avere − dare) di ogni chiave;
+     * - pagate (versate o compensate): emesse − non pagate + crediti, cioè quanto chiude le quote, in cassa o con un credito (il credito riportato chiuso
+     *   all'emissione, una compensazione): quanto di questo è passato dalla cassa lo dice il registro di contabilità, non la chiave;
+     * - credito riportato: sulle chiavi del pregresso, l'avere scritto dall'emissione oltre il suo dare (il credito di un esercizio prima, chiuso in
+     *   avere sulla rata 0), per la parte non ancora usata (non oltre il credito che la chiave ha ancora): non chiude nessuna quota, quindi non è fra le
+     *   pagate; è un termine suo, e emesse = pagate + non pagate − crediti + credito riportato;
+     * - scadute: il residuo delle rate con la scadenza prima di D;
+     * - emesse altrove: il DARE delle scritture di emissione scritte in un esercizio diverso da `$esercizioId` (una rata del piano emessa nell'esercizio dopo).
+     *
+     * @param  list<int>  $pianiIds
+     * @return array<int, array{quote: array<string,int>, pregresso: array<string,int>}>  per gestione
+     */
+    public function quoteDeiPiani(int $condominioId, array $pianiIds, ?string $alla = null, ?int $esercizioId = null): array
+    {
+        $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
+        $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
+        $rate = $pianiIds === [] ? collect() : DB::table('rate')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+            ->whereIn('rate.piano_rate_id', $pianiIds)->get(['rate.id', 'rate.data_scadenza', 'piani_rate.gestione_id'])->keyBy('id');
+        if ($rate->isEmpty()) {
+            return [];
+        }
+        [$emesse, $tipi] = $this->emesseAllaData($rate->keys()->map(fn ($id) => (int) $id)->all(), $dopo);
+
+        $chiavi = [];
+        foreach (DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
+            ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
+            ->whereNull('sc.deleted_at')
+            ->where('sc.condominio_id', $condominioId)
+            ->where('sc.data_competenza', '<', $dopo)
+            ->where('cc.ruolo', 'crediti_condomini')
+            ->whereNotNull('rs.anagrafica_id')
+            ->whereIn('rs.rata_id', $rate->keys()->all())
+            ->groupBy('rs.anagrafica_id', 'rs.immobile_id', 'rs.rata_id', 'sc.tipo_movimento', 'sc.esercizio_id')
+            ->select('rs.anagrafica_id', 'rs.immobile_id', 'rs.rata_id', 'sc.tipo_movimento', 'sc.esercizio_id')
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE 0 END) as dare")
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END) as avere")
+            ->get() as $r) {
+            $k = self::chiave($r->anagrafica_id, $r->immobile_id, $r->rata_id);
+            $chiavi[$k] ??= ['rata_id' => (int) $r->rata_id, 'dare' => 0, 'avere' => 0, 'emesse' => 0, 'avere_emissione' => 0, 'emesse_altrove' => 0];
+            $tipo = (string) $r->tipo_movimento;
+            $chiavi[$k]['dare'] += (int) $r->dare;
+            $chiavi[$k]['avere'] += (int) $r->avere;
+            if ($tipo === 'emissione_rata') {
+                $chiavi[$k]['emesse'] += (int) $r->dare;
+                $chiavi[$k]['avere_emissione'] += (int) $r->avere;
+                if ($esercizioId !== null && (int) $r->esercizio_id !== $esercizioId) {
+                    $chiavi[$k]['emesse_altrove'] += (int) $r->dare;
+                }
+            }
+        }
+
+        $vuoto = ['emesse' => 0, 'pagate' => 0, 'non_pagate' => 0, 'scadute' => 0, 'crediti' => 0, 'credito_riportato' => 0, 'emesse_altrove' => 0];
+        $esito = [];
+        foreach ($chiavi as $k => $c) {
+            if (! isset($emesse[$k])) {
+                continue;
+            }
+            $rata = $rate[$c['rata_id']];
+            $gestione = (int) $rata->gestione_id;
+            $riga = ($tipi[$k] ?? []) !== [] && count(array_filter($tipi[$k], fn ($t) => $t !== 'saldo_iniziale')) === 0 ? 'pregresso' : 'quote';
+            $esito[$gestione] ??= ['quote' => $vuoto, 'pregresso' => $vuoto];
+            $residuo = max(0, $c['dare'] - $c['avere']);
+            $credito = max(0, $c['avere'] - $c['dare']);
+            // Il credito riportato non ancora usato: quello scritto dall'emissione oltre il suo dare, fino al credito che la chiave ha ancora. Usato dopo
+            // l'emissione (una compensazione su un'altra rata), esce dalla chiave e le pagate lo contano dove ha chiuso una quota.
+            $riportato = $riga === 'pregresso' ? min($credito, max(0, $c['avere_emissione'] - $c['emesse'])) : 0;
+            $pagate = $c['emesse'] - $residuo + $credito - $riportato;
+            $e = &$esito[$gestione][$riga];
+            $e['emesse'] += $c['emesse'];
+            $e['non_pagate'] += $residuo;
+            $e['crediti'] += $credito;
+            $e['pagate'] += $pagate;
+            $e['credito_riportato'] += $riportato;
+            $e['emesse_altrove'] += $c['emesse_altrove'];
+            if (Scadenza::scaduta(Scadenza::giorno($rata->data_scadenza), $alla)) {
+                $e['scadute'] += $residuo;
+            }
+            unset($e);
         }
 
         return $esito;
@@ -243,32 +412,47 @@ final class LetturaDebiti
             return ['origini' => [], 'nella_rata' => []];
         }
 
-        $regole = DB::table('rate_quote')->whereIn('id', array_merge([], ...array_values($diSaldi), ...array_values($miste)))->pluck('regole_calcolo', 'id')
-            ->map(fn ($r) => is_string($r) ? (json_decode($r, true) ?: []) : (array) $r);
-
-        $nellaRata = [];
+        // Le regole di calcolo si leggono a blocchi, e di ogni quota si tiene solo ciò che serve: con il pregresso nella prima rata (il metodo di
+        // serie) ogni chiave con un residuo ha le sue quote da guardare, e mille persone con dodici rate scadute erano 12.000 regole decodificate
+        // insieme, il picco della lettura (circa 40 MB).
+        $saldiPerQuota = [];
+        $chiaveMista = [];
+        foreach ($diSaldi as $ids) {
+            foreach ($ids as $id) {
+                $saldiPerQuota[$id] = [];
+            }
+        }
         foreach ($miste as $k => $ids) {
             foreach ($ids as $id) {
-                if ((int) ($regole[$id]['importi']['saldo_usato'] ?? 0) !== 0) {
-                    $nellaRata[$k] = true;
+                $chiaveMista[$id] = $k;
+            }
+        }
+        $nellaRata = [];
+        foreach (array_chunk([...array_keys($saldiPerQuota), ...array_keys($chiaveMista)], max(1, self::$bloccoRegole)) as $blocco) {
+            foreach (DB::table('rate_quote')->whereIn('id', $blocco)->pluck('regole_calcolo', 'id') as $id => $r) {
+                $r = is_string($r) ? (json_decode($r, true) ?: []) : (array) $r;
+                if (isset($chiaveMista[$id])) {
+                    if ((int) ($r['importi']['saldo_usato'] ?? 0) !== 0) {
+                        $nellaRata[$chiaveMista[$id]] = true;
+                    }
+
+                    continue;
+                }
+                $dettagli = $r['dettagli_saldo'] ?? [];
+                $dettagli = isset($dettagli['saldo_origine_id']) ? [$dettagli] : (array) $dettagli;
+                foreach ($dettagli as $d) {
+                    // L'origine si legge dai saldi a debito della quota: un saldo a credito (dell'unità, ripartito sulla persona) non ha
+                    // un'età che faccia sottostimare il ritardo, e la pagina dei saldi non lo fa dichiarare.
+                    if (is_array($d) && isset($d['saldo_origine_id']) && (! isset($d['importo_originale']) || (int) $d['importo_originale'] > 0)) {
+                        $saldiPerQuota[$id][] = (int) $d['saldo_origine_id'];
+                    }
                 }
             }
         }
 
         $saldiDi = [];
         foreach ($diSaldi as $k => $ids) {
-            $saldiDi[$k] = [];
-            foreach ($ids as $id) {
-                $dettagli = $regole[$id]['dettagli_saldo'] ?? [];
-                $dettagli = isset($dettagli['saldo_origine_id']) ? [$dettagli] : (array) $dettagli;
-                foreach ($dettagli as $d) {
-                    // L'origine si legge dai saldi a debito della quota: un saldo a credito (dell'unità, ripartito sulla persona) non ha
-                    // un'età che faccia sottostimare il ritardo, e la pagina dei saldi non lo fa dichiarare.
-                    if (is_array($d) && isset($d['saldo_origine_id']) && (! isset($d['importo_originale']) || (int) $d['importo_originale'] > 0)) {
-                        $saldiDi[$k][] = (int) $d['saldo_origine_id'];
-                    }
-                }
-            }
+            $saldiDi[$k] = array_merge([], ...array_map(fn ($id) => $saldiPerQuota[$id], $ids));
         }
         $tuttiSaldi = array_values(array_unique(array_merge([], ...array_values($saldiDi))));
         $saldi = $tuttiSaldi === [] ? collect() : DB::table('saldi as s')->leftJoin('esercizi as e', 'e.id', '=', 's.esercizio_origine_id')

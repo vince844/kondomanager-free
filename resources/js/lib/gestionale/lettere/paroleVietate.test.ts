@@ -23,6 +23,8 @@ const FILE = [
     'resources/js/pages/gestionale/movimenti/incassi/RicevuteIncassi.vue',
     // I modelli delle lettere.
     'resources/js/lib/gestionale/lettere/modelli.ts', 'resources/js/pages/impostazioni/ModelliLettere.vue', 'resources/js/pages/impostazioni/impostazioniStampe.vue',
+    // La scheda «Corrispondenza» dell'estratto conto (Coda 533).
+    'resources/js/lib/gestionale/lettere/corrispondenza.ts', 'resources/js/pages/gestionale/pianiRate/EstrattoContoAnagrafica.vue',
 ];
 
 /** Il sorgente senza i commenti (`/* … *\/`, `// …`, `<!-- … -->`). */

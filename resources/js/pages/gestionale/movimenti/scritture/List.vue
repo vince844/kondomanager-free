@@ -202,14 +202,14 @@ const pageGuides = [
         // Dalla beta.24 la pagina esiste: prima era un rimando testuale a una voce di menu
         // disattivata (§10.1.3 di docs/registri_contabili.md), ora è un link vero.
         link: {
-            label: 'Vai al registro di contabilità (Prima nota)',
+            label: 'Vai al registro di contabilità',
             href: generatePath('gestionale/:condominio/esercizi/:esercizio/registro-contabilita', {
                 condominio: props.condominio.id,
                 esercizio: props.esercizio.id,
             }),
         },
     },
-    { title: 'Verifica quadratura', description: 'Il riquadro Stato Patrimoniale verifica che Attivo + Costi = Passivo sulle scritture di questo esercizio — la stessa uguaglianza del dare = avere. Attivo e Passivo da soli non devono coincidere: in mezzo ci sono i costi non ancora conguagliati. Quando non torna ti dice la causa e, dove è possibile, ti dà il pulsante per rimediare.', icon: Scale, colorVariant: 'emerald' as const },
+    { title: 'Verifica quadratura', description: 'Il riquadro della situazione patrimoniale verifica che Attivo + Costi = Passivo sulle scritture di questo esercizio — la stessa uguaglianza del dare = avere. Attivo e Passivo da soli non devono coincidere: in mezzo ci sono i costi non ancora conguagliati. Quando non torna ti dice la causa e, dove è possibile, ti dà il pulsante per rimediare.', icon: Scale, colorVariant: 'emerald' as const },
     { title: 'Cambia esercizio', description: 'Usa il selettore esercizio in alto per consultare le operazioni di anni precedenti.', icon: ArrowUpCircle, colorVariant: 'amber' as const },
 ];
 </script>
@@ -257,10 +257,10 @@ const pageGuides = [
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center justify-between gap-3">
                                         <p class="text-xs font-medium uppercase tracking-wider" :class="quadratura.quadra ? 'text-emerald-700' : 'text-rose-700'">
-                                            Stato Patrimoniale {{ quadratura.quadra ? 'quadra' : 'non quadra' }}
+                                            Situazione patrimoniale {{ quadratura.quadra ? 'torna' : 'non torna' }}
                                         </p>
                                         <div class="flex items-center gap-2 shrink-0">
-                                            <Link :href="hrefStatoPatrimoniale" class="inline-flex items-center gap-1 text-[11px] font-semibold hover:underline" :class="quadratura.quadra ? 'text-emerald-700' : 'text-rose-700'">Apri lo Stato patrimoniale <ArrowRight class="w-3 h-3" /></Link>
+                                            <Link :href="hrefStatoPatrimoniale" class="inline-flex items-center gap-1 text-[11px] font-semibold hover:underline" :class="quadratura.quadra ? 'text-emerald-700' : 'text-rose-700'">Apri la situazione patrimoniale <ArrowRight class="w-3 h-3" /></Link>
                                             <TooltipProvider :delay-duration="200">
                                                 <Tooltip>
                                                     <TooltipTrigger as-child>
@@ -426,7 +426,7 @@ const pageGuides = [
                 <DialogHeader>
                     <DialogTitle class="flex items-center gap-2">
                         <Scale class="w-5 h-5 text-slate-500" />
-                        Dettaglio Stato Patrimoniale
+                        Dettaglio situazione patrimoniale
                     </DialogTitle>
                     <DialogDescription>
                         {{ props.esercizio.nome }}.
@@ -488,9 +488,10 @@ const pageGuides = [
                 </div>
 
                 <p class="text-[11px] text-slate-500 leading-relaxed">
-                    Sono le scritture di questo esercizio, le stesse del giornale qui sotto. Il dettaglio voce per voce,
-                    la liquidità libera e accantonata, il riepilogo finanziario e i controlli sono nella
-                    <Link :href="hrefStatoPatrimoniale" class="font-semibold text-emerald-700 hover:underline">pagina Stato patrimoniale</Link>.
+                    Sono le scritture di questo esercizio, le stesse del giornale qui sotto. Il dettaglio voce per voce
+                    e la liquidità libera e accantonata sono nel
+                    <Link :href="hrefStatoPatrimoniale" class="font-semibold text-emerald-700 hover:underline">rendiconto, alla situazione patrimoniale</Link>;
+                    le entrate e le uscite per cassa e i controlli nelle sue schede «Cassa» e «Controlli».
                 </p>
             </DialogContent>
         </Dialog>

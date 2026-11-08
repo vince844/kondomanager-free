@@ -43,21 +43,6 @@ class StornoFatturaController extends Controller
                 ->value('id');
         }
 
-        // --- AUTOGENERAZIONE SICURA PROTOCOLLO (Es. NC-2026-0001) ---
-        $annoInCorso = date('Y');
-        $ultimoProtocollo = DB::table('scritture_contabili')
-            ->where('condominio_id', $condominio->id)
-            ->where('numero_protocollo', 'like', "NC-{$annoInCorso}-%")
-            ->orderBy('id', 'desc')
-            ->value('numero_protocollo');
-
-        if ($ultimoProtocollo && preg_match('/-(\d+)$/', $ultimoProtocollo, $matches)) {
-            $nextNum = str_pad((int)$matches[1] + 1, 4, '0', STR_PAD_LEFT);
-            $protocolloNC = "NC-{$annoInCorso}-{$nextNum}";
-        } else {
-            $protocolloNC = "NC-{$annoInCorso}-0001";
-        }
-
         try {
             DB::beginTransaction();
 
@@ -69,6 +54,25 @@ class StornoFatturaController extends Controller
                 DB::rollBack();
 
                 return back()->withErrors(['storno_vietato' => $motivo ?? 'La fattura non esiste più.']);
+            }
+
+            // --- AUTOGENERAZIONE SICURA PROTOCOLLO (Es. NC-2026-0001) ---
+            // Dentro la transazione e con il condominio bloccato: due storni di due fatture nello stesso istante leggevano lo stesso ultimo numero, e il
+            // secondo finiva sull'indice unico. L'anno è quello del giorno dell'amministratore, come ogni protocollo: alle 00:30 di Roma del 01/01 è già
+            // l'anno nuovo.
+            DB::table('condomini')->where('id', $condominio->id)->lockForUpdate()->first();
+            $annoInCorso = \App\Helpers\DateHelper::adessoUtente()->format('Y');
+            $ultimoProtocollo = DB::table('scritture_contabili')
+                ->where('condominio_id', $condominio->id)
+                ->where('numero_protocollo', 'like', "NC-{$annoInCorso}-%")
+                ->orderBy('id', 'desc')
+                ->value('numero_protocollo');
+
+            if ($ultimoProtocollo && preg_match('/-(\d+)$/', $ultimoProtocollo, $matches)) {
+                $nextNum = str_pad((int)$matches[1] + 1, 4, '0', STR_PAD_LEFT);
+                $protocolloNC = "NC-{$annoInCorso}-{$nextNum}";
+            } else {
+                $protocolloNC = "NC-{$annoInCorso}-0001";
             }
 
             // FIX 1: LO SVUOTA-CESTINO
@@ -84,8 +88,9 @@ class StornoFatturaController extends Controller
                 'tipo_documento'             => 'nota_credito',
                 'numero_documento'           => 'STORNO-' . ($fattura->numero_documento ?? $fattura->id),
                 'numero_protocollo'          => $protocolloNC, 
-                'data_documento'             => now()->format('Y-m-d'),
-                'data_scadenza'              => now()->format('Y-m-d'),
+                // Il giorno dell'amministratore, come l'anno del protocollo: alle 00:30 di Roma del 01/01 in UTC è ancora il 31/12.
+                'data_documento'             => \App\Helpers\DateHelper::oggiUtente(),
+                'data_scadenza'              => \App\Helpers\DateHelper::oggiUtente(),
                 'importo_imponibile'         => abs($fattura->importo_imponibile / 100),
                 'importo_iva'                => abs($fattura->importo_iva / 100),
                 'importo_ritenuta'           => abs($fattura->importo_ritenuta / 100),

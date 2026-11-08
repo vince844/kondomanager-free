@@ -40,7 +40,7 @@ defineEmits(['update:open']);
               <ul class="space-y-2">
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span>Ogni saldo appartiene a <strong>una gestione</strong> (ordinaria, straordinaria, riscaldamento…). È la separazione dei fondi richiesta dall'<strong>art. 1130-bis c.c.</strong>: un credito maturato sull'ordinaria non copre da solo un debito sulla straordinaria.</span>
+                  <span>Ogni saldo appartiene a <strong>una gestione</strong> (ordinaria, straordinaria, riscaldamento…). Le gestioni restano separate: un credito maturato sull'ordinaria non copre da solo un debito sulla straordinaria.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />

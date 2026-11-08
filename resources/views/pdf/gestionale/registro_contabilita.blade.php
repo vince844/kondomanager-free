@@ -35,6 +35,20 @@
     // mostrata, e con zero righe stampava «€ 0,00» su un conto a −370,56.
     $saldoFinale = $saldo_finale;
     $dataSaldo = $saldo_alla_data;
+    // Il riporto, i totali per tipo e il saldo a fine mese arrivano dal servizio, come il saldo.
+    $riporto = $riporto ?? ['totale' => 0, 'per_cassa' => []];
+    $totaliPerTipo = $totali_per_tipo ?? [];
+    $fineMese = [];
+    foreach ($saldi_fine_mese ?? [] as $m) { $fineMese[$m['mese']] = $m; }
+    // La riga del saldo a fine mese va dopo l'ultimo movimento mostrato di quel mese: l'indice di quella riga.
+    $chiudeMese = [];
+    $chiavi = array_keys($righe);
+    foreach ($chiavi as $n => $i) {
+        $mese = substr($righe[$i]['data'], 0, 7);
+        $dopo = $chiavi[$n + 1] ?? null;
+        if (isset($fineMese[$mese]) && ($dopo === null || substr($righe[$dopo]['data'], 0, 7) !== $mese)) { $chiudeMese[$i] = $fineMese[$mese]; }
+    }
+    $euroStampa = fn (int $c) => '€ '.number_format($c / 100, 2, ',', '.');
 @endphp
 <!DOCTYPE html>
 <html lang="it">
@@ -127,7 +141,7 @@
                 @endif
             </td>
             <td style="border: 0; padding: 5px 0 0 0; text-align: right; font-size: 7pt; color: #5A6B7B;">
-                Pagina {PAGENO} di {nbpg}
+                @if(! empty($parte_del_fascicolo)) {{ $parte_del_fascicolo }}, pagina {PAGENO} di {nbpg} @else Pagina {PAGENO} di {nbpg} @endif
             </td>
         </tr>
     </table>
@@ -184,6 +198,8 @@
 
 <h1>Registro di contabilità</h1>
 <p class="sotto">Movimenti in entrata e in uscita — art. 1130, comma 1, n. 7 c.c.</p>
+{{-- Il registro nomina chi ha versato ogni incasso, quanto e quando. --}}
+<p class="sotto" style="font-family: inter; font-size: 7.5pt; color: #5A6B7B;">{{ \App\Services\Gestionale\PosizioniDeiCondomini::RISERVATO }}</p>
 
 {{--
   ⚠️ **Questa nota non è cortesia: è la difesa del documento.** Il registro di contabilità è a
@@ -203,11 +219,13 @@
          la scheda in pagina e docs/registri_contabili.md, D15. --}}
     <b>Il saldo è unico su tutte le casse reali</b> — un prelievo verso i contanti compare due
     volte, in uscita dalla banca e in entrata nei contanti — e per il confronto con l'estratto conto
-    vale il saldo della cassa nello Stato patrimoniale, che porta dentro anche il riporto.
-    <b>Il saldo progressivo parte da zero all'inizio dell'esercizio</b>: è
-    il saldo dei movimenti di quest'anno e non comprende la disponibilità riportata
-    dall'esercizio precedente. Le operazioni sono numerate in ordine cronologico di
-    effettuazione.
+    a una data vale il saldo della cassa nella situazione patrimoniale, che taglia per data.
+    <b>Il saldo progressivo parte dal riporto</b>: la cassa all'inizio dell'esercizio, come
+    la lasciano i registri degli esercizi precedenti (nel primo esercizio, il saldo di
+    apertura). Il riporto è la prima riga e non è un'entrata. Un movimento con la data di un
+    altro anno conta nel registro dell'esercizio in cui è scritto, una volta sola.
+    Le operazioni sono numerate in ordine cronologico di effettuazione; alla fine di ogni mese
+    con movimenti una riga dice il saldo a quel giorno, e in fondo i totali per tipo di movimento.
     @if($mostra_annotazione)
     Accanto a ogni data compare quella di annotazione, così che il termine di trenta giorni
     dell'art. 1130, comma 1, n. 7 c.c. sia verificabile riga per riga.
@@ -219,19 +237,23 @@
 
 <table class="dati">
     <tr>
-        <td style="width: 20%;">
+        <td style="width: 14%;">
             <div class="et">Movimenti</div>
             <div class="vl">{{ number_format(count($righe), 0, ',', '.') }}</div>
         </td>
-        <td style="width: 27%;">
+        <td style="width: 22%;">
+            <div class="et">{{ $riporto['etichetta'] ?? 'Riporto dall\'esercizio precedente' }}</div>
+            <div class="vl {{ $riporto['totale'] < 0 ? 'neg' : '' }}">{{ $euroStampa($riporto['totale']) }}</div>
+        </td>
+        <td style="width: 20%;">
             <div class="et">Totale entrate</div>
             <div class="vl">€ {{ number_format($totale_entrate / 100, 2, ',', '.') }}</div>
         </td>
-        <td style="width: 27%;">
+        <td style="width: 20%;">
             <div class="et">Totale uscite</div>
             <div class="vl">€ {{ number_format($totale_uscite / 100, 2, ',', '.') }}</div>
         </td>
-        <td style="width: 26%;">
+        <td style="width: 24%;">
             {{-- Lo spazio prima di `@if` è necessario: Blade non compila una direttiva
                  attaccata a un carattere di parola. Vedi la nota più sotto su `gg @endif`. --}}
             <div class="et">Saldo di cassa @if($dataSaldo)al {{ \Carbon\Carbon::parse($dataSaldo)->format('d/m/Y') }} @endif</div>
@@ -251,6 +273,7 @@
     <thead>
         <tr>
             <th style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; font-weight: bold; text-align: left; border-bottom: 1px solid #0E2238; padding: 4px 5px;">Saldo per cassa</th>
+            <th class="n" style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; font-weight: bold; border-bottom: 1px solid #0E2238; padding: 4px 5px; font-family: inter;">Riporto</th>
             <th class="n" style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; font-weight: bold; border-bottom: 1px solid #0E2238; padding: 4px 5px; font-family: inter;">Movimenti</th>
             <th class="n" style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; font-weight: bold; border-bottom: 1px solid #0E2238; padding: 4px 5px; font-family: inter;">Entrate</th>
             <th class="n" style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; font-weight: bold; border-bottom: 1px solid #0E2238; padding: 4px 5px; font-family: inter;">Uscite</th>
@@ -261,6 +284,7 @@
         @foreach($saldi_per_cassa as $sc)
         <tr>
             <td style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">{{ $sc['cassa'] }}</td>
+            <td class="n" style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">{{ $euroStampa((int) ($sc['riporto'] ?? 0)) }}</td>
             <td class="n" style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">{{ $sc['movimenti'] }}</td>
             <td class="n" style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">€ {{ number_format($sc['entrate'] / 100, 2, ',', '.') }}</td>
             <td class="n" style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">€ {{ number_format($sc['uscite'] / 100, 2, ',', '.') }}</td>
@@ -280,7 +304,7 @@
   dichiarate sui `<th>` perché ogni blocco è una tabella a sé e senza di quelle le colonne si
   disallineerebbero da un blocco all'altro.
 --}}
-@foreach(array_chunk($righe, 300) as $blocco)
+@foreach(array_chunk($righe, 300, true) as $blocco)
 @if(! $loop->first)<pagebreak />@endif
 <table class="registro">
     <thead>
@@ -305,12 +329,25 @@
         </tr>
     </thead>
     <tbody>
+        @if($loop->first)
+        {{-- Il riporto è la prima riga: la cassa all'inizio dell'esercizio, senza numero, e non è un'entrata. --}}
+        <tr>
+            <td class="num"></td>
+            <td style="white-space: nowrap;">{{ $esercizio->data_inizio->format('d/m/Y') }}</td>
+            @if($mostra_annotazione)<td></td>@endif
+            <td class="d"></td>
+            <td colspan="3"><b>{{ $riporto['etichetta'] ?? 'Riporto dall\'esercizio precedente' }}</b>@if(count($riporto['per_cassa']) > 1) <span class="d">({{ implode(' · ', array_map(fn ($c) => $c['cassa'].' '.$euroStampa($c['riporto']), $riporto['per_cassa'])) }})</span>@endif</td>
+            <td class="n"></td>
+            <td class="n"></td>
+            <td class="n {{ $riporto['totale'] < 0 ? 'neg' : '' }}"><b>{{ $euroStampa($riporto['totale']) }}</b></td>
+        </tr>
+        @endif
         {{--
           ⚠️ `Carbon::parse()` qui è sicuro solo perché lo è il chiamante: le date arrivano da
           `RegistroContabilitaService::registro()`, che le ha già normalizzate in 'Y-m-d' da
           colonne DATE non nullable. Non è una garanzia della vista.
         --}}
-        @foreach($blocco as $riga)
+        @foreach($blocco as $i => $riga)
         <tr>
             <td class="num">{{ $riga['numero'] }}</td>
             <td style="white-space: nowrap;">{{ \Carbon\Carbon::parse($riga['data'])->format('d/m/Y') }}</td>
@@ -342,6 +379,15 @@
                 € {{ number_format($riga['saldo_progressivo'] / 100, 2, ',', '.') }}
             </td>
         </tr>
+        @if(isset($chiudeMese[$i]))
+        @php $m = $chiudeMese[$i]; @endphp
+        <tr style="background: #F4F5F7;">
+            <td colspan="{{ $mostra_annotazione ? 7 : 6 }}" style="text-align: right; color: #5A6B7B;">Saldo al {{ \Carbon\Carbon::parse($m['fine'])->format('d/m/Y') }} · movimenti del mese</td>
+            <td class="n">{{ $euroStampa($m['entrate']) }}</td>
+            <td class="n">{{ $euroStampa($m['uscite']) }}</td>
+            <td class="n {{ $m['saldo'] < 0 ? 'neg' : '' }}"><b>{{ $euroStampa($m['saldo']) }}</b></td>
+        </tr>
+        @endif
         @endforeach
     </tbody>
     {{-- Il totale una volta sola, in fondo all'ultimo blocco: ripeterlo a ogni blocco lo farebbe
@@ -367,6 +413,30 @@
     @endif
 </table>
 @endforeach
+
+@if(count($totaliPerTipo) > 0)
+{{-- I totali per tipo di movimento, delle righe riportate: la loro somma è il totale del registro. --}}
+<table style="width: 70%; border-collapse: collapse; margin-top: 14px;">
+    <thead>
+        <tr>
+            <th style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; text-align: left; border-bottom: 1px solid #0E2238; padding: 4px 5px;">Totali per tipo di movimento</th>
+            <th class="n" style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; border-bottom: 1px solid #0E2238; padding: 4px 5px; font-family: inter;">Movimenti</th>
+            <th class="n" style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; border-bottom: 1px solid #0E2238; padding: 4px 5px; font-family: inter;">Entrate</th>
+            <th class="n" style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; border-bottom: 1px solid #0E2238; padding: 4px 5px; font-family: inter;">Uscite</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach($totaliPerTipo as $t)
+        <tr>
+            <td style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">{{ \App\Services\Gestionale\ParoleDellaStampa::frase($t['etichetta']) }}@if($t['di_cui_esercizi_precedenti'] > 0) <span class="d">(di cui {{ $euroStampa($t['di_cui_esercizi_precedenti']) }} per fatture di esercizi precedenti)</span>@endif</td>
+            <td class="n" style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">{{ $t['movimenti'] }}</td>
+            <td class="n" style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">{{ $t['entrate'] ? $euroStampa($t['entrate']) : '' }}</td>
+            <td class="n" style="padding: 3px 5px; border-bottom: 1px solid #D9DEE5;">{{ $t['uscite'] ? $euroStampa($t['uscite']) : '' }}</td>
+        </tr>
+        @endforeach
+    </tbody>
+</table>
+@endif
 
 {{-- Fuori dal ciclo dei blocchi: con zero righe `array_chunk([], 300)` è vuoto e il `@foreach`
      non gira nemmeno una volta. --}}

@@ -78,6 +78,9 @@ class StorePagamentoFornitoreRequest extends FormRequest
 
             // --- COMMISSIONI E RITENUTE ---
             'importo_commissioni_cents' => ['nullable', 'integer', 'min:0'],
+            // La voce della commissione: obbligatoria se la commissione è più di zero (la regola è in `withValidator`, il resto in
+            // `VoceDellaCommissione::verifica`, che conosce la gestione delle fatture).
+            'voce_commissione_id'       => ['nullable', 'integer'],
             'importo_ritenuta_cents'    => ['nullable', 'integer', 'min:0'],
 
             // --- ALLOCAZIONI (multi-fattura) ---
@@ -136,6 +139,17 @@ class StorePagamentoFornitoreRequest extends FormRequest
             'esercizio_id.required'                      => 'L\'esercizio contabile è obbligatorio.',
             'tipo_detrazione.required_if'                => 'Per il Bonifico Parlante è necessario specificare il tipo di detrazione.',
         ];
+    }
+
+    /** Con una commissione più di zero la voce si sceglie: il rifiuto sta sul campo della voce, con la frase del servizio. */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            if ((int) $this->input('importo_commissioni_cents', 0) > 0 && ! $validator->errors()->has('voce_commissione_id')
+                && in_array($this->input('voce_commissione_id'), [null, ''], true)) {
+                $validator->errors()->add('voce_commissione_id', \App\Services\Gestionale\VoceDellaCommissione::SENZA_VOCE);
+            }
+        });
     }
 
     /**

@@ -80,7 +80,7 @@ defineEmits(['update:open']);
             <div class="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex gap-3 text-[13px]">
               <TriangleAlert class="w-5 h-5 text-amber-600 shrink-0" />
               <div>
-                <strong>Registrare non è deliberare.</strong> Uno sforo va portato in assemblea (art. 1135 c.c.): finché non lo si ratifica dal menu della riga («Ratifica assembleare»), la fattura resta nel contatore <em>Da ratificare</em> in cima alla pagina. La motivazione che hai scritto finisce nel rendiconto come nota, quindi vale la pena scriverla per chi la leggerà, non per chiudere il dialogo.
+                <strong>Registrare non è deliberare.</strong> Uno sforo va portato in assemblea (art. 1135 c.c.): finché non lo si ratifica dal menu della riga («Ratifica assembleare»), la fattura resta nel contatore <em>Da ratificare</em> in cima alla pagina. La motivazione resta scritta con la fattura, e il rendiconto non la stampa: in assemblea la porti tu. Vale la pena scriverla per chi la leggerà, non per chiudere il dialogo.
               </div>
             </div>
           </section>

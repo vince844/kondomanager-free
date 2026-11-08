@@ -9,8 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Modello Saldo
  * * Rappresenta un singolo "cassetto" finanziario del Wallet di un condòmino.
  * A differenza delle versioni precedenti, ogni saldo è ora vincolato a una specifica
- * gestione (Ordinaria, Straordinaria, ecc.) per garantire la separazione dei fondi
- * richiesta dall'Art. 1130-bis c.c.
+ * gestione (Ordinaria, Straordinaria, ecc.): un credito maturato su una gestione non copre
+ * da solo un debito su un'altra.
  */
 class Saldo extends Model
 {
