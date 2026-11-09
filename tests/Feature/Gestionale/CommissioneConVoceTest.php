@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
 require_once __DIR__.'/Beta52VoceEntrataScenari.php';
+require_once __DIR__.'/GestionaleTestHelpers.php';
 
 const CVC_SENZA_VOCE = 'Scegli la voce della commissione: senza una voce la commissione resta fuori dal consuntivo delle voci.';
 
@@ -136,7 +137,7 @@ it('senza commissione la voce non serve, e nessuna riga di commissione si scrive
     expect(cvcPagamento($s)->scrittura->righe()->count())->toBe(2);
 });
 
-it('una voce di un\'altra gestione è rifiutata', function () {
+it('una voce di una gestione straordinaria per la commissione di un pagamento dell\'ordinaria è rifiutata, con il perché', function () {
     $s = cvcScenario($this);
     $straordinaria = be52GestioneStraordinaria($s);
     $altra = be52Voce($this, $s, $straordinaria['pc'], 'Spese bancarie del tetto', 'spesa', '50,00');
@@ -144,20 +145,105 @@ it('una voce di un\'altra gestione è rifiutata', function () {
     expect((int) $straordinaria['g']->id)->not->toBe((int) $s['g']->id);
     cvcPaga($this, $s, null, ['voce_commissione_id' => $altra->id])->assertSessionHasErrors('voce_commissione_id');
 
-    expect(PagamentoFornitore::where('condominio_id', $s['c']->id)->count())->toBe(0);
+    expect(session('errors')->first('voce_commissione_id'))->toBe('«Spese bancarie del tetto» è della gestione «Gestione straordinaria», che non è un\'ordinaria: la commissione '
+        .'va su una voce della gestione del pagamento, o di una gestione ordinaria dello stesso esercizio.')
+        ->and(PagamentoFornitore::where('condominio_id', $s['c']->id)->count())->toBe(0);
 });
 
-it('la commissione di un pagamento della straordinaria sulle spese bancarie dell\'ordinaria è rifiutata, e il rifiuto dice la via d\'uscita: la commissione a zero e una regolazione immediata', function () {
-    $s = cvcScenario($this);
-    $tetto = be52GestioneStraordinaria($s);
-    $lavori = be52Voce($this, $s, $tetto['pc'], 'Lavori tetto', 'spesa', '2.000,00');
-    $fattura = cvcFattura($this, array_merge($s, ['g' => $tetto['g'], 'spesa' => $lavori]), 'SAL-1', 1000.00);
-    $risposta = cvcPaga($this, $s, $fattura, ['voce_commissione_id' => $s['bancarie']->id]);
+// ─── Coda 553 (D2 della decisione 236): la commissione dei lavori sulle spese bancarie dell'ordinaria ─────────────────────────────────
 
-    $risposta->assertSessionHasErrors('voce_commissione_id');
-    expect(session('errors')->first('voce_commissione_id'))
-        ->toEndWith('Per metterla su una voce di un\'altra gestione, per esempio le spese bancarie dell\'ordinaria, lascia la commissione a zero e registrala con una regolazione immediata.')
+/** La gestione straordinaria del tetto, la voce dei lavori e la fattura del SAL da € 1.000,00. */
+function cvcLavoriTetto($test, array $s): array
+{
+    $tetto = be52GestioneStraordinaria($s);
+    $lavori = be52Voce($test, $s, $tetto['pc'], 'Lavori tetto', 'spesa', '2.000,00');
+    $fattura = cvcFattura($test, array_merge($s, ['g' => $tetto['g'], 'spesa' => $lavori]), 'SAL-1', 1000.00);
+
+    return ['g' => $tetto['g'], 'lavori' => $lavori, 'fattura' => $fattura];
+}
+
+it('la commissione di un pagamento della straordinaria sulle spese bancarie dell\'ordinaria passa: la voce dell\'ordinaria sale di € 2,50, i lavori no', function () {
+    $s = cvcScenario($this);
+    $t = cvcLavoriTetto($this, $s);
+    $spesa = fn (int $voce) => (int) ((new SpesaPerVoceService)->perEsercizio($s['e'])[$voce] ?? 0);
+    cvcPaga($this, $s, $t['fattura'], ['voce_commissione_id' => $s['bancarie']->id])->assertSessionHasNoErrors();
+    $p = cvcPagamento($s);
+    $riga = cvcRigaCommissione($p->scrittura);
+
+    expect((int) $p->scrittura->gestione_id)->toBe((int) $t['g']->id)
+        ->and([$riga->tipo_riga, $riga->importo, $riga->conto_contabile_id, $riga->voce_spesa_id])->toBe(['dare', 250, $s['bancarie']->conto_contabile_id, $s['bancarie']->id])
+        ->and($spesa($s['bancarie']->id))->toBe(250)
+        // I lavori restano la fattura: niente sforo sull'ultimo SAL.
+        ->and($spesa($t['lavori']->id))->toBe(100000);
+});
+
+it('il riepilogo per competenza mette la commissione nel blocco dell\'ordinaria, pagata alla data del pagamento, e i lavori restano € 1.000,00', function () {
+    $s = cvcScenario($this);
+    $t = cvcLavoriTetto($this, $s);
+    cvcPaga($this, $s, $t['fattura'], ['voce_commissione_id' => $s['bancarie']->id])->assertSessionHasNoErrors();
+    $r = app(\App\Services\Gestionale\RiepilogoPerCompetenza::class)->perEsercizio($s['c'], $s['e'], '2026-12-31');
+    $voce = function (int $gestione, int $voce) use ($r) {
+        foreach ($r['blocchi'] as $b) {
+            if ((int) $b['gestione']['id'] === $gestione) {
+                foreach ($b['spese'] as $v) {
+                    if ((int) $v['voce_id'] === $voce) {
+                        return $v;
+                    }
+                }
+            }
+        }
+
+        return null;
+    };
+
+    expect([$voce((int) $s['g']->id, $s['bancarie']->id)['consuntivo'], $voce((int) $s['g']->id, $s['bancarie']->id)['pagato']])->toBe([250, 250])
+        ->and($voce((int) $t['g']->id, $t['lavori']->id)['consuntivo'])->toBe(100000)
+        ->and($r['fuori_capitoli']['commissioni_senza_voce']['consuntivo'])->toBe(0);
+});
+
+it('una voce dell\'ordinaria che non è legata all\'esercizio del pagamento è rifiutata, con il perché', function () {
+    $s = cvcScenario($this);
+    $t = cvcLavoriTetto($this, $s);
+    $altra = \App\Models\Gestione::create(['condominio_id' => $s['c']->id, 'nome' => 'Ordinaria 2025', 'tipo' => 'ordinaria', 'attiva' => true,
+        'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31']);
+    $e2025 = \App\Models\Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2025', 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'aperto']);
+    legaAEsercizio($e2025, $altra->id);
+    $pc = PianoConto::create(['condominio_id' => $s['c']->id, 'gestione_id' => $altra->id, 'nome' => 'Piano dei conti 2025']);
+    $vecchia = be52Voce($this, array_merge($s, ['e' => $e2025]), $pc, 'Spese bancarie 2025', 'spesa', '50,00');
+    cvcPaga($this, $s, $t['fattura'], ['voce_commissione_id' => $vecchia->id])->assertSessionHasErrors('voce_commissione_id');
+
+    expect(session('errors')->first('voce_commissione_id'))->toBe('«Spese bancarie 2025» è della gestione «Ordinaria 2025», che non è in questo esercizio: la commissione '
+        .'va su una voce della gestione del pagamento, o di una gestione ordinaria dello stesso esercizio.')
         ->and(PagamentoFornitore::where('condominio_id', $s['c']->id)->count())->toBe(0);
+});
+
+it('la modifica di un pagamento dei lavori con la voce dell\'ordinaria la tiene, e lo storno riporta le spese bancarie a zero', function () {
+    $s = cvcScenario($this);
+    $t = cvcLavoriTetto($this, $s);
+    cvcPaga($this, $s, $t['fattura'], ['voce_commissione_id' => $s['bancarie']->id])->assertSessionHasNoErrors();
+    $p = cvcPagamento($s);
+    $props = $this->actingAs($this->user)->get(route('admin.gestionale.pagamenti-fornitori.edit', [$s['c'], $p]))->assertOk()->viewData('page')['props'];
+    $this->actingAs($this->user)->put(route('admin.gestionale.pagamenti-fornitori.update', [$s['c'], $p]), cvcCorpoModifica($this, $s, $p, ['data_pagamento' => '2026-04-11']))
+        ->assertSessionHasNoErrors();
+    $spesa = fn () => (int) ((new SpesaPerVoceService)->perEsercizio($s['e'])[$s['bancarie']->id] ?? 0);
+
+    expect($props['commissione']['voce_id'])->toBe($s['bancarie']->id)
+        ->and($props['commissione']['esercizio_id'])->toBe((int) $s['e']->id)
+        ->and(cvcRigaCommissione($p->fresh()->scrittura)->voce_spesa_id)->toBe($s['bancarie']->id)
+        ->and($spesa())->toBe(250);
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.pagamenti-fornitori.storno', [$s['c'], $p->fresh()]), ['motivo' => 'Bonifico respinto dalla banca'])->assertSessionHasNoErrors();
+    expect($spesa())->toBe(0);
+});
+
+it('l\'elenco delle voci della pagina porta la gestione con il nome, il tipo e gli esercizi', function () {
+    $s = cvcScenario($this);
+    $t = cvcLavoriTetto($this, $s);
+    $elenco = collect(app(\App\Services\Gestionale\VoceDellaCommissione::class)->elenco($s['c']->id))->keyBy('id');
+
+    expect($elenco[$s['bancarie']->id])->toMatchArray(['gestione_id' => (int) $s['g']->id, 'gestione_tipo' => 'ordinaria', 'esercizi' => [(int) $s['e']->id]])
+        ->and($elenco[$t['lavori']->id])->toMatchArray(['gestione_id' => (int) $t['g']->id, 'gestione_tipo' => 'straordinaria', 'esercizi' => [(int) $s['e']->id]])
+        ->and($elenco[$s['bancarie']->id]['gestione_nome'])->toBe((string) $s['g']->nome);
 });
 
 it('una voce di entrata è rifiutata: la commissione è una spesa', function () {
@@ -473,8 +559,9 @@ it('in modifica una voce di un\'altra gestione è rifiutata, e la riga resta com
     $p = cvcPagamento($s);
     $t = cvcTetto($this, $s);
     $this->actingAs($this->user)->put(route('admin.gestionale.pagamenti-fornitori.update', [$s['c'], $p]), cvcCorpoModifica($this, $s, $p, ['voce_commissione_id' => $t['bancarie']->id]))
-        ->assertSessionHasErrors(['voce_commissione_id' => '«Bancarie del tetto» è di un\'altra gestione: la commissione va su una voce della gestione del pagamento («'.$s['g']->nome.'»). '
-            .'Per metterla su una voce di un\'altra gestione, per esempio le spese bancarie dell\'ordinaria, lascia la commissione a zero e registrala con una regolazione immediata.']);
+        // Dalla Coda 553 una voce di un'altra gestione è ammessa solo se è di un'ordinaria dello stesso esercizio: quella del tetto no, e il rifiuto dice perché.
+        ->assertSessionHasErrors(['voce_commissione_id' => '«Bancarie del tetto» è della gestione «Gestione straordinaria», che non è un\'ordinaria: la commissione va su una '
+            .'voce della gestione del pagamento, o di una gestione ordinaria dello stesso esercizio.']);
 
     expect(cvcRigaCommissione($p->fresh()->scrittura)->voce_spesa_id)->toBe($s['bancarie']->id);
 });

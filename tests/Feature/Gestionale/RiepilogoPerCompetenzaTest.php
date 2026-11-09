@@ -446,9 +446,12 @@ it('due piani dello stesso esercizio che chiedono € 1.500,00 ciascuno sulla st
     expect(rpcVoce(rpcLeggi($s), $s['pulizie']->id)['deliberato'])->toBe(300000);
 });
 
-it('un piano generato prima del 14/09/2026, senza le righe del riparto: il deliberato è nello stato «non_conservato»', function () {
+it('un piano generato prima del 14/09/2026, senza le righe del riparto, che con i dati di oggi non torna più: il deliberato è nello stato «non_conservato»', function () {
     $s = vrmBase($this);
     DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    // Dalla 1.12.0-beta.6 un piano senza righe si ricostruisce, se torna per unità con le quote (Coda 557, `DeliberatoRicostruitoTest`): con i millesimi
+    // cambiati dopo l'emissione non torna, e resta «non_conservato».
+    DB::table('quote_tabella')->where('immobile_id', $s['unita']['A']->id)->update(['valore' => 600]);
     $v = rpcVoce(rpcLeggi($s), $s['pulizie']->id);
 
     expect([$v['deliberato'], $v['deliberato_stato'], $v['scostamento']])->toBe([null, 'non_conservato', null])
@@ -473,8 +476,12 @@ it('la frase che dice perché il deliberato non c\'è esce quando almeno una ges
     // Tutte e due le hanno: nessuna frase.
     $copiaLeRighe();
     expect(rpcLeggi($s)['avvertenze']['deliberato'])->toBeNull();
-    // Ora manca la prima, e la seconda c'è.
+    // Ora manca la prima, e la seconda c'è. Dalla 1.12.0-beta.6 la prima si ricostruisce (Coda 557): la frase del «non disponibile» non esce, esce quella
+    // della ricostruzione; con i millesimi cambiati dopo l'emissione non torna più, e la frase esce.
     DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    expect(rpcLeggi($s)['avvertenze']['deliberato'])->toBeNull()
+        ->and(rpcLeggi($s)['avvertenze']['deliberato_ricostruito'])->not->toBeNull();
+    DB::table('quote_tabella')->where('immobile_id', $s['unita']['A']->id)->update(['valore' => 600]);
     expect(rpcLeggi($s)['avvertenze']['deliberato'])->toBe($frase);
     // Nessuna delle due.
     DB::table('righe_riparto')->where('piano_rate_id', $piano2->id)->delete();

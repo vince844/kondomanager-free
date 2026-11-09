@@ -15,6 +15,7 @@ use App\Traits\PdfRigheStampabili;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * Il registro di contabilità ex art. 1130, comma 1, n. 7 c.c. — punto 1 della sequenza di
@@ -168,6 +169,8 @@ class RegistroContabilitaController extends Controller
         $totaleUscite = (int) array_sum(array_column($righe, 'uscita'));
 
         return [
+            // La copia per l'assemblea è del rendiconto; la copia di controllo è un registro dello studio.
+            'gruppo_carta' => $annotazioni ? GruppoCarta::REGISTRI_E_ELENCHI : GruppoCarta::RENDICONTO_E_ASSEMBLEA,
             'condominio' => $condominio,
             'esercizio' => $esercizio,
             'righe' => $righe,

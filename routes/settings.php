@@ -2,6 +2,7 @@
 
 use App\Enums\Permission;
 use App\Http\Controllers\Impostazioni\BackupSettingsController;
+use App\Http\Controllers\Impostazioni\CarteStampaController;
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
@@ -58,6 +59,21 @@ Route::middleware('auth')->group(function () {
 
     Route::post('impostazioni/stampe', [ImpostazioniStampeController::class, 'store'])
         ->name('impostazioni.stampe.store');
+
+    // Le carte dello studio, da «Impostazioni → Stampe»: crearle, cambiarle, eliminarle, sceglierle per i gruppi di documenti e provarle è di chi
+    // gestisce le impostazioni. `{carta}` arriva grezzo: che sia una carta lo controlla il controller (404).
+    Route::middleware('permission:'.Permission::MANAGE_GENERAL_SETTINGS->value)->group(function () {
+        Route::post('impostazioni/stampe/carte', [CarteStampaController::class, 'store'])
+            ->name('impostazioni.stampe.carte.store');
+        Route::put('impostazioni/stampe/carte/{carta}', [CarteStampaController::class, 'update'])
+            ->name('impostazioni.stampe.carte.update');
+        Route::delete('impostazioni/stampe/carte/{carta}', [CarteStampaController::class, 'destroy'])
+            ->name('impostazioni.stampe.carte.destroy');
+        Route::get('impostazioni/stampe/carte/{carta}/prova', [CarteStampaController::class, 'prova'])
+            ->name('impostazioni.stampe.carte.prova');
+        Route::put('impostazioni/stampe/carte-per-documento', [CarteStampaController::class, 'perGruppo'])
+            ->name('impostazioni.stampe.carte.gruppi');
+    });
 
     // Cron, posta e registro delle email: fino alla 1.11.0-beta.38 avevano solo `auth`, e i tre
     // controller nessun controllo. Qualunque utente con il login (condòmino, fornitore,

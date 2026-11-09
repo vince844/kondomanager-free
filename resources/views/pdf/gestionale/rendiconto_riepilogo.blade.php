@@ -12,7 +12,22 @@
     $dataIt = fn (string $iso) => \Carbon\Carbon::parse($iso)->format('d/m/Y');
     $r = $riepilogo;
     $perche = fn (string $stato) => ['conservato' => '', 'non_conservato' => '—', 'solo_deliberato' => 'solo il deliberato', 'nessun_piano' => 'nessun piano approvato'][$stato] ?? '';
-    $colonna = fn (array $v, string $c) => ($v[$c.'_stato'] ?? 'conservato') === 'conservato' ? $fmt($v[$c])
+    // Il deliberato dei piani di prima ricostruito ha la cifra (Coda 557), con l'asterisco se la voce è divisa con gli importi di oggi.
+    $Parole = \App\Services\Gestionale\ParoleDellaStampa::class;
+    $Riepilogo = \App\Services\Gestionale\RiepilogoPerCompetenza::class;
+    // Le frasi del deliberato di una gestione, sotto la sua tabella: «ricostruito» (con quella dell'asterisco, se una voce la porta) o «non disponibile»
+    // (con il perché di un piano cambiato con «Sposta spesa»). Con le parole per i condòmini.
+    $frasiDelDeliberato = function (array $b) use ($Parole, $Riepilogo): array {
+        $asterisco = collect($b['spese'])->contains(fn ($c) => ! empty($c['deliberato_diviso_oggi']) || collect($c['voci'] ?? [])->contains(fn ($v) => ! empty($v['deliberato_diviso_oggi'])));
+
+        return match ($b['deliberato_stato'] ?? null) {
+            'ricostruito' => array_values(array_filter([$Parole::frase($Riepilogo::FRASE_DELIBERATO_RICOSTRUITO), $asterisco ? $Parole::frase($Riepilogo::FRASE_DELIBERATO_DIVISO) : null])),
+            'non_conservato' => [$Parole::frase($Riepilogo::FRASE_DELIBERATO_NON_DISPONIBILE.(! empty($b['deliberato_spostato']) ? ' '.$Riepilogo::FRASE_DELIBERATO_SPOSTATO : ''))],
+            default => [],
+        };
+    };
+    $colonna = fn (array $v, string $c) => in_array($v[$c.'_stato'] ?? 'conservato', ['conservato', 'ricostruito'], true)
+        ? $fmt($v[$c]).($c === 'deliberato' && ! empty($v['deliberato_diviso_oggi']) ? ' *' : '')
         // Il preventivo che le voci non portano più (portano quello dell'anno dopo) è nel verbale dell'assemblea.
         : ($c === 'preventivo' && $v[$c.'_stato'] === 'non_conservato' ? 'nel verbale dell\'assemblea' : $perche($v[$c.'_stato']));
     $nomeRiga = ['ordinarie' => 'Quote ordinarie', 'straordinarie' => 'Quote straordinarie', 'esercizi_precedenti' => 'Esercizi precedenti'];
@@ -39,6 +54,10 @@
         $r['riconciliazione']['non_classificati'] ? ['costi non classificati', $r['riconciliazione']['non_classificati'], ''] : null,
         $r['riconciliazione']['differenza'] ? ['una differenza di', $r['riconciliazione']['differenza'], ' da guardare nel Libro Giornale'] : null,
     ]));
+    // Lo studio: il blocco in testa alla prima pagina e il suo nome nella testatina; senza, la carta intestata del condominio di sempre.
+    $conStudio = isset($carta) && $carta->haStudio();
+    // I titoli, i loro filetti e la testata hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#0E2238');
 @endphp
 <!DOCTYPE html>
 <html lang="it">
@@ -47,16 +66,16 @@
 <title>Riepilogo finanziario – {{ $esercizio->nome }}</title>
 <style>
     body { font-family: inter; font-size: 7.5pt; color: #26313F; }
-    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid #0E2238; }
+    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid {{ $coloreTitoli }}; }
     .testata td { padding: 0 0 10px 0; vertical-align: top; border: 0; }
-    .ente { font-family: fraunces; font-size: 15pt; color: #0E2238; }
+    .ente { font-family: fraunces; font-size: 15pt; color: {{ $coloreTitoli }}; }
     .att { font-size: 7pt; letter-spacing: 1.1pt; text-transform: uppercase; color: #5A6B7B; }
     .rif { font-size: 7.5pt; color: #5A6B7B; }
     .doc { text-align: right; font-size: 7.5pt; color: #5A6B7B; }
     .doc b { color: #0E2238; }
-    h1 { font-family: fraunces; font-size: 17pt; color: #0E2238; margin: 14px 0 1px; padding: 0; }
-    .sotto { font-family: fraunces; font-size: 10pt; color: #2E5C86; margin: 0 0 10px; }
-    h2 { font-family: fraunces; font-size: 11pt; color: #0E2238; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #0E2238; }
+    h1 { font-family: fraunces; font-size: 17pt; color: {{ $coloreTitoli }}; margin: 14px 0 1px; padding: 0; }
+    .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 10px; }
+    h2 { font-family: fraunces; font-size: 11pt; color: {{ $coloreTitoli }}; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 1px solid {{ $coloreTitoli }}; }
     table.p { width: 100%; border-collapse: collapse; }
     table.p th { font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; font-weight: bold; text-align: left; border-bottom: 1px solid #0E2238; padding: 4px 5px; }
     table.p th.n { text-align: right; }
@@ -68,6 +87,8 @@
     table.p tfoot td { border-top: 1.5px solid #0E2238; border-bottom: 2px double #0E2238; font-weight: bold; color: #0E2238; padding: 5px; }
     .n { text-align: right; white-space: nowrap; }
     .d { color: #5A6B7B; font-size: 6.5pt; }
+    {{-- Le frasi del deliberato sotto la tabella della gestione: al corpo del testo, non a quello delle note piccole. --}}
+    .frase-deliberato { color: #26313F; margin: 5px 0 0; }
     .chiusura { margin-top: 6px; padding: 9px 12px; background: #F4F5F7; border-left: 3px solid #C9A227; font-size: 7.2pt; color: #26313F; }
     .chiusura b { color: #0E2238; }
     .eq { font-size: 7.5pt; color: #5A6B7B; margin: 4px 0 0; }
@@ -80,28 +101,28 @@
 <htmlpageheader name="rfTestatina">
     <table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #D9DEE5;">
         <tr>
-            <td style="border: 0; padding: 0 0 5px 0; font-size: 7.5pt; color: #5A6B7B;"><b style="color: #0E2238;">{{ $condominio->nome }}</b> · Riepilogo finanziario</td>
+            <td style="border: 0; padding: 0 0 5px 0; font-size: 7.5pt; color: #5A6B7B;">@if($conStudio){{ $carta->nome() }} · @endif<b style="color: {{ $coloreTitoli }};">{{ $condominio->nome }}</b> · Riepilogo finanziario</td>
             <td style="border: 0; padding: 0 0 5px 0; text-align: right; font-size: 7.5pt; color: #5A6B7B;">{{ $esercizio->nome }} · al {{ $dataIt($r['alla']) }}</td>
         </tr>
     </table>
 </htmlpageheader>
+{{-- Con lo studio, una stampa che comincia con la testatina (le parti del fascicolo) la ha già dalla prima pagina. --}}
+@if($conStudio && ! $carta->primaPaginaIntera())
+<sethtmlpageheader name="rfTestatina" page="ALL" value="on" show-this-page="1" />
+@else
 <sethtmlpageheader name="rfTestatina" page="ALL" value="on" />
+@endif
 
 <htmlpagefooter name="rfPiede">
-    <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;">
-        <tr>
-            <td style="border: 0; padding: 5px 0 0 0; font-size: 7pt; color: #5A6B7B;">
-                Documento emesso il {{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}
-                @if(!empty($nota_legale_stampe))
-                    <br>{!! nl2br(e($nota_legale_stampe)) !!}
-                @endif
-            </td>
-            <td style="border: 0; padding: 5px 0 0 0; text-align: right; font-size: 7pt; color: #5A6B7B;">@if(! empty($parte_del_fascicolo)) {{ $parte_del_fascicolo }}, pagina {PAGENO} di {nbpg} @else Pagina {PAGENO} di {nbpg} @endif</td>
-        </tr>
-    </table>
+    @include('pdf._carta.piede_inter', ['giorno' => \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y'), 'parte' => $parte_del_fascicolo ?? null])
 </htmlpagefooter>
 <sethtmlpagefooter name="rfPiede" page="ALL" value="on" />
 
+@if($conStudio)
+@component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => 'Riepilogo finanziario'])
+<b>{{ $esercizio->nome }}</b> · dal <b>{{ $dataIt($r['esercizio']['dal']) }}</b> al <b>{{ $dataIt($r['esercizio']['al']) }}</b> · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+@endcomponent
+@else
 <table class="testata">
     <tr>
         <td>
@@ -119,6 +140,7 @@
         </td>
     </tr>
 </table>
+@endif
 
 <h1>Riepilogo finanziario</h1>
 <p class="sotto">Per competenza, {{ $r['avvertenze']['data'] }}</p>
@@ -149,7 +171,7 @@
 <p class="eq">Cumulato dell'opera @if($b['cumulato_opera']['dal']) dal {{ $dataIt($b['cumulato_opera']['dal']) }} @endif: <b>{{ $fmt($b['cumulato_opera']['consuntivo']) }}</b>.</p>
 @endif
 <table class="p">
-    <thead><tr><th>Spese</th><th class="n">Preventivo</th><th class="n">Deliberato con le rate</th><th class="n">Consuntivo</th><th class="n">Anno prima</th><th class="n">Scostamento</th><th class="n">Pagato</th><th class="n">Da pagare</th></tr></thead>
+    <thead><tr><th>Spese</th><th class="n">Preventivo</th><th class="n">Deliberato con le rate{{ ($b['deliberato_stato'] ?? null) === 'ricostruito' ? ' (ricostruito)' : '' }}</th><th class="n">Consuntivo</th><th class="n">Anno prima</th><th class="n">Scostamento</th><th class="n">Pagato</th><th class="n">Da pagare</th></tr></thead>
     <tbody>
     @foreach($b['spese'] as $c)
         <tr class="cap">
@@ -173,6 +195,9 @@
             <td class="n">{{ $fmt($b['totale_spese']['anno_prima']) }}</td><td></td><td class="n">{{ $fmt($b['totale_spese']['pagato']) }}</td><td class="n">{{ $fmt($b['totale_spese']['da_pagare']) }}</td></tr>
     </tfoot>
 </table>
+@foreach($frasiDelDeliberato($b) as $frase)
+<p class="frase-deliberato" style="font-size: 8pt;">{{ $frase }}</p>
+@endforeach
 
 @if(count($b['entrate']) > 0)
 <table class="p" style="margin-top: 8px;">
@@ -201,9 +226,6 @@
 </table>
 @endif
 @endforeach
-@if($r['avvertenze']['deliberato'])
-<p class="d" style="margin: 6px 0 0;">{{ $r['avvertenze']['deliberato'] }}</p>
-@endif
 
 <h2>Fuori dai capitoli</h2>
 <table class="p">

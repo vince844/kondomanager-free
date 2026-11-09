@@ -26,14 +26,18 @@ interface Sintesi {
     stato: { finito: boolean; alla: string; frase: string };
     esito: { tornano: number; non_tornano: number; da_leggere: number; frase: string; riga_fissa: string; righe: { id: string; nome: string; esito: Esito }[] };
     riquadri: {
-        deliberato: { deliberato: number | null; preventivo: number | null; solo_ordinarie: boolean };
+        deliberato: { deliberato: number | null; preventivo: number | null; solo_ordinarie: boolean; ricostruito?: boolean };
         costi: { costi: number; per_capitolo: number; permille: number | null; base: 'deliberato' | 'preventivo' | null };
         quote: { pagate: number; emesse: number };
         liquidita: { liquidita: number; alla: string; frase: string };
     };
-    fasce: { tipo: 'commissioni' | 'contestate'; importo: number; numero: number; frase: string }[];
+    /**
+     * `da_assegnare`: le commissioni (o gli storni senza voce di registrazioni di un esercizio chiuso) a cui la voce si può dare, con la regola dell'elenco;
+     * senza nessuna la fascia non invita ad assegnarla.
+     */
+    fasce: { tipo: 'commissioni' | 'storni' | 'contestate'; importo: number; numero: number; da_assegnare?: number; frase: string }[];
     prospetto: {
-        preventivo: number | null; preventivo_solo_ordinarie?: boolean; deliberato: number | null; avvertenza_deliberato: string | null; quote_piani: number; quote_pagate: number; quote_non_pagate: number; costi: number;
+        preventivo: number | null; preventivo_solo_ordinarie?: boolean; deliberato: number | null; avvertenza_deliberato: string | null; avvertenza_deliberato_piani?: string[]; avvertenza_deliberato_ricostruito?: string | null; quote_piani: number; quote_pagate: number; quote_non_pagate: number; costi: number;
         quote_giornale: number; risultato: number; in_fondi: number;
         raccordo_quote: { quote_piani: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
     };
@@ -173,7 +177,7 @@ const pageGuides = [
                         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
                             <div class="border rounded-xl p-4 shadow-sm bg-slate-50/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800" data-test="riquadro-deliberato">
                                 <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1.5"><Scale class="w-3.5 h-3.5" /> Deliberato con le rate</div>
-                                <div class="text-lg font-bold tabular-nums">{{ deliberatoTesto(s.riquadri.deliberato.deliberato) }}</div>
+                                <div class="text-lg font-bold tabular-nums">{{ deliberatoTesto(s.riquadri.deliberato.deliberato) }}<span v-if="s.riquadri.deliberato.ricostruito && s.riquadri.deliberato.deliberato !== null" class="ml-2 text-[12px] font-semibold text-slate-600 dark:text-slate-400" data-test="riquadro-deliberato-ricostruito">ricostruito</span></div>
                                 <div class="text-[11px] text-slate-500 dark:text-slate-400">preventivo{{ s.riquadri.deliberato.solo_ordinarie ? ' delle gestioni ordinarie' : '' }} {{ importo(s.riquadri.deliberato.preventivo) }}</div>
                             </div>
                             <div class="border rounded-xl p-4 shadow-sm bg-rose-50/40 dark:bg-rose-900/10 border-rose-200 dark:border-rose-900" data-test="riquadro-costi">
@@ -196,9 +200,9 @@ const pageGuides = [
 
                         <!-- Le fasce: le spese che non stanno in nessun capitolo -->
                         <div v-for="f in s.fasce" :key="f.tipo" class="mb-3 rounded-lg border p-3 text-[12.5px] flex flex-wrap items-center justify-between gap-2"
-                            :class="f.tipo === 'commissioni' ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200'" :data-fascia="f.tipo">
+                            :class="f.tipo !== 'contestate' ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200'" :data-fascia="f.tipo">
                             <span>{{ f.frase }}</span>
-                            <Link v-if="f.tipo === 'commissioni'" :href="hrefCommissioni" class="font-semibold underline whitespace-nowrap">Assegna la voce</Link>
+                            <Link v-if="f.tipo !== 'contestate'" :href="hrefCommissioni" class="font-semibold underline whitespace-nowrap">{{ (f.da_assegnare ?? 0) > 0 ? 'Assegna la voce' : 'Vedi l\'elenco' }}</Link>
                             <Link v-else :href="hrefRiepilogo" class="font-semibold underline whitespace-nowrap">Apri il riepilogo</Link>
                         </div>
 
@@ -219,6 +223,8 @@ const pageGuides = [
                                 </tbody>
                             </table>
                             <p v-if="s.prospetto.avvertenza_deliberato" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="deliberato-non-disponibile">{{ s.prospetto.avvertenza_deliberato }}</p>
+                            <p v-for="(frase, i) in s.prospetto.avvertenza_deliberato_piani ?? []" :key="`piano-${i}`" class="px-4 pb-2 text-[11.5px] text-slate-500 dark:text-slate-400" data-test="deliberato-piani">{{ frase }}</p>
+                            <p v-if="s.prospetto.avvertenza_deliberato_ricostruito" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="deliberato-ricostruito">{{ s.prospetto.avvertenza_deliberato_ricostruito }}</p>
                             <p v-if="s.prospetto.quote_piani !== s.prospetto.quote_giornale" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="raccordo-quote">
                                 Quote dei piani dell'esercizio {{ euro(s.prospetto.raccordo_quote.quote_piani) }} = quote a giornale {{ euro(s.prospetto.raccordo_quote.quote_giornale) }}
                                 + rate di questi piani emesse in un altro esercizio {{ euro(s.prospetto.raccordo_quote.piani_emesse_altrove) }}

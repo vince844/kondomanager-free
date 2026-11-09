@@ -10,6 +10,7 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\DoubleEntryValidator;
+use App\Services\Gestionale\VoceNelloStorno;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -23,7 +24,9 @@ use Illuminate\Support\Facades\DB;
  * vale dal giorno dell'incasso, se l'esercizio che contiene quella data è aperto; un incasso tornato indietro (bonifico richiamato, accredito
  * respinto) vale da oggi, il giorno dell'amministratore. La natura si scrive sull'incasso stornato.
  *
- * L'esercizio dello storno è quello dell'originale se è aperto; se è chiuso, l'esercizio aperto del condominio, con la provenienza in causale.
+ * L'esercizio dello storno è quello dell'originale se è aperto; se è chiuso, l'esercizio aperto del condominio, con la provenienza in causale. Lì una
+ * voce di una gestione che l'esercizio dello storno non ha (o ha con il legame spento) non si ricopia: la riga va senza voce, sullo stesso conto, con la
+ * voce di allora nella nota ({@see VoceNelloStorno}).
  */
 class StornaIncassoDaTerziAction
 {
@@ -93,14 +96,15 @@ class StornaIncassoDaTerziAction
             ]);
 
             foreach ($scrittura->righe as $riga) {
+                [$voce, $perche] = VoceNelloStorno::per($riga->voce_spesa_id, $esercizioOriginale, $esercizioTarget);
                 $storno->righe()->create([
                     'conto_contabile_id' => $riga->conto_contabile_id,
                     'cassa_id' => $riga->cassa_id,
-                    'voce_spesa_id' => $riga->voce_spesa_id,
+                    'voce_spesa_id' => $voce,
                     'anagrafica_id' => $riga->anagrafica_id,
                     'tipo_riga' => $riga->tipo_riga === 'dare' ? 'avere' : 'dare',
                     'importo' => $riga->importo,
-                    'note' => 'Storno — '.$riga->note,
+                    'note' => $perche === null ? 'Storno — '.$riga->note : rtrim('Storno — '.$riga->note).' '.$perche,
                 ]);
             }
 

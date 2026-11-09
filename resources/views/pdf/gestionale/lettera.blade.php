@@ -7,9 +7,11 @@
   l'IBAN; il giorno della situazione. Di una rata coperta in parte da un accordo di rientro la riga dice la parte fuori dall'accordo
   (`da_versare`); la parte in accordo non è nella lettera.
 
-  L'impaginazione è quella di una lettera: in alto a sinistra lo studio che scrive (se le impostazioni di stampa lo dicono) e il condominio, a
-  destra il destinatario, a 112 mm dal bordo, per la busta a finestra. Il layout non scrive la sua intestazione né «Documento emesso il …»:
-  la data sta sotto la testata. La firma: l'immagine per promemoria e sollecito; per diffida e messa in mora lo spazio per firmare a mano.
+  L'impaginazione è quella di una lettera: in alto a sinistra lo studio che scrive (se le impostazioni di stampa lo dicono), con il logo e tutti
+  i suoi dati, e sotto il condominio con il codice fiscale; a destra il destinatario, con le righe allineate al margine destro. La colonna di
+  sinistra è larga 112 mm meno il margine sinistro e va a capo 8 mm prima del destinatario. Con la carta intestata lo studio è sulla carta: in alto a
+  sinistra «Amministratore del Condominio …». Il layout non
+  scrive la sua intestazione né «Documento emesso il …»: la data sta sotto la testata. La firma: l'immagine per promemoria e sollecito; per diffida e messa in mora lo spazio per firmare a mano.
   `etichetta` ('ANTEPRIMA' o 'PROVA') dice in testa che il PDF non è una lettera mandata.
 --}}
 @php
@@ -19,13 +21,10 @@
     $piede_senza_data = true;
     $euro = fn (int $cents) => '€ ' . number_format($cents / 100, 2, ',', '.');
     $giorno = fn (?string $data) => $data ? \Carbon\Carbon::parse($data)->format('d/m/Y') : '';
-    $studio = $studio ?? ['nome' => null, 'indirizzo' => null, 'email' => null, 'pec' => null, 'telefono' => null];
-    $righeStudio = array_values(array_filter([
-        $studio['indirizzo'] ?? null,
-        filled($studio['telefono'] ?? null) ? 'Tel. ' . $studio['telefono'] : null,
-        filled($studio['email'] ?? null) ? 'Email ' . $studio['email'] : null,
-        filled($studio['pec'] ?? null) ? 'PEC ' . $studio['pec'] : null,
-    ], 'filled'));
+    // Lo studio della carta delle lettere (la dà la stampa; resa da sola, la vista la chiede): in alto a sinistra con il logo e tutti i suoi dati.
+    $carta ??= app(\App\Services\PDF\CartaDiStampa::class)->perGruppo(\App\Services\PDF\GruppoCarta::LETTERE);
+    // I titoli, i loro filetti e il nome di chi scrive hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta, '#1e3a5f');
     $condominioVia = trim((string) ($condominio->indirizzo ?? ''));
     $condominioCitta = trim(implode(' ', array_filter([$condominio->cap ?? null, $condominio->comune ?? null, filled($condominio->provincia ?? null) ? '(' . $condominio->provincia . ')' : null], 'filled')));
 @endphp
@@ -54,21 +53,23 @@
         </table>
     @endif
 
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+    {{-- `overflow: wrap`: una parola più larga della colonna (una PEC, un sito) va a capo dove la colonna finisce, e la colonna non si allarga. --}}
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; overflow: wrap;">
         <tr>
-            <td style="width: 100mm; padding: 0; vertical-align: top;">
-                @if(filled($studio['nome'] ?? null))
-                    <div style="font-size: 12pt; font-weight: bold; color: #1e3a5f; line-height: 1.25;">{{ $studio['nome'] }}</div>
-                    <div style="font-size: 8.5pt; color: #333; margin-top: 2px; line-height: 1.4;">
-                        {!! implode('<br>', array_map('e', $righeStudio)) !!}
-                    </div>
-                    <div style="font-size: 9pt; color: #333; margin-top: 6px; line-height: 1.4;">
+            <td style="width: {{ \App\Services\PDF\Carta::larghezzaMittente($carta) }}; padding: 0 {{ \App\Services\PDF\Carta::SPAZIO_PRIMA_DEL_DESTINATARIO }}mm 0 0; vertical-align: top;">
+                {{-- Con la carta intestata lo studio è stampato sulla carta: sotto, come dopo il blocco dello studio, chi scrive per il condominio. --}}
+                @if($carta->haStudio() || $carta->cartaIntestata() !== null)
+                    @if($carta->haStudio())
+                        @include('pdf._carta.mittente')
+                    @endif
+                    <div style="font-size: 9pt; color: #333; line-height: 1.4;">
                         Amministratore del <strong>{{ \App\Services\Gestionale\Lettere\TestiLettere::condominioConNome((string) $condominio->nome) }}</strong>
                         @if($condominioVia !== '')<br>{{ $condominioVia }}@endif
                         @if($condominioCitta !== '')<br>{{ $condominioCitta }}@endif
+                        @if(filled($condominio->codice_fiscale ?? null))<br>C.F. {{ $condominio->codice_fiscale }}@endif
                     </div>
                 @else
-                    <div style="font-size: 12pt; font-weight: bold; color: #1e3a5f; line-height: 1.25;">{{ $condominio->nome }}</div>
+                    <div style="font-size: 11pt; font-weight: bold; color: {{ $coloreTitoli }}; line-height: 1.25;">{{ $condominio->nome }}</div>
                     <div style="font-size: 9pt; color: #333; margin-top: 2px; line-height: 1.45;">
                         @if($condominioVia !== ''){{ $condominioVia }}<br>@endif
                         @if($condominioCitta !== ''){{ $condominioCitta }}<br>@endif
@@ -76,7 +77,7 @@
                     </div>
                 @endif
             </td>
-            <td style="padding: 0; vertical-align: top;">
+            <td style="padding: 0; vertical-align: top; text-align: right;">
                 <div style="font-size: 11pt; font-weight: bold; color: #222; line-height: 1.3;">{{ $l['persona']['nome'] ?? '' }}</div>
                 @if(filled($l['persona']['indirizzo'] ?? null))
                     <div style="font-size: 9.5pt; color: #333; margin-top: 2px; line-height: 1.4;">{{ $l['persona']['indirizzo'] }}</div>
@@ -87,8 +88,8 @@
 
     <div style="font-size: 9pt; color: #444; margin-bottom: 8px;">{{ $luogoData }}</div>
 
-    <div style="border-bottom: 2px solid #1e3a5f; padding-bottom: 6px; margin-bottom: 10px;">
-        <h2 style="margin: 0; font-size: 14pt; color: #1e3a5f; letter-spacing: 0.5px;">{{ $l['titolo'] }}</h2>
+    <div style="border-bottom: 2px solid {{ $coloreTitoli }}; padding-bottom: 6px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 14pt; color: {{ $coloreTitoli }}; letter-spacing: 0.5px;">{{ $l['titolo'] }}</h2>
         {{-- Il nome con «Condominio» davanti una volta sola: un nome che comincia già con la parola non la ripete. --}}
         <div style="font-size: 9pt; color: #444; margin-top: 3px;">{{ $condominio_nel_titolo ?? \App\Services\Gestionale\Lettere\TestiLettere::condominioConNome((string) $condominio->nome) }}</div>
     </div>

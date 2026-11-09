@@ -71,11 +71,9 @@ class LettereController extends Controller
             return response('Archivio non fatto. ' . $e->getMessage(), 422)->header('Content-Type', 'text/plain; charset=UTF-8');
         }
 
-        return response($esito['zip'])
-            ->header('Content-Type', 'application/zip')
-            ->header('Content-Disposition', 'attachment; filename="' . $esito['nome'] . '"')
-            ->header('X-Persone-Aggiunte', (string) $esito['aggiunte'])
-            ->header('X-Lettere-Invii', self::invii($esito['invii']));
+        // Lo .zip è un file temporaneo: va al browser letto a pezzi, e si cancella dopo.
+        return response()->download($esito['zip'], $esito['nome'], ['Content-Type' => 'application/zip', 'X-Persone-Aggiunte' => (string) $esito['aggiunte'],
+            'X-Lettere-Invii' => self::invii($esito['invii'])])->deleteFileAfterSend();
     }
 
     /** L'invio per email. Un indirizzo scritto a mano conta nel limite di dieci al minuto. */

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { giornoItaliano } from '@/lib/giorno';
-import { vocePropostaPer, vociDellaGestione, type PropostaCommissione, type VoceCommissione } from '@/lib/gestionale/pagamenti/voceCommissione';
+import { vocePropostaPer, vociOfferte, type PropostaCommissione, type VoceCommissione } from '@/lib/gestionale/pagamenti/voceCommissione';
 import { AlertTriangle, Landmark, ListChecks } from 'lucide-vue-next';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -17,7 +17,9 @@ import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import type { Flash } from '@/types/flash';
 
 /**
- * Le commissioni dei pagamenti scritte senza voce in un esercizio (`CommissioniSenzaVoce::perEsercizio`), e «Assegna la voce» in blocco.
+ * Le commissioni dei pagamenti scritte senza voce in un esercizio (`CommissioniSenzaVoce::perEsercizio`), e «Assegna la voce» in blocco. Nello stesso
+ * elenco gli storni senza voce di una regolazione immediata o di un incasso da terzi di un esercizio chiuso (`natura` «registrazione»): si assegnano a
+ * una voce di un'ordinaria dell'esercizio, di spesa la regolazione e di entrata l'incasso (`voce_di_entrata`), e il titolo e le frasi li nominano.
  *
  * Una gestione alla volta (la voce è di una gestione): si sceglie la gestione, si scelgono le commissioni (o tutte quelle della gestione), si
  * sceglie la voce (proposta dall'ultima commissione della gestione), si guarda l'anteprima e si conferma. La pagina manda gli id scelti: il
@@ -35,6 +37,12 @@ interface Commissione {
     importo: number;
     assegnabile: boolean;
     motivo: string | null;
+    // Lo storno di una commissione che era su una gestione che l'esercizio non ha: la voce si sceglie fra quelle delle ordinarie dell'esercizio.
+    solo_ordinarie?: boolean;
+    // «registrazione»: lo storno di una regolazione immediata o di un incasso da terzi di un esercizio chiuso.
+    natura?: 'commissione' | 'registrazione';
+    // Lo storno di un incasso da terzi: si assegna a una voce di entrata.
+    voce_di_entrata?: boolean;
 }
 
 const props = defineProps<{
@@ -45,8 +53,26 @@ const props = defineProps<{
     totale: { numero: number; importo: number };
     frase_chiuso: string | null;
     voci: VoceCommissione[];
+    voci_di_entrata?: VoceCommissione[];
     proposte: PropostaCommissione[];
 }>();
+
+/** La frase del server (`CommissioniSenzaVoce::STORNI_DI_DUE_TIPI`): la pagina la dice prima di inviare. */
+const FRASE_DUE_TIPI = 'Lo storno di un incasso da terzi va su una voce di entrata, le commissioni e gli altri storni su una voce di spesa: si assegnano in due volte.';
+
+const storno = (c: Commissione) => c.natura === 'registrazione';
+// Con gli storni delle registrazioni il titolo e le frasi li nominano.
+const conStorni = computed(() => props.commissioni.some(storno));
+const titolo = computed(() => (conStorni.value ? 'Commissioni e storni senza voce' : 'Commissioni senza voce'));
+/** «1 commissione», «2 storni», «1 commissione e 1 storno»: le commissioni (con i loro storni) e gli storni delle registrazioni. */
+const quante = (lista: Commissione[]) => {
+    const storni = lista.filter(storno).length;
+    const commissioni = lista.length - storni;
+    return [
+        commissioni > 0 ? (commissioni === 1 ? '1 commissione' : `${commissioni} commissioni`) : null,
+        storni > 0 ? (storni === 1 ? '1 storno' : `${storni} storni`) : null,
+    ].filter(Boolean).join(' e ');
+};
 
 const { generateRoute, generatePath } = usePermission();
 const { euro } = useCurrencyFormatter();
@@ -57,7 +83,7 @@ const errori = computed(() => page.props.errors ?? {});
 const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Pagamenti', href: generatePath('gestionale/:condominio/pagamenti-fornitori', { condominio: props.condominio.id }) },
-    { title: 'Commissioni senza voce' },
+    { title: titolo.value },
 ]);
 
 // Le gestioni che hanno commissioni nell'elenco, nell'ordine in cui compaiono.
@@ -74,14 +100,31 @@ const visibili = computed(() => props.commissioni.filter((c) => c.gestione_id ==
 const assegnabili = computed(() => visibili.value.filter((c) => c.assegnabile));
 const scelte = ref<number[]>([]);
 const voceId = ref<number | null>(null);
-const vociDellaScelta = computed(() => vociDellaGestione(props.voci, gestioneScelta.value));
+// Con lo storno di una commissione che era su una gestione che l'esercizio non ha fra le scelte, solo le voci delle ordinarie dell'esercizio.
+const soloOrdinarie = computed(() => props.commissioni.some((c) => c.solo_ordinarie && scelte.value.includes(c.id)));
+// Lo storno di un incasso da terzi va su una voce di entrata; scelto con altre righe, che vanno su una voce di spesa, non si assegna.
+const sceltiDiEntrata = computed(() => props.commissioni.filter((c) => c.voce_di_entrata && scelte.value.includes(c.id)).length);
+const diEntrata = computed(() => sceltiDiEntrata.value > 0);
+const dueTipi = computed(() => diEntrata.value && sceltiDiEntrata.value !== scelte.value.length);
+// Le voci della gestione delle commissioni scelte, poi quelle delle gestioni ordinarie dell'esercizio (Coda 553); per lo storno di un incasso, le voci di
+// entrata delle ordinarie dell'esercizio.
+const vociDellaScelta = computed(() => (diEntrata.value
+    ? vociOfferte(props.voci_di_entrata ?? [], gestioneScelta.value, props.esercizio?.id ?? null, true)
+    : vociOfferte(props.voci, gestioneScelta.value, props.esercizio?.id ?? null, soloOrdinarie.value)));
+// Una voce scelta che non è più fra quelle offerte (la scelta ora ha uno storno da dare a un'ordinaria) lascia il posto alla proposta, o al campo vuoto.
+// Le proposte sono voci di spesa: per una voce di entrata il campo resta vuoto.
+watch(vociDellaScelta, (offerte) => {
+    if (voceId.value !== null && !offerte.some((v) => v.id === voceId.value)) {
+        voceId.value = diEntrata.value ? null : vocePropostaPer(props.proposte, props.voci, gestioneScelta.value, props.esercizio?.id ?? null, soloOrdinarie.value);
+    }
+});
 const mostraAnteprima = ref(false);
 const invioInCorso = ref(false);
 
 // Cambiando gestione si riparte: nessuna commissione scelta, la voce proposta della nuova gestione.
 watch(gestioneScelta, (gestione) => {
     scelte.value = [];
-    voceId.value = vocePropostaPer(props.proposte, props.voci, gestione);
+    voceId.value = vocePropostaPer(props.proposte, props.voci, gestione, props.esercizio?.id ?? null);
     mostraAnteprima.value = false;
 }, { immediate: true });
 
@@ -92,8 +135,8 @@ const scegliTutte = () => {
 
 const daAssegnare = computed(() => assegnabili.value.filter((c) => scelte.value.includes(c.id)));
 const importoScelto = computed(() => daAssegnare.value.reduce((somma, c) => somma + c.importo, 0));
-const voceScelta = computed(() => props.voci.find((v) => v.id === voceId.value) ?? null);
-const puoAssegnare = computed(() => props.esercizio.aperto && daAssegnare.value.length > 0 && voceScelta.value !== null);
+const voceScelta = computed(() => [...props.voci, ...(props.voci_di_entrata ?? [])].find((v) => v.id === voceId.value) ?? null);
+const puoAssegnare = computed(() => props.esercizio.aperto && daAssegnare.value.length > 0 && voceScelta.value !== null && !dueTipi.value);
 
 const conferma = () => {
     if (!puoAssegnare.value || invioInCorso.value) return;
@@ -111,13 +154,13 @@ const conferma = () => {
 </script>
 
 <template>
-    <Head title="Commissioni senza voce" />
+    <Head :title="titolo" />
 
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-4">
             <PageHeaderGuide
-                page-title="Commissioni senza voce"
-                :page-subtitle="`Esercizio ${props.esercizio.nome}: le commissioni dei pagamenti registrate prima che avessero una voce.`"
+                :page-title="titolo"
+                :page-subtitle="`Esercizio ${props.esercizio.nome}: le commissioni dei pagamenti registrate prima che avessero una voce${conStorni ? ', e gli storni di registrazioni di un esercizio chiuso rimasti senza voce' : ''}.`"
                 :guides="[]"
                 :breadcrumbs="breadcrumbs"
                 :condominio="(props.condominio as any)"
@@ -135,6 +178,11 @@ const conferma = () => {
                 </p>
                 <p class="text-slate-500">
                     Una commissione e il suo storno prendono la voce insieme. Le commissioni nuove la voce l'hanno già: si sceglie nel pagamento.
+                </p>
+                <p v-if="conStorni" data-testo="storni">
+                    Gli storni di una regolazione immediata o di un incasso da terzi di un esercizio chiuso sono sul conto della registrazione, senza voce: stanno
+                    nei costi dell'esercizio ma fuori dal riparto. Quello di una registrazione che aveva una voce si assegna a una voce di un'ordinaria di questo
+                    esercizio, di spesa per la regolazione e di entrata per l'incasso, ed entra così nel riparto; la riga dice perché gli altri no.
                 </p>
             </div>
 
@@ -154,7 +202,7 @@ const conferma = () => {
                         <v-select id="gestione" v-model="gestioneScelta" :options="gestioni" :reduce="(g: any) => g.id" label="nome" :clearable="false" />
                     </div>
                     <p class="text-sm text-slate-600" data-testo="totale">
-                        {{ props.totale.numero === 1 ? '1 commissione' : `${props.totale.numero} commissioni` }} senza voce, per {{ euro(props.totale.importo) }}.
+                        {{ quante(props.commissioni) }} senza voce, per {{ euro(props.totale.importo) }}.
                     </p>
                 </div>
 
@@ -176,7 +224,7 @@ const conferma = () => {
                         <tbody>
                             <tr v-for="c in visibili" :key="c.id" data-riga="commissione" class="border-t border-slate-100 align-top dark:border-slate-800">
                                 <td class="px-3 py-2">
-                                    <input v-if="c.assegnabile" v-model="scelte" type="checkbox" :value="c.id" :aria-label="`Scegli la commissione ${c.righe[0].protocollo ?? c.id}`" />
+                                    <input v-if="c.assegnabile" v-model="scelte" type="checkbox" :value="c.id" :aria-label="`Scegli ${storno(c) ? 'lo storno' : 'la commissione'} ${c.righe[0].protocollo ?? c.id}`" />
                                 </td>
                                 <td class="px-3 py-2 whitespace-nowrap">
                                     <div v-for="r in c.righe" :key="r.riga_id">{{ giornoItaliano(r.data) }}</div>
@@ -197,12 +245,13 @@ const conferma = () => {
                         <div class="space-y-1.5 min-w-64">
                             <Label for="voce">Voce da assegnare</Label>
                             <v-select id="voce" v-model="voceId" :options="vociDellaScelta" :reduce="(v: VoceCommissione) => v.id" label="label"
-                                      placeholder="Su quale voce di spesa vanno le commissioni?" />
+                                      :placeholder="diEntrata ? 'Su quale voce di entrata va lo storno?' : (conStorni ? 'Su quale voce di spesa vanno le righe scelte?' : 'Su quale voce di spesa vanno le commissioni?')" />
                         </div>
                         <Button :disabled="!puoAssegnare" @click="mostraAnteprima = true">
                             <ListChecks class="h-4 w-4 mr-1.5" /> Assegna la voce
                         </Button>
                     </div>
+                    <p v-if="dueTipi" data-testo="due-tipi" class="text-sm font-medium text-rose-600">{{ FRASE_DUE_TIPI }}</p>
                     <p v-if="errori.voce_id" class="text-sm font-medium text-rose-600">{{ errori.voce_id }}</p>
                     <p v-if="errori.commissioni" class="text-sm font-medium text-rose-600">{{ errori.commissioni }}</p>
 
@@ -210,8 +259,8 @@ const conferma = () => {
                         <p class="flex items-start gap-2">
                             <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
                             <span>
-                                {{ daAssegnare.length === 1 ? '1 commissione' : `${daAssegnare.length} commissioni` }} per {{ euro(importoScelto) }}
-                                prendono la voce «{{ voceScelta!.label }}»: il consuntivo della voce cambia di {{ euro(importoScelto) }} nell'esercizio {{ props.esercizio.nome }}.
+                                {{ quante(daAssegnare) }} per {{ euro(importoScelto) }}
+                                {{ daAssegnare.length === 1 ? 'prende' : 'prendono' }} la voce «{{ voceScelta!.label }}»: {{ diEntrata ? `l'incassato della voce cambia di ${euro(-importoScelto)}` : `il consuntivo della voce cambia di ${euro(importoScelto)}` }} nell'esercizio {{ props.esercizio.nome }}.
                             </span>
                         </p>
                         <div class="flex gap-2">

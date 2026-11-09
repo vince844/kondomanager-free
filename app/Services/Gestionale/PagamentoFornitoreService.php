@@ -28,6 +28,7 @@ use App\Exceptions\Pagamenti\RitenutaIncoerenteException;
 use App\Models\Esercizio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
+use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\FatturaScrittura;
@@ -231,10 +232,10 @@ class PagamentoFornitoreService
                 $gestioneId = $data['gestione_id']
                     ?? $this->deriveGestioneId($fatture);
 
-                // La voce della commissione, della gestione del pagamento (`VoceDellaCommissione`): senza, la commissione resterebbe fuori dal
-                // consuntivo e dal riparto. Si controlla prima di scrivere, dentro la transazione.
+                // La voce della commissione, della gestione del pagamento o di un'altra gestione dello stesso esercizio (`VoceDellaCommissione`): senza, la
+                // commissione resterebbe fuori dal consuntivo e dal riparto. Si controlla prima di scrivere, dentro la transazione.
                 $voceCommissione = app(VoceDellaCommissione::class)->verifica(
-                    $condominioId, (int) $gestioneId, $data['voce_commissione_id'] ?? null, $totali['commissioni']
+                    $condominioId, (int) $gestioneId, $data['voce_commissione_id'] ?? null, $totali['commissioni'], (int) $data['esercizio_id']
                 );
 
                 $idempotencyKey = (string) ($data['idempotency_key'] ?? Str::uuid());
@@ -552,7 +553,7 @@ class PagamentoFornitoreService
             ? app(VoceDellaCommissione::class)->contoSenzaVoce($pagamento, $nuoveCommissioni)
             : null;
         $voceCommissione = $contoSenzaVoce !== null ? null : app(VoceDellaCommissione::class)->verifica(
-            (int) $pagamento->condominio_id, (int) $scrittura->gestione_id, $voceScelta, $nuoveCommissioni
+            (int) $pagamento->condominio_id, (int) $scrittura->gestione_id, $voceScelta, $nuoveCommissioni, (int) $scrittura->esercizio_id
         );
         $nuovoConto = (int) $data['conto_corrente_id'];
         $nuovaData = $data['data_pagamento'];
@@ -865,13 +866,35 @@ class PagamentoFornitoreService
             //   AVERE Spese Banc.   5   (era DARE — storna il costo commissioni)
             // La voce si ricopia com'era (quella della commissione, o nessuna per un pagamento scritto prima): lo storno non la chiede, e il
             // consuntivo della voce torna com'era, come per lo storno della regolazione immediata.
+            // **Lo storno nell'anno dopo** (Variante B1) di una commissione su una voce di una gestione che l'esercizio dello storno non ha (un'ordinaria
+            // dell'anno prima: Coda 553, e prima per i pagamenti dell'ordinaria dalla 1.12.0-beta.5): la riga va sulle «Spese bancarie» di sistema, senza
+            // voce, con una nota che dice la voce di allora. Stesso importo, stesso lato: la partita doppia non cambia. Con la voce di allora la riga starebbe
+            // fuori dal rendiconto e dal riparto dell'esercizio dello storno; senza voce sta nella riga «Commissioni senza voce», e il conto dei costi torna.
+            $sistemaBancarie = null;
             foreach ($scritturaOriginale->righe as $riga) {
+                $voce = $riga->voce_spesa_id;
+                $conto = $riga->conto_contabile_id;
+                $nota = null;
+                if ($crossEsercizio && $voce !== null) {
+                    $voceDiAllora = Conto::with('pianoConto.gestione')->find($voce);
+                    $gestioneDiAllora = $voceDiAllora?->pianoConto?->gestione;
+                    if ($gestioneDiAllora === null || ! VoceDellaCommissione::legataAllEsercizio((int) $gestioneDiAllora->id, (int) $esercizioTarget->id)) {
+                        $sistemaBancarie ??= ContoContabile::where('condominio_id', $scritturaOriginale->condominio_id)->where('ruolo', 'spese_bancarie')->value('id');
+                        if ($sistemaBancarie !== null) {
+                            $nota = sprintf('Storno della commissione che nell\'esercizio «%s» era sulla voce «%s» della gestione «%s», che l\'esercizio «%s» non ha.',
+                                $esercizioOriginale->nome, $voceDiAllora?->nome ?? '—', $gestioneDiAllora?->nome ?? '—', $esercizioTarget->nome);
+                            $voce = null;
+                            $conto = (int) $sistemaBancarie;
+                        }
+                    }
+                }
                 $scritturaStorno->righe()->create([
-                    'conto_contabile_id' => $riga->conto_contabile_id,
+                    'conto_contabile_id' => $conto,
                     'cassa_id' => $riga->cassa_id,
-                    'voce_spesa_id' => $riga->voce_spesa_id,
+                    'voce_spesa_id' => $voce,
                     'tipo_riga' => $riga->tipo_riga === 'dare' ? 'avere' : 'dare',
                     'importo' => $riga->importo,
+                    'note' => $nota,
                 ]);
             }
 

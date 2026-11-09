@@ -14,6 +14,7 @@ use App\Traits\PdfRigheStampabili;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * Il mastrino di un conto contabile — punto 2 della sequenza di docs/registri_contabili.md,
@@ -115,6 +116,7 @@ class MastrinoController extends Controller
         }
 
         $mpdf = $pdfService->generate('pdf.gestionale.mastrino', [
+            'gruppo_carta' => GruppoCarta::REGISTRI_E_ELENCHI,
             'condominio' => $condominio,
             'esercizio' => $esercizio,
             'conto' => $mastrino['conto'],
@@ -180,6 +182,7 @@ class MastrinoController extends Controller
         }
 
         $mpdf = $pdfService->generate('pdf.gestionale.libro_mastro', [
+            'gruppo_carta' => GruppoCarta::REGISTRI_E_ELENCHI,
             'condominio' => $condominio,
             'esercizio' => $esercizio,
             'periodo' => $libro['periodo'],

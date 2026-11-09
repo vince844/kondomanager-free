@@ -58,7 +58,7 @@ test('generate() alza il limite di tempo prima di scrivere il PDF', function () 
     $prima = ini_get('max_execution_time');
     ini_set('max_execution_time', '30');
     try {
-        app(PdfService::class)->generate('pdf.base', ['senza_firma' => true]);
+        app(PdfService::class)->generate('pdf.base', ['senza_firma' => true, 'gruppo_carta' => \App\Services\PDF\GruppoCarta::REGISTRI_E_ELENCHI]);
 
         expect(ini_get('max_execution_time'))->toBe('120');
     } finally {

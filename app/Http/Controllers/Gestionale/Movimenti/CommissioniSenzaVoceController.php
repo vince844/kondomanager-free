@@ -21,8 +21,8 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * L'elenco delle commissioni scritte senza voce di un esercizio, e «Assegna la voce» in blocco (`CommissioniSenzaVoce`). L'esercizio è nella
- * rotta, dentro il condominio (un esercizio di un altro condominio risponde 404 a tutta la richiesta).
+ * L'elenco delle commissioni scritte senza voce di un esercizio, con gli storni senza voce di registrazioni di un esercizio chiuso, e «Assegna la voce»
+ * in blocco (`CommissioniSenzaVoce`). L'esercizio è nella rotta, dentro il condominio (un esercizio di un altro condominio risponde 404 a tutta la richiesta).
  */
 class CommissioniSenzaVoceController extends Controller
 {
@@ -43,8 +43,10 @@ class CommissioniSenzaVoceController extends Controller
             'esercizio' => ['id' => $esercizio->id, 'nome' => $esercizio->nome, 'stato' => $esercizio->stato, 'aperto' => $aperto],
             'commissioni' => $elenco['commissioni'],
             'totale' => $elenco['totale'],
-            'frase_chiuso' => $aperto ? null : CommissioniSenzaVoce::fraseChiuso((string) $esercizio->nome),
+            'frase_chiuso' => $aperto ? null : CommissioniSenzaVoce::fraseChiusoPerLElenco((string) $esercizio->nome, $elenco['commissioni']),
             'voci' => $voci->elenco($condominio->id),
+            // Le voci di entrata, per lo storno di un incasso da terzi: si assegna a una voce di entrata di un'ordinaria dell'esercizio.
+            'voci_di_entrata' => $voci->elenco($condominio->id, entrate: true),
             'proposte' => $voci->proposte($condominio->id),
         ]);
     }
@@ -60,14 +62,14 @@ class CommissioniSenzaVoceController extends Controller
             'gestione_id' => ['nullable', 'integer', 'required_if:tutte,true'],
             'voce_id' => ['required', 'integer'],
         ], [
-            'voce_id.required' => 'Scegli la voce da assegnare alle commissioni.',
+            'voce_id.required' => 'Scegli la voce da assegnare alle righe scelte.',
             'voce_id.integer' => 'La voce scelta non è valida: scegli una voce dal menu.',
-            'gestione_id.required_if' => 'Per assegnare la voce a tutte le commissioni, scegli la gestione.',
+            'gestione_id.required_if' => 'Per assegnare la voce a tutte le righe, scegli la gestione.',
         ]);
 
         $tutte = (bool) ($validated['tutte'] ?? false);
         if (! $tutte && empty($validated['commissioni'])) {
-            return back()->withErrors(['commissioni' => 'Nessuna commissione da assegnare: scegline almeno una.']);
+            return back()->withErrors(['commissioni' => CommissioniSenzaVoce::NESSUNA_RIGA_SCELTA]);
         }
 
         // Un id che non è una riga di questo condominio (di un altro, o che non esiste) è un 404 per tutta la richiesta, come per le ricevute: nessuna
@@ -93,12 +95,22 @@ class CommissioniSenzaVoceController extends Controller
             return back()->withErrors(['commissioni' => $e->getMessage()]);
         }
 
-        Log::info("Voce assegnata a {$esito['numero']} commissioni senza voce da utente #".Auth::id()." — condominio #{$condominio->id}, esercizio #{$esercizio->id}");
-
-        $quante = $esito['numero'] === 1 ? '1 commissione' : "{$esito['numero']} commissioni";
+        $quante = self::quante($esito['numero'] - $esito['storni'], $esito['storni']);
+        Log::info("Voce assegnata a {$quante} senza voce da utente #".Auth::id()." — condominio #{$condominio->id}, esercizio #{$esercizio->id}");
 
         return back()->with($this->flashSuccess(
-            "Voce «{$esito['voce']}» assegnata a {$quante}: il consuntivo della voce cambia di ".MoneyHelper::format($esito['importo']).'.'
+            "Voce «{$esito['voce']}» assegnata a {$quante}: ".($esito['entrata']
+                ? 'l\'incassato della voce cambia di '.MoneyHelper::format(-$esito['importo'])
+                : 'il consuntivo della voce cambia di '.MoneyHelper::format($esito['importo'])).'.'
         ));
+    }
+
+    /** «1 commissione», «2 storni», «1 commissione e 1 storno»: le commissioni (con i loro storni) e gli storni da soli. */
+    private static function quante(int $commissioni, int $storni): string
+    {
+        return implode(' e ', array_filter([
+            $commissioni > 0 ? ($commissioni === 1 ? '1 commissione' : "{$commissioni} commissioni") : null,
+            $storni > 0 ? ($storni === 1 ? '1 storno' : "{$storni} storni") : null,
+        ]));
     }
 }

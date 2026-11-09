@@ -8,6 +8,7 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\DoubleEntryValidator;
+use App\Services\Gestionale\VoceNelloStorno;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -22,7 +23,9 @@ use Illuminate\Support\Facades\DB;
  * Cross-esercizio: se l'esercizio dell'originale è nel frattempo stato chiuso, lo
  * storno viene registrato nell'esercizio corrente aperto, con la provenienza
  * indicata in causale. Stesso paradigma della Variante B1 già adottata per lo
- * storno dei pagamenti fornitore.
+ * storno dei pagamenti fornitore. Una voce di una gestione che l'esercizio dello
+ * storno non ha (o ha con il legame spento) non si ricopia: la riga va senza voce,
+ * sullo stesso conto, con la voce di allora nella nota ({@see VoceNelloStorno}).
  */
 class StornaRegolazioneImmediataAction
 {
@@ -95,17 +98,19 @@ class StornaRegolazioneImmediataAction
             ]);
 
             // Righe speculari: il capitolo di spesa si scarica, la cassa rientra.
-            // voce_spesa_id viene propagato così il budget del capitolo torna libero.
+            // voce_spesa_id viene propagato così il budget del capitolo torna libero; nell'anno dopo,
+            // solo se l'esercizio dello storno ha la gestione della voce.
             foreach ($scrittura->righe as $riga) {
+                [$voce, $perche] = VoceNelloStorno::per($riga->voce_spesa_id, $esercizioOriginale, $esercizioTarget);
                 $storno->righe()->create([
                     'conto_contabile_id' => $riga->conto_contabile_id,
                     'cassa_id' => $riga->cassa_id,
-                    'voce_spesa_id' => $riga->voce_spesa_id,
+                    'voce_spesa_id' => $voce,
                     'anagrafica_id' => $riga->anagrafica_id,
                     'immobile_id' => $riga->immobile_id,
                     'tipo_riga' => $riga->tipo_riga === 'dare' ? 'avere' : 'dare',
                     'importo' => $riga->importo,
-                    'note' => 'Storno — '.$riga->note,
+                    'note' => $perche === null ? 'Storno — '.$riga->note : rtrim('Storno — '.$riga->note).' '.$perche,
                 ]);
             }
 

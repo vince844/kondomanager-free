@@ -27,7 +27,7 @@ import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import axios from 'axios';
 import { oggiLocale } from '@/lib/giorno';
-import { FRASE_ALTRA_GESTIONE, FRASE_SENZA_VOCE, gestioneDelPagamento, mancaLaVoce, voceDopoIlCambio, vociDellaGestione, type PropostaCommissione, type VoceCommissione } from '@/lib/gestionale/pagamenti/voceCommissione';
+import { FRASE_SENZA_VOCE, FRASE_VOCI_OFFERTE, gestioneDelPagamento, mancaLaVoce, voceDopoIlCambio, vociOfferte, type PropostaCommissione, type VoceCommissione } from '@/lib/gestionale/pagamenti/voceCommissione';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -336,13 +336,13 @@ const uscitaCassaTotale = computed(() =>
     bonificoEffettivo.value + (Number(form.importo_commissioni_euro) || 0)
 );
 
-// La voce della commissione è della gestione delle fatture scelte: quando la gestione cambia, una voce dell'altra gestione lascia il posto alla
-// proposta della nuova (o al campo vuoto, se la voce ricordata non c'è più).
+// La voce della commissione è della gestione delle fatture scelte, o di una gestione ordinaria dello stesso esercizio (Coda 553): quando la gestione
+// cambia, una voce che non è più offerta lascia il posto alla proposta della nuova (o al campo vuoto, se la voce ricordata non c'è più).
 const gestioneDelPagamentoScelta = computed(() => gestioneDelPagamento(pendenze.value.filter(p => p.selezionata)));
-const vociDellaCommissione = computed(() => vociDellaGestione(props.voci_commissione ?? [], gestioneDelPagamentoScelta.value));
+const vociDellaCommissione = computed(() => vociOfferte(props.voci_commissione ?? [], gestioneDelPagamentoScelta.value, form.esercizio_id ?? null));
 const haCommissione = computed(() => (Number(form.importo_commissioni_euro) || 0) > 0);
 watch(gestioneDelPagamentoScelta, (gestione) => {
-    form.voce_commissione_id = voceDopoIlCambio(form.voce_commissione_id, props.voci_commissione ?? [], props.voce_commissione_proposta ?? [], gestione);
+    form.voce_commissione_id = voceDopoIlCambio(form.voce_commissione_id, props.voci_commissione ?? [], props.voce_commissione_proposta ?? [], gestione, form.esercizio_id ?? null);
 }, { immediate: true });
 
 const bancheNormalizzate = computed(() =>
@@ -944,10 +944,10 @@ const pageGuides = [
                                 placeholder="Su quale voce di spesa va la commissione?"
                             ></v-select>
                             <p v-if="gestioneDelPagamentoScelta === null" class="text-[10.5px] text-slate-500">
-                                Scegli prima le fatture: la voce è una voce di spesa della loro gestione.
+                                Scegli prima le fatture: la voce è una voce di spesa della loro gestione, o dell'ordinaria dello stesso esercizio.
                             </p>
                             <p v-else class="text-[10.5px] text-slate-500">
-                                Se c'è, la voce proposta è quella dell'ultima commissione di questa gestione: la commissione entra nel consuntivo della voce. {{ FRASE_ALTRA_GESTIONE }} <a :href="route(generateRoute('gestionale.regolazioni-immediate.create'), { condominio: props.condominio.id })" target="_blank" rel="noopener" class="underline" data-test="regolazione-immediata">Registra una regolazione immediata</a>
+                                Se c'è, la voce proposta è quella dell'ultima commissione di questa gestione: la commissione entra nel consuntivo della voce. {{ FRASE_VOCI_OFFERTE }}
                             </p>
                             <p v-if="form.errors.voce_commissione_id" class="text-[10.5px] font-medium text-rose-600">{{ form.errors.voce_commissione_id }}</p>
                         </div>

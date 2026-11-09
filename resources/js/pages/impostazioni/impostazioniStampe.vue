@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3'
 import AppLayout from '@/layouts/AppLayout.vue'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,6 +15,7 @@ import Alert from '@/components/Alert.vue'
 import { FileText, PenTool, LayoutTemplate, Info } from 'lucide-vue-next'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import PrintSetupGuide from '@/components/guides/PrintSetupGuide.vue'
+import CarteDelloStudio from '@/components/stampe/CarteDelloStudio.vue'
 
 const page = usePage()
 
@@ -29,18 +30,46 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   },
 ])
 
+// I valori di partenza del modulo, letti una volta. Dopo un salvataggio riuscito i campi dello studio si rileggono dalle props nuove, cioè come il
+// server li ha salvati (senza spazi, il codice fiscale in maiuscolo); un rifiuto lascia quello che si era scritto.
 const {
   nota_legale_stampe,
-  firma_stampe_url,
   /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server. */
   limiteFirma,
-  /** Lo studio che scrive le lettere ai condòmini (1.12.0-beta.4). */
+  /** Lo studio in testa alle stampe. */
   studio,
 } = page.props as any
 
-const flashMessage = computed(() => (page.props as any).flash?.message)
+// Quello che il salvataggio cambia, letto dal vivo: dopo una richiesta Inertia tiene la pagina e le dà le props nuove.
+const props = computed(() => page.props as any)
+/** L'indirizzo della firma e del logo salvati, se ci sono. */
+const firmaSalvata = computed<string | null>(() => props.value.firma_stampe_url || null)
+const logoSalvato = computed<string | null>(() => props.value.logo_stampe_url || null)
+/** Perché la firma salvata pesa su ogni stampa e va caricata di nuovo; null se non serve. */
+const firmaDaRicaricareSalvata = computed<string | null>(() => props.value.firma_da_ricaricare || null)
+/** Le carte dello studio, la carta di ogni gruppo di documenti (nullo: la predefinita) e i cinque gruppi con i loro esempi. */
+const carte = computed(() => props.value.carte ?? [])
+const cartaPerGruppo = computed(() => props.value.carta_per_gruppo ?? {})
+const gruppiCarta = computed(() => props.value.gruppi_carta ?? [])
+/** Il file più grande della carta intestata, già scritto per chi legge, dal server. */
+const limiteCarta = computed<string | undefined>(() => props.value.limiteCarta ?? undefined)
 
+/** Lo studio come l'ha salvato il server. */
+const studioSalvato = computed<Record<string, string | null | undefined>>(() => props.value.studio ?? {})
+
+const flashMessage = computed(() => props.value.flash?.message)
+
+/** Il messaggio in cima è quello del modulo delle impostazioni: le carte scrivono il loro nella loro sezione. */
+const messaggioDelleCarte = ref(false)
+
+// Le carte per prime: la pagina parla soprattutto dello studio in testa alle stampe; poi il piede e la firma.
 const pageGuides = computed(() => [
+  {
+    title: trans('impostazioni.guides.print_layout_title'),
+    description: trans('impostazioni.guides.print_layout_desc'),
+    icon: LayoutTemplate,
+    colorVariant: 'amber' as const
+  },
   {
     title: trans('impostazioni.guides.print_footer_title'),
     description: trans('impostazioni.guides.print_footer_desc'),
@@ -52,12 +81,6 @@ const pageGuides = computed(() => [
     description: trans('impostazioni.guides.print_signature_desc'),
     icon: PenTool,
     colorVariant: 'emerald' as const
-  },
-  {
-    title: trans('impostazioni.guides.print_layout_title'),
-    description: trans('impostazioni.guides.print_layout_desc'),
-    icon: LayoutTemplate,
-    colorVariant: 'amber' as const
   }
 ])
 
@@ -65,27 +88,38 @@ const form = useForm({
   nota_legale_stampe: (nota_legale_stampe as string) || '',
   firma_stampe: null as File | null,
   delete_firma_stampe: false,
+  logo_stampe: null as File | null,
+  delete_logo_stampe: false,
   studio_nome: studio?.nome ?? '',
   studio_indirizzo: studio?.indirizzo ?? '',
   studio_email: studio?.email ?? '',
   studio_pec: studio?.pec ?? '',
   studio_telefono: studio?.telefono ?? '',
   studio_comune: studio?.comune ?? '',
+  studio_partita_iva: studio?.partita_iva ?? '',
+  studio_codice_fiscale: studio?.codice_fiscale ?? '',
+  studio_sito: studio?.sito ?? '',
 })
 
-/** I campi dello studio: in testa alle lettere ai condòmini, accanto al condominio. */
+/** I campi dello studio: in testa alle stampe, accanto al condominio. */
 const campiStudio = [
   { campo: 'studio_nome', etichetta: 'Nome dello studio', tipo: 'text' },
   { campo: 'studio_indirizzo', etichetta: 'Indirizzo', tipo: 'text' },
+  { campo: 'studio_partita_iva', etichetta: 'Partita IVA (11 cifre)', tipo: 'text' },
+  { campo: 'studio_codice_fiscale', etichetta: 'Codice fiscale', tipo: 'text' },
   { campo: 'studio_email', etichetta: 'Email (le risposte alle lettere arrivano qui)', tipo: 'email' },
   { campo: 'studio_pec', etichetta: 'PEC', tipo: 'email' },
   { campo: 'studio_telefono', etichetta: 'Telefono', tipo: 'text' },
-  { campo: 'studio_comune', etichetta: 'Comune (il luogo in testa alle lettere; senza, quello del condominio)', tipo: 'text' },
+  { campo: 'studio_sito', etichetta: 'Sito', tipo: 'text' },
+  { campo: 'studio_comune', etichetta: 'Comune (accanto all\'indirizzo, e il luogo delle lettere; senza, quello del condominio)', tipo: 'text' },
 ] as const
 
 const showGuide = ref(false)
 
-const signaturePreviewUrl = ref<string | null>((firma_stampe_url as string) || null)
+const signaturePreviewUrl = ref<string | null>(firmaSalvata.value)
+
+/** La richiesta di caricare di nuovo la firma: sparisce quando se ne sceglie una nuova. */
+const firmaDaRicaricare = ref<string | null>(firmaDaRicaricareSalvata.value)
 
 const handleSignatureUpload = (e: Event) => {
   const target = e.target as HTMLInputElement
@@ -94,6 +128,7 @@ const handleSignatureUpload = (e: Event) => {
     form.firma_stampe = file
     form.delete_firma_stampe = false
     signaturePreviewUrl.value = URL.createObjectURL(file)
+    firmaDaRicaricare.value = null
   }
 }
 
@@ -105,9 +140,54 @@ const removeSignature = () => {
   if (input) input.value = ''
 }
 
+/** Il logo dello studio: come la firma, un PNG o un JPG; si stampa accanto al nome dello studio. */
+const anteprimaLogo = ref<string | null>(logoSalvato.value)
+
+// Un salvataggio che cambia la firma o il logo (caricato, o tolto): l'anteprima è quella del server, e il file scelto non si manda di nuovo. Un
+// rifiuto rimanda gli stessi indirizzi, e quello che si era scelto resta da mandare.
+watch(firmaSalvata, (nuova) => {
+  signaturePreviewUrl.value = nuova
+  form.firma_stampe = null
+  form.delete_firma_stampe = false
+  const input = document.getElementById('firma-stampe-upload') as HTMLInputElement | null
+  if (input) input.value = ''
+})
+watch(logoSalvato, (nuovo) => {
+  anteprimaLogo.value = nuovo
+  form.logo_stampe = null
+  form.delete_logo_stampe = false
+  const input = document.getElementById('logo-stampe-upload') as HTMLInputElement | null
+  if (input) input.value = ''
+})
+watch(firmaDaRicaricareSalvata, (nuova) => {
+  firmaDaRicaricare.value = nuova
+})
+
+const caricaLogo = (e: Event) => {
+  const target = e.target as HTMLInputElement
+  if (target.files && target.files.length > 0) {
+    const file = target.files[0]
+    form.logo_stampe = file
+    form.delete_logo_stampe = false
+    anteprimaLogo.value = URL.createObjectURL(file)
+  }
+}
+
+const rimuoviLogo = () => {
+  form.logo_stampe = null
+  form.delete_logo_stampe = true
+  anteprimaLogo.value = null
+  const input = document.getElementById('logo-stampe-upload') as HTMLInputElement
+  if (input) input.value = ''
+}
+
 const submit = () => {
+  messaggioDelleCarte.value = false
   form.post(route('impostazioni.stampe.store'), {
     preserveScroll: true,
+    onSuccess: () => {
+      for (const { campo } of campiStudio) (form as any)[campo] = studioSalvato.value[campo.slice('studio_'.length)] ?? ''
+    },
   })
 }
 </script>
@@ -130,12 +210,12 @@ const submit = () => {
         <template #actions>
           <Button variant="outline" size="sm" @click="showGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200">
             <FileText class="w-4 h-4" />
-            Guida impaginazione
+            Guida delle stampe
           </Button>
         </template>
       </PageHeaderGuide>
 
-      <div v-if="flashMessage" class="py-2">
+      <div v-if="flashMessage && !messaggioDelleCarte" class="py-2">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
@@ -223,17 +303,20 @@ const submit = () => {
                        in tutte e quattro le lingue. -->
                   {{ trans('impostazioni.label.print_admin_signature_help', { limite: String(limiteFirma ?? '') }) }}
                 </p>
+                <p v-if="firmaDaRicaricare" class="text-sm text-amber-700 dark:text-amber-400 mt-1" data-testid="firma-da-ricaricare">{{ firmaDaRicaricare }}</p>
                 <p v-if="form.errors.firma_stampe" class="text-sm text-red-500 mt-1">
                   {{ form.errors.firma_stampe }}
                 </p>
               </div>
             </div>
 
-            <div class="pt-4 space-y-3" data-testid="studio-delle-lettere">
+            <div class="pt-4 space-y-3" data-testid="studio-delle-stampe">
               <div>
-                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Lo studio, sulle lettere ai condòmini</h3>
+                <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Lo studio, in testa alle stampe</h3>
                 <p class="text-sm text-muted-foreground">
-                  Promemoria, solleciti, diffide e messe in mora portano in testa lo studio e il condominio. Senza il nome dello studio la lettera porta il solo condominio.
+                  In testa a tutte le stampe, tranne il modello F24, con una carta a campi: a sinistra il logo e lo studio con i suoi dati, a destra il condominio.
+                  Nelle lettere, nelle ricevute e negli avvisi lo studio sta in alto a sinistra e sotto il condominio, perché a destra c'è il destinatario; con la
+                  carta intestata, lo studio è quello stampato sulla carta. Senza il nome dello studio la testata delle stampe a campi è quella del solo condominio.
                 </p>
               </div>
               <div class="grid gap-3 sm:grid-cols-2">
@@ -242,6 +325,32 @@ const submit = () => {
                   <Input v-model="(form as any)[c.campo]" :type="c.tipo" class="h-9 text-sm" :data-testid="c.campo" />
                   <span v-if="(form.errors as any)[c.campo]" class="block text-sm text-red-500">{{ (form.errors as any)[c.campo] }}</span>
                 </label>
+              </div>
+              <div class="space-y-1">
+                <span class="block text-xs text-slate-500 dark:text-slate-400">Logo dello studio</span>
+                <div class="flex items-center gap-4">
+                  <div
+                    class="relative h-16 w-40 border-2 border-dashed rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden"
+                    :class="{'border-gray-300': !anteprimaLogo, 'border-emerald-500': anteprimaLogo}"
+                  >
+                    <img v-if="anteprimaLogo" :src="anteprimaLogo" class="max-h-full max-w-full object-contain" data-testid="anteprima-logo" />
+                    <span v-else class="text-xs text-gray-500">Nessun logo</span>
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <input type="file" id="logo-stampe-upload" accept="image/jpeg,image/png" class="hidden" @change="caricaLogo" />
+                    <label for="logo-stampe-upload" class="cursor-pointer inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                      Carica il logo
+                    </label>
+                    <Button v-if="anteprimaLogo" type="button" variant="destructive" size="sm" @click="rimuoviLogo" class="w-full" data-testid="rimuovi-logo">
+                      <Trash class="w-4 h-4 mr-2" />
+                      Rimuovi il logo
+                    </Button>
+                  </div>
+                </div>
+                <p class="text-sm text-muted-foreground">
+                  PNG o JPG, fino a {{ limiteFirma }}. Si stampa accanto al nome dello studio, alto al massimo 14 mm e largo al massimo 40 mm; uno sfondo trasparente resta trasparente.
+                </p>
+                <p v-if="form.errors.logo_stampe" class="text-sm text-red-500">{{ form.errors.logo_stampe }}</p>
               </div>
             </div>
 
@@ -270,6 +379,13 @@ const submit = () => {
           </CardFooter>
         </Card>
       </form>
+
+      <!-- Le carte si salvano da sole, ognuna con il suo pulsante: fuori dal modulo delle impostazioni. -->
+      <Card>
+        <CardContent class="pt-6">
+          <CarteDelloStudio :carte="carte" :carta-per-gruppo="cartaPerGruppo" :gruppi="gruppiCarta" :limite-carta="limiteCarta" @richiesta="messaggioDelleCarte = true" />
+        </CardContent>
+      </Card>
     </div>
 
     <PrintSetupGuide v-model:open="showGuide" />

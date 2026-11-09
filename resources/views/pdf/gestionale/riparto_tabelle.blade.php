@@ -60,6 +60,8 @@
 
     // ── Palette (allineata ai modelli) ───────────────────────────────────────
     $navy    = '#1e3a5f'; // brand color e testata testuale
+    // I titoli e i loro filetti hanno il colore della carta dello studio; senza un colore, il blu di sempre. Le tabelle restano blu.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, $navy);
     $navyMid = '#b0c4de'; // bordi header e tfoot
     $navyLt  = '#dce6f1'; // background header
     $iceBlue = '#edf2f8'; // colonna totale (tbody) e colonna app
@@ -106,8 +108,8 @@
 @endphp
 
 {{-- INTESTAZIONE DOCUMENTO --}}
-<div style="margin-bottom: 6px; border-bottom: 2px solid {{ $navy }}; padding-bottom: 4px;">
-    <h2 style="margin: 0; padding: 0; font-size: 11pt; color: {{ $navy }}; letter-spacing: 0.5px;">
+<div style="margin-bottom: 6px; border-bottom: 2px solid {{ $coloreTitoli }}; padding-bottom: 4px;">
+    <h2 style="margin: 0; padding: 0; font-size: 11pt; color: {{ $coloreTitoli }}; letter-spacing: 0.5px;">
         RIPARTO BILANCIO PREVENTIVO PER TABELLA E SOGGETTO
     </h2>
     <div style="font-size: 7.5pt; color: #444; margin-top: 2px;">
@@ -183,8 +185,8 @@
 
     @if(!$loop->first)
         <pagebreak />
-        <div style="margin-bottom: 6px; border-bottom: 2px solid {{ $navy }}; padding-bottom: 4px;">
-            <h2 style="margin: 0; padding: 0; font-size: 11pt; color: {{ $navy }}; letter-spacing: 0.5px;">
+        <div style="margin-bottom: 6px; border-bottom: 2px solid {{ $coloreTitoli }}; padding-bottom: 4px;">
+            <h2 style="margin: 0; padding: 0; font-size: 11pt; color: {{ $coloreTitoli }}; letter-spacing: 0.5px;">
                 RIPARTO BILANCIO PREVENTIVO PER TABELLA E SOGGETTO (Blocco {{ $chunkIndex + 1 }} di {{ count($chunksTabelle) }})
             </h2>
         </div>

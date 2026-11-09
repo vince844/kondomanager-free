@@ -3,7 +3,8 @@
 /**
  * La voce della commissione nella registrazione di un pagamento al fornitore.
  *
- * Le voci offerte sono quelle di spesa della gestione delle fatture scelte; la proposta è la voce dell'ultima commissione del condominio in
+ * Le voci offerte sono quelle di spesa della gestione delle fatture scelte e, sotto, quelle delle gestioni ordinarie dello stesso esercizio (Coda 553);
+ * la proposta è la voce dell'ultima commissione del condominio in
  * quella gestione (`voce_commissione_proposta`, dal server), e se quella voce non c'è più il campo resta vuoto. Con una commissione più di zero
  * e senza voce il modulo non si invia, e lo dice sul campo con la frase del server. La commissione si digita in euro e parte in centesimi una
  * volta sola, all'invio; la casella in euro non entra nel corpo.
@@ -38,9 +39,9 @@ const stubs = {
 
 const FRASE = 'Scegli la voce della commissione: senza una voce la commissione resta fuori dal consuntivo delle voci.';
 const voci = [
-    { id: 5, nome: 'Spese bancarie', label: 'Spese bancarie', gestione_id: 10 },
-    { id: 6, nome: 'Bolli', label: 'Bolli', gestione_id: 10 },
-    { id: 9, nome: 'Bancarie del tetto', label: 'Bancarie del tetto', gestione_id: 20 },
+    { id: 5, nome: 'Spese bancarie', label: 'Spese bancarie', gestione_id: 10, gestione_nome: 'Ordinaria', gestione_tipo: 'ordinaria', esercizi: [4] },
+    { id: 6, nome: 'Bolli', label: 'Bolli', gestione_id: 10, gestione_nome: 'Ordinaria', gestione_tipo: 'ordinaria', esercizi: [4] },
+    { id: 9, nome: 'Bancarie del tetto', label: 'Bancarie del tetto', gestione_id: 20, gestione_nome: 'Tetto', gestione_tipo: 'straordinaria', esercizi: [4] },
 ];
 const fattura = (id: number, gestione: number) => ({
     id, tipo_documento: 'fattura', numero_documento: `FT-${id}`, data_documento: '2026-03-10', importo_lordo: 100_000, netto_a_pagare: 100_000,
@@ -105,11 +106,11 @@ describe('la voce della commissione nella registrazione', () => {
         expect(corpo).not.toHaveProperty('importo_commissioni_euro');
     });
 
-    test('offre solo le voci della gestione delle fatture scelte', async () => {
-        await apri([], 20);
+    test('per un pagamento dell\'ordinaria offre le voci dell\'ordinaria, e non quelle di una straordinaria (dalla Coda 553 i lavori ricevono anche le ordinarie, non il contrario)', async () => {
+        await apri([], 10);
 
-        const scelta = pagina!.findAllComponents(vSelect as never).find((c) => (c.props('options') as any[])?.some?.((o: any) => o.label === 'Bancarie del tetto'));
-        expect((scelta!.props('options') as any[]).map((o) => o.id)).toEqual([9]);
+        const scelta: any = pagina!.findAllComponents(vSelect as never).find((c: any) => (c.props('options') as any[])?.some?.((o: any) => o.label === 'Spese bancarie'));
+        expect((scelta.props('options') as any[]).map((o) => o.id)).toEqual([5, 6]);
     });
 
     test('la voce ricordata che non c\'è più lascia il campo vuoto, e il modulo non si invia: lo dice sul campo', async () => {
@@ -121,13 +122,15 @@ describe('la voce della commissione nella registrazione', () => {
         expect(document.body.textContent).toContain(FRASE);
     });
 
-    test('sotto il campo, la via d\'uscita per metterla su una voce di un\'altra gestione: la commissione a zero e una regolazione immediata, con il collegamento', async () => {
+    test('per un pagamento dei lavori il campo offre in cima la voce del tetto, sotto quelle dell\'ordinaria dello stesso esercizio; la via d\'uscita non c\'è più (Coda 553)', async () => {
         await apri([], 20);
+        const scelta: any = pagina!.findAllComponents(vSelect as never).find((c: any) => (c.props('options') as any[])?.some?.((o: any) => o.id === 9));
 
-        expect(document.body.textContent).toContain('Per metterla su una voce di un\'altra gestione, per esempio le spese bancarie dell\'ordinaria, lascia la commissione a zero e registrala con una regolazione immediata.');
-        expect(pagina!.find('[data-test="regolazione-immediata"]').exists()).toBe(true);
-        // Il collegamento si apre in un'altra scheda: chi lo segue mentre scrive il pagamento non lo perde.
-        expect(pagina!.find('[data-test="regolazione-immediata"]').attributes('target')).toBe('_blank');
+        expect((scelta.props('options') as any[]).map((o) => o.id)).toEqual([9, 5, 6]);
+        expect((scelta.props('options') as any[]).map((o) => o.label)).toEqual(['Bancarie del tetto', 'Spese bancarie · Ordinaria', 'Bolli · Ordinaria']);
+        expect(document.body.textContent).toContain('In cima le voci della gestione del pagamento; sotto, quelle dell\'ordinaria dello stesso esercizio, per esempio le spese bancarie.');
+        expect(document.body.textContent).not.toContain('regolazione immediata');
+        expect(pagina!.find('[data-test="regolazione-immediata"]').exists()).toBe(false);
     });
 
     test('senza commissione la voce non serve', async () => {

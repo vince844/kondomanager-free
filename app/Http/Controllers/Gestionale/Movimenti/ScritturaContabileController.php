@@ -21,6 +21,7 @@ use App\Traits\PdfRigheStampabili;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * Controller per la visualizzazione del Libro Giornale — elenco e dettaglio
@@ -319,6 +320,7 @@ class ScritturaContabileController extends Controller
         $totaleAvere = (int) array_sum(array_column($righe, 'avere'));
 
         $mpdf = $pdfService->generate('pdf.gestionale.libro_giornale', [
+            'gruppo_carta' => GruppoCarta::REGISTRI_E_ELENCHI,
             'condominio'   => $condominio,
             'esercizio'    => $esercizio,
             'righe'        => $righe,

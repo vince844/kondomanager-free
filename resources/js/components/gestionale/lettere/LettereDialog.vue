@@ -36,7 +36,7 @@ import {
     type ModelloDellaFinestra, type ModelloRicordato,
 } from '@/lib/gestionale/lettere/modelli';
 import {
-    CANALI_SPEDIZIONE, FRASE_CAMPI, FRASE_CONSERVATO, FRASE_FATTO, FRASE_SENZA_IBAN, FRASE_SENZA_TESTO, FRASE_STUDIO_NON_COMPILATO, FRASE_TESTO_DEL_PROGRAMMA,
+    CANALI_SPEDIZIONE, FRASE_CAMPI, FRASE_CONSERVATO, FRASE_FATTO, FRASE_SENZA_IBAN, FRASE_SENZA_TESTO, fraseDelloStudio, FRASE_TESTO_DEL_PROGRAMMA,
     domani, testoAccordiPassati, testoAccordoPassato, type FormaDelTermine,
     FRASE_TESTO_SINGOLO, NOMI_CANALI, SOLO_CARTA, coperteDalCredito, personeDelCanale, personeViste, testoAggiunte, testoConteggi, testoCredito, testoGestione,
     testoOltreTetto, testoRestanti, testoUscite,
@@ -73,6 +73,8 @@ interface Opzioni {
     /** Il termine ricordato per tipo di lettera (la forma e i giorni); mai per il promemoria. */
     scelta_ricordata: { termini: Record<string, { forma: FormaDelTermine; giorni: number | null } | null>; cassa_id: number | null; indirizzi: string[] | null };
     studio_compilato: boolean;
+    // Le lettere escono su una carta intestata che si legge: lo studio lo porta la carta.
+    carta_intestata?: boolean;
     senza_server_posta: boolean;
     puo_salvare_il_testo: boolean;
 }
@@ -588,7 +590,7 @@ const alternaIndirizzo = (t: string) => {
                     </div>
                 </div>
                 <p v-if="opzioni.conti.length === 0" class="text-xs text-amber-800 dark:text-amber-300">{{ FRASE_SENZA_IBAN }}</p>
-                <p v-if="!opzioni.studio_compilato" class="text-xs text-slate-600 dark:text-slate-300" data-testid="studio-non-compilato">{{ FRASE_STUDIO_NON_COMPILATO }}</p>
+                <p v-if="fraseDelloStudio(opzioni)" class="text-xs text-slate-600 dark:text-slate-300" data-testid="studio-non-compilato">{{ fraseDelloStudio(opzioni) }}</p>
 
                 <fieldset v-if="!soloCarta" class="space-y-1">
                     <legend class="text-xs text-slate-500 dark:text-slate-400">Per email, agli indirizzi</legend>

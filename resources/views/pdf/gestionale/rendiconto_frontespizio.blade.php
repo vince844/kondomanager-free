@@ -21,6 +21,12 @@
     // Le registrazioni oltre il confine: l'effetto sul riepilogo, e quindi sul risultato, nei due versi.
     $anno = $anno_a_cavallo ?? null;
     $effetti = $anno === null ? [] : array_filter(['A' => $anno['effetto']['A']['frase'] ?? null, 'B' => $anno['effetto']['B']['frase'] ?? null]);
+    // Lo studio: a sinistra il logo e lo studio, a destra il condominio; senza il nome dello studio, la riga dello studio e il condominio di sempre.
+    $conStudio = isset($carta) && $carta->haStudio();
+    // Con la carta intestata lo studio è stampato sulla carta: in testa solo il condominio.
+    $conCarta = isset($carta) && $carta->cartaIntestata() !== null;
+    // I titoli, i loro filetti e la testata hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#0E2238');
 @endphp
 <!DOCTYPE html>
 <html lang="it">
@@ -30,13 +36,13 @@
 <style>
     body { font-family: inter; font-size: 8pt; color: #26313F; }
     .studio { font-size: 7.5pt; color: #5A6B7B; border-bottom: 1px solid #D9DEE5; padding-bottom: 6px; margin-bottom: 18px; }
-    .studio b { color: #0E2238; }
-    .ente { font-family: fraunces; font-size: 20pt; color: #0E2238; margin: 0; }
+    .studio b { color: {{ $coloreTitoli }}; }
+    .ente { font-family: fraunces; font-size: 20pt; color: {{ $coloreTitoli }}; margin: 0; }
     .rif { font-size: 8pt; color: #5A6B7B; margin: 2px 0 16px; }
-    h1 { font-family: fraunces; font-size: 16pt; color: #0E2238; margin: 0 0 2px; }
-    .sotto { font-family: fraunces; font-size: 10pt; color: #2E5C86; margin: 0 0 14px; }
+    h1 { font-family: fraunces; font-size: 16pt; color: {{ $coloreTitoli }}; margin: 0 0 2px; }
+    .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 14px; }
     /* Righe strette: il frontespizio, con le righe che spiegano gli esiti e il prospetto, sta in una pagina con la firma. */
-    h2 { font-family: fraunces; font-size: 11pt; color: #0E2238; margin: 12px 0 5px; padding-bottom: 3px; border-bottom: 1px solid #0E2238; }
+    h2 { font-family: fraunces; font-size: 11pt; color: {{ $coloreTitoli }}; margin: 12px 0 5px; padding-bottom: 3px; border-bottom: 1px solid {{ $coloreTitoli }}; }
     table.p { width: 100%; border-collapse: collapse; }
     table.p td { padding: 2px 5px; border-bottom: 1px solid #D9DEE5; vertical-align: top; }
     table.p th { font-size: 6.5pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; text-align: left; border-bottom: 1px solid #0E2238; padding: 4px 5px; }
@@ -50,6 +56,34 @@
 </head>
 <body>
 
+@if($conStudio)
+{{-- `overflow: wrap`: una parola più larga della colonna dello studio (una PEC, un sito) va a capo dove la colonna finisce. --}}
+<table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #D9DEE5; margin-bottom: 16px; overflow: wrap;">
+    <tr>
+        <td style="width: 55%; vertical-align: top; padding: 0 4mm 6px 0; border: 0;">
+            <table style="border-collapse: collapse; overflow: wrap;">
+                <tr>
+                    @if($carta->logo())
+                        <td style="vertical-align: top; padding: 0 3mm 0 0; border: 0;"><img src="{{ $carta->logo() }}" style="max-height: 14mm; max-width: 40mm;"></td>
+                    @endif
+                    <td style="vertical-align: top; padding: 0; border: 0;">
+                        <div style="font-family: fraunces; font-size: 11pt; color: {{ $coloreTitoli }};">{{ $carta->nome() }}</div>
+                        @foreach($carta->righe() as $riga)
+                            <div style="font-size: 7.5pt; color: #5A6B7B;">{{ $riga }}</div>
+                        @endforeach
+                    </td>
+                </tr>
+            </table>
+        </td>
+        <td style="width: 45%; vertical-align: top; text-align: right; padding: 0 0 6px 0; border: 0;">
+            <div style="font-family: fraunces; font-size: 14pt; color: {{ $coloreTitoli }};">{{ $condominio->nome }}</div>
+            @if($condominio->indirizzo)<div style="font-size: 8pt; color: #5A6B7B;">{{ $condominio->indirizzo }}</div>@endif
+            @if($condominio->codice_fiscale)<div style="font-size: 8pt; color: #5A6B7B;">C.F. {{ $condominio->codice_fiscale }}</div>@endif
+        </td>
+    </tr>
+</table>
+@else
+@unless($conCarta)
 <div class="studio">
     @if($studio->studio_nome) <b>{{ $studio->studio_nome }}</b> @endif
     @if($studio->studio_indirizzo) · {{ $studio->studio_indirizzo }} @endif
@@ -58,12 +92,14 @@
     @if($studio->studio_email) · {{ $studio->studio_email }} @endif
     @if($studio->studio_pec) · PEC {{ $studio->studio_pec }} @endif
 </div>
+@endunless
 
 <div class="ente">{{ $condominio->nome }}</div>
 <div class="rif">
     @if($condominio->indirizzo) {{ $condominio->indirizzo }} @endif
     @if($condominio->codice_fiscale) · C.F. {{ $condominio->codice_fiscale }} @endif
 </div>
+@endif
 
 <h1>Rendiconto dell'esercizio</h1>
 <p class="sotto">{{ $esercizio->nome }}, dal {{ $dataIt($sintesi['esercizio']['dal']) }} al {{ $dataIt($sintesi['esercizio']['al']) }} · stampato il {{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</p>
@@ -102,7 +138,11 @@
     <tr><td>di cui nei fondi</td><td class="n">{{ $fmt($pr['in_fondi']) }}</td></tr>
 </table>
 <p class="d">Preventivo: le spese previste, meno le entrate da terzi. Deliberato con le rate: quanto chiedono i piani delle rate approvati. Quote dei piani dell'esercizio: le rate
-    di quei piani già emesse.@if($pr['avvertenza_deliberato']) {{ $pr['avvertenza_deliberato'] }}@endif</p>
+    di quei piani già emesse.</p>
+{{-- Le frasi del deliberato non disponibile o ricostruito, sotto il prospetto, al corpo del testo. --}}
+@if($pr['avvertenza_deliberato'] || ! empty($pr['avvertenza_deliberato_ricostruito']))
+<p style="font-size: 8pt; margin: 4px 0 0;">@if($pr['avvertenza_deliberato']){{ \App\Services\Gestionale\ParoleDellaStampa::frase($pr['avvertenza_deliberato']) }}@endif @if(! empty($pr['avvertenza_deliberato_ricostruito'])) {{ \App\Services\Gestionale\ParoleDellaStampa::frase($pr['avvertenza_deliberato_ricostruito']) }}@endif</p>
+@endif
 @if(isset($effetti['A']))
 <p class="d">Il risultato comprende anche le registrazioni scritte in questo esercizio con una data fuori dal suo periodo: le cifre sono qui sopra, accanto al controllo
     «Registrazioni oltre il confine dell'esercizio».</p>

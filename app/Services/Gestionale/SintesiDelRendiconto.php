@@ -22,7 +22,7 @@ final class SintesiDelRendiconto
 {
     public const FRASE_LIQUIDITA = 'Secondo la contabilità: non è il saldo dell\'estratto conto della banca, e il confronto è un controllo tuo.';
 
-    public function __construct(private readonly ControlliDelRendiconto $controlli) {}
+    public function __construct(private readonly ControlliDelRendiconto $controlli, private readonly CommissioniSenzaVoce $commissioni) {}
 
     /**
      * Chi ha già letto i controlli (il fascicolo) li passa, così non si leggono due volte nella stessa richiesta.
@@ -46,9 +46,33 @@ final class SintesiDelRendiconto
         $costi = $r['risultato']['costi'];
         $fuori = $r['fuori_capitoli'];
         $fasce = [];
+        $storni = (int) ($r['riconciliazione']['storni_senza_voce'] ?? 0);
+        // Gli storni senza voce di registrazioni di un esercizio chiuso: la fascia c'è quando ci sono righe, non quando la somma non è zero (due storni
+        // che si annullano ci sono lo stesso).
+        $conStorni = VoceNelloStorno::righeSenzaVoce((int) $esercizio->id)->exists();
+        // L'elenco delle commissioni e degli storni senza voce, letto una volta se una delle due fasce lo chiede.
+        $elenco = $fuori['commissioni_senza_voce']['consuntivo'] !== 0 || $conStorni ? $this->commissioni->perEsercizio($condominio, $esercizio) : null;
         if ($fuori['commissioni_senza_voce']['consuntivo'] !== 0) {
+            // Quante se ne possono assegnare lo dice l'elenco, con la sua regola ({@see CommissioniSenzaVoce}): senza nessuna, la fascia non invita.
+            $daAssegnare = $elenco['assegnabili']['numero'];
+            $importo = self::euro($fuori['commissioni_senza_voce']['consuntivo']);
             $fasce[] = ['tipo' => 'commissioni', 'importo' => $fuori['commissioni_senza_voce']['consuntivo'], 'numero' => $fuori['commissioni_senza_voce']['numero'],
-                'frase' => self::euro($fuori['commissioni_senza_voce']['consuntivo']).' di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le troverà.'];
+                'da_assegnare' => $daAssegnare,
+                'frase' => $daAssegnare > 0
+                    ? $importo.' di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le troverà.'
+                    : $importo.' di commissioni senza voce, che qui non si assegnano: non stanno in nessun capitolo, e il conguaglio non le troverà. L\'elenco dice perché.'];
+        }
+        if ($conStorni) {
+            // Gli storni senza voce di registrazioni di un esercizio chiuso (decisione 255, D1): stanno fra i costi non classificati, e si assegnano nello
+            // stesso elenco, con la sua regola. Con segni diversi la frase dice anche le righe e la somma senza il segno.
+            $dellElenco = ControlliDelRendiconto::storniDellElenco($elenco);
+            $daAssegnare = $dellElenco['assegnabili'];
+            $quanti = ControlliDelRendiconto::righeESommaSenzaSegno($dellElenco, $storni);
+            $chi = self::euro($storni).' di storni di registrazioni di un esercizio chiuso, senza voce'.($quanti === null ? '' : ' ('.$quanti.')');
+            $fasce[] = ['tipo' => 'storni', 'importo' => $storni, 'numero' => $dellElenco['righe'], 'da_assegnare' => $daAssegnare,
+                'frase' => $daAssegnare > 0
+                    ? $chi.': non stanno in nessun capitolo, e il conguaglio non li troverà.'
+                    : $chi.', che qui non si assegnano: non stanno in nessun capitolo, e il conguaglio non li troverà. L\'elenco dice perché.'];
         }
         if ($fuori['contestate']['consuntivo'] !== 0) {
             $fasce[] = ['tipo' => 'contestate', 'importo' => $fuori['contestate']['consuntivo'], 'numero' => $fuori['contestate']['numero'],
@@ -66,7 +90,8 @@ final class SintesiDelRendiconto
             ],
             'esito' => $c['esito'],
             'riquadri' => [
-                'deliberato' => ['deliberato' => $deliberato, 'preventivo' => $preventivo, 'solo_ordinarie' => $soloOrdinarie],
+                'deliberato' => ['deliberato' => $deliberato, 'preventivo' => $preventivo, 'solo_ordinarie' => $soloOrdinarie,
+                    'ricostruito' => $r['avvertenze']['deliberato_ricostruito'] !== null],
                 'costi' => [
                     'costi' => $costi,
                     'per_capitolo' => $r['riconciliazione']['capitoli_netti'],
@@ -83,6 +108,10 @@ final class SintesiDelRendiconto
                 'deliberato' => $deliberato,
                 // Perché il deliberato non c'è, se c'è una gestione con i piani di prima del riparto: la frase del riepilogo, una sola.
                 'avvertenza_deliberato' => $r['avvertenze']['deliberato'],
+                // Quali piani, rifatti con i dati di oggi, non tornano: per la pagina (il frontespizio non li nomina).
+                'avvertenza_deliberato_piani' => $r['avvertenze']['deliberato_piani'],
+                // Coda 557: il deliberato dei piani di prima ricostruito, con la sua frase.
+                'avvertenza_deliberato_ricostruito' => $r['avvertenze']['deliberato_ricostruito'],
                 'quote_piani' => $q['emesse'],
                 'quote_pagate' => $q['pagate'],
                 'quote_non_pagate' => $q['non_pagate'],

@@ -20,7 +20,8 @@
  * legge le ha davanti — ma dire cosa succede davvero quando li si tocca, e in quale ordine.
  *
  * ⚠️ **Ogni affermazione di questo file è stata verificata sul codice il 22/08/2026**, in
- * `PagamentoFornitoreService` e in `PagamentoNew.vue`. Le cifre citate (il limite dei contanti, le
+ * `PagamentoFornitoreService` e in `PagamentoNew.vue`; la regola delle voci della commissione il 09/11/2026, in
+ * `VoceDellaCommissione::verifica()` e in `vociOfferte()` (`voceCommissione.ts`). Le cifre citate (il limite dei contanti, le
  * ventiquattro ore del controllo duplicati) sono lette nel codice, non ricordate. Se cambi uno di
  * quei comportamenti, questo file va corretto insieme.
  */
@@ -98,9 +99,11 @@ defineEmits(['update:open']);
                                 alto della somma delle fatture.
                             </p>
                             <p class="mt-2">
-                                La commissione va sulla <strong>voce di spesa</strong> che scegli, della gestione delle
-                                fatture: entra nel consuntivo di quella voce, come una regolazione immediata. Il modulo
-                                propone la voce dell'ultima commissione di quella gestione.
+                                La commissione va sulla <strong>voce di spesa</strong> che scegli: una voce della gestione
+                                delle fatture, o di una gestione ordinaria dello stesso esercizio (per esempio le spese
+                                bancarie dell'ordinaria, anche per i lavori di una straordinaria). Entra nel consuntivo di
+                                quella voce, come una regolazione immediata. Il modulo propone la voce dell'ultima
+                                commissione di quella gestione.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
                                 Le commissioni registrate prima senza voce restano fuori dal consuntivo delle voci:

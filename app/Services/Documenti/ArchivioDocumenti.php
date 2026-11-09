@@ -161,6 +161,23 @@ final class ArchivioDocumenti
         return $path;
     }
 
+    /**
+     * Un file pubblico scritto da un contenuto (il logo e la firma delle stampe, riscritti al caricamento), con un nome casuale nella cartella
+     * indicata. Solleva se la scrittura fallisce, per la stessa ragione di `salva()`.
+     *
+     * @throws \RuntimeException
+     */
+    public function salvaPubblicoContenuto(string $contenuto, string $cartella, string $estensione): string
+    {
+        $path = trim($cartella, '/').'/'.\Illuminate\Support\Str::random(40).'.'.$estensione;
+
+        if ($this->discoPubblici()->put($path, $contenuto) !== true) {
+            throw new \RuntimeException("Impossibile scrivere il file sul disco «{$this->nomeDiscoPubblici()}».");
+        }
+
+        return $path;
+    }
+
     public function esistePubblico(?string $path): bool
     {
         return $path !== null && $path !== '' && $this->discoPubblici()->exists($path);
@@ -189,9 +206,10 @@ final class ArchivioDocumenti
     }
 
     /**
-     * Un percorso su disco locale per chi vuole un file e non uno stream (mPDF con la firma delle
-     * stampe). Sul disco locale è il file stesso; altrove è una copia in `storage/framework/cache`,
-     * che si rifà a ogni chiamata: è una firma da pochi KB, non vale una cache.
+     * Un percorso su disco locale per chi vuole un file e non uno stream (mPDF con la firma e il logo
+     * delle stampe). Sul disco locale è il file stesso; altrove è una copia in `storage/framework/cache`,
+     * che si rifà a ogni chiamata: la firma è un'immagine da pochi KB, non vale una cache (il logo lo
+     * legge `CartaDiStampa` una volta per richiesta).
      */
     public function percorsoLocalePubblico(string $path): ?string
     {
@@ -221,14 +239,15 @@ final class ArchivioDocumenti
             }
 
             // Copia atomica: due stampe insieme non devono far leggere a mPDF un file a metà.
-            $temporaneo = tempnam($cartella, 'firma-');
+            $temporaneo = tempnam($cartella, 'stampe-');
             if ($temporaneo === false || file_put_contents($temporaneo, $contenuto) === false || ! rename($temporaneo, $locale)) {
                 return null;
             }
 
             return $locale;
         } catch (\Throwable $e) {
-            Log::warning('Firma delle stampe non leggibile dal disco '.$this->nomeDiscoPubblici().': stampa senza firma.', ['errore' => $e->getMessage()]);
+            // Lo chiamano la firma e il logo delle stampe: il percorso dice quale.
+            Log::warning('Immagine delle stampe non leggibile dal disco '.$this->nomeDiscoPubblici().': la stampa esce senza.', ['percorso' => $path, 'errore' => $e->getMessage()]);
 
             return null;
         }

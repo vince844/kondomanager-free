@@ -12,6 +12,7 @@ use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Str;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * La stampa del prospetto degli oneri accessori di un'unità (B3a, 1.11.0-beta.34), aperta dalla pagina dei titolari.
@@ -33,6 +34,7 @@ class ProspettoOneriController extends Controller
         abort_unless($esercizio !== null && (int) $esercizio->condominio_id === (int) $condominio->id, 404);
 
         $mpdf = $pdfService->generate('pdf.gestionale.prospetto_oneri_accessori', [
+            'gruppo_carta' => GruppoCarta::PER_LA_PERSONA,
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'immobile'   => $immobile,

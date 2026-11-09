@@ -17,7 +17,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
-type Stato = 'conservato' | 'non_conservato' | 'solo_deliberato' | 'nessun_piano';
+/** `ricostruito`: il deliberato dei piani generati prima che il programma ne conservasse il dettaglio, rifatto quando si legge (Coda 557). */
+type Stato = 'conservato' | 'non_conservato' | 'solo_deliberato' | 'nessun_piano' | 'ricostruito';
 
 interface RigaDettaglio {
     tipo: 'fattura' | 'movimento';
@@ -38,6 +39,8 @@ interface Voce {
     preventivo_stato: Stato;
     deliberato: number | null;
     deliberato_stato: Stato;
+    /** La voce che il piano di prima non ha fissato: la cifra ricostruita è divisa con gli importi di oggi, e porta l'asterisco. */
+    deliberato_diviso_oggi?: boolean;
     consuntivo?: number;
     incassato?: number;
     anno_prima: number | null;
@@ -74,6 +77,7 @@ interface Riepilogo {
     anno_prima: { id: number; nome: string } | null;
     blocchi: Array<{
         gestione: { id: number; nome: string; tipo: string };
+        deliberato_stato?: Stato;
         spese: Voce[];
         entrate: Voce[];
         quote: RigaQuote[];
@@ -86,7 +90,12 @@ interface Riepilogo {
     raccordo_quote: { quote_piani: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
     riconciliazione: { costi: number; capitoli_netti: number; commissioni_senza_voce: number; contestate: number; non_classificati: number; differenza: number };
     totali: { da_pagare: number; pagato_in_piu: number };
-    avvertenze: { perimetro_da_pagare: string; pagato_diviso: string; anno_prima: string | null; deliberato: string | null; data: string };
+    avvertenze: {
+        perimetro_da_pagare: string; pagato_diviso: string; anno_prima: string | null; deliberato: string | null; data: string;
+        deliberato_ricostruito?: string | null; deliberato_diviso?: string | null;
+        /** I piani che, rifatti con i dati di oggi, non tornano: una frase per piano, solo nella pagina. */
+        deliberato_piani?: string[];
+    };
 }
 
 const props = defineProps<{
@@ -95,6 +104,10 @@ const props = defineProps<{
     esercizio: Esercizio;
     esercizi: Esercizio[];
     riepilogo: Riepilogo;
+    /** Quante commissioni senza voce si assegnano nell'elenco delle commissioni e degli storni senza voce (la sua regola: in un esercizio chiuso nessuna). */
+    commissioni_assegnabili?: number;
+    /** Quanti storni senza voce fra i costi non classificati si assegnano nell'elenco delle commissioni e degli storni senza voce (la sua regola). */
+    storni_assegnabili?: number;
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -116,10 +129,17 @@ const perche = (stato: Stato): string => ({
     non_conservato: 'nel verbale dell\'assemblea',
     solo_deliberato: 'solo il deliberato',
     nessun_piano: 'nessun piano approvato',
+    ricostruito: '',
 }[stato]);
 
 /** Il deliberato con le rate che il programma non ha (i piani di prima del riparto): la frase sotto le tabelle dice perché. */
 const percheDeliberato = (stato: Stato): string => (stato === 'non_conservato' ? 'non disponibile' : perche(stato));
+
+/** La cella del deliberato: la cifra, anche ricostruita, con l'asterisco della voce divisa con gli importi di oggi; senza cifra, il perché. */
+const cellaDeliberato = (v: Pick<Voce, 'deliberato' | 'deliberato_stato' | 'deliberato_diviso_oggi'>): string =>
+    v.deliberato_stato === 'conservato' || v.deliberato_stato === 'ricostruito'
+        ? `${importo(v.deliberato)}${v.deliberato_diviso_oggi ? ' *' : ''}`
+        : percheDeliberato(v.deliberato_stato);
 
 const aperte = ref<Record<number, boolean>>({});
 const apri = (id: number) => { aperte.value[id] = !aperte.value[id]; };
@@ -207,7 +227,10 @@ const pageGuides = [
                                     <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
                                         <th class="text-left py-2">Spese</th>
                                         <th class="text-right py-2">Preventivo</th>
-                                        <th class="text-right py-2">Deliberato con le rate</th>
+                                        <th class="text-right py-2">
+                                            Deliberato con le rate
+                                            <span v-if="b.deliberato_stato === 'ricostruito'" class="block normal-case tracking-normal font-normal" data-test="deliberato-ricostruito-colonna">ricostruito</span>
+                                        </th>
                                         <th class="text-right py-2">Consuntivo</th>
                                         <th class="text-right py-2">Anno prima</th>
                                         <th class="text-right py-2">Scostamento</th>
@@ -225,7 +248,7 @@ const pageGuides = [
                                                 </button>
                                             </td>
                                             <td class="py-2 text-right tabular-nums">{{ c.preventivo_stato === 'conservato' ? importo(c.preventivo) : perche(c.preventivo_stato) }}</td>
-                                            <td class="py-2 text-right tabular-nums">{{ c.deliberato_stato === 'conservato' ? importo(c.deliberato) : percheDeliberato(c.deliberato_stato) }}</td>
+                                            <td class="py-2 text-right tabular-nums">{{ cellaDeliberato(c) }}</td>
                                             <td class="py-2 text-right tabular-nums font-semibold">{{ importo(c.consuntivo) }}</td>
                                             <td class="py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ importo(c.anno_prima) }}</td>
                                             <td class="py-2 text-right tabular-nums">{{ importo(c.scostamento) }}</td>
@@ -241,7 +264,7 @@ const pageGuides = [
                                             <tr class="border-b border-slate-50 dark:border-slate-800 text-[13px]" :data-voce="v.proprio ? undefined : v.voce_id" :data-proprio="v.proprio ? c.voce_id : undefined">
                                                 <td class="py-1.5 pl-6 text-slate-600 dark:text-slate-400" :class="v.proprio ? 'italic' : ''">{{ v.nome }}</td>
                                                 <td class="py-1.5 text-right tabular-nums">{{ v.preventivo_stato === 'conservato' ? importo(v.preventivo) : perche(v.preventivo_stato) }}</td>
-                                                <td class="py-1.5 text-right tabular-nums">{{ v.deliberato_stato === 'conservato' ? importo(v.deliberato) : percheDeliberato(v.deliberato_stato) }}</td>
+                                                <td class="py-1.5 text-right tabular-nums">{{ cellaDeliberato(v) }}</td>
                                                 <td class="py-1.5 text-right tabular-nums">{{ importo(v.consuntivo) }}</td>
                                                 <td class="py-1.5 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ importo(v.anno_prima) }}</td>
                                                 <td class="py-1.5 text-right tabular-nums">{{ importo(v.scostamento) }}</td>
@@ -329,7 +352,12 @@ const pageGuides = [
                             </table>
                         </div>
 
-                        <p v-if="r.avvertenze.deliberato" class="text-[12px] text-slate-500 dark:text-slate-400 mb-6" data-test="deliberato-non-disponibile">{{ r.avvertenze.deliberato }}</p>
+                        <p v-if="r.avvertenze.deliberato" class="text-[12px] text-slate-500 dark:text-slate-400" :class="(r.avvertenze.deliberato_piani ?? []).length > 0 ? 'mb-1' : 'mb-6'" data-test="deliberato-non-disponibile">{{ r.avvertenze.deliberato }}</p>
+                        <ul v-if="(r.avvertenze.deliberato_piani ?? []).length > 0" class="text-[12px] text-slate-500 dark:text-slate-400 mb-6 list-disc pl-5">
+                            <li v-for="(frase, i) in r.avvertenze.deliberato_piani" :key="i" data-test="deliberato-piani">{{ frase }}</li>
+                        </ul>
+                        <p v-if="r.avvertenze.deliberato_ricostruito" class="text-[12px] text-slate-500 dark:text-slate-400 mb-2" data-test="deliberato-ricostruito">{{ r.avvertenze.deliberato_ricostruito }}</p>
+                        <p v-if="r.avvertenze.deliberato_diviso" class="text-[12px] text-slate-500 dark:text-slate-400 mb-6" data-test="deliberato-diviso">{{ r.avvertenze.deliberato_diviso }}</p>
 
                         <section class="mb-6" data-test="fuori-capitoli">
                             <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Fuori dai capitoli</h3>
@@ -352,14 +380,17 @@ const pageGuides = [
                                     <tr class="border-b border-slate-100 dark:border-slate-800">
                                         <td class="py-2 text-slate-700 dark:text-slate-300">
                                             Commissioni senza voce <span class="text-[11px] text-slate-500 dark:text-slate-400">({{ r.fuori_capitoli.commissioni_senza_voce.numero }}): non stanno in nessun capitolo</span>
-                                            <Link v-if="r.fuori_capitoli.commissioni_senza_voce.numero" :href="hrefCommissioni" class="ml-2 text-[11px] font-semibold text-primary hover:underline">Assegna la voce</Link>
+                                            <Link v-if="(props.commissioni_assegnabili ?? 0) > 0" :href="hrefCommissioni" class="ml-2 text-[11px] font-semibold text-primary hover:underline">Assegna la voce</Link>
                                         </td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(r.fuori_capitoli.commissioni_senza_voce.consuntivo) }}</td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(r.fuori_capitoli.commissioni_senza_voce.pagato) }}</td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(r.fuori_capitoli.commissioni_senza_voce.da_pagare) }}</td>
                                     </tr>
                                     <tr v-if="r.fuori_capitoli.non_classificati.consuntivo" class="border-b border-slate-100 dark:border-slate-800">
-                                        <td class="py-2 text-slate-700 dark:text-slate-300">Costi non classificati <span class="text-[11px] text-slate-500 dark:text-slate-400">({{ r.fuori_capitoli.non_classificati.numero }}): righe di costo senza voce</span></td>
+                                        <td class="py-2 text-slate-700 dark:text-slate-300">
+                                            Costi non classificati <span class="text-[11px] text-slate-500 dark:text-slate-400">({{ r.fuori_capitoli.non_classificati.numero }}): righe di costo senza voce</span>
+                                            <Link v-if="(props.storni_assegnabili ?? 0) > 0" :href="hrefCommissioni" class="ml-2 text-[11px] font-semibold text-primary hover:underline">Assegna la voce</Link>
+                                        </td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(r.fuori_capitoli.non_classificati.consuntivo) }}</td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(r.fuori_capitoli.non_classificati.pagato) }}</td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(r.fuori_capitoli.non_classificati.da_pagare) }}</td>

@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * L'avviso di compensazione: la persona le cui rate il credito ha coperto, senza un versamento nuovo, e che non riceve la ricevuta di
@@ -330,7 +331,7 @@ final class AvvisiCompensazione
     public function rendi(Condominio $condominio, array $avvisi): string
     {
         $mpdf = $this->pdf->generate('pdf.gestionale.avviso_compensazione', ['condominio' => $condominio, 'avvisi' => $avvisi,
-            'data_emissione_stampe' => DateHelper::adessoUtente()], ['margin_top' => 14]);
+            'data_emissione_stampe' => DateHelper::adessoUtente(), 'gruppo_carta' => GruppoCarta::RICEVUTE_E_AVVISI], ['margin_top' => 14]);
 
         return $mpdf->Output('', \Mpdf\Output\Destination::STRING_RETURN);
     }

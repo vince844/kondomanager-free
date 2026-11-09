@@ -32,7 +32,8 @@ it('i dati dello studio si salvano con la nota legale, e la pagina li rilegge', 
     expect([$s->studio_nome, $s->studio_indirizzo, $s->studio_email, $s->studio_pec, $s->studio_telefono])
         ->toBe(['Studio Bianchi', 'Via Verdi 3, Milano', 'studio@prova.it', 'studio@pec.it', '02 1234567']);
     $p = $this->actingAs($this->admin)->get(route('impostazioni.stampe'))->assertOk()->viewData('page')['props'];
-    expect($p['studio'])->toBe(['nome' => 'Studio Bianchi', 'indirizzo' => 'Via Verdi 3, Milano', 'email' => 'studio@prova.it', 'pec' => 'studio@pec.it', 'telefono' => '02 1234567', 'comune' => '']);
+    expect($p['studio'])->toBe(['nome' => 'Studio Bianchi', 'indirizzo' => 'Via Verdi 3, Milano', 'email' => 'studio@prova.it', 'pec' => 'studio@pec.it', 'telefono' => '02 1234567', 'comune' => '',
+        'partita_iva' => '', 'codice_fiscale' => '', 'sito' => '']);
 
     // Svuotato, il nome torna vuoto; senza i campi dello studio nella richiesta, gli altri restano.
     $this->actingAs($this->admin)->post(route('impostazioni.stampe.store'), ['nota_legale_stampe' => 'Nota', 'studio_nome' => ''])->assertSessionHasNoErrors();

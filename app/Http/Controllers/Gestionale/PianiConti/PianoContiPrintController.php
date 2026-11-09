@@ -12,6 +12,7 @@ use App\Services\PDF\PdfService;
 use Illuminate\Support\Str;
 use App\Support\OrdinamentoConti;
 use Illuminate\Http\Request;
+use App\Services\PDF\GruppoCarta;
 
 class PianoContiPrintController extends Controller
 {
@@ -98,12 +99,10 @@ class PianoContiPrintController extends Controller
             'speseNegative'        => $speseNegative,
         ];
 
-        $mpdf = $pdfService->generate('pdf.gestionale.distinta_spese', $data, [
+        $mpdf = $pdfService->generate('pdf.gestionale.distinta_spese', $data + ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], [
             'orientation' => 'P',
             'margin_top'  => 32,
         ]);
-
-        $mpdf->SetHeader($condominio->nome . '||Distinta Spese – ' . $esercizio->nome);
 
         // ⚠️ `Output(..., 'I')` scrive il PDF sull'output buffer e torna vuota: il browser lo riceveva
         // dall'echo di mPDF, la risposta Laravel era vuota e un test sullo status era verde su zero
@@ -202,12 +201,10 @@ class PianoContiPrintController extends Controller
             'matrice'     => $matrice,
         ];
 
-        $mpdf = $pdfService->generate('pdf.gestionale.ripartizione_spese', $data, [
+        $mpdf = $pdfService->generate('pdf.gestionale.ripartizione_spese', $data + ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], [
             'orientation' => 'L',
             'margin_top'  => 32,
         ]);
-
-        $mpdf->SetHeader($condominio->nome . '||Ripartizione Spese – ' . $esercizio->nome);
 
         // Stessa trappola e stessa cura della distinta, qui sopra.
         $nomeFile = PdfService::nomeFile('ripartizione-spese', $condominio->nome, $esercizio->data_inizio?->format('Y'), Str::slug($pianoConto->nome));

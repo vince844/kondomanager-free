@@ -190,6 +190,20 @@ it('la commissione e il suo storno nello stesso esercizio stanno insieme e prend
         ->and(csvSpesoBancarie($s))->toBe(0);
 });
 
+it('il messaggio dopo «Assegna la voce» e la riga del registro contano le commissioni come commissioni, anche quella che ha il suo storno nello stesso esercizio', function () {
+    $s = csvScenario($this, 2);
+    $p = PagamentoFornitore::where('condominio_id', $s['c']->id)->whereNull('pagamento_padre_id')->orderBy('id')->firstOrFail();
+    $this->actingAs($this->user)->post(route('admin.gestionale.pagamenti-fornitori.storno', [$s['c'], $p]), ['motivo' => 'Bonifico respinto dalla banca'])->assertSessionHasNoErrors();
+    $ids = collect(csvElenco($this, $s)['commissioni'])->pluck('id')->all();
+    \Illuminate\Support\Facades\Log::spy();
+
+    csvAssegna($this, $s, ['commissioni' => $ids, 'voce_id' => $s['bancarie']->id])->assertSessionHasNoErrors()
+        ->assertSessionHas('message', fn ($m) => ($m['message'] ?? null) === 'Voce «Spese bancarie» assegnata a 2 commissioni: il consuntivo della voce cambia di € 2,50.');
+    \Illuminate\Support\Facades\Log::shouldHaveReceived('info')
+        ->with(\Mockery::on(fn ($riga) => is_string($riga) && str_starts_with($riga, 'Voce assegnata a 2 commissioni senza voce da utente #')))->once();
+    expect($ids)->toHaveCount(2);
+});
+
 it('lo storno nel 2027 di un pagamento del 2026 chiuso non si offre: l\'originale resta senza voce, e la riga dice perché', function () {
     $s = csvScenario($this, 1);
     $p = PagamentoFornitore::where('condominio_id', $s['c']->id)->whereNull('pagamento_padre_id')->firstOrFail();
@@ -326,7 +340,8 @@ it('commissioni di due gestioni insieme: la richiesta è rifiutata, con la frase
 
     expect($ids)->toHaveCount(2);
     csvAssegna($this, $s, ['commissioni' => $ids, 'voce_id' => $s['bancarie']->id])
-        ->assertSessionHasErrors(['commissioni' => 'Le commissioni scelte sono di gestioni diverse: la voce è di una gestione, assegnala una gestione alla volta.']);
+        // Dalla Coda 553 la stessa voce dell'ordinaria va bene per tutte e due: il rifiuto resta, il perché cambia (SA11 dello scettico della tappa A).
+        ->assertSessionHasErrors(['commissioni' => 'Le commissioni scelte sono di gestioni diverse: si assegnano una gestione alla volta, anche con la stessa voce.']);
 
     expect(DB::table('righe_scritture')->where('conto_contabile_id', $s['sistema'])->whereNull('voce_spesa_id')->count())->toBe(2);
 });

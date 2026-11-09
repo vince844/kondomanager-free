@@ -329,7 +329,7 @@ function pdfLeggibileDellaRicevuta(string $html): array
     return testiDellePagineDelPdf($mpdf->Output('', \Mpdf\Output\Destination::STRING_RETURN));
 }
 
-test('la testata è una lettera: il condominio in alto a sinistra, a chi è intestata la ricevuta in alto a destra (a 112 mm dal bordo), il titolo subito sotto; la seconda ricevuta della stessa persona non ha il blocco', function () {
+test('la testata è una lettera: il condominio in alto a sinistra, a chi è intestata la ricevuta in alto a destra (con le righe allineate al margine destro), il titolo subito sotto; la seconda ricevuta della stessa persona non ha il blocco', function () {
     $s = scenarioRicevutaIncasso();
     $anna = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
     $anna2 = incassaPerRicevuta($s, $s->anna, [[$s->anna2, 50.00]], '2026-03-01', 50.00);
@@ -346,11 +346,14 @@ test('la testata è una lettera: il condominio in alto a sinistra, a chi è inte
         [[$x, $y]] = doveStaNellaPagina($pagine[$n], $nome);
         [[$xCondominio, $yCondominio]] = doveStaNellaPagina($pagine[$n], 'Condominio Via dei Pini');
         [[$xTitolo, $yTitolo]] = doveStaNellaPagina($pagine[$n], 'RICEVUTA DI PAGAMENTO');
-        // A destra, dove si legge un indirizzo anche in una busta con la finestra; in alto, sulla stessa fascia del condominio, a sinistra.
-        expect($x)->toBe(112.0)
+        // A destra, nella colonna del destinatario, con le righe allineate al margine destro: una riga più corta comincia più a destra (dove finiscono
+        // lo misura `MittenteDelloStudioTest`, con i caratteri delle stampe); in alto, sulla stessa fascia del condominio, a sinistra.
+        $xGentile = doveStaNellaPagina($pagine[$n], 'Gentile')[0][0];
+        $xIndirizzo = doveStaNellaPagina($pagine[$n], $indirizzo)[0][0];
+        expect($xIndirizzo)->toBeGreaterThan(\App\Services\PDF\Carta::DESTINATARIO)
+            ->and($x)->toBeGreaterThan($xIndirizzo)
+            ->and($xGentile)->toBeGreaterThan($x)
             ->and($y)->toBeGreaterThan(14.0)->toBeLessThan(30.0)
-            ->and(doveStaNellaPagina($pagine[$n], 'Gentile')[0][0])->toBe(112.0)
-            ->and(doveStaNellaPagina($pagine[$n], $indirizzo)[0][0])->toBe(112.0)
             ->and($xCondominio)->toBe(12.0)
             ->and(abs($yCondominio - $y))->toBeLessThan(5.0)
             // Il titolo è subito sotto la testata, non 50 mm più in basso.

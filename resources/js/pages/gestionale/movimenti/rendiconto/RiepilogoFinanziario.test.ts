@@ -67,10 +67,10 @@ const riepilogo = (extra: Record<string, unknown> = {}) => ({
 });
 
 let w: VueWrapper | null = null;
-const monta = (extra: Record<string, unknown> = {}) => {
+const monta = (extra: Record<string, unknown> = {}, altre: Record<string, unknown> = {}) => {
     w?.unmount();
     w = mount(Pagina, {
-        props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9 }, esercizi: [], riepilogo: riepilogo(extra) } as any,
+        props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9 }, esercizi: [], riepilogo: riepilogo(extra), ...altre } as any,
         global: { stubs: { GestionaleLayout: { template: '<div><slot /></div>' }, MovimentiLayout: { template: '<div><slot /></div>' }, PageHeaderGuide: true } },
     });
 
@@ -122,6 +122,41 @@ describe('il riepilogo finanziario', () => {
         expect(testo(con.text())).not.toContain('non disponibile');
     });
 
+    test('il «non disponibile» nomina sotto la sua frase i piani che, rifatti con i dati di oggi, non tornano', () => {
+        const frase = 'Il deliberato con le rate non è disponibile per i piani generati prima che il programma ne conservasse il dettaglio: è nel verbale dell\'assemblea che li ha approvati.';
+        const piani = ['Il piano «Ordinario 2026», rifatto con i dati di oggi, non torna con le quote emesse.'];
+        const pagina = monta({ avvertenze: { ...riepilogo().avvertenze, deliberato: frase, deliberato_piani: piani } });
+
+        expect(pagina.findAll('[data-test="deliberato-piani"]').map((e) => e.text())).toEqual(piani);
+        expect(monta().find('[data-test="deliberato-piani"]').exists()).toBe(false);
+    });
+
+    test('il deliberato ricostruito dei piani di prima (Coda 557): la cifra, «ricostruito» sotto l\'intestazione della colonna, l\'asterisco della voce divisa con gli importi di oggi e le due frasi', () => {
+        const ricostruita = 'Per i piani generati prima che il programma ne conservasse il dettaglio il deliberato con le rate è ricostruito: il riparto è rifatto con i dati di oggi '
+            + 'e torna al centesimo con le quote emesse di ogni unità. Se dopo cambiano i millesimi o le voci, torna «non disponibile».';
+        const divisa = '* Divisa fra le voci con gli importi di oggi: il piano ha fissato il capitolo, o nessuna voce, e non quanto chiedeva ogni voce.';
+        const spese = riepilogo().blocchi[0].spese.map((v: any) => (v.voce_id === 12
+            ? { ...v, deliberato: 120000, deliberato_stato: 'ricostruito', deliberato_diviso_oggi: true }
+            : { ...v, deliberato_stato: 'ricostruito', deliberato_diviso_oggi: false }));
+        const pagina = monta({ avvertenze: { ...riepilogo().avvertenze, deliberato_ricostruito: ricostruita, deliberato_diviso: divisa },
+            blocchi: [{ ...riepilogo().blocchi[0], deliberato_stato: 'ricostruito', spese }] });
+
+        expect(testo(pagina.find('[data-voce="12"]').text())).toContain('€ 1.200,00 *');
+        expect(testo(pagina.find('[data-voce="11"]').text())).toContain('€ 3.000,00');
+        expect(testo(pagina.find('[data-voce="11"]').text())).not.toContain('€ 3.000,00 *');
+        expect(pagina.find('[data-test="deliberato-ricostruito-colonna"]').text()).toBe('ricostruito');
+        expect(testo(pagina.find('[data-test="deliberato-ricostruito"]').text())).toBe(ricostruita);
+        expect(testo(pagina.find('[data-test="deliberato-diviso"]').text())).toBe(divisa);
+        // Nessuna cella dice «non disponibile» (lo dice solo la frase, per quando i dati cambiano).
+        expect(testo(pagina.find('[data-test="spese"]').text())).not.toContain('non disponibile');
+
+        // Con le righe registrate niente di tutto questo.
+        const con = monta();
+        expect(con.find('[data-test="deliberato-ricostruito-colonna"]').exists()).toBe(false);
+        expect(con.find('[data-test="deliberato-ricostruito"]').exists()).toBe(false);
+        expect(con.find('[data-test="deliberato-diviso"]').exists()).toBe(false);
+    });
+
     test('il dettaglio per spesa si apre sulla voce, con la data formattata dalla pagina', async () => {
         const pagina = monta();
         expect(pagina.findAll('[data-test="dettaglio"]')).toHaveLength(0);
@@ -135,12 +170,46 @@ describe('il riepilogo finanziario', () => {
     });
 
     test('porta all\'incasso da terzi per una voce di entrata senza incassi, e alle commissioni senza voce', () => {
-        const pagina = monta();
+        const pagina = monta({}, { commissioni_assegnabili: 1 });
         const link = pagina.findAll('a').map((a) => [a.text(), a.attributes('href')]);
 
         expect(link).toContainEqual(['Registra l\'incasso', '/gestionale/3/incassi-da-terzi/create?voce=14']);
         expect(link).toContainEqual(['Assegna la voce', '/gestionale/3/esercizi/9/commissioni-senza-voce']);
         expect(link).toContainEqual(['Situazione patrimoniale', '/gestionale/3/esercizi/9/stato-patrimoniale']);
+    });
+
+    test('la riga dei costi non classificati porta all\'elenco quando ci sono storni senza voce da assegnare, con il numero dell\'elenco; senza, no', () => {
+        const nonClassificati = { consuntivo: -9600, pagato: 0, da_pagare: 0, numero: 1 };
+        const riga = (storni: number | undefined) => {
+            const pagina = monta({ fuori_capitoli: { ...riepilogo().fuori_capitoli, non_classificati: nonClassificati } },
+                storni === undefined ? {} : { storni_assegnabili: storni });
+            const tr = pagina.findAll('tr').find((t) => t.text().includes('Costi non classificati'));
+            expect(tr).toBeDefined();
+
+            return tr!.findAll('a').map((a) => [a.text(), a.attributes('href')]);
+        };
+
+        expect(riga(1)).toEqual([['Assegna la voce', '/gestionale/3/esercizi/9/commissioni-senza-voce']]);
+        expect(riga(2)).toEqual([['Assegna la voce', '/gestionale/3/esercizi/9/commissioni-senza-voce']]);
+        // Gli storni che l'elenco non offre (la registrazione di allora era già senza voce, o l'esercizio è chiuso), o nessuno storno: la riga non invita.
+        expect(riga(0)).toEqual([]);
+        expect(riga(undefined)).toEqual([]);
+    });
+
+    test('la riga delle commissioni senza voce porta all\'elenco quando l\'elenco ne ha da assegnare, con il suo numero; con le commissioni che non si assegnano (l\'esercizio chiuso), no', () => {
+        const riga = (assegnabili: number | undefined) => {
+            const pagina = monta({}, assegnabili === undefined ? {} : { commissioni_assegnabili: assegnabili });
+            const tr = pagina.findAll('tr').find((t) => t.text().includes('Commissioni senza voce'));
+            expect(tr).toBeDefined();
+
+            return tr!.findAll('a').map((a) => [a.text(), a.attributes('href')]);
+        };
+
+        expect(riga(1)).toEqual([['Assegna la voce', '/gestionale/3/esercizi/9/commissioni-senza-voce']]);
+        expect(riga(3)).toEqual([['Assegna la voce', '/gestionale/3/esercizi/9/commissioni-senza-voce']]);
+        // La riga c'è (una commissione senza voce), ma l'elenco non ne offre nessuna: la riga non invita.
+        expect(riga(0)).toEqual([]);
+        expect(riga(undefined)).toEqual([]);
     });
 
     test('le quote pagate accanto ai versamenti dei condòmini del registro, con il perché possono essere diversi', () => {

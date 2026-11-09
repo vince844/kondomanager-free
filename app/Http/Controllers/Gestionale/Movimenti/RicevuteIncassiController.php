@@ -283,7 +283,8 @@ class RicevuteIncassiController extends Controller
 
     /**
      * «Scarica un PDF per persona» (decisione 207.2): un archivio .zip con un PDF per persona e l'elenco degli indirizzi email. Ogni ricevuta è
-     * una stampa nel registro. Gli errori tornano come testo, come la stampa.
+     * una stampa nel registro. Gli errori tornano come testo, come la stampa. Lo .zip è un file temporaneo: va al browser letto a pezzi, e si
+     * cancella dopo.
      */
     public function pdfPerPersona(Request $request, Condominio $condominio): Response
     {
@@ -298,9 +299,7 @@ class RicevuteIncassiController extends Controller
             return response('Archivio non fatto. ' . $e->getMessage(), 422)->header('Content-Type', 'text/plain; charset=UTF-8');
         }
 
-        return response($esito['zip'])
-            ->header('Content-Type', 'application/zip')
-            ->header('Content-Disposition', 'attachment; filename="' . $esito['nome'] . '"');
+        return response()->download($esito['zip'], $esito['nome'], ['Content-Type' => 'application/zip'])->deleteFileAfterSend();
     }
 
     /** L'ordine della stampa in blocco: per persona, per unità o per data del versamento; senza scelta, per persona. */

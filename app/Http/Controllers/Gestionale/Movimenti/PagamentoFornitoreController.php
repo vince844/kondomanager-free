@@ -44,6 +44,7 @@ use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * Controller per la registrazione dei pagamenti ai fornitori.
@@ -593,6 +594,8 @@ class PagamentoFornitoreController extends Controller
             'commissione' => [
                 'voce_id' => $voceCommissione,
                 'gestione_id' => $pagamento->scrittura?->gestione_id === null ? null : (int) $pagamento->scrittura->gestione_id,
+                // L'esercizio del pagamento: la pagina offre anche le voci delle gestioni ordinarie di quell'esercizio (Coda 553).
+                'esercizio_id' => $pagamento->scrittura?->esercizio_id === null ? null : (int) $pagamento->scrittura->esercizio_id,
                 'senza_voce' => (int) $pagamento->importo_commissione > 0 && $voceCommissione === null,
                 // Scritto prima senza voce, sulle «Spese bancarie» di sistema: la modifica lo può lasciare così finché la commissione non cambia.
                 'puo_restare_senza_voce' => app(VoceDellaCommissione::class)->puoRestareSenzaVoce($pagamento, (int) $pagamento->importo_commissione),
@@ -700,7 +703,7 @@ class PagamentoFornitoreController extends Controller
             'fatture' => $pagamento->scrittura->fatture ?? collect(),
         ];
 
-        $mpdf = $pdfService->generate('pdf.gestionale.distinta', $data);
+        $mpdf = $pdfService->generate('pdf.gestionale.distinta', $data + ['gruppo_carta' => GruppoCarta::REGISTRI_E_ELENCHI]);
 
         // Il protocollo porta già il prefisso («PAG-2026-00001»): il nome usciva «Distinta_PAG-PAG-…».
         // Forma della casa (beta.28): «distinta-pagamento-<protocollo>-<data>.pdf», solo ASCII.

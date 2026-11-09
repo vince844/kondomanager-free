@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * La scheda «Condòmini» del rendiconto: le posizioni per persona e unità (§ 9) e i crediti per anzianità (§ 10), con la loro richiesta (le letture non
@@ -128,7 +129,7 @@ class RendicontoCondominiController extends Controller
             return $this->troppe($condominio, $esercizio, count($posizioni['righe']));
         }
         $mpdf = $pdf->generate('pdf.gestionale.rendiconto_posizioni', ['condominio' => $condominio, 'esercizio' => $esercizio, 'posizioni' => $posizioni,
-            'titolo' => 'Posizioni dei condòmini', 'senza_firma' => true], self::OPZIONI_STAMPA);
+            'titolo' => 'Posizioni dei condòmini', 'senza_firma' => true, 'gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], self::OPZIONI_STAMPA);
         $nome = PdfService::nomeFile('posizioni-condomini', $condominio->nome, $esercizio->data_inizio->format('Y'), 'al-'.$posizioni['alla']);
 
         return response($mpdf->Output($nome, \Mpdf\Output\Destination::STRING_RETURN))
@@ -146,7 +147,7 @@ class RendicontoCondominiController extends Controller
             return $this->troppe($condominio, $esercizio, $crediti['troppe'], true);
         }
         $mpdf = $pdf->generate('pdf.gestionale.rendiconto_crediti', ['condominio' => $condominio, 'esercizio' => $esercizio, 'crediti' => $crediti,
-            'titolo' => 'Crediti per anzianità', 'senza_firma' => true], self::OPZIONI_STAMPA);
+            'titolo' => 'Crediti per anzianità', 'senza_firma' => true, 'gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], self::OPZIONI_STAMPA);
         $nome = PdfService::nomeFile('crediti-per-anzianita', $condominio->nome, $esercizio->data_inizio->format('Y'), 'al-'.$crediti['alla']);
 
         return response($mpdf->Output($nome, \Mpdf\Output\Destination::STRING_RETURN))

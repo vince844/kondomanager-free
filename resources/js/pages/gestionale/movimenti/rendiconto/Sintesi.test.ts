@@ -41,7 +41,7 @@ const sintesi = (extra: Record<string, unknown> = {}) => ({
         liquidita: { liquidita: 521900, alla: '2026-12-31', frase: 'Secondo la contabilità: non è il saldo dell\'estratto conto della banca.' },
     },
     fasce: [
-        { tipo: 'commissioni', importo: 250, numero: 1, frase: '€ 2,50 di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le troverà.' },
+        { tipo: 'commissioni', importo: 250, numero: 1, da_assegnare: 1, frase: '€ 2,50 di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le troverà.' },
         { tipo: 'contestate', importo: 15000, numero: 1, frase: '€ 150,00 di fatture contestate.' },
     ],
     prospetto: {
@@ -95,6 +95,18 @@ describe('la Sintesi del rendiconto', () => {
         expect(testo(con.html())).not.toContain('non disponibile');
     });
 
+    test('il deliberato ricostruito dei piani di prima (Coda 557): la cifra con «ricostruito» nel riquadro e la frase sotto il prospetto', () => {
+        const ricostruita = 'Per i piani generati prima che il programma ne conservasse il dettaglio il deliberato con le rate è ricostruito.';
+        const p = monta({ riquadri: { ...sintesi().riquadri, deliberato: { ...sintesi().riquadri.deliberato, ricostruito: true } },
+            prospetto: { ...sintesi().prospetto, avvertenza_deliberato_ricostruito: ricostruita } });
+
+        expect(testo(p.find('[data-test="riquadro-deliberato"]').html())).toContain('€ 4.110,00');
+        expect(p.find('[data-test="riquadro-deliberato-ricostruito"]').text()).toBe('ricostruito');
+        expect(testo(p.find('[data-test="deliberato-ricostruito"]').html())).toBe(ricostruita);
+        expect(p.find('[data-test="deliberato-non-disponibile"]').exists()).toBe(false);
+        expect(monta().find('[data-test="riquadro-deliberato-ricostruito"]').exists()).toBe(false);
+    });
+
     test('la percentuale tiene il segno anche fra 0 e −1 %; il preventivo delle sole gestioni ordinarie lo dice', () => {
         const negativa = monta({ riquadri: { ...sintesi().riquadri, costi: { costi: -2000, per_capitolo: -2000, permille: -5, base: 'deliberato' } } });
         expect(testo(negativa.find('[data-test="riquadro-costi"]').html())).toContain('-0,5 %');
@@ -109,7 +121,36 @@ describe('la Sintesi del rendiconto', () => {
         expect(p.find('[data-fascia="commissioni"]').text()).toContain('il conguaglio non le troverà');
         expect(p.find('[data-fascia="commissioni"] a').attributes('href')).toBe('/gestionale/3/esercizi/9/commissioni-senza-voce');
         expect(p.find('[data-fascia="contestate"] a').attributes('href')).toBe('/gestionale/3/esercizi/9/rendiconto/riepilogo-finanziario');
+        expect(p.find('[data-fascia="commissioni"] a').text()).toBe('Assegna la voce');
         expect(monta({ fasce: [] }).find('[data-fascia]').exists()).toBe(false);
+    });
+
+    test('gli storni senza voce di registrazioni di un esercizio chiuso: la fascia porta all\'elenco, e invita ad assegnare la voce solo se l\'elenco ne ha da assegnare', () => {
+        const frase = '€ -96,00 di storni di registrazioni di un esercizio chiuso, senza voce: non stanno in nessun capitolo, e il conguaglio non li troverà.';
+        const f = monta({ fasce: [{ tipo: 'storni', importo: -9600, numero: 1, da_assegnare: 1, frase }] }).find('[data-fascia="storni"]');
+        expect(f.text()).toContain(frase);
+        expect(f.find('a').attributes('href')).toBe('/gestionale/3/esercizi/9/commissioni-senza-voce');
+        expect(f.find('a').text()).toBe('Assegna la voce');
+        expect(monta({ fasce: [{ tipo: 'storni', importo: -9600, numero: 1, da_assegnare: 0, frase }] }).find('[data-fascia="storni"] a').text()).toBe('Vedi l\'elenco');
+    });
+
+    test('le commissioni senza voce che non si assegnano (nessuna da assegnare): la fascia porta all\'elenco, che dice perché, e non invita ad assegnare la voce', () => {
+        const frase = '€ -2,50 di commissioni senza voce, che qui non si assegnano: non stanno in nessun capitolo, e il conguaglio non le troverà. L\'elenco dice perché.';
+        const f = monta({ fasce: [{ tipo: 'commissioni', importo: -250, numero: 1, da_assegnare: 0, frase }] }).find('[data-fascia="commissioni"]');
+
+        expect(f.text()).toContain(frase);
+        expect(f.text()).not.toContain('Assegna la voce');
+        expect(f.find('a').text()).toBe('Vedi l\'elenco');
+        expect(f.find('a').attributes('href')).toBe('/gestionale/3/esercizi/9/commissioni-senza-voce');
+    });
+
+    test('il «non disponibile» nomina sotto la sua frase i piani che, rifatti con i dati di oggi, non tornano', () => {
+        const frase = 'Il deliberato con le rate non è disponibile per i piani generati prima che il programma ne conservasse il dettaglio: è nel verbale dell\'assemblea che li ha approvati.';
+        const piani = ['Il piano «Ordinario 2026», rifatto con i dati di oggi, non torna con le quote emesse.', 'Il piano «Pulizie», rifatto con i dati di oggi, non torna con le quote emesse.'];
+        const p = monta({ prospetto: { ...sintesi().prospetto, deliberato: null, avvertenza_deliberato: frase, avvertenza_deliberato_piani: piani } });
+
+        expect(p.findAll('[data-test="deliberato-piani"]').map((e) => e.text())).toEqual(piani);
+        expect(monta().find('[data-test="deliberato-piani"]').exists()).toBe(false);
     });
 
     test('l\'esito: la frase, una riga per controllo che porta al controllo, la riga fissa', () => {

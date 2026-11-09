@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\View;
  */
 class PdfService
 {
+    /** Il nome della testata comune di `pdf.base`, il condominio al centro: la stampa che la scrive ha il margine che si allunga sulla testata. */
+    public const TESTATA_COMUNE = 'KondoHeader';
+
     /**
      * Generates a PDF instance from a Blade view.
      *
@@ -36,8 +39,49 @@ class PdfService
         return implode('-', $parti).'.pdf';
     }
 
+    /**
+     * La stampa di una vista. `$data['gruppo_carta']` dice il gruppo di documenti della stampa ({@see GruppoCarta}): senza, è un'eccezione, così
+     * una stampa nuova che non lo dice non esce. La vista riceve la carta dello studio del gruppo come `$carta` (o quella di
+     * `$data['carta_da_provare']`, la prova della carta); `comincia_con_la_testatina` (le parti del fascicolo dopo il frontespizio) la fa
+     * cominciare con la riga dello studio invece che con il blocco intero.
+     *
+     * Con lo studio, il margine alto si allunga sulla testata (`setAutoTopMargin` a `stretch`, senza aggiunte): mPDF non sposta il corpo sotto una
+     * testata più alta del margine, ci scrive sopra, e la testata dello studio cresce con un nome lungo o un indirizzo su due righe. Senza lo studio
+     * il margine si allunga solo sulla testata comune di `pdf.base` (il condominio al centro): con un nome di oltre 55 caratteri circa va su due
+     * righe e scende sotto il margine delle stampe verticali; con un nome più corto sta nel margine, e la stampa resta com'è. Le altre stampe senza
+     * lo studio, e il modello F24, hanno la configurazione di sempre.
+     *
+     * Con la carta intestata (le stampe verticali, se la carta del gruppo ce l'ha e si legge) i margini sono quelli della carta: la testata (il
+     * condominio) comincia al margine alto e il corpo sotto di lei, il piede finisce al margine basso e il corpo sopra di lui (tutti e due i margini si
+     * allungano su quello che contengono), i lati sono quelli della carta. Il documento è un {@see MpdfConCarta}: quando si scrive, la carta va sotto
+     * ogni pagina; se lì la carta non si disegna, esce la stessa stampa con la carta a campi.
+     *
+     * @throws \InvalidArgumentException se la stampa non dice il gruppo della carta
+     */
     public function generate(string $view, array $data = [], array $config = []): Mpdf
     {
+        return $this->stampa($view, $data, $config, true);
+    }
+
+    /** La stampa di una vista, come la dice `generate()`; con `$conLaCartaIntestata` falso, la stessa carta a campi anche sulle verticali. */
+    private function stampa(string $view, array $data, array $config, bool $conLaCartaIntestata): Mpdf
+    {
+        $datiDelChiamante = $data;
+        $gruppo = $data['gruppo_carta'] ?? null;
+        if (! $gruppo instanceof GruppoCarta) {
+            throw new \InvalidArgumentException("La stampa «{$view}» non dice il gruppo della carta: `gruppo_carta` deve essere un ".GruppoCarta::class.'.');
+        }
+        // La carta intestata è verticale: una stampa orizzontale ha la testata a campi della stessa carta, e così la verticale la cui carta intestata
+        // non si è disegnata.
+        $verticale = strtoupper((string) ($config['orientation'] ?? 'P')) !== 'L' && $conLaCartaIntestata;
+        $primaPaginaIntera = empty($data['comincia_con_la_testatina']);
+        // La prova della carta, dalle impostazioni, passa la carta da provare al posto di quella del gruppo.
+        $carta = ($data['carta_da_provare'] ?? null) instanceof \App\Models\CartaStampa
+            ? app(CartaDiStampa::class)->perCarta($data['carta_da_provare'], $gruppo, $primaPaginaIntera, $verticale)
+            : app(CartaDiStampa::class)->perGruppo($gruppo, $primaPaginaIntera, $verticale);
+        $data['carta'] = $carta;
+        $intestata = $carta->cartaIntestata();
+
         $settings = app(PrintSettings::class);
         $defaultConfig = [
             'mode'          => 'utf-8',
@@ -53,8 +97,21 @@ class PdfService
         ];
 
         $finalConfig = array_merge($defaultConfig, $config, self::configurazioneFont());
+        if ($carta->haStudio()) {
+            $finalConfig['setAutoTopMargin'] = 'stretch';
+            $finalConfig['autoMarginPadding'] = 0;
+        }
+        if ($intestata !== null) {
+            $finalConfig = array_merge($finalConfig, [
+                'margin_header' => $intestata->alto, 'margin_top' => $intestata->alto,
+                'margin_footer' => $intestata->basso, 'margin_bottom' => $intestata->basso,
+                'margin_left' => $intestata->sinistro, 'margin_right' => $intestata->destro,
+                'setAutoTopMargin' => 'stretch', 'setAutoBottomMargin' => 'stretch', 'autoMarginPadding' => 0,
+            ]);
+        }
 
-        $mpdf = new Mpdf($finalConfig);
+        $mpdf = $intestata === null ? new Mpdf($finalConfig)
+            : new MpdfConCarta($finalConfig, $intestata, $primaPaginaIntera, fn (): Mpdf => $this->stampa($view, $datiDelChiamante, $config, false));
         
         // Add nota legale to data so views can use it in their HTML footers
         $data['nota_legale_stampe'] = trim($settings->nota_legale_stampe ?? '');
@@ -75,6 +132,11 @@ class PdfService
         }
 
         $html = View::make($view, $data)->render();
+
+        if ($gruppo !== GruppoCarta::NESSUNO && ! $carta->haStudio() && str_contains($html, '<htmlpageheader name="'.self::TESTATA_COMUNE.'">')) {
+            $mpdf->setAutoTopMargin = 'stretch';
+            $mpdf->autoMarginPadding = 0;
+        }
 
         // Su un piano dei conti molto articolato (molti capitoli/sottoconti,
         // molte unità) l'HTML di una stampa può superare il default PHP di

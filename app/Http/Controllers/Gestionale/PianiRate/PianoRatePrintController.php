@@ -11,6 +11,7 @@ use App\Services\PianoRateQuoteService;
 use App\Services\RipartoCapitoliService;
 use App\Services\RipartoTabelleService;
 use Illuminate\Http\Request;
+use App\Services\PDF\GruppoCarta;
 
 class PianoRatePrintController extends Controller
 {
@@ -74,12 +75,10 @@ class PianoRatePrintController extends Controller
             'matriceImmobile'   => $matriceImmobile,
         ];
 
-        $mpdf = $pdfService->generate('pdf.gestionale.prospetto_rate', $data, [
+        $mpdf = $pdfService->generate('pdf.gestionale.prospetto_rate', $data + ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], [
             'orientation' => 'L',
             'margin_top'  => 32,
         ]);
-
-        $mpdf->SetHeader($condominio->nome . '||Scadenziario Rate – ' . $pianoRate->nome);
 
         // ⚠️ `Output(..., 'I')` scrive sull'output buffer e torna vuota: il browser riceveva il PDF
         // (e il nome fisso `prospetto_rate.pdf`) dall'echo di mPDF, ma il corpo della risposta Laravel
@@ -137,7 +136,7 @@ class PianoRatePrintController extends Controller
             'piede_compatto' => true,
         ];
 
-        $mpdf = $pdfService->generate('pdf.gestionale.riparto_tabelle', $data, [
+        $mpdf = $pdfService->generate('pdf.gestionale.riparto_tabelle', $data + ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], [
             'format'      => $formato,
             'orientation' => 'L',
             // 31: l'intestazione di pagina parte a 10 mm (margin_header); il suo testo finisce a 27,4 mm
@@ -145,7 +144,8 @@ class PianoRatePrintController extends Controller
             // 30,95 mm. A 30 le maiuscole del titolo gli stavano a 0,2 mm e le parentesi di «(Blocco 2
             // di 2)» lo toccavano; a 28 lo barrava. Su un A4 orizzontale ogni millimetro è una riga in
             // più per pagina. Se il nome del condominio va a capo (oltre ~88 caratteri a 16pt)
-            // l'intestazione cresce di 7,9 mm e copre il titolo: caso non gestito, già così con il 32.
+            // l'intestazione cresce di 7,9 mm: il margine si allunga sulla testata (`PdfService`) e il
+            // titolo scende sotto il filetto.
             'margin_top'  => 31,
             'margin_left' => 8,
             'margin_right'=> 8,
@@ -155,8 +155,6 @@ class PianoRatePrintController extends Controller
             // e con 48 righe quei millimetri decidono se legenda e firma stanno nella seconda pagina.
             'margin_bottom' => 12,
         ]);
-
-        $mpdf->SetHeader($condominio->nome . '||Riparto per Tabella – ' . $pianoRate->nome);
 
         $nomeFile = PdfService::nomeFile('riparto-tabelle', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
 
@@ -196,7 +194,7 @@ class PianoRatePrintController extends Controller
             'piede_compatto' => true,
         ];
 
-        $mpdf = $pdfService->generate('pdf.gestionale.riparto_capitoli', $data, [
+        $mpdf = $pdfService->generate('pdf.gestionale.riparto_capitoli', $data + ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], [
             'format'      => $formato,
             'orientation' => 'L',
             // Stessi margini e stesse ragioni del riparto per tabella, qui sopra.
@@ -205,8 +203,6 @@ class PianoRatePrintController extends Controller
             'margin_right'=> 8,
             'margin_bottom' => 12,
         ]);
-
-        $mpdf->SetHeader($condominio->nome . '||Riparto per Capitolo di Spesa – ' . $pianoRate->nome);
 
         $nomeFile = PdfService::nomeFile('riparto-capitoli', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
 

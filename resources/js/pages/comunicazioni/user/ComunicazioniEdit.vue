@@ -199,14 +199,14 @@ const submit = () => {
                             class="size-4" 
                             :checked="form.is_private"
                             v-model="form.is_private" 
-                            id="is_featured" 
+                            id="is_private" 
                             @update:checked="(val: boolean) => form.is_private = val" 
                             />
                         <label
                             for="is_private"
                             class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-7 flex items-center"
                             >
-                            {{ trans('comunicazioni.label.comments') }}
+                            {{ trans('comunicazioni.label.private') }}
 
                             <HoverCard>
                                 <HoverCardTrigger as-child>
@@ -216,10 +216,10 @@ const submit = () => {
                                 <div class="flex justify-between space-x-4">
                                     <div class="space-y-1">
                                         <h4 class="text-sm font-semibold">
-                                            {{ trans('comunicazioni.label.comments') }}
+                                            {{ trans('comunicazioni.label.private') }}
                                         </h4>
                                         <p class="text-sm">
-                                            {{ trans('comunicazioni.tooltip.comments') }}
+                                            {{ trans('comunicazioni.tooltip.private') }}
                                         </p>
                                     </div>
                                 </div>
@@ -236,7 +236,7 @@ const submit = () => {
                             class="size-4" 
                             :checked="form.is_featured"
                             v-model="form.is_featured" 
-                            id="is_private" 
+                            id="is_featured" 
                             @update:checked="(val: boolean) => form.is_featured = val" 
                             />
                         <label

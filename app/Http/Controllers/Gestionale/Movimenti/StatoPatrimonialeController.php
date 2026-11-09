@@ -15,6 +15,7 @@ use App\Traits\PdfRigheStampabili;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * La pagina Stato patrimoniale — punto 3 della sequenza di docs/registri_contabili.md, decisioni
@@ -93,6 +94,7 @@ class StatoPatrimonialeController extends Controller
 
         $c = $parte === 'cassa' ? null : $controlli->perEsercizio($condominio, $esercizio, null, [], $pagina);
         $mpdf = $pdfService->generate('pdf.gestionale.stato_patrimoniale', [
+            'gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA,
             'condominio' => $condominio,
             'esercizio' => $esercizio,
             'pagina' => $pagina,

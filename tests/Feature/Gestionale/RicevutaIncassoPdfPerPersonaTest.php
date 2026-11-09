@@ -74,7 +74,9 @@ test('l\'archivio ha un PDF per persona con le sue ricevute e l\'elenco degli in
 
     $risposta->assertOk()->assertHeader('Content-Type', 'application/zip');
     expect($risposta->headers->get('Content-Disposition'))->toStartWith('attachment;')->toContain('.zip');
-    $file = perPersonaFileDellArchivio($risposta->getContent());
+    $file = perPersonaFileDellArchivio($risposta->streamedContent());
+    // Lo .zip è un file temporaneo, letto a pezzi verso il browser: dopo non c'è più.
+    expect(file_exists($risposta->baseResponse->getFile()->getPathname()))->toBeFalse();
     expect(array_keys($file))->toBe(['Anna Bruni.pdf', 'Persona 01.pdf', 'Ugo Neri.pdf', 'Indirizzi email.txt'])
         ->and(perPersonaPagine($file['Anna Bruni.pdf']))->toBe(2)
         ->and(perPersonaPagine($file['Persona 01.pdf']))->toBe(1)
@@ -102,7 +104,7 @@ test('l\'archivio ha un PDF per persona con le sue ricevute e l\'elenco degli in
         ->and(str_starts_with($file['Indirizzi email.txt'], "\u{FEFF}Ricevute di pagamento — Condominio Via dei Pini"))->toBeTrue();
 
     // Scaricato di nuovo, l'archivio porta le copie: l'originale è il primo.
-    $file2 = perPersonaFileDellArchivio(perPersonaScarica($this, $s, ['incassi' => [$a1->id], 'bollo' => 'assolta'])->assertOk()->getContent());
+    $file2 = perPersonaFileDellArchivio(perPersonaScarica($this, $s, ['incassi' => [$a1->id], 'bollo' => 'assolta'])->assertOk()->streamedContent());
     expect(array_keys($file2))->toBe(['Anna Bruni.pdf', 'Indirizzi email.txt'])
         ->and(RegistroInvio::orderByDesc('id')->first()->dati)->toHaveKey('copia_del');
 });
@@ -124,7 +126,7 @@ test('i nomi dei file: senza i caratteri che i sistemi rifiutano, senza accenti,
     $a = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
     $o = incassaPerRicevuta($s, $omonimo, [[$quota, 10.00]], '2026-02-01', 10.00);
 
-    $file = perPersonaFileDellArchivio(perPersonaScarica($this, $s, ['incassi' => [$a->id, $o->id], 'bollo_sopra' => 'assolta', 'bollo_sotto' => 'non_dovuta'])->assertOk()->getContent());
+    $file = perPersonaFileDellArchivio(perPersonaScarica($this, $s, ['incassi' => [$a->id, $o->id], 'bollo_sopra' => 'assolta', 'bollo_sotto' => 'non_dovuta'])->assertOk()->streamedContent());
 
     expect(array_keys($file))->toBe(['Anna Bruni.pdf', 'Anna Bruni (2).pdf', 'Indirizzi email.txt'])
         ->and($file['Indirizzi email.txt'])->toContain('Anna Bruni — 1 ricevuta — Anna Bruni (2).pdf');
@@ -155,7 +157,7 @@ test('«tutte le N dei filtri» vale anche per l\'archivio: il server rilegge la
     incassaPerRicevuta($s, $s->ugo, [[$s->ugo2, 60.00]], '2026-06-05', 60.00);
 
     $file = perPersonaFileDellArchivio(perPersonaScarica($this, $s, ['tutte' => 1, 'filtri' => ['data_da' => '2026-01-01', 'data_a' => '2026-03-31', 'ricevuta' => 'mai'],
-        'bollo_sopra' => 'assolta', 'bollo_sotto' => 'non_dovuta'])->assertOk()->getContent());
+        'bollo_sopra' => 'assolta', 'bollo_sotto' => 'non_dovuta'])->assertOk()->streamedContent());
 
     expect(array_keys($file))->toBe(['Anna Bruni.pdf', 'Ugo Neri.pdf', 'Indirizzi email.txt'])
         ->and(RegistroInvio::count())->toBe(2)

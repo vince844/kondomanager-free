@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Services\Gestionale\CommissioniSenzaVoce;
 use App\Services\Gestionale\RiepilogoPerCompetenza;
+use App\Services\Gestionale\VoceNelloStorno;
 use App\Services\PDF\PdfService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
@@ -14,6 +16,7 @@ use App\Traits\PdfRigheStampabili;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * Il riepilogo finanziario per competenza dell'esercizio: una pagina sua, con la sua richiesta, così le letture del riepilogo non si sommano a quelle
@@ -62,16 +65,28 @@ class RiepilogoPerCompetenzaController extends Controller
         return $n;
     }
 
-    public function index(Condominio $condominio, Esercizio $esercizio, RiepilogoPerCompetenza $riepilogo): Response
+    public function index(Condominio $condominio, Esercizio $esercizio, RiepilogoPerCompetenza $riepilogo, CommissioniSenzaVoce $commissioni): Response
     {
         abort_unless((int) $esercizio->condominio_id === (int) $condominio->id, 404);
+        $r = $riepilogo->perEsercizio($condominio, $esercizio);
+        // L'elenco delle commissioni e degli storni senza voce, letto solo se il riepilogo ha commissioni senza voce o righe di storni senza voce (anche
+        // con la somma a zero).
+        // Le commissioni: la riga conta solo le commissioni (il DARE), lo storno da solo di una commissione ha solo la cifra.
+        $commissioniSenzaVoce = $r['fuori_capitoli']['commissioni_senza_voce'];
+        $conCommissioni = (int) $commissioniSenzaVoce['numero'] > 0 || (int) $commissioniSenzaVoce['consuntivo'] !== 0;
+        $conStorni = VoceNelloStorno::righeSenzaVoce((int) $esercizio->id)->exists();
+        $elenco = $conCommissioni || $conStorni ? $commissioni->perEsercizio($condominio, $esercizio) : null;
 
         return Inertia::render('gestionale/movimenti/rendiconto/RiepilogoFinanziario', [
             'condominio' => $condominio,
             'condomini' => CondominioResource::collection($this->getCondomini())->resolve(),
             'esercizio' => $esercizio,
             'esercizi' => $condominio->esercizi()->orderByDesc('data_inizio')->get(),
-            'riepilogo' => $riepilogo->perEsercizio($condominio, $esercizio),
+            'riepilogo' => $r,
+            // Quante delle commissioni senza voce, e quanti degli storni senza voce fra i costi non classificati, si assegnano, con la regola dell'elenco:
+            // ogni riga porta all'elenco solo se ce n'è almeno una (in un esercizio chiuso nessuna).
+            'commissioni_assegnabili' => $conCommissioni ? $elenco['assegnabili']['numero'] : 0,
+            'storni_assegnabili' => $conStorni ? $elenco['storni_assegnabili']['numero'] : 0,
         ]);
     }
 
@@ -90,7 +105,7 @@ class RiepilogoPerCompetenzaController extends Controller
         }
 
         $mpdf = $pdf->generate('pdf.gestionale.rendiconto_riepilogo', ['condominio' => $condominio, 'esercizio' => $esercizio, 'riepilogo' => $riepilogo,
-            'dettaglio' => $dettaglio, 'senza_firma' => true], self::OPZIONI_STAMPA);
+            'dettaglio' => $dettaglio, 'senza_firma' => true, 'gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], self::OPZIONI_STAMPA);
         $nome = PdfService::nomeFile('riepilogo-finanziario', $condominio->nome, $esercizio->data_inizio->format('Y'), 'al-'.$riepilogo['alla']);
 
         return response($mpdf->Output($nome, \Mpdf\Output\Destination::STRING_RETURN))

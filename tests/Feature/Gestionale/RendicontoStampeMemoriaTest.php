@@ -105,7 +105,8 @@ it('la stampa della situazione, fatta davvero con 1.000 fatture aperte, sta sott
     $base = memory_get_usage();
     memory_reset_peak_usage();
     $mpdf = app(\App\Services\PDF\PdfService::class)->generate('pdf.gestionale.stato_patrimoniale', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'pagina' => $pagina,
-        'parte' => 'situazione', 'controlli' => $c['controlli'], 'esito' => $c['esito'], 'anno_a_cavallo' => $c['anno_a_cavallo'], 'senza_firma' => true], StatoPatrimonialeController::OPZIONI_STAMPA);
+        'parte' => 'situazione', 'controlli' => $c['controlli'], 'esito' => $c['esito'], 'anno_a_cavallo' => $c['anno_a_cavallo'], 'senza_firma' => true,
+        'gruppo_carta' => \App\Services\PDF\GruppoCarta::RENDICONTO_E_ASSEMBLEA], StatoPatrimonialeController::OPZIONI_STAMPA);
     $picco = (memory_get_peak_usage() - $base) / 1048576;
 
     // Misurato in questo processo, dove Laravel e i dati sono già in memoria: circa 20 MB oltre la base; la formula, che conta tutto il processo, 64,5 MB.

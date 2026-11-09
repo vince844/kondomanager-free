@@ -124,6 +124,93 @@ describe('le commissioni senza voce', () => {
         expect(pagina!.text()).not.toContain('Assegna la voce');
     });
 
+    test('lo storno di una commissione che era su una gestione che l\'esercizio non ha si sceglie, con il suo motivo, e la voce si sceglie solo fra quelle delle ordinarie dell\'esercizio', async () => {
+        const vm = await apri({
+            esercizio: { id: 42, nome: 'Esercizio 2027', stato: 'aperto', aperto: true },
+            commissioni: [commissione(4, '2027-02-10', -250, { gestione_id: 20, gestione: 'Tetto', solo_ordinarie: true,
+                motivo: 'È lo storno di una commissione dell\'esercizio «Esercizio 2026», che era sulla voce «Spese bancarie» della gestione «Gestione ordinaria»: questo esercizio non ha quella gestione. Si assegna a una voce di un\'ordinaria di questo esercizio, che ne riceve il rimborso; senza voce resta in una riga sua del rendiconto.' })],
+            totale: { numero: 1, importo: -250 },
+            voci: [
+                { id: 9, label: 'Bancarie del tetto', gestione_id: 20, gestione_nome: 'Tetto', gestione_tipo: 'straordinaria', esercizi: [41, 42] },
+                { id: 5, label: 'Spese bancarie', gestione_id: 10, gestione_nome: 'Gestione ordinaria', gestione_tipo: 'ordinaria', esercizi: [41] },
+                { id: 7, label: 'Spese bancarie 2027', gestione_id: 30, gestione_nome: 'Ordinaria 2027', gestione_tipo: 'ordinaria', esercizi: [42] },
+            ],
+            proposte: [{ gestione_id: 20, voce_id: 9 }],
+        });
+        const riga = pagina!.find('[data-riga="commissione"]');
+        expect(riga.text()).toContain('Si assegna a una voce di un\'ordinaria di questo esercizio');
+        await riga.find('input[type="checkbox"]').setValue(true);
+        await nextTick();
+
+        expect(vm.vociDellaScelta.map((v: { id: number }) => v.id)).toEqual([7]);
+        // La proposta della gestione del pagamento (la bancaria del tetto) non è fra quelle offerte: il campo resta vuoto.
+        expect(vm.voceId).toBeNull();
+    });
+
+    test('con lo storno di una regolazione di un esercizio chiuso il titolo, il totale, la frase, la casella e l\'anteprima nominano lo storno', async () => {
+        const vm = await apri({
+            esercizio: { id: 42, nome: 'Esercizio 2027', stato: 'aperto', aperto: true },
+            commissioni: [
+                commissione(1, '2027-01-20', 250, { gestione_id: 10 }),
+                commissione(4, '2027-02-10', -9600, { gestione_id: 10, natura: 'registrazione', voce_di_entrata: false, solo_ordinarie: true, fornitore: null }),
+            ],
+            totale: { numero: 2, importo: -9350 },
+            voci: [{ id: 7, label: 'Spese generali 2027', gestione_id: 30, gestione_nome: 'Ordinaria 2027', gestione_tipo: 'ordinaria', esercizi: [42] }],
+            proposte: [],
+        });
+
+        expect(vm.titolo).toBe('Commissioni e storni senza voce');
+        expect(pagina!.find('[data-testo="totale"]').text().replace(/\u00a0/g, ' ')).toBe('1 commissione e 1 storno senza voce, per € -93,50.');
+        expect(pagina!.find('[data-testo="storni"]').text()).toContain('di spesa per la regolazione e di entrata per l\'incasso');
+        const caselle = pagina!.findAll('[data-riga="commissione"] input[type="checkbox"]');
+        expect(caselle[1].attributes('aria-label')).toBe('Scegli lo storno PAG-2026-00004');
+
+        await caselle[1].setValue(true);
+        vm.voceId = 7;
+        vm.mostraAnteprima = true;
+        await nextTick();
+        expect(pagina!.find('[data-blocco="anteprima"]').text().replace(/\u00a0/g, ' '))
+            .toContain('1 storno per € -96,00 prende la voce «Spese generali 2027»: il consuntivo della voce cambia di € -96,00 nell\'esercizio Esercizio 2027.');
+    });
+
+    test('senza storni il titolo resta «Commissioni senza voce»', async () => {
+        const vm = await apri();
+        expect(vm.titolo).toBe('Commissioni senza voce');
+        expect(pagina!.find('[data-testo="storni"]').exists()).toBe(false);
+    });
+
+    test('lo storno di un incasso da terzi si assegna a una voce di entrata delle ordinarie dell\'esercizio, e l\'anteprima dice l\'incassato; scelto con un\'altra riga, la pagina dice che vanno in due volte e non manda niente', async () => {
+        const vm = await apri({
+            esercizio: { id: 42, nome: 'Esercizio 2027', stato: 'aperto', aperto: true },
+            commissioni: [
+                commissione(4, '2027-02-10', 24000, { gestione_id: 10, natura: 'registrazione', voce_di_entrata: true, solo_ordinarie: true, fornitore: null }),
+                commissione(5, '2027-02-10', -9600, { gestione_id: 10, natura: 'registrazione', voce_di_entrata: false, solo_ordinarie: true, fornitore: null }),
+            ],
+            totale: { numero: 2, importo: 14400 },
+            voci: [{ id: 7, label: 'Spese generali 2027', gestione_id: 30, gestione_nome: 'Ordinaria 2027', gestione_tipo: 'ordinaria', esercizi: [42] }],
+            voci_di_entrata: [
+                { id: 8, label: 'Affitto antenna 2027', gestione_id: 30, gestione_nome: 'Ordinaria 2027', gestione_tipo: 'ordinaria', esercizi: [42] },
+                { id: 3, label: 'Affitto antenna', gestione_id: 10, gestione_nome: 'Gestione ordinaria', gestione_tipo: 'ordinaria', esercizi: [41] },
+            ],
+            proposte: [],
+        });
+        vm.scelte = [4];
+        await nextTick();
+        expect(vm.vociDellaScelta.map((v: { id: number }) => v.id)).toEqual([8]);
+        vm.voceId = 8;
+        vm.mostraAnteprima = true;
+        await nextTick();
+        expect(pagina!.find('[data-blocco="anteprima"]').text().replace(/\u00a0/g, ' '))
+            .toContain('1 storno per € 240,00 prende la voce «Affitto antenna 2027»: l\'incassato della voce cambia di € -240,00');
+
+        vm.scelte = [4, 5];
+        await nextTick();
+        expect(pagina!.find('[data-testo="due-tipi"]').text()).toBe('Lo storno di un incasso da terzi va su una voce di entrata, le commissioni e gli altri storni su una voce di spesa: si assegnano in due volte.');
+        expect(vm.puoAssegnare).toBe(false);
+        vm.conferma();
+        expect(post).not.toHaveBeenCalled();
+    });
+
     test('uno storno che non si offre porta il suo motivo, e non ha la casella', async () => {
         await apri({
             commissioni: [commissione(4, '2027-02-10', -250, { assegnabile: false, motivo: 'È lo storno di una commissione dell\'esercizio «Esercizio 2026», che è chiuso.' })],

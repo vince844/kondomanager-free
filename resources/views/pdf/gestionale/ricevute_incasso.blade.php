@@ -10,13 +10,21 @@
   La firma dell'amministratore va su ogni ricevuta, non una volta in fondo al documento: il layout la stampa alla fine del contenuto, quindi
   qui la si prende per sé e la si toglie al layout.
 
-  L'impaginazione è quella di una lettera: in alto a sinistra chi emette la ricevuta (il condominio, con indirizzo e codice fiscale), in alto
-  a destra a chi è intestata (quando la ricevuta va per posta), subito sotto il titolo. Il condominio compare così su ogni ricevuta, non in
+  L'impaginazione è quella di una lettera: in alto a sinistra lo studio, se le impostazioni di stampa lo dicono, e sotto chi emette la ricevuta
+  (il condominio, con indirizzo e codice fiscale), in alto a destra a chi è intestata (quando la ricevuta va per posta), subito sotto il titolo.
+  Con lo studio, o con la carta intestata (lo studio è stampato sulla carta), il condominio si scrive come nelle lettere, «Amministratore del
+  Condominio …», e il conto in cui è entrato il versamento è «del condominio»: i soldi sono del condominio, non dello studio. Senza lo studio il
+  condominio è il titolo in testa.
+  Il condominio compare così su ogni ricevuta, non in
   un'intestazione ripetuta su ogni pagina del PDF: il layout non scrive la sua (`$intestazione_propria`), e nel piè di pagina non scrive «Documento
   emesso il …» (`$piede_senza_data`), perché la data di emissione sta già sotto il numero.
 --}}
 @php
     $firmaRicevuta = $firma_stampe_absolute_path ?? null;
+    // Lo studio della carta delle ricevute (la dà la stampa; resa da sola, la vista la chiede): in alto a sinistra, sopra il condominio.
+    $carta ??= app(\App\Services\PDF\CartaDiStampa::class)->perGruppo(\App\Services\PDF\GruppoCarta::RICEVUTE_E_AVVISI);
+    // I titoli, i loro filetti e il nome di chi scrive hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta, '#1e3a5f');
     $firma_stampe_absolute_path = null;
     $intestazione_propria = true;
     $piede_senza_data = true;
@@ -50,6 +58,18 @@
             ? trim(implode(' ', array_filter([$condominio->cap, $condominio->comune, filled($condominio->provincia) ? '(' . $condominio->provincia . ')' : null], 'filled')))
             : trim((string) ($r['condominio']['indirizzo'] ?? ''));
         $conIndirizzo = !empty($voce['indirizzo_per_posta']) && !empty($r['posizione']);
+        $perIlCondominio = $carta->haStudio() || $carta->cartaIntestata() !== null;
+        // Il conto in cui è entrato il versamento, con il suo tipo fra parentesi; se il nome del conto è il suo tipo o comincia con il suo tipo («Conto
+        // corrente», «Conto corrente BPER», con le maiuscole o senza), senza ripeterlo.
+        $entratoIn = '';
+        if (! empty($r['cassa'])) {
+            $nomeDelConto = (string) $r['cassa']['nome'];
+            $tipoDelConto = (string) $r['cassa']['tipo'];
+            $soloIlNome = str_starts_with(mb_strtolower(trim($nomeDelConto)), mb_strtolower(trim($tipoDelConto)));
+            $entratoIn = $perIlCondominio
+                ? ($soloIlNome ? $nomeDelConto . ' del condominio' : $nomeDelConto . ' (' . mb_strtolower($tipoDelConto) . ' del condominio)')
+                : ($soloIlNome ? $nomeDelConto : $nomeDelConto . ' (' . $tipoDelConto . ')');
+        }
     @endphp
 
     @if(!empty($voce['etichetta']))
@@ -60,21 +80,35 @@
         </table>
     @endif
 
-    {{-- La testata: a sinistra il condominio che emette, a destra a chi è intestata la ricevuta (solo se va per posta). La cella di sinistra è larga
-         100 mm: il destinatario comincia a 112 mm dal bordo sinistro del foglio, a destra, dove si legge un indirizzo. --}}
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+    {{-- La testata: a sinistra il condominio che emette, a destra a chi è intestata la ricevuta (solo se va per posta), con le righe allineate al margine
+         destro. La cella di sinistra è larga 112 mm meno il margine sinistro e va a capo 8 mm prima del destinatario. Con `overflow: wrap` una parola più
+         larga della colonna (una PEC, un sito) va a capo dove la colonna finisce, e la colonna non si allarga. --}}
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; overflow: wrap;">
         <tr>
-            <td style="width: 100mm; padding: 0; vertical-align: top;">
-                @if(filled($mittenteNome))
-                    <div style="font-size: 12pt; font-weight: bold; color: #1e3a5f; line-height: 1.25;">{{ $mittenteNome }}</div>
+            <td style="width: {{ \App\Services\PDF\Carta::larghezzaMittente($carta) }}; padding: 0 {{ \App\Services\PDF\Carta::SPAZIO_PRIMA_DEL_DESTINATARIO }}mm 0 0; vertical-align: top;">
+                {{-- Con lo studio, o con la carta intestata, chi incassa per il condominio, come nelle lettere. --}}
+                @if($perIlCondominio)
+                    @if($carta->haStudio())
+                        @include('pdf._carta.mittente')
+                    @endif
+                    <div style="font-size: 9pt; color: #333; line-height: 1.4;">
+                        @if(filled($mittenteNome))Amministratore del <strong>{{ \App\Services\Gestionale\Lettere\TestiLettere::condominioConNome((string) $mittenteNome) }}</strong>@endif
+                        @if(filled($mittenteVia))<br>{{ $mittenteVia }}@endif
+                        @if(filled($mittenteCitta))<br>{{ $mittenteCitta }}@endif
+                        @if(filled($mittenteCf))<br>C.F. {{ $mittenteCf }}@endif
+                    </div>
+                @else
+                    @if(filled($mittenteNome))
+                        <div style="font-size: 11pt; font-weight: bold; color: {{ $coloreTitoli }}; line-height: 1.25;">{{ $mittenteNome }}</div>
+                    @endif
+                    <div style="font-size: 9pt; color: #333; margin-top: 2px; line-height: 1.45;">
+                        @if(filled($mittenteVia)){{ $mittenteVia }}<br>@endif
+                        @if(filled($mittenteCitta)){{ $mittenteCitta }}<br>@endif
+                        @if(filled($mittenteCf))C.F. {{ $mittenteCf }}@endif
+                    </div>
                 @endif
-                <div style="font-size: 9pt; color: #333; margin-top: 2px; line-height: 1.45;">
-                    @if(filled($mittenteVia)){{ $mittenteVia }}<br>@endif
-                    @if(filled($mittenteCitta)){{ $mittenteCitta }}<br>@endif
-                    @if(filled($mittenteCf))C.F. {{ $mittenteCf }}@endif
-                </div>
             </td>
-            <td style="padding: 0; vertical-align: top;">
+            <td style="padding: 0; vertical-align: top; text-align: right;">
                 @if($conIndirizzo)
                     <div style="font-size: 9pt; color: #555; line-height: 1.25;">Gentile</div>
                     <div style="font-size: 11pt; font-weight: bold; color: #222; line-height: 1.3;">{{ $r['posizione']['nome'] }}</div>
@@ -86,8 +120,8 @@
         </tr>
     </table>
 
-    <div style="border-bottom: 2px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 10px;">
-        <h2 style="margin: 0; font-size: 14pt; color: #1e3a5f; letter-spacing: 0.5px;">
+    <div style="border-bottom: 2px solid {{ $coloreTitoli }}; padding-bottom: 8px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 14pt; color: {{ $coloreTitoli }}; letter-spacing: 0.5px;">
             RICEVUTA DI PAGAMENTO
             @if(!empty($voce['copia_del']))<span style="color: #9c4221;"> — COPIA</span>@endif
         </h2>
@@ -149,7 +183,7 @@
         @if(!empty($r['cassa']))
             <tr>
                 <td style="width: 38mm; padding: 3px 0; vertical-align: top; color: #555;">Entrato in</td>
-                <td style="padding: 3px 0; vertical-align: top;">{{ $r['cassa']['nome'] }} ({{ $r['cassa']['tipo'] }})</td>
+                <td style="padding: 3px 0; vertical-align: top;">{{ $entratoIn }}</td>
             </tr>
         @endif
         @if(!empty($r['gestione']))

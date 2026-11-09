@@ -6,7 +6,7 @@ use Carbon\CarbonInterface;
 
 /**
  * I pezzi comuni dei documenti che si mandano a una persona, uno o tanti: la ricevuta dell'incasso e le lettere (promemoria, sollecito,
- * diffida, messa in mora). Non sanno che cosa c'è dentro il documento: l'archivio .zip con un file per persona e l'elenco degli indirizzi,
+ * diffida, messa in mora). Non sanno che cosa c'è dentro il documento: l'elenco degli indirizzi dell'archivio .zip ({@see ArchivioAPezzi}),
  * il nome di file non ancora usato, le persone che stanno nel tetto dei messaggi senza il servizio della coda, le parti di un PDF troppo
  * lungo a persone intere. Chi li chiama dà il titolo, le parole per contare i suoi documenti e l'eccezione con cui dice all'amministratore
  * che cosa non si è potuto fare.
@@ -65,34 +65,6 @@ final class InviiPerPersona
         }
 
         return "\u{FEFF}" . implode("\r\n", $righe) . "\r\n";
-    }
-
-    /**
-     * L'archivio .zip dei file dati (nome => contenuto), scritto in un file temporaneo e letto in memoria. Se il server non riesce a scriverlo
-     * solleva l'eccezione di chi chiama, con la frase per l'amministratore.
-     *
-     * @param array<string, string> $file
-     * @param class-string<\Throwable> $eccezione
-     */
-    public static function archivio(array $file, string $eccezione): string
-    {
-        $percorso = tempnam(sys_get_temp_dir(), 'invii');
-        $zip = new \ZipArchive;
-        if ($percorso === false || $zip->open($percorso, \ZipArchive::OVERWRITE) !== true) {
-            throw new $eccezione(self::ARCHIVIO_NON_FATTO);
-        }
-        try {
-            foreach ($file as $nome => $contenuto) {
-                $zip->addFromString($nome, $contenuto);
-            }
-            if (! $zip->close()) {
-                throw new $eccezione(self::ARCHIVIO_NON_FATTO);
-            }
-
-            return (string) file_get_contents($percorso);
-        } finally {
-            @unlink($percorso);
-        }
     }
 
     /**

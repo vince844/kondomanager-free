@@ -1,3 +1,7 @@
+{{-- I titoli, la testata comune e i filetti dei titoli hanno il colore della carta dello studio; senza un colore, quello di sempre. --}}
+@php
+    $coloreDelleStampe = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2c3e50');
+@endphp
 body {
     font-family: dejavusans, sans-serif;
     font-size: 9pt;
@@ -7,24 +11,25 @@ body {
 
 h1, h2, h3, h4 {
     margin-top: 0;
-    color: #2c3e50;
+    color: {{ $coloreDelleStampe }};
 }
 
 h1 { font-size: 14pt; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
 h2 { font-size: 12pt; }
 h3 { font-size: 11pt; }
 
+{{-- La testata comune non ha margine sotto: il margine alto delle stampe si allunga sulla testata, e un margine sotto lo conterebbe, spostando il
+     corpo anche con un nome corto. --}}
 .header {
     text-align: center;
-    border-bottom: 2px solid #2c3e50;
+    border-bottom: 2px solid {{ $coloreDelleStampe }};
     padding-bottom: 10px;
-    margin-bottom: 20px;
 }
 
 .header-title {
     font-size: 16pt;
     font-weight: bold;
-    color: #2c3e50;
+    color: {{ $coloreDelleStampe }};
 }
 
 .header-subtitle {
@@ -41,7 +46,7 @@ h3 { font-size: 11pt; }
     font-weight: bold;
     background-color: #f0f0f0;
     padding: 4px 8px;
-    border-left: 3px solid #2c3e50;
+    border-left: 3px solid {{ $coloreDelleStampe }};
     margin-bottom: 8px;
 }
 

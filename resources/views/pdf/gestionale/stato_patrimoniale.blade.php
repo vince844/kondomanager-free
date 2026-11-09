@@ -44,6 +44,12 @@
     // Il conto dei riporti dagli esercizi prima: il suo nome dice «fondo», e non lo è.
     $riporti = collect($s['passivo']['gruppi'])->flatMap(fn ($g) => $g['voci'])->firstWhere('ruolo', 'passate_gestioni');
     $parteDelFascicolo = $parte_del_fascicolo ?? null;
+    // Lo studio: il blocco in testa alla prima pagina e il suo nome nella testatina; senza, la carta intestata del condominio di sempre. Con la carta
+    // intestata dello studio lo studio è stampato sulla carta: la testata ha il condominio e la riga della stampa, la testatina il condominio.
+    $conStudio = isset($carta) && $carta->haStudio();
+    $conCarta = isset($carta) && $carta->cartaIntestata() !== null;
+    // I titoli, i loro filetti e la testata hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#0E2238');
 @endphp
 <!DOCTYPE html>
 <html lang="it">
@@ -52,18 +58,18 @@
 <title>{{ $titoloStampa }} – {{ $esercizio->nome }}</title>
 <style>
     body { font-family: inter; font-size: 7.5pt; color: #26313F; }
-    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid #0E2238; }
+    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid {{ $coloreTitoli }}; }
     .testata td { padding: 0 0 10px 0; vertical-align: top; border: 0; }
-    .ente { font-family: fraunces; font-size: 15pt; color: #0E2238; }
+    .ente { font-family: fraunces; font-size: 15pt; color: {{ $coloreTitoli }}; }
     .att { font-size: 7pt; letter-spacing: 1.1pt; text-transform: uppercase; color: #5A6B7B; }
     .rif { font-size: 7.5pt; color: #5A6B7B; }
     .doc { text-align: right; font-size: 7.5pt; color: #5A6B7B; }
     .doc b { color: #0E2238; }
-    h1 { font-family: fraunces; font-size: 17pt; color: #0E2238; margin: 14px 0 1px; padding: 0; }
-    .sotto { font-family: fraunces; font-size: 10pt; color: #2E5C86; margin: 0 0 10px; }
-    h2 { font-family: fraunces; font-size: 11pt; color: #0E2238; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #0E2238; }
+    h1 { font-family: fraunces; font-size: 17pt; color: {{ $coloreTitoli }}; margin: 14px 0 1px; padding: 0; }
+    .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 10px; }
+    h2 { font-family: fraunces; font-size: 11pt; color: {{ $coloreTitoli }}; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 1px solid {{ $coloreTitoli }}; }
     h2 .sec { font-family: inter; font-size: 7pt; letter-spacing: 0.8pt; color: #5A6B7B; margin-right: 6px; }
-    h2 .norma { font-family: inter; font-size: 6.5pt; color: #2E5C86; float: right; letter-spacing: 0.3pt; font-weight: normal; }
+    h2 .norma { font-family: inter; font-size: 6.5pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; float: right; letter-spacing: 0.3pt; font-weight: normal; }
     .intro { font-size: 7.5pt; color: #5A6B7B; margin: 0 0 6px; }
     .dati { width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5; border-bottom: 1px solid #D9DEE5; margin: 8px 0 4px; }
     .dati td { padding: 7px 10px 7px 0; border: 0; vertical-align: top; }
@@ -95,6 +101,12 @@
     .eq b { color: #0E2238; font-family: fraunces; }
     .blocco { margin-top: 8px; }
     .fut { margin-top: 8px; padding: 8px 12px; background: #FAF2DF; border-left: 3px solid #8A6212; font-size: 7.2pt; color: #7A5A10; }
+@if($conCarta && ! $carta->primaPaginaIntera())
+    {{-- Con la carta intestata il margine alto è quello della carta, e si allunga sulla testatina: data con `@page`, mPDF la misura già sulla prima
+         pagina (accesa nel corpo arriverebbe a pagina cominciata, e la riga della stampa le finirebbe sotto). Il piede sta nella regola, che senza lo
+         spegnerebbe dalla seconda pagina. --}}
+    @page { header: html_spTestatina; footer: html_spPiede; }
+@endif
 </style>
 </head>
 <body>
@@ -102,28 +114,30 @@
 <htmlpageheader name="spTestatina">
     <table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #D9DEE5;">
         <tr>
-            <td style="border: 0; padding: 0 0 5px 0; font-size: 7.5pt; color: #5A6B7B;"><b style="color: #0E2238;">{{ $condominio->nome }}</b> · {{ $titoloStampa }}</td>
+            <td style="border: 0; padding: 0 0 5px 0; font-size: 7.5pt; color: #5A6B7B;">@if($conStudio){{ $carta->nome() }} · @endif<b style="color: {{ $coloreTitoli }};">{{ $condominio->nome }}</b> · {{ $titoloStampa }}</td>
             <td style="border: 0; padding: 0 0 5px 0; text-align: right; font-size: 7.5pt; color: #5A6B7B;">{{ $esercizio->nome }} · al {{ $dataIt($pagina['data']) }}</td>
         </tr>
     </table>
 </htmlpageheader>
+{{-- Con lo studio, una stampa che comincia con la testatina (le parti del fascicolo) la ha già dalla prima pagina. --}}
+@if($conCarta && ! $carta->primaPaginaIntera())
+{{-- La testatina e il piede li dà la regola `@page` qui sopra. --}}
+@elseif($conStudio && ! $carta->primaPaginaIntera())
+<sethtmlpageheader name="spTestatina" page="ALL" value="on" show-this-page="1" />
+@else
 <sethtmlpageheader name="spTestatina" page="ALL" value="on" />
+@endif
 
 <htmlpagefooter name="spPiede">
-    <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;">
-        <tr>
-            <td style="border: 0; padding: 5px 0 0 0; font-size: 7pt; color: #5A6B7B;">
-                Documento emesso il {{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}
-                @if(!empty($nota_legale_stampe))
-                    <br>{!! nl2br(e($nota_legale_stampe)) !!}
-                @endif
-            </td>
-            <td style="border: 0; padding: 5px 0 0 0; text-align: right; font-size: 7pt; color: #5A6B7B;">@if(! empty($parteDelFascicolo)) {{ $parteDelFascicolo }}, pagina {PAGENO} di {nbpg} @else Pagina {PAGENO} di {nbpg} @endif</td>
-        </tr>
-    </table>
+    @include('pdf._carta.piede_inter', ['giorno' => ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y'), 'parte' => $parteDelFascicolo])
 </htmlpagefooter>
 <sethtmlpagefooter name="spPiede" page="ALL" value="on" />
 
+@if($conStudio || $conCarta)
+@component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => $titoloStampa])
+<b>{{ $esercizio->nome }}</b> · dal <b>{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b>{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+@endcomponent
+@else
 <table class="testata">
     <tr>
         <td>
@@ -141,6 +155,7 @@
         </td>
     </tr>
 </table>
+@endif
 
 <h1>{{ $titoloStampa }}</h1>
 <p class="sotto">@if($parte === 'cassa') Dal {{ $dataIt($rf['dal']) }} al {{ $dataIt($rf['al']) }} @elseif($parte === 'controlli') Al {{ $dataIt($pagina['data']) }} @else Situazione al {{ $dataIt($pagina['data']) }} — art. 1130-bis c.c. @endif</p>

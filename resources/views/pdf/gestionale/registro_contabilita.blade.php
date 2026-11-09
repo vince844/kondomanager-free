@@ -49,6 +49,10 @@
         if (isset($fineMese[$mese]) && ($dopo === null || substr($righe[$dopo]['data'], 0, 7) !== $mese)) { $chiudeMese[$i] = $fineMese[$mese]; }
     }
     $euroStampa = fn (int $c) => '€ '.number_format($c / 100, 2, ',', '.');
+    // Lo studio: il blocco in testa alla prima pagina e il suo nome nella testatina; senza, la carta intestata del condominio di sempre.
+    $conStudio = isset($carta) && $carta->haStudio();
+    // I titoli, i loro filetti e la testata hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#0E2238');
 @endphp
 <!DOCTYPE html>
 <html lang="it">
@@ -63,16 +67,16 @@
               font-size: 7.5pt; padding: 6px 9px; margin-bottom: 12px; }
     .fascia b { letter-spacing: 1pt; text-transform: uppercase; }
 
-    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid #0E2238; }
+    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid {{ $coloreTitoli }}; }
     .testata td { padding: 0 0 10px 0; vertical-align: top; border: 0; }
-    .ente { font-family: fraunces; font-size: 15pt; color: #0E2238; }
+    .ente { font-family: fraunces; font-size: 15pt; color: {{ $coloreTitoli }}; }
     .att { font-size: 7pt; letter-spacing: 1.1pt; text-transform: uppercase; color: #5A6B7B; }
     .rif { font-size: 7.5pt; color: #5A6B7B; }
     .doc { text-align: right; font-size: 7.5pt; color: #5A6B7B; }
     .doc b { color: #0E2238; }
 
-    h1 { font-family: fraunces; font-size: 17pt; color: #0E2238; margin: 14px 0 1px; padding: 0; }
-    .sotto { font-family: fraunces; font-size: 10pt; color: #2E5C86; margin: 0 0 10px; }
+    h1 { font-family: fraunces; font-size: 17pt; color: {{ $coloreTitoli }}; margin: 14px 0 1px; padding: 0; }
+    .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 10px; }
 
     /* `.dati` del fac-simile è una griglia CSS: qui è una tabella, perché mPDF non ha il grid. */
     .dati { width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;
@@ -120,7 +124,7 @@
     <table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #D9DEE5;">
         <tr>
             <td style="border: 0; padding: 0 0 5px 0; font-size: 7.5pt; color: #5A6B7B;">
-                <b style="color: #0E2238;">{{ $condominio->nome }}</b> · Registro di contabilità
+                @if($conStudio){{ $carta->nome() }} · @endif<b style="color: {{ $coloreTitoli }};">{{ $condominio->nome }}</b> · Registro di contabilità
             </td>
             <td style="border: 0; padding: 0 0 5px 0; text-align: right; font-size: 7.5pt; color: #5A6B7B;">
                 {{ $esercizio->nome }}@if($parziale) · estratto parziale @endif
@@ -129,22 +133,15 @@
         </tr>
     </table>
 </htmlpageheader>
+{{-- Con lo studio, una stampa che comincia con la testatina (le parti del fascicolo) la ha già dalla prima pagina. --}}
+@if($conStudio && ! $carta->primaPaginaIntera())
+<sethtmlpageheader name="registroTestatina" page="ALL" value="on" show-this-page="1" />
+@else
 <sethtmlpageheader name="registroTestatina" page="ALL" value="on" />
+@endif
 
 <htmlpagefooter name="registroPiede">
-    <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;">
-        <tr>
-            <td style="border: 0; padding: 5px 0 0 0; font-size: 7pt; color: #5A6B7B;">
-                Documento emesso il {{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}
-                @if(!empty($nota_legale_stampe))
-                    <br>{!! nl2br(e($nota_legale_stampe)) !!}
-                @endif
-            </td>
-            <td style="border: 0; padding: 5px 0 0 0; text-align: right; font-size: 7pt; color: #5A6B7B;">
-                @if(! empty($parte_del_fascicolo)) {{ $parte_del_fascicolo }}, pagina {PAGENO} di {nbpg} @else Pagina {PAGENO} di {nbpg} @endif
-            </td>
-        </tr>
-    </table>
+    @include('pdf._carta.piede_inter', ['giorno' => ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y'), 'parte' => $parte_del_fascicolo ?? null])
 </htmlpagefooter>
 <sethtmlpagefooter name="registroPiede" page="ALL" value="on" />
 
@@ -179,6 +176,11 @@
 </div>
 @endif
 
+@if($conStudio)
+@component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => 'Registro di contabilità'])
+<b>{{ $esercizio->nome }}</b> · dal <b>{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b>{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+@endcomponent
+@else
 <table class="testata">
     <tr>
         <td>
@@ -195,6 +197,7 @@
         </td>
     </tr>
 </table>
+@endif
 
 <h1>Registro di contabilità</h1>
 <p class="sotto">Movimenti in entrata e in uscita — art. 1130, comma 1, n. 7 c.c.</p>

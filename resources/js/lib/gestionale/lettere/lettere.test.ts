@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import {
-    personeDelCanale, personeViste, testoAggiunte, testoConteggi, testoCredito, testoGestione, testoOltreTetto, testoRigaDelRegistro, testoRiprova, testoTotaleEResiduo,
+    FRASE_STUDIO_NON_COMPILATO, FRASE_STUDIO_SULLA_CARTA, fraseDelloStudio, personeDelCanale, personeViste, testoAggiunte, testoConteggi, testoCredito, testoGestione, testoOltreTetto, testoRigaDelRegistro, testoRiprova, testoTotaleEResiduo,
     testoUltimaLettera, testoUscite, type PersonaDellAnteprima,
 } from './lettere';
 
@@ -96,5 +96,19 @@ describe('«riprova», il tetto e la gestione', () => {
     test('la gestione delle lettere', () => {
         expect(testoGestione({ id: 7, nome: 'Ordinaria 2026' })).toBe('Solo la gestione «Ordinaria 2026»: le rate delle altre gestioni non sono nelle lettere.');
         expect(testoGestione(null)).toBeNull();
+    });
+});
+
+describe('lo studio nella lettera', () => {
+    test('con il nome dello studio nessuna frase; senza, a campi la lettera porta il solo condominio; con la carta intestata delle lettere la frase dice la carta, non il solo condominio', () => {
+        expect(fraseDelloStudio({ studio_compilato: true, carta_intestata: false })).toBeNull();
+        expect(fraseDelloStudio({ studio_compilato: true, carta_intestata: true })).toBeNull();
+        expect(fraseDelloStudio({ studio_compilato: false, carta_intestata: false })).toBe(FRASE_STUDIO_NON_COMPILATO);
+        expect(FRASE_STUDIO_NON_COMPILATO).toBe('I dati dello studio non sono compilati: la lettera porta il solo condominio. Li scrivi nelle impostazioni di stampa.');
+        expect(fraseDelloStudio({ studio_compilato: false, carta_intestata: true })).toBe(FRASE_STUDIO_SULLA_CARTA);
+        expect(FRASE_STUDIO_SULLA_CARTA).toBe('La lettera esce sulla carta intestata, che porta lo studio. Il nome dello studio nelle impostazioni di stampa è vuoto: '
+            + 'se la carta non si legge, la lettera esce con il solo condominio.');
+        // Senza il dato (una risposta di prima) la frase di sempre.
+        expect(fraseDelloStudio({ studio_compilato: false })).toBe(FRASE_STUDIO_NON_COMPILATO);
     });
 });

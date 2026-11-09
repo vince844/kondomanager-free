@@ -217,7 +217,8 @@ test('l\'altezza delle righe non dipende dalle cifre del totale unità: cinque c
         $dati = ['condominio' => new \App\Models\Condominio(['nome' => 'Condominio di prova', 'indirizzo' => 'Via di prova 1', 'codice_fiscale' => '91000000009']),
             'esercizio' => new \App\Models\Esercizio(['nome' => 'Esercizio 2026', 'data_inizio' => '2026-01-01', 'data_fine' => '2026-12-31']),
             'pianoRate' => new \App\Models\Gestionale\PianoRate(['nome' => 'Piano rate 2026', 'stato' => 'approvato']),
-            'matrice' => $matricePer($importoCella), $chiaveConteggio => 5, 'firma_compatta' => true, 'piede_compatto' => true];
+            'matrice' => $matricePer($importoCella), $chiaveConteggio => 5, 'firma_compatta' => true, 'piede_compatto' => true,
+            'gruppo_carta' => \App\Services\PDF\GruppoCarta::RENDICONTO_E_ASSEMBLEA];
         $mpdf = app(\App\Services\PDF\PdfService::class)->generate($vista, $dati, [
             'format' => 'A4-L', 'orientation' => 'L', 'margin_top' => 31, 'margin_left' => 8, 'margin_right' => 8, 'margin_bottom' => 12,
         ]);

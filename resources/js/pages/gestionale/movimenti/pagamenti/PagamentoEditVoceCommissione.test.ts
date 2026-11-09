@@ -130,9 +130,9 @@ describe('la voce della commissione in modifica', () => {
         apri({ voce_id: null, gestione_id: 10, senza_voce: true, puo_restare_senza_voce: false });
 
         expect(pagina!.find('[data-test="frase-senza-voce"]').text()).toBe('Questo pagamento è stato registrato senza la voce della commissione. Per salvarlo con questa commissione scegli la voce: la commissione entrerà nel suo consuntivo.');
-        expect(document.body.textContent).toContain('Per metterla su una voce di un\'altra gestione, per esempio le spese bancarie dell\'ordinaria, lascia la commissione a zero e registrala con una regolazione immediata.');
-        // Il collegamento si apre in un'altra scheda: chi lo segue mentre modifica il pagamento non lo perde.
-        expect(pagina!.find('[data-test="regolazione-immediata"]').attributes('target')).toBe('_blank');
+        // Coda 553: la via d'uscita (commissione a zero e regolazione immediata) non c'è più; sotto il campo si dice che cosa offre.
+        expect(document.body.textContent).toContain('In cima le voci della gestione del pagamento; sotto, quelle dell\'ordinaria dello stesso esercizio, per esempio le spese bancarie.');
+        expect(pagina!.find('[data-test="regolazione-immediata"]').exists()).toBe(false);
         expect(opzioni()!.map((o) => o.label)).toEqual(['Spese bancarie', 'Bolli']);
         expect(invia()).toEqual([]);
         await nextTick();

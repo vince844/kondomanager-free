@@ -8,6 +8,7 @@ use App\Models\Gestionale\DelegaF24;
 use App\Services\Gestionale\ModelloF24Service;
 use App\Services\PDF\PdfService;
 use Illuminate\Http\Response;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * La stampa del modello F24.
@@ -53,6 +54,8 @@ class DelegaF24PrintController extends Controller
         }
 
         $pdf = $pdfService->generate('pdf.gestionale.modello_f24', [
+            // Il modello è dell'Agenzia delle Entrate: niente carta dello studio.
+            'gruppo_carta' => GruppoCarta::NESSUNO,
             'delega' => $delega,
             'quadro' => $modello->quadro($delega),
             'copie' => $modello->copie(),

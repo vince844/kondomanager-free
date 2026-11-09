@@ -50,7 +50,8 @@ function rsmRighe(int $n): \Illuminate\Support\Collection
 function rsmDati(Condominio $c, \Illuminate\Support\Collection $righe): array
 {
     return ['condominio' => $c, 'titolo' => 'Rate scadute al 20/03/2026', 'titolo_stampa' => 'Rate scadute al 20/03/2026', 'righe' => $righe, 'in_scadenza' => false, 'oggi' => true,
-        'totale' => (int) $righe->sum('importo'), 'non_emesse' => null, 'selezione' => false, 'senza_firma' => true];
+        'totale' => (int) $righe->sum('importo'), 'non_emesse' => null, 'selezione' => false, 'senza_firma' => true,
+        'gruppo_carta' => \App\Services\PDF\GruppoCarta::REGISTRI_E_ELENCHI];
 }
 
 it('il tetto della stampa è misurato su questo modello: 3.234 persone con 128M, 9.021 con 256M, nessun tetto senza limite, nessuna persona sotto la base; non è quello del Libro Giornale', function () {

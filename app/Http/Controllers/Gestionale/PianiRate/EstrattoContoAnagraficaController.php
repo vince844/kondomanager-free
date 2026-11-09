@@ -20,6 +20,7 @@ use App\Services\PDF\PdfService;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
+use App\Services\PDF\GruppoCarta;
 
 class EstrattoContoAnagraficaController extends Controller
 {
@@ -220,12 +221,12 @@ class EstrattoContoAnagraficaController extends Controller
             'versamentiPerAltri' => app(\App\Services\Gestionale\VersamentiPerContoDiAltri::class)->per($condominio, $anagrafica),
         ];
 
-        $mpdf = $pdfService->generate('pdf.gestionale.estratto_conto_anagrafica', $data, [
+        $mpdf = $pdfService->generate('pdf.gestionale.estratto_conto_anagrafica', $data + ['gruppo_carta' => GruppoCarta::PER_LA_PERSONA], [
             'orientation' => 'P',
-            'margin_top'  => 30,
+            // 32 come il prospetto degli oneri: con 30 la testata del condominio (il filetto a 30,95 mm) scende sotto il margine, e la prima
+            // riga del corpo le finisce sopra.
+            'margin_top'  => 32,
         ]);
-
-        $mpdf->SetHeader($condominio->nome . '||Estratto Conto – ' . $anagrafica->nome);
 
         // ⚠️ `Output(..., 'I')` scrive il PDF sull'output buffer e torna vuota: mPDF mandava da sé,
         // con `header()` ed `echo`, intestazioni e corpo, e nella risposta Laravel non passava nulla —

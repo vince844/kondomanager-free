@@ -49,7 +49,8 @@ it('l\'anteprima: chi riceve che cosa, il canale proposto per persona dalla sua 
         ->and($persone['Bice'])->toMatchArray(['totale' => 8000, 'righe' => 2, 'canale' => 'email', 'credito' => 2000])
         ->and($a['credito'])->toBe([['nome' => 'Bice', 'credito' => 2000]])
         ->and($a['conteggi'])->toBe(['email' => 2, 'stampa' => 0, 'zip' => 0])
-        ->and($a['studio_compilato'])->toBeFalse();
+        ->and($a['studio_compilato'])->toBeFalse()
+        ->and($a['carta_intestata'])->toBeFalse();
 
     // Bice senza email: la stampa. Dopo un sollecito stampato a Ugo, per Ugo si propone la stampa anche se l'email c'è.
     $s['persone']['bice']->update(['email' => null]);
@@ -61,6 +62,28 @@ it('l\'anteprima: chi riceve che cosa, il canale proposto per persona dalla sua 
     $o = $this->actingAs($this->user)->getJson(lttRotta($s, 'opzioni'))->assertOk()->json();
     expect($o['scelta_ricordata'])->toMatchArray(['termini' => ['sollecito' => ['forma' => 'giorni', 'giorni' => 15]], 'cassa_id' => $s['cassa']->id])
         ->and($o['scelta_ricordata'])->not->toHaveKey('tipo');
+});
+
+it('senza il nome dello studio, con una carta intestata che si legge scelta per le lettere, l\'anteprima e le opzioni lo dicono (la frase della finestra parla della carta)', function () {
+    $s = lttScenario($this);
+    Storage::fake('public');
+    $im = imagecreatetruecolor(1240, 1754);
+    imagefilledrectangle($im, 0, 0, 1239, 1753, imagecolorallocate($im, 255, 255, 255));
+    ob_start();
+    imagejpeg($im, null, 80);
+    Storage::disk('public')->put('settings/carte/carta-delle-lettere.jpg', (string) ob_get_clean());
+    $carta = \App\Models\CartaStampa::create(['nome' => 'Carta delle lettere', 'aspetto' => 'carta', 'mostra_logo' => true, 'colore' => null,
+        'carta_path' => 'settings/carte/carta-delle-lettere.jpg', 'carta_tipo' => 'immagine', 'carta_pagine' => 1, 'margine_alto' => 40, 'margine_basso' => 20,
+        'margine_sinistro' => 15, 'margine_destro' => 15, 'predefinita' => false]);
+    $impostazioni = app(\App\Settings\PrintSettings::class);
+    $impostazioni->carta_per_gruppo = ['lettere' => $carta->id, 'ricevute_e_avvisi' => null, 'rendiconto_e_assemblea' => null, 'per_la_persona' => null, 'registri_e_elenchi' => null];
+    $impostazioni->save();
+    app()->forgetInstance(\App\Services\PDF\CartaDiStampa::class);
+
+    $a = $this->actingAs($this->user)->postJson(lttRotta($s, 'anteprima'), lttScelte($s))->assertOk()->json();
+    expect([$a['studio_compilato'], $a['carta_intestata']])->toBe([false, true])
+        ->and(array_intersect_key(app(EmissioneLettere::class)->opzioni($s['c'], $this->user), ['studio_compilato' => 1, 'carta_intestata' => 1]))
+        ->toBe(['studio_compilato' => false, 'carta_intestata' => true]);
 });
 
 it('la diffida: l\'email è rifiutata con la frase; la stampa fa una riga «stampata» con il PDF conservato; «Registra la spedizione» la fa «spedita» con l\'evento; la prova non si apre dall\'archivio né dal portale e si scarica dal registro', function () {
@@ -282,12 +305,38 @@ it('la persona cancellata dopo la lettera: la riga resta con il suo nome nell\'i
     $this->actingAs($this->user)->get(lttRotta($s, 'pdf', ['invio' => $riga->id]))->assertOk();
 });
 
+it('il .zip per persona: se il PDF di una lettera non si fa, i PDF già scritti sul disco si tolgono, lo .zip non resta e il registro non ha niente', function () {
+    $s = lttScenario($this);
+    // Il secondo PDF non si fa: il server lo rifiuta a metà.
+    app()->instance(\App\Services\PDF\PdfService::class, new class extends \App\Services\PDF\PdfService
+    {
+        private int $fatti = 0;
+
+        public function __construct() {}
+
+        public function generate(string $view, array $data = [], array $config = []): \Mpdf\Mpdf
+        {
+            if (++$this->fatti === 2) {
+                throw new \RuntimeException('il secondo PDF non si fa');
+            }
+
+            return parent::generate($view, $data, $config);
+        }
+    });
+    $temporanei = fn () => array_merge(glob(sys_get_temp_dir() . '/km_pezzo_*') ?: [], glob(sys_get_temp_dir() . '/km_archivio_*') ?: []);
+    $prima = $temporanei();
+
+    expect(fn () => app(EmissioneLettere::class)->archivioPerPersona($s['c'], lttScelte($s), $this->user))->toThrow(\RuntimeException::class, 'il secondo PDF non si fa');
+    expect(array_values(array_diff($temporanei(), $prima)))->toBe([])
+        ->and(lttRighe($s, 'ugo'))->toHaveCount(0)->and(lttRighe($s, 'bice'))->toHaveCount(0);
+});
+
 it('il .zip per persona: i PDF conservati e l\'elenco degli indirizzi con il titolo delle lettere; una riga «stampata» per lettera', function () {
     $s = lttScenario($this);
     $r = $this->actingAs($this->user)->post(lttRotta($s, 'pdf-per-persona'), lttScelte($s))->assertOk();
     expect($r->headers->get('Content-Type'))->toBe('application/zip');
     $percorso = tempnam(sys_get_temp_dir(), 'ltt');
-    file_put_contents($percorso, $r->getContent());
+    file_put_contents($percorso, $r->streamedContent());
     $zip = new ZipArchive;
     $zip->open($percorso);
     $nomi = [];

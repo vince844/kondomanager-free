@@ -5,11 +5,17 @@
   della riga del registro (`AvvisiCompensazione::istantanea()`, in centesimi): l'incasso (numero e data), la persona, le quote coperte con
   l'importo, di chi era il credito, il bollo scelto. Ognuno comincia su una pagina nuova.
 
-  In alto il condominio e, a destra, il destinatario per la busta a finestra; la riga dell'imposta di bollo come la ricevuta, con lo stato che ha
-  scelto l'amministratore (o «—»), senza dire se è dovuto. La firma è quella delle stampe, come la ricevuta.
+  In alto lo studio, se le impostazioni di stampa lo dicono, e sotto il condominio (con lo studio, o con la carta intestata che lo porta stampato, come
+  nelle lettere: «Amministratore del Condominio …»); a destra il destinatario, con le righe allineate al margine destro; la riga
+  dell'imposta di bollo come la ricevuta, con lo stato che ha scelto l'amministratore (o «—»), senza dire se è dovuto. La firma è quella delle
+  stampe, come la ricevuta.
 --}}
 @php
     $firmaAvviso = $firma_stampe_absolute_path ?? null;
+    // Lo studio della carta degli avvisi (la dà la stampa; resa da sola, la vista la chiede): in alto a sinistra, sopra il condominio.
+    $carta ??= app(\App\Services\PDF\CartaDiStampa::class)->perGruppo(\App\Services\PDF\GruppoCarta::RICEVUTE_E_AVVISI);
+    // I titoli, i loro filetti e il nome di chi scrive hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta, '#1e3a5f');
     $firma_stampe_absolute_path = null;
     $intestazione_propria = true;
     $piede_senza_data = true;
@@ -36,17 +42,31 @@
         $indirizzo = \App\Models\Anagrafica::whereKey($a['persona']['id'] ?? 0)->value('indirizzo');
     @endphp
 
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+    {{-- `overflow: wrap`: una parola più larga della colonna (una PEC, un sito) va a capo dove la colonna finisce, e la colonna non si allarga. --}}
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; overflow: wrap;">
         <tr>
-            <td style="width: 100mm; padding: 0; vertical-align: top;">
-                <div style="font-size: 12pt; font-weight: bold; color: #1e3a5f; line-height: 1.25;">{{ $condominio->nome }}</div>
-                <div style="font-size: 9pt; color: #333; margin-top: 2px; line-height: 1.45;">
-                    @if($condominioVia !== ''){{ $condominioVia }}<br>@endif
-                    @if($condominioCitta !== ''){{ $condominioCitta }}<br>@endif
-                    @if(filled($condominio->codice_fiscale ?? null))C.F. {{ $condominio->codice_fiscale }}@endif
-                </div>
+            <td style="width: {{ \App\Services\PDF\Carta::larghezzaMittente($carta) }}; padding: 0 {{ \App\Services\PDF\Carta::SPAZIO_PRIMA_DEL_DESTINATARIO }}mm 0 0; vertical-align: top;">
+                {{-- Con lo studio, o con la carta intestata, chi scrive per il condominio, come nelle lettere. --}}
+                @if($carta->haStudio() || $carta->cartaIntestata() !== null)
+                    @if($carta->haStudio())
+                        @include('pdf._carta.mittente')
+                    @endif
+                    <div style="font-size: 9pt; color: #333; line-height: 1.4;">
+                        Amministratore del <strong>{{ \App\Services\Gestionale\Lettere\TestiLettere::condominioConNome((string) $condominio->nome) }}</strong>
+                        @if($condominioVia !== '')<br>{{ $condominioVia }}@endif
+                        @if($condominioCitta !== '')<br>{{ $condominioCitta }}@endif
+                        @if(filled($condominio->codice_fiscale ?? null))<br>C.F. {{ $condominio->codice_fiscale }}@endif
+                    </div>
+                @else
+                    <div style="font-size: 11pt; font-weight: bold; color: {{ $coloreTitoli }}; line-height: 1.25;">{{ $condominio->nome }}</div>
+                    <div style="font-size: 9pt; color: #333; margin-top: 2px; line-height: 1.45;">
+                        @if($condominioVia !== ''){{ $condominioVia }}<br>@endif
+                        @if($condominioCitta !== ''){{ $condominioCitta }}<br>@endif
+                        @if(filled($condominio->codice_fiscale ?? null))C.F. {{ $condominio->codice_fiscale }}@endif
+                    </div>
+                @endif
             </td>
-            <td style="padding: 0; vertical-align: top;">
+            <td style="padding: 0; vertical-align: top; text-align: right;">
                 <div style="font-size: 9pt; color: #555; line-height: 1.25;">Gentile</div>
                 <div style="font-size: 11pt; font-weight: bold; color: #222; line-height: 1.3;">{{ $nome }}</div>
                 @if(filled($indirizzo))
@@ -58,8 +78,8 @@
 
     <div style="font-size: 9pt; color: #444; margin-bottom: 8px;">{{ trim(($luogo ? $luogo . ', ' : '') . $giorno($a['emesso_il'] ?? null)) }}</div>
 
-    <div style="border-bottom: 2px solid #1e3a5f; padding-bottom: 6px; margin-bottom: 10px;">
-        <h2 style="margin: 0; font-size: 14pt; color: #1e3a5f; letter-spacing: 0.5px;">Avviso di compensazione</h2>
+    <div style="border-bottom: 2px solid {{ $coloreTitoli }}; padding-bottom: 6px; margin-bottom: 10px;">
+        <h2 style="margin: 0; font-size: 14pt; color: {{ $coloreTitoli }}; letter-spacing: 0.5px;">Avviso di compensazione</h2>
         <div style="font-size: 9pt; color: #444; margin-top: 3px;">Registrazione n. {{ $a['incasso']['numero'] ?? '' }} del {{ $giorno($a['incasso']['data'] ?? null) }}</div>
     </div>
 

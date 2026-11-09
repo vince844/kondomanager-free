@@ -74,12 +74,13 @@ it('la Sintesi di Via Roma: deliberato € 4.110,00; costi € 4.131,00 = 100,5 
     $si = $props['sintesi'];
     $fasce = collect($si['fasce'])->keyBy('tipo');
 
-    expect($si['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => 411000, 'solo_ordinarie' => false])
+    expect($si['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => 411000, 'solo_ordinarie' => false, 'ricostruito' => false])
         ->and($si['riquadri']['costi'])->toBe(['costi' => 413100, 'per_capitolo' => 397850, 'permille' => 1005, 'base' => 'deliberato'])
         ->and($si['riquadri']['quote'])->toBe(['pagate' => 370000, 'emesse' => 411000])
         ->and($si['riquadri']['liquidita']['liquidita'])->toBe(521900)->and($si['riquadri']['liquidita']['frase'])->toContain('econdo la contabilità')
         ->and($si['riquadri']['liquidita']['frase'])->toContain('non è il saldo dell\'estratto conto della banca')
         ->and($fasce['commissioni']['frase'])->toBe('€ 2,50 di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le troverà.')
+        ->and($fasce['commissioni']['da_assegnare'])->toBe(1)
         ->and($fasce['contestate']['importo'])->toBe(15000)->and($fasce['contestate']['frase'])->toStartWith('€ 150,00 di fatture contestate')
         ->and($si['prospetto']['risultato'])->toBe(-2100)->and($si['prospetto']['quote_giornale'])->toBe(411000)->and($si['prospetto']['costi'])->toBe(413100)
         ->and($si['esito']['frase'])->toBe('9 tornano, 0 non tornano, 1 da leggere')
@@ -434,8 +435,10 @@ it('il deliberato con le rate che un piano vecchio non ha conservato: nella stam
         ->and($con['riepilogo']['testo'])->toContain('Pulizie € 3.000,00 € 3.000,00 € 2.900,00')->toContain('Quote ordinarie € 4.110,00 € 4.110,00')
         ->not->toContain('non disponibile')->not->toContain($frase)->not->toContain('non conservato');
 
-    // Il piano di prima che il programma conservasse il riparto: il numero non c'è.
+    // Il piano di prima che il programma conservasse il riparto: il numero non c'è. Dalla 1.12.0-beta.6 si ricostruirebbe (Coda 557); con i millesimi cambiati
+    // dopo l'emissione non torna più, e il numero resta assente.
     DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    DB::table('quote_tabella')->where('immobile_id', $s['unita']['A']->id)->update(['valore' => 600]);
     $senza = vrmTestiDelFascicolo($s, $s['e'], ['riepilogo'], false);
 
     // Il frontespizio ha una riga sola: «non disponibile», e la frase nella nota sotto il prospetto.
@@ -467,6 +470,9 @@ it('la Sintesi e il riepilogo a video portano la stessa frase, e solo quando una
 
     expect($leggi())->toBe([null, null]);
     DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    // Dalla 1.12.0-beta.6 il piano senza righe si ricostruisce (Coda 557): nessuna frase del «non disponibile» finché torna.
+    expect($leggi())->toBe([null, null]);
+    DB::table('quote_tabella')->where('immobile_id', $s['unita']['A']->id)->update(['valore' => 600]);
     expect($leggi())->toBe([$frase, $frase]);
 });
 
@@ -742,7 +748,7 @@ it('quando la gestione è già nell\'esercizio dopo, la Sintesi rimanda al verba
     vrmGiorno($this, '2027-01-15');
     $si = rpgProps($this, 'admin.gestionale.esercizi.rendiconto.sintesi', $s)['sintesi'];
 
-    expect($si['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => null, 'solo_ordinarie' => false])
+    expect($si['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => null, 'solo_ordinarie' => false, 'ricostruito' => false])
         ->and($si['riquadri']['costi']['base'])->toBe('deliberato')->and($si['riquadri']['costi']['permille'])->toBe(1005)
         ->and($si['prospetto']['preventivo'])->toBeNull();
 });
@@ -754,7 +760,7 @@ it('la percentuale dei costi è sul deliberato con le rate anche quando il preve
     vrmGiorno($this, '2027-01-15');
     $si = rpgProps($this, 'admin.gestionale.esercizi.rendiconto.sintesi', $s)['sintesi'];
 
-    expect($si['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => 441000, 'solo_ordinarie' => false])
+    expect($si['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => 441000, 'solo_ordinarie' => false, 'ricostruito' => false])
         ->and($si['riquadri']['costi']['base'])->toBe('deliberato')->and($si['riquadri']['costi']['permille'])->toBe(1005);
 });
 
@@ -766,13 +772,15 @@ it('con una gestione straordinaria il preventivo è delle sole gestioni ordinari
     be52Voce($this, $s, $pcF, 'Ponteggio', 'spesa', '5.000,00');
     vrmGiorno($this, '2027-01-15');
     $conDeliberato = rpgProps($this, 'admin.gestionale.esercizi.rendiconto.sintesi', $s)['sintesi'];
-    // Il piano senza le righe del riparto, come quelli generati prima del 14/09/2026: il deliberato non è conservato.
+    // Il piano senza le righe del riparto, come quelli generati prima del 14/09/2026, che con i millesimi cambiati dopo l'emissione non si ricostruisce più
+    // (Coda 557): il deliberato non è conservato.
     DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->delete();
+    DB::table('quote_tabella')->where('immobile_id', $s['unita']['A']->id)->update(['valore' => 600]);
     $senza = rpgProps($this, 'admin.gestionale.esercizi.rendiconto.sintesi', $s)['sintesi'];
 
-    expect($conDeliberato['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => 411000, 'solo_ordinarie' => true])
+    expect($conDeliberato['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => 411000, 'solo_ordinarie' => true, 'ricostruito' => false])
         ->and($conDeliberato['riquadri']['costi']['base'])->toBe('deliberato')->and($conDeliberato['riquadri']['costi']['permille'])->toBe(1005)
-        ->and($senza['riquadri']['deliberato'])->toBe(['deliberato' => null, 'preventivo' => 411000, 'solo_ordinarie' => true])
+        ->and($senza['riquadri']['deliberato'])->toBe(['deliberato' => null, 'preventivo' => 411000, 'solo_ordinarie' => true, 'ricostruito' => false])
         ->and($senza['prospetto']['preventivo'])->toBe(411000)->and($senza['prospetto']['preventivo_solo_ordinarie'])->toBeTrue()
         ->and($senza['riquadri']['costi']['permille'])->toBeNull()->and($senza['riquadri']['costi']['base'])->toBeNull();
 });

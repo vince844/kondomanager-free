@@ -53,7 +53,19 @@ export function testoAccordiPassati(nomi: string[]): string | null {
     return nomi.length ? `Le rate degli accordi con «fino al» passato sono nella lettera: ${nomi.join(', ')}. Togli chi non deve riceverla.` : null;
 }
 
+/** Senza il nome dello studio e con la carta a campi: la lettera porta il solo condominio. */
 export const FRASE_STUDIO_NON_COMPILATO = 'I dati dello studio non sono compilati: la lettera porta il solo condominio. Li scrivi nelle impostazioni di stampa.';
+
+/** Senza il nome dello studio e con una carta intestata che si legge per le lettere: lo studio lo porta la carta. */
+export const FRASE_STUDIO_SULLA_CARTA = 'La lettera esce sulla carta intestata, che porta lo studio. Il nome dello studio nelle impostazioni di stampa è vuoto: '
+    + 'se la carta non si legge, la lettera esce con il solo condominio.';
+
+/** La frase dello studio nella finestra delle lettere: nessuna con il nome dello studio; senza, quella della carta delle lettere (`carta_intestata` dal server). */
+export function fraseDelloStudio(o: { studio_compilato: boolean; carta_intestata?: boolean }): string | null {
+    if (o.studio_compilato) return null;
+
+    return o.carta_intestata ? FRASE_STUDIO_SULLA_CARTA : FRASE_STUDIO_NON_COMPILATO;
+}
 
 export const FRASE_SENZA_IBAN = 'Il condominio non ha un conto con l\'IBAN: la lettera non porta le coordinate del bonifico. Aggiungilo alla cassa di tipo banca.';
 

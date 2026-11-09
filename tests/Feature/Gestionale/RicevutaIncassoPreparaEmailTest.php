@@ -165,17 +165,23 @@ test('una stampa uscita prima dell\'invio non partito non lo toglie dalle non pa
         ->and(app(EmissioneRicevute::class)->daRiprovare($s->condominio))->toHaveCount(1);
 });
 
-test('lo stesso con l\'archivio «Scarica un PDF per persona»: la ricevuta è uscita, la non partita non si riprova', function () {
+test('lo stesso con l\'archivio «Scarica un PDF per persona»: la ricevuta è uscita, la non partita non si riprova; lo .zip, letto, non resta nella cartella temporanea', function () {
     $s = scenarioRicevutaIncasso();
     $u = amministratoreRicevute();
     $a = incassaPerRicevuta($s, $s->anna, [[$s->anna1, 150.00]], '2026-02-01', 150.00);
     trasportoCheRifiutaLeRicevute();
     nonPartitaDiAnna($this, $s, $a, $u);
     expect(app(EmissioneRicevute::class)->daRiprovare($s->condominio))->toHaveCount(1);
+    $archivi = fn () => glob(sys_get_temp_dir().'/km_archivio_*') ?: [];
+    $prima = $archivi();
 
-    $this->actingAs($u)->post(route('admin.gestionale.ricevute.pdf-per-persona', ['condominio' => $s->condominio->id]), ['incassi' => [$a->id], 'bollo' => 'assolta'])->assertOk();
+    // La risposta si legge, come la legge il browser: chi la manda toglie lo .zip dopo l'invio.
+    $zip = $this->actingAs($u)->post(route('admin.gestionale.ricevute.pdf-per-persona', ['condominio' => $s->condominio->id]), ['incassi' => [$a->id], 'bollo' => 'assolta'])
+        ->assertOk()->streamedContent();
 
-    expect(app(EmissioneRicevute::class)->daRiprovare($s->condominio))->toHaveCount(0);
+    expect(app(EmissioneRicevute::class)->daRiprovare($s->condominio))->toHaveCount(0)
+        ->and(str_starts_with($zip, "PK"))->toBeTrue()
+        ->and(array_values(array_diff($archivi(), $prima)))->toBe([]);
 });
 
 /**
@@ -234,7 +240,7 @@ test('l\'invio in blocco «anche a chi ha versato» non partito, poi l\'archivio
     expect(personeDaRiprovare($s))->toBe(['Anna Bruni', 'Carlo Bruni']);
 
     $zip = $this->actingAs($u)->post(route('admin.gestionale.ricevute.pdf-per-persona', ['condominio' => $s->condominio->id]),
-        ['incassi' => [$incasso->id], 'bollo_sopra' => 'non_dovuta', 'bollo_sotto' => 'non_dovuta'])->assertOk()->getContent();
+        ['incassi' => [$incasso->id], 'bollo_sopra' => 'non_dovuta', 'bollo_sotto' => 'non_dovuta'])->assertOk()->streamedContent();
     $percorso = tempnam(sys_get_temp_dir(), 'ricevute-zip');
     file_put_contents($percorso, $zip);
     $archivio = new ZipArchive;

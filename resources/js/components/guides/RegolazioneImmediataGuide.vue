@@ -121,6 +121,10 @@ defineEmits(['update:open']);
                 <li>Lo storno è <strong>sempre ammesso</strong>, anche a distanza di tempo.</li>
                 <li>Se l'esercizio dell'originale è stato chiuso nel frattempo, lo storno si appoggia
                     all'esercizio aperto, con la provenienza indicata in causale.</li>
+                <li>Se la voce dell'originale è di una gestione che l'esercizio aperto non ha (l'ordinaria
+                    dell'anno prima, per esempio), lo storno va senza voce, con la voce di allora nella nota:
+                    la voce gliela dai dall'elenco «Commissioni e storni senza voce» del rendiconto, scegliendo
+                    una voce dell'ordinaria dell'esercizio.</li>
                 <li>Dopo lo storno, registri semplicemente il movimento giusto: due fatti veri nel giornale
                     raccontano più di una riga riscritta.</li>
               </ul>

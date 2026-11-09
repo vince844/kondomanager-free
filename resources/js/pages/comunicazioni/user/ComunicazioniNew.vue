@@ -245,7 +245,7 @@ const submit = () => {
                                     class="size-4" 
                                     :checked="form.is_featured"
                                     v-model="form.is_featured" 
-                                    id="is_private" 
+                                    id="is_featured" 
                                     @update:checked="(val: boolean) => form.is_featured = val" 
                                     />
                                 <label

@@ -19,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Inertia\Inertia;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * La pagina «Rate scadute» del condominio e la sua stampa. Una riga per persona, dalla lettura comune dei debiti; i filtri nell'indirizzo, e
@@ -150,6 +151,7 @@ class RateScaduteController extends Controller
         $inScadenza = $filtri['vista'] === ElencoRateScadute::VISTA_IN_SCADENZA;
         $titolo = $inScadenza ? "Rate in scadenza nei prossimi {$filtri['giorni']} giorni, dal " . $alla->format('d/m/Y') : 'Rate scadute al ' . $alla->format('d/m/Y');
         $mpdf = $pdf->generate('pdf.gestionale.rate_scadute', [
+            'gruppo_carta' => GruppoCarta::REGISTRI_E_ELENCHI,
             'condominio' => $condominio,
             'titolo' => $titolo,
             'titolo_stampa' => $titolo,
@@ -160,7 +162,12 @@ class RateScaduteController extends Controller
             'non_emesse' => $inScadenza ? null : $this->elenco->nonEmesse($condominio, $filtri['alla'], $filtri['gestione_id']),
             'selezione' => $solo !== null,
             'senza_firma' => true,
-        ], ['orientation' => 'L', 'margin_top' => 32]);
+        ], [
+            'orientation' => 'L',
+            // 38 come il libro giornale: la riga del titolo fa la testata più alta, e a 32 il suo filetto (a 35,4 mm) attraversava il titolo del
+            // corpo.
+            'margin_top' => 38,
+        ]);
 
         $nome = PdfService::nomeFile($inScadenza ? 'rate-in-scadenza' : 'rate-scadute', $condominio->nome, $alla->format('Y-m-d'));
 

@@ -19,6 +19,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
+use App\Services\PDF\GruppoCarta;
+use App\Services\Gestionale\Invii\ArchivioAPezzi;
 
 /**
  * La stampa e l'invio per email delle ricevute degli incassi, una o tante (decisioni 197, 200, 201 e 202), e il registro di ogni emissione.
@@ -285,11 +287,12 @@ class EmissioneRicevute
      * funziona), un archivio .zip con un PDF per persona, con le sue ricevute fra le scelte e il suo nome per nome del file, e un file di testo
      * con l'elenco degli indirizzi email (persona, indirizzi, quante ricevute, il file). Ogni ricevuta è un'emissione del registro di canale
      * `stampa`, come la stampa, con le stesse scelte di bollo, nota e causale, l'originale e le copie, e lo stesso tetto; l'impronta è quella del
-     * PDF della sua persona. Il PDF non ha l'indirizzo per la busta: va per email.
+     * PDF della sua persona. Il PDF non ha l'indirizzo per la busta: va per email. Lo .zip si scrive a pezzi ({@see ArchivioAPezzi}): ogni PDF va
+     * sul disco appena è fatto, e la memoria tiene una persona alla volta anche con la carta intestata, che ogni PDF porta.
      *
      * @param Collection<int, ScritturaContabile> $incassi
      * @param array<string, mixed> $scelte
-     * @return array{zip: string, nome: string}
+     * @return array{zip: string, nome: string} `zip`: il percorso del file temporaneo dello .zip, che chi lo manda cancella
      */
     public function archivioPerPersona(Condominio $condominio, Collection $incassi, array $scelte, ?User $utente): array
     {
@@ -302,61 +305,78 @@ class EmissioneRicevute
                 . 'o chiedi a chi gestisce l\'installazione di attivare l\'estensione.');
         }
 
-        return DB::transaction(function () use ($condominio, $incassi, $scelte, $utente) {
-            $adesso = now();
-            $originali = $this->originali($incassi->pluck('id')->all());
-            $contenuti = $incassi->map(fn (ScritturaContabile $i) => $this->contenutoDaEmettere($i, $originali[$i->id] ?? null))->values();
-            foreach ($contenuti as $c) {
-                self::emettibile($c);
-                $this->bolloPer($c['sopra_soglia'], $scelte);
+        $archivio = new ArchivioAPezzi(RicevutaNonEmettibileException::class);
+        try {
+            return DB::transaction(fn () => $this->archivioNelRegistro($archivio, $condominio, $incassi, $scelte, $utente));
+        } catch (\Throwable $e) {
+            $archivio->togli();
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Le ricevute dello .zip scritte nel registro, e ogni PDF nell'archivio appena è fatto.
+     *
+     * @param Collection<int, ScritturaContabile> $incassi
+     * @param array<string, mixed> $scelte
+     * @return array{zip: string, nome: string}
+     */
+    private function archivioNelRegistro(ArchivioAPezzi $archivio, Condominio $condominio, Collection $incassi, array $scelte, ?User $utente): array
+    {
+        $adesso = now();
+        $originali = $this->originali($incassi->pluck('id')->all());
+        $contenuti = $incassi->map(fn (ScritturaContabile $i) => $this->contenutoDaEmettere($i, $originali[$i->id] ?? null))->values();
+        foreach ($contenuti as $c) {
+            self::emettibile($c);
+            $this->bolloPer($c['sopra_soglia'], $scelte);
+        }
+        $this->unContrassegnoPerRicevuta($contenuti->pluck('sopra_soglia')->all(), $scelte);
+
+        $usati = [mb_strtolower(self::FILE_DEGLI_INDIRIZZI)];
+        $elenco = [];
+        foreach (self::gruppiPerBusta($contenuti, 'persona') as $gruppo) {
+            $voci = [];
+            $ids = [];
+            foreach ($gruppo->values() as $c) {
+                $dati = $this->dati($c['sopra_soglia'], $scelte) + $this->dellOriginale($originali[$c['incasso_id']] ?? null, $c);
+                $ids[] = RegistroInvio::create([
+                    'condominio_id'      => $condominio->id,
+                    'anagrafica_id'      => $c['posizione']['id'] ?? null,
+                    'tipo'               => RegistroInvio::TIPO_RICEVUTA,
+                    'canale'             => RegistroInvio::CANALE_STAMPA,
+                    'documentabile_type' => ScritturaContabile::class,
+                    'documentabile_id'   => $c['incasso_id'],
+                    'numero'             => $c['numero'],
+                    'dati'               => self::senzaVuoti($dati),
+                    'stato'              => RegistroInvio::STATO_STAMPATA,
+                    'emesso_da'          => $utente?->id,
+                    'emesso_il'          => $adesso,
+                ])->id;
+                $voci[] = ['contenuto' => $c, 'indirizzo_per_posta' => false] + $this->sceltePerLaVista($dati) + ['emessa_il' => self::giorno($adesso)];
             }
-            $this->unContrassegnoPerRicevuta($contenuti->pluck('sopra_soglia')->all(), $scelte);
+            $pdf = $this->rendi($condominio, $voci, $adesso);
+            RegistroInvio::whereIn('id', $ids)->update(['impronta' => hash('sha256', $pdf)]);
 
-            $file = [];
-            $usati = [mb_strtolower(self::FILE_DEGLI_INDIRIZZI)];
-            $elenco = [];
-            foreach (self::gruppiPerBusta($contenuti, 'persona') as $gruppo) {
-                $voci = [];
-                $ids = [];
-                foreach ($gruppo->values() as $c) {
-                    $dati = $this->dati($c['sopra_soglia'], $scelte) + $this->dellOriginale($originali[$c['incasso_id']] ?? null, $c);
-                    $ids[] = RegistroInvio::create([
-                        'condominio_id'      => $condominio->id,
-                        'anagrafica_id'      => $c['posizione']['id'] ?? null,
-                        'tipo'               => RegistroInvio::TIPO_RICEVUTA,
-                        'canale'             => RegistroInvio::CANALE_STAMPA,
-                        'documentabile_type' => ScritturaContabile::class,
-                        'documentabile_id'   => $c['incasso_id'],
-                        'numero'             => $c['numero'],
-                        'dati'               => self::senzaVuoti($dati),
-                        'stato'              => RegistroInvio::STATO_STAMPATA,
-                        'emesso_da'          => $utente?->id,
-                        'emesso_il'          => $adesso,
-                    ])->id;
-                    $voci[] = ['contenuto' => $c, 'indirizzo_per_posta' => false] + $this->sceltePerLaVista($dati) + ['emessa_il' => self::giorno($adesso)];
-                }
-                $pdf = $this->rendi($condominio, $voci, $adesso);
-                RegistroInvio::whereIn('id', $ids)->update(['impronta' => hash('sha256', $pdf)]);
-
-                $posizione = $gruppo->first()['posizione'] ?? null;
-                $nome = InviiPerPersona::nomeLibero(self::nomeFileDellaPersona($posizione['nome'] ?? 'Senza persona'), $usati) . '.pdf';
-                $file[$nome] = $pdf;
-                $elenco[] = [
-                    'nome'      => $posizione['nome'] ?? 'Senza persona',
-                    'indirizzi' => self::indirizzi(isset($posizione['id']) ? Anagrafica::find($posizione['id']) : null),
-                    'documenti' => count($ids),
-                    'file'      => $nome,
-                ];
-            }
-            $file[self::FILE_DEGLI_INDIRIZZI] = InviiPerPersona::elencoDegliIndirizzi('Ricevute di pagamento', (string) $condominio->nome, $elenco, $adesso,
-                fn (int $n) => $n === 1 ? '1 ricevuta' : $n . ' ricevute', self::TIPI_INDIRIZZO);
-
-            return [
-                'zip'  => InviiPerPersona::archivio($file, RicevutaNonEmettibileException::class),
-                'nome' => Str::replaceLast('.pdf', '.zip', PdfService::nomeFile('ricevute-per-persona', $condominio->nome,
-                    $adesso->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('Y-m-d'))),
+            $posizione = $gruppo->first()['posizione'] ?? null;
+            $nome = InviiPerPersona::nomeLibero(self::nomeFileDellaPersona($posizione['nome'] ?? 'Senza persona'), $usati) . '.pdf';
+            $archivio->aggiungi($nome, $pdf);
+            unset($pdf);
+            $elenco[] = [
+                'nome'      => $posizione['nome'] ?? 'Senza persona',
+                'indirizzi' => self::indirizzi(isset($posizione['id']) ? Anagrafica::find($posizione['id']) : null),
+                'documenti' => count($ids),
+                'file'      => $nome,
             ];
-        });
+        }
+        $archivio->aggiungi(self::FILE_DEGLI_INDIRIZZI, InviiPerPersona::elencoDegliIndirizzi('Ricevute di pagamento', (string) $condominio->nome, $elenco, $adesso,
+            fn (int $n) => $n === 1 ? '1 ricevuta' : $n . ' ricevute', self::TIPI_INDIRIZZO));
+
+        return [
+            'zip'  => $archivio->scrivi(),
+            'nome' => Str::replaceLast('.pdf', '.zip', PdfService::nomeFile('ricevute-per-persona', $condominio->nome,
+                $adesso->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('Y-m-d'))),
+        ];
     }
 
     /**
@@ -1528,6 +1548,7 @@ class EmissioneRicevute
     private function rendi(Condominio $condominio, array $voci, ?CarbonInterface $emissione): string
     {
         $mpdf = $this->pdf->generate('pdf.gestionale.ricevute_incasso', [
+            'gruppo_carta' => GruppoCarta::RICEVUTE_E_AVVISI,
             'condominio'            => $condominio,
             'ricevute'              => $voci,
             'data_emissione_stampe' => ($emissione ?? now())->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome')),

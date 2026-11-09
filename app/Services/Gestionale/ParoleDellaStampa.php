@@ -21,6 +21,12 @@ final class ParoleDellaStampa
         AnnoACavallo::RIMEDIO_FUORI => 'Se le date dell\'esercizio sono sbagliate, si correggono nei dati dell\'esercizio. Se sono registrazioni di un esercizio che nel programma '
             .'non c\'è, restano qui; se è l\'esercizio dopo, le nuove vanno lì da quando questo si chiude e si apre il successivo.',
         AnnoACavallo::CATEGORIE['regolazione'] => 'Spese pagate subito, senza fattura',
+        RiepilogoPerCompetenza::FRASE_DELIBERATO_RICOSTRUITO => 'Per i piani delle rate approvati prima che il programma conservasse il dettaglio del riparto, il '
+            .'deliberato con le rate è ricalcolato con i dati di oggi e torna al centesimo con le quote chieste a ogni unità.',
+        RiepilogoPerCompetenza::FRASE_DELIBERATO_DIVISO => '* Divisa fra le voci con gli importi di oggi: il piano delle rate ha fissato il capitolo, o nessuna voce, e non quanto '
+            .'chiedeva ogni voce.',
+        RiepilogoPerCompetenza::FRASE_DELIBERATO_SPOSTATO => 'Un piano delle rate cambiato spostando una spesa da una voce a un\'altra non si ricalcola: '
+            .'le sue voci di oggi possono non dire quanto chiedevano le rate.',
     ];
 
     /** La frase com'è nella stampa: le parti che hanno una variante cambiano, il resto resta. */

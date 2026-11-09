@@ -15,6 +15,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use Mpdf\Mpdf;
 use Mpdf\Output\Destination;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * Il fascicolo del rendiconto per l'assemblea: un PDF solo con il frontespizio (il condominio, l'esercizio, la data della stampa, i numeri del prospetto
@@ -173,7 +174,9 @@ final class FascicoloDelRendiconto
                     if (isset($pezzo['vista'])) {
                         $percorso = $cartella.'/'.count($stampati).'.pdf';
                         // Nel piede di ogni pagina il nome della parte accanto al numero: «Situazione patrimoniale, pagina 1 di 2», dove l'indice dice la pagina del fascicolo.
-                        $mpdf = $this->pdf->generate($pezzo['vista'], $pezzo['dati'] + ['senza_firma' => true, 'parte_del_fascicolo' => $pezzo['piede'] ?? $pezzo['titolo']], $pezzo['opzioni']);
+                        // Ogni parte ha la carta del rendiconto, e comincia con la riga dello studio: il blocco intero è nel frontespizio.
+                        $mpdf = $this->pdf->generate($pezzo['vista'], array_merge($pezzo['dati'], ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA, 'comincia_con_la_testatina' => true])
+                            + ['senza_firma' => true, 'parte_del_fascicolo' => $pezzo['piede'] ?? $pezzo['titolo']], $pezzo['opzioni']);
                         $pagine = count($mpdf->pages);
                         $mpdf->Output($percorso, Destination::FILE);
                         unset($mpdf);
@@ -194,7 +197,7 @@ final class FascicoloDelRendiconto
                 $indice = $this->numera($voci, $pagineFrontespizio);
                 $mpdf = $this->pdf->generate('pdf.gestionale.rendiconto_frontespizio', [
                     'condominio' => $condominio, 'esercizio' => $esercizio, 'sintesi' => $sintesi, 'indice' => $indice, 'studio' => app(PrintSettings::class),
-                    'anno_a_cavallo' => $c['anno_a_cavallo'], 'senza_firma' => true,
+                    'anno_a_cavallo' => $c['anno_a_cavallo'], 'senza_firma' => true, 'gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA,
                 ], StatoPatrimonialeController::OPZIONI_STAMPA);
                 $scritte = count($mpdf->pages);
                 $mpdf->Output($frontespizio, Destination::FILE);

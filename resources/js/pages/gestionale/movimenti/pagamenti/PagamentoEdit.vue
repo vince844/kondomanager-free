@@ -24,7 +24,7 @@ import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import { oggiLocale } from '@/lib/giorno';
 import {
-    ETICHETTA_LASCIA_SENZA_VOCE, FRASE_ALTRA_GESTIONE, FRASE_SENZA_VOCE, LASCIA_SENZA_VOCE, mancaLaVoce, puoLasciareSenzaVoce, voceDaInviare, vociDellaGestione, type VoceCommissione,
+    ETICHETTA_LASCIA_SENZA_VOCE, FRASE_SENZA_VOCE, FRASE_VOCI_OFFERTE, LASCIA_SENZA_VOCE, mancaLaVoce, puoLasciareSenzaVoce, voceDaInviare, vociOfferte, type VoceCommissione,
 } from '@/lib/gestionale/pagamenti/voceCommissione';
 
 // ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ const props = defineProps<{
      * La voce della commissione di questo pagamento; `senza_voce` per un pagamento scritto prima senza voce, e `puo_restare_senza_voce` se la modifica lo può
      * lasciare così (sulle «Spese bancarie» di sistema), finché la commissione non cambia.
      */
-    commissione?: { voce_id: number | null; gestione_id: number | null; senza_voce: boolean; puo_restare_senza_voce?: boolean; esercizio_chiuso?: boolean };
+    commissione?: { voce_id: number | null; gestione_id: number | null; esercizio_id?: number | null; senza_voce: boolean; puo_restare_senza_voce?: boolean; esercizio_chiuso?: boolean };
 }>();
 
 // ---------------------------------------------------------------------------
@@ -257,8 +257,8 @@ const commissioniCents = computed(() =>
     Math.round((Number(form.importo_commissioni_euro) || 0) * 100)
 );
 
-// La voce della commissione: solo le voci della gestione del pagamento.
-const vociDellaCommissione = computed(() => vociDellaGestione(props.voci_commissione ?? [], props.commissione?.gestione_id ?? null));
+// La voce della commissione: le voci della gestione del pagamento, poi quelle delle gestioni ordinarie del suo esercizio (Coda 553).
+const vociDellaCommissione = computed(() => vociOfferte(props.voci_commissione ?? [], props.commissione?.gestione_id ?? null, props.commissione?.esercizio_id ?? null));
 const haCommissione = computed(() => (Number(form.importo_commissioni_euro) || 0) > 0);
 // «Lascia senza voce, come era»: per un pagamento scritto prima senza voce, finché la commissione è quella registrata. Non in un esercizio chiuso, che non si modifica.
 const lasciabileSenzaVoce = computed(() => !props.commissione?.esercizio_chiuso
@@ -697,7 +697,7 @@ const pageGuides: never[] = [];
                                     nel suo consuntivo.
                                 </template>
                             </p>
-                            <p class="text-[10.5px] text-slate-500">{{ FRASE_ALTRA_GESTIONE }} <a :href="route(generateRoute('gestionale.regolazioni-immediate.create'), { condominio: props.condominio.id })" target="_blank" rel="noopener" class="underline" data-test="regolazione-immediata">Registra una regolazione immediata</a></p>
+                            <p class="text-[10.5px] text-slate-500">{{ FRASE_VOCI_OFFERTE }}</p>
                             <p v-if="form.errors.voce_commissione_id" class="text-[10.5px] font-medium text-rose-600">{{ form.errors.voce_commissione_id }}</p>
                         </div>
                         <div v-if="isDataPagamentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">

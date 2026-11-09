@@ -1,7 +1,8 @@
 /**
  * La voce della commissione nel modulo del pagamento al fornitore.
  *
- * Le voci offerte sono le voci di spesa della gestione del pagamento (quella delle fatture scelte); la voce proposta è quella dell'ultima
+ * Le voci offerte sono le voci di spesa della gestione del pagamento (quella delle fatture scelte) e, sotto, quelle delle gestioni ordinarie dello stesso
+ * esercizio (Coda 553); la voce proposta è quella dell'ultima
  * commissione del condominio in quella gestione, che il server manda per gestione. Se la voce ricordata non è più fra quelle offerte (cancellata,
  * o di un'altra gestione) il campo resta vuoto: mai una voce sbagliata. Cambiando le fatture, e quindi la gestione, una voce dell'altra gestione
  * si toglie. Con una commissione più di zero e senza voce il modulo non si invia, e dice perché con la stessa frase del server. La modifica di un
@@ -13,8 +14,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
-    ETICHETTA_LASCIA_SENZA_VOCE, FRASE_ALTRA_GESTIONE, FRASE_SENZA_VOCE, LASCIA_SENZA_VOCE, gestioneDelPagamento, mancaLaVoce, puoLasciareSenzaVoce, voceDaInviare, voceDopoIlCambio,
-    vocePropostaPer, vociDellaGestione,
+    ETICHETTA_LASCIA_SENZA_VOCE, FRASE_SENZA_VOCE, FRASE_VOCI_OFFERTE, LASCIA_SENZA_VOCE, gestioneDelPagamento, mancaLaVoce, puoLasciareSenzaVoce, voceDaInviare, voceDopoIlCambio,
+    vocePropostaPer, vociDellaGestione, vociOfferte,
 } from './voceCommissione';
 
 const ORDINARIA = 10;
@@ -33,6 +34,53 @@ describe('le voci della gestione del pagamento', () => {
 
     test('senza gestione (nessuna fattura scelta) nessuna voce', () => {
         expect(vociDellaGestione(voci, null)).toEqual([]);
+    });
+});
+
+describe('le voci offerte (Coda 553): la gestione del pagamento, poi le ordinarie dello stesso esercizio', () => {
+    const E2026 = 4;
+    const E2027 = 5;
+    const RISCALDAMENTO = 30;
+    const tutte = [
+        { id: 1, label: 'Spese bancarie', gestione_id: ORDINARIA, gestione_nome: 'Gestione ordinaria', gestione_tipo: 'ordinaria', esercizi: [E2026, E2027] },
+        { id: 2, label: 'Bolli', gestione_id: ORDINARIA, gestione_nome: 'Gestione ordinaria', gestione_tipo: 'ordinaria', esercizi: [E2026, E2027] },
+        { id: 3, label: 'Lavori tetto', gestione_id: TETTO, gestione_nome: 'Tetto', gestione_tipo: 'straordinaria', esercizi: [E2026] },
+        { id: 4, label: 'Gasolio', gestione_id: RISCALDAMENTO, gestione_nome: 'Riscaldamento', gestione_tipo: 'ordinaria', esercizi: [E2027] },
+    ];
+
+    test('per un pagamento dei lavori: in cima la voce del tetto, sotto quelle dell\'ordinaria del 2026 con il nome della gestione', () => {
+        const offerte = vociOfferte(tutte, TETTO, E2026);
+
+        expect(offerte.map((v) => v.id)).toEqual([3, 1, 2]);
+        expect(offerte.map((v) => v.label)).toEqual(['Lavori tetto', 'Spese bancarie · Gestione ordinaria', 'Bolli · Gestione ordinaria']);
+    });
+
+    test('una gestione ordinaria di un altro esercizio non c\'è, una straordinaria non si offre a un altro pagamento', () => {
+        expect(vociOfferte(tutte, TETTO, E2026).map((v) => v.id)).not.toContain(4);
+        expect(vociOfferte(tutte, ORDINARIA, E2026).map((v) => v.id)).toEqual([1, 2]);
+        expect(vociOfferte(tutte, ORDINARIA, E2027).map((v) => v.id)).toEqual([1, 2, 4]);
+    });
+
+    test('senza gestione nessuna voce; senza esercizio solo quelle della gestione', () => {
+        expect(vociOfferte(tutte, null, E2026)).toEqual([]);
+        expect(vociOfferte(tutte, TETTO, null).map((v) => v.id)).toEqual([3]);
+    });
+
+    test('solo le ordinarie dell\'esercizio (lo storno di una commissione che era su una gestione che l\'esercizio non ha): nessuna voce della gestione del pagamento che non lo sia', () => {
+        // Il tetto continua nel 2027; l'ordinaria del 2026 no (Gestione ordinaria è legata a tutti e due nell'elenco: qui il 2027 ha la sua, Riscaldamento).
+        expect(vociOfferte(tutte, TETTO, E2027, true).map((v) => v.id)).toEqual([1, 2, 4]);
+        expect(vociOfferte(tutte, TETTO, E2027, true).map((v) => v.label)).toEqual(['Spese bancarie · Gestione ordinaria', 'Bolli · Gestione ordinaria', 'Gasolio · Riscaldamento']);
+        expect(vociOfferte(tutte, TETTO, E2026, true).map((v) => v.id)).toEqual([1, 2]);
+        expect(vociOfferte(tutte, TETTO, null, true)).toEqual([]);
+        expect(vocePropostaPer([{ gestione_id: TETTO, voce_id: 3 }], tutte, TETTO, E2027, true)).toBeNull();
+        expect(vocePropostaPer([{ gestione_id: TETTO, voce_id: 4 }], tutte, TETTO, E2027, true)).toBe(4);
+    });
+
+    test('la proposta di una voce dell\'ordinaria per i lavori si tiene se è offerta, e la scelta resta al cambio di gestione se è ancora offerta', () => {
+        expect(vocePropostaPer([{ gestione_id: TETTO, voce_id: 1 }], tutte, TETTO, E2026)).toBe(1);
+        expect(vocePropostaPer([{ gestione_id: TETTO, voce_id: 4 }], tutte, TETTO, E2026)).toBeNull();
+        expect(voceDopoIlCambio(1, tutte, [], TETTO, E2026)).toBe(1);
+        expect(voceDopoIlCambio(3, tutte, [], ORDINARIA, E2026)).toBeNull();
     });
 });
 
@@ -110,13 +158,12 @@ describe('il modulo non si invia senza la voce quando la commissione è più di 
         expect(FRASE_SENZA_VOCE).toBe(costante);
     });
 
-    test('la via d\'uscita per un\'altra gestione è la costante del server, letta dal sorgente', () => {
+    test('la via d\'uscita per un\'altra gestione non c\'è più (Coda 553): né nel server né nella pagina; sotto il campo si dice che cosa offre', () => {
         const sorgente = readFileSync(resolve(__dirname, '../../../../../app/Services/Gestionale/VoceDellaCommissione.php'), 'utf8');
-        const parti = sorgente.match(/public const ALTRA_GESTIONE = '((?:[^'\\]|\\.)*)'\s*\.\s*'((?:[^'\\]|\\.)*)';/);
 
-        expect(parti, 'la costante ALTRA_GESTIONE non è stata trovata nel sorgente PHP').not.toBeNull();
-        expect(FRASE_ALTRA_GESTIONE).toBe((parti![1] + parti![2]).replace(/\\'/g, '\''));
-        expect(FRASE_ALTRA_GESTIONE).toBe('Per metterla su una voce di un\'altra gestione, per esempio le spese bancarie dell\'ordinaria, lascia la commissione a zero e registrala con una regolazione immediata.');
+        expect(sorgente).not.toContain('ALTRA_GESTIONE');
+        expect(sorgente).not.toContain('regolazione immediata.');
+        expect(FRASE_VOCI_OFFERTE).toBe('In cima le voci della gestione del pagamento; sotto, quelle dell\'ordinaria dello stesso esercizio, per esempio le spese bancarie.');
     });
 });
 

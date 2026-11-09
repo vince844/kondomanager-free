@@ -256,6 +256,9 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // 1.12.0-beta.4: i modelli delle lettere — una tabella, un indice e tre chiavi esterne, cinque statement su MySQL, ognuno con la sua guardia.
     // Lo stato a metà lo prova il test sotto.
     '2026_11_07_160000_create_modelli_testo_table',
+    // 1.12.0-beta.6: le carte dello studio — una tabella, le colonne una per una e un indice, ognuno con la sua guardia, e la «Carta dello studio»
+    // scritta solo se la tabella è vuota. Lo stato a metà lo prova il test sotto.
+    '2026_11_08_210000_create_carte_stampa_table',
 ]);
 
 it('la migrazione dei modelli delle lettere interrotta dopo la tabella e prima dell\'indice e delle chiavi si riprende e li mette, uno per nome', function () {
@@ -678,4 +681,105 @@ it('la migrazione del comune dello studio si riprende e non tocca un valore già
     $migration->up();
     $migration->up();
     expect($presente())->toBe(1);
+});
+
+it('la migrazione della partita IVA, del codice fiscale, del sito e del logo dello studio si riprende dopo un\'interruzione a metà e non tocca un valore già scritto', function () {
+    $path = database_path('settings/2026_11_08_200000_add_carta_dello_studio_to_print_settings.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_08_200000_add_carta_dello_studio_to_print_settings');
+    $migration = require $path;
+    $proprieta = ['logo_stampe_path', 'studio_codice_fiscale', 'studio_partita_iva', 'studio_sito'];
+    $presenti = fn () => DB::table('settings')->where('group', 'print')->whereIn('name', $proprieta)->orderBy('name')->pluck('name')->all();
+    expect($presenti())->toBe($proprieta);
+
+    // Interrotta dopo la prima: le altre mancano. La ripresa le mette, una volta sola; il valore già scritto non si tocca.
+    DB::table('settings')->where('group', 'print')->where('name', 'studio_partita_iva')->update(['payload' => json_encode('01234567890')]);
+    DB::table('settings')->where('group', 'print')->whereIn('name', ['logo_stampe_path', 'studio_codice_fiscale', 'studio_sito'])->delete();
+    $migration->up();
+    $migration->up();
+    expect($presenti())->toBe($proprieta)
+        ->and(DB::table('settings')->where('group', 'print')->where('name', 'studio_partita_iva')->value('payload'))->toBe(json_encode('01234567890'))
+        ->and(DB::table('settings')->where('group', 'print')->whereIn('name', $proprieta)->count())->toBe(4);
+
+    $migration->down();
+    $migration->down();
+    expect($presenti())->toBe([]);
+    $migration->up();
+    expect($presenti())->toBe($proprieta)
+        ->and(app(\App\Settings\PrintSettings::class)->refresh()->logo_stampe_path)->toBeNull();
+});
+
+it('la migrazione delle impostazioni di stampa del 14/06/2026 si riesegue: è una classe senza nome, e non tocca la nota legale né la firma già scritte', function () {
+    $path = database_path('settings/2026_06_14_223000_create_print_settings.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_06_14_223000_create_print_settings');
+    // Già eseguita dalla catena del test: una classe con nome, caricata di nuovo, non si potrebbe dichiarare due volte.
+    $migration = require $path;
+    expect($migration)->toBeInstanceOf(\Spatie\LaravelSettings\Migrations\SettingsMigration::class);
+    DB::table('settings')->where('group', 'print')->where('name', 'nota_legale_stampe')->update(['payload' => json_encode('La nota dello studio')]);
+    DB::table('settings')->where('group', 'print')->where('name', 'firma_stampe_path')->delete();
+
+    $migration->up();
+    $migration->up();
+    expect(DB::table('settings')->where('group', 'print')->where('name', 'nota_legale_stampe')->value('payload'))->toBe(json_encode('La nota dello studio'))
+        ->and(DB::table('settings')->where('group', 'print')->whereIn('name', ['nota_legale_stampe', 'firma_stampe_path'])->count())->toBe(2);
+
+    $migration->down();
+    expect(DB::table('settings')->where('group', 'print')->whereIn('name', ['nota_legale_stampe', 'firma_stampe_path'])->count())->toBe(0);
+    $migration->up();
+    expect(DB::table('settings')->where('group', 'print')->where('name', 'nota_legale_stampe')->value('payload'))
+        ->toBe(json_encode('Professione esercitata ai sensi della legge 14 gennaio 2013, n.4'));
+});
+
+it('la migrazione delle carte dello studio interrotta dopo la tabella, senza una colonna e senza l\'indice, si riprende e li mette; la «Carta dello studio» una volta sola', function () {
+    $path = database_path('migrations/2026_11_08_210000_create_carte_stampa_table.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_08_210000_create_carte_stampa_table');
+    $migration = require $path;
+    $stato = fn () => [
+        'colonne' => collect(Schema::getColumnListing('carte_stampa'))->sort()->values()->all(),
+        'indici' => collect(Schema::getIndexes('carte_stampa'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'carte_stampa'))->sort()->values()->all(),
+        'carte' => DB::table('carte_stampa')->orderBy('id')->get(['nome', 'aspetto', 'mostra_logo', 'colore', 'predefinita'])
+            ->map(fn ($c) => [$c->nome, $c->aspetto, (bool) $c->mostra_logo, $c->colore, (bool) $c->predefinita])->all(),
+    ];
+    $atteso = [
+        'colonne' => ['aspetto', 'carta_pagine', 'carta_path', 'carta_tipo', 'colore', 'created_at', 'id', 'margine_alto', 'margine_basso', 'margine_destro',
+            'margine_sinistro', 'mostra_logo', 'nome', 'predefinita', 'updated_at'],
+        'indici' => ['carte_stampa_predefinita_index'],
+        'carte' => [['Carta dello studio', 'campi', true, null, true]],
+    ];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la tabella: una colonna e l'indice mancano.
+    Schema::table('carte_stampa', fn ($table) => $table->dropIndex('carte_stampa_predefinita_index'));
+    Schema::table('carte_stampa', fn ($table) => $table->dropColumn('margine_destro'));
+    expect($stato()['indici'])->toBe([])->and($stato()['colonne'])->not->toContain('margine_destro');
+
+    $migration->up();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+
+    $migration->down();
+    $migration->down();
+    expect(Schema::hasTable('carte_stampa'))->toBeFalse();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione della carta per gruppo si riprende e non tocca una scelta già scritta', function () {
+    $path = database_path('settings/2026_11_08_210100_add_carta_per_gruppo_to_print_settings.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_08_210100_add_carta_per_gruppo_to_print_settings');
+    $migration = require $path;
+    $valore = fn () => DB::table('settings')->where('group', 'print')->where('name', 'carta_per_gruppo')->value('payload');
+    $vuoto = ['lettere' => null, 'ricevute_e_avvisi' => null, 'rendiconto_e_assemblea' => null, 'per_la_persona' => null, 'registri_e_elenchi' => null];
+    expect(json_decode((string) $valore(), true))->toBe($vuoto);
+
+    DB::table('settings')->where('group', 'print')->where('name', 'carta_per_gruppo')->update(['payload' => json_encode(['lettere' => 7] + $vuoto)]);
+    $migration->up();
+    $migration->up();
+    expect(json_decode((string) $valore(), true))->toBe(['lettere' => 7] + $vuoto)
+        ->and(DB::table('settings')->where('group', 'print')->where('name', 'carta_per_gruppo')->count())->toBe(1);
+
+    $migration->down();
+    $migration->down();
+    expect($valore())->toBeNull();
+    $migration->up();
+    expect(json_decode((string) $valore(), true))->toBe($vuoto);
 });

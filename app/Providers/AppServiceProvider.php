@@ -38,6 +38,8 @@ class AppServiceProvider extends ServiceProvider
         // Un singleton lo terrebbe anche fra richieste diverse sotto un runtime persistente, e
         // il condòmino tornerebbe a vedere un valore fermo — il difetto che quel calcolo evita.
         $this->app->scoped(\App\Services\Gestionale\CreditoService::class);
+        // La carta delle stampe legge il logo una volta per richiesta (o per lavoro della coda), non una volta per PDF.
+        $this->app->scoped(\App\Services\PDF\CartaDiStampa::class);
     }
 
     /**

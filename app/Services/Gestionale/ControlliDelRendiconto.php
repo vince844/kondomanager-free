@@ -28,6 +28,7 @@ final class ControlliDelRendiconto
         private readonly RiepilogoPerCompetenza $riepilogo,
         private readonly PosizioniDeiCondomini $posizioni,
         private readonly AnnoACavallo $annoACavallo,
+        private readonly CommissioniSenzaVoce $commissioni,
     ) {}
 
     /**
@@ -45,7 +46,11 @@ final class ControlliDelRendiconto
         $posizioni = $this->posizioni->posizioni($condominio, $esercizio, $oggi);
         $anno = $this->annoACavallo->perEsercizio($condominio, $esercizio, $filtri, $pagine['pagina'] ?? 1, $pagine['per_pagina'] ?? AnnoACavallo::RIGHE_ELENCO);
 
-        $controlli = [...$pagina['controlli'], $this->annoACavallo($anno), self::costi($riepilogo['riconciliazione']),
+        // Gli storni senza voce di registrazioni di un esercizio chiuso: le righe e quante si assegnano le dice l'elenco, con la sua regola. Si guarda se
+        // ci sono righe, non la loro somma: due storni che si annullano ci sono lo stesso.
+        $storni = VoceNelloStorno::righeSenzaVoce((int) $esercizio->id)->exists()
+            ? self::storniDellElenco($this->commissioni->perEsercizio($condominio, $esercizio)) : null;
+        $controlli = [...$pagina['controlli'], $this->annoACavallo($anno), self::costi($riepilogo['riconciliazione'], $storni),
             self::crediti($posizioni['riga_crediti'], $posizioni['riga_anticipi']), $this->gestioni($pagina['per_gestione']['fatture_altra_gestione'])];
 
         return ['controlli' => $controlli, 'esito' => self::esito($controlli), 'anno_a_cavallo' => $anno, 'pagina' => $pagina, 'riepilogo' => $riepilogo,
@@ -121,22 +126,71 @@ final class ControlliDelRendiconto
         ];
     }
 
-    /** I costi dell'esercizio a giornale = spese per capitolo meno entrate + commissioni senza voce + fatture contestate (la riga che riconcilia del riepilogo). */
-    public static function costi(array $r): array
+    /**
+     * Gli storni senza voce di registrazioni di un esercizio chiuso nell'elenco delle commissioni e degli storni senza voce ({@see CommissioniSenzaVoce}):
+     * quante righe, quante si assegnano, e la loro somma senza il segno.
+     *
+     * @param  array{commissioni: list<array<string, mixed>>, storni_assegnabili: array{numero: int, importo: int}}  $elenco
+     * @return array{righe: int, assegnabili: int, senza_segno: int}
+     */
+    public static function storniDellElenco(array $elenco): array
     {
-        $destra = $r['capitoli_netti'] + $r['commissioni_senza_voce'] + $r['contestate'];
+        $righe = array_filter($elenco['commissioni'], fn ($c) => $c['natura'] === 'registrazione');
+
+        return ['righe' => count($righe), 'assegnabili' => (int) $elenco['storni_assegnabili']['numero'],
+            'senza_segno' => (int) array_sum(array_map(fn ($c) => abs((int) $c['importo']), $righe))];
+    }
+
+    /**
+     * Le righe degli storni e la loro somma senza il segno, quando la somma con il segno non le dice: storni di segno diverso (lo storno di una
+     * regolazione toglie un costo, quello di un incasso da terzi lo aggiunge), che si possono anche annullare. Altrimenti niente.
+     *
+     * @param  array{righe: int, assegnabili: int, senza_segno: int}  $storni
+     */
+    public static function righeESommaSenzaSegno(array $storni, int $somma): ?string
+    {
+        return $storni['senza_segno'] !== abs($somma) ? $storni['righe'].' righe, '.self::euro($storni['senza_segno']).' senza il segno' : null;
+    }
+
+    /**
+     * I costi dell'esercizio a giornale = spese per capitolo meno entrate + commissioni senza voce + fatture contestate (la riga che riconcilia del riepilogo),
+     * più gli storni senza voce di registrazioni di un esercizio chiuso, quando ci sono righe (anche se la loro somma è zero): fra i costi non classificati,
+     * e fuori dal riparto finché non prendono una voce. Le righe e quante si assegnano le dice l'elenco delle commissioni e degli storni senza voce
+     * (`$storni`, {@see storniDellElenco()}, decisione 255, D1); chi non lo passa ha la frase senza il perché, se la somma non è zero. Gli altri costi non
+     * classificati sono costi a cui manca la voce: non tornano.
+     *
+     * @param  array{righe: int, assegnabili: int, senza_segno: int}|null  $storni
+     */
+    public static function costi(array $r, ?array $storni = null): array
+    {
+        $somma = (int) ($r['storni_senza_voce'] ?? 0);
+        $destra = $r['capitoli_netti'] + $r['commissioni_senza_voce'] + $r['contestate'] + $somma;
         $torna = $r['costi'] === $destra;
+        $assegnabili = $storni['assegnabili'] ?? 0;
+        $altri = ($storni['righe'] ?? 0) - $assegnabili;
+        $perche = match (true) {
+            $storni === null => 'fra i costi non classificati',
+            $assegnabili > 0 && $altri > 0 => 'fra i costi non classificati, e fuori dal riparto finché non prendono una voce: '
+                .($assegnabili === 1 ? '1 si assegna' : $assegnabili.' si assegnano').' e '.$altri.' no, e l\'elenco delle commissioni e degli storni senza voce dice perché',
+            $assegnabili > 0 => 'fra i costi non classificati, e fuori dal riparto finché non prendono una voce: '
+                .($assegnabili === 1 ? '1 si assegna' : $assegnabili.' si assegnano').' nell\'elenco delle commissioni e degli storni senza voce',
+            default => 'fra i costi non classificati, e fuori dal riparto: qui non si assegnano, e l\'elenco delle commissioni e degli storni senza voce dice perché',
+        };
+        $righe = $storni === null ? null : self::righeESommaSenzaSegno($storni, $somma);
         $eq = 'Costi dell\'esercizio '.self::euro($r['costi']).($torna ? ' = ' : ' ≠ ').'spese per capitolo meno entrate '.self::euro($r['capitoli_netti'])
-            .' + commissioni senza voce '.self::euro($r['commissioni_senza_voce']).' + fatture contestate '.self::euro($r['contestate']).'.';
+            .' + commissioni senza voce '.self::euro($r['commissioni_senza_voce']).' + fatture contestate '.self::euro($r['contestate'])
+            .($somma !== 0 || ($storni['righe'] ?? 0) > 0
+                ? ' + storni di registrazioni di un esercizio chiuso, senza voce, '.self::euro($somma).' ('.($righe === null ? '' : $righe.'; ').$perche.')' : '').'.';
+        $nonClassificati = $r['non_classificati'] - $somma;
         $resto = array_filter([
-            $r['non_classificati'] !== 0 ? 'costi non classificati '.self::euro($r['non_classificati']).' (righe di costo senza voce che non sono commissioni)' : null,
+            $nonClassificati !== 0 ? 'costi non classificati '.self::euro($nonClassificati).' (righe di costo senza voce che non sono commissioni)' : null,
             $r['differenza'] !== 0 ? self::euro($r['differenza']).' di spese del giornale che non stanno in nessuna riga del riepilogo' : null,
         ]);
 
         return [
             'id' => 'CR',
             'nome' => 'I costi tornano con il riepilogo',
-            'titolo' => 'Costi dell\'esercizio = spese per capitolo meno entrate + commissioni senza voce + fatture contestate',
+            'titolo' => 'Costi dell\'esercizio = spese per capitolo meno entrate + commissioni senza voce + fatture contestate (+ gli storni senza voce di un esercizio chiuso, se ci sono)',
             'sinistra' => $r['costi'],
             'destra' => $destra,
             'esito' => $torna ? 'quadra' : 'non_quadra',

@@ -45,7 +45,7 @@ test('senza_firma: la vista riceve firma_stampe_absolute_path a null anche con u
         };
     });
 
-    app(PdfService::class)->generate('pdf.base', ['senza_firma' => true]);
+    app(PdfService::class)->generate('pdf.base', ['senza_firma' => true, 'gruppo_carta' => \App\Services\PDF\GruppoCarta::REGISTRI_E_ELENCHI]);
 
     expect($catturati['firma_stampe_absolute_path'])->toBeNull();
 });
@@ -66,7 +66,7 @@ test('senza il flag, una firma configurata continua ad arrivare alla vista come 
         };
     });
 
-    app(PdfService::class)->generate('pdf.base', []);
+    app(PdfService::class)->generate('pdf.base', ['gruppo_carta' => \App\Services\PDF\GruppoCarta::REGISTRI_E_ELENCHI]);
 
     expect($catturati['firma_stampe_absolute_path'])->toBe($percorsoFirma);
 });

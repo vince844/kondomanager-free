@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use App\Support\LimiteCaricamento;
+use App\Services\PDF\GruppoCarta;
 
 /**
  * L'importazione dati — le schermate S1 e S2 del §14.1.
@@ -187,6 +188,7 @@ class ImportController extends Controller
         $livelli = $batch->rapporto['livelli'] ?? [];
 
         $mpdf = $pdf->generate('pdf.import.rapporto', [
+            'gruppo_carta' => GruppoCarta::REGISTRI_E_ELENCHI,
             'condominio' => $batch->condominio,
             'lotto' => $batch,
             'livelli' => $livelli,
@@ -206,8 +208,6 @@ class ImportController extends Controller
                 'messo_da_parte' => 'non pertinente',
             ],
         ]);
-
-        $mpdf->SetHeader(($batch->condominio?->nome ?? 'Importazione').'||Rapporto di importazione');
 
         // `'S'` e non `'I'`: con `'I'` mpdf **scrive da solo** nell'output e restituisce una
         // stringa vuota, quindi la risposta che Laravel costruisce è una scatola vuota con

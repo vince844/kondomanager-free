@@ -1,12 +1,16 @@
 @extends('pdf.base')
+{{-- I titoli e i loro filetti hanno il colore della carta dello studio; senza un colore, quello di sempre. --}}
+@php
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#1e3a5f');
+@endphp
 
 @section('title', 'Distinta delle Spese')
 
 @section('content')
 
 {{-- INTESTAZIONE DOCUMENTO --}}
-<div style="margin-bottom: 18px; border-bottom: 2px solid #1e3a5f; padding-bottom: 10px;">
-    <h2 style="margin: 0; padding: 0; font-size: 14pt; color: #1e3a5f; letter-spacing: 0.5px;">
+<div style="margin-bottom: 18px; border-bottom: 2px solid {{ $coloreTitoli }}; padding-bottom: 10px;">
+    <h2 style="margin: 0; padding: 0; font-size: 14pt; color: {{ $coloreTitoli }}; letter-spacing: 0.5px;">
         DISTINTA DELLE SPESE
     </h2>
     <div style="font-size: 9pt; color: #444; margin-top: 4px;">

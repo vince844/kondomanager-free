@@ -12,12 +12,14 @@ use App\Models\User;
 use App\Notifications\Gestionale\LetteraNotification;
 use App\Services\Documenti\ArchivioDocumenti;
 use App\Services\Gestionale\Debiti\ElencoRateScadute;
+use App\Services\Gestionale\Invii\ArchivioAPezzi;
 use App\Services\Gestionale\Invii\InviiPerPersona;
 use App\Services\Gestionale\Ricevute\EmissioneRicevute;
 use App\Services\Gestionale\Ricevute\ErroreDiPosta;
 use App\Services\Gestionale\Ricevute\LimiteAltroIndirizzo;
+use App\Services\PDF\CartaDiStampa;
+use App\Services\PDF\GruppoCarta;
 use App\Services\PDF\PdfService;
-use App\Settings\PrintSettings;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -144,6 +146,8 @@ final class EmissioneLettere
             'scelta_ricordata'   => $this->sceltaRicordata($condominio, $utente),
             'studio'             => self::studio(),
             'studio_compilato'   => self::studio()['nome'] !== null,
+            // Le lettere escono su una carta intestata che si legge: lo studio lo porta la carta, e la frase della finestra lo dice.
+            'carta_intestata'    => self::cartaIntestata(),
             'senza_server_posta' => EmissioneRicevute::senzaServerPosta(),
             'tetto'              => self::TETTO_PDF,
         ];
@@ -196,14 +200,29 @@ final class EmissioneLettere
             ->values()->all();
     }
 
-    /** @return array{nome: ?string, indirizzo: ?string, email: ?string, pec: ?string, telefono: ?string, comune: ?string} */
+    /**
+     * Lo studio delle impostazioni di stampa, pulito: lo stesso delle stampe ({@see CartaDiStampa::studio()}).
+     *
+     * @return array{nome: ?string, indirizzo: ?string, email: ?string, pec: ?string, telefono: ?string, comune: ?string, partita_iva: ?string, codice_fiscale: ?string, sito: ?string}
+     */
     public static function studio(): array
     {
-        $s = app(PrintSettings::class);
-        $pulito = fn ($v) => is_string($v) && trim($v) !== '' ? trim($v) : null;
+        return CartaDiStampa::studio();
+    }
 
-        return ['nome' => $pulito($s->studio_nome), 'indirizzo' => $pulito($s->studio_indirizzo), 'email' => $pulito($s->studio_email),
-            'pec' => $pulito($s->studio_pec), 'telefono' => $pulito($s->studio_telefono), 'comune' => $pulito($s->studio_comune)];
+    /** La carta delle lettere è una carta intestata che si legge ({@see CartaDiStampa::perGruppo()}). */
+    public static function cartaIntestata(): bool
+    {
+        return app(CartaDiStampa::class)->perGruppo(GruppoCarta::LETTERE)->cartaIntestata() !== null;
+    }
+
+    /**
+     * Il luogo in testa alla lettera: il comune dello studio, se l'amministratore lo ha scritto nelle impostazioni di stampa; senza, quello del
+     * condominio. Lo legge anche «Prova la carta» ({@see \App\Services\PDF\ProvaDellaCarta}).
+     */
+    public static function luogo(?Condominio $condominio): ?string
+    {
+        return self::studio()['comune'] ?? (filled($condominio?->comune) ? (string) $condominio->comune : null);
     }
 
     // ── La selezione e il contenuto ──────────────────────────────────────
@@ -555,6 +574,8 @@ final class EmissioneLettere
             'solo_in_accordo'    => $c['solo_in_accordo'],
             'anche_in_accordo'   => self::ancheInAccordo($input),
             'studio_compilato'   => self::studio()['nome'] !== null,
+            // Le lettere escono su una carta intestata che si legge: lo studio lo porta la carta, e la frase della finestra lo dice.
+            'carta_intestata'    => self::cartaIntestata(),
             'senza_server_posta' => EmissioneRicevute::senzaServerPosta(),
             'tetto_messaggi'     => EmissioneRicevute::tettoMessaggi(),
             'tetto'              => self::TETTO_PDF,
@@ -651,10 +672,12 @@ final class EmissioneLettere
     /**
      * «Scarica un PDF per persona»: un .zip con la lettera di ogni persona (il PDF conservato, per i tipi che lo conservano) e l'elenco degli
      * indirizzi, la PEC compresa; una riga «stampata» per lettera. È il canale della diffida e della messa in mora mandate per PEC fuori dal
-     * programma.
+     * programma. Lo .zip si scrive a pezzi ({@see ArchivioAPezzi}): ogni PDF va sul disco appena è fatto, e la memoria tiene una lettera alla volta
+     * anche con la carta intestata, che ogni PDF porta.
      *
      * @param array<string, mixed> $input
-     * @return array{zip: string, nome: string, aggiunte: int, invii: array<int, int>}
+     * @return array{zip: string, nome: string, aggiunte: int, invii: array<int, int>} `zip`: il percorso del file temporaneo dello .zip, che chi lo
+     *     manda cancella
      */
     public function archivioPerPersona(Condominio $condominio, array $input, ?User $utente): array
     {
@@ -667,33 +690,40 @@ final class EmissioneLettere
         $persone = $this->dellAzione($condominio, $scelte['tipo'], $c['persone'], $scelte['tipi_scelti'], $input, 'zip');
         $this->dentroIlTettoDelPdf($persone, 'zip');
         $adesso = now();
+        $archivio = new ArchivioAPezzi(LetteraNonEmettibileException::class);
 
-        return $this->conIFile(fn () => DB::transaction(function () use ($condominio, $persone, $scelte, $utente, $adesso, $c) {
-            $file = [];
-            $usati = [mb_strtolower(InviiPerPersona::FILE_DEGLI_INDIRIZZI)];
-            $elenco = [];
-            $invii = [];
-            foreach ($persone as $p) {
-                [$righe, $pdf] = $this->scriviLettera($condominio, $p, $scelte, $utente, $adesso, 'zip');
-                $invii[(int) $righe[0]->id] = (int) $p['anagrafica_id'];
-                if ($pdf === null) {
-                    $pdf = $this->rendi($condominio, [$this->voceDallaRiga($righe[0])]);
-                    $righe[0]->update(['impronta' => hash('sha256', $pdf)]);
+        try {
+            return $this->conIFile(fn () => DB::transaction(function () use ($condominio, $persone, $scelte, $utente, $adesso, $c, $archivio) {
+                $usati = [mb_strtolower(InviiPerPersona::FILE_DEGLI_INDIRIZZI)];
+                $elenco = [];
+                $invii = [];
+                foreach ($persone as $p) {
+                    [$righe, $pdf] = $this->scriviLettera($condominio, $p, $scelte, $utente, $adesso, 'zip');
+                    $invii[(int) $righe[0]->id] = (int) $p['anagrafica_id'];
+                    if ($pdf === null) {
+                        $pdf = $this->rendi($condominio, [$this->voceDallaRiga($righe[0])]);
+                        $righe[0]->update(['impronta' => hash('sha256', $pdf)]);
+                    }
+                    $nome = InviiPerPersona::nomeLibero(EmissioneRicevute::nomeFileDellaPersona($p['nome']), $usati) . '.pdf';
+                    $archivio->aggiungi($nome, $pdf);
+                    unset($pdf);
+                    $elenco[] = ['nome' => $p['nome'], 'indirizzi' => EmissioneRicevute::indirizzi($p['persona']), 'documenti' => 1, 'file' => $nome];
                 }
-                $nome = InviiPerPersona::nomeLibero(EmissioneRicevute::nomeFileDellaPersona($p['nome']), $usati) . '.pdf';
-                $file[$nome] = $pdf;
-                $elenco[] = ['nome' => $p['nome'], 'indirizzi' => EmissioneRicevute::indirizzi($p['persona']), 'documenti' => 1, 'file' => $nome];
-            }
-            $file[InviiPerPersona::FILE_DEGLI_INDIRIZZI] = InviiPerPersona::elencoDegliIndirizzi(self::NOMI_PLURALI[$scelte['tipo']], (string) $condominio->nome, $elenco, $adesso,
-                fn (int $n) => $n === 1 ? '1 lettera' : $n . ' lettere', EmissioneRicevute::TIPI_INDIRIZZO, self::COME_SPEDIRE_I_PDF);
+                $archivio->aggiungi(InviiPerPersona::FILE_DEGLI_INDIRIZZI, InviiPerPersona::elencoDegliIndirizzi(self::NOMI_PLURALI[$scelte['tipo']], (string) $condominio->nome,
+                    $elenco, $adesso, fn (int $n) => $n === 1 ? '1 lettera' : $n . ' lettere', EmissioneRicevute::TIPI_INDIRIZZO, self::COME_SPEDIRE_I_PDF));
 
-            return [
-                'zip'      => InviiPerPersona::archivio($file, LetteraNonEmettibileException::class),
-                'nome'     => Str::replaceLast('.pdf', '.zip', self::nomeFile($condominio, $scelte['tipo'], 'per-persona')),
-                'aggiunte' => $c['aggiunte'],
-                'invii'    => $invii,
-            ];
-        }));
+                return [
+                    'zip'      => $archivio->scrivi(),
+                    'nome'     => Str::replaceLast('.pdf', '.zip', self::nomeFile($condominio, $scelte['tipo'], 'per-persona')),
+                    'aggiunte' => $c['aggiunte'],
+                    'invii'    => $invii,
+                ];
+            }));
+        } catch (\Throwable $e) {
+            $archivio->togli();
+
+            throw $e;
+        }
     }
 
     // ── L'invio per email ────────────────────────────────────────────────
@@ -1255,15 +1285,14 @@ final class EmissioneLettere
             'intestatario' => $dati['intestatario'] ?? null,
             'alla'         => (string) ($dati['alla'] ?? DateHelper::oggiUtente()),
             'emessa_il'    => $emessa->copy()->setTimezone(self::fuso())->format('d/m/Y'),
-            // Il luogo in testa: il comune dello studio, se l'amministratore lo ha scritto nelle impostazioni di stampa; senza, quello del condominio.
-            'luogo'        => self::studio()['comune'] ?? (filled($condominio?->comune) ? (string) $condominio->comune : null),
+            'luogo'        => self::luogo($condominio),
             'etichetta'    => null,
         ];
     }
 
     /**
-     * I dati della vista della lettera: il condominio, il suo nome sotto il titolo (con «Condominio» davanti una volta sola), le lettere, lo
-     * studio, il giorno per il piede.
+     * I dati della vista della lettera: il condominio, il suo nome sotto il titolo (con «Condominio» davanti una volta sola), le lettere, il giorno
+     * per il piede, il gruppo della carta. Lo studio lo dà la carta delle lettere ({@see CartaDiStampa}).
      *
      * @param array<int, array<string, mixed>> $voci
      * @return array<string, mixed>
@@ -1271,7 +1300,7 @@ final class EmissioneLettere
     public function datiDellaVista(Condominio $condominio, array $voci): array
     {
         return ['condominio' => $condominio, 'condominio_nel_titolo' => TestiLettere::condominioConNome((string) $condominio->nome), 'lettere' => $voci,
-            'studio' => self::studio(), 'data_emissione_stampe' => now()->setTimezone(self::fuso())];
+            'data_emissione_stampe' => now()->setTimezone(self::fuso()), 'gruppo_carta' => GruppoCarta::LETTERE];
     }
 
     /** @param array<int, array<string, mixed>> $voci */

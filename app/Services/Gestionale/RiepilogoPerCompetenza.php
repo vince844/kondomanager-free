@@ -31,21 +31,45 @@ use Illuminate\Support\Facades\DB;
  * - Il preventivo e il deliberato: il deliberato con le rate è la somma delle righe del riparto dei piani approvati dell'esercizio, per voce; il
  *   preventivo è l'importo della voce finché la gestione non è agganciata a un esercizio dopo (poi la voce porta già il preventivo dell'anno dopo, e
  *   la colonna rimanda al verbale dell'assemblea). Per una gestione straordinaria solo il deliberato: il piano chiede le fatture, e uno scostamento non c'è.
+ *   Un piano approvato senza le righe (generato prima della 1.11.0-beta.29) ha il deliberato ricostruito, se torna per unità con le quote
+ *   ({@see DeliberatoRicostruito}, Coda 557): la gestione è «ricostruito», e le voci che il piano non ha fissato portano l'asterisco.
  * - Il risultato: `StatoPatrimonialePaginaService::risultatoDi`, con i suoi due termini dal giornale; una riga lega le quote dei piani alle quote a
  *   giornale.
  * - La gestione: quella della voce (il suo piano dei conti) per i costi, quella del piano per le quote.
  */
 final class RiepilogoPerCompetenza
 {
-    /** Perché il deliberato con le rate non c'è: i piani generati prima che il programma ne conservasse il riparto. Una frase sola, per la pagina e per la stampa. */
+    /**
+     * Perché il deliberato con le rate non c'è: un piano generato prima che il programma ne conservasse il riparto, che rifatto con i dati di oggi non torna
+     * con le quote di ogni unità o ha una spesa spostata con «Sposta spesa». Una frase sola, per la pagina e per la stampa.
+     */
     public const FRASE_DELIBERATO_NON_DISPONIBILE = 'Il deliberato con le rate non è disponibile per i piani generati prima che il programma ne conservasse il dettaglio: '
         .'è nel verbale dell\'assemblea che li ha approvati.';
+
+    /** Il deliberato dei piani di prima ricostruito (Coda 557, decisione 240): da dove vengono le cifre, e quando smettono di esserci. La stampa ha la sua variante. */
+    public const FRASE_DELIBERATO_RICOSTRUITO = 'Per i piani generati prima che il programma ne conservasse il dettaglio, il deliberato con le rate è ricostruito: il riparto è '
+        .'rifatto con i dati di oggi, e si usa solo se torna al centesimo con le quote del piano di ogni unità. Se dopo cambiano i millesimi, gli importi delle voci, '
+        .'i titolari o il già versato, può tornare «non disponibile».';
+
+    /**
+     * Perché un piano di prima, cambiato con «Sposta spesa», non si rifà (decisione 253, D5): si dice dopo la frase del «non disponibile». Rifatto, il
+     * riparto leggerebbe gli importi del piano di oggi; uno spostamento fatto prima di rifare le rate è già nelle quote, uno fatto dopo no, e il
+     * programma non li distingue (decisione 255, D2: niente confronto di date): la frase dice il dubbio, non la certezza. La stampa ha la sua variante.
+     */
+    public const FRASE_DELIBERATO_SPOSTATO = 'Un piano cambiato con «Sposta spesa» non si rifà: le sue voci di oggi possono non dire quanto chiedevano le rate.';
+
+    /** L'asterisco delle voci che il piano non ha fissato (D3 della decisione 240). La stampa ha la sua variante. */
+    public const FRASE_DELIBERATO_DIVISO = '* Divisa fra le voci con gli importi di oggi: il piano ha fissato il capitolo, o nessuna voce, e non quanto chiedeva ogni voce.';
+
+    /** Gli stati del deliberato che hanno una cifra. */
+    private const CON_CIFRA = ['conservato', 'ricostruito'];
 
     public function __construct(
         private readonly SpesaPerVoceService $spese,
         private readonly PagatoAllaData $pagato,
         private readonly LetturaDebiti $debiti,
         private readonly StatoPatrimonialePaginaService $pagina,
+        private readonly DeliberatoRicostruito $ricostruito,
     ) {}
 
     public function perEsercizio(Condominio $condominio, Esercizio $esercizio, ?string $oggi = null): array
@@ -102,12 +126,13 @@ final class RiepilogoPerCompetenza
                     'dettaglio' => $d['righe'],
                 ];
                 $preventivoStato = $straordinaria ? 'solo_deliberato' : (isset($successivi[$gestioneId]) ? 'non_conservato' : 'conservato');
-                $delib = $deliberato[$gestioneId] ?? ['stato' => 'nessun_piano', 'per_voce' => []];
-                $delibValore = $delib['stato'] === 'conservato' ? (int) ($delib['per_voce'][(int) $v->id] ?? 0) * ($entrata ? -1 : 1) : null;
+                $delib = $deliberato[$gestioneId] ?? ['stato' => 'nessun_piano', 'per_voce' => [], 'divise_oggi' => []];
+                $delibValore = in_array($delib['stato'], self::CON_CIFRA, true) ? (int) ($delib['per_voce'][(int) $v->id] ?? 0) * ($entrata ? -1 : 1) : null;
                 $riga = [
                     'voce_id' => (int) $v->id, 'nome' => $v->nome, 'tipo' => $entrata ? 'entrata' : 'spesa',
                     'preventivo' => $preventivoStato === 'conservato' ? (int) $v->importo : null, 'preventivo_stato' => $preventivoStato,
                     'deliberato' => $delibValore, 'deliberato_stato' => $delib['stato'],
+                    'deliberato_diviso_oggi' => isset($delib['divise_oggi'][(int) $v->id]),
                 ];
                 if ($entrata) {
                     return $riga + [
@@ -137,7 +162,7 @@ final class RiepilogoPerCompetenza
             }
 
             $q = $quote[$gestioneId] ?? null;
-            $delibQuote = ($deliberato[$gestioneId]['stato'] ?? 'nessun_piano') === 'conservato' ? (int) array_sum($deliberato[$gestioneId]['per_voce']) : null;
+            $delibQuote = in_array($deliberato[$gestioneId]['stato'] ?? 'nessun_piano', self::CON_CIFRA, true) ? (int) array_sum($deliberato[$gestioneId]['per_voce']) : null;
             $righeQuote = [];
             if ($q !== null || $delibQuote !== null) {
                 $righeQuote[] = ['riga' => $straordinaria ? 'straordinarie' : 'ordinarie', 'deliberate' => $delibQuote] + ($q['quote'] ?? $this->quoteVuote());
@@ -149,6 +174,9 @@ final class RiepilogoPerCompetenza
 
             $blocchi[] = [
                 'gestione' => ['id' => $gestioneId, 'nome' => $g->nome, 'tipo' => $g->tipo],
+                'deliberato_stato' => $deliberato[$gestioneId]['stato'] ?? 'nessun_piano',
+                // «Non disponibile» anche perché un piano di prima è cambiato con «Sposta spesa»: la stampa lo dice sotto la tabella della gestione.
+                'deliberato_spostato' => ($deliberato[$gestioneId]['spostati'] ?? []) !== [],
                 'spese' => $spese,
                 'entrate' => $entrate,
                 'quote' => $righeQuote,
@@ -181,6 +209,8 @@ final class RiepilogoPerCompetenza
                 'costi' => $risultato['costi'], 'capitoli_netti' => $capitoliNetti,
                 'commissioni_senza_voce' => $fuori['commissioni_senza_voce']['consuntivo'], 'contestate' => $fuori['contestate']['consuntivo'],
                 'non_classificati' => $fuori['non_classificati']['consuntivo'], 'differenza' => $risultato['costi'] - $capitoliNetti - $sommaFuori,
+                // Dei costi non classificati, gli storni senza voce di registrazioni di un esercizio chiuso ({@see VoceNelloStorno}): hanno il perché.
+                'storni_senza_voce' => $this->storniSenzaVoce($esercizio),
             ],
             'totali' => [
                 'da_pagare' => (int) array_sum(array_map(fn ($b) => (int) $b['totale_spese']['da_pagare'] + (int) $b['totale_entrate']['da_pagare'], $blocchi))
@@ -191,8 +221,20 @@ final class RiepilogoPerCompetenza
                 'perimetro_da_pagare' => 'Il «da pagare» è delle fatture di questo esercizio: i debiti verso i fornitori della situazione patrimoniale sono di tutti gli esercizi, alla data, e possono essere diversi.',
                 'pagato_diviso' => 'Il pagato di una fattura su più voci, pagata in parte, è diviso fra le voci in proporzione al loro costo: un pagamento non dice quale voce paga.',
                 'anno_prima' => $prima ? null : 'primo esercizio nel programma',
-                // Una frase sola, quando almeno una gestione ha un piano approvato senza le righe del riparto.
-                'deliberato' => $gestioni->keys()->contains(fn ($id) => ($deliberato[(int) $id]['stato'] ?? null) === 'non_conservato') ? self::FRASE_DELIBERATO_NON_DISPONIBILE : null,
+                // Una frase sola, quando almeno una gestione ha un piano approvato senza le righe del riparto; con un piano cambiato con «Sposta spesa», il
+                // perché dopo.
+                'deliberato' => $this->fraseDelDeliberato($gestioni, $deliberato, 'non_conservato', self::FRASE_DELIBERATO_NON_DISPONIBILE
+                    .($gestioni->contains(fn ($g) => ($deliberato[(int) $g->id]['spostati'] ?? []) !== []) ? ' '.self::FRASE_DELIBERATO_SPOSTATO : '')),
+                // Per la pagina, non per la stampa: quali piani non si rifanno, e perché (cambiati con «Sposta spesa», o rifatti con i dati di oggi non tornano).
+                'deliberato_piani' => $gestioni->flatMap(fn ($g) => [
+                    ...array_map(fn (string $nome) => "Il piano «{$nome}» ha una spesa spostata da una voce a un'altra con «Sposta spesa».",
+                        $deliberato[(int) $g->id]['spostati'] ?? []),
+                    ...array_map(fn (string $nome) => "Il piano «{$nome}», rifatto con i dati di oggi, non torna con le quote emesse.", $deliberato[(int) $g->id]['non_tornano'] ?? []),
+                ])->values()->all(),
+                // Coda 557: quando almeno una gestione ha il deliberato ricostruito, e quando almeno una voce ha l'asterisco.
+                'deliberato_ricostruito' => $this->fraseDelDeliberato($gestioni, $deliberato, 'ricostruito', self::FRASE_DELIBERATO_RICOSTRUITO),
+                'deliberato_diviso' => $gestioni->keys()->contains(fn ($id) => ($deliberato[(int) $id]['stato'] ?? null) === 'ricostruito' && ($deliberato[(int) $id]['divise_oggi'] ?? []) !== [])
+                    ? self::FRASE_DELIBERATO_DIVISO : null,
                 'data' => $finito ? 'alla data del '.CarbonImmutable::parse($alla)->format('d/m/Y') : 'a oggi: cambia a ogni lettura, finché l\'esercizio è aperto',
             ],
         ];
@@ -321,6 +363,17 @@ final class RiepilogoPerCompetenza
         return ['contestate' => $con($contestate), 'commissioni_senza_voce' => $con($commissioni), 'non_classificati' => $con($nonClassificati)];
     }
 
+    /**
+     * Dei costi non classificati, quelli che vengono dallo storno nell'anno dopo di una regolazione immediata o di un incasso da terzi
+     * ({@see VoceNelloStorno::righeSenzaVoce()}): righe di costo senza voce di uno storno il cui originale sta in un altro esercizio. Non sono costi a cui
+     * manca la voce per una dimenticanza: si assegnano nell'elenco delle commissioni e degli storni senza voce ({@see CommissioniSenzaVoce}), e assegnati
+     * escono da qui ed entrano nel capitolo della loro voce.
+     */
+    private function storniSenzaVoce(Esercizio $esercizio): int
+    {
+        return (int) VoceNelloStorno::righeSenzaVoce((int) $esercizio->id)->sum(DB::raw("CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END"));
+    }
+
     /** I piani rate dell'esercizio: quelli generati con questo esercizio, o dedotti per i piani di prima della colonna. */
     private function pianiDellEsercizio(Condominio $condominio, Esercizio $esercizio)
     {
@@ -331,11 +384,15 @@ final class RiepilogoPerCompetenza
     }
 
     /**
-     * Il deliberato con le rate, per gestione e per voce: la somma delle righe del riparto dei piani approvati. Stato `non_conservato` se un piano approvato
-     * non ha le righe (generato prima che il riparto si scrivesse): la colonna dice «non disponibile» e {@see FRASE_DELIBERATO_NON_DISPONIBILE} dice perché;
-     * «nessun piano» se la gestione non ne ha uno approvato.
+     * Il deliberato con le rate, per gestione e per voce: la somma delle righe del riparto dei piani approvati. Un piano approvato senza le righe (generato
+     * prima che il riparto si scrivesse) si ricostruisce ({@see DeliberatoRicostruito}): se tutti i piani senza righe della gestione tornano per unità con le
+     * loro quote, lo stato è `ricostruito` e le cifre sono la somma delle registrate e delle ricostruite; **se uno solo non torna**, la gestione intera è
+     * `non_conservato` (decisione 240, D1: le righe si usano solo se tornano per tutti i piani della gestione), la colonna dice «non disponibile» e
+     * {@see FRASE_DELIBERATO_NON_DISPONIBILE} dice perché; `non_tornano` sono i nomi dei piani che, rifatti, non tornano (la pagina li nomina). Un piano
+     * senza righe con spostamenti di «Sposta spesa» che non si compensano non si rifà (decisione 253, D5: {@see DeliberatoRicostruito::spostato()}): la
+     * gestione è `non_conservato` allo stesso modo, e `spostati` sono i nomi di quei piani. «Nessun piano» se la gestione non ne ha uno approvato.
      *
-     * @return array<int, array{stato:string, per_voce: array<int,int>}>
+     * @return array<int, array{stato:string, per_voce: array<int,int>, divise_oggi: array<int,true>, non_tornano: list<string>, spostati: list<string>}>
      */
     private function deliberato($piani): array
     {
@@ -343,17 +400,64 @@ final class RiepilogoPerCompetenza
         $approvati = $piani->filter(fn ($p) => ($p->stato instanceof \BackedEnum ? $p->stato->value : $p->stato) === 'approvato');
         foreach ($approvati->groupBy('gestione_id') as $gestioneId => $pianiG) {
             $ids = $pianiG->pluck('id')->all();
-            $conRighe = DB::table('righe_riparto')->whereIn('piano_rate_id', $ids)->distinct()->pluck('piano_rate_id')->all();
-            if (count($conRighe) < count($ids)) {
-                $esito[(int) $gestioneId] = ['stato' => 'non_conservato', 'per_voce' => []];
-
-                continue;
+            $conRighe = DB::table('righe_riparto')->whereIn('piano_rate_id', $ids)->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->all();
+            $perVoce = $conRighe === [] ? [] : DB::table('righe_riparto')->whereIn('piano_rate_id', $conRighe)->whereNotNull('conto_id')
+                ->groupBy('conto_id')->select('conto_id', DB::raw('SUM(importo) as importo'))->pluck('importo', 'conto_id')->map(fn ($i) => (int) $i)->all();
+            $divise = [];
+            $stato = 'conservato';
+            $nonTornano = [];
+            $spostati = [];
+            foreach ($pianiG->reject(fn ($p) => in_array((int) $p->id, $conRighe, true)) as $piano) {
+                if ($this->ricostruito->spostato($piano)) {
+                    $spostati[] = (string) $piano->nome;
+                    continue;
+                }
+                $ricostruito = $this->ricostruito->perPiano($piano);
+                // Uno che non torna fa «non disponibile» la gestione intera; gli altri si rifanno lo stesso, per nominare tutti quelli che non tornano.
+                if ($ricostruito === null) {
+                    $nonTornano[] = (string) $piano->nome;
+                    continue;
+                }
+                $stato = 'ricostruito';
+                foreach ($ricostruito['per_voce'] as $voce => $importo) {
+                    $perVoce[$voce] = ($perVoce[$voce] ?? 0) + $importo;
+                }
+                $divise += $ricostruito['divise_oggi'];
             }
-            $esito[(int) $gestioneId] = ['stato' => 'conservato', 'per_voce' => DB::table('righe_riparto')->whereIn('piano_rate_id', $ids)->whereNotNull('conto_id')
-                ->groupBy('conto_id')->select('conto_id', DB::raw('SUM(importo) as importo'))->pluck('importo', 'conto_id')->map(fn ($i) => (int) $i)->all()];
+            $esito[(int) $gestioneId] = $nonTornano !== [] || $spostati !== []
+                ? ['stato' => 'non_conservato', 'per_voce' => [], 'divise_oggi' => [], 'non_tornano' => $nonTornano, 'spostati' => $spostati]
+                : ['stato' => $stato, 'per_voce' => $perVoce, 'divise_oggi' => $divise, 'non_tornano' => [], 'spostati' => []];
         }
 
         return $esito;
+    }
+
+    /**
+     * La frase di uno stato del deliberato, se almeno una gestione è in quello stato. Quando le gestioni del riepilogo sono una «non disponibile» e una
+     * «ricostruita», le due frasi dicono di quali gestioni parlano: altrimenti, dove si vede solo il totale (la Sintesi, il frontespizio), si leggerebbero
+     * insieme «non è disponibile» e «è ricostruito» per gli stessi piani. Le gestioni si dicono dopo la frase, che resta intera (la stampa ne cambia le
+     * parole, {@see ParoleDellaStampa}); un nome che comincia con «Gestione» non la ripete.
+     */
+    private function fraseDelDeliberato($gestioni, array $deliberato, string $stato, string $frase): ?string
+    {
+        $stati = $gestioni->map(fn ($g) => $deliberato[(int) $g->id]['stato'] ?? 'nessun_piano');
+        $queste = $gestioni->filter(fn ($g) => $stati[$g->id] === $stato);
+        if ($queste->isEmpty()) {
+            return null;
+        }
+        $miste = $stati->contains('non_conservato') && $stati->contains('ricostruito');
+
+        if (! $miste) {
+            return $frase;
+        }
+        $nomi = $queste->map(fn ($g) => '«'.$g->nome.'»')->implode(', ');
+        $chi = match (true) {
+            $queste->count() > 1 => 'le gestioni '.$nomi,
+            preg_match('/^gestione\b/iu', (string) $queste->first()->nome) === 1 => 'la '.$nomi,
+            default => 'la gestione '.$nomi,
+        };
+
+        return $frase.' Vale per '.$chi.'.';
     }
 
     /** Le foglie sotto una radice (a ogni profondità). */
@@ -380,6 +484,8 @@ final class RiepilogoPerCompetenza
         }
         $somme = $this->somma($voci, ['preventivo', 'deliberato', 'consuntivo', 'incassato', 'spese_sulla_voce', 'anno_prima', 'scostamento', 'scostamento_preventivo', 'pagato', 'da_pagare',
             'pagato_in_piu', 'ritenute_da_versare']);
+        // Il capitolo porta l'asterisco del deliberato ricostruito solo se non ha un importo suo nel piano (`DeliberatoRicostruito`): fissato, il suo totale
+        // è quello del piano e la divisione fra le voci no (D3 della decisione 240).
         $capitolo = array_merge($radice, array_intersect_key($somme, $radice), ['voci' => $voci]);
         unset($capitolo['dettaglio']);
 

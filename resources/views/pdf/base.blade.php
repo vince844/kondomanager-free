@@ -1,3 +1,12 @@
+{{-- La testata dello studio: con lo studio la prima pagina ha il blocco intero e le seguenti una riga (le regole `@page` qui sotto); senza, la
+     testata del condominio di sempre, su ogni pagina. Le testate si danno con `@page`: con il margine che si allunga sulla testata (`PdfService`)
+     mPDF misura così anche la prima pagina, mentre una testata accesa nel corpo (`sethtmlpageheader`) arriva quando la prima pagina è già
+     cominciata, e il corpo le finirebbe sotto. `$intestazione_propria`: la vista scrive da sé chi emette il documento (la lettera, la ricevuta,
+     l'avviso), e qui non si ripete. Con la carta intestata lo studio è stampato sulla carta: su ogni pagina una riga con il condominio, in cima alla
+     parte libera. --}}
+@php($testataDelloStudio = empty($intestazione_propria ?? null) && isset($carta) && $carta->haStudio())
+@php($testataDellaCarta = empty($intestazione_propria ?? null) && isset($carta) && $carta->cartaIntestata() !== null)
+@php($testataComune = empty($intestazione_propria ?? null) && ! $testataDelloStudio && ! $testataDellaCarta)
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -6,11 +15,34 @@
     <style>
         @include('pdf.styles')
     </style>
+    @if($testataDelloStudio)
+    <style>
+        @include('pdf._carta.regole_pagina', ['prima' => 'KondoTestata', 'seguenti' => 'KondoTestatina', 'piede' => 'KondoFooter'])
+    </style>
+    @elseif($testataDellaCarta)
+    <style>
+        @page { header: html_KondoCarta; footer: html_KondoFooter; }
+    </style>
+    @elseif($testataComune)
+    <style>
+        @page { header: html_{{ \App\Services\PDF\PdfService::TESTATA_COMUNE }}; footer: html_KondoFooter; }
+    </style>
+    @endif
 </head>
 <body>
-    {{-- `$intestazione_propria`: la vista scrive da sé chi emette il documento (la ricevuta dell'incasso), e qui non si ripete. --}}
-    @if(empty($intestazione_propria ?? null))
-    <htmlpageheader name="KondoHeader">
+    @if($testataDelloStudio)
+    <htmlpageheader name="KondoTestata">
+        @include('pdf._carta.testata', ['titolo' => $titolo_stampa ?? null])
+    </htmlpageheader>
+    <htmlpageheader name="KondoTestatina">
+        @include('pdf._carta.testatina', ['titolo' => $titolo_stampa ?? null])
+    </htmlpageheader>
+    @elseif($testataDellaCarta)
+    <htmlpageheader name="KondoCarta">
+        @include('pdf._carta.testata_carta', ['titolo' => $titolo_stampa ?? null])
+    </htmlpageheader>
+    @elseif($testataComune)
+    <htmlpageheader name="{{ \App\Services\PDF\PdfService::TESTATA_COMUNE }}">
         <div class="header">
             @if(isset($condominio))
                 <div class="header-title">{{ $condominio->nome }}</div>
@@ -21,9 +53,8 @@
             @endif
             {{--
               ⚠️ **Facoltativo, e per un motivo preciso.** `Mpdf::SetHeader()` — l'API pensata per
-              questo — non produce nulla: viene chiamata dopo `WriteHTML()`, e questo blocco HTML
-              (`sethtmlpageheader`) ha comunque la precedenza. È inerte allo stesso modo in altri
-              sei controller di stampa del progetto, tutti fuori da questo diff — non li tocco.
+              questo — chiamata dopo `WriteHTML()` sostituirebbe la testata dell'ultima pagina, che
+              qui viene dalla regola `@page`: nessuna stampa la chiama.
               Qui, dove serve davvero (un registro di più pagine che altrimenti si identifica
               solo a pagina 1), il chiamante valorizza `$titolo_stampa`: chi non lo passa vede
               esattamente l'intestazione di sempre, byte per byte.
@@ -33,8 +64,6 @@
             @endif
         </div>
     </htmlpageheader>
-
-    <sethtmlpageheader name="KondoHeader" page="O" value="on" show-this-page="1" />
     @endif
 
     {{-- Il giorno dell'emissione è quello dell'amministratore, non quello del server: fra le 00:00 e le 02:00 di Roma il server (UTC) è

@@ -29,6 +29,10 @@
     // esercizio non ancora cominciato (dove il riporto è la fotografia a oggi).
     $giornoPrima = \Carbon\Carbon::parse($riporto_al)->format('d/m/Y');
     $futuro = $periodo['stato'] === 'futuro';
+    // Lo studio: il blocco in testa alla prima pagina e il suo nome nella testatina; senza, la carta intestata del condominio di sempre.
+    $conStudio = isset($carta) && $carta->haStudio();
+    // I titoli, i loro filetti e la testata hanno il colore della carta dello studio; senza un colore, quello di sempre.
+    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#0E2238');
 @endphp
 <!DOCTYPE html>
 <html lang="it">
@@ -42,16 +46,16 @@
               font-size: 7.5pt; padding: 6px 9px; margin-bottom: 12px; }
     .fascia b { letter-spacing: 1pt; text-transform: uppercase; }
 
-    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid #0E2238; }
+    .testata { width: 100%; border-collapse: collapse; border-bottom: 2px solid {{ $coloreTitoli }}; }
     .testata td { padding: 0 0 10px 0; vertical-align: top; border: 0; }
-    .ente { font-family: fraunces; font-size: 15pt; color: #0E2238; }
+    .ente { font-family: fraunces; font-size: 15pt; color: {{ $coloreTitoli }}; }
     .att { font-size: 7pt; letter-spacing: 1.1pt; text-transform: uppercase; color: #5A6B7B; }
     .rif { font-size: 7.5pt; color: #5A6B7B; }
     .doc { text-align: right; font-size: 7.5pt; color: #5A6B7B; }
     .doc b { color: #0E2238; }
 
-    h1 { font-family: fraunces; font-size: 17pt; color: #0E2238; margin: 14px 0 1px; padding: 0; }
-    .sotto { font-family: fraunces; font-size: 10pt; color: #2E5C86; margin: 0 0 10px; }
+    h1 { font-family: fraunces; font-size: 17pt; color: {{ $coloreTitoli }}; margin: 14px 0 1px; padding: 0; }
+    .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 10px; }
 
     .dati { width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;
             border-bottom: 1px solid #D9DEE5; margin-bottom: 14px; }
@@ -93,7 +97,7 @@
     <table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #D9DEE5;">
         <tr>
             <td style="border: 0; padding: 0 0 5px 0; font-size: 7.5pt; color: #5A6B7B;">
-                <b style="color: #0E2238;">{{ $condominio->nome }}</b> · Mastrino {{ $conto['codice'] }} {{ $conto['nome'] }}
+                @if($conStudio){{ $carta->nome() }} · @endif<b style="color: {{ $coloreTitoli }};">{{ $condominio->nome }}</b> · Mastrino {{ $conto['codice'] }} {{ $conto['nome'] }}
             </td>
             <td style="border: 0; padding: 0 0 5px 0; text-align: right; font-size: 7.5pt; color: #5A6B7B;">
                 {{ $esercizio->nome }}@if($parziale) · estratto parziale @endif
@@ -104,19 +108,7 @@
 <sethtmlpageheader name="mastrinoTestatina" page="ALL" value="on" />
 
 <htmlpagefooter name="mastrinoPiede">
-    <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;">
-        <tr>
-            <td style="border: 0; padding: 5px 0 0 0; font-size: 7pt; color: #5A6B7B;">
-                Documento emesso il {{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}
-                @if(!empty($nota_legale_stampe))
-                    <br>{!! nl2br(e($nota_legale_stampe)) !!}
-                @endif
-            </td>
-            <td style="border: 0; padding: 5px 0 0 0; text-align: right; font-size: 7pt; color: #5A6B7B;">
-                Pagina {PAGENO} di {nbpg}
-            </td>
-        </tr>
-    </table>
+    @include('pdf._carta.piede_inter', ['giorno' => ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y'), 'parte' => null])
 </htmlpagefooter>
 <sethtmlpagefooter name="mastrinoPiede" page="ALL" value="on" />
 
@@ -130,6 +122,11 @@
 </div>
 @endif
 
+@if($conStudio)
+@component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => 'Mastrino del conto'])
+<b>{{ $esercizio->nome }}</b> · @if($futuro)comincia il <b>{{ $dal }}</b>, fotografia al <b>{{ $al }}</b>@else dal <b>{{ $dal }}</b> al <b>{{ $al }}</b>@endif · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+@endcomponent
+@else
 <table class="testata">
     <tr>
         <td>
@@ -146,6 +143,7 @@
         </td>
     </tr>
 </table>
+@endif
 
 @include('pdf.gestionale._mastrino_conto', ['con_nota' => true])
 

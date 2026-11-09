@@ -55,6 +55,19 @@ const tipoScelto = () => (document.body.querySelector('input[name="tipo-lettera"
 beforeEach(() => { axiosGet.mockReset(); axiosPost.mockReset(); });
 afterEach(() => { finestra?.unmount(); finestra = null; document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
+describe('lo studio', () => {
+    test('senza il nome dello studio la finestra dice che la lettera porta il solo condominio; con la carta intestata delle lettere dice la carta', async () => {
+        const { FRASE_STUDIO_NON_COMPILATO, FRASE_STUDIO_SULLA_CARTA } = await import('@/lib/gestionale/lettere/lettere');
+        await apri();
+        expect(pulsante('studio-non-compilato')?.textContent?.trim()).toBe(FRASE_STUDIO_NON_COMPILATO);
+        finestra?.unmount();
+        document.body.innerHTML = '';
+        await apri({}, opzioni({ carta_intestata: true }));
+        expect(pulsante('studio-non-compilato')?.textContent?.trim()).toBe(FRASE_STUDIO_SULLA_CARTA);
+        expect(testo()).not.toContain('la lettera porta il solo condominio');
+    });
+});
+
 describe('il tipo, il testo e le scelte ricordate', () => {
     test('dalle rate scadute il tipo di serie è il sollecito, dalla vista «In scadenza» il promemoria; il termine e il conto sono quelli dell\'ultima volta', async () => {
         await apri();

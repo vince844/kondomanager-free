@@ -102,7 +102,7 @@ it('lo .zip: il tetto è dello .zip, e l\'elenco degli indirizzi dice come spedi
 
     $s = lttScenario($this);
     $zip = $this->actingAs($this->user)->post(lttRotta($s, 'pdf-per-persona'), lttScelte($s, ['tipo' => 'diffida', 'termine_forma' => 'giorni', 'termine' => 15,
-        'testo' => TestiLettere::DI_SERIE['diffida']]))->assertOk()->getContent();
+        'testo' => TestiLettere::DI_SERIE['diffida']]))->assertOk()->streamedContent();
     $file = tempnam(sys_get_temp_dir(), 'fdl');
     file_put_contents($file, $zip);
     $archivio = new ZipArchive();
