@@ -16,6 +16,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
+import AllegatiCampoModuli from '@/components/allegati/AllegatiCampoModuli.vue';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 import { trans } from 'laravel-vue-i18n';
@@ -24,11 +26,13 @@ import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
+const puoCaricareAllegati = computed(() => hasPermission([Permission.CREATE_ATTACHMENTS_COMUNICAZIONI]));
 
 const props = defineProps<{
   condomini: Building[];
   anagrafiche: Anagrafica[];
+  allegati_massimo?: number;
 }>();  
 
 const anagraficheOptions = ref<Anagrafica[]>([]);
@@ -74,7 +78,16 @@ const form = useForm({
     can_comment: false as boolean,
     is_featured: false as boolean,
     is_published: true,
-    anagrafiche: []
+    anagrafiche: [],
+    allegati: [] as File[],
+});
+
+const erroreAllegati = computed(() => {
+    const errs = form.errors as Record<string, string>;
+    for (const [k, v] of Object.entries(errs)) {
+        if (k === 'allegati' || k.startsWith('allegati.')) return v;
+    }
+    return undefined;
 });
 
 const fetchAnagrafiche = async (condomini_ids: number[]) => {
@@ -97,6 +110,7 @@ watch(() => form.condomini_ids, fetchAnagrafiche);
 
 const submit = () => {
     form.post(route(generateRoute('comunicazioni.store')), {
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -154,7 +168,16 @@ const submit = () => {
                                 :placeholder="trans('comunicazioni.placeholder.description')" 
                             />
                             <InputError :message="form.errors.description" />
-                        </div>  
+                        </div>
+
+                        <div v-if="puoCaricareAllegati" class="sm:col-span-6 border-t border-dashed pt-4">
+                            <AllegatiCampoModuli
+                                v-model="form.allegati"
+                                :massimo="props.allegati_massimo ?? 5"
+                                :rimasti="props.allegati_massimo ?? 5"
+                                :error="erroreAllegati"
+                            />
+                        </div>
                     </div> 
                 </CardContent>
             </Card>

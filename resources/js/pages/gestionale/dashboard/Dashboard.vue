@@ -10,7 +10,7 @@ import { etichettaFabbisogno } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench, BookOpen, Link2 } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Files, Wrench, BookOpen, Link2 } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -597,6 +597,7 @@ onUnmounted(() => {
                                                         <ArrowUpFromLine v-else-if="task.type === 'emissione_rata'" class="w-5 h-5 text-blue-500" />
                                                         <Banknote v-else-if="task.type === 'verifica_pagamento'" class="w-5 h-5 text-amber-500" />
                                                         <MessageSquare v-else-if="task.type === 'commento'" class="w-5 h-5 text-indigo-500" />
+                                                        <Files v-else-if="task.type === 'allegato'" class="w-5 h-5 text-indigo-500" />
                                                         <Wrench v-else-if="task.type === 'segnalazione_guasto'" class="w-5 h-5 text-orange-500" />
                                                         <CalendarClock v-else class="w-5 h-5" />
                                                     </div>

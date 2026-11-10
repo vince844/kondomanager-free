@@ -7,6 +7,7 @@ use App\Helpers\SlugHelper;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
 
 class Comunicazione extends Model
@@ -28,6 +29,12 @@ class Comunicazione extends Model
         'can_comment',
         'slug',
         'reference',
+        'allegati_accesso',
+        'allegati_moderati',
+    ];
+
+    protected $casts = [
+        'allegati_moderati' => 'boolean',
     ];
 
     // Add this method to the model
@@ -36,10 +43,30 @@ class Comunicazione extends Model
         parent::boot();
 
         // Listen to the 'creating' event to generate the slug before saving
-        static::creating(function ($comunicazione) {
+        static::creating(function (self $comunicazione) {
             // Generate the slug using the SlugHelper
             $comunicazione->slug = SlugHelper::generateSlug($comunicazione->subject);
+
+            if (! array_key_exists('allegati_accesso', $comunicazione->getAttributes()) || $comunicazione->allegati_accesso === null) {
+                $comunicazione->allegati_accesso = 'aperti';
+            }
+            if (! array_key_exists('allegati_moderati', $comunicazione->getAttributes()) || $comunicazione->allegati_moderati === null) {
+                $comunicazione->allegati_moderati = app(\App\Settings\GeneralSettings::class)->allegati_moderati_di_serie;
+            }
         });
+
+        static::deleting(function (self $comunicazione) {
+            app(\App\Services\Allegati\AllegatoService::class)->preparaPuliziaPerElemento($comunicazione);
+        });
+
+        static::deleted(function (self $comunicazione) {
+            app(\App\Services\Allegati\AllegatoService::class)->completaPuliziaPerElemento($comunicazione);
+        });
+    }
+
+    public function allegati(): MorphMany
+    {
+        return $this->morphMany(Documento::class, 'documentable')->orderBy('id');
     }
 
     /**

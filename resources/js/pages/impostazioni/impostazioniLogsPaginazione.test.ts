@@ -58,7 +58,12 @@ function apri(links: typeof LINK_PRIMA_PAGINA, paginaCorrente = 1) {
             mailLogs: { data: righe(paginaCorrente === 1 ? 10 : 5), total: 15, current_page: paginaCorrente, last_page: 2, links },
             filters: { search: '' },
         } as never,
-        global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } },
+        global: {
+            stubs: {
+                AppLayout: { template: '<div><slot /></div>' },
+                PageHeaderGuide: { template: '<div><div>{{ pageTitle }}</div><div>{{ pageSubtitle }}</div><slot /></div>', props: ['pageTitle', 'pageSubtitle'] },
+            },
+        },
     });
 
     return pagina;
@@ -162,7 +167,12 @@ describe('le pagine del registro delle email si sfogliano (Coda 464)', () => {
                 ] },
                 filters: { search: '' },
             } as never,
-            global: { stubs: { AppLayout: { template: '<div><slot /></div>' } } },
+            global: {
+            stubs: {
+                AppLayout: { template: '<div><slot /></div>' },
+                PageHeaderGuide: { template: '<div><div>{{ pageTitle }}</div><div>{{ pageSubtitle }}</div><slot /></div>', props: ['pageTitle', 'pageSubtitle'] },
+            },
+        },
         });
 
         expect(pagina.text()).not.toContain('Pag. 1 di 1');

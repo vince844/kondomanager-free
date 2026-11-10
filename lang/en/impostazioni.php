@@ -278,6 +278,10 @@ return [
         'default_per_page_description' => 'How many rows tables show to those who have not chosen yet. Each person keeps their own choice, list by list: whoever changes it finds it again on their return.',
         'force_comment_moderation_title' => 'Force comment moderation',
         'force_comment_moderation_description' => 'If enabled, all comments from regular users will require admin approval before being published and visible.',
+        'allegati_moderati_di_serie_title' => 'Moderate attachments by default',
+        'allegati_moderati_di_serie_description' => 'Applies to new tickets and communications: uploaded files await approval, except those from users who can approve them. Each item can be changed from its page.',
+        'allegati_massimo_per_elemento_title' => 'Maximum attachments per item',
+        'allegati_massimo_per_elemento_description' => 'Maximum number of files that can be attached to each ticket or communication (default 5).',
 
         'mail_settings_title' => 'Email configuration',
         'mail_settings_description' => 'Choose the sending method, configure credentials and test the connection.',

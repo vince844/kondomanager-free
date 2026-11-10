@@ -1,5 +1,6 @@
 <script setup lang="ts">
 
+import { computed } from 'vue';
 import {Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -15,15 +16,19 @@ import { trans } from 'laravel-vue-i18n';
 import { Separator } from '@/components/ui/separator';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
+import AllegatiCampoModuli from '@/components/allegati/AllegatiCampoModuli.vue';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import type { Building } from '@/types/buildings';
 import type { PriorityType } from '@/types/comunicazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+const puoCaricareAllegati = computed(() => hasPermission([Permission.CREATE_ATTACHMENTS_COMUNICAZIONI]));
 
 const props = defineProps<{
   condomini: Building[];
+  allegati_massimo?: number;
 }>();  
 
 const form = useForm({
@@ -33,10 +38,20 @@ const form = useForm({
     condomini_ids: [],
     is_featured: false as boolean,
     is_private: false as boolean,
+    allegati: [] as File[],
+});
+
+const erroreAllegati = computed(() => {
+    const errs = form.errors as Record<string, string>;
+    for (const [k, v] of Object.entries(errs)) {
+        if (k === 'allegati' || k.startsWith('allegati.')) return v;
+    }
+    return undefined;
 });
 
 const submit = () => {
     form.post(route(generateRoute('comunicazioni.store')), {
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -117,7 +132,16 @@ const submit = () => {
                                 <InputError :message="form.errors.description" />
                     
                             </div>  
-                        </div> 
+                        </div>
+
+                        <div v-if="puoCaricareAllegati" class="border-t pt-4">
+                            <AllegatiCampoModuli
+                                v-model="form.allegati"
+                                :massimo="props.allegati_massimo ?? 5"
+                                :rimasti="props.allegati_massimo ?? 5"
+                                :error="erroreAllegati"
+                            />
+                        </div>
 
                     </div>
                 </div>

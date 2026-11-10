@@ -10,6 +10,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
 use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
 use App\Http\Requests\Comunicazione\CreateComunicazioneRequest;
+use App\Http\Resources\Allegati\AllegatoResource;
 use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
@@ -17,7 +18,9 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use App\Models\Condominio;
+use App\Services\Allegati\AllegatoService;
 use App\Services\ComunicazioneService;
+use App\Support\Allegati\RegoleAllegati;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -83,8 +86,8 @@ class ComunicazioneController extends Controller
                 'per_page'     => $comunicazioni->perPage(),
                 'total'        => $comunicazioni->total(),
             ],
-            // AGGIUNTA: Passiamo anche condominio_id al frontend per ripristinare lo stato
-            'filters' => Arr::only($validated, ['subject', 'priority', 'condominio_id']),
+            // Passiamo anche condominio_id e visibility al frontend per ripristinare lo stato
+            'filters' => Arr::only($validated, ['subject', 'priority', 'condominio_id', 'visibility']),
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
         ]);
@@ -107,8 +110,9 @@ class ComunicazioneController extends Controller
         Gate::authorize('create', $comunicazione);
 
         return Inertia::render('comunicazioni/ComunicazioniNew',[
-            'condomini'   => CondominioResource::collection(Condominio::all()),
-            'anagrafiche' => []
+            'condomini'        => CondominioResource::collection(Condominio::all()),
+            'anagrafiche'      => [],
+            'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
         ]);  
     }
 
@@ -131,6 +135,10 @@ class ComunicazioneController extends Controller
 
         $validated = $request->validated();
 
+        if ($request->hasFile('allegati')) {
+            abort_unless($request->user()->hasPermissionTo(RegoleAllegati::permesso('comunicazioni', 'carica')), 403);
+        }
+
         try {
 
             DB::beginTransaction();
@@ -141,12 +149,28 @@ class ComunicazioneController extends Controller
             if (!empty($validated['anagrafiche'])) {
                 $comunicazione->anagrafiche()->attach($validated['anagrafiche'] ?? []);
             }
+
+            if ($request->hasFile('allegati')) {
+                abort_unless(RegoleAllegati::puoCaricare($request->user(), $comunicazione), 403);
+                app(AllegatoService::class)->carica(
+                    $request->user(),
+                    $comunicazione,
+                    (array) $request->file('allegati', []),
+                    inCreazione: true
+                );
+            }
         
             DB::commit();
 
         } catch (\Exception $e) {
 
             DB::rollback();
+
+            if ($e instanceof \Illuminate\Validation\ValidationException
+                || $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+                || $e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                throw $e;
+            }
             
             Log::error('Error creating comunicazione: ' . $e->getMessage());
         
@@ -193,10 +217,18 @@ class ComunicazioneController extends Controller
     {
         Gate::authorize('show', $comunicazione);
 
+        $user = request()->user();
+        $comunicazioneCaricata = Comunicazione::with('createdBy.anagrafica')->findOrFail($comunicazione->id);
+
         return Inertia::render('comunicazioni/ComunicazioniView', [
-            'comunicazione' => new ComunicazioneResource(
-                Comunicazione::with('createdBy.anagrafica')->findOrFail($comunicazione->id)
+            'comunicazione' => new ComunicazioneResource($comunicazioneCaricata),
+            'allegati' => AllegatoResource::perScheda(
+                RegoleAllegati::visibiliInScheda($user, $comunicazioneCaricata),
+                $user,
+                $comunicazioneCaricata,
+                'admin'
             ),
+            'allegati_config' => RegoleAllegati::configScheda($user, $comunicazioneCaricata),
         ]);
     }
 

@@ -2,13 +2,14 @@
 
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
-import { Plus } from 'lucide-vue-next';
+import { Button } from '@/components/ui/button';
+import { Plus, X } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue';
-import { priorityConstants } from '@/lib/comunicazioni/constants';
+import { priorityConstants, visibilityConstants } from '@/lib/comunicazioni/constants';
 import { trans } from 'laravel-vue-i18n';
 import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
@@ -42,24 +43,32 @@ const condominioFilter = computed(() => {
   return Array.isArray(val) ? val : []
 })
 
+// Filtro Visibilità
+const visibilityColumn = table.getColumn('is_published')
+const visibilityFilter = computed(() => {
+  const val = visibilityColumn?.getFilterValue()
+  return Array.isArray(val) ? val : []
+})
+
 // Filtro Testo
 const nameFilter = ref('')
 
 // Una sola richiesta che porta tutto: filtri, pagina, righe per pagina, ordinamento
 const { filtra } = useTabellaServer(() => route(generateRoute('comunicazioni.index')))
 
-// DEBOUNCE AGGIORNATO (Ora osserva 3 filtri)
+// DEBOUNCE AGGIORNATO (Ora osserva 4 filtri)
 watchDebounced(
-  [nameFilter, priorityFilter, condominioFilter],
-  ([subject, priority, condominio_id]) => {
+  [nameFilter, priorityFilter, condominioFilter, visibilityFilter],
+  ([subject, priority, condominio_id, visibility]) => {
     filtra(
       {
         subject: subject || null,
         priority: priority.length > 0 ? priority : null,
         condominio_id: condominio_id.length > 0 ? condominio_id : null,
+        visibility: visibility.length > 0 ? visibility : null,
       },
       () => {
-        if (!subject && priority.length === 0 && condominio_id.length === 0) {
+        if (!subject && priority.length === 0 && condominio_id.length === 0 && visibility.length === 0) {
           table.reset()
         }
       },
@@ -67,6 +76,19 @@ watchDebounced(
   },
   { debounce: 300 }
 )
+
+const clearAllFilters = () => {
+  nameFilter.value = ''
+  priorityColumn?.setFilterValue(undefined)
+  condominioColumn?.setFilterValue(undefined)
+  visibilityColumn?.setFilterValue(undefined)
+
+  router.get(route(generateRoute('comunicazioni.index')), { page: 1 }, {
+    preserveState: true,
+    replace: true,
+    preserveScroll: true,
+  });
+}
 </script>
 
 <template>
@@ -100,6 +122,27 @@ watchDebounced(
           @update:filter="() => {}"
           class="w-full lg:w-auto"
         />
+
+        <DataTableFacetedFilter
+          v-if="visibilityColumn"
+          :column="visibilityColumn"
+          :title="trans('comunicazioni.table.visibility')"
+          :options="visibilityConstants"
+          :isLoading="false"
+          @update:filter="() => {}"
+          class="w-full lg:w-auto"
+        />
+
+        <Button
+          v-if="nameFilter || priorityFilter.length || condominioFilter.length || visibilityFilter.length"
+          variant="ghost"
+          size="sm"
+          @click="clearAllFilters"
+          class="h-8 px-2 lg:px-3 text-slate-500 hover:bg-slate-100"
+        >
+          <X class="w-4 h-4 mr-2" />
+          {{ trans('comunicazioni.table.clear_all_filters') }}
+        </Button>
       </div>
 
     </div>

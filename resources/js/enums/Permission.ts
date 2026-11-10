@@ -50,6 +50,15 @@ export enum Permission {
   EDIT_COMMENTS_COMUNICAZIONI = 'Modifica commenti comunicazioni',
   DELETE_COMMENTS_COMUNICAZIONI = 'Elimina commenti comunicazioni',
   VIEW_COMMENTS_COMUNICAZIONI = 'Visualizza commenti comunicazioni',
+  // Allegati comunicazioni
+  CREATE_ATTACHMENTS_COMUNICAZIONI = 'Carica allegati comunicazioni',
+  PUBLISH_ATTACHMENTS_COMUNICAZIONI = 'Pubblica allegati comunicazioni',
+  APPROVE_ATTACHMENTS_COMUNICAZIONI = 'Approva allegati comunicazioni',
+  EDIT_ATTACHMENTS_COMUNICAZIONI = 'Modifica allegati comunicazioni',
+  EDIT_OWN_ATTACHMENTS_COMUNICAZIONI = 'Modifica propri allegati comunicazioni',
+  DELETE_ATTACHMENTS_COMUNICAZIONI = 'Elimina allegati comunicazioni',
+  DELETE_OWN_ATTACHMENTS_COMUNICAZIONI = 'Elimina propri allegati comunicazioni',
+  VIEW_ATTACHMENTS_COMUNICAZIONI = 'Visualizza allegati comunicazioni',
   // Segnalazioni guasti
   CREATE_SEGNALAZIONI = 'Crea segnalazioni',
   APPROVE_SEGNALAZIONI = 'Approva segnalazioni',
@@ -69,6 +78,15 @@ export enum Permission {
   PUBLISH_COMMENTS_SEGNALAZIONI = 'Pubblica commenti segnalazioni',
   APPROVE_COMMENTS_SEGNALAZIONI = 'Approva commenti segnalazioni',
   VIEW_COMMENTS_SEGNALAZIONI = 'Visualizza commenti segnalazioni',
+  // Allegati segnalazioni
+  CREATE_ATTACHMENTS_SEGNALAZIONI = 'Carica allegati segnalazioni',
+  PUBLISH_ATTACHMENTS_SEGNALAZIONI = 'Pubblica allegati segnalazioni',
+  APPROVE_ATTACHMENTS_SEGNALAZIONI = 'Approva allegati segnalazioni',
+  EDIT_ATTACHMENTS_SEGNALAZIONI = 'Modifica allegati segnalazioni',
+  EDIT_OWN_ATTACHMENTS_SEGNALAZIONI = 'Modifica propri allegati segnalazioni',
+  DELETE_ATTACHMENTS_SEGNALAZIONI = 'Elimina allegati segnalazioni',
+  DELETE_OWN_ATTACHMENTS_SEGNALAZIONI = 'Elimina propri allegati segnalazioni',
+  VIEW_ATTACHMENTS_SEGNALAZIONI = 'Visualizza allegati segnalazioni',
   // Documenti archivio
   VIEW_ARCHIVE_DOCUMENTS = 'Visualizza documenti archivio',
   CREATE_ARCHIVE_DOCUMENTS = 'Crea documenti archivio',

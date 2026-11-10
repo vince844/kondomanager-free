@@ -9,6 +9,7 @@ use App\Enums\Permission;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
+use App\Http\Resources\Allegati\AllegatoResource;
 use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -18,7 +19,9 @@ use App\Models\Commento;
 use App\Models\Condominio;
 use App\Models\Evento;
 use App\Models\Segnalazione;
+use App\Services\Allegati\AllegatoService;
 use App\Services\SegnalazioneService;
+use App\Support\Allegati\RegoleAllegati;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
@@ -82,8 +85,8 @@ class SegnalazioneController extends Controller
                 'per_page'     => $segnalazioni->perPage(),
                 'total'        => $segnalazioni->total(),
             ],
-            // AGGIUNTO: condominio_id per ripristinare lo stato del filtro nel frontend
-            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id']),
+            // Filtri per ripristinare lo stato nel frontend
+            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id', 'visibility']),
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
         ]);
@@ -106,8 +109,9 @@ class SegnalazioneController extends Controller
         // Della rubrica la tendina «Anagrafiche» legge l'id e il nome (Coda 408): il resto della persona sta nella sua
         // scheda, che chiede «Visualizza anagrafiche».
         return Inertia::render('segnalazioni/SegnalazioniNew',[
-            'condomini'   => CondominioResource::collection(Condominio::all()),
-            'anagrafiche' => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome']))
+            'condomini'        => CondominioResource::collection(Condominio::all()),
+            'anagrafiche'      => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
+            'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
         ]); 
     }
 
@@ -131,6 +135,10 @@ class SegnalazioneController extends Controller
         
         $validated = $request->validated(); 
 
+        if ($request->hasFile('allegati')) {
+            abort_unless($request->user()->hasPermissionTo(RegoleAllegati::permesso('segnalazioni', 'carica')), 403);
+        }
+
         try {
 
             DB::beginTransaction();
@@ -139,6 +147,16 @@ class SegnalazioneController extends Controller
 
             if (!empty($validated['anagrafiche'])) {
                 $segnalazione->anagrafiche()->attach($validated['anagrafiche']);
+            }
+
+            if ($request->hasFile('allegati')) {
+                abort_unless(RegoleAllegati::puoCaricare($request->user(), $segnalazione), 403);
+                app(AllegatoService::class)->carica(
+                    $request->user(),
+                    $segnalazione,
+                    (array) $request->file('allegati', []),
+                    inCreazione: true
+                );
             }
 
             DB::commit();
@@ -152,6 +170,12 @@ class SegnalazioneController extends Controller
         } catch (\Exception $e) {
         
             DB::rollback();
+
+            if ($e instanceof \Illuminate\Validation\ValidationException
+                || $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+                || $e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                throw $e;
+            }
 
             Log::error('Error creating segnalazione: ' . $e->getMessage());
 
@@ -217,6 +241,13 @@ class SegnalazioneController extends Controller
             'rendi_pubblica' => [
                 'autore_perde_la_scheda' => $segnalazioneCaricata->autorePerdeLaSchedaConRendiPubblica(),
             ],
+            'allegati' => AllegatoResource::perScheda(
+                RegoleAllegati::visibiliInScheda($user, $segnalazioneCaricata),
+                $user,
+                $segnalazioneCaricata,
+                'admin'
+            ),
+            'allegati_config' => RegoleAllegati::configScheda($user, $segnalazioneCaricata),
         ]);
     }
 

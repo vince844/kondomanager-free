@@ -278,6 +278,10 @@ return [
         'default_per_page_description' => 'Quantas linhas as tabelas mostram a quem ainda não escolheu. A escolha de cada um continua a valer, lista a lista: quem a alterar volta a encontrá-la ao regressar.',
         'force_comment_moderation_title' => 'Forçar moderação de comentários',
         'force_comment_moderation_description' => 'Se ativado, todos os comentários de utilizadores normais exigirão aprovação de um administrador antes de serem publicados e visíveis.',
+        'allegati_moderati_di_serie_title' => 'Anexos em moderação por padrão',
+        'allegati_moderati_di_serie_description' => 'Vale para as sinalizações e os avisos novos: os ficheiros carregados aguardam aprovação, exceto os de quem os pode aprovar. Cada elemento altera-se na sua ficha.',
+        'allegati_massimo_per_elemento_title' => 'Número máximo de anexos por elemento',
+        'allegati_massimo_per_elemento_description' => 'Quantos ficheiros podem ser anexados no máximo a cada sinalização ou aviso (por padrão 5).',
 
         'mail_settings_title' => 'Configuração de email',
         'mail_settings_description' => 'Escolha o método de envio, configure as credenciais e teste a ligação.',

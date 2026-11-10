@@ -11,6 +11,7 @@ return [
     'bacheca'       => "Communications",
     'segnalazioni'  => "Tickets",
     'documenti'     => "Documents",
+    'allegati'      => "Adjuntos",
     'agenda'        => "Calendar",
     'repository'    => "Repository",
     'documentation' => "Documentation",

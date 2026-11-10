@@ -4,8 +4,10 @@ namespace App\Http\Requests\Comunicazione;
 
 use App\Enums\Permission;
 use App\Rules\CondominioDellUtente;
+use App\Support\Allegati\RegoleAllegati;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -44,7 +46,24 @@ class CreateUserComunicazioneRequest extends FormRequest
             // `integer` prima di tutto: un elemento-array arriverebbe ad attach() come «chiave = id da
             // collegare», e la chiave non la controlla nessuno.
             'condomini_ids.*' => ['bail', 'integer', Rule::exists('condomini', 'id'), new CondominioDellUtente()],
+            ...RegoleAllegati::regoleValidazioneFile(obbligatorio: false),
         ];
+    }
+
+    /**
+     * @return array<int, \Closure(Validator): void>
+     */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            if ($validator->errors()->isNotEmpty() || ! $this->hasFile('allegati')) {
+                return;
+            }
+
+            if ($errore = RegoleAllegati::erroreSpazio((array) $this->file('allegati', []))) {
+                $validator->errors()->add('allegati', $errore);
+            }
+        }];
     }
 
     /**

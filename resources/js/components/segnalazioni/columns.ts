@@ -207,9 +207,9 @@ export const columns: ColumnDef<Segnalazione>[] = [
       
       if (!status) return null
       
-      return h('div', { class: 'flex items-center gap-2' }, [
-        h(status.icon, { class: `h-4 w-4 ${status.colorClass}` }),
-        h('span', trans(status.label))
+      return h('div', { class: 'flex items-center gap-2 whitespace-nowrap' }, [
+        h(status.icon, { class: `h-4 w-4 shrink-0 ${status.colorClass}` }),
+        h('span', { class: 'whitespace-nowrap' }, trans(status.label))
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
@@ -224,10 +224,10 @@ export const columns: ColumnDef<Segnalazione>[] = [
       if (!priority) return null
       
       return h('div', { 
-        class: `flex items-center gap-2`
+        class: `flex items-center gap-2 whitespace-nowrap`
       }, [
-        h(priority.icon, { class: `h-4 w-4 ${priority.colorClass}` }),
-        h('span', trans(priority.label))
+        h(priority.icon, { class: `h-4 w-4 shrink-0 ${priority.colorClass}` }),
+        h('span', { class: 'whitespace-nowrap' }, trans(priority.label))
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
@@ -243,19 +243,24 @@ export const columns: ColumnDef<Segnalazione>[] = [
       const stato = statoPubblicazione(row.getValue('is_published'), segnalazione.is_approved);
       const privata = etichettaPrivacy('segnalazioni', segnalazione.is_private);
 
-      return h('div', { class: 'flex items-center gap-2' }, [
+      return h('div', { class: 'flex items-center gap-2 whitespace-nowrap' }, [
         h('span', { class: `h-2 w-2 shrink-0 rounded-full ${colorePubblicazione(stato)}` }),
-        h('span', trans(etichettaStatoPubblicazione('segnalazioni', row.getValue('is_published'), segnalazione.is_approved))),
+        h('span', { class: 'whitespace-nowrap' }, trans(etichettaStatoPubblicazione('segnalazioni', row.getValue('is_published'), segnalazione.is_approved))),
         privata
-          ? h('span', { class: 'inline-flex items-center gap-1 text-xs text-slate-500', title: trans('segnalazioni.privacy.private_hint') }, [
-              h(Lock, { class: 'h-3 w-3' }),
-              trans(privata),
+          ? h('span', { class: 'inline-flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap', title: trans('segnalazioni.privacy.private_hint') }, [
+              h(Lock, { class: 'h-3 w-3 shrink-0' }),
+              h('span', { class: 'whitespace-nowrap' }, trans(privata)),
             ])
           : null,
       ]);
     },
-    filterFn: (row, id, value) =>
-      value.includes(Boolean(row.getValue(id))),
+    filterFn: (row, _id, value) => {
+      if (!Array.isArray(value) || value.length === 0) return true;
+      const segnalazione = row.original as unknown as Record<string, unknown>;
+      const stato = statoPubblicazione(row.getValue('is_published'), segnalazione.is_approved);
+      const isPrivate = Boolean(segnalazione.is_private);
+      return value.includes(stato) || (isPrivate && value.includes('private'));
+    },
   },
   {
     id: 'actions',

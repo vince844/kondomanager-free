@@ -77,6 +77,7 @@ return [
         'title'                 => 'Título',
         'buildings'             => 'Condomínios',
         'residents'             => 'Registos',          
+        'visibility'            => 'Visibilidade',
         'selected'              => 'Selecionados',
         'loading'               => 'A carregar...',
         'no_results'            => 'Nenhum resultado encontrado.',

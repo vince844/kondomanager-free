@@ -171,5 +171,21 @@ return [
             'label' => 'Commento da moderare',
             'description' => 'Ricevi una notifica quando un nuovo commento richiede la tua approvazione',
         ],
+        'new_attachment' => [
+            'label' => 'Nuovo allegato',
+            'description' => 'Ricevi una notifica quando vengono aggiunti file a una segnalazione a cui partecipi',
+        ],
+        'attachment_approved' => [
+            'label' => 'Allegato approvato',
+            'description' => 'Ricevi una notifica quando un tuo allegato in attesa viene approvato',
+        ],
+        'attachment_deleted' => [
+            'label' => 'Allegato eliminato',
+            'description' => 'Ricevi una notifica quando un tuo allegato viene eliminato da un altro',
+        ],
+        'attachment_under_moderation' => [
+            'label' => 'Allegato da approvare',
+            'description' => 'Ricevi una notifica quando un nuovo allegato richiede la tua approvazione',
+        ],
     ],
 ];

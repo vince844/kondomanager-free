@@ -171,5 +171,21 @@ return [
             'label' => 'Comentário a aguardar moderação',
             'description' => 'Receba uma notificação quando um novo comentário exigir a sua aprovação',
         ],
+        'new_attachment' => [
+            'label' => 'Novo anexo',
+            'description' => 'Receba uma notificação quando forem adicionados ficheiros a uma sinalização em que participa',
+        ],
+        'attachment_approved' => [
+            'label' => 'Anexo aprovado',
+            'description' => 'Receba uma notificação quando um anexo seu pendente for aprovado',
+        ],
+        'attachment_deleted' => [
+            'label' => 'Anexo eliminado',
+            'description' => 'Receba uma notificação quando um anexo seu for eliminado por outra pessoa',
+        ],
+        'attachment_under_moderation' => [
+            'label' => 'Anexo a aprovar',
+            'description' => 'Receba uma notificação quando um novo anexo exigir a sua aprovação',
+        ],
     ],
 ];

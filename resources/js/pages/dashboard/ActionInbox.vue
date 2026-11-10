@@ -8,7 +8,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import {
     Banknote, AlertTriangle, Wrench, CheckCircle2, XCircle, ArrowRight,
     Inbox, ChevronLeft, Loader2, Building2, User,
-    ArrowUpFromLine, ArrowDownToLine, MessageSquare, TriangleAlert,
+    ArrowUpFromLine, ArrowDownToLine, MessageSquare, Files, TriangleAlert,
     CalendarClock, ChevronDown, X, Zap
 } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -99,6 +99,13 @@ const STATUS_TOKENS: Record<string, { border: string, bg: string, iconBg: string
         text: 'text-amber-700'
     },
     commento: {
+        border: 'border-l-indigo-500',
+        bg: 'hover:bg-indigo-50/30',
+        iconBg: 'bg-indigo-100',
+        iconColor: 'text-indigo-600',
+        text: 'text-indigo-700'
+    },
+    allegato: {
         border: 'border-l-indigo-500',
         bg: 'hover:bg-indigo-50/30',
         iconBg: 'bg-indigo-100',
@@ -402,6 +409,7 @@ const getDateLabel = (dateStr: string | null) => {
                                     <ArrowUpFromLine v-else-if="task.type === 'emissione_rata'" class="w-4 h-4" />
                                     <Banknote v-else-if="task.type === 'verifica_pagamento'" class="w-4 h-4" />
                                     <MessageSquare v-else-if="task.type === 'commento'" class="w-4 h-4" />
+                                    <Files v-else-if="task.type === 'allegato'" class="w-4 h-4" />
                                     <Wrench v-else-if="task.type === 'segnalazione_guasto'" class="w-4 h-4" />
                                     <CalendarClock v-else class="w-4 h-4" />
                                 </div>

@@ -171,5 +171,21 @@ return [
             'label' => 'Comment to be moderated',
             'description' => 'Receive a notification when a new comment requires your approval',
         ],
+        'new_attachment' => [
+            'label' => 'Nuevo adjunto',
+            'description' => 'Recibe una notificación cuando se añaden archivos a una incidencia en la que participas',
+        ],
+        'attachment_approved' => [
+            'label' => 'Adjunto aprobado',
+            'description' => 'Recibe una notificación cuando un adjunto tuyo en espera es aprobado',
+        ],
+        'attachment_deleted' => [
+            'label' => 'Adjunto eliminado',
+            'description' => 'Recibe una notificación cuando un adjunto tuyo es eliminado por otro',
+        ],
+        'attachment_under_moderation' => [
+            'label' => 'Adjunto por aprobar',
+            'description' => 'Recibe una notificación cuando un nuevo adjunto requiere tu aprobación',
+        ],
     ],
 ];

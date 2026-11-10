@@ -8,13 +8,16 @@ use App\Events\Segnalazioni\NotifyAdminOfCreatedSegnalazione;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
 use App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest;
+use App\Http\Resources\Allegati\AllegatoResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Portale\SegnalazionePortaleResource;
 use App\Models\Anagrafica;
 use App\Models\Commento;
 use App\Models\Segnalazione;
+use App\Services\Allegati\AllegatoService;
 use App\Services\Notifiche\DestinatariNotifica;
 use App\Services\SegnalazioneService;
+use App\Support\Allegati\RegoleAllegati;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
@@ -125,7 +128,8 @@ class SegnalazioneController extends Controller
         $condomini = $anagrafica->condomini;
 
         return Inertia::render('segnalazioni/user/SegnalazioniNew',[
-            'condomini' => CondominioOptionsResource::collection($condomini)
+            'condomini'        => CondominioOptionsResource::collection($condomini),
+            'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
         ]); 
     }
 
@@ -151,6 +155,10 @@ class SegnalazioneController extends Controller
 
         $validated = $request->validated();
 
+        if ($request->hasFile('allegati')) {
+            abort_unless($request->user()->hasPermissionTo(RegoleAllegati::permesso('segnalazioni', 'carica')), 403);
+        }
+
         try {
 
             DB::beginTransaction();
@@ -160,6 +168,16 @@ class SegnalazioneController extends Controller
             if ($validated['is_private']) {
                 $anagrafica = $this->getUserAnagrafica();
                 $segnalazione->anagrafiche()->attach($anagrafica);
+            }
+
+            if ($request->hasFile('allegati')) {
+                abort_unless(RegoleAllegati::puoCaricare($request->user(), $segnalazione), 403);
+                app(AllegatoService::class)->carica(
+                    $request->user(),
+                    $segnalazione,
+                    (array) $request->file('allegati', []),
+                    inCreazione: true
+                );
             }
 
             DB::commit();
@@ -177,6 +195,12 @@ class SegnalazioneController extends Controller
         } catch (\Exception $e) {
 
             DB::rollback();
+
+            if ($e instanceof \Illuminate\Validation\ValidationException
+                || $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+                || $e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                throw $e;
+            }
 
             Log::error('Error user creating user segnalazione: ' . $e->getMessage());
 
@@ -229,6 +253,13 @@ class SegnalazioneController extends Controller
                 'can_moderate' => false,
                 'can_publish'  => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
             ],
+            'allegati' => AllegatoResource::perScheda(
+                RegoleAllegati::visibiliInScheda($user, $segnalazioneCaricata),
+                $user,
+                $segnalazioneCaricata,
+                'user'
+            ),
+            'allegati_config' => RegoleAllegati::configScheda($user, $segnalazioneCaricata),
         ]);
     }
 

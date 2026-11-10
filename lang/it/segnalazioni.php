@@ -258,7 +258,7 @@ return [
      | Pubblicazione e privacy (Code 304 e 306)
      | ------------------------------------------------------------------ */
     'publication' => [
-        'pending'   => 'In attesa di approvazione',
+        'pending'   => 'Da approvare',
         'draft'     => 'Bozza',
         'published' => 'Pubblicata',
         'needs_approval' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata, con lo scudo accanto al titolo nell\'elenco delle segnalazioni.',

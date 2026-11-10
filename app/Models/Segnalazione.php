@@ -38,7 +38,38 @@ class Segnalazione extends Model implements Commentable
         'is_published',
         'is_approved',
         'can_comment',
+        'allegati_accesso',
+        'allegati_moderati',
     ];
+
+    protected $casts = [
+        'allegati_moderati' => 'boolean',
+    ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $segnalazione) {
+            if (! array_key_exists('allegati_accesso', $segnalazione->getAttributes()) || $segnalazione->allegati_accesso === null) {
+                $segnalazione->allegati_accesso = 'aperti';
+            }
+            if (! array_key_exists('allegati_moderati', $segnalazione->getAttributes()) || $segnalazione->allegati_moderati === null) {
+                $segnalazione->allegati_moderati = app(\App\Settings\GeneralSettings::class)->allegati_moderati_di_serie;
+            }
+        });
+
+        static::deleting(function (self $segnalazione) {
+            app(\App\Services\Allegati\AllegatoService::class)->preparaPuliziaPerElemento($segnalazione);
+        });
+
+        static::deleted(function (self $segnalazione) {
+            app(\App\Services\Allegati\AllegatoService::class)->completaPuliziaPerElemento($segnalazione);
+        });
+    }
+
+    public function allegati(): MorphMany
+    {
+        return $this->morphMany(Documento::class, 'documentable')->orderBy('id');
+    }
 
     // -------------------------------------------------------------------------
     // Contratto Commentable

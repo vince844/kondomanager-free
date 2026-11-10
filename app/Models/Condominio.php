@@ -68,6 +68,17 @@ class Condominio extends Model
         'numero_piani' => 'integer',
     ];
 
+    protected static function booted(): void
+    {
+        static::deleting(function (self $condominio) {
+            app(\App\Services\Allegati\AllegatoService::class)->preparaPuliziaPerCondominio($condominio);
+        });
+
+        static::deleted(function (self $condominio) {
+            app(\App\Services\Allegati\AllegatoService::class)->completaPuliziaPerCondominio($condominio);
+        });
+    }
+
     /**
      * Le anagrafiche (condòmini, fornitori, professionisti) associate al condominio.
      */

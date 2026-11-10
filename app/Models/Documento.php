@@ -17,8 +17,7 @@ class Documento extends Model
         'is_approved',
         'path',
         'mime_type',
-        'file_size', 
-
+        'file_size',
     ];
 
     /**
@@ -59,6 +58,11 @@ class Documento extends Model
     public function updatedBy()
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function moderatoDa()
+    {
+        return $this->belongsTo(User::class, 'moderato_da');
     }
 
 

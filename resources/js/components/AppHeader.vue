@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound, List, DownloadCloud } from 'lucide-vue-next';
+import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound, List, DownloadCloud, Files } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -32,6 +32,14 @@ const auth = computed<Auth>(() => page.props.auth as Auth);
 
 // AGGIUNTO: Recupera stato update
 const updateAvailable = computed(() => page.props.system_update?.available || false)
+const allegatiInAttesa = computed(() => Number(page.props.allegati_in_attesa ?? 0))
+const puoAprireAllegati = computed(() =>
+    hasPermission([Permission.ACCESS_ADMIN_PANEL]) &&
+    hasPermission([
+        Permission.VIEW_ATTACHMENTS_SEGNALAZIONI,
+        Permission.VIEW_ATTACHMENTS_COMUNICAZIONI,
+    ])
+)
 
 // Active route helper
 const isCurrentRoute = (url?: string) => url && page.url === url;
@@ -79,6 +87,14 @@ const mainNavItems = computed<NavItem[]>(() => [
         icon: Folders,
         permissions: [Permission.VIEW_ARCHIVE_DOCUMENTS],
     },
+    ...(puoAprireAllegati.value
+        ? [{
+            type: 'link' as const,
+            title: trans('appHeader.allegati'),
+            href: '/admin/allegati',
+            icon: Files,
+        }]
+        : []),
     { type: 'link', title: trans('appHeader.agenda'), href: generatePath('eventi'), icon: CalendarClock, permissions: [Permission.VIEW_EVENTS] },
 ]);
 
@@ -168,6 +184,12 @@ const isMobileItemExpanded = (title: string) =>
                                     >
                                         <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
                                         {{ item.title }}
+                                        <span
+                                            v-if="item.href === '/admin/allegati' && allegatiInAttesa > 0"
+                                            class="ml-auto inline-flex items-center justify-center rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300 tabular-nums"
+                                        >
+                                            {{ allegatiInAttesa }}
+                                        </span>
                                     </Link>
                                 </template>
 
@@ -240,6 +262,12 @@ const isMobileItemExpanded = (title: string) =>
                             >
                                 <component v-if="item.icon" :is="item.icon" class="mr-2 h-4 w-4" />
                                 {{ item.title }}
+                                <span
+                                    v-if="item.href === '/admin/allegati' && allegatiInAttesa > 0"
+                                    class="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-300 tabular-nums"
+                                >
+                                    {{ allegatiInAttesa }}
+                                </span>
                             </Link>
                         </template>
                     </nav>

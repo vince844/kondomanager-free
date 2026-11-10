@@ -4,6 +4,7 @@ namespace App\Http\Requests\Comunicazione;
 
 use App\Enums\Permission;
 use App\Models\Comunicazione;
+use App\Support\Allegati\RegoleAllegati;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -51,6 +52,7 @@ class CreateComunicazioneRequest extends FormRequest
         if (! $this->inModifica()) {
             $regole['created_by'] = 'required|exists:users,id';
             $regole['is_approved'] = 'required|boolean';
+            $regole += RegoleAllegati::regoleValidazioneFile(obbligatorio: false);
         }
 
         return $regole;
@@ -73,6 +75,12 @@ class CreateComunicazioneRequest extends FormRequest
     public function after(): array
     {
         return [function (Validator $validator): void {
+            if (! $this->inModifica() && $validator->errors()->isEmpty() && $this->hasFile('allegati')) {
+                if ($errore = RegoleAllegati::erroreSpazio((array) $this->file('allegati', []))) {
+                    $validator->errors()->add('allegati', $errore);
+                }
+            }
+
             $comunicazione = $this->route('comunicazione');
 
             if (! ($comunicazione instanceof Comunicazione) || ! $comunicazione->is_private

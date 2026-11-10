@@ -11,6 +11,7 @@ return [
     'bacheca'       => "Bacheca",
     'segnalazioni'  => "Segnalazioni",
     'documenti'     => "Documenti",
+    'allegati'      => "Allegati",
     'agenda'        => "Agenda",
     'repository'    => "Repository",
     'documentation' => "Documentazione",

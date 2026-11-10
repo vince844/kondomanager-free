@@ -26,6 +26,8 @@ final class ArchivioDocumenti
 {
     public const CARTELLA = 'documenti';
 
+    public const TIPI_INLINE = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
     public function nomeDisco(): string
     {
         return (string) config('kondomanager.disco_documenti', 'local');
@@ -138,10 +140,43 @@ final class ArchivioDocumenti
      * ha `stream_reads`, così l'oggetto scorre verso il browser invece di essere scaricato per
      * intero sul server prima). Su S3 un file che non c'è o un bucket che non risponde sollevano:
      * i chiamanti lo catturano e rispondono con il loro messaggio.
+     *
+     * @param  array<string, string>  $headers
      */
-    public function scarica(string $path, string $nome): StreamedResponse
+    public function scarica(string $path, string $nome, array $headers = []): StreamedResponse
     {
-        return $this->disco()->download($path, $nome);
+        return $this->conStatus($this->disco()->download($path, $nome, $headers));
+    }
+
+    /**
+     * Apertura nel browser (`inline`) solo per i tipi consentiti (`image/jpeg`, `image/png`,
+     * `image/webp`, `application/pdf`), con `X-Content-Type-Options: nosniff`. Ogni altro tipo
+     * si consegna come scaricamento con `application/octet-stream`.
+     */
+    public function apri(string $path, string $nome, string $mimeType): StreamedResponse
+    {
+        if (! in_array($mimeType, self::TIPI_INLINE, true)) {
+            return $this->conStatus($this->disco()->download($path, $nome, [
+                'Content-Type'           => 'application/octet-stream',
+                'X-Content-Type-Options' => 'nosniff',
+            ]));
+        }
+
+        return $this->conStatus($this->disco()->response($path, $nome, [
+            'Content-Type'           => $mimeType,
+            'X-Content-Type-Options' => 'nosniff',
+        ], 'inline'));
+    }
+
+    private function conStatus(StreamedResponse $risposta): StreamedResponse
+    {
+        return new class($risposta->getCallback(), $risposta->getStatusCode(), $risposta->headers->all()) extends StreamedResponse
+        {
+            public function status(): int
+            {
+                return $this->getStatusCode();
+            }
+        };
     }
 
     /**

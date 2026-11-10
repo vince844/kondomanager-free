@@ -80,6 +80,21 @@ class SegnalazioneService
             ->when($validated['condominio_id'] ?? false, fn($q, $condominioIds) =>
                 $q->whereIn('condominio_id', (array) $condominioIds)
             )
+            ->when($validated['visibility'] ?? false, function ($q, $visibilities) {
+                $q->where(function ($subQuery) use ($visibilities) {
+                    foreach ((array) $visibilities as $vis) {
+                        if ($vis === 'published') {
+                            $subQuery->orWhere(fn ($sq) => $sq->where('is_approved', true)->where('is_published', true));
+                        } elseif ($vis === 'draft') {
+                            $subQuery->orWhere(fn ($sq) => $sq->where('is_approved', true)->where('is_published', false));
+                        } elseif ($vis === 'pending') {
+                            $subQuery->orWhere('is_approved', false);
+                        } elseif ($vis === 'private') {
+                            $subQuery->orWhere('is_private', true);
+                        }
+                    }
+                });
+            })
             ->orderBy('created_at', 'desc');
 
         // --- LOGICA DI OTTIMIZZAZIONE ---

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Allegati\AllegatoController;
 use App\Http\Controllers\Anagrafiche\Utenti\AnagraficaController;
 use App\Http\Controllers\Comunicazioni\Utenti\ComunicazioneController;
 use App\Http\Controllers\Documenti\Utenti\CategoriaDocumentoController;
@@ -55,6 +56,29 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
         ->parameters([
             'comunicazioni' => 'comunicazione'
         ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Allegati Segnalazioni e Comunicazioni Routes (Utenti)
+    |--------------------------------------------------------------------------
+    */
+    Route::post('segnalazioni/{segnalazione}/allegati', [AllegatoController::class, 'storeSegnalazione'])
+        ->name('segnalazioni.allegati.store');
+
+    Route::post('comunicazioni/{comunicazione}/allegati', [AllegatoController::class, 'storeComunicazione'])
+        ->name('comunicazioni.allegati.store');
+
+    Route::get('allegati/{allegato}/apri', [AllegatoController::class, 'apri'])
+        ->name('allegati.apri');
+
+    Route::get('allegati/{allegato}/scarica', [AllegatoController::class, 'scarica'])
+        ->name('allegati.scarica');
+
+    Route::patch('allegati/{allegato}', [AllegatoController::class, 'update'])
+        ->name('allegati.update');
+
+    Route::delete('allegati/{allegato}', [AllegatoController::class, 'destroy'])
+        ->name('allegati.destroy');
 
     // `only()` e non `except(['update'])`: l'`update` sta a parte più sotto perché accetta anche
     // `POST`. L'`except` però lasciava registrate anche `index` e `show`, che il

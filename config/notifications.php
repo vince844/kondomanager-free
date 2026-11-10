@@ -71,6 +71,21 @@ return [
                 'description' => 'Ricevi una notifica quando un tuo commento viene eliminato o nascosto',
                 'permission'  => Permission::COMMENT_SEGNALAZIONI
             ],
+            NotificationType::NEW_ATTACHMENT->value => [
+                'label'       => 'Nuovo allegato',
+                'description' => 'Ricevi una notifica quando viene aggiunto un allegato a una segnalazione a cui partecipi',
+                'permission'  => Permission::CREATE_ATTACHMENTS_SEGNALAZIONI,
+            ],
+            NotificationType::ATTACHMENT_APPROVED->value => [
+                'label'       => 'Allegato approvato',
+                'description' => 'Ricevi una notifica quando un tuo allegato in attesa viene approvato',
+                'permission'  => Permission::CREATE_ATTACHMENTS_SEGNALAZIONI,
+            ],
+            NotificationType::ATTACHMENT_DELETED->value => [
+                'label'       => 'Allegato eliminato',
+                'description' => 'Ricevi una notifica quando un tuo allegato viene eliminato',
+                'permission'  => Permission::CREATE_ATTACHMENTS_SEGNALAZIONI,
+            ],
         ],
         'admin' => [
             NotificationType::NEW_USER->value => [
@@ -82,6 +97,11 @@ return [
                 'label'       => 'Commento da moderare',
                 'description' => 'Ricevi una notifica quando un nuovo commento richiede la tua approvazione',
                 'permission'  => Permission::APPROVE_COMMENTS_SEGNALAZIONI,
+            ],
+            NotificationType::ATTACHMENT_UNDER_MODERATION->value => [
+                'label'       => 'Allegato da moderare',
+                'description' => 'Ricevi una notifica quando un nuovo allegato richiede la tua approvazione',
+                'permission'  => Permission::APPROVE_ATTACHMENTS_SEGNALAZIONI,
             ],
         ],
     ],

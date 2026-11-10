@@ -77,6 +77,7 @@ return [
         'title'              => 'Titolo',
         'buildings'          => 'Condomini',
         'residents'          => 'Anagrafiche',
+        'visibility'         => 'Visibilità',
         'selected'           => 'Selezionati',
         'loading'            => 'Caricamento...',
         'no_results'         => 'Nessun risultato trovato.',
@@ -225,7 +226,7 @@ return [
      | Pubblicazione e privacy (Coda 306)
      | ------------------------------------------------------------------ */
     'publication' => [
-        'pending'   => 'In attesa di approvazione',
+        'pending'   => 'Da approvare',
         'draft'     => 'Bozza',
         'published' => 'Pubblicata',
         'needs_approval' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata, con lo scudo accanto al titolo nell\'elenco delle comunicazioni.',

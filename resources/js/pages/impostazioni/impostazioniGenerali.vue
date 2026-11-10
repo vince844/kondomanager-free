@@ -103,6 +103,12 @@ const form = useForm({
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
   force_comment_moderation: Boolean(page.props.force_comment_moderation),
+  allegati_moderati_di_serie: page.props.allegati_moderati_di_serie !== undefined
+    ? Boolean(page.props.allegati_moderati_di_serie)
+    : true,
+  allegati_massimo_per_elemento: (page.props as Record<string, unknown>).allegati_massimo_per_elemento !== undefined
+    ? Number((page.props as Record<string, unknown>).allegati_massimo_per_elemento)
+    : 5,
   default_per_page: Number(default_per_page) || 10,
 })
 
@@ -344,6 +350,42 @@ const submit = () => {
                 </p>
               </div>
               <Switch v-model="form.force_comment_moderation" />
+            </div>
+
+            <!-- MODERAZIONE ALLEGATI DI SERIE -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.allegati_moderati_di_serie_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.allegati_moderati_di_serie_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.allegati_moderati_di_serie" />
+            </div>
+
+            <!-- NUMERO MASSIMO ALLEGATI PER ELEMENTO -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.allegati_massimo_per_elemento_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.allegati_massimo_per_elemento_description') }}
+                </p>
+              </div>
+
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Input
+                  v-model.number="form.allegati_massimo_per_elemento"
+                  type="number"
+                  min="1"
+                  max="50"
+                  class="w-full text-sm tabular-nums"
+                />
+                <InputError :message="form.errors.allegati_massimo_per_elemento" />
+              </div>
             </div>
 
           </CardContent>

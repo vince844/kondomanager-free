@@ -169,6 +169,22 @@ class ComunicazioneService
                     // Usiamo 'condomini.id' per evitare ambiguità di colonne SQL
                     $subQ->whereIn('condomini.id', (array) $condominioIds);
                 });
+            })
+            // NUOVO FILTRO: Visibilità (pubblicata, bozza, da approvare, privata)
+            ->when($validated['visibility'] ?? false, function ($q, $visibilities) {
+                $q->where(function ($subQuery) use ($visibilities) {
+                    foreach ((array) $visibilities as $vis) {
+                        if ($vis === 'published') {
+                            $subQuery->orWhere(fn ($sq) => $sq->where('is_approved', true)->where('is_published', true));
+                        } elseif ($vis === 'draft') {
+                            $subQuery->orWhere(fn ($sq) => $sq->where('is_approved', true)->where('is_published', false));
+                        } elseif ($vis === 'pending') {
+                            $subQuery->orWhere('is_approved', false);
+                        } elseif ($vis === 'private') {
+                            $subQuery->orWhere('is_private', true);
+                        }
+                    }
+                });
             });
     }
 

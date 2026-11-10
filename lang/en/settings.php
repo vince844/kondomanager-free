@@ -171,5 +171,21 @@ return [
             'label' => 'Comment to be moderated',
             'description' => 'Receive a notification when a new comment requires your approval',
         ],
+        'new_attachment' => [
+            'label' => 'New attachment',
+            'description' => 'Receive a notification when files are added to a fault report you participate in',
+        ],
+        'attachment_approved' => [
+            'label' => 'Attachment approved',
+            'description' => 'Receive a notification when your pending attachment is approved',
+        ],
+        'attachment_deleted' => [
+            'label' => 'Attachment deleted',
+            'description' => 'Receive a notification when your attachment is deleted by someone else',
+        ],
+        'attachment_under_moderation' => [
+            'label' => 'Attachment awaiting approval',
+            'description' => 'Receive a notification when a new attachment requires your approval',
+        ],
     ],
 ];

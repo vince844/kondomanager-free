@@ -78,6 +78,16 @@ enum Permission: string
     case DELETE_COMMENTS_COMUNICAZIONI = 'Elimina commenti comunicazioni';
     case VIEW_COMMENTS_COMUNICAZIONI = 'Visualizza commenti comunicazioni';
 
+    // Allegati comunicazioni
+    case CREATE_ATTACHMENTS_COMUNICAZIONI = 'Carica allegati comunicazioni';
+    case PUBLISH_ATTACHMENTS_COMUNICAZIONI = 'Pubblica allegati comunicazioni';
+    case APPROVE_ATTACHMENTS_COMUNICAZIONI = 'Approva allegati comunicazioni';
+    case EDIT_ATTACHMENTS_COMUNICAZIONI = 'Modifica allegati comunicazioni';
+    case EDIT_OWN_ATTACHMENTS_COMUNICAZIONI = 'Modifica propri allegati comunicazioni';
+    case DELETE_ATTACHMENTS_COMUNICAZIONI = 'Elimina allegati comunicazioni';
+    case DELETE_OWN_ATTACHMENTS_COMUNICAZIONI = 'Elimina propri allegati comunicazioni';
+    case VIEW_ATTACHMENTS_COMUNICAZIONI = 'Visualizza allegati comunicazioni';
+
     // Segnalazioni
     case CREATE_SEGNALAZIONI = 'Crea segnalazioni';
     case APPROVE_SEGNALAZIONI = 'Approva segnalazioni';
@@ -98,6 +108,16 @@ enum Permission: string
     case PUBLISH_COMMENTS_SEGNALAZIONI = 'Pubblica commenti segnalazioni';
     case APPROVE_COMMENTS_SEGNALAZIONI = 'Approva commenti segnalazioni';
     case VIEW_COMMENTS_SEGNALAZIONI = 'Visualizza commenti segnalazioni';
+
+    // Allegati segnalazioni
+    case CREATE_ATTACHMENTS_SEGNALAZIONI = 'Carica allegati segnalazioni';
+    case PUBLISH_ATTACHMENTS_SEGNALAZIONI = 'Pubblica allegati segnalazioni';
+    case APPROVE_ATTACHMENTS_SEGNALAZIONI = 'Approva allegati segnalazioni';
+    case EDIT_ATTACHMENTS_SEGNALAZIONI = 'Modifica allegati segnalazioni';
+    case EDIT_OWN_ATTACHMENTS_SEGNALAZIONI = 'Modifica propri allegati segnalazioni';
+    case DELETE_ATTACHMENTS_SEGNALAZIONI = 'Elimina allegati segnalazioni';
+    case DELETE_OWN_ATTACHMENTS_SEGNALAZIONI = 'Elimina propri allegati segnalazioni';
+    case VIEW_ATTACHMENTS_SEGNALAZIONI = 'Visualizza allegati segnalazioni';
 
     // Documenti archivio
     case VIEW_ARCHIVE_DOCUMENTS = 'Visualizza documenti archivio';
@@ -173,6 +193,16 @@ enum Permission: string
             self::DELETE_COMMENTS_COMUNICAZIONI => 'Permette di eliminare un commento lasciato in comunicazione in bacheca',
             self::VIEW_COMMENTS_COMUNICAZIONI => 'Permette di visualizzare i commenti delle comunicazioni in bacheca',
 
+            // Allegati comunicazioni
+            self::CREATE_ATTACHMENTS_COMUNICAZIONI => 'Permette di caricare allegati nelle comunicazioni in bacheca',
+            self::PUBLISH_ATTACHMENTS_COMUNICAZIONI => 'Permette di pubblicare allegati nelle comunicazioni in bacheca',
+            self::APPROVE_ATTACHMENTS_COMUNICAZIONI => 'Permette di approvare allegati nelle comunicazioni in bacheca',
+            self::EDIT_ATTACHMENTS_COMUNICAZIONI => 'Permette di modificare allegati nelle comunicazioni in bacheca',
+            self::EDIT_OWN_ATTACHMENTS_COMUNICAZIONI => 'Permette di modificare solo i propri allegati nelle comunicazioni in bacheca',
+            self::DELETE_ATTACHMENTS_COMUNICAZIONI => 'Permette di eliminare allegati nelle comunicazioni in bacheca',
+            self::DELETE_OWN_ATTACHMENTS_COMUNICAZIONI => 'Permette di eliminare solo i propri allegati nelle comunicazioni in bacheca',
+            self::VIEW_ATTACHMENTS_COMUNICAZIONI => 'Permette di visualizzare allegati nelle comunicazioni in bacheca',
+
             // Segnalazioni
             self::CREATE_SEGNALAZIONI => 'Permette di creare una segnalazione di guasto',
             self::APPROVE_SEGNALAZIONI => 'Permette di approvare una segnalazione di guasto',
@@ -193,6 +223,16 @@ enum Permission: string
             self::PUBLISH_COMMENTS_SEGNALAZIONI => 'Permette di pubblicare commenti lasciati in una segnalazione guasto',
             self::APPROVE_COMMENTS_SEGNALAZIONI => 'Permette di approvare commenti lasciati in una segnalazione guasto',
             self::VIEW_COMMENTS_SEGNALAZIONI => 'Permette di visualizzare commenti lasciati in una segnalazione guasto',
+
+            // Allegati segnalazioni
+            self::CREATE_ATTACHMENTS_SEGNALAZIONI => 'Permette di caricare allegati nelle segnalazioni guasto',
+            self::PUBLISH_ATTACHMENTS_SEGNALAZIONI => 'Permette di pubblicare allegati nelle segnalazioni guasto',
+            self::APPROVE_ATTACHMENTS_SEGNALAZIONI => 'Permette di approvare allegati nelle segnalazioni guasto',
+            self::EDIT_ATTACHMENTS_SEGNALAZIONI => 'Permette di modificare allegati nelle segnalazioni guasto',
+            self::EDIT_OWN_ATTACHMENTS_SEGNALAZIONI => 'Permette di modificare solo i propri allegati nelle segnalazioni guasto',
+            self::DELETE_ATTACHMENTS_SEGNALAZIONI => 'Permette di eliminare allegati nelle segnalazioni guasto',
+            self::DELETE_OWN_ATTACHMENTS_SEGNALAZIONI => 'Permette di eliminare solo i propri allegati nelle segnalazioni guasto',
+            self::VIEW_ATTACHMENTS_SEGNALAZIONI => 'Permette di visualizzare allegati nelle segnalazioni guasto',
 
             // Documenti archivio
             self::VIEW_ARCHIVE_DOCUMENTS => 'Permette di visualizzare i documenti in archivio',

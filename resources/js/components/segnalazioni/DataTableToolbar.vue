@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Plus, X } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFilter.vue';
-import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
+import { priorityConstants, statoConstants, visibilityConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission }  from "@/enums/Permission";
@@ -30,6 +30,7 @@ const { filtra } = useTabellaServer(() => route(generateRoute('segnalazioni.inde
 const priorityColumn = table.getColumn('priority');
 const statoColumn = table.getColumn('stato');
 const condominioColumn = table.getColumn('condominio'); // Assicurati che accessorKey sia 'condominio' in columns.ts
+const visibilityColumn = table.getColumn('is_published');
 
 // LOGICA DROPDOWN CONDOMINI
 const { condomini, isLoading: isLoadingCondomini, loadCondomini } = useCondomini();
@@ -54,10 +55,15 @@ const condominioFilter = computed(() => {
   return Array.isArray(val) ? val : [];
 });
 
-// Watcher combinato per tutti i filtri (Testo, Priorità, Stato, Condominio)
+const visibilityFilter = computed(() => {
+  const val = visibilityColumn?.getFilterValue();
+  return Array.isArray(val) ? val : [];
+});
+
+// Watcher combinato per tutti i filtri (Testo, Priorità, Stato, Condominio, Visibilità)
 watchDebounced(
-  [subjectFilter, priorityFilter, statoFilter, condominioFilter],
-  ([subject, priority, stato, condominio_id]) => {
+  [subjectFilter, priorityFilter, statoFilter, condominioFilter, visibilityFilter],
+  ([subject, priority, stato, condominio_id, visibility]) => {
     // Ogni filtro va passato anche quando è vuoto: `null` significa **togli**. La richiesta riparte
     // da ciò che c'è nell'URL, quindi un filtro omesso resterebbe quello di prima e non si potrebbe
     // più svuotare. Per i filtri a scelta multipla il vuoto è l'array senza elementi.
@@ -67,9 +73,10 @@ watchDebounced(
         priority: priority.length > 0 ? priority : null,
         stato: stato.length > 0 ? stato : null,
         condominio_id: condominio_id.length > 0 ? condominio_id : null,
+        visibility: visibility.length > 0 ? visibility : null,
       },
       () => {
-        if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0) {
+        if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0 && visibility.length === 0) {
           table.reset();
         }
       },
@@ -83,6 +90,7 @@ const clearAllFilters = () => {
   statoColumn?.setFilterValue(undefined);
   priorityColumn?.setFilterValue(undefined);
   condominioColumn?.setFilterValue(undefined);
+  visibilityColumn?.setFilterValue(undefined);
 
   router.get(route(generateRoute('segnalazioni.index')), { page: 1 }, {
     preserveState: true,
@@ -135,8 +143,18 @@ const clearAllFilters = () => {
           class="w-full lg:w-auto"
         />
 
+        <DataTableFacetedFilter
+          v-if="visibilityColumn"
+          :column="visibilityColumn"
+          :title="trans('segnalazioni.table.visibility')"
+          :options="visibilityConstants"
+          :isLoading="false"
+          @update:filter="() => {}"
+          class="w-full lg:w-auto"
+        />
+
         <Button
-          v-if="subjectFilter || priorityFilter.length || statoFilter.length || condominioFilter.length"
+          v-if="subjectFilter || priorityFilter.length || statoFilter.length || condominioFilter.length || visibilityFilter.length"
           variant="ghost"
           size="sm"
           @click="clearAllFilters"

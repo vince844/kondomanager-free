@@ -63,7 +63,7 @@ function submit() {
       <button
         v-if="!isExpanded"
         @click="isExpanded = true"
-        class="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-400 dark:text-slate-500 hover:border-blue-300 dark:hover:border-blue-700 hover:text-slate-600 dark:hover:text-slate-300 transition-all cursor-text"
+        class="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-400 dark:text-slate-500 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300 transition-all cursor-text"
       >
         <MessageSquarePlus class="w-4 h-4 shrink-0" />
         <span>{{ trans('commenti.scrivi_commento') }}</span>
@@ -72,7 +72,7 @@ function submit() {
       <!-- Form espanso -->
       <div
         v-else
-        class="rounded-lg border border-blue-200 dark:border-blue-800/50 bg-white dark:bg-slate-950 shadow-sm overflow-hidden transition-all"
+        class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 shadow-sm overflow-hidden transition-all focus-within:border-slate-300 dark:focus-within:border-slate-600"
       >
         <textarea
           v-model="form.corpo"
@@ -105,7 +105,7 @@ function submit() {
               type="button"
               @click="submit"
               :disabled="form.processing || !form.corpo.trim() || isOverLimit"
-              class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-xs"
             >
               <Send class="w-3.5 h-3.5" />
               {{ form.processing ? trans('commenti.invio_in_corso') : trans('commenti.invia') }}

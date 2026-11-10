@@ -8,10 +8,13 @@ use App\Traits\HasAnagrafica;
 use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
 use App\Http\Requests\Comunicazione\CreateUserComunicazioneRequest;
 use App\Http\Requests\Comunicazione\UpdateUserComunicazioneRequest;
+use App\Http\Resources\Allegati\AllegatoResource;
 use App\Http\Resources\Portale\ComunicazionePortaleResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Models\Comunicazione;
+use App\Services\Allegati\AllegatoService;
 use App\Services\ComunicazioneService;
+use App\Support\Allegati\RegoleAllegati;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\PaginaElenco;
@@ -118,7 +121,8 @@ class ComunicazioneController extends Controller
         $condomini = $anagrafica->condomini;
 
         return Inertia::render('comunicazioni/user/ComunicazioniNew',[
-            'condomini' => CondominioOptionsResource::collection($condomini)->resolve(),
+            'condomini'        => CondominioOptionsResource::collection($condomini)->resolve(),
+            'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
         ]);  
     }
 
@@ -142,6 +146,10 @@ class ComunicazioneController extends Controller
 
         $validated = $request->validated();
 
+        if ($request->hasFile('allegati')) {
+            abort_unless($request->user()->hasPermissionTo(RegoleAllegati::permesso('comunicazioni', 'carica')), 403);
+        }
+
         try {
 
             DB::beginTransaction();
@@ -154,6 +162,16 @@ class ComunicazioneController extends Controller
                 
                 $anagrafica = $this->getUserAnagrafica();
                 $comunicazione->anagrafiche()->attach($anagrafica);
+            }
+
+            if ($request->hasFile('allegati')) {
+                abort_unless(RegoleAllegati::puoCaricare($request->user(), $comunicazione), 403);
+                app(AllegatoService::class)->carica(
+                    $request->user(),
+                    $comunicazione,
+                    (array) $request->file('allegati', []),
+                    inCreazione: true
+                );
             }
 
             DB::commit();
@@ -191,6 +209,12 @@ class ComunicazioneController extends Controller
         
             DB::rollback();
 
+            if ($e instanceof \Illuminate\Validation\ValidationException
+                || $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+                || $e instanceof \Illuminate\Auth\Access\AuthorizationException) {
+                throw $e;
+            }
+
             Log::error('Error user creating user comunicazione: ' . $e->getMessage());
 
             return to_route('user.comunicazioni.index')->with(
@@ -218,12 +242,20 @@ class ComunicazioneController extends Controller
     {
         Gate::authorize('show', $comunicazione);
 
+        $user = request()->user();
+        $comunicazione->loadMissing('createdBy.anagrafica');
+
         return Inertia::render('comunicazioni/ComunicazioniView', [
             // Coda 260: la risorsa minima del portale; la policy non carica più le persone collegate
             // sul modello, e la risorsa non le mostrerebbe comunque.
-            'comunicazione' => new ComunicazionePortaleResource(
-                $comunicazione->loadMissing('createdBy.anagrafica')
+            'comunicazione' => new ComunicazionePortaleResource($comunicazione),
+            'allegati' => AllegatoResource::perScheda(
+                RegoleAllegati::visibiliInScheda($user, $comunicazione),
+                $user,
+                $comunicazione,
+                'user'
             ),
+            'allegati_config' => RegoleAllegati::configScheda($user, $comunicazione),
         ]);
     }
 

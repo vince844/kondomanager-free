@@ -42,6 +42,8 @@ class ImpostazioniGeneraliController extends Controller
             'condomini'                => Condominio::select('id','nome')->get(),
             'default_user_role'        => (string) $settings->default_user_role,
             'force_comment_moderation' => (bool) $settings->force_comment_moderation,
+            'allegati_moderati_di_serie' => (bool) $settings->allegati_moderati_di_serie,
+            'allegati_massimo_per_elemento' => (int) $settings->allegati_massimo_per_elemento,
             'default_per_page'         => (int) $settings->default_per_page,
             // Il 100 resta fuori: il portale condòmino non ha un selettore per le righe, quindi un
             // valore globale così alto gli darebbe cento schede da scorrere e nessun comando per
@@ -91,6 +93,12 @@ class ImpostazioniGeneraliController extends Controller
             $settings->app_name = $validated['app_name'];
             $settings->default_user_role = $validated['default_user_role'];
             $settings->force_comment_moderation = $validated['force_comment_moderation'];
+            if (array_key_exists('allegati_moderati_di_serie', $validated)) {
+                $settings->allegati_moderati_di_serie = (bool) $validated['allegati_moderati_di_serie'];
+            }
+            if (array_key_exists('allegati_massimo_per_elemento', $validated)) {
+                $settings->allegati_massimo_per_elemento = (int) $validated['allegati_massimo_per_elemento'];
+            }
             $settings->default_per_page = $validated['default_per_page'];
             $settings->save();
 

@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, History, CircleArrowUp, CircleArrowRight, CircleArrowDown, CircleAlert } from 'lucide-vue-next';
+import { CircleCheck, CircleX, History, CircleArrowUp, CircleArrowRight, CircleArrowDown, CircleAlert, Clock, FileText, Lock } from 'lucide-vue-next';
 import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
   
   export const priorityConstants: PriorityType[] = [
@@ -63,6 +63,33 @@ import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazion
       label: 'segnalazioni.publication.published',
       icon: CircleCheck, 
       colorClass: 'text-green-500 bg-transparent'
+    }
+  ];
+
+  export const visibilityConstants = [
+    { 
+      value: 'published', 
+      label: 'segnalazioni.publication.published',
+      icon: CircleCheck, 
+      colorClass: 'text-emerald-500 bg-transparent'
+    },
+    { 
+      value: 'draft', 
+      label: 'segnalazioni.publication.draft',
+      icon: FileText, 
+      colorClass: 'text-amber-500 bg-transparent'
+    },
+    { 
+      value: 'pending', 
+      label: 'segnalazioni.publication.pending',
+      icon: Clock, 
+      colorClass: 'text-slate-400 bg-transparent'
+    },
+    { 
+      value: 'private', 
+      label: 'segnalazioni.privacy.private',
+      icon: Lock, 
+      colorClass: 'text-slate-500 bg-transparent'
     }
   ];
   

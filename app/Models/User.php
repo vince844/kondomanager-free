@@ -52,6 +52,17 @@ class User extends Authenticatable implements MustVerifyEmail
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (self $user) {
+            app(\App\Services\Allegati\AllegatoService::class)->preparaPuliziaPerUtente($user);
+        });
+
+        static::deleted(function (self $user) {
+            app(\App\Services\Allegati\AllegatoService::class)->completaPuliziaPerUtente($user);
+        });
+    }
+
     /**
      * L'impronta che lega il link del primo accesso allo stato dell'utente quando è partito: l'email e
      * l'ultima modifica. Il link la porta fra i parametri firmati, e il controller la ricalcola: se

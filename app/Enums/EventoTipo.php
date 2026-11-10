@@ -5,6 +5,7 @@ namespace App\Enums;
 enum EventoTipo: string
 {
     case COMMENTO = 'commento';
+    case ALLEGATO = 'allegato';
     case VERIFICA_PAGAMENTO = 'verifica_pagamento';
     case SCADENZA_RATA_CONDOMINO = 'scadenza_rata_condomino';
     case EMISSIONE_RATA = 'emissione_rata';

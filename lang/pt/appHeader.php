@@ -11,6 +11,7 @@ return [
     'bacheca'       => "Avisos",
     'segnalazioni'  => "Sinalizações",
     'documenti'     => "Documentos",
+    'allegati'      => "Anexos",
     'agenda'        => "Agenda",
     'repository'    => "Repositório",
     'documentation' => "Documentação",

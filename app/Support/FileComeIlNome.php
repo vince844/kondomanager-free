@@ -18,9 +18,10 @@ final class FileComeIlNome
         'jpg'  => ['image/jpeg'],
         'jpeg' => ['image/jpeg'],
         'png'  => ['image/png'],
+        'webp' => ['image/webp'],
     ];
 
-    public const FRASE = 'Il file non è quello che il nome dice: un PDF, un JPG o un PNG devono esserlo davvero.';
+    public const FRASE = 'Il file non è quello che il nome dice: un PDF, un JPG, un PNG o un WebP devono esserlo davvero.';
 
     public static function vero(mixed $file): bool
     {
@@ -33,7 +34,12 @@ final class FileComeIlNome
     }
 
     /** Il nome e l'estensione di un tipo che `finfo` riconosce, per dire che cosa è davvero un file con l'estensione sbagliata. */
-    private const NOME_DEL_CONTENUTO = ['application/pdf' => ['PDF', 'pdf'], 'image/jpeg' => ['JPG', 'jpg'], 'image/png' => ['PNG', 'png']];
+    private const NOME_DEL_CONTENUTO = [
+        'application/pdf' => ['PDF', 'pdf'],
+        'image/jpeg'      => ['JPG', 'jpg'],
+        'image/png'       => ['PNG', 'png'],
+        'image/webp'      => ['WebP', 'webp'],
+    ];
 
     /**
      * La regola di validazione, da mettere accanto a `extensions:`. Un PDF, un JPG o un PNG veri con l'estensione di un altro dei tre (uno scanner

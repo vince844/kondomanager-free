@@ -259,6 +259,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // 1.12.0-beta.6: le carte dello studio — una tabella, le colonne una per una e un indice, ognuno con la sua guardia, e la «Carta dello studio»
     // scritta solo se la tabella è vuota. Lo stato a metà lo prova il test sotto.
     '2026_11_08_210000_create_carte_stampa_table',
+    // 1.12.0-beta.8 (Coda 460, decisioni 238 e 241): gli allegati di segnalazioni e comunicazioni — due colonne per tabella su `segnalazioni` e
+    // `comunicazioni`, una guardia per colonna; due colonne e una chiave esterna su `documenti`, tre statement con tre guardie; le quattro preferenze
+    // di notifica nuove, scritte solo per chi non le ha già. Gli stati a metà li prova `tests/Feature/Allegati/AllegatiMigrazioniTest.php`.
+    '2026_11_08_200000_add_allegati_to_segnalazioni_e_comunicazioni',
+    '2026_11_08_200100_add_moderazione_to_documenti',
+    '2026_11_08_200300_seed_preferenze_notifica_allegati',
 ]);
 
 it('la migrazione dei modelli delle lettere interrotta dopo la tabella e prima dell\'indice e delle chiavi si riprende e li mette, uno per nome', function () {

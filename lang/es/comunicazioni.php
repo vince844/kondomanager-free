@@ -77,6 +77,7 @@ return [
         'title'              => 'Title',
         'buildings'          => 'Buildings',
         'residents'          => 'Residents',
+        'visibility'         => 'Visibilidad',
         'selected'           => 'Selected',
         'loading'            => 'Loading...',
         'no_results'         => 'No results found.',

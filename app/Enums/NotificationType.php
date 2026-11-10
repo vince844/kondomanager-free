@@ -28,6 +28,12 @@ enum NotificationType: string
     case COMMENT_APPROVED = 'comment_approved';
     case COMMENT_DELETED = 'comment_deleted';
 
+    // Allegati
+    case NEW_ATTACHMENT = 'new_attachment';
+    case ATTACHMENT_UNDER_MODERATION = 'attachment_under_moderation';
+    case ATTACHMENT_APPROVED = 'attachment_approved';
+    case ATTACHMENT_DELETED = 'attachment_deleted';
+
     /**
      * Get a human-readable label for the notification type.
      *
@@ -38,17 +44,26 @@ enum NotificationType: string
         return match ($this) {
             self::NEW_COMMUNICATION => 'Nuova comunicazione',
             self::APPROVED_COMMUNICATION => 'Comunicazione approvata',
+            self::UPDATED_COMMUNICATION => 'Comunicazione aggiornata',
             self::NEW_TICKET => 'Nuova segnalazione',
             self::APPROVED_TICKET => 'Segnalazione approvata',
+            self::UPDATED_TICKET => 'Segnalazione aggiornata',
             self::NEW_USER => 'Nuovo utente registrato',
             self::NEW_ARCHIVE_DOCUMENT => 'Nuovo documento in archivio',
             self::APPROVED_ARCHIVE_DOCUMENT => 'Nuovo documento in archivio approvato',
+            self::UPDATED_ARCHIVE_DOCUMENT => 'Documento in archivio aggiornato',
             
             // Commenti
             self::NEW_COMMENT => 'Nuovo commento',
             self::COMMENT_UNDER_MODERATION => 'Commento in attesa di moderazione',
             self::COMMENT_APPROVED => 'Commento approvato',
             self::COMMENT_DELETED => 'Commento eliminato',
+
+            // Allegati
+            self::NEW_ATTACHMENT => 'Nuovo allegato',
+            self::ATTACHMENT_UNDER_MODERATION => 'Allegato in attesa di moderazione',
+            self::ATTACHMENT_APPROVED => 'Allegato approvato',
+            self::ATTACHMENT_DELETED => 'Allegato eliminato',
         };
     }
 }

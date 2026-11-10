@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Allegati\AllegatoController;
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Api\TestContabilitaController;
@@ -194,6 +195,50 @@ Route::prefix('admin')->as('admin.')
         ->parameters([
             'comunicazioni' => 'comunicazione'
         ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Allegati Segnalazioni e Comunicazioni Routes
+    |--------------------------------------------------------------------------
+    */
+    Route::get('allegati', [AllegatoController::class, 'index'])
+        ->name('allegati.index');
+
+    Route::get('allegati/zip', [AllegatoController::class, 'zip'])
+        ->name('allegati.zip');
+
+    Route::post('allegati/approva-in-blocco', [AllegatoController::class, 'approvaInBlocco'])
+        ->name('allegati.approva-in-blocco');
+
+    Route::post('allegati/elimina-in-blocco', [AllegatoController::class, 'eliminaInBlocco'])
+        ->name('allegati.elimina-in-blocco');
+
+    Route::post('segnalazioni/{segnalazione}/allegati', [AllegatoController::class, 'storeSegnalazione'])
+        ->name('segnalazioni.allegati.store');
+
+    Route::patch('segnalazioni/{segnalazione}/allegati/impostazioni', [AllegatoController::class, 'impostazioniSegnalazione'])
+        ->name('segnalazioni.allegati.impostazioni');
+
+    Route::post('comunicazioni/{comunicazione}/allegati', [AllegatoController::class, 'storeComunicazione'])
+        ->name('comunicazioni.allegati.store');
+
+    Route::patch('comunicazioni/{comunicazione}/allegati/impostazioni', [AllegatoController::class, 'impostazioniComunicazione'])
+        ->name('comunicazioni.allegati.impostazioni');
+
+    Route::get('allegati/{allegato}/apri', [AllegatoController::class, 'apri'])
+        ->name('allegati.apri');
+
+    Route::get('allegati/{allegato}/scarica', [AllegatoController::class, 'scarica'])
+        ->name('allegati.scarica');
+
+    Route::post('allegati/{allegato}/approva', [AllegatoController::class, 'approva'])
+        ->name('allegati.approva');
+
+    Route::patch('allegati/{allegato}', [AllegatoController::class, 'update'])
+        ->name('allegati.update');
+
+    Route::delete('allegati/{allegato}', [AllegatoController::class, 'destroy'])
+        ->name('allegati.destroy');
 
     // `only()` e non `except(['update'])`: l'`update` sta a parte qui sotto perché accetta anche
     // `POST` (i moduli con allegato). L'`except` però lasciava registrata anche `show`, che

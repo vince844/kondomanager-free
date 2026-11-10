@@ -134,6 +134,11 @@ function elencoRotteSoloLogin(): array
         'inviti.destroy'                       => $gestione,
 
         // --- portale del condòmino --------------------------------------------------------
+        // Gli allegati: la regola della scheda in `RegoleAllegati`, chiamata dal controller.
+        'user.allegati.apri'               => $policy,
+        'user.allegati.scarica'            => $policy,
+        'user.allegati.update'             => $policy,
+        'user.allegati.destroy'            => $policy,
         'user.categorie-documenti.index'   => $policy,
         'user.categorie-documenti.show'    => $policy,
         'user.commenti.update'             => $policy,
@@ -145,6 +150,7 @@ function elencoRotteSoloLogin(): array
         'user.comunicazioni.edit'          => $policy,
         'user.comunicazioni.update'        => $policy,
         'user.comunicazioni.destroy'       => $policy,
+        'user.comunicazioni.allegati.store' => $policy,
         'user.documenti.create'            => $policy,
         'user.documenti.store'             => $policy,
         'user.documenti.edit'              => $policy,
@@ -166,6 +172,7 @@ function elencoRotteSoloLogin(): array
         'user.segnalazioni.update'         => $policy,
         'user.segnalazioni.destroy'        => $policy,
         'user.segnalazioni.commenti.store' => $policy,
+        'user.segnalazioni.allegati.store' => $policy,
     ];
 }
 

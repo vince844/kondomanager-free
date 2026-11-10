@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Http\Resources\User\UserResource;
+use App\Support\Allegati\RegoleAllegati;
 use App\Support\FunzioniInstallazione;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
@@ -109,6 +110,10 @@ class HandleInertiaRequests extends Middleware
                     ->where(fn(Builder $q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
                     ->count();
             }) : 0,
+
+            'allegati_in_attesa' => fn () => Schema::hasTable('documenti')
+                ? RegoleAllegati::conteggioInAttesa($request->user())
+                : 0,
 
             // Stato degli aggiornamenti: solo con l'accesso, come la versione (Coda 342).
             'system_update' => function () use ($request) {

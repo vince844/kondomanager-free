@@ -9,13 +9,18 @@ import { trans } from 'laravel-vue-i18n';
 import { usePermission } from "@/composables/permissions";
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
+import AllegatiRiquadro from '@/components/allegati/AllegatiRiquadro.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Comunicazione } from "@/types/comunicazioni";
+import type { AllegatiConfig, AllegatoItem } from '@/types/allegati';
 
-const { generateRoute } = usePermission();
+const { generateRoute, getRolePrefix } = usePermission();
+const portaCorrente = computed(() => getRolePrefix());
 
 const props = defineProps<{
-  comunicazione: Comunicazione
+  comunicazione: Comunicazione;
+  allegati?: AllegatoItem[];
+  allegati_config?: AllegatiConfig;
 }>();
 
 // Ricava dinamicamente l'oggetto priorità dal file constants
@@ -121,6 +126,14 @@ const pageGuides = computed(() => [
                         </div>
                     </CardContent>
                 </Card>
+
+                <AllegatiRiquadro
+                    tipo="comunicazioni"
+                    :elemento-id="comunicazione.id"
+                    :porta="portaCorrente"
+                    :allegati="props.allegati || []"
+                    :config="props.allegati_config"
+                />
             </div>
 
             <div class="lg:col-span-1 space-y-6">

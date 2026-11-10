@@ -278,6 +278,10 @@ return [
         'default_per_page_description' => 'Cuántas filas muestran las tablas a quien todavía no ha elegido. Se mantiene la elección de cada uno, listado por listado: quien la cambie la encuentra de nuevo al volver.',
         'force_comment_moderation_title' => 'Force comment moderation',
         'force_comment_moderation_description' => 'If enabled, all comments from regular users will require admin approval before being published and visible.',
+        'allegati_moderati_di_serie_title' => 'Adjuntos en moderación por defecto',
+        'allegati_moderati_di_serie_description' => 'Vale para las incidencias y los avisos nuevos: los archivos subidos esperan aprobación, salvo los de quienes pueden aprobarlos. Cada elemento se cambia desde su ficha.',
+        'allegati_massimo_per_elemento_title' => 'Número máximo de adjuntos por elemento',
+        'allegati_massimo_per_elemento_description' => 'Cuántos archivos se pueden adjuntar como máximo a cada incidencia o aviso (por defecto 5).',
 
         'mail_settings_title' => 'Email configuration',
         'mail_settings_description' => 'Choose the sending method, configure credentials and test the connection.',

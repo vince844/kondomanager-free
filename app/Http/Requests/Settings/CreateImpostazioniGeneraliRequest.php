@@ -27,6 +27,8 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
         return [
             'user_frontend_registration' => 'required|boolean',
             'force_comment_moderation'   => 'required|boolean',
+            'allegati_moderati_di_serie' => 'sometimes|boolean',
+            'allegati_massimo_per_elemento' => 'sometimes|integer|min:1|max:50',
             'language'                   => 'required|in:it,en,pt,es',
             'app_name'                   => 'required|string|max:255',
             'open_condominio_on_login'   => 'required|boolean',

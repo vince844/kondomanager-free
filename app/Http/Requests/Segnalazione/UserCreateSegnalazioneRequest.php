@@ -4,8 +4,10 @@ namespace App\Http\Requests\Segnalazione;
 
 use App\Enums\Permission;
 use App\Models\Segnalazione;
+use App\Support\Allegati\RegoleAllegati;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 
@@ -86,9 +88,26 @@ class UserCreateSegnalazioneRequest extends FormRequest
             $regole['created_by'] = 'required|exists:users,id';
             $regole['is_approved'] = 'required|boolean';
             $regole['is_published'] = 'required|boolean';
+            $regole += RegoleAllegati::regoleValidazioneFile(obbligatorio: false);
         }
 
         return $regole;
+    }
+
+    /**
+     * @return array<int, \Closure(Validator): void>
+     */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            if ($this->inModifica() || $validator->errors()->isNotEmpty() || ! $this->hasFile('allegati')) {
+                return;
+            }
+
+            if ($errore = RegoleAllegati::erroreSpazio((array) $this->file('allegati', []))) {
+                $validator->errors()->add('allegati', $errore);
+            }
+        }];
     }
 
     /** La stessa richiesta serve la creazione e la modifica: in modifica la rotta porta il record. */

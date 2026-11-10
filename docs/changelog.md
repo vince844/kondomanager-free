@@ -7,6 +7,23 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.8] - Gli allegati
+
+**Tocca il database.** L'aggiornamento esegue da solo tre migrazioni nuove e una delle impostazioni: l'accesso agli allegati e la moderazione su segnalazioni e comunicazioni (quelle che ci sono già li hanno «Aperti» e in moderazione), chi ha approvato un file e quando sui documenti, due voci nuove delle impostazioni generali («Allegati in moderazione di serie», accesa, e «Numero massimo di allegati per elemento», 5), e quattro preferenze di notifica per gli allegati, accese o spente come quelle dei commenti. I ruoli di serie ricevono sedici permessi nuovi; i ruoli creati da te no. Non riscrive nessun dato. Nessuna libreria nuova; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.
+
+**Che cosa fa la beta.**
+- **Gli allegati di segnalazioni e comunicazioni.** Foto in JPG, PNG o WebP e documenti in PDF, fino a cinque per elemento (da 1 a 50 nelle impostazioni generali), dal modulo di creazione o dalla scheda. La scheda li elenca con «Apri» e «Scarica», senza mostrare le foto nella pagina. Con lo spazio dei documenti finito i file nuovi si rifiutano. Chi ha caricato un file lo rinomina o lo elimina; eliminando l'elemento, anche con il suo condominio o con chi l'ha scritto, i file si tolgono con lui, solo se l'eliminazione riesce.
+- **Chi li vede e chi li aggiunge.** Per ogni elemento l'accesso «Aperti», «Solo consultazione» o «Solo amministrazione», e la moderazione accesa o spenta, con il valore di partenza nelle impostazioni generali. Dal portale aggiunge file a una segnalazione chi sta nel palazzo, a una comunicazione solo chi l'ha scritta, con il permesso di caricarli.
+- **Sedici permessi**, otto per tipo, come quelli dei commenti. Il collaboratore carica, pubblica e gestisce i suoi file, non approva; il condòmino e il fornitore caricano sulle segnalazioni e vedono i file delle comunicazioni. Approvare e toccare i file degli altri vuole il pannello e il permesso insieme.
+- **La pagina «Allegati»** nel menu del pannello, con il numero dei file in attesa: i file di tutti i condomini, i filtri, l'approvazione e l'eliminazione in blocco, e «Scarica in ZIP» con una cartella per condominio, tipo ed elemento e un elenco.csv. Un file in attesa apre una voce nell'Inbox.
+- **Le email degli allegati**, come quelle dei commenti: una per caricamento, con il collegamento alla scheda e mai al file, e quattro voci nuove nelle preferenze di notifica.
+- **La scheda della segnalazione** con la segnalazione e i parametri affiancati, «Leggi tutto» sulle descrizioni lunghe, i commenti e gli allegati su due colonne, le impostazioni degli allegati in una finestra.
+- **Il filtro per visibilità** negli elenchi di segnalazioni e comunicazioni del pannello; «In attesa di approvazione» diventa «Da approvare».
+- **La pagina «Audit e logs»** con l'intestazione e le guide, e il registro delle email filtrato per stato, modo d'invio e date, da 10 a 100 righe per pagina.
+- **Le pagine del piano dei conti** con l'intestazione e le guide e i campi in due riquadri, come i moduli delle gestioni.
+
+---
+
 ## [1.12.0-beta.7] - La ricerca per soggetto
 
 **Non tocca il database.** Nessuna migrazione, nessuna colonna e nessuna tabella nuova, e l'aggiornamento non riscrive nessun dato. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.
