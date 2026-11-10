@@ -77,9 +77,9 @@ watchDebounced(
     <div class="flex items-center space-x-2">
       <div class="flex items-center space-x-2">
         <Input
-          placeholder="Filtra per nome..."
+          placeholder="Cerca per unità o soggetto"
           v-model="nameFilter"
-          class="h-8 w-[150px] lg:w-[250px]"
+          class="h-8 w-[250px]"
         />
 
         <!--

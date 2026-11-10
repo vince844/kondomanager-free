@@ -1,0 +1,6 @@
+{
+    "features": [
+        "NO DATABASE CHANGES — No migration, no new column and no new table, and the update rewrites no data. Only the search in the unit list changes.",
+        "CHANGED: UNIT SEARCH ALSO FINDS LINKED PEOPLE — In the unit list, the search field, which now reads «Cerca per unità o soggetto» (search by unit or person), finds units by their name or by the name of a linked person: typing «Rossi» shows the units Rossi is linked to. It counts the same people as the «Soggetti» column: active links, including those whose end date has passed; deactivated links do not count. The search stays within the building and works together with the accessory-unit filter, sorting and rows per page. The field is wider on small and medium screens too."
+    ]
+}

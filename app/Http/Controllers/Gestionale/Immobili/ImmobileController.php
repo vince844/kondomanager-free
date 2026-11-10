@@ -84,7 +84,12 @@ class ImmobileController extends Controller
             ->with(['palazzina', 'scala', 'tipologiaImmobile', 'anagrafiche', 'pertinenzaDi'])
             ->withCount('pertinenze')
             ->when($validated['nome'] ?? false, function ($query, $name) {
-                $query->where('nome', 'like', "%{$name}%");
+                $query->where(fn ($q) => $q
+                    ->where('immobili.nome', 'like', "%{$name}%")
+                    ->orWhereHas('anagrafiche', fn ($soggetti) => $soggetti
+                        ->where('anagrafiche.nome', 'like', "%{$name}%")
+                        // Come la colonna Soggetti: collegamenti attivi, anche con data di fine passata.
+                        ->where('anagrafica_immobile.attivo', true)));
             })
             /**
              * Il filtro sulle pertinenze, tre stati.

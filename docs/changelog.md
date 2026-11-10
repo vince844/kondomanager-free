@@ -7,6 +7,16 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.7] - La ricerca per soggetto
+
+**Non tocca il database.** Nessuna migrazione, nessuna colonna e nessuna tabella nuova, e l'aggiornamento non riscrive nessun dato. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.
+
+**Che cosa fa la beta.**
+- **La ricerca delle unità trova anche i soggetti.** Nell'elenco delle unità immobiliari il campo di ricerca, che ora dice «Cerca per unità o soggetto», trova le unità per il loro nome oppure per il nome di un soggetto collegato: scrivendo «Rossi» compaiono le unità a cui Rossi è collegato. Conta gli stessi soggetti della colonna «Soggetti»: i collegamenti attivi, anche quelli con la data di fine passata; quelli disattivati no. La ricerca resta dentro il condominio e si combina con il filtro sulle pertinenze, l'ordinamento e le righe per pagina.
+- **Il campo di ricerca è più largo** anche sugli schermi piccoli e medi.
+
+---
+
 ## [1.12.0-beta.6] - Le carte dello studio
 
 **Tocca il database.** L'aggiornamento esegue da solo una migrazione nuova e due delle impostazioni: la tabella nuova delle carte dello studio, che nasce con la «Carta dello studio» (a campi e con i colori di sempre), e cinque voci nuove delle impostazioni di stampa (la partita IVA, il codice fiscale, il sito e il logo dello studio, e la carta di ogni gruppo di documenti). Non riscrive nessun dato. Cambiano due letture: se nelle impostazioni di stampa c'è il nome dello studio, tutte le stampe tranne il modello F24 lo hanno in testa; il deliberato con le rate dei piani generati prima che il programma conservasse il dettaglio del riparto si ricostruisce quando si legge. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.

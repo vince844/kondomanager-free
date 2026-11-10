@@ -1,0 +1,6 @@
+{
+    "features": [
+        "NON TOCCA IL DATABASE — Nessuna migrazione, nessuna colonna e nessuna tabella nuova, e l'aggiornamento non riscrive nessun dato. Cambia soltanto la ricerca nell'elenco delle unità.",
+        "CAMBIA: LA RICERCA DELLE UNITÀ TROVA ANCHE I SOGGETTI — Nell'elenco delle unità immobiliari il campo di ricerca, che ora dice «Cerca per unità o soggetto», trova le unità per il loro nome oppure per il nome di un soggetto collegato: scrivendo «Rossi» compaiono le unità a cui Rossi è collegato. Conta gli stessi soggetti della colonna «Soggetti»: i collegamenti attivi, anche quelli con la data di fine passata; quelli disattivati no. La ricerca resta dentro il condominio e si combina con il filtro sulle pertinenze, l'ordinamento e le righe per pagina. Il campo è più largo anche sugli schermi piccoli e medi."
+    ]
+}

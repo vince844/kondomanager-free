@@ -1,0 +1,6 @@
+{
+    "features": [
+        "NÃO ALTERA A BASE DE DADOS — Nenhuma migração, nenhuma coluna e nenhuma tabela nova, e a atualização não reescreve nenhum dado. Muda apenas a pesquisa na lista de unidades.",
+        "ALTERADO: A PESQUISA DE UNIDADES TAMBÉM ENCONTRA AS PESSOAS ASSOCIADAS — Na lista de unidades, o campo de pesquisa, que agora diz «Cerca per unità o soggetto» (pesquisar por unidade ou pessoa), encontra as unidades pelo seu nome ou pelo nome de uma pessoa associada: escrevendo «Rossi» aparecem as unidades a que Rossi está associado. Conta as mesmas pessoas da coluna «Soggetti»: as associações ativas, mesmo as que têm a data de fim já passada; as desativadas não. A pesquisa fica dentro do condomínio e combina-se com o filtro das unidades acessórias, a ordenação e as linhas por página. O campo é mais largo também nos ecrãs pequenos e médios."
+    ]
+}
