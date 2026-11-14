@@ -319,11 +319,13 @@ it('il fascicolo del 2026 tenuto aperto fino all\'assemblea parla ai condòmini:
     vrmGiorno($this, '2027-04-15');
     $t = vrmTestiDelFascicolo($s, $s['e'], [], false);
 
-    expect($t['frontespizio']['testo'])->toContain('8 tornano, 1 non torna, 1 da leggere.')
-        ->toContain('Registrazioni oltre il confine dell\'esercizio: non torna. Il riepilogo di questo esercizio contiene € 4.400,00 di quote e € 3.200,00 di costi con la data del 2027.')
+    // Il riquadro dei controlli per chi riceve il fascicolo (quattordici controlli, con la proposta di conguaglio: 12 tornano); le righe dei controlli
+    // stanno nella loro pagina, e le cifre delle registrazioni oltre il confine nel paragrafo del risultato.
+    expect($t['frontespizio']['testo'])->toContain('I controlli: 12 tornano, 1 non torna, 1 da leggere (l\'amministratore li spiegherà in assemblea).')
+        ->not->toContain('Registrazioni oltre il confine dell\'esercizio: non torna.')
         ->toContain('Risultato: quote registrate in questo esercizio € 8.510,00 − costi € 7.331,00')
-        ->toContain('Il risultato comprende anche le registrazioni scritte in questo esercizio con una data fuori dal suo periodo: le cifre sono qui sopra, accanto al controllo '
-            .'«Registrazioni oltre il confine dell\'esercizio».')
+        ->toContain('Il risultato comprende anche le registrazioni scritte in questo esercizio con una data fuori dal suo periodo: il riepilogo di questo esercizio '
+            .'contiene € 4.400,00 di quote e € 3.200,00 di costi con la data del 2027.')
         ->not->toContain('Il risultato non comprende');
     expect($t['cassa']['testo'])->toContain('Conta le scritture di questo esercizio, anche quelle con una data dopo la fine: il saldo a una data è nella situazione patrimoniale.');
     expect($t['situazione']['testo'])->toContain('Risultato di gestione € 1.179,00 (avanzo)');
@@ -331,10 +333,10 @@ it('il fascicolo del 2026 tenuto aperto fino all\'assemblea parla ai condòmini:
         ->toContain('Una registrazione va nell\'esercizio aperto quando la si scrive, non in quello della sua data (un versamento F24 va in quello della sua delega, lo storno di un incasso in quello dell\'incasso): '
             .'per questo alcune stanno oltre il confine quasi ogni anno, e l\'elenco dice dove.')
         ->not->toContain('Ogni registrazione va nell\'esercizio aperto')
-        ->toContain('Che cosa si fa: '.\App\Services\Gestionale\AnnoACavallo::RIMEDIO_QUI.' Da quando questo esercizio si chiude e si apre il successivo, le nuove vanno lì.')
+        ->toContain('Che cosa si fa: '.\App\Services\Gestionale\AnnoACavallo::RIMEDIO_QUI.' Questo esercizio è ancora aperto: le nuove registrazioni con la data dopo la sua fine restano in questo, e l\'elenco le mostra.')
         ->toContain('Le prime 50 di 108; l\'elenco intero si chiede all\'amministratore.')
         ->toContain('La disponibilità finale delle entrate e uscite per cassa è € 6.319,00; comprende € 7.100,00 di registrazioni con la data dopo la fine, fra entrate e uscite: '
-            .'vedi il controllo «Registrazioni oltre il confine dell\'esercizio». Il confronto con l\'estratto conto della banca si fa a parte: il programma non può farlo.')
+            .'vedi il controllo «Registrazioni oltre il confine dell\'esercizio». Il confronto con l\'estratto conto della banca si fa a parte: le cifre qui sono quelle della contabilità.')
         ->not->toContain('(in arrivo)')->not->toContain('Come rimediare')->not->toContain('chiudi questo')->not->toContain('controllo tuo')
         ->not->toContain('nella scheda «Controlli»');
     expect($t['controlli']['html'])->toContain('<span class="badge ko">cambia il riepilogo</span>')->not->toContain('>competenza</span>');
@@ -346,9 +348,9 @@ it('le stampe dell\'esercizio con le registrazioni fuori da ogni esercizio: le d
     vrmGiorno($this, '2027-04-15');
     $t = vrmTestiDelFascicolo($s, $s['e'], ['controlli'], false);
 
-    expect($t['controlli']['testo'])->toContain('Che cosa si fa: Se le date dell\'esercizio sono sbagliate, si correggono nei dati dell\'esercizio. Se sono registrazioni di un esercizio che nel '
-        .'programma non c\'è, restano qui; se è l\'esercizio dopo, le nuove vanno lì da quando questo si chiude e si apre il successivo.')
-        ->not->toContain('correggile')->not->toContain('Modifica l\'esercizio')->not->toContain('chiudi questo');
+    expect($t['controlli']['testo'])->toContain('Che cosa si fa: Se le date dell\'esercizio sono sbagliate, si correggono nei dati dell\'esercizio. Se sono registrazioni di un esercizio che nella '
+        .'contabilità non c\'è, restano qui.')
+        ->not->toContain('correggile')->not->toContain('Modifica l\'esercizio')->not->toContain('chiudi questo')->not->toContain('si apre il successivo');
     // A video l'amministratore ha il pulsante: la scheda «Controlli» lo nomina ancora.
     expect(rctControllo(rctControlli($s), 'AC')['rimedio'])->toBe(\App\Services\Gestionale\AnnoACavallo::RIMEDIO_FUORI);
 });
@@ -391,8 +393,8 @@ it('il 2026 chiuso a gennaio, la pagina del 2026: la fattura di dicembre registr
     $t = vrmTestiDelFascicolo($s, $s['e'], ['riepilogo'], false);
     expect($t['frontespizio']['testo'])->toContain('Preventivo nel verbale dell\'assemblea')->not->toContain('non conservato')
         // Il risultato non comprende la pregressa di dicembre, scritta nel 2027; i controlli non sono fra le parti, e la pagina non si dice.
-        ->toContain('Il risultato non comprende le registrazioni con la data di questo esercizio scritte in un altro: le cifre sono qui sopra, accanto al controllo '
-            .'«Registrazioni oltre il confine dell\'esercizio».')
+        ->toContain('Il risultato non comprende le registrazioni con la data di questo esercizio scritte in un altro: il riepilogo di questo esercizio non contiene '
+            .'€ 1.000,00 di costi con la data di questo esercizio, registrati in un altro (di cui € 1.000,00 registrati come pregresse: nessuno dei due riepiloghi li conta fra i costi).')
         ->not->toContain('Il risultato comprende')->not->toContain('Il perché di ognuno')
         ->and($t['riepilogo']['testo'])->toContain('Pulizie nel verbale dell\'assemblea')->not->toContain('non conservato');
 });
@@ -460,7 +462,7 @@ it('lo storno di un incasso del 30/11/2026 fatto il 10/03/2027, con il 2026 chiu
         ->get(['sc.esercizio_id', 'sc.data_competenza', 'e.stato'])->all();
     expect($storno)->toHaveCount(1)->and((int) $storno[0]->esercizio_id)->toBe($s['e']->id)->and($storno[0]->stato)->toBe('chiuso')->and(substr((string) $storno[0]->data_competenza, 0, 10))->toBe('2027-03-10');
 
-    $regola = 'Lo storno di un incasso o di un rimborso sta nell\'esercizio dell\'incasso o del rimborso che storna, anche con la data di un altro: è la regola fino alla chiusura guidata.';
+    $regola = 'Lo storno di un incasso o di un rimborso sta nell\'esercizio dell\'incasso o del rimborso che storna, anche con la data di un altro.';
     $del2026 = rctPagina($this, $s)['anno_a_cavallo'];
     $del2027 = rctPagina($this, $s, $e2027)['anno_a_cavallo'];
 
@@ -478,7 +480,7 @@ it('la figlia dell\'emissione di uno storno sta nell\'esercizio dell\'emissione,
     // La figlia che lo storno scrive per il credito restituito: nell'esercizio dell'emissione (il 2026, chiuso), con la data dello storno.
     rctScrittura($s, $s['e'], '2027-03-10', 'emissione_rata', [[$crediti, 'dare', 500, null], [$rate, 'avere', 500, null]], ['scrittura_padre_id' => $emissione]);
 
-    $regola = 'Lo storno di un incasso o di un rimborso sta nell\'esercizio dell\'incasso o del rimborso che storna, anche con la data di un altro: è la regola fino alla chiusura guidata.';
+    $regola = 'Lo storno di un incasso o di un rimborso sta nell\'esercizio dell\'incasso o del rimborso che storna, anche con la data di un altro.';
     $conPadre = rctPagina($this, $s)['anno_a_cavallo']['rimedi'];
     // L'F24 e l'incasso del 28/12 dello scenario stanno nei loro rimedi; la figlia nel suo, e non in quello di chi è «scritta qui».
     expect($conPadre)->toContain($regola)->and($conPadre)->toContain(\App\Services\Gestionale\AnnoACavallo::RIMEDIO_F24)
@@ -724,7 +726,7 @@ it('il confine è il giorno: il 01/01 e il 31/12 dell\'esercizio stanno dentro, 
     DB::table('esercizi')->where('id', $s['e']->id)->update(['stato' => 'chiuso']);
     $chiuso = rctControlli($s, $s['e']->fresh())['anno_a_cavallo']['rimedi'];
 
-    // Il rimedio dallo stato: con il 2026 aperto e una registrazione dopo la sua fine, «chiudi e apri il successivo»; con il 2026 chiuso, no.
+    // Il rimedio dallo stato: con il 2026 aperto e una registrazione dopo la sua fine, la frase che dice che il programma non apre il successivo; con il 2026 chiuso, no.
     expect($aperto)->toBe([\App\Services\Gestionale\AnnoACavallo::RIMEDIO_QUI.' '.\App\Services\Gestionale\AnnoACavallo::RIMEDIO_QUI_APERTO, \App\Services\Gestionale\AnnoACavallo::RIMEDIO_ALTRO])
         ->and($chiuso)->toBe([\App\Services\Gestionale\AnnoACavallo::RIMEDIO_QUI, \App\Services\Gestionale\AnnoACavallo::RIMEDIO_ALTRO]);
 
@@ -851,18 +853,20 @@ it('quando le righe del § 9 hanno una differenza, i crediti non tornano e il co
 
 // ─── L'esito ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-it('l\'esito di Via Roma finito: «9 tornano, 0 non tornano, 1 da leggere» con la riga fissa; R8 di un anno finito è da leggere con la sua frase', function () {
+it('l\'esito di Via Roma finito: «13 tornano, 0 non tornano, 1 da leggere» con la riga fissa; R8 di un anno finito è da leggere con la sua frase', function () {
     $s = vrmScenario($this);
     vrmGiorno($this, '2027-01-15');
-    $c = rctControlli($s);
+    // Con la lettura del conguaglio, come la scheda «Controlli»: i quattordici controlli.
+    $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e'], null, [], null, null, [], app(\App\Services\Gestionale\ConguaglioDelRendiconto::class)->leggi($s['e']));
     $r8 = rctControllo($c, 'R8');
 
-    expect($c['esito']['tornano'])->toBe(9)->and($c['esito']['non_tornano'])->toBe(0)->and($c['esito']['da_leggere'])->toBe(1)
-        ->and($c['esito']['frase'])->toBe('9 tornano, 0 non tornano, 1 da leggere')
-        ->and($c['esito']['riga_fissa'])->toBe('I controlli verificano che i numeri del programma tornino fra loro. Non verificano il saldo con l\'estratto conto della banca, né che ogni fattura e ogni entrata sia stata registrata.')
+    expect($c['esito']['tornano'])->toBe(13)->and($c['esito']['non_tornano'])->toBe(0)->and($c['esito']['da_leggere'])->toBe(1)
+        ->and($c['esito']['frase'])->toBe('13 tornano, 0 non tornano, 1 da leggere')
+        ->and($c['esito']['riga_fissa'])->toBe('I controlli verificano che i numeri della contabilità tornino fra loro. Non verificano il saldo con l\'estratto conto della banca, né che ogni fattura e ogni entrata sia stata registrata.')
         ->and($r8['esito'])->toBe('segnalazione')
-        ->and($r8['nota'])->toContain('il residuo vincolato dei fondi si legge con il consuntivo dei fondi (in arrivo)')
-        ->and(collect($c['controlli'])->pluck('id')->all())->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE']);
+        ->and($r8['nota'])->toContain('Il programma non dà il residuo vincolato di un fondo alla data di fine, perché i vincoli dichiarati non hanno una data')->not->toContain('in arrivo')
+        ->not->toContain('registro di contabilità')
+        ->and(collect($c['controlli'])->pluck('id')->all())->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE', 'CG', 'CU', 'CB', 'CA']);
 });
 
 it('una fattura con voci di un\'altra gestione è da leggere nei controlli, con il suo numero', function () {

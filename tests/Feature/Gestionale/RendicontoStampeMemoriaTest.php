@@ -32,11 +32,11 @@ function rsmeLimite(string $classe, ?string $limite): void
     (new ReflectionProperty($classe, 'limiteMemoria'))->setValue(null, $limite);
 }
 
-it('i tetti sono misurati su questi modelli: posizioni 4.518 righe con 128M e 14.592 con 256M; crediti per anzianità 4.226 e 14.490; fatture aperte 7.815 e 24.553 (con l\'esito dei controlli in testa); il riepilogo 7.542 e 23.085', function () {
+it('i tetti sono misurati su questi modelli: posizioni 4.306 righe con 128M e 14.108 con 256M (con la carta del riepilogo); crediti per anzianità 4.226 e 14.490; fatture aperte 7.815 e 24.553 (con l\'esito dei controlli in testa); il riepilogo 7.542 e 23.085', function () {
     $libroGiornale = (new ReflectionMethod(\App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController::class, 'righeStampabiliCon'))->invoke(null, '128M');
 
-    expect(rsmeTetto(RendicontoCondominiController::class, 'posizioniStampabiliCon', '128M'))->toBe(4518)
-        ->and(rsmeTetto(RendicontoCondominiController::class, 'posizioniStampabiliCon', '256M'))->toBe(14592)
+    expect(rsmeTetto(RendicontoCondominiController::class, 'posizioniStampabiliCon', '128M'))->toBe(4306)
+        ->and(rsmeTetto(RendicontoCondominiController::class, 'posizioniStampabiliCon', '256M'))->toBe(14108)
         ->and(rsmeTetto(RendicontoCondominiController::class, 'creditiStampabiliCon', '128M'))->toBe(4226)
         ->and(rsmeTetto(RendicontoCondominiController::class, 'creditiStampabiliCon', '256M'))->toBe(14490)
         ->and(rsmeTetto(StatoPatrimonialeController::class, 'fattureStampabiliCon', '128M'))->toBe(7815)
@@ -89,7 +89,8 @@ it('le tabelle delle stampe sono a blocchi di 100 righe, con un salto di pagina 
     expect(substr_count($html, '<thead>'))->toBe(3)
         ->and(substr_count($html, '<pagebreak'))->toBe(2)
         ->and(substr_count($html, 'Persona '))->toBe(250)
-        ->and(substr_count($html, '<td class="c'))->toBe(250 * 11);
+        // Dieci colonne: l'esercizio è una sola (era la scadenza e il piano).
+        ->and(substr_count($html, '<td class="c'))->toBe(250 * 10);
 });
 
 it('la stampa della situazione, fatta davvero con 1.000 fatture aperte, sta sotto la memoria che la sua formula le dà (58 MB di base e 0,0065 MB a fattura): la formula non è solo un numero scritto', function () {

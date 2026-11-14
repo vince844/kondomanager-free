@@ -31,7 +31,7 @@ const props = defineProps<{
     condomini:  Building[];
     fatture:    { data: any[]; meta: any };
     stats:      { totale_aperte: number; totale_sfori: number; importo_da_pagare: number };
-    filters:    { stato_pagamento?: string; stato_approvazione?: string; search?: string };
+    filters:    { stato_pagamento?: string; stato_approvazione?: string; search?: string; con_unita?: string };
     regolazioniImmediate?: number;
     regolazioniSuVoceDiEntrata?: RegolazioneSuVoceDiEntrata[];
     esercizio?: { id: number } | null;
@@ -57,6 +57,8 @@ const pageGuides = [
 ];
 
 const sforiFilterActive = computed(() => props.filters.stato_approvazione === 'sforo_motivato');
+/** L'elenco senza il filtro delle fatture con una riga su un'unità. */
+const hrefTutteLeFatture = computed(() => route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }));
 
 // Ponte verso il Libro Giornale: le Regolazioni Immediate si creano dalla toolbar di
 // questa pagina ma non vi compaiono mai, perché non generano righe in fatture_passive.
@@ -310,6 +312,14 @@ const filterSfori = () => {
                                     <X class="w-4 h-4" />
                                 </button>
                             </div>
+                        </div>
+
+ 
+                        <!-- Arrivati dalla riga delle spese personali del riepilogo: l'elenco è filtrato, e lo dice. Il filtro resta cambiando pagina o
+                             ordine (lo rimanda il server con gli altri), e si toglie da qui. -->
+                        <div v-if="filters.con_unita" class="mb-3 rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-900/20 p-3 text-[12.5px] text-sky-900 dark:text-sky-200 flex flex-wrap items-center justify-between gap-2" data-test="filtro-con-unita">
+                            <span>Solo le fatture con una riga su un'unità, cioè le spese per singole unità, di tutti gli esercizi.</span>
+                            <Link :href="hrefTutteLeFatture" class="font-semibold underline whitespace-nowrap">Tutte le fatture</Link>
                         </div>
 
                         <div>

@@ -806,13 +806,8 @@ final class EmissioneLettere
     public static function dentroIlTettoDellInvio(array $gruppi, string $tipo): array
     {
         $tetto = self::tettoDellInvio($tipo);
-        [$dentro, $fuori] = InviiPerPersona::dentroIlTetto($gruppi, $tetto['messaggi'], fn (array $g) => count($g['destinazioni']));
-        if ($tetto['lettere'] !== null) {
-            [$dentro, $oltre] = InviiPerPersona::dentroIlTetto($dentro, $tetto['lettere'], fn (array $g) => 1);
-            $fuori = $oltre === null ? $fuori : [...$oltre, ...($fuori ?? [])];
-        }
 
-        return [$dentro, $fuori];
+        return InviiPerPersona::dentroIDueTetti($gruppi, $tetto['messaggi'], $tetto['lettere'], fn (array $g) => count($g['destinazioni']));
     }
 
     /**

@@ -15,8 +15,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
+import SpiegazioneDelFiltro from '@/components/gestionale/debiti/SpiegazioneDelFiltro.vue';
+import RateScaduteGuide from '@/components/guides/RateScaduteGuide.vue';
 import { usePermission } from '@/composables/permissions';
-import { AlertTriangle, ChevronDown, ChevronRight, Mail, Printer, X } from 'lucide-vue-next';
+import { AlertTriangle, ChevronDown, ChevronRight, ListChecks, Mail, Printer, Scale, Send, X } from 'lucide-vue-next';
 import axios from 'axios';
 import LettereDialog from '@/components/gestionale/lettere/LettereDialog.vue';
 import AccordoRientroDialog from '@/components/gestionale/accordi/AccordoRientroDialog.vue';
@@ -25,7 +30,8 @@ import { CANALI_SPEDIZIONE, testoRiprova, testoUltimaLettera, type UltimaLettera
 import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { alterna, quanteSelezionate, selezionaPagina, selezioneVuota, tutteDeiFiltri, type Selezione } from '@/lib/gestionale/incassi/ricevute';
 import {
-    FRASE_DATA_PASSATA, FRASE_RISERVATEZZA, NOTA_PREGRESSO_NELLA_RATA, RIGA_TESORERIA, euroTesto, giorno, testoData, testoDispensa, testoGiorniDellaRata,
+    FRASE_DATA_PASSATA, FRASE_RISERVATEZZA, NOTA_PREGRESSO_NELLA_RATA, PERSONE_NEL_MENU, RIGA_TESORERIA, SPIEGAZIONI_DEI_FILTRI, euroTesto, giorno, personeDelMenu,
+    testoData, testoDispensa, testoGiorniDellaRata,
     testoNonEmesse, testoSeiMesiDellaPersona, testoTotale, titoloVista, type NonEmesse, type SeiMesiDellaRata,
 } from '@/lib/gestionale/debiti/rateScadute';
 import type { Flash } from '@/types/flash';
@@ -51,7 +57,7 @@ const props = defineProps<{
     condominio: { id: number; nome: string }; condomini: any; esercizio: any;
     righe: { data: Riga[]; meta: { current_page: number; last_page: number; per_page: number; total: number; from: number | null; to: number | null } };
     totale: number; persone_totali: number; filtri: Filtri; oggi: string; non_emesse: NonEmesse | null;
-    gestioni: Array<{ id: number; nome: string }>; persona_della_porta: string | null; testo_norma: string; frase_festivo?: string; frase_sei_mesi?: string;
+    gestioni: Array<{ id: number; nome: string }>; persone?: Array<{ id: number; nome: string }>; persona_della_porta: string | null; testo_norma: string; frase_festivo?: string; frase_sei_mesi?: string;
     lettere_da_riprovare?: number; lettere_in_coda_da_tempo?: number;
 }>();
 
@@ -67,7 +73,7 @@ const titolo = computed(() => titoloVista(props.filtri.vista, props.filtri.giorn
 const f = ref({
     alla: props.filtri.alla,
     giorni: String(props.filtri.giorni),
-    cerca: props.filtri.cerca ?? '',
+    anagrafica_id: props.filtri.anagrafica_id ?? null,
     fascia: props.filtri.fascia ?? '',
     minimo: props.filtri.minimo ? String(props.filtri.minimo / 100).replace('.', ',') : '',
     gestione_id: props.filtri.gestione_id ? String(props.filtri.gestione_id) : '',
@@ -79,13 +85,17 @@ const f = ref({
     da_spedire: !!props.filtri.da_spedire,
     con_accordo: !!props.filtri.con_accordo,
 });
+// La ricerca per una parte del nome non ha più un campo, ma un indirizzo vecchio (dalla cronologia del browser) può averla: la pagina la mostra
+// sopra l'elenco con la × e la porta alla stampa e alle lettere, così l'elenco, la stampa e le lettere hanno le stesse persone.
+const cercaDallIndirizzo = ref(props.filtri.cerca ?? '');
+const togliCerca = () => { cercaDallIndirizzo.value = ''; selezione.value = selezioneVuota(); applica(); };
 const parametri = (vista = props.filtri.vista) => ({
     condominio: props.condominio.id,
+    cerca: cercaDallIndirizzo.value || undefined,
     vista,
     alla: f.value.alla && f.value.alla !== props.oggi ? f.value.alla : undefined,
     giorni: vista === 'in_scadenza' ? f.value.giorni : undefined,
-    cerca: f.value.cerca || undefined,
-    anagrafica_id: props.filtri.anagrafica_id ?? undefined,
+    anagrafica_id: f.value.anagrafica_id ?? undefined,
     fascia: f.value.fascia || undefined,
     minimo: f.value.minimo || undefined,
     gestione_id: f.value.gestione_id || undefined,
@@ -123,7 +133,40 @@ watch(f, () => {
     attesa = setTimeout(() => applica(), 350);
 }, { deep: true });
 const cambiaVista = (vista: string) => { selezione.value = selezioneVuota(); applica(undefined, vista); };
-const togliPersona = () => router.get(route(generateRoute('gestionale.rate-scadute.index'), { ...parametri(), anagrafica_id: undefined }));
+
+// La guida che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
+
+// ── Le scelte dei filtri ────────────────────────────────────────────────
+// La persona si sceglie fra quelle del condominio; con un condominio grande il menu ne mostra al massimo PERSONE_NEL_MENU, e le altre si trovano
+// scrivendo una parte del nome. Se la persona arrivata dall'indirizzo non è nell'elenco, il suo nome viene dal server.
+const testoPersona = ref('');
+const elencoPersone = computed(() => {
+    const tutte = props.persone ?? [];
+    const id = f.value.anagrafica_id;
+
+    return id !== null && props.persona_della_porta && !tutte.some((p) => p.id === id) ? [{ id, nome: props.persona_della_porta }, ...tutte] : tutte;
+});
+const personeTrovate = computed(() => personeDelMenu(elencoPersone.value, testoPersona.value));
+// Il menu filtra da sé (`:filterable="false"`): `v-select` filtra solo quando c'è un testo, e con il testo vuoto mostrerebbe tutte le persone.
+// La persona scelta resta fra le opzioni anche fuori dalle prime PERSONE_NEL_MENU, perché il campo possa mostrarne il nome.
+const opzioniPersone = computed(() => {
+    const mostrate = personeTrovate.value.mostrate;
+    const id = f.value.anagrafica_id;
+    const scelta = id === null ? undefined : elencoPersone.value.find((p) => p.id === id);
+
+    return scelta && !mostrate.some((p) => p.id === id) ? [...mostrate, scelta] : mostrate;
+});
+const FASCE = [
+    { valore: '1_30', etichetta: 'Ha qualcosa a 1–30 giorni' },
+    { valore: '31_90', etichetta: 'Ha qualcosa a 31–90 giorni' },
+    { valore: 'oltre_90', etichetta: 'Ha qualcosa oltre 90 giorni' },
+];
+const ORDINI = [
+    { valore: 'scaduto', etichetta: 'Per scaduto, dal più alto' },
+    { valore: 'sei_mesi', etichetta: 'Per data dei sei mesi, dalla più vicina' },
+];
+const opzioniGestioni = computed(() => props.gestioni.map((g) => ({ valore: String(g.id), etichetta: g.nome })));
 
 // ── La selezione e la stampa ────────────────────────────────────────────
 const selezione = ref<Selezione>(selezioneVuota());
@@ -226,7 +269,6 @@ const indirizzoPiani = computed(() => props.esercizio
     ? route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })
     : indirizzoEsercizi.value);
 const frasNonEmesse = computed(() => testoNonEmesse(props.non_emesse));
-const mancaEsercizio = (r: Rata) => r.sei_mesi?.dalla_scadenza.stato === 'manca_esercizio' || r.sei_mesi?.dalla_competenza.stato === 'manca_esercizio';
 
 const breadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -246,6 +288,9 @@ const breadcrumbs = computed(() => [
                 :breadcrumbs="(breadcrumbs as any)"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
             />
             <MovimentiLayout>
                 <div class="space-y-3">
@@ -266,69 +311,107 @@ const breadcrumbs = computed(() => [
                         </label>
                     </div>
 
-                    <p v-if="persona_della_porta" class="flex flex-wrap items-center gap-2 text-xs">
-                        Solo {{ persona_della_porta }}.
-                        <Button size="sm" variant="ghost" class="h-7 text-xs" @click="togliPersona"><X class="w-3.5 h-3.5 mr-1" /> Tutte le persone</Button>
-                    </p>
-
-                    <!-- I filtri -->
-                    <div class="flex flex-wrap items-end gap-3 rounded-xl border bg-white dark:bg-slate-900 p-3 text-xs">
-                        <label class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Elenco al</span>
-                            <Input v-model="f.alla" type="date" :max="oggi" class="h-8 w-[150px] text-xs" data-testid="filtro-alla" />
-                        </label>
-                        <label class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Persona</span>
-                            <Input v-model="f.cerca" placeholder="Cerca per nome" class="h-8 w-[180px] text-xs" />
-                        </label>
-                        <label v-if="!inScadenza" class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Fascia</span>
-                            <select v-model="f.fascia" class="h-8 rounded-md border px-2 bg-transparent">
-                                <option value="">Tutte</option>
-                                <option value="1_30">Ha qualcosa a 1–30 giorni</option>
-                                <option value="31_90">Ha qualcosa a 31–90 giorni</option>
-                                <option value="oltre_90">Ha qualcosa oltre 90 giorni</option>
-                            </select>
-                        </label>
-                        <label class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Importo minimo (€)</span>
-                            <Input v-model="f.minimo" inputmode="decimal" placeholder="0,00" class="h-8 w-[110px] text-xs" />
-                        </label>
-                        <label class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Gestione</span>
-                            <select v-model="f.gestione_id" class="h-8 rounded-md border px-2 bg-transparent">
-                                <option value="">Tutte</option>
-                                <option v-for="g in gestioni" :key="g.id" :value="String(g.id)">{{ g.nome }}</option>
-                            </select>
-                        </label>
-                        <label v-if="!inScadenza" class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Data dei sei mesi entro (giorni)</span>
-                            <Input v-model="f.sei_mesi_entro" type="number" min="0" class="h-8 w-[110px] text-xs" />
-                        </label>
-                        <label v-if="!inScadenza" class="flex items-center gap-2 h-8">
-                            <Checkbox :model-value="f.con_pregresso" @update:model-value="(v: any) => (f.con_pregresso = !!v)" /> Con pregresso
-                        </label>
-                        <label class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Nessuna lettera negli ultimi (giorni)</span>
-                            <Input v-model="f.senza_lettere_da" type="number" min="1" class="h-8 w-[110px] text-xs" data-testid="filtro-senza-lettere" />
-                        </label>
-                        <label class="flex items-center gap-2 h-8" data-testid="filtro-mai-scritto">
-                            <Checkbox :model-value="f.mai_scritto" @update:model-value="(v: any) => (f.mai_scritto = !!v)" /> Mai scritto (contano le lettere partite o spedite)
-                        </label>
-                        <label class="flex items-center gap-2 h-8" data-testid="filtro-da-spedire">
-                            <Checkbox :model-value="f.da_spedire" @update:model-value="(v: any) => (f.da_spedire = !!v)" /> Stampate o scaricate, spedizione da registrare
-                        </label>
-                        <label class="flex items-center gap-2 h-8" data-testid="filtro-con-accordo">
-                            <Checkbox :model-value="f.con_accordo" @update:model-value="(v: any) => (f.con_accordo = !!v)" /> Con accordo di rientro
-                        </label>
-                        <label v-if="!inScadenza" class="space-y-1">
-                            <span class="block text-slate-500 dark:text-slate-400">Ordine</span>
-                            <select v-model="f.ordine" class="h-8 rounded-md border px-2 bg-transparent">
-                                <option value="scaduto">Per scaduto, dal più alto</option>
-                                <option value="sei_mesi">Per data dei sei mesi, dalla più vicina</option>
-                            </select>
-                        </label>
-                    </div>
+                    <!-- I filtri: in alto le scelte, sotto le caselle; accanto a ogni nome l'icona che dice a che cosa serve -->
+                    <TooltipProvider :delay-duration="200">
+                        <div class="filtri-rate-scadute rounded-xl border bg-white dark:bg-slate-900 p-3 text-xs space-y-3" data-testid="filtri">
+                            <div class="flex flex-wrap items-end gap-3">
+                                <label class="flex flex-col gap-1 w-full sm:w-auto">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Elenco al <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.alla" /></span>
+                                    <Input v-model="f.alla" type="date" :max="oggi" class="h-8 w-full sm:w-[150px] text-xs" data-testid="filtro-alla" />
+                                </label>
+                                <div class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-persona">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Persona <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.persona" /></span>
+                                    <v-select
+                                        v-model="f.anagrafica_id"
+                                        :options="opzioniPersone"
+                                        label="nome"
+                                        :reduce="(p: { id: number }) => p.id"
+                                        :filterable="false"
+                                        placeholder="Tutte le persone"
+                                        class="w-full sm:w-[240px]"
+                                        @search="(t: string) => (testoPersona = t)"
+                                    >
+                                        <template #no-options>Nessuna persona con questo nome.</template>
+                                        <template #list-footer>
+                                            <li v-if="personeTrovate.altre > 0" class="px-3 py-1.5 text-[11px] text-slate-500 border-t" data-testid="persone-altre">
+                                                Ne mostro {{ PERSONE_NEL_MENU }}: scrivi una parte del nome per trovare le altre {{ personeTrovate.altre }}.
+                                            </li>
+                                        </template>
+                                    </v-select>
+                                </div>
+                                <div v-if="!inScadenza" class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-fascia">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Fascia <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.fascia" /></span>
+                                    <v-select
+                                        :model-value="f.fascia || null"
+                                        :options="FASCE"
+                                        label="etichetta"
+                                        :reduce="(o: { valore: string }) => o.valore"
+                                        :searchable="false"
+                                        placeholder="Tutte"
+                                        class="w-full sm:w-[220px]"
+                                        @update:model-value="(v: string | null) => (f.fascia = v ?? '')"
+                                    />
+                                </div>
+                                <label class="flex flex-col gap-1 w-full sm:w-auto">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Importo minimo (€) <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.minimo" /></span>
+                                    <Input v-model="f.minimo" inputmode="decimal" placeholder="0,00" class="h-8 w-0 min-w-full text-xs" />
+                                </label>
+                                <div class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-gestione">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Gestione <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.gestione" /></span>
+                                    <v-select
+                                        :model-value="f.gestione_id || null"
+                                        :options="opzioniGestioni"
+                                        label="etichetta"
+                                        :reduce="(o: { valore: string }) => o.valore"
+                                        placeholder="Tutte"
+                                        class="w-full sm:w-[220px]"
+                                        @update:model-value="(v: string | null) => (f.gestione_id = v ?? '')"
+                                    >
+                                        <template #no-options>Nessuna gestione con questo nome.</template>
+                                    </v-select>
+                                </div>
+                                <label v-if="!inScadenza" class="flex flex-col gap-1 w-full sm:w-auto">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Data dei sei mesi entro (giorni) <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.sei_mesi_entro" /></span>
+                                    <Input v-model="f.sei_mesi_entro" type="number" min="0" class="h-8 w-0 min-w-full text-xs" data-testid="filtro-sei-mesi" />
+                                </label>
+                                <label class="flex flex-col gap-1 w-full sm:w-auto">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Nessuna lettera negli ultimi (giorni) <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.senza_lettere_da" /></span>
+                                    <Input v-model="f.senza_lettere_da" type="number" min="1" class="h-8 w-0 min-w-full text-xs" data-testid="filtro-senza-lettere" />
+                                </label>
+                                <div v-if="!inScadenza" class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-ordine">
+                                    <span class="flex items-center gap-1 text-slate-500 dark:text-slate-400">Ordine <SpiegazioneDelFiltro :testo="SPIEGAZIONI_DEI_FILTRI.ordine" /></span>
+                                    <v-select
+                                        :model-value="f.ordine"
+                                        :options="ORDINI"
+                                        label="etichetta"
+                                        :reduce="(o: { valore: string }) => o.valore"
+                                        :searchable="false"
+                                        :clearable="false"
+                                        class="w-full sm:w-[260px]"
+                                        @update:model-value="(v: string) => (f.ordine = v)"
+                                    />
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-x-6 gap-y-2 border-t pt-3">
+                                <label v-if="!inScadenza" class="flex items-center gap-2">
+                                    <Checkbox :model-value="f.con_pregresso" @update:model-value="(v: any) => (f.con_pregresso = !!v)" />
+                                    <span>Con pregresso <SpiegazioneDelFiltro class="align-middle" :testo="SPIEGAZIONI_DEI_FILTRI.con_pregresso" /></span>
+                                </label>
+                                <label class="flex items-center gap-2" data-testid="filtro-mai-scritto">
+                                    <Checkbox :model-value="f.mai_scritto" @update:model-value="(v: any) => (f.mai_scritto = !!v)" />
+                                    <span>Mai scritto (contano le lettere partite o spedite) <SpiegazioneDelFiltro class="align-middle" :testo="SPIEGAZIONI_DEI_FILTRI.mai_scritto" /></span>
+                                </label>
+                                <label class="flex items-center gap-2" data-testid="filtro-da-spedire">
+                                    <Checkbox :model-value="f.da_spedire" @update:model-value="(v: any) => (f.da_spedire = !!v)" />
+                                    <span>Stampate o scaricate, spedizione da registrare <SpiegazioneDelFiltro class="align-middle" :testo="SPIEGAZIONI_DEI_FILTRI.da_spedire" /></span>
+                                </label>
+                                <label class="flex items-center gap-2" data-testid="filtro-con-accordo">
+                                    <Checkbox :model-value="f.con_accordo" @update:model-value="(v: any) => (f.con_accordo = !!v)" />
+                                    <span>Con accordo di rientro <SpiegazioneDelFiltro class="align-middle" :testo="SPIEGAZIONI_DEI_FILTRI.con_accordo" /></span>
+                                </label>
+                            </div>
+                        </div>
+                    </TooltipProvider>
 
                     <p v-if="(lettere_da_riprovare ?? 0) > 0" data-testid="lettere-da-riprovare" class="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-2 text-xs text-amber-900 dark:text-amber-100">
                         {{ lettere_da_riprovare === 1 ? '1 lettera per email non è partita.' : `${lettere_da_riprovare} lettere per email non sono partite.` }}
@@ -347,17 +430,24 @@ const breadcrumbs = computed(() => [
                         <span>{{ frasNonEmesse }} <Link :href="indirizzoPiani" class="underline">Vai ai piani rate</Link></span>
                     </p>
 
+                    <p v-if="cercaDallIndirizzo" class="flex flex-wrap items-center gap-2 text-xs" data-testid="filtro-cerca">
+                        Solo i nomi con «{{ cercaDallIndirizzo }}».
+                        <Button size="sm" variant="ghost" class="h-7 text-xs" data-testid="togli-cerca" @click="togliCerca"><X class="w-3.5 h-3.5 mr-1" /> Tutti i nomi</Button>
+                    </p>
+
                     <!-- Il totale, la scelta e la stampa -->
-                    <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <div class="space-y-2 text-sm">
                         <div class="flex flex-wrap items-center gap-2">
                             <span data-testid="totale">{{ testoTotale({ persone: persone_totali, totale, vista: filtri.vista }) }}</span>
-                            <span v-if="quante > 0" class="font-medium">Selezionate: {{ quante }}.</span>
-                            <Button v-if="!selezione.tutte && persone_totali > 1" size="sm" variant="ghost" class="h-7 text-xs" @click="selezione = tutteDeiFiltri(selezione)">
-                                Seleziona tutte le {{ persone_totali }} dei filtri
-                            </Button>
-                            <Button v-if="quante > 0" size="sm" variant="ghost" class="h-7 text-xs" @click="selezione = selezioneVuota()"><X class="w-3.5 h-3.5 mr-1" /> Togli la scelta</Button>
+                            <span v-if="quante > 0" class="font-medium" data-testid="selezionate">Selezionate: {{ quante }}.</span>
                         </div>
-                        <div class="flex flex-wrap gap-2">
+                        <!-- Prima la scelta delle righe, poi le azioni, divise da una linea: senza righe scelte le azioni valgono già per tutte. -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            <Button v-if="!selezione.tutte && persone_totali > 1" size="sm" variant="outline" data-testid="seleziona-tutte" @click="selezione = tutteDeiFiltri(selezione)">
+                                <ListChecks class="w-4 h-4 mr-2" /> Seleziona tutte le {{ persone_totali }} dei filtri
+                            </Button>
+                            <Button v-if="quante > 0" size="sm" variant="outline" data-testid="togli-scelta" @click="selezione = selezioneVuota()"><X class="w-4 h-4 mr-2" /> Togli la scelta</Button>
+                            <span v-if="(!selezione.tutte && persone_totali > 1) || quante > 0" class="hidden sm:block h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" aria-hidden="true" />
                             <Button size="sm" :disabled="persone_totali === 0" data-testid="prepara-lettere" @click="preparaLettere">
                                 <Mail class="w-4 h-4 mr-2" /> {{ quante > 0 && !selezione.tutte ? (quante === 1 ? 'Prepara la lettera alla selezionata' : 'Prepara le lettere alle selezionate')
                                     : (persone_totali === 1 ? 'Prepara la lettera' : `Prepara le lettere a tutte le ${persone_totali}`) }}
@@ -366,9 +456,12 @@ const breadcrumbs = computed(() => [
                                 <Printer class="w-4 h-4 mr-2" /> {{ quante > 0 && !selezione.tutte ? 'Stampa le selezionate' : 'Stampa l\'elenco' }}
                             </Button>
                             <Button v-if="filtri.da_spedire" size="sm" variant="outline" :disabled="daSpedire.length === 0" data-testid="spedizione-in-blocco" @click="apriSpedizione">
-                                Registra la spedizione
+                                <Send class="w-4 h-4 mr-2" /> Registra la spedizione
                             </Button>
-                            <Link v-if="!inScadenza" :href="indirizzoDispense" class="inline-flex items-center h-8 px-3 rounded-md border text-xs">Dispense dei sei mesi</Link>
+                            <!-- Un collegamento con l'aspetto degli altri pulsanti della fila: l'icona, il carattere e l'altezza. -->
+                            <Button v-if="!inScadenza" as-child size="sm" variant="outline">
+                                <Link :href="indirizzoDispense" data-testid="dispense-sei-mesi"><Scale class="w-4 h-4 mr-2" /> Dispense dei sei mesi</Link>
+                            </Button>
                         </div>
                     </div>
 
@@ -492,9 +585,6 @@ const breadcrumbs = computed(() => [
                                                     </tr>
                                                 </tbody>
                                             </table>
-                                            <p v-if="r.rate.some(mancaEsercizio)" class="mt-1 text-[11px]">
-                                                <Link :href="indirizzoEsercizi" data-testid="collegamento-esercizi" class="underline">Vai all'elenco degli esercizi</Link>
-                                            </p>
                                             <p v-if="r.sei_mesi?.dispensa" class="mt-1 text-[11px]">{{ testoDispensa(r.sei_mesi.dispensa) }}</p>
                                         </td>
                                     </tr>
@@ -536,8 +626,77 @@ const breadcrumbs = computed(() => [
                 </div>
                 <LettereDialog v-model:open="finestraLettere" :condominio-id="condominio.id" :persona="personaDellaLettera" :selezione="selezioneDelleLettere"
                     :filtri="filtriDelServer()" :vista="filtri.vista" :giorni="filtri.giorni" :oggi="oggi" @fatto="ricaricaDopoLeLettere" />
+                <RateScaduteGuide v-model:open="mostraGuida" :testo-norma="testo_norma" />
                 <AccordoRientroDialog v-model:open="finestraAccordo" :condominio-id="condominio.id" :persona="personaDellAccordo" :oggi="oggi" @fatto="ricaricaDopoLAccordo" />
             </MovimentiLayout>
         </div>
     </GestionaleLayout>
 </template>
+
+<style>
+/* Le scelte dei filtri delle rate scadute: alte come i campi accanto, con il testo piccolo della barra, e leggibili nel tema scuro. Solo qui:
+   gli altri menu del programma restano come sono. */
+.filtri-rate-scadute .v-select {
+    --vs-font-size: 0.75rem;
+    --vs-line-height: 1.25;
+    --vs-border-radius: 0.375rem;
+    --vs-border-color: var(--input);
+    background: transparent;
+}
+.filtri-rate-scadute .v-select {
+    --vs-controls-color: rgb(100 116 139);
+}
+.filtri-rate-scadute .vs__dropdown-toggle {
+    min-height: 2rem;
+    padding: 0;
+    align-items: center;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.filtri-rate-scadute .vs__selected-options {
+    align-items: center;
+    padding-left: 6px;
+}
+/* Il testo al centro del campo, come negli altri campi della barra: niente margine in alto né lo spazio che `custom.css` dà alla ricerca. */
+.filtri-rate-scadute .vs__selected,
+.filtri-rate-scadute .vs__search {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+.filtri-rate-scadute .vs__search,
+.filtri-rate-scadute .vs__search::placeholder {
+    font-size: 0.75rem !important;
+}
+.filtri-rate-scadute .vs__actions {
+    padding: 0 8px 0 4px;
+}
+/* La freccia più piccola, come quella degli altri menu del programma; aperta si gira come prima. */
+.filtri-rate-scadute .vs__open-indicator {
+    transform: scale(0.75);
+}
+.filtri-rate-scadute .vs--open .vs__open-indicator {
+    transform: rotate(180deg) scale(0.75);
+}
+.filtri-rate-scadute .vs__dropdown-menu {
+    font-size: 0.75rem;
+    max-height: 18rem;
+}
+.dark .filtri-rate-scadute .v-select {
+    --vs-dropdown-bg: rgb(15 23 42);
+    --vs-dropdown-color: rgb(226 232 240);
+    --vs-dropdown-option-color: rgb(226 232 240);
+    --vs-selected-color: rgb(226 232 240);
+    --vs-search-input-color: rgb(226 232 240);
+    --vs-controls-color: rgb(148 163 184);
+    --vs-border-color: var(--input);
+}
+/* Nel tema scuro lo sfondo dei campi di testo del programma (`dark:bg-input/30`), perché i menu non sembrino un'altra cosa. */
+.dark .filtri-rate-scadute .vs__dropdown-toggle {
+    background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+/* `custom.css` evidenzia l'opzione con un grigio chiarissimo e il testo nero: nel tema scuro diventava una barra bianca. */
+.dark .filtri-rate-scadute .vs__dropdown-option--highlight {
+    background: rgb(30 41 59) !important;
+    color: rgb(241 245 249) !important;
+}
+</style>

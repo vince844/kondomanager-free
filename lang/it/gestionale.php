@@ -193,7 +193,6 @@ return [
             'subtitle' => 'Rialloca fondi da una voce all\'altra senza modificare il totale del piano rate.',
             'how_it_works_title' => 'Come funziona:',
             'how_it_works_body_1' => 'Stai modificando la destinazione d\'uso interna dei fondi.',
-            'how_it_works_body_2' => 'Le rate già emesse ai condòmini NON VERRANNO RICALCOLATE. Eventuali differenze di ripartizione saranno gestite automaticamente nel conguaglio di fine anno.',
             'practical_example_title' => 'Esempio pratico:',
             'practical_example_body' => 'Hai avanzato 200EUR dalle "Pulizie" e si rompe il cancello? Sposta 200EUR su "Manutenzione Cancello". Il totale del piano non cambia, ma ora hai la copertura contabile corretta per pagare il fabbro.',
             'source_label' => 'Preleva da (sorgente)',

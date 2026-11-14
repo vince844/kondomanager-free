@@ -63,7 +63,7 @@ const CIT_GIRATA = 'La foto è girata: ruotala e salvala di nuovo, poi caricala.
 /** La frase di un file che non è un PDF né un JPG. */
 const CIT_NON_JPG = 'La carta intestata va caricata come PDF, o come immagine JPG.';
 
-const CIT_RIFIUTO = 'Questo PDF non si può usare come sfondo: è protetto, o è salvato in un formato che il programma non legge. Caricalo come immagine JPG, A4 verticale, larga almeno 1.240 pixel.';
+const CIT_RIFIUTO = 'Questa carta intestata non si può usare: il PDF è protetto, o è salvato in un formato che il programma non legge. Caricala come immagine JPG, A4 verticale, larga almeno 1.240 pixel.';
 
 /** Un flusso compresso con Flate: il testo, e dopo tanti spazi da arrivare a `$mb` MB espansi; scritto a pezzi, senza tenere in memoria l'espanso. */
 function citFlussoCompresso(string $testo, int $mb): string

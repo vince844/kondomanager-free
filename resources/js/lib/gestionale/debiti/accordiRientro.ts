@@ -28,7 +28,7 @@ export const FRASE_AUTORIZZAZIONE = 'Se l\'assemblea non ha ancora deliberato è
     + 'L\'autorizzazione dell\'accordo non è la dispensa dei sei mesi.';
 
 export const FRASE_REGISTRO = 'L\'accordo è un registro: le rate coperte restano fra le scadute, con il segno, e le lettere proposte lasciano fuori la parte '
-    + 'riconosciuta fino a «fino al». Il calendario delle rate dell\'accordo, interessi e spese il programma non li registra ancora.';
+    + 'riconosciuta fino a «fino al». Il calendario delle rate dell\'accordo, interessi e spese il programma non li registra.';
 
 export const FRASE_IMPORTO = 'Di serie il residuo della rata il giorno dell\'accordo: lo puoi abbassare, non alzare.';
 
@@ -46,7 +46,7 @@ export function testoSegnoAccordo(a: AccordoRientro): string {
         ? `riconosciuti ${euroTesto(a.riconosciuti)}, residuo invariato dal ${giorno(a.data_accordo)}`
         : `riconosciuti ${euroTesto(a.riconosciuti)}, oggi ${euroTesto(a.oggi)}`;
     const oltre = a.versati_oltre > 0
-        ? ` Versati ${euroTesto(a.versati_oltre)} oltre il capitale riconosciuto: sono andati a credito della persona; interessi e spese il programma non li registra ancora.`
+        ? ` Versati ${euroTesto(a.versati_oltre)} oltre il capitale riconosciuto: sono andati a credito della persona; interessi e spese il programma non li registra.`
         : '';
 
     return `${quando}: ${cifre}.${oltre}`;

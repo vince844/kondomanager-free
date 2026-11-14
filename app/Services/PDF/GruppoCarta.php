@@ -43,7 +43,7 @@ enum GruppoCarta: string
             self::LETTERE => 'promemoria, sollecito, diffida, messa in mora',
             self::RICEVUTE_E_AVVISI => 'la ricevuta dell\'incasso, l\'avviso di compensazione',
             self::RENDICONTO_E_ASSEMBLEA => 'il fascicolo e le sue parti, i riparti, il preventivo, lo scadenziario del piano, il registro per l\'assemblea',
-            self::PER_LA_PERSONA => 'l\'estratto conto della persona, il prospetto degli oneri accessori',
+            self::PER_LA_PERSONA => 'l\'estratto conto della persona, il foglio del conguaglio, il prospetto degli oneri accessori',
             self::REGISTRI_E_ELENCHI => 'il libro giornale, la copia di controllo del registro, il mastrino, il libro mastro, le rate scadute, la distinta del pagamento, il rapporto dell\'importazione',
             self::NESSUNO => 'il modello F24, che è dell\'Agenzia delle Entrate',
         };

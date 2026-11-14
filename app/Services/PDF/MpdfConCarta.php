@@ -18,10 +18,19 @@ use setasign\Fpdi\PdfParser\StreamReader;
  * Il PDF si rifà in ogni modo in cui si scrive (una stringa, un file, la risposta al browser), così le impronte dei documenti conservati si
  * calcolano sul PDF che esce. Una carta che in quel momento non si disegna (il file cambiato sul disco dopo il controllo della stampa, un'immagine che
  * non si apre) non ferma la stampa: una riga nel registro, ed esce la stessa stampa con la carta a campi (lo studio lo scrive il programma, se ha il
- * nome).
+ * nome). La stampa a campi ha altri margini e quindi altre pagine: chi legge le pagine e il piede prima di `Output` (il fascicolo del rendiconto, per il
+ * suo indice e il numero di pagina) li legge in `$ripiego`, dopo.
  */
 class MpdfConCarta extends Mpdf
 {
+    /**
+     * Se la carta non si è disegnata e la stampa è uscita a campi, com'è uscita: le pagine, il margine del piede (da sotto), il margine destro e il carattere
+     * del piede (`inter` o `dejavusans`); altrimenti null. Si scrive in `Output`, prima di scrivere la stampa a campi.
+     *
+     * @var array{pagine: int, basso: float, destro: float, carattere: string}|null
+     */
+    public ?array $ripiego = null;
+
     /**
      * @param  array<string, mixed>  $config  la configurazione di mPDF
      * @param  bool  $primaPaginaDellaCarta  falso: ogni pagina prende la pagina delle seguenti (le parti del fascicolo)
@@ -77,7 +86,11 @@ class MpdfConCarta extends Mpdf
                 ['percorso' => $this->carta->percorso, 'errore' => mb_substr($e->getMessage(), 0, 500)]);
             unset($rifatto, $contenuto);
 
-            return ($this->aCampi)()->Output($name, $dest);
+            $aCampi = ($this->aCampi)();
+            $this->ripiego = ['pagine' => count($aCampi->pages), 'basso' => (float) $aCampi->margin_footer, 'destro' => (float) $aCampi->rMargin,
+                'carattere' => $aCampi->default_font === 'inter' ? 'inter' : 'dejavusans'];
+
+            return $aCampi->Output($name, $dest);
         }
     }
 

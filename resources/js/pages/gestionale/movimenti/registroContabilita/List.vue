@@ -305,48 +305,48 @@ const pageGuides = [
                             :meta="righe.meta"
                         />
 
-                        <div v-if="riepilogo.totali_per_tipo.length || riepilogo.saldi_fine_mese.length" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                            <section v-if="riepilogo.totali_per_tipo.length" data-test="totali-per-tipo">
-                                <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Totali per tipo di movimento{{ filtrato ? ' (parziale)' : '' }}</h3>
+                        <div v-if="riepilogo.totali_per_tipo.length || riepilogo.saldi_fine_mese.length" class="grid grid-cols-1 lg:grid-cols-2 items-start gap-6 mt-6">
+                            <section v-if="riepilogo.totali_per_tipo.length" data-test="totali-per-tipo" class="rounded-md border bg-white dark:bg-slate-900 overflow-x-auto">
+                                <h3 class="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold text-slate-700 dark:text-slate-300">Totali per tipo di movimento{{ filtrato ? ' (parziale)' : '' }}</h3>
                                 <table class="w-full text-sm">
                                     <thead>
-                                        <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                            <th class="text-left py-2">Tipo</th>
-                                            <th class="text-right py-2">Mov.</th>
-                                            <th class="text-right py-2">Entrate</th>
-                                            <th class="text-right py-2">Uscite</th>
+                                        <tr class="bg-gray-50/50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            <th class="text-left px-4 py-2">Tipo</th>
+                                            <th class="text-right px-4 py-2">Mov.</th>
+                                            <th class="text-right px-4 py-2">Entrate</th>
+                                            <th class="text-right px-4 py-2">Uscite</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="t in riepilogo.totali_per_tipo" :key="t.chiave" class="border-b border-slate-100 dark:border-slate-800">
-                                            <td class="py-2 text-slate-700 dark:text-slate-300">
+                                        <tr v-for="t in riepilogo.totali_per_tipo" :key="t.chiave" class="border-b last:border-0 border-slate-100 dark:border-slate-800">
+                                            <td class="px-4 py-2 text-slate-700 dark:text-slate-300">
                                                 {{ t.etichetta }}
                                                 <span v-if="t.di_cui_esercizi_precedenti" class="block text-[11px] text-slate-500 dark:text-slate-400">di cui {{ euro(t.di_cui_esercizi_precedenti) }} per fatture di esercizi precedenti</span>
                                             </td>
-                                            <td class="py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ t.movimenti }}</td>
-                                            <td class="py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{{ t.entrate ? euro(t.entrate) : '' }}</td>
-                                            <td class="py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">{{ t.uscite ? euro(t.uscite) : '' }}</td>
+                                            <td class="px-4 py-2 text-right tabular-nums text-slate-500 dark:text-slate-400">{{ t.movimenti }}</td>
+                                            <td class="px-4 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{{ t.entrate ? euro(t.entrate) : '' }}</td>
+                                            <td class="px-4 py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">{{ t.uscite ? euro(t.uscite) : '' }}</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </section>
-                            <section v-if="riepilogo.saldi_fine_mese.length" data-test="saldi-fine-mese">
-                                <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Saldo a fine mese, nei mesi con movimenti</h3>
+                            <section v-if="riepilogo.saldi_fine_mese.length" data-test="saldi-fine-mese" class="rounded-md border bg-white dark:bg-slate-900 overflow-x-auto">
+                                <h3 class="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold text-slate-700 dark:text-slate-300">Saldo a fine mese, nei mesi con movimenti</h3>
                                 <table class="w-full text-sm">
                                     <thead>
-                                        <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                            <th class="text-left py-2">Mese</th>
-                                            <th class="text-right py-2">Entrate{{ filtrato ? ' (parziale)' : '' }}</th>
-                                            <th class="text-right py-2">Uscite{{ filtrato ? ' (parziale)' : '' }}</th>
-                                            <th class="text-right py-2">Saldo</th>
+                                        <tr class="bg-gray-50/50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            <th class="text-left px-4 py-2">Mese</th>
+                                            <th class="text-right px-4 py-2">Entrate{{ filtrato ? ' (parziale)' : '' }}</th>
+                                            <th class="text-right px-4 py-2">Uscite{{ filtrato ? ' (parziale)' : '' }}</th>
+                                            <th class="text-right px-4 py-2">Saldo</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="m in riepilogo.saldi_fine_mese" :key="m.mese" class="border-b border-slate-100 dark:border-slate-800">
-                                            <td class="py-2 text-slate-700 dark:text-slate-300">{{ nomeMese(m.mese) }}</td>
-                                            <td class="py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{{ euro(m.entrate) }}</td>
-                                            <td class="py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">{{ euro(m.uscite) }}</td>
-                                            <td class="py-2 text-right tabular-nums font-semibold" :class="m.saldo < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'" :title="'Saldo al ' + formatData(m.fine)">{{ euro(m.saldo) }}</td>
+                                        <tr v-for="m in riepilogo.saldi_fine_mese" :key="m.mese" class="border-b last:border-0 border-slate-100 dark:border-slate-800">
+                                            <td class="px-4 py-2 text-slate-700 dark:text-slate-300">{{ nomeMese(m.mese) }}</td>
+                                            <td class="px-4 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{{ euro(m.entrate) }}</td>
+                                            <td class="px-4 py-2 text-right tabular-nums text-rose-700 dark:text-rose-400">{{ euro(m.uscite) }}</td>
+                                            <td class="px-4 py-2 text-right tabular-nums font-semibold" :class="m.saldo < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'" :title="'Saldo al ' + formatData(m.fine)">{{ euro(m.saldo) }}</td>
                                         </tr>
                                     </tbody>
                                 </table>

@@ -476,7 +476,7 @@ it('le stampe del § 9 e del § 10 si aprono, dicono le convenzioni a chi ha il 
         ->and($htmlNove)->toContain('positivo vuol dire che devono, negativo che hanno un credito')->toContain('alla data del 31/12/2026')->toContain('€ 410,00')
         ->toContain('Bice')->toContain('senza gli anticipi')
         ->and($htmlDieci)->toContain('positivo vuol dire che devono')->toContain('alla data del 31/12/2026')->toContain('€ 410,00')
-        ->toContain('In ordine di scaduto')->toContain('ultima lettera partita o spedita')->toContain('Non va esposto in bacheca');
+        ->toContain('In ordine di scaduto')->toContain('Ultima lettera spedita')->toContain('l\'ultima lettera di sollecito spedita')->toContain('Non va esposto in bacheca');
 });
 
 it('gli indirizzi scritti a mano non danno un errore del server: una pagina enorme è la pagina vuota dopo l\'ultima, un ordine che non è una parola è quello di serie, anche nella stampa del § 10', function () {

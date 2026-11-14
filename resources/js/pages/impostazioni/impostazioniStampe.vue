@@ -111,7 +111,7 @@ const campiStudio = [
   { campo: 'studio_pec', etichetta: 'PEC', tipo: 'email' },
   { campo: 'studio_telefono', etichetta: 'Telefono', tipo: 'text' },
   { campo: 'studio_sito', etichetta: 'Sito', tipo: 'text' },
-  { campo: 'studio_comune', etichetta: 'Comune (accanto all\'indirizzo, e il luogo delle lettere; senza, quello del condominio)', tipo: 'text' },
+  { campo: 'studio_comune', etichetta: 'Comune (accanto all\'indirizzo e nel luogo delle lettere; se è vuoto, vale quello del condominio)', tipo: 'text' },
 ] as const
 
 const showGuide = ref(false)
@@ -315,7 +315,7 @@ const submit = () => {
                 <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Lo studio, in testa alle stampe</h3>
                 <p class="text-sm text-muted-foreground">
                   In testa a tutte le stampe, tranne il modello F24, con una carta a campi: a sinistra il logo e lo studio con i suoi dati, a destra il condominio.
-                  Nelle lettere, nelle ricevute e negli avvisi lo studio sta in alto a sinistra e sotto il condominio, perché a destra c'è il destinatario; con la
+                  Nelle lettere, nelle ricevute e negli avvisi lo studio sta in alto a sinistra e sotto il condominio, perché a destra c'è il destinatario (nelle ricevute, quando vanno per posta); con la
                   carta intestata, lo studio è quello stampato sulla carta. Senza il nome dello studio la testata delle stampe a campi è quella del solo condominio.
                 </p>
               </div>

@@ -431,6 +431,32 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('esercizi/{esercizio}/rendiconto/condomini/crediti/stampa', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoCondominiController::class, 'stampaCrediti'])
         ->name('esercizi.rendiconto.condomini.crediti.stampa');
 
+    // Il rendiconto: la scheda «Conguaglio», la proposta di conguaglio per persona e unità, con le sue due stampe e il foglio della persona, uno per uno o
+    // in un archivio. Sono i dati di tutti i condòmini: qui, dietro il pannello, mai fra le rotte del portale.
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioController::class, 'index'])
+        ->name('esercizi.rendiconto.conguaglio');
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio/stampa', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioController::class, 'stampaPerPersona'])
+        ->name('esercizi.rendiconto.conguaglio.stampa');
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio/per-tabella/stampa', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioController::class, 'stampaPerTabella'])
+        ->name('esercizi.rendiconto.conguaglio.per-tabella.stampa');
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio/fogli', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioController::class, 'fogli'])
+        ->name('esercizi.rendiconto.conguaglio.fogli');
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio/fogli/{persona}', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioController::class, 'foglio'])
+        ->whereNumber('persona')->name('esercizi.rendiconto.conguaglio.foglio');
+    // I fogli per email: la finestra, l'anteprima, l'invio, il rinvio dei non partiti, lo stato degli invii che la scheda rilegge e il PDF partito.
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio/invio/opzioni', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioInvioController::class, 'opzioni'])
+        ->name('esercizi.rendiconto.conguaglio.invio.opzioni');
+    Route::post('esercizi/{esercizio}/rendiconto/conguaglio/invio/anteprima', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioInvioController::class, 'anteprima'])
+        ->name('esercizi.rendiconto.conguaglio.invio.anteprima');
+    Route::post('esercizi/{esercizio}/rendiconto/conguaglio/invio', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioInvioController::class, 'invia'])
+        ->name('esercizi.rendiconto.conguaglio.invio');
+    Route::post('esercizi/{esercizio}/rendiconto/conguaglio/invio/riprova', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioInvioController::class, 'riprova'])
+        ->name('esercizi.rendiconto.conguaglio.invio.riprova');
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio/invio/stato', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioInvioController::class, 'stato'])
+        ->name('esercizi.rendiconto.conguaglio.invio.stato');
+    Route::get('esercizi/{esercizio}/rendiconto/conguaglio/invio/{invio}/pdf', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoConguaglioInvioController::class, 'pdf'])
+        ->whereNumber('invio')->name('esercizi.rendiconto.conguaglio.invio.pdf');
+
     // Il mastrino di un conto contabile — punto 2 di docs/registri_contabili.md (D21), beta.26.
     // Pagina figlia dello Stato patrimoniale, non una voce della barra. Il conto si risolve
     // dentro il condominio dell'esercizio (`Esercizio::contiContabili()`): scoped come le altre.

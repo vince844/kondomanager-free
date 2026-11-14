@@ -61,6 +61,13 @@ class RegistroInvio extends Model
      */
     public const TIPO_AVVISO_COMPENSAZIONE = 'avviso_compensazione';
 
+    /**
+     * Il foglio del conguaglio di una persona per email (1.12.0-beta.9): la sua parte del consuntivo e la proposta di conguaglio di un esercizio,
+     * che è il «documentabile». Una riga per indirizzo; le righe dello stesso invio hanno lo stesso `dati.foglio`, il PDF conservato, l'oggetto e il
+     * testo usati e la data e l'ora del calcolo delle cifre ({@see \App\Services\Gestionale\InvioDeiFogli}).
+     */
+    public const TIPO_FOGLIO_CONGUAGLIO = 'foglio_conguaglio';
+
     /** Una lettera stampata o scaricata che l'amministratore ha spedito, con il canale, la data e gli estremi che ha registrato. */
     public const STATO_SPEDITA = 'spedita';
 

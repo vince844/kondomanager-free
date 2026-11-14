@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * La scheda «Controlli» del rendiconto: i controlli, con i numeri veri, e le registrazioni oltre il confine dell'esercizio nei due versi, con l'effetto
- * sul riepilogo, la tabella per tipo e l'elenco (a pagine, con i filtri). Nessun pulsante «correggi»: la regola che sposterà le registrazioni arriva
- * con la chiusura guidata. Ogni numero arriva dal server (`ControlliDelRendiconto`, `AnnoACavallo`).
+ * sul riepilogo, la tabella per tipo e l'elenco (a pagine, con i filtri). Nessun pulsante «correggi»: il programma non sposta le registrazioni da un
+ * esercizio all'altro. Ogni numero arriva dal server (`ControlliDelRendiconto`, `AnnoACavallo`).
  */
 import { computed } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
@@ -13,12 +13,13 @@ import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/Rendi
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, XCircle, AlertTriangle, ArrowRight, ListChecks, CalendarRange, Printer } from 'lucide-vue-next';
+import { CheckCircle2, XCircle, AlertTriangle, CircleDashed, ArrowRight, ListChecks, CalendarRange, Printer, Landmark } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
-type Esito = 'quadra' | 'non_quadra' | 'segnalazione';
-interface Controllo { id: string; nome: string; titolo: string; sinistra: number; destra: number; segno?: string; esito: Esito; nota: string; rimedio: string | null; azione: string | null; azione_parametro?: string | null }
+// «non_calcolato»: un controllo del conguaglio che la richiesta non ha calcolato (senza la sua lettura).
+type Esito = 'quadra' | 'non_quadra' | 'segnalazione' | 'non_calcolato';
+interface Controllo { id: string; nome: string; titolo: string; sinistra: number; destra: number; segno?: string; esito: Esito; nota: string; rimedio: string | null; azione: string | null; azione_parametro?: string | null; non_letto?: boolean }
 interface RigaConfine { scrittura_id: number; verso: 'A' | 'B'; data: string; esercizio_id: number; esercizio: string; protocollo: string | null; tipo: string; categoria: string; etichetta: string; causale: string | null; importo: number; rossa: boolean; senza_esercizio: boolean; nota: string | null }
 interface AnnoACavallo {
     dal: string; al: string; numero: number; rosse: number; da_leggere: number;
@@ -42,13 +43,16 @@ const a = computed(() => props.anno_a_cavallo);
 const base = { condominio: props.condominio.id, esercizio: props.esercizio.id };
 const formatData = (iso: string) => { const [y, m, g] = iso.slice(0, 10).split('-'); return `${g}/${m}/${y}`; };
 
-const coloreEsito = (e: Esito) => ({ quadra: 'text-emerald-700 dark:text-emerald-400', non_quadra: 'text-rose-700 dark:text-rose-400', segnalazione: 'text-amber-700 dark:text-amber-400' }[e]);
-const iconaEsito = (e: Esito) => ({ quadra: CheckCircle2, non_quadra: XCircle, segnalazione: AlertTriangle }[e]);
-const testoEsito = (e: Esito) => ({ quadra: 'torna', non_quadra: 'non torna', segnalazione: 'da leggere' }[e]);
+const coloreEsito = (e: Esito) => ({ quadra: 'text-emerald-700 dark:text-emerald-400', non_quadra: 'text-rose-700 dark:text-rose-400', segnalazione: 'text-amber-700 dark:text-amber-400', non_calcolato: 'text-slate-500 dark:text-slate-400' }[e]);
+const iconaEsito = (e: Esito) => ({ quadra: CheckCircle2, non_quadra: XCircle, segnalazione: AlertTriangle, non_calcolato: CircleDashed }[e]);
+const testoEsito = (e: Esito) => ({ quadra: 'torna', non_quadra: 'non torna', segnalazione: 'da leggere', non_calcolato: 'non calcolato' }[e]);
 const conteggio = (c: Controllo): string | null => {
     if (c.id === 'CN') return `${c.sinistra} ${c.sinistra === 1 ? 'cassa' : 'casse'} sotto zero`;
     if (c.id === 'AC') return `${c.sinistra} ${c.sinistra === 1 ? 'registrazione' : 'registrazioni'} oltre il confine`;
     if (c.id === 'GE') return `${c.sinistra} ${c.sinistra === 1 ? 'fattura' : 'fatture'} con voci di un'altra gestione`;
+    // I quattro controlli del conguaglio senza la lettura non hanno cifre; i due per unità dicono quante non tornano su quante.
+    if (c.non_letto) return '—';
+    if (c.id === 'CU' || c.id === 'CB') return `${c.sinistra} unità su ${c.destra} non ${c.sinistra === 1 ? 'torna' : 'tornano'}`;
     return null;
 };
 
@@ -62,6 +66,9 @@ const hrefAzione = (c: Controllo): string | null => {
         case 'cassa': return generatePath('gestionale/:condominio/casse/:cassa/edit', { condominio: props.condominio.id, cassa: c.azione_parametro ?? '' });
         case 'riepilogo': return generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/riepilogo-finanziario', base);
         case 'condomini': return generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/condomini', base);
+        case 'conguaglio': return generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/conguaglio', base);
+        case 'titolari': return generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: props.condominio.id, immobile: c.azione_parametro ?? '' });
+        case 'piano': return generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/:pianoRate', { ...base, pianoRate: c.azione_parametro ?? '' });
         case 'anno-a-cavallo': return '#anno-a-cavallo';
         default: return null;
     }
@@ -69,6 +76,7 @@ const hrefAzione = (c: Controllo): string | null => {
 const etichettaAzione = (az: string | null) => ({
     'libro-giornale': 'Apri il Libro Giornale', 'prima-nota': 'Apri il registro di contabilità', giroconti: 'Vai ai giroconti', casse: 'Vai alle casse',
     esercizio: 'Modifica l\'esercizio', cassa: 'Registra il saldo iniziale', riepilogo: 'Apri il riepilogo finanziario', condomini: 'Apri i condòmini',
+    conguaglio: 'Apri il conguaglio', titolari: 'Apri i titolari dell\'unità', piano: 'Apri il piano rate',
     'anno-a-cavallo': 'Vedi l\'elenco',
 }[az ?? ''] ?? 'Vai');
 
@@ -108,8 +116,9 @@ const headerBreadcrumbs = computed(() => [
     { title: 'Controlli' },
 ]);
 const pageGuides = [
-    { title: 'I controlli, con i numeri veri', description: 'Uguaglianze e conteggi con i numeri del programma, non un semaforo. Quando uno non torna, la riga dice che cosa è successo, che cosa fare, e porta nella pagina dove si fa. I controlli che il programma non può eseguire non compaiono.', icon: ListChecks, colorVariant: 'amber' as const },
+    { title: 'I controlli, con i numeri veri', description: 'Uguaglianze e conteggi con i numeri del programma, non un semaforo. Quando uno non torna, la riga dice che cosa è successo, che cosa fare, e porta nella pagina dove si fa.', icon: ListChecks, colorVariant: 'amber' as const },
     { title: 'Oltre il confine dell\'esercizio', description: 'Le registrazioni con la data del fatto in un esercizio e scritte in un altro. In rosso quelle che cambiano che cosa il riepilogo per competenza conta; da leggere il denaro che attraversa il confine. Una fattura registrata come pregressa è in rosso nell\'esercizio della sua data, dove cambia la competenza, e da leggere in quello in cui sta, che non la conta come costo; se ha una parte non coperta dai saldi iniziali, quella parte è un costo dell\'esercizio in cui sta, e la riga resta rossa anche lì.', icon: CalendarRange, colorVariant: 'blue' as const },
+    { title: 'Quello che resta a te', description: 'Il programma non vede l\'estratto conto della banca né le fatture che non hai registrato: il confronto del saldo con la banca e la ricerca di ciò che manca restano un controllo tuo. Si parte dal registro di contabilità.', icon: Landmark, colorVariant: 'emerald' as const },
 ];
 </script>
 
@@ -140,7 +149,7 @@ const pageGuides = [
                         <p class="mb-3 text-[12px] text-slate-600 dark:text-slate-400" data-test="riga-fissa"><b>{{ props.esito.frase }}.</b> {{ props.esito.riga_fissa }}</p>
 
                         <div class="rounded-md border bg-white dark:bg-slate-900 divide-y mb-6">
-                            <div v-for="c in props.controlli" :id="`controllo-${c.id}`" :key="c.id" class="px-4 py-2.5" :class="c.esito === 'quadra' ? '' : (c.esito === 'non_quadra' ? 'bg-rose-50/60 dark:bg-rose-900/10' : 'bg-amber-50/60 dark:bg-amber-900/10')" :data-controllo="c.id">
+                            <div v-for="c in props.controlli" :id="`controllo-${c.id}`" :key="c.id" class="px-4 py-2.5" :class="c.esito === 'quadra' || c.esito === 'non_calcolato' ? '' : (c.esito === 'non_quadra' ? 'bg-rose-50/60 dark:bg-rose-900/10' : 'bg-amber-50/60 dark:bg-amber-900/10')" :data-controllo="c.id">
                                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-x-4 gap-y-1 items-center">
                                     <div class="lg:col-span-3 flex items-center justify-between gap-2 min-w-0">
                                         <div class="font-semibold text-[13px] text-slate-800 dark:text-slate-200 leading-snug">{{ c.nome }}</div>
@@ -179,23 +188,23 @@ const pageGuides = [
                                 <p v-for="(r, i) in a.rimedi" :key="i" class="text-[12px] text-slate-600 dark:text-slate-400" data-test="rimedio">{{ r }}</p>
                             </div>
 
-                            <div v-if="a.per_tipo.length" class="px-4 pb-3 overflow-x-auto">
-                                <table class="w-full text-[12.5px] min-w-[560px]" data-test="per-tipo">
+                            <div v-if="a.per_tipo.length" class="px-4 pb-3">
+                                <div class="rounded-md border overflow-x-auto"><table class="w-full text-[12.5px] min-w-[560px]" data-test="per-tipo">
                                     <thead>
-                                        <tr class="border-b text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                            <th class="text-left py-1.5">Verso</th><th class="text-left py-1.5">Tipo</th><th class="text-right py-1.5">Registrazioni</th><th class="text-right py-1.5">In rosso</th><th class="text-right py-1.5">Importo</th>
+                                        <tr class="bg-gray-50/50 dark:bg-slate-800/40 border-b text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            <th class="text-left px-3 py-2 whitespace-nowrap">Verso</th><th class="text-left px-3 py-2 whitespace-nowrap">Tipo</th><th class="text-right px-3 py-2 whitespace-nowrap">Registrazioni</th><th class="text-right px-3 py-2 whitespace-nowrap">In rosso</th><th class="text-right px-3 py-2 whitespace-nowrap">Importo</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="t in a.per_tipo" :key="t.verso + t.tipo" class="border-b border-slate-100 dark:border-slate-800">
-                                            <td class="py-1.5 text-slate-500 dark:text-slate-400">{{ t.verso }}</td>
-                                            <td class="py-1.5"><button type="button" class="hover:underline" @click="filtra('tipo', t.tipo)">{{ t.etichetta }}</button></td>
-                                            <td class="py-1.5 text-right tabular-nums">{{ t.numero }}</td>
-                                            <td class="py-1.5 text-right tabular-nums">{{ t.rosse }}</td>
-                                            <td class="py-1.5 text-right tabular-nums">{{ euro(t.importo) }}</td>
+                                        <tr v-for="t in a.per_tipo" :key="t.verso + t.tipo" class="border-b last:border-0 border-slate-100 dark:border-slate-800">
+                                            <td class="px-3 py-2 text-slate-500 dark:text-slate-400">{{ t.verso }}</td>
+                                            <td class="px-3 py-2"><button type="button" class="hover:underline" @click="filtra('tipo', t.tipo)">{{ t.etichetta }}</button></td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ t.numero }}</td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ t.rosse }}</td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ euro(t.importo) }}</td>
                                         </tr>
                                     </tbody>
-                                </table>
+                                </table></div>
                             </div>
 
                             <div v-if="a.numero" class="px-4 pb-4">
@@ -209,26 +218,26 @@ const pageGuides = [
                                     </select>
                                     <button v-if="a.filtri.tipo" type="button" class="underline" @click="filtra('tipo', null)">tutti i tipi</button>
                                 </div>
-                                <table class="w-full text-[12.5px]" data-test="elenco">
+                                <div class="rounded-md border overflow-x-auto"><table class="w-full text-[12.5px]" data-test="elenco">
                                     <thead>
-                                        <tr class="border-b text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                            <th class="text-left py-1.5">Data</th><th class="text-left py-1.5">Sta nell'esercizio</th><th class="text-left py-1.5">Protocollo</th><th class="text-left py-1.5">Tipo</th><th class="text-right py-1.5">Importo</th><th class="py-1.5"></th>
+                                        <tr class="bg-gray-50/50 dark:bg-slate-800/40 border-b text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            <th class="text-left px-3 py-2 whitespace-nowrap">Data</th><th class="text-left px-3 py-2 whitespace-nowrap">Sta nell'esercizio</th><th class="text-left px-3 py-2 whitespace-nowrap">Protocollo</th><th class="text-left px-3 py-2 whitespace-nowrap">Tipo</th><th class="text-right px-3 py-2 whitespace-nowrap">Importo</th><th class="px-3 py-2"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="r in a.righe" :key="r.scrittura_id" class="border-b border-slate-100 dark:border-slate-800 align-top" :class="r.rossa ? 'bg-rose-50/40 dark:bg-rose-900/10' : ''" :data-scrittura="r.scrittura_id">
-                                            <td class="py-1.5 tabular-nums whitespace-nowrap">{{ formatData(r.data) }}</td>
-                                            <td class="py-1.5">{{ r.esercizio }}</td>
-                                            <td class="py-1.5 tabular-nums">{{ r.protocollo ?? '—' }}</td>
-                                            <td class="py-1.5">{{ r.etichetta }}<span v-if="segnoRiga(r)" class="ml-1 text-[10px] uppercase" :class="r.rossa ? 'text-rose-700 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'">{{ segnoRiga(r) }}</span>
+                                        <tr v-for="r in a.righe" :key="r.scrittura_id" class="border-b last:border-0 border-slate-100 dark:border-slate-800 align-top" :class="r.rossa ? 'bg-rose-50/40 dark:bg-rose-900/10' : ''" :data-scrittura="r.scrittura_id">
+                                            <td class="px-3 py-2 tabular-nums whitespace-nowrap">{{ formatData(r.data) }}</td>
+                                            <td class="px-3 py-2">{{ r.esercizio }}</td>
+                                            <td class="px-3 py-2 tabular-nums whitespace-nowrap">{{ r.protocollo ?? '—' }}</td>
+                                            <td class="px-3 py-2">{{ r.etichetta }}<span v-if="segnoRiga(r)" class="ml-1 text-[10px] uppercase" :class="r.rossa ? 'text-rose-700 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'">{{ segnoRiga(r) }}</span>
                                                 <div v-if="r.nota" class="text-[11px] text-slate-500 dark:text-slate-400">{{ r.nota }}</div></td>
-                                            <td class="py-1.5 text-right tabular-nums">{{ euro(r.importo) }}</td>
-                                            <td class="py-1.5 text-right whitespace-nowrap"><Link :href="hrefGiornale(r)" class="text-[11px] font-semibold text-primary hover:underline" data-test="apri-giornale">Apri nel Libro Giornale</Link></td>
+                                            <td class="px-3 py-2 text-right tabular-nums">{{ euro(r.importo) }}</td>
+                                            <td class="px-3 py-2 text-right whitespace-nowrap"><Link :href="hrefGiornale(r)" class="text-[11px] font-semibold text-primary hover:underline" data-test="apri-giornale">Apri nel Libro Giornale</Link></td>
                                         </tr>
                                         <tr v-if="dopoLUltima"><td colspan="6" class="py-3 text-center text-slate-400 dark:text-slate-500 italic" data-test="dopo-l-ultima">Questa pagina è dopo l'ultima. <Link :href="hrefPagina(1)" preserve-scroll class="underline">Vai alla prima</Link></td></tr>
                                         <tr v-else-if="a.righe.length === 0"><td colspan="6" class="py-3 text-center text-slate-400 dark:text-slate-500 italic">Nessuna registrazione con questi filtri</td></tr>
                                     </tbody>
-                                </table>
+                                </table></div>
                                 <div v-if="a.pagine.last_page > 1" class="flex gap-3 mt-2 text-[12px]" data-test="pagine-confine">
                                     <span v-if="!dopoLUltima" class="text-slate-500 dark:text-slate-400">Righe {{ a.pagine.from }}–{{ a.pagine.to }} di {{ a.pagine.total }}</span>
                                     <Link v-if="a.pagine.current_page > 1" :href="hrefPagina(a.pagine.current_page - 1)" preserve-scroll class="underline">Precedenti</Link>

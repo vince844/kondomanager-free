@@ -75,22 +75,23 @@ it('la Sintesi di Via Roma: deliberato € 4.110,00; costi € 4.131,00 = 100,5 
     $fasce = collect($si['fasce'])->keyBy('tipo');
 
     expect($si['riquadri']['deliberato'])->toBe(['deliberato' => 411000, 'preventivo' => 411000, 'solo_ordinarie' => false, 'ricostruito' => false])
-        ->and($si['riquadri']['costi'])->toBe(['costi' => 413100, 'per_capitolo' => 397850, 'permille' => 1005, 'base' => 'deliberato'])
+        ->and($si['riquadri']['costi'])->toBe(['costi' => 413100, 'per_capitolo' => 397850, 'permille' => 1005, 'base' => 'deliberato', 'base_importo' => 411000])
         ->and($si['riquadri']['quote'])->toBe(['pagate' => 370000, 'emesse' => 411000])
         ->and($si['riquadri']['liquidita']['liquidita'])->toBe(521900)->and($si['riquadri']['liquidita']['frase'])->toContain('econdo la contabilità')
         ->and($si['riquadri']['liquidita']['frase'])->toContain('non è il saldo dell\'estratto conto della banca')
-        ->and($fasce['commissioni']['frase'])->toBe('€ 2,50 di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le troverà.')
+        ->and($fasce['commissioni']['frase'])->toBe('€ 2,50 di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le divide.')
         ->and($fasce['commissioni']['da_assegnare'])->toBe(1)
         ->and($fasce['contestate']['importo'])->toBe(15000)->and($fasce['contestate']['frase'])->toStartWith('€ 150,00 di fatture contestate')
         ->and($si['prospetto']['risultato'])->toBe(-2100)->and($si['prospetto']['quote_giornale'])->toBe(411000)->and($si['prospetto']['costi'])->toBe(413100)
-        ->and($si['esito']['frase'])->toBe('9 tornano, 0 non tornano, 1 da leggere')
-        ->and($si['stato']['frase'])->toBe('Esercizio finito al 31/12/2026: i numeri sono alla data di fine.')
+        ->and($si['esito']['frase'])->toBe('13 tornano, 0 non tornano, 1 da leggere')
+        ->and($si['stato']['frase'])->toBe('Esercizio finito al 31/12/2026: sono alla data di fine la situazione patrimoniale, le fatture aperte, il pagato e le quote dei piani; costi, quote registrate, risultato ed entrate e uscite per cassa contano le registrazioni dell\'esercizio, anche con la data dopo la fine; i vincoli dei fondi sono a oggi.')
         ->and($props['parti'])->toBe(FascicoloDelRendiconto::PARTI);
 
     // Una fonte sola: ogni cifra della Sintesi è quella della scheda da cui viene.
     $r = app(RiepilogoPerCompetenza::class)->perEsercizio($s['c'], $s['e']);
     $p = app(StatoPatrimonialePaginaService::class)->costruisci($s['c'], $s['e']);
-    $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e']);
+    // La Sintesi di Via Roma, sotto la soglia, legge il conguaglio e lo passa ai controlli.
+    $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e'], null, [], null, null, [], app(\App\Services\Gestionale\ConguaglioDelRendiconto::class)->leggi($s['e']));
     expect($si['riquadri']['quote']['pagate'])->toBe($r['quote']['totale']['pagate'])
         ->and($si['riquadri']['costi']['costi'])->toBe($r['risultato']['costi'])->and($si['riquadri']['costi']['per_capitolo'])->toBe($r['riconciliazione']['capitoli_netti'])
         ->and($si['prospetto']['risultato'])->toBe($r['risultato']['risultato'])->and($si['prospetto']['risultato'])->toBe($p['risultato_gestione']['risultato'])
@@ -98,11 +99,11 @@ it('la Sintesi di Via Roma: deliberato € 4.110,00; costi € 4.131,00 = 100,5 
         ->and($si['esito'])->toBe($c['esito']);
 });
 
-it('un esercizio aperto: la Sintesi dice che i numeri cambiano fino alla chiusura', function () {
+it('un esercizio aperto: la Sintesi dice che i numeri cambiano a ogni registrazione', function () {
     $s = vrmScenario($this);
     vrmGiorno($this, '2026-12-20');
 
-    expect(rpgProps($this, 'admin.gestionale.esercizi.rendiconto.sintesi', $s)['sintesi']['stato']['frase'])->toBe('Esercizio aperto: i numeri sono a oggi e cambiano fino alla chiusura.');
+    expect(rpgProps($this, 'admin.gestionale.esercizi.rendiconto.sintesi', $s)['sintesi']['stato']['frase'])->toBe('Esercizio aperto: i numeri sono a oggi e cambiano a ogni registrazione.');
 });
 
 it('alle 00:30 di Roma del 01/01/2027 il 2026 è finito, alla data del 31/12; alle 00:30 del 31/12/2026 è ancora aperto, a oggi', function () {
@@ -122,7 +123,8 @@ it('le schede dalla rotta: i dati che la pagina riceve sono quelli dei servizi; 
     vrmGiorno($this, '2027-01-15');
     $controlli = rpgProps($this, 'admin.gestionale.esercizi.rendiconto.controlli', $s);
     $cassa = rpgProps($this, 'admin.gestionale.esercizi.rendiconto.cassa', $s);
-    $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e']);
+    // La scheda «Controlli» legge il conguaglio: i quattro controlli del conguaglio vengono dalla stessa lettura.
+    $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e'], null, [], null, null, [], app(\App\Services\Gestionale\ConguaglioDelRendiconto::class)->leggi($s['e']));
     $p = app(StatoPatrimonialePaginaService::class)->costruisci($s['c'], $s['e']);
 
     expect($controlli['controlli'])->toEqual($c['controlli'])->and($controlli['esito'])->toEqual($c['esito'])->and($controlli['anno_a_cavallo'])->toEqual($c['anno_a_cavallo'])
@@ -224,11 +226,11 @@ it('la stampa della situazione ha in testa l\'esito dei controlli con la riga fi
         ->and($html['controlli'])->toContain('<span class="badge ok">torna</span>')->and($html['controlli'])->toContain('<span class="badge warn">da leggere</span>')
         ->and($html['controlli'])->not->toContain('>quadra</span>');
 
-    expect($html['intera'])->toContain('I controlli: 9 tornano, 0 non tornano, 1 da leggere.')->and($html['intera'])->toContain(e(ControlliDelRendiconto::RIGA_FISSA))
+    expect($html['intera'])->toContain('I controlli: 13 tornano, 0 non tornano, 1 da leggere.')->and($html['intera'])->toContain(e(ControlliDelRendiconto::RIGA_FISSA))
         ->and($html['intera'])->toContain('Registrazioni oltre il confine dell&#039;esercizio')->and($html['intera'])->toContain('I costi tornano con il riepilogo')
-        ->and($html['situazione'])->toContain('I controlli: 9 tornano')->and($html['situazione'])->toContain('Fatture aperte al 31/12/2026')->and($html['situazione'])->not->toContain('Controlli di quadratura')
-        ->and($html['cassa'])->toContain('Entrate e uscite per cassa')->and($html['cassa'])->not->toContain('Fatture aperte al')->and($html['cassa'])->not->toContain('I controlli: 9 tornano')
-        ->and($html['controlli'])->toContain('<span class="sec">§ 7</span>I controlli</h2>')->and($html['controlli'])->not->toContain('Fatture aperte al');
+        ->and($html['situazione'])->toContain('I controlli: 13 tornano')->and($html['situazione'])->toContain('Fatture aperte al 31/12/2026')->and($html['situazione'])->not->toContain('Controlli di quadratura')
+        ->and($html['cassa'])->toContain('Entrate e uscite per cassa')->and($html['cassa'])->not->toContain('Fatture aperte al')->and($html['cassa'])->not->toContain('I controlli: 12 tornano')
+        ->and($html['controlli'])->toContain('<span class="sec">§ 7</span> I controlli</h2>')->and($html['controlli'])->not->toContain('Fatture aperte al');
 });
 
 // ─── Il fascicolo ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -248,7 +250,10 @@ it('il fascicolo: le parti nell\'ordine fisso qualunque sia l\'ordine delle spun
         ->and($f['indice'][0]['pagina'])->toBe(2)
         ->and(rpgPagine($f['pdf']))->toBe(1 + array_sum(array_column($f['indice'], 'pagine')))
         ->and($f['indice'][1]['pagina'])->toBe(2 + $f['indice'][0]['pagine'])
-        ->and($html)->toContain('9 tornano, 0 non tornano, 1 da leggere')->and($html)->toContain(e(ControlliDelRendiconto::RIGA_FISSA))
+        // Senza la parte del conguaglio il fascicolo non lo legge: i suoi quattro controlli sono «non calcolati», a parte, e la riga degli esiti dice perché.
+        ->and(vrmTesto($html))->toContain('I controlli: 9 tornano, 1 da leggere (l\'amministratore lo spiegherà in assemblea); 4 non sono calcolati: leggono il conguaglio, '
+            .'che non è in questo fascicolo. Sono quadrature interne dei numeri; non sostituiscono il confronto con l\'estratto conto della banca.')
+        ->and($html)->not->toContain(e(ControlliDelRendiconto::RIGA_FISSA))
         ->and($html)->toContain('Indice')->and($html)->toContain('L\'amministratore')->and($html)->toContain('€ -21,00')
         // Il registro nomina chi ha versato: il frontespizio lo dice in prima pagina.
         ->and($html)->toContain(e(\App\Services\Gestionale\PosizioniDeiCondomini::RISERVATO))
@@ -269,7 +274,7 @@ it('il fascicolo: le parti nell\'ordine fisso qualunque sia l\'ordine delle spun
     expect(substr((string) $r->getContent(), 0, 4))->toBe('%PDF')->and($r->headers->get('Content-Disposition'))->toContain('fascicolo-rendiconto-');
 });
 
-it('il fascicolo: ogni parte esce con la misura delle pagine della sua stampa da sola; il riepilogo, le posizioni, i crediti per anzianità e il registro restano in orizzontale', function () {
+it('il fascicolo: ogni parte esce con la misura delle pagine della sua stampa da sola; il riepilogo, le posizioni, i crediti per anzianità, le due tabelle del conguaglio e il registro restano in orizzontale', function () {
     $s = vrmScenario($this);
     vrmGiorno($this, '2027-01-15');
     $f = app(FascicoloDelRendiconto::class)->genera($s['c'], $s['e'], [], true);
@@ -281,6 +286,8 @@ it('il fascicolo: ogni parte esce con la misura delle pagine della sua stampa da
         'Entrate e uscite per cassa' => $daSola('admin.gestionale.esercizi.stato-patrimoniale.print', '?parte=cassa'),
         'Posizioni dei condòmini' => $daSola('admin.gestionale.esercizi.rendiconto.condomini.posizioni.stampa'),
         'Crediti per anzianità' => $daSola('admin.gestionale.esercizi.rendiconto.condomini.crediti.stampa'),
+        'Consuntivo per tabella' => $daSola('admin.gestionale.esercizi.rendiconto.conguaglio.per-tabella.stampa'),
+        'Conguaglio per persona' => $daSola('admin.gestionale.esercizi.rendiconto.conguaglio.stampa'),
         'Registro di contabilità' => $daSola('admin.gestionale.esercizi.registro-contabilita.print'),
         'Controlli del rendiconto' => $daSola('admin.gestionale.esercizi.stato-patrimoniale.print', '?parte=controlli'),
     ];
@@ -294,7 +301,7 @@ it('il fascicolo: ogni parte esce con la misura delle pagine della sua stampa da
         ->and($fascicolo[0])->toBe($verticale);
     foreach ($f['indice'] as $v) {
         $pagine = array_slice($fascicolo, $v['pagina'] - 1, $v['pagine']);
-        $atteso = in_array($v['parte'], ['riepilogo', 'condomini', 'registro'], true) ? $orizzontale : $verticale;
+        $atteso = in_array($v['parte'], ['riepilogo', 'condomini', 'conguaglio', 'registro'], true) ? $orizzontale : $verticale;
         expect($v['pagine'])->toBeGreaterThan(0)
             ->and($diverse($pagine))->toBe($diverse($stampe[$v['titolo']]), $v['titolo'])
             ->and($diverse($pagine))->toBe([$atteso], $v['titolo']);
@@ -306,13 +313,13 @@ it('il fascicolo di Via Roma parla a chi lo riceve: che cosa vogliono dire gli e
     vrmGiorno($this, '2027-01-15');
     $t = vrmTestiDelFascicolo($s, $s['e']);
     $pagina = collect($t['fascicolo']['indice'])->firstWhere('parte', 'controlli')['pagina'];
-    $esiti = '«Non torna»: due numeri del programma non coincidono, e la riga del controllo dice perché; non è la prova di un ammanco. «Da leggere»: il programma non può decidere da solo.';
     $riservato = 'Contiene i dati personali dei condòmini: è per i condòmini e per l\'assemblea. Non va esposto in bacheca né girato ad altri, nemmeno in una chat.';
 
     // Il frontespizio.
-    expect($t['frontespizio']['testo'])->toContain('9 tornano, 0 non tornano, 1 da leggere.')->toContain($esiti)
-        ->toContain('Vincoli e casse fondo: da leggere (per un esercizio finito il confronto non si fa).')
-        ->toContain('Il perché di ognuno è nei controlli, a pagina '.$pagina.'.')
+    // I controlli per chi legge: quanti tornano, chi spiega l'altro, che cosa non sono; le righe, con le parole della contabilità, nella loro pagina.
+    expect($t['frontespizio']['testo'])->toContain('I controlli: 13 tornano, 1 da leggere (l\'amministratore lo spiegherà in assemblea).')
+        ->not->toContain('Vincoli e casse fondo: da leggere')->not->toContain('ammanco')
+        ->toContain('Le righe dei controlli, per chi vuole il dettaglio, sono a pagina '.$pagina.'.')
         ->toContain('Risultato: quote registrate in questo esercizio € 4.110,00 − costi € 4.131,00')
         ->toContain('Secondo la contabilità: non è il saldo dell\'estratto conto della banca, che si confronta a parte.')
         ->toContain('Preventivo: le spese previste, meno le entrate da terzi. Deliberato con le rate: quanto chiedono i piani delle rate approvati. '
@@ -340,7 +347,7 @@ it('il fascicolo di Via Roma parla a chi lo riceve: che cosa vogliono dire gli e
         ->not->toContain('come in «Rate scadute»')->not->toContain('finché la gestione non passa');
 
     // La situazione, la cassa e i controlli.
-    expect($t['situazione']['testo'])->toContain($esiti)
+    expect($t['situazione']['testo'])->toContain(ControlliDelRendiconto::RIGA_ESITI)
         ->toContain('I debiti sono quelli registrati come fatture. Un debito che non è una fattura (per esempio da una sentenza) non compare qui: se c\'è, l\'amministratore lo dice a parte.')
         ->toContain('«Fondo Passate Gestioni» è quanto riportato dagli esercizi prima, non un fondo accantonato. I fondi sono parte dello stesso conto corrente e si contano nella liquidità una volta sola.')
         ->toContain('Risultato di gestione € -21,00 (disavanzo)')
@@ -352,8 +359,8 @@ it('il fascicolo di Via Roma parla a chi lo riceve: che cosa vogliono dire gli e
         ->not->toContain('(in arrivo)')->not->toContain('Disavanzo di gestione')->not->toContain('Libro Giornale')->not->toContain('a giornale')
         ->not->toContain('Gestione ordinaria · ordinaria')->not->toContain('partizion');
     expect($t['cassa']['testo'])->toContain('Conta le scritture di questo esercizio, anche quelle con una data dopo la fine: il saldo a una data è nella situazione patrimoniale.');
-    expect($t['controlli']['html'])->toContain('<span class="sec">§ 7</span>I controlli</h2>')->not->toContain('Controlli di quadratura');
-    expect($t['controlli']['testo'])->toContain($esiti)->toContain('Per un esercizio finito questo confronto non si fa: i vincoli si leggono a oggi, non alla data di fine.')
+    expect($t['controlli']['html'])->toContain('<span class="sec">§ 7</span> I controlli</h2>')->not->toContain('Controlli di quadratura');
+    expect($t['controlli']['testo'])->toContain(ControlliDelRendiconto::RIGA_ESITI)->toContain('Per un esercizio finito questo confronto non si fa: i vincoli si leggono a oggi, non alla data di fine.')
         ->toContain('Costi dell\'esercizio € 4.131,00 = spese per capitolo meno entrate')
         ->not->toContain('(in arrivo)')->not->toContain('a giornale');
     // Una gestione il cui nome non dice il tipo: il tipo accanto.
@@ -367,8 +374,9 @@ it('il fascicolo di Via Roma parla a chi lo riceve: che cosa vogliono dire gli e
         ->not->toContain('nella loro colonna');
     expect($t['crediti']['testo'])->toContain('Le rate non pagate, per ritardo.')
         ->toContain('Il credito di una persona non si toglie dalle sue rate: è nelle posizioni dei condòmini.')
-        ->toContain('e si legge nei due modi: qui ci sono tutte e due.')
-        ->toContain('L\'ultima lettera partita o spedita a ogni persona, fino a oggi.')
+        // Per chi legge: una colonna dell'esercizio, senza la nota di legge; nel fascicolo, di serie, senza la colonna dell'ultima lettera.
+        ->toContain('«Esercizio»: l\'esercizio del piano a cui appartiene la rata')->not->toContain('si legge nei due modi')
+        ->not->toContain('Ultima lettera spedita')
         ->toContain($riservato)
         ->not->toContain('(§ 9)')->not->toContain('il programma mostra')->not->toContain('solo stampata');
     expect($t['registro']['testo'])->toContain('Spese pagate subito, senza fattura')->toContain($riservato)->not->toContain('Regolazioni immediate');
@@ -427,7 +435,9 @@ it('il § 9 e il § 10 scrivono il meno come il resto del fascicolo, con l\'euro
 it('il deliberato con le rate che un piano vecchio non ha conservato: nella stampa la cella dice «—» o «non disponibile» e una frase sola dice perché; con il deliberato di tutte le gestioni la frase non c\'è', function () {
     $s = vrmScenario($this);
     vrmGiorno($this, '2027-01-15');
-    $frase = 'Il deliberato con le rate non è disponibile per i piani generati prima che il programma ne conservasse il dettaglio: è nel verbale dell\'assemblea che li ha approvati.';
+    // La frase della stampa: per chi legge, senza «il programma».
+    $frase = \App\Services\Gestionale\ParoleDellaStampa::frase(\App\Services\Gestionale\RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE);
+    expect($frase)->toBe('Il deliberato con le rate non è disponibile per i piani approvati prima che il dettaglio del riparto fosse conservato: è nel verbale dell\'assemblea che li ha approvati.');
 
     // Il deliberato c'è (le righe del riparto sono scritte): nessuna cella senza numero, nessuna frase.
     $con = vrmTestiDelFascicolo($s, $s['e'], ['riepilogo'], false);
@@ -476,18 +486,17 @@ it('la Sintesi e il riepilogo a video portano la stessa frase, e solo quando una
     expect($leggi())->toBe([$frase, $frase]);
 });
 
-it('il § 4 della situazione dice «torna» come il § 7, non «quadra»', function () {
+it('il § 4 della situazione non mette un esito accanto ad «Accantonato nelle casse fondo»: non è un controllo, e non dice «quadra»', function () {
     $s = vrmScenario($this);
     vrmGiorno($this, '2026-12-20');
     be52Fondo($s, 'Fondo riserva');
     $t = vrmTestiDelFascicolo($s, $s['e'], ['situazione'], false);
 
-    // Un esercizio aperto, senza vincoli scoperti: il controllo dei vincoli torna, e il § 4 lo dice con la parola del § 7.
-    expect($t['situazione']['html'])->toContain('Accantonato nelle casse fondo <span class="badge ok">torna</span>')->not->toContain('>quadra</span>');
-    // Un esercizio finito: da leggere, come il § 7.
+    // Un esercizio aperto e uno finito: la riga ha la cifra, l'esito lo dice il controllo dei vincoli nel § 7.
+    expect($t['situazione']['html'])->toContain('Accantonato nelle casse fondo</td>')->not->toContain('Accantonato nelle casse fondo <span class="badge')->not->toContain('>quadra</span>');
     vrmGiorno($this, '2027-01-15');
     $finito = vrmTestiDelFascicolo($s, $s['e'], ['situazione'], false);
-    expect($finito['situazione']['html'])->toContain('Accantonato nelle casse fondo <span class="badge warn">da leggere</span>');
+    expect($finito['situazione']['html'])->toContain('Accantonato nelle casse fondo</td>')->not->toContain('Accantonato nelle casse fondo <span class="badge');
 });
 
 it('un fondo senza sottotipo si legge «Fondo riserva · vincolato» nel § 4 della stampa, senza «sottotipo non indicato»; con il sottotipo, il sottotipo e poi il vincolo; la pagina lo dice ancora', function () {
@@ -501,7 +510,7 @@ it('un fondo senza sottotipo si legge «Fondo riserva · vincolato» nel § 4 de
 
     expect($t['situazione']['testo'])->not->toContain('sottotipo non indicato')
         ->and($t['situazione']['testo'])->toMatch('/Fondo riserva · vincolato (€|—)/')
-        ->and($t['situazione']['testo'])->toContain('Fondo lavori · vincolato ai lavori, vincolato')->toContain('Fondo libero · generico, liberamente utilizzabile');
+        ->and($t['situazione']['testo'])->toContain('Fondo lavori · vincolato ai lavori')->not->toContain('vincolato ai lavori, vincolato')->toContain('Fondo libero · generico, liberamente utilizzabile');
     // A video la pagina dice ancora il suo sottotipo, e il servizio lo dà come sempre.
     $fondi = collect($t['situazione']['dati']['pagina']['liquidita']['fondi'])->keyBy('cassa');
     expect($fondi['Fondo riserva']['sottotipo_label'])->toBe('sottotipo non indicato')->and($fondi['Fondo lavori']['sottotipo_label'])->toBe('vincolato ai lavori');
@@ -721,8 +730,10 @@ it('le righe che il fascicolo conta prima di stampare sono quelle delle stampe: 
     $righe = app(FascicoloDelRendiconto::class)->righeDelleParti(FascicoloDelRendiconto::PARTI, $s['e'], $c, true);
 
     // Via Roma: il riepilogo con il dettaglio 8 righe, la situazione 2 fatture aperte (FT-1 per € 500,00 e la contestata), una posizione (Bice: Ugo ha
-    // pagato tutto, e le posizioni a zero non si elencano), le tre rate di Bice non pagate, il registro una riga per movimento di cassa.
-    expect($righe)->toBe(['riepilogo' => 8, 'situazione' => 2, 'posizioni' => 1, 'crediti' => 3,
+    // pagato tutto, e le posizioni a zero non si elencano), le tre rate di Bice non pagate, il registro una riga per movimento di cassa. Il conguaglio
+    // si stima prima di leggerlo: il peso della lettura (2 unità × una tabella), le righe dalle titolarità della gestione (Ugo e Bice) e il consuntivo per
+    // tabella in celle (2 righe × (1 tabella + 9)).
+    expect($righe)->toBe(['riepilogo' => 8, 'situazione' => 2, 'posizioni' => 1, 'crediti' => 3, 'conguaglio_lettura' => 2, 'conguaglio_persona' => 2, 'conguaglio_tabella' => 20,
         'registro' => count(app(\App\Services\Gestionale\RegistroContabilitaService::class)->registroConRiepilogo($s['e'])['righe'])]);
 
     expect(app(\App\Services\Gestionale\RegistroContabilitaService::class)->numeroRighe($s['e']))

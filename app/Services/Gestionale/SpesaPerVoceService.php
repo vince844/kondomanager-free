@@ -87,6 +87,52 @@ class SpesaPerVoceService
     }
 
     /**
+     * Lo speso delle voci date diviso per fattura e per la competenza scritta sulla fattura: le stesse righe e gli stessi filtri di
+     * `perEsercizio()` (sommate per voce danno la stessa mappa), con la fattura a cui la scrittura è legata, se c'è. Una nota di credito
+     * collegata a una fattura prende la competenza della fattura che rettifica, anche se ne ha una sua. Lo legge il consuntivo per persona di una gestione
+     * straordinaria, che divide la spesa riga per riga con la sua competenza.
+     *
+     * @param  array<int>  $vociIds
+     * @return list<array{conto_id:int, fattura_id:?int, competenza_dal:?string, competenza_al:?string, importo:int}>
+     */
+    public function perEsercizioEFattura(Esercizio $esercizio, array $vociIds): array
+    {
+        if ($vociIds === []) {
+            return [];
+        }
+
+        $legame = DB::table('fattura_scrittura')
+            ->select('scrittura_contabile_id', DB::raw('MIN(fattura_passiva_id) as fattura_id'))
+            ->groupBy('scrittura_contabile_id');
+
+        return $this->queryBase($esercizio)
+            ->whereIn('rs.voce_spesa_id', $vociIds)
+            ->leftJoinSub($legame, 'fl', 'fl.scrittura_contabile_id', '=', 'sc.id')
+            ->leftJoin('fatture_passive as fc', 'fc.id', '=', 'fl.fattura_id')
+            // La nota di credito collegata va sempre con la competenza della fattura che rettifica, anche se ne ha una sua: come nel piano da
+            // fatture, che la toglie dalla fattura (`NettoNoteCollegate`).
+            ->leftJoin('fatture_passive as fr', 'fr.id', '=', 'fc.fattura_rettificata_id')
+            ->groupBy('rs.voce_spesa_id', 'fl.fattura_id', 'fc.competenza_dal', 'fc.competenza_al', 'fr.id', 'fr.competenza_dal', 'fr.competenza_al')
+            ->orderBy('rs.voce_spesa_id')
+            ->orderBy('fl.fattura_id')
+            ->select([
+                'rs.voce_spesa_id', 'fl.fattura_id',
+                DB::raw('CASE WHEN fr.id IS NOT NULL THEN fr.competenza_dal ELSE fc.competenza_dal END as competenza_dal'),
+                DB::raw('CASE WHEN fr.id IS NOT NULL THEN fr.competenza_al ELSE fc.competenza_al END as competenza_al'),
+                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END), 0) as importo"),
+            ])
+            ->get()
+            ->map(fn ($r) => [
+                'conto_id' => (int) $r->voce_spesa_id,
+                'fattura_id' => $r->fattura_id === null ? null : (int) $r->fattura_id,
+                'competenza_dal' => $r->competenza_dal === null ? null : substr((string) $r->competenza_dal, 0, 10),
+                'competenza_al' => $r->competenza_al === null ? null : substr((string) $r->competenza_al, 0, 10),
+                'importo' => (int) $r->importo,
+            ])
+            ->all();
+    }
+
+    /**
      * Lo speso per voce diviso in due: l'**incassato** degli incassi da terzi (positivo) e lo speso di tutto il resto.
      *
      * L'incasso da terzi (`RegistraIncassoDaTerziAction`) scrive AVERE sul mastro della voce di entrata, con la voce: dare meno avere dà uno

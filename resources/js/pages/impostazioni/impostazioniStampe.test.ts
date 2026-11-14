@@ -94,7 +94,7 @@ describe('impostazioniStampe — lo studio in testa alle stampe', () => {
         expect(sezione.text()).toContain('con la carta intestata, lo studio è quello stampato sulla carta');
         expect(sezione.text()).toContain('Senza il nome dello studio la testata delle stampe a campi è quella del solo condominio.');
         expect(sezione.text()).not.toContain('restano come sono');
-        expect(sezione.text()).toContain('Comune (accanto all\'indirizzo, e il luogo delle lettere; senza, quello del condominio)');
+        expect(sezione.text()).toContain('Comune (accanto all\'indirizzo e nel luogo delle lettere; se è vuoto, vale quello del condominio)');
         for (const campo of ['studio_partita_iva', 'studio_codice_fiscale', 'studio_sito']) {
             expect(sezione.find(`[data-testid="${campo}"]`).exists()).toBe(true);
         }

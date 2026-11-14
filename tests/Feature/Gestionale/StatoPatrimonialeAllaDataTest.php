@@ -204,8 +204,8 @@ test('R7: la variazione della liquidità si spiega con risultato, crediti, debit
     $effetti = collect($r['righe'])->pluck('effetto', 'voce');
     expect($r['variazione_liquidita'])->toBe(100000)
         ->and($effetti['Risultato di gestione dell\'esercizio'])->toBe(150000)
-        ->and($effetti['Quote emesse e non ancora incassate'])->toBe(-100000)
-        ->and($effetti['Fatture registrate e non ancora pagate'])->toBe(50000)
+        ->and($effetti['Variazione dei crediti verso i condòmini'])->toBe(-100000)
+        ->and($effetti['Variazione dei debiti verso i fornitori'])->toBe(50000)
         ->and($effetti->has('Riporti da esercizi precedenti'))->toBeFalse()
         ->and($r['somma'])->toBe(100000)
         ->and($r['quadra'])->toBeTrue();
@@ -215,7 +215,7 @@ test('R7: la variazione della liquidità si spiega con risultato, crediti, debit
     $effetti = collect($r['righe'])->pluck('effetto', 'voce');
     expect($r['variazione_liquidita'])->toBe(50000)
         ->and($effetti['Risultato di gestione dell\'esercizio'])->toBe(0)
-        ->and($effetti['Quote emesse e non ancora incassate'])->toBe(50000)
+        ->and($effetti['Variazione dei crediti verso i condòmini'])->toBe(50000)
         ->and($r['quadra'])->toBeTrue();
 });
 
@@ -362,6 +362,8 @@ test('CN distingue la banca senza apertura né incassi (→ saldo iniziale) dal 
 
     expect($cn['esito'])->toBe('non_quadra')
         ->and($cn['nota'])->toContain('non ha un saldo di apertura e nessun incasso')
+        // Detto per chi legge la stampa, senza «il programma».
+        ->and($cn['nota'])->toContain('i pagamenti sono usciti da un conto che, nella contabilità, era vuoto')->not->toContain('il programma')
         ->and($cn['rimedio'])->toContain('registra il saldo iniziale')
         ->and($cn['azione'])->toBe('cassa')
         ->and($cn['azione_parametro'])->toBe((string) $bancaNuova);

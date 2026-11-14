@@ -14,7 +14,7 @@ import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/Rendi
 import { Button } from '@/components/ui/button';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Printer, Users, Clock } from 'lucide-vue-next';
+import { Printer, Users, Clock, ShieldCheck } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import { NOTA_PREGRESSO_NELLA_RATA } from '@/lib/gestionale/debiti/rateScadute';
@@ -100,6 +100,7 @@ const headerBreadcrumbs = computed(() => [
 const pageGuides = [
     { title: 'Le posizioni', description: 'Per persona e unità, quanto deve alla data: le quote dell\'esercizio, quelle degli esercizi precedenti con il pregresso, i crediti sulle rate con il segno meno. Gli anticipi sono un debito del condominio e stanno a parte.', icon: Users, colorVariant: 'blue' as const },
     { title: 'I crediti per anzianità', description: 'Una riga per rata non pagata, con i giorni di ritardo e le due annate: l\'esercizio della scadenza e quello del piano. Lo scaduto è quello di «Rate scadute» alla stessa data.', icon: Clock, colorVariant: 'amber' as const },
+    { title: 'Dati personali', description: 'Le posizioni e i crediti dicono chi deve e quanto: sono per i condòmini e per l\'assemblea. Non vanno esposti in bacheca né girati ad altri, nemmeno in una chat.', icon: ShieldCheck, colorVariant: 'emerald' as const },
 ];
 </script>
 

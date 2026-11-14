@@ -157,6 +157,45 @@ describe('il modulo', () => {
         expect(post.mock.calls[1][1]).toMatchObject({ condominio_id: null });
     });
 
+    test('l\'email del foglio del conguaglio: il suo testo del programma, i suoi campi e l\'anteprima con l\'esercizio; «Duplica» ha il suo nome', async () => {
+        monta({
+            tipi: [...props().tipi, { tipo: 'foglio_conguaglio', nome: 'Email del foglio del conguaglio' }],
+            testi_del_programma: { ...props().testi_del_programma, foglio_conguaglio: 'In allegato il suo foglio del consuntivo, [esercizio], del condominio [condominio].' },
+            campi_per_tipo: { foglio_conguaglio: { '[nome]': 'il nome della persona', '[condominio]': 'il nome del condominio', '[esercizio]': 'il nome dell\'esercizio' } },
+            esempio: { ...props().esempio, esercizio: 'Esercizio 2026' },
+        });
+        const sezione = el('tipo-foglio_conguaglio')!;
+        expect(testoDi(sezione)).toContain('Email del foglio del conguaglio');
+        bottone(el('programma-foglio_conguaglio')!, 'Duplica')!.click();
+        await flushPromises();
+        expect(el<HTMLInputElement>('form-nome')!.value).toBe('Email del foglio del conguaglio (copia)');
+        expect(testoDi(el('form-campi'))).toContain('[esercizio]: il nome dell\'esercizio');
+        expect(testoDi(el('form-campi'))).not.toContain('[totale]');
+        expect(testoDi(el('form-anteprima'))).toBe('In allegato il suo foglio del consuntivo, Esercizio 2026, del condominio Le Rose.');
+        // I campi che il tipo non ha restano come sono scritti: il server li rifiuta (i fogli) o li lascia (le lettere).
+        await imposta('form-testo', 'Il foglio, [totale] entro [termine], [esercizio].');
+        expect(testoDi(el('form-anteprima'))).toBe('Il foglio, [totale] entro [termine], Esercizio 2026.');
+    });
+
+    test('l\'anteprima di una lettera lascia [esercizio] com\'è scritto; la sezione dell\'email dei fogli dice la frase fissa', async () => {
+        monta({
+            tipi: [...props().tipi, { tipo: 'foglio_conguaglio', nome: 'Email del foglio del conguaglio' }],
+            testi_del_programma: { ...props().testi_del_programma, foglio_conguaglio: 'In allegato il suo foglio.' },
+            campi_per_tipo: { foglio_conguaglio: { '[nome]': 'il nome della persona', '[condominio]': 'il nome del condominio', '[esercizio]': 'il nome dell\'esercizio' } },
+            frase_proposta_per_tipo: { foglio_conguaglio: 'È una proposta di conguaglio, da approvare dall\'assemblea: non è una richiesta di pagamento.' },
+            esempio: { ...props().esempio, esercizio: 'Esercizio 2026' },
+        });
+        expect(testoDi(el('frase-fissa-foglio_conguaglio'))).toBe('In fondo a ogni email, sempre: «È una proposta di conguaglio, da approvare dall\'assemblea: non è una richiesta di pagamento.» e la data e l\'ora del calcolo delle cifre.');
+        expect(el('frase-fissa-sollecito')).toBeNull();
+        el<HTMLButtonElement>('nuovo-modello')!.click();
+        await flushPromises();
+        await imposta('form-tipo', 'sollecito');
+        await imposta('form-testo', 'Gentile [nome], [totale], [esercizio].');
+        expect(testoDi(el('form-anteprima'))).toBe('Gentile Maria Bianchi, € 180,00, [esercizio].');
+        await imposta('form-tipo', 'foglio_conguaglio');
+        expect(testoDi(el('form-frase-fissa'))).toContain('In fondo a ogni email, sempre:');
+    });
+
     test('«Modifica» aperta e salvata senza toccare niente manda quello che ha ricevuto, e il tipo non si cambia', async () => {
         monta();
         bottone(el('modello-6')!, 'Modifica')!.click();

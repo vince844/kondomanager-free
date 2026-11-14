@@ -12,20 +12,27 @@ final class ParoleDellaStampa
 {
     public const VARIANTI = [
         SintesiDelRendiconto::FRASE_LIQUIDITA => 'Secondo la contabilità: non è il saldo dell\'estratto conto della banca, che si confronta a parte.',
-        StatoPatrimonialePaginaService::FRASE_BANCA => 'Il confronto con l\'estratto conto della banca si fa a parte: il programma non può farlo.',
+        StatoPatrimonialePaginaService::FRASE_BANCA => 'Il confronto con l\'estratto conto della banca si fa a parte: le cifre qui sono quelle della contabilità.',
         StatoPatrimonialePaginaService::NOTA_VINCOLI_A_OGGI => 'Per un esercizio finito questo confronto non si fa: i vincoli si leggono a oggi, non alla data di fine.',
         AnnoACavallo::FRASE_NORMA => 'Una registrazione va nell\'esercizio aperto quando la si scrive, non in quello della sua data '
             .'(un versamento F24 va in quello della sua delega, lo storno di un incasso in quello dell\'incasso): '
             .'per questo alcune stanno oltre il confine quasi ogni anno, e l\'elenco dice dove.',
-        AnnoACavallo::RIMEDIO_QUI_APERTO => 'Da quando questo esercizio si chiude e si apre il successivo, le nuove vanno lì.',
-        AnnoACavallo::RIMEDIO_FUORI => 'Se le date dell\'esercizio sono sbagliate, si correggono nei dati dell\'esercizio. Se sono registrazioni di un esercizio che nel programma '
-            .'non c\'è, restano qui; se è l\'esercizio dopo, le nuove vanno lì da quando questo si chiude e si apre il successivo.',
+        AnnoACavallo::RIMEDIO_QUI_APERTO => 'Questo esercizio è ancora aperto: le nuove registrazioni con la data dopo la sua fine restano in questo, e l\'elenco le mostra.',
+        AnnoACavallo::RIMEDIO_FUORI => 'Se le date dell\'esercizio sono sbagliate, si correggono nei dati dell\'esercizio. Se sono registrazioni di un esercizio che nella '
+            .'contabilità non c\'è, restano qui.',
         AnnoACavallo::CATEGORIE['regolazione'] => 'Spese pagate subito, senza fattura',
-        RiepilogoPerCompetenza::FRASE_DELIBERATO_RICOSTRUITO => 'Per i piani delle rate approvati prima che il programma conservasse il dettaglio del riparto, il '
-            .'deliberato con le rate è ricalcolato con i dati di oggi e torna al centesimo con le quote chieste a ogni unità.',
+        RiepilogoPerCompetenza::FRASE_DELIBERATO_RICOSTRUITO => 'Per i piani delle rate approvati prima che il dettaglio del riparto fosse conservato, il '
+            .'deliberato con le rate è ricostruito con i dati di oggi e torna al centesimo con le quote chieste a ogni unità.',
+        RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE => 'Il deliberato con le rate non è disponibile per i piani approvati prima che il dettaglio del '
+            .'riparto fosse conservato: è nel verbale dell\'assemblea che li ha approvati.',
         RiepilogoPerCompetenza::FRASE_DELIBERATO_DIVISO => '* Divisa fra le voci con gli importi di oggi: il piano delle rate ha fissato il capitolo, o nessuna voce, e non quanto '
             .'chiedeva ogni voce.',
-        RiepilogoPerCompetenza::FRASE_DELIBERATO_SPOSTATO => 'Un piano delle rate cambiato spostando una spesa da una voce a un\'altra non si ricalcola: '
+        ControlliDelConguaglio::NOTA_NON_LETTO => ControlliDelConguaglio::NOTA_NON_LETTO_STAMPA,
+        ControlliDelConguaglio::RIMEDIO_PASSAGGIO => 'Con il passaggio registrato, chi entra conta dal giorno in cui entra.',
+        ControlliDelConguaglio::RIMEDIO_PASSAGGIO_ANCHE => 'Con il passaggio registrato, chi entra conta dal giorno in cui entra.',
+        ControlliDelConguaglio::RIMEDIO_PERSONALI => 'Una spesa per una sola unità non è né fra quelle da chiedere né in un piano: l\'amministratore la cerca fra le fatture '
+            .'dell\'unità e i piani che le chiedono.',
+        RiepilogoPerCompetenza::FRASE_DELIBERATO_SPOSTATO => 'Un piano delle rate cambiato spostando una spesa da una voce a un\'altra non si rifà: '
             .'le sue voci di oggi possono non dire quanto chiedevano le rate.',
     ];
 

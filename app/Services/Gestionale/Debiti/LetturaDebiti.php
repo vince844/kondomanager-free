@@ -91,6 +91,19 @@ final class LetturaDebiti
     public function perCondominioABlocchi(int $condominioId, ?string $alla = null, int $persone = 250): \Generator
     {
         $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
+        foreach (array_chunk($this->personeDellaLettura($condominioId, $alla), max(1, $persone)) as $blocco) {
+            yield $this->leggi($condominioId, $alla, null, $blocco);
+        }
+    }
+
+    /**
+     * Le persone della lettura del condominio alla data, in ordine: quelle con righe sui due mastri fino alla data e, oggi, quelle con un
+     * credito disponibile. Le stesse di `perCondominio`; la usano le letture a gruppi di persone.
+     *
+     * @return list<int>
+     */
+    private function personeDellaLettura(int $condominioId, string $alla): array
+    {
         $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
         $ids = DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
@@ -106,9 +119,8 @@ final class LetturaDebiti
         }
         $ids = array_values(array_unique($ids));
         sort($ids);
-        foreach (array_chunk($ids, max(1, $persone)) as $blocco) {
-            yield $this->leggi($condominioId, $alla, null, $blocco);
-        }
+
+        return $ids;
     }
 
     /**
@@ -140,8 +152,133 @@ final class LetturaDebiti
         return ['totale' => (int) array_sum($perGestione), 'per_gestione' => $perGestione];
     }
 
-    /** @param list<int>|null $anagraficheIds */
-    private function leggi(int $condominioId, string $alla, ?int $gestioneId, ?array $anagraficheIds): array
+    /**
+     * La posizione di ogni persona alla data D per gestione e unità: la stessa lettura di {@see perCondominio()} (le rate emesse, residuo
+     * meno credito; le righe su rate non ancora emesse; gli anticipi), divisa per (gestione, unità) invece che sommata. Per persona la somma
+     * è il `netto` della lettura. La gestione è quella del piano della rata, o della scrittura per le righe senza rata; 0 e l'unità 0 dove
+     * mancano. Il credito disponibile di oggi non c'è: non è una riga del giornale. Senza persone date si legge a gruppi di persone, come
+     * {@see perCondominioABlocchi()}: la memoria resta quella di un gruppo.
+     *
+     * @param  list<int>|null  $anagraficheIds
+     * @return array<int, array<int, array<int, int>>>  persona => gestione => unità => centesimi
+     */
+    public function posizioniPerUnita(int $condominioId, ?string $alla = null, ?array $anagraficheIds = null, int $persone = 250): array
+    {
+        $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
+        $esito = [];
+        foreach (array_chunk($anagraficheIds ?? $this->personeDellaLettura($condominioId, $alla), max(1, $persone)) as $blocco) {
+            $anticipi = [];
+            foreach ($this->leggi($condominioId, $alla, null, $blocco, $anticipi) as $persona => $l) {
+                foreach ($l['rate'] as $r) {
+                    $esito[$persona][$r['gestione_id'] ?? 0][$r['immobile_id'] ?? 0] = ($esito[$persona][$r['gestione_id'] ?? 0][$r['immobile_id'] ?? 0] ?? 0) + $r['residuo'] - $r['credito'];
+                }
+                foreach ($l['non_emesse'] as $r) {
+                    $esito[$persona][$r['gestione_id'] ?? 0][$r['immobile_id'] ?? 0] = ($esito[$persona][$r['gestione_id'] ?? 0][$r['immobile_id'] ?? 0] ?? 0) + $r['saldo'];
+                }
+            }
+            foreach ($anticipi as $persona => $perGestione) {
+                foreach ($perGestione as $gestione => $perUnita) {
+                    foreach ($perUnita as $immobile => $saldo) {
+                        $esito[$persona][$gestione][$immobile] = ($esito[$persona][$gestione][$immobile] ?? 0) + $saldo;
+                    }
+                }
+            }
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Le anticipazioni per singole unità non ancora chieste a nessuno, alla data, per gestione della scrittura e per unità: le stesse righe
+     * di {@see senzaPersona()} (stessi predicati), divise anche per unità. Sommate per gestione danno `senzaPersona`; una riga senza unità
+     * sta sotto l'unità 0.
+     *
+     * @return array<int, array<int, int>>  gestione => unità => centesimi
+     */
+    public function anticipazioniPerUnita(int $condominioId, ?string $alla = null): array
+    {
+        $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
+        $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
+        $esito = [];
+        foreach (DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
+            ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
+            ->whereNull('sc.deleted_at')
+            ->where('sc.condominio_id', $condominioId)
+            ->where('sc.data_competenza', '<', $dopo)
+            ->where('cc.ruolo', 'crediti_condomini')
+            ->whereNull('rs.anagrafica_id')
+            ->groupBy('sc.gestione_id', 'rs.immobile_id')
+            ->select('sc.gestione_id', 'rs.immobile_id')
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END) as saldo")
+            ->get() as $r) {
+            if ((int) $r->saldo !== 0) {
+                $esito[(int) $r->gestione_id][(int) $r->immobile_id] = (int) $r->saldo;
+            }
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Le quote di tutte le rate dei piani dati, emesse o no, per persona, gestione del piano e unità: la spesa dell'esercizio
+     * (`RataQuote::componenti()`, già al netto del già versato), la sua parte personale (`RataQuote::partiAdPersonam`, con il segno), il riporto
+     * da esercizi precedenti; e le stesse cifre delle sole quote **non ancora emesse** alla data D, con la regola di «emessa alla data» della
+     * lettura per persona e di {@see quoteDeiPiani()}. Le quote si leggono una rata alla volta, a blocchi di mille, con le sole colonne che
+     * servono; il registro del riparto per le quote senza la chiave della parte personale si legge una volta sola, la prima che serve.
+     *
+     * @param  list<int>  $pianiIds
+     * @return array<int, array<int, array<int, array{spesa:int, personale:int, riporto:int, spesa_non_emessa:int, personale_non_emessa:int, riporto_non_emesso:int}>>>
+     *     persona => gestione => unità => cifre
+     */
+    public function quoteDeiPianiPerUnita(int $condominioId, array $pianiIds, ?string $alla = null): array
+    {
+        $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
+        $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
+        $rate = $pianiIds === [] ? collect() : DB::table('rate')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+            ->where('piani_rate.condominio_id', $condominioId)
+            ->whereIn('rate.piano_rate_id', $pianiIds)->orderBy('rate.id')->pluck('piani_rate.gestione_id', 'rate.id');
+        $vuoto = ['spesa' => 0, 'personale' => 0, 'riporto' => 0, 'spesa_non_emessa' => 0, 'personale_non_emessa' => 0, 'riporto_non_emesso' => 0];
+        $esito = [];
+        $registro = null;
+        foreach ($rate->keys() as $rataId) {
+            [$emesse] = $this->emesseAllaData([(int) $rataId], $dopo);
+            \App\Models\Gestionale\RataQuote::query()->where('rata_id', (int) $rataId)->whereNotNull('anagrafica_id')
+                ->select(['id', 'rata_id', 'anagrafica_id', 'immobile_id', 'importo', 'regole_calcolo'])
+                ->chunkById(1000, function ($quote) use (&$esito, &$registro, $emesse, $rate, $vuoto, $pianiIds) {
+                if ($registro === null && $quote->contains(fn ($q) => $q->immobile_id !== null && ! array_key_exists('addebito_diretto', (array) ((is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo, true) : $q->regole_calcolo)['importi'] ?? [])))) {
+                    $registro = \App\Models\Gestionale\RataQuote::registroAdPersonam(array_map('intval', $pianiIds), conRicostruzione: true);
+                }
+                $personali = \App\Models\Gestionale\RataQuote::partiAdPersonam($quote, $registro ?? [], true);
+                foreach ($quote as $q) {
+                    ['spesa' => $spesa, 'riporto' => $riporto] = $q->componenti();
+                    $personale = $personali[(int) $q->id] ?? 0;
+                    $persona = (int) $q->anagrafica_id;
+                    $gestione = (int) $rate[(int) $q->rata_id];
+                    $immobile = (int) $q->immobile_id;
+                    $e = &$esito[$persona][$gestione][$immobile];
+                    $e ??= $vuoto;
+                    $e['spesa'] += $spesa;
+                    $e['personale'] += $personale;
+                    $e['riporto'] += $riporto;
+                    if (! isset($emesse[self::chiave($q->anagrafica_id, $q->immobile_id, $q->rata_id)])) {
+                        $e['spesa_non_emessa'] += $spesa;
+                        $e['personale_non_emessa'] += $personale;
+                        $e['riporto_non_emesso'] += $riporto;
+                    }
+                    unset($e);
+                }
+                });
+        }
+
+        return $esito;
+    }
+
+    /**
+     * @param list<int>|null $anagraficheIds
+     * @param array<int, array<int, array<int, int>>>|null $anticipiPer se dato, riceve gli anticipi anche per persona, gestione e unità (0 se mancano)
+     */
+    private function leggi(int $condominioId, string $alla, ?int $gestioneId, ?array $anagraficheIds, ?array &$anticipiPer = null): array
     {
         $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
 
@@ -167,6 +304,9 @@ final class LetturaDebiti
             $persona = (int) $r->anagrafica_id;
             if ($r->ruolo === 'anticipi_condomini') {
                 $anticipi[$persona] = ($anticipi[$persona] ?? 0) + (int) $r->dovuto - (int) $r->versato;
+                if ($anticipiPer !== null) {
+                    $anticipiPer[$persona][$gestione ?? 0][(int) $r->immobile_id] = ($anticipiPer[$persona][$gestione ?? 0][(int) $r->immobile_id] ?? 0) + (int) $r->dovuto - (int) $r->versato;
+                }
 
                 continue;
             }

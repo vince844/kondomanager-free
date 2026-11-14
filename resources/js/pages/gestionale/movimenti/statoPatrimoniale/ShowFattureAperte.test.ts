@@ -35,6 +35,7 @@ const pagina = (extra: Record<string, unknown> = {}) => ({
         stornate: { coppie: 0, importo: 0 }, piede_quadra: true, casse_reali_negative: [] },
     liquidita: { liquidita_totale: 521900, libera: 521900, in_fondi: 0, vincolata: 0, generica: 0, altra: 0, altra_voci: [], fondi: [], vincolo_registrato: 0, vincolo_su_fondi: 0,
         vincolo_non_accantonato: 0, scoperto_fondi: 0, avanzo_registrato: 0, gia_speso_acconto: 0, esito_r8: 'quadra' },
+    movimento_fondi: { righe: [], totale: { iniziale: 0, accantonato: 0, utilizzato: 0, finale: 0, vincolo: 0, scoperto: null }, nota: '', nota_vincoli: null, nota_saldo: null },
     raccordo: { righe: [], somma: 0, variazione_liquidita: 0, scarto: 0, quadra: true },
     debiti: {
         alla: '2026-12-31',
@@ -114,7 +115,7 @@ describe('la situazione patrimoniale alla data', () => {
     test('la scheda «Situazione patrimoniale» del rendiconto: accesa nella riga delle schede; i controlli e la cassa stanno nelle loro schede', () => {
         const p = monta();
         expect(p.find('[data-scheda="situazione"]').attributes('aria-current')).toBe('page');
-        expect(p.findAll('[data-scheda]')).toHaveLength(6);
+        expect(p.findAll('[data-scheda]')).toHaveLength(7);
         expect(p.findAll('[data-test="altre-schede"] a').map((a) => a.attributes('href'))).toEqual(['/gestionale/3/esercizi/9/rendiconto/controlli', '/gestionale/3/esercizi/9/rendiconto/cassa']);
         expect(p.text()).not.toContain('Controlli di quadratura');
     });
@@ -136,5 +137,94 @@ describe('la situazione patrimoniale alla data', () => {
         for (const parola of ['pronto', 'conforme', 'corretto', 'approvabile', 'in regola', 'tutto in ordine']) {
             expect(t).not.toContain(parola);
         }
+    });
+
+    /** La pagina con le sue guide a video (il titolo e la descrizione di ognuna), per leggerne il testo. */
+    const conGuide = (extra: Record<string, unknown> = {}) => {
+        w?.unmount();
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9 }, esercizi: [], pagina: pagina(extra) } as any,
+            global: { stubs: { GestionaleLayout: { template: '<div><slot /></div>' }, MovimentiLayout: { template: '<div><slot /></div>' }, DropdownMenu: true,
+                PageHeaderGuide: { props: ['guides'], template: '<div><p v-for="g in guides" :key="g.title" data-guida>{{ g.title }}: {{ g.description }}</p></div>' } } },
+        });
+
+        return w;
+    };
+
+    test('Coda 561 — la guida dei controlli non dice che alcuni non compaiono: sono sempre tutti', () => {
+        const guida = testo(conGuide().findAll('[data-guida]').map((g) => g.text()).find((t) => t.startsWith('I controlli, con i numeri veri')) ?? '');
+
+        expect(guida).toContain('porta nella pagina dove si fa.');
+        expect(guida).not.toContain('non può eseguire');
+    });
+
+    test('Coda 562 — la quadratura dice che è la regola del Libro Giornale, dare uguale avere, applicata ai saldi dei conti e non ai movimenti', () => {
+        const quadratura = testo(monta().text());
+
+        expect(quadratura).toContain('È la stessa regola del Libro Giornale, dare uguale avere, ma applicata ai saldi dei conti e non ai movimenti: il totale del giornale è più grande, ed è nel controllo «Partita doppia».');
+        expect(quadratura).not.toContain('È la stessa uguaglianza del Libro Giornale');
+        expect(quadratura).not.toContain('si compenseranno');
+    });
+
+    test('Coda 562, SA1 — la differenza fra le quote e i costi non è detta il risultato di gestione: dal secondo esercizio è il cumulato, e il risultato dell\'esercizio sta nel suo riquadro', () => {
+        const quadratura = testo(monta().text());
+
+        expect(quadratura).toContain('I costi stanno fra le attività finché non sono conguagliati: sono spese sostenute per conto dei condòmini. Le quote emesse ai condòmini stanno fra le passività come debito della gestione.');
+        expect(quadratura).toContain('Quote e costi si accumulano dal primo esercizio: la loro differenza è il cumulato da conguagliare, in fondo alla pagina; il risultato di questo esercizio è nel riquadro del risultato di gestione, in cima.');
+        expect(quadratura).not.toContain('la differenza fra le quote e i costi è il risultato di gestione');
+    });
+
+    test('Coda 568, SA8 — il riquadro del risultato di gestione dice «quote registrate in questo esercizio», come la Sintesi, il riepilogo e le stampe', () => {
+        const riquadro = testo(monta().find('[data-test="risultato-gestione-termini"]').text());
+
+        expect(riquadro).toBe('quote registrate in questo esercizio € 4.110,00 − costi € 4.131,00');
+        expect(testo(monta().text())).not.toContain('quote emesse € ');
+    });
+
+    test('Coda 560, SA9 — a zero il risultato di gestione dice «in pareggio»; sopra zero e sotto zero il riquadro dice «Avanzo» e «Disavanzo», senza la parentesi', () => {
+        const con = (risultato: number) => {
+            const riquadro = monta({ risultato_gestione: { quote_emesse: 411000, costi: 411000 - risultato, risultato, cumulato: risultato } });
+
+            return { cifra: testo(riquadro.find('[data-test="risultato-gestione"]').text()), pagina: testo(riquadro.text()) };
+        };
+
+        expect(con(0).cifra).toBe('€ 0,00 (in pareggio)');
+        expect(con(0).pagina).toContain('Risultato di gestione');
+        expect(con(500).cifra).toBe('€ 5,00');
+        expect(con(500).pagina).toContain('Avanzo di gestione');
+        expect(con(-500).cifra).toBe('€ -5,00');
+        expect(con(-500).pagina).toContain('Disavanzo di gestione');
+    });
+
+    test('Coda 564 — la situazione di un esercizio finito dice «finito» come la Sintesi, non «chiuso»; quella di uno aperto dice «a oggi»', () => {
+        const finito = testo(monta({ stato_esercizio: 'chiuso' }).text());
+        const aperto = testo(monta({ stato_esercizio: 'aperto' }).text());
+
+        expect(finito).toContain('esercizio finito: fotografia alla data di fine');
+        expect(finito).not.toContain('esercizio chiuso');
+        expect(finito).toContain('la data di fine per uno finito');
+        expect(aperto).toContain('fotografia a oggi');
+        expect(aperto).not.toContain('esercizio finito: fotografia');
+        // La guida della fotografia usa la stessa parola.
+        const guida = testo(conGuide().findAll('[data-guida]').map((g) => g.text()).find((t) => t.startsWith('Una fotografia, non un flusso')) ?? '');
+        expect(guida).toContain('per uno finito, la sua data di fine');
+        expect(guida).not.toContain('per uno chiuso');
+    });
+
+    test('Coda 566 — i testi non promettono: dicono che cosa il programma non fa oggi e che cosa fa l\'amministratore', () => {
+        const segnalazione = { liquidita: { ...pagina().liquidita, esito_r8: 'segnalazione' } };
+        const testoPagina = testo(monta(segnalazione).text());
+
+        for (const promessa of ['(in arrivo)', 'in arrivo', 'finché non ci sarà', 'diventerà', 'con quale modulo lo farà', 'non fa ancora', 'arriverà', 'potrà riportare', 'fino alla chiusura guidata', 'con la chiusura guidata', 'si compenseranno']) {
+            expect(testoPagina).not.toContain(promessa);
+        }
+        expect(testoPagina).toContain('Il programma non dà il residuo vincolato di un fondo alla data di fine, perché i vincoli dichiarati non hanno una data: il saldo di ogni cassa fondo a quella data è nella situazione patrimoniale, e i suoi movimenti nel mastrino del suo conto.');
+        // Il registro di contabilità non ha le casse fondo, i contributi versati non hanno una data: la frase non manda lì (SA4).
+        expect(testoPagina).not.toContain('registro di contabilità');
+        expect(testoPagina).not.toContain('lo ricavi dai contributi versati');
+        expect(testoPagina).toContain('il programma non ha una nota esplicativa del rendiconto dove scriverlo.');
+        expect(testoPagina).toContain('Cosa questa pagina non fa');
+        expect(testoPagina).toContain('Il programma non ha la riconciliazione bancaria: il confronto con l\'estratto conto lo fai tu.');
+        expect(testoPagina).toContain('Il programma non ha una chiusura guidata dell\'esercizio: la fotografia al 31/12 di un esercizio finito si rifà a ogni lettura, con le registrazioni che ci sono.');
     });
 });

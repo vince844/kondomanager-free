@@ -38,7 +38,7 @@ defineEmits(['update:open']);
             </p>
             <p class="mb-3">
               Nelle lettere, nelle ricevute e negli avvisi di compensazione lo studio sta in alto a sinistra e sotto c'è «Amministratore del Condominio …», con
-              la via, la città e il codice fiscale: a destra c'è il destinatario, con le righe allineate al margine destro. Senza il nome dello studio la
+              la via, la città e il codice fiscale: a destra c'è il destinatario (nelle ricevute, solo quando vanno per posta), con le righe allineate al margine destro. Senza il nome dello studio la
               testata è quella del solo condominio, con il nome alla misura di quello del destinatario.
             </p>
             <ul class="space-y-3 list-disc pl-5 mb-4">
@@ -121,7 +121,7 @@ defineEmits(['update:open']);
               20 a sinistra e a destra; i lati arrivano a 50 mm, l'alto e il basso insieme a 150. Sulla carta intestata il programma non scrive lo studio, che è
               stampato sulla carta: scrive il condominio in cima allo spazio libero e il piede subito sopra il margine basso. Nelle lettere, nelle ricevute e
               negli avvisi, in alto a sinistra, c'è «Amministratore del Condominio …» con la via, la città e il codice fiscale, e il destinatario sta a
-              destra, allineato al margine destro della carta.
+              destra (nelle ricevute, solo quando vanno per posta), allineato al margine destro della carta.
             </p>
             <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800 flex items-start gap-3 mb-4">
               <CheckCircle class="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
@@ -147,7 +147,7 @@ defineEmits(['update:open']);
                 alla carta.
               </li>
               <li>
-                <strong>I collegamenti</strong> del PDF (il sito, l'email) non restano cliccabili: il testo stampato sulla carta sì.
+                <strong>I collegamenti</strong> del PDF (il sito, l'email) non restano cliccabili; il sito e l'email stampati sulla carta restano scritti, ma non sono collegamenti.
               </li>
               <li>
                 <strong>Tornare a campi</strong>: la carta tiene il file, per tornare alla carta intestata senza caricarlo di nuovo; con «Togli la carta
@@ -161,7 +161,7 @@ defineEmits(['update:open']);
               <Info class="w-5 h-5 text-blue-500" /> La nota legale, in fondo alle pagine
             </h3>
             <p class="mb-3">
-              Il testo del campo «Nota Legale / Footer» va in fondo alle pagine delle stampe, sotto la data di emissione (le lettere, le ricevute e gli avvisi la
+              Il testo del campo «Nota legale» va in fondo alle pagine delle stampe, sotto la data di emissione (le lettere, le ricevute e gli avvisi la
               hanno in testa) e con il numero di pagina; è lo stesso con ogni carta. Il frontespizio del fascicolo e il modello F24 non hanno il piede.
             </p>
             <ul class="space-y-3 list-disc pl-5 mb-4">
@@ -187,9 +187,9 @@ defineEmits(['update:open']);
               <ImageIcon class="w-5 h-5 text-emerald-500" /> La firma
             </h3>
             <p class="mb-3">
-              L'immagine della firma esce in fondo ai riparti e alla distinta delle spese, al prospetto delle rate, all'estratto conto e al prospetto degli
+              L'immagine della firma esce in fondo ai riparti e alla distinta delle spese, al prospetto delle rate, all'estratto conto, al foglio del conguaglio della persona e al prospetto degli
               oneri accessori, alla distinta del pagamento e al rapporto dell'importazione; nelle lettere di promemoria e di sollecito (nella diffida e nella
-              messa in mora c'è lo spazio per firmare a mano); su ogni ricevuta e su ogni avviso di compensazione. I registri e le stampe del rendiconto non
+              messa in mora c'è lo spazio per firmare a mano); su ogni ricevuta e su ogni avviso di compensazione. I registri, gli elenchi e le parti del fascicolo del rendiconto (lo stato patrimoniale, il riepilogo per competenza, le posizioni dei condòmini, il consuntivo per tabella, il conguaglio per persona) non
               hanno la firma; il frontespizio del fascicolo ha lo spazio per firmare.
             </p>
             <p class="mb-3">

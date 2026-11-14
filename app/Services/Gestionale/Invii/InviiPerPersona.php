@@ -96,6 +96,27 @@ final class InviiPerPersona
     }
 
     /**
+     * Le persone di un invio per email dentro i due tetti, a persone intere: prima i messaggi per volta (senza il servizio della coda, null con la
+     * coda), poi i documenti per volta che si fanno nella richiesta (un PDF ciascuno, con qualunque coda; null se non ce n'è uno). Quelle che restano
+     * sono quelle oltre i documenti, poi quelle oltre i messaggi. È la regola delle lettere che conservano il PDF e dei fogli del conguaglio.
+     *
+     * @template T
+     * @param array<int, T> $gruppi
+     * @param callable(T): int $messaggiDi
+     * @return array{0: array<int, T>, 1: ?array<int, T>}
+     */
+    public static function dentroIDueTetti(array $gruppi, ?int $tettoMessaggi, ?int $tettoDocumenti, callable $messaggiDi): array
+    {
+        [$dentro, $fuori] = self::dentroIlTetto($gruppi, $tettoMessaggi, $messaggiDi);
+        if ($tettoDocumenti === null) {
+            return [$dentro, $fuori];
+        }
+        [$dentro, $oltre] = self::dentroIlTetto($dentro, $tettoDocumenti, fn ($g) => 1);
+
+        return [$dentro, $oltre === null ? $fuori : [...$oltre, ...($fuori ?? [])]];
+    }
+
+    /**
      * I documenti in più parti quando sono più del tetto di un PDF: le persone nell'ordine dato, ognuna intera in una parte (una sola persona
      * con più documenti del tetto si divide da sé). Ogni parte sta nel tetto; la prima parte porta le prime persone, l'ultima le ultime.
      *

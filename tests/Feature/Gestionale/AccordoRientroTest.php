@@ -261,7 +261,7 @@ it('«autorizzato dall\'assemblea» non ha una risposta già scelta: senza la sc
     acrRegistra($this, $s, 'giulia', [1 => 75000], altro: ['autorizzato_assemblea' => '1'])->assertStatus(422)->assertJsonValidationErrors('data_autorizzazione');
     // La rata 3 il 26/06 non è scaduta: non si copre.
     acrRegistra($this, $s, 'giulia', [3 => 75000])->assertStatus(422)->assertJsonValidationErrors('rate');
-    // Più del residuo di quel giorno: no (interessi e spese il programma non li registra ancora).
+    // Più del residuo di quel giorno: no (interessi e spese il programma non li registra).
     acrRegistra($this, $s, 'giulia', [1 => 75001])->assertStatus(422)->assertJsonValidationErrors('rate');
     // «Fino al» prima dell'accordo: no.
     acrRegistra($this, $s, 'giulia', [1 => 75000], '2026-06-26', '2026-06-01')->assertStatus(422)->assertJsonValidationErrors('fino_al');

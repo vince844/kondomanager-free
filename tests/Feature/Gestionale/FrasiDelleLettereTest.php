@@ -57,7 +57,8 @@ it('la colonna «Ritardo» della lettera: i giorni, o di quale esercizio è il p
 
 it('la lettera: in testa il nome e l\'indirizzo senza «Gentile», con lo studio «Amministratore del Condominio …» una volta; «Da versare» anche nel promemoria', function () {
     $s = lttScenario($this);
-    $s['c']->update(['nome' => 'Le Rose']);
+    // L'indirizzo fisso: quello casuale può essere «Via Gentile …» e contare un «Gentile» in più.
+    $s['c']->update(['nome' => 'Le Rose', 'indirizzo' => 'Via Roma 1']);
     $impostazioni = app(\App\Settings\PrintSettings::class);
     $impostazioni->studio_nome = 'Studio Bianchi';
     $impostazioni->save();

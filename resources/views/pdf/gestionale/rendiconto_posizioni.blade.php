@@ -1,15 +1,14 @@
-@extends('pdf.base')
-{{-- I titoli e i loro filetti hanno il colore della carta dello studio; senza un colore, quello di sempre. --}}
-@php
-    $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#1e3a5f');
-@endphp
-
-@section('title', 'Posizioni dei condòmini')
-
 {{--
   Le posizioni dei condòmini (§ 9 del rendiconto): una riga per persona e unità, dall'array di `PosizioniDeiCondomini::posizioni()`, lo stesso della
-  pagina. La tabella a blocchi di 100 righe con le celle a classi, come «Rate scadute»: mPDF tiene in memoria la tabella intera (le misure accanto
-  al tetto, in `RendicontoCondominiController`).
+  pagina.
+
+  La carta del riepilogo finanziario (§ 7-quinquies di docs/registri_contabili.md: Inter e Fraunces, la palette del fac-simile), in orizzontale, con
+  lo stile e la testa comuni delle stampe del rendiconto (`_rendiconto_stile`, `_rendiconto_testa`). Niente firma: è una parte del fascicolo.
+
+  La tabella a blocchi di 100 righe con le celle a classi, come «Rate scadute»: mPDF tiene in memoria la tabella intera (le misure accanto al tetto,
+  in `RendicontoCondominiController`).
+
+  ⚠️ Blade: una direttiva attaccata a un carattere di parola NON viene compilata. Ogni `@if`/`@endif` qui ha uno spazio o un a-capo prima.
 --}}
 @php
     // Il meno come nel resto del fascicolo: l'euro prima, «€ -50,00».
@@ -17,6 +16,7 @@
     $cella = fn (int $c) => $c === 0 ? '' : $euro($c);
     $p = $posizioni;
     $m = $p['mostra'];
+    $titoloStampa = 'Posizioni dei condòmini';
     $colonne = array_values(array_filter([
         ['nome', 'Persona', 'left', 20], ['unita', 'Unità', 'left', 9], ['ordinarie', 'Ordinarie dell\'esercizio', 'right', 10], ['straordinarie', 'Straordinarie dell\'esercizio', 'right', 10],
         ['precedenti', 'Esercizi precedenti', 'right', 10], $m['successivi'] ? ['successivi', 'Esercizi successivi', 'right', 9] : null,
@@ -27,33 +27,39 @@
     $rc = $p['riga_crediti'];
     $ra = $p['riga_anticipi'];
 @endphp
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>{{ $titoloStampa }} – {{ $esercizio->nome }}</title>
+@include('pdf.gestionale._rendiconto_stile')
+<style>
+    {{-- Le celle a classi, non a stili: mPDF tiene in memoria la tabella intera. --}}
+    td.cn { text-align: right; white-space: nowrap; font-family: fraunces; }
+</style>
+</head>
+<body>
 
-@section('content')
+@include('pdf.gestionale._rendiconto_testa', ['alla' => $p['alla']])
 
-<div style="margin-bottom: 8px; border-bottom: 2px solid {{ $coloreTitoli }}; padding-bottom: 6px;">
-    <h2 style="margin: 0; padding: 0; font-size: 13pt; color: {{ $coloreTitoli }};">Posizioni dei condòmini — {{ $esercizio->nome }}</h2>
-    <div style="font-size: 8.5pt; color: #444; margin-top: 3px;">{{ ucfirst($p['avvertenze']['data']) }} &nbsp;|&nbsp; Totale delle posizioni, senza gli anticipi: <strong>{{ $euro($p['totali']['totale']) }}</strong></div>
-</div>
+<h1>{{ $titoloStampa }}</h1>
+<p class="sotto">{{ ucfirst($p['avvertenze']['data']) }}</p>
 
-<div style="font-size: 7.5pt; color: #333; background: #f4f5f7; border-left: 3px solid #c9a227; padding: 6px 10px; margin-bottom: 8px;">
-    <b>Come leggere.</b> {{ $p['avvertenze']['segno'] }} Le posizioni sono {{ $p['avvertenze']['data'] }}. {{ $p['avvertenze']['ordine'] }} {{ $p['avvertenze']['esercizio_della_rata'] }}
+<p class="eq" style="margin: -4px 0 6px;">Totale delle posizioni, senza gli anticipi: <b>{{ $euro($p['totali']['totale']) }}</b></p>
+
+<div class="chiusura">
+    <b>Come leggere questo prospetto.</b> {{ $p['avvertenze']['segno'] }} Le posizioni sono {{ $p['avvertenze']['data'] }}. {{ $p['avvertenze']['ordine'] }} {{ $p['avvertenze']['esercizio_della_rata'] }}
     I crediti sulle rate (un versamento oltre il dovuto di una rata) hanno il segno meno. {{ $p['avvertenze']['anticipi'] }}
 </div>
 
-<style>
-    th.t { padding: 3px 4px; border-bottom: 1px solid #c0ccd8; text-align: left; }
-    th.tn { padding: 3px 4px; border-bottom: 1px solid #c0ccd8; text-align: right; }
-    td.c { padding: 3px 4px; border-bottom: 1px solid #e3e8ef; vertical-align: top; }
-    td.cn { padding: 3px 4px; border-bottom: 1px solid #e3e8ef; vertical-align: top; text-align: right; }
-    td.tt { padding: 4px; border-top: 1.5px solid #1e3a5f; font-weight: bold; text-align: right; }
-</style>
+<h2><span class="sec">§ 1</span> Le posizioni</h2>
 @foreach($blocchi as $blocco)
 @if(! $loop->first)<pagebreak />@endif
-<table style="width: 100%; border-collapse: collapse; font-size: 7.5pt;">
+<table class="p">
     <thead>
-        <tr style="background: #eef2f7; color: #1e3a5f;">
+        <tr>
             @foreach($colonne as [$chiave, $etichetta, $allinea, $larghezza])
-                <th class="{{ $allinea === 'right' ? 'tn' : 't' }}" style="width: {{ $larghezza }}%;">{{ $etichetta }}</th>
+                <th class="{{ $allinea === 'right' ? 'n' : '' }}" style="width: {{ $larghezza }}%;">{{ $etichetta }}</th>
             @endforeach
         </tr>
     </thead>
@@ -64,7 +70,7 @@
                     @if($chiave === 'nome')
                         <td class="c">{{ $r['nome'] }}</td>
                     @elseif($chiave === 'unita')
-                        <td class="c">{{ $r['unita'] ?? '—' }}@if($r['pregresso_nella_rata']) <span style="color: #777;">· contiene anche una parte di pregresso</span> @endif</td>
+                        <td class="c">{{ $r['unita'] ?? '—' }}@if($r['pregresso_nella_rata']) <span class="d">· contiene anche una parte di pregresso</span> @endif</td>
                     @else
                         <td class="cn">{{ $cella($r[$chiave]) }}</td>
                     @endif
@@ -72,13 +78,13 @@
             </tr>
         @endforeach
         @if(count($p['righe']) === 0)
-            <tr><td colspan="{{ count($colonne) }}" style="padding: 10px; text-align: center; color: #777;">Nessuna posizione diversa da zero a questa data.</td></tr>
+            <tr><td colspan="{{ count($colonne) }}" class="d" style="padding: 10px; text-align: center;">Nessuna posizione diversa da zero a questa data.</td></tr>
         @endif
         @if($loop->last)
-            <tr>
-                <td class="tt" style="text-align: left;" colspan="2">Totale</td>
+            <tr class="tot">
+                <td colspan="2">Totale</td>
                 @foreach(array_slice($colonne, 2) as [$chiave])
-                    <td class="tt">{{ $euro($p['totali'][$chiave]) }}</td>
+                    <td class="n">{{ $euro($p['totali'][$chiave]) }}</td>
                 @endforeach
             </tr>
         @endif
@@ -86,14 +92,12 @@
 </table>
 @endforeach
 
-<p style="font-size: 7.5pt; color: #333; margin-top: 8px;">
-    Crediti verso i condòmini della situazione patrimoniale <b>{{ $euro($rc['crediti']) }}</b> = posizioni senza gli anticipi <b>{{ $euro($rc['posizioni']) }}</b>
-    + spese anticipate per singole unità, non ancora chieste <b>{{ $euro($rc['spese_anticipate']) }}</b>@if($rc['differenza'] !== 0) — differenza <b>{{ $euro($rc['differenza']) }}</b> @endif.
-    <br>Anticipi ricevuti dai condòmini <b>{{ $euro($ra['anticipi']) }}</b> = conto «Anticipi ricevuti dai condòmini» <b>{{ $euro($ra['conto']) }}</b>@if($ra['differenza'] !== 0) — differenza <b>{{ $euro($ra['differenza']) }}</b> @endif.
-</p>
+<h2><span class="sec">§ 2</span> Con la situazione patrimoniale</h2>
+<p class="eq">Crediti verso i condòmini della situazione patrimoniale <b>{{ $euro($rc['crediti']) }}</b> = posizioni senza gli anticipi <b>{{ $euro($rc['posizioni']) }}</b>
+    + spese anticipate per singole unità, non ancora chieste <b>{{ $euro($rc['spese_anticipate']) }}</b>@if($rc['differenza'] !== 0) — differenza <b>{{ $euro($rc['differenza']) }}</b> @endif.</p>
+<p class="eq">Anticipi ricevuti dai condòmini <b>{{ $euro($ra['anticipi']) }}</b> = conto «Anticipi ricevuti dai condòmini» <b>{{ $euro($ra['conto']) }}</b>@if($ra['differenza'] !== 0) — differenza <b>{{ $euro($ra['differenza']) }}</b> @endif.</p>
 
-<p style="font-size: 7.5pt; color: #555; margin-top: 6px; border-top: 1px solid #c0ccd8; padding-top: 4px;">
-    {{ $p['avvertenze']['riservato'] }}
-</p>
+<p class="riservato">{{ $p['avvertenze']['riservato'] }}</p>
 
-@endsection
+</body>
+</html>

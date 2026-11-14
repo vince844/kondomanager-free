@@ -395,7 +395,7 @@ onUnmounted(() => {
                                                                 <Info class="w-3 h-3 text-emerald-500/60 cursor-help outline-none shrink-0" />
                                                             </TooltipTrigger>
                                                             <TooltipContent>
-                                                                <p class="text-xs">Importo coperto tramite l'utilizzo di fondi di riserva o stanziato per il conguaglio di fine anno.</p>
+                                                                <p class="text-xs">Sfori senza una rata: coperti da un fondo di riserva, o lasciati al conguaglio per persona, calcolato nel rendiconto.</p>
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     </TooltipProvider>
@@ -774,7 +774,7 @@ onUnmounted(() => {
                                                 class="text-[10px] font-bold text-slate-400 mr-auto">
                                                 {{ fat.strategia === 'fondo_riserva' 
                                                     ? 'Coperta dal fondo patrimoniale — nessuna rata richiesta' 
-                                                    : 'Verrà calcolata automaticamente a fine esercizio' }}
+                                                    : 'Entra nel conguaglio per persona, calcolato nel rendiconto' }}
                                             </span>
                                             <Link v-else :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=straordinario&origine=dashboard&gestione_id=${fat.gestione_id}&fatture[]=${fat.id}`">
                                                 <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm">
@@ -857,7 +857,7 @@ onUnmounted(() => {
                                                     La spesa ha superato il preventivo. Emetti una rata integrativa per recuperare la differenza.
                                                 </template>
                                                 <template v-else-if="orfano.strategia === 'conguaglio'">
-                                                    Va conguagliata a fine esercizio: il conguaglio per persona non è ancora nel programma.
+                                                    La differenza entra nel conguaglio per persona, se la voce ha una tabella (in una gestione straordinaria, quando l'opera è finita): si legge nella scheda «Conguaglio» del rendiconto, come proposta da approvare dall'assemblea.
                                                 </template>
                                                 <template v-else-if="orfano.strategia === 'fondo_riserva'">
                                                     Coperta dal fondo di riserva patrimoniale. Nessuna azione richiesta.
@@ -871,7 +871,14 @@ onUnmounted(() => {
                                                 </template>
                                             </p>
 
-                                            <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia) && !orfano.spesa_negativa" 
+                                            <!-- La frase dice dove si legge il conguaglio: la porta alla scheda «Conguaglio» del rendiconto dell'esercizio. -->
+                                            <Link v-if="orfano.strategia === 'conguaglio'" data-test="apri-conguaglio"
+                                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/conguaglio', { condominio: condominio.id, esercizio: esercizio.id })">
+                                                <Button size="sm" variant="outline" class="h-8 text-[10px] uppercase font-bold shrink-0">
+                                                    Apri il conguaglio <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
+                                                </Button>
+                                            </Link>
+                                            <Link v-else-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia) && !orfano.spesa_negativa"
                                                 :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}&conto_id=${orfano.id}`">
                                                 <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm shrink-0">
                                                     Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />

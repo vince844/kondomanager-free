@@ -53,10 +53,20 @@ describe('le celle delle due date', () => {
             .toBe('30/06/2027 — dispensa dell\'assemblea del 20/03/2027 (verbale n. 12)');
     });
 
-    test('l\'esercizio della scadenza che manca, a gennaio: si chiude il vecchio e si apre il successivo, mai «crea l\'esercizio»', () => {
+    test('l\'esercizio della scadenza che manca, a gennaio: la data non si calcola, e la cella non manda a chiudere né ad aprire un esercizio', () => {
         const t = testoData(voce({ data: null, esercizio: null, stato: 'manca_esercizio', data_cercata: '2027-01-05', esercizio_da_chiudere: 'Esercizio 2026' }));
-        expect(t).toBe('L\'esercizio che contiene il 05/01/2027 non c\'è ancora: la data si calcola quando chiudi l\'esercizio 2026 e apri il successivo.');
-        expect(t.toLowerCase()).not.toContain('crea');
+        expect(t).toBe('L\'esercizio che contiene il 05/01/2027 non c\'è, e il programma non apre l\'esercizio successivo: questa data non si calcola.');
+        for (const parola of ['chiudi', 'apri il', 'crea', 'ancora', 'quando', 'oggi']) {
+            expect(t.toLowerCase()).not.toContain(parola);
+        }
+    });
+
+    test('l\'esercizio che manca e nessuno da chiudere: la data non si calcola, senza promettere un esercizio', () => {
+        const t = testoData(voce({ data: null, esercizio: null, stato: 'manca_esercizio', data_cercata: '2027-01-05', esercizio_da_chiudere: null }));
+        expect(t).toBe('L\'esercizio che contiene il 05/01/2027 non c\'è: questa data non si calcola.');
+        for (const parola of ['chiudi', 'apri', 'crea', 'ancora', 'quando', 'oggi']) {
+            expect(t.toLowerCase()).not.toContain(parola);
+        }
     });
 
     test('una data prima del primo esercizio del programma: viene prima, non «non c\'è ancora»', () => {

@@ -105,6 +105,9 @@ class RateScaduteController extends Controller
             'oggi' => $oggi,
             'non_emesse' => $filtri['vista'] === ElencoRateScadute::VISTA_SCADUTE ? $this->elenco->nonEmesse($condominio, $filtri['alla'], $filtri['gestione_id']) : null,
             'gestioni' => $condominio->gestioni()->orderBy('nome')->get(['id', 'nome']),
+            // Le persone del condominio per la scelta «Persona»: solo l'id e il nome, tutte; la ricerca nell'elenco la fa la pagina.
+            'persone' => Anagrafica::whereHas('condomini', fn ($q) => $q->where('condomini.id', $condominio->id))
+                ->orderBy('nome')->orderBy('id')->get(['id', 'nome'])->map(fn ($a) => ['id' => (int) $a->id, 'nome' => (string) $a->nome])->values(),
             'persona_della_porta' => $filtri['anagrafica_id'] === null ? null : Anagrafica::whereKey($filtri['anagrafica_id'])->value('nome'),
             'testo_norma' => SeiMesi::TESTO_NORMA,
             'frase_festivo' => SeiMesi::FRASE_FESTIVO,

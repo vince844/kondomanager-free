@@ -11,7 +11,8 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { BookOpenCheck, ChevronDown, ChevronRight, Printer, Scale } from 'lucide-vue-next';
+import { comeRisultato } from '@/lib/gestionale/rendiconto/risultato';
+import { BookOpenCheck, ChevronDown, ChevronRight, Printer, Scale, Home } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { Building } from '@/types/buildings';
@@ -79,9 +80,12 @@ interface Riepilogo {
         gestione: { id: number; nome: string; tipo: string };
         deliberato_stato?: Stato;
         spese: Voce[];
+        /** Le spese per singole unità chieste con le rate: non sono di nessuna voce; null quando il deliberato non è disponibile. */
+        spese_personali?: number | null;
         entrate: Voce[];
         quote: RigaQuote[];
         totale_spese: Record<string, number | null>;
+        totale_entrate?: Record<string, number | null>;
         cumulato_opera: { dal: string | null; consuntivo: number } | null;
     }>;
     fuori_capitoli: { contestate: Fuori; commissioni_senza_voce: Fuori; non_classificati: Fuori };
@@ -147,6 +151,8 @@ const apri = (id: number) => { aperte.value[id] = !aperte.value[id]; };
 const nomeRiga = (riga: RigaQuote['riga']) => ({ ordinarie: 'Quote ordinarie', straordinarie: 'Quote straordinarie', esercizi_precedenti: 'Esercizi precedenti' }[riga]);
 
 const hrefCommissioni = computed(() => generatePath('gestionale/:condominio/esercizi/:esercizio/commissioni-senza-voce', { condominio: props.condominio.id, esercizio: props.esercizio.id }));
+/** Le fatture con una riga su un'unità: le spese personali. */
+const hrefFattureConUnita = computed(() => `${generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id })}?con_unita=1`);
 const hrefIncasso = (voceId: number) => `${generatePath('gestionale/:condominio/incassi-da-terzi/create', { condominio: props.condominio.id })}?voce=${voceId}`;
 
 const headerBreadcrumbs = computed(() => [
@@ -168,6 +174,12 @@ const pageGuides = [
         description: 'Il deliberato con le rate è quanto i piani approvati dell\'esercizio chiedono per la voce. Il preventivo è l\'importo della voce finché la gestione non passa all\'esercizio dopo: da lì la voce porta di solito il nuovo preventivo, e la colonna rimanda al verbale dell\'assemblea.',
         icon: Scale,
         colorVariant: 'emerald' as const,
+    },
+    {
+        title: 'Le spese di una sola unità',
+        description: 'Una fattura con un\'unità non è un\'uscita di una voce: è un credito verso quell\'unità. Quelle chieste con le rate sono in una riga loro, dopo il totale delle spese, dentro le quote deliberate; quelle non ancora chieste sono nella scheda «Conguaglio».',
+        icon: Home,
+        colorVariant: 'amber' as const,
     },
 ];
 </script>
@@ -293,6 +305,14 @@ const pageGuides = [
                                 </tbody>
                             </table>
 
+                            <!-- Le spese per singole unità chieste con le rate: dopo il totale delle spese, che non le conta, con le quote deliberate. -->
+                            <p v-if="b.spese_personali" class="text-[12px] text-slate-600 dark:text-slate-400 mt-2" data-test="spese-personali">
+                                Deliberato con le rate: totale delle spese {{ euro(b.totale_spese.deliberato ?? 0) }}<template v-if="b.totale_entrate?.deliberato"> − entrate da terzi {{ euro(b.totale_entrate.deliberato) }}</template>
+                                + <Link :href="hrefFattureConUnita" class="underline decoration-dotted underline-offset-4">spese personali chieste con le rate</Link> {{ euro(b.spese_personali) }}
+                                = quote deliberate {{ b.quote[0]?.deliberate === null || b.quote[0]?.deliberate === undefined ? 'non disponibile' : euro(b.quote[0].deliberate) }}.
+                                <span class="text-slate-500 dark:text-slate-400">Sono spese di una sola unità: non stanno in nessuna voce.</span>
+                            </p>
+
                             <table v-if="b.entrate.length" class="w-full text-sm mt-4" data-test="entrate">
                                 <thead>
                                     <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -404,9 +424,9 @@ const pageGuides = [
 
                         <section class="rounded-lg border border-slate-200 dark:border-slate-800 p-4 text-sm space-y-1" data-test="risultato">
                             <div class="font-semibold text-slate-800 dark:text-slate-200">
-                                Risultato: quote emesse a giornale {{ euro(r.risultato.quote_emesse) }} − costi {{ euro(r.risultato.costi) }} =
+                                Risultato: quote registrate in questo esercizio {{ euro(r.risultato.quote_emesse) }} − costi {{ euro(r.risultato.costi) }} =
                                 <span :class="r.risultato.risultato < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'">{{ euro(r.risultato.risultato) }}</span>
-                                ({{ r.risultato.risultato < 0 ? 'disavanzo' : 'avanzo' }})
+                                ({{ comeRisultato(r.risultato.risultato) }})
                             </div>
                             <div class="text-[12px] text-slate-500 dark:text-slate-400" data-test="riconciliazione">
                                 Costi dell'esercizio a giornale {{ euro(r.riconciliazione.costi) }} = spese per capitolo meno entrate {{ euro(r.riconciliazione.capitoli_netti) }}
@@ -415,9 +435,9 @@ const pageGuides = [
                                 <template v-if="r.riconciliazione.differenza"> + una differenza di {{ euro(r.riconciliazione.differenza) }} da guardare nel Libro Giornale</template>.
                             </div>
                             <div class="text-[12px] text-slate-500 dark:text-slate-400" data-test="raccordo-quote">
-                                Quote dei piani dell'esercizio {{ euro(r.raccordo_quote.quote_piani) }} = quote a giornale {{ euro(r.raccordo_quote.quote_giornale) }}
+                                Quote dei piani dell'esercizio {{ euro(r.raccordo_quote.quote_piani) }} = quote registrate in questo esercizio {{ euro(r.raccordo_quote.quote_giornale) }}
                                 + rate di questi piani emesse in un altro esercizio {{ euro(r.raccordo_quote.piani_emesse_altrove) }}
-                                − rate di altri piani emesse in questo {{ euro(r.raccordo_quote.altri_emesse_qui) }}<template v-if="r.raccordo_quote.altre_differenze"> + {{ euro(r.raccordo_quote.altre_differenze) }} di debiti riportati dentro le rate (il pregresso emesso con le rate, che non va fra le quote a giornale)</template>.
+                                − rate di altri piani emesse in questo {{ euro(r.raccordo_quote.altri_emesse_qui) }}<template v-if="r.raccordo_quote.altre_differenze"> + {{ euro(r.raccordo_quote.altre_differenze) }} di debiti riportati dentro le rate (il pregresso emesso con le rate, che non va fra le quote registrate in questo esercizio)</template>.
                             </div>
                             <div class="text-[12px] text-slate-500 dark:text-slate-400" data-test="pagate-e-registro">
                                 Le quote pagate, versate o compensate con un credito, sono {{ euro(r.quote.totale.pagate) }}; i versamenti dei condòmini nel registro di

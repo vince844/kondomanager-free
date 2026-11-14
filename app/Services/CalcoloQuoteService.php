@@ -244,6 +244,50 @@ class CalcoloQuoteService
     /** @var array<int,Conto> radice per conto foglia, entro una chiamata */
     private array $radiciCache = [];
 
+    /** La lettura del consuntivo (`consuntivoPerGestione`): niente già versato tolto, righe solo per chi si mostra, pesi riusati. */
+    private bool $consuntivo = false;
+
+    /** Le persone di cui tenere le righe di spiegazione, `anagrafica_id => true`; `null` le tiene tutte, come il preventivo. */
+    private ?array $righeSoloPer = null;
+
+    /**
+     * Nel consuntivo, con l'opzione `per_tabella`: la spesa per persona, unità e tabella di tutte le persone, sommata mentre la voce si divide,
+     * senza tenere le righe di chi non si mostra; con le tabelle, i millesimi delle unità e il ruolo di ognuno. `null` quando non si chiede.
+     *
+     * @var array{righe: array<int, array<int, array<int,int>>>, tabelle: array<int, array{nome:string, quota:?string, somma_valori:mixed}>, millesimi: array<int, array<int,mixed>>, ruoli: array<int, array<int,string>>}|null
+     */
+    private ?array $perTabella = null;
+
+    /**
+     * Nel consuntivo: i giorni in cui qualcosa cambia fra i titolari delle unità del condominio (gli inizi, e i giorni dopo le fini), in ordine.
+     * Due giorni senza un cambio in mezzo hanno gli stessi titolari, quindi gli stessi pesi: la firma di un periodo di un giorno solo.
+     *
+     * @var list<string>|null
+     */
+    private ?array $giorniDiCambio = null;
+
+    /** Nel consuntivo, la firma del periodo dei riusi: quando cambia, i titolari e i giorni riusati della firma di prima non servono più. */
+    private ?string $firmaPeriodoRiusi = null;
+
+    /** Nel consuntivo, gli ultimi pesi calcolati e la loro firma: le voci con le stesse tabelle nello stesso periodo li riusano. */
+    private ?string $firmaPesi = null;
+    private array $pesiRiusabili = [];
+
+    /** Nel consuntivo, i titolari nel periodo e i pesi per giorni di ogni unità, riusati fra le voci. */
+    private array $attiviRiusati = [];
+    private array $giorniRiusati = [];
+
+    /**
+     * Nel consuntivo, per un periodo di un giorno solo: i giorni in cui cambiano i titolari di ogni unità, e i pesi di ogni unità su ogni tabella
+     * delle voci con le stesse tabelle (`firmaPesiPerUnita`), uno per tratto fra due cambi dell'unità. Un passaggio in un'unità rifà i pesi di
+     * quell'unità sola: le altre hanno gli stessi titolari, quindi gli stessi pesi.
+     *
+     * @var array<int, list<string>>|null
+     */
+    private ?array $giorniDiCambioPerUnita = null;
+    private ?string $firmaPesiPerUnita = null;
+    private array $pesiPerUnita = [];
+
     // =========================================================================
     // MOTORE ORDINARIO
     // =========================================================================
@@ -976,6 +1020,587 @@ class CalcoloQuoteService
         return $totali;
     }
 
+    // =========================================================================
+    // CONSUNTIVO
+    // =========================================================================
+
+    /**
+     * La spesa dell'esercizio divisa fra le persone con la regola del preventivo: le stesse tabelle, gli stessi titolari, gli stessi giorni.
+     *
+     * **Ordinaria**: `$cifre` è `conto_id => centesimi con il segno` (lo speso per voce del giornale; una voce di entrata è negativa e
+     * si divide così, senza rifare la regola del tipo). Ogni voce si divide sul conto su cui la divide il piano dell'esercizio che la
+     * tiene (`capitoli`, `conto_id => id della riga del piano`): dalla riga del piano, la voce stessa o un suo capitolo, si scende verso
+     * la voce come `processaConti` con l'importo forzato, e divide il primo conto che ha delle tabelle; se nessuno ne ha, la voce resta
+     * non attribuita. Senza un piano che la tenga, la voce si divide sulle sue tabelle. Le voci che finiscono sullo stesso conto si
+     * sommano e si dividono una volta, al centesimo sull'intera voce; una spesa scritta su un capitolo senza tabelle si divide fra le
+     * sottovoci come nel preventivo. `diviso_su` dice dove è finita ogni voce (`voce => [conto => centesimi]`), e `uscite`, le persone e
+     * `non_attribuite` hanno le chiavi del conto diviso. Il periodo è quello del preventivo: i tratti del capitolo, poi la gestione
+     * chiusa, poi l'esercizio.
+     *
+     * **Straordinaria**: `$cifre` è una lista di righe `['conto_id', 'importo', 'competenza_dal', 'competenza_al']`, una per riga di
+     * fattura; ogni riga ha la competenza dichiarata, altrimenti il giorno della delibera (`delibere`, le date dei piani della gestione;
+     * `data_delibera` per una sola); le righe dello stesso conto con la stessa competenza si dividono insieme, sul conto della riga, come
+     * nel piano da fatture. Se una riga non dichiara la competenza e la delibera non c'è, o i piani ne hanno più d'una con date diverse,
+     * la gestione **non si calcola** e lo dice: sotto la delibera non si scende, e il programma non sceglie fra due delibere. Una riga può dire la sua
+     * delibera (`delibera`, e `delibere_diverse` se il suo esercizio ne ha più d'una): l'opera su più esercizi, ogni spesa con i piani del suo esercizio.
+     * `divisioni` dice quante volte ogni conto è stato diviso (una per competenza): ogni divisione ha il suo resto del centesimo.
+     *
+     * Legge e basta: niente righe salvate, niente guardia, niente già versato tolto, il registro taciuto. Le righe di spiegazione si
+     * tengono solo per le persone di `righe_per`. Il resto del centesimo si dà sull'intera voce, fra tutte le chiavi. Alla fine il
+     * motore non tiene niente della lettura: i registri e il periodo tornano vuoti. Con `per_tabella` la risposta ha anche la spesa per persona,
+     * unità e tabella di tutte le persone (`per_tabella`: le righe, le tabelle, i millesimi, i ruoli), sommata dalle stesse righe del dettaglio.
+     *
+     * **La competenza scritta sulla fattura di un'ordinaria** (`competenze_scritte`, le righe per fattura delle voci con la competenza dichiarata): dove
+     * la fattura la dice, la sua spesa va a chi era titolare in quei giorni, tagliati sull'esercizio; altrimenti il capitolo e i giorni (vedi
+     * `lavoriOrdinari`). La risposta dice per ogni unità e conto la spesa con la competenza scritta, sommata, il primo e l'ultimo giorno, quante spese e la
+     * parte di ognuno (`competenze_scritte`).
+     *
+     * @param array<int,int>|list<array{conto_id:int, importo:int, competenza_dal?:mixed, competenza_al?:mixed}> $cifre
+     * @param array{data_delibera?:mixed, delibere?:list<string>, righe_per?:list<int>, capitoli?:array<int,int>, per_tabella?:bool, competenze_scritte?:list<array<string,mixed>>} $opzioni
+     * @return array{persone: array<int, array<int, array<int,int>>>, uscite: array<int,int>, diviso_su: array<int, array<int,int>>, non_attribuite: array<int,int>, motivi: array<int, array<string,int>>, righe: list<array<string,mixed>>, non_calcolabile: ?string, per_tabella: ?array, competenze_scritte: array<int, array<int, array<string,mixed>>>, divisioni: array<int,int>}
+     */
+    public function consuntivoPerGestione(Gestione $gestione, \App\Models\Esercizio $esercizio, array $cifre, array $opzioni = []): array
+    {
+        $esito = ['persone' => [], 'uscite' => [], 'diviso_su' => [], 'non_attribuite' => [], 'motivi' => [], 'righe' => [], 'non_calcolabile' => null, 'per_tabella' => null,
+            'competenze_scritte' => [], 'divisioni' => []];
+        $natura = NaturaGestione::daStringa($gestione->tipo);
+
+        $registro = Log::getFacadeRoot();
+        Log::swap(new \Psr\Log\NullLogger());
+
+        try {
+            $this->preparaConsuntivo($gestione, $esercizio, $natura, $opzioni);
+
+            $lavori = $natura === NaturaGestione::Straordinaria
+                ? $this->lavoriStraordinari($cifre, $this->delibereDi($opzioni))
+                : $this->lavoriOrdinari($gestione, $cifre, $opzioni['competenze_scritte'] ?? [], PeriodoCompetenza::daEsercizio($esercizio));
+
+            if (is_string($lavori)) {
+                $esito['non_calcolabile'] = $lavori;
+
+                return $esito;
+            }
+            foreach ($lavori as $lavoro) {
+                foreach ($lavoro['voci'] as $voceId => $centesimi) {
+                    $esito['diviso_su'][$voceId][(int) $lavoro['conto_id']] = ($esito['diviso_su'][$voceId][(int) $lavoro['conto_id']] ?? 0) + $centesimi;
+                }
+                $esito['uscite'][(int) $lavoro['conto_id']] = ($esito['uscite'][(int) $lavoro['conto_id']] ?? 0) + (int) $lavoro['importo'];
+            }
+
+            $conti = Conto::with(['tabelleMillesimali.ripartizioni', 'tabelleMillesimali.tabella'])
+                ->whereIn('id', array_unique(array_column($lavori, 'conto_id')))->get()->keyBy('id');
+
+            // Le voci con le stesse tabelle una dopo l'altra: i pesi si calcolano una volta (`pesiDellaVoceRiusati`).
+            foreach ($lavori as $i => $lavoro) {
+                $lavori[$i]['ordine'] = $this->firmaDelleTabelle($conti[$lavoro['conto_id']] ?? null) . '#' . json_encode($lavoro['competenza']?->toArray());
+            }
+            usort($lavori, fn (array $a, array $b) => strcmp($a['ordine'], $b['ordine']));
+
+            $immobili = [];
+            foreach ($lavori as $i => $lavoro) {
+                $conto = $conti[$lavoro['conto_id']] ?? null;
+                $contoId = (int) $lavoro['conto_id'];
+                $importo = (int) $lavoro['importo'];
+                $diviso = 0;
+
+                if ($conto !== null) {
+                    // La competenza scritta sulla fattura di un'ordinaria vale per la sua spesa: il capitolo non la cambia.
+                    $scritta = $lavoro['scritta'] ?? null;
+                    $this->competenzaPerConto = $natura !== NaturaGestione::Straordinaria && $scritta === null;
+                    if ($natura === NaturaGestione::Straordinaria || $scritta !== null) {
+                        $this->impostaCompetenzaCorrente($lavoro['competenza']);
+                    }
+                    $this->caricaQuoteDelleTabelle($conto, $immobili);
+                    $parziali = [];
+                    $this->distribuisciSuTabelle($conto, $importo, $parziali);
+                    $esito['divisioni'][$contoId] = ($esito['divisioni'][$contoId] ?? 0) + 1;
+                    $perUnita = [];
+                    foreach ($parziali as $aid => $perImmobile) {
+                        foreach ($perImmobile as $iid => $centesimi) {
+                            $esito['persone'][$aid][$iid][$contoId] = ($esito['persone'][$aid][$iid][$contoId] ?? 0) + $centesimi;
+                            $diviso += $centesimi;
+                            $perUnita[$iid][$aid] = ($perUnita[$iid][$aid] ?? 0) + $centesimi;
+                        }
+                    }
+                    // Per ogni unità e conto la spesa con la competenza scritta e la parte di ognuno, sommate: la riga della persona la dice. Una voce
+                    // sola per unità e conto, con il primo e l'ultimo giorno e quante spese: cento fatture datate su tremila unità non stanno in memoria
+                    // una per una.
+                    if ($scritta !== null) {
+                        foreach ($perUnita as $iid => $persone) {
+                            $c = &$esito['competenze_scritte'][$iid][$contoId];
+                            $c ??= ['conto_id' => $contoId, 'dal' => $scritta['dal'], 'al' => $scritta['al'], 'spese' => 0, 'unita' => 0, 'persone' => []];
+                            $c['dal'] = min($c['dal'], $scritta['dal']);
+                            $c['al'] = max($c['al'], $scritta['al']);
+                            $c['spese']++;
+                            $c['unita'] += (int) array_sum($persone);
+                            foreach ($persone as $aid => $centesimi) {
+                                $c['persone'][$aid] = ($c['persone'][$aid] ?? 0) + $centesimi;
+                            }
+                            unset($c);
+                        }
+                    }
+                    $this->liberaQuote($conto, $conti[$lavori[$i + 1]['conto_id'] ?? 0] ?? null);
+                }
+
+                if ($importo - $diviso !== 0) {
+                    $esito['non_attribuite'][$contoId] = ($esito['non_attribuite'][$contoId] ?? 0) + $importo - $diviso;
+                }
+            }
+
+            foreach ($this->scopertiAccumulati as $s) {
+                $motivo = (string) ($s['motivo'] ?? 'senza_titolare');
+                $esito['motivi'][(int) $s['conto_id']][$motivo] = ($esito['motivi'][(int) $s['conto_id']][$motivo] ?? 0) + (int) $s['importo'];
+            }
+            if ($conti->count() < count(array_unique(array_column($lavori, 'conto_id')))) {
+                foreach ($lavori as $lavoro) {
+                    if (! isset($conti[$lavoro['conto_id']])) {
+                        $esito['motivi'][(int) $lavoro['conto_id']]['voce_non_trovata'] = abs((int) $lavoro['importo']);
+                    }
+                }
+            }
+            $esito['righe'] = $this->righeDettaglio;
+            $esito['per_tabella'] = $this->perTabella;
+        } finally {
+            Log::swap($registro);
+            $this->dimenticaLaLettura();
+        }
+
+        return $esito;
+    }
+
+    /** Dopo il consuntivo il motore torna com'era prima: l'interruttore spento, i riusi, i registri, il periodo e la gestione vuoti. */
+    private function dimenticaLaLettura(): void
+    {
+        $this->consuntivo = false;
+        $this->righeSoloPer = null;
+        $this->perTabella = null;
+        $this->giorniDiCambio = null;
+        $this->firmaPeriodoRiusi = null;
+        $this->firmaPesi = null;
+        $this->pesiRiusabili = [];
+        $this->attiviRiusati = [];
+        $this->giorniRiusati = [];
+        $this->giorniDiCambioPerUnita = null;
+        $this->firmaPesiPerUnita = null;
+        $this->pesiPerUnita = [];
+        $this->gestioneCorrente = null;
+        $this->periodo = null;
+        $this->gradinoCorrente = null;
+        $this->competenzaBase = null;
+        $this->competenzaPerConto = true;
+        $this->pivotCapitoloIds = [];
+        $this->esercizioDelGiaVersato = null;
+        $this->scopertiAccumulati = [];
+        $this->millesimiNonCompilati = [];
+        $this->destinatariCambiati = [];
+        $this->importiRipartiti = [];
+        $this->righeDettaglio = [];
+        $this->zeriRegistrati = [];
+        $this->radiciCache = [];
+    }
+
+    /** Le date della delibera dei piani della gestione, senza doppi. @return list<string> */
+    private function delibereDi(array $opzioni): array
+    {
+        $delibere = array_key_exists('delibere', $opzioni) ? (array) $opzioni['delibere'] : [$opzioni['data_delibera'] ?? null];
+        $date = [];
+        foreach ($delibere as $d) {
+            if ($d !== null && $d !== '') {
+                $date[] = substr($d instanceof \DateTimeInterface ? $d->format('Y-m-d') : (string) $d, 0, 10);
+            }
+        }
+
+        return array_values(array_unique($date));
+    }
+
+    /** Lo stato del motore per una lettura del consuntivo: lo stesso azzeramento di `calcolaPerGestione`, e la competenza di base. */
+    private function preparaConsuntivo(Gestione $gestione, \App\Models\Esercizio $esercizio, NaturaGestione $natura, array $opzioni): void
+    {
+        $this->gestioneCorrente = $gestione;
+        $this->consuntivo = true;
+        $this->righeSoloPer = array_fill_keys(array_map('intval', $opzioni['righe_per'] ?? []), true);
+        $this->perTabella = ($opzioni['per_tabella'] ?? false) ? ['righe' => [], 'tabelle' => [], 'millesimi' => [], 'ruoli' => []] : null;
+        $this->firmaPesi = null;
+        $this->pesiRiusabili = [];
+        $this->attiviRiusati = [];
+        $this->giorniRiusati = [];
+        $this->firmaPesiPerUnita = null;
+        $this->pesiPerUnita = [];
+        $this->pivotOverrides = [];
+        $this->pianoRateCreatedAt = null;
+        $this->esercizioDelGiaVersato = (int) $esercizio->id;
+        $this->competenzaNonRisolta = false;
+        $this->competenzaRisoltaPerFattura = false;
+        $this->nominaleMinimoPerConto = [];
+        $this->competenzaPerConto = $natura !== NaturaGestione::Straordinaria;
+        $this->pivotCapitoloIds = $natura === NaturaGestione::Straordinaria ? [] : array_map('intval', $opzioni['capitoli'] ?? []);
+        $this->destinatariCambiati = [];
+        $this->scopertiAccumulati = [];
+        $this->millesimiNonCompilati = [];
+        $this->eccedenzeCopertura = [];
+        $this->importiRipartiti = [];
+        $this->nettingApplicato = [];
+        $this->addebitiDiretti = [];
+        $this->righeDettaglio = [];
+        $this->zeriRegistrati = [];
+        $this->radiciCache = [];
+
+        $risolutore = new RisolutoreCompetenza();
+        if ($natura === NaturaGestione::Straordinaria) {
+            $delibere = $this->delibereDi($opzioni);
+            $this->impostaCompetenzaBase($risolutore->perStraordinaria(null, null, count($delibere) === 1 ? $delibere[0] : null), $natura);
+
+            return;
+        }
+        $periodoEsercizio = PeriodoCompetenza::daEsercizio($esercizio);
+        $periodoGestione = PeriodoCompetenza::daGestione($gestione)?->intersezione($periodoEsercizio);
+        $this->impostaCompetenzaBase($risolutore->perOrdinaria(null, $periodoGestione, $periodoEsercizio), $natura);
+    }
+
+    /**
+     * Ordinaria: le cifre per voce raccolte sul conto su cui le divide il piano dell'esercizio. Dalla riga del piano che tiene la voce
+     * (la voce stessa, o il capitolo più vicino che ha una riga) si scende verso la voce come `processaConti` con l'importo forzato: il
+     * primo conto con tabelle divide; se fino alla voce nessuno ne ha e la voce ha delle sottovoci (una spesa scritta sul capitolo), la
+     * cifra si divide fra le sottovoci con la regola del preventivo (`ripartoFraIFigli`) e ogni parte continua a scendere; un conto senza
+     * tabelle e senza sottovoci resta non attribuito. Senza una riga del piano, la voce stessa.
+     *
+     * **La competenza scritta sulla fattura** (`$scritte`, righe `conto_id, importo, competenza_dal, competenza_al` delle fatture che la dicono): la
+     * sua spesa esce dalla cifra della voce e si divide da sola, sullo stesso conto, fra chi era titolare in quei giorni, come nel piano da fatture
+     * (`RisolutoreCompetenza::perFattura`); il capitolo non la cambia. I giorni si tagliano sull'esercizio; una competenza tutta fuori
+     * dall'esercizio resta com'è scritta. Il resto della voce va con il capitolo e i giorni.
+     *
+     * @param list<array{conto_id:int, importo:int, competenza_dal:?string, competenza_al:?string}> $scritte
+     * @return list<array{conto_id:int, importo:int, competenza:?EsitoCompetenza, voci:array<int,int>, scritta?:array{dal:string, al:string}}>
+     */
+    private function lavoriOrdinari(Gestione $gestione, array $cifre, array $scritte = [], ?PeriodoCompetenza $esercizio = null): array
+    {
+        $padri = DB::table('conti')->where('piano_conto_id', $gestione->pianoConto?->id)->pluck('parent_id', 'id')->all();
+        $conTabelle = array_flip(DB::table('conto_tabella_millesimale')->whereIn('conto_id', array_keys($padri))->distinct()->pluck('conto_id')->all());
+
+        $perScritta = [];
+        $risolutore = new RisolutoreCompetenza();
+        foreach ($scritte as $riga) {
+            $voceId = (int) $riga['conto_id'];
+            $importo = (int) $riga['importo'];
+            if ($importo === 0 || ! isset($cifre[$voceId]) || $this->competenzaBase === null) {
+                continue;
+            }
+            $dichiarata = new PeriodoCompetenza((string) $riga['competenza_dal'], (string) $riga['competenza_al']);
+            $periodo = ($esercizio === null ? null : $dichiarata->intersezione($esercizio)) ?? $dichiarata;
+            $dal = $periodo->dal->format('Y-m-d');
+            $al = $periodo->al->format('Y-m-d');
+            $competenza = $risolutore->perFattura($dal, $al, $this->competenzaBase);
+            $cifre[$voceId] -= $importo;
+            foreach ($this->partiDellaVoce($voceId, $importo, $padri, $conTabelle) as $contoId => $parte) {
+                $k = $contoId . '|' . $dal . '|' . $al;
+                $perScritta[$k] ??= ['conto_id' => (int) $contoId, 'importo' => 0, 'competenza' => $competenza, 'voci' => [], 'scritta' => ['dal' => $dal, 'al' => $al]];
+                $perScritta[$k]['importo'] += $parte;
+                $perScritta[$k]['voci'][$voceId] = ($perScritta[$k]['voci'][$voceId] ?? 0) + $parte;
+            }
+        }
+
+        $perConto = [];
+        foreach ($cifre as $voceId => $importo) {
+            foreach ($this->partiDellaVoce((int) $voceId, (int) $importo, $padri, $conTabelle) as $contoId => $parte) {
+                $perConto[$contoId] ??= ['importo' => 0, 'voci' => []];
+                $perConto[$contoId]['importo'] += $parte;
+                $perConto[$contoId]['voci'][(int) $voceId] = ($perConto[$contoId]['voci'][(int) $voceId] ?? 0) + $parte;
+            }
+        }
+
+        $lavori = [];
+        foreach ($perConto as $contoId => $parte) {
+            if ($parte['importo'] !== 0) {
+                $lavori[] = ['conto_id' => $contoId, 'importo' => $parte['importo'], 'competenza' => $this->competenzaBase, 'voci' => $parte['voci']];
+            }
+        }
+        foreach ($perScritta as $lavoro) {
+            if ($lavoro['importo'] !== 0) {
+                $lavori[] = $lavoro;
+            }
+        }
+
+        return $lavori;
+    }
+
+    /**
+     * Su quale conto (o quali) si divide la cifra di una voce: `conto_id => centesimi`.
+     *
+     * @param array<int,?int> $padri
+     * @param array<int,mixed> $conTabelle
+     * @return array<int,int>
+     */
+    private function partiDellaVoce(int $voceId, int $importo, array $padri, array $conTabelle): array
+    {
+        $catena = [];
+        for ($id = $voceId; $id !== 0 && ! in_array($id, $catena, true); $id = (int) ($padri[$id] ?? 0)) {
+            $catena[] = $id;
+        }
+        foreach ($catena as $posizione => $id) {
+            if (! isset($this->pivotCapitoloIds[$id])) {
+                continue;
+            }
+            for ($giu = $posizione; $giu >= 0; $giu--) {
+                if (isset($conTabelle[$catena[$giu]])) {
+                    return [$catena[$giu] => $importo];
+                }
+            }
+            $creato = DB::table('piano_rate_capitoli as prc')->join('piani_rate as pr', 'pr.id', '=', 'prc.piano_rate_id')
+                ->where('prc.id', $this->pivotCapitoloIds[$id])->value('pr.created_at');
+
+            return $this->scendiNelleSottovoci($voceId, $importo, $creato === null ? null : \Carbon\Carbon::parse($creato), $conTabelle);
+        }
+
+        return [$voceId => $importo];
+    }
+
+    /**
+     * La discesa di `processaConti` sotto un conto senza tabelle: fra le sottovoci con `ripartoFraIFigli`, nella fotografia del piano.
+     *
+     * @param array<int,mixed> $conTabelle
+     * @return array<int,int>
+     */
+    private function scendiNelleSottovoci(int $contoId, int $importo, ?\Carbon\Carbon $pianoNato, array $conTabelle): array
+    {
+        if (isset($conTabelle[$contoId])) {
+            return [$contoId => $importo];
+        }
+        $conto = Conto::with('sottoconti')->find($contoId);
+        if ($conto === null || $conto->sottoconti->isEmpty()) {
+            return [$contoId => $importo];
+        }
+
+        $this->pianoRateCreatedAt = $pianoNato;
+        try {
+            [$figli, $quote] = $this->ripartoFraIFigli($conto, $importo);
+        } finally {
+            $this->pianoRateCreatedAt = null;
+        }
+        if ($figli->isEmpty()) {
+            return [$contoId => $importo];
+        }
+
+        $parti = [];
+        foreach ($quote as $figlioId => $quota) {
+            foreach ($this->scendiNelleSottovoci((int) $figlioId, $quota, $pianoNato, $conTabelle) as $id => $centesimi) {
+                $parti[$id] = ($parti[$id] ?? 0) + $centesimi;
+            }
+        }
+
+        return $parti;
+    }
+
+    /**
+     * Straordinaria: le righe di fattura raccolte per conto e competenza: la competenza scritta prevale, sotto la delibera non si scende. Una riga senza competenza scritta va alla
+     * delibera, se i piani ne hanno una sola; altrimenti la risposta è il perché la gestione non si calcola.
+     *
+     * @param list<string> $delibere
+     * @return list<array{conto_id:int, importo:int, competenza:?EsitoCompetenza, voci:array<int,int>}>|string
+     */
+    private function lavoriStraordinari(array $righe, array $delibere): array|string
+    {
+        $risolutore = new RisolutoreCompetenza();
+        $delibera = count($delibere) === 1 ? $delibere[0] : null;
+        $perChiave = [];
+        foreach ($righe as $riga) {
+            $importo = (int) ($riga['importo'] ?? 0);
+            if ($importo === 0) {
+                continue;
+            }
+            // La delibera della riga, se chi chiama la dice (l'opera su più esercizi: quella dei piani del suo esercizio); altrimenti quella della gestione.
+            $competenza = $risolutore->perStraordinaria($riga['competenza_dal'] ?? null, $riga['competenza_al'] ?? null,
+                array_key_exists('delibera', $riga) ? $riga['delibera'] : $delibera);
+            if ($competenza->richiedeDelibera) {
+                return ($riga['delibere_diverse'] ?? count($delibere) > 1)
+                    ? 'I piani della gestione hanno delibere con date diverse: una spesa straordinaria senza competenza scritta sulla fattura si divide fra chi era titolare il giorno della delibera, e il programma non sceglie quale vale. Scrivi la competenza sulla fattura.'
+                    : 'Manca la data della delibera: una spesa straordinaria senza competenza scritta sulla fattura si divide fra chi era titolare il giorno della delibera. '
+                        .'Scrivi la data della delibera nel piano, o la competenza sulla fattura.';
+            }
+            $chiave = (int) $riga['conto_id'] . '|' . json_encode($competenza->toArray());
+            $perChiave[$chiave] ??= ['conto_id' => (int) $riga['conto_id'], 'importo' => 0, 'competenza' => $competenza, 'voci' => [(int) $riga['conto_id'] => 0]];
+            $perChiave[$chiave]['importo'] += $importo;
+            $perChiave[$chiave]['voci'][(int) $riga['conto_id']] += $importo;
+        }
+
+        return array_values(array_filter($perChiave, fn (array $l) => $l['importo'] !== 0));
+    }
+
+    /** Le tabelle di una voce, con i coefficienti e le ripartizioni per ruolo, nell'ordine in cui il motore le legge. */
+    private function firmaDelleTabelle(?Conto $conto): string
+    {
+        if ($conto === null) {
+            return '';
+        }
+
+        return (string) json_encode($conto->tabelleMillesimali->map(fn ($ctm) => [
+            (int) $ctm->tabella_id,
+            (string) $ctm->coefficiente,
+            $ctm->ripartizioni->map(fn ($r) => [(string) $r->soggetto, (string) $r->percentuale])->values()->all(),
+        ])->values()->all());
+    }
+
+    /**
+     * Nel consuntivo, i pesi della voce precedente se la voce ha le stesse tabelle nello stesso periodo: i pesi non dipendono
+     * dalla cifra, e il resto del centesimo si calcola dopo, voce per voce, sull'intera voce.
+     */
+    private function pesiDellaVoceRiusati(Conto $conto): array
+    {
+        $periodo = $this->firmaDelPeriodo();
+        // I titolari e i giorni riusati valgono per un periodo: quando il periodo cambia escono dalla memoria (cento fatture straordinarie con cento
+        // competenze diverse ne terrebbero cento copie).
+        if ($periodo !== $this->firmaPeriodoRiusi) {
+            $this->attiviRiusati = [];
+            $this->giorniRiusati = [];
+            $this->firmaPeriodoRiusi = $periodo;
+        }
+        $tabelle = $this->firmaDelleTabelle($conto);
+        $firma = $tabelle . '#' . $periodo;
+        if ($firma !== $this->firmaPesi) {
+            // Un giorno solo: i pesi di ogni unità restano finché i suoi titolari non cambiano, per le voci con le stesse tabelle.
+            $perUnita = str_starts_with($periodo, 'giorno#');
+            if (! $perUnita || $tabelle !== $this->firmaPesiPerUnita) {
+                $this->pesiPerUnita = [];
+                $this->firmaPesiPerUnita = $perUnita ? $tabelle : null;
+            }
+            $this->pesiRiusabili = [];
+            $this->pesiRiusabili = $this->pesiDellaVoce($conto, $perUnita);
+            $this->firmaPesi = $firma;
+        }
+
+        return $this->pesiRiusabili;
+    }
+
+    /**
+     * La firma del periodo per i riusi del consuntivo: il periodo stesso; per un periodo di un giorno solo (la competenza scritta su una fattura
+     * straordinaria, o la delibera), i cambi fra i titolari fino a quel giorno, così due fatture di giorni diversi senza un passaggio in mezzo
+     * riusano gli stessi pesi. Non quando si tengono le righe di spiegazione: quelle dicono il giorno della spesa.
+     */
+    private function firmaDelPeriodo(): string
+    {
+        $periodo = $this->periodo;
+        if ($periodo === null || $periodo->giorni() !== 1 || $this->righeSoloPer !== [] || $this->gestioneCorrente === null) {
+            return (string) json_encode($periodo?->toArray());
+        }
+        if ($this->giorniDiCambio === null) {
+            $giorni = [];
+            $perUnita = [];
+            foreach (DB::table('anagrafica_immobile as ai')->join('immobili as i', 'i.id', '=', 'ai.immobile_id')
+                ->where('i.condominio_id', $this->gestioneCorrente->condominio_id)->get(['ai.immobile_id', 'ai.data_inizio', 'ai.data_fine']) as $r) {
+                if ($r->data_inizio !== null) {
+                    $giorni[substr((string) $r->data_inizio, 0, 10)] = true;
+                    $perUnita[(int) $r->immobile_id][substr((string) $r->data_inizio, 0, 10)] = true;
+                }
+                if ($r->data_fine !== null) {
+                    $dopo = \Carbon\CarbonImmutable::parse(substr((string) $r->data_fine, 0, 10))->addDay()->format('Y-m-d');
+                    $giorni[$dopo] = true;
+                    $perUnita[(int) $r->immobile_id][$dopo] = true;
+                }
+            }
+            $this->giorniDiCambio = array_keys($giorni);
+            sort($this->giorniDiCambio);
+            $this->giorniDiCambioPerUnita = [];
+            foreach ($perUnita as $iid => $suoi) {
+                $suoi = array_keys($suoi);
+                sort($suoi);
+                $this->giorniDiCambioPerUnita[$iid] = $suoi;
+            }
+        }
+        $giorno = ($periodo instanceof PeriodoCompetenza ? $periodo->dal : $periodo->dal())->format('Y-m-d');
+        $prima = 0;
+        foreach ($this->giorniDiCambio as $cambio) {
+            if ($cambio > $giorno) {
+                break;
+            }
+            $prima++;
+        }
+
+        return 'giorno#' . $prima;
+    }
+
+    /** Per un periodo di un giorno solo: quanti cambi fra i titolari dell'unità ci sono fino a quel giorno. Due giorni con lo stesso numero hanno gli stessi titolari. */
+    private function trattoDellUnita(int $immobileId, string $giorno): int
+    {
+        $prima = 0;
+        foreach ($this->giorniDiCambioPerUnita[$immobileId] ?? [] as $cambio) {
+            if ($cambio > $giorno) {
+                break;
+            }
+            $prima++;
+        }
+
+        return $prima;
+    }
+
+    /**
+     * Le quote delle tabelle di una voce, caricate quando servono, con le unità e i loro titolari letti una volta per tutto il
+     * consuntivo: la stessa lettura di `tabelleMillesimali.tabella.quote.immobile.anagrafiche`, senza tenere in memoria le quote di
+     * tutte le tabelle insieme.
+     *
+     * @param array<int, \App\Models\Immobile> $immobili
+     */
+    private function caricaQuoteDelleTabelle(Conto $conto, array &$immobili): void
+    {
+        $tabelle = $conto->tabelleMillesimali->map(fn ($ctm) => $ctm->tabella)->filter(fn ($t) => $t !== null && ! $t->relationLoaded('quote'))->unique('id')->values();
+        if ($tabelle->isEmpty()) {
+            return;
+        }
+
+        (new \Illuminate\Database\Eloquent\Collection($tabelle->all()))->load('quote');
+        $mancanti = [];
+        foreach ($tabelle as $tabella) {
+            foreach ($tabella->quote as $quota) {
+                if (! array_key_exists((int) $quota->immobile_id, $immobili)) {
+                    $mancanti[(int) $quota->immobile_id] = true;
+                }
+            }
+        }
+        if ($mancanti !== []) {
+            foreach (array_chunk(array_keys($mancanti), 1000) as $ids) {
+                foreach (\App\Models\Immobile::with('anagrafiche')->whereIn('id', $ids)->get() as $immobile) {
+                    $immobili[(int) $immobile->id] = $immobile;
+                }
+            }
+            foreach (array_keys($mancanti) as $id) {
+                $immobili[$id] ??= null;
+            }
+        }
+        foreach ($tabelle as $tabella) {
+            foreach ($tabella->quote as $quota) {
+                $quota->setRelation('immobile', $immobili[(int) $quota->immobile_id] ?? null);
+            }
+        }
+    }
+
+    /** Le quote delle tabelle che la voce dopo non usa escono dalla memoria. */
+    private function liberaQuote(Conto $conto, ?Conto $prossimo): void
+    {
+        $servono = $prossimo === null ? [] : $prossimo->tabelleMillesimali->pluck('tabella_id')->map(fn ($id) => (int) $id)->flip()->all();
+        foreach ($conto->tabelleMillesimali as $ctm) {
+            if ($ctm->tabella !== null && ! isset($servono[(int) $ctm->tabella_id])) {
+                $ctm->tabella->unsetRelation('quote');
+            }
+        }
+    }
+
+    /**
+     * Nel consuntivo le righe di spiegazione si tengono solo per le persone che si mostrano; nel preventivo tutte. Con `per_tabella` i componenti
+     * servono per tutti (la spesa per tabella si somma da loro), e le righe si tengono lo stesso solo per chi si mostra.
+     */
+    private function righeDi(int|string $anagraficaId): bool
+    {
+        return $this->righeSoloPer === null || $this->perTabella !== null || isset($this->righeSoloPer[(int) $anagraficaId]);
+    }
+
+    /** Nel consuntivo con `per_tabella`: la parte di un componente sulla sua tabella, per persona e unità; la tabella, il millesimo e il ruolo. */
+    private function sommaPerTabella(int $aid, int $iid, array $c, int $importo): void
+    {
+        $tid = (int) ($c['tabella_id'] ?? 0);
+        $this->perTabella['righe'][$aid][$iid][$tid] = ($this->perTabella['righe'][$aid][$iid][$tid] ?? 0) + $importo;
+        $this->perTabella['tabelle'][$tid] ??= ['nome' => (string) ($c['tabella_nome'] ?? ''), 'quota' => $c['tabella_quota'] ?? null, 'somma_valori' => $c['somma_valori'] ?? null];
+        $this->perTabella['millesimi'][$tid][$iid] ??= $c['valore_millesimo'] ?? null;
+        $this->perTabella['ruoli'][$aid][$iid] ??= (string) ($c['ruolo_risolto'] ?? '');
+    }
+
     /**
      * @return array Dati relativi agli importi scoperti durante il calcolo.
      */
@@ -1325,7 +1950,8 @@ class CalcoloQuoteService
      */
     private function registraEsclusiDopoCascata(\App\Models\Immobile $immobile, string $ruoloRichiesto, string $ruoloRisolto, Collection $nelPeriodo, int $contoId): void
     {
-        if ($this->periodo === null) {
+        // Nel consuntivo non c'è una generazione da fermare: chi il periodo esclude non si registra.
+        if ($this->periodo === null || $this->consuntivo) {
             return;
         }
         $senzaPeriodo = collect();
@@ -1418,7 +2044,7 @@ class CalcoloQuoteService
     private function registraZero(object $tabella, object $immobile, ?float $valore): void
     {
         $chiave = $tabella->id.'|'.$immobile->id;
-        if (isset($this->zeriRegistrati[$chiave])) return;
+        if (isset($this->zeriRegistrati[$chiave]) || $this->righeSoloPer !== null) return;
         $this->zeriRegistrati[$chiave] = true;
 
         $this->righeDettaglio[] = $this->rigaDettaglio('quota_zero', [
@@ -1667,37 +2293,12 @@ class CalcoloQuoteService
 
                 elseif ($conto->sottoconti->isNotEmpty()) {
 
-                    $sottocontiFiltrati = $this->pianoRateCreatedAt
-                        ? $conto->sottoconti->filter(
-                            fn($s) => $s->created_at->lte($this->pianoRateCreatedAt)
-                        )
-                        : $conto->sottoconti;
-
-                    if ($sottocontiFiltrati->isEmpty() && $importoOverride > 0) {
-                        Log::warning("processaConti: snapshot vuoto per conto ID={$conto->id} ('{$conto->nome}'), fallback su tutti i sottoconti correnti.", [
-                            'importo_override' => $importoOverride,
-                        ]);
-                        $sottocontiFiltrati = $conto->sottoconti;
-                    }
+                    [$sottocontiFiltrati, $quoteFigli] = $this->ripartoFraIFigli($conto, $importoOverride);
 
                     if ($sottocontiFiltrati->isEmpty()) continue;
 
-                    $totaleOriginaleFigli = (int) $sottocontiFiltrati->sum('importo');
-                    $totaleFigli  = $sottocontiFiltrati->count();
-                    $sommaAssegnata = 0;
-                    $counter = 0;
-
-                    foreach ($sottocontiFiltrati as $figlio) {
-                        $counter++;
-                        if ($counter === $totaleFigli) {
-                            $quotaFiglio = $importoOverride - $sommaAssegnata;
-                        } elseif ($totaleOriginaleFigli > 0) {
-                            $quotaFiglio = (int) round($importoOverride * ($figlio->importo / $totaleOriginaleFigli));
-                        } else {
-                            $quotaFiglio = (int) round($importoOverride / $totaleFigli);
-                        }
-                        $sommaAssegnata += $quotaFiglio;
-                        $this->pivotOverrides[$figlio->id] = $quotaFiglio;
+                    foreach ($quoteFigli as $figlioId => $quotaFiglio) {
+                        $this->pivotOverrides[$figlioId] = $quotaFiglio;
                     }
 
                     $this->processaConti($sottocontiFiltrati, $totali, $contiImpegnatiIds, $processatiIds);
@@ -1758,18 +2359,18 @@ class CalcoloQuoteService
     }
 
     /**
-     * Algoritmo core: Ripartisce l'importo di un conto sugli immobili collegati alle tabelle,
-     * risolvendo la cascata del ruolo e mantenendo traccia degli scoperti.
+     * I pesi di una voce sulle sue tabelle e sui suoi titolari: `[pesi per chiave «aid|iid», pesi scoperti, componenti per chiave]`.
+     * È la prima metà di `distribuisciSuTabelle()`, separata dalla seconda (la cifra divisa al centesimo) perché il consuntivo
+     * divide più voci con gli stessi pesi; il preventivo la chiama una volta per conto, come prima.
      *
-     * @param Conto $conto Conto di spesa da ripartire
-     * @param int $importoConto Importo in centesimi
-     * @param array &$totali Array in cui accumulare i risultati
+     * `$riusaPerUnita`, solo dal consuntivo con un periodo di un giorno: la parte di ogni unità su ogni tabella si tiene e si riusa nei giorni in cui
+     * i titolari dell'unità sono gli stessi (`trattoDellUnita`), sommata nello stesso ordine; si rifà solo per le unità con un passaggio in mezzo.
+     * Il preventivo non lo passa.
+     *
+     * @return array{0: array<string,float>, 1: list<array<string,mixed>>, 2: array<string,list<array<string,mixed>>>}
      */
-    private function distribuisciSuTabelle(Conto $conto, int $importoConto, array &$totali): void
+    private function pesiDellaVoce(Conto $conto, bool $riusaPerUnita = false): array
     {
-        // B2: la competenza del capitolo (tratti dichiarati → gestione → esercizio), o niente se atemporale.
-        $this->impostaCompetenzaPerConto($conto);
-
         $weights      = [];
         $pesiScoperti = [];
         /** @var array<string,list<array<string,mixed>>> i componenti di ogni chiave «aid|iid», per il dettaglio */
@@ -1784,37 +2385,11 @@ class CalcoloQuoteService
          * finiva addosso ai partecipanti delle tabelle che c'erano.
          */
         $quotaDichiarata = 0.0;
+        $giornoDelPeriodo = $riusaPerUnita && $this->periodo !== null
+            ? ($this->periodo instanceof PeriodoCompetenza ? $this->periodo->dal : $this->periodo->dal())->format('Y-m-d')
+            : null;
 
-        // Nessuna tabella millesimale collegata al conto.
-        //
-        // Fino alla beta.32 qui c'era un `return` con un Log::warning: l'importo
-        // spariva dal piano rate in silenzio — nessun errore, nessuno scoperto,
-        // solo una riga nel file di log. I condòmini venivano addebitati di meno
-        // e nessuno se ne accorgeva.
-        //
-        // Quell'importo è per definizione SCOPERTO: non è assegnabile a nessuno.
-        // Va quindi nello stesso bucket delle quote senza destinatario, che già
-        // blocca la generazione e chiede all'amministratore una motivazione
-        // scritta per procedere. Nessun meccanismo nuovo: quello giusto esisteva
-        // già venti righe più in basso.
-        if ($conto->tabelleMillesimali->isEmpty()) {
-            Log::warning("distribuisciSuTabelle: conto ID={$conto->id} ('{$conto->nome}') non ha tabelle millesimali collegate. Importo {$importoConto} registrato come scoperto.");
-
-            if ($importoConto != 0) {
-                $this->scopertiAccumulati[] = [
-                    'immobile_id'     => null,   // l'intero capitolo, non una singola unità
-                    'conto_id'        => $conto->id,
-                    'tabella_id'      => null,
-                    'ruolo_richiesto' => null,
-                    'importo'         => abs($importoConto),
-                    'motivo'          => 'conto_senza_tabella',
-                ];
-            }
-
-            return;
-        }
-
-        foreach ($conto->tabelleMillesimali as $ctm) {
+        foreach ($conto->tabelleMillesimali as $posizione => $ctm) {
             $tabella = $ctm->tabella ?? null;
 
             if (!$tabella) {
@@ -1912,6 +2487,28 @@ class CalcoloQuoteService
 
                 $weightImmobile = $weightCoeff * ($valore / $sommaValori);
 
+                // Il consuntivo di un giorno: la parte dell'unità su questa tabella, se i suoi titolari sono quelli di un giorno già letto, si
+                // ripete com'era, addizione per addizione; altrimenti si calcola e si tiene.
+                $registro = null;
+                $chiaveUnita = null;
+                if ($giornoDelPeriodo !== null) {
+                    $chiaveUnita = $posizione . '#' . $immobile->id . '#' . $this->trattoDellUnita((int) $immobile->id, $giornoDelPeriodo);
+                    if (isset($this->pesiPerUnita[$chiaveUnita])) {
+                        [$pesiUnita, $scopertiUnita, $componentiUnita] = $this->pesiPerUnita[$chiaveUnita];
+                        foreach ($pesiUnita as [$k, $w]) {
+                            $weights[$k] = ($weights[$k] ?? 0.0) + $w;
+                        }
+                        foreach ($scopertiUnita as $sc) {
+                            $pesiScoperti[] = $sc;
+                        }
+                        foreach ($componentiUnita as [$k, $c]) {
+                            $componenti[$k][] = $c;
+                        }
+                        continue;
+                    }
+                    $registro = [[], [], []];
+                }
+
                 $ripartizioni = $ctm->ripartizioni->isNotEmpty()
                     ? $ctm->ripartizioni
                     : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100.0]]);
@@ -1957,6 +2554,9 @@ class CalcoloQuoteService
                         'peso'            => $pesoNonAttribuito,
                         'motivo'          => 'ripartizioni_sotto_il_cento',
                     ];
+                    if ($registro !== null) {
+                        $registro[1][] = end($pesiScoperti);
+                    }
                 }
 
                 foreach ($ripartizioni as $rip) {
@@ -1992,7 +2592,7 @@ class CalcoloQuoteService
                      *
                      * Il presidio è `tests/Feature/Riparto/CatenaProporzioniAnelli34Test.php`.
                      */
-                    $anagrafiche = $this->titolari->attiviAlla($immobile->anagrafiche, $this->periodo)
+                    $anagrafiche = $this->attiviNelPeriodo($immobile->anagrafiche)
                         ->where('pivot.tipologia', $rip->soggetto)
                         ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
                     $ruoloRisolto = (string) $rip->soggetto;
@@ -2013,7 +2613,7 @@ class CalcoloQuoteService
                         foreach ($candidati as $ruoloFallback) {
                             // Stesso filtro sulla quota: un ripiego su un ruolo che non paga non
                             // è un ripiego, e la cascata deve poter proseguire fino al prossimo.
-                            $anagrafiche = $this->titolari->attiviAlla($immobile->anagrafiche, $this->periodo)
+                            $anagrafiche = $this->attiviNelPeriodo($immobile->anagrafiche)
                                 ->where('pivot.tipologia', $ruoloFallback->value)
                                 ->filter(fn ($a) => (float) $a->pivot->quota > 0.0);
 
@@ -2041,6 +2641,9 @@ class CalcoloQuoteService
                             'ruolo_richiesto' => $rip->soggetto,
                             'peso'            => $weightRip,
                         ];
+                        if ($registro !== null) {
+                            $registro[1][] = end($pesiScoperti);
+                        }
                         Log::warning("distribuisciSuTabelle: cascata esaurita — nessun soggetto "
                             . "per ruolo '{$rip->soggetto}' su immobile ID={$immobile->id}. "
                             . "Peso {$weightRip} tracciato come scoperto.", [
@@ -2068,7 +2671,7 @@ class CalcoloQuoteService
                     if ($righeGemelle->isNotEmpty()) {
                         $idGemelle = $righeGemelle->map(fn ($r) => (int) $r->id)->flip()->all();
                         $anagrafiche = $anagrafiche->concat(
-                            $this->titolari->attiviAlla($immobile->anagrafiche, $this->periodo)->filter(fn ($a) => isset($idGemelle[(int) $a->pivot->id]))
+                            $this->attiviNelPeriodo($immobile->anagrafiche)->filter(fn ($a) => isset($idGemelle[(int) $a->pivot->id]))
                         )->values();
                         $tipologieCoppia[] = (string) $righeGemelle->first()->tipologia;
                     }
@@ -2085,7 +2688,7 @@ class CalcoloQuoteService
                      * l'invariante 1 pretende, e per questo è un `if` e non una formula unica con
                      * i giorni a 1.
                      */
-                    $perGiorni = $this->pesiPerGiorni(
+                    $perGiorni = $this->pesiPerGiorniRiusati(
                         $this->titolari->attiviAlla($immobile->anagrafiche)->whereIn('pivot.tipologia', $tipologieCoppia)->map(fn ($a) => $a->pivot)->values(),
                         $anagrafiche->map(fn ($a) => $a->pivot)->values(),
                         (int) $immobile->id, $ruoloRisolto, (int) $conto->id,
@@ -2108,6 +2711,10 @@ class CalcoloQuoteService
                             if ($w <= 0.0) continue;
                             $key = $r['anagrafica_id'] . '|' . $immobile->id;
                             $weights[$key] = ($weights[$key] ?? 0.0) + $w;
+                            if ($registro !== null) {
+                                $registro[0][] = [$key, $w];
+                            }
+                            if (! $this->righeDi($r['anagrafica_id'])) continue;
                             $componenti[$key][] = [
                                 'tabella_id'       => (int) $tabella->id,
                                 'tabella_nome'     => $tabella->nome,
@@ -2121,6 +2728,9 @@ class CalcoloQuoteService
                                 'anagrafica_immobile_id' => (int) $r['riga']->id,
                                 'peso'             => $w,
                             ] + $this->congelatoTemporale($r['giorni'], $r['tratto']);
+                            if ($registro !== null) {
+                                $registro[2][] = [$key, end($componenti[$key])];
+                            }
                         }
                         if ($weightResiduo > 0.0) {
                             $pesiScoperti[] = [
@@ -2132,6 +2742,9 @@ class CalcoloQuoteService
                                 'motivo'          => $perGiorni['somma'] <= 0.0 && $ripiego['righe'] === [] ? 'titolari_fuori_competenza' : 'giorni_senza_titolare',
                                 'giorni'          => $ripiego['residuo_giorni'],
                             ];
+                            if ($registro !== null) {
+                                $registro[1][] = end($pesiScoperti);
+                            }
                         }
                         $this->annotaRipiego((int) $immobile->id, $ruoloRisolto, (int) $conto->id, $ripiego);
                     }
@@ -2153,6 +2766,10 @@ class CalcoloQuoteService
                         }
                         $key = $anag->id . '|' . $immobile->id;
                         $weights[$key] = ($weights[$key] ?? 0.0) + $weightAnagrafica;
+                        if ($registro !== null) {
+                            $registro[0][] = [$key, $weightAnagrafica];
+                        }
+                        if (! $this->righeDi($anag->id)) continue;
 
                         // Il componente, con tutto ciò che il peso sta per dimenticare (beta.29).
                         $componenti[$key][] = [
@@ -2170,7 +2787,13 @@ class CalcoloQuoteService
                             'anagrafica_immobile_id' => (int) $anag->pivot->id,
                             'peso'             => $weightAnagrafica,
                         ] + $this->congelatoTemporale($giorniRiga, $trattoRiga);
+                        if ($registro !== null) {
+                            $registro[2][] = [$key, end($componenti[$key])];
+                        }
                     }
+                }
+                if ($registro !== null) {
+                    $this->pesiPerUnita[$chiaveUnita] = $registro;
                 }
             }
         }
@@ -2244,6 +2867,129 @@ class CalcoloQuoteService
                 'motivo'          => 'coefficienti_sotto_il_cento',
             ];
         }
+
+        return [$weights, $pesiScoperti, $componenti];
+    }
+
+    /**
+     * I titolari attivi nel periodo corrente (`RisolutoreTitolari::attiviAlla`). Nel consuntivo la risposta per la stessa unità e lo
+     * stesso periodo si riusa fra le voci: le unità e i loro titolari sono letti una volta, e la risposta non dipende dalla voce.
+     */
+    private function attiviNelPeriodo(Collection $anagrafiche): Collection
+    {
+        if (! $this->consuntivo) {
+            return $this->titolari->attiviAlla($anagrafiche, $this->periodo);
+        }
+        $chiave = spl_object_id($anagrafiche) . '#' . json_encode($this->periodo?->toArray());
+
+        return $this->attiviRiusati[$chiave] ??= $this->titolari->attiviAlla($anagrafiche, $this->periodo);
+    }
+
+    /** `pesiPerGiorni()`, che nel consuntivo si riusa fra le voci per la stessa unità, gli stessi titolari e lo stesso periodo. */
+    private function pesiPerGiorniRiusati(Collection $righeCoppia, Collection $righeInPeriodo, int $immobileId, string $tipologia, ?int $contoId): ?array
+    {
+        if (! $this->consuntivo) {
+            return $this->pesiPerGiorni($righeCoppia, $righeInPeriodo, $immobileId, $tipologia, $contoId);
+        }
+        $chiave = $immobileId . '#' . $tipologia . '#' . $righeCoppia->pluck('id')->implode(',') . '#' . $righeInPeriodo->pluck('id')->implode(',') . '#' . json_encode($this->periodo?->toArray());
+        if (! array_key_exists($chiave, $this->giorniRiusati)) {
+            $this->giorniRiusati[$chiave] = $this->pesiPerGiorni($righeCoppia, $righeInPeriodo, $immobileId, $tipologia, $contoId);
+        }
+
+        return $this->giorniRiusati[$chiave];
+    }
+
+    /**
+     * L'importo forzato di un capitolo senza tabelle diviso fra le sue sottovoci: le sottovoci che c'erano quando il piano è nato
+     * (`pianoRateCreatedAt`; se nessuna, e l'importo è positivo, tutte), in proporzione ai loro importi, o in parti uguali se gli importi
+     * fanno zero; l'ultima prende il resto. La regola del preventivo (`processaConti`), che il consuntivo segue sulla spesa scritta sul capitolo.
+     *
+     * @return array{0: Collection, 1: array<int,int>} le sottovoci e la quota di ognuna
+     */
+    private function ripartoFraIFigli(Conto $conto, int $importoOverride): array
+    {
+        $sottocontiFiltrati = $this->pianoRateCreatedAt
+            ? $conto->sottoconti->filter(
+                fn($s) => $s->created_at->lte($this->pianoRateCreatedAt)
+            )
+            : $conto->sottoconti;
+
+        if ($sottocontiFiltrati->isEmpty() && $importoOverride > 0) {
+            Log::warning("processaConti: snapshot vuoto per conto ID={$conto->id} ('{$conto->nome}'), fallback su tutti i sottoconti correnti.", [
+                'importo_override' => $importoOverride,
+            ]);
+            $sottocontiFiltrati = $conto->sottoconti;
+        }
+
+        $quote = [];
+        if ($sottocontiFiltrati->isEmpty()) {
+            return [$sottocontiFiltrati, $quote];
+        }
+
+        $totaleOriginaleFigli = (int) $sottocontiFiltrati->sum('importo');
+        $totaleFigli  = $sottocontiFiltrati->count();
+        $sommaAssegnata = 0;
+        $counter = 0;
+
+        foreach ($sottocontiFiltrati as $figlio) {
+            $counter++;
+            if ($counter === $totaleFigli) {
+                $quotaFiglio = $importoOverride - $sommaAssegnata;
+            } elseif ($totaleOriginaleFigli > 0) {
+                $quotaFiglio = (int) round($importoOverride * ($figlio->importo / $totaleOriginaleFigli));
+            } else {
+                $quotaFiglio = (int) round($importoOverride / $totaleFigli);
+            }
+            $sommaAssegnata += $quotaFiglio;
+            $quote[$figlio->id] = $quotaFiglio;
+        }
+
+        return [$sottocontiFiltrati, $quote];
+    }
+
+    /**
+     * Algoritmo core: Ripartisce l'importo di un conto sugli immobili collegati alle tabelle,
+     * risolvendo la cascata del ruolo e mantenendo traccia degli scoperti.
+     *
+     * @param Conto $conto Conto di spesa da ripartire
+     * @param int $importoConto Importo in centesimi
+     * @param array &$totali Array in cui accumulare i risultati
+     */
+    private function distribuisciSuTabelle(Conto $conto, int $importoConto, array &$totali): void
+    {
+        // B2: la competenza del capitolo (tratti dichiarati → gestione → esercizio), o niente se atemporale.
+        $this->impostaCompetenzaPerConto($conto);
+
+        // Nessuna tabella millesimale collegata al conto.
+        //
+        // Fino alla beta.32 qui c'era un `return` con un Log::warning: l'importo
+        // spariva dal piano rate in silenzio — nessun errore, nessuno scoperto,
+        // solo una riga nel file di log. I condòmini venivano addebitati di meno
+        // e nessuno se ne accorgeva.
+        //
+        // Quell'importo è per definizione SCOPERTO: non è assegnabile a nessuno.
+        // Va quindi nello stesso bucket delle quote senza destinatario, che già
+        // blocca la generazione e chiede all'amministratore una motivazione
+        // scritta per procedere. Nessun meccanismo nuovo: quello giusto esisteva
+        // già venti righe più in basso.
+        if ($conto->tabelleMillesimali->isEmpty()) {
+            Log::warning("distribuisciSuTabelle: conto ID={$conto->id} ('{$conto->nome}') non ha tabelle millesimali collegate. Importo {$importoConto} registrato come scoperto.");
+
+            if ($importoConto != 0) {
+                $this->scopertiAccumulati[] = [
+                    'immobile_id'     => null,   // l'intero capitolo, non una singola unità
+                    'conto_id'        => $conto->id,
+                    'tabella_id'      => null,
+                    'ruolo_richiesto' => null,
+                    'importo'         => abs($importoConto),
+                    'motivo'          => 'conto_senza_tabella',
+                ];
+            }
+
+            return;
+        }
+
+        [$weights, $pesiScoperti, $componenti] = $this->consuntivo ? $this->pesiDellaVoceRiusati($conto) : $this->pesiDellaVoce($conto);
 
         // Pesi finali vuoti: nessuna quota sarà generata per questo conto (se neanche pesiScoperti è popolato)
         if (empty($weights) && empty($pesiScoperti)) {
@@ -2354,6 +3100,12 @@ class CalcoloQuoteService
 
             foreach ($comp as $i => $c) {
                 unset($c['peso']);
+                if ($this->perTabella !== null) {
+                    $this->sommaPerTabella($aid, $iid, $c, (int) ($importiComponenti[$i] ?? 0));
+                    if (! isset($this->righeSoloPer[$aid])) {
+                        continue;
+                    }
+                }
                 $this->righeDettaglio[] = $this->rigaDettaglio('riparto', $c + [
                     'anagrafica_id'     => $aid,
                     'immobile_id'       => $iid,
@@ -2387,7 +3139,13 @@ class CalcoloQuoteService
             ? $importoDaDistribuirePennyPerfect / abs($importoConto)
             : 1.0;
 
-        $importiDistributi = $this->nettingGiaVersato($conto, $importiDistributi, $fattoreCopertura);
+        // Il consuntivo divide la spesa lorda: il già versato non si toglie qui, nel modo del preventivo (lo legge chi usa il consuntivo).
+        if ($this->consuntivo) {
+            $this->ultimoNettingPerChiave = [];
+            $this->ultimoNettingPersonaPerChiave = [];
+        } else {
+            $importiDistributi = $this->nettingGiaVersato($conto, $importiDistributi, $fattoreCopertura);
+        }
 
         // La riga del già versato: negativa, per conto e soggetto — la terza chiave che
         // `getNettingApplicato()` (per immobile) non ha: il già versato è una riga negativa per

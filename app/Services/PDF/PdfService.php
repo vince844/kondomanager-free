@@ -216,7 +216,7 @@ class PdfService
      *
      * @return array{fontDir: array<int,string>, fontdata: array<string,array<string,string>>, tempDir: string}
      */
-    private static function configurazioneFont(): array
+    public static function configurazioneFont(): array
     {
         $tempDir = storage_path('framework/cache/mpdf');
 

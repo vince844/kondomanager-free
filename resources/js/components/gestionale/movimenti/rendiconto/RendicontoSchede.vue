@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * Le sei schede del rendiconto dell'esercizio: ognuna è una pagina con la sua richiesta (le letture di una scheda non si sommano a quelle delle altre),
+ * Le sette schede del rendiconto dell'esercizio: ognuna è una pagina con la sua richiesta (le letture di una scheda non si sommano a quelle delle altre),
  * e questa riga le lega. La situazione patrimoniale resta sulla pagina di sempre, così i collegamenti che portavano lì portano ancora lì.
  */
 import { computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from '@/composables/permissions';
 
-export type SchedaRendiconto = 'sintesi' | 'riepilogo' | 'situazione' | 'cassa' | 'condomini' | 'controlli';
+export type SchedaRendiconto = 'sintesi' | 'riepilogo' | 'situazione' | 'cassa' | 'condomini' | 'conguaglio' | 'controlli';
 
 const props = defineProps<{ condominioId: number; esercizioId: number; attiva: SchedaRendiconto }>();
 const { generatePath } = usePermission();
@@ -22,6 +22,7 @@ const schede = computed(() => {
         { chiave: 'situazione', titolo: 'Situazione patrimoniale', href: del('stato-patrimoniale') },
         { chiave: 'cassa', titolo: 'Cassa', href: del('rendiconto/cassa') },
         { chiave: 'condomini', titolo: 'Condòmini', href: del('rendiconto/condomini') },
+        { chiave: 'conguaglio', titolo: 'Conguaglio', href: del('rendiconto/conguaglio') },
         { chiave: 'controlli', titolo: 'Controlli', href: del('rendiconto/controlli') },
     ];
 });

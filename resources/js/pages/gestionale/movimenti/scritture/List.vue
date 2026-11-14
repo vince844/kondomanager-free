@@ -209,7 +209,7 @@ const pageGuides = [
             }),
         },
     },
-    { title: 'Verifica quadratura', description: 'Il riquadro della situazione patrimoniale verifica che Attivo + Costi = Passivo sulle scritture di questo esercizio — la stessa uguaglianza del dare = avere. Attivo e Passivo da soli non devono coincidere: in mezzo ci sono i costi non ancora conguagliati. Quando non torna ti dice la causa e, dove è possibile, ti dà il pulsante per rimediare.', icon: Scale, colorVariant: 'emerald' as const },
+    { title: 'Verifica quadratura', description: 'Il riquadro della situazione patrimoniale verifica che Attivo + Costi = Passivo sulle scritture di questo esercizio: è la regola del dare uguale avere applicata ai saldi dei conti e non ai movimenti, per questo i suoi totali non sono quelli del riquadro «Partita doppia» accanto. Attivo e Passivo da soli non devono coincidere: in mezzo ci sono i costi non ancora conguagliati. Quando non torna ti dice la causa e, dove è possibile, ti dà il pulsante per rimediare.', icon: Scale, colorVariant: 'emerald' as const },
     { title: 'Cambia esercizio', description: 'Usa il selettore esercizio in alto per consultare le operazioni di anni precedenti.', icon: ArrowUpCircle, colorVariant: 'amber' as const },
 ];
 </script>

@@ -12,7 +12,7 @@ import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/Rendi
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Button } from '@/components/ui/button';
-import { Printer, Wallet } from 'lucide-vue-next';
+import { Printer, Wallet, Landmark, Scale } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -47,6 +47,8 @@ const headerBreadcrumbs = computed(() => [
 ]);
 const pageGuides = [
     { title: 'Per cassa', description: 'Il denaro entrato e uscito dalle casse con le scritture dell\'esercizio. La disponibilità iniziale è il riporto dell\'esercizio prima, con la stessa regola del registro di contabilità: ogni movimento si conta una volta, nell\'esercizio in cui è scritto.', icon: Wallet, colorVariant: 'blue' as const },
+    { title: 'Ogni cassa', description: 'Una riga per ogni cassa, con la disponibilità iniziale, le entrate, le uscite e quella finale. La banca o i contanti andati sotto zero nell\'esercizio, anche per un giorno, sono in rosso con il giorno e la cifra: un conto reale non può contenere meno di niente.', icon: Landmark, colorVariant: 'amber' as const },
+    { title: 'Il raccordo con la competenza', description: 'Perché nell\'esercizio la liquidità è cambiata: il risultato di gestione, più o meno le variazioni dei crediti verso i condòmini, dei debiti verso i fornitori e l\'Erario, degli anticipi e dei riporti. Se la somma non torna, la riga dice di quanto.', icon: Scale, colorVariant: 'emerald' as const },
 ];
 </script>
 

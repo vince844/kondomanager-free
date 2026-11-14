@@ -7,6 +7,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Services\Gestionale\AnnoACavallo;
+use App\Services\Gestionale\ConguaglioDelRendiconto;
 use App\Services\Gestionale\ControlliDelRendiconto;
 use App\Services\Gestionale\FascicoloDelRendiconto;
 use App\Services\Gestionale\SintesiDelRendiconto;
@@ -64,13 +65,17 @@ class RendicontoController extends Controller
         ]);
     }
 
-    public function controlli(Request $request, Condominio $condominio, Esercizio $esercizio, ControlliDelRendiconto $controlli): Response
+    public function controlli(Request $request, Condominio $condominio, Esercizio $esercizio, ControlliDelRendiconto $controlli, ConguaglioDelRendiconto $conguaglio): Response
     {
         abort_unless((int) $esercizio->condominio_id === (int) $condominio->id, 404);
         $filtri = ['verso' => $request->query('verso'), 'tipo' => $request->query('tipo'), 'colore' => $request->query('colore')];
         // L'elenco delle registrazioni oltre il confine a pagine, con le righe per pagina ricordate come nelle altre tabelle.
         $pagine = ['pagina' => LengthAwarePaginator::resolveCurrentPage('pagina_confine'), 'per_pagina' => $this->righePerPagina($request, 'anno_a_cavallo', AnnoACavallo::RIGHE_ELENCO)];
-        $c = $controlli->perEsercizio($condominio, $esercizio, null, array_map(fn ($v) => is_string($v) ? $v : null, $filtri), null, null, $pagine);
+        // I quattro controlli del conguaglio leggono il consuntivo per persona: qui la lettura si fa sempre, come nella scheda «Conguaglio»; non quando la
+        // pagina chiede solo l'elenco delle registrazioni oltre il confine (i filtri e le pagine), che non la usa.
+        $soloElenco = $request->header('X-Inertia-Partial-Data') === 'anno_a_cavallo';
+        $c = $controlli->perEsercizio($condominio, $esercizio, null, array_map(fn ($v) => is_string($v) ? $v : null, $filtri), null, null, $pagine,
+            $soloElenco ? null : $conguaglio->leggi($esercizio));
 
         return Inertia::render('gestionale/movimenti/rendiconto/Controlli', $this->comuni($condominio, $esercizio) + [
             'controlli' => $c['controlli'],
@@ -82,13 +87,13 @@ class RendicontoController extends Controller
     /**
      * Il fascicolo per l'assemblea: le parti scelte (`parti[]`), sempre nell'ordine fisso, con il frontespizio. Prima di cominciare stima il tempo e la
      * memoria della stampa intera: oltre il tetto non parte, e torna alla Sintesi con la frase che dice quale parte togliere (ognuna si scarica da sola
-     * dalla sua scheda). Una parte vuota si salta e l'indice lo dice.
+     * dalla sua scheda). Una parte vuota si salta e l'indice lo dice. La colonna dell'ultima lettera di sollecito nei crediti c'è solo con `lettere`.
      */
     public function fascicolo(Request $request, Condominio $condominio, Esercizio $esercizio, FascicoloDelRendiconto $fascicolo)
     {
         abort_unless((int) $esercizio->condominio_id === (int) $condominio->id, 404);
         $parti = array_values(array_filter((array) $request->query('parti', FascicoloDelRendiconto::PARTI), 'is_string'));
-        $esito = $fascicolo->genera($condominio, $esercizio, $parti, $request->boolean('dettaglio'));
+        $esito = $fascicolo->genera($condominio, $esercizio, $parti, $request->boolean('dettaglio'), null, $request->boolean('lettere'));
         if (isset($esito['troppo'])) {
             return redirect()->route('admin.gestionale.esercizi.rendiconto.sintesi', [$condominio->id, $esercizio->id])->with($this->flashError($esito['troppo']));
         }

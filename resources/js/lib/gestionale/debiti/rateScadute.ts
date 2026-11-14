@@ -78,15 +78,15 @@ export function testoDispensa(d: Dispensa | null | undefined): string | null {
 const nomeEsercizio = (nome: string) => nome.replace(/^esercizio\s+/i, '');
 
 /**
- * La cella di una delle due date: la data, o perché non c'è. Mai un'azione che il programma rifiuterebbe: per l'esercizio che manca (ogni
- * gennaio, con il vecchio ancora aperto) si chiude l'esercizio vecchio prima di aprire il nuovo.
+ * La cella di una delle due date: la data, o perché non c'è. Mai un'azione che il programma non fa: per l'esercizio che manca (ogni gennaio, con il
+ * vecchio ancora aperto) la cella dice che la data non si calcola, e non manda a chiudere né ad aprire un esercizio.
  */
 export function testoData(v: DataSeiMesi, scadenzaRata?: string, dallaScadenza?: DataSeiMesi): string {
     switch (v.stato) {
         case 'manca_esercizio':
             return v.esercizio_da_chiudere
-                ? `L'esercizio che contiene il ${giorno(v.data_cercata)} non c'è ancora: la data si calcola quando chiudi l'esercizio ${nomeEsercizio(v.esercizio_da_chiudere)} e apri il successivo.`
-                : `L'esercizio che contiene il ${giorno(v.data_cercata)} non c'è ancora: la data si calcola quando c'è l'esercizio che la contiene.`;
+                ? `L'esercizio che contiene il ${giorno(v.data_cercata)} non c'è, e il programma non apre l'esercizio successivo: questa data non si calcola.`
+                : `L'esercizio che contiene il ${giorno(v.data_cercata)} non c'è: questa data non si calcola.`;
         case 'prima_degli_esercizi':
             return `Il ${giorno(v.data_cercata)} viene prima del primo esercizio del programma: la data non si calcola.`;
         case 'senza_delibera':
@@ -133,4 +133,35 @@ export function testoSeiMesiDellaPersona(s: { data: string | null; dispensa: Dis
     const dispensa = testoDispensa(s.dispensa);
 
     return [giorno(s.data), dispensa, mancano].filter(Boolean).join(' — ');
+}
+
+/** A che cosa serve ogni filtro della pagina, per l'icona accanto al suo nome. */
+export const SPIEGAZIONI_DEI_FILTRI = {
+    alla: 'Le rate scadute a questa data. Di serie è oggi; con una data passata vedi chi doveva ancora pagare quel giorno.',
+    persona: 'Mostra una sola persona del condominio. Scrivi una parte del nome per trovarla nell\'elenco.',
+    fascia: 'Solo chi ha almeno una rata scaduta da 1 a 30 giorni, da 31 a 90 giorni o da più di 90 giorni.',
+    minimo: 'Solo chi ha uno scaduto di almeno questa cifra.',
+    gestione: 'Solo le rate dei piani di questa gestione.',
+    sei_mesi_entro: 'Scrivi un numero di giorni, per esempio 30: vedi solo chi ha la data dei sei mesi entro 30 giorni dalla data di «Elenco al», '
+        + 'comprese le date già passate. Vuoto, vedi tutti. La data dei sei mesi è il termine entro cui l\'amministratore deve agire per la riscossione, '
+        + 'se l\'assemblea non lo ha dispensato (art. 1129, comma 9, c.c.).',
+    con_pregresso: 'Solo chi ha rate con dentro un debito riportato dagli esercizi precedenti.',
+    senza_lettere_da: 'Scrivi un numero di giorni, per esempio 60: vedi solo chi non ha ricevuto lettere negli ultimi 60 giorni. Vuoto, vedi tutti. '
+        + 'Contano le lettere partite per email o spedite; una lettera solo stampata o scaricata no.',
+    mai_scritto: 'Solo chi non ha mai ricevuto una lettera. Contano le lettere partite per email o spedite; una lettera solo stampata o scaricata no.',
+    da_spedire: 'Solo chi ha l\'ultima lettera stampata o scaricata e non ancora registrata come spedita. Spunta le righe, e con «Registra la spedizione» '
+        + 'registri insieme la spedizione delle loro lettere.',
+    con_accordo: 'Solo chi ha un accordo di rientro.',
+    ordine: 'Per scaduto: prima chi deve di più. Per data dei sei mesi: prima chi ha la data più vicina.',
+} as const;
+
+/** Quante persone l'elenco della scelta «Persona» mostra insieme: con un condominio grande il resto si trova scrivendo una parte del nome. */
+export const PERSONE_NEL_MENU = 50;
+
+/** Le persone che la scelta «Persona» mostra per un testo: quelle che hanno il testo nel nome, senza badare alle maiuscole, al massimo `quante`. */
+export function personeDelMenu<T extends { nome: string }>(persone: readonly T[], testo: string, quante = PERSONE_NEL_MENU): { mostrate: T[]; altre: number } {
+    const t = testo.trim().toLocaleLowerCase('it');
+    const trovate = t === '' ? persone : persone.filter((p) => p.nome.toLocaleLowerCase('it').includes(t));
+
+    return { mostrate: trovate.slice(0, quante), altre: Math.max(0, trovate.length - quante) };
 }

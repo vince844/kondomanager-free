@@ -6,7 +6,7 @@ use App\Enums\Permission;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\ModelloTesto;
-use App\Services\Gestionale\Lettere\EmissioneLettere;
+use App\Services\Gestionale\InvioDeiFogli;
 use App\Services\Gestionale\Lettere\ModelliLettere;
 use App\Services\Gestionale\Lettere\TestiLettere;
 use App\Traits\HandleFlashMessages;
@@ -19,7 +19,8 @@ use Inertia\Response;
  * La pagina «Modelli delle lettere», da «Impostazioni → Stampe»: per ogni tipo il testo del programma (che non si cambia) e i modelli dello
  * studio, con il nome, «vale per», chi l'ha cambiato e il giorno. Vederli è di chi entra nel pannello (la rotta lo chiede), come usarli nella
  * finestra delle lettere; creare, cambiare ed eliminare è di chi gestisce le impostazioni di stampa. Un modello non cambia tipo: si duplica.
- * Eliminare un modello non tocca le lettere già scritte, che hanno il loro testo.
+ * Eliminare un modello non tocca le lettere già scritte, che hanno il loro testo. Dalla 1.12.0-beta.9 la pagina ha anche i modelli dell'email dei
+ * fogli del conguaglio ({@see InvioDeiFogli}), con i loro campi.
  */
 class ModelliLettereController extends Controller
 {
@@ -30,11 +31,11 @@ class ModelliLettereController extends Controller
     public function index(Request $request): Response
     {
         $fuso = (string) config('app.user_timezone', 'Europe/Rome');
-        $modelli = ModelliLettere::ordinati(ModelloTesto::perLettere()->whereIn('tipo', EmissioneLettere::TIPI)->with(['condominio:id,nome', 'cambiatoDa:id,name'])->get());
+        $modelli = ModelliLettere::ordinati(ModelloTesto::perLettere()->whereIn('tipo', ModelliLettere::TIPI)->with(['condominio:id,nome', 'cambiatoDa:id,name'])->get());
 
         return Inertia::render('impostazioni/ModelliLettere', [
-            'tipi'                => collect(EmissioneLettere::NOMI)->map(fn ($nome, $tipo) => ['tipo' => $tipo, 'nome' => $nome])->values()->all(),
-            'testi_del_programma' => TestiLettere::DI_SERIE,
+            'tipi'                => collect(ModelliLettere::NOMI)->map(fn ($nome, $tipo) => ['tipo' => $tipo, 'nome' => $nome])->values()->all(),
+            'testi_del_programma' => TestiLettere::DI_SERIE + [InvioDeiFogli::TIPO => InvioDeiFogli::TESTO_DI_SERIE],
             'modelli'             => $modelli->map(fn (ModelloTesto $m) => [
                 'id'          => (int) $m->id,
                 'tipo'        => (string) $m->tipo,
@@ -47,8 +48,13 @@ class ModelliLettereController extends Controller
             ])->all(),
             'condomini'           => Condominio::orderBy('nome')->get(['id', 'nome'])->map(fn (Condominio $c) => ['id' => (int) $c->id, 'nome' => (string) $c->nome])->all(),
             'campi'               => TestiLettere::CAMPI,
+            // I tipi con campi diversi da quelli delle lettere: l'email dei fogli non ha un totale né un termine, e ha l'esercizio.
+            'campi_per_tipo'      => [InvioDeiFogli::TIPO => InvioDeiFogli::CAMPI],
+            // Quello che l'email dei fogli dice sempre, fuori dal modello: la pagina lo dice sotto il testo, perché un modello non lo ripeta.
+            'frase_proposta_per_tipo' => [InvioDeiFogli::TIPO => InvioDeiFogli::FRASE_PROPOSTA],
             // I valori con cui la pagina mostra l'anteprima di un testo: scritti come li scrive la lettera.
-            'esempio'             => ['nome' => 'Maria Bianchi', 'totale' => TestiLettere::euro(18000), 'termine' => TestiLettere::termine(15), 'condominio' => 'Le Rose'],
+            'esempio'             => ['nome' => 'Maria Bianchi', 'totale' => TestiLettere::euro(18000), 'termine' => TestiLettere::termine(15), 'condominio' => 'Le Rose',
+                'esercizio' => 'Esercizio 2026'],
             'puo_modificare'      => self::puoModificare($request),
         ]);
     }

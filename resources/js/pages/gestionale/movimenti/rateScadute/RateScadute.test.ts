@@ -3,7 +3,7 @@
 /**
  * La pagina «Rate scadute», montata con le proprietà come le manda `RateScaduteController`: il totale dice «senza togliere il credito» e la riga
  * sotto il titolo spiega la Tesoreria; la vista «In scadenza nei prossimi N giorni»; la riga delle rate non emesse; a una data passata la
- * colonna del credito non c'è e la pagina dice perché; la cella dell'esercizio che manca porta all'elenco degli esercizi, non a «crea»; la
+ * colonna del credito non c'è e la pagina dice perché; la cella dell'esercizio che manca dice che la data non si calcola, senza mandare a chiudere né ad aprire un esercizio; la
  * stampa porta i filtri, o le persone spuntate.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -94,13 +94,14 @@ describe('le righe che dicono che cosa manca', () => {
         expect(passata.findAll('th').map((t) => t.text())).not.toContain('Credito');
     });
 
-    test('aperta la riga, l\'esercizio che manca porta all\'elenco degli esercizi, non a «crea»', async () => {
+    test('aperta la riga, l\'esercizio che manca dice che la data non si calcola: niente da chiudere, niente collegamento all\'elenco degli esercizi', async () => {
         const w = monta();
         await w.get('button[aria-label="Apri le rate"]').trigger('click');
-        expect(w.text()).toContain('L\'esercizio che contiene il 05/01/2027 non c\'è ancora: la data si calcola quando chiudi l\'esercizio 2026 e apri il successivo.');
-        const link = w.get('[data-testid="collegamento-esercizi"]');
-        expect(link.attributes('href')).toContain('gestionale.esercizi.index');
-        expect(link.attributes('href')).not.toContain('create');
+        expect(w.text()).toContain('L\'esercizio che contiene il 05/01/2027 non c\'è, e il programma non apre l\'esercizio successivo: questa data non si calcola.');
+        expect(w.text()).not.toContain('chiudi l\'esercizio');
+        expect(w.find('[data-testid="collegamento-esercizi"]').exists()).toBe(false);
+        expect(w.text()).not.toContain('Vai all\'elenco degli esercizi');
+        expect(w.findAll('a').some((a) => (a.attributes('href') ?? '').includes('gestionale.esercizi.index'))).toBe(false);
     });
 });
 

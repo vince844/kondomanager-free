@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\DB;
  * scrive anche un costo vero (la parte non coperta dai saldi iniziali, una sopravvenienza passiva) l'esercizio in cui sta lo conta, e la riga è rossa
  * anche nel verso A. Il segno «pregressa» sulla riga c'è in tutti e due i versi.
  *
- * NIENTE DA CORREGGERE QUI. Finché la chiusura guidata dell'esercizio non c'è, ogni registrazione prende l'esercizio aperto, non quello della sua data:
- * l'elenco dice che cosa sta dove e che effetto ha sul riepilogo; la regola che sposterà le registrazioni arriva con la chiusura. Il rimedio si dice
+ * NIENTE DA CORREGGERE QUI. Il programma non ha una chiusura guidata dell'esercizio e non sposta le registrazioni: ogni registrazione prende l'esercizio
+ * aperto, non quello della sua data; l'elenco dice che cosa sta dove e che effetto ha sul riepilogo. Il rimedio si dice
  * dallo stato vero degli esercizi (quale era aperto quando le registrazioni sono state scritte, se questo è ancora aperto) e dalle regole del versamento
  * F24 e dello storno di un incasso, non dal verso; una fattura registrata come pregressa non ha un rimedio: la sua riga dice che nessun riepilogo la conta fra i costi,
  * tranne la parte non coperta dai saldi iniziali, se c'è.
@@ -58,34 +58,37 @@ final class AnnoACavallo
     ];
 
     /** Detto una volta, in testa: perché il confine si attraversa quasi ogni anno. */
-    public const FRASE_NORMA = 'Finché non c\'è la chiusura guidata dell\'esercizio (in arrivo), una registrazione va nell\'esercizio aperto quando la scrivi, non in quello della sua data '
-        .'(un versamento F24 va in quello della sua delega, lo storno di un incasso in quello dell\'incasso): '
-        .'registrazioni oltre il confine ci saranno quasi ogni anno, e l\'elenco dice dove stanno. La regola che le sposterà arriva con la chiusura.';
+    public const FRASE_NORMA = 'Il programma non ha una chiusura guidata dell\'esercizio e non sposta le registrazioni da un esercizio all\'altro: una registrazione va nell\'esercizio aperto '
+        .'quando la scrivi, non in quello della sua data (un versamento F24 va in quello della sua delega, lo storno di un incasso in quello dell\'incasso). '
+        .'Per questo registrazioni oltre il confine ci saranno quasi ogni anno, e l\'elenco dice dove stanno.';
 
     /** Scritte qui con la data di un altro esercizio (non pregresse, non F24): stanno qui perché questo era l'esercizio aperto quando sono state scritte. */
     public const RIMEDIO_QUI = 'Le registrazioni scritte qui con la data di un altro esercizio stanno in questo perché, quando sono state scritte, l\'esercizio aperto '
-        .'era questo; restano qui fino alla chiusura guidata, che le potrà riportare.';
+        .'era questo: il programma non le sposta, e restano qui.';
 
-    /** In più, quando questo esercizio è ancora aperto e qualcuna ha la data dopo la sua fine. */
-    public const RIMEDIO_QUI_APERTO = 'Dal giorno in cui chiudi questo esercizio e apri il successivo, le nuove vanno lì.';
+    /**
+     * In più, quando questo esercizio è ancora aperto e qualcuna ha la data dopo la sua fine. Dice che cosa succede oggi: il programma non apre l'esercizio
+     * successivo (il pulsante «Crea» degli esercizi è spento, e un esercizio nuovo non si crea se ce n'è un altro aperto), quindi le registrazioni nuove con la
+     * data dell'anno dopo restano in questo. Niente «chiudi questo e apri il successivo»: dall'interfaccia è una strada che non c'è.
+     */
+    public const RIMEDIO_QUI_APERTO = 'Questo esercizio è ancora aperto e il programma non apre il successivo: le nuove registrazioni con la data dopo la sua fine restano in questo, e l\'elenco le mostra.';
 
     /** Con la data di questo esercizio e scritte in un altro (non F24): stanno lì perché quello era l'esercizio aperto quando sono state scritte. */
     public const RIMEDIO_ALTRO = 'Le registrazioni con la data di questo esercizio scritte in un altro stanno lì perché, quando sono state scritte, l\'esercizio aperto '
-        .'era quello; restano lì fino alla chiusura guidata, che le potrà riportare.';
+        .'era quello: il programma non le sposta, e restano lì.';
 
     /** Il versamento F24 sta nell'esercizio della sua delega, qualunque sia la data e qualunque esercizio fosse aperto. */
-    public const RIMEDIO_F24 = 'I versamenti F24 stanno nell\'esercizio della loro delega, anche con la data di un altro: è la regola fino alla chiusura guidata.';
+    public const RIMEDIO_F24 = 'I versamenti F24 stanno nell\'esercizio della loro delega, anche con la data di un altro.';
 
     /**
      * Lo storno di un incasso o di un rimborso, e la figlia dell'emissione che lo storno scrive per il credito restituito, stanno nell'esercizio
      * dell'originale (anche chiuso), con la data dello storno: non nell'esercizio aperto.
      */
-    public const RIMEDIO_STORNO_INCASSO = 'Lo storno di un incasso o di un rimborso sta nell\'esercizio dell\'incasso o del rimborso che storna, anche con la data di un altro: '
-        .'è la regola fino alla chiusura guidata.';
+    public const RIMEDIO_STORNO_INCASSO = 'Lo storno di un incasso o di un rimborso sta nell\'esercizio dell\'incasso o del rimborso che storna, anche con la data di un altro.';
 
     /** Le due cause, quando le registrazioni fuori da ogni esercizio sono più di quelle nel periodo. */
     public const RIMEDIO_FUORI = 'Se le date dell\'esercizio sono sbagliate, correggile con «Modifica l\'esercizio». Se sono registrazioni di un esercizio che nel '
-        .'programma non c\'è, restano qui fino alla chiusura guidata; se è l\'esercizio dopo, le nuove vanno lì dal giorno in cui chiudi questo e apri il successivo.';
+        .'programma non c\'è, il programma non le sposta e restano qui.';
 
     /**
      * La riga di una fattura registrata come pregressa: non è un costo né dell'esercizio in cui sta né di quello della sua data (con un esercizio solo,
@@ -175,9 +178,9 @@ final class AnnoACavallo
 
     /**
      * I rimedi, dallo stato vero degli esercizi e non dal verso: le due cause quando le registrazioni fuori da ogni esercizio prevalgono; le scritte qui
-     * con la data di un altro esercizio (qui perché questo era aperto quando sono state scritte), con il «chiudi e apri il successivo» solo se questo è
-     * ancora aperto e qualcuna ha la data dopo la sua fine; le scritte in un altro con la data di questo (lì perché quello era aperto); i versamenti F24,
-     * che seguono la delega, e gli storni degli incassi, che seguono l'incasso. Le pregresse non hanno un rimedio.
+     * con la data di un altro esercizio (qui perché questo era aperto quando sono state scritte), con in più, solo se questo è ancora aperto e qualcuna
+     * ha la data dopo la sua fine, la frase che dice che il programma non apre l'esercizio successivo; le scritte in un altro con la data di questo (lì
+     * perché quello era aperto); i versamenti F24, che seguono la delega, e gli storni degli incassi, che seguono l'incasso. Le pregresse non hanno un rimedio.
      *
      * @param  list<array<string,mixed>>  $righe
      * @return list<string>

@@ -10,18 +10,23 @@ use App\Models\Esercizio;
  * I controlli del rendiconto dell'esercizio, tutti insieme, e il loro esito in una riga: i sei della situazione patrimoniale
  * ({@see StatoPatrimonialePaginaService}), le registrazioni oltre il confine dell'esercizio ({@see AnnoACavallo}), «i costi tornano con il riepilogo»
  * (la riga che riconcilia del riepilogo per competenza, {@see RiepilogoPerCompetenza}), «i crediti tornano con le posizioni» (la riga dei crediti del
- * § 9, {@see PosizioniDeiCondomini}) e le fatture con voci di un'altra gestione (la lista della situazione per gestione).
+ * § 9, {@see PosizioniDeiCondomini}), le fatture con voci di un'altra gestione (la lista della situazione per gestione) e i quattro del conguaglio per persona
+ * ({@see ControlliDelConguaglio}), dalla lettura che la richiesta ha già. Sono quattordici, sempre: senza la lettura i quattro del conguaglio ci sono,
+ * «non calcolati».
  *
  * NESSUNA CIFRA PROPRIA. Ogni numero viene dalla scheda che lo mostra: qui si confronta, si etichetta e si conta. L'esito dice quanti tornano, quanti no
  * e quanti sono da leggere, e sotto una riga fissa dice che cosa i controlli non verificano. Il programma non dice mai che il rendiconto va bene.
  */
 final class ControlliDelRendiconto
 {
-    public const RIGA_FISSA = 'I controlli verificano che i numeri del programma tornino fra loro. Non verificano il saldo con l\'estratto conto della banca, né che ogni fattura e ogni entrata sia stata registrata.';
+    public const RIGA_FISSA = 'I controlli verificano che i numeri della contabilità tornino fra loro. Non verificano il saldo con l\'estratto conto della banca, né che ogni fattura e ogni entrata sia stata registrata.';
 
-    /** Dopo la riga fissa, per chi legge il foglio: che cosa vogliono dire i due esiti che non sono «torna». */
-    public const RIGA_ESITI = '«Non torna»: due numeri del programma non coincidono, e la riga del controllo dice perché; non è la prova di un ammanco. '
-        .'«Da leggere»: il programma non può decidere da solo.';
+    /** Dopo la riga fissa, per chi legge il foglio: che cosa vogliono dire i due esiti che non sono «torna», detti senza far paura e senza il programma. */
+    public const RIGA_ESITI = '«Non torna»: due cifre della contabilità che dovrebbero coincidere non coincidono, e la riga del controllo dice perché. '
+        .'«Da leggere»: il controllo non può dire da solo se le cifre vanno bene; l\'amministratore lo spiega in assemblea.';
+
+    /** Dopo la riga degli esiti, quando ci sono controlli che la richiesta non ha calcolato. */
+    public const RIGA_NON_CALCOLATI = '«Non calcolato»: il controllo legge il conguaglio per persona, che qui non si calcola.';
 
     public function __construct(
         private readonly StatoPatrimonialePaginaService $pagina,
@@ -36,9 +41,12 @@ final class ControlliDelRendiconto
      *
      * @param  array{verso?:?string, tipo?:?string, colore?:?string}  $filtri  i filtri dell'elenco dell'anno a cavallo
      * @param  array{pagina?:int, per_pagina?:int}  $pagine  la pagina dell'elenco dell'anno a cavallo; senza, la prima
-     * @return array{controlli: list<array<string,mixed>>, esito: array<string,mixed>, anno_a_cavallo: array<string,mixed>, pagina: array<string,mixed>, riepilogo: array<string,mixed>, conteggi: array{posizioni:int, rate_non_pagate:int}}
+     * @param  array<string,mixed>|null  $conguaglio  la lettura del consuntivo per persona, se chi chiama l'ha già fatta ({@see ConguaglioDelRendiconto::leggi()}):
+     *                                               resta nella risposta, così nella stessa richiesta non si rifà
+     * @return array{controlli: list<array<string,mixed>>, esito: array<string,mixed>, anno_a_cavallo: array<string,mixed>, pagina: array<string,mixed>, riepilogo: array<string,mixed>, conteggi: array{posizioni:int, rate_non_pagate:int}, conguaglio: ?array}
      */
-    public function perEsercizio(Condominio $condominio, Esercizio $esercizio, ?string $oggi = null, array $filtri = [], ?array $pagina = null, ?array $riepilogo = null, array $pagine = []): array
+    public function perEsercizio(Condominio $condominio, Esercizio $esercizio, ?string $oggi = null, array $filtri = [], ?array $pagina = null, ?array $riepilogo = null, array $pagine = [],
+        ?array $conguaglio = null): array
     {
         $oggi = $oggi ?? DateHelper::oggiUtente();
         $pagina ??= $this->pagina->costruisci($condominio, $esercizio, $oggi);
@@ -50,16 +58,40 @@ final class ControlliDelRendiconto
         // ci sono righe, non la loro somma: due storni che si annullano ci sono lo stesso.
         $storni = VoceNelloStorno::righeSenzaVoce((int) $esercizio->id)->exists()
             ? self::storniDellElenco($this->commissioni->perEsercizio($condominio, $esercizio)) : null;
-        $controlli = [...$pagina['controlli'], $this->annoACavallo($anno), self::costi($riepilogo['riconciliazione'], $storni),
-            self::crediti($posizioni['riga_crediti'], $posizioni['riga_anticipi']), $this->gestioni($pagina['per_gestione']['fatture_altra_gestione'])];
+        $costi = self::costi($riepilogo['riconciliazione'], $storni);
+        $controlli = [...$pagina['controlli'], $this->annoACavallo($anno), $costi,
+            self::crediti($posizioni['riga_crediti'], $posizioni['riga_anticipi']), $this->gestioni($pagina['per_gestione']['fatture_altra_gestione']),
+            ...ControlliDelConguaglio::tutti($conguaglio, $riepilogo['riconciliazione'], $costi)];
 
         return ['controlli' => $controlli, 'esito' => self::esito($controlli), 'anno_a_cavallo' => $anno, 'pagina' => $pagina, 'riepilogo' => $riepilogo,
             // Le righe delle due stampe dei condòmini, dalla stessa lettura: il fascicolo le conta prima di stampare (il tempo e la memoria del totale).
-            'conteggi' => ['posizioni' => count($posizioni['righe']), 'rate_non_pagate' => $posizioni['rate_non_pagate']]];
+            'conteggi' => ['posizioni' => count($posizioni['righe']), 'rate_non_pagate' => $posizioni['rate_non_pagate']],
+            'conguaglio' => $conguaglio,
+            // La riga che riconcilia del riepilogo, che i controlli del conguaglio leggono anche dopo che il riepilogo esce dalla memoria.
+            'riconciliazione' => $riepilogo['riconciliazione']];
     }
 
     /**
-     * «N tornano, M non tornano, K da leggere», con la riga fissa e una riga per controllo.
+     * I controlli letti senza la lettura del conguaglio, completati quando la richiesta la fa dopo (il fascicolo, che la stima prima di farla): i quattro
+     * controlli del conguaglio si calcolano dalla lettura, e l'esito si riconta.
+     *
+     * @param  array<string,mixed>  $c  la risposta di {@see perEsercizio()}
+     * @param  array<string,mixed>  $letto  la lettura ({@see ConguaglioDelRendiconto::leggi()})
+     */
+    public function conIlConguaglio(array $c, array $letto): array
+    {
+        $costi = collect($c['controlli'])->firstWhere('id', 'CR');
+        $nuovi = collect(ControlliDelConguaglio::tutti($letto, $c['riconciliazione'], $costi))->keyBy('id');
+        $c['controlli'] = array_map(fn (array $x) => $nuovi[$x['id']] ?? $x, $c['controlli']);
+        $c['esito'] = self::esito($c['controlli']);
+        $c['conguaglio'] = $letto;
+
+        return $c;
+    }
+
+    /**
+     * «N tornano, M non tornano, K da leggere» (e «, J non calcolati» quando la richiesta non ha calcolato i controlli del conguaglio), con la riga fissa e
+     * una riga per controllo.
      *
      * @param  list<array<string,mixed>>  $controlli
      */
@@ -69,14 +101,18 @@ final class ControlliDelRendiconto
         $tornano = $conta('quadra');
         $non = $conta('non_quadra');
         $leggere = $conta('segnalazione');
+        // I controlli che questa richiesta non ha calcolato (i quattro del conguaglio, senza la sua lettura): a parte, non sono un dubbio sui numeri.
+        $nonCalcolati = $conta('non_calcolato');
 
         return [
             'tornano' => $tornano,
             'non_tornano' => $non,
             'da_leggere' => $leggere,
-            'frase' => $tornano.($tornano === 1 ? ' torna' : ' tornano').', '.$non.($non === 1 ? ' non torna' : ' non tornano').', '.$leggere.' da leggere',
+            'non_calcolati' => $nonCalcolati,
+            'frase' => $tornano.($tornano === 1 ? ' torna' : ' tornano').', '.$non.($non === 1 ? ' non torna' : ' non tornano').', '.$leggere.' da leggere'
+                .($nonCalcolati === 0 ? '' : ', '.$nonCalcolati.($nonCalcolati === 1 ? ' non calcolato' : ' non calcolati')),
             'riga_fissa' => self::RIGA_FISSA,
-            'riga_esiti' => self::RIGA_ESITI,
+            'riga_esiti' => self::RIGA_ESITI.($nonCalcolati === 0 ? '' : ' '.self::RIGA_NON_CALCOLATI),
             'righe' => array_map(fn ($c) => ['id' => $c['id'], 'nome' => $c['nome'], 'esito' => $c['esito'], 'breve' => $c['breve'] ?? null], $controlli),
         ];
     }

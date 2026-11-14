@@ -135,7 +135,8 @@ const isMobileItemExpanded = (title: string) =>
         <div class="border-b border-sidebar-border/80 bg-background/95 backdrop-blur">
             <div class="mx-auto flex h-16 items-center px-4 md:max-w-7xl">
 
-                <div class="lg:hidden">
+                <!-- Il menu compatto fino a 1.280 pixel, come nel gestionale: con il menu intero a 1.024 pixel la barra usciva dallo schermo -->
+                <div class="xl:hidden">
                     <Sheet>
                         <SheetTrigger as-child>
                             <Button variant="ghost" size="icon" class="mr-2 h-9 w-9">
@@ -224,7 +225,7 @@ const isMobileItemExpanded = (title: string) =>
                     <AppLogo class="hidden h-6 xl:block" />
                 </Link>
 
-                <div class="hidden lg:flex lg:flex-1 h-full">
+                <div class="hidden xl:flex xl:flex-1 h-full">
                     <nav class="ml-6 flex items-center gap-1 h-full">
                         <template v-for="item in accessibleMainItems" :key="item.title">
                             <HoverCard v-if="item.type === 'parent'" :open-delay="120" :close-delay="120">
@@ -274,7 +275,7 @@ const isMobileItemExpanded = (title: string) =>
                 </div>
 
                 <div class="ml-auto flex items-center gap-2">
-                    <div class="hidden lg:flex gap-1">
+                    <div class="hidden xl:flex gap-1">
                         <TooltipProvider>
                             <template v-for="item in rightNavItems" :key="item.title">
                                 <Tooltip :delay-duration="300"> <TooltipTrigger as-child>

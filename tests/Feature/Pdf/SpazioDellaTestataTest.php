@@ -68,7 +68,8 @@ it('T0: con lo studio e il nome di 60 caratteri la testata della prima pagina fi
 
     foreach ([
         'verticale' => [route('admin.gestionale.esercizi.piani-conti.print-distinta', [$s['c'], $s['e'], $s['pc']]), 32, 31.5],
-        'orizzontale' => [route('admin.gestionale.esercizi.rendiconto.condomini.posizioni.stampa', [$s['c'], $s['e']]), 32, 31.5],
+        // Le posizioni dei condòmini sono passate alla carta del riepilogo (TI): l'orizzontale di `pdf.base` è lo scadenziario.
+        'orizzontale' => [route('admin.gestionale.esercizi.piani-rate.print-scadenziario', [$s['c'], $s['e'], $s['piano']]), 32, 31.5],
         'con la riga del titolo' => [route('admin.gestionale.rate-scadute.stampa', [$s['c']]), 38, 37.0],
     ] as $verso => [$indirizzo, $margine, $soglia]) {
         [$pdf, $stampa] = sdtStampa($this, $spia, $indirizzo);

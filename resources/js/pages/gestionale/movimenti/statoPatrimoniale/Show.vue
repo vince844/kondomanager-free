@@ -7,9 +7,10 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { comeRisultato } from '@/lib/gestionale/rendiconto/risultato';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Camera, Scale, ListChecks, Printer, Landmark, Users, Receipt, TrendingUp, CheckCircle2, XCircle, ArrowRight, ListTree, CalendarClock, ChevronDown } from 'lucide-vue-next';
+import { Camera, Scale, ListChecks, Printer, Landmark, Users, Receipt, TrendingUp, CheckCircle2, XCircle, ArrowRight, ListTree, CalendarClock, ChevronDown, PiggyBank } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -19,8 +20,9 @@ interface Gruppo { gruppo: string; ordine: number; voci: Voce[]; totale: number 
 type Esito = 'quadra' | 'non_quadra' | 'segnalazione';
 interface Controllo { id: string; nome: string; titolo: string; sinistra: number; destra: number; segno?: string; esito: Esito; nota: string; rimedio: string | null; azione: string | null; azione_parametro?: string | null }
 interface RigaRiepilogo { cassa_id: number; conto_contabile_id: number | null; cassa: string; tipo: string; iniziale: number; entrate: number; uscite: number; finale: number; negativa: boolean; minimo: number | null; minimo_il: string | null }
-interface Fondo { cassa: string; sottotipo: string | null; sottotipo_label: string; saldo: number; vincolato: boolean; vincolo_registrato: number; scoperto: number }
+interface Fondo { cassa_id: number; cassa: string; sottotipo: string | null; sottotipo_label: string; saldo: number; vincolato: boolean; vincolo_registrato: number; scoperto: number }
 interface Fattura { id: number; fornitore: string; numero: string | null; data: string | null; scadenza: string | null; residuo: number; nota_credito: boolean; contestata: boolean; pregressa: boolean; esercizio_id: number; gestione_id: number | null }
+interface RigaFondo { cassa_id: number; cassa: string; conto_contabile_id: number; iniziale: number; accantonato: number; utilizzato: number; finale: number; saldo_alla_data: number; vincolo: number; scoperto: number | null }
 interface RigaGestione { gestione: { id: number; nome: string; tipo: string }; costi: number; quote_emesse: number; crediti: number; debiti: number; cumulato_opera: { dal: string | null; consuntivo: number } | null }
 
 interface Pagina {
@@ -43,6 +45,12 @@ interface Pagina {
         altra: number; altra_voci: { voce: string; saldo: number }[]; fondi: Fondo[];
         vincolo_registrato: number; vincolo_su_fondi: number; vincolo_non_accantonato: number; scoperto_fondi: number;
         avanzo_registrato: number; gia_speso_acconto: number; esito_r8: string;
+    };
+    movimento_fondi: {
+        righe: RigaFondo[];
+        totale: { iniziale: number; accantonato: number; giroconti_entrata?: number; giroconti_uscita?: number; utilizzato: number; finale: number; vincolo: number; scoperto: number | null };
+        con_giroconti?: boolean;
+        nota: string; nota_vincoli: string | null; nota_giroconti?: string | null; nota_saldo: string | null;
     };
     raccordo: { righe: { voce: string; natura: string; effetto: number }[]; somma: number; variazione_liquidita: number; scarto: number; quadra: boolean };
     debiti: {
@@ -91,7 +99,7 @@ const hrefMastrino = (contoId: number) => generatePath('gestionale/:condominio/e
     condominio: props.condominio.id, esercizio: props.esercizio.id, contoContabile: contoId,
 });
 const hrefFatture = generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id });
-// L'elenco delle persone con rate scadute, alla data di questa pagina (per un esercizio chiuso la data di fine, non oggi): lo scaduto di
+// L'elenco delle persone con rate scadute, alla data di questa pagina (per un esercizio finito la data di fine, non oggi): lo scaduto di
 // ognuno, senza togliere il credito. Una data dopo oggi l'elenco la porta a oggi.
 const hrefRateScadute = computed(() => `${generatePath('gestionale/:condominio/rate-scadute', { condominio: props.condominio.id })}?alla=${p.value.data}`);
 const hrefPaga = (f: Fattura) => generatePath('gestionale/:condominio/pagamenti-fornitori/create', { condominio: props.condominio.id }) + `?fattura_id=${f.id}`;
@@ -112,9 +120,9 @@ function stampaLibroMastro() {
 }
 
 const pageGuides = [
-    { title: 'Una fotografia, non un flusso', description: 'Ogni saldo è quanto c\'era sui conti a quella data, con dentro tutto ciò che è successo prima — anche negli esercizi precedenti. Non si elencano gli anni passati: il loro effetto sta nel numero. Per l\'esercizio aperto la data è oggi; per uno chiuso, la sua data di fine.', icon: Camera, colorVariant: 'blue' as const },
-    { title: 'Il risultato di gestione', description: 'Quote emesse ai condòmini meno costi dell\'esercizio: l\'avanzo o il disavanzo; che cosa farne lo decide l\'assemblea. In questa versione le quote emesse sono un debito della gestione verso i condòmini, non un ricavo: per questo attività e passività non sono uguali, e in mezzo ci sono i costi — elencati uno per uno.', icon: TrendingUp, colorVariant: 'emerald' as const },
-    { title: 'I controlli, con i numeri veri', description: 'Uguaglianze e conteggi con i numeri del programma, non un semaforo: sono nella scheda «Controlli». Quando uno non torna, la riga dice che cosa è successo, che cosa fare, e porta nella pagina dove si fa. I controlli che il programma non può eseguire non compaiono.', icon: ListChecks, colorVariant: 'amber' as const },
+    { title: 'Una fotografia, non un flusso', description: 'Ogni saldo è quanto c\'era sui conti a quella data, con dentro tutto ciò che è successo prima — anche negli esercizi precedenti. Non si elencano gli anni passati: il loro effetto sta nel numero. Per l\'esercizio aperto la data è oggi; per uno finito, la sua data di fine.', icon: Camera, colorVariant: 'blue' as const },
+    { title: 'Il risultato di gestione', description: 'Quote registrate in questo esercizio meno i costi di questo esercizio: l\'avanzo o il disavanzo; che cosa farne lo decide l\'assemblea. Le quote emesse sono un debito della gestione verso i condòmini, non un ricavo: per questo attività e passività non sono uguali, e in mezzo ci sono i costi — elencati uno per uno.', icon: TrendingUp, colorVariant: 'emerald' as const },
+    { title: 'I controlli, con i numeri veri', description: 'Uguaglianze e conteggi con i numeri del programma, non un semaforo: sono nella scheda «Controlli». Quando uno non torna, la riga dice che cosa è successo, che cosa fare, e porta nella pagina dove si fa.', icon: ListChecks, colorVariant: 'amber' as const },
 ];
 </script>
 
@@ -210,8 +218,8 @@ const pageGuides = [
                                 </div>
                                 <div class="min-w-0">
                                     <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">{{ p.risultato_gestione.risultato < 0 ? 'Disavanzo' : (p.risultato_gestione.risultato > 0 ? 'Avanzo' : 'Risultato') }} di gestione</div>
-                                    <div class="text-lg font-bold tabular-nums" :class="p.risultato_gestione.risultato < 0 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'">{{ euro(p.risultato_gestione.risultato) }}</div>
-                                    <div class="text-[11px] text-slate-500 dark:text-slate-400">quote emesse {{ euro(p.risultato_gestione.quote_emesse) }} − costi {{ euro(p.risultato_gestione.costi) }}</div>
+                                    <div class="text-lg font-bold tabular-nums" :class="p.risultato_gestione.risultato < 0 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'" data-test="risultato-gestione">{{ euro(p.risultato_gestione.risultato) }}<template v-if="p.risultato_gestione.risultato === 0"> ({{ comeRisultato(p.risultato_gestione.risultato) }})</template></div>
+                                    <div class="text-[11px] text-slate-500 dark:text-slate-400" data-test="risultato-gestione-termini">quote registrate in questo esercizio {{ euro(p.risultato_gestione.quote_emesse) }} − costi {{ euro(p.risultato_gestione.costi) }}</div>
                                 </div>
                             </div>
                         </div>
@@ -226,7 +234,7 @@ const pageGuides = [
                         <div class="rounded-md border bg-white dark:bg-slate-900 mb-6">
                             <div class="px-4 py-3 border-b bg-gray-50/50 dark:bg-slate-800/30 flex items-center justify-between">
                                 <h3 class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><Camera class="w-4 h-4 text-slate-500 dark:text-slate-400" /> Situazione patrimoniale al {{ formatData(p.data) }}</h3>
-                                <span class="text-[11px] text-slate-500 dark:text-slate-400">{{ p.stato_esercizio === 'chiuso' ? 'esercizio chiuso: fotografia alla data di fine' : 'fotografia a oggi' }} · un clic su un conto apre il suo mastrino</span>
+                                <span class="text-[11px] text-slate-500 dark:text-slate-400">{{ p.stato_esercizio === 'chiuso' ? 'esercizio finito: fotografia alla data di fine' : 'fotografia a oggi' }} · un clic su un conto apre il suo mastrino</span>
                             </div>
                             <div class="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x">
                                 <div v-for="lato in (['attivo', 'passivo'] as const)" :key="lato" class="p-4">
@@ -291,7 +299,7 @@ const pageGuides = [
                                     <component :is="p.situazione.quadra ? CheckCircle2 : XCircle" class="w-3.5 h-3.5" /> Quadratura: {{ p.situazione.quadra ? 'quadra' : 'non quadra' }}
                                 </div>
                                 <p class="text-[13px] text-slate-700 dark:text-slate-300">Attività <b class="tabular-nums text-slate-800 dark:text-slate-200">{{ euro(p.situazione.attivo.totale) }}</b> + Costi <b class="tabular-nums text-slate-800 dark:text-slate-200">{{ euro(p.situazione.costi) }}</b> = Passività <b class="tabular-nums" :class="p.situazione.quadra ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'">{{ euro(p.situazione.passivo.totale) }}</b><template v-if="p.situazione.ricavi !== 0"> + Ricavi <b class="tabular-nums text-slate-800 dark:text-slate-200">{{ euro(p.situazione.ricavi) }}</b></template><template v-if="!p.situazione.quadra"> <span class="text-rose-700 dark:text-rose-400">— sbilancio {{ euro(p.situazione.sbilancio) }}</span></template></p>
-                                <p class="mt-1.5 text-[12px] text-slate-600 dark:text-slate-400 leading-relaxed">È la stessa uguaglianza del Libro Giornale, dare = avere. I costi dell'esercizio stanno fra le attività finché non saranno conguagliati: sono spese sostenute per conto dei condòmini. Le quote emesse ai condòmini stanno fra le passività come debito della gestione; con la chiusura d'esercizio costi e quote si compenseranno e resterà il conguaglio.</p>
+                                <p class="mt-1.5 text-[12px] text-slate-600 dark:text-slate-400 leading-relaxed">È la stessa regola del Libro Giornale, dare uguale avere, ma applicata ai saldi dei conti e non ai movimenti: il totale del giornale è più grande, ed è nel controllo «Partita doppia». I costi stanno fra le attività finché non sono conguagliati: sono spese sostenute per conto dei condòmini. Le quote emesse ai condòmini stanno fra le passività come debito della gestione. Quote e costi si accumulano dal primo esercizio: la loro differenza è il cumulato da conguagliare, in fondo alla pagina; il risultato di questo esercizio è nel riquadro del risultato di gestione, in cima.</p>
                             </div>
                         </div>
 
@@ -345,7 +353,7 @@ const pageGuides = [
                                     <span>Debiti verso l'Erario {{ euro(p.debiti.saldo_erario) }}<template v-if="p.debiti.erario_su_fatture_non_pagate !== 0">, di cui {{ euro(p.debiti.erario_su_fatture_non_pagate) }} di ritenute su fatture non ancora pagate: fino al pagamento sono un debito verso il fornitore</template>.</span>
                                     <Button as-child size="sm" variant="outline" class="h-7 px-2.5 text-[11px] font-semibold"><Link :href="hrefF24">F24 <ArrowRight class="w-3 h-3" /></Link></Button>
                                 </p>
-                                <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Contiene i debiti registrati come fatture: un debito che non è una fattura (un debito da una sentenza, il TFR del portiere, un debito verso l'amministratore di prima) va detto a parte all'assemblea, finché il rendiconto non ha la nota esplicativa (in arrivo), o registrato come fattura del creditore.</p>
+                                <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Contiene i debiti registrati come fatture: un debito che non è una fattura (un debito da una sentenza, il TFR del portiere, un debito verso l'amministratore di prima) va detto a parte all'assemblea, o registrato come fattura del creditore: il programma non ha una nota esplicativa del rendiconto dove scriverlo.</p>
                             </div>
                         </div>
 
@@ -412,7 +420,8 @@ const pageGuides = [
                                         <tr v-for="f in p.liquidita.fondi" :key="f.cassa" class="border-b border-slate-100 dark:border-slate-800">
                                             <td class="py-1.5 text-slate-700 dark:text-slate-300 align-middle">
                                                 <div class="leading-snug">{{ f.cassa }} <span class="text-[11px] text-slate-400 dark:text-slate-500">· {{ f.sottotipo_label }}{{ f.vincolato ? ', vincolato' : ', liberamente utilizzabile' }}</span></div>
-                                                <div v-if="f.vincolo_registrato !== 0" class="text-[11px] leading-snug" :class="f.scoperto > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'">vincolo assegnato {{ euro(f.vincolo_registrato) }}<template v-if="f.scoperto > 0"> — mancano {{ euro(f.scoperto) }}</template></div>
+                                                <!-- Per un esercizio finito il vincolo è quello di oggi e il confronto non si fa, come nel controllo e nel movimento dei fondi. -->
+                                                <div v-if="f.vincolo_registrato !== 0" class="text-[11px] leading-snug" :class="f.scoperto > 0 && p.stato_esercizio !== 'chiuso' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'" data-test="vincolo-fondo">vincolo assegnato {{ euro(f.vincolo_registrato) }}<template v-if="f.scoperto > 0 && p.stato_esercizio !== 'chiuso'"> — mancano {{ euro(f.scoperto) }}</template></div>
                                             </td>
                                             <td class="py-1.5 text-right tabular-nums whitespace-nowrap align-middle" :class="importo(f.saldo)">{{ euro(f.saldo) }}</td>
                                         </tr>
@@ -445,7 +454,7 @@ const pageGuides = [
                                         <div class="mt-2 opacity-90">
                                             <template v-if="p.liquidita.esito_r8 === 'scoperto'">Un fondo ha meno di quanto gli è stato assegnato: mancano {{ euro(p.liquidita.scoperto_fondi) }}. Accantona con un giroconto dalla banca, o correggi il vincolo dichiarato.</template>
                                             <template v-else-if="p.liquidita.esito_r8 === 'non_accantonato'">{{ euro(p.liquidita.vincolo_non_accantonato) }} dichiarati vincolati stanno in banca, non in un fondo: il vincolo esiste, l'accantonamento no. È legittimo; se vuoi che sia anche nei conti, accantona in una cassa fondo.</template>
-                                            <template v-else-if="p.liquidita.esito_r8 === 'segnalazione'">I vincoli dichiarati si leggono a oggi: questo confronto vale per l'esercizio aperto, non alla data di un esercizio finito; il residuo vincolato dei fondi si legge con il consuntivo dei fondi (in arrivo).</template>
+                                            <template v-else-if="p.liquidita.esito_r8 === 'segnalazione'">I vincoli dichiarati si leggono a oggi: questo confronto vale per l'esercizio aperto, non alla data di un esercizio finito. Il programma non dà il residuo vincolato di un fondo alla data di fine, perché i vincoli dichiarati non hanno una data: il saldo di ogni cassa fondo a quella data è nella situazione patrimoniale, e i suoi movimenti nel mastrino del suo conto. Il movimento dei fondi dice per ogni fondo l'iniziale, l'accantonato e l'utilizzato dell'esercizio; il residuo vincolato di un'opera si legge anche con l'importo votato dall'assemblea, che questo prospetto non riporta.</template>
                                             <template v-else-if="p.liquidita.vincolo_registrato === 0">Nessun contributo è dichiarato vincolato: i fondi tengono {{ euro(p.liquidita.in_fondi) }} senza vincoli da coprire.</template>
                                             <template v-else>Ogni euro dichiarato vincolato ha una cassa fondo che lo tiene.</template>
                                         </div>
@@ -459,13 +468,76 @@ const pageGuides = [
                             </div>
                         </div>
 
+                        <!-- ═══ Movimento dei fondi: la riga di ogni fondo nelle entrate e uscite per cassa, con il vincolo e lo scoperto del controllo ═══ -->
+                        <div v-if="p.movimento_fondi.righe.length > 0" class="rounded-md border bg-white dark:bg-slate-900 mb-6" data-test="movimento-fondi">
+                            <div class="px-4 py-3 border-b bg-gray-50/50 dark:bg-slate-800/30 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><PiggyBank class="w-4 h-4 text-slate-500 dark:text-slate-400" /> Movimento dei fondi</h3>
+                                <span class="text-[11px] text-slate-500 dark:text-slate-400">dal {{ formatData(p.riepilogo.dal) }} al {{ formatData(p.riepilogo.al) }} · un clic su un fondo apre il suo mastrino</span>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-[13px] min-w-[760px]">
+                                    <thead>
+                                        <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                            <th class="text-left font-bold py-2 px-4">Fondo</th>
+                                            <th class="text-right font-bold py-2 px-4">Iniziale</th>
+                                            <th class="text-right font-bold py-2 px-4">Accantonato</th>
+                                            <template v-if="p.movimento_fondi.con_giroconti">
+                                                <th class="text-right font-bold py-2 px-4" data-test="giroconti-entrata">Giroconti in entrata</th>
+                                                <th class="text-right font-bold py-2 px-4">Giroconti in uscita</th>
+                                            </template>
+                                            <th class="text-right font-bold py-2 px-4">Utilizzato</th>
+                                            <th class="text-right font-bold py-2 px-4">Finale</th>
+                                            <th class="text-right font-bold py-2 px-4">Vincolo</th>
+                                            <th class="text-right font-bold py-2 px-4">Scoperto</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="f in p.movimento_fondi.righe" :key="f.cassa_id" class="border-b border-slate-100 dark:border-slate-800" data-test="movimento-fondo">
+                                            <td class="py-2 px-4 text-slate-700 dark:text-slate-300 break-words"><Link :href="hrefMastrino(f.conto_contabile_id)" class="underline decoration-dotted decoration-slate-300 dark:decoration-slate-600 underline-offset-4 hover:text-primary hover:decoration-primary" title="Apri il mastrino: tutti i movimenti di questo fondo">{{ f.cassa }}</Link></td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap" :class="importo(f.iniziale)">{{ euro(f.iniziale) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap text-slate-800 dark:text-slate-200">{{ euro(f.accantonato) }}</td>
+                                            <template v-if="p.movimento_fondi.con_giroconti">
+                                                <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap text-slate-800 dark:text-slate-200">{{ euro(f.giroconti_entrata ?? 0) }}</td>
+                                                <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap text-slate-800 dark:text-slate-200">{{ euro(f.giroconti_uscita ?? 0) }}</td>
+                                            </template>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap text-slate-800 dark:text-slate-200">{{ euro(f.utilizzato) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap font-semibold" :class="importo(f.finale)">{{ euro(f.finale) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap text-slate-800 dark:text-slate-200">{{ euro(f.vincolo) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap" :class="(f.scoperto ?? 0) > 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'text-slate-800 dark:text-slate-200'">{{ f.scoperto === null ? '—' : euro(f.scoperto) }}</td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="border-t-2 border-slate-300 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200" data-test="movimento-fondi-totale">
+                                            <td class="py-2 px-4">Fondi</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ euro(p.movimento_fondi.totale.iniziale) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ euro(p.movimento_fondi.totale.accantonato) }}</td>
+                                            <template v-if="p.movimento_fondi.con_giroconti">
+                                                <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ euro(p.movimento_fondi.totale.giroconti_entrata ?? 0) }}</td>
+                                                <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ euro(p.movimento_fondi.totale.giroconti_uscita ?? 0) }}</td>
+                                            </template>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ euro(p.movimento_fondi.totale.utilizzato) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ euro(p.movimento_fondi.totale.finale) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ euro(p.movimento_fondi.totale.vincolo) }}</td>
+                                            <td class="py-2 px-4 text-right tabular-nums whitespace-nowrap">{{ p.movimento_fondi.totale.scoperto === null ? '—' : euro(p.movimento_fondi.totale.scoperto) }}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="px-4 py-2 border-t text-[11px] text-slate-500 dark:text-slate-400 space-y-1 leading-relaxed">
+                                <p>{{ p.movimento_fondi.nota }}</p>
+                                <p v-if="p.movimento_fondi.nota_vincoli" data-test="movimento-fondi-vincoli">{{ p.movimento_fondi.nota_vincoli }}</p>
+                                <p v-if="p.movimento_fondi.nota_giroconti" data-test="movimento-fondi-giroconti">{{ p.movimento_fondi.nota_giroconti }}</p>
+                                <p v-if="p.movimento_fondi.nota_saldo" class="text-amber-800 dark:text-amber-300" data-test="movimento-fondi-saldo">{{ p.movimento_fondi.nota_saldo }}</p>
+                            </div>
+                        </div>
+
                         <!-- ═══ Cosa questa pagina non fa ═══════════════════════════════════════════ -->
                         <div class="rounded-md border border-dashed bg-slate-50/50 dark:bg-slate-800/30 p-4 text-[12px] text-slate-600 dark:text-slate-400 leading-relaxed space-y-1.5">
-                            <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Cosa questa pagina non fa ancora, e con quale modulo lo farà</div>
+                            <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Cosa questa pagina non fa</div>
                             <p><b>Non elenca i condòmini che devono soldi</b> — solo il totale. Le posizioni di ognuno e i crediti per anzianità sono nella scheda <Link :href="hrefCondomini" class="underline">Condòmini</Link>; l'elenco di chi ha rate scadute, con le sue unità, è nella pagina <Link :href="hrefRateScadute" class="underline">Rate scadute</Link>: lì lo scaduto di ognuno è lordo, senza togliere il credito, e non è la voce «Crediti verso i condòmini», che è il saldo di tutte le quote emesse.</p>
-                            <p><b>Non confronta con l'estratto conto della banca.</b> È un controllo tuo finché non ci sarà la riconciliazione bancaria, che diventerà un controllo di questa pagina.</p>
-                            <p><b>Non chiude l'esercizio.</b> Quote e costi si accumulano dal primo esercizio: il cumulato da conguagliare è {{ euro(p.risultato_gestione.cumulato) }}. La fotografia al 31/12 di un esercizio chiuso diventerà definitiva con la chiusura guidata.</p>
-                            <p><b>Non ha conti di ricavo</b>, per questo non dichiara mai i conti «in pari». <b>Non sceglie una data qualunque</b>: oggi per l'esercizio aperto, la data di fine per uno chiuso.</p>
+                            <p><b>Non confronta con l'estratto conto della banca.</b> Il programma non ha la riconciliazione bancaria: il confronto con l'estratto conto lo fai tu.</p>
+                            <p><b>Non chiude l'esercizio.</b> Quote e costi si accumulano dal primo esercizio: il cumulato da conguagliare è {{ euro(p.risultato_gestione.cumulato) }}. Il programma non ha una chiusura guidata dell'esercizio: la fotografia al 31/12 di un esercizio finito si rifà a ogni lettura, con le registrazioni che ci sono.</p>
+                            <p><b>Non ha conti di ricavo</b>, per questo non dichiara mai i conti «in pari». <b>Non sceglie una data qualunque</b>: oggi per l'esercizio aperto, la data di fine per uno finito.</p>
                         </div>
                     </MovimentiLayout>
                 </section>

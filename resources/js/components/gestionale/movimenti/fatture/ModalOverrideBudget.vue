@@ -146,7 +146,7 @@ const handleConfirm = () => {
                                 </div>
                                 <p class="text-[11px] leading-relaxed flex-1"
                                     :class="overrideStrategia === 'conguaglio_fine_anno' ? 'text-blue-700/80 dark:text-blue-400/80' : 'text-slate-500'">
-                                    Registra lo sforo. Il sistema non creerà allarmi e chiederà i soldi mancanti ai condòmini automaticamente a chiusura esercizio.
+                                    Registra lo sforo senza una rata. La differenza entra nel conguaglio per persona, calcolato nel rendiconto, se la voce ha una tabella (in una gestione straordinaria, quando l'opera è finita): è una proposta per l'assemblea, il programma non la chiede da solo.
                                 </p>
                             </label>
 

@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\Log;
  * - **Il controllo è per unità** (D2): per ogni unità la somma delle righe con un soggetto è, al centesimo, la spesa delle quote del piano su quell'unità
  *   (`RataQuote::componenti()['spesa']`: il pregresso resta fuori), in tutte e due le direzioni. Per persona scarterebbe i piani giusti con un passaggio
  *   dopo. È il controllo delle sonde dell'analisi: sui 28 piani approvati con le righe ne accetta 27, uguali per voce alle righe registrate.
- * - **Per voce**, la somma di tutte le righe con la voce, come la lettura delle righe registrate.
+ * - **Per voce**, la somma di tutte le righe con la voce tranne quelle delle spese per singole unità, come la lettura delle righe registrate; quelle
+ *   sono `personali`, la loro somma.
  * - **Le voci che il piano non ha fissato** (D3) hanno la cifra con gli importi delle voci di oggi: in un piano non straordinario, quelle senza un importo in
  *   `piano_rate_capitoli` (sotto un capitolo fissato, o in un piano creato senza scegliere i capitoli), e quelle il cui capitolo ha un importo nella tabella
  *   (il motore divide l'importo del capitolo fra le voci con gli importi di oggi anche se la voce ha la sua riga: `CalcoloQuoteService`, la forma mista); il
@@ -51,7 +52,7 @@ final class DeliberatoRicostruito
     }
 
     /**
-     * @return array{per_voce: array<int, int>, divise_oggi: array<int, true>}|null
+     * @return array{per_voce: array<int, int>, personali: int, divise_oggi: array<int, true>}|null
      */
     public function perPiano(PianoRate $piano): ?array
     {
@@ -69,13 +70,16 @@ final class DeliberatoRicostruito
 
         $righe = [];
         $perVoce = [];
+        $personali = 0;
         $radice = [];
         foreach ($dettaglio['righe'] as $r) {
             if (($r['anagrafica_id'] ?? null) !== null) {
                 $unita = (int) ($r['immobile_id'] ?? 0);
                 $righe[$unita] = ($righe[$unita] ?? 0) + (int) $r['importo'];
             }
-            if (($r['conto_id'] ?? null) !== null) {
+            if (($r['tipo'] ?? null) === \App\Models\Gestionale\RigaRiparto::TIPO_AD_PERSONAM) {
+                $personali += (int) $r['importo'];
+            } elseif (($r['conto_id'] ?? null) !== null) {
                 $perVoce[(int) $r['conto_id']] = ($perVoce[(int) $r['conto_id']] ?? 0) + (int) $r['importo'];
                 $radice[(int) $r['conto_id']] = (int) ($r['conto_radice_id'] ?? $r['conto_id']);
             }
@@ -110,6 +114,6 @@ final class DeliberatoRicostruito
             }
         }
 
-        return ['per_voce' => $perVoce, 'divise_oggi' => $divise];
+        return ['per_voce' => $perVoce, 'personali' => $personali, 'divise_oggi' => $divise];
     }
 }

@@ -40,12 +40,18 @@ class RendicontoCondominiController extends Controller
      *   (53,6 s), e con 128M fatal error dentro mPDF (un blocco solo di 37,8 MB). Da cui circa 64 MB di base e 0,0106 MB a riga: 4.226 righe con
      *   128M, 14.490 con 256M (circa 65 s, sotto i 120 del server).
      * - le posizioni, una riga per persona e unità: 1.000 righe 66,5 MB; 3.000 85,9; 5.000 109,5 (10,1 s); con 12 rate a persona la lettura sale di
-     *   4 MB a 1.000 righe. Da cui 60 MB di base e 0,0108 MB a riga: 4.518 righe con 128M, 14.592 con 256M.
+     *   4 MB a 1.000 righe. Da cui 60 MB di base e 0,0108 MB a riga.
      * La pagina della scheda, con le due letture, a 1.000 persone × 12 rate: 96,5 MB con 128M.
+     *
+     * Rimisurato il 13/11/2026 con la carta del riepilogo (Inter e Fraunces, la testata nel corpo), con richieste vere fuori dalle prove (l'applicazione
+     * su un database SQLite su file, 36,5 MB prima della richiesta), N persone con 12 rate emesse e non pagate:
+     * - le posizioni: 1.000 righe 71,6 MB (2,1 s); 3.000 94,0 (5,9 s); 5.000 115,7 con 256M (9,9 s). La carta nuova costa 5–6 MB: 61 MB di base e
+     *   0,0111 MB a riga, che stanno sopra le tre misure: 4.306 righe con 128M, 14.108 con 256M.
+     * - i crediti per anzianità: 3.600 righe 97,1 MB (12,4 s); 12.000 183,0 con 256M (41,2 s). La formula di sopra resta sopra le due misure.
      */
-    private const BASE_MB_POSIZIONI = 60;
+    private const BASE_MB_POSIZIONI = 61;
     /** I costi di una riga del § 9 e del § 10 in stampa: li usa anche il fascicolo, per la memoria del totale. */
-    public const MB_PER_POSIZIONE = 0.0108;
+    public const MB_PER_POSIZIONE = 0.0111;
     private const BASE_MB_CREDITI = 64;
     public const MB_PER_CREDITO = 0.0106;
     /**
@@ -57,8 +63,11 @@ class RendicontoCondominiController extends Controller
     private const BASE_MB_PAGINA_CREDITI = 60;
     private const MB_PER_RIGA_PAGINA_CREDITI = 0.003;
 
-    /** Le opzioni di mPDF delle due stampe, in orizzontale. Le usa anche il fascicolo del rendiconto. */
-    public const OPZIONI_STAMPA = ['orientation' => 'L', 'margin_top' => 32];
+    /**
+     * Le opzioni di mPDF delle due stampe, quelle del riepilogo finanziario: in orizzontale, in Inter, la testata nel corpo e la testatina nel margine.
+     * Le usano anche il fascicolo del rendiconto e le due stampe del conguaglio.
+     */
+    public const OPZIONI_STAMPA = RiepilogoPerCompetenzaController::OPZIONI_STAMPA;
 
     /** Il `memory_limit` che vale per il tetto; nullo, quello del processo. Una prova lo fissa: il processo non si abbassa sotto quello che usa. */
     private static ?string $limiteMemoria = null;

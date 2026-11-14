@@ -239,7 +239,7 @@ it('lo storno senza voce nel 2027 di una regolazione immediata e di un incasso d
         ->and($e['elenco']['assegnabili'])->toBe(['numero' => 0, 'importo' => 0])
         ->and($e['elenco']['storni_assegnabili'])->toBe(['numero' => 1, 'importo' => $importo])
         ->and([$e['fascia']['importo'], $e['fascia']['numero'], $e['fascia']['da_assegnare']])->toBe([$importo, 1, 1])
-        ->and($e['fascia']['frase'])->toBe($euro.' di storni di registrazioni di un esercizio chiuso, senza voce: non stanno in nessun capitolo, e il conguaglio non li troverà.')
+        ->and($e['fascia']['frase'])->toBe($euro.' di storni di registrazioni di un esercizio chiuso, senza voce: non stanno in nessun capitolo, e il conguaglio non li divide.')
         ->and($e['cr']['esito'])->toBe('quadra')
         ->and($e['cr']['nota'])->toBe('Costi dell\'esercizio '.$euro.' = spese per capitolo meno entrate € 0,00 + commissioni senza voce € 0,00 + fatture contestate € 0,00'
             .' + storni di registrazioni di un esercizio chiuso, senza voce, '.$euro.' (fra i costi non classificati, e fuori dal riparto finché non prendono una voce:'
@@ -415,7 +415,7 @@ it('lo storno nel 2027 di una regolazione che era già senza voce: l\'elenco lo 
         ->and($e['voce']['motivo'])->toBe('È lo storno di una regolazione immediata dell\'esercizio «Esercizio 2026», che era già senza voce: lo storno resta senza voce anche lui, fra i costi non classificati del rendiconto.')
         ->and($e['elenco']['storni_assegnabili'])->toBe(['numero' => 0, 'importo' => 0])
         ->and($e['fascia']['da_assegnare'])->toBe(0)
-        ->and($e['fascia']['frase'])->toBe('€ -96,00 di storni di registrazioni di un esercizio chiuso, senza voce, che qui non si assegnano: non stanno in nessun capitolo, e il conguaglio non li troverà. L\'elenco dice perché.')
+        ->and($e['fascia']['frase'])->toBe('€ -96,00 di storni di registrazioni di un esercizio chiuso, senza voce, che qui non si assegnano: non stanno in nessun capitolo, e il conguaglio non li divide. L\'elenco dice perché.')
         ->and($e['cr']['esito'])->toBe('quadra')
         ->and($e['cr']['nota'])->not->toContain('la voce era di una gestione')
         ->and($e['cr']['nota'])->toContain('€ -96,00 (fra i costi non classificati, e fuori dal riparto: qui non si assegnano, e l\'elenco delle commissioni e degli storni senza voce dice perché).');
@@ -449,16 +449,16 @@ it('la fascia della Sintesi, il controllo dei costi e la pagina del riepilogo gu
 })->with([
     // La regolazione di € 96,00 e un'altra di € 54,00, tutte e due da assegnare: lo stesso segno, la somma dice tutto.
     'due storni dello stesso segno' => [[[54.00, false]], ['regolazione'], -15000, 2, 2,
-        '€ -150,00 di storni di registrazioni di un esercizio chiuso, senza voce: non stanno in nessun capitolo, e il conguaglio non li troverà.',
+        '€ -150,00 di storni di registrazioni di un esercizio chiuso, senza voce: non stanno in nessun capitolo, e il conguaglio non li divide.',
         'fra i costi non classificati, e fuori dal riparto finché non prendono una voce: 2 si assegnano nell\'elenco delle commissioni e degli storni senza voce'],
     // −€ 96,00, −€ 30,00 di una regolazione già senza voce, +€ 240,00 dell'incasso: € 114,00, € 366,00 senza il segno; due si assegnano, uno no.
     'tre storni di segno diverso, uno che non si assegna' => [[[30.00, true]], ['regolazione', 'incasso'], 11400, 3, 2,
-        '€ 114,00 di storni di registrazioni di un esercizio chiuso, senza voce (3 righe, € 366,00 senza il segno): non stanno in nessun capitolo, e il conguaglio non li troverà.',
+        '€ 114,00 di storni di registrazioni di un esercizio chiuso, senza voce (3 righe, € 366,00 senza il segno): non stanno in nessun capitolo, e il conguaglio non li divide.',
         '3 righe, € 366,00 senza il segno; fra i costi non classificati, e fuori dal riparto finché non prendono una voce: 2 si assegnano e 1 no, e l\'elenco delle '
             .'commissioni e degli storni senza voce dice perché'],
     // −€ 96,00, −€ 144,00 e +€ 240,00: la somma è zero, le righe sono tre e si assegnano tutte.
     'tre storni che si annullano' => [[[144.00, false]], ['regolazione', 'incasso'], 0, 3, 3,
-        '€ 0,00 di storni di registrazioni di un esercizio chiuso, senza voce (3 righe, € 480,00 senza il segno): non stanno in nessun capitolo, e il conguaglio non li troverà.',
+        '€ 0,00 di storni di registrazioni di un esercizio chiuso, senza voce (3 righe, € 480,00 senza il segno): non stanno in nessun capitolo, e il conguaglio non li divide.',
         '3 righe, € 480,00 senza il segno; fra i costi non classificati, e fuori dal riparto finché non prendono una voce: 3 si assegnano nell\'elenco delle '
             .'commissioni e degli storni senza voce'],
 ]);

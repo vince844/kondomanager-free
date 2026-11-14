@@ -27,13 +27,12 @@
     // Le fatture aperte a blocchi di 100 righe, come il Libro Giornale e «Rate scadute»: mPDF tiene in memoria la tabella intera.
     $blocchiFatture = count($db['fatture']) === 0 ? [[]] : array_chunk($db['fatture'], 100);
     // Le stesse parole dell'esito in testa: «N tornano, M non tornano, K da leggere».
-    $esitoTesto = ['quadra' => 'torna', 'non_quadra' => 'non torna', 'segnalazione' => 'da leggere'];
-    $esitoClasse = ['quadra' => 'ok', 'non_quadra' => 'ko', 'segnalazione' => 'warn'];
-    $classeR8 = $lq['esito_r8'] === 'quadra' ? 'ok' : ($lq['esito_r8'] === 'scoperto' ? 'ko' : 'warn');
+    $esitoTesto = ['quadra' => 'torna', 'non_quadra' => 'non torna', 'segnalazione' => 'da leggere', 'non_calcolato' => 'non calcolato'];
+    $esitoClasse = ['quadra' => 'ok', 'non_quadra' => 'ko', 'segnalazione' => 'warn', 'non_calcolato' => 'neutro'];
     // Una parte sola (il fascicolo, le schede): la situazione (§ 1–4), la cassa (§ 5–6) o i controlli (§ 7); senza, la stampa intera.
     $parte = $parte ?? null;
     $mostra = fn (string $x) => $parte === null || $parte === $x;
-    $titoloStampa = ['situazione' => 'Situazione patrimoniale', 'cassa' => 'Entrate e uscite per cassa', 'controlli' => 'Controlli del rendiconto'][$parte] ?? 'Stato patrimoniale';
+    $titoloStampa = ['situazione' => 'Situazione patrimoniale', 'cassa' => 'Entrate e uscite per cassa', 'controlli' => 'Controlli interni, per chi vuole il dettaglio'][$parte] ?? 'Stato patrimoniale';
     // I controlli tutti insieme e il loro esito, quando la stampa li ha; altrimenti i sei della pagina.
     $tuttiControlli = $controlli ?? $pagina['controlli'];
     $esito = $esito ?? null;
@@ -41,6 +40,14 @@
     // Il foglio va ai condòmini: le frasi della pagina che parlano all'amministratore (il controllo che tocca a lui, il pulsante, il modulo che arriverà) in
     // stampa hanno le loro parole.
     $frase = fn (?string $t) => \App\Services\Gestionale\ParoleDellaStampa::frase($t);
+    // Il sottotipo del fondo e se è vincolato, detti una volta: «vincolato ai lavori», non «vincolato ai lavori, vincolato».
+    $etichettaFondo = function (array $f): string {
+        $sottotipo = $f['sottotipo_label'] === \App\Services\Gestionale\LiquiditaVincolataService::SOTTOTIPO_NON_INDICATO ? null : (string) $f['sottotipo_label'];
+        $stato = $f['vincolato'] ? 'vincolato' : 'liberamente utilizzabile';
+
+        return $sottotipo !== null && str_contains(mb_strtolower($sottotipo), $f['vincolato'] ? 'vincolat' : 'liberamente') ? $sottotipo
+            : implode(', ', array_filter([$sottotipo, $stato]));
+    };
     // Il conto dei riporti dagli esercizi prima: il suo nome dice «fondo», e non lo è.
     $riporti = collect($s['passivo']['gruppi'])->flatMap(fn ($g) => $g['voci'])->firstWhere('ruolo', 'passate_gestioni');
     $parteDelFascicolo = $parte_del_fascicolo ?? null;
@@ -65,6 +72,7 @@
     .rif { font-size: 7.5pt; color: #5A6B7B; }
     .doc { text-align: right; font-size: 7.5pt; color: #5A6B7B; }
     .doc b { color: #0E2238; }
+    .forte { color: #0E2238; }
     h1 { font-family: fraunces; font-size: 17pt; color: {{ $coloreTitoli }}; margin: 14px 0 1px; padding: 0; }
     .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 10px; }
     h2 { font-family: fraunces; font-size: 11pt; color: {{ $coloreTitoli }}; margin: 16px 0 6px; padding-bottom: 3px; border-bottom: 1px solid {{ $coloreTitoli }}; }
@@ -73,9 +81,10 @@
     .intro { font-size: 7.5pt; color: #5A6B7B; margin: 0 0 6px; }
     .dati { width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5; border-bottom: 1px solid #D9DEE5; margin: 8px 0 4px; }
     .dati td { padding: 7px 10px 7px 0; border: 0; vertical-align: top; }
-    .dati .et { font-size: 6.5pt; letter-spacing: 0.9pt; text-transform: uppercase; color: #5A6B7B; }
-    .dati .vl { font-size: 10pt; color: #0E2238; font-family: fraunces; }
-    .dati .sub { font-size: 6.5pt; color: #5A6B7B; }
+    {{-- Dentro una cella mPDF non applica una regola con un antenato («.dati .vl», «.doc b»): le cifre in testa e il grassetto della testata hanno regole con una classe sola. --}}
+    .et { font-size: 6.5pt; letter-spacing: 0.9pt; text-transform: uppercase; color: #5A6B7B; }
+    .vl { font-size: 10pt; color: #0E2238; font-family: fraunces; }
+    .sub { font-size: 6.5pt; color: #5A6B7B; }
     table.p { width: 100%; border-collapse: collapse; }
     table.p th { font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; font-weight: bold; text-align: left; border-bottom: 1px solid #0E2238; padding: 4px 5px; }
     table.p td { padding: 3px 5px; border-bottom: 1px solid #D9DEE5; vertical-align: top; }
@@ -87,12 +96,15 @@
     table.p th.n { font-family: inter; text-align: right; }
     .badge { white-space: nowrap; }
     .neg { color: #96302F; }
+    {{-- Il meno sulle cifre in testa: con due classi sole mPDF tiene il colore di «.vl»; la regola con le due classi insieme vale. --}}
+    .vl.neg { color: #96302F; }
     .d { color: #5A6B7B; font-size: 6.5pt; }
     .cod { color: #5A6B7B; font-family: fraunces; margin-right: 6px; }
     .badge { font-size: 5.8pt; font-weight: bold; letter-spacing: 0.5pt; text-transform: uppercase; padding: 1px 5px; }
     .ok { background: #E7F2EC; color: #1F6B45; }
     .ko { background: #F7E4E3; color: #96302F; }
     .warn { background: #FAF2DF; color: #8A6212; }
+    .neutro { background: #EEF0F3; color: #5A6B7B; }
     .chiusura { margin-top: 6px; padding: 9px 12px; background: #F4F5F7; border-left: 3px solid #C9A227; font-size: 7.2pt; color: #26313F; }
     .chiusura b { color: #0E2238; }
     .avviso { margin-top: 6px; padding: 8px 12px; background: #F4F5F7; border-left: 3px solid #C9A227; font-size: 7.2pt; }
@@ -135,7 +147,7 @@
 
 @if($conStudio || $conCarta)
 @component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => $titoloStampa])
-<b>{{ $esercizio->nome }}</b> · dal <b>{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b>{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
 @endcomponent
 @else
 <table class="testata">
@@ -149,9 +161,9 @@
             </div>
         </td>
         <td class="doc">
-            <b>{{ $esercizio->nome }}</b><br>
-            dal <b>{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b>{{ $esercizio->data_fine->format('d/m/Y') }}</b><br>
-            Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+            <b class="forte">{{ $esercizio->nome }}</b><br>
+            dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b><br>
+            Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>
@@ -170,15 +182,15 @@
 <div class="chiusura">
     <b>Come leggere questo prospetto.</b> Ogni saldo è quanto c'era sui conti alla data indicata, con
     dentro tutto ciò che è successo prima, anche negli esercizi precedenti: è una fotografia, non il
-    flusso dell'anno. Il risultato di gestione è la differenza fra le quote emesse ai condòmini e i
-    costi dell'esercizio — l'avanzo o il disavanzo; che cosa farne lo decide l'assemblea. <b>Le quote emesse stanno
+    flusso dell'anno. Il risultato di gestione è la differenza fra le quote registrate in questo esercizio
+    e i costi di questo esercizio — l'avanzo o il disavanzo; che cosa farne lo decide l'assemblea. <b>Le quote emesse stanno
     fra le passività</b>, come debito della gestione verso i condòmini, non fra i ricavi: per questo
     attività e passività non sono uguali, e la quadratura è «attività + costi = passività» — in mezzo
     ci sono i costi non ancora conguagliati, elencati uno per uno.
     @if($riporti) «{{ $riporti['nome'] }}» è quanto riportato dagli esercizi prima, non un fondo accantonato. @endif
     I fondi sono parte dello stesso conto corrente e si contano nella liquidità una volta sola.
     @if($parte === null) Le entrate e uscite per cassa sono le scritture dell'esercizio. I controlli in fondo sono uguaglianze con i numeri veri, e quando non
-    tornano dicono che cosa si fa; quelli che il programma non può eseguire non compaiono. @endif
+    tornano dicono che cosa si fa. @endif
     <br><b>La data:</b> {{ $allaData }}. <b>I debiti</b> sono quelli registrati come fatture. Un debito che non è una fattura (per
     esempio da una sentenza) non compare qui: se c'è, l'amministratore lo dice a parte. Le fatture aperte sono quelle di ogni esercizio con la data
     entro quella della situazione, con il residuo verso il fornitore al netto della ritenuta.
@@ -209,13 +221,13 @@
         </td>
         <td style="width: 25%;">
             <div class="et">Risultato di gestione</div>
-            <div class="vl {{ $rg['risultato'] < 0 ? 'neg' : '' }}">{{ $fmt($rg['risultato']) }}{{ $rg['risultato'] === 0 ? '' : ($rg['risultato'] < 0 ? ' (disavanzo)' : ' (avanzo)') }}</div>
-            <div class="sub">quote emesse {{ $fmt($rg['quote_emesse']) }} − costi {{ $fmt($rg['costi']) }}</div>
+            <div class="vl {{ $rg['risultato'] < 0 ? 'neg' : '' }}">{{ $fmt($rg['risultato']) }} ({{ \App\Services\Gestionale\RiepilogoPerCompetenza::comeRisultato($rg['risultato']) }})</div>
+            <div class="sub">quote registrate in questo esercizio {{ $fmt($rg['quote_emesse']) }} − costi {{ $fmt($rg['costi']) }}</div>
         </td>
     </tr>
 </table>
 
-<h2><span class="sec">§ 1</span>Situazione patrimoniale al {{ $dataIt($pagina['data']) }}</h2>
+<h2><span class="sec">§ 1</span> Situazione patrimoniale al {{ $dataIt($pagina['data']) }}</h2>
 @foreach(['attivo' => 'Attività', 'passivo' => 'Passività'] as $lato => $titolo)
 <table class="p blocco">
     <thead><tr><th colspan="2">{{ $titolo }}</th><th class="n">Importo</th></tr></thead>
@@ -257,9 +269,9 @@
 </table>
 @endforeach
 
-<p class="eq"><b>Quadratura: {{ $s['quadra'] ? 'torna' : 'non torna' }}.</b> Attività <b>{{ $fmt($s['attivo']['totale']) }}</b> + Costi <b>{{ $fmt($s['costi']) }}</b> = Passività <b class="{{ $s['quadra'] ? '' : 'neg' }}">{{ $fmt($s['passivo']['totale']) }}</b>@if($s['ricavi'] !== 0) + Ricavi <b>{{ $fmt($s['ricavi']) }}</b>@endif @if(! $s['quadra']) <span class="neg">— sbilancio {{ $fmt($s['sbilancio']) }}</span> @endif · I costi dell'esercizio stanno fra le attività finché non saranno conguagliati: sono spese sostenute per conto dei condòmini; le quote emesse stanno fra le passività come debito della gestione, e con la chiusura d'esercizio costi e quote si compenseranno e resterà il conguaglio.</p>
+<p class="eq"><b>Quadratura: {{ $s['quadra'] ? 'torna' : 'non torna' }}.</b> Attività <b>{{ $fmt($s['attivo']['totale']) }}</b> + Costi <b>{{ $fmt($s['costi']) }}</b> = Passività <b class="{{ $s['quadra'] ? '' : 'neg' }}">{{ $fmt($s['passivo']['totale']) }}</b>@if($s['ricavi'] !== 0) + Ricavi <b>{{ $fmt($s['ricavi']) }}</b>@endif @if(! $s['quadra']) <span class="neg">— sbilancio {{ $fmt($s['sbilancio']) }}</span> @endif · I costi stanno fra le attività finché non sono conguagliati: sono spese sostenute per conto dei condòmini; le quote emesse stanno fra le passività come debito della gestione. Quote e costi si accumulano dal primo esercizio, e la loro differenza è il cumulato da conguagliare, {{ $fmt($rg['cumulato']) }}; il risultato di questo esercizio è nel riquadro del risultato di gestione, qui sopra.</p>
 
-<h2><span class="sec">§ 2</span>Fatture aperte al {{ $dataIt($db['alla']) }}</h2>
+<h2><span class="sec">§ 2</span> Fatture aperte al {{ $dataIt($db['alla']) }}</h2>
 <p class="intro">Le fatture di ogni esercizio con la data entro il {{ $dataIt($db['alla']) }} e non ancora pagate a quella data, con il residuo verso il fornitore (al netto della ritenuta). In ordine di scadenza.</p>
 @foreach($blocchiFatture as $blocco)
 @if(! $loop->first)<pagebreak />@endif
@@ -287,7 +299,7 @@
 <p class="eq">Debiti verso l'Erario <b>{{ $fmt($db['saldo_erario']) }}</b>@if($db['erario_su_fatture_non_pagate'] !== 0), di cui <b>{{ $fmt($db['erario_su_fatture_non_pagate']) }}</b> di ritenute su fatture non ancora pagate: fino al pagamento sono un debito verso il fornitore @endif.</p>
 @endif
 
-<h2><span class="sec">§ 3</span>Per gestione</h2>
+<h2><span class="sec">§ 3</span> Per gestione</h2>
 <p class="intro">I costi seguono la gestione della voce; le quote, quella del piano; i debiti, quella della fattura. I costi e le quote sono dell'esercizio; crediti e debiti sono alla data.</p>
 <table class="p">
     <thead><tr><th>Gestione</th><th class="n">Costi dell'esercizio</th><th class="n">Quote emesse nell'esercizio</th><th class="n">Crediti verso i condòmini</th><th class="n">Debiti verso fornitori</th></tr></thead>
@@ -309,13 +321,13 @@
 </table>
 <p class="d" style="margin: 4px 0 0;">@if($pg['nota_altra_gestione']){{ $pg['nota_altra_gestione'] }} @endif{{ $pg['nota_liquidita'] }}</p>
 
-<h2><span class="sec">§ 4</span>Liquidità: libera e accantonata</h2>
+<h2><span class="sec">§ 4</span> Liquidità: libera e accantonata</h2>
 <table class="p blocco">
     <thead><tr><th>Risorsa</th><th class="n">Importo</th></tr></thead>
     <tbody>
         <tr><td>Libera — banca e contanti</td><td class="n {{ $lq['libera'] < 0 ? 'neg' : '' }}">{{ $fmt($lq['libera']) }}</td></tr>
         @foreach($lq['fondi'] as $f)
-        <tr><td style="padding-left: 14px;">{{ $f['cassa'] }} <span class="d">· {{ \App\Services\Gestionale\ParoleDellaStampa::fondo($f) }}@if($f['vincolo_registrato'] !== 0) · vincolo assegnato {{ $fmt($f['vincolo_registrato']) }}@if($f['scoperto'] > 0) <span class="neg">— mancano {{ $fmt($f['scoperto']) }}</span> @endif @endif</span></td><td class="n {{ $f['saldo'] < 0 ? 'neg' : '' }}">{{ $fmt($f['saldo']) }}</td></tr>
+        <tr><td style="padding-left: 14px;">{{ $f['cassa'] }} <span class="d">· {{ $etichettaFondo($f) }}@if($f['vincolo_registrato'] !== 0) · vincolo assegnato {{ $fmt($f['vincolo_registrato']) }}@if($f['scoperto'] > 0 && $pagina['stato_esercizio'] !== 'chiuso') <span class="neg">— mancano {{ $fmt($f['scoperto']) }}</span> @endif @endif</span></td><td class="n {{ $f['saldo'] < 0 ? 'neg' : '' }}">{{ $fmt($f['saldo']) }}</td></tr>
         @endforeach
         @if(count($lq['fondi']) === 0) <tr><td class="d" style="padding-left: 14px;">Nessun fondo</td><td></td></tr> @endif
         @foreach($lq['altra_voci'] as $a)
@@ -331,7 +343,8 @@
         <tr><td>Vincoli coperti da una cassa fondo</td><td class="n">{{ $fmt($lq['vincolo_su_fondi']) }}</td></tr>
         <tr><td>Vincoli ancora nella liquidità libera</td><td class="n">{{ $fmt($lq['vincolo_non_accantonato']) }}</td></tr>
     </tbody>
-    <tfoot><tr><td>Accantonato nelle casse fondo <span class="badge {{ $classeR8 }}">{{ $lq['esito_r8'] === 'quadra' ? $esitoTesto['quadra'] : ($lq['esito_r8'] === 'scoperto' ? 'scoperto' : $esitoTesto['segnalazione']) }}</span></td><td class="n">{{ $fmt($lq['in_fondi']) }}</td></tr></tfoot>
+    {{-- Senza l'esito accanto: non è un controllo, e lo stato dei vincoli lo dice la frase sotto la tabella. --}}
+    <tfoot><tr><td>Accantonato nelle casse fondo</td><td class="n">{{ $fmt($lq['in_fondi']) }}</td></tr></tfoot>
 </table>
 <p class="d" style="margin: 4px 0 0;">
     @if($lq['esito_r8'] === 'scoperto') Un fondo ha meno di quanto gli è stato assegnato: mancano {{ $fmt($lq['scoperto_fondi']) }}. Accantona con un giroconto dalla banca, o correggi il vincolo dichiarato.
@@ -343,13 +356,42 @@
     Un fondo è parte dello stesso conto corrente: il totale è banca + contanti + fondi, una volta sola.
 </p>
 
+{{-- Il movimento dei fondi: la riga di ogni fondo nelle entrate e uscite per cassa, con il vincolo e lo scoperto del controllo dei vincoli. Senza fondi non c'è. --}}
+@php $mf = $pagina['movimento_fondi']; @endphp
+@if(count($mf['righe']) > 0)
+<h2><span class="sec">§ 4.1</span> Movimento dei fondi <span class="norma">dal {{ $dataIt($rf['dal']) }} al {{ $dataIt($rf['al']) }}</span></h2>
+<table class="p">
+    @php $giro = (bool) ($mf['con_giroconti'] ?? false); @endphp
+    <thead><tr><th>Fondo</th><th class="n">Iniziale</th><th class="n">Accantonato</th>@if($giro)<th class="n">Giroconti in entrata</th><th class="n">Giroconti in uscita</th>@endif<th class="n">Utilizzato</th><th class="n">Finale</th><th class="n">Vincolo</th><th class="n">Scoperto</th></tr></thead>
+    <tbody>
+    @foreach($mf['righe'] as $f)
+        <tr>
+            <td>{{ $f['cassa'] }}</td>
+            <td class="n {{ $f['iniziale'] < 0 ? 'neg' : '' }}">{{ $fmt($f['iniziale']) }}</td>
+            <td class="n">{{ $fmt($f['accantonato']) }}</td>
+            @if($giro)
+            <td class="n">{{ $fmt($f['giroconti_entrata'] ?? 0) }}</td>
+            <td class="n">{{ $fmt($f['giroconti_uscita'] ?? 0) }}</td>
+            @endif
+            <td class="n">{{ $fmt($f['utilizzato']) }}</td>
+            <td class="n {{ $f['finale'] < 0 ? 'neg' : '' }}">{{ $fmt($f['finale']) }}</td>
+            <td class="n">{{ $fmt($f['vincolo']) }}</td>
+            <td class="n {{ ($f['scoperto'] ?? 0) > 0 ? 'neg' : '' }}">{{ $f['scoperto'] === null ? '—' : $fmt($f['scoperto']) }}</td>
+        </tr>
+    @endforeach
+    </tbody>
+    <tfoot><tr><td>Fondi</td><td class="n">{{ $fmt($mf['totale']['iniziale']) }}</td><td class="n">{{ $fmt($mf['totale']['accantonato']) }}</td>@if($giro)<td class="n">{{ $fmt($mf['totale']['giroconti_entrata'] ?? 0) }}</td><td class="n">{{ $fmt($mf['totale']['giroconti_uscita'] ?? 0) }}</td>@endif<td class="n">{{ $fmt($mf['totale']['utilizzato']) }}</td><td class="n">{{ $fmt($mf['totale']['finale']) }}</td><td class="n">{{ $fmt($mf['totale']['vincolo']) }}</td><td class="n">{{ $mf['totale']['scoperto'] === null ? '—' : $fmt($mf['totale']['scoperto']) }}</td></tr></tfoot>
+</table>
+<p class="d" style="margin: 4px 0 0;">{{ $mf['nota'] }} @if($mf['nota_vincoli']) {{ $mf['nota_vincoli'] }} @endif @if($mf['nota_giroconti'] ?? null) {{ $mf['nota_giroconti'] }} @endif @if($mf['nota_saldo']) {{ $mf['nota_saldo'] }} @endif</p>
+@endif
+
 @endif
 
 @if($mostra('cassa'))
 @if($parte === 'cassa')
 <div class="chiusura"><b>Come leggere questo prospetto.</b> Per cassa: il denaro entrato e uscito dalle casse con le scritture dell'esercizio. La disponibilità iniziale è il riporto dell'esercizio prima, con la stessa regola del registro di contabilità; l'apertura di una cassa conta lì, non fra le entrate. <b>La data:</b> {{ $allaData }}. Conta le scritture di questo esercizio, anche quelle con una data dopo la fine: il saldo a una data è nella situazione patrimoniale.</div>
 @endif
-<h2><span class="sec">§ 5</span>Entrate e uscite per cassa <span class="norma">dal {{ $dataIt($rf['dal']) }} al {{ $dataIt($rf['al']) }}</span></h2>
+<h2><span class="sec">§ 5</span> Entrate e uscite per cassa <span class="norma">dal {{ $dataIt($rf['dal']) }} al {{ $dataIt($rf['al']) }}</span></h2>
 <table class="p">
     <thead><tr><th>Cassa</th><th class="n">Disponibilità iniziale</th><th class="n">Entrate</th><th class="n">Uscite</th><th class="n">Disponibilità finale</th></tr></thead>
     <tbody>
@@ -375,7 +417,7 @@
     La disponibilità iniziale è quanto c'era il giorno prima dell'inizio dell'esercizio; entrate e uscite sono le scritture dell'esercizio.
 </p>
 
-<h2><span class="sec">§ 6</span>Raccordo fra cassa e competenza</h2>
+<h2><span class="sec">§ 6</span> Raccordo fra cassa e competenza</h2>
 <p class="intro">Perché nell'esercizio la liquidità è cambiata di {{ $fmt($rc['variazione_liquidita']) }} mentre il risultato di gestione è {{ $fmt($rg['risultato']) }}: variazione della liquidità = risultato − aumento dei crediti + aumento dei debiti.</p>
 <table class="p">
     <thead><tr><th>Partita</th><th>Natura</th><th class="n">Effetto</th></tr></thead>
@@ -390,7 +432,7 @@
 @endif
 
 @if($mostra('controlli'))
-<h2><span class="sec">§ 7</span>I controlli</h2>
+<h2><span class="sec">§ 7</span> I controlli</h2>
 <table class="p">
     {{-- La verifica come si legge: «€ 2.000,00 = € 2.000,00», non «primo membro / secondo membro»
          (gergo matematico, incomprensibile a video — Vincenzo). Il segno è quello vero del controllo. --}}
@@ -402,15 +444,16 @@
             <td class="cod">{{ $loop->iteration }}</td>
             <td><b>{{ $c['nome'] }}</b> — {{ $c['titolo'] }}<br><span class="d">{{ $frase($c['nota']) }}</span>@if($c['rimedio'])<br><span class="d"><b>Che cosa si fa:</b> {{ $frase($c['rimedio']) }}</span>@endif</td>
             {{-- Trappola di Blade: «zero@else» non è una direttiva (la @ preceduta da una lettera non viene compilata). Spazi attorno. --}}
-            <td class="n">{{ $c['id'] === 'CN' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'cassa' : 'casse').' sotto zero' : ($c['id'] === 'AC' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'registrazione' : 'registrazioni') : ($c['id'] === 'GE' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'fattura' : 'fatture') : $fmt($c['sinistra']).' '.$segno.' '.$fmt($c['destra']))) }}</td>
-            <td style="text-align: right;"><span class="badge {{ $esitoClasse[$c['esito']] }}">{{ $esitoTesto[$c['esito']] }}</span></td>
+            {{-- I controlli del conguaglio: quando la stampa non ha la lettura non hanno cifre; i due per unità dicono quante non tornano su quante. --}}
+            <td class="n">{{ ! empty($c['non_letto']) ? '—' : (in_array($c['id'], ['CU', 'CB'], true) ? $c['sinistra'].' unità su '.$c['destra'].' non '.($c['sinistra'] === 1 ? 'torna' : 'tornano') : ($c['id'] === 'CN' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'cassa' : 'casse').' sotto zero' : ($c['id'] === 'AC' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'registrazione' : 'registrazioni') : ($c['id'] === 'GE' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'fattura' : 'fatture') : $fmt($c['sinistra']).' '.$segno.' '.$fmt($c['destra']))))) }}</td>
+            <td style="text-align: right;"><span class="badge {{ $esitoClasse[$c['esito']] }}">{{ $esitoTesto[$c['esito']] }}</span>@if($c['esito'] === 'segnalazione')<br><span class="d">l'amministratore lo spiega in assemblea</span>@endif</td>
         </tr>
     @endforeach
     </tbody>
 </table>
 
 @if($anno !== null && $anno['numero'] > 0)
-<h2><span class="sec">§ 7.1</span>Registrazioni oltre il confine dell'esercizio</h2>
+<h2><span class="sec">§ 7.1</span> Registrazioni oltre il confine dell'esercizio</h2>
 <p class="intro">{{ $frase($anno['frase_norma']) }} @if($anno['effetto']['A']['frase']) {{ $anno['effetto']['A']['frase'] }} @endif @if($anno['effetto']['B']['frase']) {{ $anno['effetto']['B']['frase'] }} @endif</p>
 <table class="p">
     <thead><tr><th>Verso</th><th>Tipo</th><th class="n">Registrazioni</th><th class="n">In rosso</th><th class="n">Importo</th></tr></thead>
@@ -436,6 +479,9 @@
 @endforeach
 @endif
 
+{{-- Le date delle cifre, per esteso, in fondo alla pagina dei controlli: la prima pagina del fascicolo ne dice una più corta. --}}
+<p class="d" style="margin: 10px 0 0;">{{ \App\Services\Gestionale\StatoPatrimonialePaginaService::fraseDelleDate($pagina['stato_esercizio'] === 'chiuso', $pagina['data']) }}</p>
+
 @endif
 
 @if($parte === null)
@@ -444,7 +490,7 @@
     pagina «Rate scadute» dei movimenti, con lo scaduto di ognuno senza togliere il credito. Le posizioni di ognuno e i crediti per anzianità hanno la
     loro stampa, nella scheda «Condòmini» del rendiconto. Il confronto con l'estratto conto della banca: si fa a parte. Quote e costi si accumulano dal
     primo esercizio, e il cumulato da conguagliare è {{ $fmt($rg['cumulato']) }}. Non ha conti di ricavo, per questo non dichiara mai i conti «in pari».
-    La fotografia è a oggi per l'esercizio aperto e alla data di fine per uno chiuso.
+    La fotografia è a oggi per l'esercizio aperto e alla data di fine per uno finito.
 </div>
 @endif
 

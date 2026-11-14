@@ -6,6 +6,7 @@ use App\Models\Condominio;
 use App\Models\Gestionale\RegistroInvio;
 use App\Models\ModelloTesto;
 use App\Models\User;
+use App\Services\Gestionale\InvioDeiFogli;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -24,20 +25,30 @@ use Illuminate\Validation\ValidationException;
  * - **Il nome** è unico per tipo e per «vale per» (tutti, o quel condominio), senza badare alle maiuscole e agli spazi; lo controlla il
  *   programma, perché su MySQL un indice unico non vede due nulli come uguali.
  * - Creare, cambiare ed eliminare un modello lo fa chi gestisce le impostazioni di stampa; vederli e usarli, chi prepara le lettere.
+ * - **Dalla 1.12.0-beta.9 anche il testo dell'email dei fogli del conguaglio** ({@see InvioDeiFogli}) ha i suoi modelli, con il tipo
+ *   {@see InvioDeiFogli::TIPO}: le stesse regole (il nome unico, «vale per», il modello ricordato, la copia del testo), i suoi campi ([nome],
+ *   [condominio], [esercizio]) e niente [totale] né [termine]. Il modello è il testo dell'email; l'oggetto resta nella finestra.
  */
 final class ModelliLettere
 {
+    /** I tipi che hanno i modelli: le lettere, poi l'email dei fogli del conguaglio. */
+    public const TIPI = [...EmissioneLettere::TIPI, InvioDeiFogli::TIPO];
+
+    /** Il nome di ogni tipo, nella pagina dei modelli. */
+    public const NOMI = EmissioneLettere::NOMI + [InvioDeiFogli::TIPO => 'Email del foglio del conguaglio'];
+
     public const NOME_DOPPIO = 'C\'è già un modello con questo nome per questo tipo di lettera e con lo stesso «vale per»: scegline un altro.';
 
     /**
      * I modelli validi in un condominio, per la finestra: per ogni tipo (nell'ordine dei tipi) prima quelli del condominio, poi quelli per tutti,
-     * per nome.
+     * per nome. Di serie quelli delle lettere: la finestra delle lettere li vuole tutti e sceglie per tipo; quella dei fogli chiede il suo.
      *
+     * @param  list<string>  $tipi
      * @return list<array{id: int, tipo: string, nome: string, testo: string, per_tutti: bool}>
      */
-    public function delCondominio(Condominio $condominio): array
+    public function delCondominio(Condominio $condominio, array $tipi = EmissioneLettere::TIPI): array
     {
-        return self::ordinati(ModelloTesto::perLettere()->validiNel((int) $condominio->id)->whereIn('tipo', EmissioneLettere::TIPI)->get())
+        return self::ordinati(ModelloTesto::perLettere()->validiNel((int) $condominio->id)->whereIn('tipo', $tipi)->get())
             ->map(fn (ModelloTesto $m) => self::perLaFinestra($m))->values()->all();
     }
 
@@ -55,7 +66,7 @@ final class ModelliLettere
      */
     public static function ordinati(Collection $modelli): Collection
     {
-        $ordine = array_flip(EmissioneLettere::TIPI);
+        $ordine = array_flip(self::TIPI);
 
         return $modelli->sort(fn (ModelloTesto $a, ModelloTesto $b) => [$ordine[$a->tipo] ?? 99, $a->condominio_id === null ? 1 : 0, mb_strtolower($a->nome), $a->id]
             <=> [$ordine[$b->tipo] ?? 99, $b->condominio_id === null ? 1 : 0, mb_strtolower($b->nome), $b->id])->values();
@@ -66,15 +77,18 @@ final class ModelliLettere
      * persona sola): null se quella lettera partiva dal testo del programma (o non c'è una lettera); `mancante` se il modello non c'è più o non
      * vale più nel condominio (con il nome scritto nella lettera).
      *
+     * I tipi di serie sono quelli delle lettere; l'email dei fogli chiede il suo, dalle righe dei fogli (non rifatte: `dati.rifatto_da`).
+     *
+     * @param  list<string>  $tipi
      * @return array<string, array{id: ?int, nome: string, mancante: bool}|null>
      */
-    public function ricordati(Condominio $condominio): array
+    public function ricordati(Condominio $condominio, array $tipi = EmissioneLettere::TIPI): array
     {
         $validi = ModelloTesto::perLettere()->validiNel((int) $condominio->id)->get()->keyBy('id');
         $ricordati = [];
-        foreach (EmissioneLettere::TIPI as $tipo) {
+        foreach ($tipi as $tipo) {
             $dati = (array) (RegistroInvio::where('condominio_id', $condominio->id)->where('tipo', $tipo)
-                ->whereNull('dati->rifatta_da')->whereNull('dati->singola')->orderByDesc('id')->first()?->dati ?? []);
+                ->whereNull('dati->rifatta_da')->whereNull('dati->rifatto_da')->whereNull('dati->singola')->orderByDesc('id')->first()?->dati ?? []);
             $id = is_numeric($dati['modello_id'] ?? null) ? (int) $dati['modello_id'] : null;
             if ($id === null) {
                 $ricordati[$tipo] = null;
@@ -137,7 +151,7 @@ final class ModelliLettere
     public static function regole(bool $nuovo): array
     {
         return array_filter([
-            'tipo'  => $nuovo ? ['required', 'string', \Illuminate\Validation\Rule::in(EmissioneLettere::TIPI)] : null,
+            'tipo'  => $nuovo ? ['required', 'string', \Illuminate\Validation\Rule::in(self::TIPI)] : null,
             'nome'  => ['required', 'string', 'max:' . ModelloTesto::LUNGHEZZA_NOME],
             'testo' => ['required', 'string', 'max:' . TestiLettere::LUNGHEZZA_MASSIMA],
         ]);
@@ -148,7 +162,7 @@ final class ModelliLettere
     {
         return [
             'tipo.required'  => 'Scegli il tipo della lettera.',
-            'tipo.in'        => EmissioneLettere::TIPO_CHE_NON_C_E,
+            'tipo.in'        => 'Scegli il tipo del modello: promemoria, sollecito, diffida, messa in mora o l\'email del foglio del conguaglio.',
             'nome.required'  => 'Scrivi il nome del modello.',
             'nome.max'       => 'Il nome del modello è al massimo di ' . ModelloTesto::LUNGHEZZA_NOME . ' caratteri.',
             'testo.required' => 'Scrivi il testo del modello.',
@@ -176,6 +190,10 @@ final class ModelliLettere
         }
         if ($tipo === 'promemoria' && str_contains($testo, '[termine]')) {
             throw ValidationException::withMessages(['testo' => EmissioneLettere::PROMEMORIA_SENZA_TERMINE]);
+        }
+        // L'email dei fogli non ha un totale né un termine: un suo modello che li usa si rifiuta, come l'invio.
+        if ($tipo === InvioDeiFogli::TIPO && InvioDeiFogli::conCampiDelleLettere($testo)) {
+            throw ValidationException::withMessages(['testo' => InvioDeiFogli::CAMPI_CHE_NON_CI_SONO]);
         }
         $doppio = ModelloTesto::perLettere()->where('tipo', $tipo)
             ->when($condominio === null, fn ($q) => $q->whereNull('condominio_id'), fn ($q) => $q->where('condominio_id', $condominio))

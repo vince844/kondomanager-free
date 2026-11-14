@@ -318,15 +318,38 @@ const getImportoStyle = (riga: any) => {
                 backText="Indietro"
             >
                 <template #actions>
-                    <button type="button" data-testid="prepara-una-lettera" @click="finestraLettera = true"
-                       class="inline-flex items-center h-8 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white dark:bg-slate-900 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm shrink-0">
-                        Prepara una lettera
-                    </button>
-                    <!-- L'elenco delle rate scadute, con la sola persona di questa pagina. -->
-                    <Link :href="rateScaduteDellaPersona" data-testid="rate-scadute-della-persona"
-                       class="inline-flex items-center h-8 px-3 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white dark:bg-slate-900 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm shrink-0">
-                        Rate scadute
-                    </Link>
+                    <!-- Le lettere a questa persona e l'elenco delle sue rate scadute in un menu solo: due pulsanti in più facevano uscire la fila dallo schermo. -->
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" data-testid="menu-lettere" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
+                                <Mail class="w-4 h-4" />
+                                <span class="hidden sm:inline">Lettere</span>
+                                <ChevronDown class="w-3 h-3 opacity-60" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-60 shadow-xl rounded-xl border-slate-100 p-1.5">
+                            <DropdownMenuItem
+                                data-testid="prepara-una-lettera"
+                                @click="finestraLettera = true"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                <Mail class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Prepara una lettera</div>
+                                    <div class="text-[10px] text-slate-400">Promemoria, sollecito, diffida, messa in mora</div>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem as-child>
+                                <Link :href="rateScaduteDellaPersona" data-testid="rate-scadute-della-persona"
+                                   class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                    <AlertCircle class="w-3.5 h-3.5 text-indigo-500" />
+                                    <div>
+                                        <div class="text-xs font-medium">Rate scadute</div>
+                                        <div class="text-[10px] text-slate-400">L'elenco, con questa persona sola</div>
+                                    </div>
+                                </Link>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                     <DropdownMenu>
                         <DropdownMenuTrigger as-child>
                             <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">

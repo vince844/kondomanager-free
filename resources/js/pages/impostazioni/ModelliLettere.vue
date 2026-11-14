@@ -6,7 +6,8 @@
  * con i campi e l'anteprima con i valori d'esempio del server. Il condominio, in «vale per» e nel filtro, si sceglie con la ricerca del programma
  * (`vue-select`): i condomini possono essere cento. Eliminare chiede la conferma (le lettere già scritte non cambiano) e manda una richiesta sola.
  * Chi non gestisce le impostazioni di stampa vede i modelli e basta (ci arriva dalla finestra delle lettere): per lui niente briciole né ritorno
- * verso le impostazioni, che gli risponderebbero di no.
+ * verso le impostazioni, che gli risponderebbero di no. Dalla 1.12.0-beta.9 anche l'email dei fogli del conguaglio ha i suoi modelli, con i suoi campi
+ * (`campi_per_tipo`: [nome], [condominio], [esercizio]).
  */
 import { Head, router, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
@@ -21,18 +22,22 @@ import { FileText } from 'lucide-vue-next';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Flash } from '@/types/flash';
-import type { TipoLettera } from '@/lib/gestionale/lettere/lettere';
 import {
     FRASE_ELIMINA, FRASE_PAGINA, FRASE_PAGINA_SENZA_PERMESSO, FRASE_PROGRAMMA, nomeDellaCopia, riempiEsempio, testoCambiato, testoValePer,
-    type Esempio, type ModelloDellaPagina,
+    type Esempio, type ModelloDellaPagina, type TipoModello,
 } from '@/lib/gestionale/lettere/modelli';
+import { fraseFissa } from '@/lib/gestionale/rendiconto/invioDeiFogli';
 
 const props = defineProps<{
-    tipi: Array<{ tipo: TipoLettera; nome: string }>;
-    testi_del_programma: Record<TipoLettera, string>;
+    tipi: Array<{ tipo: TipoModello; nome: string }>;
+    testi_del_programma: Record<TipoModello, string>;
     modelli: ModelloDellaPagina[];
     condomini: Array<{ id: number; nome: string }>;
     campi: Record<string, string>;
+    /** I tipi con campi diversi da quelli delle lettere (l'email dei fogli del conguaglio). */
+    campi_per_tipo?: Record<string, Record<string, string>>;
+    /** Quello che un tipo dice sempre fuori dal modello: la frase della proposta dell'email dei fogli. */
+    frase_proposta_per_tipo?: Record<string, string>;
     esempio: Esempio;
     puo_modificare: boolean;
 }>();
@@ -61,11 +66,11 @@ const tipiVisibili = computed(() => props.tipi.filter((t) => filtroTipo.value ==
 const passaIlFiltro = (m: ModelloDellaPagina) => (!filtroCondominio.value ? true
     : filtroCondominio.value === 'tutti' ? m.condominio === null
         : m.condominio === null || m.condominio.id === Number(filtroCondominio.value));
-const modelliDi = (tipo: TipoLettera) => props.modelli.filter((m) => m.tipo === tipo && passaIlFiltro(m));
+const modelliDi = (tipo: TipoModello) => props.modelli.filter((m) => m.tipo === tipo && passaIlFiltro(m));
 
 // ── Il modulo ────────────────────────────────────────────────────────
 /** `valePer`: null finché non si sceglie; 'tutti', o l'id di un condominio. */
-interface Modulo { aperto: boolean; id: number | null; tipo: TipoLettera | ''; nome: string; valePer: string | null; testo: string }
+interface Modulo { aperto: boolean; id: number | null; tipo: TipoModello | ''; nome: string; valePer: string | null; testo: string }
 const chiuso = (): Modulo => ({ aperto: false, id: null, tipo: '', nome: '', valePer: null, testo: '' });
 const modulo = ref<Modulo>(chiuso());
 const errori = ref<Record<string, string>>({});
@@ -78,11 +83,15 @@ function apri(m: Omit<Modulo, 'aperto'>) {
 const nuovo = () => apri({ id: null, tipo: '', nome: '', valePer: null, testo: '' });
 const modifica = (m: ModelloDellaPagina) => apri({ id: m.id, tipo: m.tipo, nome: m.nome, valePer: m.condominio ? String(m.condominio.id) : 'tutti', testo: m.testo });
 /** «Duplica»: un modello nuovo con lo stesso testo; dal testo del programma «vale per» non è scelto. */
-const duplicaDalProgramma = (tipo: TipoLettera) => apri({ id: null, tipo, nome: nomeDellaCopia(null, tipo), valePer: null, testo: props.testi_del_programma[tipo] ?? '' });
+const duplicaDalProgramma = (tipo: TipoModello) => apri({ id: null, tipo, nome: nomeDellaCopia(null, tipo), valePer: null, testo: props.testi_del_programma[tipo] ?? '' });
 const duplica = (m: ModelloDellaPagina) => apri({ id: null, tipo: m.tipo, nome: nomeDellaCopia(m.nome, m.tipo), valePer: m.condominio ? String(m.condominio.id) : 'tutti', testo: m.testo });
 
 const salvabile = computed(() => modulo.value.tipo !== '' && modulo.value.nome.trim() !== '' && !!modulo.value.valePer && modulo.value.testo.trim() !== '');
-const anteprima = computed(() => riempiEsempio(modulo.value.testo, props.esempio));
+/** I campi del tipo scelto nel modulo: quelli delle lettere, o quelli del tipo che ne ha altri. */
+const campiDelModulo = computed(() => (modulo.value.tipo !== '' ? props.campi_per_tipo?.[modulo.value.tipo] : undefined) ?? props.campi);
+const anteprima = computed(() => riempiEsempio(modulo.value.testo, props.esempio, campiDelModulo.value));
+/** Quello che un tipo dice sempre fuori dal modello (l'email dei fogli: la frase della proposta e l'ora del calcolo); null per le lettere. */
+const fraseFissaDi = (tipo: TipoModello | '') => (tipo !== '' && props.frase_proposta_per_tipo?.[tipo] ? fraseFissa(props.frase_proposta_per_tipo[tipo]) : null);
 
 function salva() {
     if (!salvabile.value || inCorso.value) {
@@ -160,6 +169,7 @@ function elimina() {
                     </div>
                     <p class="text-xs text-slate-500 dark:text-slate-400">{{ FRASE_PROGRAMMA }}</p>
                     <p class="whitespace-pre-line text-sm">{{ testi_del_programma[t.tipo] }}</p>
+                    <p v-if="fraseFissaDi(t.tipo)" class="text-xs text-slate-600 dark:text-slate-300" :data-testid="`frase-fissa-${t.tipo}`">{{ fraseFissaDi(t.tipo) }}</p>
                 </div>
 
                 <div v-for="m in modelliDi(t.tipo)" :key="m.id" class="rounded-lg border p-3 space-y-2" :data-testid="`modello-${m.id}`">
@@ -182,12 +192,12 @@ function elimina() {
             <DialogContent class="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>{{ modulo.id === null ? 'Nuovo modello' : 'Modifica il modello' }}</DialogTitle>
-                    <DialogDescription>Il testo si riempie per ogni persona con i campi; nella lettera resta modificabile.</DialogDescription>
+                    <DialogDescription>Il testo si riempie per ogni persona con i campi; nella finestra resta modificabile.</DialogDescription>
                 </DialogHeader>
                 <div class="space-y-3 text-sm">
                     <div class="grid gap-3 sm:grid-cols-2">
                         <label class="space-y-1">
-                            <span class="block text-xs text-slate-500 dark:text-slate-400">Tipo della lettera</span>
+                            <span class="block text-xs text-slate-500 dark:text-slate-400">Tipo</span>
                             <select v-model="modulo.tipo" :disabled="modulo.id !== null" class="h-9 w-full rounded-md border px-2 bg-transparent" data-testid="form-tipo">
                                 <option value="" disabled>Scegli il tipo</option>
                                 <option v-for="t in tipi" :key="t.tipo" :value="t.tipo">{{ t.nome }}</option>
@@ -214,9 +224,10 @@ function elimina() {
                     <div class="space-y-1">
                         <span class="block text-xs text-slate-500 dark:text-slate-400">I campi, che si riempiono per ogni persona</span>
                         <ul class="text-xs" data-testid="form-campi">
-                            <li v-for="(descrizione, campo) in campi" :key="campo">{{ campo }}: {{ descrizione }}</li>
+                            <li v-for="(descrizione, campo) in campiDelModulo" :key="campo">{{ campo }}: {{ descrizione }}</li>
                         </ul>
                     </div>
+                    <p v-if="fraseFissaDi(modulo.tipo)" class="text-xs text-slate-600 dark:text-slate-300" data-testid="form-frase-fissa">{{ fraseFissaDi(modulo.tipo) }}</p>
                     <div v-if="modulo.testo.trim()" class="space-y-1">
                         <span class="block text-xs text-slate-500 dark:text-slate-400">Anteprima, con valori d'esempio</span>
                         <p class="whitespace-pre-line rounded-md border bg-slate-50 p-2 text-sm dark:bg-slate-900/40" data-testid="form-anteprima">{{ anteprima }}</p>

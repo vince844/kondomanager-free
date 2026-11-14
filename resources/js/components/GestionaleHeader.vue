@@ -188,8 +188,8 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
         <div class="no-print border-b border-sidebar-border/80 bg-background/95 backdrop-blur">
             <div class="mx-auto flex h-16 items-center px-4 md:max-w-7xl">
 
-                <!-- MOBILE MENU -->
-                <div class="lg:hidden">
+                <!-- MOBILE MENU: anche sul tablet e sui portatili piccoli, fino a 1.280 pixel; con il menu intero a 1.024 pixel la barra usciva dallo schermo -->
+                <div class="xl:hidden">
                     <Sheet>
                         <SheetTrigger as-child>
                             <Button
@@ -282,7 +282,7 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
                 </Link>
 
                 <!-- DESKTOP MENU -->
-                <div class="hidden lg:flex lg:flex-1 h-full">
+                <div class="hidden xl:flex xl:flex-1 h-full">
                     <nav class="ml-6 flex items-center gap-1 h-full">
                         <template v-for="item in accessibleMainItems" :key="item.title">
 
@@ -330,7 +330,7 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
 
                 <!-- RIGHT SECTION -->
                 <div class="ml-auto flex items-center gap-2">
-                    <div class="hidden lg:flex gap-1">
+                    <div class="hidden xl:flex gap-1">
                         <TooltipProvider>
                             <template v-for="item in rightNavItems" :key="item.title">
                                 <Tooltip>

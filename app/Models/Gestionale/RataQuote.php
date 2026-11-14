@@ -302,11 +302,14 @@ class RataQuote extends Model
      * `$registro` (piano|persona|unità => centesimi) prende il posto del registro del database: lo passa il rilevamento delle emissioni
      * già scritte per un piano senza `righe_riparto`, con le righe della ricostruzione (`RiallineaCreditiService`).
      *
+     * Con `$conSegno` la parte com'è, anche negativa (un rimborso sulla riga dell'unità): la legge il consuntivo per persona, che toglie dalle
+     * quote la loro parte personale e non chiude nessuna anticipazione.
+     *
      * @param iterable<RataQuote> $quote
      * @param array<string, int>|null $registro
      * @return array<int, int>
      */
-    public static function partiAdPersonam(iterable $quote, ?array $registro = null): array
+    public static function partiAdPersonam(iterable $quote, ?array $registro = null, bool $conSegno = false): array
     {
         $quote = collect($quote);
         $regole = $quote->mapWithKeys(fn (RataQuote $q) => [(int) $q->id => (is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo, true) : $q->regole_calcolo) ?: []]);
@@ -339,7 +342,7 @@ class RataQuote extends Model
                 $rate = (int) ($sue['parametri']['totale_rate_piano'] ?? 0);
                 $parte = $numero > 0 && $rate > 0 ? \App\Actions\PianoRate\GenerateRateQuotesAction::fettina($totale, $rate, $numero) : 0;
             }
-            $esito[(int) $quota->id] = max(0, $parte);
+            $esito[(int) $quota->id] = $conSegno ? $parte : max(0, $parte);
         }
 
         return $esito;

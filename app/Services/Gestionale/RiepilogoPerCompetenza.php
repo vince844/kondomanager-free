@@ -7,6 +7,7 @@ use App\Helpers\DateHelper;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
+use App\Models\Gestionale\RigaRiparto;
 use App\Services\Gestionale\Debiti\LetturaDebiti;
 use App\Services\Riparto\CompetenzaDelPiano;
 use Carbon\CarbonImmutable;
@@ -28,7 +29,8 @@ use Illuminate\Support\Facades\DB;
  *   sono di tutti gli esercizi alla data); una riga di costo con la voce in una scrittura che non è una fattura (la regolazione, la commissione con la
  *   voce) è pagata alla data della sua scrittura.
  * - Le quote: `LetturaDebiti::quoteDeiPiani` sulle rate dei piani dell'esercizio (`CompetenzaDelPiano::esercizioDelPiano`).
- * - Il preventivo e il deliberato: il deliberato con le rate è la somma delle righe del riparto dei piani approvati dell'esercizio, per voce; il
+ * - Il preventivo e il deliberato: il deliberato con le rate è la somma delle righe del riparto dei piani approvati dell'esercizio, per voce, senza
+ *   le righe delle spese per singole unità, che il blocco somma a parte (`spese_personali`) e le quote deliberate comprendono; il
  *   preventivo è l'importo della voce finché la gestione non è agganciata a un esercizio dopo (poi la voce porta già il preventivo dell'anno dopo, e
  *   la colonna rimanda al verbale dell'assemblea). Per una gestione straordinaria solo il deliberato: il piano chiede le fatture, e uno scostamento non c'è.
  *   Un piano approvato senza le righe (generato prima della 1.11.0-beta.29) ha il deliberato ricostruito, se torna per unità con le quote
@@ -63,6 +65,15 @@ final class RiepilogoPerCompetenza
 
     /** Gli stati del deliberato che hanno una cifra. */
     private const CON_CIFRA = ['conservato', 'ricostruito'];
+
+    /**
+     * Il risultato a parole, le stesse tre per la pagina e per le stampe (Coda 560): zero è «in pareggio», sotto zero «disavanzo», sopra «avanzo».
+     * La pagina dice lo stesso con `resources/js/lib/gestionale/rendiconto/risultato.ts`.
+     */
+    public static function comeRisultato(int $risultato): string
+    {
+        return $risultato === 0 ? 'in pareggio' : ($risultato < 0 ? 'disavanzo' : 'avanzo');
+    }
 
     public function __construct(
         private readonly SpesaPerVoceService $spese,
@@ -162,7 +173,10 @@ final class RiepilogoPerCompetenza
             }
 
             $q = $quote[$gestioneId] ?? null;
-            $delibQuote = in_array($deliberato[$gestioneId]['stato'] ?? 'nessun_piano', self::CON_CIFRA, true) ? (int) array_sum($deliberato[$gestioneId]['per_voce']) : null;
+            // Le quote deliberate sono le voci più le spese per singole unità chieste con le rate, che una riga loro dice a parte.
+            $conCifra = in_array($deliberato[$gestioneId]['stato'] ?? 'nessun_piano', self::CON_CIFRA, true);
+            $delibPersonali = $conCifra ? (int) ($deliberato[$gestioneId]['personali'] ?? 0) : null;
+            $delibQuote = $conCifra ? (int) array_sum($deliberato[$gestioneId]['per_voce']) + $delibPersonali : null;
             $righeQuote = [];
             if ($q !== null || $delibQuote !== null) {
                 $righeQuote[] = ['riga' => $straordinaria ? 'straordinarie' : 'ordinarie', 'deliberate' => $delibQuote] + ($q['quote'] ?? $this->quoteVuote());
@@ -178,6 +192,8 @@ final class RiepilogoPerCompetenza
                 // «Non disponibile» anche perché un piano di prima è cambiato con «Sposta spesa»: la stampa lo dice sotto la tabella della gestione.
                 'deliberato_spostato' => ($deliberato[$gestioneId]['spostati'] ?? []) !== [],
                 'spese' => $spese,
+                // Le spese per singole unità chieste con le rate: non sono di nessuna voce, e il deliberato per voce non le conta. Null: non disponibile.
+                'spese_personali' => $delibPersonali,
                 'entrate' => $entrate,
                 'quote' => $righeQuote,
                 'totale_spese' => $this->somma($spese, ['preventivo', 'deliberato', 'consuntivo', 'anno_prima', 'pagato', 'da_pagare', 'pagato_in_piu', 'ritenute_da_versare']),
@@ -392,7 +408,10 @@ final class RiepilogoPerCompetenza
      * senza righe con spostamenti di «Sposta spesa» che non si compensano non si rifà (decisione 253, D5: {@see DeliberatoRicostruito::spostato()}): la
      * gestione è `non_conservato` allo stesso modo, e `spostati` sono i nomi di quei piani. «Nessun piano» se la gestione non ne ha uno approvato.
      *
-     * @return array<int, array{stato:string, per_voce: array<int,int>, divise_oggi: array<int,true>, non_tornano: list<string>, spostati: list<string>}>
+     * Le righe delle spese per singole unità (`ad_personam`) non stanno nel deliberato per voce, nemmeno quelle con la voce (di prima che la fattura la
+     * togliesse): la loro somma è `personali`.
+     *
+     * @return array<int, array{stato:string, per_voce: array<int,int>, personali: ?int, divise_oggi: array<int,true>, non_tornano: list<string>, spostati: list<string>}>
      */
     private function deliberato($piani): array
     {
@@ -402,7 +421,10 @@ final class RiepilogoPerCompetenza
             $ids = $pianiG->pluck('id')->all();
             $conRighe = DB::table('righe_riparto')->whereIn('piano_rate_id', $ids)->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->all();
             $perVoce = $conRighe === [] ? [] : DB::table('righe_riparto')->whereIn('piano_rate_id', $conRighe)->whereNotNull('conto_id')
+                ->where('tipo', '!=', RigaRiparto::TIPO_AD_PERSONAM)
                 ->groupBy('conto_id')->select('conto_id', DB::raw('SUM(importo) as importo'))->pluck('importo', 'conto_id')->map(fn ($i) => (int) $i)->all();
+            // Le spese per singole unità: le righe personali del riparto, con la voce o senza.
+            $personali = $conRighe === [] ? 0 : (int) DB::table('righe_riparto')->whereIn('piano_rate_id', $conRighe)->where('tipo', RigaRiparto::TIPO_AD_PERSONAM)->sum('importo');
             $divise = [];
             $stato = 'conservato';
             $nonTornano = [];
@@ -422,11 +444,12 @@ final class RiepilogoPerCompetenza
                 foreach ($ricostruito['per_voce'] as $voce => $importo) {
                     $perVoce[$voce] = ($perVoce[$voce] ?? 0) + $importo;
                 }
+                $personali += $ricostruito['personali'];
                 $divise += $ricostruito['divise_oggi'];
             }
             $esito[(int) $gestioneId] = $nonTornano !== [] || $spostati !== []
-                ? ['stato' => 'non_conservato', 'per_voce' => [], 'divise_oggi' => [], 'non_tornano' => $nonTornano, 'spostati' => $spostati]
-                : ['stato' => $stato, 'per_voce' => $perVoce, 'divise_oggi' => $divise, 'non_tornano' => [], 'spostati' => []];
+                ? ['stato' => 'non_conservato', 'per_voce' => [], 'personali' => null, 'divise_oggi' => [], 'non_tornano' => $nonTornano, 'spostati' => $spostati]
+                : ['stato' => $stato, 'per_voce' => $perVoce, 'personali' => $personali, 'divise_oggi' => $divise, 'non_tornano' => [], 'spostati' => []];
         }
 
         return $esito;
@@ -525,7 +548,11 @@ final class RiepilogoPerCompetenza
                 }
             }
         }
+        // Un blocco con il deliberato «non disponibile» fa non disponibile il totale, anche se non ha ancora una riga delle quote (nessuna rata emessa).
+        $deliberateNote = $deliberateNote && ! collect($blocchi)->contains(fn ($b) => ($b['deliberato_stato'] ?? null) === 'non_conservato');
         $totale['deliberate'] = $deliberateNote ? $totale['deliberate'] : null;
+        // Il deliberato delle sole voci, senza le spese per singole unità chieste con le rate: la base della percentuale dei costi, che non le contano.
+        $totale['deliberate_voci'] = $deliberateNote ? $totale['deliberate'] - (int) array_sum(array_map(fn ($b) => (int) ($b['spese_personali'] ?? 0), $blocchi)) : null;
         // Il netto della persona, come la Tesoreria: le non pagate meno i crediti sulle rate.
         $totale['netto'] = $totale['non_pagate'] - $totale['crediti'];
 

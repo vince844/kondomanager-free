@@ -36,6 +36,7 @@ const pagina = (extra: Record<string, unknown> = {}) => ({
         liquidita_totale: 0, libera: 0, in_fondi: 0, vincolata: 0, generica: 0, altra: 0, altra_voci: [], fondi: [], vincolo_registrato: 0, vincolo_su_fondi: 0,
         vincolo_non_accantonato: 0, scoperto_fondi: 0, avanzo_registrato: 0, gia_speso_acconto: 0, esito_r8: 'quadra',
     },
+    movimento_fondi: { righe: [], totale: { iniziale: 0, accantonato: 0, utilizzato: 0, finale: 0, vincolo: 0, scoperto: 0 }, nota: '', nota_vincoli: null, nota_saldo: null },
     raccordo: { righe: [], somma: 0, variazione_liquidita: 0, scarto: 0, quadra: true },
     debiti: { alla: '2026-12-31', fatture: [], totale_residui: 0, saldo_fornitori: 0, saldo_erario: 0, erario_su_fatture_non_pagate: 0, scarto: 0, scarto_voci: [] },
     per_gestione: {

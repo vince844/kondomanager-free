@@ -8,8 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Un modello di testo dell'amministratore: un nome, il testo con i campi da riempire, per tutti i condomini (`condominio_id` nullo) o per uno.
- * `ambito` dice a che cosa serve (oggi solo le lettere ai condòmini, `lettera`), `tipo` il tipo dentro l'ambito (per le lettere: promemoria,
- * sollecito, diffida, messa in mora). Chi usa un modello ne copia il testo: cambiarlo o cancellarlo dopo non tocca quello che è già stato scritto.
+ * `ambito` dice a che cosa serve (oggi solo i testi dello studio per le persone, `lettera`), `tipo` il tipo dentro l'ambito (per le lettere:
+ * promemoria, sollecito, diffida, messa in mora; dalla 1.12.0-beta.9 anche `foglio_conguaglio`, il testo dell'email dei fogli del conguaglio). Chi usa un modello ne copia il testo: cambiarlo o cancellarlo dopo non tocca quello che è già stato scritto.
  *
  * @property int $id
  * @property string $ambito

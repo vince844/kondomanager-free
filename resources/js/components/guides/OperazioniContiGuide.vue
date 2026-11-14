@@ -192,7 +192,7 @@ defineEmits(['update:open']);
             </p>
             <ul class="list-disc list-inside space-y-1.5 text-[13px] text-slate-600 dark:text-slate-400 pl-2">
               <li><strong>Coperto da fondo</strong> — l'eccedenza attinge al fondo di riserva.</li>
-              <li><strong>A consuntivo</strong> — si sistema col conguaglio di fine gestione.</li>
+              <li><strong>A consuntivo</strong> — la differenza entra nel conguaglio per persona, calcolato nel rendiconto come proposta per l'assemblea.</li>
               <li><strong>Da coprire con rata integrativa</strong> — serve una nuova emissione. Solo in questo caso compare il collegamento <em>"Crea il piano rate"</em>, che apre la creazione con gestione e tipo già impostati: negli altri due una rata non sarebbe la risposta.</li>
             </ul>
           </section>

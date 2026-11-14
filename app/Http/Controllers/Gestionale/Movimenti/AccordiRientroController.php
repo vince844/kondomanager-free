@@ -36,7 +36,7 @@ class AccordiRientroController extends Controller
     public const RATA_NON_COPRIBILE = 'Una delle rate scelte non era scaduta, o non aveva un residuo, il giorno dell\'accordo: toglila, o cambia la data dell\'accordo.';
     public const GIA_IN_UN_ACCORDO = 'Una di queste rate è già in un altro accordo di rientro in quei giorni: un accordo nuovo sulla stessa rata parte dal giorno '
         . 'in cui l\'altro è chiuso, o dopo. Se l\'altro è ancora in corso, chiudilo prima.';
-    public const OLTRE_IL_RESIDUO = 'L\'importo riconosciuto di una rata non supera il suo residuo il giorno dell\'accordo: interessi e spese il programma non li registra ancora.';
+    public const OLTRE_IL_RESIDUO = 'L\'importo riconosciuto di una rata non supera il suo residuo il giorno dell\'accordo: interessi e spese il programma non li registra.';
 
     public function __construct(private readonly LetturaDebiti $lettura, private readonly AccordiRientro $accordi) {}
 

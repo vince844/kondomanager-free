@@ -98,6 +98,25 @@ describe('il riepilogo finanziario', () => {
         expect(testo(pagina.find('[data-test="come-leggere"]').text())).toContain('primo esercizio nel programma');
     });
 
+    test('Coda 560 — il risultato ha una parola per tre casi, come la Sintesi: a zero «in pareggio», non «avanzo»', () => {
+        const con = (risultato: number) => testo(monta({ risultato: { quote_emesse: 411000, costi: 411000 - risultato, risultato } }).find('[data-test="risultato"]').text());
+
+        expect(con(0)).toContain('= € 0,00 (in pareggio)');
+        expect(con(0)).not.toContain('avanzo');
+        expect(con(500)).toContain('(avanzo)');
+        expect(con(-500)).toContain('(disavanzo)');
+    });
+
+    test('Coda 568 — il risultato si chiama «quote registrate in questo esercizio − costi», come nelle stampe, e così anche la riga che lega le quote ai piani', () => {
+        const pagina = monta();
+
+        expect(testo(pagina.find('[data-test="risultato"]').text())).toContain('Risultato: quote registrate in questo esercizio € 4.110,00 − costi € 4.131,00');
+        expect(testo(pagina.find('[data-test="raccordo-quote"]').text())).toContain('= quote registrate in questo esercizio € 4.010,00 +');
+        expect(testo(pagina.find('[data-test="risultato"]').text())).not.toContain('quote emesse a giornale');
+        expect(testo(pagina.find('[data-test="raccordo-quote"]').text())).not.toContain('quote a giornale');
+        // Il costo dell'esercizio «a giornale» (la riga che riconcilia) è un'altra cosa, e non si tocca qui.
+    });
+
     test('il deliberato che il programma non ha conservato dice «non disponibile» in ogni cella, anche nelle quote, con la frase che spiega perché una volta sola; il preventivo dice ancora il suo', () => {
         const frase = 'Il deliberato con le rate non è disponibile per i piani generati prima che il programma ne conservasse il dettaglio: è nel verbale dell\'assemblea che li ha approvati.';
         const quote = riepilogo().blocchi[0].quote.map((q) => (q.riga === 'ordinarie' ? { ...q, deliberate: null } : q));
@@ -120,6 +139,18 @@ describe('il riepilogo finanziario', () => {
         expect(con.find('[data-test="deliberato-non-disponibile"]').exists()).toBe(false);
         expect(parole(con.find('[data-test="quote"]'))).toContain('Quote ordinarie € 4.110,00 € 4.110,00');
         expect(testo(con.text())).not.toContain('non disponibile');
+    });
+
+    test('le spese personali chieste con le rate hanno una riga loro dopo il totale delle spese, con le quote deliberate, che apre le fatture con l\'unità; senza, la riga non c\'è', () => {
+        const quote = [{ ...riepilogo().blocchi[0].quote[0], deliberate: 431000 }];
+        const con = monta({ blocchi: [{ ...riepilogo().blocchi[0], spese_personali: 20000, quote }] });
+        const riga = con.find('[data-test="spese-personali"]');
+        const t = riga.text().replace(/\u00a0/g, ' ').replace(/\s+/g, ' ');
+        expect(t).toContain('spese personali chieste con le rate € 200,00');
+        expect(t).toContain('= quote deliberate € 4.310,00');
+        expect(riga.find('a').attributes('href')).toBe('/gestionale/3/fatture?con_unita=1');
+        expect(monta().find('[data-test="spese-personali"]').exists()).toBe(false);
+        expect(monta({ blocchi: [{ ...riepilogo().blocchi[0], spese_personali: null }] }).find('[data-test="spese-personali"]').exists()).toBe(false);
     });
 
     test('il «non disponibile» nomina sotto la sua frase i piani che, rifatti con i dati di oggi, non tornano', () => {

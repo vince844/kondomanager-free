@@ -57,7 +57,7 @@ it('alle 00:30 del 01/01/2027 a Roma lo stato patrimoniale, che ha un piede suo,
     $html = View::make('pdf.gestionale.stato_patrimoniale', $dati)->render();
 
     expect($html)->toContain('Documento emesso il 01/01/2027')
-        ->and($html)->toContain('Stampato il <b>01/01/2027</b>')
+        ->and($html)->toContain('Stampato il <b class="forte">01/01/2027</b>')
         ->and($html)->not->toContain('31/12/2026');
 });
 

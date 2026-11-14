@@ -193,7 +193,6 @@ return [
             'subtitle' => 'Realoca fundos de uma rubrica para outra sem alterar o total do plano de prestações.',
             'how_it_works_title' => 'Como funciona:',
             'how_it_works_body_1' => 'Está a alterar a afetação interna dos fundos.',
-            'how_it_works_body_2' => 'As prestações já emitidas aos condóminos NÃO SERÃO RECALCULADAS. Eventuais diferenças de repartição serão ajustadas automaticamente no acerto de fim de ano.',
             'practical_example_title' => 'Exemplo prático:',
             'practical_example_body' => 'Sobram 200EUR de "Limpezas" e avaria o portão? Mova 200EUR para "Manutenção de Portão". O total do plano não muda, mas passa a existir cobertura contabilística correta para pagar o serviço.',
             'source_label' => 'Retirar de (origem)',

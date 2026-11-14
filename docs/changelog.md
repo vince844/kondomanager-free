@@ -7,6 +7,24 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.9] - La proposta di conguaglio
+
+**Non tocca il database.** Nessuna migrazione, nessuna colonna e nessuna tabella nuova, e l'aggiornamento non riscrive nessun dato. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.
+
+**Che cosa fa la beta.**
+- **La proposta di conguaglio, persona per persona.** Nel rendiconto la scheda «Conguaglio»: per ogni persona la sua parte delle spese dell'esercizio, voce per voce e per giorni quando un'unità ha cambiato titolare o inquilino, le spese della sola sua unità non ancora chieste, le quote dei piani e la proposta di conguaglio da approvare dall'assemblea; accanto, ciò che è già da versare e il saldo se l'assemblea approva. Le spese di un'opera straordinaria senza competenza scritta sulla fattura vanno a chi era titolare quando l'opera è stata deliberata, e il conguaglio dell'opera si propone quando l'opera è finita. Una voce che il programma non può dividere senza scegliere al posto dell'amministratore non si calcola, e la scheda dice perché.
+- **Le stampe del conguaglio**: il consuntivo per tabella, il conguaglio per persona e il foglio di ogni persona, nella grafica del rendiconto, con «Come leggere questo foglio»; i fogli anche in un archivio .zip.
+- **I fogli per email**, con il PDF allegato, il testo che si cambia anche da un modello dello studio e una frase fissa: è una proposta da approvare, non una richiesta di pagamento. L'ultimo invio accanto a ogni persona, con l'errore in chiaro e il rinvio.
+- **Quattro controlli del conguaglio**: i controlli del rendiconto sono quattordici.
+- **Il movimento dei fondi** nella situazione patrimoniale, con i giroconti fra fondi in colonne a parte.
+- **Il conguaglio nella Sintesi e nel fascicolo**, con il numero di pagina del fascicolo su ogni pagina e la colonna dell'ultima lettera di sollecito a scelta.
+- **Le posizioni e i crediti del fascicolo** nella grafica del rendiconto; **i testi del rendiconto** più chiari («in pareggio», un nome solo per il risultato, niente promesse «in arrivo»).
+- **Le rate scadute** con i filtri rifatti, la persona scelta da un elenco con la ricerca, le spiegazioni dei filtri e la guida; **le dispense dei sei mesi** con le schede di guida, la guida laterale e «Indietro»; il campo per scegliere un file in italiano.
+- **Il tablet e i portatili piccoli**: il menu compatto sotto i 1.280 pixel e i pulsanti dell'intestazione che vanno a capo.
+- **Corretto**: le spese per una sola unità senza voce entrano nel deliberato; i testi della pagina delle stampe.
+
+---
+
 ## [1.12.0-beta.8] - Gli allegati
 
 **Tocca il database.** L'aggiornamento esegue da solo tre migrazioni nuove e una delle impostazioni: l'accesso agli allegati e la moderazione su segnalazioni e comunicazioni (quelle che ci sono già li hanno «Aperti» e in moderazione), chi ha approvato un file e quando sui documenti, due voci nuove delle impostazioni generali («Allegati in moderazione di serie», accesa, e «Numero massimo di allegati per elemento», 5), e quattro preferenze di notifica per gli allegati, accese o spente come quelle dei commenti. I ruoli di serie ricevono sedici permessi nuovi; i ruoli creati da te no. Non riscrive nessun dato. Nessuna libreria nuova; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.

@@ -52,7 +52,7 @@ final class CartaIntestata
     public const IMMAGINE = 'immagine';
 
     /** Il rifiuto di un PDF che FPDI non legge, o che non passa i controlli prima di FPDI. */
-    public const RIFIUTO = 'Questo PDF non si può usare come sfondo: è protetto, o è salvato in un formato che il programma non legge. Caricalo come immagine JPG, A4 verticale, larga almeno 1.240 pixel.';
+    public const RIFIUTO = 'Questa carta intestata non si può usare: il PDF è protetto, o è salvato in un formato che il programma non legge. Caricala come immagine JPG, A4 verticale, larga almeno 1.240 pixel.';
 
     /** L'A4 verticale, in mm, e la tolleranza di una carta in PDF. */
     public const A4 = [210.0, 297.0];

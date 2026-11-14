@@ -86,12 +86,12 @@
     table.p tr.det td.nome { padding-left: 26px; }
     table.p tfoot td { border-top: 1.5px solid #0E2238; border-bottom: 2px double #0E2238; font-weight: bold; color: #0E2238; padding: 5px; }
     .n { text-align: right; white-space: nowrap; }
-    .d { color: #5A6B7B; font-size: 6.5pt; }
+    .d { color: #5A6B7B; font-size: 7pt; }
     {{-- Le frasi del deliberato sotto la tabella della gestione: al corpo del testo, non a quello delle note piccole. --}}
     .frase-deliberato { color: #26313F; margin: 5px 0 0; }
-    .chiusura { margin-top: 6px; padding: 9px 12px; background: #F4F5F7; border-left: 3px solid #C9A227; font-size: 7.2pt; color: #26313F; }
+    .chiusura { margin-top: 6px; padding: 9px 12px; background: #F4F5F7; border-left: 3px solid #C9A227; font-size: 8pt; color: #26313F; }
     .chiusura b { color: #0E2238; }
-    .eq { font-size: 7.5pt; color: #5A6B7B; margin: 4px 0 0; }
+    .eq { font-size: 8pt; color: #5A6B7B; margin: 4px 0 0; }
     .eq b { color: #0E2238; }
     .avviso { margin: 6px 0; padding: 8px 12px; background: #FAF2DF; border-left: 3px solid #8A6212; font-size: 7.2pt; color: #7A5A10; }
 </style>
@@ -158,7 +158,7 @@
     già le quote. Le quote pagate sono versate o compensate con un credito; «pagato in più» è quanto è stato pagato oltre il costo di una fattura, e non
     riduce il da pagare delle altre; il credito riportato da un esercizio prima non è fra le pagate finché non chiude una quota.
     Quando la gestione è già passata all'esercizio dopo, il preventivo di quest'anno è nel verbale dell'assemblea.
-    @if($r['avvertenze']['anno_prima']) La colonna «Anno prima» è vuota: {{ $r['avvertenze']['anno_prima'] }}. @endif
+    @if($r['avvertenze']['anno_prima']) La colonna «Anno prima» è vuota: è il primo esercizio registrato. @endif
 </div>
 
 @if(! empty($avviso))
@@ -195,6 +195,11 @@
             <td class="n">{{ $fmt($b['totale_spese']['anno_prima']) }}</td><td></td><td class="n">{{ $fmt($b['totale_spese']['pagato']) }}</td><td class="n">{{ $fmt($b['totale_spese']['da_pagare']) }}</td></tr>
     </tfoot>
 </table>
+{{-- Le spese per singole unità chieste con le rate non sono di nessuna voce: dopo il totale delle spese, che non le conta, con le quote deliberate. --}}
+@if(! empty($b['spese_personali']))
+<p class="eq" data-riga="spese-personali">Deliberato con le rate: Totale spese <b>{{ $fmt($b['totale_spese']['deliberato']) }}</b>@if(($b['totale_entrate']['deliberato'] ?? 0) != 0) − entrate da terzi <b>{{ $fmt($b['totale_entrate']['deliberato']) }}</b>@endif
+    + Spese personali chieste con le rate <b>{{ $fmt($b['spese_personali']) }}</b> <span class="d">(di una sola unità, in nessuna voce)</span> = Quote deliberate <b>{{ $fmt($b['quote'][0]['deliberate'] ?? null) }}</b>.</p>
+@endif
 @foreach($frasiDelDeliberato($b) as $frase)
 <p class="frase-deliberato" style="font-size: 8pt;">{{ $frase }}</p>
 @endforeach
@@ -227,6 +232,9 @@
 @endif
 @endforeach
 
+{{-- Le uscite fuori dai capitoli e il risultato stanno insieme: la riga dei costi del risultato somma le prime, e il risultato non resta da solo su una
+     pagina. --}}
+<div style="page-break-inside: avoid;">
 <h2>Fuori dai capitoli</h2>
 <table class="p">
     <thead><tr><th></th><th class="n">Consuntivo</th><th class="n">Pagato</th><th class="n">Da pagare</th></tr></thead>
@@ -242,13 +250,14 @@
     dai saldi iniziali, se c'è: quella è un costo di questo esercizio, e sta fra le spese.</p>
 
 <h2>Il risultato</h2>
-<p class="eq">Risultato: quote registrate in questo esercizio <b>{{ $fmt($r['risultato']['quote_emesse']) }}</b> − costi <b>{{ $fmt($r['risultato']['costi']) }}</b> = <b>{{ $fmt($r['risultato']['risultato']) }}</b> ({{ $r['risultato']['risultato'] < 0 ? 'disavanzo' : 'avanzo' }}).</p>
+<p class="eq">Risultato: quote registrate in questo esercizio <b>{{ $fmt($r['risultato']['quote_emesse']) }}</b> − costi <b>{{ $fmt($r['risultato']['costi']) }}</b> = <b>{{ $fmt($r['risultato']['risultato']) }}</b> ({{ \App\Services\Gestionale\RiepilogoPerCompetenza::comeRisultato($r['risultato']['risultato']) }}).</p>
 <p class="eq">Costi dell'esercizio <b>{{ $fmt($r['riconciliazione']['costi']) }}</b> = spese per capitolo meno entrate <b>{{ $fmt($r['riconciliazione']['capitoli_netti']) }}</b>
     + commissioni bancarie non attribuite a una spesa <b>{{ $fmt($r['riconciliazione']['commissioni_senza_voce']) }}</b> + fatture contestate <b>{{ $fmt($r['riconciliazione']['contestate']) }}</b>@foreach($altriCosti as [$prima, $importo, $dopo]) + {{ $prima }} <b>{{ $fmt($importo) }}</b>{{ $dopo }}@endforeach.</p>
 <p class="eq">Quote dei piani dell'esercizio <b>{{ $fmt($r['raccordo_quote']['quote_piani']) }}</b> = quote registrate in questo esercizio <b>{{ $fmt($r['raccordo_quote']['quote_giornale']) }}</b>
     + rate di questi piani emesse in un altro esercizio <b>{{ $fmt($r['raccordo_quote']['piani_emesse_altrove']) }}</b> − rate di altri piani emesse in questo <b>{{ $fmt($r['raccordo_quote']['altri_emesse_qui']) }}</b>@if($r['raccordo_quote']['altre_differenze']) + <b>{{ $fmt($r['raccordo_quote']['altre_differenze']) }}</b> di debiti riportati dentro le rate @endif.</p>
 <p class="eq">Le quote pagate, versate o compensate con un credito, sono <b>{{ $fmt($r['quote']['totale']['pagate']) }}</b>; i versamenti dei condòmini nel registro di contabilità di questo esercizio sono <b>{{ $fmt($r['quote']['totale']['versamenti_registro']) }}</b>.
     Le non pagate sono contate senza togliere i crediti sulle rate: <b>{{ $fmt($r['quote']['totale']['non_pagate']) }}</b>, e accanto <b>{{ $fmt($r['quote']['totale']['crediti']) }}</b> di crediti sulle rate.</p>
+</div>
 
 @if($dettaglio)
 <h2>Dettaglio per spesa</h2>

@@ -13,23 +13,33 @@ import Alert from '@/components/Alert.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { comeRisultato } from '@/lib/gestionale/rendiconto/risultato';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CheckCircle2, XCircle, AlertTriangle, FileDown, ListChecks, Scale, Landmark, Receipt, Users } from 'lucide-vue-next';
+import { CheckCircle2, XCircle, AlertTriangle, CircleDashed, FileDown, ListChecks, Scale, Landmark, Receipt, Users } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Flash } from '@/types/flash';
 
-type Esito = 'quadra' | 'non_quadra' | 'segnalazione';
+// «non_calcolato»: un controllo del conguaglio che la richiesta non ha calcolato (senza la sua lettura).
+type Esito = 'quadra' | 'non_quadra' | 'segnalazione' | 'non_calcolato';
 interface Sintesi {
     esercizio: { id: number; nome: string; dal: string; al: string };
     stato: { finito: boolean; alla: string; frase: string };
     esito: { tornano: number; non_tornano: number; da_leggere: number; frase: string; riga_fissa: string; righe: { id: string; nome: string; esito: Esito }[] };
     riquadri: {
         deliberato: { deliberato: number | null; preventivo: number | null; solo_ordinarie: boolean; ricostruito?: boolean };
-        costi: { costi: number; per_capitolo: number; permille: number | null; base: 'deliberato' | 'preventivo' | null };
+        costi: { costi: number; per_capitolo: number; permille: number | null; base: 'deliberato' | 'deliberato_voci' | 'preventivo' | null; base_importo?: number | null };
         quote: { pagate: number; emesse: number };
         liquidita: { liquidita: number; alla: string; frase: string };
+        /** Le cifre del condominio della scheda «Conguaglio», dalla stessa lettura; null sopra la soglia: la frase dice di aprire la scheda. */
+        conguaglio?: {
+            cifre: { a: number; personali: number; b: number; conguaglio: number; saldo: number; non_disponibili: number; non_attribuite?: number } | null;
+            frase: string; data?: { frase: string };
+            /** Le spese che nessuno paga, con la loro cifra: costi = spese divise + non attribuite + fuori dai capitoli. */
+            non_attribuite?: string | null;
+            non_disponibili?: string | null;
+        };
     };
     /**
      * `da_assegnare`: le commissioni (o gli storni senza voce di registrazioni di un esercizio chiuso) a cui la voce si può dare, con la regola dell'elenco;
@@ -57,22 +67,27 @@ const formatData = (iso: string) => { const [a, m, g] = iso.slice(0, 10).split('
 const importo = (v: number | null) => (v === null ? 'nel verbale dell\'assemblea' : euro(v));
 /** Il deliberato con le rate che il programma non ha: la frase sotto il prospetto dice perché. */
 const deliberatoTesto = (v: number | null) => (v === null ? 'non disponibile' : euro(v));
+// La base della percentuale con il suo nome; il deliberato delle voci con la cifra: è diverso dal deliberato con le rate del riquadro accanto.
+const fraseBase = (c: Sintesi['riquadri']['costi']) => c.base === 'deliberato_voci'
+    ? `la percentuale è sul deliberato delle voci, ${euro(c.base_importo ?? 0)} (senza le spese personali chieste con le rate)`
+    : `la percentuale è sul ${c.base === 'deliberato' ? 'deliberato con le rate' : 'preventivo'}`;
 /** La percentuale dai millesimi, con il segno a parte: −5 ‰ è «-0,5 %», non «0,5 %». */
 const percentuale = (permille: number | null) => (permille === null ? null : `${permille < 0 ? '-' : ''}${Math.trunc(Math.abs(permille) / 10)},${Math.abs(permille) % 10} %`);
-/** Il risultato a parole: zero è in pareggio, né avanzo né disavanzo. */
-const comeRisultato = (r: number) => (r === 0 ? 'in pareggio' : (r < 0 ? 'disavanzo' : 'avanzo'));
 
-const coloreEsito = (e: Esito) => ({ quadra: 'text-emerald-700 dark:text-emerald-400', non_quadra: 'text-rose-700 dark:text-rose-400', segnalazione: 'text-amber-700 dark:text-amber-400' }[e]);
-const iconaEsito = (e: Esito) => ({ quadra: CheckCircle2, non_quadra: XCircle, segnalazione: AlertTriangle }[e]);
-const testoEsito = (e: Esito) => ({ quadra: 'torna', non_quadra: 'non torna', segnalazione: 'da leggere' }[e]);
+const coloreEsito = (e: Esito) => ({ quadra: 'text-emerald-700 dark:text-emerald-400', non_quadra: 'text-rose-700 dark:text-rose-400', segnalazione: 'text-amber-700 dark:text-amber-400', non_calcolato: 'text-slate-500 dark:text-slate-400' }[e]);
+const iconaEsito = (e: Esito) => ({ quadra: CheckCircle2, non_quadra: XCircle, segnalazione: AlertTriangle, non_calcolato: CircleDashed }[e]);
+const testoEsito = (e: Esito) => ({ quadra: 'torna', non_quadra: 'non torna', segnalazione: 'da leggere', non_calcolato: 'non calcolato' }[e]);
 const hrefControllo = (id: string) => `${generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/controlli', base)}#controllo-${id}`;
 const hrefCommissioni = generatePath('gestionale/:condominio/esercizi/:esercizio/commissioni-senza-voce', base);
 const hrefRiepilogo = generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/riepilogo-finanziario', base);
+const hrefConguaglio = generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/conguaglio', base);
+/** Il conguaglio con il più quando è a debito. */
+const conSegno = (v: number) => (v > 0 ? euro(v).replace(/^€(\s*)/, '€$1+') : euro(v));
 
 /* ─── Il fascicolo: le parti a spunta, l'ordine resta quello fisso; la scelta si ricorda in questo browser, per chi lavora ─── */
 const nomiParti: Record<string, string> = {
     riepilogo: 'Riepilogo finanziario', situazione: 'Situazione patrimoniale', cassa: 'Entrate e uscite per cassa',
-    condomini: 'Condòmini: posizioni e crediti per anzianità', registro: 'Registro di contabilità', controlli: 'Controlli',
+    condomini: 'Condòmini: posizioni e crediti per anzianità', conguaglio: 'Riparto del consuntivo e conguaglio', registro: 'Registro di contabilità', controlli: 'Controlli',
 };
 const utente = (usePage().props as { auth?: { user?: { id?: number } } }).auth?.user?.id ?? 0;
 const chiaveScelta = `rendiconto-fascicolo-${utente}`;
@@ -85,11 +100,15 @@ const dettaglio = ref<boolean>(ricordata?.dettaglio ?? false);
 watch([scelte, dettaglio], () => {
     try { window.localStorage.setItem(chiaveScelta, JSON.stringify({ parti: scelte.value, dettaglio: dettaglio.value })); } catch { /* il browser non la tiene: pazienza */ }
 }, { deep: true });
+// L'ultima lettera di sollecito di ogni persona nei crediti per anzianità: il fascicolo va a tutti i condòmini, e la casella è spenta ogni volta che la
+// pagina si apre (a differenza delle parti, non si ricorda).
+const lettere = ref(false);
 const cambia = (p: string, on: boolean) => { scelte.value = on ? [...scelte.value, p] : scelte.value.filter((x) => x !== p); };
 const hrefFascicolo = computed(() => {
     const q = new URLSearchParams();
     props.parti.filter((p) => scelte.value.includes(p)).forEach((p) => q.append('parti[]', p));
     if (dettaglio.value) q.set('dettaglio', '1');
+    if (lettere.value && scelte.value.includes('condomini')) q.set('lettere', '1');
     return `${route(generateRoute('gestionale.esercizi.rendiconto.fascicolo'), base)}?${q.toString()}`;
 });
 /** Il fascicolo con molti condòmini può volerci un minuto: intanto il pulsante non lo chiede una seconda volta. */
@@ -110,6 +129,7 @@ const headerBreadcrumbs = computed(() => [
 const pageGuides = [
     { title: 'Il rendiconto in una pagina', description: 'In alto l\'esito dei controlli, poi quattro numeri e il prospetto della gestione. Ogni numero viene da una scheda: il riepilogo finanziario, la situazione patrimoniale, i controlli. Con più gestioni qui sono sommate.', icon: Scale, colorVariant: 'blue' as const },
     { title: 'I controlli, con i numeri veri', description: 'Dicono se i numeri del programma tornano fra loro. Non dicono che il saldo della banca è quello dell\'estratto conto, né che ogni fattura è stata registrata: quello resta un controllo tuo.', icon: ListChecks, colorVariant: 'amber' as const },
+    { title: 'Il fascicolo per l\'assemblea', description: '«Scarica il fascicolo» mette le schede in un PDF solo, con il frontespizio e l\'indice, sempre nello stesso ordine: riepilogo, situazione patrimoniale, cassa, condòmini, conguaglio, registro, controlli. Le parti si scelgono con le spunte, e la scelta resta in questo browser.', icon: FileDown, colorVariant: 'emerald' as const },
 ];
 </script>
 
@@ -141,6 +161,12 @@ const pageGuides = [
                             <label class="flex items-center gap-2 pt-1 border-t">
                                 <input v-model="dettaglio" type="checkbox" data-test="dettaglio" /> Il riepilogo con il dettaglio per spesa
                             </label>
+                            <template v-if="scelte.includes('condomini')">
+                                <label class="flex items-center gap-2">
+                                    <input v-model="lettere" type="checkbox" data-test="lettere" /> Mostra l'ultima lettera di sollecito
+                                </label>
+                                <p class="text-[11px] text-slate-500 dark:text-slate-400" data-test="lettere-nota">Nei crediti per anzianità, accanto a ogni persona. Il fascicolo va a tutti i condòmini: di serie la colonna non c'è. Nella scheda «Condòmini» resta.</p>
+                            </template>
                             <p class="text-[11px] text-slate-500 dark:text-slate-400">Le parti escono sempre in quest'ordine, con un frontespizio che ha l'esito dei controlli e l'indice. Ognuna si stampa anche da sola dalla sua scheda.</p>
                             <p class="text-[11px] text-slate-500 dark:text-slate-400">La scelta resta su questo computer.</p>
                             <Button size="sm" class="w-full" :disabled="scelte.length === 0 || inPreparazione" data-test="scarica-fascicolo" @click="scaricaFascicolo">Scarica il fascicolo</Button>
@@ -183,7 +209,7 @@ const pageGuides = [
                             <div class="border rounded-xl p-4 shadow-sm bg-rose-50/40 dark:bg-rose-900/10 border-rose-200 dark:border-rose-900" data-test="riquadro-costi">
                                 <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1.5"><Receipt class="w-3.5 h-3.5" /> Costi dell'esercizio</div>
                                 <div class="text-lg font-bold tabular-nums">{{ euro(s.riquadri.costi.costi) }}<span v-if="percentuale(s.riquadri.costi.permille)" class="ml-2 text-[12px] font-semibold text-slate-600 dark:text-slate-400">{{ percentuale(s.riquadri.costi.permille) }}</span></div>
-                                <div v-if="s.riquadri.costi.base" class="text-[11px] text-slate-500 dark:text-slate-400">la percentuale è sul {{ s.riquadri.costi.base === 'deliberato' ? 'deliberato con le rate' : 'preventivo' }}</div>
+                                <div v-if="s.riquadri.costi.base" class="text-[11px] text-slate-500 dark:text-slate-400" data-test="base-percentuale">{{ fraseBase(s.riquadri.costi) }}</div>
                                 <div class="text-[11px] text-slate-500 dark:text-slate-400">di cui per capitolo {{ euro(s.riquadri.costi.per_capitolo) }}</div>
                             </div>
                             <div class="border rounded-xl p-4 shadow-sm bg-sky-50/50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-900" data-test="riquadro-quote">
@@ -196,6 +222,22 @@ const pageGuides = [
                                 <div class="text-lg font-bold tabular-nums">{{ euro(s.riquadri.liquidita.liquidita) }}</div>
                                 <div class="text-[11px] text-slate-500 dark:text-slate-400">{{ s.riquadri.liquidita.frase }}</div>
                             </div>
+                        </div>
+
+                        <!-- Il riquadro del conguaglio: le cifre del condominio dalla stessa lettura della scheda, o il rimando alla scheda -->
+                        <div v-if="s.riquadri.conguaglio" class="border rounded-xl p-4 shadow-sm bg-violet-50/40 dark:bg-violet-900/10 border-violet-200 dark:border-violet-900 mb-6" data-test="riquadro-conguaglio">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold flex items-center gap-1.5"><Users class="w-3.5 h-3.5" /> Conguaglio</div>
+                                <Link :href="hrefConguaglio" class="text-[12px] font-semibold underline">Apri la scheda</Link>
+                            </div>
+                            <template v-if="s.riquadri.conguaglio.cifre">
+                                <div class="text-lg font-bold tabular-nums">{{ conSegno(s.riquadri.conguaglio.cifre.conguaglio) }}</div>
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400">spese dell'esercizio {{ euro(s.riquadri.conguaglio.cifre.a) }} + spese personali non chieste {{ euro(s.riquadri.conguaglio.cifre.personali) }} − quote dei piani {{ euro(s.riquadri.conguaglio.cifre.b) }}</div>
+                                <div v-if="s.riquadri.conguaglio.non_disponibili" class="text-[11px] text-slate-500 dark:text-slate-400" data-test="riquadro-conguaglio-non-disponibili">{{ s.riquadri.conguaglio.non_disponibili }}</div>
+                                <div v-if="s.riquadri.conguaglio.non_attribuite" class="text-[11px] text-amber-800 dark:text-amber-300" data-test="riquadro-conguaglio-non-attribuite">{{ s.riquadri.conguaglio.non_attribuite }}</div>
+                                <div class="text-[11px] text-slate-500 dark:text-slate-400">{{ s.riquadri.conguaglio.frase }} {{ s.riquadri.conguaglio.data?.frase }}</div>
+                            </template>
+                            <div v-else class="text-[12.5px] text-slate-700 dark:text-slate-300" data-test="riquadro-conguaglio-rimanda">{{ s.riquadri.conguaglio.frase }}</div>
                         </div>
 
                         <!-- Le fasce: le spese che non stanno in nessun capitolo -->
@@ -217,16 +259,17 @@ const pageGuides = [
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Quote pagate</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.quote_pagate) }}</td></tr>
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Costi dell'esercizio</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.costi) }}</td></tr>
                                     <tr class="font-semibold" data-test="risultato">
-                                        <td class="py-2 px-4">Risultato: quote emesse a giornale {{ euro(s.prospetto.quote_giornale) }} − costi {{ euro(s.prospetto.costi) }}</td>
+                                        <td class="py-2 px-4">Risultato: quote registrate in questo esercizio {{ euro(s.prospetto.quote_giornale) }} − costi {{ euro(s.prospetto.costi) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums" :class="s.prospetto.risultato < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'">{{ euro(s.prospetto.risultato) }} ({{ comeRisultato(s.prospetto.risultato) }})</td>
                                     </tr>
                                 </tbody>
                             </table>
+                            <p class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="preventivo-netto">Preventivo: le spese previste, meno le entrate da terzi.</p>
                             <p v-if="s.prospetto.avvertenza_deliberato" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="deliberato-non-disponibile">{{ s.prospetto.avvertenza_deliberato }}</p>
                             <p v-for="(frase, i) in s.prospetto.avvertenza_deliberato_piani ?? []" :key="`piano-${i}`" class="px-4 pb-2 text-[11.5px] text-slate-500 dark:text-slate-400" data-test="deliberato-piani">{{ frase }}</p>
                             <p v-if="s.prospetto.avvertenza_deliberato_ricostruito" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="deliberato-ricostruito">{{ s.prospetto.avvertenza_deliberato_ricostruito }}</p>
                             <p v-if="s.prospetto.quote_piani !== s.prospetto.quote_giornale" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="raccordo-quote">
-                                Quote dei piani dell'esercizio {{ euro(s.prospetto.raccordo_quote.quote_piani) }} = quote a giornale {{ euro(s.prospetto.raccordo_quote.quote_giornale) }}
+                                Quote dei piani dell'esercizio {{ euro(s.prospetto.raccordo_quote.quote_piani) }} = quote registrate in questo esercizio {{ euro(s.prospetto.raccordo_quote.quote_giornale) }}
                                 + rate di questi piani emesse in un altro esercizio {{ euro(s.prospetto.raccordo_quote.piani_emesse_altrove) }}
                                 − rate di altri piani emesse in questo {{ euro(s.prospetto.raccordo_quote.altri_emesse_qui) }}<template v-if="s.prospetto.raccordo_quote.altre_differenze"> + {{ euro(s.prospetto.raccordo_quote.altre_differenze) }} di debiti riportati dentro le rate</template>.
                             </p>

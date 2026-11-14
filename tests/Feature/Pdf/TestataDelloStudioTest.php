@@ -73,8 +73,11 @@ function tdsStampe(array $s): array
         ['controlli del rendiconto', $r('esercizi.stato-patrimoniale.print', [$c, $e], ['parte' => 'controlli']), 'pdf.gestionale.stato_patrimoniale', $A, 'TI'],
         ['riepilogo finanziario', $r('esercizi.rendiconto.riepilogo.stampa', [$c, $e]), 'pdf.gestionale.rendiconto_riepilogo', $A, 'TI'],
         ['riepilogo con il dettaglio', $r('esercizi.rendiconto.riepilogo.stampa', [$c, $e], ['dettaglio' => 1]), 'pdf.gestionale.rendiconto_riepilogo', $A, 'TI'],
-        ['posizioni dei condòmini', $r('esercizi.rendiconto.condomini.posizioni.stampa', [$c, $e]), 'pdf.gestionale.rendiconto_posizioni', $A, 'T0'],
-        ['crediti per anzianità', $r('esercizi.rendiconto.condomini.crediti.stampa', [$c, $e]), 'pdf.gestionale.rendiconto_crediti', $A, 'T0'],
+        ['posizioni dei condòmini', $r('esercizi.rendiconto.condomini.posizioni.stampa', [$c, $e]), 'pdf.gestionale.rendiconto_posizioni', $A, 'TI'],
+        ['crediti per anzianità', $r('esercizi.rendiconto.condomini.crediti.stampa', [$c, $e]), 'pdf.gestionale.rendiconto_crediti', $A, 'TI'],
+        ['consuntivo per tabella', $r('esercizi.rendiconto.conguaglio.per-tabella.stampa', [$c, $e]), 'pdf.gestionale.consuntivo_per_tabella', $A, 'TI'],
+        ['conguaglio per persona', $r('esercizi.rendiconto.conguaglio.stampa', [$c, $e]), 'pdf.gestionale.conguaglio_per_persona', $A, 'TI'],
+        ['foglio del conguaglio', $r('esercizi.rendiconto.conguaglio.foglio', [$c, $e, $s['persone']['bice']->id]), 'pdf.gestionale.foglio_conguaglio', $P, 'TI'],
     ];
 }
 

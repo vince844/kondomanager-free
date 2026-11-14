@@ -106,10 +106,17 @@
                             @if(empty($piede_senza_data ?? null))<br>@endif{!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}
                         @endif
                     </td>
+                    {{-- Nel fascicolo del rendiconto il nome della parte accanto al numero, in basso, con sotto una riga libera dove il fascicolo scrive il
+                         suo numero di pagina (`FascicoloDelRendiconto::scriviIlNumero`); chi non lo passa vede il piede di sempre. Il fascicolo scrive il numero
+                         dal margine destro e non sa dove finisce la colonna: sta su un foglio orizzontale, dove il 25 % sono 68 mm (il numero più lungo, a 9 punti,
+                         ne misura 50), e il nome della parte non va a capo. --}}
+                    @if(! empty($parte_del_fascicolo ?? null))
+                    <td style="text-align: right; vertical-align: bottom; width: 25%; white-space: nowrap;">{{ $parte_del_fascicolo }}, pagina {PAGENO} di {nbpg}<br>&nbsp;</td>
+                    @else
                     <td style="text-align: right; width: 25%;">
-                        {{-- Nel fascicolo del rendiconto il nome della parte accanto al numero; chi non lo passa vede il piede di sempre. --}}
-                        @if(! empty($parte_del_fascicolo ?? null)) {{ $parte_del_fascicolo }}, pagina {PAGENO} di {nbpg} @else Pagina {PAGENO} di {nbpg} @endif
+                        Pagina {PAGENO} di {nbpg}
                     </td>
+                    @endif
                 </tr>
             </table>
         </div>

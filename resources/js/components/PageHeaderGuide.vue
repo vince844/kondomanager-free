@@ -95,9 +95,11 @@ function selectEsercizio(esercizioId: number | string) {
 <template>
   <div class="space-y-6">
 
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <!-- La riga del percorso e dei pulsanti va a capo quando non ci sta (un tablet con «Indietro», il condominio, «Guida» e la dashboard):
+         prima i pulsanti uscivano dallo schermo e la pagina scorreva di lato. Quando ci sta, resta com'era. -->
+    <div class="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-4">
 
-      <div>
+      <div class="min-w-0 max-w-full">
         <slot name="breadcrumb">
           <nav
             v-if="hasBreadcrumbs"

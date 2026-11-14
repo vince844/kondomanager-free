@@ -61,6 +61,8 @@ class RiepilogoFinanziarioService
      *   righe: array<int, array<string, mixed>>,
      *   totale: array{iniziale:int, entrate:int, uscite:int, finale:int},
      *   giroconti: array{entrate:int, uscite:int},
+     *   giroconti_fra_fondi: int,
+     *   giroconti_dei_fondi: array<int, array{entrata:int, uscita:int}>,
      *   stornate: array{coppie:int, importo:int},
      *   piede_quadra: bool,
      *   casse_reali_negative: array<int, array{cassa:string, minimo:int, data:?string}>
@@ -136,7 +138,10 @@ class RiepilogoFinanziarioService
                 DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END), 0) as uscite"))
             ->get()->keyBy('conto_contabile_id');
 
-        // 3. La parte interna, scrittura per scrittura: min(dare di cassa, avere di cassa).
+        // 3. La parte interna, scrittura per scrittura: min(dare di cassa, avere di cassa). La stessa compensazione sulle sole casse fondo dice quanto
+        //    è passato da un fondo a un altro: nel movimento dei fondi è accantonato del fondo che riceve e utilizzato di quello che dà.
+        $contiFondo = $casse->where('tipo', 'fondo')->pluck('conto_contabile_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $inFondo = $contiFondo === [] ? '0 = 1' : 'rs.conto_contabile_id IN ('.implode(',', $contiFondo).')';
         $perScrittura = DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', fn ($j) => $j->on('rs.scrittura_id', '=', 'sc.id')->whereNull('sc.deleted_at'))
             ->whereIn('rs.conto_contabile_id', $contiCassa)
@@ -146,11 +151,41 @@ class RiepilogoFinanziarioService
             ->groupBy('rs.scrittura_id')
             ->select('rs.scrittura_id',
                 DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE 0 END), 0) as dare"),
-                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END), 0) as avere"))
+                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END), 0) as avere"),
+                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' AND {$inFondo} THEN rs.importo ELSE 0 END), 0) as dare_fondi"),
+                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'avere' AND {$inFondo} THEN rs.importo ELSE 0 END), 0) as avere_fondi"))
             ->get();
         $interno = 0;
+        $fraFondi = 0;
+        $conGiroconto = [];
         foreach ($perScrittura as $sc) {
             $interno += min((int) $sc->dare, (int) $sc->avere);
+            $fraFondi += min((int) $sc->dare_fondi, (int) $sc->avere_fondi);
+            if (min((int) $sc->dare_fondi, (int) $sc->avere_fondi) > 0) {
+                $conGiroconto[] = (int) $sc->scrittura_id;
+            }
+        }
+        // Per ogni fondo, la parte dei giroconti da un fondo a un altro: in entrata e in uscita, scrittura per scrittura (la parte compensata fra le righe
+        // dei fondi, divisa fra i fondi della scrittura in proporzione alle loro righe). Il movimento dei fondi la toglie da accantonato e utilizzato.
+        $giroconti = [];
+        if ($conGiroconto !== []) {
+            $perConto = DB::table('righe_scritture')->whereIn('scrittura_id', $conGiroconto)->whereIn('conto_contabile_id', $contiFondo)
+                ->groupBy('scrittura_id', 'conto_contabile_id')
+                ->select('scrittura_id', 'conto_contabile_id',
+                    DB::raw("COALESCE(SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END), 0) as dare"),
+                    DB::raw("COALESCE(SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END), 0) as avere"))
+                ->get()->groupBy('scrittura_id');
+            foreach ($perConto as $righeFondi) {
+                $dare = $righeFondi->mapWithKeys(fn ($r) => [(int) $r->conto_contabile_id => (int) $r->dare])->filter()->all();
+                $avere = $righeFondi->mapWithKeys(fn ($r) => [(int) $r->conto_contabile_id => (int) $r->avere])->filter()->all();
+                $parte = min(array_sum($dare), array_sum($avere));
+                foreach ([['entrata', $dare], ['uscita', $avere]] as [$verso, $pesi]) {
+                    foreach (\App\Helpers\MoneyHelper::ripartisciPerQuote($parte, $pesi) as $conto => $cifra) {
+                        $giroconti[(int) $conto][$verso] = ($giroconti[(int) $conto][$verso] ?? 0) + (int) $cifra;
+                    }
+                }
+            }
+            $giroconti = array_map(fn (array $g) => ['entrata' => (int) ($g['entrata'] ?? 0), 'uscita' => (int) ($g['uscita'] ?? 0)], $giroconti);
         }
 
         // 4. Il minimo giorno per giorno delle casse reali.
@@ -224,6 +259,8 @@ class RiepilogoFinanziarioService
             'righe' => $righe,
             'totale' => $totale,
             'giroconti' => ['entrate' => $interno, 'uscite' => $interno],
+            'giroconti_fra_fondi' => $fraFondi,
+            'giroconti_dei_fondi' => $giroconti,
             'stornate' => $stornate,
             'piede_quadra' => $piedeQuadra,
             'casse_reali_negative' => $negative,
@@ -288,7 +325,7 @@ class RiepilogoFinanziarioService
         return [
             'dal' => $dal, 'al' => $al, 'stato_esercizio' => $stato,
             'righe' => [], 'totale' => ['iniziale' => 0, 'entrate' => 0, 'uscite' => 0, 'finale' => 0],
-            'giroconti' => ['entrate' => 0, 'uscite' => 0], 'stornate' => ['coppie' => 0, 'importo' => 0], 'piede_quadra' => true, 'casse_reali_negative' => [],
+            'giroconti' => ['entrate' => 0, 'uscite' => 0], 'giroconti_fra_fondi' => 0, 'giroconti_dei_fondi' => [], 'stornate' => ['coppie' => 0, 'importo' => 0], 'piede_quadra' => true, 'casse_reali_negative' => [],
         ];
     }
 }

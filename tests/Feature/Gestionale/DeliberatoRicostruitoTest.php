@@ -502,7 +502,7 @@ it('uno «Sposta spesa» fatto prima di rifare le rate con «Ricalcola» è già
         ->and($senza['avvertenze']['deliberato'])->toBe(RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE.' Un piano cambiato con «Sposta spesa» non si rifà: le sue voci di oggi possono non dire quanto chiedevano le rate.')
         ->and($senza['avvertenze']['deliberato_piani'])->toBe(['Il piano «Preventivo 2026» ha una spesa spostata da una voce a un\'altra con «Sposta spesa».'])
         ->and($sintesi['prospetto']['avvertenza_deliberato'])->toBe($senza['avvertenze']['deliberato'])
-        ->and($stampa)->toBe('Un piano delle rate cambiato spostando una spesa da una voce a un\'altra non si ricalcola: le sue voci di oggi possono non dire quanto chiedevano le rate.')
+        ->and($stampa)->toBe('Un piano delle rate cambiato spostando una spesa da una voce a un\'altra non si rifà: le sue voci di oggi possono non dire quanto chiedevano le rate.')
         ->and($frasi)->not->toContain('dopo l\'approvazione')->not->toContain('non dicono più');
 });
 

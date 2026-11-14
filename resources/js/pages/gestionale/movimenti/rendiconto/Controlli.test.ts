@@ -42,7 +42,7 @@ const anno = (extra: Record<string, unknown> = {}) => ({
         riga({ scrittura_id: 3, data: '2026-12-15', protocollo: null, categoria: 'fattura_pregressa', etichetta: 'Fatture registrate come pregresse', importo: 100000, rossa: true, nota: 'registrata come pregressa: nessun riepilogo la conta fra i costi' }),
         riga({ scrittura_id: 4, data: '2026-12-20', protocollo: 'FAT-2027-00002', categoria: 'fattura', etichetta: 'Fatture', importo: 20000, rossa: true, nota: 'costo del 2027 con la data del 2026' })],
     pagine: { current_page: 1, last_page: 1, per_page: 50, total: 3, from: 1, to: 3, nome: 'pagina_confine' },
-    fuori_da_ogni_esercizio: { fuori: 0, nel_periodo: 0, prevale: false }, frase_norma: 'Finché non c\'è la chiusura guidata dell\'esercizio (in arrivo)…', rimedi: ['Le registrazioni del verso A…', 'Le registrazioni del verso B…'], ...extra,
+    fuori_da_ogni_esercizio: { fuori: 0, nel_periodo: 0, prevale: false }, frase_norma: 'Il programma non ha una chiusura guidata dell\'esercizio…', rimedi: ['Le registrazioni del verso A…', 'Le registrazioni del verso B…'], ...extra,
 });
 
 let w: VueWrapper | null = null;
@@ -177,5 +177,57 @@ describe('la scheda «Controlli»', () => {
         const vuota = monta({ righe: [], righe_filtrate: 0, filtri: { verso: 'B', tipo: 'f24', colore: null }, pagine: { current_page: 1, last_page: 1, per_page: 50, total: 0, from: null, to: null, nome: 'pagina_confine' } });
         expect(testo(vuota.find('[data-test="elenco"]').html())).toContain('Nessuna registrazione con questi filtri');
         expect(vuota.find('[data-test="dopo-l-ultima"]').exists()).toBe(false);
+    });
+
+    test('Coda 561 — la guida dei controlli non dice che alcuni non compaiono: sono sempre tutti', () => {
+        const guida = testo(monta({}, true).findAll('[data-guida]').map((g) => g.text()).find((t) => t.startsWith('I controlli, con i numeri veri')) ?? '');
+
+        expect(guida).toContain('Quando uno non torna, la riga dice che cosa è successo, che cosa fare, e porta nella pagina dove si fa.');
+        expect(guida).not.toContain('non può eseguire');
+        expect(guida).not.toContain('non compaiono');
+    });
+});
+
+describe('i controlli del conguaglio', () => {
+    const tre = [
+        { id: 'CG', nome: 'Il conguaglio divide le spese dell\'esercizio', titolo: '…', sinistra: 432345, destra: 432345, segno: '=', esito: 'quadra', nota: 'Spese divise fra le persone € 4.200,00 …', rimedio: null, azione: null },
+        { id: 'CU', nome: 'Ogni unità ha la sua parte', titolo: '…', sinistra: 1, destra: 3, esito: 'non_quadra', nota: 'Un\'unità non torna: Int. U2 …', rimedio: 'Controlla le date dei titolari dell\'unità.', azione: 'titolari', azione_parametro: '12' },
+        { id: 'CB', nome: 'Le quote tornano con il riparto', titolo: '…', sinistra: 2, destra: 3, esito: 'non_quadra', nota: '2 unità non tornano …', rimedio: 'Apri il piano.', azione: 'piano', azione_parametro: '40' },
+    ];
+    const montaTre = (lista: Record<string, unknown>[]) => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], controlli: lista, esito: { frase: '…', riga_fissa: '…' },
+                anno_a_cavallo: anno() } as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, PageHeaderGuide: true } },
+        });
+
+        return w;
+    };
+
+    test('la 8.3 con le cifre; i due per unità con quante non tornano su quante; il rimedio porta ai titolari dell\'unità e al piano', () => {
+        const p = montaTre(tre);
+        const testoDi = (id: string) => p.find(`[data-controllo="${id}"]`).text().replace(/\s+/g, ' ');
+        expect(testoDi('CG')).toContain('€ 4.323,45 = € 4.323,45');
+        expect(testoDi('CU')).toContain('1 unità su 3 non torna');
+        expect(testoDi('CB')).toContain('2 unità su 3 non tornano');
+        expect(p.find('[data-controllo="CU"] a').attributes('href')).toBe('/gestionale/3/immobili/12/anagrafiche');
+        expect(p.find('[data-controllo="CU"] a').text()).toContain('Apri i titolari dell\'unità');
+        expect(p.find('[data-controllo="CB"] a').attributes('href')).toBe('/gestionale/3/esercizi/9/piani-rate/40');
+    });
+
+    test('senza la lettura i tre ci sono, non calcolati, senza cifre e senza il fondo giallo', () => {
+        const nonLetti = tre.map((c) => ({ ...c, sinistra: 0, destra: 0, esito: 'non_calcolato', rimedio: null, azione: null, non_letto: true, nota: 'Questo controllo legge il conguaglio per persona, che qui non si calcola.' }));
+        const p = montaTre(nonLetti);
+        for (const id of ['CG', 'CU', 'CB']) {
+            const riga = p.find(`[data-controllo="${id}"]`);
+            const t = riga.text().replace(/\s+/g, ' ');
+            expect(t).toContain('non calcolato');
+            expect(t).not.toContain('da leggere');
+            expect(riga.classes().join(' ')).not.toContain('bg-amber');
+            expect(t).toContain('—');
+            expect(t).not.toContain('€ 0,00');
+        }
     });
 });

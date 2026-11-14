@@ -17,6 +17,7 @@ import vSelect from 'vue-select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import Alert from '@/components/Alert.vue'
+import CampoFile from '@/components/CampoFile.vue'
 
 interface Margini {
   alto: number
@@ -174,11 +175,6 @@ const modifica = (c: Carta) => {
   aperto.value = true
 }
 
-const scegliIlFile = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  modulo.file = input.files && input.files.length > 0 ? input.files[0] : null
-}
-
 /**
  * La carta appena salvata con un file nuovo: la sua riga chiede di provarla. Una carta nuova si riconosce dal nome (unico). Una carta che le stampe usano
  * già (la predefinita, o scelta per un gruppo) esce così da subito.
@@ -307,9 +303,9 @@ const elimina = (c: Carta) => {
           <div class="space-y-1">
             <span class="block text-xs text-slate-500 dark:text-slate-400">La carta intestata</span>
             <p v-if="cartaSalvata" class="text-sm">Caricata: {{ cartaSalvata }}. Scegli un file solo per cambiarla.</p>
-            <input type="file" accept="application/pdf,image/jpeg" class="block text-sm" data-testid="modulo-file-carta" @change="scegliIlFile" />
+            <CampoFile v-model="modulo.file" accept="application/pdf,image/jpeg" testid="modulo-file-carta" />
             <p class="text-xs text-muted-foreground">
-              Un PDF di una o due pagine A4 verticali (la prima pagina, e quella delle pagine seguenti), o un'immagine A4 in JPG larga almeno 1.240 pixel{{
+              Un PDF di una o due pagine A4 verticali (la prima pagina, e quella delle pagine seguenti), o un'immagine A4 verticale in JPG larga almeno 1.240 pixel{{
                 limiteCarta ? `, fino a ${limiteCarta}` : '' }}. Un PDF che il programma non legge si carica come immagine JPG.
             </p>
             <span v-if="errori.carta" class="block text-sm text-red-500">{{ errori.carta }}</span>
@@ -325,7 +321,7 @@ const elimina = (c: Carta) => {
             </div>
             <p class="text-xs text-muted-foreground">
               I margini sinistro e destro fino a 50 mm; l'alto e il basso insieme fino a 150 mm. Il programma scrive il condominio in cima allo spazio libero, il
-              piede subito sopra il margine basso; nelle lettere il destinatario resta a 112 mm dal bordo del foglio, per la busta a finestra.
+              piede subito sopra il margine basso; nelle lettere il destinatario sta a destra, con le righe allineate al margine destro (la sua colonna comincia a 112 mm dal bordo del foglio): se usi buste con la finestra, guarda con «Prova la carta» dove cade l'indirizzo.
             </p>
           </div>
           <p class="text-xs text-muted-foreground">

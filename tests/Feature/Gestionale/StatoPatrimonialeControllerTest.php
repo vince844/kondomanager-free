@@ -78,9 +78,11 @@ test('stampa risponde con un PDF valido e senza firma', function () {
     $risposta->assertHeader('Content-Type', 'application/pdf');
     // Un nome vero, non «print.pdf»: libro, condominio, anno e data della fotografia.
     expect($risposta->headers->get('Content-Disposition'))->toStartWith('inline; filename="stato-patrimoniale-')->toEndWith('.pdf"');
+    $stampa = view('pdf.gestionale.stato_patrimoniale', $catturati)->render();
     expect($catturati['senza_firma'])->toBeTrue()
-        ->and(view('pdf.gestionale.stato_patrimoniale', $catturati)->render())
-            ->toContain('Situazione al')
-            ->toContain('<span class="sec">§ 7</span>I controlli</h2>')
-            ->not->toContain('pareggio');
+        ->and($stampa)->toContain('Situazione al')->toContain('<span class="sec">§ 7</span> I controlli</h2>')
+        // Un condominio senza registrazioni ha il risultato a zero, e il riquadro lo dice «(in pareggio)» come le altre stampe (SA9): è l'unico posto in cui la
+        // parola c'è. Della quadratura la stampa non dice «pareggio».
+        ->toContain('(in pareggio)')
+        ->and(str_replace('(in pareggio)', '', $stampa))->not->toContain('pareggio');
 });

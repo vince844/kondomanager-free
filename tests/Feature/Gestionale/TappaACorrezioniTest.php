@@ -205,7 +205,7 @@ it('SA2: una gestione «non disponibile» e una «ricostruita»: le due frasi di
         ->and($r['quote']['totale']['deliberate'])->toBeNull()
         ->and($si['prospetto']['avvertenza_deliberato'])->toBe($r['avvertenze']['deliberato'])
         ->and($si['prospetto']['avvertenza_deliberato_ricostruito'])->toBe($r['avvertenze']['deliberato_ricostruito'])
-        ->and($t['frontespizio']['testo'])->toContain(RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE.$ordinaria)
+        ->and($t['frontespizio']['testo'])->toContain(ParoleDellaStampa::frase(RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE).$ordinaria)
         ->and($t['frontespizio']['testo'])->toContain(ParoleDellaStampa::frase(RiepilogoPerCompetenza::FRASE_DELIBERATO_RICOSTRUITO).$straordinaria)
         ->and($t['frontespizio']['testo'].$r['avvertenze']['deliberato'])->not->toContain('Gestione «Gestione');
 
@@ -230,7 +230,7 @@ it('il «non disponibile» dice nella pagina quale piano, rifatto con i dati di 
     expect($r['avvertenze']['deliberato'])->toBe(RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE)
         ->and($r['avvertenze']['deliberato_piani'])->toBe([$frase])
         ->and($si['prospetto']['avvertenza_deliberato_piani'])->toBe([$frase])
-        ->and($t['frontespizio']['testo'])->toContain(RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE)->not->toContain('non torna con le quote emesse')
+        ->and($t['frontespizio']['testo'])->toContain(ParoleDellaStampa::frase(RiepilogoPerCompetenza::FRASE_DELIBERATO_NON_DISPONIBILE))->not->toContain('non torna con le quote emesse')
         ->and($t['riepilogo']['testo'])->not->toContain('non torna con le quote emesse');
 });
 
@@ -242,7 +242,7 @@ it('la Sintesi dell\'anno dopo, con il solo storno di una commissione che non si
     expect($elenco['assegnabili']['numero'])->toBe(0)
         ->and($fascia['importo'])->toBe(-250)
         ->and($fascia['da_assegnare'])->toBe(0)
-        ->and($fascia['frase'])->toBe('€ -2,50 di commissioni senza voce, che qui non si assegnano: non stanno in nessun capitolo, e il conguaglio non le troverà. L\'elenco dice perché.');
+        ->and($fascia['frase'])->toBe('€ -2,50 di commissioni senza voce, che qui non si assegnano: non stanno in nessun capitolo, e il conguaglio non le divide. L\'elenco dice perché.');
 });
 
 it('SA6: la frase della ricostruzione dice «le quote del piano di ogni unità» e «può tornare», con la virgola', function () {
@@ -486,7 +486,7 @@ it('la fascia della Sintesi del 2027 con lo storno da assegnare invita ad assegn
     $fascia = collect(app(SintesiDelRendiconto::class)->perEsercizio($x['s']['c'], $x['e27'], '2027-02-10')['fasce'])->firstWhere('tipo', 'commissioni');
 
     expect($fascia['da_assegnare'])->toBe(1)
-        ->and($fascia['frase'])->toBe('€ -2,50 di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le troverà.');
+        ->and($fascia['frase'])->toBe('€ -2,50 di commissioni senza voce: non stanno in nessun capitolo, e il conguaglio non le divide.');
 });
 
 it('«Assegna la voce» sullo storno nel 2027 di una commissione dell\'ordinaria 2026 lo chiama storno, nel messaggio e nella riga del registro', function () {

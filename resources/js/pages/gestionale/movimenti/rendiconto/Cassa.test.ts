@@ -27,7 +27,7 @@ const cassa = {
         righe: [{ cassa_id: 4, conto_contabile_id: 20, cassa: 'Banca principale', tipo: 'banca', iniziale: 500000, entrate: 394000, uscite: 372100, finale: 521900, negativa: false, minimo: null, minimo_il: null }],
         totale: { iniziale: 500000, entrate: 394000, uscite: 372100, finale: 521900 }, giroconti: { entrate: 0, uscite: 0 }, stornate: { coppie: 0, importo: 0 },
     },
-    raccordo: { righe: [{ voce: 'Risultato di gestione dell\'esercizio', natura: 'quote emesse − costi', effetto: -2100 }], somma: 21900, variazione_liquidita: 21900, scarto: 0, quadra: true },
+    raccordo: { righe: [{ voce: 'Risultato di gestione dell\'esercizio', natura: 'quote registrate in questo esercizio − costi', effetto: -2100 }], somma: 21900, variazione_liquidita: 21900, scarto: 0, quadra: true },
     risultato_gestione: { risultato: -2100 },
 };
 

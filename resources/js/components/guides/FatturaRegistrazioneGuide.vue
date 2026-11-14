@@ -220,8 +220,8 @@ defineEmits(['update:open']);
                 <strong>strategia di rientro</strong>:
               </p>
               <ol class="space-y-2 list-decimal pl-5 mb-3">
-                <li><strong>Attesa conguaglio</strong> — registri lo sforo e i soldi mancanti verranno chiesti
-                    ai condòmini a chiusura esercizio.</li>
+                <li><strong>Attesa conguaglio</strong> — registri lo sforo senza una rata: la differenza entra nel
+                    conguaglio per persona, calcolato nel rendiconto come proposta per l'assemblea. Il programma non la chiede da solo.</li>
                 <li><strong>Rata Integrativa</strong> — resta un avviso in Dashboard: emetterai in seguito un piano
                     rate ordinario integrativo per coprire l'eccesso.</li>
                 <li><strong>Fondo di riserva</strong> — pianifichi la copertura dal fondo. Attenzione alla

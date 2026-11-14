@@ -193,7 +193,6 @@ return [
             'subtitle' => 'Reallocate funds from one entry to another without changing the total installment plan.',
             'how_it_works_title' => 'How it works:',
             'how_it_works_body_1' => 'You are modifying the internal fund allocation.',
-            'how_it_works_body_2' => 'Installments already issued to residents WILL NOT BE RECALCULATED. Any allocation differences will be automatically managed in the year-end balance.',
             'practical_example_title' => 'Practical example:',
             'practical_example_body' => 'Do you have 200EUR left from "Cleaning" and the gate breaks? Move 200EUR to "Gate Maintenance". The total plan does not change, but now you have the correct accounting coverage to pay the locksmith.',
             'source_label' => 'Take from (source)',

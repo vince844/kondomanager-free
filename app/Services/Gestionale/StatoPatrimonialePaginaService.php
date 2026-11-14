@@ -42,7 +42,28 @@ class StatoPatrimonialePaginaService
     public const FRASE_BANCA = 'Il confronto con l\'estratto conto della banca resta un controllo tuo: il programma non può farlo.';
 
     /** Vincoli e casse fondo, per un esercizio finito: i vincoli dichiarati si leggono a oggi, e il confronto alla data di fine non si fa. */
-    public const NOTA_VINCOLI_A_OGGI = 'I vincoli dichiarati si leggono a oggi: questo confronto vale per l\'esercizio aperto, non alla data di un esercizio finito; il residuo vincolato dei fondi si legge con il consuntivo dei fondi (in arrivo).';
+    public const NOTA_VINCOLI_A_OGGI = 'I vincoli dichiarati si leggono a oggi: questo confronto vale per l\'esercizio aperto, non alla data di un esercizio finito. Il programma non dà il residuo vincolato di un fondo alla data di fine, perché i vincoli dichiarati non hanno una data: il saldo di ogni cassa fondo a quella data è nella situazione patrimoniale, e i suoi movimenti nel mastrino del suo conto. Il movimento dei fondi dice per ogni fondo l\'iniziale, l\'accantonato e l\'utilizzato dell\'esercizio; il residuo vincolato di un\'opera si legge anche con l\'importo votato dall\'assemblea, che questo prospetto non riporta.';
+
+    /** Il movimento dei fondi: che cosa dice ogni colonna, e che cosa la tabella non dice. */
+    public const FRASE_MOVIMENTO_FONDI = 'Per ogni fondo, le sue entrate e uscite per cassa dell\'esercizio: accantonato è quanto è entrato nel fondo, utilizzato quanto ne è uscito, '
+        .'senza dire per quale opera (il denaro passato da un fondo a un altro, se c\'è, sta nelle colonne dei giroconti). Il vincolo è quello dichiarato nei contributi versati su quel fondo; lo scoperto è quanto manca al saldo del fondo alla data '
+        .'per arrivare al vincolo, come nel controllo dei vincoli. Il residuo vincolato di un\'opera si legge con l\'importo votato dall\'assemblea, che questo prospetto non riporta.';
+
+    /**
+     * Le date delle cifre, per esteso: che cosa è alla data di fine e che cosa conta le registrazioni dell'esercizio. La stessa frase della Sintesi; nella
+     * stampa sta in fondo alla pagina dei controlli (la prima pagina del fascicolo ne dice una più corta).
+     */
+    public static function fraseDelleDate(bool $finito, string $alla): string
+    {
+        return $finito
+            ? 'Esercizio finito al '.Carbon::parse($alla)->format('d/m/Y').': sono alla data di fine la situazione patrimoniale, le fatture aperte, il pagato '
+                .'e le quote dei piani; costi, quote registrate, risultato ed entrate e uscite per cassa contano le registrazioni dell\'esercizio, anche con la data dopo la fine; '
+                .'i vincoli dei fondi sono a oggi.'
+            : 'Esercizio aperto: i numeri sono a oggi e cambiano a ogni registrazione.';
+    }
+
+    /** Il movimento dei fondi di un esercizio finito: il vincolo è quello di oggi, e lo scoperto non si misura. */
+    public const FRASE_FONDI_VINCOLI_A_OGGI = 'L\'esercizio è finito: il vincolo è quello dichiarato oggi, e lo scoperto non si misura, perché i vincoli dichiarati non hanno una data.';
 
     /**
      * Le etichette si prendono dal RUOLO del conto, non dalla categoria (D18): «Gestione Rate» ha
@@ -109,7 +130,7 @@ class StatoPatrimonialePaginaService
             'sintesi' => [
                 'liquidita' => $liquidita['liquidita_totale'],
                 'in_fondi' => $liquidita['in_fondi'],
-                'crediti_condomini' => $vociPerRuolo($foto['attivo']['voci'], 'crediti_condomini'),
+                'crediti_condomini' => self::creditiNelleVoci($foto['attivo']['voci']),
                 'debiti_fornitori' => $vociPerRuolo($foto['passivo']['voci'], 'debiti_fornitori'),
                 'debiti_erario' => $vociPerRuolo($foto['passivo']['voci'], 'debiti_erario_ritenute'),
                 // Dentro i crediti verso i condòmini: le righe del conto senza una persona, cioè le spese anticipate per singole unità e non ancora
@@ -119,11 +140,27 @@ class StatoPatrimonialePaginaService
             'risultato_gestione' => $risultatoGestione,
             'riepilogo' => $riepilogo,
             'liquidita' => $liquidita,
+            'movimento_fondi' => $this->movimentoFondi($riepilogo, $liquidita, $stato, $al),
             'raccordo' => $raccordo,
             'debiti' => $debiti,
-            'per_gestione' => $this->perGestione($condominio, $esercizio, $al, $risultatoGestione, $foto, $debiti, $vociPerRuolo($foto['attivo']['voci'], 'crediti_condomini')),
+            'per_gestione' => $this->perGestione($condominio, $esercizio, $al, $risultatoGestione, $foto, $debiti, self::creditiNelleVoci($foto['attivo']['voci'])),
             'controlli' => $controlli,
         ];
+    }
+
+    /**
+     * I crediti verso i condòmini alla data, come li dice la situazione: la voce «Crediti verso i condòmini» della fotografia del giornale. La legge il
+     * secondo momento del conguaglio ({@see ConguaglioDelRendiconto::secondoMomento()}): una fonte sola.
+     */
+    public function creditiVersoICondomini(Condominio $condominio, string $al): int
+    {
+        return self::creditiNelleVoci($this->statoPatrimoniale->calcola($condominio, allaData: $al)['attivo']['voci']);
+    }
+
+    /** La somma delle voci dell'attivo con il ruolo dei crediti verso i condòmini. */
+    private static function creditiNelleVoci(array $voci): int
+    {
+        return (int) collect($voci)->where('ruolo', 'crediti_condomini')->sum('saldo');
     }
 
     /**
@@ -148,7 +185,7 @@ class StatoPatrimonialePaginaService
     }
 
     /**
-     * D18 — il risultato di gestione è `quote emesse − costi`, nell'esercizio: l'avanzo o il
+     * D18 — il risultato di gestione è `quote registrate in questo esercizio − costi`: l'avanzo o il
      * disavanzo rispetto a quanto chiesto ai condòmini; che cosa farne lo decide l'assemblea. Il
      * risultato del motore (`ricavi − costi`, con ricavi sempre zero) resta quello che è e serve a R6.
      */
@@ -161,8 +198,8 @@ class StatoPatrimonialePaginaService
             'quote_emesse' => $quote,
             'costi' => $costi,
             'risultato' => $quote - $costi,
-            // Senza chiusura, quote e costi si accumulano dal primo esercizio: il cumulato è ciò che,
-            // con la chiusura (v1.17), diventerà una posta. Per il primo esercizio coincide.
+            // Senza chiusura, quote e costi si accumulano dal primo esercizio: per il primo esercizio
+            // il cumulato coincide con il risultato.
             'cumulato' => $this->saldoPerRuolo($foto['passivo']['voci'], 'gestione_rate') - $foto['costi'],
         ];
     }
@@ -173,8 +210,10 @@ class StatoPatrimonialePaginaService
      *
      *   Δ liquidità = risultato di gestione − Δ crediti + Δ debiti + Δ riporti ± altre poste
      *
-     * Dice perché la cassa si è mossa diversamente dal risultato: quote non ancora incassate,
-     * spese non ancora pagate. Ogni riga ha il nome della sua posta, non un nome generico.
+     * Dice perché la cassa si è mossa diversamente dal risultato: la variazione dei crediti verso i
+     * condòmini (quote emesse, incassi), quella dei debiti verso i fornitori (fatture, pagamenti) e,
+     * quando c'è, quella dei debiti verso l'Erario (ritenute maturate, F24). Ogni riga ha il nome della sua
+     * posta, non un nome generico, ed è una variazione dell'esercizio: non il residuo a fine anno.
      */
     private function raccordo(array $flussi, int $risultatoGestione): array
     {
@@ -192,12 +231,15 @@ class StatoPatrimonialePaginaService
         $altriPassivi = $this->sommaSe($pas, fn ($v) => ! in_array($v['ruolo'], ['gestione_rate', 'passate_gestioni', 'debiti_fornitori', 'debiti_erario_ritenute', 'anticipi_condomini'], true));
 
         $righe = [
-            ['voce' => 'Risultato di gestione dell\'esercizio', 'natura' => 'quote emesse − costi', 'effetto' => $risultatoGestione],
-            ['voce' => 'Quote emesse e non ancora incassate', 'natura' => 'aumento dei crediti verso i condòmini', 'effetto' => -$creditiCondomini],
-            ['voce' => 'Fatture registrate e non ancora pagate', 'natura' => 'aumento dei debiti verso fornitori', 'effetto' => $debitiFornitori],
+            ['voce' => 'Risultato di gestione dell\'esercizio', 'natura' => 'quote registrate in questo esercizio − costi', 'effetto' => $risultatoGestione],
+            // Le variazioni dell'esercizio, non i residui: dal secondo esercizio il credito o il debito di prima, incassato o pagato adesso, le muove senza
+            // che nulla sia emesso o registrato (Coda 565). Una variazione può scendere: il titolo resta vero in tutti e due i versi, e la natura dice che cosa
+            // fa alla cassa.
+            ['voce' => 'Variazione dei crediti verso i condòmini', 'natura' => 'più crediti, meno cassa; meno crediti, più cassa', 'effetto' => -$creditiCondomini],
+            ['voce' => 'Variazione dei debiti verso i fornitori', 'natura' => 'più debiti, più cassa; meno debiti, meno cassa', 'effetto' => $debitiFornitori],
         ];
         $facoltative = [
-            ['voce' => 'Ritenute maturate e non ancora versate', 'natura' => "aumento dei debiti verso l'Erario", 'effetto' => $debitiErario],
+            ['voce' => 'Variazione dei debiti verso l\'Erario', 'natura' => 'più ritenute da versare, più cassa; ritenute versate, meno cassa', 'effetto' => $debitiErario],
             ['voce' => 'Anticipi ricevuti dai condòmini', 'natura' => 'incassati prima dell\'emissione', 'effetto' => $anticipi],
             ['voce' => 'Riporti da esercizi precedenti', 'natura' => 'pregresso portato a giornale', 'effetto' => $riporti],
             ['voce' => 'Altri crediti', 'natura' => 'IVA e crediti verso terzi', 'effetto' => -$altriAttivi],
@@ -372,6 +414,73 @@ class StatoPatrimonialePaginaService
     }
 
     /**
+     * Il movimento dei fondi dell'esercizio, sotto la liquidità: per ogni cassa fondo l'iniziale, l'accantonato (le entrate), l'utilizzato (le uscite) e il finale,
+     * cioè la sua riga nelle entrate e uscite per cassa ({@see RiepilogoFinanziarioService::perEsercizio}, per esercizio); il vincolo dichiarato su quel fondo, il saldo
+     * alla data e lo scoperto dalla vista sulla liquidità ({@see LiquiditaVincolataService::allaData}, per data), gli stessi del controllo dei vincoli. Le due letture
+     * prendono le stesse casse; qui si mettono accanto per cassa, e in fondo si sommano le righe. Nessuna cifra nuova.
+     *
+     * Per un esercizio finito lo scoperto non si misura (null), come nel controllo: il vincolo è quello di oggi. Quando il finale e il saldo alla data di un fondo non
+     * coincidono (il finale conta anche il saldo di apertura non ancora a giornale; le registrazioni oltre il confine dell'esercizio stanno in una sola delle due
+     * letture), la nota nomina il fondo e il suo saldo.
+     */
+    private function movimentoFondi(array $riepilogo, array $liquidita, string $stato, string $al): array
+    {
+        $vincoli = collect($liquidita['fondi'])->keyBy('cassa_id');
+        $chiuso = $stato === 'chiuso';
+        $fmt = fn (int $c) => '€ '.number_format($c / 100, 2, ',', '.');
+
+        $righe = [];
+        $diversi = [];
+        foreach (collect($riepilogo['righe'])->where('tipo', 'fondo')->keyBy('cassa_id')->intersectByKeys($vincoli) as $id => $r) {
+            $f = $vincoli[$id];
+            // Il denaro passato da un fondo a un altro ha le sue colonne: accantonato e utilizzato sono quello entrato nei fondi da fuori e uscito verso fuori.
+            $giro = $riepilogo['giroconti_dei_fondi'][(int) $r['conto_contabile_id']] ?? ['entrata' => 0, 'uscita' => 0];
+            $righe[] = [
+                'cassa_id' => (int) $id,
+                'cassa' => $r['cassa'],
+                'conto_contabile_id' => $r['conto_contabile_id'],
+                'iniziale' => $r['iniziale'],
+                'accantonato' => $r['entrate'] - $giro['entrata'],
+                'giroconti_entrata' => $giro['entrata'],
+                'giroconti_uscita' => $giro['uscita'],
+                'utilizzato' => $r['uscite'] - $giro['uscita'],
+                'finale' => $r['finale'],
+                'saldo_alla_data' => $f['saldo'],
+                'vincolo' => $f['vincolo_registrato'],
+                'scoperto' => $chiuso ? null : $f['scoperto'],
+            ];
+            if ($r['finale'] !== $f['saldo']) {
+                $diversi[] = '«'.$r['cassa'].'» ('.$fmt($f['saldo']).')';
+            }
+        }
+        $somma = fn (string $colonna) => (int) array_sum(array_column($righe, $colonna));
+        // I giroconti da un fondo a un altro: nelle loro colonne, che ci sono solo se ce n'è uno; la nota dice la cifra.
+        $fraFondi = (int) array_sum(array_column($righe, 'giroconti_entrata'));
+        $conGiroconti = $fraFondi !== 0 || (int) array_sum(array_column($righe, 'giroconti_uscita')) !== 0;
+        if (! $conGiroconti) {
+            $righe = array_map(fn (array $r) => array_diff_key($r, ['giroconti_entrata' => 0, 'giroconti_uscita' => 0]), $righe);
+        }
+
+        return [
+            'righe' => $righe,
+            'totale' => [
+                'iniziale' => $somma('iniziale'), 'accantonato' => $somma('accantonato'),
+            ] + ($conGiroconti ? ['giroconti_entrata' => $somma('giroconti_entrata'), 'giroconti_uscita' => $somma('giroconti_uscita')] : []) + [
+                'utilizzato' => $somma('utilizzato'), 'finale' => $somma('finale'),
+                'vincolo' => $somma('vincolo'), 'scoperto' => $chiuso ? null : $somma('scoperto'),
+            ],
+            'nota' => self::FRASE_MOVIMENTO_FONDI,
+            'nota_vincoli' => $chiuso ? self::FRASE_FONDI_VINCOLI_A_OGGI : null,
+            'con_giroconti' => $conGiroconti,
+            'nota_giroconti' => $fraFondi === 0 ? null
+                : 'I giroconti da un fondo a un altro, '.$fmt($fraFondi).', stanno nelle loro colonne: non sono denaro entrato nei fondi né speso.',
+            'nota_saldo' => $diversi === [] ? null
+                : 'Il saldo al '.Carbon::parse($al)->format('d/m/Y').' è diverso dal finale per '.implode(', ', $diversi).': il finale conta le scritture '
+                    .'dell\'esercizio e il saldo di apertura non ancora registrato a giornale, il saldo alla data le registrazioni a giornale fino a quel giorno.',
+        ];
+    }
+
+    /**
      * I controlli 3c: nome, equazione con i numeri veri, esito, e — se rosso — rimedio e dove si fa.
      *
      * @param  array{dopo_la_fine: array{netto:int, lordo:int, numero:int}, di_un_esercizio_dopo: array{netto:int, lordo:int, numero:int}, fuori_da_ogni_esercizio: array{fuori:int, nel_periodo:int, prevale:bool}}  $oltre
@@ -533,7 +642,7 @@ class StatoPatrimonialePaginaService
                         // senza apertura e senza incassi non c'è un movimento da cercare nel registro di contabilità.
                         . ($cnSenzaApertura
                             ? ($negative[0]['entrate'] === 0
-                                ? 'Questa cassa non ha un saldo di apertura e nessun incasso nell\'esercizio: i pagamenti sono usciti da un conto che, per il programma, era vuoto.'
+                                ? 'Questa cassa non ha un saldo di apertura e nessun incasso nell\'esercizio: i pagamenti sono usciti da un conto che, nella contabilità, era vuoto.'
                                 : 'Questa cassa non ha un saldo di apertura: i pagamenti sono usciti prima che gli incassi registrati bastassero.')
                             : 'Un conto reale non può contenere meno di niente: manca un\'entrata, o un movimento è sulla cassa sbagliata.'),
                 'rimedio' => $negative === [] ? null

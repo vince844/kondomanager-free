@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import CampoFile from '@/components/CampoFile.vue';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
@@ -255,8 +256,8 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null 
 
                     <label class="block space-y-1 text-xs"><span class="block text-slate-500">Nota</span>
                         <Textarea v-model="modulo.nota" rows="2" /></label>
-                    <label class="block space-y-1 text-xs"><span class="block text-slate-500">L'accordo firmato (PDF o immagine, fino a 10 MB)</span>
-                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" class="text-xs" @change="file = (($event.target as HTMLInputElement).files?.[0] ?? null)" /></label>
+                    <div class="block space-y-1 text-xs"><span class="block text-slate-500">L'accordo firmato (PDF o immagine, fino a 10 MB)</span>
+                        <CampoFile v-model="file" accept=".pdf,.jpg,.jpeg,.png" testid="file-accordo" /></div>
 
                     <Button size="sm" :disabled="inCorso || !pronto" data-testid="registra-accordo" @click="registra">Registra l'accordo</Button>
                 </fieldset>

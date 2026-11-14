@@ -178,7 +178,7 @@ const handleConfirm = () => {
                                     <div class="font-black text-sm" :class="data.strategia_rientro === 'conguaglio_fine_anno' ? 'text-blue-800' : 'text-slate-700'">Attesa conguaglio</div>
                                     <input type="radio" v-model="data.strategia_rientro" value="conguaglio_fine_anno" class="w-4 h-4 mt-0.5 text-blue-600 focus:ring-blue-600 shrink-0" />
                                 </div>
-                                <p class="text-[11px] leading-relaxed flex-1" :class="data.strategia_rientro === 'conguaglio_fine_anno' ? 'text-blue-700/80' : 'text-slate-500'">Registra lo sforo in passivo. Nessun allarme generato, si regolerà tutto a chiusura esercizio.</p>
+                                <p class="text-[11px] leading-relaxed flex-1" :class="data.strategia_rientro === 'conguaglio_fine_anno' ? 'text-blue-700/80' : 'text-slate-500'">Registra la spesa senza una rata. Entra nel conguaglio per persona, calcolato nel rendiconto, se la voce ha una tabella (in una gestione straordinaria, quando l'opera è finita): è una proposta per l'assemblea, il programma non la chiede da solo.</p>
                             </label>
 
                             <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative h-full"

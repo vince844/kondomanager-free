@@ -37,7 +37,10 @@ use Illuminate\Support\Facades\DB;
  * dichiarati — e viene azzerato da un risalvataggio — quindi non si taglia per data: R8 è un
  * controllo «a oggi». Hanno un esercizio (`esercizio_id`), ma i vincoli già scritti senza non ne
  * prendono uno (nessun riempimento): per un esercizio finito R8 resta da leggere, con la nota, e il
- * residuo vincolato alla data si leggerà con il consuntivo dei fondi.
+ * programma non dà il residuo vincolato alla data. Il movimento di ogni fondo nell'esercizio (iniziale,
+ * accantonato, utilizzato, finale) la pagina lo mette accanto, con il vincolo e lo scoperto di qui
+ * ({@see StatoPatrimonialePaginaService}); il residuo vincolato di un'opera chiede anche l'importo
+ * votato, che il programma non ha.
  */
 class LiquiditaVincolataService
 {
@@ -87,6 +90,7 @@ class LiquiditaVincolataService
                 $vincolato = $cassa->sottotipo_fondo !== 'generico';
                 $vincoloSuQuesto = (int) $vincolati->where('cassa_id', (int) $cassa->id)->sum('importo_cents');
                 $fondi[] = [
+                    'cassa_id' => (int) $cassa->id,
                     'cassa' => $cassa->nome,
                     'sottotipo' => $cassa->sottotipo_fondo,
                     'sottotipo_label' => self::SOTTOTIPI[$cassa->sottotipo_fondo ?? ''] ?? self::SOTTOTIPO_NON_INDICATO,

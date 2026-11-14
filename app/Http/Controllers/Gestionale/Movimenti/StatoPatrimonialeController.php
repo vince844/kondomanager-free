@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Services\Gestionale\ConguaglioDelRendiconto;
 use App\Services\Gestionale\ControlliDelRendiconto;
 use App\Services\Gestionale\StatoPatrimonialePaginaService;
 use App\Services\PDF\PdfService;
@@ -77,7 +78,8 @@ class StatoPatrimonialeController extends Controller
      * La stampa: intera, o una parte (`?parte=situazione|cassa|controlli`). In testa l'esito di tutti i controlli del rendiconto, con la riga fissa; la
      * parte «cassa» non li stampa, e non li legge (il riepilogo per competenza e le posizioni pesano con migliaia di condòmini).
      */
-    public function stampa(Request $request, Condominio $condominio, Esercizio $esercizio, PdfService $pdfService, ControlliDelRendiconto $controlli)
+    public function stampa(Request $request, Condominio $condominio, Esercizio $esercizio, PdfService $pdfService, ControlliDelRendiconto $controlli,
+        ConguaglioDelRendiconto $conguaglio)
     {
         if ($esercizio->condominio_id !== $condominio->id) {
             abort(403, 'L\'esercizio non appartiene a questo condominio.');
@@ -92,7 +94,10 @@ class StatoPatrimonialeController extends Controller
             ));
         }
 
-        $c = $parte === 'cassa' ? null : $controlli->perEsercizio($condominio, $esercizio, null, [], $pagina);
+        // I quattro controlli del conguaglio leggono il consuntivo per persona: la stampa dei controlli lo legge sempre, come la scheda; la stampa intera e
+        // la situazione sotto la soglia della Sintesi, e sopra li dicono da leggere nella scheda «Controlli».
+        $letto = $parte === 'controlli' || ($parte !== 'cassa' && $conguaglio->peso($esercizio) <= ConguaglioDelRendiconto::soglia()) ? $conguaglio->leggi($esercizio) : null;
+        $c = $parte === 'cassa' ? null : $controlli->perEsercizio($condominio, $esercizio, null, [], $pagina, null, [], $letto);
         $mpdf = $pdfService->generate('pdf.gestionale.stato_patrimoniale', [
             'gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA,
             'condominio' => $condominio,

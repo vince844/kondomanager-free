@@ -52,8 +52,11 @@ it('la pagina: il testo del programma di ogni tipo, poi i modelli con «vale per
         ->assertSessionHasNoErrors();
 
     $p = mltPagina($this);
-    expect($p['testi_del_programma'])->toBe(TestiLettere::DI_SERIE)
-        ->and(collect($p['tipi'])->pluck('tipo')->all())->toBe(['promemoria', 'sollecito', 'diffida', 'messa_in_mora'])
+    // Le lettere, poi l'email dei fogli del conguaglio, con il suo testo del programma e i suoi campi.
+    expect($p['testi_del_programma'])->toBe(TestiLettere::DI_SERIE + ['foglio_conguaglio' => \App\Services\Gestionale\InvioDeiFogli::TESTO_DI_SERIE])
+        ->and(collect($p['tipi'])->pluck('tipo')->all())->toBe(['promemoria', 'sollecito', 'diffida', 'messa_in_mora', 'foglio_conguaglio'])
+        ->and($p['campi_per_tipo'])->toBe(['foglio_conguaglio' => \App\Services\Gestionale\InvioDeiFogli::CAMPI])
+        ->and($p['frase_proposta_per_tipo'])->toBe(['foglio_conguaglio' => \App\Services\Gestionale\InvioDeiFogli::FRASE_PROPOSTA])
         ->and($p['puo_modificare'])->toBeTrue()
         ->and($p['campi'])->toBe(TestiLettere::CAMPI)
         ->and(collect($p['condomini'])->pluck('nome')->all())->toBe(['Le Rose', 'Via Verdi 3']);

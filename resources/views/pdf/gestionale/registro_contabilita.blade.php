@@ -35,6 +35,12 @@
     // mostrata, e con zero righe stampava «€ 0,00» su un conto a −370,56.
     $saldoFinale = $saldo_finale;
     $dataSaldo = $saldo_alla_data;
+    // Il registro intero di un esercizio finito dice il saldo alla sua fine, come la riga del saldo a fine mese: dopo l'ultima riga non ci sono
+    // movimenti, e la data dell'ultimo movimento accanto alla stessa cifra farebbe due date per un saldo solo.
+    $fineEsercizio = isset($esercizio) && $esercizio->data_fine ? \Carbon\Carbon::parse($esercizio->data_fine)->format('Y-m-d') : null;
+    if (! $parziale && $dataSaldo !== null && $fineEsercizio !== null && $dataSaldo < $fineEsercizio && $fineEsercizio <= \App\Helpers\DateHelper::oggiUtente()) {
+        $dataSaldo = $fineEsercizio;
+    }
     // Il riporto, i totali per tipo e il saldo a fine mese arrivano dal servizio, come il saldo.
     $riporto = $riporto ?? ['totale' => 0, 'per_cassa' => []];
     $totaliPerTipo = $totali_per_tipo ?? [];
@@ -74,6 +80,7 @@
     .rif { font-size: 7.5pt; color: #5A6B7B; }
     .doc { text-align: right; font-size: 7.5pt; color: #5A6B7B; }
     .doc b { color: #0E2238; }
+    .forte { color: #0E2238; }
 
     h1 { font-family: fraunces; font-size: 17pt; color: {{ $coloreTitoli }}; margin: 14px 0 1px; padding: 0; }
     .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 10px; }
@@ -82,8 +89,9 @@
     .dati { width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;
             border-bottom: 1px solid #D9DEE5; margin-bottom: 14px; }
     .dati td { padding: 8px 10px 8px 0; border: 0; vertical-align: top; }
-    .dati .et { font-size: 7pt; letter-spacing: 0.9pt; text-transform: uppercase; color: #5A6B7B; }
-    .dati .vl { font-size: 9.5pt; color: #0E2238; font-family: fraunces; }
+    {{-- Dentro una cella mPDF non applica una regola con un antenato («.dati .vl», «.doc b»): le cifre in testa e il grassetto della testata hanno regole con una classe sola. --}}
+    .et { font-size: 7pt; letter-spacing: 0.9pt; text-transform: uppercase; color: #5A6B7B; }
+    .vl { font-size: 9.5pt; color: #0E2238; font-family: fraunces; }
 
     table.registro { width: 100%; border-collapse: collapse; }
     table.registro th { font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase;
@@ -99,6 +107,8 @@
     th.n { font-family: inter; }
     .num { text-align: right; color: #5A6B7B; font-family: fraunces; white-space: nowrap; }
     .neg { color: #96302F; }
+    {{-- Il meno sulle cifre in testa: con due classi sole mPDF tiene il colore di «.vl»; la regola con le due classi insieme vale. --}}
+    .vl.neg { color: #96302F; }
     .d { color: #5A6B7B; font-size: 6pt; }
     .rit { color: #8A6212; font-size: 6pt; }
     .badge { font-size: 5.8pt; font-weight: bold; letter-spacing: 0.5pt; text-transform: uppercase;
@@ -108,7 +118,7 @@
                               font-weight: bold; color: #0E2238; padding: 7px; }
 
     .chiusura { margin-top: 4px; padding: 10px 12px; background: #F4F5F7;
-                border-left: 3px solid #C9A227; font-size: 7.5pt; color: #26313F;
+                border-left: 3px solid #C9A227; font-size: 8pt; color: #26313F;
                 margin-bottom: 14px; }
     .chiusura b { color: #0E2238; }
 
@@ -178,7 +188,7 @@
 
 @if($conStudio)
 @component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => 'Registro di contabilità'])
-<b>{{ $esercizio->nome }}</b> · dal <b>{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b>{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
 @endcomponent
 @else
 <table class="testata">
@@ -191,9 +201,9 @@
             </div>
         </td>
         <td class="doc">
-            <b>{{ $esercizio->nome }}</b><br>
-            dal <b>{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b>{{ $esercizio->data_fine->format('d/m/Y') }}</b><br>
-            Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+            <b class="forte">{{ $esercizio->nome }}</b><br>
+            dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b><br>
+            Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>
@@ -418,8 +428,9 @@
 @endforeach
 
 @if(count($totaliPerTipo) > 0)
-{{-- I totali per tipo di movimento, delle righe riportate: la loro somma è il totale del registro. --}}
-<table style="width: 70%; border-collapse: collapse; margin-top: 14px;">
+{{-- I totali per tipo di movimento, delle righe riportate: la loro somma è il totale del registro. Una tabella che non si spezza: l'intestazione non resta
+     in fondo a una pagina con le righe nella seguente. --}}
+<table style="width: 70%; border-collapse: collapse; margin-top: 14px; page-break-inside: avoid;" autosize="1">
     <thead>
         <tr>
             <th style="font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase; color: #5A6B7B; text-align: left; border-bottom: 1px solid #0E2238; padding: 4px 5px;">Totali per tipo di movimento</th>

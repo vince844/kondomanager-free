@@ -122,6 +122,9 @@ class FatturaPassivaController extends Controller
             )
             ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_documento', '>=', $v))
             ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_documento', '<=', $v))
+            // Le fatture con una riga su un'unità: le spese personali (la riga «Spese personali chieste con le rate» del riepilogo porta qui).
+            ->when($request->boolean('con_unita'), fn ($q) => $q->whereExists(fn ($r) => $r->select(\Illuminate\Support\Facades\DB::raw(1))->from('righe_fattura')
+                ->whereColumn('righe_fattura.fattura_passiva_id', 'fatture_passive.id')->whereNotNull('righe_fattura.immobile_id')))
             ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_documento', versoPredefinito: 'desc'))
             // ⚠️ **`per_page` era cablato a 20**: il selettore delle righe cambiava e l'elenco
             // restava fermo. È la variante più muta dei difetti segnalati sul forum — il
@@ -196,7 +199,7 @@ class FatturaPassivaController extends Controller
                 'value' => $c->value,
                 'label' => $c->label(),
             ])->values(),
-            'filters' => $request->only(['stato_pagamento', 'stato_approvazione', 'search', 'data_da', 'data_a']),
+            'filters' => $request->only(['stato_pagamento', 'stato_approvazione', 'search', 'data_da', 'data_a', 'con_unita']),
         ]);
     }
 

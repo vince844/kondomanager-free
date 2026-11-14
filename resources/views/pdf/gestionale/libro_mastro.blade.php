@@ -44,6 +44,7 @@
     .rif { font-size: 7.5pt; color: #5A6B7B; }
     .doc { text-align: right; font-size: 7.5pt; color: #5A6B7B; }
     .doc b { color: #0E2238; }
+    .forte { color: #0E2238; }
 
     h1 { font-family: fraunces; font-size: 17pt; color: {{ $coloreTitoli }}; margin: 14px 0 1px; padding: 0; }
     .sotto { font-family: fraunces; font-size: 10pt; color: {{ \App\Services\PDF\Carta::coloreDi($carta ?? null, '#2E5C86') }}; margin: 0 0 10px; }
@@ -51,8 +52,9 @@
     .dati { width: 100%; border-collapse: collapse; border-top: 1px solid #D9DEE5;
             border-bottom: 1px solid #D9DEE5; margin-bottom: 14px; }
     .dati td { padding: 8px 10px 8px 0; border: 0; vertical-align: top; }
-    .dati .et { font-size: 7pt; letter-spacing: 0.9pt; text-transform: uppercase; color: #5A6B7B; }
-    .dati .vl { font-size: 9.5pt; color: #0E2238; font-family: fraunces; }
+    {{-- Dentro una cella mPDF non applica una regola con un antenato («.dati .vl», «.doc b»): le cifre in testa e il grassetto della testata hanno regole con una classe sola. --}}
+    .et { font-size: 7pt; letter-spacing: 0.9pt; text-transform: uppercase; color: #5A6B7B; }
+    .vl { font-size: 9.5pt; color: #0E2238; font-family: fraunces; }
 
     table.registro { width: 100%; border-collapse: collapse; }
     table.registro th { font-size: 6.2pt; letter-spacing: 0.7pt; text-transform: uppercase;
@@ -107,7 +109,7 @@
 
 @if($conStudio)
 @component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => 'Libro mastro'])
-<b>{{ $esercizio->nome }}</b> · @if($futuro)comincia il <b>{{ $dal }}</b>, fotografia al <b>{{ $al }}</b>@else dal <b>{{ $dal }}</b> al <b>{{ $al }}</b>@endif · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+<b class="forte">{{ $esercizio->nome }}</b> · @if($futuro)comincia il <b class="forte">{{ $dal }}</b>, fotografia al <b class="forte">{{ $al }}</b>@else dal <b class="forte">{{ $dal }}</b> al <b class="forte">{{ $al }}</b>@endif · Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
 @endcomponent
 @else
 <table class="testata">
@@ -120,9 +122,9 @@
             </div>
         </td>
         <td class="doc">
-            <b>{{ $esercizio->nome }}</b><br>
-            @if($futuro)comincia il <b>{{ $dal }}</b>, fotografia al <b>{{ $al }}</b>@else dal <b>{{ $dal }}</b> al <b>{{ $al }}</b>@endif<br>
-            Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+            <b class="forte">{{ $esercizio->nome }}</b><br>
+            @if($futuro)comincia il <b class="forte">{{ $dal }}</b>, fotografia al <b class="forte">{{ $al }}</b>@else dal <b class="forte">{{ $dal }}</b> al <b class="forte">{{ $al }}</b>@endif<br>
+            Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>

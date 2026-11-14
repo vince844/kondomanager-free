@@ -49,9 +49,9 @@ const pageGuides = [
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Chiusura Automatizzata',
-    description: 'Il wizard di fine anno (in arrivo prossimamente) si occuperà di creare il nuovo esercizio e calcolare in automatico i saldi pregressi (Rata 0).',
-    icon: Lock, // L'icona del lucchetto qui è perfetta perché suggerisce che la funzione è "bloccata/protetta" per ora
+    title: 'Fine anno',
+    description: 'Il programma non ha una procedura di fine anno: non scrive le scritture di chiusura, non riporta i saldi pregressi (Rata 0) sull\'esercizio nuovo e non apre il successivo. Lo stato «Chiuso» non fa niente di tutto questo: tieni aperto l\'esercizio in corso.',
+    icon: Lock, // Il lucchetto è lo stato «Chiuso», che non fa il passaggio all'anno nuovo
     colorVariant: 'amber' as const
   }
 ];
@@ -66,7 +66,7 @@ const pageGuides = [
 
       <PageHeaderGuide
         page-title="Esercizi contabili"
-        page-subtitle="Gestisci gli anni contabili del condominio. Apri nuovi esercizi o chiudi quelli passati per consolidare i saldi."
+        page-subtitle="Gli anni contabili del condominio. Il programma non ha il passaggio all'anno nuovo: non mettere lo stato su «Chiuso», tieni aperto l'esercizio in corso."
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* TODO: Inserire URL YouTube 'Come gestire gli anni contabili' */"

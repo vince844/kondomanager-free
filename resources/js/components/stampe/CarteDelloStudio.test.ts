@@ -292,7 +292,7 @@ describe('La carta intestata', () => {
         await wrapper.find('[data-testid="modulo-nome"]').setValue('Carta della tipografia 2');
         await wrapper.find('[data-testid="aspetto-carta"]').setValue(true);
         expect(wrapper.find('input[data-testid="modulo-file-carta"]').attributes('accept')).toBe('application/pdf,image/jpeg');
-        expect(wrapper.find('[data-testid="modulo-carta-intestata"]').text()).toContain("o un'immagine A4 in JPG larga almeno 1.240 pixel");
+        expect(wrapper.find('[data-testid="modulo-carta-intestata"]').text()).toContain("o un'immagine A4 verticale in JPG larga almeno 1.240 pixel");
         expect(wrapper.find('[data-testid="modulo-carta-intestata"]').text()).not.toContain('PNG');
         const file = new File(['%PDF'], 'carta.pdf', { type: 'application/pdf' });
         const input = wrapper.find('input[data-testid="modulo-file-carta"]');

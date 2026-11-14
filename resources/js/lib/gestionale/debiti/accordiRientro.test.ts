@@ -21,7 +21,7 @@ describe('il segno dell\'accordo', () => {
     });
     test('la parte versata oltre il capitale riconosciuto: un credito della persona, che il programma non sposta', () => {
         expect(testoSegnoAccordo({ ...accordo, oggi: 0, versati_oltre: 1767 })).toBe('Accordo di rientro del 26/06/2026, fino al 15/12/2026: riconosciuti € 1.500,00, oggi € 0,00. '
-            + 'Versati € 17,67 oltre il capitale riconosciuto: sono andati a credito della persona; interessi e spese il programma non li registra ancora.');
+            + 'Versati € 17,67 oltre il capitale riconosciuto: sono andati a credito della persona; interessi e spese il programma non li registra.');
     });
     test('la parte di una rata', () => {
         expect(testoParteInAccordo({ riconosciuto: 75000, in_accordo: 24410, data_accordo: '2026-06-26', fuori_dalle_lettere: true }))

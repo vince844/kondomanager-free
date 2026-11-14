@@ -1,3 +1,9 @@
+<script lang="ts">
+/** La pagina da cui si è arrivati alle dispense. Resta fra una visita e l'altra della pagina: registrare o revocare una dispensa ricarica la pagina, e
+ * dopo la «pagina precedente» sarebbe la pagina stessa. */
+let paginaDiPartenza: string | null = null;
+</script>
+
 <script setup lang="ts">
 /**
  * La dispensa dell'assemblea dall'agire entro sei mesi (art. 1129 c. 9): l'elenco delle delibere registrate, la registrazione di una nuova
@@ -13,8 +19,16 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
+import SpiegazioneDelFiltro from '@/components/gestionale/debiti/SpiegazioneDelFiltro.vue';
+import CampoFile from '@/components/CampoFile.vue';
+import DispenseSeiMesiGuide from '@/components/guides/DispenseSeiMesiGuide.vue';
 import { usePermission } from '@/composables/permissions';
-import { giorno } from '@/lib/gestionale/debiti/rateScadute';
+import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
+import { CalendarClock, FileText, Scale } from 'lucide-vue-next';
+import { giorno, personeDelMenu } from '@/lib/gestionale/debiti/rateScadute';
 import type { Flash } from '@/types/flash';
 
 interface Dispensa {
@@ -34,6 +48,15 @@ const errori = computed(() => page.props.errors ?? {});
 
 const nuova = ref({ data_delibera: '', numero_verbale: '', nota: '', esercizi: [] as number[], per_tutti: '' as '' | '1' | '0', persone: [] as number[] });
 const verbale = ref<File | null>(null);
+// «Solo per alcune persone»: un menu con la ricerca, come la scelta della persona nelle rate scadute; con un condominio grande ne mostra 50,
+// e le persone già scelte restano fra le opzioni perché il campo ne mostri il nome.
+const testoPersona = ref('');
+const opzioniPersone = computed(() => {
+    const mostrate = personeDelMenu(props.persone, testoPersona.value).mostrate;
+    const scelte = props.persone.filter((p) => nuova.value.persone.includes(p.id) && !mostrate.some((m) => m.id === p.id));
+
+    return [...mostrate, ...scelte];
+});
 const alterna = (lista: number[], id: number) => (lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id]);
 function registra() {
     router.post(route(generateRoute('gestionale.dispense.store'), { condominio: props.condominio.id }), {
@@ -50,6 +73,25 @@ function revoca_conferma() {
 }
 const indirizzoVerbale = (d: Dispensa) => route(generateRoute('gestionale.dispense.verbale'), { condominio: props.condominio.id, dispensa: d.id });
 const indirizzoElenco = computed(() => route(generateRoute('gestionale.rate-scadute.index'), { condominio: props.condominio.id }));
+// «Indietro» torna alla pagina da cui si è arrivati (le rate scadute, gli esercizi, …); aperta da un indirizzo incollato, alle rate scadute.
+const { urlPrecedente } = useUrlPrecedente();
+const precedente = urlPrecedente();
+if (precedente && precedente.split('?')[0] !== window.location.pathname) {
+    paginaDiPartenza = precedente;
+}
+const indirizzoIndietro = computed(() => paginaDiPartenza ?? indirizzoElenco.value);
+
+// La guida che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
+
+const SPIEGAZIONE_VERBALE = 'Il numero scritto sul verbale dell\'assemblea che ha deciso la dispensa, per esempio 3/2027. Si scrive com\'è sul verbale; '
+    + 'si può lasciare vuoto.';
+const SPIEGAZIONE_FILE = 'Il PDF o la foto del verbale, se vuoi conservarlo qui: si riapre dalla dispensa registrata. Si può lasciare vuoto.';
+const pageGuides = [
+    { title: 'A che cosa serve', description: 'La legge chiede all\'amministratore di agire per riscuotere le quote non pagate entro sei mesi dalla chiusura dell\'esercizio (art. 1129, comma 9, c.c.), salvo che l\'assemblea lo dispensi. Qui registri la delibera con cui l\'assemblea lo ha dispensato.', icon: Scale, colorVariant: 'blue' as const },
+    { title: 'Che cosa cambia', description: 'Le date dei sei mesi non cambiano. Nell\'elenco delle rate scadute, accanto a ogni data, compare la dispensa che la copre: chi guarda sa che l\'assemblea ha deciso così. Non è l\'accordo di rientro con una persona.', icon: CalendarClock, colorVariant: 'amber' as const },
+    { title: 'Che cosa ti serve', description: 'Il verbale dell\'assemblea: la data della delibera, il numero del verbale, gli esercizi e le persone per cui vale. Il PDF del verbale si può allegare. Se l\'assemblea cambia idea, registri la revoca dalla dispensa.', icon: FileText, colorVariant: 'emerald' as const },
+];
 
 const breadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -64,16 +106,20 @@ const breadcrumbs = computed(() => [
         <div class="px-6 py-8 space-y-4">
             <PageHeaderGuide
                 page-title="Dispense dei sei mesi"
-                page-subtitle="Le delibere con cui l'assemblea dispensa dall'agire entro sei mesi per la riscossione: si leggono accanto alle date dell'elenco delle rate scadute."
-                :guides="[]"
+                page-subtitle="Le delibere con cui l'assemblea dispensa l'amministratore dall'agire entro sei mesi contro chi non paga."
+                :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
+                :back-url="indirizzoIndietro"
+                back-text="Indietro"
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
             />
             <div v-if="flashMessage"><Alert :message="flashMessage.message" :type="flashMessage.type" /></div>
             <p class="text-xs text-slate-500 dark:text-slate-400 italic">{{ testo_norma }}</p>
             <p class="text-xs text-slate-600 dark:text-slate-300">
-                La dispensa non sposta le date: il programma la scrive accanto. Non è l'accordo di rientro con una persona.
                 <Link :href="indirizzoElenco" class="underline">Vai alle rate scadute</Link>
             </p>
 
@@ -102,13 +148,19 @@ const breadcrumbs = computed(() => [
             <!-- Una dispensa nuova -->
             <div class="rounded-xl border bg-white dark:bg-slate-900 p-4 space-y-3 text-sm">
                 <h3 class="font-semibold">Registra una dispensa</h3>
-                <div class="flex flex-wrap gap-3">
-                    <label class="text-xs space-y-1"><span class="block">Data della delibera</span><Input v-model="nuova.data_delibera" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
-                    <label class="text-xs space-y-1"><span class="block">Numero del verbale</span><Input v-model="nuova.numero_verbale" class="h-8 w-[140px] text-xs" /></label>
-                    <label class="text-xs space-y-1"><span class="block">Il verbale (PDF o immagine, facoltativo)</span>
-                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" class="text-xs" @change="(e: any) => (verbale = e.target.files?.[0] ?? null)" />
-                    </label>
-                </div>
+                <TooltipProvider :delay-duration="200">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <label class="text-xs flex flex-col gap-1"><span class="block">Data della delibera</span><Input v-model="nuova.data_delibera" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
+                        <label class="text-xs flex flex-col gap-1">
+                            <span class="flex items-center gap-1">Numero del verbale <SpiegazioneDelFiltro :testo="SPIEGAZIONE_VERBALE" /></span>
+                            <Input v-model="nuova.numero_verbale" placeholder="per esempio 3/2027" class="h-8 w-[160px] text-xs" data-testid="numero-verbale" />
+                        </label>
+                        <div class="text-xs flex flex-col gap-1">
+                            <span class="flex items-center gap-1">Il verbale (PDF o immagine, facoltativo) <SpiegazioneDelFiltro :testo="SPIEGAZIONE_FILE" /></span>
+                            <CampoFile v-model="verbale" accept=".pdf,.jpg,.jpeg,.png" testid="file-verbale" class="max-w-[360px]" />
+                        </div>
+                    </div>
+                </TooltipProvider>
                 <div class="text-xs space-y-1">
                     <span class="block font-medium">Gli esercizi coperti</span>
                     <div class="flex flex-wrap gap-3">
@@ -122,10 +174,20 @@ const breadcrumbs = computed(() => [
                     <span class="block font-medium">Per chi vale (lo dice la delibera)</span>
                     <label class="flex items-center gap-1.5"><input v-model="nuova.per_tutti" type="radio" value="1" /> Per tutte le persone</label>
                     <label class="flex items-center gap-1.5"><input v-model="nuova.per_tutti" type="radio" value="0" /> Solo per alcune persone</label>
-                    <div v-if="nuova.per_tutti === '0'" class="flex flex-wrap gap-3 pt-1 max-h-[160px] overflow-y-auto">
-                        <label v-for="p in persone" :key="p.id" class="flex items-center gap-1.5">
-                            <Checkbox :model-value="nuova.persone.includes(p.id)" @update:model-value="nuova.persone = alterna(nuova.persone, p.id)" /> {{ p.nome }}
-                        </label>
+                    <div v-if="nuova.per_tutti === '0'" class="pt-1 max-w-xl dispense-persone" data-testid="scelta-persone">
+                        <v-select
+                            v-model="nuova.persone"
+                            multiple
+                            :options="opzioniPersone"
+                            label="nome"
+                            :reduce="(p: { id: number }) => p.id"
+                            :filterable="false"
+                            :close-on-select="false"
+                            placeholder="Scrivi una parte del nome per cercare"
+                            @search="(t: string) => (testoPersona = t)"
+                        >
+                            <template #no-options>Nessuna persona con questo nome.</template>
+                        </v-select>
                     </div>
                 </div>
                 <label class="text-xs space-y-1 block"><span class="block">Nota</span><Textarea v-model="nuova.nota" rows="2" class="text-xs" /></label>
@@ -135,5 +197,38 @@ const breadcrumbs = computed(() => [
                 <Button size="sm" :disabled="!nuova.data_delibera || !nuova.esercizi.length || !nuova.per_tutti" @click="registra">Registra la dispensa</Button>
             </div>
         </div>
+        <DispenseSeiMesiGuide v-model:open="mostraGuida" :testo-norma="testo_norma" />
     </GestionaleLayout>
 </template>
+
+<style>
+/* Il menu delle persone della dispensa con il testo piccolo del modulo; solo qui. */
+.dispense-persone .v-select {
+    --vs-font-size: 0.75rem;
+    --vs-border-color: var(--input);
+    --vs-controls-color: rgb(100 116 139);
+}
+.dispense-persone .vs__dropdown-toggle {
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.dispense-persone .vs__search,
+.dispense-persone .vs__search::placeholder {
+    font-size: 0.75rem !important;
+}
+.dark .dispense-persone .v-select {
+    --vs-dropdown-bg: rgb(15 23 42);
+    --vs-dropdown-option-color: rgb(226 232 240);
+    --vs-selected-bg: rgb(30 41 59);
+    --vs-selected-color: rgb(226 232 240);
+    --vs-search-input-color: rgb(226 232 240);
+    --vs-border-color: var(--input);
+}
+.dark .dispense-persone .vs__dropdown-toggle {
+    background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+/* `custom.css` evidenzia l'opzione con un grigio chiarissimo e il testo nero: nel tema scuro diventava una barra bianca. */
+.dark .dispense-persone .vs__dropdown-option--highlight {
+    background: rgb(30 41 59) !important;
+    color: rgb(241 245 249) !important;
+}
+</style>
