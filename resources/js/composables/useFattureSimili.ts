@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 // composables/useFattureSimili.ts
 //
 // Decisione D4 (docs/prima_nota_rapida.md), costruita nella 1.11.0-beta.13: due livelli di

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * La rinuncia al conguaglio nella successione (1.11.0-beta.44, decisione 65), come la controlla il server
  * (`AnteprimaPassaggioRequest`): una regola sola per il modulo e per il pannello «Cosa cambierà». Dalla 1.11.0-beta.48 la scelta

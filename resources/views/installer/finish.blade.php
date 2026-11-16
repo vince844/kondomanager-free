@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 <div class="flex flex-col items-center justify-center text-center px-8 pb-4">
     <h2 class="text-2xl font-bold mb-1">🎉 {{ __('installer.finish.title') }}</h2>
     <p class="text-gray-600 mb-3">

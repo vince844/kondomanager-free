@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 import { h } from 'vue'
 import DataTableColumnHeader from '@/components/gestionale/movimenti/fatture/DataTableColumnHeader.vue' 
 import DropdownAction from './DataTableRowActions.vue'
@@ -72,8 +76,8 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
         // Dettaglio, violata qui venti righe dopo averla scritta.
         //
         // ⚠️ E l'icona non è `FileText`: in questo stesso modulo significa già
-        // «fattura» (FatturaRegisterNew.vue:719, accanto alla parola «Fattura») e
-        // su FatturaShow.vue:497 significa «NESSUN documento allegato», cioè
+        // «fattura» (FatturaRegisterNew.vue:724, accanto alla parola «Fattura») e
+        // su FatturaShow.vue:502 significa «NESSUN documento allegato», cioè
         // l'opposto di quello che direbbe qui.
         if (fattura.documenti && fattura.documenti.length > 0) {
             const n = fattura.documenti.length;

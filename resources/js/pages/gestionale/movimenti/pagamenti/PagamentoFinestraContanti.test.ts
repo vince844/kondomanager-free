@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Coda 466: la finestra «Pagamento Non Consentito» è la stessa nella registrazione (`PagamentoNew.vue`) e nella modifica (`PagamentoEdit.vue`), e dalla
  * Coda 466 si apre anche nella modifica. Tutte e due dicono la cifra che il server manda (`illegal_cash`), propongono solo i metodi che la pagina

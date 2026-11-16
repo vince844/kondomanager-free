@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * La tappa A della 1.12.0-beta.9: le Code 560–569, dieci difetti di testo del rendiconto. Via Roma (RendicontoViaRomaScenario) per le stampe e le pagine; per

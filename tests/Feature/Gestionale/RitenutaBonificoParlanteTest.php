@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Il bonifico parlante esclude la ritenuta del condominio.
@@ -153,7 +156,7 @@ test('la ritenuta esclusa non entra nello scadenzario F24', function () {
 /**
  * `verificaCoerenzaRitenuta()` rifiuta un importo dichiarato diverso da quello dovuto, senza
  * tolleranza. È giusto così — ma la schermata di **modifica** rimanda il valore già salvato
- * (`PagamentoEdit.vue:113`), che è stato calcolato prima che si scegliesse il bonifico
+ * (`PagamentoEdit.vue:118`), che è stato calcolato prima che si scegliesse il bonifico
  * parlante. Senza un'eccezione esplicita, la guardia bloccherebbe proprio il salvataggio
  * corretto, e l'amministratore vedrebbe un errore incomprensibile spuntando una casella.
  */

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Due testi a video che promettevano quello che il programma non fa, letti nel sorgente (sono guide statiche): la guida dei pagamenti parziali
  * dice dove si ritrova il residuo, non «tracciato per i futuri solleciti»; la pagina del fornitore non promette di incrociare i suoi dati con i

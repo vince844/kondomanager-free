@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   La testata delle stampe con la carta intestata (le stampe verticali di `pdf.base`), su ogni pagina: lo studio è stampato sulla carta, e il programma
   scrive il condominio in una riga in cima alla parte libera (dal margine alto della carta), con l'indirizzo e il C.F.; a destra il titolo della
   stampa, se c'è. Il margine alto si allunga sulla riga: il corpo comincia sotto.

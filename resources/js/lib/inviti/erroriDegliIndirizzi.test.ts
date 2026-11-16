@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Gli errori dei singoli indirizzi nella pagina «Nuovo invito»: arrivano su `emails.0`, `emails.1`…
  * e fino alla 1.11.0-beta.44 non comparivano da nessuna parte.

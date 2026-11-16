@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Gli aiuti delle prove dell'accordo di rientro con il calendario, sul caso di Neri (`AccessoriScenario.php`, Via Verdi): la rata 1 di € 300,00 scaduta il

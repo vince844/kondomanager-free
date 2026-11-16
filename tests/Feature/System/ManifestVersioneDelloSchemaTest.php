@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Il manifest deve dichiarare la versione dello **schema che contiene**, non quella dei file.
@@ -34,7 +37,7 @@
  *   quello attuale, cioè `RestorePreflight:59`.
  * - **Non copre il secondo lettore del campo.** *(La prima stesura di questo blocco diceva che
  *   `RestorePreflight` era «l'unico lettore in tutto il progetto». Era falso, e l'ha trovato la
- *   revisione avversariale.)* Lo legge anche `RestoreResult.vue:24`, che lo mostra all'utente a
+ *   revisione avversariale.)* Lo legge anche `RestoreResult.vue:29`, che lo mostra all'utente a
  *   ripristino concluso — «ripristinato dalla versione X». Lì il cambiamento **migliora** il
  *   messaggio, perché dopo un backup pre-aggiornamento la schermata dirà la versione dello schema
  *   davvero rimesso dentro invece di quella dei file che l'avevano prodotto. Ma è un lettore, e

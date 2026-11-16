@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * La scheda «Corrispondenza» dell'estratto conto di una persona (Coda 533, decisione 231): le lettere e gli altri documenti che il programma
  * le ha emesso in quel condominio (ricevute, avvisi di compensazione, la scelta «non serve comunicarla»), insieme, dalla più recente; i filtri

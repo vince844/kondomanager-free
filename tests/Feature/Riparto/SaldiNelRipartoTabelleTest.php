@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Ricostruzione della scena segnalata dall'amministratore (23/08/2026).
@@ -271,7 +274,7 @@ it('nasconde i crediti nella stampa e li conta comunque nei totali', function ()
     expect($html)->toContain('4.065,31');
 
     // La cella: nella versione committata il filtro è `@if($importo > 0)`
-    // (_tabella_scadenziario.blade.php:54), quindi il credito esce come «—»
+    // (_tabella_scadenziario.blade.php:59), quindi il credito esce come «—»
     // mentre il totale sotto lo conta. L'assertion è morbida perché il file
     // è in corso di modifica.
     $celleNascondonoIlCredito = ! str_contains($html, '-200,10');

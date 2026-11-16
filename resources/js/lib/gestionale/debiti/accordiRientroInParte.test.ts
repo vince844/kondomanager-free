@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * La parte di una rata coperta solo in parte da un accordo di rientro: il programma conta un versamento su quella rata prima per la parte
  * fuori dall'accordo, e la riga aperta lo dice. Le cifre: una rata da € 500,00 con € 200,00 riconosciuti, dopo un versamento di € 100,00.

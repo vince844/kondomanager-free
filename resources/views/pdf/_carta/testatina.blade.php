@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   La testata delle pagine dopo la prima con lo studio (le stampe di `pdf.base`): una riga con lo studio, il condominio e il suo C.F., e a destra
   il titolo della stampa, se c'è. Sta nella fascia di oggi: il corpo comincia al margine della stampa.
 --}}

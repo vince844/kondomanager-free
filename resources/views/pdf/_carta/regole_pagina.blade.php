@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Le regole di pagina della testata dello studio: la testata `$prima` sulla prima pagina del PDF, la testata `$seguenti` sulle altre, il piede
   `$piede` su tutte. Con `@page :first` mPDF misura la prima pagina sulla testata intera e le seguenti sulla riga, e con il margine che si allunga
   sulla testata il corpo comincia sempre sotto. Il piede sta nella regola: una regola `@page` senza piede lo spegne dalla seconda pagina. Una

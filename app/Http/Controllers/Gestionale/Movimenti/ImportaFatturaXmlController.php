@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
@@ -196,7 +199,7 @@ class ImportaFatturaXmlController extends Controller
      * `sintetica_nota_credito_importi_negativi.xml`), e `FatturaPassivaService::registraFattura()`
      * si aspetta SEMPRE una magnitudine positiva in `righe.*.importo_imponibile`: è lui che
      * applica `$moltiplicatore = -1` quando `tipo_documento === 'nota_credito'`
-     * (`app/Services/Gestionale/FatturaPassivaService.php:36`). Passare la riga così com'è
+     * (`app/Services/Gestionale/FatturaPassivaService.php:39`). Passare la riga così com'è
      * quando il file la dichiara già negativa fa applicare due segni meno: il credito
      * torna positivo e si registra come debito.
      *

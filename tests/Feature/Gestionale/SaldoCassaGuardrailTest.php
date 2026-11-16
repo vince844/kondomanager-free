@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 require_once __DIR__.'/GestionaleTestHelpers.php';
 
@@ -14,8 +17,8 @@ uses(RefreshDatabase::class);
  *
  * Fissa il comportamento ATTUALE del saldo cassa in tutti e tre i code path che oggi
  * condividono la formula ibrida `saldo = saldo_iniziale (colonna) + Σdare − Σavere`:
- *   - SaldoCassaService::saldoDisponibile (SaldoCassaService.php:31)
- *   - SaldoCassaService::saldiPerCondominio (SaldoCassaService.php:83)
+ *   - SaldoCassaService::saldoDisponibile (SaldoCassaService.php:34)
+ *   - SaldoCassaService::saldiPerCondominio (SaldoCassaService.php:86)
  *   - Cassa::getSaldoRealeAttribute (accessor saldo_reale)
  *
  * Dopo il refactor (backfill delle scritture di apertura + flip a lettura ledger-only),

@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Lo scenario dei sei mesi per agire: Via Verdi 12, quattro persone (Rossi, Bianchi, Verdi, Neri), un'unità ciascuna da 250 millesimi, un piano di 12 rate

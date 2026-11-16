@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Cosa resta scoperto: il disegno del riquadro e del badge (il colore, la larghezza a 375 px, il tema scuro) si guarda a video; il collegamento
  * con la pagina (il badge, la riga sotto la voce, «Mostra tutte») lo prova `PianiRateShowQuoteNonAssegnate.test.ts`, che monta la pagina vera; le

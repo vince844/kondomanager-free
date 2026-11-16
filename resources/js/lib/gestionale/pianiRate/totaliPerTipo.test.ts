@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Cosa resta scoperto: il capitolo padre (la pagina offre solo foglie: il padre è disabilitato nel selettore); il disegno del badge «Entrata»
  * nell'opzione del selettore. La somma sta in queste funzioni; il collegamento con la pagina — la pagina formatta con

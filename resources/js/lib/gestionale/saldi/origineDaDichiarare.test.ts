@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * «Dichiarala dai saldi» dall'elenco delle rate scadute: la pagina dei saldi apre «Dichiara l'origine» con i saldi della persona già scelti,
  * quelli a debito senza un'origine dichiarata, di tutte le sue unità.

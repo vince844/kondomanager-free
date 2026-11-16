@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 {{-- L'intestazione del consuntivo per tabella, su due righe: le tabelle del blocco con i loro nomi, e sotto i millesimi (o la percentuale) e gli euro.
      La usano i blocchi di righe e la tabella in fondo, quando è la sola. --}}
 <tr>

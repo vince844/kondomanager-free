@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * La conferma dell'IBAN vale per l'IBAN che l'amministratore ha visto nella finestra: se poi lo cambia, la conferma torna falsa.
  *

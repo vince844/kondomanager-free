@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 import { HttpCancelledError, HttpResponseError } from '@inertiajs/core';
 import type { HttpClient, HttpRequestConfig, HttpResponse } from '@inertiajs/core';
 import { richiediConferma, STATO_CONFERMA_PASSWORD } from '@/composables/useConfermaPassword';

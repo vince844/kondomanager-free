@@ -9,8 +9,10 @@ import { describe, expect, test } from 'vitest';
  * Niente bordo spesso colorato a sinistra nelle card e nelle righe (`border-l-4`, `border-l-[3px]`, `border-l-2` con un colore, e simili): il colore resta
  * dove dice qualcosa, la data e la scritta nel loro colore, lo sfondo appena tinto, il bordo sottile di tutte le card.
  *
- * La guardia legge i file sotto `resources/js` con l'intestazione della licenza (`SPDX-License-Identifier`): le pagine senza l'intestazione si sistemano
- * quando le si tocca, e allora prendono anche l'intestazione. Due regole, fuori dai commenti:
+ * La guardia legge tutti i file sotto `resources/js`. Fino alla beta.10 leggeva solo quelli con l'intestazione della licenza (`SPDX-License-Identifier`), e le pagine
+ * senza si sistemavano quando le si toccava; dalla beta.11 tutti i file hanno l'intestazione, e le righe che la regola prima non vedeva sono in `ARRETRATO` qui
+ * sotto: un elenco chiuso, che non cresce (una pagina nuova col bordo colorato fa fallire la guardia) e che si accorcia quando la pagina si sistema. Due regole,
+ * fuori dai commenti:
  *
  * - nessun colore del solo lato sinistro (`border-l-red-500`, `dark:border-l-amber-400`, `border-s-primary`…), nemmeno scritto in una funzione che dà le
  *   classi a una riga;
@@ -30,6 +32,24 @@ const RADICE = join(__dirname, '..');
 const ECCEZIONI: Record<string, string> = {
     'components/PageHeaderGuide.vue': 'il filetto accanto al titolo della pagina, in ogni pagina: non è una card né una riga',
 };
+
+/**
+ * L'arretrato: pagine con il bordo colorato scritte prima che la regola ci fosse, e che la regola non leggeva perché senza intestazione (le righe sono quelle
+ * trovate alla beta.11, quando la passata dell'intestazione ha esteso la lettura a tutti i file). Si sistemano quando si toccano; chi non ha più il bordo esce
+ * dall'elenco (lo dice la prova sotto).
+ */
+const ARRETRATO: string[] = [
+    'components/gestionale/movimenti/fatture/AssistantCard.vue',
+    'components/gestionale/movimenti/fatture/ModalOverrideBudget.vue',
+    'components/gestionale/pianiDeiConti/conti/DettaglioConto.vue',
+    'components/gestionale/pianiRate/PianoRateSpaccatoSheet.vue',
+    'pages/gestionale/movimenti/fatture/FatturaRegisterEdit.vue',
+    'pages/gestionale/movimenti/fatture/FatturaRegisterNew.vue',
+    'pages/gestionale/movimenti/incassiDaTerzi/IncassoDaTerziNew.vue',
+    'pages/gestionale/movimenti/pagamenti/PagamentoNew.vue',
+    'pages/gestionale/movimenti/regolazioni/RegolazioneImmediataNew.vue',
+    'pages/gestionale/movimenti/rendiconto/Controlli.vue',
+];
 
 const COLORI = 'red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|primary|destructive|secondary|accent';
 const GRIGI = 'slate|gray|zinc|neutral|stone';
@@ -77,26 +97,24 @@ function fileDelCodice(cartella: string): string[] {
     });
 }
 
-const conLIntestazione = () => fileDelCodice(RADICE)
-    .map((f) => ({ file: relative(RADICE, f).split('\\').join('/'), sorgente: readFileSync(f, 'utf8') }))
-    .filter((f) => f.sorgente.includes('SPDX-License-Identifier'));
+const tuttiIFile = () => fileDelCodice(RADICE).map((f) => ({ file: relative(RADICE, f).split('\\').join('/'), sorgente: readFileSync(f, 'utf8') }));
 
 describe('niente bordo spesso colorato a sinistra', () => {
-    test('nessun file con l\'intestazione della licenza ha un bordo sinistro colorato o spesso e non grigio', () => {
-        const trovati = conLIntestazione()
-            .filter((f) => !(f.file in ECCEZIONI))
+    test('nessun file, fuori dall\'arretrato, ha un bordo sinistro colorato o spesso e non grigio', () => {
+        const trovati = tuttiIFile()
+            .filter((f) => !(f.file in ECCEZIONI) && !ARRETRATO.includes(f.file))
             .flatMap((f) => righeConIlBordoColorato(f.sorgente).map((n) => `${f.file}:${n}`));
         expect(trovati, 'Il colore lo dicono la data, la scritta e lo sfondo; il bordo è quello sottile di tutte le card.').toEqual([]);
     });
 
     test('ogni eccezione c\'è ancora e ha ancora il bordo: chi lo perde esce dall\'elenco; la guardia legge davvero i file', () => {
-        const file = conLIntestazione();
-        for (const eccezione of Object.keys(ECCEZIONI)) {
+        const file = tuttiIFile();
+        for (const eccezione of [...Object.keys(ECCEZIONI), ...ARRETRATO]) {
             const f = file.find((x) => x.file === eccezione);
             expect(f, eccezione).toBeDefined();
             expect(righeConIlBordoColorato(f!.sorgente).length, eccezione).toBeGreaterThan(0);
         }
-        expect(file.length).toBeGreaterThan(20);
+        expect(file.length).toBeGreaterThan(500);
     });
 
     test('la guardia morde: il bordo colorato e il bordo spesso non grigio sì; il grigio, il bordo sottile e i commenti no', () => {

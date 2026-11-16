@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Che cosa dice l'anteprima del passaggio, nella colonna della competenza, per una gestione del conguaglio quando la
  * competenza viene dalle voci (lo straordinario, e dalla decisione 26 il piano da fatture anche sull'ordinaria).

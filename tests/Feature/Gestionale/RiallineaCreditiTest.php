@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * 1.11.0-beta.49, voce P9 del verbale (`docs/verbali/1.11/piano_esecutivo_beta49.md`), decisioni 75.1 e 76.1 del registro

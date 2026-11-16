@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * La misura del conguaglio sulle pagine, a 3.000 unità, 3.300 persone e 30 voci: il tempo e la memoria della Sintesi (con il riquadro), dei

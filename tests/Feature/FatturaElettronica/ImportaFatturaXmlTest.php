@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Beta.14, decisione 1 di apertura («due porte, una stanza»,
@@ -158,7 +161,7 @@ test('un utente senza accesso al pannello amministratore prende 403', function (
 test('una nota di credito con importi negativi nel file arriva positiva, pronta per il -1 del servizio', function () {
     // Trovato dalla revisione avversariale della beta.14. FatturaPassivaService::registraFattura()
     // si aspetta SEMPRE una magnitudine positiva in righe.*.importo_imponibile e applica lui
-    // il -1 quando tipo_documento è nota_credito (FatturaPassivaService.php:36). Se questo
+    // il -1 quando tipo_documento è nota_credito (FatturaPassivaService.php:39). Se questo
     // endpoint restituisse il -50 dichiarato nel file, il form lo precompilerebbe negativo e
     // il servizio lo moltiplicherebbe di nuovo per -1: un credito registrato come debito.
     $condominio = Condominio::factory()->create();

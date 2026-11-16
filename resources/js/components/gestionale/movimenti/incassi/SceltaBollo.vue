@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 /**
  * La scelta dell'imposta di bollo di una ricevuta: il titolo con, a destra e in grigio, un dato che vale per questo gruppo; sotto la frase che il

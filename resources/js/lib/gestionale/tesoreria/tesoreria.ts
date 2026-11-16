@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le frasi e le scelte della tesoreria a 30 giorni della dashboard del condominio, fuori dal componente: la regola delle 8, lo stato con la
  * sua scritta, le fatture, la barra delle fasce, le azioni di ogni persona e le righe di «Da dove viene». Le cifre e la

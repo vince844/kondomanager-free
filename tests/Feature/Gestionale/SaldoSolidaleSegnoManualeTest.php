@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * beta.43 — Un credito ripartito a mano resta un credito.
@@ -10,7 +13,7 @@
  *
  * Ma il segno si perdeva per strada, lungo una catena in cui nessun anello sbagliava da solo:
  *
- * 1. `PianiRateNew.vue:122` monta la casella con `disableNegative: true`, e mostra l'importo
+ * 1. `PianiRateNew.vue:127` monta la casella con `disableNegative: true`, e mostra l'importo
  *    da distribuire in **valore assoluto** (`:1287`). Corretto: il meno lo porta il saldo, non
  *    lo digita l'utente.
  * 2. `CreatePianoRateRequest:81` valida l'importo come `'string'`, senza vincoli di segno.
@@ -168,7 +171,7 @@ test('il segno lo decide la fonte, non quello che è stato digitato', function (
  * e non addebitata a nessuno — il quarto modo di far sparire un pregresso in silenzio, dopo i
  * tre che questa beta ha chiuso.
  *
- * L'avviso in giallo esisteva già in `PianiRateNew.vue:1303`, ma non legava: un avviso che si
+ * L'avviso in giallo esisteva già in `PianiRateNew.vue:1308`, ma non legava: un avviso che si
  * può ignorare è la stessa forma dell'enum dichiarato e mai applicato della beta.41.
  *
  * Il controllo sta nella `CreatePianoRateRequest` perché il riparto manuale entra **solo** di

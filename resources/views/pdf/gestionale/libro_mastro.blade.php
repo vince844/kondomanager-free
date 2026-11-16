@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Il libro mastro dell'esercizio — tutti i mastrini in un foglio solo (D21.6, chiesto da Vincenzo a
   video: «se volessi stamparli tutti in una sola volta?»). Ogni conto comincia su una pagina nuova
   e usa lo stesso blocco del mastrino singolo (_mastrino_conto.blade.php); la nota «Come leggere»

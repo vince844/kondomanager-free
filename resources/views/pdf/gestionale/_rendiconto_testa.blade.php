@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   La testa comune delle stampe del rendiconto sulla carta del riepilogo e della situazione patrimoniale (le stesse di `_rendiconto_stile`): la
   testatina dalla seconda pagina (con lo studio, nelle parti del fascicolo, dalla prima), il piede con il nome della parte nel fascicolo e sotto la
   riga dove il fascicolo scrive il suo numero, e in testa alla prima pagina la testata dello studio, della carta intestata o del condominio.

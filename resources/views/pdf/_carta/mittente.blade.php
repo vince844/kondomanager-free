@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Lo studio in alto a sinistra nelle lettere, nelle ricevute e negli avvisi di compensazione: il logo accanto al nome, e sotto, su tutta la
   larghezza della colonna, i suoi dati. Sotto lo studio, dopo uno spazio di 6 px, la vista scrive il condominio. Sta nella cella di sinistra,
   larga 112 mm meno il margine sinistro, che va a capo 8 mm prima del destinatario, a destra. Le tabelle della

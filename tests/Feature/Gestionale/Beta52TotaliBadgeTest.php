@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Cosa resta scoperto: MySQL (sqlite in memoria, con JSON_UNQUOTE registrata a mano); le voci `uscita` (la colonna `conti.tipo` è un enum

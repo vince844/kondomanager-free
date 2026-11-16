@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le frasi e le scelte della tesoreria a 30 giorni, fuori dal componente: la regola delle 8, lo stato con la sua scritta, le scadenze delle
  * fatture, la barra delle fasce in proporzione, le azioni di ogni persona («Registra l'incasso» o «Compensa», «Manda un sollecito» solo quando

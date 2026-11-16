@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * L'origine del pregresso dichiarata sul saldo: le voci del campo (un esercizio del condominio, «dovuto con questo piano», «prima del primo
  * esercizio») e come si leggono. Il campo non ha una risposta già scelta: vuoto è «origine non dichiarata».

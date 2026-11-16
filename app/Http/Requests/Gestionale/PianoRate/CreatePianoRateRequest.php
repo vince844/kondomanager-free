@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Requests\Gestionale\PianoRate;
 
@@ -321,7 +324,7 @@ class CreatePianoRateRequest extends FormRequest
      * nessuno, e nessun avviso la nomina più. È il quarto modo in cui un pregresso poteva
      * sparire in silenzio, dopo i tre chiusi da questa stessa beta.
      *
-     * L'avviso c'era già — `PianiRateNew.vue:1303` colora di giallo la somma che non combacia —
+     * L'avviso c'era già — `PianiRateNew.vue:1308` colora di giallo la somma che non combacia —
      * ma non legava, e un avviso che si può ignorare non è una guardia. Il controllo sta qui e
      * non nell'azione di generazione perché il riparto manuale entra **solo** da questo modulo,
      * alla creazione del piano, ed è il momento in cui l'amministratore ha ancora i suoi numeri

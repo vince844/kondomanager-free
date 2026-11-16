@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
     Troppi tentativi (429): la risposta dei limiti di rotta, per le prove della password attuale, i moduli per
     ospiti e il login. Chi la riceve legge che cosa è successo e quanto aspettare, nella lingua
     dell'installazione: il tempo è quello del limite che si è fermato (`Retry-After`, in secondi).

@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 /**
  * «Spese del ritardo»: una spesa per il ritardo (sollecito, spese legali, altro) pagata dal condominio senza una riga sull'unità, a una persona o a

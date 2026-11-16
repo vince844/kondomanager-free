@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * I segnaposto degli interessi, delle spese e del tasso: la finestra delle lettere dice per quante persone `[interessi]` e `[spese]` sono «€ 0,00»,
  * solo se il testo li usa; l'anteprima dei modelli li riempie con i valori d'esempio.

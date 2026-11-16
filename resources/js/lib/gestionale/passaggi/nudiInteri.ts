@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Decisione 62 (1.11.0-beta.43): all'estinzione, con un altro usufrutto in corso, l'amministratore sceglie i nudi che tornano
  * pieni — nudi interi che insieme valgono quanto l'usufrutto che finisce, oppure tutti, ciascuno per la sua quota. Se nessun

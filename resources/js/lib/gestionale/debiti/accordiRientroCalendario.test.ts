@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Il calendario dell'accordo di rientro nella pagina: la proposta di N rate uguali con l'ultima che prende i centesimi, i giorni ogni mese, la somma che
  * deve fare il debito riconosciuto (la stessa frase del server), le rate versate o no, i segnali della regola di decadenza con le cifre esatte, la regola.

@@ -1,4 +1,9 @@
 <!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
+<!--
   Le tre card sopra l'elenco utenti (Coda 398): quanti sono, quanti hanno l'email da verificare, quanti sono sospesi.
 
   Il disegno è quello delle altre statistiche (`EventiStats.vue`, `DocumentiStats.vue`). I numeri vengono dal server e

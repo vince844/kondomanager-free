@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le parole della pagina «Rate scadute»: il totale lordo, la riga delle rate non emesse, le celle delle due date dei sei mesi con i loro casi
  * (l'esercizio che manca a gennaio, due esercizi, il piano dedotto, la delibera che manca, la data che viene prima della scadenza, il

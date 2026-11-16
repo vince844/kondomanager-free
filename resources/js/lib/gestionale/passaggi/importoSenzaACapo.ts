@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Coda 255 (1.11.0-beta.51): dove il pannello, il cancello e lo storico compongono una frase con una cifra, il simbolo e la cifra stanno
  * nello stesso elemento che non va a capo: «€» in fondo a una riga e «127,04» in cima alla seguente non si leggono.

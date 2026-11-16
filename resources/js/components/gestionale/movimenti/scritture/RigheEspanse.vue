@@ -1,8 +1,13 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 /**
  * Il pannello che compare sotto una riga del Libro Giornale quando la si espande.
  *
- * Stessa tabella dare/avere di Show.vue:485-566 (conto, dettaglio, dare, avere) — il malinteso da
+ * Stessa tabella dare/avere di Show.vue:490-571 (conto, dettaglio, dare, avere) — il malinteso da
  * cui è nato `docs/registri_contabili.md` era proprio che questa vista esistesse solo nel
  * dettaglio: qui compare senza cambiare pagina. Niente footer né badge di quadratura: quelli
  * restano un buon motivo per aprire il dettaglio vero, non vanno duplicati qui.

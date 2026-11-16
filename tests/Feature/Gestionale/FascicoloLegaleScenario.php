@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Lo scenario del fascicolo per il legale, sopra quello dei sei mesi (Via Verdi 12, oggi 20/05/2026): Rossi ha cinque rate scadute da € 100,00, le rate 1 e 2

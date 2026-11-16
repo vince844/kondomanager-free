@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * «Paga» della tesoreria apre il pagamento con la fattura già scelta (`pagamenti-fornitori.create?fattura_id=…`). La fattura si legge nel condominio della

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Cosa resta scoperto: la regola lato server (la provano i test Pest dei promemoria); i valori in euro (qui centesimi, come il `meta`); il caso di una
  * rata non ancora emessa nella finestra (ha il suo test: `EventDetailsDialogBeta52.test.ts`).

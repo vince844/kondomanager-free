@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 {{-- La testata dello studio: con lo studio la prima pagina ha il blocco intero e le seguenti una riga (le regole `@page` qui sotto); senza, la
      testata del condominio di sempre, su ogni pagina. Le testate si danno con `@page`: con il margine che si allunga sulla testata (`PdfService`)
      mPDF misura così anche la prima pagina, mentre una testata accesa nel corpo (`sethtmlpageheader`) arriva quando la prima pagina è già

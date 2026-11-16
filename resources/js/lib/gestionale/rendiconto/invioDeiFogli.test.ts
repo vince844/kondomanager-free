@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le parole dell'invio dei fogli del conguaglio: l'ultimo invio di una persona (mai «consegnato»), lo stato di ogni indirizzo con l'errore in
  * chiaro, il tetto prima di partire, l'esito di un invio e di un rinvio, l'aggiornamento dell'ultimo invio senza ricaricare la scheda.

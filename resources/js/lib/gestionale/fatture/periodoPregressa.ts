@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Decisione 26, punto 2 (1.11.0-beta.35) — la gemella lato client della regola di `StoreFatturaRequest`
  * (`guardiaPeriodoPregressaScoperta()`): una pregressa con una parte **non coperta** dai saldi iniziali non si

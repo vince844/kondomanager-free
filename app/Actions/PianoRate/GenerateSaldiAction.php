@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Actions\PianoRate;
 
@@ -68,7 +71,7 @@ class GenerateSaldiAction
 
                 // Il verso lo detta la FONTE, non quello che è arrivato dal form. La casella
                 // del riparto manuale ha `disableNegative: true` e mostra il totale da
-                // distribuire in valore assoluto (`PianiRateNew.vue:122` e `:1287`): il meno
+                // distribuire in valore assoluto (`PianiRateNew.vue:127` e `:1292`): il meno
                 // l'utente non può digitarlo, ed è giusto così. Ma nessuno lo rimetteva —
                 // `CreatePianoRateRequest` valida l'importo come stringa senza vincoli di
                 // segno, `MoneyHelper::toCents()` di una stringa positiva fa un intero

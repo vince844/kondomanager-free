@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   La testata della prima pagina con lo studio (le stampe di `pdf.base`): a sinistra il logo accanto allo studio con tutti i suoi dati, a destra il
   condominio con l'indirizzo e il C.F.; sotto le due colonne il titolo della stampa, se c'è. Il logo è alto al massimo 14 mm e largo al massimo
   40 mm: accanto al nome, non sopra, la testata resta bassa. L'altezza la misura mPDF (il margine alto si allunga sulla testata): il filetto è

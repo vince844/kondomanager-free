@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 @extends('pdf.base')
 {{-- I titoli e i loro filetti hanno il colore della carta dello studio; senza un colore, quello di sempre. --}}
 @php
@@ -81,7 +86,7 @@
   | dimensione del PDF | 460 KB        | 462 KB         |
 
   Con `memory_limit = 128M` — che questo progetto dichiara «esattamente il parco installato»
-  (AggiornaComuniCommand.php:20, e altre tre volte nel codice) — la tabella unica moriva a
+  (AggiornaComuniCommand.php:23, e altre tre volte nel codice) — la tabella unica moriva a
   **1.000 righe**; a blocchi regge oltre **12.000** (117 MB). Un anno ordinario di condominio
   sta abbondantemente dentro.
 

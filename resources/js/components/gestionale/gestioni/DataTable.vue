@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts" generic="TData, TValue">
 
 import { ref } from 'vue';
@@ -44,7 +49,7 @@ const page = usePage<{ esercizio: { id: number } }>();
  * `tests/Feature/System/NomiDiRottaCheNonEsistonoTest.php`.
  *
  * L'esercizio si legge da `usePage()` come fa già la barra dei filtri accanto
- * (`DataTableToolbar.vue:29`): la prop non c'è, e aggiungerla vorrebbe dire cambiare anche la
+ * (`DataTableToolbar.vue:34`): la prop non c'è, e aggiungerla vorrebbe dire cambiare anche la
  * pagina che monta la tabella per un dato che è già a portata di mano.
  */
 const { inCorso, ordinamento, suPaginazione, suOrdinamento } =

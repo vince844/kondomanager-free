@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * I conti piccoli della finestra degli addebiti: i centesimi come li scrive l'amministratore, la chiave della gestione e dell'esercizio, la data di
  * serie dentro l'esercizio scelto, il nome della natura nell'elenco dell'estratto conto.

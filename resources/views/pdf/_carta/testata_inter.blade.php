@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   La testata della prima pagina con lo studio delle stampe col carattere Inter (il registro di contabilità, il mastrino, il libro mastro, la
   situazione patrimoniale, il riepilogo finanziario), al posto della loro tabella di testa: a sinistra il logo accanto allo studio con tutti i suoi
   dati, a destra il condominio con l'indirizzo e il C.F.; sotto, in una riga, il nome della stampa (`$att`) e quello che senza lo studio sta nella

@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Le correzioni della tappa A della 1.12.0-beta.6 dopo il suo scettico (`docs/riferimenti/beta6_1_12_lavori/tappaA/scettico.md`, SA1–SA11), e i casi che le

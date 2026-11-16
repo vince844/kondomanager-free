@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace Tests\Feature\Gestionale;
 
@@ -36,7 +39,7 @@ use Tests\TestCase;
  *   sarebbe un consiglio su un debito che per lui non esiste ancora.
  * - **Solo dentro la stessa gestione.** Attraversare ordinaria e straordinaria è permesso dal
  *   motore, ma richiede per disegno una spunta esplicita dell'amministratore
- *   (IncassoRateNew.vue:746-760): un suggerimento automatico non può darla per acquisita. Il
+ *   (IncassoRateNew.vue:751-765): un suggerimento automatico non può darla per acquisita. Il
  *   credito sull'altra gestione resta contato nel totale — semplicemente non entra nel consiglio.
  */
 class CompensabileCreditoTest extends TestCase

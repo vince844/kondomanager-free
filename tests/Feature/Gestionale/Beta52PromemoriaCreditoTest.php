@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Cosa resta scoperto: il portale montato (la finestra e l'elenco hanno i loro vitest); la lingua (le frasi del portale sono solo italiane,
@@ -33,7 +36,7 @@
  * Le frasi (al presente, € prima della cifra) sono nello scenario, alla lettera: sono il prodotto. Quelle che dicono «la compensazione la registra
  * l'amministratore» si firmano con la clausola che la applica: l'unico punto che consuma un credito a fronte di una quota è `StoreIncassoRateAction`
  * (`attach` con `importo_pagato` negativo, `:620`, dentro `execute`, dietro la rotta dell'amministratore); il rimborso lo consuma restituendolo
- * (`RimborsaCreditoAction.php:155`). Le frasi dicono «può» e «la registra l'amministratore» e non promettono una scadenza né un «solo»: il credito di
+ * (`RimborsaCreditoAction.php:158`). Le frasi dicono «può» e «la registra l'amministratore» e non promettono una scadenza né un «solo»: il credito di
  * un'altra rata o di un comproprietario l'amministratore lo può usare comunque, e il portale non lo conta.
  *
  * I test che cominciano con «controprova» sono verdi prima e dopo la correzione.

@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Le lettere nel giorno dell'amministratore: alle 00:30 di Roma del 21/03 (in UTC è ancora il 20/03) la lettera dice la situazione al 21/03, il

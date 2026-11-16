@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * La scelta fra «Il programma suggerisce la prossima azione» e «Scelgo io la prossima azione» non sta più nelle impostazioni generali dello studio: è una scelta

@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 use App\Models\Condominio;
 use App\Models\Gestionale\Cassa;
@@ -16,8 +19,8 @@ uses(RefreshDatabase::class);
  * (Σ Attività ≠ Σ Passività + Netto), e nessun controllo esistente lo intercetta
  * (DoubleEntryValidator verifica solo dare = avere della singola scrittura).
  *
- * Riferimenti (beta.24): CreateCassaModelAction.php:12 (saldo_iniziale = colonna),
- * SaldoCassaService.php:32 (saldo = colonna + ledger), DoubleEntryValidator.php:19.
+ * Riferimenti (beta.24): CreateCassaModelAction.php:15 (saldo_iniziale = colonna),
+ * SaldoCassaService.php:35 (saldo = colonna + ledger), DoubleEntryValidator.php:22.
  * Design: docs/fondo_accantonato_e_quadratura_sp.md.
  *
  * Quando la scrittura di apertura sarà in piedi (slice 1, passo successivo), lo scarto

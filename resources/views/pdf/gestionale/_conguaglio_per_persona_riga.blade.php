@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 {{-- Una riga del conguaglio per persona (e il subtotale di chi ha più unità, in grassetto su fondo grigio): la usano il corpo della tabella e la sua coda.
      Chi ha avuto l'unità in più di un ruolo ha i giorni di ogni ruolo sotto il nome, dove vanno a capo: nella colonna dei giorni, che non va a capo,
      allargherebbero la colonna, e le due tabelle non avrebbero più le stesse colonne. --}}

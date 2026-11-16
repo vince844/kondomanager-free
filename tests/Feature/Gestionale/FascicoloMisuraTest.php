@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Il peso del fascicolo per il legale (progetto D2 § 5): una persona con 30 lettere, ognuna con il PDF conservato e una prova, e il rendiconto approvato di 22

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Gli addebiti a una persona sola nella pagina: le frasi e i conti piccoli della finestra (`NuovoAddebitoDialog.vue`) e dell'elenco dell'estratto conto
  * (`AddebitiDellaPersona.vue`). Le cifre arrivano dal server in centesimi; la finestra le propone in euro, come le scrive l'amministratore, e il server

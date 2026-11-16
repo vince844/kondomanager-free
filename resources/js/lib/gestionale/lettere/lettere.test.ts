@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le parole delle lettere: l'ultima lettera di una persona nell'elenco (con «consegna non provata» per l'email, la spedizione con il suo canale,
  * il PDF per persona, l'accordo del tipo con il genere), le righe del registro, il totale di allora e il residuo di oggi, le persone entrate

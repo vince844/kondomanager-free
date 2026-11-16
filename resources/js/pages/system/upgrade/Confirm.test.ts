@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 // @vitest-environment jsdom
 
 /**
@@ -172,7 +175,7 @@ describe('quando non c è nulla da aggiornare', () => {
  * - **Non provano che l'ordine funzioni**, solo che venga detto. Che dopo il rollback dei file il
  *   ripristino accetti l'archivio è coperto da `ManifestVersioneDelloSchemaTest`.
  * - **Non guardano il rendering in scuro.** L'`<Alert variant="destructive">` usa i token del
- *   tema (`alert/index.ts:15`, con `dark:border-destructive`), verificato sul codice e non a video.
+ *   tema (`alert/index.ts:19`, con `dark:border-destructive`), verificato sul codice e non a video.
  */
 describe("il messaggio dopo un aggiornamento fallito", () => {
     test("dice di rimettere prima i file e solo dopo ripristinare", () => {

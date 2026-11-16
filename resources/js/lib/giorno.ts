@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Il giorno di oggi nel calendario di chi usa la pagina, come `aaaa-mm-gg`: dai numeri della data locale (anno, mese, giorno),
  * mai da `toISOString()`, che dà il giorno di Greenwich e fra le 00:00 e le 02:00 di Roma è ancora ieri.

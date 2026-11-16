@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Requests\Gestionale\Movimenti;
 
@@ -144,7 +147,7 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
      * che non rimandava la ritenuta la **azzerava** — e le allocazioni alle fatture non
      * sono nemmeno modificabili in questa schermata, quindi non c'era modo di dichiarare
      * legittimamente «questo pagamento non ha più ritenuta». Il flusso reale era salvo solo
-     * perché `PagamentoEdit.vue:113` il campo lo rimanda sempre; nulla lo garantiva.
+     * perché `PagamentoEdit.vue:118` il campo lo rimanda sempre; nulla lo garantiva.
      *
      * Ora l'assenza è assenza: `PagamentoFornitoreService::aggiornaPagamento()` conserva il
      * valore registrato, e un valore presente che non coincide con quello viene rifiutato.

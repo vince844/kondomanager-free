@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Lo stile comune delle stampe del rendiconto sulla carta del riepilogo e della situazione patrimoniale (§ 7-quinquies di docs/registri_contabili.md:
   Inter e Fraunces, la palette del fac-simile): il conguaglio per persona, il consuntivo per tabella, il foglio della persona, le posizioni dei
   condòmini, i crediti per anzianità. Ogni stampa aggiunge le sue regole in un secondo `<style>`.

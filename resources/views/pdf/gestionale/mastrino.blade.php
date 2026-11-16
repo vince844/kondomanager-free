@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Il mastrino di un conto contabile — la stampa (docs/registri_contabili.md, D21.6).
 
   Stessa carta intestata e stesso sistema tipografico del registro di contabilità e dello Stato

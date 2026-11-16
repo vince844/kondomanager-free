@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * La ritenuta d'acconto registrata su un pagamento fornitore deve corrispondere alle
@@ -21,7 +24,7 @@
  *  2. **In aggiornamento** il campo omesso diventa `0` (`:474`, e la Request normalizza
  *     esplicitamente `null → 0` a `:121-122`): modificare un pagamento senza rimandare la
  *     ritenuta la **azzera**. Anche qui il flusso reale è salvo solo perché
- *     `PagamentoEdit.vue:113` la rimanda; nulla lo garantisce.
+ *     `PagamentoEdit.vue:118` la rimanda; nulla lo garantisce.
  *
  * La regola di dominio: le allocazioni alle fatture sono **immutabili in modifica** — lo
  * dice la schermata stessa — quindi la ritenuta non è un campo libero. È una funzione delle

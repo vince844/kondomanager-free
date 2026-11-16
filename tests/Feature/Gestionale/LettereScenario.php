@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Lo scenario delle lettere: Ugo (unità A, 600 millesimi) e Bice (unità B, 400), 12 rate mensili dal 05/01/2026 su € 1.200,00 l'anno, quindi

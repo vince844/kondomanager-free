@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Console\Commands;
 
@@ -473,7 +476,7 @@ class VerificaDocumentazioneCommand extends Command
     /**
      * Trova il file citato da un riferimento.
      *
-     * ⚠️ **I documenti citano quasi sempre il solo nome del file** — `GenerateSaldiAction.php:59`,
+     * ⚠️ **I documenti citano quasi sempre il solo nome del file** — `GenerateSaldiAction.php:62`,
      * non il percorso completo — perché in una frase il percorso non si legge. Un controllo che
      * risolvesse solo i percorsi dalla radice segnalerebbe **165 riferimenti rotti su 411**, tutti
      * falsi: e un controllo che grida al lupo centosessantacinque volte viene spento al secondo

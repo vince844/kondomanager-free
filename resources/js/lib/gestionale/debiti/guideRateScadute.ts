@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le tre card in alto della pagina «Rate scadute», come nelle altre pagine: un titolo, una frase, un'icona, un colore. La guida intera è nel cassetto
  * («Guida»). Le frasi dicono che cosa fa la pagina: la data dell'elenco, le colonne, la vista «In scadenza nei prossimi N giorni»; le lettere e la

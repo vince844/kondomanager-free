@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Il consuntivo per tabella: la gemella della stampa del preventivo per tabella (`riparto_tabelle`), con la spesa dell'esercizio al posto del
   preventivo. Per ogni gestione, una riga per unità e soggetto, e per ogni tabella i millesimi dell'unità e la parte della spesa; in fondo il già
   versato tolto (una colonna sua, come nel preventivo) e il totale, che è la colonna «Spese dell'esercizio» del conguaglio. Dall'array di

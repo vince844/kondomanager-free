@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   La nota sintetica esplicativa del rendiconto: la parte del fascicolo subito dopo il frontespizio, e la stampa da sola. Legge l'array
   di `NotaSinteticaDelRendiconto::perLaStampa()`: le parti che hanno qualcosa, con i fatti tenuti (la frase di oggi o quella riscritta), il testo
   dell'amministratore, gli elenchi, la dichiarazione, le cose da decidere in assemblea. Nessuna cifra si calcola qui.

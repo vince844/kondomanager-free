@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le parole dei modelli delle lettere: la finestra della lettera (il menu, «Salva come modello…», «Aggiorna») e la pagina «Modelli delle
  * lettere». Le regole stanno nel server (`ModelliLettere`): l'ordine, il modello ricordato, il nome unico, il permesso. Qui c'è quello che serve a

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le parole dell'invio dei fogli del conguaglio per email: l'ultimo invio di una persona, lo stato di un indirizzo, l'esito di un invio e di un
  * rinvio, il tetto, i fogli in coda da tempo. Le regole stanno nel server (`InvioDeiFogli`): qui c'è quello che serve a dirle. Le date arrivano

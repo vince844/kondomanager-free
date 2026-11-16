@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
 /**
  * Le caselle dei moduli del portale (Coda 584): ogni casella ha l'id che la sua etichetta nomina, e la casella di `is_private` porta l'etichetta e
  * la spiegazione di «Privata».

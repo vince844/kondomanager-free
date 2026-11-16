@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * 1.11.0-beta.49, la contabilità dei crediti — l'incasso, il rimborso e lo storno (voci P2, P4 e P8 del verbale,
@@ -615,7 +618,7 @@ it('P4 — la pagina della scrittura riceve il tipo delle figlie e lo stato del 
     $figlia = $this->actingAs($this->user)->get(route('admin.gestionale.scritture.show', [$s['c'], $comp]))->viewData('page')['props']['scrittura'];
 
     // I dati che servono a `resources/js/lib/gestionale/scritture/bannerStorno.ts` (vitest): oggi le figlie portano solo l'etichetta
-    // e il padre non dice il suo stato, e il riquadro «movimento annullato» compare per ogni figlia (Show.vue:299).
+    // e il padre non dice il suo stato, e il riquadro «movimento annullato» compare per ogni figlia (Show.vue:304).
     expect($padre['stato'])->toBe('registrata')
         ->and(collect($padre['figlie'])->pluck('tipo_movimento')->all())->toBe(['storno_credito'])
         ->and($figlia['tipo_movimento'])->toBe('storno_credito')
@@ -744,7 +747,7 @@ it('P8/C209 (lente sicurezza) — l\'anteprima dello storno non risponde per la 
 it('P8 — l\'elenco degli incassi passa l\'importo in centesimi interi, che la conferma dello storno mostra senza moltiplicare', function () {
     $s = cstScenario(saldoUgo: 0);
     cstEmetti($this, $s, [1], '2026-02-28')->assertSessionHasNoErrors();
-    // € 19,99: in JavaScript 19.99 * 100 = 1998.9999999999998 (DataTableRowActions.vue:30).
+    // € 19,99: in JavaScript 19.99 * 100 = 1998.9999999999998 (DataTableRowActions.vue:35).
     $incasso = cstIncassa($this, $s, [1 => 1999], 0, '2026-03-05');
 
     $servizio = app(\App\Services\Gestionale\IncassoRateService::class);

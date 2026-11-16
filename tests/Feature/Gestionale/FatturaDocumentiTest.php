@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,7 +43,7 @@ beforeEach(function () {
     $permessoVedi = Permission::firstOrCreate(['name' => 'Visualizza documenti archivio', 'guard_name' => 'web']);
 
     // Il ruolo di test ha TUTTI e tre — come l'amministratore vero (Role::AMMINISTRATORE
-    // prende PermissionEnum::cases() per intero, app/Enums/Role.php:61). Il test sul
+    // prende PermissionEnum::cases() per intero, app/Enums/Role.php:64). Il test sul
     // collaboratore, più sotto, usa un ruolo suo con solo CREATE — è quello il caso
     // interessante da isolare, non il proprietario che può fare tutto.
     $ruoloAdmin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
@@ -172,7 +175,7 @@ it('il collaboratore allega ma non elimina — applica la regola già esistente 
     // DocumentoPolicy::delete() controlla anche DELETE_OWN_ARCHIVE_DOCUMENTS come
     // seconda via: la riga deve esistere (Spatie solleva se il permesso non è mai
     // stato creato), ma NON va assegnata — il collaboratore reale non ce l'ha
-    // (app/Enums/Role.php:63-100, verificato: non compare nella sua lista).
+    // (app/Enums/Role.php:66-103, verificato: non compare nella sua lista).
     Permission::firstOrCreate(['name' => 'Elimina propri documenti archivio', 'guard_name' => 'web']);
     $ruoloCollaboratore = Role::firstOrCreate(['name' => 'collaboratore-test', 'guard_name' => 'web']);
     $ruoloCollaboratore->syncPermissions([$permessoAdmin, $permessoCrea]); // niente DELETE_ARCHIVE_DOCUMENTS

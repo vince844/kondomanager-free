@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
@@ -398,7 +403,7 @@ const eliminaDocumento = () => {
                             >
                                 <!-- ⚠️ `Banknote` e non `Landmark`: nel prodotto `Landmark` è la banca
                                      come istituzione, mentre l'azione di pagare ha già la sua icona in
-                                     F24Show.vue:510 («Registra versamento»). Allineata anche
+                                     F24Show.vue:515 («Registra versamento»). Allineata anche
                                      «Procedi al pagamento» più in alto: è la stessa azione, e due
                                      icone diverse per la stessa cosa nella stessa pagina si notano.
                                      Resta `Landmark` sul badge dello stato di pagamento, che non è

@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * La misura della nota sintetica nel condominio grande delle misure del conguaglio (3.000 unità, 3.300 persone, 30 voci, 300 passaggi): la lettura dei
