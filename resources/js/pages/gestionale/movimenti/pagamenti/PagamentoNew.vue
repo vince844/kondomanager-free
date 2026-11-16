@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { useForm, Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import PagamentoFornitoreGuide from '@/components/guides/PagamentoFornitoreGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,7 @@ import {
     CheckCircle, Briefcase, FileText, Zap, ArrowRightLeft, Wallet,
     AlertOctagon, TriangleAlert, Lock,
     Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp,
-    Bug, Scale, Info, FileX, Ban, BookOpen
+    Bug, Scale, Info, FileX, Ban
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { costruisciAllocazioni, distribuisciNetting } from '@/lib/gestionale/fatture/netting';
@@ -377,8 +378,8 @@ const isDataPagamentoVecchia = computed(() => {
 // IBAN sentinella
 const ibanDiscrepanza = computed(() => {
     if (!form.iban_beneficiario || !selectedFornitore.value?.iban_principale) return false;
-    const inputClean = form.iban_beneficiario.replace(/\s/g, '').toUpperCase();
-    const anagraficaClean = (selectedFornitore.value.iban_principale || '').replace(/\s/g, '').toUpperCase();
+    const inputClean = form.iban_beneficiario.replace(/[\s\u200B\uFEFF]+/g, '').toUpperCase();
+    const anagraficaClean = (selectedFornitore.value.iban_principale || '').replace(/[\s\u200B\uFEFF]+/g, '').toUpperCase();
     return inputClean !== anagraficaClean && inputClean.length >= 15;
 });
 
@@ -635,6 +636,9 @@ const handleSubmit = () => {
     });
 };
 
+// La conferma vale per l'IBAN visto nella finestra: se l'amministratore lo cambia, la finestra va chiesta di nuovo.
+watch(() => form.iban_beneficiario, () => { form.iban_confermato_manualmente = false; });
+
 const confirmIban = () => {
     form.iban_confermato_manualmente = true;
     showIbanConfirmModal.value = false;
@@ -742,9 +746,7 @@ const pageGuides = [
                 back-text="Indietro"
             >
                 <template #actions>
-                    <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
-                        <BookOpen class="h-4 w-4" /> Guida completa
-                    </Button>
+                    <PulsanteGuida testo="Guida completa" @click="mostraGuida = true" />
                 </template>
             </PageHeaderGuide>
 

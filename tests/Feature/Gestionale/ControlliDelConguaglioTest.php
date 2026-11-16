@@ -191,25 +191,27 @@ it('le quote tornano con il riparto; una riga del riparto cambiata dopo il piano
         ->and($neri['conguaglio'])->toBe(10000);
 });
 
-it('i controlli sono quattordici, sempre: senza la lettura i quattro del conguaglio ci sono, «non calcolati», fuori dal conto dei «da leggere»', function () {
+it('i controlli sono quindici, sempre: senza la lettura i quattro del conguaglio ci sono, «non calcolati», fuori dal conto dei «da leggere»', function () {
     $s = cdgxViaVerdi($this);
     $tutti = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e']->fresh());
 
-    expect(array_column($tutti['controlli'], 'id'))->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE', 'CG', 'CU', 'CB', 'CA'])
-        ->and(array_column(array_slice($tutti['controlli'], 10), 'esito'))->toBe(['non_calcolato', 'non_calcolato', 'non_calcolato', 'non_calcolato'])
+    // Il saldo della banca, l'ultimo, è «non calcolato» per il suo motivo: in Via Verdi l'estratto conto non è scritto nella nota.
+    expect(array_column($tutti['controlli'], 'id'))->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE', 'CG', 'CU', 'CB', 'CA', 'BC'])
+        ->and(array_column(array_slice($tutti['controlli'], 10, 4), 'esito'))->toBe(['non_calcolato', 'non_calcolato', 'non_calcolato', 'non_calcolato'])
         ->and($tutti['controlli'][10]['nota'])->toBe(ControlliDelConguaglio::NOTA_NON_LETTO)
-        ->and($tutti['esito']['non_calcolati'])->toBe(4)
+        ->and($tutti['esito']['non_calcolati'])->toBe(5)->and($tutti['esito']['non_calcolati_banca'])->toBe(1)
         ->and($tutti['esito']['tornano'] + $tutti['esito']['non_tornano'] + $tutti['esito']['da_leggere'])->toBe(10)
-        ->and($tutti['esito']['frase'])->toEndWith(', 4 non calcolati')
-        ->and($tutti['esito']['riga_esiti'])->toEndWith(ControlliDelRendiconto::RIGA_NON_CALCOLATI);
+        ->and($tutti['esito']['frase'])->toEndWith(', 5 non calcolati')
+        ->and($tutti['esito']['riga_esiti'])->toContain(ControlliDelRendiconto::RIGA_NON_CALCOLATI)->toEndWith(ControlliDelRendiconto::RIGA_BANCA_NON_CALCOLATA);
     // In stampa la nota non rimanda a una scheda del programma.
     expect(\App\Services\Gestionale\ParoleDellaStampa::frase(ControlliDelConguaglio::NOTA_NON_LETTO))->not->toContain('scheda');
 
     $letto = app(ConguaglioDelRendiconto::class)->leggi($s['e']->fresh());
     $con = app(ControlliDelRendiconto::class)->conIlConguaglio($tutti, $letto);
     expect(array_column($con['controlli'], 'id'))->toBe(array_column($tutti['controlli'], 'id'))
-        ->and(array_column(array_slice($con['controlli'], 10), 'esito'))->toBe(['quadra', 'quadra', 'quadra', 'quadra'])
-        ->and($con['esito']['tornano'])->toBe($tutti['esito']['tornano'] + 4)->and($con['esito']['non_calcolati'])->toBe(0)
-        ->and($con['esito']['frase'])->not->toContain('non calcolat')->and($con['esito']['riga_esiti'])->toBe(ControlliDelRendiconto::RIGA_ESITI)
+        ->and(array_column(array_slice($con['controlli'], 10, 4), 'esito'))->toBe(['quadra', 'quadra', 'quadra', 'quadra'])
+        ->and($con['esito']['tornano'])->toBe($tutti['esito']['tornano'] + 4)->and($con['esito']['non_calcolati'])->toBe(1)
+        ->and($con['esito']['frase'])->toEndWith(', 1 non calcolato')
+        ->and($con['esito']['riga_esiti'])->toBe(ControlliDelRendiconto::RIGA_ESITI.' '.ControlliDelRendiconto::RIGA_BANCA_NON_CALCOLATA)
         ->and($con['conguaglio'])->toBe($letto);
 });

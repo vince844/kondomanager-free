@@ -6,17 +6,20 @@
  * stanno solo qui: le stampe per i condòmini non li hanno.
  */
 import { computed, ref } from 'vue';
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RendicontoConguaglioGuide from '@/components/guides/RendicontoConguaglioGuide.vue';
 import Alert from '@/components/Alert.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import InvioDeiFogli from '@/components/gestionale/rendiconto/InvioDeiFogli.vue';
+import NuovoAddebitoDialog, { type OrigineAddebito } from '@/components/gestionale/addebiti/NuovoAddebitoDialog.vue';
 import UltimoInvioDelFoglio from '@/components/gestionale/rendiconto/UltimoInvioDelFoglio.vue';
 import { Button } from '@/components/ui/button';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { etichettaRuolo } from '@/lib/gestionale/ruoli-immobile';
 import { Printer, FileDown, Scale, Users, Mail } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -24,6 +27,8 @@ import type { Flash } from '@/types/flash';
 
 interface Riga {
     anagrafica_id: number; nome: string; immobile_id: number | null; unita: string | null; giorni: number | null;
+    /** Chi ha avuto l'unità in più di un ruolo: i giorni di ogni ruolo che non ha avuto tutto l'anno (allora `giorni` è null). */
+    giorni_per_ruolo?: { ruolo: string; giorni: number }[];
     a: number | null; personali: number | null; b: number | null; b_non_emesse: number | null; conguaglio: number | null; posizione: number | null; fuori: number | null; saldo: number | null;
     /** Le rate dei piani dell'esercizio non ancora emesse: il saldo non le comprende ancora. */
     non_emesse?: number | null;
@@ -34,7 +39,10 @@ interface Riga {
 interface Totali { a: number; personali: number; b: number; conguaglio: number; posizione: number; fuori_dalle_rate: number; saldo: number; non_disponibili: number; a_non_disponibili?: number; non_emesse?: number }
 interface Gestione {
     id: number; nome: string; tipo: string; non_calcolabile: string | null; totali: Totali;
-    non_attribuite: { conto_id: number; voce: string; piano_conto_id: number | null; importo: number; motivo: string }[];
+    /** `coperti`: la parte coperta da addebiti a singole persone, per la voce (dal preventivo: può superare la cifra del consuntivo). */
+    non_attribuite: { conto_id: number; voce: string; piano_conto_id: number | null; importo: number; motivo: string; coperti?: number }[];
+    /** Gli addebiti a singole persone accanto alle spese non attribuite: quanto coprono, a chi, quanto resta da addebitare. */
+    addebiti?: { coperti: number; non_attribuite: number; restano: number; per_persona: { anagrafica_id: number; nome: string; unita: string | null; importo: number }[]; frase: string } | null;
     /** L'opera straordinaria in corso: lo speso e il chiesto, senza proporre. */
     in_corso?: { frase: string; gestione_id: number; senza_data_fine: boolean; sposta_data_fine?: boolean; spesi: number | null; chiesti: number | null } | null;
     /** L'opera finita in questo esercizio su più esercizi: il conguaglio è sull'intera gestione. */
@@ -55,7 +63,7 @@ interface Scheda {
     non_disponibili?: string | null;
     data: { alla: string; finito: boolean; calcolato_il: string | null; frase: string };
     secondi: number | null;
-    /** Il secondo momento, come righe: i crediti e i debiti verso i condòmini dopo l'approvazione e la scrittura del conguaglio. */
+    /** Il secondo momento, come righe: i crediti e i debiti verso i condòmini se l'assemblea approva e il conguaglio si registra. */
     secondo_momento?: { crediti_oggi: number; personali: number; a_debito: number; crediti_dopo: number; a_credito: number; frase: string } | null;
     righe: Riga[];
     pagine: { corrente: number; ultima: number; per_pagina: number; righe: number; dopo: number };
@@ -76,6 +84,16 @@ const page = usePage<{ flash?: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash?.message);
 const k = computed(() => props.conguaglio);
 const base = { condominio: props.condominio.id, esercizio: props.esercizio.id };
+
+/**
+ * I giorni sotto l'unità, come li dicono le stampe (`ParoleDelConguaglio::giorni`): «181 giorni»; con più ruoli sull'unità quelli di ogni ruolo, «306 giorni
+ * come proprietario». Null se la riga non ne ha.
+ */
+const quanti = (n: number) => (n === 1 ? '1 giorno' : `${n} giorni`);
+const giorniDellaRiga = (r: Riga): string | null =>
+    r.giorni_per_ruolo?.length
+        ? r.giorni_per_ruolo.map((g) => `${quanti(g.giorni)} come ${etichettaRuolo(g.ruolo)}`).join(', ')
+        : r.giorni === null ? null : quanti(r.giorni);
 
 /** Le cifre del conguaglio e del saldo con il più quando sono a debito, dopo il simbolo come il meno («€ +1,48», «€ -1,48»); «non disponibile» quando il programma non le ha. */
 const conSegno = (v: number | null) => (v === null ? 'non disponibile' : v > 0 ? euro(v).replace(/^€(\s*)/, '€$1+') : euro(v));
@@ -104,6 +122,10 @@ const hrefPianoConti = (pianoConto: number | null) => (pianoConto === null ? hre
     : generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti/:pianoConto', { ...base, pianoConto }));
 const stampa = (nome: string) => window.open(route(generateRoute(nome), base), '_blank');
 
+/* ─── «Addebita a una persona» sulle spese non attribuite: quello che resta, dalla stessa riga ─── */
+const addebito = ref<OrigineAddebito | null>(null);
+const apriAddebito = (g: Gestione) => { addebito.value = { tipo: 'conguaglio', gestioneId: g.id, esercizioId: props.esercizio.id, importo: g.addebiti?.restano ?? 0 }; };
+
 /* ─── I fogli in un archivio: le persone scelte, di tutto l'elenco o di questa pagina; l'ultima scelta la ricorda il server ─── */
 const chi = ref<Scelta>(props.fogli.ricordata);
 const soloPagina = ref(false);
@@ -126,6 +148,8 @@ const scelte: { valore: Scelta; etichetta: string }[] = [
     { valore: 'con_email', etichetta: 'Con un indirizzo email' },
 ];
 
+// La guida della scheda, che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Movimenti' },
@@ -133,7 +157,7 @@ const headerBreadcrumbs = computed(() => [
     { title: 'Conguaglio' },
 ]);
 const pageGuides = [
-    { title: 'La proposta di conguaglio', description: 'Per persona e unità: le spese dell\'esercizio che le toccano, le spese personali non ancora chieste, meno le quote dei piani. È una proposta: diventa una richiesta quando l\'assemblea approva il rendiconto.', icon: Scale, colorVariant: 'blue' as const },
+    { title: 'La proposta di conguaglio', description: 'Per persona e unità: le spese dell\'esercizio che le toccano, le spese personali non ancora chieste, meno le quote dei piani. È una proposta, da approvare dall\'assemblea: il programma la calcola e la stampa, non la registra.', icon: Scale, colorVariant: 'blue' as const },
     { title: 'Il saldo finale', description: 'La posizione sulle rate, come nell\'estratto conto, più i saldi fuori dalle rate, più il conguaglio. Positivo vuol dire da versare, negativo a credito.', icon: Users, colorVariant: 'amber' as const },
     { title: 'Il foglio di ogni persona', description: 'Per ogni persona un foglio con le sue unità, voce per voce, il conguaglio e il saldo, con la firma. Si scarica uno per uno o in un archivio, oppure si manda per email agli indirizzi della persona; accanto a ogni persona c\'è l\'ultimo invio.', icon: Mail, colorVariant: 'emerald' as const },
 ];
@@ -144,6 +168,9 @@ const pageGuides = [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
                 page-title="Conguaglio"
                 :page-subtitle="`${props.esercizio.nome}. ${props.frasi.proposta}`"
                 :guides="pageGuides"
@@ -230,7 +257,7 @@ const pageGuides = [
                                                     <UltimoInvioDelFoglio :condominio-id="props.condominio.id" :esercizio-id="props.esercizio.id" :persona="r.anagrafica_id" />
                                                 </template>
                                             </td>
-                                            <td class="py-1.5 pr-3 text-slate-600 dark:text-slate-400">{{ r.unita ?? '—' }}<span v-if="r.giorni !== null" class="block text-[11px]" data-test="giorni">{{ r.giorni }} giorni</span></td>
+                                            <td class="py-1.5 pr-3 text-slate-600 dark:text-slate-400">{{ r.unita ?? '—' }}<span v-if="giorniDellaRiga(r) !== null" class="block text-[11px]" data-test="giorni">{{ giorniDellaRiga(r) }}</span></td>
                                             <td class="py-1.5 pr-3 text-right tabular-nums">{{ cella(r.a) }}</td>
                                             <td class="py-1.5 pr-3 text-right tabular-nums">{{ cella(r.personali) }}</td>
                                             <td class="py-1.5 pr-3 text-right tabular-nums">{{ cella(r.b) }}<span v-if="r.b_non_emesse" class="block text-[11px] text-slate-500 dark:text-slate-400">di cui non emesse {{ euro(r.b_non_emesse) }}</span></td>
@@ -278,14 +305,18 @@ const pageGuides = [
                         <p v-if="k.secondo_momento" class="text-[12.5px] text-slate-700 dark:text-slate-300 mt-3" data-test="secondo-momento">{{ k.secondo_momento.frase }}</p>
 
                         <!-- Le uscite che nessuno paga -->
-                        <div v-if="k.gestioni.some((g) => g.non_attribuite.length) || k.fuori_dai_capitoli.length" class="mt-6" data-test="nessuno">
+                        <div v-if="k.gestioni.some((g) => g.non_attribuite.length || g.addebiti) || k.fuori_dai_capitoli.length" class="mt-6" data-test="nessuno">
                             <h3 class="font-semibold text-slate-800 dark:text-slate-200 mb-1">Le uscite che nessuno paga</h3>
                             <ul class="text-[12.5px] space-y-1">
                                 <template v-for="g in k.gestioni" :key="g.id">
                                     <li v-for="n in g.non_attribuite" :key="`${g.id}-${n.conto_id}`" data-test="non-attribuita">
-                                        <Link :href="hrefPianoConti(n.piano_conto_id)" class="underline decoration-dotted underline-offset-4">{{ n.voce }}</Link> ({{ g.nome }}): {{ euro(n.importo) }} non attribuiti.
+                                        <Link :href="hrefPianoConti(n.piano_conto_id)" class="underline decoration-dotted underline-offset-4">{{ n.voce }}</Link> ({{ g.nome }}): {{ euro(n.importo) }} non attribuiti{{ n.coperti ? `; addebitati per questa voce ${euro(n.coperti)}` : '' }}.
                                         {{ n.motivo }}
                                         <Link :href="hrefRiepilogo" class="ml-2 text-[11px] font-semibold underline" data-test="apri-riepilogo">Apri il riepilogo</Link>
+                                    </li>
+                                    <li v-if="g.addebiti" :key="`addebiti-${g.id}`" class="text-slate-600 dark:text-slate-400" data-test="coperti-da-addebiti">
+                                        {{ g.nome }}: {{ g.addebiti.frase }}
+                                        <button v-if="g.addebiti.restano > 0" type="button" class="ml-2 text-[11px] font-semibold underline" data-test="addebita-non-attribuite" @click="apriAddebito(g)">Addebita a una persona</button>
                                     </li>
                                 </template>
                                 <li v-for="f in k.fuori_dai_capitoli" :key="f.nome" data-test="fuori-capitoli">{{ f.nome }}, fuori dai capitoli: {{ euro(f.importo) }}. {{ f.motivo }}</li>
@@ -294,9 +325,12 @@ const pageGuides = [
                         <p v-for="g in k.gestioni.filter((x) => x.non_calcolabile)" :key="`nc-${g.id}`" class="mt-3 text-[12.5px] text-amber-800 dark:text-amber-300" data-test="non-calcolabile">
                             {{ g.nome }}: il conguaglio non si calcola. {{ g.non_calcolabile }}
                         </p>
+                        <NuovoAddebitoDialog :open="addebito !== null" :condominio-id="props.condominio.id" :origine="addebito"
+                            @update:open="(v: boolean) => { if (!v) addebito = null; }" @fatto="router.reload({ only: ['conguaglio'] })" />
                     </MovimentiLayout>
                 </section>
             </div>
         </div>
+        <RendicontoConguaglioGuide v-model:open="mostraGuida" />
     </GestionaleLayout>
 </template>

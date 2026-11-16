@@ -801,7 +801,7 @@ it('l\'email di chi ha un foglio con una parte non ancora calcolata lo dice in u
     $per = fn (string $chi) => ifcTesto(collect(app('mailer')->getSymfonyTransport()->messages())->map->getOriginalMessage()
         ->first(fn ($m) => $m->getTo()[0]->getAddress() === $s['persone'][$chi]->email));
 
-    expect(InvioDeiFogli::FRASE_NON_PRONTO)->toBe('Una parte del suo foglio non è ancora calcolata: l\'amministratore le scriverà appena possibile.')
+    expect(InvioDeiFogli::FRASE_NON_PRONTO)->toBe('Una parte del suo foglio non è ancora calcolata: questo foglio non ha la sua cifra.')
         ->and($per('Bianchi'))->not->toContain('pront')
         ->and($per('Bianchi'))->toContain(InvioDeiFogli::FRASE_NON_PRONTO)
         ->and($per('Rossi'))->toContain(InvioDeiFogli::FRASE_NON_PRONTO)

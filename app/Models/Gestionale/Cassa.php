@@ -212,7 +212,8 @@ class Cassa extends Model
             return false;
         }
 
-        return $this->sottotipo_fondo === 'generico' || $this->is_override_assemblea;
+        // La regola in un posto solo: un fondo generico o sbloccato dall'assemblea si può usare.
+        return \App\Services\Gestionale\TipoDelFondo::siPuoUsare($this->sottotipo_fondo, (bool) $this->is_override_assemblea);
     }
 
     /**

@@ -8,6 +8,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RendicontoRiepilogoGuide from '@/components/guides/RendicontoRiepilogoGuide.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
@@ -58,7 +59,8 @@ interface Voce {
 }
 
 interface RigaQuote {
-    riga: 'ordinarie' | 'straordinarie' | 'esercizi_precedenti';
+    /** `addebiti`: i contributi addebitati a singole persone; `spese_addebitate`: le spese di una sola unità chieste a una persona. Senza deliberato. */
+    riga: 'ordinarie' | 'straordinarie' | 'esercizi_precedenti' | 'addebiti' | 'spese_addebitate';
     deliberate: number | null;
     emesse: number;
     pagate: number;
@@ -87,11 +89,14 @@ interface Riepilogo {
         totale_spese: Record<string, number | null>;
         totale_entrate?: Record<string, number | null>;
         cumulato_opera: { dal: string | null; consuntivo: number } | null;
+        /** Il versato dai condòmini per interessi e spese, per voce: non è un'entrata da terzi, e riduce le spese da dividere. */
+        versato_accessori?: Array<{ voce_id: number; nome: string; importo: number }>;
+        totale_versato_accessori?: number;
     }>;
     fuori_capitoli: { contestate: Fuori; commissioni_senza_voce: Fuori; non_classificati: Fuori };
     quote: { totale: RigaQuote & { netto: number; versamenti_registro: number } };
     risultato: { quote_emesse: number; costi: number; risultato: number };
-    raccordo_quote: { quote_piani: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
+    raccordo_quote: { quote_piani: number; contributi_addebitati?: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
     riconciliazione: { costi: number; capitoli_netti: number; commissioni_senza_voce: number; contestate: number; non_classificati: number; differenza: number };
     totali: { da_pagare: number; pagato_in_piu: number };
     avvertenze: {
@@ -148,13 +153,16 @@ const cellaDeliberato = (v: Pick<Voce, 'deliberato' | 'deliberato_stato' | 'deli
 const aperte = ref<Record<number, boolean>>({});
 const apri = (id: number) => { aperte.value[id] = !aperte.value[id]; };
 
-const nomeRiga = (riga: RigaQuote['riga']) => ({ ordinarie: 'Quote ordinarie', straordinarie: 'Quote straordinarie', esercizi_precedenti: 'Esercizi precedenti' }[riga]);
+const nomeRiga = (riga: RigaQuote['riga']) => ({ ordinarie: 'Quote ordinarie', straordinarie: 'Quote straordinarie', esercizi_precedenti: 'Esercizi precedenti',
+    addebiti: 'Contributi addebitati a singole persone', spese_addebitate: 'Spese di una sola unità chieste a una persona' }[riga]);
 
 const hrefCommissioni = computed(() => generatePath('gestionale/:condominio/esercizi/:esercizio/commissioni-senza-voce', { condominio: props.condominio.id, esercizio: props.esercizio.id }));
 /** Le fatture con una riga su un'unità: le spese personali. */
 const hrefFattureConUnita = computed(() => `${generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id })}?con_unita=1`);
 const hrefIncasso = (voceId: number) => `${generatePath('gestionale/:condominio/incassi-da-terzi/create', { condominio: props.condominio.id })}?voce=${voceId}`;
 
+// La guida della scheda, che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Movimenti' },
@@ -189,6 +197,9 @@ const pageGuides = [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
                 page-title="Riepilogo finanziario"
                 :page-subtitle="`${r.esercizio.nome}: per competenza, ${r.avvertenze.data}.`"
                 :guides="pageGuides"
@@ -343,6 +354,13 @@ const pageGuides = [
                                 </tbody>
                             </table>
 
+                            <!-- Gli interessi e le spese versati dai condòmini: sulla loro voce, fuori dalle entrate da terzi. -->
+                            <p v-if="(b.versato_accessori ?? []).length" class="text-[12px] text-slate-600 dark:text-slate-400 mt-2" data-test="versato-accessori">
+                                Interessi e spese versati dai condòmini: {{ euro(b.totale_versato_accessori ?? 0) }}
+                                ({{ (b.versato_accessori ?? []).map((v) => `${v.nome} ${euro(v.importo)}`).join(', ') }}).
+                                <span class="text-slate-500 dark:text-slate-400">Non sono entrate da terzi: addebitati a singole persone, sono del condominio da quando sono versati e riducono le spese da dividere.</span>
+                            </p>
+
                             <table v-if="b.quote.length" class="w-full text-sm mt-4" data-test="quote">
                                 <thead>
                                     <tr class="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -358,7 +376,7 @@ const pageGuides = [
                                 <tbody>
                                     <tr v-for="q in b.quote" :key="q.riga" class="border-b border-slate-100 dark:border-slate-800">
                                         <td class="py-2 text-slate-700 dark:text-slate-300">{{ nomeRiga(q.riga) }}</td>
-                                        <td class="py-2 text-right tabular-nums">{{ q.deliberate === null ? (q.riga === 'esercizi_precedenti' ? '—' : 'non disponibile') : euro(q.deliberate) }}</td>
+                                        <td class="py-2 text-right tabular-nums">{{ q.deliberate === null ? (q.riga === 'esercizi_precedenti' || q.riga === 'addebiti' || q.riga === 'spese_addebitate' ? '—' : 'non disponibile') : euro(q.deliberate) }}</td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(q.emesse) }}</td>
                                         <td class="py-2 text-right tabular-nums">{{ euro(q.pagate) }}</td>
                                         <td class="py-2 text-right tabular-nums">
@@ -429,13 +447,13 @@ const pageGuides = [
                                 ({{ comeRisultato(r.risultato.risultato) }})
                             </div>
                             <div class="text-[12px] text-slate-500 dark:text-slate-400" data-test="riconciliazione">
-                                Costi dell'esercizio a giornale {{ euro(r.riconciliazione.costi) }} = spese per capitolo meno entrate {{ euro(r.riconciliazione.capitoli_netti) }}
+                                Costi dell'esercizio a giornale {{ euro(r.riconciliazione.costi) }} = spese per capitolo meno entrate{{ r.blocchi.some((b) => (b.totale_versato_accessori ?? 0) !== 0) ? ' e interessi e spese versati' : '' }} {{ euro(r.riconciliazione.capitoli_netti) }}
                                 + commissioni senza voce {{ euro(r.riconciliazione.commissioni_senza_voce) }} + fatture contestate {{ euro(r.riconciliazione.contestate) }}
                                 <template v-if="r.riconciliazione.non_classificati"> + costi non classificati {{ euro(r.riconciliazione.non_classificati) }}</template>
                                 <template v-if="r.riconciliazione.differenza"> + una differenza di {{ euro(r.riconciliazione.differenza) }} da guardare nel Libro Giornale</template>.
                             </div>
                             <div class="text-[12px] text-slate-500 dark:text-slate-400" data-test="raccordo-quote">
-                                Quote dei piani dell'esercizio {{ euro(r.raccordo_quote.quote_piani) }} = quote registrate in questo esercizio {{ euro(r.raccordo_quote.quote_giornale) }}
+                                Quote dei piani dell'esercizio {{ euro(r.raccordo_quote.quote_piani) }} = quote registrate in questo esercizio {{ euro(r.raccordo_quote.quote_giornale) }}{{ r.raccordo_quote.contributi_addebitati ? ` − contributi addebitati a singole persone ${euro(r.raccordo_quote.contributi_addebitati)}` : '' }}
                                 + rate di questi piani emesse in un altro esercizio {{ euro(r.raccordo_quote.piani_emesse_altrove) }}
                                 − rate di altri piani emesse in questo {{ euro(r.raccordo_quote.altri_emesse_qui) }}<template v-if="r.raccordo_quote.altre_differenze"> + {{ euro(r.raccordo_quote.altre_differenze) }} di debiti riportati dentro le rate (il pregresso emesso con le rate, che non va fra le quote registrate in questo esercizio)</template>.
                             </div>
@@ -454,5 +472,6 @@ const pageGuides = [
                 </section>
             </div>
         </div>
+        <RendicontoRiepilogoGuide v-model:open="mostraGuida" />
     </GestionaleLayout>
 </template>

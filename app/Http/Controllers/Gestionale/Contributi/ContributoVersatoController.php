@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Gestionale\Contributi;
 
@@ -630,7 +633,7 @@ class ContributoVersatoController extends Controller
                             .'Quando arriverà la fattura reale per il residuo dei lavori, verifica se rappresenta il '
                             .'costo totale dell\'opera o solo il saldo dopo questo acconto — il già-versato va '
                             .'applicato solo nel primo caso.',
-                        scadenza: now(),
+                        scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
                         createdByUserId: auth()->id() ?? 1,
                         condominioId: $condominio->id,
                         context: [

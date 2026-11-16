@@ -13,6 +13,7 @@ use App\Services\PDF\MpdfConCarta;
 use App\Services\PDF\PdfService;
 use App\Settings\PrintSettings;
 use App\Traits\PdfRigheStampabili;
+use Carbon\CarbonInterface;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,7 +24,7 @@ use App\Services\PDF\GruppoCarta;
 /**
  * Il fascicolo del rendiconto per l'assemblea: un PDF solo con il frontespizio (il condominio, l'esercizio, la data della stampa, i numeri del prospetto
  * della gestione, le quote non pagate, i fondi, l'esito dei controlli, l'indice e lo spazio per la firma) e le parti scelte, **sempre nell'ordine fisso**
- * qualunque sia l'ordine delle spunte: riepilogo, situazione, cassa, condòmini, conguaglio, registro, controlli. È l'ordine che il programma propone (un fascicolo che
+ * qualunque sia l'ordine delle spunte: la nota sintetica, riepilogo, situazione, cassa, condòmini, conguaglio, registro, controlli. È l'ordine che il programma propone (un fascicolo che
  * cambia ordine a ogni stampa non si confronta con quello dell'anno prima): chi vuole un altro ordine stampa le parti una per una.
  *
  * IL TEMPO E LA MEMORIA DEL TOTALE. Prima di cominciare, il fascicolo conta le righe delle parti scelte e stima il tempo e la memoria della stampa intera
@@ -43,11 +44,11 @@ final class FascicoloDelRendiconto
 {
     use PdfRigheStampabili;
 
-    /** Le parti, nell'ordine fisso. */
-    public const PARTI = ['riepilogo', 'situazione', 'cassa', 'condomini', 'conguaglio', 'registro', 'controlli'];
+    /** Le parti, nell'ordine fisso. La nota sintetica viene subito dopo il frontespizio: è la parte che il condòmino legge per prima. */
+    public const PARTI = ['nota', 'riepilogo', 'situazione', 'cassa', 'condomini', 'conguaglio', 'registro', 'controlli'];
 
     /** I nomi delle parti, come li dice la frase quando una va tolta. */
-    public const NOMI = ['riepilogo' => 'Riepilogo finanziario', 'situazione' => 'Situazione patrimoniale', 'cassa' => 'Entrate e uscite per cassa',
+    public const NOMI = ['nota' => NotaSinteticaDelRendiconto::TITOLO, 'riepilogo' => 'Riepilogo finanziario', 'situazione' => 'Situazione patrimoniale', 'cassa' => 'Entrate e uscite per cassa',
         'condomini' => 'Condòmini: posizioni e crediti per anzianità', 'conguaglio' => 'Riparto del consuntivo e conguaglio', 'registro' => 'Registro di contabilità',
         'controlli' => 'Controlli'];
 
@@ -64,7 +65,10 @@ final class FascicoloDelRendiconto
         // Il consuntivo per tabella si conta in celle (le righe per le tabelle della loro gestione, {@see RendicontoConguaglioController::celleDellaRiga()}).
         'conguaglio_tabella' => RendicontoConguaglioController::SECONDI_PER_CELLA_PER_TABELLA,
         // La lettura del conguaglio, per unità di peso (unità × gruppi di pesi): 14,9 s a 90.000, la misura della scheda con una tabella per voce.
-        'conguaglio_lettura' => 0.00017];
+        'conguaglio_lettura' => 0.00017,
+        // La nota: un costo fisso ({@see NOTA_SECONDI}), più la lettura dei crediti per anzianità che i suoi fatti rifanno, al costo per riga della
+        // parte «condòmini» (che comprende anche la stampa: il lato alto).
+        'nota' => self::NOTA_SECONDI, 'nota_crediti' => 0.0046];
 
     /**
      * Il margine del tempo: la stima deve stare nella metà del limite di PHP. Le misure sono su un M1 Pro; un processore di un server condiviso può
@@ -72,6 +76,17 @@ final class FascicoloDelRendiconto
      * 120 s dove è più basso e PHP concede di alzarlo, come fa `PdfService` alla prima stampa, o dove è assente; in produzione nginx aspetta 130 s.
      */
     public const MARGINE_TEMPO = 0.5;
+
+    /**
+     * Il costo fisso della nota sintetica nel fascicolo: la lettura dei fatti che le altre parti non leggono e la stampa. Misurato il 14/11/2026 su un Apple
+     * M1 Pro nel condominio grande delle misure (3.000 unità, 3.300 persone, 300 passaggi) con la nota più lunga che la pagina permette, ogni campo al suo
+     * massimo (cinque testi da 5.000 caratteri; ogni fatto riscritto, ogni causa, ogni spiegazione e ogni risposta della dichiarazione da 2.000; 30 contratti,
+     * 30 debiti certi, 30 cose da decidere da 500; 22 pagine): 0,83 s e 18,3 MB in più. Qui il lato alto: più del doppio del tempo, una volta e mezza la
+     * memoria. I crediti per anzianità, che crescono con le rate non pagate, hanno la loro riga (`nota_crediti`).
+     */
+    public const NOTA_SECONDI = 2.0;
+
+    public const NOTA_MB = 28.0;
 
     /**
      * La base della memoria del totale: la più grande fra le basi delle stampe delle parti, quella del registro (78 MB). Misurato l'08/11/2026 con richieste
@@ -93,6 +108,7 @@ final class FascicoloDelRendiconto
         private readonly RegistroContabilitaService $registro,
         private readonly PdfService $pdf,
         private readonly ConguaglioDelRendiconto $conguaglio,
+        private readonly NotaSinteticaDelRendiconto $nota,
     ) {}
 
     /** La cartella dei file temporanei: nella cache del framework, che non è nei backup e non è l'archivio. */
@@ -112,7 +128,7 @@ final class FascicoloDelRendiconto
         $mbPerRiga = ['riepilogo' => RiepilogoPerCompetenzaController::MB_PER_RIGA, 'situazione' => StatoPatrimonialeController::MB_PER_FATTURA,
             'posizioni' => RendicontoCondominiController::MB_PER_POSIZIONE, 'crediti' => RendicontoCondominiController::MB_PER_CREDITO,
             'registro' => RegistroContabilitaController::MB_PER_RIGA, 'conguaglio_persona' => RendicontoConguaglioController::MB_PER_RIGA_PER_PERSONA,
-            'conguaglio_tabella' => RendicontoConguaglioController::MB_PER_CELLA_PER_TABELLA, 'conguaglio_lettura' => 0.0];
+            'conguaglio_tabella' => RendicontoConguaglioController::MB_PER_CELLA_PER_TABELLA, 'conguaglio_lettura' => 0.0, 'nota' => self::NOTA_MB, 'nota_crediti' => 0.0];
         $secondi = self::SECONDI_BASE;
         $mb = 0.0;
         foreach ($righe as $pezzo => $n) {
@@ -153,17 +169,29 @@ final class FascicoloDelRendiconto
      * @param  list<string>  $scelte  le parti spuntate, in qualunque ordine
      * @param  string|null  $limite  il `memory_limit` che vale per il tetto; nullo, quello del processo
      * @param  bool  $lettere  la colonna dell'ultima lettera di sollecito nei crediti per anzianità: il fascicolo va a tutti, e di serie non c'è
-     * @return array{pdf:string, nome:string, indice: list<array{parte:string, titolo:string, pagina:?int, pagine:int, nota:?string}>}|array{troppo:string, togliere:list<string>}
+     * @param  CarbonInterface|null  $emissione  la data di emissione di ogni parte, il frontespizio compreso (il piede e «stampato il»): quella di una
+     *                                           versione fermata per l'assemblea, anche quando le parti si conservano in giorni diversi; nulla, oggi
+     * @param  array<string,mixed>|null  $letto  la lettura del conguaglio con la spesa per tabella, se chi chiama l'ha già fatta (la versione, che la
+     *                                           ferma nelle sue cifre): si usa quando la parte del conguaglio è fra quelle scelte, e non si rifà
+     * @param  array<string,mixed>|null  $notaFermata  la nota già stampata di una versione (le frasi di quel giorno, `versione.nota.stampa`): la parte «nota» e il
+     *                                                 frontespizio stampano quella, non la bozza di oggi; nulla, la nota si legge dalla bozza
+     * @param  array<string,mixed>|null  $banca  il saldo dell'estratto conto della banca di una versione (`versione.nota.bozza.banca`), per il controllo
+     *                                           della banca; nullo, quello della nota di oggi
+     * @return array{pdf:string, nome:string, indice: list<array{parte:string, titolo:string, pagina:?int, pagine:int, nota:?string}>, nota:?array}|array{troppo:string, togliere:list<string>}
      */
-    public function genera(Condominio $condominio, Esercizio $esercizio, array $scelte, bool $dettaglio = false, ?string $limite = null, bool $lettere = false): array
+    public function genera(Condominio $condominio, Esercizio $esercizio, array $scelte, bool $dettaglio = false, ?string $limite = null, bool $lettere = false,
+        ?CarbonInterface $emissione = null, ?array $letto = null, ?array $notaFermata = null, ?array $banca = null): array
     {
+        $lettoDato = $letto;
+        unset($letto);
+        $giorno = $emissione === null ? [] : ['data_emissione_stampe' => $emissione];
         $limite = $limite ?? self::$limiteMemoria ?? (string) ini_get('memory_limit');
         self::togliCartelleVecchie();
         $parti = array_values(array_intersect(self::PARTI, $scelte));
         if ($parti === []) {
             $parti = self::PARTI;
         }
-        $c = $this->controlli->perEsercizio($condominio, $esercizio);
+        $c = $this->controlli->perEsercizio($condominio, $esercizio, null, [], null, null, [], null, $banca);
         // I costi fuori dai capitoli del riepilogo servono alla stampa del conguaglio, anche dopo che il riepilogo esce dalla memoria.
         $c['fuori_capitoli'] = $c['riepilogo']['fuori_capitoli'];
 
@@ -175,19 +203,28 @@ final class FascicoloDelRendiconto
         // La parte del conguaglio legge il consuntivo per persona una volta, con la spesa per tabella. La stessa lettura serve ai quattro controlli del
         // conguaglio (la parte «Controlli»; senza la parte del conguaglio restano da leggere, con il rimando alla scheda), al riquadro della Sintesi e
         // alle due stampe della parte: tutti e tre si fanno qui, e la lettura esce dalla memoria prima delle parti, che non la tengono.
-        $letto = in_array('conguaglio', $parti, true) ? $this->conguaglio->leggi($esercizio, [], true) : null;
+        $conNota = in_array('nota', $parti, true);
+        $letto = in_array('conguaglio', $parti, true) || ($conNota && $notaFermata === null && NotaSinteticaDelRendiconto::chiedeIlConguaglio($esercizio))
+            ? ($lettoDato ?? $this->conguaglio->leggi($esercizio, [], true)) : null;
+        unset($lettoDato);
         $c['conguaglio'] = null;
         if ($letto !== null) {
             $c = $this->controlli->conIlConguaglio($c, $letto);
         }
 
         $sintesi = $this->sintesi->perEsercizio($condominio, $esercizio, null, $c);
-        if ($letto !== null) {
+        // La nota con i fatti di oggi (o del giorno della versione), dalle letture già fatte: la lettura del conguaglio esce dalla memoria dopo.
+        $c['nota'] = $conNota && $notaFermata !== null ? $notaFermata : null;
+        $c['nota'] ??= $conNota ? $this->nota->perLaStampa($condominio, $esercizio, ['controlli' => $c, 'sintesi' => $sintesi, 'letto' => $letto], null,
+            in_array('condomini', $parti, true)) : null;
+        if ($letto !== null && in_array('conguaglio', $parti, true)) {
             $c['conguaglio_stampe'] = $this->stampeDelConguaglio($condominio, $esercizio, $letto, $c['fuori_capitoli'] ?? null);
             unset($letto);
             $c['conguaglio'] = null;
             gc_collect_cycles();
         }
+        unset($letto);
+        $c['conguaglio'] = null;
         $cartella = self::cartellaTemporanea().'/'.Str::uuid();
         $file = new Filesystem;
         $file->ensureDirectoryExists($cartella);
@@ -199,7 +236,7 @@ final class FascicoloDelRendiconto
             $stampati = [];
             foreach ($parti as $parte) {
                 // Il riepilogo letto serve solo alla sua parte (la sintesi ha già i suoi numeri): non resta in memoria mentre si stampano le parti grandi.
-                if ($parte !== 'riepilogo') {
+                if ($parte !== 'riepilogo' && $parte !== 'nota') {
                     unset($c['riepilogo']);
                 }
                 $pezzi = $this->parte($parte, $condominio, $esercizio, $c, $dettaglio, $lettere);
@@ -215,7 +252,7 @@ final class FascicoloDelRendiconto
                         // l'unione scrive il numero del fascicolo, quello dell'indice («Pagina 5 di 13 del fascicolo»).
                         // Ogni parte ha la carta del rendiconto, e comincia con la riga dello studio: il blocco intero è nel frontespizio.
                         $mpdf = $this->pdf->generate($pezzo['vista'], array_merge($pezzo['dati'], ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA, 'comincia_con_la_testatina' => true])
-                            + ['senza_firma' => true, 'parte_del_fascicolo' => $pezzo['piede'] ?? $pezzo['titolo']], $pezzo['opzioni']);
+                            + ['senza_firma' => true, 'parte_del_fascicolo' => $pezzo['piede'] ?? $pezzo['titolo']] + $giorno, $pezzo['opzioni']);
                         $pagine = count($mpdf->pages);
                         $piede = self::piedeDi($mpdf);
                         $mpdf->Output($percorso, Destination::FILE);
@@ -242,7 +279,9 @@ final class FascicoloDelRendiconto
                 $mpdf = $this->pdf->generate('pdf.gestionale.rendiconto_frontespizio', [
                     'condominio' => $condominio, 'esercizio' => $esercizio, 'sintesi' => $sintesi, 'indice' => $indice, 'studio' => app(PrintSettings::class),
                     'anno_a_cavallo' => $c['anno_a_cavallo'], 'senza_firma' => true, 'gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA, 'compatto' => $compatto,
-                ], StatoPatrimonialeController::OPZIONI_STAMPA);
+                    // La nota manca (non scelta, o vuota): il frontespizio lo dice ai condòmini. I controlli spiegati nella nota: la frase dei controlli lo dice.
+                    'senza_nota' => ($c['nota']['vuota'] ?? true), 'nota_spiegati' => (int) ($c['nota']['spiegati'] ?? 0),
+                ] + $giorno, StatoPatrimonialeController::OPZIONI_STAMPA);
                 $scritte = count($mpdf->pages);
                 $piedeDelFrontespizio = self::piedeDi($mpdf);
                 $mpdf->Output($frontespizio, Destination::FILE);
@@ -280,6 +319,8 @@ final class FascicoloDelRendiconto
             'pdf' => $pdf,
             'nome' => PdfService::nomeFile('fascicolo-rendiconto', $condominio->nome, $esercizio->data_inizio->format('Y'), 'al-'.$sintesi['stato']['alla']),
             'indice' => $indice,
+            // La nota stampata, con le frasi di oggi: la versione la conserva così.
+            'nota' => $c['nota'],
         ];
     }
 
@@ -363,8 +404,14 @@ final class FascicoloDelRendiconto
                 'condomini' => $righe += ['posizioni' => $c['conteggi']['posizioni'], 'crediti' => $c['conteggi']['rate_non_pagate']],
                 'conguaglio' => $righe += self::righeDelConguaglio($esercizio),
                 'registro' => $righe['registro'] = $this->registro->numeroRighe($esercizio),
+                'nota' => NotaSinteticaDelRendiconto::bozzaVuota(NotaSinteticaDelRendiconto::contenuto($esercizio)) ? null
+                    : $righe += ['nota' => 1, 'nota_crediti' => (int) ($c['conteggi']['rate_non_pagate'] ?? 0)],
                 default => null,
             };
+        }
+        // La nota che tiene un fatto del conguaglio ne chiede la lettura anche quando la parte del conguaglio non c'è.
+        if (in_array('nota', $parti, true) && ! in_array('conguaglio', $parti, true) && NotaSinteticaDelRendiconto::chiedeIlConguaglio($esercizio)) {
+            $righe['conguaglio_lettura'] = app(ConguaglioDelRendiconto::class)->peso($esercizio);
         }
 
         return $righe;
@@ -432,9 +479,13 @@ final class FascicoloDelRendiconto
      */
     public static function troppo(array $parti, array $righe, array $tetti, $limiteMemoria): ?array
     {
+        // La lettura del conguaglio è della parte «Conguaglio»; senza quella parte la chiede la nota (un suo fatto o una spiegazione del conguaglio), e
+        // la frase dice di togliere la nota, non una parte che non è fra le scelte.
         $dellaParte = fn (string $pezzo) => match ($pezzo) {
             'posizioni', 'crediti' => 'condomini',
-            'conguaglio_persona', 'conguaglio_tabella', 'conguaglio_lettura' => 'conguaglio',
+            'conguaglio_persona', 'conguaglio_tabella' => 'conguaglio',
+            'conguaglio_lettura' => in_array('conguaglio', $parti, true) ? 'conguaglio' : 'nota',
+            'nota_crediti' => 'nota',
             default => $pezzo,
         };
         $sta = fn (array $r) => ($s = self::stima($r))['secondi'] <= $tetti['secondi'] && $s['mb'] <= $tetti['mb'];
@@ -542,9 +593,15 @@ final class FascicoloDelRendiconto
     {
         $base = ['condominio' => $condominio, 'esercizio' => $esercizio];
         $situazione = fn (string $p, string $titolo) => ['titolo' => $titolo, 'vista' => 'pdf.gestionale.stato_patrimoniale', 'opzioni' => StatoPatrimonialeController::OPZIONI_STAMPA,
-            'dati' => $base + ['pagina' => $c['pagina'], 'parte' => $p, 'controlli' => $c['controlli'], 'esito' => $c['esito'], 'anno_a_cavallo' => $c['anno_a_cavallo']]];
+            'dati' => $base + ['pagina' => $c['pagina'], 'parte' => $p, 'controlli' => $c['controlli'], 'esito' => $c['esito'], 'anno_a_cavallo' => $c['anno_a_cavallo'],
+                'debiti_certi' => NotaSinteticaDelRendiconto::contenuto($esercizio)['debiti_certi']]];
 
         switch ($parte) {
+            case 'nota':
+                // La nota vuota non ha una riga nell'indice: il frontespizio dice già, ai condòmini, che il fascicolo non la contiene.
+                return $c['nota'] === null || $c['nota']['vuota'] ? []
+                    : [['titolo' => NotaSinteticaDelRendiconto::TITOLO, 'vista' => 'pdf.gestionale.rendiconto_nota', 'opzioni' => StatoPatrimonialeController::OPZIONI_STAMPA,
+                        'dati' => $base + ['nota' => $c['nota']]]];
             case 'riepilogo':
                 return [['titolo' => 'Riepilogo finanziario'.($dettaglio ? ', con il dettaglio per spesa' : ''), 'piede' => 'Riepilogo finanziario', 'vista' => 'pdf.gestionale.rendiconto_riepilogo',
                     'dati' => $base + ['riepilogo' => $c['riepilogo'], 'dettaglio' => $dettaglio], 'opzioni' => RiepilogoPerCompetenzaController::OPZIONI_STAMPA]];

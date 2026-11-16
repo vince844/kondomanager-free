@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Support\Treasury;
 
@@ -30,6 +33,20 @@ final readonly class TreasuryStatus
         public array   $scadutoPerFasce = ['1_30' => 0, '31_90' => 0, 'oltre_90' => 0],
         // Dalla 1.12.0-beta.4: l'elenco delle rate scadute del condominio, per il «Vedi tutte» del blocco delle persone.
         public ?array  $elencoRateScadute = null,
+        // La regola delle 8 (la cifra di chi manca, quante persone e fatture in tutto), «Da dove viene» del disponibile, il saldo
+        // previsto giorno per giorno per il grafico, la scelta del condominio sulla prossima azione e il giorno dell'amministratore.
+        public int     $morositaAltriCents = 0,
+        public int     $morositaPersone = 0,
+        public int     $fattureQuante = 0,
+        public ?array  $fattureMancano = null,
+        public ?array  $disponibile = null,
+        public ?array  $saldoPrevisto = null,
+        public bool    $suggerisceAzione = true,
+        public ?string $oggi = null,
+        // Le persone del recupero delle rate scadute, per le azioni consigliate e la simulazione del saldo.
+        public ?array  $recupero = null,
+        // I fatti delle altre azioni consigliate (`DatiDelleAzioni`): le rate da emettere, i bonifici segnalati, le ritenute, i deficit, i conti e i fondi.
+        public ?array  $datiDelleAzioni = null,
     ) {}
 
     public function toArray(): array
@@ -55,6 +72,17 @@ final readonly class TreasuryStatus
             'morositaAltri'               => $this->morositaAltri,
             'scadutoPerFasce'             => $this->scadutoPerFasce,
             'elencoRateScadute'           => $this->elencoRateScadute,
+            'morositaAltriCents'          => $this->morositaAltriCents,
+            'morositaPersone'             => $this->morositaPersone,
+            'scadutoInTutto'              => (int) array_sum($this->scadutoPerFasce),
+            'fattureQuante'               => $this->fattureQuante,
+            'fattureMancano'              => $this->fattureMancano,
+            'disponibile'                 => $this->disponibile,
+            'saldoPrevisto'               => $this->saldoPrevisto,
+            'suggerisceAzione'            => $this->suggerisceAzione,
+            'oggi'                        => $this->oggi,
+            'recupero'                    => $this->recupero,
+            'datiDelleAzioni'             => $this->datiDelleAzioni,
             'azioniSuggerite'             => array_map(fn(AzioneSuggerita $a) => $a->toArray(), $this->azioniSuggerite),
             'fattureSenzaScadenza'        => $this->fattureSenzaScadenza,
             'hasFondoRiserva'             => $this->hasFondoRiserva,

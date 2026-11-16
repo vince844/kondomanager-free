@@ -112,7 +112,7 @@ describe('la Sintesi del rendiconto', () => {
 
     test('il riquadro del conguaglio: le cifre del condominio dalla scheda, con il più sul conguaglio a debito; sopra la soglia la frase che rimanda alla scheda', () => {
         const cifre = { a: 420000, personali: 8000, b: 400000, conguaglio: 28000, saldo: 58000, non_disponibili: 0 };
-        const con = monta({ riquadri: { ...sintesi().riquadri, conguaglio: { cifre, non_attribuite: '€ 123,45 di spese non attribuite a nessuno: le dice la scheda Conguaglio, con il perché.', frase: 'Proposta di conguaglio, da approvare dall\'assemblea: diventa una richiesta solo con l\'approvazione.', data: { frase: 'Alla fine dell\'esercizio, il 31/12/2026.' } } } });
+        const con = monta({ riquadri: { ...sintesi().riquadri, conguaglio: { cifre, non_attribuite: '€ 123,45 di spese non attribuite a nessuno: le dice la scheda Conguaglio, con il perché.', frase: 'Proposta di conguaglio, da approvare dall\'assemblea: il programma la calcola e la stampa, non la registra.', data: { frase: 'Alla fine dell\'esercizio, il 31/12/2026.' } } } });
         const t = testo(con.find('[data-test="riquadro-conguaglio"]').html());
         expect(t).toContain('€ +280,00');
         expect(testo(con.find('[data-test="riquadro-conguaglio-non-attribuite"]').html())).toBe('€ 123,45 di spese non attribuite a nessuno: le dice la scheda Conguaglio, con il perché.');
@@ -300,19 +300,63 @@ describe('la Sintesi del rendiconto', () => {
         expect(monta().find('[data-test="sottotitolo"]').text()).toBe('Esercizio 2026 · Esercizio finito al 31/12/2026: sono alla data di fine la situazione patrimoniale, le fatture aperte, il pagato e le quote dei piani; costi, quote registrate, risultato ed entrate e uscite per cassa contano le registrazioni dell\'esercizio, anche con la data dopo la fine; i vincoli dei fondi sono a oggi.');
     });
 
-    test('le sette schede, con la Sintesi accesa; nessuna delle parole che il rendiconto non dice di sé', () => {
+    test('il rendiconto per l\'assemblea in fondo: le versioni del server, e «Ferma» con le parti scelte del fascicolo', () => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], sintesi: sintesi(), parti: PARTI, oggi: '2027-03-15',
+                versioni: [{ id: 4, numero: 1, stato: 'approvata', emessa_il: '2027-03-01 10:00', creata_da: null, data_delibera: '2027-03-15', numero_verbale: '2', riparto_approvato: true,
+                    nota_approvazione: null, approvata_da: null, parti: PARTI, troppo: null, parti_conservate: [], documenti: [], verbale: null }] } as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, PageHeaderGuide: slot, Popover: slot, PopoverTrigger: slot, PopoverContent: slot } },
+        });
+        expect(w.find('[data-test="per-l-assemblea"] [data-versione="1"]').text()).toContain('Approvata il 15/03/2027, verbale n. 2');
+        expect(w.find('[data-test="nessuna-versione"]').exists()).toBe(false);
+    });
+
+    test('le otto schede, con la Sintesi accesa; nessuna delle parole che il rendiconto non dice di sé', () => {
         const p = monta();
         const schede = p.findAll('[data-scheda]');
         expect(schede.map((s) => [s.attributes('data-scheda'), s.attributes('href')])).toEqual([
             ['sintesi', '/gestionale/3/esercizi/9/rendiconto'], ['riepilogo', '/gestionale/3/esercizi/9/rendiconto/riepilogo-finanziario'],
             ['situazione', '/gestionale/3/esercizi/9/stato-patrimoniale'], ['cassa', '/gestionale/3/esercizi/9/rendiconto/cassa'],
             ['condomini', '/gestionale/3/esercizi/9/rendiconto/condomini'], ['conguaglio', '/gestionale/3/esercizi/9/rendiconto/conguaglio'],
-            ['controlli', '/gestionale/3/esercizi/9/rendiconto/controlli'],
+            ['controlli', '/gestionale/3/esercizi/9/rendiconto/controlli'], ['nota', '/gestionale/3/esercizi/9/rendiconto/nota'],
         ]);
         expect(p.find('[data-scheda="sintesi"]').attributes('aria-current')).toBe('page');
         const t = p.text().toLowerCase();
         for (const parola of ['pronto', 'conforme', 'corretto', 'approvabile', 'in regola', 'tutto in ordine']) {
             expect(t).not.toMatch(new RegExp(`(^|[^\\p{L}])${parola}($|[^\\p{L}])`, 'u'));
         }
+    });
+});
+
+describe('la Sintesi con i contributi addebitati a singole persone', () => {
+    test('il prospetto ha la riga loro e il raccordo li toglie dalle quote registrate; senza contributi niente', () => {
+        const base = sintesi();
+        const p = monta({ prospetto: { ...base.prospetto, contributi_addebitati: 6795, quote_giornale: 417795,
+            raccordo_quote: { ...base.prospetto.raccordo_quote, contributi_addebitati: 6795, quote_giornale: 417795 } } });
+        expect(testo(p.find('[data-test="contributi-addebitati"]').html())).toBe('Contributi addebitati a singole persone € 67,95');
+        expect(testo(p.find('[data-test="raccordo-quote"]').html())).toContain('= quote registrate in questo esercizio € 4.177,95 − contributi addebitati a singole persone € 67,95 + rate di questi piani');
+        expect(monta().find('[data-test="contributi-addebitati"]').exists()).toBe(false);
+    });
+});
+
+describe('la guida della scheda', () => {
+    test('il pulsante «Guida» dell\'intestazione, uno solo, apre la guida della scheda «Sintesi»', async () => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], sintesi: sintesi(), parti: PARTI } as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, Popover: slot, PopoverTrigger: slot, PopoverContent: slot,
+                PageHeaderGuide: { props: { hasTextGuide: Boolean, textGuideTitle: String }, emits: ['open-text-guide'],
+                template: '<div><button v-if="hasTextGuide" type="button" data-testid="apri-guida" @click="$emit(\'open-text-guide\')">{{ textGuideTitle }}</button><slot name="actions" /></div>' },
+                RendicontoSintesiGuide: { props: ['open'], template: '<div v-if="open" data-testid="guida-aperta" />' } } },
+        });
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(false);
+        expect(w.findAll('button').filter((b) => b.text().trim() === 'Guida')).toHaveLength(1);
+        const pulsante = w.get('[data-testid="apri-guida"]');
+        expect(pulsante.text().trim()).toBe('Guida');
+        await pulsante.trigger('click');
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(true);
     });
 });

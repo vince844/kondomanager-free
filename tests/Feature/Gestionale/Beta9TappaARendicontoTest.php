@@ -135,20 +135,20 @@ it('Coda 568 — il risultato si chiama «quote registrate in questo esercizio �
     expect(b9aCerca('/Risultato(<\/b>)?: quote registrate in questo esercizio/'))->toHaveCount(4);
 });
 
-// ─── Coda 561: i controlli sono sempre quattordici ─────────────────────────────────────────────────────────────────────────────────────────────
+// ─── I controlli sono sempre quindici ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-it('Coda 561 — i controlli sono sempre quattordici, e nessun testo dice che alcuni non compaiono', function () {
+it('i controlli sono sempre quindici, e nessun testo dice che alcuni non compaiono', function () {
     $s = vrmScenario($this);
     vrmGiorno($this, '2027-01-15');
     $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e']);
 
-    expect(collect($c['controlli'])->pluck('id')->all())->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE', 'CG', 'CU', 'CB', 'CA'])
-        ->and($c['esito']['tornano'] + $c['esito']['non_tornano'] + $c['esito']['da_leggere'] + $c['esito']['non_calcolati'])->toBe(14);
+    expect(collect($c['controlli'])->pluck('id')->all())->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE', 'CG', 'CU', 'CB', 'CA', 'BC'])
+        ->and($c['esito']['tornano'] + $c['esito']['non_tornano'] + $c['esito']['da_leggere'] + $c['esito']['non_calcolati'])->toBe(15);
 
-    // Un condominio senza fondi, senza vincoli e senza una sola registrazione li ha quattordici lo stesso: nessuno è saltato perché il programma non può farlo.
+    // Un condominio senza fondi, senza vincoli, senza un conto in banca e senza una sola registrazione li ha quindici lo stesso: nessuno è saltato perché il programma non può farlo.
     $vuoto = Condominio::factory()->create();
     $esercizio = Esercizio::factory()->create(['condominio_id' => $vuoto->id, 'data_inizio' => '2026-01-01', 'data_fine' => '2026-12-31', 'stato' => 'aperto']);
-    expect(app(ControlliDelRendiconto::class)->perEsercizio($vuoto, $esercizio, '2027-01-15')['controlli'])->toHaveCount(14);
+    expect(app(ControlliDelRendiconto::class)->perEsercizio($vuoto, $esercizio, '2027-01-15')['controlli'])->toHaveCount(15);
 
     expect(b9aCerca('/controlli che il programma non può eseguire|quelli che il programma non può eseguire|non può eseguire non compaiono/'))->toBe([]);
 });

@@ -9,6 +9,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import NuovoAddebitoDialog, { type OrigineAddebito } from '@/components/gestionale/addebiti/NuovoAddebitoDialog.vue';
 import PianoRateDettaglioGuide from '@/components/guides/PianoRateDettaglioGuide.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -81,6 +82,10 @@ const props = defineProps<{
       scoperto_count: number;
       orfani: Array<{ id: number; nome: string; importo: number; da_sposta_spesa?: boolean }>;
   } | null; 
+  /** Il piano degli addebiti a singole persone: la frase che dice perché la pagina non offre le azioni del riparto. Null per i piani del riparto. */
+  degli_addebiti?: { frase: string } | null;
+  /** Le quote non assegnate con quanto è già addebitato a una persona e quanto resta; `addebitabile` solo per quelle di un'unità. */
+  addebiti_delle_quote?: Array<{ chiave: string; immobile_id: number | null; immobile_nome: string | null; conto_nome: string | null; addebitabile: boolean; addebitato_cents: number; resta_cents: number }>;
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -203,6 +208,25 @@ const haQualcosaDaSistemare = computed(() => quoteNonAssegnate.value.length > 0 
  * tabella delle quote di `AnteprimaPassaggio.vue`).
  */
 const gruppiDelRiquadro = computed(() => gruppiPerCausa(quoteNonAssegnate.value, euro));
+
+/**
+ * Le quote di un'unità da addebitare a una persona, unità per unità: quanto resta e le chiavi, per la finestra dell'addebito. Le quote senza un'unità
+ * (la voce senza tabella, la tabella senza millesimi) non ci sono: non sono la quota di nessuno, si sistema la tabella e si ricalcola.
+ */
+const daAddebitare = computed(() => {
+    const perUnita = new Map<number, { immobile_id: number; nome: string; resta: number; addebitato: number; chiavi: string[] }>();
+    (props.addebiti_delle_quote ?? []).filter((q) => q.addebitabile && q.immobile_id !== null).forEach((q) => {
+        const u = perUnita.get(q.immobile_id!) ?? { immobile_id: q.immobile_id!, nome: q.immobile_nome ?? `Unità ${q.immobile_id}`, resta: 0, addebitato: 0, chiavi: [] };
+        u.resta += q.resta_cents;
+        u.addebitato += q.addebitato_cents;
+        u.chiavi.push(q.chiave);
+        perUnita.set(q.immobile_id!, u);
+    });
+
+    return [...perUnita.values()];
+});
+const addebitoDelPiano = ref<OrigineAddebito | null>(null);
+const apriAddebito = (u: { chiavi: string[] }) => { addebitoDelPiano.value = { tipo: 'piano', pianoRateId: props.pianoRate.id, chiavi: u.chiavi }; };
 const gruppiAperti = reactive<Record<string, boolean>>({});
 const righeVisibili = (g: GruppoPerCausa) => (gruppiAperti[g.chiave] ? g.righe : g.righe.slice(0, RIGHE_VISIBILI));
 
@@ -948,6 +972,12 @@ const printRipartoCapitoli = () => {
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>
 
+          <!-- Il piano degli addebiti a singole persone: una rata per addebito, registrato e annullato dall'estratto conto della persona. -->
+          <div v-if="degli_addebiti" data-riquadro="piano-degli-addebiti"
+               class="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/30 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
+              {{ degli_addebiti.frase }}
+          </div>
+
           <ScopertoWarning
               v-if="scopertiWarning"
               :scoperti="scopertiWarning"
@@ -1015,8 +1045,9 @@ const printRipartoCapitoli = () => {
 
           <!--
             Coda 414: il riquadro dice la cifra e l'unità delle quote registrate alla generazione (`pianoRate.quote_non_assegnate`), non solo la
-            motivazione. D143: le strade sono quelle che esistono — annullare le emissioni (prima gli incassi), sistemare la causa, «Ricalcola» —, e il
-            programma non ha un addebito individuale: niente «addebito manuale», niente «conguaglio di fine anno».
+            motivazione. D143: le strade sono quelle che esistono — annullare le emissioni (prima gli incassi), sistemare la causa, «Ricalcola» — e, per
+            la quota di un'unità, l'addebito a una persona dalla riga dell'unità (la quota senza unità non si addebita a nessuno): niente «addebito manuale»,
+            niente «conguaglio di fine anno».
           -->
           <div
               v-if="mostraRiquadroQuote"
@@ -1046,6 +1077,17 @@ const printRipartoCapitoli = () => {
                       </button>
                   </div>
               </div>
+              <!-- Le quote di un'unità si addebitano a una persona: una riga per unità, la finestra con una riga per voce. -->
+              <div v-if="daAddebitare.length" class="mt-2 space-y-1" data-riquadro="da-addebitare">
+                  <p class="font-medium">Da addebitare a una persona:</p>
+                  <div v-for="u in daAddebitare" :key="u.immobile_id" class="flex flex-wrap items-center gap-2" data-unita-da-addebitare>
+                      <span><strong>{{ u.nome }}</strong>: <template v-if="u.resta > 0">restano {{ euro(u.resta) }}</template><template v-else>tutto addebitato</template><template v-if="u.addebitato > 0"> (già addebitati {{ euro(u.addebitato) }})</template></span>
+                      <button v-if="u.resta > 0" type="button" @click="apriAddebito(u)" data-addebita
+                              class="inline-flex min-h-[32px] items-center text-xs font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">
+                          Addebita a una persona
+                      </button>
+                  </div>
+              </div>
               <span v-if="pianoRate.nota_scoperti" class="block mt-1">Motivazione registrata: "{{ pianoRate.nota_scoperti }}"</span>
               <span v-if="notaSenzaElenco && isDisallineato" class="block mt-1">
                   La cifra e le unità non sono registrate: il piano è stato accettato prima che il programma le salvasse, e il riquadro
@@ -1064,17 +1106,17 @@ const printRipartoCapitoli = () => {
               <span v-else-if="props.ratePure?.some(r => r.is_emessa)" class="block mt-1 text-amber-600 dark:text-amber-500">
                   → Le rate sono già emesse. Per includere la quota bisogna riaprire il piano con i passi elencati sul pulsante <strong>Ricalcola</strong>
                   (annullare le emissioni, e prima stornare gli incassi se ce ne sono), poi {{ rimedioInfinito }} e premere <strong>Ricalcola</strong>.
-                  Il programma non ha un addebito individuale.
+                  <template v-if="daAddebitare.length">Oppure addebita la quota di un'unità a una persona, dalla sua riga qui sopra.</template>
               </span>
               <!-- Fermo senza emissioni (un incasso, il conguaglio di un passaggio): «le rate sono già emesse» sarebbe falso. -->
               <span v-else class="block mt-1 text-amber-600 dark:text-amber-500">
                   → Il piano non si ricalcola più: il motivo e come riaprirlo sono sul pulsante <strong>Ricalcola</strong>. Finché resta così, la quota
-                  non è addebitata a nessuno; il programma non ha un addebito individuale.
+                  non è addebitata a nessuno<template v-if="daAddebitare.length">: quella di un'unità puoi addebitarla a una persona, dalla sua riga qui sopra</template>.
               </span>
               </template>
           </div>
 
-          <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 dark:bg-amber-950/40 dark:border-amber-800">
+          <div v-if="!switchState && !degli_addebiti" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300 dark:bg-amber-950/40 dark:border-amber-800">
             <div class="flex">
               <div class="flex-shrink-0">
                 <AlertTriangle class="h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
@@ -1112,7 +1154,7 @@ const printRipartoCapitoli = () => {
                      raggiungibile solo da chi prova a scorrere per caso: verificato scorrendo a mano
                      su un piano vero, il pulsante c'è ma nessun segnale lo annuncia. La sfumatura
                      sotto è quell'indizio, solo su mobile perché da `sm:` in su la riga sta tutta. -->
-                <div class="relative w-full min-w-0">
+                <div v-if="!degli_addebiti" class="relative w-full min-w-0">
                     <div class="flex items-center gap-2 overflow-x-auto w-full scrollbar-none pb-0.5 whitespace-nowrap">
 
                     <!-- SWITCH APPROVATO/BOZZA -->
@@ -1490,7 +1532,7 @@ const printRipartoCapitoli = () => {
                 <Card class="bg-gray-50 shadow-sm border dark:bg-neutral-900"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600 dark:text-red-400' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
             </div>
 
-            <div v-if="isReady" class="mt-6 border rounded-lg bg-white shadow-sm transition-all duration-200 dark:bg-card">
+            <div v-if="isReady && !degli_addebiti" class="mt-6 border rounded-lg bg-white shadow-sm transition-all duration-200 dark:bg-card">
                 <button 
                     @click="toggleCapitoli" 
                     class="w-full flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg dark:bg-neutral-900 dark:hover:bg-neutral-800"
@@ -2182,6 +2224,9 @@ const printRipartoCapitoli = () => {
     />
 
     <PianoRateDettaglioGuide v-model:open="showGuideDettaglio" />
+
+    <NuovoAddebitoDialog :open="addebitoDelPiano !== null" :condominio-id="props.condominio.id" :origine="addebitoDelPiano"
+        @update:open="(v: boolean) => { if (!v) addebitoDelPiano = null; }" @fatto="router.reload({ only: ['addebiti_delle_quote'] })" />
 
   </GestionaleLayout>
 </template>

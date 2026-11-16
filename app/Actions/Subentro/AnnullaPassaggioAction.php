@@ -13,6 +13,7 @@ use App\Models\TitolaritaImmobile;
 use App\Models\User;
 use App\Services\Gestionale\EventiRataCondomino;
 use App\Services\Gestionale\InboxService;
+use App\Services\Subentro\AccessoriAgliEredi;
 use App\Services\Subentro\FermataDopoScrivi;
 use App\Services\Subentro\FrasiObbligati;
 use App\Services\Subentro\GuardieTitolarita;
@@ -123,6 +124,9 @@ final class AnnullaPassaggioAction
     private function motivoDelleQuoteEDelleRighe(Subentro $padre, Collection $famiglia): ?string
     {
         if ($motivo = $this->quoteNonIntatte($padre, $famiglia)) {
+            return $motivo;
+        }
+        if ($motivo = AccessoriAgliEredi::motivo((array) ($padre->registro['arretrato']['accessori'] ?? []))) {
             return $motivo;
         }
 
@@ -346,6 +350,15 @@ final class AnnullaPassaggioAction
                 throw ValidationException::withMessages(['passaggio' => 'Le righe del conguaglio di questo passaggio non sommano zero: qualcosa è stato modificato a mano. Controlla i saldi della gestione prima di annullare.']);
             }
             Saldo::whereIn('id', $saldi->pluck('id'))->delete();
+
+            //    Gli interessi e le spese senza fattura passati agli eredi tornano al defunto, finché nessun erede li ha versati.
+            $accessori = (array) ($padre->registro['arretrato']['accessori'] ?? []);
+            if (($motivo = AccessoriAgliEredi::motivo($accessori)) !== null) {
+                throw ValidationException::withMessages(['passaggio' => $motivo]);
+            }
+            AccessoriAgliEredi::annulla($accessori);
+            //    Gli accordi di rientro del defunto chiusi per la successione si riaprono.
+            \App\Services\Subentro\AccordiDellaSuccessione::riapri((array) ($padre->registro['arretrato']['accordi'] ?? []));
 
             //    Poi i saldi del Wallet legati al passaggio, bloccati qui sopra: un'assorbita l'ha già fermato `motivoBlocco`, letto dopo i blocchi
             //    nella stessa transazione; le libere si tolgono, anche una gamba sola (sono righe scritte a mano, non una coppia che deve sommare

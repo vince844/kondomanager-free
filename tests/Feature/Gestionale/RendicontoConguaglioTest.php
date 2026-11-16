@@ -112,7 +112,7 @@ it('la scheda «Conguaglio» ha una riga per persona e unità con le colonne del
         // La coppia del passaggio: una nota per l'amministratore.
         ->and(rcgRiga($p, $s, 'Bianchi', 'U2')['note'])->toBe(['Nelle quote € -604,93 della coppia del passaggio.'])
         ->and($p['conguaglio']['data']['frase'])->toStartWith('Alla fine dell\'esercizio, il 31/12/2026; calcolato il ')
-        ->and($p['frasi']['proposta'])->toBe('Proposta di conguaglio da approvare dall\'assemblea: diventa una richiesta solo con l\'approvazione.')
+        ->and($p['frasi']['proposta'])->toBe('Proposta di conguaglio, da approvare dall\'assemblea: il programma la calcola e la stampa, non la registra.')
         ->and(preg_match(RCG_PAROLE_VIETATE, json_encode($p['conguaglio'], JSON_UNESCAPED_UNICODE).json_encode($p['frasi'], JSON_UNESCAPED_UNICODE)))->toBe(0);
 });
 
@@ -303,7 +303,7 @@ it('il fascicolo ha la parte «Riparto del consuntivo e conguaglio» dopo i cond
     expect($contatore::$letture)->toBe(1)
         ->and(array_column($esito['indice'], 'titolo'))->toBe(['Posizioni dei condòmini', 'Crediti per anzianità', 'Consuntivo per tabella', 'Conguaglio per persona'])
         ->and(array_column($esito['indice'], 'parte'))->toBe(['condomini', 'condomini', 'conguaglio', 'conguaglio'])
-        ->and(FascicoloDelRendiconto::PARTI)->toBe(['riepilogo', 'situazione', 'cassa', 'condomini', 'conguaglio', 'registro', 'controlli']);
+        ->and(FascicoloDelRendiconto::PARTI)->toBe(['nota', 'riepilogo', 'situazione', 'cassa', 'condomini', 'conguaglio', 'registro', 'controlli']);
     // Le righe della parte nella stima, prima di leggere: le quattro titolarità della gestione (Neri, Bianchi, Rossi, Verdi), il consuntivo per tabella in
     // celle (4 righe × (1 tabella + 9)) e il peso, 3 unità × una tabella.
     expect(FascicoloDelRendiconto::righeDelConguaglio($s['e']))->toBe(['conguaglio_lettura' => 3, 'conguaglio_persona' => 4, 'conguaglio_tabella' => 40]);

@@ -48,7 +48,7 @@ class RegolazioneImmediataController extends Controller
      * cui l'Action rifiuterebbe la registrazione per mancanza di ancoraggio in
      * partita doppia, e mostrarli produrrebbe solo un errore dopo il click.
      */
-    public function create(Condominio $condominio): Response
+    public function create(\Illuminate\Http\Request $request, Condominio $condominio): Response
     {
         // Una regolazione registra un'uscita di cassa: il capitolo è una voce di spesa, le entrate non si offrono.
         $capitoli = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
@@ -107,7 +107,35 @@ class RegolazioneImmediataController extends Controller
             // quel fornitore richiede una fattura (guard rail §6).
             'fornitori' => Fornitore::orderBy('ragione_sociale')
                 ->get(['id', 'ragione_sociale', 'soggetto_ritenuta']),
+            'precompilata' => $this->precompilata($request, $condominio),
         ]);
+    }
+
+    /**
+     * Il modulo aperto già compilato da un'altra pagina (la correzione consigliata del controllo della banca: le spese della banca non registrate): la
+     * cassa, l'esercizio, la voce, la data, l'importo e la causale arrivano nell'indirizzo, e passano solo se sono di questo condominio e si possono
+     * scegliere nel modulo. L'amministratore li rilegge e salva lui; niente si registra da solo.
+     *
+     * @return array{cassa_id:?int, esercizio_id:?int, conto_id:?int, data_operazione:?string, importo:?string, causale:?string}
+     */
+    private function precompilata(\Illuminate\Http\Request $request, Condominio $condominio): array
+    {
+        $intero = fn (string $k) => ctype_digit((string) $request->query($k, '')) ? (int) $request->query($k) : null;
+        $cassa = $intero('cassa_id');
+        $esercizio = $intero('esercizio_id');
+        $conto = $intero('conto_id');
+        $data = (string) $request->query('data', '');
+        $importo = (string) $request->query('importo', '');
+
+        return [
+            'cassa_id' => $cassa !== null && Cassa::where('condominio_id', $condominio->id)->where('attiva', true)->where('tipo', '!=', 'fondo')->whereKey($cassa)->exists() ? $cassa : null,
+            'esercizio_id' => $esercizio !== null && $condominio->esercizi()->where('stato', 'aperto')->whereKey($esercizio)->exists() ? $esercizio : null,
+            'conto_id' => $conto !== null && Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))->whereIn('tipo', Conto::TIPI_DI_SPESA)
+                ->whereNotNull('conto_contabile_id')->whereKey($conto)->exists() ? $conto : null,
+            'data_operazione' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $data) ? $data : null,
+            'importo' => preg_match('/^\d{1,9}(\.\d{1,2})?$/', $importo) ? $importo : null,
+            'causale' => is_string($request->query('causale')) ? mb_substr(trim((string) $request->query('causale')), 0, 255) : null,
+        ];
     }
 
     /**

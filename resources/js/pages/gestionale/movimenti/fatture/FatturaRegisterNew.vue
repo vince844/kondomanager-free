@@ -4,6 +4,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useForm, Head, router, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import FatturaRegistrazioneGuide from '@/components/guides/FatturaRegistrazioneGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -2175,10 +2176,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                 :esercizi="(props.esercizi as any)"
             >
                 <template #actions>
-                    <Button variant="outline" size="sm" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200" @click="showGuideCompleta = true">
-                        <FileText class="w-4 h-4" />
-                        Guida completa
-                    </Button>
+                    <PulsanteGuida testo="Guida completa" @click="showGuideCompleta = true" />
                 </template>
             </PageHeaderGuide>
 

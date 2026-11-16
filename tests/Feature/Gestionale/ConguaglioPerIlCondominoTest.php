@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Il foglio della persona, il conguaglio per persona, i crediti per anzianità e il frontespizio letti da chi li riceve, il condòmino: che cosa deve già
@@ -48,11 +51,11 @@ it('il foglio divide quello che è già da versare dalla proposta da approvare, 
 
     // Bice: tre rate scadute non pagate, € 67,50 + € 171,25 + € 171,25 = € 410,00; la proposta 1.989,25 − 2.055,00 = −65,75; 410,00 − 65,75 = 344,25.
     expect([$f['totale']['gia'], $f['totale']['conguaglio'], $f['totale']['saldo']])->toBe([41000, -6575, 34425])
-        ->and($foglio)->toContain('Già da versare da versare € 410,00 rate già chieste e non pagate')
+        ->and($foglio)->toContain('Già da versare da versare € 410,00 rate e addebiti già chiesti e non pagati')
         ->toContain('Proposta di conguaglio, da approvare a credito € 65,75 solo se l\'assemblea approva')
         ->toContain('Saldo se l\'assemblea approva da versare € 344,25')
         ->toContain('= Proposta di conguaglio, da approvare € -65,75')
-        ->toContain('Già da versare: rate già chieste e non pagate € 410,00')
+        ->toContain('Già da versare: rate e addebiti già chiesti e non pagati € 410,00')
         ->toContain('= Saldo se l\'assemblea approva € +344,25')
         ->not->toContain('Saldo finale')->not->toContain('Posizione sulle rate');
 });
@@ -99,7 +102,7 @@ it('il foglio con un\'unità non ancora calcolata lo dice senza il programma; le
     $foglio = vrmTesto(view('pdf.gestionale.foglio_conguaglio', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'foglio' => $f])->render());
 
     // Lo studio può non esserci nelle impostazioni: la cifra la manda l'amministratore.
-    expect($foglio)->toContain('Il conguaglio di questa unità non è ancora calcolato: l\'amministratore le manderà la cifra.')->not->toContain('lo studio')
+    expect($foglio)->toContain('Il conguaglio di questa unità non è ancora calcolato: questo foglio non ha la sua cifra.')->not->toContain('lo studio')
         ->toContain('Proposta di conguaglio, da approvare non ancora calcolato')
         ->toContain('Già da versare')->not->toContain('programma')->not->toContain('non disponibile');
 });
@@ -157,7 +160,7 @@ it('nessuna stampa per i condòmini nomina altri programmi o «il programma»; i
         ->toContain('La proposta di conguaglio è la differenza: con il segno meno le quote dei piani sono più delle sue spese, e la differenza è a suo credito; '
             .'con il segno più sono meno, e la differenza è da versare.')
         ->not->toContain('ha versato più')
-        ->toContain('Già da versare sono le rate già chieste e non pagate, e le altre somme fuori dalle rate.')->not->toContain('a suo carico')
+        ->toContain('Già da versare sono le rate e gli addebiti già chiesti e non pagati, e le altre somme fuori dalle rate.')->not->toContain('a suo carico')
         ->not->toContain(ConguaglioDelRendiconto::FRASE_CENTESIMI)
         // Bice ha un'unità sola: le cifre di «In tutto» sono quelle della tabella, e non si ripetono.
         ->not->toContain('In tutto')
@@ -214,7 +217,7 @@ it('il frontespizio: i controlli in parole di chi legge, senza «ammanco»; la d
     $pagina = collect($t['fascicolo']['indice'])->firstWhere('parte', 'controlli')['pagina'];
     $testo = $t['frontespizio']['testo'];
 
-    expect($testo)->toContain('I controlli: 13 tornano, 1 da leggere (l\'amministratore lo spiegherà in assemblea). Sono quadrature interne dei numeri; non sostituiscono il confronto con l\'estratto conto della banca.')
+    expect($testo)->toContain('I controlli: 13 tornano, 1 da leggere (l\'amministratore lo spiegherà in assemblea); il saldo della banca non è confrontato, perché l\'amministratore non ha indicato il saldo dell\'estratto conto della banca.'.' Sono quadrature interne dei numeri, e del saldo registrato con quello dell\'estratto conto della banca quando l\'amministratore lo indica; non dicono che ogni spesa e ogni entrata è stata registrata.')
         ->toContain('Le righe dei controlli, per chi vuole il dettaglio, sono a pagina '.$pagina.'.')
         ->toContain('Le cifre sono quelle dell\'esercizio finito il 31/12/2026. I vincoli dei fondi sono invece di oggi.')
         // Via Roma: spese dei capitoli del riepilogo 4.218,50 − entrate da terzi 240,00 = 3.978,50; più 152,50 fuori dai capitoli, i costi 4.131,00.
@@ -357,7 +360,7 @@ it('il «già da versare» del foglio comprende i saldi fuori dalle rate e le ra
         ->and($esito[$s['persone']['Neri']->id]['foglio']['gia'])->toBe(80000)
         ->and($esito[$s['persone']['Verdi']->id]['foglio']['gia'])->toBe(7000)
         // Nella testata e in tabella le somme fuori dalle rate si dicono, e un credito non è «a suo carico».
-        ->and($bianchi['testo'])->toContain('Già a suo credito a credito € 604,93 rate già chieste e non pagate e altre somme fuori dalle rate')
+        ->and($bianchi['testo'])->toContain('Già a suo credito a credito € 604,93 rate e addebiti già chiesti e non pagati e altre somme fuori dalle rate')
         ->toContain('Già da versare: altre somme fuori dalle rate € -604,93')->not->toContain('a suo carico');
 });
 

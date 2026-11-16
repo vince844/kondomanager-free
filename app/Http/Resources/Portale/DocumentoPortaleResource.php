@@ -26,7 +26,9 @@ class DocumentoPortaleResource extends DocumentoResource
     public function toArray(Request $request): array
     {
         return Arr::only(parent::toArray($request), self::CAMPI) + [
-            'created_by' => $this->whenLoaded('createdBy', fn () => AutorePortale::di($this->createdBy)),
+            // `when` e non `whenLoaded`: con la relazione caricata e vuota (l'autore eliminato) `whenLoaded` dà null, e la forma promessa da
+            // `AutorePortale` non arriva.
+            'created_by' => $this->when($this->resource->relationLoaded('createdBy'), fn () => AutorePortale::di($this->createdBy)),
             'condomini'  => [
                 'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini')),
                 'full'    => CondominioPortaleResource::collection($this->whenLoaded('condomini')),

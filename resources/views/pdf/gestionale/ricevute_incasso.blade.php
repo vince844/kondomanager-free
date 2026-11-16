@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 @extends('pdf.base')
 
 {{--
@@ -217,9 +222,10 @@
         @php $primaDelGruppo = $gruppo->first(); @endphp
         <table style="width: 100%; border-collapse: collapse; font-size: 8pt;{{ $loop->first ? '' : ' margin-top: 6px;' }}">
             <thead>
+                {{-- Il piano e la gestione; la gestione non si ripete quando il nome del piano la dice già («Addebiti individuali – Ordinaria 2026»). --}}
                 @if(filled($primaDelGruppo['piano'] ?? null) || filled($primaDelGruppo['gestione'] ?? null))
                     <tr>
-                        <td colspan="7" style="padding: 0 4px 3px; color: #1e3a5f; font-weight: bold;">{{ implode(' — ', array_filter([$primaDelGruppo['piano'] ?? null, $primaDelGruppo['gestione'] ?? null], 'filled')) }}</td>
+                        <td colspan="7" style="padding: 0 4px 3px; color: #1e3a5f; font-weight: bold;">{{ implode(' — ', array_filter([$primaDelGruppo['piano'] ?? null, filled($primaDelGruppo['gestione'] ?? null) && str_contains((string) ($primaDelGruppo['piano'] ?? ''), (string) $primaDelGruppo['gestione']) ? null : ($primaDelGruppo['gestione'] ?? null)], 'filled')) }}</td>
                     </tr>
                 @endif
                 <tr style="background: #eef2f8;">

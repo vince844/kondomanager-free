@@ -150,3 +150,23 @@ describe('la scheda «Condòmini»', () => {
         }
     });
 });
+
+describe('la guida della scheda', () => {
+    test('il pulsante «Guida» dell\'intestazione, uno solo, apre la guida della scheda «Condòmini»', async () => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], elenco: 'posizioni', posizioni: posizioni(), crediti: null, troppe: null } as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot,
+                PageHeaderGuide: { props: { hasTextGuide: Boolean, textGuideTitle: String }, emits: ['open-text-guide'],
+                template: '<div><button v-if="hasTextGuide" type="button" data-testid="apri-guida" @click="$emit(\'open-text-guide\')">{{ textGuideTitle }}</button><slot name="actions" /></div>' },
+                RendicontoCondominiGuide: { props: ['open'], template: '<div v-if="open" data-testid="guida-aperta" />' } } },
+        });
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(false);
+        expect(w.findAll('button').filter((b) => b.text().trim() === 'Guida')).toHaveLength(1);
+        const pulsante = w.get('[data-testid="apri-guida"]');
+        expect(pulsante.text().trim()).toBe('Guida');
+        await pulsante.trigger('click');
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(true);
+    });
+});

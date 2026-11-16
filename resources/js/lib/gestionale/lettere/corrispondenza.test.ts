@@ -9,6 +9,7 @@ import {
     filtraCorrispondenza,
     numeroDellaScheda,
     paginaDi,
+    riassuntoDellaCorrispondenza,
     testoCifreDelDocumento,
     testoDocumento,
     testoRigaDelDocumento,
@@ -143,5 +144,29 @@ describe('i testi dei documenti', () => {
         expect(FRASE_DATE_ROVESCIATE).toBe('«Dal» è dopo «al»: nessun giorno è in mezzo.');
         expect(fraseDelVuoto({ tipo: 'diffida', dal: '2026-03-01', al: '2026-03-01' })).toBe(FRASE_NIENTE_COI_FILTRI);
         expect(fraseDelVuoto({ tipo: '', dal: '2026-04-01', al: '' })).toBe(FRASE_NIENTE_COI_FILTRI);
+    });
+});
+
+describe('riassuntoDellaCorrispondenza', () => {
+    const lettera = (n: number) => ({ lettera: `l${n}`, tipo: 'sollecito', emessa_il: '2026-03-05', ora: '10:00', righe: [{ id: n }] });
+    const documento = (n: number, tipo: string, nonDaComunicare = false) => ({ chiave: `${tipo}-${n}`, id: n, quando: '', tipo, non_da_comunicare: nonDaComunicare,
+        emessa_il: '2026-03-01', ora: '10:00', emesso_da: null, numero: String(n), versamento_del: null, importo: null, annullato: false, copia_del: null,
+        incasso_id: null, per_conto_di: null, righe: [] }) as DocumentoInviato;
+
+    it('dice che cosa c\'è, con i nomi della scheda, al singolare e al plurale, nell\'ordine del filtro', () => {
+        expect(riassuntoDellaCorrispondenza([], [documento(1, 'ricevuta'), documento(2, 'ricevuta'), documento(3, 'ricevuta', true)])).toBe('3 ricevute');
+        expect(riassuntoDellaCorrispondenza([lettera(1)], [documento(2, 'ricevuta'), documento(3, 'ricevuta')])).toBe('1 lettera e 2 ricevute');
+        expect(riassuntoDellaCorrispondenza([lettera(1), lettera(2)], [documento(3, 'avviso_compensazione'), documento(4, 'ricevuta')]))
+            .toBe('2 lettere, 1 ricevuta e 1 avviso di compensazione');
+        expect(riassuntoDellaCorrispondenza([], [documento(1, 'avviso_compensazione'), documento(2, 'avviso_compensazione')])).toBe('2 avvisi di compensazione');
+        expect(riassuntoDellaCorrispondenza([lettera(1)], [])).toBe('1 lettera');
+        expect(riassuntoDellaCorrispondenza([], [])).toBe('');
+    });
+
+    it('conta le stesse voci del numero della scheda', () => {
+        const lettere = [lettera(1)];
+        const documenti = [documento(2, 'ricevuta'), documento(3, 'avviso_compensazione'), documento(4, 'altro')];
+        const numeri = riassuntoDellaCorrispondenza(lettere, documenti).match(/\d+/g)!.map(Number);
+        expect(numeri.reduce((a, b) => a + b, 0)).toBe(numeroDellaScheda(lettere, documenti));
     });
 });

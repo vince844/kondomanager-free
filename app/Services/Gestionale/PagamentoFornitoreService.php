@@ -451,6 +451,37 @@ class PagamentoFornitoreService
     }
 
     /**
+     * L'IBAN per il confronto: senza spazi (anche quello che non si spezza, che arriva copiando da un PDF o da una pagina web) e senza i due caratteri
+     * invisibili che una copia porta e `\s` non toglie (lo spazio di larghezza zero e il segno di inizio testo), in maiuscolo. Le pagine del pagamento
+     * tolgono gli stessi caratteri, così la pagina e il server dicono «uguale» e «diverso» insieme.
+     */
+    private static function normalizzaIban(?string $iban): string
+    {
+        return strtoupper((string) preg_replace('/[\s\x{200B}\x{FEFF}]+/u', '', (string) $iban));
+    }
+
+    /**
+     * La sentinella dell'IBAN: l'IBAN del pagamento deve essere quello in anagrafica del fornitore, o l'amministratore deve averlo confermato.
+     * Il confronto ignora spazi e maiuscole da tutte e due le parti. Un fornitore senza IBAN in anagrafica non ha niente da confrontare.
+     *
+     * @throws IbanDiscrepanzaException
+     */
+    private function controllaIbanDelFornitore(?string $ibanInput, int $fornitoreId, bool $confermato): void
+    {
+        if ($confermato || ! $ibanInput) {
+            return;
+        }
+        $ibanAnagrafica = Fornitore::find($fornitoreId)?->iban_principale;
+
+        if ($ibanAnagrafica && self::normalizzaIban($ibanInput) !== self::normalizzaIban($ibanAnagrafica)) {
+            throw new IbanDiscrepanzaException(
+                "L'IBAN del pagamento ({$ibanInput}) è diverso da quello scritto nell'anagrafica del fornitore ".
+                "({$ibanAnagrafica}). Controlla che sia quello giusto prima di procedere."
+            );
+        }
+    }
+
+    /**
      * Aggiorna un pagamento fornitore confermato, ricreando le righe della scrittura contabile.
      *
      * Permesso solo su pagamenti originali (pagamento_padre_id IS NULL) non stornati,
@@ -509,6 +540,13 @@ class PagamentoFornitoreService
             throw new PagamentoModificaVietataException(
                 'Il pagamento appartiene a un esercizio chiuso: usa lo storno.'
             );
+        }
+
+        // La sentinella dell'IBAN anche in modifica, ma solo se l'IBAN cambia: un pagamento già confermato con un IBAN diverso dall'anagrafica
+        // non lo richiede a ogni modifica di un altro campo.
+        $ibanNuovo = $data['iban_beneficiario'] ?? null;
+        if ($ibanNuovo && self::normalizzaIban($ibanNuovo) !== self::normalizzaIban($pagamento->iban_beneficiario)) {
+            $this->controllaIbanDelFornitore($ibanNuovo, (int) $pagamento->fornitore_id, (bool) ($data['iban_confermato_manualmente'] ?? false));
         }
 
         // ── Snapshot before (per evento PagamentoAggiornato) ─────────────────
@@ -1305,17 +1343,7 @@ class PagamentoFornitoreService
         // 7. Sentinella Anti-Frode IBAN
         //    Confronta l'IBAN inserito con quello in anagrafica fornitore.
         //    Se differiscono, richiede conferma esplicita prima di procedere.
-        if (! ($data['iban_confermato_manualmente'] ?? false)) {
-            $ibanInput = $data['iban_beneficiario'] ?? null;
-            $fornitore = Fornitore::find($data['fornitore_id']);
-
-            if ($ibanInput && $fornitore?->iban && $ibanInput !== $fornitore->iban) {
-                throw new IbanDiscrepanzaException(
-                    "L'IBAN inserito ({$ibanInput}) differisce dall'IBAN in anagrafica fornitore ".
-                    "({$fornitore->iban}). Impostare iban_confermato_manualmente=true per procedere."
-                );
-            }
-        }
+        $this->controllaIbanDelFornitore($data['iban_beneficiario'] ?? null, (int) $data['fornitore_id'], (bool) ($data['iban_confermato_manualmente'] ?? false));
 
         // 8. Duplicate detection MVP (warning, non blocco hard)
         //    Regola v1.9.1: stessa fattura + stesso importo + stesso tipo + entro 24h.
@@ -1673,7 +1701,7 @@ class PagamentoFornitoreService
             'ragione_sociale' => $fornitore->ragione_sociale,
             'partita_iva' => $fornitore->partita_iva,
             'codice_fiscale' => $fornitore->codice_fiscale,
-            'iban' => $fornitore->iban,
+            'iban' => $fornitore->iban_principale,
             'indirizzo' => $fornitore->indirizzo,
 
             // ── Regime fiscale, dalla versione 2 ──────────────────────────────

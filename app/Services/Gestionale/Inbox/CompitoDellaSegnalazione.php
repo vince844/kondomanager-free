@@ -1,0 +1,222 @@
+<?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
+namespace App\Services\Gestionale\Inbox;
+
+use App\Enums\EventoTipo;
+use App\Enums\Permission;
+use App\Helpers\DateHelper;
+use App\Models\Evento;
+use App\Models\Segnalazione;
+use App\Models\User;
+use App\Services\Gestionale\InboxService;
+use Carbon\Carbon;
+use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Support\Str;
+
+/**
+ * Il compito dell'Inbox di una segnalazione di guasto: la regola in un posto solo. Ogni segnalazione aperta o in lavorazione ha il suo compito
+ * (`meta.type` «segnalazione_guasto», `meta.context.segnalazione_id`, legato alla segnalazione come `eventable`), nell'Action inbox e nell'Inbox del
+ * condominio. Nasce con la segnalazione (dallo studio o dal portale del condòmino), si chiude da solo quando la segnalazione si chiude, torna quando la si
+ * riapre, sparisce quando la si cancella. Lo chiamano gli eventi del modello (`Segnalazione::booted()`) e la migrazione dei dati per le segnalazioni già
+ * aperte: rieseguito non fa doppioni.
+ *
+ * Il giorno del compito è quello della segnalazione, nel giorno di Roma e scritto come l'agenda scrive le ore: «da quanto aspetta», «aperta il». Il compito
+ * tiene in `meta` lo stato dell'approvazione (la prossima azione: «Approva o rifiuta» finché aspetta l'approvazione, poi «Apri la segnalazione») e la priorità
+ * (il badge «urgente» o «alta» sulla riga); si aggiornano a ogni salvataggio. Il giorno non si riscrive dopo la nascita: «Ricordamelo» scrive un promemoria a
+ * parte ({@see \App\Services\Gestionale\RispostePromemoria::COMPITI_CON_IL_PROMEMORIA_A_PARTE}), e un salvataggio della segnalazione non lo tocca.
+ *
+ * Il menu del compito ha solo «Ricordamelo»: «Fatto» e «Non serve» nasconderebbero una segnalazione ancora aperta (`ActionInboxController` li rifiuta).
+ *
+ * **Chi lo legge.** Il compito porta il titolo e la descrizione della segnalazione, e le due Inbox e il numero del menu lo leggono con la regola della pagina
+ * delle segnalazioni ({@see chiVede()}, {@see soloQuelliCheVede()}): un compito di una segnalazione che l'utente non può aprire non si mostra e non si conta, e
+ * nemmeno quello di una segnalazione che non c'è più (tolta con la chiave esterna del condominio o dell'autore, senza gli eventi del modello). Eliminato un
+ * condominio, i compiti delle segnalazioni che se ne sono andate con lui si chiudono ({@see chiudiQuelliSenzaSegnalazione()}).
+ */
+final class CompitoDellaSegnalazione
+{
+    public const TIPO = 'segnalazione_guasto';
+
+    /** Gli stati in cui la segnalazione ha il compito aperto. */
+    public const APERTE = ['aperta', 'in lavorazione'];
+
+    public const FRASE_SOLO_RICORDAMELO = 'Una segnalazione si chiude dalla sua pagina: qui puoi solo fartela ricordare.';
+
+    /** {@see chiVede()}: tutte le segnalazioni, o nessuna; un intero è l'utente che vede solo quelle che ha scritto. */
+    public const TUTTE = true;
+
+    public const NESSUNA = false;
+
+    /**
+     * Quali compiti delle segnalazioni vede un utente: la regola della pagina delle segnalazioni del pannello (`SegnalazionePolicy::view`), private comprese.
+     * Con «Visualizza segnalazioni» tutte; con «Visualizza proprie segnalazioni» quelle che ha scritto (l'id dell'utente); senza i due permessi, o senza un
+     * utente, nessuna. Il valore va nei filtri delle due Inbox e nel numero del menu ({@see soloQuelliCheVede()}).
+     */
+    public static function chiVede(?User $utente): bool|int
+    {
+        if ($utente === null) {
+            return self::NESSUNA;
+        }
+        if ($utente->checkPermissionTo(Permission::VIEW_SEGNALAZIONI->value)) {
+            return self::TUTTE;
+        }
+
+        return $utente->checkPermissionTo(Permission::VIEW_OWN_SEGNALAZIONI->value) ? (int) $utente->id : self::NESSUNA;
+    }
+
+    /**
+     * Una lettura dei compiti con solo i compiti delle segnalazioni che l'utente vede ({@see chiVede()}) e che ci sono ancora; gli altri compiti restano tutti.
+     * Il compito è di una segnalazione per il tipo (`meta.type` o la colonna `tipo`), e la segnalazione è il suo `eventable`.
+     */
+    public static function soloQuelliCheVede(Builder $query, bool|int $vede): Builder
+    {
+        $tipoSql = FasceDeiCompiti::sqlTipo();
+        $segnalazione = (new Segnalazione())->getMorphClass();
+
+        return $query->where(function (Builder $q) use ($tipoSql, $vede, $segnalazione) {
+            // Non è il compito di una segnalazione.
+            $q->where(fn (Builder $altro) => $altro->whereRaw("COALESCE({$tipoSql}, '') <> ?", [self::TIPO])
+                ->where(fn (Builder $colonna) => $colonna->whereNull('eventi.tipo')->orWhere('eventi.tipo', '<>', self::TIPO)));
+            if ($vede === self::NESSUNA) {
+                return;
+            }
+            // O lo è, e la segnalazione c'è e si apre.
+            $q->orWhere(fn (Builder $suo) => $suo->where('eventi.eventable_type', $segnalazione)
+                ->whereIn('eventi.eventable_id', fn (Builder $s) => $s->select('segnalazioni.id')->from('segnalazioni')
+                    ->when(is_int($vede), fn (Builder $proprie) => $proprie->where('segnalazioni.created_by', $vede))));
+        });
+    }
+
+    /**
+     * Chiude i compiti aperti delle segnalazioni che non ci sono più: quelle tolte con la chiave esterna, senza gli eventi del modello (il condominio eliminato).
+     * Rieseguito non trova niente.
+     */
+    public static function chiudiQuelliSenzaSegnalazione(): int
+    {
+        $chiusi = Evento::query()
+            ->where('tipo', self::TIPO)
+            ->where('is_completed', false)
+            ->where(fn ($q) => $q->whereNull('eventable_id')->orWhereNotIn('eventable_id', Segnalazione::query()->select('id')))
+            ->update(['is_completed' => true, 'completed_at' => now()]);
+        if ($chiusi > 0) {
+            InboxService::clearAdminCache();
+        }
+
+        return $chiusi;
+    }
+
+    /** Il compito della segnalazione, aperto o chiuso; null se non c'è. */
+    public function compito(Segnalazione $segnalazione): ?Evento
+    {
+        return Evento::query()
+            ->where('eventable_type', $segnalazione->getMorphClass())
+            ->where('eventable_id', $segnalazione->getKey())
+            ->where('tipo', EventoTipo::SEGNALAZIONE_GUASTO->value)
+            ->orderBy('id')
+            ->first();
+    }
+
+    /** Il compito com'è la segnalazione adesso: aperto se è aperta o in lavorazione, chiuso se è chiusa; creato se non c'è e serve. */
+    public function sincronizza(Segnalazione $segnalazione): void
+    {
+        $aperta = in_array((string) $segnalazione->stato, self::APERTE, true);
+        $compito = $this->compito($segnalazione);
+        if ($compito === null && ! $aperta) {
+            return;
+        }
+        if ($compito === null) {
+            $this->crea($segnalazione);
+
+            return;
+        }
+
+        $meta = is_array($compito->meta) ? $compito->meta : [];
+        $nuovo = array_merge($meta, $this->datiDellaSegnalazione($segnalazione));
+        $cambia = [
+            'title' => $this->titolo($segnalazione),
+            'description' => $this->descrizione($segnalazione),
+            'priorita' => $segnalazione->prioritaCommento(),
+            'meta' => $nuovo,
+            'is_completed' => ! $aperta,
+            'completed_at' => $aperta ? null : ($compito->completed_at ?? now()),
+        ];
+        $compito->fill($cambia);
+        if ($compito->isDirty()) {
+            $compito->save();
+            InboxService::clearAdminCache();
+        }
+        if ($segnalazione->condominio_id !== null) {
+            $compito->condomini()->sync([(int) $segnalazione->condominio_id]);
+        }
+    }
+
+    /** La segnalazione cancellata: il suo compito non ha più una pagina, e sparisce. */
+    public function togli(Segnalazione $segnalazione): void
+    {
+        $compito = $this->compito($segnalazione);
+        if ($compito !== null) {
+            $compito->delete();
+            InboxService::clearAdminCache();
+        }
+    }
+
+    /** I compiti delle segnalazioni aperte o in lavorazione che non ce l'hanno: per la migrazione dei dati. Rieseguita non trova niente da fare. */
+    public function creaPerLeAperte(): int
+    {
+        $create = 0;
+        Segnalazione::query()->whereIn('stato', self::APERTE)->orderBy('id')->chunkById(200, function ($blocco) use (&$create) {
+            foreach ($blocco as $segnalazione) {
+                if ($this->compito($segnalazione) === null) {
+                    $this->crea($segnalazione);
+                    $create++;
+                }
+            }
+        });
+
+        return $create;
+    }
+
+    private function crea(Segnalazione $segnalazione): Evento
+    {
+        // Il giorno della segnalazione nel giorno di Roma, come l'agenda scrive le ore.
+        $giorno = DateHelper::comeSiLegge(Carbon::parse($segnalazione->created_at ?? now()));
+
+        return InboxService::createTask(
+            tipo: EventoTipo::SEGNALAZIONE_GUASTO,
+            title: $this->titolo($segnalazione),
+            description: $this->descrizione($segnalazione),
+            scadenza: $giorno,
+            createdByUserId: (int) ($segnalazione->created_by ?? auth()->id() ?? \App\Models\User::query()->orderBy('id')->value('id')),
+            condominioId: $segnalazione->condominio_id !== null ? (int) $segnalazione->condominio_id : null,
+            context: ['segnalazione_id' => (int) $segnalazione->id],
+            actionUrl: route('admin.segnalazioni.show', $segnalazione, false),
+            extraMeta: $this->datiDellaSegnalazione($segnalazione),
+            eventableType: $segnalazione->getMorphClass(),
+            eventableId: (int) $segnalazione->id,
+            priorita: $segnalazione->prioritaCommento(),
+        );
+    }
+
+    /** Ciò che il compito tiene della segnalazione, aggiornato a ogni salvataggio. */
+    private function datiDellaSegnalazione(Segnalazione $segnalazione): array
+    {
+        return [
+            'priority' => (string) $segnalazione->priority,
+            'is_approved' => (bool) $segnalazione->is_approved,
+            'stato_segnalazione' => (string) $segnalazione->stato,
+            'condominio_nome' => $segnalazione->condominio_id !== null ? (string) \App\Models\Condominio::whereKey($segnalazione->condominio_id)->value('nome') : null,
+        ];
+    }
+
+    private function titolo(Segnalazione $segnalazione): string
+    {
+        return Str::limit($segnalazione->titoloInbox(), 250, '…');
+    }
+
+    private function descrizione(Segnalazione $segnalazione): string
+    {
+        return Str::limit(trim((string) $segnalazione->description), 500, '…');
+    }
+}

@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Il foglio della persona: la sua parte delle spese dell'esercizio, unità per unità e voce per voce, e la proposta di conguaglio, dall'array di
   `FogliDelConguaglio::datiDelFoglio()`. Nessuna nota sui passaggi regolati fra le parti e nessun avviso per l'amministratore: sono nella scheda.
 
@@ -66,7 +71,7 @@
             {{-- L'etichetta segue il segno: un credito non è «da versare». In tabella le cifre restano con il segno, come le spiega il «Come leggere». --}}
             <div class="dato-et">{{ $t['gia'] < 0 ? 'Già a suo credito' : 'Già da versare' }}</div>
             <div class="dato-vl">{{ P::conIlVerbo($t['gia']) }}</div>
-            <div class="dato-sub">rate già chieste e non pagate @if($conFuori) e altre somme fuori dalle rate @endif</div>
+            <div class="dato-sub">rate e addebiti già chiesti e non pagati @if($conFuori) e altre somme fuori dalle rate @endif</div>
         </td>
         <td style="width: 24%;">
             <div class="dato-et">Proposta di conguaglio, da approvare</div>
@@ -85,7 +90,7 @@
     <b>Come leggere questo foglio.</b> {{ P::PROPOSTA }} {{ C::FRASE_SEGNO }}
     Le spese dell'esercizio sono la sua parte delle spese di tutto l'anno. Le quote dei piani sono le rate dei piani dell'esercizio, versate o no, comprese
     quelle non ancora chieste. La proposta di conguaglio è la differenza: con il segno meno le quote dei piani sono più delle sue spese, e la differenza è a
-    suo credito; con il segno più sono meno, e la differenza è da versare. Già da versare sono le rate già chieste e non pagate, e le altre somme fuori dalle
+    suo credito; con il segno più sono meno, e la differenza è da versare. Già da versare sono le rate e gli addebiti già chiesti e non pagati, e le altre somme fuori dalle
     rate. {{ C::FRASE_GIORNI }}
 </div>
 
@@ -96,7 +101,8 @@
 <table class="p" style="margin-top: {{ $loop->first ? 0 : 10 }}px;">
     <thead>
         <tr>
-            <th class="unita" style="width: 40%;">{{ $u['unita'] }}@if($u['giorni'] !== null) <span class="d">({{ $u['giorni'] }} giorni nell'esercizio)</span>@endif</th>
+            {{-- Con più ruoli sull'unità, i giorni di ogni ruolo che non ha avuto tutto l'anno. --}}
+            <th class="unita" style="width: 40%;">{{ $u['unita'] }}@if(($u['giorni_per_ruolo'] ?? []) !== []) <span class="d">(nell'esercizio: {{ P::giorni(null, $u['giorni_per_ruolo']) }})</span>@elseif($u['giorni'] !== null) <span class="d">({{ P::giorni($u['giorni']) }} nell'esercizio)</span>@endif</th>
             <th style="width: 22%;">Tabella</th>
             <th class="n" style="width: 22%;">Millesimi</th>
             <th class="n" style="width: 16%;">Importo</th>
@@ -132,7 +138,7 @@
 <table class="p" style="page-break-inside: avoid;" autosize="1">
     <tbody>
         <tr class="k"><td style="width: 84%;">= Proposta di conguaglio, da approvare</td><td class="n" style="width: 16%;">{{ $segno($u['conguaglio']) }}</td></tr>
-        <tr><td class="e">Già da versare: rate già chieste e non pagate</td><td class="e n">{{ $euro($u['posizione']) }}</td></tr>
+        <tr><td class="e">Già da versare: rate e addebiti già chiesti e non pagati</td><td class="e n">{{ $euro($u['posizione']) }}</td></tr>
         @if($u['fuori'] !== 0)
             <tr><td class="e">Già da versare: altre somme fuori dalle rate</td><td class="e n">{{ $euro($u['fuori']) }}</td></tr>
         @endif

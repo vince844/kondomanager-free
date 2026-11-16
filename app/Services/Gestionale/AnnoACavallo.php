@@ -57,6 +57,9 @@ final class AnnoACavallo
         'altro' => 'Altre registrazioni',
     ];
 
+    /** La nota di un incasso che versa interessi o spese addebitati: la loro voce è nelle spese dell'esercizio in cui l'incasso sta. */
+    public const NOTA_INCASSO_ACCESSORI = 'un incasso di interessi o spese cambia le spese dell\'esercizio in cui sta';
+
     /** Detto una volta, in testa: perché il confine si attraversa quasi ogni anno. */
     public const FRASE_NORMA = 'Il programma non ha una chiusura guidata dell\'esercizio e non sposta le registrazioni da un esercizio all\'altro: una registrazione va nell\'esercizio aperto '
         .'quando la scrivi, non in quello della sua data (un versamento F24 va in quello della sua delega, lo storno di un incasso in quello dell\'incasso). '
@@ -330,7 +333,7 @@ final class AnnoACavallo
                 'senza_esercizio' => $verso === 'A' && $esercizioDellaData === null,
                 // Lo scrive lo storno di un incasso (o di un rimborso): la rettifica e la figlia dell'emissione, entrambe legate alla scrittura che storna.
                 'storno_incasso' => $r->scrittura_padre_id !== null && in_array($tipo, ['rettifica', 'emissione_rata'], true),
-                'nota' => $this->nota($categoria, $verso, $data, $sta, $esercizioDellaData !== null, self::nonAncoraCreato($data, $ultimo), (int) $r->costi),
+                'nota' => $this->nota($categoria, $verso, $data, $sta, $esercizioDellaData !== null, self::nonAncoraCreato($data, $ultimo), (int) $r->costi, (int) $r->economiche),
             ];
         })->all();
     }
@@ -402,8 +405,12 @@ final class AnnoACavallo
      * La nota della riga. «In nessun esercizio» solo quando la data non è nemmeno dell'anno dopo l'ultimo esercizio (prima del primo, fra due esercizi, o
      * oltre l'anno dopo: un errore di battitura); con la data dell'anno dopo, non ancora creato, la fattura dice il suo anno.
      */
-    private function nota(string $categoria, string $verso, string $data, array $sta, bool $haEsercizio, bool $nonAncoraCreato, int $costi): ?string
+    private function nota(string $categoria, string $verso, string $data, array $sta, bool $haEsercizio, bool $nonAncoraCreato, int $costi, int $economiche = 0): ?string
     {
+        // Un incasso delle rate con una riga economica: la coppia del versamento degli interessi o delle spese addebitati, che va alla loro voce.
+        if ($categoria === 'incasso' && $economiche > 0) {
+            return self::NOTA_INCASSO_ACCESSORI;
+        }
         if ($categoria === 'fattura_pregressa') {
             return self::NOTA_PREGRESSA.($costi > 0 ? ', tranne la parte non coperta, '.self::euro($costi).', che è un costo dell\'esercizio in cui sta' : '');
         }

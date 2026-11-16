@@ -42,6 +42,7 @@ const percorsi: Array<{ nome: string; parametri: Record<string, unknown> }> = []
 };
 
 const Pagina = (await import('./RicevuteIncassi.vue')).default;
+const VSelect = (await import('vue-select')).default;
 const RicevutaDialog = (await import('@/components/gestionale/movimenti/incassi/RicevutaDialog.vue')).default;
 const { FRASE_BOLLO, FRASE_FILE_NON_ARCHIVIO, FRASE_FILE_NON_PDF, FRASE_NON_PERMESSO, FRASE_SESSIONE_SCADUTA, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, NOTA_MODO_UNICO, RIGA_ORIGINALE } = await import('@/lib/gestionale/incassi/ricevute');
 
@@ -71,6 +72,8 @@ function proprieta(extra: Record<string, unknown> = {}) {
         ...extra,
     };
 }
+
+const rigaDiProva = riga;
 
 const persona = (id: number, nome: string, tipo = 'email', numero = 'INC-2026-00001') => ({
     id, nome, indirizzi: [{ tipo, indirizzo: `${nome.split(' ')[0].toLowerCase()}@esempio.it` }], ricevute: [{ numero, per_conto_di: null }], messaggi: 1,
@@ -116,7 +119,26 @@ const clic = async (nome: string) => {
 async function apriIlBlocco(modo: 'invio' | 'stampa' | 'persone', risposta: Record<string, unknown>) {
     axiosPost.mockResolvedValueOnce({ data: risposta });
     await clic('Seleziona tutte');
-    await clic(modo === 'invio' ? 'Invia per email le selezionate' : modo === 'stampa' ? 'Stampa le selezionate' : 'Scarica un PDF per persona');
+    await clic(modo === 'invio' ? 'Invia per email' : modo === 'stampa' ? 'Stampa' : 'PDF per persona');
+}
+
+/** L'ordine della stampa, un menu `v-select` nella finestra del blocco: fermo, o aperto per sceglierne una voce. */
+const menuOrdine = () => document.body.querySelector('[role="dialog"] [data-testid="ordine-stampa"] .v-select') as HTMLElement;
+const ordineFermo = () => menuOrdine().classList.contains('vs--disabled');
+async function scegliOrdine(etichetta: string) {
+    menuOrdine().querySelector('.vs__search')!.dispatchEvent(new FocusEvent('focus'));
+    await flushPromises();
+    const opzione = [...menuOrdine().querySelectorAll('.vs__dropdown-option')].find((o) => (o.textContent ?? '').includes(etichetta)) as HTMLElement | undefined;
+    if (!opzione) throw new Error(`«${etichetta}» non è fra le scelte dell'ordine.`);
+    opzione.click();
+    await flushPromises();
+}
+/** Una scelta dell'ordine che arriva alla pagina anche con il menu fermo. */
+async function forzaOrdine(valore: string) {
+    const menu = pagina!.findAllComponents(VSelect).find((c) => !!(c.element as HTMLElement).closest?.('[data-testid="ordine-stampa"]'));
+    if (!menu) throw new Error('Il menu dell\'ordine non c\'è.');
+    menu.vm.$emit('update:modelValue', valore);
+    await flushPromises();
 }
 
 // Che cosa succede e in che ordine quando si chiede un PDF: la scheda che si apre, la richiesta che parte, il file scaricato.
@@ -227,7 +249,7 @@ describe('la nota e il bollo', () => {
         await clic('Chiudi');
 
         axiosPost.mockResolvedValueOnce({ data: anteprima() });
-        await clic('Invia per email le selezionate');
+        await clic('Invia per email');
         expect(nota().value).toBe('');
     });
 
@@ -412,7 +434,6 @@ describe('gli avvisi della pagina', () => {
 
 describe('l\'ordine della stampa vale per tutte le parti del PDF', () => {
     const conParti = (parti: number[][]) => anteprima({ ricevute: 205, oltre_tetto: true, parti_pdf: parti, sopra_soglia: 205 });
-    const selectOrdine = () => document.body.querySelector('[role="dialog"] select') as HTMLSelectElement;
 
     test('cambiare l\'ordine rifà l\'anteprima con l\'ordine scelto, e si riparte dalla prima parte', async () => {
         await monta();
@@ -421,8 +442,7 @@ describe('l\'ordine della stampa vale per tutte le parti del PDF', () => {
         expect(testo()).toContain('L\'ordine vale per tutte le parti, dalla prima all\'ultima.');
 
         axiosPost.mockResolvedValueOnce({ data: conParti([[4, 5], [1, 2, 3]]) });
-        selectOrdine().value = 'unita';
-        selectOrdine().dispatchEvent(new Event('change'));
+        await scegliOrdine('Per unità');
         await flushPromises();
 
         expect(axiosPost.mock.calls.at(-1)![1].ordine).toBe('unita');
@@ -433,11 +453,11 @@ describe('l\'ordine della stampa vale per tutte le parti del PDF', () => {
         await monta();
         await apriIlBlocco('stampa', conParti([[1, 2, 3], [4, 5]]));
         axiosPost.mockResolvedValue(pdf);
-        expect(selectOrdine().disabled).toBe(false);
+        expect(ordineFermo()).toBe(false);
 
         await clic('Stampa le prime 3');
 
-        expect(selectOrdine().disabled).toBe(true);
+        expect(ordineFermo()).toBe(true);
         expect(testo()).toContain('Una parte è già stampata: l\'ordine non si cambia a metà.');
     });
 
@@ -446,8 +466,7 @@ describe('l\'ordine della stampa vale per tutte le parti del PDF', () => {
         await apriIlBlocco('stampa', anteprima());
         const prima = axiosPost.mock.calls.length;
 
-        selectOrdine().value = 'data';
-        selectOrdine().dispatchEvent(new Event('change'));
+        await scegliOrdine('Per data del versamento');
         await flushPromises();
 
         expect(axiosPost.mock.calls.length).toBe(prima);
@@ -670,7 +689,6 @@ describe('sul telefono e nel tema scuro', () => {
 
 describe('l\'ordine cambiato mentre l\'anteprima si rifà', () => {
     const conParti = (parti: number[][]) => anteprima({ ricevute: 205, oltre_tetto: true, parti_pdf: parti, sopra_soglia: 205 });
-    const selectOrdine = () => document.body.querySelector('[role="dialog"] select') as HTMLSelectElement;
 
     test('mentre arriva l\'anteprima del nuovo ordine la parte non si stampa, si vede che sta aggiornando, e dopo ogni ricevuta esce una volta', async () => {
         await monta();
@@ -680,14 +698,13 @@ describe('l\'ordine cambiato mentre l\'anteprima si rifà', () => {
 
         let arriva: (v: unknown) => void = () => {};
         axiosPost.mockReturnValueOnce(new Promise((r) => { arriva = r; }));
-        selectOrdine().value = 'unita';
-        selectOrdine().dispatchEvent(new Event('change'));
+        await scegliOrdine('Per unità');
         await flushPromises();
 
         // L'anteprima nuova è in viaggio: la parte, «Anteprima» e l'ordine sono fermi, e la finestra lo dice.
         expect(pulsante('Stampa le prime 3')?.disabled).toBe(true);
         expect(pulsante('Anteprima')?.disabled).toBe(true);
-        expect(selectOrdine().disabled).toBe(true);
+        expect(ordineFermo()).toBe(true);
         expect(testo()).toContain('Aggiorno l\'anteprima…');
         pulsante('Stampa le prime 3')!.click();
         await flushPromises();
@@ -710,12 +727,11 @@ describe('l\'ordine cambiato mentre l\'anteprima si rifà', () => {
         let secondaArriva: (v: unknown) => void = () => {};
         axiosPost.mockReturnValueOnce(new Promise((r) => { primaArriva = r; }));
         axiosPost.mockReturnValueOnce(new Promise((r) => { secondaArriva = r; }));
-        selectOrdine().value = 'unita';
-        selectOrdine().dispatchEvent(new Event('change'));
+        await scegliOrdine('Per unità');
         await flushPromises();
-        selectOrdine().value = 'data';
-        selectOrdine().dispatchEvent(new Event('change'));
-        await flushPromises();
+        // Mentre l'anteprima si rifà il menu è fermo: la seconda scelta arriva alla pagina senza passare dal menu.
+        expect(ordineFermo()).toBe(true);
+        await forzaOrdine('data');
 
         secondaArriva({ data: conParti([[5], [1, 2, 3, 4]]) });
         await flushPromises();
@@ -737,7 +753,7 @@ describe('sul telefono si seleziona la pagina', () => {
         expect(casella.textContent).toContain('Seleziona questa pagina');
         (casella.querySelector('button[role="checkbox"]') as HTMLButtonElement).click();
         await flushPromises();
-        expect(testo()).toContain('Selezionate: 2.');
+        expect(testo()).toContain('2 selezionate su 2 con questi filtri');
     });
 });
 
@@ -1094,7 +1110,7 @@ describe('la sessione scaduta mentre si lavora', () => {
         await monta();
         axiosPost.mockRejectedValueOnce(non401);
         await clic('Seleziona tutte');
-        await clic('Invia per email le selezionate');
+        await clic('Invia per email');
 
         expect(testo()).toContain(FRASE_SESSIONE_SCADUTA);
         expect(testo()).not.toContain('Unauthenticated');
@@ -1148,7 +1164,7 @@ describe('un rifiuto per mancanza di permesso (403)', () => {
         await monta();
         axiosPost.mockRejectedValueOnce(non403);
         await clic('Seleziona tutte');
-        await clic('Invia per email le selezionate');
+        await clic('Invia per email');
         expect(testo()).toContain(FRASE_NON_PERMESSO);
         expect(testo()).not.toContain('unauthorized');
 
@@ -1180,7 +1196,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
     };
     const dentro = () => (document.body.querySelector('[role="dialog"]')?.textContent ?? '').replace(/\s+/g, ' ');
     const inPagina = () => document.body.querySelector('[data-testid="messaggio-pagina"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? null;
-    const pulsanteDi = { invio: 'Invia per email le selezionate', stampa: 'Stampa le selezionate', persone: 'Scarica un PDF per persona' };
+    const pulsanteDi = { invio: 'Invia per email', stampa: 'Stampa', persone: 'PDF per persona' };
     const chiudi = () => clic('Chiudi');
     /** La finestra si riapre da capo (stessa scelta di righe), con una nuova anteprima. */
     const riapri = async (modo: 'invio' | 'stampa' | 'persone', nuova: Record<string, unknown> = anteprima()) => {
@@ -1513,7 +1529,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             expect(dentro()).toContain('Partiranno: 3 persone');
             expect(pulsante('Invia')?.disabled).toBe(true);
             // La finestra nuova è costruita su quella scelta: la scelta resta.
-            expect(testo()).toContain('Selezionate: 2.');
+            expect(testo()).toContain('2 selezionate su 2 con questi filtri');
 
             nuova.arriva({ data: conGia() });
             await flushPromises();
@@ -1639,7 +1655,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             await flushPromises();
 
             expect(inPagina()).toBe('Partite 50. Restano 2 ricevute da mandare.');
-            expect(testo()).not.toContain('Selezionate:');
+            expect(testo()).not.toContain('selezionate su');
             expect(anteprimeChieste()).toBe(prima);
         });
 
@@ -1658,7 +1674,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             expect(rigaDiPrima()?.textContent).toContain('aspetta un momento e riprova');
             expect(rigaDiPrima()?.className).toContain('rose');
             expect(inPagina()).toContain('aspetta un momento e riprova');
-            expect(testo()).toContain('Selezionate: 2.');
+            expect(testo()).toContain('2 selezionate su 2 con questi filtri');
             expect(anteprimeChieste()).toBe(prima);
             expect(pulsante('Invia')?.disabled).toBe(false);
         });
@@ -1674,7 +1690,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             expect(dentro()).toContain('In coda 3.');
             expect(inPagina()).toBeNull();
             expect(rigaDiPrima()).toBeNull();
-            expect(testo()).not.toContain('Selezionate:');
+            expect(testo()).not.toContain('selezionate su');
         });
 
         test('un secondo clic mentre l\'invio viaggia non ne manda un altro', async () => {
@@ -1858,5 +1874,235 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
                 await chiudi();
             }
         });
+    });
+});
+
+describe('la testata: la freccia, la guida e le tre schede', () => {
+    const testata = () => pagina!.findComponent({ name: 'PageHeaderGuide' });
+
+    test('«Incassi», con la freccia, riporta all\'elenco degli incassi', async () => {
+        await monta();
+        expect(testata().props('backUrl')).toBe('/gestionale.movimenti-rate.index');
+        expect(testata().props('backText')).toBe('Incassi');
+    });
+
+    test('le tre schede: «Una o tante», «Da dove parte», «Le email»', async () => {
+        await monta();
+        const schede = testata().props('guides') as Array<{ title: string; description: string }>;
+        expect(schede.map((g) => [g.title, g.description])).toEqual([
+            ['Una o tante', 'Scegli con i filtri e le caselle; poi stampi, scarichi un PDF per persona o mandi per email.'],
+            ['Da dove parte', 'La pagina si apre sulle ricevute mai emesse dal primo del mese scorso. I filtri cambiano la scelta.'],
+            ['Le email', 'Partono in coda. Se una resta ferma più di un\'ora la pagina lo dice; chi non ha un indirizzo si stampa.'],
+        ]);
+    });
+
+    test('il pulsante «Guida» apre la guida di lato', async () => {
+        await monta();
+        expect(testata().props('hasTextGuide')).toBe(true);
+        expect(testata().props('textGuideTitle')).toBe('Guida');
+        const guida = () => pagina!.findComponent({ name: 'RicevuteIncassiGuide' });
+        expect(guida().props('open')).toBe(false);
+        expect(document.body.querySelector('[data-testid="guida-ricevute"]')).toBeNull();
+
+        testata().vm.$emit('open-text-guide');
+        await flushPromises();
+
+        expect(guida().props('open')).toBe(true);
+        const aperta = document.body.querySelector('[data-testid="guida-ricevute"]');
+        expect(aperta).not.toBeNull();
+        expect(aperta!.textContent).toContain('Da dove parte la pagina');
+    });
+});
+
+describe('la riga della selezione', () => {
+    const conteggio = () => document.body.querySelector('[data-testid="conteggio-scelta"]')?.textContent?.replace(/\s+/g, ' ').trim();
+    const riga = () => document.body.querySelector('[data-testid="riga-della-scelta"]') as HTMLElement;
+    const sinistra = () => document.body.querySelector('[data-testid="scelta-delle-righe"]') as HTMLElement;
+    const azioni = () => document.body.querySelector('[data-testid="azioni-della-scelta"]') as HTMLElement;
+    const etichette = () => [...azioni().querySelectorAll('button')].map((b) => (b.textContent ?? '').trim());
+    const caselleDelleRighe = () => [...document.body.querySelectorAll('[data-testid="elenco-ricevute"] tbody button[role="checkbox"]')] as HTMLButtonElement[];
+    const casellaDellaPagina = () => document.body.querySelector('[data-testid="elenco-ricevute"] thead button[role="checkbox"]') as HTMLButtonElement;
+    const pagine = (righe: number[], totale: number) => ({
+        incassi: { data: righe.map((id) => ({ ...rigaDiProva(id) })), meta: { current_page: 1, last_page: Math.ceil(totale / righe.length), per_page: righe.length, total: totale, from: 1, to: righe.length } },
+        totale,
+    });
+
+    test('a destra i tre pulsanti con le etichette corte, sulla stessa riga; a sinistra il conteggio', async () => {
+        await monta();
+        expect(etichette()).toEqual(['Stampa', 'PDF per persona', 'Invia per email']);
+        expect(testo()).not.toContain('le selezionate');
+        expect(testo()).not.toContain('Scarica un PDF per persona');
+        // Sul telefono i tre vanno sotto il conteggio; da 640 px in su stanno in una riga che non va a capo e non si stringe.
+        expect([...azioni().classList]).toEqual(expect.arrayContaining(['shrink-0', 'sm:flex-nowrap']));
+        expect([...sinistra().classList]).toEqual(expect.arrayContaining(['flex-wrap', 'min-w-0', 'md:flex-1']));
+        expect([...riga().classList]).toEqual(expect.arrayContaining(['md:flex-row', 'md:justify-between', 'md:items-start']));
+        expect([...riga().children]).toEqual([sinistra(), azioni()]);
+        expect(conteggio()).toBe('2 ricevute con questi filtri');
+    });
+
+    test('al singolare: «1 selezionata su 1 con questi filtri»; con una ricevuta sola «Seleziona tutte» non c\'è mai, basta la sua casella', async () => {
+        await monta(pagine([1], 1));
+        expect(conteggio()).toBe('1 ricevuta con questi filtri');
+        expect(pulsante('Seleziona tutte')).toBeUndefined();
+        expect(pulsante('Togli la scelta')).toBeUndefined();
+
+        caselleDelleRighe()[0].click();
+        await flushPromises();
+
+        expect(conteggio()).toBe('1 selezionata su 1 con questi filtri');
+        expect(pulsante('Seleziona tutte')).toBeUndefined();
+        expect(pulsante('Togli la scelta')).toBeDefined();
+    });
+
+    test('al plurale: «3 selezionate su 12 con questi filtri»; «Seleziona tutte le 12 dei filtri» finché non sono tutte', async () => {
+        await monta(pagine([1, 2, 3], 12));
+        casellaDellaPagina().click();
+        await flushPromises();
+        expect(conteggio()).toBe('3 selezionate su 12 con questi filtri');
+        expect(pulsante('Seleziona tutte le 12 dei filtri')).toBeDefined();
+
+        await clic('Seleziona tutte le 12 dei filtri');
+        expect(conteggio()).toBe('12 selezionate su 12 con questi filtri');
+        expect(pulsante('Seleziona tutte')).toBeUndefined();
+
+        await clic('Togli la scelta');
+        expect(conteggio()).toBe('12 ricevute con questi filtri');
+        expect(pulsante('Seleziona tutte le 12 dei filtri')).toBeDefined();
+    });
+
+    test('quando si seleziona i pulsanti restano gli stessi, nello stesso posto: cambia solo la parte di sinistra', async () => {
+        await monta();
+        const prima = azioni();
+        const bottoni = [...prima.querySelectorAll('button')];
+        expect(bottoni.every((b) => b.disabled)).toBe(true);
+
+        await clic('Seleziona tutte');
+
+        expect(azioni()).toBe(prima);
+        expect([...azioni().querySelectorAll('button')]).toEqual(bottoni);
+        expect(etichette()).toEqual(['Stampa', 'PDF per persona', 'Invia per email']);
+        expect(bottoni.every((b) => !b.disabled)).toBe(true);
+        expect(riga().lastElementChild).toBe(prima);
+        expect(sinistra().contains(pulsante('Togli la scelta')!)).toBe(true);
+    });
+});
+
+describe('i menu dei filtri', () => {
+    const filtro = (nome: string) => document.body.querySelector(`[data-testid="filtro-${nome}"]`) as HTMLElement;
+    const ultimiParametri = () => percorsi.filter((p) => p.nome === 'gestionale.ricevute.index').at(-1)?.parametri ?? {};
+    const conIMenu = { gestioni: [{ id: 11, nome: 'Ordinaria 2026' }, { id: 12, nome: 'Facciata' }], casse: [{ id: 5, nome: 'Banca Intesa' }, { id: 6, nome: 'Contanti' }] };
+    async function scegli(nome: string, etichetta: string) {
+        filtro(nome).querySelector('.vs__search')!.dispatchEvent(new FocusEvent('focus'));
+        await flushPromises();
+        const opzione = [...filtro(nome).querySelectorAll('.vs__dropdown-option')].find((o) => (o.textContent ?? '').includes(etichetta)) as HTMLElement | undefined;
+        if (!opzione) throw new Error(`«${etichetta}» non è fra le scelte di ${nome}.`);
+        opzione.click();
+        await flushPromises();
+    }
+
+    test('i cinque menu dei filtri e quello dell\'ordine sono menu del programma, non del browser', async () => {
+        await monta(conIMenu);
+        expect(document.body.querySelectorAll('select')).toHaveLength(0);
+        for (const nome of ['ricevuta', 'gestione', 'cassa', 'email', 'soglia']) {
+            expect(filtro(nome).querySelector('.v-select'), nome).not.toBeNull();
+        }
+        expect(filtro('ricevuta').querySelector('.vs__selected')?.textContent?.trim()).toBe('Mai emessa');
+        expect(filtro('gestione').querySelector('.vs__search')?.getAttribute('placeholder')).toBe('Tutte');
+        expect(filtro('email').querySelector('.vs__search')?.getAttribute('placeholder')).toBe('Con o senza');
+        expect(filtro('soglia').querySelector('.vs__search')?.getAttribute('placeholder')).toBe('Tutti');
+
+        await apriIlBlocco('stampa', anteprima());
+        expect(document.body.querySelectorAll('select')).toHaveLength(0);
+        expect(menuOrdine().querySelector('.vs__selected')?.textContent?.trim()).toBe('Per persona');
+    });
+
+    test('una scelta va nella richiesta della pagina e toglie la scelta delle righe; la × la toglie', async () => {
+        await monta(conIMenu);
+        await clic('Seleziona tutte');
+        await scegli('ricevuta', 'Già stampata');
+        expect(ultimiParametri()).toMatchObject({ ricevuta: 'stampata' });
+        expect(document.body.querySelector('[data-testid="conteggio-scelta"]')?.textContent).not.toContain('selezionate');
+
+        await scegli('gestione', 'Facciata');
+        await scegli('cassa', 'Contanti');
+        await scegli('email', 'Senza email');
+        await scegli('soglia', 'Fino a € 77,47');
+        expect(ultimiParametri()).toMatchObject({ ricevuta: 'stampata', gestione_id: '12', cassa_id: '6', email: 'senza', soglia: 'fino' });
+
+        (filtro('gestione').querySelector('.vs__clear') as HTMLElement).click();
+        await flushPromises();
+        expect(ultimiParametri().gestione_id).toBeUndefined();
+        expect(ultimiParametri()).toMatchObject({ cassa_id: '6' });
+    });
+});
+
+describe('dopo una stampa la scelta delle righe si toglie, come dopo l\'invio', () => {
+    const conteggio = () => document.body.querySelector('[data-testid="conteggio-scelta"]')?.textContent?.replace(/\s+/g, ' ').trim();
+    const casellaDellaPagina = () => document.body.querySelector('[data-testid="elenco-ricevute"] thead button[role="checkbox"]') as HTMLButtonElement;
+    const elencoVuoto = { incassi: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null, to: null } }, totale: 0 };
+
+    /** Sceglie le due righe della pagina e apre la finestra del blocco. */
+    async function scegliEApri(modo: 'stampa' | 'persone', risposta: Record<string, unknown>) {
+        casellaDellaPagina().click();
+        await flushPromises();
+        expect(conteggio()).toBe('2 selezionate su 2 con questi filtri');
+        axiosPost.mockResolvedValueOnce({ data: risposta });
+        await clic(modo === 'stampa' ? 'Stampa' : 'PDF per persona');
+    }
+
+    test('stampa in un pezzo con il filtro «Mai emessa»: le stampate escono dall\'elenco e nessuna riga resta scelta', async () => {
+        await monta();
+        await scegliEApri('stampa', anteprima({ ricevute: 2 }));
+        axiosPost.mockResolvedValueOnce(pdf);
+        await clic('Stampa');
+        // Il server non le elenca più con il filtro «Mai emessa»: la pagina si ricarica con l'elenco vuoto.
+        await pagina!.setProps(elencoVuoto as never);
+        await flushPromises();
+
+        expect(testo()).not.toContain('selezionate su');
+        expect(conteggio()).toBe('0 ricevute con questi filtri');
+    });
+
+    test('stampa a parti: la scelta resta fra una parte e l\'altra e si toglie dopo l\'ultima', async () => {
+        await monta();
+        await scegliEApri('stampa', anteprima({ ricevute: 2, oltre_tetto: true, parti_pdf: [[1], [2]] }));
+        axiosPost.mockResolvedValue(pdf);
+
+        await clic('Stampa le prime 1');
+        expect(conteggio()).toBe('2 selezionate su 2 con questi filtri');
+        expect(pulsante('Stampa l\'ultima')).toBeDefined();
+
+        await clic('Stampa l\'ultima');
+        expect(pulsante('Tutte stampate')?.disabled).toBe(true);
+        expect(testo()).not.toContain('selezionate su');
+    });
+
+    test('«PDF per persona»: la scelta si toglie', async () => {
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+        await monta();
+        await scegliEApri('persone', anteprima({ ricevute: 2 }));
+        axiosPost.mockResolvedValueOnce({ data: new Blob(['PK'], { type: 'application/zip' }), headers: { 'content-disposition': 'attachment; filename="ricevute-per-persona.zip"' } });
+        await clic('Scarica lo .zip');
+
+        expect(testo()).toContain('Archivio scaricato');
+        expect(testo()).not.toContain('selezionate su');
+    });
+
+    test('una stampa non riuscita lascia la scelta com\'è, in un pezzo solo e a parti', async () => {
+        await monta();
+        await scegliEApri('stampa', anteprima({ ricevute: 2 }));
+        axiosPost.mockRejectedValueOnce({ response: { status: 500, data: { message: 'Errore.' } } });
+        await clic('Stampa');
+        expect(testo()).toContain('Non è stato possibile stampare le ricevute');
+        expect(conteggio()).toBe('2 selezionate su 2 con questi filtri');
+
+        await monta();
+        await scegliEApri('stampa', anteprima({ ricevute: 2, oltre_tetto: true, parti_pdf: [[1], [2]] }));
+        axiosPost.mockResolvedValueOnce(pdf);
+        await clic('Stampa le prime 1');
+        axiosPost.mockRejectedValueOnce({ response: { status: 500, data: { message: 'Errore.' } } });
+        await clic('Stampa l\'ultima');
+        expect(testo()).toContain('Non è stato possibile stampare le ricevute');
+        expect(conteggio()).toBe('2 selezionate su 2 con questi filtri');
     });
 });

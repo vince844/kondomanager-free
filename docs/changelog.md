@@ -7,6 +7,26 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.10] - La nota sintetica e il recupero dei crediti
+
+**Tocca il database.** L'aggiornamento esegue da solo dieci migrazioni nuove e due delle impostazioni: la nota sintetica del rendiconto e le sue versioni, le regole del recupero dei crediti, il calendario e la decadenza dell'accordo di rientro, le risposte ai compiti dell'Inbox, le impostazioni di ogni condominio, un'etichetta sui piani rate. L'autore di un documento può ora restare vuoto: eliminare un utente non cancella più i suoi documenti. Due migrazioni scrivono dati: creano il compito nell'Inbox per ogni segnalazione già aperta e riallineano le rate segnalate dal portale rimaste «in verifica» con il compito chiuso. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.
+
+**Che cosa fa la beta.**
+- **La nota sintetica del rendiconto**, con le cinque parti: il programma propone i fatti che conosce dai conti, tu li tieni, li togli o li riscrivi e aggiungi il tuo testo; «Genera la nota» per chi va di fretta, senza inventare ciò che non sa; entra nel fascicolo come prima parte.
+- **Il rendiconto conservato con le sue versioni**: «Ferma per l'assemblea» conserva cifre, nota e PDF; l'approvazione si registra con la data della delibera e il verbale; dopo l'approvazione, se i conti cambiano, un avviso con le cifre di allora e di oggi. Niente si blocca.
+- **Un controllo in più, quello del saldo della banca**: i controlli del rendiconto sono quindici; se i saldi differiscono, il programma indica le possibili cause e la correzione consigliata, che confermi tu, oppure «Ignora» con una nota.
+- **Gli addebiti a una persona sola, gli interessi di mora e le spese del ritardo**: un contributo, una spesa già fatturata o una spesa per un pagamento in ritardo si chiedono a una persona sola; gli interessi si calcolano rata per rata, a tratti, con il tasso legale o con un tasso scritto, e si aggiungono solo quando li registri; un versamento che non dice a che cosa va paga prima interessi e spese scaduti.
+- **«Recupero dei crediti»**: le regole del condominio con la loro storia (tasso, giorni, tolleranza, termine delle lettere).
+- **L'accordo di rientro con il calendario delle rate e la decadenza**, che il programma segnala e registri tu.
+- **«Sei mesi per agire»** con la prossima azione suggerita per ogni persona, il fascicolo per il legale, **«Fatto», «Non serve» e «Ricordamelo»** su ogni compito dell'Inbox, e **le impostazioni del condominio**.
+- **La tesoreria a 30 giorni** con «Disponibile oggi» e «Da dove viene», il saldo previsto in tre scenari, le azioni consigliate e la finestra «Emetti le rate».
+- **L'Action inbox rifatta**, con le card che filtrano, i grafici e il cassetto dei sei mesi di tutti i condomini. Ogni segnalazione aperta ha il suo compito nell'Inbox, e si chiude con la segnalazione (grazie a Web Pro Italia per lo spunto).
+- **La scheda «Cassa» con i fondi dentro il conto**, il tipo di ogni fondo e il registro che si filtra per cassa; **l'estratto conto della persona** con «Azioni», «Guida» e la card degli addebiti personali; la **guida** in ogni pagina nuova.
+- **La licenza**: l'intestazione AGPL nei file nuovi e il NOTICE con i termini della sezione 7(b) e 7(c).
+- **Corretto**: un bonifico segnalato dal portale non resta più «in verifica» se l'incasso va su altre rate.
+
+---
+
 ## [1.12.0-beta.9] - La proposta di conguaglio
 
 **Non tocca il database.** Nessuna migrazione, nessuna colonna e nessuna tabella nuova, e l'aggiornamento non riscrive nessun dato. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.

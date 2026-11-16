@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Models\Gestionale;
 
@@ -81,6 +84,73 @@ class PianoRate extends Model
         // assegnate (o se il piano è stato generato prima della 1.11.0-beta.59).
         'quote_non_assegnate'     => 'array',
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | IL PIANO DEGLI ADDEBITI
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * La natura del piano degli addebiti a singole persone (`piani_rate.natura`): uno per gestione ed esercizio, nato «approvato» senza delibera,
+     * con una rata per addebito e una quota sola per rata. La colonna la scrive solo chi registra il primo addebito
+     * ({@see \App\Services\Gestionale\Addebiti\AddebitiIndividuali}); i piani del riparto la hanno vuota.
+     */
+    public const NATURA_ADDEBITI = 'addebiti';
+
+    /** Il piano degli addebiti non si genera, non si ricalcola, non si approva e non si modifica: la frase dei rifiuti. */
+    public const FRASE_DEGLI_ADDEBITI = 'è il piano degli addebiti a singole persone: non si genera, non si ricalcola, non si approva e non si modifica. '
+        . 'Ogni addebito si annulla dall\'estratto conto della persona.';
+
+    public function eDegliAddebiti(): bool
+    {
+        return $this->natura === self::NATURA_ADDEBITI;
+    }
+
+    /**
+     * Il nome di un addebito a una persona sola nelle stampe e negli elenchi: la sua causale con «— addebito». Il numero della rata nel piano degli addebiti
+     * («Rata n.1», «rata 2») si confonderebbe con le rate del preventivo.
+     */
+    public static function nomeDellAddebito(string $causale): string
+    {
+        return trim($causale) . ' — addebito';
+    }
+
+    /**
+     * Le causali degli addebiti fra le rate date: id della rata => causale. Le rate dei piani del riparto, e gli addebiti senza causale, non ci sono.
+     *
+     * @param  iterable<int|string|null>  $rateIds
+     * @return array<int, string>
+     */
+    public static function causaliDegliAddebiti(iterable $rateIds): array
+    {
+        $ids = collect($rateIds)->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        if ($ids === []) {
+            return [];
+        }
+
+        return \Illuminate\Support\Facades\DB::table('rate')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+            ->where('piani_rate.natura', self::NATURA_ADDEBITI)->whereIn('rate.id', $ids)->whereNotNull('rate.descrizione')->where('rate.descrizione', '!=', '')
+            ->pluck('rate.descrizione', 'rate.id')->mapWithKeys(fn ($d, $id) => [(int) $id => (string) $d])->all();
+    }
+
+    /** Il rifiuto di un'azione che il piano degli addebiti non ammette, con il nome del piano; null per i piani del riparto. */
+    public function rifiutoDegliAddebiti(): ?string
+    {
+        return $this->eDegliAddebiti() ? '«' . $this->nome . '» ' . self::FRASE_DEGLI_ADDEBITI : null;
+    }
+
+    /** I piani del riparto: senza il piano degli addebiti. */
+    public function scopeDelRiparto($query)
+    {
+        return $query->where(fn ($q) => $q->whereNull($q->qualifyColumn('natura'))->orWhere($q->qualifyColumn('natura'), '!=', self::NATURA_ADDEBITI));
+    }
+
+    /** I piani degli addebiti. */
+    public function scopeDegliAddebiti($query)
+    {
+        return $query->where($query->qualifyColumn('natura'), self::NATURA_ADDEBITI);
+    }
 
     /*
     |--------------------------------------------------------------------------

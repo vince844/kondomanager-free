@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Actions\PianoRate;
 
@@ -84,6 +87,11 @@ class GeneratePianoRateAction
     ): array
     {
         $pianoRate->refresh();
+
+        // Il piano degli addebiti non ha capitoli né riparto: una generazione cancellerebbe gli addebiti e non ne rifarebbe nessuno.
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['piano' => $rifiuto]);
+        }
 
         Log::info("=== GENERAZIONE PIANO RATE ===");
         Log::info("▶ Tipo Piano: " . strtoupper($pianoRate->tipo));
@@ -257,7 +265,8 @@ class GeneratePianoRateAction
                             .' versati in più del dovuto su '.count($eccedenze).' unità, per una o più voci con '
                             .'già-versato registrato. La quota non è mai andata sotto zero, ma questo denaro dei '
                             .'condòmini resta da restituire o conguagliare a fine gestione. Dettaglio: '.$dettaglioUnita,
-                        scadenza: now(),
+                        // Il giorno di Roma, scritto come l'agenda scrive le ore: alle 00:30 il compito è di oggi, non di ieri.
+                        scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
                         createdByUserId: $pianoRate->created_by ?? 1,
                         condominioId: $condominioIdEccedenze,
                         context: [
@@ -266,8 +275,10 @@ class GeneratePianoRateAction
                             'totale_cents' => $totaleEccedenzeCents,
                             'eccedenze' => $eccedenze,
                         ],
-                        actionUrl: '/gestionale/'.($condominioIdEccedenze ?? '').'/esercizi/'
-                            .($esercizioAttivoId ?? '').'/piani-rate/'.$pianoRate->id,
+                        // Il percorso della pagina del piano (senza l'esercizio la pagina non c'è, e il compito resta senza collegamento).
+                        actionUrl: $condominioIdEccedenze && $esercizioAttivoId ? route('admin.gestionale.esercizi.piani-rate.show', [
+                            'condominio' => $condominioIdEccedenze, 'esercizio' => $esercizioAttivoId, 'pianoRate' => $pianoRate->id,
+                        ], false) : null,
                         priorita: 'normale'
                     );
                 }
@@ -371,7 +382,7 @@ class GeneratePianoRateAction
                     description: $causa
                         . " Motivazione registrata: \"{$notaScoperti}\"."
                         . ' Azione: compilare i millesimi mancanti o censire le anagrafiche, poi rigenerare il piano.',
-                    scadenza: now(),
+                    scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
                     createdByUserId: Auth::id() ?? 1,
                     condominioId: $condominioId,
                     context: [
@@ -381,7 +392,10 @@ class GeneratePianoRateAction
                         'senza_millesimo'    => $senzaMillesimo,
                         'non_ripartibili'    => $nonRipartibili,
                     ],
-                    actionUrl: '/gestionale/' . ($condominioId ?? '') . '/esercizi/' . ($esercizioIdScoperti ?? '') . '/piani-rate/' . $pianoRate->id,
+                    // Il percorso della pagina del piano (senza l'esercizio la pagina non c'è, e il compito resta senza collegamento).
+                    actionUrl: $condominioId && $esercizioIdScoperti ? route('admin.gestionale.esercizi.piani-rate.show', [
+                        'condominio' => $condominioId, 'esercizio' => $esercizioIdScoperti, 'pianoRate' => $pianoRate->id,
+                    ], false) : null,
                     priorita: 'alta'
                 );
 

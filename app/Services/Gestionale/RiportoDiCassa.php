@@ -20,8 +20,8 @@ use Illuminate\Support\Facades\DB;
  *
  * DUE FORME, LO STESSO TOTALE. Per cassa (`perConto`, il prospetto per cassa): ogni cassa, fondi compresi, sul suo conto contabile. Per cassa reale con le
  * sue partizioni (`perCassaReale`, il registro): banca e contanti, senza la riga di un accantonamento verso un fondo, che il registro non conta perché il
- * fondo è una partizione della stessa banca (la banca del registro ha il fondo dentro). I totali sono uguali finché i fondi si muovono solo da e verso le
- * casse reali; un fondo aperto con un saldo suo sta nel prospetto e non nel registro, come sta già oggi nel saldo del registro.
+ * fondo è una partizione della stessa banca (la banca del registro ha il fondo dentro). Con un conto in banca solo, anche il denaro dei fondi che non è
+ * passato dalla banca (un fondo aperto con un saldo suo) è nella banca del registro, come nella scheda «Cassa»; le casse virtuali restano fuori.
  */
 final class RiportoDiCassa
 {
@@ -53,17 +53,20 @@ final class RiportoDiCassa
 
     /**
      * La forma del registro: per ogni cassa reale con un riporto, la colonna più le righe con quella cassa (`rs.cassa_id`, il perimetro del registro),
-     * senza le righe degli accantonamenti verso una partizione.
+     * senza le righe degli accantonamenti verso una partizione; più, con un conto in banca solo, il denaro dei fondi che non è passato da quella cassa
+     * e c'era il primo giorno (il saldo iniziale di un fondo, un fondo accantonato da una banca poi chiusa: {@see FondiNelConto::partiFuoriDalRegistro()}),
+     * così il registro conta come la scheda «Cassa». `parti` le dice tutte, per cassa, anche quelle nate nell'esercizio.
      *
-     * @return array{totale:int, per_cassa: list<array{cassa_id:int, cassa:string, riporto:int, da_apertura:bool}>}
+     * @return array{totale:int, per_cassa: list<array{cassa_id:int, cassa:string, riporto:int, da_apertura:bool, parti_iniziali:list<array<string,mixed>>}>, parti: array<int, list<array<string,mixed>>>}
      */
     public function perCassaReale(Esercizio $esercizio): array
     {
         $casse = DB::table('casse')->where('condominio_id', $esercizio->condominio_id)->whereIn('tipo', self::CASSE_REALI)
             ->orderBy('id')->get(['id', 'nome', 'conto_contabile_id', 'saldo_iniziale']);
         if ($casse->isEmpty()) {
-            return ['totale' => 0, 'per_cassa' => []];
+            return ['totale' => 0, 'per_cassa' => [], 'parti' => []];
         }
+        $parti = app(FondiNelConto::class)->partiFuoriDalRegistro($esercizio);
 
         $somme = self::senzaAccantonamenti($this->delRiporto($esercizio, $this->righe()->whereIn('rs.cassa_id', $casse->pluck('id')->all())))
             ->groupBy('rs.cassa_id')
@@ -73,14 +76,34 @@ final class RiportoDiCassa
 
         $perCassa = [];
         foreach ($casse as $c) {
-            $riporto = (int) $c->saldo_iniziale + (int) ($somme[$c->id] ?? 0);
+            $iniziali = array_values(array_filter($parti[(int) $c->id] ?? [], fn ($p) => $p['quando'] === 'inizio'));
+            $riporto = (int) $c->saldo_iniziale + (int) ($somme[$c->id] ?? 0) + (int) array_sum(array_column($iniziali, 'importo'));
             if ($riporto !== 0) {
                 $perCassa[] = ['cassa_id' => (int) $c->id, 'cassa' => (string) $c->nome, 'riporto' => $riporto,
-                    'da_apertura' => in_array((int) $c->conto_contabile_id, $conApertura, true)];
+                    'da_apertura' => in_array((int) $c->conto_contabile_id, $conApertura, true), 'parti_iniziali' => FondiNelConto::unite($iniziali)];
             }
         }
 
-        return ['totale' => (int) array_sum(array_column($perCassa, 'riporto')), 'per_cassa' => $perCassa];
+        return ['totale' => (int) array_sum(array_column($perCassa, 'riporto')), 'per_cassa' => $perCassa, 'parti' => $parti];
+    }
+
+    /**
+     * Le righe del riporto di alcuni conti, registrazione per registrazione, con lo stesso perimetro di {@see perConto()}: la scheda «Cassa» ne legge
+     * le partizioni, per dire da quale banca viene il loro riporto quando i conti in banca sono più d'uno.
+     *
+     * @param  list<int>  $conti
+     * @return list<array{scrittura_id:int, conto:int, netto:int}>
+     */
+    public function perScrittura(Esercizio $esercizio, array $conti): array
+    {
+        if ($conti === []) {
+            return [];
+        }
+
+        return $this->delRiporto($esercizio, $this->righe()->whereIn('rs.conto_contabile_id', $conti))
+            ->groupBy('rs.scrittura_id', 'rs.conto_contabile_id')
+            ->select('rs.scrittura_id', 'rs.conto_contabile_id', DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END), 0) as netto"))
+            ->get()->map(fn ($r) => ['scrittura_id' => (int) $r->scrittura_id, 'conto' => (int) $r->conto_contabile_id, 'netto' => (int) $r->netto])->all();
     }
 
     /**

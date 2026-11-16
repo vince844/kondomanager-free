@@ -102,8 +102,16 @@ class RateScaduteController extends Controller
             'totale' => (int) $righe->sum('importo'),
             'persone_totali' => $righe->count(),
             'filtri' => $filtri,
+            // «I sei mesi del …», dal riquadro dei sei mesi: quante persone hanno rate di quella data, la loro cifra e l'esercizio da cui viene la data.
+            'sei_mesi_del' => $filtri['sei_mesi_del'] === null ? null : self::seiMesiDel($filtri['sei_mesi_del'], $righe),
             'oggi' => $oggi,
             'non_emesse' => $filtri['vista'] === ElencoRateScadute::VISTA_SCADUTE ? $this->elenco->nonEmesse($condominio, $filtri['alla'], $filtri['gestione_id']) : null,
+            // I suggerimenti che chiedono le regole del recupero (chi è oltre la tolleranza senza una lettera, gli interessi da proporre): sulle persone
+            // dei filtri, oggi. Suggerimenti, mai azioni.
+            'suggerimenti' => $filtri['vista'] === ElencoRateScadute::VISTA_SCADUTE && $filtri['alla'] === $oggi
+                ? app(\App\Services\Gestionale\Accessori\SuggerimentiDelRecupero::class)->perElenco($condominio, $righe, $oggi) : [],
+            'regole_del_recupero' => \App\Services\Gestionale\Accessori\RegoleDelRecupero::tassoPerLaLettera(
+                (new \App\Services\Gestionale\Accessori\RegoleDelRecupero())->delCondominio((int) $condominio->id), $oggi),
             'gestioni' => $condominio->gestioni()->orderBy('nome')->get(['id', 'nome']),
             // Le persone del condominio per la scelta «Persona»: solo l'id e il nome, tutte; la ricerca nell'elenco la fa la pagina.
             'persone' => Anagrafica::whereHas('condomini', fn ($q) => $q->where('condomini.id', $condominio->id))
@@ -119,6 +127,19 @@ class RateScaduteController extends Controller
                 ->whereIn('tipo', \App\Models\Gestionale\RegistroInvio::TIPI_LETTERE)->where('stato', \App\Models\Gestionale\RegistroInvio::STATO_IN_CODA)
                 ->where('emesso_il', '<', now()->subHour())->get(['id', 'dati->lettera as lettera'])->map(fn ($r) => $r->lettera ?? 'riga-' . $r->id)->unique()->count(),
         ]);
+    }
+
+    /**
+     * La testata del filtro «I sei mesi del …»: la data, l'esercizio da cui viene, quante persone e la cifra di quell'esercizio (la somma dei «di cui»).
+     *
+     * @param \Illuminate\Support\Collection<int, array<string, mixed>> $righe
+     * @return array{data: string, esercizio: ?string, persone: int, cifra: int}
+     */
+    private static function seiMesiDel(string $data, \Illuminate\Support\Collection $righe): array
+    {
+        $esercizio = $righe->flatMap(fn ($r) => $r['rate'])->first(fn ($d) => ($d['del_sei_mesi'] ?? false))['sei_mesi']['piu_vicina_esercizio']['nome'] ?? null;
+
+        return ['data' => $data, 'esercizio' => $esercizio, 'persone' => $righe->count(), 'cifra' => (int) $righe->sum('di_cui_sei_mesi')];
     }
 
     /**

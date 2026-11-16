@@ -330,6 +330,23 @@ class CondominioService
             ]
         );
 
+        // E-Bis. Accessori da incassare (Passività > Fondi): gli interessi e le spese addebitati a singole persone senza una fattura, finché non sono
+        //        versati. Nei condomini di prima nasce alla prima richiesta (`AccessoriDaIncassare::conto`).
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => \App\Services\Gestionale\Accessori\AccessoriDaIncassare::RUOLO],
+            [
+                'parent_id' => $passivoRoot->id,
+                'codice' => '2102',
+                'nome' => \App\Services\Gestionale\Accessori\AccessoriDaIncassare::NOME,
+                'descrizione' => 'Interessi di mora e spese addebitati a singole persone e non ancora versati: diventano del condominio quando sono versati.',
+                'tipo' => ContoContabileTipo::PASSIVO->value,
+                'categoria' => ContoContabileCategoria::FONDI->value,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
+            ]
+        );
+
         // F. Fondo Passate Gestioni (Passività > Fondi)
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'passate_gestioni'],

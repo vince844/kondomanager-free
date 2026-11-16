@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
@@ -27,9 +30,12 @@ use App\Services\Gestionale\InboxService;
 use App\Services\Subentro\FrasiObbligati;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Controller responsabile per l'emissione e l'annullamento delle rate condominiali.
@@ -46,7 +52,30 @@ class EmissioneRateController extends Controller
      * un marcatore, a chi emette una rata con un riporto in un condominio a cui manca il
      * Fondo Passate Gestioni resterebbe un messaggio che non dice cosa fare.
      */
-    private const ERRORE_PASSATE_GESTIONI = 'EMISSIONE_SENZA_FONDO_PASSATE_GESTIONI';
+    private const ERRORE_PASSATE_GESTIONI = \App\Services\Gestionale\ScritturaDiEmissione::ERRORE_PASSATE_GESTIONI;
+
+    /**
+     * Da dove parte l'emissione quando non parte dalla pagina del piano: la finestra «Emetti le rate» della tesoreria, nella dashboard del condominio. La
+     * richiesta lo dice con `da=dashboard`, e ogni risposta torna lì; con ogni altro valore, o senza, si torna alla pagina di prima, come sempre.
+     */
+    private const DALLA_DASHBOARD = 'dashboard';
+
+    /**
+     * Le frasi degli errori della richiesta, nelle parole dell'amministratore: le leggono la finestra «Emetti le rate» e la pagina del piano. Una rata di un
+     * altro piano arriva da una pagina rimasta aperta mentre il piano cambiava, o da una richiesta scritta a mano.
+     */
+    private const FRASI_DELLA_RICHIESTA = [
+        'rate_ids.required' => 'Scegli almeno una rata da emettere.',
+        'rate_ids.array' => 'Scegli almeno una rata da emettere.',
+        'rate_ids.min' => 'Scegli almeno una rata da emettere.',
+        'rate_ids.*.integer' => 'Una delle rate scelte non è di questo piano: scegli di nuovo le rate.',
+        'rate_ids.*.exists' => 'Una delle rate scelte non è di questo piano: scegli di nuovo le rate.',
+        'data_emissione.required' => 'Scrivi la data di emissione.',
+        'data_emissione.date' => 'La data di emissione non è una data.',
+        'descrizione_personalizzata.string' => 'La descrizione è un testo.',
+        'descrizione_personalizzata.max' => 'La descrizione può avere al massimo 255 caratteri.',
+        'invia_notifiche.boolean' => 'Scegli se avvisare i condòmini.',
+    ];
 
     /**
      * Emette una o più rate di un piano approvato.
@@ -66,8 +95,13 @@ class EmissioneRateController extends Controller
             'invia_notifiche' => $request->invia_notifiche
         ]);
   
+        // Il piano degli addebiti emette ogni addebito quando lo registra, e lo annulla cancellandolo: l'emissione delle rate non lo tocca.
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            return $this->ritorno($request, $condominio)->with($this->flashError($rifiuto));
+        }
+
         if ($pianoRate->stato !== StatoPianoRate::APPROVATO) {
-            return back()->with($this->flashError('Devi approvare il piano rate prima di poter emettere le rate.'));
+            return $this->ritorno($request, $condominio)->with($this->flashError('Devi approvare il piano rate prima di poter emettere le rate.'));
         }
 
         // S8-22: qui la quota diventa denaro. Se le righe congelate dello straordinario portano una delibera diversa
@@ -79,7 +113,7 @@ class EmissioneRateController extends Controller
             if ($stantia !== null) {
                 $formato = fn ($d) => \Carbon\CarbonImmutable::parse($d)->locale('it')->translatedFormat('j F Y');
 
-                return back()->with($this->flashError(sprintf(
+                return $this->ritorno($request, $condominio)->with($this->flashError(sprintf(
                     'Le quote di questo piano sono state calcolate con la delibera del %s, ma il piano registra una delibera del %s: ricalcola il piano prima di emettere.',
                     $formato($stantia), $formato($pianoRate->data_delibera_assemblea)
                 )));
@@ -91,18 +125,23 @@ class EmissioneRateController extends Controller
         // così, quelle quote resterebbero a chi esce, o andrebbero a giornale a chi non è più titolare. Si guarda lo stato del piano all'ora
         // di ogni passaggio, non quello di adesso: un incasso arrivato dopo il passaggio non lo ha conguagliato.
         if (($passaggi = $pianoRate->passaggiDaSeguire()) !== []) {
-            return back()->with($this->flashError(self::fraseDaRicalcolare($pianoRate, $passaggi)));
+            return $this->ritorno($request, $condominio)->with($this->flashError(self::fraseDaRicalcolare($pianoRate, $passaggi)));
         }
 
-        $request->validate([
-            'rate_ids' => 'required|array|min:1',
-            // Solo le rate di questo piano (D-3, 1.11.0-beta.42): fino alla beta.41 bastava che la rata esistesse, e la riga
-            // che segna «emessa» in fondo la marcava anche se era di un altro piano, o di un altro condominio.
-            'rate_ids.*' => ['integer', \Illuminate\Validation\Rule::exists('rate', 'id')->where('piano_rate_id', $pianoRate->id)],
-            'data_emissione' => 'required|date',
-            'descrizione_personalizzata' => 'nullable|string|max:255',
-            'invia_notifiche' => 'boolean' // Validazione del nuovo interruttore
-        ]);
+        try {
+            $request->validate([
+                'rate_ids' => 'required|array|min:1',
+                // Solo le rate di questo piano (D-3, 1.11.0-beta.42): fino alla beta.41 bastava che la rata esistesse, e la riga
+                // che segna «emessa» in fondo la marcava anche se era di un altro piano, o di un altro condominio.
+                'rate_ids.*' => ['integer', \Illuminate\Validation\Rule::exists('rate', 'id')->where('piano_rate_id', $pianoRate->id)],
+                'data_emissione' => 'required|date',
+                'descrizione_personalizzata' => 'nullable|string|max:255',
+                'invia_notifiche' => 'boolean' // Validazione del nuovo interruttore
+            ], self::FRASI_DELLA_RICHIESTA);
+        } catch (ValidationException $e) {
+            // Gli errori tornano dove tornano i rifiuti: dalla finestra della tesoreria alla dashboard, dalla pagina del piano alla pagina di prima.
+            throw $this->dallaDashboard($request) ? $e->redirectTo($this->indirizzoDellaDashboard($condominio)) : $e;
+        }
 
         $esercizio = $this->getEsercizioCorrente($condominio);
         $inviaNotifiche = $request->boolean('invia_notifiche', true); // Default a true se non passato
@@ -124,7 +163,7 @@ class EmissioneRateController extends Controller
             ->first();
 
         if (!$contoCrediti || !$contoGestione) {
-            return back()->with($this->flashError('Mancano i conti contabili (Crediti o Gestione Rate).'));
+            return $this->ritorno($request, $condominio)->with($this->flashError('Mancano i conti contabili (Crediti o Gestione Rate).'));
         }
 
         // Coda 313 (decisione 160): la chiusura dell'anticipazione toglierebbe dall'unità una spesa ad personam che lo storno della fattura o
@@ -132,7 +171,7 @@ class EmissioneRateController extends Controller
         // scrivere: il rifiuto dice la strada, e nessuna rata della richiesta va a giornale.
         $rateRichieste = Rata::with('rateQuote')->where('piano_rate_id', $pianoRate->id)->whereIn('id', (array) $request->rate_ids)->orderBy('numero_rata')->get();
         if ($motivoAdPersonam = RataQuote::motivoBloccoEmissioneAdPersonam($pianoRate, $rateRichieste, $contoPassateGestioni?->id)) {
-            return back()->with($this->flashError($motivoAdPersonam));
+            return $this->ritorno($request, $condominio)->with($this->flashError($motivoAdPersonam));
         }
 
         // Decisione 34 (1.11.0-beta.42): «emessa» vuol dire a giornale. Le rate che vanno a giornale qui, e quelle che restano
@@ -193,115 +232,17 @@ class EmissioneRateController extends Controller
                     }
                     $daEmettere = $rata->rateQuote->reject(fn (RataQuote $q) => $ferme->contains('id', $q->id))->values();
 
-                    $totaleRataCentesimi = 0;
-                    $totalePregressoCentesimi = 0;
+                    // La scrittura dell'emissione: la testata, le righe a nome di ogni persona, le contropartite su «Gestione rate» e «Passate
+                    // gestioni» e la chiusura delle anticipazioni della spesa di una sola unità, quadrata (`ScritturaDiEmissione`, la stessa che
+                    // scrive l'addebito a una persona). Null quando nessuna quota ha niente da portare a giornale: la testata non resta, perché una
+                    // scrittura senza righe brucerebbe un protocollo e nessuna quota la ricorderebbe, e il controllo della doppia emissione non
+                    // scatterebbe.
+                    $scrittura = app(\App\Services\Gestionale\ScritturaDiEmissione::class)->scrivi((int) $condominio->id, (int) $esercizio->id, $pianoRate->gestione_id,
+                        $rata, $daEmettere, (string) $request->data_emissione, $request->descrizione_personalizzata ?: "Emissione " . $rata->descrizione,
+                        $contoCrediti, $contoGestione, $contoPassateGestioni);
 
-                    // 1. Scrittura Testata
-                    $scrittura = ScritturaContabile::create([
-                        'condominio_id'      => $condominio->id,
-                        'esercizio_id'       => $esercizio->id,
-                        'gestione_id'        => $pianoRate->gestione_id,
-                        'data_registrazione' => now(),
-                        'data_competenza'    => $request->data_emissione,
-                        'causale'            => $request->descrizione_personalizzata ?: "Emissione " . $rata->descrizione,
-                        'tipo_movimento'     => 'emissione_rata',
-                        'stato'              => 'registrata',
-                    ]);
-
-                    // 2. Scrittura Righe (Dettaglio quote)
-                    //
-                    // Decisione 71 (1.11.0-beta.49): ogni quota va a giornale con le sue due componenti, a nome del condòmino, su
-                    // «Crediti verso condomini». Una quota a debito porta l'importo intero in DARE; una quota che il credito riportato
-                    // porta a zero o sotto porta la spesa in DARE e il credito riportato in AVERE, meno la parte già uscita da
-                    // «Passate gestioni» mentre la quota era senza scrittura. Il contributo della rata è dovuto comunque, e il credito
-                    // lo paga: senza le due righe lo stato patrimoniale mostrava un credito che non c'era più, e la gestione rate
-                    // contava meno contributi del riparto. Le righe le dice `RataQuote::scritturaDiEmissione()`, che usa anche il
-                    // comando di riallineamento.
-                    //
-                    // La contropartita: la spesa deliberata per QUESTO esercizio (`quota_pura_gestione`) chiude su «Gestione rate»;
-                    // il resto è il riporto da esercizi precedenti — la Rata 0 è fatta solo di quello — e non è un provento
-                    // dell'anno: chiude su «Passate gestioni», la stessa contropartita con cui l'apertura di cassa porta dentro una
-                    // posizione anteriore (RegistraAperturaCassaAction:70-73).
-                    //
-                    // ⚠️ **Perché la componente di riporto si DERIVA per differenza** invece di leggere `saldo_usato` dal dettaglio:
-                    // così `DARE = AVERE` vale per costruzione, anche su una quota il cui dettaglio non quadri. Fidarsi di due numeri
-                    // scritti da qualcun altro significa poter emettere una scrittura sbilanciata, e il DoubleEntryValidator la
-                    // rifiuterebbe a fine rata, dopo aver già bruciato il protocollo.
-                    $righeScritte = 0;
-                    $perQuota = RataQuote::scritturaDiEmissione($daEmettere, $contoPassateGestioni?->id);
-                    foreach ($daEmettere as $quota) {
-                        $daScrivere = $perQuota[(int) $quota->id];
-                        if ($daScrivere['righe'] === []) {
-                            // Niente da portare: una quota a zero senza spesa né riporto, o un credito già usato per intero prima
-                            // dell'emissione. La quota resta senza scrittura; se poi uno storno restituisce quel credito, la scrive lo
-                            // storno con una figlia di questa emissione e la lega (`StornoIncassoRateAction`, rilievi K4 e LDA-1).
-                            continue;
-                        }
-
-                        foreach ($daScrivere['righe'] as $i => [$verso, $importoRiga]) {
-                            $scrittura->righe()->create([
-                                'conto_contabile_id' => $contoCrediti->id,
-                                'anagrafica_id'      => $quota->anagrafica_id,
-                                'immobile_id'        => $quota->immobile_id,
-                                'rata_id'            => $rata->id,
-                                'tipo_riga'          => $verso,
-                                'importo'            => $importoRiga,
-                                'note'               => $quota->notaDiEmissione($i, $verso, (string) $rata->descrizione),
-                            ]);
-                            $righeScritte++;
-                        }
-
-                        $quota->update(['scrittura_contabile_id' => $scrittura->id]);
-
-                        $totaleRataCentesimi      += $daScrivere['gestione'];
-                        $totalePregressoCentesimi += $daScrivere['pregresso'];
-                    }
-
-                    // 3. Chiusura su due conti quando la rata porta un riporto.
-                    //
-                    // I due totali possono essere NEGATIVI: un condòmino che arriva a credito ha un riporto negativo, che riduce il
-                    // debito. Un totale negativo si scrive nel verso opposto, e la quadratura regge comunque perché le righe delle
-                    // quote sono già la somma algebrica delle due componenti. Possono anche essere tutti e due zero su una rata che
-                    // ha righe: una rata zero fatta di un debito e di un credito riportati uguali (la coppia di un conguaglio) va a
-                    // giornale per tutti e due, senza contropartite. La scrittura si tiene se ha righe, non se il totale è positivo:
-                    // con quella condizione restava in bozza anche il debito di chi compra.
-                    if ($righeScritte > 0) {
-
-                        if ($totalePregressoCentesimi !== 0 && ! $contoPassateGestioni) {
-                            throw new \RuntimeException(self::ERRORE_PASSATE_GESTIONI);
-                        }
-
-                        foreach ([
-                            [$contoGestione, $totaleRataCentesimi, "Totale emissione " . $rata->descrizione],
-                            [$contoPassateGestioni, $totalePregressoCentesimi, "Riporto esercizi precedenti — " . $rata->descrizione],
-                        ] as [$conto, $totale, $nota]) {
-
-                            if ($totale === 0) continue;
-
-                            $scrittura->righe()->create([
-                                'conto_contabile_id' => $conto->id,
-                                'tipo_riga'          => $totale > 0 ? 'avere' : 'dare',
-                                'importo'            => abs($totale),
-                                'note'               => $nota
-                            ]);
-                        }
-
-                        // Coda 313 (decisione 153.1): la parte ad personam delle quote chiude l'anticipazione che la fattura ha scritto
-                        // su «Crediti verso condomini» con l'unità, una riga per unità, con la rata e senza persona: non va su «Gestione
-                        // rate» (`scritturaDiEmissione` la toglie dalla spesa). Il DARE a nome della persona resta la quota intera, quindi
-                        // estratto conto, quote e incassi non cambiano. La riga sta nella scrittura d'emissione: l'annullamento la porta
-                        // via con lei.
-                        foreach (RataQuote::righeDiChiusura($perQuota, $daEmettere, (int) $contoCrediti->id, (int) $rata->id, (string) $rata->descrizione) as $riga) {
-                            $scrittura->righe()->create($riga);
-                        }
-
-                    } else {
-                        // Niente da portare a giornale (una rata vuota, le cui quote a credito sono già state usate per intero, o fatta
-                        // solo di quote ferme): la testata resterebbe una scrittura SENZA RIGHE, che il DoubleEntryValidator approva
-                        // (0 = 0) ma che sporca il giornale e brucia un numero di protocollo. Peggio: nessuna quota riceve
-                        // scrittura_contabile_id, quindi il guard anti-doppia-emissione non scatta e ogni nuova emissione ne accumula
-                        // un'altra. Ogni caso con la sua frase: «non ha quote da pagare» solo per le rate davvero vuote (decisione 71).
-                        $scrittura->forceDelete();
+                    if ($scrittura === null) {
+                        // Ogni caso con la sua frase: «non ha quote da pagare» solo per le rate davvero vuote.
                         if ($ferme->isNotEmpty()) {
                             $rateFerme[(int) $rata->id] = (int) $rata->numero_rata;
                         } elseif ($daEmettere->contains(fn (RataQuote $q) => (int) $q->importo < 0)) {
@@ -312,12 +253,6 @@ class EmissioneRateController extends Controller
                         continue;
                     }
                     $aGiornale[] = (int) $rata->id;
-
-                    // Quadratura dell'emissione: la somma delle quote a DARE deve
-                    // corrispondere esattamente alla chiusura in AVERE. Un arrotondamento
-                    // sbagliato sulle quote qui viene intercettato subito, invece di
-                    // propagarsi a tutte le rate del piano e comparire nel rendiconto.
-                    DoubleEntryValidator::validateOrFail($scrittura->id);
 
                     // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
                     $rataId = (int) $rata->id;
@@ -377,7 +312,7 @@ class EmissioneRateController extends Controller
             $suggerimentoCrediti = $this->buildSuggerimentoCrediti($condominio, $request->rate_ids);
 
             // L'esito in una chiave sua, per la stessa ragione del suggerimento qui sotto: lo legge il modale dell'emissione.
-            $risposta = back()->with($aGiornale === [] ? $this->flashWarning($msg) : $this->flashSuccess($msg))->with('esito_emissione', $esito);
+            $risposta = $this->ritorno($request, $condominio)->with($aGiornale === [] ? $this->flashWarning($msg) : $this->flashSuccess($msg))->with('esito_emissione', $esito);
 
             // In una chiave propria, non accodato a $msg: il banner di `flash.message` viene
             // dipinto e poi cancellato dal modale di conferma dell'emissione, quindi un
@@ -395,7 +330,7 @@ class EmissioneRateController extends Controller
                 // conto non va a giornale, e l'errore ferma tutta la richiesta, nella stessa transazione.
                 // Giro stretto sulle correzioni della Fase 1-bis (LT-2): non «ricrealo dal piano dei conti», che nel programma è il
                 // preventivo; il conto di sistema dalle pagine non si ricrea (`ContoPassateGestioniMancanteException`).
-                return back()->with($this->flashError(
+                return $this->ritorno($request, $condominio)->with($this->flashError(
                     'Questa rata porta un riporto da esercizi precedenti (un debito o un credito riportato), ma a questo '
                     .'condominio manca il conto di sistema «Fondo Passate Gestioni» (2301): senza, il riporto finirebbe fra le '
                     .'entrate dell\'anno, o un credito riportato resterebbe fuori dal giornale. Dalle pagine del programma non si '
@@ -404,14 +339,40 @@ class EmissioneRateController extends Controller
             }
 
             if (str_contains($e->getMessage(), 'Duplicate entry') && str_contains($e->getMessage(), 'numero_protocollo_unique')) {
-                return back()->with($this->flashError(
+                return $this->ritorno($request, $condominio)->with($this->flashError(
                     'Errore di numerazione: Il sistema ha tentato di usare un numero di protocollo già esistente.'
                 ));
             }
 
-            return back()->with($this->flashError('Si è verificato un errore tecnico durante l\'emissione.'));
+            return $this->ritorno($request, $condominio)->with($this->flashError('Si è verificato un errore tecnico durante l\'emissione.'));
         }
 }
+
+    /**
+     * Dove torna la risposta dell'emissione, con ogni suo messaggio: alla dashboard del condominio se la richiesta parte dalla finestra della tesoreria, altrimenti
+     * alla pagina di prima, come è sempre stato per la pagina del piano.
+     */
+    private function ritorno(Request $request, Condominio $condominio): RedirectResponse
+    {
+        return $this->dallaDashboard($request) ? redirect()->to($this->indirizzoDellaDashboard($condominio)) : back();
+    }
+
+    private function dallaDashboard(Request $request): bool
+    {
+        return $request->input('da') === self::DALLA_DASHBOARD;
+    }
+
+    /**
+     * La dashboard del condominio: la pagina di prima se era proprio lei, con la scheda dell'Inbox scelta nell'indirizzo, altrimenti la dashboard senza scelte.
+     * L'indirizzo lo fa il programma, mai la richiesta.
+     */
+    private function indirizzoDellaDashboard(Condominio $condominio): string
+    {
+        $dashboard = route('admin.gestionale.index', $condominio);
+        $prima = url()->previous();
+
+        return Str::before($prima, '?') === $dashboard ? $prima : $dashboard;
+    }
 
     /**
      * Decisioni 35, 41 e i rilievi R6 e R7 della Fase 1-bis della .42: il rifiuto dell'emissione dice il fatto e cosa fare, senza
@@ -709,6 +670,12 @@ class EmissioneRateController extends Controller
 
     public function destroy(Request $request, Condominio $condominio, PianoRate $pianoRate, Rata $rata)
     {
+        // Annullata qui, la rata di un addebito tornerebbe in bozza: e una bozza entra nell'ordine dei versamenti e nei passaggi di proprietà.
+        // L'addebito si annulla dall'estratto conto della persona, che lo cancella.
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            return back()->with($this->flashError($rifiuto));
+        }
+
         // `≠ 0` e non `> 0`: una quota a credito compensata o rimborsata ha `importo_pagato` negativo (B2, S6).
         $haPagamenti = DB::table('rate_quote')
             ->where('rata_id', $rata->id)

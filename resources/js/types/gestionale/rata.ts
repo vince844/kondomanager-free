@@ -32,6 +32,14 @@ export interface Rata {
     scaduta: boolean;
     /** La rata 0, il pregresso: lo dice il server dal numero della rata, non dalla descrizione. */
     pregresso?: boolean;
+    /** Un interesse o una spesa addebitati alla persona. */
+    accessorio?: boolean;
+    /** Un accessorio scaduto o del giorno: l'ordine proposto lo mette prima del capitale (art. 1194 c.c.), e «Paga scadute» lo paga. */
+    in_testa?: boolean;
+    /** La parte della rata in un accordo di rientro in corso, in euro come `residuo`: fuori dall'ordine proposto; «Versamento dell'accordo» paga solo questa. */
+    in_accordo?: number;
+    /** La posizione nell'ordine dell'accordo (prima gli interessi e le spese, poi il capitale), fra le righe con una parte nell'accordo. */
+    ordine_accordo?: number | null;
     /** La posizione nell'ordine che il programma propone, fra le righe a debito; null per una riga solo a credito. */
     ordine?: number | null;
     /** Data di scadenza della rata */

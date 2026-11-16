@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * I controlli del rendiconto: le registrazioni oltre il confine dell'esercizio nei due versi, la liquidità contro il prospetto per cassa con le
@@ -319,9 +322,9 @@ it('il fascicolo del 2026 tenuto aperto fino all\'assemblea parla ai condòmini:
     vrmGiorno($this, '2027-04-15');
     $t = vrmTestiDelFascicolo($s, $s['e'], [], false);
 
-    // Il riquadro dei controlli per chi riceve il fascicolo (quattordici controlli, con la proposta di conguaglio: 12 tornano); le righe dei controlli
+    // Il riquadro dei controlli per chi riceve il fascicolo (quindici controlli, con la proposta di conguaglio: 12 tornano, la banca senza l'estratto); le righe dei controlli
     // stanno nella loro pagina, e le cifre delle registrazioni oltre il confine nel paragrafo del risultato.
-    expect($t['frontespizio']['testo'])->toContain('I controlli: 12 tornano, 1 non torna, 1 da leggere (l\'amministratore li spiegherà in assemblea).')
+    expect($t['frontespizio']['testo'])->toContain('I controlli: 12 tornano, 1 non torna, 1 da leggere (l\'amministratore li spiegherà in assemblea); il saldo della banca non è confrontato, perché l\'amministratore non ha indicato il saldo dell\'estratto conto della banca.')
         ->not->toContain('Registrazioni oltre il confine dell\'esercizio: non torna.')
         ->toContain('Risultato: quote registrate in questo esercizio € 8.510,00 − costi € 7.331,00')
         ->toContain('Il risultato comprende anche le registrazioni scritte in questo esercizio con una data fuori dal suo periodo: il riepilogo di questo esercizio '
@@ -856,17 +859,17 @@ it('quando le righe del § 9 hanno una differenza, i crediti non tornano e il co
 it('l\'esito di Via Roma finito: «13 tornano, 0 non tornano, 1 da leggere» con la riga fissa; R8 di un anno finito è da leggere con la sua frase', function () {
     $s = vrmScenario($this);
     vrmGiorno($this, '2027-01-15');
-    // Con la lettura del conguaglio, come la scheda «Controlli»: i quattordici controlli.
+    // Con la lettura del conguaglio, come la scheda «Controlli»: i quindici controlli, la banca senza l'estratto scritto.
     $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e'], null, [], null, null, [], app(\App\Services\Gestionale\ConguaglioDelRendiconto::class)->leggi($s['e']));
     $r8 = rctControllo($c, 'R8');
 
     expect($c['esito']['tornano'])->toBe(13)->and($c['esito']['non_tornano'])->toBe(0)->and($c['esito']['da_leggere'])->toBe(1)
-        ->and($c['esito']['frase'])->toBe('13 tornano, 0 non tornano, 1 da leggere')
-        ->and($c['esito']['riga_fissa'])->toBe('I controlli verificano che i numeri della contabilità tornino fra loro. Non verificano il saldo con l\'estratto conto della banca, né che ogni fattura e ogni entrata sia stata registrata.')
+        ->and($c['esito']['frase'])->toBe('13 tornano, 0 non tornano, 1 da leggere, 1 non calcolato')
+        ->and($c['esito']['riga_fissa'])->toBe('I controlli verificano che i numeri della contabilità tornino fra loro e, se il saldo che dice la banca è scritto nella nota sintetica, con il saldo della banca. Non verificano che ogni fattura e ogni entrata sia stata registrata.')
         ->and($r8['esito'])->toBe('segnalazione')
         ->and($r8['nota'])->toContain('Il programma non dà il residuo vincolato di un fondo alla data di fine, perché i vincoli dichiarati non hanno una data')->not->toContain('in arrivo')
         ->not->toContain('registro di contabilità')
-        ->and(collect($c['controlli'])->pluck('id')->all())->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE', 'CG', 'CU', 'CB', 'CA']);
+        ->and(collect($c['controlli'])->pluck('id')->all())->toBe(['PD', 'R6', 'R7', 'R8', 'R2', 'CN', 'AC', 'CR', 'CP', 'GE', 'CG', 'CU', 'CB', 'CA', 'BC']);
 });
 
 it('una fattura con voci di un\'altra gestione è da leggere nei controlli, con il suo numero', function () {

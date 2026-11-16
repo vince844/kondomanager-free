@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
@@ -7,11 +10,15 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Services\Gestionale\AnnoACavallo;
+use App\Services\Gestionale\ConfrontoDelRendiconto;
 use App\Services\Gestionale\ConguaglioDelRendiconto;
 use App\Services\Gestionale\ControlliDelRendiconto;
 use App\Services\Gestionale\FascicoloDelRendiconto;
+use App\Services\Gestionale\NotaSinteticaDelRendiconto;
+use App\Services\Gestionale\PisteDellaBanca;
 use App\Services\Gestionale\SintesiDelRendiconto;
 use App\Services\Gestionale\StatoPatrimonialePaginaService;
+use App\Services\Gestionale\VersioniDelRendiconto;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\PaginaElenco;
@@ -41,16 +48,35 @@ class RendicontoController extends Controller
             'condomini' => CondominioResource::collection($this->getCondomini())->resolve(),
             'esercizio' => $esercizio,
             'esercizi' => $condominio->esercizi()->orderByDesc('data_inizio')->get(),
+            // Lo stato del rendiconto in testa a ogni scheda: la bozza, presentato all'assemblea, approvato.
+            'stato_rendiconto' => VersioniDelRendiconto::statoInTesta($esercizio),
         ];
     }
 
-    public function sintesi(Condominio $condominio, Esercizio $esercizio, SintesiDelRendiconto $sintesi): Response
+    public function sintesi(Request $request, Condominio $condominio, Esercizio $esercizio, SintesiDelRendiconto $sintesi, ControlliDelRendiconto $controlli,
+        ConguaglioDelRendiconto $conguaglio, ConfrontoDelRendiconto $confronto): Response
     {
         abort_unless((int) $esercizio->condominio_id === (int) $condominio->id, 404);
+        // Una lettura del conguaglio sotto la soglia di peso, e i controlli una volta: per la Sintesi e per il confronto con le versioni fermate.
+        $peso = $conguaglio->peso($esercizio);
+        $letto = $peso <= ConguaglioDelRendiconto::soglia() ? $conguaglio->leggi($esercizio) : null;
+        $c = $controlli->perEsercizio($condominio, $esercizio, null, [], null, null, [], $letto);
+        $letta = $sintesi->perEsercizio($condominio, $esercizio, null, $c, null, $peso);
+        $nota = NotaSinteticaDelRendiconto::contenuto($esercizio);
 
         return Inertia::render('gestionale/movimenti/rendiconto/Sintesi', $this->comuni($condominio, $esercizio) + [
-            'sintesi' => $sintesi->perEsercizio($condominio, $esercizio),
+            'sintesi' => $letta,
+            // Che cosa manca alla nota sintetica, per le finestre del fascicolo e di «Ferma per l'assemblea»: si dice, e non si ferma niente.
+            // I conti della banca della stessa lettura dei controlli: la differenza di ognuno si spiega sotto il suo saldo.
+            'nota' => ['vuota' => NotaSinteticaDelRendiconto::bozzaVuota($nota), 'mancanze' => NotaSinteticaDelRendiconto::mancanze($nota, $letta['esito']['righe'] ?? [], $c['banche'] ?? null)],
             'parti' => FascicoloDelRendiconto::PARTI,
+            // Le versioni fermate per l'assemblea, senza le cifre, e i nomi delle parti per «Conserva le parti una per una».
+            'versioni' => VersioniDelRendiconto::elenco($esercizio),
+            'nomi_parti' => FascicoloDelRendiconto::NOMI,
+            'oggi' => \App\Helpers\DateHelper::oggiUtente(),
+            // Dopo l'approvazione, che cosa è cambiato con le cifre di allora e di oggi; e per la finestra dell'approvazione, dal giorno della versione
+            // fermata. Sotto la soglia di peso si fa da sé; sopra, con «Confronta con la versione approvata» (`confronta=1`).
+            'confronto' => $confronto->perLaSintesi($condominio, $esercizio, $letto, $request->boolean('confronta'), $c),
         ]);
     }
 
@@ -65,7 +91,8 @@ class RendicontoController extends Controller
         ]);
     }
 
-    public function controlli(Request $request, Condominio $condominio, Esercizio $esercizio, ControlliDelRendiconto $controlli, ConguaglioDelRendiconto $conguaglio): Response
+    public function controlli(Request $request, Condominio $condominio, Esercizio $esercizio, ControlliDelRendiconto $controlli, ConguaglioDelRendiconto $conguaglio,
+        PisteDellaBanca $piste): Response
     {
         abort_unless((int) $esercizio->condominio_id === (int) $condominio->id, 404);
         $filtri = ['verso' => $request->query('verso'), 'tipo' => $request->query('tipo'), 'colore' => $request->query('colore')];
@@ -76,6 +103,11 @@ class RendicontoController extends Controller
         $soloElenco = $request->header('X-Inertia-Partial-Data') === 'anno_a_cavallo';
         $c = $controlli->perEsercizio($condominio, $esercizio, null, array_map(fn ($v) => is_string($v) ? $v : null, $filtri), null, null, $pagine,
             $soloElenco ? null : $conguaglio->leggi($esercizio));
+
+        // Il controllo della banca con i suoi conti, e per ogni conto con una differenza le possibili cause con la correzione consigliata e quelle ignorate.
+        $perCassa = $soloElenco ? [] : $piste->perIConti($condominio, $esercizio, $c['banche']);
+        $c['controlli'] = array_map(fn (array $x) => $x['id'] !== 'BC' ? $x : $x + ['banche' => array_map(fn (array $b) => $b + ['piste' => $perCassa[$b['cassa_id']] ?? []],
+            $c['banche'])], $c['controlli']);
 
         return Inertia::render('gestionale/movimenti/rendiconto/Controlli', $this->comuni($condominio, $esercizio) + [
             'controlli' => $c['controlli'],

@@ -14,6 +14,9 @@ use Illuminate\Support\Str;
 
 class DocumentoResource extends JsonResource
 {
+    /** Il nome al posto dell'autore, quando l'utente che ha caricato il documento è stato eliminato. */
+    public const AUTORE_ELIMINATO = 'utente eliminato';
+
     /**
      * Transform the resource into an array.
      *
@@ -38,7 +41,14 @@ class DocumentoResource extends JsonResource
             // proprio quello che serve quando si cerca il verbale di una certa assemblea. Le due
             // convivono perché rispondono a due domande diverse.
             'created_at_data' => $this->created_at->format('d/m/Y'),
-            'created_by' => $this->whenLoaded('createdBy', function () {
+            // `when` e non `whenLoaded`: con la relazione caricata e vuota `whenLoaded` restituisce null, e le pagine leggono `created_by.user`.
+            'created_by' => $this->when($this->resource->relationLoaded('createdBy'), function () {
+                // L'utente che l'ha caricato è stato eliminato: il documento resta, e chi lo legge vede che l'autore non c'è più. La forma è la
+                // stessa (le pagine leggono `created_by.user.name` e `created_by.user.id`).
+                if ($this->createdBy === null) {
+                    return ['user' => ['id' => null, 'name' => self::AUTORE_ELIMINATO], 'anagrafica' => null];
+                }
+
                 return [
                     'user'       => new UserResource($this->createdBy),
                     // Della persona in rubrica dell'autore, id e nome (Coda 408): il resto sta nella sua scheda.

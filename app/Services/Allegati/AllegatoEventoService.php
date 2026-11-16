@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services\Allegati;
 
@@ -40,13 +43,18 @@ final class AllegatoEventoService
             ? $elemento->condominio_id
             : $elemento->condomini()->value('condomini.id');
         $description = "Allegati in attesa di approvazione per \"{$titolo}\".";
+        // Il percorso, non l'indirizzo intero: il collegamento non dipende dall'indirizzo del sito.
         $actionUrl = route(
             $elemento instanceof Segnalazione ? 'admin.segnalazioni.show' : 'admin.comunicazioni.show',
             $elemento,
+            false,
         );
 
         if ($evento !== null) {
             $meta = is_array($evento->meta) ? $evento->meta : [];
+            // Il momento dell'ultimo arrivo, solo quando gli allegati in attesa crescono: un'approvazione li fa scendere, e non è una cosa nuova. Lo legge
+            // la regola dei compiti in attesa di «Ricordamelo» (`Evento::scopeCompitiAperti()`).
+            $arrivo = $inAttesa > (int) ($meta['contatore'] ?? 0) ? ['ultimo_arrivo' => now()->utc()->format('Y-m-d H:i:s')] : [];
             $evento->update([
                 'description' => $description,
                 'priorita'    => $priorita,
@@ -54,7 +62,7 @@ final class AllegatoEventoService
                     'action_url'    => $actionUrl,
                     'contatore'     => $inAttesa,
                     'ultimo_autore' => $nomeAutore,
-                ]),
+                ], $arrivo),
                 'updated_at'  => now(),
             ]);
 
@@ -65,7 +73,8 @@ final class AllegatoEventoService
             tipo: EventoTipo::ALLEGATO,
             title: 'Allegati da approvare — ' . $titolo,
             description: $description,
-            scadenza: now()->addDays(2),
+            // Due giorni dal giorno di Roma, scritti come l'agenda scrive le ore.
+            scadenza: \App\Helpers\DateHelper::adessoComeSiLegge()->addDays(2),
             createdByUserId: $autore?->id,
             condominioId: $condominioId !== null ? (int) $condominioId : null,
             context: [],
@@ -73,6 +82,7 @@ final class AllegatoEventoService
             extraMeta: [
                 'contatore'     => $inAttesa,
                 'ultimo_autore' => $nomeAutore,
+                'ultimo_arrivo' => now()->utc()->format('Y-m-d H:i:s'),
             ],
             eventableType: $elemento->getMorphClass(),
             eventableId: $elemento->getKey(),

@@ -7,6 +7,7 @@ use App\Models\Anagrafica;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\RigaScrittura;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\Incassi\OrdineImputazione;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -150,8 +151,13 @@ class RicevutaIncasso
                 $parteInPiu[] = $this->parteInPiu($avanza, $q, 0, $avanza, false);
             }
         }
-        usort($righeQuote, fn (array $a, array $b) => [$a['scadenza'] ?? '', $quote[$a['quota_id']]->rata?->numero_rata, $a['quota_id']]
-            <=> [$b['scadenza'] ?? '', $quote[$b['quota_id']]->rata?->numero_rata, $b['quota_id']]);
+        // Gli interessi e le spese addebitati, scaduti o del giorno del versamento, prima, come li mette l'ordine proposto (art. 1194 c.c.); poi per
+        // scadenza, con quelli che scadevano più avanti.
+        $giornoDelVersamento = $incasso->data_competenza?->format('Y-m-d');
+        $primaGliAccessori = fn (int $id) => OrdineImputazione::inTesta($quote[$id]->tipo === RataQuote::TIPO_ACCESSORIO,
+            (string) ($quote[$id]->rata?->data_scadenza?->format('Y-m-d') ?? ''), $giornoDelVersamento) ? 0 : 1;
+        usort($righeQuote, fn (array $a, array $b) => [$primaGliAccessori($a['quota_id']), $a['scadenza'] ?? '', $quote[$a['quota_id']]->rata?->numero_rata, $a['quota_id']]
+            <=> [$primaGliAccessori($b['quota_id']), $b['scadenza'] ?? '', $quote[$b['quota_id']]->rata?->numero_rata, $b['quota_id']]);
 
         // La parte in più senza una quota su cui stare (incassi di versioni vecchie): un anticipo, tutto a credito.
         foreach ($incasso->righe as $riga) {
@@ -277,6 +283,7 @@ class RicevutaIncasso
             \App\Services\Gestionale\Incassi\OrdineImputazione::INDICATA_DAL_VERSANTE => 'Imputazione: indicata da chi ha versato' . ($nota !== '' ? ": «{$nota}»." : '.'),
             \App\Services\Gestionale\Incassi\OrdineImputazione::SCELTA_AMMINISTRATORE => 'Imputazione: scelta dall\'amministratore.',
             \App\Services\Gestionale\Incassi\OrdineImputazione::COMPENSAZIONE => 'Imputazione: compensazione con il credito.',
+            \App\Services\Gestionale\Incassi\OrdineImputazione::ACCORDO_RIENTRO => 'Imputazione: versamento dell\'accordo di rientro.',
             default => null,
         };
     }
@@ -366,6 +373,11 @@ class RicevutaIncasso
         $rata = $q->rata;
         $numero = $rata?->numero_rata;
         $descrizione = trim((string) ($rata?->descrizione ?? ''));
+        // Un addebito a una persona sola si chiama con la sua causale («Interessi di mora al 29/06/2026», «Spese di sollecito»): il numero della rata nel
+        // piano degli addebiti non dice niente a chi legge.
+        if ($rata?->pianoRate?->eDegliAddebiti() && $descrizione !== '') {
+            return $descrizione;
+        }
 
         return self::nomeBreve(trim('Rata ' . ($numero ?? '?') . ($descrizione !== '' ? ' — ' . $descrizione : '')), $rata?->pianoRate?->nome);
     }

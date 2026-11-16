@@ -393,3 +393,21 @@ it('il piede di oggi su ogni pagina, con lo studio e senza: la data dell\'emissi
     }
     expect($male)->toBe([]);
 });
+
+it('il fascicolo, con i dati dello studio ma senza il suo nome: il frontespizio ha in testa solo il condominio, senza una riga che comincia con «·»', function () {
+    $s = tdsScenario($this);
+    cdsSenzaStudio();
+    $impostazioni = app(\App\Settings\PrintSettings::class);
+    $impostazioni->studio_indirizzo = 'Via Garibaldi 10, 20121 Milano';
+    $impostazioni->studio_telefono = '02 1234567';
+    $impostazioni->studio_email = 'studio@bianchi.it';
+    $impostazioni->save();
+    $spia = cdsSpia();
+
+    [$pdf] = tdsStampa($this, $spia, route('admin.gestionale.esercizi.rendiconto.fascicolo', [$s['c'], $s['e']]));
+
+    $righe = array_map(fn (array $riga) => trim($riga[0]), cdsRighe($pdf, 1));
+    expect(array_values(array_filter($righe, fn (string $r) => str_starts_with($r, '·'))))->toBe([])
+        ->and(cdsTesto($pdf, 1))->not->toContain('Via Garibaldi')->not->toContain('studio@bianchi.it')
+        ->and(cdsTesto($pdf, 1))->toContain($s['c']->nome);
+});

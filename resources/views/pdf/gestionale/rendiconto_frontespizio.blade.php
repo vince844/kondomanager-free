@@ -1,7 +1,12 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Il frontespizio del fascicolo del rendiconto: l'intestazione dello studio, il condominio e l'esercizio, la data della stampa, i numeri del prospetto
   della gestione, le quote non pagate, i fondi, l'esito dei controlli con la riga fissa, l'indice delle parti con le pagine (e le parti saltate, con il
-  perché) e lo spazio per la firma. Legge l'array della sintesi (`SintesiDelRendiconto`) e le registrazioni oltre il confine (`AnnoACavallo`, per dire che
+  perché) e lo spazio per la firma. Quando il fascicolo non ha la nota sintetica, lo dice. Legge l'array della sintesi (`SintesiDelRendiconto`) e le registrazioni oltre il confine (`AnnoACavallo`, per dire che
   cosa contiene il risultato): nessuna somma qui. Il foglio va ai condòmini: le frasi della pagina che parlano all'amministratore passano da
   `ParoleDellaStampa`.
 
@@ -20,10 +25,9 @@
     // Le registrazioni oltre il confine: l'effetto sul riepilogo, e quindi sul risultato, nei due versi.
     $anno = $anno_a_cavallo ?? null;
     $effetti = $anno === null ? [] : array_filter(['A' => $anno['effetto']['A']['frase'] ?? null, 'B' => $anno['effetto']['B']['frase'] ?? null]);
-    // Lo studio: a sinistra il logo e lo studio, a destra il condominio; senza il nome dello studio, la riga dello studio e il condominio di sempre.
+    // Lo studio: a sinistra il logo e lo studio, a destra il condominio; senza il nome dello studio, o con la carta intestata (lì lo studio è stampato
+    // sulla carta), in testa solo il condominio, come per ogni stampa.
     $conStudio = isset($carta) && $carta->haStudio();
-    // Con la carta intestata lo studio è stampato sulla carta: in testa solo il condominio.
-    $conCarta = isset($carta) && $carta->cartaIntestata() !== null;
     // I titoli, i loro filetti e la testata hanno il colore della carta dello studio; senza un colore, quello di sempre.
     $coloreTitoli = \App\Services\PDF\Carta::coloreDi($carta ?? null, '#0E2238');
     // Le righe strette: il fascicolo riscrive così il frontespizio che con gli spazi di sempre non sta in una pagina (una carta intestata con il margine
@@ -48,8 +52,6 @@
 <title>Rendiconto – {{ $esercizio->nome }}</title>
 <style>
     body { font-family: inter; font-size: 8pt; color: #26313F; }
-    .studio { font-size: 7.5pt; color: #5A6B7B; border-bottom: 1px solid #D9DEE5; padding-bottom: 6px; margin-bottom: 18px; }
-    .studio b { color: {{ $coloreTitoli }}; }
     .ente { font-family: fraunces; font-size: 20pt; color: {{ $coloreTitoli }}; margin: 0; }
     .rif { font-size: 8pt; color: #5A6B7B; margin: 2px 0 {{ $stretto ? 10 : 16 }}px; }
     h1 { font-family: fraunces; font-size: 16pt; color: {{ $coloreTitoli }}; margin: 0 0 2px; }
@@ -73,7 +75,7 @@
 
 {{-- Il piede delle parti del fascicolo, con il nome «Frontespizio»: la data di emissione, la nota legale, il numero di pagina. --}}
 <htmlpagefooter name="frPiede">
-    @include('pdf._carta.piede_inter', ['giorno' => \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y'), 'parte' => 'Frontespizio'])
+    @include('pdf._carta.piede_inter', ['giorno' => ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y'), 'parte' => 'Frontespizio'])
 </htmlpagefooter>
 <sethtmlpagefooter name="frPiede" page="ALL" value="on" />
 
@@ -104,16 +106,6 @@
     </tr>
 </table>
 @else
-@unless($conCarta)
-<div class="studio">
-    @if($studio->studio_nome) <b>{{ $studio->studio_nome }}</b> @endif
-    @if($studio->studio_indirizzo) · {{ $studio->studio_indirizzo }} @endif
-    @if($studio->studio_comune) · {{ $studio->studio_comune }} @endif
-    @if($studio->studio_telefono) · {{ $studio->studio_telefono }} @endif
-    @if($studio->studio_email) · {{ $studio->studio_email }} @endif
-    @if($studio->studio_pec) · PEC {{ $studio->studio_pec }} @endif
-</div>
-@endunless
 
 <div class="ente">{{ $condominio->nome }}</div>
 <div class="rif">
@@ -123,16 +115,18 @@
 @endif
 
 <h1>Rendiconto dell'esercizio</h1>
-<p class="sotto">{{ $esercizio->nome }}, dal {{ $dataIt($sintesi['esercizio']['dal']) }} al {{ $dataIt($sintesi['esercizio']['al']) }} · stampato il {{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</p>
+<p class="sotto">{{ $esercizio->nome }}, dal {{ $dataIt($sintesi['esercizio']['dal']) }} al {{ $dataIt($sintesi['esercizio']['al']) }} · stampato il {{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}@isset($data_emissione_stampe) alle {{ $data_emissione_stampe->format('H:i') }}@endisset</p>
 @if($riservato)
 <p class="esito" style="margin-bottom: 6px;"><b>{{ \App\Services\Gestionale\PosizioniDeiCondomini::RISERVATO }}</b></p>
 @endif
-<p class="d">{{ $sintesi['stato']['frase_stampa'] ?? $sintesi['stato']['frase'] }}</p>
+{{-- La nota sintetica che manca (non scelta, o non scritta): un fatto vero, detto a chi vota, accanto alla data delle cifre. Il frontespizio non dice mai
+     che il fascicolo è completo. --}}
+<p class="d">{{ $sintesi['stato']['frase_stampa'] ?? $sintesi['stato']['frase'] }}@if(! empty($senza_nota)) <b style="color: #26313F;">{{ \App\Services\Gestionale\NotaSinteticaDelRendiconto::FRASE_SENZA_NOTA }}</b>@endif</p>
 
 <h2>I controlli</h2>
 {{-- Per chi legge: quanti controlli tornano, chi spiega gli altri, che cosa non sono. Le righe, con le parole della contabilità, sono nella loro pagina. --}}
 <div class="esito">
-    <b>{{ \App\Services\Gestionale\SintesiDelRendiconto::controlliPerChiLegge($es) }}</b>
+    <b>{{ \App\Services\Gestionale\SintesiDelRendiconto::controlliPerChiLegge($es, (int) ($nota_spiegati ?? 0)) }}</b>
     @if($paginaControlli !== null)
     <br><span class="d">Le righe dei controlli, per chi vuole il dettaglio, sono a pagina {{ $paginaControlli }}.</span>
     @endif
@@ -143,15 +137,19 @@
     <tr><td>Preventivo{{ $pr['preventivo_solo_ordinarie'] ? ' delle gestioni ordinarie' : '' }}</td><td class="n">{{ $preventivo($pr['preventivo']) }}</td></tr>
     <tr><td>Deliberato con le rate</td><td class="n">{{ $fmt($pr['deliberato']) }}</td></tr>
     <tr><td>Quote dei piani dell'esercizio</td><td class="n">{{ $fmt($pr['quote_piani']) }}</td></tr>
-    <tr><td>Quote pagate</td><td class="n">{{ $fmt($pr['quote_pagate']) }}</td></tr>
-    <tr><td>Quote non pagate</td><td class="n">{{ $fmt($pr['quote_non_pagate']) }}</td></tr>
+    @if(! empty($pr['contributi_addebitati']))
+    <tr><td>Contributi addebitati a singole persone{{ ! empty($pr['contributi_non_versati']) ? ', di cui non versati '.$fmt($pr['contributi_non_versati']) : '' }}</td><td class="n">{{ $fmt($pr['contributi_addebitati']) }}</td></tr>
+    @endif
+    {{-- Pagate e non pagate sono le quote dei piani: i contributi addebitati non versati sono detti sopra, accanto ai contributi. --}}
+    <tr><td>Quote dei piani pagate</td><td class="n">{{ $fmt($pr['quote_pagate']) }}</td></tr>
+    <tr><td>Quote dei piani non pagate</td><td class="n">{{ $fmt($pr['quote_non_pagate']) }}</td></tr>
     <tr><td>Costi dell'esercizio</td><td class="n">{{ $fmt($pr['costi']) }}</td></tr>
     <tr><td><b>Risultato</b>: quote registrate in questo esercizio {{ $fmt($pr['quote_giornale']) }} − costi {{ $fmt($pr['costi']) }}</td><td class="n"><b>{{ $fmt($pr['risultato']) }}</b> ({{ \App\Services\Gestionale\RiepilogoPerCompetenza::comeRisultato($pr['risultato']) }})</td></tr>
     <tr><td>Liquidità secondo la contabilità, al {{ $dataIt($sintesi['riquadri']['liquidita']['alla']) }}</td><td class="n">{{ $fmt($sintesi['riquadri']['liquidita']['liquidita']) }}</td></tr>
     <tr><td>di cui nei fondi</td><td class="n">{{ $fmt($pr['in_fondi']) }}</td></tr>
 </table>
 <p class="d">Preventivo: le spese previste, meno le entrate da terzi. Deliberato con le rate: quanto chiedono i piani delle rate approvati. Quote dei piani dell'esercizio: le rate
-    di quei piani già emesse.</p>
+    di quei piani già emesse.@if(! empty($pr['contributi_addebitati'])) Contributi addebitati a singole persone: somme chieste a una persona sola, fuori dal riparto; sono fra le quote registrate.@endif</p>
 {{-- Le frasi del deliberato non disponibile o ricostruito, sotto il prospetto, al corpo del testo. --}}
 @if($pr['avvertenza_deliberato'] || ! empty($pr['avvertenza_deliberato_ricostruito']))
 <p style="font-size: 8pt; margin: 4px 0 0;">@if($pr['avvertenza_deliberato']){{ \App\Services\Gestionale\ParoleDellaStampa::frase($pr['avvertenza_deliberato']) }}@endif @if(! empty($pr['avvertenza_deliberato_ricostruito'])) {{ \App\Services\Gestionale\ParoleDellaStampa::frase($pr['avvertenza_deliberato_ricostruito']) }}@endif</p>

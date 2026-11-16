@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import Alert from '@/components/Alert.vue';
@@ -10,9 +10,11 @@ import { Label } from '@/components/ui/label';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { AlertTriangle, ArrowDownLeft, Info, Landmark, Users } from 'lucide-vue-next';
+import IncassoDaTerziGuide from '@/components/guides/IncassoDaTerziGuide.vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
@@ -60,6 +62,9 @@ const pageGuides = [
 ];
 
 const oggi = oggiLocale();
+
+// La guida della pagina, nel cassetto di lato: la apre «Guida completa» dell'intestazione, come nella pagina dell'incasso delle rate.
+const mostraGuida = ref(false);
 
 // NB: il campo NON può chiamarsi `data`: `useForm` ha già un metodo `form.data()`.
 const form = useForm({
@@ -116,7 +121,13 @@ const erroreDiDominio = computed(() => (form.errors as Record<string, string | u
                 :condomini="props.condomini"
                 :back-url="urlDiPartenza"
                 back-text="Indietro"
-            />
+            >
+                <template #actions>
+                    <PulsanteGuida testo="Guida completa" data-testid="guida-completa" @click="mostraGuida = true" />
+                </template>
+            </PageHeaderGuide>
+
+            <IncassoDaTerziGuide v-model:open="mostraGuida" />
 
             <div v-if="flashMessage">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />

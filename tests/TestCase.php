@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace Tests;
 
@@ -62,5 +65,19 @@ abstract class TestCase extends BaseTestCase
         config()->set('backup.restore.marker_file', storage_path(
             'framework/testing/restore-marker-'.$token
         ));
+    }
+
+    /**
+     * Il limite di tempo torna illimitato, come da riga di comando, alla fine di ogni test. Il backup e il ripristino lo abbassano al loro budget
+     * (`set_time_limit`), e il limite resta nel processo: un test pesante che veniva dopo nella stessa suite si fermava a metà con «Maximum execution
+     * time of 50 seconds exceeded», senza colpa sua.
+     */
+    protected function tearDown(): void
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+
+        parent::tearDown();
     }
 }

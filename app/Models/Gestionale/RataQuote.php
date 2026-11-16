@@ -17,6 +17,15 @@ class RataQuote extends Model
 
     protected $table = 'rate_quote';
 
+    /**
+     * Il tipo della quota di un addebito a una persona sola (`rate_quote.tipo`, una stringa): il contributo (una quota del riparto che nessuno ha
+     * avuto, o la spesa di una sola unità chiesta a una persona) e l'accessorio (interessi, spese di sollecito e legali: il ritardo di una persona).
+     * Le scrive il piano degli addebiti ({@see PianoRate::NATURA_ADDEBITI}); chi legge le quote senza passare dal piano le riconosce da qui.
+     */
+    public const TIPO_ADDEBITO = 'addebito';
+
+    public const TIPO_ACCESSORIO = 'accessorio';
+
     protected $fillable = [
         'rata_id',
         'anagrafica_id',

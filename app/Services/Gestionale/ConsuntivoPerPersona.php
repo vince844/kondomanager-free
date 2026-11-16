@@ -32,10 +32,14 @@ use Illuminate\Support\Facades\DB;
  *   non ha la delibera, o quei piani ne hanno più d'una con date diverse, la gestione non si calcola e lo dice.
  *
  * La forma: `persone[gestione][anagrafica][immobile] = ['voci' => [conto => centesimi], 'righe' => [...]]` (le righe solo per
- * le persone chieste) e `gestioni[gestione] = ['nome', 'tipo', 'uscite' => [conto => centesimi], 'diviso_su' => [voce => [conto => centesimi]],
- * 'non_attribuite' => [conto => centesimi], 'motivi' => [conto => [motivo => centesimi]], 'non_calcolabile' => ?string]`. Il
- * conto è quello su cui la voce si divide (il capitolo del piano con le tabelle, o la voce stessa): `diviso_su` dice dove è
- * finita ogni voce del giornale. Per ogni conto le uscite sono la somma delle persone più le non attribuite, al centesimo.
+ * le persone chieste) e `gestioni[gestione] = ['nome', 'tipo', 'uscite' => [conto => centesimi], 'voci_ferme' => [voce => centesimi],
+ * 'diviso_su' => [voce => [conto => centesimi]], 'non_attribuite' => [conto => centesimi], 'motivi' => [conto => [motivo => centesimi]],
+ * 'periodi_diversi' => [voce => [nomi dei piani]], 'periodi_diversi_perche' => [voce => titolare|inquilino|titolare_e_inquilino], 'non_calcolabile' => ?string]`. Il conto è quello su cui la voce si divide (il capitolo del
+ * piano con le tabelle, o la voce stessa): `diviso_su` dice dove è finita ogni voce del giornale. `uscite` sono le spese che il motore ha diviso;
+ * `voci_ferme` le spese delle voci che non si dividono perché due piani dell'esercizio hanno periodi diversi per la voce e un'unità della voce
+ * cambia un titolare, o un inquilino che nella voce ha una parte (`periodi_diversi` dice i piani, `periodi_diversi_perche` che cosa è cambiato): stanno anche fra le non attribuite, con il motivo, e non fra le uscite, che il
+ * controllo per unità divide sulle tabelle. Per ogni conto le uscite più le voci ferme sono la somma delle persone più le non attribuite, al
+ * centesimo (la spesa delle persone senza togliere il già versato dell'unità).
  *
  * **Il conguaglio e il saldo**, alla data della lettura (la fine dell'esercizio, o oggi se l'esercizio non è finito). Per ogni persona e
  * unità, oltre alle voci:
@@ -55,8 +59,11 @@ use Illuminate\Support\Facades\DB;
  *   senza il dettaglio del riparto non si ricostruisce; allora `conguaglio`, `saldo` e `b.totale` sono nulli;
  * - `gia_versato_non_usato`: il già versato registrato per le voci delle gestioni dell'esercizio che i piani dell'esercizio non hanno usato,
  *   l'eccedenza compresa, registrato per questo esercizio (`questo_esercizio`) o per tutti (`tutti_gli_esercizi`): quello della persona resta
- *   suo, quello dell'unità va una volta sola ai titolari di diritto reale alla data, per quota (mai all'inquilino). Spiega e basta, non entra nel
- *   conguaglio; che cosa farne lo decide la chiusura;
+ *   suo, quello dell'unità va una volta sola ai titolari di diritto reale alla data, per quota (mai all'inquilino), ma solo se nell'esercizio
+ *   l'unità non ha cambiato titolare di diritto reale, né inquilino in una gestione dove l'inquilino paga una parte (i cambi con la regola del
+ *   motore: una riga scritta a metà anno senza un predecessore non è un cambio): dopo un cambio non va sul foglio di nessuno, la gestione lo tiene
+ *   in `gia_versato_da_decidere` e la riga in `gia_versato_da_decidere` con il perché, `gia_versato_da_decidere_perche` (`titolare`, `inquilino`,
+ *   `titolare_e_inquilino`): a chi va lo decide l'amministratore. Spiega e basta, non entra nel conguaglio; che cosa farne lo decide la chiusura;
  * - `avviso_anno_prima`: quando la persona ha sulla stessa unità un saldo iniziale scritto a mano con l'origine dichiarata in un altro esercizio,
  *   applicato o no, **e** una posizione aperta di altre gestioni o spese personali di esercizi prima non ancora chieste (una delle due cifre
  *   diversa da zero, con il suo segno): la frase per l'amministratore con le cifre, e le cifre. Nessuna
@@ -120,7 +127,10 @@ class ConsuntivoPerPersona
             $voci = DB::table('conti')->join('piani_conti as pc', 'pc.id', '=', 'conti.piano_conto_id')
                 ->where('pc.gestione_id', $gestione->id)->pluck('conti.id')->map(fn ($id) => (int) $id)->all();
             $straordinaria = NaturaGestione::daStringa($gestione->tipo) === NaturaGestione::Straordinaria;
-            $piani = PianoRate::where('gestione_id', $gestione->id)->orderBy('id')->get();
+            // I piani del riparto: il piano degli addebiti a singole persone non è una quota chiesta con le rate (B). Un contributo addebitato
+            // resta nella posizione della persona, e la scheda lo dice accanto alle spese non attribuite; preso qui, si toglierebbe dal conguaglio
+            // e si chiederebbe due volte.
+            $piani = PianoRate::where('gestione_id', $gestione->id)->delRiparto()->orderBy('id')->get();
             // L'opera di una straordinaria: in corso, o finita in questo esercizio con i suoi esercizi; null, l'esercizio da solo.
             $opera = $straordinaria ? $this->opera($gestione, $esercizio) : null;
             $suoiEsercizi = $opera['esercizi'] ?? [$esercizio];
@@ -155,7 +165,7 @@ class ConsuntivoPerPersona
                     }
                 }
                 $spesoQui = (int) array_sum(array_column($this->spese->perEsercizioEFattura($esercizio, $voci), 'importo'));
-                $risultato['gestioni'][$gestione->id] = ['nome' => (string) $gestione->nome, 'tipo' => (string) $gestione->tipo, 'uscite' => [], 'diviso_su' => [],
+                $risultato['gestioni'][$gestione->id] = ['nome' => (string) $gestione->nome, 'tipo' => (string) $gestione->tipo, 'uscite' => [], 'voci_ferme' => [], 'periodi_diversi_perche' => [], 'diviso_su' => [],
                     'non_attribuite' => [], 'motivi' => [], 'non_calcolabile' => null, 'speso' => $spesoQui, 'competenze_scritte' => [], 'divisioni' => [],
                     'in_corso' => ['spesi' => (int) $this->spese->cumulatoDellaGestione((int) $gestione->id, substr((string) $esercizio->data_inizio, 0, 10))['consuntivo'],
                         'chiesti' => $chiesti, 'speso_esercizio' => $spesoQui, 'data_fine' => $opera['data_fine'],
@@ -201,12 +211,13 @@ class ConsuntivoPerPersona
                 $opzioni['competenze_scritte'] = array_values(array_filter($this->spese->perEsercizioEFattura($esercizio, array_keys($cifre)),
                     fn (array $r) => $r['competenza_dal'] !== null && $r['competenza_al'] !== null && $r['importo'] !== 0));
                 $spesoQui = (int) array_sum($cifre);
-                // Due piani dell'esercizio con periodi diversi per la stessa voce, e un'unità della voce che cambia titolare: il programma non sceglie quale
-                // periodo vale. La voce non si divide (resta fra le uscite che nessuno paga, con il perché); la spesa con la competenza scritta sulla fattura sì.
+                // Due piani dell'esercizio con periodi diversi per la stessa voce, e un'unità della voce che cambia titolare o inquilino: il programma non
+                // sceglie quale periodo vale. La voce non si divide (resta fra le uscite che nessuno paga, con il perché); la spesa con la competenza scritta
+                // sulla fattura sì.
                 $fermate = $this->vociConPeriodiDiversi($pianiDellEsercizio, array_keys($cifre), $esercizio);
-                foreach ($fermate as $vid => $piani) {
+                foreach ($fermate as $vid => $fermata) {
                     $scritte = (int) array_sum(array_column(array_filter($opzioni['competenze_scritte'], fn (array $r) => (int) $r['conto_id'] === $vid), 'importo'));
-                    $periodiDiversi[$vid] = ['piani' => $piani, 'importo' => (int) $cifre[$vid] - $scritte];
+                    $periodiDiversi[$vid] = $fermata + ['importo' => (int) $cifre[$vid] - $scritte];
                     if ($scritte === 0) {
                         unset($cifre[$vid]);
                     } else {
@@ -216,10 +227,14 @@ class ConsuntivoPerPersona
             }
 
             $esito = (new CalcoloQuoteService())->consuntivoPerGestione($gestione, $esercizio, $cifre, $opzioni);
+            // La voce ferma non passa dal motore: resta fra le uscite che nessuno paga, con il motivo, e si dice in un campo suo. Fra le `uscite` no:
+            // sono le spese divise, e il controllo per unità le divide sulle tabelle, dove la voce ferma direbbe che le unità non tornano.
+            $ferme = [];
             foreach ($periodiDiversi ?? [] as $vid => $fermata) {
                 if ($fermata['importo'] !== 0) {
                     $esito['non_attribuite'][$vid] = ($esito['non_attribuite'][$vid] ?? 0) + $fermata['importo'];
                     $esito['motivi'][$vid]['periodi_diversi'] = ($esito['motivi'][$vid]['periodi_diversi'] ?? 0) + abs($fermata['importo']);
+                    $ferme[$vid] = $fermata['importo'];
                 }
             }
 
@@ -237,6 +252,7 @@ class ConsuntivoPerPersona
                 'nome' => (string) $gestione->nome,
                 'tipo' => (string) $gestione->tipo,
                 'uscite' => $esito['uscite'],
+                'voci_ferme' => $ferme,
                 'diviso_su' => $esito['diviso_su'],
                 'non_attribuite' => $esito['non_attribuite'],
                 'motivi' => $esito['motivi'],
@@ -246,8 +262,10 @@ class ConsuntivoPerPersona
                 'competenze_scritte' => $esito['competenze_scritte'],
                 // Quante volte il motore ha diviso ogni conto (una per competenza): il controllo per unità ne conta i centesimi del resto.
                 'divisioni' => $esito['divisioni'],
-                // Le voci ferme per i periodi diversi di due piani: i piani, per voce.
+                // Le voci ferme per i periodi diversi di due piani: i piani, per voce, e che cosa è cambiato nelle unità della voce (`titolare`, `inquilino`,
+                // `titolare_e_inquilino`, come `gia_versato_da_decidere_perche`).
                 'periodi_diversi' => array_map(fn (array $f) => $f['piani'], $periodiDiversi),
+                'periodi_diversi_perche' => array_map(fn (array $f) => $f['perche'], $periodiDiversi),
             ];
             if (isset($dopoLaFine[$gestione->id])) {
                 $risultato['gestioni'][$gestione->id]['finita_prima'] = ['data_fine' => $opera['data_fine'], 'esercizio' => $opera['esercizio_della_fine'], 'speso_esercizio' => $spesoQui];
@@ -397,8 +415,13 @@ class ConsuntivoPerPersona
         $daDecidere = [];
         $titolariNonUsato = app(RisolutoreTitolari::class);
         $daDividere = $this->giaVersatoNonUsato($esercizio, $usato);
-        // Dopo un cambio di titolare nell'esercizio il già versato dell'unità non usato non va sul foglio di nessuno: a chi va lo decide l'amministratore.
-        $cambiano = $daDividere === [] ? [] : $this->unitaCheCambiano($esercizio, true);
+        // Dopo un cambio nell'esercizio il già versato dell'unità non usato non va sul foglio di nessuno: a chi va lo decide l'amministratore. Un cambio
+        // di titolare di diritto reale in ogni gestione; un cambio d'inquilino solo nelle gestioni dove l'inquilino paga una parte, perché il
+        // contributo dell'unità non dice chi l'ha versato, e lì può essere denaro dell'inquilino che esce (un anticipo delle spese a suo carico).
+        $cambiano = $daDividere === [] ? [] : $this->unitaCheCambiano($esercizio);
+        $conInquilino = array_keys(array_filter($cambiano, fn (array $ruoli) => isset($ruoli[RuoloAnagraficaImmobile::INQUILINO->value])));
+        $inquilinoPaga = $conInquilino === [] ? [] : $this->partiDellInquilino($conInquilino, $pianiIds, array_keys($daDividere))['per_gestione'];
+        $perche = [];
         $tipi = $daDividere === [] ? [] : DB::table('gestioni')->whereIn('id', array_keys($daDividere))->pluck('tipo', 'id')->all();
         foreach ($daDividere as $g => $perUnita) {
             $ordine = self::ordineDeiTitolari($tipi[$g] ?? null);
@@ -410,8 +433,10 @@ class ConsuntivoPerPersona
 
                         continue;
                     }
-                    if ($chi === 0 && isset($cambiano[(int) $iid])) {
+                    $cambio = $chi === 0 ? self::cambioDellUnita($cambiano[(int) $iid] ?? [], isset($inquilinoPaga[$g][(int) $iid])) : null;
+                    if ($cambio !== null) {
                         $daDecidere[$g][$iid] = ($daDecidere[$g][$iid] ?? 0) + $ambiti['questo_esercizio'] + $ambiti['tutti_gli_esercizi'];
+                        $perche[$g][$iid] = $cambio;
 
                         continue;
                     }
@@ -424,16 +449,19 @@ class ConsuntivoPerPersona
             }
         }
 
-        // I saldi dell'esercizio: le coppie dei passaggi (in B) e quelli non ancora in un piano (fuori dalle rate).
+        // I saldi dell'esercizio: le coppie dei passaggi (in B) e quelli non ancora in un piano (fuori dalle rate). Le righe dell'arretrato agli eredi che
+        // vengono dagli addebiti del defunto non sono quote: fuori da B, come l'addebito da cui vengono, e fuori dalle rate finché un piano non le prende.
         $coppie = [];
         $liberi = [];
         // I saldi scritti a mano con l'origine dichiarata in un altro esercizio, applicati o no, per gestione, persona e unità: se la stessa persona ha
         // anche rate o spese personali aperte di esercizi prima, la stessa cifra può essere nelle due (l'avviso sulla riga).
         $conOrigine = [];
-        foreach (DB::table('saldi')->where('condominio_id', $condominioId)->where('esercizio_id', $esercizio->id)->whereIn('gestione_id', $gestioniIds)->whereNotNull('anagrafica_id')
-            ->get(['anagrafica_id', 'immobile_id', 'gestione_id', 'subentro_id', 'saldo_iniziale', 'is_applicato', 'esercizio_origine_id']) as $r) {
+        $saldiDellEsercizio = DB::table('saldi')->where('condominio_id', $condominioId)->where('esercizio_id', $esercizio->id)->whereIn('gestione_id', $gestioniIds)->whereNotNull('anagrafica_id')
+            ->get(['id', 'anagrafica_id', 'immobile_id', 'gestione_id', 'subentro_id', 'saldo_iniziale', 'is_applicato', 'esercizio_origine_id']);
+        $degliAddebiti = Subentro::righeDegliAddebiti($saldiDellEsercizio->pluck('subentro_id')->all());
+        foreach ($saldiDellEsercizio as $r) {
             $k = [(int) $r->gestione_id, (int) $r->anagrafica_id, (int) $r->immobile_id];
-            if ($r->subentro_id !== null) {
+            if ($r->subentro_id !== null && ! isset($degliAddebiti[(int) $r->id])) {
                 $coppie[$k[0]][$k[1]][$k[2]] = ($coppie[$k[0]][$k[1]][$k[2]] ?? 0) + (int) $r->saldo_iniziale;
             }
             if (! (bool) $r->is_applicato) {
@@ -451,9 +479,13 @@ class ConsuntivoPerPersona
         // Le coppie dei passaggi degli esercizi prima di un'opera finita in questo: le sue quote sono di tutti i suoi esercizi, e le coppie con loro; quelle
         // non ancora in un piano sono anche fuori dalle rate, come le coppie dell'esercizio: nel saldo come nelle quote.
         foreach ($opere['esercizi_prima'] ?? [] as $g => $esercizi) {
-            foreach (DB::table('saldi')->where('condominio_id', $condominioId)->where('gestione_id', $g)->whereIn('esercizio_id', $esercizi)->whereNotNull('anagrafica_id')
-                ->whereNotNull('subentro_id')->get(['anagrafica_id', 'immobile_id', 'saldo_iniziale', 'is_applicato']) as $r) {
-                $coppie[$g][(int) $r->anagrafica_id][(int) $r->immobile_id] = ($coppie[$g][(int) $r->anagrafica_id][(int) $r->immobile_id] ?? 0) + (int) $r->saldo_iniziale;
+            $prima = DB::table('saldi')->where('condominio_id', $condominioId)->where('gestione_id', $g)->whereIn('esercizio_id', $esercizi)->whereNotNull('anagrafica_id')
+                ->whereNotNull('subentro_id')->get(['id', 'anagrafica_id', 'immobile_id', 'subentro_id', 'saldo_iniziale', 'is_applicato']);
+            $degliAddebitiPrima = Subentro::righeDegliAddebiti($prima->pluck('subentro_id')->all());
+            foreach ($prima as $r) {
+                if (! isset($degliAddebitiPrima[(int) $r->id])) {
+                    $coppie[$g][(int) $r->anagrafica_id][(int) $r->immobile_id] = ($coppie[$g][(int) $r->anagrafica_id][(int) $r->immobile_id] ?? 0) + (int) $r->saldo_iniziale;
+                }
                 if (! (bool) $r->is_applicato) {
                     $liberi[$g][(int) $r->anagrafica_id][(int) $r->immobile_id] = ($liberi[$g][(int) $r->anagrafica_id][(int) $r->immobile_id] ?? 0) + (int) $r->saldo_iniziale;
                 }
@@ -617,6 +649,8 @@ class ConsuntivoPerPersona
                     $riga['personali_non_tornano'] = $pu !== null && $pu['non_chieste'] + $pu['senza_titolare'] + $pu['non_emesse'] !== $pu['aperte'] ? $pu : null;
                     $riga['passaggio_non_registrato'] = $nonRegistrati[$iid] ?? [];
                     $riga['gia_versato_da_decidere'] = (int) ($daDecidere[$g][$iid] ?? 0);
+                    // Che cosa è cambiato nell'unità, per la frase della scheda: `titolare`, `inquilino` o `titolare_e_inquilino`.
+                    $riga['gia_versato_da_decidere_perche'] = $perche[$g][$iid] ?? null;
                     // La spesa con la competenza scritta sulla fattura che tocca l'unità, per conto, e la parte della persona (anche zero: quei giorni non
                     // erano suoi), con il primo e l'ultimo giorno e quante spese.
                     $riga['competenze_scritte'] = array_values(array_map(fn (array $c) => ['conto_id' => $c['conto_id'], 'dal' => $c['dal'], 'al' => $c['al'],
@@ -1281,11 +1315,13 @@ class ConsuntivoPerPersona
 
     /**
      * Le voci con la spesa dell'esercizio che due piani dell'esercizio dividono con periodi diversi (i tratti del capitolo: su un piano sì e sull'altro no,
-     * o diversi), quando almeno un'unità delle tabelle della voce cambia titolare nell'esercizio: `voce => nomi dei piani`. Senza un cambio di titolare i
+     * o diversi), quando almeno un'unità delle tabelle della voce cambia nell'esercizio un ruolo che nella voce ha una parte: un titolare di diritto
+     * reale sempre, un inquilino solo se la voce gli dà una parte su una tabella dell'unità o le righe del riparto gliene hanno data una
+     * ({@see partiDellInquilino()}). `voce => ['piani' => nomi dei piani, 'perche' => titolare|inquilino|titolare_e_inquilino]`. Senza un cambio così i
      * periodi non cambiano la parte di nessuno, e la voce si divide come sempre (con i periodi del primo piano).
      *
      * @param  list<int>  $voci
-     * @return array<int, list<string>>
+     * @return array<int, array{piani: list<string>, perche: string}>
      */
     private function vociConPeriodiDiversi($pianiDellEsercizio, array $voci, Esercizio $esercizio): array
     {
@@ -1317,6 +1353,8 @@ class ConsuntivoPerPersona
             $cerca = array_values(array_diff(array_unique(array_values($nuovi)), array_keys($padri)));
         }
         $cambiano = $this->unitaCheCambiano($esercizio);
+        $conInquilino = array_keys(array_filter($cambiano, fn (array $ruoli) => isset($ruoli[RuoloAnagraficaImmobile::INQUILINO->value])));
+        $parti = $conInquilino === [] ? ['per_conto' => []] : $this->partiDellInquilino($conInquilino, $pianiIds);
         $esito = [];
         foreach ($voci as $vid) {
             $capitolo = null;
@@ -1331,8 +1369,16 @@ class ConsuntivoPerPersona
             }
             $unita = DB::table('conto_tabella_millesimale as ctm')->join('quote_tabella as qt', 'qt.tabella_id', '=', 'ctm.tabella_id')
                 ->whereIn('ctm.conto_id', [(int) $vid, $capitolo])->where('qt.valore', '>', 0)->distinct()->pluck('qt.immobile_id')->map(fn ($id) => (int) $id)->all();
-            if (array_intersect_key($cambiano, array_flip($unita)) !== []) {
-                $esito[(int) $vid] = $diversi[$capitolo];
+            $titolare = false;
+            $inquilino = false;
+            foreach (array_intersect_key($cambiano, array_flip($unita)) as $iid => $ruoli) {
+                $paga = isset($parti['per_conto'][(int) $vid][$iid]) || isset($parti['per_conto'][$capitolo][$iid]);
+                $cambio = self::cambioDellUnita($ruoli, $paga);
+                $titolare = $titolare || in_array($cambio, ['titolare', 'titolare_e_inquilino'], true);
+                $inquilino = $inquilino || in_array($cambio, ['inquilino', 'titolare_e_inquilino'], true);
+            }
+            if ($titolare || $inquilino) {
+                $esito[(int) $vid] = ['piani' => $diversi[$capitolo], 'perche' => $titolare && $inquilino ? 'titolare_e_inquilino' : ($titolare ? 'titolare' : 'inquilino')];
             }
         }
 
@@ -1340,24 +1386,98 @@ class ConsuntivoPerPersona
     }
 
     /**
-     * Le unità del condominio con un cambio di titolare dentro l'esercizio: una riga che comincia dopo il primo giorno, o finisce prima dell'ultimo.
-     * Con `$soloDirittoReale` le sole righe di proprietario, nudo proprietario e usufruttuario.
+     * Le unità del condominio con un cambio dentro l'esercizio, con i ruoli che cambiano, secondo la regola del motore per ogni unità e ruolo
+     * (`RisolutoreTitolari::cambiaTitolaritaNelPeriodo`, D7): una riga che finisce prima dell'ultimo giorno, o che comincia dopo il primo con un
+     * predecessore chiuso il giorno prima o con un passaggio registrato. Una riga che comincia dentro l'anno senza né l'uno né l'altro non è un
+     * ingresso: quella data è il giorno in cui è stata scritta nel programma, e il motore la fa valere da sempre. Lo leggono la voce con i periodi
+     * diversi di due piani e il già versato dell'unità non usato.
      *
-     * @return array<int, true>
+     * @return array<int, array<string, true>> unità => ruolo => true
      */
-    private function unitaCheCambiano(Esercizio $esercizio, bool $soloDirittoReale = false): array
+    private function unitaCheCambiano(Esercizio $esercizio): array
     {
         $inizio = substr((string) $esercizio->data_inizio, 0, 10);
         $fine = substr((string) $esercizio->data_fine, 0, 10);
-        $q = DB::table('anagrafica_immobile as ai')->join('immobili as i', 'i.id', '=', 'ai.immobile_id')->where('i.condominio_id', $esercizio->condominio_id)
+        // Le sole unità con una data dentro l'esercizio; di quelle tutte le righe attive, perché il predecessore può essere chiuso prima dell'esercizio.
+        $unita = DB::table('anagrafica_immobile as ai')->join('immobili as i', 'i.id', '=', 'ai.immobile_id')->where('i.condominio_id', $esercizio->condominio_id)
             ->where('ai.attivo', true)
             ->where(fn ($w) => $w->where(fn ($x) => $x->where('ai.data_inizio', '>', $inizio)->where('ai.data_inizio', '<=', $fine))
-                ->orWhere(fn ($x) => $x->where('ai.data_fine', '>=', $inizio)->where('ai.data_fine', '<', $fine)));
-        if ($soloDirittoReale) {
-            $q->whereIn('ai.tipologia', array_map(fn (RuoloAnagraficaImmobile $r) => $r->value, RuoloAnagraficaImmobile::titolariDiDirittoReale()));
+                ->orWhere(fn ($x) => $x->where('ai.data_fine', '>=', $inizio)->where('ai.data_fine', '<', $fine)))
+            ->distinct()->pluck('ai.immobile_id')->map(fn ($id) => (int) $id)->all();
+        $periodo = PeriodoCompetenza::daEsercizio($esercizio);
+        $risolutore = app(RisolutoreTitolari::class);
+        $esito = [];
+        foreach (array_chunk($unita, 1000) as $ids) {
+            $righe = DB::table('anagrafica_immobile')->whereIn('immobile_id', $ids)->where('attivo', true)
+                ->get(['id', 'anagrafica_id', 'immobile_id', 'tipologia', 'quota', 'attivo', 'data_inizio', 'data_fine']);
+            foreach ($righe->groupBy(fn ($r) => $r->immobile_id.'|'.$r->tipologia) as $coppia) {
+                if ($risolutore->cambiaTitolaritaNelPeriodo($coppia, $periodo)) {
+                    $esito[(int) $coppia->first()->immobile_id][(string) $coppia->first()->tipologia] = true;
+                }
+            }
         }
 
-        return array_fill_keys($q->distinct()->pluck('ai.immobile_id')->map(fn ($id) => (int) $id)->all(), true);
+        return $esito;
+    }
+
+    /**
+     * Che cosa è cambiato in un'unità, per il già versato dell'unità non usato: `titolare` (un titolare di diritto reale), `inquilino` (un inquilino,
+     * quando nella gestione l'inquilino paga una parte), `titolare_e_inquilino`; null se niente che conti.
+     *
+     * @param  array<string, true>  $ruoli  i ruoli che cambiano nell'unità ({@see unitaCheCambiano()})
+     */
+    private static function cambioDellUnita(array $ruoli, bool $inquilinoPaga): ?string
+    {
+        $titolare = array_intersect_key($ruoli, array_flip(array_map(fn (RuoloAnagraficaImmobile $r) => $r->value, RuoloAnagraficaImmobile::titolariDiDirittoReale()))) !== [];
+        $inquilino = $inquilinoPaga && isset($ruoli[RuoloAnagraficaImmobile::INQUILINO->value]);
+
+        return match (true) {
+            $titolare && $inquilino => 'titolare_e_inquilino',
+            $titolare => 'titolare',
+            $inquilino => 'inquilino',
+            default => null,
+        };
+    }
+
+    /**
+     * Dove l'inquilino di un'unità paga una parte, per gestione e per conto: una voce con una parte per l'inquilino (percentuale maggiore di zero) su una
+     * tabella dove l'unità ha i millesimi (la regola con cui il consuntivo divide), o una riga del riparto dei piani data a un inquilino dell'unità
+     * (quello che le rate gli hanno chiesto, anche se la voce è cambiata dopo). Senza l'una e l'altra l'inquilino lì non paga niente: nessuna catena di
+     * ripiego porta una parte all'inquilino. La leggono il già versato dell'unità (per gestione) e la voce con i periodi diversi (per conto).
+     *
+     * @param  list<int>  $unita
+     * @param  list<int>  $pianiIds  i piani dell'esercizio
+     * @param  list<int>|null  $gestioni  solo queste gestioni; null, tutte
+     * @return array{per_gestione: array<int, array<int, true>>, per_conto: array<int, array<int, true>>}
+     */
+    private function partiDellInquilino(array $unita, array $pianiIds, ?array $gestioni = null): array
+    {
+        $esito = ['per_gestione' => [], 'per_conto' => []];
+        $q = DB::table('conto_tabella_ripartizioni as r')->join('conto_tabella_millesimale as ctm', 'ctm.id', '=', 'r.conto_tabella_millesimale_id')
+            ->join('conti', 'conti.id', '=', 'ctm.conto_id')->join('piani_conti as pc', 'pc.id', '=', 'conti.piano_conto_id')
+            ->join('quote_tabella as qt', 'qt.tabella_id', '=', 'ctm.tabella_id')
+            ->whereIn('qt.immobile_id', $unita)->where('qt.valore', '>', 0)
+            ->where('r.soggetto', RuoloAnagraficaImmobile::INQUILINO->value)->where('r.percentuale', '>', 0);
+        if ($gestioni !== null) {
+            $q->whereIn('pc.gestione_id', $gestioni);
+        }
+        $trovate = $q->distinct()->get(['pc.gestione_id', 'ctm.conto_id', 'qt.immobile_id'])->all();
+        if ($pianiIds !== []) {
+            $q = DB::table('righe_riparto as rr')->join('piani_rate as p', 'p.id', '=', 'rr.piano_rate_id')->whereIn('rr.piano_rate_id', $pianiIds)
+                ->whereIn('rr.immobile_id', $unita)->where('rr.ruolo_risolto', RuoloAnagraficaImmobile::INQUILINO->value)->where('rr.importo', '!=', 0);
+            if ($gestioni !== null) {
+                $q->whereIn('p.gestione_id', $gestioni);
+            }
+            array_push($trovate, ...$q->distinct()->get(['p.gestione_id', 'rr.conto_id', 'rr.immobile_id'])->all());
+        }
+        foreach ($trovate as $x) {
+            $esito['per_gestione'][(int) $x->gestione_id][(int) $x->immobile_id] = true;
+            if ($x->conto_id !== null) {
+                $esito['per_conto'][(int) $x->conto_id][(int) $x->immobile_id] = true;
+            }
+        }
+
+        return $esito;
     }
 
     /**

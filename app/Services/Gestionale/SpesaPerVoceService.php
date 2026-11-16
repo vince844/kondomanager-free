@@ -142,24 +142,64 @@ class SpesaPerVoceService
      * Così i dati scritti prima su una voce di entrata (una fattura registrata quando la registrazione le accettava, una regolazione scritta a
      * rovescio, una voce diventata un'entrata dopo) si leggono come si leggevano: nessuna lettura nuova per i dati vecchi.
      *
+     * Un terzo gruppo, **il versato dai condòmini per interessi e spese** (`accessori`): le righe con la voce delle scritture che passano un interesse o
+     * una spesa addebitati a una persona da «Accessori da incassare» alla voce, quando la persona li versa, e dei loro storni. Non sono entrate da terzi
+     * e non sono speso: si tolgono dallo speso come l'incassato, e si dicono a parte.
+     *
      * @param  array<int,int>  $mappa  il risultato di `perEsercizio()` per lo stesso esercizio
-     * @return array{spese: array<int,int>, incassato: array<int,int>}
+     * @return array{spese: array<int,int>, incassato: array<int,int>, accessori: array<int,int>}
      */
     public function perTipo(array $mappa, Esercizio $esercizio): array
     {
         if ($mappa === []) {
-            return ['spese' => [], 'incassato' => []];
+            return ['spese' => [], 'incassato' => [], 'accessori' => []];
         }
 
-        $incassato = $this->incassatoPerEsercizio($esercizio, array_map('intval', array_keys($mappa)));
+        $voci = array_map('intval', array_keys($mappa));
+        $incassato = $this->incassatoPerEsercizio($esercizio, $voci);
+        $accessori = $this->accessoriPerEsercizio($esercizio, $voci);
         $spese = [];
 
         foreach ($mappa as $voceId => $speso) {
-            // Lo speso comprende l'incasso con il segno meno: tolto quello, resta lo speso di prima.
-            $spese[$voceId] = (int) $speso + (int) ($incassato[$voceId] ?? 0);
+            // Lo speso comprende l'incasso e il versato per interessi e spese con il segno meno: tolti quelli, resta lo speso di prima.
+            $spese[$voceId] = (int) $speso + (int) ($incassato[$voceId] ?? 0) + (int) ($accessori[$voceId] ?? 0);
         }
 
-        return ['spese' => $spese, 'incassato' => $incassato];
+        return ['spese' => $spese, 'incassato' => $incassato, 'accessori' => $accessori];
+    }
+
+    /**
+     * Il versato dai condòmini per interessi e spese, per voce: il netto, positivo, delle righe con la voce delle scritture dell'esercizio che hanno una
+     * riga su «Accessori da incassare» (il versamento e il suo storno), con gli stessi filtri dello speso.
+     *
+     * @param  array<int>|null  $vociIds
+     * @return array<int,int>
+     */
+    public function accessoriPerEsercizio(Esercizio $esercizio, ?array $vociIds = null): array
+    {
+        if ($vociIds !== null && $vociIds === []) {
+            return [];
+        }
+
+        $righe = $this->queryBase($esercizio)
+            ->whereExists(fn ($sub) => \App\Services\Gestionale\Accessori\AccessoriDaIncassare::coppia($sub))
+            ->when($vociIds !== null, fn ($q) => $q->whereIn('rs.voce_spesa_id', $vociIds))
+            ->groupBy('rs.voce_spesa_id')
+            ->select([
+                'rs.voce_spesa_id',
+                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END), 0) as avere"),
+                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE 0 END), 0) as dare"),
+            ])
+            ->get();
+
+        $mappa = [];
+        foreach ($righe as $riga) {
+            if ((int) $riga->avere !== (int) $riga->dare) {
+                $mappa[(int) $riga->voce_spesa_id] = (int) $riga->avere - (int) $riga->dare;
+            }
+        }
+
+        return $mappa;
     }
 
     /**

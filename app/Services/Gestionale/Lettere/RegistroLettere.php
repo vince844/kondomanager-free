@@ -61,12 +61,19 @@ final class RegistroLettere
 
     public function __construct(private readonly LetturaDebiti $lettura, private readonly ArchivioDocumenti $archivio, private readonly AccordiRientro $accordi) {}
 
+    /** Le chiavi di `per_tipo`: la diffida e la messa in mora stanno insieme (la più recente delle due), il sollecito, il promemoria. */
+    public const PER_TIPO = ['diffida' => ['diffida', 'messa_in_mora'], 'sollecito' => ['sollecito'], 'promemoria' => ['promemoria']];
+
     /**
      * L'ultima lettera di ogni persona alla data (quelle partite, stampate o spedite) e, se dopo ce n'è una in coda o non partita, quella; e a
      * parte l'ultima che conta per i filtri dell'elenco (`conta`): partita o spedita, non solo stampata o scaricata.
      *
+     * `per_tipo`: l'ultima lettera di ogni tipo, in qualunque stato (stampata, partita, spedita, in coda, non partita), dalle righe già lette: una diffida
+     * seguita da un sollecito resta nella sua chiave. Ognuna porta in più il termine (`termine`, `termine_forma`, `termine_data`) e le rate che chiedeva
+     * (`righe`, le chiavi «rata|unità»), lette con una seconda lettura solo per queste lettere.
+     *
      * @param list<int> $persone
-     * @return array<int, array{ultima: ?array<string,mixed>, in_sospeso: ?array<string,mixed>, conta: ?array<string,mixed>}>
+     * @return array<int, array{ultima: ?array<string,mixed>, in_sospeso: ?array<string,mixed>, conta: ?array<string,mixed>, per_tipo: array<string, ?array<string,mixed>>}>
      */
     public function ultimePerPersone(int $condominioId, array $persone, string $alla): array
     {
@@ -84,19 +91,79 @@ final class RegistroLettere
                 'dati->spedizione->canale as spedizione_canale', 'dati->spedizione->data as spedizione_data', 'dati->spedizione->numero as spedizione_numero']);
 
         $esito = [];
+        // La prima riga di ogni lettera (una per indirizzo): da lì si leggono il termine e le rate delle lettere di `per_tipo`.
+        $primaDi = [];
         foreach ($righe->groupBy('anagrafica_id') as $persona => $sue) {
-            $lettere = $sue->groupBy(fn ($r) => (string) ($r->lettera ?? 'riga-' . $r->id))->map(fn (Collection $g) => self::lettera($g))
-                ->sortBy(fn ($l) => [$l['quando'], $l['id']])->values();
+            $lettere = $sue->groupBy(fn ($r) => (string) ($r->lettera ?? 'riga-' . $r->id))->map(function (Collection $g) use (&$primaDi) {
+                $l = self::lettera($g);
+                $primaDi[$l['id']] = (int) $g->min('id');
+
+                return $l;
+            })->sortBy(fn ($l) => [$l['quando'], $l['id']])->values();
             $uscite = $lettere->filter(fn ($l) => in_array($l['stato'], RegistroInvio::STATI_LETTERA_USCITA, true));
             $ultima = $uscite->last();
             $dopo = $lettere->filter(fn ($l) => ! in_array($l['stato'], RegistroInvio::STATI_LETTERA_USCITA, true) && ($ultima === null || $l['id'] > $ultima['id']))->last();
             // Quella che conta è la più recente per il giorno dei filtri (per una spedita il giorno della spedizione), non l'ultima emessa: una
             // diffida stampata prima e spedita dopo un promemoria è la lettera più recente.
             $conta = $lettere->filter(fn ($l) => in_array($l['stato'], RegistroInvio::STATI_LETTERA_ARRIVATA, true))->sortBy('data_dei_filtri')->last();
-            $esito[(int) $persona] = ['ultima' => $ultima, 'in_sospeso' => $dopo, 'conta' => $conta];
+            $perTipo = [];
+            foreach (self::PER_TIPO as $chiave => $tipi) {
+                $perTipo[$chiave] = $lettere->filter(fn ($l) => in_array($l['tipo'], $tipi, true))->last();
+            }
+            $esito[(int) $persona] = ['ultima' => $ultima, 'in_sospeso' => $dopo, 'conta' => $conta, 'per_tipo' => $perTipo];
+        }
+
+        // Il termine e le rate delle sole lettere di `per_tipo`: una lettura piccola, con la prima riga di ogni lettera.
+        $prime = [];
+        foreach ($esito as $persona => $e) {
+            foreach ($e['per_tipo'] as $chiave => $l) {
+                if ($l !== null) {
+                    $prime[$primaDi[$l['id']]] = [$persona, $chiave];
+                }
+            }
+        }
+        if ($prime !== []) {
+            $dati = RegistroInvio::query()->whereIn('id', array_keys($prime))
+                ->get(['id', 'dati->righe as righe', 'dati->termine as termine', 'dati->termine_forma as termine_forma', 'dati->termine_data as termine_data']);
+            foreach ($dati as $r) {
+                [$persona, $chiave] = $prime[(int) $r->id];
+                $righe = is_string($r->righe) ? json_decode($r->righe, true) : (array) ($r->righe ?? []);
+                $esito[$persona]['per_tipo'][$chiave] += [
+                    'termine' => self::testoJson($r->termine) === null ? null : (int) self::testoJson($r->termine),
+                    'termine_forma' => self::testoJson($r->termine_forma),
+                    'termine_data' => self::testoJson($r->termine_data),
+                    'righe' => array_values(array_map(fn ($x) => AccordiRientro::chiave($x['rata_id'] ?? null, $x['immobile_id'] ?? null), is_array($righe) ? $righe : [])),
+                ];
+            }
         }
 
         return $esito;
+    }
+
+    /**
+     * Le lettere di un condominio arrivate in un periodo, per tipo: partite per email o spedite (come per «mai scritto»: una lettera solo stampata o
+     * scaricata non conta, il programma non sa se è stata mandata), con il giorno che contano i filtri (per una spedita, quello della spedizione).
+     * Le righe della stessa lettera, una per indirizzo, sono una lettera.
+     *
+     * @return array<string, int>
+     */
+    public function contaArrivate(int $condominioId, string $dal, string $al): array
+    {
+        $inizio = Carbon::parse($dal, self::fuso())->startOfDay()->subDays(400)->utc();
+        $fine = Carbon::parse($al, self::fuso())->addDay()->startOfDay()->utc();
+        $righe = RegistroInvio::query()->where('condominio_id', $condominioId)->whereIn('tipo', RegistroInvio::TIPI_LETTERE)
+            ->where('emesso_il', '>=', $inizio)->where('emesso_il', '<', $fine)->orderBy('emesso_il')->orderBy('id')
+            ->get(['id', 'anagrafica_id', 'tipo', 'canale', 'stato', 'destinatario', 'emesso_il', 'dati->lettera as lettera', 'dati->formato as formato',
+                'dati->spedizione->canale as spedizione_canale', 'dati->spedizione->data as spedizione_data', 'dati->spedizione->numero as spedizione_numero']);
+        $conti = [];
+        foreach ($righe->groupBy(fn ($r) => (string) ($r->lettera ?? 'riga-'.$r->id)) as $gruppo) {
+            $l = self::lettera($gruppo);
+            if (in_array($l['stato'], RegistroInvio::STATI_LETTERA_ARRIVATA, true) && $l['data_dei_filtri'] >= $dal && $l['data_dei_filtri'] <= $al) {
+                $conti[$l['tipo']] = ($conti[$l['tipo']] ?? 0) + 1;
+            }
+        }
+
+        return $conti;
     }
 
     /** I giorni fra la data di una lettera e la data dell'elenco, nel calendario dell'amministratore. */
@@ -264,7 +331,7 @@ final class RegistroLettere
                     'path' => $percorso,
                     'mime_type' => $file->getMimeType(),
                     'file_size' => $file->getSize(),
-                    'created_by' => $utente?->id ?? 1,
+                    'created_by' => $utente?->id,
                     'is_published' => false,
                     'is_approved' => true,
                 ]);
@@ -387,7 +454,7 @@ final class RegistroLettere
             'id'          => (int) $righe->max('id'),
             'quando'      => $prima->emesso_il->toIso8601String(),
             'tipo'        => $prima->tipo,
-            'data'        => $prima->emesso_il->copy()->setTimezone(self::fuso())->format('Y-m-d'),
+            'data'        => $data,
             'canale'      => $prima->canale === RegistroInvio::CANALE_STAMPA && $prima->formato === 'zip' ? 'zip' : $prima->canale,
             'stato'       => self::statoDiLettera($righe->pluck('stato')->all()),
             'destinatari' => $righe->pluck('destinatario')->filter()->values()->all(),

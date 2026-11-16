@@ -43,6 +43,39 @@ As required by the GNU Affero General Public License v3.0:
    patent license under their essential patent claims.
 
 ================================================================================
+            ADDITIONAL TERMS UNDER AGPLv3 SECTION 7(b) AND 7(c)
+================================================================================
+
+As permitted by Section 7 of the GNU Affero General Public License v3.0, the
+copyright holder adds the following terms to this software and to every work
+based on it. They are not "further restrictions" and may not be removed.
+
+1. AUTHOR ATTRIBUTION IN THE SOURCE FILES (Section 7(b))
+   Every source file that carries the lines
+
+     SPDX-License-Identifier: AGPL-3.0-or-later
+     Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+     Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
+   must keep them intact in every copy, modified or not. Whoever modifies a
+   file may add their own copyright line below them.
+
+2. AUTHOR ATTRIBUTION IN THE USER INTERFACE (Section 7(b))
+   The Appropriate Legal Notices displayed by the software (Section 5(d)) must
+   keep, in a place reasonably visible to its users, the attribution
+   "KondoManager" together with a link to the source code at
+   https://github.com/vince844/kondomanager-free.
+
+3. MODIFIED VERSIONS (Section 7(c))
+   A modified version must be marked in a reasonable way as different from
+   the original (for example in the Appropriate Legal Notices and in the
+   NOTICE file) and must not be presented as the original KondoManager or as
+   a version released by its author.
+
+Removing or altering these attributions violates the License and terminates
+the rights it grants (Section 8).
+
+================================================================================
                         THIRD-PARTY COMPONENTS NOTICE
 ================================================================================
 

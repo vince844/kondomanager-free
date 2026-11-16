@@ -407,6 +407,9 @@ const handleSubmit = () => {
     });
 };
 
+// La conferma vale per l'IBAN visto nella finestra: se l'amministratore lo cambia, la finestra va chiesta di nuovo.
+watch(() => form.iban_beneficiario, () => { form.iban_confermato_manualmente = false; });
+
 const confirmIban = () => {
     form.iban_confermato_manualmente = true;
     showIbanConfirmModal.value = false;
@@ -453,8 +456,8 @@ const transactionStatus = computed(() => {
 const ibanDiscrepanza = computed(() => {
     if (!form.iban_beneficiario) return false;
     if (!selectedFornitore.value?.iban_principale) return false;
-    const input = form.iban_beneficiario.replace(/\s+/g, '').toUpperCase();
-    const target = selectedFornitore.value.iban_principale.replace(/\s+/g, '').toUpperCase();
+    const input = form.iban_beneficiario.replace(/[\s\u200B\uFEFF]+/g, '').toUpperCase();
+    const target = selectedFornitore.value.iban_principale.replace(/[\s\u200B\uFEFF]+/g, '').toUpperCase();
     return input !== target;
 });
 

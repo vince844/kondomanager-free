@@ -32,6 +32,9 @@ class BudgetMovementController extends Controller
         // dell'indirizzo: niente lega i due parametri fra loro. Guardia a mano, come in
         // `CassaController` e `TabellaQuotaController`. Vedi la coda ㊷ in `docs/roadmap.md`.
         abort_unless($pianoRate->condominio_id === $condominio->id, 404);
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            return back()->withErrors(['piano' => $rifiuto]);
+        }
 
         // 1. Validazione
         //

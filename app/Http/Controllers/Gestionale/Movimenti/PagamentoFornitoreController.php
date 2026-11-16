@@ -220,9 +220,12 @@ class PagamentoFornitoreController extends Controller
         $preselectedFatturaId = request('fattura_id') ? (int) request('fattura_id') : null;
         $preselectedFornitoreId = request('fornitore_id') ? (int) request('fornitore_id') : null;
 
-        if ($preselectedFatturaId && ! $preselectedFornitoreId) {
-            $fattura = FatturaPassiva::find($preselectedFatturaId);
-            if ($fattura) {
+        // La fattura si legge nel condominio della pagina: con il numero di una fattura di un altro condominio la pagina non sceglie niente.
+        if ($preselectedFatturaId) {
+            $fattura = FatturaPassiva::where('condominio_id', $condominio->id)->find($preselectedFatturaId);
+            if (! $fattura) {
+                $preselectedFatturaId = null;
+            } elseif (! $preselectedFornitoreId) {
                 $preselectedFornitoreId = $fattura->fornitore_id;
             }
         }

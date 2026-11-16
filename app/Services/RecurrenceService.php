@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services;
 
@@ -86,7 +89,7 @@ class RecurrenceService
     {
         $query = Evento::query()
             ->whereNull('recurrence_id')
-            ->where('visibility', '!=', 'hidden')
+            ->where(fn (Builder $q) => $this->visibiliAllAmministratore($q))
             ->with('categoria', 'condomini', 'anagrafiche');
 
         $query->where(function ($q) use ($start, $end) {
@@ -201,12 +204,38 @@ class RecurrenceService
     {
         $query = Evento::query()
             ->whereNotNull('recurrence_id')
-            ->where('visibility', '!=', 'hidden')
+            ->where(fn (Builder $q) => $this->visibiliAllAmministratore($q))
             ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche']);
 
         $this->applyFilters($query, $filters);
 
         return $query->get()->flatMap(fn($event) => $this->expandRecurringEvent($event, $start, $end, $filters));
+    }
+
+    /**
+     * Gli eventi che l'agenda dell'amministratore mostra: quelli non nascosti, e fra i nascosti i promemoria che l'amministratore ha messo nell'agenda
+     * («Ricordamelo», «Mettilo in agenda»: tipo `promemoria`) e i compiti aperti spostati da un «Ricordamelo» in attesa, nel giorno scelto. Gli altri compiti
+     * dell'Inbox restano fuori dall'agenda, come prima. Il promemoria a parte di un compito che non c'è più o che il programma ha chiuso da solo non si mostra:
+     * il compito è fatto. Ai condòmini niente di questo (le loro letture sono a parte).
+     */
+    private function visibiliAllAmministratore(Builder $query): void
+    {
+        $query->where('eventi.visibility', '!=', 'hidden')
+            ->orWhere(fn (Builder $p) => $p->where('eventi.tipo', \App\Enums\EventoTipo::PROMEMORIA->value)
+                ->whereNotExists(fn ($r) => $r->selectRaw('1')->from('risposte_promemoria as rp')
+                    ->leftJoin('eventi as compito', 'compito.id', '=', 'rp.evento_id')
+                    ->where('rp.argomento', 'compito')
+                    ->whereColumn('rp.promemoria_evento_id', 'eventi.id')
+                    // Chiuso con la regola delle Inbox (`Evento::scopeCompitiAperti`): la colonna, o `meta.requires_action` non vero (la sopravvenienza
+                    // chiusa da `GeneratePianoRateAction` scrive solo il `meta`).
+                    ->where(fn ($c) => $c->whereNull('rp.evento_id')->orWhere('compito.is_completed', true)
+                        ->orWhereNull('compito.meta->requires_action')
+                        ->orWhereJsonDoesntContain('compito.meta->requires_action', true))))
+            ->orWhere(fn (Builder $c) => $c->where('eventi.is_completed', false)
+                ->whereIn('eventi.id', fn ($r) => $r->select('rp.promemoria_evento_id')->from('risposte_promemoria as rp')
+                    ->where('rp.argomento', 'compito')
+                    ->where('rp.stato', 'ricordamelo')
+                    ->whereColumn('rp.promemoria_evento_id', 'rp.evento_id')));
     }
 
     /**

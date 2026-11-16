@@ -144,6 +144,9 @@ final class EmissioneLettere
             'campi'              => TestiLettere::CAMPI,
             'conti'              => $this->conti($condominio),
             'scelta_ricordata'   => $this->sceltaRicordata($condominio, $utente),
+            // Il termine di serie delle regole del recupero del condominio, se lo dicono: la finestra lo propone quando non ricorda un termine.
+            'termine_di_serie'   => \App\Services\Gestionale\Accessori\RegoleDelRecupero::termineDelleLettere(
+                (new \App\Services\Gestionale\Accessori\RegoleDelRecupero())->delCondominio((int) $condominio->id), DateHelper::oggiUtente()),
             'studio'             => self::studio(),
             'studio_compilato'   => self::studio()['nome'] !== null,
             // Le lettere escono su una carta intestata che si legge: lo studio lo porta la carta, e la frase della finestra lo dice.
@@ -448,6 +451,8 @@ final class EmissioneLettere
                     'unita'        => $d['unita'],
                     'piano'        => $d['piano'],
                     'numero_rata'  => (int) $d['numero_rata'],
+                    // La causale di un addebito a una persona sola: la lettera la scrive al posto di «Rata N».
+                    'addebito'     => $d['addebito'] ?? null,
                     'scadenza'     => $d['scadenza'],
                     // Il residuo della rata, come la lettura: la guardia alla partenza lo rilegge. Nella lettera c'è quello che resta fuori
                     // dall'accordo (`da_versare`), con la parte in accordo a parte.
@@ -461,8 +466,28 @@ final class EmissioneLettere
         }
         uasort($contenuti, fn ($a, $b) => [mb_strtolower($a['nome']), $a['anagrafica_id']] <=> [mb_strtolower($b['nome']), $b['anagrafica_id']]);
         sort($soloInAccordo);
+        // Gli interessi e le spese addebitati fra le righe della lettera, con la cifra che la lettera chiede, e il tasso delle regole del recupero di
+        // oggi: i segnaposto della lettera. Stanno nel suo totale.
+        $accessori = \App\Services\Gestionale\Accessori\AccessoriDellePersone::nelleRighe((int) $condominio->id, array_map(fn (array $p) => array_map(fn (array $r) => [
+            'rata_id' => $r['rata_id'], 'immobile_id' => $r['immobile_id'] ?? null, 'importo' => (int) ($r['da_versare'] ?? $r['residuo']),
+        ], $p['righe']), $contenuti));
+        $tasso = self::tassoDellaLettera($condominio);
+        foreach ($contenuti as $id => $p) {
+            $contenuti[$id]['accessori'] = ($accessori[$id] ?? ['interessi' => 0, 'spese' => 0]) + ['tasso' => $tasso];
+        }
 
         return ['persone' => $contenuti, 'aggiunte' => $aggiunte, 'uscite' => $uscite, 'senza_niente' => $senzaNiente, 'solo_in_accordo' => $soloInAccordo];
+    }
+
+    /**
+     * Il segnaposto `[tasso]` di oggi: «1,60 % annuo, tasso legale», «3,00 % annuo, art. 12 del regolamento»; senza il tasso legale dell'anno nella
+     * tabella, «il tasso legale dell'anno».
+     */
+    private static function tassoDellaLettera(Condominio $condominio): string
+    {
+        $regole = (new \App\Services\Gestionale\Accessori\RegoleDelRecupero())->delCondominio((int) $condominio->id);
+
+        return \App\Services\Gestionale\Accessori\RegoleDelRecupero::tassoPerLaLettera($regole, DateHelper::oggiUtente()) ?? 'il tasso legale dell\'anno';
     }
 
     /** Il ritardo di una rata nella lettera, sotto «Ritardo»: «N giorni», o per un pregresso senza un numero di quale esercizio è. */
@@ -546,6 +571,9 @@ final class EmissioneLettere
                 'accordo_passato' => $p['accordo_passato'],
                 'righe'       => count($p['righe']),
                 'credito'     => $p['credito'],
+                // I segnaposto della persona: gli interessi e le spese addebitati fra le righe della lettera.
+                'interessi'   => (int) ($p['accessori']['interessi'] ?? 0),
+                'spese'       => (int) ($p['accessori']['spese'] ?? 0),
                 'canale'      => $canali[$id],
                 'canali'      => in_array($tipo, self::TIPI_SOLO_CARTA, true) ? ['stampa', 'zip'] : self::CANALI,
                 'indirizzi'   => collect($scelti)->map(fn ($indirizzo, $t) => ['tipo' => $t, 'indirizzo' => $indirizzo])->values()->all(),
@@ -573,6 +601,10 @@ final class EmissioneLettere
             // Chi ha solo rate in un accordo di rientro: non è nella lettera, se l'amministratore non le rimette.
             'solo_in_accordo'    => $c['solo_in_accordo'],
             'anche_in_accordo'   => self::ancheInAccordo($input),
+            // Per `[interessi]` e `[spese]`: chi non ne ha fra le righe della lettera riceve «€ 0,00», e la finestra lo dice.
+            'interessi_a_zero'   => count(array_filter($persone, fn ($p) => $p['interessi'] === 0)),
+            'spese_a_zero'       => count(array_filter($persone, fn ($p) => $p['spese'] === 0)),
+            'tasso'              => self::tassoDellaLettera($condominio),
             'studio_compilato'   => self::studio()['nome'] !== null,
             // Le lettere escono su una carta intestata che si legge: lo studio lo porta la carta, e la frase della finestra lo dice.
             'carta_intestata'    => self::cartaIntestata(),
@@ -1116,7 +1148,7 @@ final class EmissioneLettere
                     'path' => $percorso,
                     'mime_type' => 'application/pdf',
                     'file_size' => strlen($pdf),
-                    'created_by' => $utente?->id ?? 1,
+                    'created_by' => $utente?->id,
                     'is_published' => false,
                     'is_approved' => true,
                 ]);
@@ -1154,7 +1186,7 @@ final class EmissioneLettere
             'singola'      => ! empty($scelte['singola']) ? true : null,
             'rifatta_da'   => $scelte['rifatta_da'] ?? null,
             'testo'   => TestiLettere::riempi($scelte['modello'], $persona['nome'], $persona['totale'], TestiLettere::termineNelTesto(['termine_forma' => $scelte['termine_forma'] ?? null,
-                'termine' => $scelte['termine'], 'termine_data' => $scelte['termine_data'] ?? null]), (string) $condominio->nome),
+                'termine' => $scelte['termine'], 'termine_data' => $scelte['termine_data'] ?? null]), (string) $condominio->nome, $persona['accessori'] ?? []),
             'righe'   => $persona['righe'],
             'totale'  => $persona['totale'],
             // La parte delle rate in accordo di rientro lasciata fuori dalla lettera, e la scelta di rimetterla.
@@ -1169,6 +1201,10 @@ final class EmissioneLettere
         ];
         if ($scelte['cassa'] !== null) {
             $dati += ['cassa_id' => $scelte['cassa']['id'], 'iban' => $scelte['cassa']['iban'], 'intestatario' => $scelte['cassa']['intestatario']];
+        }
+        // I segnaposto degli interessi, delle spese e del tasso riempiti, come erano il giorno della lettera, se il testo li usa.
+        if (preg_match('/\[(interessi|spese|tasso)\]/', (string) $scelte['modello']) === 1 && isset($persona['accessori'])) {
+            $dati['segnaposti'] = $persona['accessori'];
         }
 
         return array_filter($dati, fn ($v) => $v !== null);

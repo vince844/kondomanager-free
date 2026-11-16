@@ -35,6 +35,10 @@ class PianoRateGenerationController extends Controller
         SyncOrphanChaptersAction $syncAction
     ): RedirectResponse
     {
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            return back()->with($this->flashError($rifiuto));
+        }
+
         // Validazione Input (Array di ID opzionale)
         $validated = $request->validate([
             'orphan_ids' => 'nullable|array',

@@ -49,7 +49,7 @@ class ApproveDocumentoNotification extends LocalizedNotification implements Shou
                 'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome)
             ]))
             ->line(__('notifications.approve_document.line_1', [
-                'user' => self::nomeComeTesto($this->documento->createdBy->name)
+                'user' => self::nomeComeTesto($this->documento->createdBy?->name ?? \App\Http\Resources\Documenti\DocumentoResource::AUTORE_ELIMINATO)
             ]))
             ->line(__('notifications.approve_document.line_2'))
             ->line('**' . __('notifications.approve_document.title') . ':** ' . self::testoComeTesto($this->documento->name))

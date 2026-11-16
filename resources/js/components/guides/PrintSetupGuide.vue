@@ -162,7 +162,8 @@ defineEmits(['update:open']);
             </h3>
             <p class="mb-3">
               Il testo del campo «Nota legale» va in fondo alle pagine delle stampe, sotto la data di emissione (le lettere, le ricevute e gli avvisi la
-              hanno in testa) e con il numero di pagina; è lo stesso con ogni carta. Il frontespizio del fascicolo e il modello F24 non hanno il piede.
+              hanno in testa) e con il numero di pagina; è lo stesso con ogni carta. Anche il frontespizio del fascicolo ha il piede,
+              con il numero di pagina del fascicolo; il modello F24 non ha né la nota legale né il numero di pagina.
             </p>
             <ul class="space-y-3 list-disc pl-5 mb-4">
               <li>

@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -6,10 +11,12 @@ import { useEventStyling } from '@/composables/useEventStyling';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
 import { format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { Building2, Wallet, Banknote, CalendarDays, AlertCircle, ArrowRight, CheckCircle, AlertTriangle, Clock, XCircle, TrendingDown } from 'lucide-vue-next';
+import { Building2, Wallet, Banknote, CalendarDays, AlertCircle, ArrowRight, CheckCircle, AlertTriangle, Clock, XCircle, TrendingDown, Info } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3'; 
 import { compensazioneDopoLEmissione, inAttesaDellaCompensazione } from '@/lib/eventi/compensazione';
+// Il collegamento del compito senza l'indirizzo del sito con cui è stato scritto.
+import { percorsoDelCompito } from '@/lib/inbox/indirizzoDelCompito';
 
 const props = defineProps<{ isOpen: boolean; evento: any; }>();
 const emit = defineEmits(['close']);
@@ -65,6 +72,9 @@ const creditoRimasto = computed<number>(() => {
 const isPaid = computed(() => props.evento?.meta?.status === 'paid'); 
 const isReported = computed(() => props.evento?.meta?.status === 'reported');
 const isRejected = computed(() => props.evento?.meta?.status === 'rejected');
+// Dopo la chiusura della segnalazione, se il versamento è andato su altre rate: dove, con le cifre (la frase la scrive il server).
+const esitoSegnalazione = computed<string | null>(() => (!isPaid.value && !isReported.value && typeof props.evento?.meta?.esito_segnalazione === 'string'
+    ? props.evento.meta.esito_segnalazione : null));
 
 // In attesa della compensazione: la persona non ha altro da versare e una sua quota aspetta il credito di un'altra sulla stessa
 // rata, che l'amministratore deve ancora compensare. Su una rata non ancora emessa non c'è niente da aspettare.
@@ -310,6 +320,8 @@ const reportPaymentWithCredit = () => {
                     
                     <h2 class="text-xl font-bold pr-10 leading-tight flex items-start gap-2" :class="[isExpired ? 'text-red-600 dark:text-red-500' : 'text-slate-900 dark:text-white', hasFinancialDetails ? 'mb-6' : 'mb-3']"> <AlertTriangle v-if="isExpired" class="w-6 h-6 shrink-0" /> {{ evento.title }} </h2>
                     
+                    <div v-if="esitoSegnalazione" class="mb-3 p-4 rounded-lg bg-sky-50 border border-sky-100 dark:bg-sky-900/20 dark:border-sky-800" data-testid="esito-segnalazione"><div class="flex items-start gap-3"><Info class="w-5 h-5 text-sky-600 shrink-0 mt-0.5 dark:text-sky-400" /><div><h4 class="font-bold text-sky-800 text-sm dark:text-sky-300">Il tuo versamento</h4><p class="text-xs text-sky-700 mt-1 leading-relaxed dark:text-sky-200">{{ esitoSegnalazione }}</p></div></div></div>
+
                     <div v-if="isRejected" class="mb-3 p-4 rounded-lg bg-red-50 border border-red-100"><div class="flex items-start gap-3"><XCircle class="w-5 h-5 text-red-600 shrink-0 mt-0.5" /><div><h4 class="font-bold text-red-700 text-sm">Pagamento rifiutato</h4><div class="bg-white p-2.5 rounded text-xs text-red-800 font-medium border border-red-200/50 italic mt-2"> "{{ evento.meta?.rejection_reason }}" </div><p class="text-xs text-red-500 mt-2">Verifica i dati e riprova.</p></div></div></div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -553,7 +565,7 @@ const reportPaymentWithCredit = () => {
                     </div>
 
                     <div v-if="isAdmin && evento.meta?.action_url" class="mb-6">
-                        <Button as-child class="w-full h-12 text-white font-semibold shadow-lg rounded-lg" :class="isExpired ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'"><a :href="evento.meta.action_url" class="flex items-center justify-center gap-2">{{ isExpired ? 'Emetti subito' : "Vai all'emissione" }}<ArrowRight class="w-4 h-4" /></a></Button>
+                        <Button as-child class="w-full h-12 text-white font-semibold shadow-lg rounded-lg" :class="isExpired ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'"><a :href="percorsoDelCompito(evento.meta.action_url) ?? undefined" class="flex items-center justify-center gap-2">{{ isExpired ? 'Emetti subito' : "Vai all'emissione" }}<ArrowRight class="w-4 h-4" /></a></Button>
                     </div>
 
                     <div v-if="evento.description && !(isCondomino && isPaid && !isGeneratingCredit)" :class="hasFinancialDetails ? 'mt-3 pt-3 border-t border-slate-100 dark:border-slate-800' : ''">

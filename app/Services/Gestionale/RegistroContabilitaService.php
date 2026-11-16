@@ -121,6 +121,8 @@ class RegistroContabilitaService
     public function registroConRiepilogo(Esercizio $esercizio, array $filtri = []): array
     {
         $riporto = app(RiportoDiCassa::class)->perCassaReale($esercizio);
+        $tuttiLeParti = $riporto['parti'] ?? [];
+        unset($riporto['parti']);
         $tutte = $this->calcola($esercizio, $riporto);
         $righe = $this->applicaFiltri($tutte, $filtri);
 
@@ -166,7 +168,59 @@ class RegistroContabilitaService
             $saldi[$c]['uscite'] += $riga['uscita'];
         }
 
+        // Con il filtro di una cassa le card sono di quella cassa: il suo riporto, il suo saldo alla data, il suo saldo a fine mese. Le stesse cifre del
+        // dettaglio delle casse, prese da qui.
+        $cassa = isset($filtri['cassa']) ? (int) $filtri['cassa'] : null;
+        if ($cassa !== null) {
+            $suo = collect($riporto['per_cassa'])->firstWhere('cassa_id', $cassa);
+            $riporto = ['totale' => (int) ($suo['riporto'] ?? 0), 'per_cassa' => $suo === null ? [] : [$suo]];
+            $saldoFinale = $riporto['totale'];
+            foreach ($tutte as $riga) {
+                if ($dataRiferimento !== null && $riga['data'] > $dataRiferimento) {
+                    break;
+                }
+                if ($riga['cassa_id'] === $cassa) {
+                    $saldoFinale = $riga['saldo_cassa_progressivo'];
+                }
+            }
+            $nome = (string) ($suo['cassa'] ?? DB::table('casse')->where('id', $cassa)->value('nome'));
+            $saldi = [$nome => ['cassa' => $nome, 'saldo' => $saldoFinale, 'movimenti' => count($righe), 'entrate' => (int) array_sum(array_column($righe, 'entrata')),
+                'uscite' => (int) array_sum(array_column($righe, 'uscita')), 'riporto' => $riporto['totale']]];
+        }
+
+        // Il denaro dei fondi nato nell'esercizio senza passare da questa cassa (un fondo accantonato da una banca poi chiusa, il denaro registrato
+        // direttamente in un fondo): non è una riga del registro, ma è nel saldo, come nella scheda «Cassa». Quello del primo giorno è già nel riporto.
+        $nomi = DB::table('casse')->where('condominio_id', $esercizio->condominio_id)->pluck('nome', 'id');
+        $nelSaldo = [];
+        foreach ($tuttiLeParti as $id => $parti) {
+            foreach ($parti as $parte) {
+                if ($parte['quando'] === 'esercizio' && ($cassa === null || $cassa === (int) $id) && ($dataRiferimento === null || $parte['data'] <= $dataRiferimento)) {
+                    $nelSaldo[] = $parte + ['cassa_id' => (int) $id];
+                    $saldoFinale += $parte['importo'];
+                    $n = (string) $nomi[$id];
+                    $saldi[$n] ??= ['cassa' => $n, 'saldo' => 0, 'movimenti' => 0, 'entrate' => 0, 'uscite' => 0, 'riporto' => 0];
+                    $saldi[$n]['saldo'] += $parte['importo'];
+                }
+            }
+        }
+        $partiDelMese = [];
+        foreach ($tuttiLeParti as $id => $parti) {
+            foreach ($parti as $parte) {
+                if ($parte['quando'] === 'esercizio' && ($cassa === null || $cassa === (int) $id)) {
+                    $partiDelMese[] = $parte;
+                }
+            }
+        }
+        // Con il filtro di una cassa, come è composto il suo saldo: i suoi movimenti nel registro, e le parti dei fondi che non sono passate da lei.
+        $composizione = null;
+        if ($cassa !== null) {
+            $parti = FondiNelConto::unite($tuttiLeParti[$cassa] ?? [], $dataRiferimento);
+            $composizione = ['movimenti' => $saldoFinale - (int) array_sum(array_column($parti, 'importo')),
+                'voce_movimenti' => 'I movimenti di «'.(string) $nomi[$cassa].'» nel registro', 'parti' => $parti, 'saldo' => $saldoFinale];
+        }
+
         return [
+            'composizione' => $composizione,
             'righe' => $righe,
             'data_riferimento' => $dataRiferimento,
             'saldo_finale' => $saldoFinale,
@@ -175,8 +229,72 @@ class RegistroContabilitaService
             'riporto' => $riporto + ['etichetta' => $riporto['per_cassa'] !== [] && collect($riporto['per_cassa'])->every('da_apertura')
                 ? 'Saldo di apertura' : 'Riporto dall\'esercizio precedente'],
             'totali_per_tipo' => $this->totaliPerTipo($righe),
-            'saldi_fine_mese' => $this->saldiFineMese($righe, $tutte, $riporto['totale']),
+            'saldi_fine_mese' => $this->saldiFineMese($righe, $tutte, $riporto['totale'], $cassa, $partiDelMese),
         ];
+    }
+
+    /**
+     * Il registro di una cassa reale contro la sua riga nella scheda «Cassa» del rendiconto, per tutto l'esercizio: le due cifre e che cosa le fa diverse.
+     * Il registro mostra i movimenti stornati e i loro storni, che nella scheda si annullano; non mostra gli accantonamenti fra il conto e i suoi fondi,
+     * che nella scheda stanno nelle righe «di cui»; la scheda mette nel conto i fondi che gli appartengono, il registro conta i movimenti di questa cassa.
+     *
+     * @param  array<string,mixed>  $riepilogo  il prospetto per cassa dell'esercizio ({@see RiepilogoFinanziarioService::perEsercizio()})
+     * @param  list<int>  $stornate  le registrazioni delle coppie stornate dell'esercizio ({@see RiepilogoFinanziarioService::coppieStornate()})
+     * @return array{cassa:string, scheda:?array<string,int>, registro:array<string,int>, storni:array{entrate:int, uscite:int}, interni:int, differenza:?int, frase:string}
+     */
+    public function confrontoConLaScheda(Esercizio $esercizio, int $cassa, array $riepilogo, array $stornate): array
+    {
+        $riporto = app(RiportoDiCassa::class)->perCassaReale($esercizio);
+        $parti = $riporto['parti'][$cassa] ?? [];
+        $righe = array_values(array_filter($this->calcola($esercizio, $riporto), fn ($r) => $r['cassa_id'] === $cassa));
+        $inizio = (int) (collect($riporto['per_cassa'])->firstWhere('cassa_id', $cassa)['riporto'] ?? 0);
+        $nelSaldo = (int) array_sum(array_column(array_filter($parti, fn ($p) => $p['quando'] === 'esercizio'), 'importo'));
+        $registro = ['riporto' => $inizio, 'entrate' => (int) array_sum(array_column($righe, 'entrata')), 'uscite' => (int) array_sum(array_column($righe, 'uscita'))];
+        $registro['saldo'] = ($righe === [] ? $inizio : (int) $righe[array_key_last($righe)]['saldo_cassa_progressivo']) + $nelSaldo;
+        $inCoppia = array_flip($stornate);
+        $storni = ['entrate' => 0, 'uscite' => 0];
+        foreach ($righe as $r) {
+            if (isset($inCoppia[$r['scrittura_id']])) {
+                $storni['entrate'] += (int) ($r['entrata'] ?? 0);
+                $storni['uscite'] += (int) ($r['uscita'] ?? 0);
+            }
+        }
+        $conto = collect($riepilogo['conti'] ?? [])->first(fn ($c) => ! $c['senza_banca'] && $c['cassa_id'] === $cassa);
+        $nome = (string) ($conto['cassa'] ?? DB::table('casse')->where('id', $cassa)->value('nome'));
+        $eur = fn (int $c) => '€'."\u{a0}".number_format($c / 100, 2, ',', '.');
+        if ($conto === null) {
+            return ['cassa' => $nome, 'scheda' => null, 'registro' => $registro, 'storni' => $storni, 'interni' => 0, 'differenza' => null,
+                'frase' => 'Nella scheda Cassa del rendiconto questa cassa non ha una riga.'];
+        }
+        $scheda = ['iniziale' => (int) $conto['iniziale'], 'entrate' => (int) $conto['entrate'], 'uscite' => (int) $conto['uscite'], 'finale' => (int) $conto['finale']];
+        $differenza = $registro['saldo'] - $scheda['finale'];
+        $frasi = [$differenza === 0
+            ? 'Per tutto l\'esercizio, la scheda Cassa del rendiconto chiude «'.$nome.'» allo stesso saldo, '.$eur($scheda['finale']).'.'
+            : 'Per tutto l\'esercizio, la scheda Cassa del rendiconto chiude «'.$nome.'» a '.$eur($scheda['finale']).', il registro a '.$eur($registro['saldo']).'.'];
+        if ($storni['entrate'] !== 0 || $storni['uscite'] !== 0) {
+            $frasi[] = 'Qui compaiono i movimenti stornati e i loro storni ('.$eur($storni['entrate']).' fra le entrate e '.$eur($storni['uscite'])
+                .' fra le uscite), che nella scheda si annullano.';
+        }
+        if ((int) $conto['interni'] !== 0) {
+            $frasi[] = 'Gli spostamenti fra il conto e i suoi fondi ('.$eur((int) $conto['interni']).') qui non compaiono, come nella riga del conto della scheda: '
+                .'il denaro resta sullo stesso conto, e la scheda li mostra nelle righe «di cui».';
+        }
+        if (FondiNelConto::unite($parti) !== []) {
+            $frasi[] = 'Il saldo conta anche il denaro dei fondi che non è passato da questa cassa: «Come è composta», accanto al saldo, lo dice voce per voce.';
+        }
+        if ($differenza !== 0) {
+            // Le casse virtuali (i pagamenti online) sono nel conto per la scheda e fuori dal registro, che legge banca e contanti.
+            $virtuali = collect($conto['di_cui'])->where('tipo', 'virtuale')->filter(fn ($d) => (int) $d['finale'] !== 0);
+            $frasi[] = $virtuali->isNotEmpty() && (int) $virtuali->sum('finale') === -$differenza
+                ? 'La differenza, '.$eur(abs($differenza)).', è il denaro '.($virtuali->count() === 1 ? 'della cassa «'.$virtuali->first()['cassa'].'»' : 'delle casse '
+                    .$virtuali->map(fn ($d) => '«'.$d['cassa'].'»')->implode(', ')).': '.($virtuali->count() === 1 ? 'è una cassa virtuale (per esempio i pagamenti online), che ' : 'sono casse virtuali, che ')
+                    .'la scheda conta nel conto corrente; il registro di contabilità legge solo i movimenti di banca e contanti, e quel denaro qui non c\'è.'
+                : 'La differenza, '.$eur(abs($differenza)).', viene da registrazioni che il registro non legge come movimenti di questa cassa: una riga sul conto della '
+                    .'banca senza la cassa, o una cassa virtuale. Il Libro Giornale le mostra.';
+        }
+
+        return ['cassa' => $nome, 'scheda' => $scheda, 'registro' => $registro, 'storni' => $storni, 'interni' => (int) $conto['interni'], 'differenza' => $differenza,
+            'frase' => implode(' ', $frasi)];
     }
 
     /**
@@ -246,7 +364,7 @@ class RegistroContabilitaService
      * @param  array<int, array<string, mixed>>  $tutte
      * @return list<array{mese:string, fine:string, movimenti:int, entrate:int, uscite:int, saldo:int}>
      */
-    private function saldiFineMese(array $righe, array $tutte, int $riporto): array
+    private function saldiFineMese(array $righe, array $tutte, int $riporto, ?int $cassa = null, array $partiEsercizio = []): array
     {
         $mesi = [];
         foreach ($righe as $r) {
@@ -256,12 +374,23 @@ class RegistroContabilitaService
             $mesi[$mese]['entrate'] += (int) ($r['entrata'] ?? 0);
             $mesi[$mese]['uscite'] += (int) ($r['uscita'] ?? 0);
         }
+        // Con il filtro di una cassa, il saldo di quella cassa.
         foreach ($mesi as &$m) {
             foreach ($tutte as $r) {
                 if ($r['data'] > $m['fine']) {
                     break;
                 }
-                $m['saldo'] = $r['saldo_progressivo'];
+                if ($cassa === null) {
+                    $m['saldo'] = $r['saldo_progressivo'];
+                } elseif ($r['cassa_id'] === $cassa) {
+                    $m['saldo'] = $r['saldo_cassa_progressivo'];
+                }
+            }
+            // Il denaro dei fondi nato nell'esercizio senza passare dalla cassa, fino alla fine del mese.
+            foreach ($partiEsercizio as $p) {
+                if ($p['data'] <= $m['fine']) {
+                    $m['saldo'] += $p['importo'];
+                }
             }
         }
         unset($m);
@@ -679,6 +808,7 @@ class RegistroContabilitaService
                 DB::raw($this->stornataSql().' as stornata'),
                 'sc.tipo_movimento',
                 'ca.nome as cassa_nome',
+                'rs.cassa_id',
                 'rs.tipo_riga',
                 'rs.importo',
                 DB::raw($this->controparteSql().' as controparte'),
@@ -700,9 +830,10 @@ class RegistroContabilitaService
         // rispondere — «e su QUESTO conto quanto c'era?» — quando le casse reali sono più di una
         // (banca + contanti, o due conti bancari). Non è una colonna: vive nel pannello che si
         // apre sulla riga, perché è una domanda che si fa su un movimento, non su tutti.
+        // Per cassa, non per nome: due casse con lo stesso nome restano due.
         $saldiPerCassa = [];
         foreach ($riporto['per_cassa'] as $r) {
-            $saldiPerCassa[$r['cassa']] = $r['riporto'];
+            $saldiPerCassa[$r['cassa_id']] = $r['riporto'];
         }
 
         $tutte = $righe->map(function ($r) use (&$saldo, &$numero, &$saldiPerCassa, $pagamenti) {
@@ -710,7 +841,7 @@ class RegistroContabilitaService
             $uscita = $r->tipo_riga === 'avere' ? (int) $r->importo : null;
             $saldo += ($entrata ?? 0) - ($uscita ?? 0);
 
-            $chiaveCassa = (string) $r->cassa_nome;
+            $chiaveCassa = (int) $r->cassa_id;
             $saldiPerCassa[$chiaveCassa] = ($saldiPerCassa[$chiaveCassa] ?? 0) + ($entrata ?? 0) - ($uscita ?? 0);
             $numero++;
 
@@ -752,6 +883,7 @@ class RegistroContabilitaService
                 // banca + contanti): senza questo campo un saldo combinato in calo non direbbe
                 // quale dei due è scoperto. Richiesto da Vincenzo aprendo la pagina a video.
                 'cassa' => $r->cassa_nome,
+                'cassa_id' => (int) $r->cassa_id,
                 'tipo_movimento' => $r->tipo_movimento,
                 'tipo_movimento_label' => TipoMovimentoContabile::tryFrom((string) $r->tipo_movimento)?->label()
                     ?? $r->tipo_movimento,
@@ -774,7 +906,7 @@ class RegistroContabilitaService
      * mostrerebbe un registro diverso da quello che l'amministratore ha guardato.
      *
      * @param  array<int, array<string, mixed>>  $righe
-     * @param  array{data_da?:string,data_a?:string,search?:string}  $filtri
+     * @param  array{data_da?:string,data_a?:string,search?:string,cassa?:int}  $filtri
      * @return array<int, array<string, mixed>>
      */
     private function applicaFiltri(array $righe, array $filtri, array $campi = ['descrizione', 'protocollo', 'controparte', 'cassa']): array
@@ -784,12 +916,17 @@ class RegistroContabilitaService
         $cerca = ! empty($filtri['search']) && is_string($filtri['search'])
             ? mb_strtolower(trim($filtri['search']))
             : null;
+        $cassa = isset($filtri['cassa']) ? (int) $filtri['cassa'] : null;
 
-        if ($da === null && $a === null && $cerca === null) {
+        if ($da === null && $a === null && $cerca === null && $cassa === null) {
             return $righe;
         }
 
-        return array_values(array_filter($righe, function (array $riga) use ($da, $a, $cerca, $campi) {
+        return array_values(array_filter($righe, function (array $riga) use ($da, $a, $cerca, $campi, $cassa) {
+            if ($cassa !== null && (int) ($riga['cassa_id'] ?? 0) !== $cassa) {
+                return false;
+            }
+
             if ($da !== null && $riga['data'] < $da) {
                 return false;
             }

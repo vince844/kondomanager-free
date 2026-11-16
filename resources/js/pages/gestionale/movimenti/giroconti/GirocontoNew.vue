@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import GirocontiGuide from '@/components/guides/GirocontiGuide.vue';
@@ -11,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Repeat2, Landmark, AlertTriangle, PiggyBank, Info } from 'lucide-vue-next';
@@ -50,6 +56,11 @@ const props = defineProps<{
     casse: Cassa[];
     coperture_in_attesa: Copertura[];
     copertura_preselezionata_id: number | null;
+    /**
+     * Il giroconto già impostato dall'indirizzo (l'azione consigliata della tesoreria «Sposta € … da … a …»): le due casse e la cifra in centesimi, già
+     * controllate dal server; quello che non torna arriva vuoto. I campi sono solo compilati: si registra con «Registra giroconto», dopo la causale.
+     */
+    preselezione?: { origine: number | null; destinazione: number | null; importo_cents: number | null } | null;
 }>();
 
 const { generateRoute, generatePath } = usePermission();
@@ -100,16 +111,20 @@ interface FormGiroconto {
     giroconto_non_ammesso?: string;
 }
 
+// Il giroconto già impostato dall'indirizzo, se non arriva una copertura da confermare (che sceglie da sé la partenza e la cifra).
+const daCopertura = !!props.copertura_preselezionata_id && props.coperture_in_attesa.some(c => c.id === props.copertura_preselezionata_id);
+const gia = daCopertura ? null : (props.preselezione ?? null);
+
 // NB: il campo NON può chiamarsi `data` — useForm di Inertia espone già un metodo
 // form.data(), la collisione impedisce al v-model di legarsi e il campo resta vuoto.
 const form = useForm<FormGiroconto>({
     gestione_id: null,
     esercizio_id: props.esercizi.length === 1 ? props.esercizi[0].id : null,
-    cassa_origine_id: null,
-    cassa_destinazione_id: null,
+    cassa_origine_id: gia?.origine ?? null,
+    cassa_destinazione_id: gia?.destinazione ?? null,
     data_operazione: oggi,
     causale: '',
-    importo: 0,
+    importo: gia?.importo_cents ? gia.importo_cents / 100 : 0,
     fattura_copertura_id: null,
 });
 
@@ -259,6 +274,9 @@ onMounted(() => {
     if (props.copertura_preselezionata_id
         && props.coperture_in_attesa.some(c => c.id === props.copertura_preselezionata_id)) {
         form.fattura_copertura_id = props.copertura_preselezionata_id;
+    } else if (gia?.origine && gia?.destinazione && gia?.importo_cents) {
+        // Le casse e la cifra ci sono già: manca la causale.
+        document.getElementById('causale')?.focus();
     } else {
         document.getElementById('importo')?.focus();
     }
@@ -292,10 +310,7 @@ function onKeydown(e: KeyboardEvent) {
                 back-text="Indietro"
             >
                 <template #actions>
-                    <Button variant="outline" size="sm" class="bg-white gap-2 text-violet-700 hover:bg-violet-50 hover:text-violet-800 border-violet-200" @click="showGuideCompleta = true">
-                        <Repeat2 class="w-4 h-4" />
-                        Guida completa
-                    </Button>
+                    <PulsanteGuida testo="Guida completa" @click="showGuideCompleta = true" />
                 </template>
             </PageHeaderGuide>
 
@@ -317,7 +332,7 @@ function onKeydown(e: KeyboardEvent) {
                  class="mb-6 rounded-2xl border border-slate-900 bg-slate-900 p-6 text-slate-100 shadow-sm dark:border-slate-700">
                 <div class="mb-2 flex items-center gap-2">
                     <PiggyBank class="h-4 w-4 text-violet-300" />
-                    <span class="text-xs font-semibold uppercase tracking-wide">Coperture in attesa di conferma</span>
+                    <span class="text-xs font-semibold tracking-wide">Coperture in attesa di conferma</span>
                 </div>
                 <p class="mb-4 text-xs leading-relaxed text-slate-400">
                     Qui compaiono le fatture registrate in sforamento con strategia «Fondo di riserva»:
@@ -423,11 +438,11 @@ function onKeydown(e: KeyboardEvent) {
                                     <div class="flex items-center justify-between gap-3 py-0.5">
                                         <div class="flex items-center gap-2 overflow-hidden">
                                             <span class="truncate text-sm font-semibold">{{ nome }}</span>
-                                            <span class="shrink-0 rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                            <span class="shrink-0 rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                                 {{ etichettaTipo[tipo as Cassa['tipo']] }}
                                             </span>
                                             <span v-if="tipo === 'fondo' && !is_utilizzabile_per_imprevisti"
-                                                  class="shrink-0 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                                                  class="shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400">
                                                 vincolato — serve deroga assembleare
                                             </span>
                                         </div>
@@ -437,7 +452,7 @@ function onKeydown(e: KeyboardEvent) {
                                 <template #selected-option="{ nome, saldo_cents }">
                                     <div class="flex items-center gap-2">
                                         <span class="text-sm font-semibold">{{ nome }}</span>
-                                        <span class="text-[10px] text-slate-400">{{ euroCents(saldo_cents) }}</span>
+                                        <span class="text-xs text-slate-400">{{ euroCents(saldo_cents) }}</span>
                                     </div>
                                 </template>
                             </vSelect>
@@ -466,7 +481,7 @@ function onKeydown(e: KeyboardEvent) {
                                     <div class="flex items-center justify-between gap-3 py-0.5">
                                         <div class="flex items-center gap-2 overflow-hidden">
                                             <span class="truncate text-sm font-semibold">{{ nome }}</span>
-                                            <span class="shrink-0 rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                            <span class="shrink-0 rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                                 {{ etichettaTipo[tipo as Cassa['tipo']] }}
                                             </span>
                                         </div>
@@ -476,7 +491,7 @@ function onKeydown(e: KeyboardEvent) {
                                 <template #selected-option="{ nome, saldo_cents }">
                                     <div class="flex items-center gap-2">
                                         <span class="text-sm font-semibold">{{ nome }}</span>
-                                        <span class="text-[10px] text-slate-400">{{ euroCents(saldo_cents) }}</span>
+                                        <span class="text-xs text-slate-400">{{ euroCents(saldo_cents) }}</span>
                                     </div>
                                 </template>
                             </vSelect>
@@ -511,17 +526,17 @@ function onKeydown(e: KeyboardEvent) {
                     <div class="mb-5 flex items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
                             <Landmark class="h-4 w-4 text-slate-400" />
-                            <span class="text-xs font-semibold uppercase tracking-wide">Anteprima scrittura</span>
+                            <span class="text-xs font-semibold tracking-wide">Anteprima scrittura</span>
                         </div>
-                        <span class="rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider text-slate-300">
+                        <span class="rounded-md border border-slate-700 bg-slate-800/80 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-300">
                             GIR · {{ form.data_operazione ? form.data_operazione.split('-').reverse().join('/') : '—' }}
                         </span>
                     </div>
 
                     <div class="space-y-2.5">
-                        <div class="rounded-lg border-l-2 border-emerald-400/80 bg-white/[0.04] px-4 py-3">
+                        <div class="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
                             <div class="flex items-center justify-between gap-3">
-                                <span class="text-[10px] font-black uppercase tracking-widest text-emerald-300">Dare</span>
+                                <span class="text-xs font-bold text-emerald-300">Dare</span>
                                 <span class="shrink-0 text-base font-semibold tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
                                     {{ importoValido ? euro(form.importo) : '—' }}
                                 </span>
@@ -531,9 +546,9 @@ function onKeydown(e: KeyboardEvent) {
                             </p>
                         </div>
 
-                        <div class="rounded-lg border-l-2 border-rose-400/80 bg-white/[0.04] px-4 py-3">
+                        <div class="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
                             <div class="flex items-center justify-between gap-3">
-                                <span class="text-[10px] font-black uppercase tracking-widest text-rose-300">Avere</span>
+                                <span class="text-xs font-bold text-rose-300">Avere</span>
                                 <span class="shrink-0 text-base font-semibold tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
                                     {{ importoValido ? euro(form.importo) : '—' }}
                                 </span>
@@ -546,9 +561,9 @@ function onKeydown(e: KeyboardEvent) {
 
                     <!-- Il sigillo della partita doppia: si accende quando la scrittura è completa. -->
                     <div class="mt-4 flex items-center justify-between border-t border-dashed border-slate-700 pt-3">
-                        <span class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Quadratura</span>
+                        <span class="text-xs font-bold text-slate-400">Quadratura</span>
                         <span v-if="puoRegistrare" class="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-                            <span class="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-[10px]">✓</span>
+                            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-xs">✓</span>
                             Dare = Avere
                         </span>
                         <span v-else class="text-xs text-slate-500">in attesa dei dati…</span>

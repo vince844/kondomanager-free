@@ -2,6 +2,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Enums\RuoloAnagraficaImmobile;
+
 /**
  * Le parole del conguaglio per chi legge il foglio della persona e le stampe del fascicolo: il condòmino, che non sa di contabilità e non usa il
  * programma. La scheda «Conguaglio» dell'amministratore ha le sue ({@see ConguaglioDelRendiconto}): il perché di una spesa non divisa con che cosa
@@ -19,10 +21,10 @@ final class ParoleDelConguaglio
     public const NON_CALCOLATO = 'non ancora calcolato';
 
     /** Il conguaglio di un'unità che ancora non c'è, nel foglio della persona. */
-    public const UNITA_NON_CALCOLATA = 'Il conguaglio di questa unità non è ancora calcolato: l\'amministratore le manderà la cifra.';
+    public const UNITA_NON_CALCOLATA = 'Il conguaglio di questa unità non è ancora calcolato: questo foglio non ha la sua cifra.';
 
     /** Il conguaglio di una gestione che ancora non c'è, nella stampa per persona. */
-    public const GESTIONE_NON_CALCOLATA = 'Il conguaglio di questa gestione non è ancora calcolato: l\'amministratore lo completerà.';
+    public const GESTIONE_NON_CALCOLATA = 'Il conguaglio di questa gestione non è ancora calcolato: questa stampa non ha le sue cifre.';
 
     /** Il perché di una spesa non divisa fra i condòmini, per ognuno dei motivi della scheda: la causa, senza l'istruzione. */
     public const MOTIVI = [
@@ -96,10 +98,15 @@ final class ParoleDelConguaglio
     public static function perche(string $motivoDellaScheda): string
     {
         $codice = array_search($motivoDellaScheda, ConguaglioDelRendiconto::MOTIVI, true);
-        // La voce ferma per i periodi diversi ha i nomi dei piani al posto di «dell'esercizio»: il resto della frase è lo stesso.
-        $coda = mb_substr(ConguaglioDelRendiconto::MOTIVI['periodi_diversi'] ?? '', mb_strlen('I piani dell\'esercizio '));
-        if ($codice === false && $coda !== '' && str_starts_with($motivoDellaScheda, 'I piani ') && str_ends_with($motivoDellaScheda, $coda)) {
-            $codice = 'periodi_diversi';
+        // La voce ferma per i periodi diversi ha i nomi dei piani al posto di «dell'esercizio», e che cosa è cambiato nell'unità: il resto della frase è
+        // lo stesso. Per chi legge, la stessa cosa cambiata.
+        if ($codice === false && str_starts_with($motivoDellaScheda, 'I piani ')) {
+            foreach (array_keys(ConguaglioDelRendiconto::CAMBIO_DELL_UNITA) as $perche) {
+                $coda = mb_substr(ConguaglioDelRendiconto::conIlCambio(ConguaglioDelRendiconto::MOTIVI['periodi_diversi'], $perche), mb_strlen('I piani dell\'esercizio '));
+                if (str_ends_with($motivoDellaScheda, $coda)) {
+                    return ConguaglioDelRendiconto::conIlCambio(self::MOTIVI['periodi_diversi'], $perche);
+                }
+            }
         }
 
         return $codice === false ? self::MOTIVO_DI_RIPIEGO : (self::MOTIVI[$codice] ?? self::MOTIVO_DI_RIPIEGO);
@@ -115,6 +122,23 @@ final class ParoleDelConguaglio
         $chiave = self::chiaveFuoriDaiCapitoli($nomeDellaScheda);
 
         return self::FUORI_DAI_CAPITOLI[$chiave] ?? [$nomeDellaScheda, self::MOTIVO_DI_RIPIEGO];
+    }
+
+    /**
+     * I giorni di una riga a parole: «181 giorni»; per chi ha avuto l'unità in più di un ruolo, i giorni di ogni ruolo che non ha avuto tutto l'anno,
+     * con il ruolo: «306 giorni come proprietario», «59 giorni come inquilino, 306 giorni come proprietario». Null se la riga non ha giorni da dire.
+     *
+     * @param  list<array{ruolo:string, giorni:int}>  $perRuolo  {@see ConguaglioDelRendiconto::giorniDellaRiga()}
+     */
+    public static function giorni(?int $giorni, array $perRuolo = []): ?string
+    {
+        $quanti = fn (int $n) => $n === 1 ? '1 giorno' : $n.' giorni';
+        if ($perRuolo !== []) {
+            return implode(', ', array_map(fn (array $g) => $quanti((int) $g['giorni']).' come '
+                .mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $g['ruolo'])?->label() ?? (string) $g['ruolo']), $perRuolo));
+        }
+
+        return $giorni === null ? null : $quanti($giorni);
     }
 
     /** Una cifra con il suo verbo, per chi non legge i segni: «da versare € 410,00», «a credito € 65,75», «nessuna cifra». */

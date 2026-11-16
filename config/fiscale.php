@@ -93,7 +93,14 @@ return [
         '01-01', '01-06', '04-25', '05-01', '06-02', '08-15', '11-01', '12-08', '12-25', '12-26',
     ],
 
+    // Il tasso degli interessi legali (art. 1284 c.c.), dal 1° gennaio di ogni anno, in punti percentuali: lo legge la proposta degli interessi di
+    // mora. Prima del 2019, o per un anno non ancora scritto, la proposta si ferma su quella rata e chiede un tasso scritto con la sua fonte.
     'interessi_legali' => [
+        ['dal' => '2019-01-01', 'tasso' => 0.8],
+        ['dal' => '2020-01-01', 'tasso' => 0.05],
+        ['dal' => '2021-01-01', 'tasso' => 0.01],
+        ['dal' => '2022-01-01', 'tasso' => 1.25],
+        ['dal' => '2023-01-01', 'tasso' => 5.0],
         ['dal' => '2024-01-01', 'tasso' => 2.5],
         ['dal' => '2025-01-01', 'tasso' => 2.0],
         ['dal' => '2026-01-01', 'tasso' => 1.6],

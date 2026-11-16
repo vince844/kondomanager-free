@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * La pagina «Rendiconto»: le sei schede, la Sintesi con i quattro riquadri, le fasce e il prospetto della gestione; la scheda «Controlli» con l'elenco
@@ -83,7 +86,7 @@ it('la Sintesi di Via Roma: deliberato € 4.110,00; costi € 4.131,00 = 100,5 
         ->and($fasce['commissioni']['da_assegnare'])->toBe(1)
         ->and($fasce['contestate']['importo'])->toBe(15000)->and($fasce['contestate']['frase'])->toStartWith('€ 150,00 di fatture contestate')
         ->and($si['prospetto']['risultato'])->toBe(-2100)->and($si['prospetto']['quote_giornale'])->toBe(411000)->and($si['prospetto']['costi'])->toBe(413100)
-        ->and($si['esito']['frase'])->toBe('13 tornano, 0 non tornano, 1 da leggere')
+        ->and($si['esito']['frase'])->toBe('13 tornano, 0 non tornano, 1 da leggere, 1 non calcolato')
         ->and($si['stato']['frase'])->toBe('Esercizio finito al 31/12/2026: sono alla data di fine la situazione patrimoniale, le fatture aperte, il pagato e le quote dei piani; costi, quote registrate, risultato ed entrate e uscite per cassa contano le registrazioni dell\'esercizio, anche con la data dopo la fine; i vincoli dei fondi sono a oggi.')
         ->and($props['parti'])->toBe(FascicoloDelRendiconto::PARTI);
 
@@ -127,7 +130,9 @@ it('le schede dalla rotta: i dati che la pagina riceve sono quelli dei servizi; 
     $c = app(ControlliDelRendiconto::class)->perEsercizio($s['c'], $s['e'], null, [], null, null, [], app(\App\Services\Gestionale\ConguaglioDelRendiconto::class)->leggi($s['e']));
     $p = app(StatoPatrimonialePaginaService::class)->costruisci($s['c'], $s['e']);
 
-    expect($controlli['controlli'])->toEqual($c['controlli'])->and($controlli['esito'])->toEqual($c['esito'])->and($controlli['anno_a_cavallo'])->toEqual($c['anno_a_cavallo'])
+    // Il controllo della banca, nella scheda, porta anche i suoi conti con le possibili cause: il resto è quello del servizio.
+    $senzaConti = array_map(fn ($x) => array_diff_key($x, ['banche' => true]), $controlli['controlli']);
+    expect($senzaConti)->toEqual($c['controlli'])->and($controlli['esito'])->toEqual($c['esito'])->and($controlli['anno_a_cavallo'])->toEqual($c['anno_a_cavallo'])
         ->and($cassa['cassa']['riepilogo'])->toEqual($p['riepilogo'])->and($cassa['cassa']['raccordo'])->toEqual($p['raccordo']);
     $this->actingAs($this->user)->get(route('admin.gestionale.esercizi.stato-patrimoniale.index', [$s['c'], $s['e']]))->assertOk()
         ->assertInertia(fn ($page) => $page->component('gestionale/movimenti/statoPatrimoniale/Show'));
@@ -226,7 +231,7 @@ it('la stampa della situazione ha in testa l\'esito dei controlli con la riga fi
         ->and($html['controlli'])->toContain('<span class="badge ok">torna</span>')->and($html['controlli'])->toContain('<span class="badge warn">da leggere</span>')
         ->and($html['controlli'])->not->toContain('>quadra</span>');
 
-    expect($html['intera'])->toContain('I controlli: 13 tornano, 0 non tornano, 1 da leggere.')->and($html['intera'])->toContain(e(ControlliDelRendiconto::RIGA_FISSA))
+    expect($html['intera'])->toContain('I controlli: 13 tornano, 0 non tornano, 1 da leggere, 1 non calcolato.')->and($html['intera'])->toContain(e(ControlliDelRendiconto::RIGA_FISSA))
         ->and($html['intera'])->toContain('Registrazioni oltre il confine dell&#039;esercizio')->and($html['intera'])->toContain('I costi tornano con il riepilogo')
         ->and($html['situazione'])->toContain('I controlli: 13 tornano')->and($html['situazione'])->toContain('Fatture aperte al 31/12/2026')->and($html['situazione'])->not->toContain('Controlli di quadratura')
         ->and($html['cassa'])->toContain('Entrate e uscite per cassa')->and($html['cassa'])->not->toContain('Fatture aperte al')->and($html['cassa'])->not->toContain('I controlli: 12 tornano')
@@ -252,7 +257,7 @@ it('il fascicolo: le parti nell\'ordine fisso qualunque sia l\'ordine delle spun
         ->and($f['indice'][1]['pagina'])->toBe(2 + $f['indice'][0]['pagine'])
         // Senza la parte del conguaglio il fascicolo non lo legge: i suoi quattro controlli sono «non calcolati», a parte, e la riga degli esiti dice perché.
         ->and(vrmTesto($html))->toContain('I controlli: 9 tornano, 1 da leggere (l\'amministratore lo spiegherà in assemblea); 4 non sono calcolati: leggono il conguaglio, '
-            .'che non è in questo fascicolo. Sono quadrature interne dei numeri; non sostituiscono il confronto con l\'estratto conto della banca.')
+            .'che non è in questo fascicolo; il saldo della banca non è confrontato, perché l\'amministratore non ha indicato il saldo dell\'estratto conto della banca.'.' Sono quadrature interne dei numeri, e del saldo registrato con quello dell\'estratto conto della banca quando l\'amministratore lo indica; non dicono che ogni spesa e ogni entrata è stata registrata.')
         ->and($html)->not->toContain(e(ControlliDelRendiconto::RIGA_FISSA))
         ->and($html)->toContain('Indice')->and($html)->toContain('L\'amministratore')->and($html)->toContain('€ -21,00')
         // Il registro nomina chi ha versato: il frontespizio lo dice in prima pagina.
@@ -317,7 +322,7 @@ it('il fascicolo di Via Roma parla a chi lo riceve: che cosa vogliono dire gli e
 
     // Il frontespizio.
     // I controlli per chi legge: quanti tornano, chi spiega l'altro, che cosa non sono; le righe, con le parole della contabilità, nella loro pagina.
-    expect($t['frontespizio']['testo'])->toContain('I controlli: 13 tornano, 1 da leggere (l\'amministratore lo spiegherà in assemblea).')
+    expect($t['frontespizio']['testo'])->toContain('I controlli: 13 tornano, 1 da leggere (l\'amministratore lo spiegherà in assemblea); il saldo della banca non è confrontato, perché l\'amministratore non ha indicato il saldo dell\'estratto conto della banca.')
         ->not->toContain('Vincoli e casse fondo: da leggere')->not->toContain('ammanco')
         ->toContain('Le righe dei controlli, per chi vuole il dettaglio, sono a pagina '.$pagina.'.')
         ->toContain('Risultato: quote registrate in questo esercizio € 4.110,00 − costi € 4.131,00')
@@ -513,7 +518,7 @@ it('un fondo senza sottotipo si legge «Fondo riserva · vincolato» nel § 4 de
         ->and($t['situazione']['testo'])->toContain('Fondo lavori · vincolato ai lavori')->not->toContain('vincolato ai lavori, vincolato')->toContain('Fondo libero · generico, liberamente utilizzabile');
     // A video la pagina dice ancora il suo sottotipo, e il servizio lo dà come sempre.
     $fondi = collect($t['situazione']['dati']['pagina']['liquidita']['fondi'])->keyBy('cassa');
-    expect($fondi['Fondo riserva']['sottotipo_label'])->toBe('sottotipo non indicato')->and($fondi['Fondo lavori']['sottotipo_label'])->toBe('vincolato ai lavori');
+    expect($fondi['Fondo riserva']['sottotipo_label'])->toBe('tipo non indicato')->and($fondi['Fondo lavori']['sottotipo_label'])->toBe('vincolato ai lavori');
 });
 
 it('il frontespizio dice «Contiene dati personali» solo se una parte con i dati dei condòmini ha pagine: con le parti vuote la frase non c\'è', function () {
@@ -542,7 +547,8 @@ it('il fascicolo: una parte vuota si salta e l\'indice lo dice (nessuna rata non
     $f = app(FascicoloDelRendiconto::class)->genera($s['c'], $s['e'], []);
     $indice = collect($f['indice'])->keyBy('titolo');
 
-    expect(array_values(array_unique(array_column($f['indice'], 'parte'))))->toBe(FascicoloDelRendiconto::PARTI)
+    // La nota sintetica non scritta non ha una riga nell'indice: il frontespizio dice che il fascicolo non la contiene.
+    expect(array_values(array_unique(array_column($f['indice'], 'parte'))))->toBe(array_values(array_diff(FascicoloDelRendiconto::PARTI, ['nota'])))
         ->and($indice['Crediti per anzianità']['nota'])->toBe('vuota: nessuna rata non pagata alla data')->and($indice['Crediti per anzianità']['pagina'])->toBeNull()
         ->and($indice['Posizioni dei condòmini']['nota'])->toBe('vuota: nessuna posizione diversa da zero alla data')
         ->and(rpgPagine($f['pdf']))->toBe(1 + array_sum(array_column($f['indice'], 'pagine')));

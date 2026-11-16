@@ -40,7 +40,7 @@ class RicevuteIncassiController extends Controller
     public const FRASI_RIAPRI_PDF = [
         'stampa'          => 'Il PDF della stampa non si riapre dall\'indirizzo della scheda, e aprire quell\'indirizzo non ha stampato niente. Per averlo di nuovo ristampa la ricevuta da «Stampa o invia ricevuta», nel menu dell\'incasso, o da questa pagina fra le già emesse: esce come copia.',
         'pdf-anteprima'   => 'L\'anteprima non si riapre dall\'indirizzo della scheda: per vederla di nuovo premi «Anteprima» nella finestra della ricevuta («Stampa o invia ricevuta», nel menu dell\'incasso) o in quella della stampa in blocco.',
-        'pdf-per-persona' => 'L\'archivio con un PDF per persona non si riscarica dall\'indirizzo della scheda: per averlo di nuovo premi «Scarica un PDF per persona» in questa pagina.',
+        'pdf-per-persona' => 'L\'archivio con un PDF per persona non si riscarica dall\'indirizzo della scheda: per averlo di nuovo premi «PDF per persona» in questa pagina.',
     ];
 
     public function __construct(

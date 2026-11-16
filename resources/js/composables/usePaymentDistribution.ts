@@ -138,15 +138,19 @@ export function usePaymentDistribution() {
     };
 
     /**
-     * Le righe che il server dice scadute (`scaduta`: la data, emesse o no). Sono la testa dell'ordine proposto, che va per
-     * scadenza: pagarle non lascia aperta davanti a loro una rata più vecchia.
+     * Le righe che il server dice scadute (`scaduta`: la data, emesse o no) e gli interessi e le spese addebitati alla persona che
+     * l'ordine proposto mette prima del capitale (`in_testa`: scaduti o del giorno). Sono la testa dell'ordine: pagarle non lascia
+     * aperta davanti a loro una riga che l'ordine mette prima. Un accessorio che scade più avanti sta fra le rate da scadere.
      */
-    const pagaScadute = (rateList: Rata[]) => { 
+    const pagaScadute = (rateList: Rata[], versamentoAccordo = false) => { 
         mode.value = 'manual'; 
         let somma = 0; 
         rateList.forEach(r => { 
-            const res = parseMoney(r.residuo);
-            if (r.scaduta === true && res > 0) { 
+            // Con un accordo di rientro in corso la parte coperta esce dall'ordine: «Paga scadute» paga la parte fuori; con «Versamento
+            // dell'accordo» paga la parte dentro.
+            const inAccordo = Math.min(Math.max(0, parseMoney(r.residuo)), r.in_accordo ?? 0);
+            const res = parseFloat((versamentoAccordo ? inAccordo : parseMoney(r.residuo) - inAccordo).toFixed(2));
+            if ((r.scaduta === true || r.in_testa === true || (versamentoAccordo && inAccordo > 0)) && res > 0) { 
                 r.da_pagare = res; 
                 r.selezionata = true; 
                 somma += res; 

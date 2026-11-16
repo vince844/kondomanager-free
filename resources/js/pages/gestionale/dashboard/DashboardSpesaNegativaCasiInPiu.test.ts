@@ -1,10 +1,13 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 // @vitest-environment jsdom
 
 /**
  * Il badge della scheda di una voce di spesa scritta con il meno, fra le voci non coperte del cruscotto.
  *
  * La voce non è uno sforo: è un importo scritto con il meno da una versione vecchia, che il calcolo delle quote addebita in positivo e che la creazione
- * del piano non propone. La scheda porta il badge «Importo negativo», lo stesso nome del badge del selettore della creazione, e non «Sforo Aperto»,
+ * del piano non propone. La scheda porta il badge «Importo negativo», lo stesso nome del badge del selettore della creazione, e non «Sforo aperto»,
  * che resta per le voci scoperte di sempre.
  *
  * La pagina riceve la voce fra le voci scoperte con `spesa_negativa: true` e `nota`: qui sono scritti a mano, e `Beta53SpesaNegativaCopertureTest`
@@ -14,7 +17,7 @@
  * «Analizza voci».
  *
  * Cosa NON copre: la nota e il collegamento a «Gestisci sforo» (`DashboardSpesaNegativa.test.ts`); il colore del badge; i badge delle strategie
- * «Fondo Riserva», «A Consuntivo» e «Rata Integrativa», che vengono prima nella catena e non cambiano; la larghezza a 375 px.
+ * «Fondo riserva», «A consuntivo» e «Rata integrativa», che vengono prima nella catena e non cambiano; la larghezza a 375 px.
  */
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -25,7 +28,7 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     Head: { template: '<span />' },
     Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
     InfiniteScroll: { template: '<div><slot /></div>' },
-    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn() },
+    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn(), on: () => () => undefined },
     usePage: () => ({ props: { flash: {}, auth: { user: { roles: ['amministratore'], permissions: [] } } } }),
 }));
 vi.mock('@/composables/permissions', () => ({
@@ -89,15 +92,15 @@ afterEach(() => {
 });
 
 describe('il badge della voce di spesa negativa fra le voci non coperte', () => {
-    test('la scheda della spesa negativa ha il badge «Importo negativo», non «Sforo Aperto»', async () => {
+    test('la scheda della spesa negativa ha il badge «Importo negativo», non «Sforo aperto»', async () => {
         await monta();
 
         expect(badge('Rimborso vecchio')).toEqual(['Importo negativo']);
     });
 
-    test('controprova — la voce scoperta di sempre ha ancora il badge «Sforo Aperto»', async () => {
+    test('controprova — la voce scoperta di sempre ha ancora il badge «Sforo aperto»', async () => {
         await monta();
 
-        expect(badge('Spese generali')).toEqual(['Sforo Aperto']);
+        expect(badge('Spese generali')).toEqual(['Sforo aperto']);
     });
 });

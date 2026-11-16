@@ -115,12 +115,12 @@ describe('«Mostra scadute» e «Paga scadute» leggono `scaduta` del server', (
         riga({ id: 10, descrizione: 'Pregresso', scadenza_human: '05/03/2027', scaduta: false, pregresso: true, residuo: 90 }),
     ];
 
-    test('«Paga scadute» e «Mostra scadute» dicono che prendono anche le rate non ancora emesse con la scadenza passata', async () => {
+    test('«Paga scadute» e «Mostra scadute» dicono che prendono anche le rate non ancora emesse con la scadenza passata; «Paga scadute» anche gli interessi e le spese', async () => {
         const wrapper = await apri(RIGHE());
         const pulsante = wrapper.findAll('button').find((b: any) => b.text() === 'Paga scadute');
         const etichetta = wrapper.find('label[for="toggle-scadute"]');
 
-        expect(pulsante!.attributes('title')).toBe('Le rate con la scadenza passata, anche quelle non ancora emesse');
+        expect(pulsante!.attributes('title')).toBe('Le rate con la scadenza passata, anche quelle non ancora emesse, e gli interessi e le spese addebitati già scaduti o che scadono oggi');
         expect(etichetta.attributes('title')).toBe('Le rate con la scadenza passata, anche quelle non ancora emesse');
     });
 

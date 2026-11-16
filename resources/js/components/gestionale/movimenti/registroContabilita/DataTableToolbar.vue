@@ -5,6 +5,7 @@ import { usePage } from '@inertiajs/vue3'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Search, X } from 'lucide-vue-next'
+import vSelect from 'vue-select'
 import { usePermission } from '@/composables/permissions'
 import { useTabellaServer } from '@/composables/useTabellaServer'
 import type { Building } from '@/types/buildings'
@@ -13,7 +14,8 @@ import type { Esercizio } from '@/types/gestionale/esercizi'
 const page = usePage<{
   condominio: Building
   esercizio: Esercizio
-  filters: { search?: string; data_da?: string; data_a?: string }
+  filters: { search?: string; data_da?: string; data_a?: string; cassa?: number }
+  casse?: { id: number; nome: string; tipo: string }[]
 }>()
 const { generateRoute } = usePermission()
 const condominioId = computed(() => page.props.condominio.id)
@@ -22,6 +24,9 @@ const esercizioId = computed(() => page.props.esercizio.id)
 const search = ref(page.props.filters?.search || '')
 const dataDa = ref(page.props.filters?.data_da || '')
 const dataA = ref(page.props.filters?.data_a || '')
+// Il filtro della cassa: una cassa reale, banca o contanti. Le card della pagina diventano di quella cassa.
+const cassa = ref<number | null>(page.props.filters?.cassa ?? null)
+const vociCassa = computed(() => (page.props.casse ?? []).map((c) => ({ id: c.id, etichetta: `${c.nome} · ${c.tipo}` })))
 
 const { filtra } = useTabellaServer(() =>
   route(generateRoute('gestionale.esercizi.registro-contabilita.index'), { condominio: condominioId.value, esercizio: esercizioId.value }),
@@ -32,18 +37,20 @@ const applyFilters = () => {
     search: search.value || null,
     data_da: dataDa.value || null,
     data_a: dataA.value || null,
+    cassa: cassa.value || null,
   })
 }
 
 watchDebounced(search, applyFilters, { debounce: 300 })
-watchDebounced([dataDa, dataA], applyFilters, { debounce: 100 })
+watchDebounced([dataDa, dataA, cassa], applyFilters, { debounce: 100 })
 
-const isFiltered = computed(() => !!(search.value || dataDa.value || dataA.value))
+const isFiltered = computed(() => !!(search.value || dataDa.value || dataA.value || cassa.value))
 
 const resetFilters = () => {
   search.value = ''
   dataDa.value = ''
   dataA.value = ''
+  cassa.value = null
 }
 </script>
 
@@ -58,6 +65,20 @@ const resetFilters = () => {
         v-model="search"
         class="pl-9 h-8 w-[220px] lg:w-[260px]"
       />
+    </div>
+
+    <div v-if="vociCassa.length > 0" data-testid="filtro-cassa">
+      <v-select
+        :model-value="cassa"
+        :options="vociCassa"
+        label="etichetta"
+        :reduce="(v: { id: number }) => v.id"
+        placeholder="Tutte le casse"
+        class="w-[220px] text-xs"
+        @update:model-value="(v: number | null) => (cassa = v ?? null)"
+      >
+        <template #no-options>Nessuna cassa con questo nome.</template>
+      </v-select>
     </div>
 
     <Input type="date" v-model="dataDa" class="h-8 w-[140px] text-xs" title="Data effettiva da" />

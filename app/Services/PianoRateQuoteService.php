@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services;
 
@@ -77,30 +80,40 @@ class PianoRateQuoteService
      * dalla finestra. È il comportamento che il cruscotto ha da sempre e va conservato: sui dati
      * reali dell'11/08/2026 non si attiva mai (**0 quote su 369** sono prive della chiave), ma
      * esiste per i piani generati prima che lo snapshot la portasse.
+     *
+     * ## Nel database, senza caricare le quote
+     *
+     * Le due somme si fanno con due letture aggregate, una per la componente pura e una per il ripiego, senza caricare le quote come modelli: la copertura
+     * del bilancio della dashboard chiede il verdetto per ogni piano della gestione, e a 3.000 persone × 12 rate erano 36.000 quote in memoria per una cifra
+     * (Coda 520). La regola è la stessa di prima, e la prova differenziale lo controlla su ogni forma dello snapshot (`AllineamentoSommeNelDatabaseTest`):
+     *
+     * - la componente pura c'è se il percorso `importi.quota_pura_gestione` esiste e non è `null`, come `isset()` (il `whereNotNull` di un percorso JSON
+     *   di Laravel, che su MySQL esclude anche il `null` scritto nel JSON); uno snapshot che non è un oggetto non ha il percorso;
+     * - la cifra si tronca all'intero come `(int)`, e la scritta come testo conta per il suo numero;
+     * - il ripiego conta l'importo delle quote senza la componente pura, fuori la rata 0 e le quote di tipo `saldo_iniziale`.
      */
     public function totalePuroGeneratoCents(PianoRate $pianoRate): int
     {
-        $pianoRate->loadMissing('rate.rateQuote');
+        $db = $pianoRate->getConnection();
+        $percorso = 'rate_quote.regole_calcolo->importi->quota_pura_gestione';
+        $quote = fn () => $db->table('rate_quote')
+            ->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
+            ->where('rate.piano_rate_id', $pianoRate->id);
 
-        $totale = 0;
+        $selettore = $quote()->getGrammar()->wrap($percorso);
+        $intero = match ($db->getDriverName()) {
+            'sqlite' => 'INTEGER',
+            'pgsql' => 'BIGINT',
+            default => 'SIGNED',
+        };
+        $pura = (int) $quote()->whereNotNull($percorso)->sum($db->raw("CAST({$selettore} AS {$intero})"));
 
-        foreach ($pianoRate->rate as $rata) {
-            foreach ($rata->rateQuote as $quota) {
-                $regole = $quota->regole_calcolo;
+        $ripiego = (int) $quote()->whereNull($percorso)
+            ->where(fn ($q) => $q->whereNull('rate.numero_rata')->orWhere('rate.numero_rata', '<>', 0))
+            ->where(fn ($q) => $q->whereNull('rate_quote.tipo')->orWhere('rate_quote.tipo', '<>', 'saldo_iniziale'))
+            ->sum('rate_quote.importo');
 
-                if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
-                    $totale += (int) $regole['importi']['quota_pura_gestione'];
-
-                    continue;
-                }
-
-                if ($rata->numero_rata !== 0 && $quota->tipo !== 'saldo_iniziale') {
-                    $totale += (int) $quota->importo;
-                }
-            }
-        }
-
-        return $totale;
+        return $pura + $ripiego;
     }
 
     /**
@@ -284,6 +297,11 @@ class PianoRateQuoteService
      */
     public function statoAllineamento(PianoRate $pianoRate): string
     {
+        // Il piano degli addebiti non ha capitoli: l'atteso sarebbe zero e ogni addebito uno scarto, con «Ricalcola» che lo cancellerebbe.
+        if ($pianoRate->eDegliAddebiti()) {
+            return self::ALLINEATO;
+        }
+
         $pianoRate->loadMissing('rate');
 
         if ($pianoRate->rate->isEmpty()) {

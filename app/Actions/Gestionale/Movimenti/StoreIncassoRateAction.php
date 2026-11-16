@@ -162,6 +162,24 @@ class StoreIncassoRateAction
      * @param  \Closure(array): ?int  $gestioneDi  la gestione della rata di una riga
      * @return array{credito: array<int|string, array<int|string, int>>, contante: array<int|string, int>, usato: int, serve_scelta: bool}
      */
+    /**
+     * Se una quota del pagante sta nel perimetro dell'ordine: senza la scelta, ha una parte fuori dall'accordo di rientro in corso; con «Versamento
+     * dell'accordo», ha una parte dentro. Senza un accordo, ogni quota.
+     *
+     * @return \Closure(RataQuote): bool
+     */
+    private static function perimetroDelPagante(int $condominioId, int $paganteId, bool $versamentoAccordo): \Closure
+    {
+        $parti = app(\App\Services\Gestionale\Debiti\AccordiRientro::class)->partiInCorso($condominioId, [$paganteId], \App\Helpers\DateHelper::oggiUtente())[$paganteId] ?? [];
+
+        return function (RataQuote $q) use ($parti, $versamentoAccordo): bool {
+            $residuo = max(0, (int) $q->importo - (int) $q->importo_pagato);
+            $dentro = min($residuo, $parti[\App\Services\Gestionale\Debiti\AccordiRientro::chiave($q->rata_id, $q->immobile_id)] ?? 0);
+
+            return $versamentoAccordo ? $dentro > 0 : $residuo - $dentro > 0;
+        };
+    }
+
     public static function pianoDelCredito(array $validated, \Closure $gestioneDi): array
     {
         $paganteId = (int) $validated['pagante_id'];
@@ -284,7 +302,8 @@ class StoreIncassoRateAction
         // ha visto, con la dichiarazione del modulo se la distribuzione si discosta. Non rifiuta: un incasso fuori ordine senza una
         // dichiarazione resta «fuori ordine, non dichiarata». Qui, nell'azione, perché è l'unica porta del motore: anche chi la chiama senza la richiesta lo vede.
         [$imputazione, $imputazioneNota] = OrdineImputazione::daScrivere(
-            app(OrdineImputazione::class)->esito($condominio->id, $paganteId, $pagamentiOrdinari, $piano['contante'], $importoTotaleCents),
+            app(OrdineImputazione::class)->esito($condominio->id, $paganteId, $pagamentiOrdinari, $piano['contante'], $importoTotaleCents,
+                filter_var($validated['versamento_accordo'] ?? false, FILTER_VALIDATE_BOOLEAN)),
             $validated['imputazione_scelta'] ?? null,
             $validated['imputazione_nota'] ?? null,
         );
@@ -306,6 +325,9 @@ class StoreIncassoRateAction
         ) {
             $nomePagante   = Anagrafica::find($paganteId)->nome;
             $nomeVersatoDa = $versatoDaId !== null ? Anagrafica::find($versatoDaId)->nome : null;
+            // Con un accordo di rientro in corso, dentro una rata il denaro va prima alle quote del perimetro dell'ordine: quelle con una parte fuori
+            // dall'accordo, o con «Versamento dell'accordo» quelle con una parte dentro. Lo stesso perimetro di `OrdineImputazione`, per unità.
+            $nelPerimetro = self::perimetroDelPagante($condominio->id, $paganteId, filter_var($validated['versamento_accordo'] ?? false, FILTER_VALIDATE_BOOLEAN));
             $cassa        = Cassa::with('contoContabile')->findOrFail($validated['cassa_id']);
             $contoCrediti = ContoContabile::where('condominio_id', $condominio->id)
                                 ->where('ruolo', 'crediti_condomini')
@@ -391,14 +413,15 @@ class StoreIncassoRateAction
                     ->lockForUpdate()
                     ->get();
 
-                $quoteOrdinate = $quoteDaSaldare->sortByDesc(function ($quota) {
+                $quoteOrdinate = $quoteDaSaldare->sortBy(function ($quota) use ($nelPerimetro) {
                     $quotaPura = $quota->importo;
                     $regole    = $quota->regole_calcolo;
                     if (!empty($regole)) {
                         $jsonArr  = is_string($regole) ? json_decode($regole, true) : (array) $regole;
                         $quotaPura = $jsonArr['importi']['quota_pura_gestione'] ?? ($jsonArr['audit']['quota_pura'] ?? $quota->importo);
                     }
-                    return ($quotaPura * 1000000) - $quota->id;
+                    // Prima il perimetro dell'ordine; poi, come sempre, la quota più grande.
+                    return [$nelPerimetro($quota) ? 0 : 1, -(($quotaPura * 1000000) - $quota->id)];
                 })->values();
 
                 foreach ($quoteOrdinate as $quota) {
@@ -689,7 +712,9 @@ class StoreIncassoRateAction
                             ->with('rata.pianoRate.gestione:id,nome')
                             ->lockForUpdate()
                             ->get()
-                            ->filter(fn($q) => ($q->importo - $q->importo_pagato) > 0);
+                            ->filter(fn($q) => ($q->importo - $q->importo_pagato) > 0)
+                            // Prima il perimetro dell'ordine (l'accordo di rientro), poi come erano.
+                            ->sortBy(fn ($q) => [$nelPerimetro($q) ? 0 : 1, (int) $q->id])->values();
 
                         foreach ($quoteOrdConResiduo as $quotaOrd) {
                             if ($budgetCreditoCents <= 0 || $tettoRigaCents <= 0) break;
@@ -786,6 +811,11 @@ class StoreIncassoRateAction
                     }
                 }
             }
+
+            // Gli interessi e le spese senza fattura che questo incasso ha coperto passano da «Accessori da incassare» alla loro voce: sono del
+            // condominio da quando sono versati.
+            app(\App\Services\Gestionale\Accessori\AccessoriDaIncassare::class)->scriviIlVersamento($scritturaIncasso,
+                array_values(array_filter([$scritturaIncasso->id, isset($scritturaStorno) ? $scritturaStorno->id : null])));
 
             // Quadratura verificata anche qui: fino alla v1.10 il DoubleEntryValidator
             // era chiamato solo dal ciclo passivo (fatture e pagamenti), mentre incassi,

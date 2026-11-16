@@ -81,6 +81,7 @@ class RiepilogoPerCompetenzaController extends Controller
             'condominio' => $condominio,
             'condomini' => CondominioResource::collection($this->getCondomini())->resolve(),
             'esercizio' => $esercizio,
+            'stato_rendiconto' => \App\Services\Gestionale\VersioniDelRendiconto::statoInTesta($esercizio),
             'esercizi' => $condominio->esercizi()->orderByDesc('data_inizio')->get(),
             'riepilogo' => $r,
             // Quante delle commissioni senza voce, e quanti degli storni senza voce fra i costi non classificati, si assegnano, con la regola dell'elenco:

@@ -482,3 +482,79 @@ test('filtro intervallo date isola i pagamenti per data_pagamento', function () 
         ->where('pagamenti.data.0.id', $pagamentoDentroRange->id)
     );
 });
+
+test('un IBAN diverso da quello del fornitore, senza conferma, torna alla pagina con la frase per l\'amministratore e non registra niente', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fornitore->update(['iban_principale' => 'IT60X0542811101000000123456']);
+    $fattura = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $dati = [
+        'fornitore_id' => $fornitore->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->toDateString(),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'iban_beneficiario' => 'IT28W8000000292100645211208',
+        'allocazioni' => [[
+            'fattura_id' => $fattura->id,
+            'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+            'importo_allocato_cents' => 122000,
+        ]],
+        'bonifico_parlante' => false,
+        'allow_overdraft' => true,
+    ];
+    $rotta = route('admin.gestionale.pagamenti-fornitori.store', [$condominio]);
+
+    $risposta = $this->actingAs($this->user)->post($rotta, $dati);
+
+    $risposta->assertSessionHasErrors('iban_discrepanza');
+    expect(session('errors')->first('iban_discrepanza'))
+        ->toContain('IT60X0542811101000000123456')
+        ->not->toContain('iban_confermato_manualmente');
+    expect(PagamentoFornitore::count())->toBe(0);
+
+    // Con la conferma dell'amministratore lo stesso pagamento passa.
+    $this->actingAs($this->user)->post($rotta, $dati + ['iban_confermato_manualmente' => true])
+        ->assertSessionHasNoErrors();
+    expect(PagamentoFornitore::count())->toBe(1);
+});
+
+test('la modifica con un IBAN diverso da quello del fornitore, senza conferma, torna alla pagina con la frase per l\'amministratore e non cambia il pagamento', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fornitore->update(['iban_principale' => 'IT60X0542811101000000123456']);
+    $fattura = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+        'fornitore_id' => $fornitore->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->toDateString(),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'iban_beneficiario' => 'IT60X0542811101000000123456',
+        'allocazioni' => [['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => 122000]],
+        'bonifico_parlante' => false,
+        'allow_overdraft' => true,
+    ])->assertSessionHasNoErrors();
+    $pagamento = PagamentoFornitore::firstOrFail();
+
+    $dati = [
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => $pagamento->data_pagamento->toDateString(),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => $pagamento->importo_lordo,
+        'importo_netto_cents' => $pagamento->importo_netto,
+        'importo_ritenuta_cents' => $pagamento->importo_ritenuta,
+        'iban_beneficiario' => 'IT28W8000000292100645211208',
+        'causale_bonifico' => 'Causale nuova',
+    ];
+    $rotta = route('admin.gestionale.pagamenti-fornitori.update', [$condominio, $pagamento]);
+
+    $this->actingAs($this->user)->put($rotta, $dati)->assertSessionHasErrors('iban_discrepanza');
+    expect(session('errors')->first('iban_discrepanza'))->toContain('IT60X0542811101000000123456')->not->toContain('iban_confermato_manualmente');
+    expect($pagamento->fresh()->iban_beneficiario)->toBe('IT60X0542811101000000123456')
+        ->and($pagamento->fresh()->causale_bonifico)->not->toBe('Causale nuova');
+
+    // Con la conferma dell'amministratore la stessa modifica passa.
+    $this->actingAs($this->user)->put($rotta, $dati + ['iban_confermato_manualmente' => true])->assertSessionHasNoErrors();
+    expect($pagamento->fresh()->iban_beneficiario)->toBe('IT28W8000000292100645211208');
+});

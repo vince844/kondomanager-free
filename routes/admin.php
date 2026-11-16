@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 use App\Http\Controllers\Allegati\AllegatoController;
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
@@ -8,6 +11,7 @@ use App\Http\Controllers\Comunicazioni\ComunicazioneApprovalController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Dashboard\ActionInboxController;
 use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Dashboard\SeiMesiStudioController;
 use App\Http\Controllers\Documenti\CategoriaDocumentoController;
 use App\Http\Controllers\Documenti\DocumentoApprovalController;
 use App\Http\Controllers\Documenti\DocumentoController;
@@ -37,6 +41,10 @@ Route::prefix('admin')->as('admin.')
     Route::get('/dashboard', DashboardController::class)
         ->name('dashboard');
 
+    // La lista dello studio dei sei mesi per agire: l'Action inbox chiede un condominio alla volta, dopo che la pagina si è aperta.
+    Route::get('/dashboard/sei-mesi/{condominio}', SeiMesiStudioController::class)
+        ->name('dashboard.sei-mesi');
+
     // ROTTA NEWSLETTER
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
         ->name('newsletter.subscribe');
@@ -53,6 +61,10 @@ Route::prefix('admin')->as('admin.')
 
     Route::patch('/admin/inbox/{task}/complete', [ActionInboxController::class, 'complete'])
         ->name('inbox.complete');
+
+    // Le risposte a un compito: «Fatto», «Non serve», «Ricordamelo».
+    Route::post('/admin/inbox/{task}/risposta', [ActionInboxController::class, 'risposta'])
+        ->name('inbox.risposta');
 
     /*
     |--------------------------------------------------------------------------

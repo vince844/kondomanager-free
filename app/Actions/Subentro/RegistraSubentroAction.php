@@ -633,16 +633,26 @@ final class RegistraSubentroAction
      * si scrive, e la cifra è tutta la posizione del defunto (rilievo X8 della Fase 1-bis). Le righe che non trovano un esercizio su cui
      * scriversi restano a nome del defunto: il registro ne tiene la somma (`non_scritto`), perché lo storico non dica «in pari» (X9).
      *
+     * La parte di ogni erede che viene dagli addebiti a una persona sola del defunto (un contributo, una spesa con la fattura dello studio) ha le sue
+     * righe, «Addebiti agli eredi»: il registro ne tiene gli id e le rate degli addebiti (`arretrato.addebiti`), perché il conguaglio le tenga fuori da B
+     * (l'addebito non è una quota) e l'addebito non si annulli sotto le righe degli eredi. Sono anche fra `arretrato.saldi`.
+     *
      * @param array<string,mixed> $arretrato `AnteprimaPassaggio::calcola()['rate']['arretrato']`
      */
     private function scriviArretrato(Condominio $condominio, Subentro $subentro, array $arretrato, ?TitolaritaImmobile $uscente, CarbonImmutable $decorrenza, bool $rinuncia, array &$avvisi): void
     {
         $ids = [];
+        // Le righe della parte che viene dagli addebiti del defunto, e le rate di quegli addebiti: il conguaglio le tiene fuori da B, e l'addebito non
+        // si annulla finché il passaggio c'è.
+        $idsAddebiti = [];
+        $rateAddebiti = [];
         $nonScritto = 0;
         $defuntoId = (int) $uscente?->anagrafica_id;
         if ($arretrato['scelta'] === Subentro::ARRETRATO_AGLI_EREDI && $defuntoId > 0) {
-            $nomi = Anagrafica::whereKey([$defuntoId, ...collect($arretrato['righe'])->flatMap(fn ($r) => array_keys($r['per_erede']))->unique()->all()])->pluck('nome', 'id');
-            $testa = sprintf('Arretrato agli eredi, successione del %s', $decorrenza->locale('it')->translatedFormat('j F Y'));
+            $nomi = Anagrafica::whereKey([$defuntoId, ...collect($arretrato['righe'])->flatMap(fn ($r) => [...array_keys($r['per_erede']), ...array_keys($r['di_cui_addebiti'] ?? [])])->unique()->all()])->pluck('nome', 'id');
+            $giorno = $decorrenza->locale('it')->translatedFormat('j F Y');
+            $testa = sprintf('Arretrato agli eredi, successione del %s', $giorno);
+            $testaAddebiti = sprintf('Addebiti agli eredi, successione del %s', $giorno);
             foreach ($arretrato['righe'] as $riga) {
                 $esercizioId = $riga['esercizio_id'] ?? $this->getEsercizioCorrente($condominio)?->id;
                 if ($esercizioId === null) {
@@ -650,24 +660,49 @@ final class RegistraSubentroAction
                     $nonScritto += (int) array_sum($riga['per_erede']);
                     continue;
                 }
-                foreach ($riga['per_erede'] as $eredeId => $importo) {
-                    if ((int) $importo === 0) {
-                        continue;
+                // Per ogni erede la sua parte dell'arretrato in due righe: quella delle quote, e quella degli addebiti (dentro il suo totale).
+                $diCuiAddebiti = array_map('intval', (array) ($riga['di_cui_addebiti'] ?? []));
+                foreach (array_unique([...array_keys($riga['per_erede']), ...array_keys($diCuiAddebiti)]) as $eredeId) {
+                    $importo = (int) ($riga['per_erede'][$eredeId] ?? 0);
+                    $addebiti = $diCuiAddebiti[$eredeId] ?? 0;
+                    foreach ([[$importo - $addebiti, $testa, false], [$addebiti, $testaAddebiti, true]] as [$parte, $testaRiga, $degliAddebiti]) {
+                        if ($parte === 0) {
+                            continue;
+                        }
+                        $descrizione = $this->testaConParti($testaRiga, ($nomi[$defuntoId] ?? '?') . ' → ' . ($nomi[(int) $eredeId] ?? '?'));
+                        foreach ([[$defuntoId, -$parte], [(int) $eredeId, $parte]] as [$anagraficaId, $cents]) {
+                            $id = (int) Saldo::create([
+                                'esercizio_id' => $esercizioId, 'condominio_id' => $condominio->id, 'gestione_id' => $riga['gestione_id'], 'immobile_id' => $riga['immobile_id'],
+                                'anagrafica_id' => $anagraficaId, 'saldo_iniziale' => $cents, 'origine' => 'automatico', 'is_applicato' => false,
+                                'subentro_id' => $subentro->id, 'descrizione' => $descrizione,
+                            ])->id;
+                            $ids[] = $id;
+                            if ($degliAddebiti) {
+                                $idsAddebiti[] = $id;
+                            }
+                        }
                     }
-                    $descrizione = $this->testaConParti($testa, ($nomi[$defuntoId] ?? '?') . ' → ' . ($nomi[(int) $eredeId] ?? '?'));
-                    foreach ([[$defuntoId, -(int) $importo], [(int) $eredeId, (int) $importo]] as [$anagraficaId, $cents]) {
-                        $ids[] = (int) Saldo::create([
-                            'esercizio_id' => $esercizioId, 'condominio_id' => $condominio->id, 'gestione_id' => $riga['gestione_id'], 'immobile_id' => $riga['immobile_id'],
-                            'anagrafica_id' => $anagraficaId, 'saldo_iniziale' => $cents, 'origine' => 'automatico', 'is_applicato' => false,
-                            'subentro_id' => $subentro->id, 'descrizione' => $descrizione,
-                        ])->id;
-                    }
+                }
+                if ($diCuiAddebiti !== []) {
+                    $rateAddebiti = [...$rateAddebiti, ...array_map('intval', (array) ($riga['rate_degli_addebiti'] ?? []))];
                 }
             }
         }
+        // Gli interessi e le spese senza fattura del defunto: agli eredi come interessi e spese, non con le righe di saldo.
+        $accessori = $arretrato['scelta'] === Subentro::ARRETRATO_AGLI_EREDI && $defuntoId > 0 && ($arretrato['accessori'] ?? []) !== []
+            ? app(\App\Services\Subentro\AccessoriAgliEredi::class)->scrivi($subentro, $arretrato['accessori'], $defuntoId, $decorrenza, $avvisi) : [];
+        // L'accordo di rientro del defunto si chiude per la successione: il debito che copre passa agli eredi con l'arretrato.
+        $accordi = $arretrato['scelta'] === Subentro::ARRETRATO_AGLI_EREDI && $defuntoId > 0
+            ? app(\App\Services\Subentro\AccordiDellaSuccessione::class)->chiudi((int) $condominio->id, $defuntoId,
+                array_values(array_unique(array_filter([(int) $subentro->immobile_id, ...array_map(fn ($r) => (int) ($r['immobile_id'] ?? 0), $arretrato['righe'] ?? [])]))),
+                $decorrenza, auth()->id())
+            : [];
         $registro = $subentro->registro ?? [];
         $resta = $rinuncia && $arretrato['scelta'] === Subentro::ARRETRATO_AL_DEFUNTO ? (int) ($arretrato['resta_senza_conguaglio'] ?? 0) : (int) ($arretrato['resta'] ?? 0);
         $registro['arretrato'] = ['scelta' => $arretrato['scelta'], 'totale' => (int) ($arretrato['totale'] ?? 0), 'resta' => $resta, 'saldi' => $ids]
+            + ($idsAddebiti !== [] ? ['addebiti' => ['saldi' => $idsAddebiti, 'rate' => array_values(array_unique($rateAddebiti))]] : [])
+            + ($accessori !== [] ? ['accessori' => $accessori] : [])
+            + ($accordi !== [] ? ['accordi' => $accordi] : [])
             + ($nonScritto !== 0 ? ['non_scritto' => $nonScritto] : [])
             // Decisione 67 (3): i saldi del defunto da cui l'arretrato è stato calcolato, solo se ne sono nate righe degli eredi.
             + ($ids !== [] ? ['fonti' => array_values(array_map('intval', $arretrato['fonti'] ?? []))] : []);

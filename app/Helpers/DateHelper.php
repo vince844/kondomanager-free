@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Helpers;
 
@@ -42,5 +45,25 @@ class DateHelper
     public static function oggiUtenteImmutable(): \Carbon\CarbonImmutable
     {
         return \Carbon\CarbonImmutable::parse(self::oggiUtente());
+    }
+
+    /**
+     * Un istante scritto come l'agenda scrive le ore: il giorno e l'ora di Roma così come si leggono, nel fuso dell'applicazione (UTC), senza la conversione
+     * che d'inverno li sposterebbe di un'ora e d'estate di due. È la forma di `eventi.start_time` per gli eventi scritti a mano e per i compiti delle due
+     * Inbox, che leggono il giorno dalla data di `start_time` ({@see \App\Services\Gestionale\Inbox\FasceDeiCompiti}): alle 00:30 di Roma del 16/11 un
+     * compito scritto con `now()` (le 23:30 UTC del 15/11) nasceva «scaduto da ieri»; scritto così è delle 00:30 del 16/11.
+     */
+    public static function comeSiLegge(\DateTimeInterface $istante): Carbon
+    {
+        return Carbon::parse(
+            Carbon::instance($istante)->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('Y-m-d H:i:s'),
+            (string) config('app.timezone')
+        );
+    }
+
+    /** Adesso, scritto come l'agenda scrive le ore ({@see comeSiLegge()}): il giorno e l'ora di un compito che nasce adesso. */
+    public static function adessoComeSiLegge(): Carbon
+    {
+        return self::comeSiLegge(Carbon::now());
     }
 }

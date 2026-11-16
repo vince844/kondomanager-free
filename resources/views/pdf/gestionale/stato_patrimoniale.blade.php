@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Stato patrimoniale — punto 3 di docs/registri_contabili.md (D16–D20) — la stampa.
 
   Stessa carta del registro di contabilità (§7-quinquies: palette e caratteri del fac-simile del
@@ -99,6 +104,7 @@
     {{-- Il meno sulle cifre in testa: con due classi sole mPDF tiene il colore di «.vl»; la regola con le due classi insieme vale. --}}
     .vl.neg { color: #96302F; }
     .d { color: #5A6B7B; font-size: 6.5pt; }
+    .nota { color: #8A96A3; font-size: 5.8pt; font-family: inter; }
     .cod { color: #5A6B7B; font-family: fraunces; margin-right: 6px; }
     .badge { font-size: 5.8pt; font-weight: bold; letter-spacing: 0.5pt; text-transform: uppercase; padding: 1px 5px; }
     .ok { background: #E7F2EC; color: #1F6B45; }
@@ -147,7 +153,7 @@
 
 @if($conStudio || $conCarta)
 @component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => $titoloStampa])
-<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
 @endcomponent
 @else
 <table class="testata">
@@ -163,7 +169,7 @@
         <td class="doc">
             <b class="forte">{{ $esercizio->nome }}</b><br>
             dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b><br>
-            Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+            Stampato il <b class="forte">{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>
@@ -298,6 +304,12 @@
 @if($db['saldo_erario'] !== 0)
 <p class="eq">Debiti verso l'Erario <b>{{ $fmt($db['saldo_erario']) }}</b>@if($db['erario_su_fatture_non_pagate'] !== 0), di cui <b>{{ $fmt($db['erario_su_fatture_non_pagate']) }}</b> di ritenute su fatture non ancora pagate: fino al pagamento sono un debito verso il fornitore @endif.</p>
 @endif
+{{-- Gli altri debiti certi, che non sono fatture: sotto la riga, fuori dal giornale e dai totali; li ha scritti l'amministratore nella nota sintetica. --}}
+@if(! empty($debiti_certi))
+<p class="eq">Altri debiti certi, che non sono fatture: non sono nel giornale né nei totali, li ha scritti l'amministratore nella nota sintetica.
+    @foreach($debiti_certi as $d) <br>{{ $d['creditore'] }} <b>{{ $d['importo'] === null ? '' : \App\Services\Gestionale\FattiDellaNota::euro($d['importo']) }}</b>@if($d['fonte'] !== '') · {{ $d['fonte'] }}@endif @if($d['scadenza']) · scadenza {{ \Carbon\Carbon::parse($d['scadenza'])->format('d/m/Y') }}@endif @endforeach
+</p>
+@endif
 
 <h2><span class="sec">§ 3</span> Per gestione</h2>
 <p class="intro">I costi seguono la gestione della voce; le quote, quella del piano; i debiti, quella della fattura. I costi e le quote sono dell'esercizio; crediti e debiti sono alla data.</p>
@@ -394,26 +406,59 @@
 <h2><span class="sec">§ 5</span> Entrate e uscite per cassa <span class="norma">dal {{ $dataIt($rf['dal']) }} al {{ $dataIt($rf['al']) }}</span></h2>
 <table class="p">
     <thead><tr><th>Cassa</th><th class="n">Disponibilità iniziale</th><th class="n">Entrate</th><th class="n">Uscite</th><th class="n">Disponibilità finale</th></tr></thead>
+    {{-- Le righe delle casse in grassetto, con le cifre della scheda «Cassa». Sotto ogni conto con dei fondi il gruppo «Come si divide il conto», rientrato,
+         con il fondo grigio e un filetto a sinistra: i fondi con il loro tipo fra parentesi (a video è il badge), la parte libera con gli spostamenti verso
+         i fondi, «si può usare». Il gruppo è un dettaglio del conto e non si somma al totale. --}}
+    @php
+        $eur = fn (int $c) => '€'."\u{a0}".number_format($c / 100, 2, ',', '.');
+        $conti = $rf['conti'] ?? [];
+        $senzaBanca = collect($conti)->contains(fn ($r) => $r['senza_banca']);
+        $liberoSottoZero = collect($conti)->contains(fn ($r) => $r['libero_negativo'] ?? false);
+        $conSiPuoUsare = collect($conti)->contains(fn ($r) => ($r['si_puo_usare'] ?? null) !== null);
+        $grigio = 'background: #F4F5F7;';
+        $filetto = 'border-left: 2px solid #A9B3BF; padding-left: 12px;';
+    @endphp
     <tbody>
-    @foreach($rf['righe'] as $r)
+    @foreach($conti as $r)
         <tr @if($r['negativa']) style="background: #F7E4E3;" @endif>
-            <td>{{ $r['cassa'] }} <span class="d">· {{ $r['tipo'] }}</span> @if($r['negativa']) <span class="badge ko">sotto zero</span> <span class="d neg">{{ $fmt($r['minimo']) }} il {{ $dataIt($r['minimo_il']) }}</span> @endif</td>
-            <td class="n {{ $r['iniziale'] < 0 ? 'neg' : '' }}">{{ $fmt($r['iniziale']) }}</td>
-            <td class="n">{{ $fmt($r['entrate']) }}</td>
-            <td class="n">{{ $fmt($r['uscite']) }}</td>
-            <td class="n {{ $r['finale'] < 0 ? 'neg' : '' }}">{{ $fmt($r['finale']) }}</td>
+            <td><b>{{ $r['cassa'] }}</b> <span class="d">· {{ $r['tipo'] }}{{ isset($r['tipo_fondo']) ? ' ('.$r['tipo_fondo']['testo'].')' : '' }}@if($r['senza_banca']), non è nel conto di una banca @endif</span> @if($r['negativa']) <span class="badge ko">sotto zero</span> <span class="d neg">{{ $fmt($r['minimo']) }} il {{ $dataIt($r['minimo_il']) }}</span> @endif</td>
+            <td class="n {{ $r['iniziale'] < 0 ? 'neg' : '' }}"><b>{{ $fmt($r['iniziale']) }}</b></td>
+            <td class="n"><b>{{ $fmt($r['entrate']) }}</b></td>
+            <td class="n"><b>{{ $fmt($r['uscite']) }}</b></td>
+            <td class="n {{ $r['finale'] < 0 ? 'neg' : '' }}"><b>{{ $fmt($r['finale']) }}</b></td>
         </tr>
+        @if($r['di_cui'] !== [])
+            <tr style="{{ $grigio }}"><td colspan="5" class="d" style="{{ $filetto }}"><b>Come si divide il conto</b> · le righe qui sotto sono già nella riga del conto, non si sommano al totale</td></tr>
+            @foreach($r['di_cui'] as $d)
+                @php $libero = $d['tipo'] === 'libero'; @endphp
+                <tr style="{{ $libero && ($r['libero_negativo'] ?? false) ? 'background: #FBF1DC;' : $grigio }}">
+                    <td class="d" style="{{ $filetto }}">@if($libero) libero @if($r['libero_negativo'] ?? false) <span class="badge warn">sotto zero</span> <span class="neg">{{ $fmt($r['libero_minimo']) }} il {{ $dataIt($r['libero_minimo_il']) }}</span> @endif @else in «{{ $d['cassa'] }}» @if(isset($d['tipo_fondo']))<br>({{ $d['tipo_fondo']['testo'] }})@endif @endif</td>
+                    <td class="n d {{ $d['iniziale'] < 0 ? 'neg' : '' }}">{{ $fmt($d['iniziale']) }}</td>
+                    <td class="n d">{{ $fmt($d['entrate']) }}@if($d['tipo'] === 'fondo')<br><span class="nota">messi nel fondo</span>@elseif($libero && ($d['tornati_dai_fondi'] ?? 0) > 0)<br><span class="nota">di cui {{ $eur($d['tornati_dai_fondi']) }}<br>tornati dai fondi</span>@endif</td>
+                    <td class="n d">{{ $fmt($d['uscite']) }}@if($d['tipo'] === 'fondo')<br><span class="nota">usciti dal fondo</span>@elseif($libero && ($d['messi_nei_fondi'] ?? 0) > 0)<br><span class="nota">di cui {{ $eur($d['messi_nei_fondi']) }}<br>messi nei fondi</span>@endif</td>
+                    <td class="n d {{ $d['finale'] < 0 ? 'neg' : '' }}">{{ $fmt($d['finale']) }}</td>
+                </tr>
+            @endforeach
+            @if(($r['si_puo_usare'] ?? null) !== null)
+                <tr style="{{ $grigio }}">
+                    <td class="d" style="{{ $filetto }}"><b>si può usare</b>: la parte libera e i fondi generici o sbloccati</td>
+                    <td></td><td></td><td></td>
+                    <td class="n d {{ $r['si_puo_usare'] < 0 ? 'neg' : '' }}"><b>{{ $fmt($r['si_puo_usare']) }}</b></td>
+                </tr>
+            @endif
+        @endif
     @endforeach
-    @if(count($rf['righe']) === 0) <tr><td colspan="5" class="d" style="text-align: center; padding: 8px;">Nessuna cassa</td></tr> @endif
+    @if(count($conti) === 0) <tr><td colspan="5" class="d" style="text-align: center; padding: 8px;">Nessuna cassa</td></tr> @endif
     </tbody>
     <tfoot>
-        <tr><td>Tutte le casse, flussi con l'esterno</td><td class="n">{{ $fmt($rf['totale']['iniziale']) }}</td><td class="n">{{ $fmt($rf['totale']['entrate']) }}</td><td class="n">{{ $fmt($rf['totale']['uscite']) }}</td><td class="n">{{ $fmt($rf['totale']['finale']) }}</td></tr>
+        <tr><td style="border-top: 2px solid #0E2238;">Totale delle casse<br><span class="nota" style="font-weight: normal;">il denaro entrato e uscito dal condominio: la somma delle righe in grassetto{{ ($rf['fra_le_casse'] ?? 0) !== 0 ? ', meno '.$eur($rf['fra_le_casse']).' passati da una cassa all\'altra' : '' }}</span></td><td class="n" style="border-top: 2px solid #0E2238;">{{ $fmt($rf['totale']['iniziale']) }}</td><td class="n" style="border-top: 2px solid #0E2238;">{{ $fmt($rf['totale']['entrate']) }}</td><td class="n" style="border-top: 2px solid #0E2238;">{{ $fmt($rf['totale']['uscite']) }}</td><td class="n" style="border-top: 2px solid #0E2238;">{{ $fmt($rf['totale']['finale']) }}</td></tr>
     </tfoot>
 </table>
 <p class="d" style="margin: 4px 0 0;">
-    Ogni riga quadra da sé: iniziale + entrate − uscite = finale.
-    @if($rf['giroconti']['entrate'] !== 0) I trasferimenti fra casse ({{ $fmt($rf['giroconti']['entrate']) }}) compaiono nelle righe e non nel totale, che conta i soli flussi con l'esterno. @endif
-    @if($rf['stornate']['coppie'] !== 0) {{ $rf['stornate']['coppie'] === 1 ? 'Un movimento stornato' : $rf['stornate']['coppie'].' movimenti stornati' }} nell'esercizio ({{ $fmt($rf['stornate']['importo']) }}) non {{ $rf['stornate']['coppie'] === 1 ? 'conta' : 'contano' }} né fra le entrate né fra le uscite: originale e storno si annullano, e restano leggibili nel registro di contabilità. @endif
+    @if($conSiPuoUsare) La riga «si può usare» è la parte libera più i fondi generici e quelli sbloccati dall'assemblea: i fondi vincolati ai lavori, il TFR, la morosità e i fondi senza tipo restano fuori. @endif
+    @if($rf['stornate']['coppie'] !== 0) {{ $rf['stornate']['coppie'] === 1 ? 'Un movimento stornato' : $rf['stornate']['coppie'].' movimenti stornati' }} nell'esercizio ({{ $eur($rf['stornate']['importo']) }}) non {{ $rf['stornate']['coppie'] === 1 ? 'conta' : 'contano' }} né fra le entrate né fra le uscite: originale e storno si annullano, e restano leggibili nel registro di contabilità. @endif
+    @if($liberoSottoZero) La parte libera di un conto sotto zero, con il conto e i suoi fondi sopra zero, vuol dire che un pagamento ha usato il denaro di un fondo: di solito manca il giroconto dal fondo al conto. @endif
+    @if($senzaBanca) Un fondo con la sua riga non è nel conto di una banca: con più conti, dalle registrazioni non si sa in quale stia il denaro di un fondo aperto con un saldo suo, o passato fra fondi di banche diverse. @endif
     La disponibilità iniziale è quanto c'era il giorno prima dell'inizio dell'esercizio; entrate e uscite sono le scritture dell'esercizio.
 </p>
 
@@ -439,13 +484,18 @@
     <thead><tr><th style="width: 18px;">N.</th><th>Controllo</th><th class="n" style="width: 190px;">Verifica</th><th style="width: 84px; text-align: right;">Esito</th></tr></thead>
     <tbody>
     @foreach($tuttiControlli as $c)
-        @php $segno = $c['segno'] ?? ($c['esito'] === 'non_quadra' ? '≠' : '='); @endphp
+        @php
+            $segno = $c['segno'] ?? ($c['esito'] === 'non_quadra' ? '≠' : '=');
+            // Il saldo della banca senza un conto, o senza l'estratto scritto: che cosa manca, al posto di due cifre a zero.
+            $banca = $c['id'] !== 'BC' ? null : (($c['conti'] ?? 1) === 0 ? 'nessun conto in banca'
+                : ($c['esito'] === 'non_calcolato' ? (($c['scritti'] ?? 0) > 0 ? 'saldo della banca scritto per '.$c['scritti'].($c['scritti'] === 1 ? ' conto' : ' conti').' su '.$c['conti'] : 'saldo della banca non scritto') : null));
+        @endphp
         <tr>
             <td class="cod">{{ $loop->iteration }}</td>
             <td><b>{{ $c['nome'] }}</b> — {{ $c['titolo'] }}<br><span class="d">{{ $frase($c['nota']) }}</span>@if($c['rimedio'])<br><span class="d"><b>Che cosa si fa:</b> {{ $frase($c['rimedio']) }}</span>@endif</td>
             {{-- Trappola di Blade: «zero@else» non è una direttiva (la @ preceduta da una lettera non viene compilata). Spazi attorno. --}}
             {{-- I controlli del conguaglio: quando la stampa non ha la lettura non hanno cifre; i due per unità dicono quante non tornano su quante. --}}
-            <td class="n">{{ ! empty($c['non_letto']) ? '—' : (in_array($c['id'], ['CU', 'CB'], true) ? $c['sinistra'].' unità su '.$c['destra'].' non '.($c['sinistra'] === 1 ? 'torna' : 'tornano') : ($c['id'] === 'CN' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'cassa' : 'casse').' sotto zero' : ($c['id'] === 'AC' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'registrazione' : 'registrazioni') : ($c['id'] === 'GE' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'fattura' : 'fatture') : $fmt($c['sinistra']).' '.$segno.' '.$fmt($c['destra']))))) }}</td>
+            <td class="n">{{ $banca !== null ? $banca : (! empty($c['non_letto']) ? '—' : (in_array($c['id'], ['CU', 'CB'], true) ? $c['sinistra'].' unità su '.$c['destra'].' non '.($c['sinistra'] === 1 ? 'torna' : 'tornano') : ($c['id'] === 'CN' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'cassa' : 'casse').' sotto zero'.(($c['liberi'] ?? 0) > 0 ? '; '.$c['liberi'].' '.($c['liberi'] === 1 ? 'parte libera' : 'parti libere').' sotto zero' : '') : ($c['id'] === 'AC' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'registrazione' : 'registrazioni') : ($c['id'] === 'GE' ? $c['sinistra'].' '.($c['sinistra'] === 1 ? 'fattura' : 'fatture') : $fmt($c['sinistra']).' '.$segno.' '.$fmt($c['destra'])))))) }}</td>
             <td style="text-align: right;"><span class="badge {{ $esitoClasse[$c['esito']] }}">{{ $esitoTesto[$c['esito']] }}</span>@if($c['esito'] === 'segnalazione')<br><span class="d">l'amministratore lo spiega in assemblea</span>@endif</td>
         </tr>
     @endforeach

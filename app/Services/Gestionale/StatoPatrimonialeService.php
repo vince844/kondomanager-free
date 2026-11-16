@@ -54,8 +54,12 @@ class StatoPatrimonialeService
      *     liquidita_non_contabilizzata:int,
      *     sbilancio:int, quadra:bool
      * }
+     *
+     * @param  bool  $apertureSempre  con `$allaData`: le scritture di apertura (tipo `apertura`) entrano anche con una data dopo il giorno. Una cassa creata con
+     *                                un saldo registra l'apertura alla data d'inizio del primo esercizio, anche nel futuro: per la tesoreria quel denaro c'è
+     *                                già oggi. La pagina dello Stato patrimoniale non lo passa.
      */
-    public function calcola(Condominio $condominio, ?Esercizio $esercizio = null, ?string $allaData = null, bool $escludiAperture = false): array
+    public function calcola(Condominio $condominio, ?Esercizio $esercizio = null, ?string $allaData = null, bool $escludiAperture = false, bool $apertureSempre = false): array
     {
         if ($esercizio !== null && $allaData !== null) {
             throw new \InvalidArgumentException(
@@ -63,7 +67,7 @@ class StatoPatrimonialeService
             );
         }
 
-        $saldi = $this->saldiPerConto($condominio, $esercizio, $allaData, $escludiAperture);
+        $saldi = $this->saldiPerConto($condominio, $esercizio, $allaData, $escludiAperture, $apertureSempre);
 
         $attivo  = $saldi->where('tipo', 'attivo');
         $passivo = $saldi->where('tipo', 'passivo');
@@ -165,11 +169,11 @@ class StatoPatrimonialeService
      *                                 non movimento — è il perimetro del riepilogo finanziario e del
      *                                 risultato di gestione (D19). Irrilevante con `$allaData`.
      */
-    private function saldiPerConto(Condominio $condominio, ?Esercizio $esercizio, ?string $allaData = null, bool $escludiAperture = false)
+    private function saldiPerConto(Condominio $condominio, ?Esercizio $esercizio, ?string $allaData = null, bool $escludiAperture = false, bool $apertureSempre = false)
     {
         $query = DB::table('conti_contabili as cc')
             ->leftJoin('righe_scritture as rs', 'rs.conto_contabile_id', '=', 'cc.id')
-            ->leftJoin('scritture_contabili as sc', function ($join) use ($esercizio, $allaData, $escludiAperture) {
+            ->leftJoin('scritture_contabili as sc', function ($join) use ($esercizio, $allaData, $escludiAperture, $apertureSempre) {
                 $join->on('rs.scrittura_id', '=', 'sc.id')
                      ->whereNull('sc.deleted_at');
 
@@ -193,7 +197,12 @@ class StatoPatrimonialeService
                 // movimento datato il giorno stesso del taglio. Con «minore del giorno dopo» le due
                 // basi rispondono uguale. Trovato dalla revisione della beta.25.
                 if ($allaData !== null) {
-                    $join->where('sc.data_competenza', '<', \Carbon\Carbon::parse($allaData)->addDay()->format('Y-m-d'));
+                    $dopo = \Carbon\Carbon::parse($allaData)->addDay()->format('Y-m-d');
+                    if ($apertureSempre) {
+                        $join->where(fn ($j) => $j->where('sc.data_competenza', '<', $dopo)->orWhere('sc.tipo_movimento', '=', 'apertura'));
+                    } else {
+                        $join->where('sc.data_competenza', '<', $dopo);
+                    }
                 }
             })
             ->where('cc.condominio_id', $condominio->id)

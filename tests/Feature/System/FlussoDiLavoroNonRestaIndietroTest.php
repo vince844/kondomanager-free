@@ -277,6 +277,88 @@ function intestazioniSenzaCiclo(string $testo, int $n): array
     return $trovate;
 }
 
+/**
+ * I rapporti del sito delle beta della 1.12, per numero di beta: `docs/riferimenti/beta<N>_1_12_lavori/sito/rapporto.md`.
+ *
+ * @return array<int, string> il testo di ogni rapporto, indicizzato dal numero di beta
+ */
+function rapportiDelSitoDellaDodici(): array
+{
+    $rapporti = [];
+    foreach (glob(dirname(__DIR__, 3).'/docs/riferimenti/beta*_1_12_lavori/sito/rapporto.md') ?: [] as $file) {
+        if (preg_match('#/beta(\d+)_1_12_lavori/#', $file, $m)) {
+            $rapporti[(int) $m[1]] = (string) file_get_contents($file);
+        }
+    }
+    ksort($rapporti);
+
+    return $rapporti;
+}
+
+/**
+ * Il rapporto del sito ha una sezione di lezioni: un titolo (da uno a sei `#`, fuori dai blocchi di codice) che contiene «lezion», senza
+ * badare alle maiuscole.
+ */
+function rapportoHaLezioni(string $rapporto): bool
+{
+    $dentroIlCodice = false;
+    foreach (explode("\n", $rapporto) as $riga) {
+        if (str_starts_with(ltrim($riga), '```')) {
+            $dentroIlCodice = ! $dentroIlCodice;
+
+            continue;
+        }
+        if (! $dentroIlCodice && preg_match('/^#{1,6}\s/', $riga) && mb_stripos($riga, 'lezion') !== false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Lo storico ha, per la beta `$n` della 1.12, un titolo «Le lezioni della Fase 5 della 1.12.0-beta.N»: la versione intera, e il lookahead sulla
+ * cifra come in `intestazioneNomina()`, così la .1 non è la .10 e la 1.11.0-beta.9 non è la 1.12.0-beta.9.
+ */
+function storicoHaLeLezioniDellaFase5(string $storico, int $n): bool
+{
+    $dentroIlCodice = false;
+    foreach (explode("\n", $storico) as $riga) {
+        if (str_starts_with(ltrim($riga), '```')) {
+            $dentroIlCodice = ! $dentroIlCodice;
+
+            continue;
+        }
+        if (! $dentroIlCodice && preg_match('/^#{1,6}\s.*Le lezioni della Fase 5 della 1\.12\.0-beta\.'.$n.'(?!\d)/u', $riga)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Le beta della 1.12 che nel rapporto del sito hanno una sezione di lezioni e nello storico non hanno le lezioni della loro Fase 5.
+ *
+ * ⚠️ Non vede che le lezioni siano buone, né che ogni lezione abbia la sua casella nel blocco della fase del flusso: solo che il titolo c'è. Non vede
+ * una sezione di lezioni scritta nel rapporto con un titolo senza «lezion», né un rapporto che manca. Non vede se la sezione è vuota (un titolo «Nessuna lezione»
+ * chiede lo stesso la sezione nello storico), e nello storico le maiuscole contano: «Le lezioni della fase 5» non vale.
+ *
+ * @param  array<int, string>  $rapporti  il testo del rapporto di ogni beta, indicizzato dal numero di beta
+ * @return list<int>
+ */
+function betaConLezioniDelSitoSenzaLoStorico(array $rapporti, string $storico): array
+{
+    $mancanti = [];
+    foreach ($rapporti as $n => $rapporto) {
+        if (rapportoHaLezioni($rapporto) && ! storicoHaLeLezioniDellaFase5($storico, (int) $n)) {
+            $mancanti[] = (int) $n;
+        }
+    }
+
+    return $mancanti;
+}
+
 it('trova davvero delle sezioni di lezioni, invece di guardare il vuoto', function () {
     // ⚠️ Senza questo, il giorno che le intestazioni cambiano forma la guardia diventa verde perché
     // non riconosce più niente — la forma di guasto peggiore, perché si presenta come un successo.
@@ -508,4 +590,65 @@ it('la beta in corso si legge dal verbale aperto: con config ancora alla .49 e i
         ->and(betaInCorso('1.11.0-beta.40', $verbali))->toBe(40)
         // Su una stabile non c'è una beta in corso.
         ->and(betaInCorso('1.11.0', $verbali))->toBeNull();
+});
+
+it('trova davvero i rapporti del sito con le lezioni, invece di guardare il vuoto', function () {
+    $conLezioni = array_keys(array_filter(rapportiDelSitoDellaDodici(), 'rapportoHaLezioni'));
+
+    expect(count($conLezioni) >= 4)->toBeTrue(
+        'Riconosciuti solo '.count($conLezioni)." rapporti del sito con una sezione di lezioni: ne dovrebbero esserci almeno quattro (beta.2, .5, .6, .9).\n".
+        'Se i titoli hanno cambiato forma, va aggiornato `rapportoHaLezioni()` — non allentata questa soglia.'
+    );
+})->skip(fn () => ! file_exists(documentoDelleLezioni()), 'docs/ non è su questa macchina');
+
+it('le lezioni della Fase 5 di ogni rapporto del sito stanno nello storico, con il loro titolo', function () {
+    $mancanti = betaConLezioniDelSitoSenzaLoStorico(rapportiDelSitoDellaDodici(), (string) file_get_contents(documentoDelleLezioni()));
+
+    expect($mancanti)->toBe([],
+        'Il rapporto del sito di queste beta della 1.12 ha una sezione di lezioni, e lo storico (`docs/flusso_storico_riletture.md`) non ha il titolo '.
+        "«Le lezioni della Fase 5 della 1.12.0-beta.N» (la versione intera): beta ".implode(', ', $mancanti).".\n\n".
+        'Le lezioni della Fase 5 si scrivono nello storico con il perché, e ognuna ha la sua casella nel blocco della fase: sono la Fase 0.3 della beta dopo.'
+    );
+})->skip(fn () => ! file_exists(documentoDelleLezioni()), 'docs/ non è su questa macchina');
+
+it('la guardia delle lezioni della Fase 5 morde: un rapporto con le lezioni e lo storico senza il loro titolo si vede', function () {
+    // Passa dalle stesse funzioni del test vero: una guardia provata su una copia prova la copia.
+    $rapporto = "# Rapporto\n## 7. Il sito\ntesto\n## 8. Lezioni per il flusso\ntesto\n";
+    $senzaLezioni = "# Rapporto\n## 7. Il sito\ntesto\n";
+    $storico = "### Le lezioni della Fase 5 della 1.12.0-beta.2 — scritte il 14/11/2026\ntesto\n";
+
+    // Il rapporto di una beta con le lezioni e lo storico che non le ha: rosso atteso.
+    expect(betaConLezioniDelSitoSenzaLoStorico([7 => $rapporto], $storico))->toBe([7])
+        // Quando lo storico le ha, verde; e un rapporto senza lezioni non chiede niente.
+        ->and(betaConLezioniDelSitoSenzaLoStorico([2 => $rapporto], $storico))->toBe([])
+        ->and(betaConLezioniDelSitoSenzaLoStorico([7 => $senzaLezioni], $storico))->toBe([])
+        // Il titolo si cerca nei titoli, non in una riga qualunque, e le maiuscole di «lezion» non contano.
+        ->and(rapportoHaLezioni("## LEZIONI per il flusso\n"))->toBeTrue()
+        ->and(rapportoHaLezioni("testo con le lezioni imparate\n"))->toBeFalse()
+        ->and(rapportoHaLezioni("```\n## Le lezioni\n```\n"))->toBeFalse();
+});
+
+it('la guardia delle lezioni della Fase 5 morde anche sulla versione: la .1 non è la .10, e la 1.11.0-beta.9 non è la 1.12.0-beta.9', function () {
+    $rapporto = "## 9. Lezioni per il flusso\n";
+
+    // Lo storico ha le lezioni della beta.10: la beta.1 non le ha.
+    $storicoDellaDieci = "### Le lezioni della Fase 5 della 1.12.0-beta.10 — scritte il 20/11/2026\n";
+    expect(storicoHaLeLezioniDellaFase5($storicoDellaDieci, 10))->toBeTrue()
+        ->and(storicoHaLeLezioniDellaFase5($storicoDellaDieci, 1))->toBeFalse()
+        ->and(betaConLezioniDelSitoSenzaLoStorico([1 => $rapporto], $storicoDellaDieci))->toBe([1]);
+
+    // Un'altra beta con la stessa cifra, di un altro ciclo: non vale.
+    $storicoDelCicloPrima = "### Le lezioni della Fase 5 della 1.11.0-beta.9 — scritte il 03/11/2026\n";
+    expect(storicoHaLeLezioniDellaFase5($storicoDelCicloPrima, 9))->toBeFalse()
+        ->and(betaConLezioniDelSitoSenzaLoStorico([9 => $rapporto], $storicoDelCicloPrima))->toBe([9])
+        // Con la versione intera della 1.12 vale, e solo nei titoli.
+        ->and(storicoHaLeLezioniDellaFase5("### Le lezioni della Fase 5 della 1.12.0-beta.9 — scritte il 14/11/2026\n", 9))->toBeTrue()
+        ->and(storicoHaLeLezioniDellaFase5("Le lezioni della Fase 5 della 1.12.0-beta.9, nel testo\n", 9))->toBeFalse();
+});
+
+it('la guardia delle lezioni della Fase 5 non conta un titolo scritto dentro un blocco di codice dello storico, come nel rapporto', function () {
+    $dentro = "```\n### Le lezioni della Fase 5 della 1.12.0-beta.9\n```\n";
+
+    expect(storicoHaLeLezioniDellaFase5($dentro, 9))->toBeFalse()
+        ->and(storicoHaLeLezioniDellaFase5($dentro."### Le lezioni della Fase 5 della 1.12.0-beta.9\n", 9))->toBeTrue();
 });

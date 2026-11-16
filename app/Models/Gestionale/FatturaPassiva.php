@@ -251,8 +251,8 @@ class FatturaPassiva extends Model
         }
 
         if (($this->esercizio?->stato) === 'chiuso') {
-            return 'La fattura appartiene a un esercizio chiuso e già rendicontato: quel bilancio non si '
-                 . 'riscrive. Usa lo Storno, che registra la rettifica nell\'esercizio corrente.' . $poi;
+            return 'La fattura appartiene a un esercizio chiuso: le sue registrazioni non si riscrivono. '
+                 . 'Usa lo Storno, che registra la rettifica nell\'esercizio corrente.' . $poi;
         }
 
         return null;

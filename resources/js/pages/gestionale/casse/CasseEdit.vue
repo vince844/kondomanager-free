@@ -1,9 +1,15 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import CasseGuide from '@/components/guides/CasseGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
 import { Button } from '@/components/ui/button';
@@ -30,6 +36,9 @@ const props = defineProps<{
 }>();
 
 const { generatePath, generateRoute } = usePermission();
+
+// La guida della pagina, nel cassetto: «Guida» nell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
 
 // --- MONEY OPTIONS ---
 const moneyOptions = ref({
@@ -118,11 +127,18 @@ const form = useForm({
   nazione: bancaData.nazione || 'Italia',
   
   // --- CARICAMENTO DATI FONDI ---
-  sottotipo_fondo: cassaData.sottotipo_fondo || 'generico', 
+  // Un fondo senza tipo resta senza tipo: conta come vincolato, come nel resto del programma, e per salvare se ne sceglie uno. Mai «generico» da solo, che
+  // lo renderebbe libero da usare senza che nessuno l'abbia deciso.
+  sottotipo_fondo: (cassaData.tipo === 'fondo' ? (cassaData.sottotipo_fondo || null) : (cassaData.sottotipo_fondo || 'generico')) as string | null,
   vincolo_descrizione: cassaData.vincolo_descrizione || '', 
   is_override_assemblea: Boolean(cassaData.is_override_assemblea),
   motivazione_override: cassaData.motivazione_override || '',
 });
+
+/** «Tipo non indicato: conta come vincolato», con le parole del server (`TipoDelFondo`), per un fondo che il tipo non ce l'ha. */
+const tipoNonIndicato = typeof cassaData.tipo_non_indicato === 'string' && cassaData.tipo_non_indicato !== ''
+  ? cassaData.tipo_non_indicato.charAt(0).toUpperCase() + cassaData.tipo_non_indicato.slice(1)
+  : null;
 
 // --- LOGICA DI DOMINIO LATO UI ---
 const lastOverrideState = ref(form.is_override_assemblea); // Inizializza con il dato del server
@@ -177,7 +193,11 @@ const submit = () => {
           :breadcrumbs="(breadcrumbs as any)"
           :back-url="generatePath('gestionale/:condominio/casse', { condominio: props.condominio.id })"
           back-text="Annulla e torna all'elenco"
+          has-text-guide
+          text-guide-title="Guida"
+          @open-text-guide="mostraGuida = true"
         />
+        <CasseGuide v-model:open="mostraGuida" />
 
         <StrutturaLayout>
           <form @submit.prevent="submit" class="space-y-6">
@@ -310,13 +330,18 @@ const submit = () => {
                       v-model="form.sottotipo_fondo" 
                       :reduce="(option: ContoOption) => option.value" 
                       :clearable="false"
+                      :placeholder="tipoNonIndicato ?? 'Scegli la destinazione d\'uso'"
                     />
+                    <p v-if="tipoNonIndicato && !form.sottotipo_fondo" data-testid="tipo-non-indicato" class="mt-2 text-xs text-amber-800 dark:text-amber-300">
+                      {{ tipoNonIndicato }}, come nello Stato patrimoniale e nella tesoreria. Per salvare scegli la destinazione d'uso: «Fondo cassa generico» lo rende
+                      libero da usare, gli altri tipi restano vincolati.
+                    </p>
                     
                     <div class="mt-2 flex items-start gap-1.5">
-                      <div v-if="isUtilizzabilePerImprevisti" class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded uppercase tracking-wide">
+                      <div v-if="isUtilizzabilePerImprevisti" class="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md dark:bg-emerald-950/40 dark:text-emerald-300">
                         <CheckCircle2 class="w-3 h-3" /> Utilizzabile per imprevisti
                       </div>
-                      <div v-else class="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded uppercase tracking-wide">
+                      <div v-else class="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-md dark:bg-red-950/40 dark:text-red-300">
                         <AlertTriangle class="w-3 h-3" /> Fondo bloccato
                       </div>
                     </div>
@@ -352,7 +377,7 @@ const submit = () => {
                             placeholder="Es. Autorizzazione verbale del 12/04/2026, art. 5 Regolamento..." 
                             class="bg-slate-50 dark:bg-slate-950 border-amber-200 text-xs" 
                           />
-                          <p class="text-[10px] text-amber-600 mt-1 italic">Estremi della delibera o motivazione obbligatoria per fini di audit.</p>
+                          <p class="text-xs text-amber-700 mt-1 italic dark:text-amber-400">Estremi della delibera o motivazione obbligatoria per fini di audit.</p>
                           <InputError :message="form.errors.motivazione_override" />
                         </div>
                       </div>
@@ -438,7 +463,7 @@ const submit = () => {
             <div class="flex items-center justify-end gap-3 pt-2">
               <Link
                 :href="generatePath('gestionale/:condominio/casse', { condominio: props.condominio.id })"
-                class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-[10px] font-bold uppercase tracking-widest hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
+                class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-xs font-bold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
               >
                 Annulla
               </Link>
@@ -446,7 +471,7 @@ const submit = () => {
               <Button 
                 type="submit"
                 :disabled="form.processing" 
-                class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
+                class="h-9 px-8 text-xs font-bold shadow-md gap-2"
               >
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                 <Save v-else class="h-4 w-4" />

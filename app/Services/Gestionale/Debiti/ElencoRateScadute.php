@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services\Gestionale\Debiti;
 
@@ -34,6 +37,14 @@ use Illuminate\Support\Facades\DB;
  * **L'accordo di rientro** ({@see AccordiRientro}): le rate coperte restano nell'elenco (per la legge sono scadute) e portano la parte in
  * accordo; la riga porta il segno di ogni accordo in corso, con le due cifre (riconosciuti, e quanto resta oggi). Il filtro «con accordo»
  * mostra le persone con un accordo in corso alla data dell'elenco.
+ *
+ * **«I sei mesi del …»** (`sei_mesi_del`, una data): il filtro che apre «Tutte le rate di questo esercizio →» del riquadro dei sei mesi. Tiene le **persone**
+ * con almeno una rata di quella data dei sei mesi (la più vicina), come «la data dei sei mesi entro N giorni», e non toglie rate a nessuno: la riga resta
+ * tutto lo scaduto, con le sue fasce, e le lettere fatte da «tutte le N dei filtri» sono quelle delle persone spuntate. Le rate di quella data hanno il segno
+ * (`del_sei_mesi`), e la riga dice quanto ne è di quella data (`di_cui_sei_mesi`).
+ *
+ * **A blocchi di persone** ({@see righeABlocchi()}): la stessa riga, costruita in un posto solo, per chi legge tutto il condominio e tiene solo un riassunto
+ * (il riquadro dei sei mesi). `righe()` è un blocco solo.
  */
 final class ElencoRateScadute
 {
@@ -45,7 +56,7 @@ final class ElencoRateScadute
 
     /** Le chiavi dei filtri nell'indirizzo. */
     public const CHIAVI = ['alla', 'vista', 'giorni', 'cerca', 'anagrafica_id', 'fascia', 'minimo', 'gestione_id', 'sei_mesi_entro', 'con_pregresso', 'ordine',
-        'senza_lettere_da', 'mai_scritto', 'da_spedire', 'con_accordo'];
+        'senza_lettere_da', 'mai_scritto', 'da_spedire', 'con_accordo', 'sei_mesi_del'];
 
     public function __construct(private readonly LetturaDebiti $lettura, private readonly SeiMesi $seiMesi, private readonly RegistroLettere $lettere,
         private readonly AccordiRientro $accordi) {}
@@ -55,13 +66,13 @@ final class ElencoRateScadute
      * euro, come lo scrive chi lavora, e qui diventa centesimi, una volta sola.
      *
      * @param  array<string, mixed>  $grezzi
-     * @return array{alla:string, vista:string, giorni:int, cerca:?string, anagrafica_id:?int, fascia:?string, minimo:?int, gestione_id:?int, sei_mesi_entro:?int, con_pregresso:bool, ordine:string, senza_lettere_da:?int, mai_scritto:bool, da_spedire:bool, con_accordo:bool}
+     * @return array{alla:string, vista:string, giorni:int, cerca:?string, anagrafica_id:?int, fascia:?string, minimo:?int, gestione_id:?int, sei_mesi_entro:?int, con_pregresso:bool, ordine:string, senza_lettere_da:?int, mai_scritto:bool, da_spedire:bool, con_accordo:bool, sei_mesi_del:?string}
      */
     public function filtriNormalizzati(array $grezzi): array
     {
         $oggi = DateHelper::oggiUtente();
-        $alla = is_string($grezzi['alla'] ?? null) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $grezzi['alla']) && checkdate((int) substr($grezzi['alla'], 5, 2), (int) substr($grezzi['alla'], 8, 2), (int) substr($grezzi['alla'], 0, 4))
-            ? min($grezzi['alla'], $oggi) : $oggi;
+        $data = fn ($v) => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && checkdate((int) substr($v, 5, 2), (int) substr($v, 8, 2), (int) substr($v, 0, 4)) ? $v : null;
+        $alla = $data($grezzi['alla'] ?? null) !== null ? min($grezzi['alla'], $oggi) : $oggi;
         $intero = fn ($v, int $min, int $max) => is_numeric($v) && (int) $v >= $min && (int) $v <= $max ? (int) $v : null;
         $minimo = $grezzi['minimo'] ?? null;
         if (is_scalar($minimo) && trim((string) $minimo) !== '' && preg_match('/^[\d.,\s€]+$/u', (string) $minimo)) {
@@ -92,6 +103,7 @@ final class ElencoRateScadute
             'mai_scritto' => filter_var($grezzi['mai_scritto'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'da_spedire' => filter_var($grezzi['da_spedire'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'con_accordo' => filter_var($grezzi['con_accordo'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'sei_mesi_del' => $data($grezzi['sei_mesi_del'] ?? null),
         ];
     }
 
@@ -105,9 +117,55 @@ final class ElencoRateScadute
      */
     public function righe(Condominio $condominio, array $filtri, ?array $solo = null, bool $conVersatiOltre = true): Collection
     {
+        $righe = collect();
+        foreach ($this->righeABlocchi($condominio, $filtri, $solo, $conVersatiOltre) as $blocco) {
+            $righe = $righe->concat($blocco);
+        }
+        $inScadenza = $filtri['vista'] === self::VISTA_IN_SCADENZA;
+
+        return $righe->sort(function ($a, $b) use ($filtri, $inScadenza) {
+            if ($inScadenza) {
+                return [$a['prima_scadenza'], -$a['importo'], $a['nome']] <=> [$b['prima_scadenza'], -$b['importo'], $b['nome']];
+            }
+            if ($filtri['ordine'] === 'sei_mesi') {
+                return [$a['sei_mesi']['data'] === null ? 1 : 0, $a['sei_mesi']['data'] ?? '', -$a['importo'], $a['nome']]
+                    <=> [$b['sei_mesi']['data'] === null ? 1 : 0, $b['sei_mesi']['data'] ?? '', -$b['importo'], $b['nome']];
+            }
+
+            return [-$a['importo'], $a['nome'], $a['anagrafica_id']] <=> [-$b['importo'], $b['nome'], $b['anagrafica_id']];
+        })->values();
+    }
+
+    /**
+     * Le righe dell'elenco a blocchi di persone, non ordinate: ogni blocco è la stessa costruzione di {@see righe()} sulle sue persone, e la memoria resta
+     * quella di un blocco. Senza `$persone` un blocco solo, con la lettura di tutto il condominio (la pagina); con `$persone` e `$solo` si leggono le sole
+     * persone di `$solo` (la tesoreria chiede la prossima azione di quelle che mostra). Con `$letterePerTipo` ogni riga porta anche
+     * l'ultima lettera di ogni tipo (`lettere_per_tipo`, con il termine e le rate che chiedeva): serve al riquadro dei sei mesi, non alla pagina.
+     *
+     * @param  array<string, mixed>  $filtri  già normalizzati
+     * @param  list<int>|null  $solo
+     * @return \Generator<int, Collection<int, array<string, mixed>>>
+     */
+    public function righeABlocchi(Condominio $condominio, array $filtri, ?array $solo = null, bool $conVersatiOltre = true, ?int $persone = null, bool $letterePerTipo = false): \Generator
+    {
+        $letture = $persone === null
+            ? [$this->lettura->perCondominio((int) $condominio->id, $filtri['alla'], $filtri['gestione_id'])]
+            : $this->lettura->perCondominioABlocchi((int) $condominio->id, $filtri['alla'], $persone, $filtri['gestione_id'], $solo);
+        foreach ($letture as $lettura) {
+            yield $this->costruisci($condominio, $filtri, $lettura, $solo, $conVersatiOltre, $letterePerTipo);
+        }
+    }
+
+    /**
+     * Le righe di un gruppo di persone della lettura, filtrate e non ordinate.
+     *
+     * @param  array<int, array<string, mixed>>  $letture
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function costruisci(Condominio $condominio, array $filtri, array $letture, ?array $solo, bool $conVersatiOltre, bool $letterePerTipo): Collection
+    {
         $alla = $filtri['alla'];
         $oggi = $alla === DateHelper::oggiUtente();
-        $letture = $this->lettura->perCondominio((int) $condominio->id, $alla, $filtri['gestione_id']);
         $inScadenza = $filtri['vista'] === self::VISTA_IN_SCADENZA;
         $fino = CarbonImmutable::parse($alla, 'UTC')->addDays($filtri['giorni'])->format('Y-m-d');
 
@@ -131,6 +189,8 @@ final class ElencoRateScadute
             ->get()->keyBy('id');
         $piani = DB::table('piani_rate')->whereIn('id', collect($scelte)->flatMap(fn ($x) => array_column($x['rate'], 'piano_rate_id'))->unique()->values()->all() ?: [0])
             ->pluck('nome', 'id');
+        // Un addebito a una persona sola si chiama con la sua causale, non con il numero della rata nel piano degli addebiti.
+        $addebiti = \App\Models\Gestionale\PianoRate::causaliDegliAddebiti(collect($scelte)->flatMap(fn ($x) => array_column($x['rate'], 'rata_id')));
         $calcolo = $this->seiMesi->perCondominio((int) $condominio->id, $alla);
         // L'ultima lettera di ognuno, alla data dell'elenco (partita, stampata o spedita), e quella che conta per i filtri (partita o spedita).
         $lettere = $this->lettere->ultimePerPersone((int) $condominio->id, array_keys($scelte), $alla);
@@ -148,19 +208,24 @@ final class ElencoRateScadute
             $rateDelSegno = isset($accordi[$persona]) && $filtri['gestione_id'] !== null
                 ? $this->lettura->perPersona((int) $condominio->id, (int) $persona, $alla)['rate'] : $x['lettura']['rate'];
             $segni = isset($accordi[$persona]) ? $this->accordi->segni($accordi[$persona], $rateDelSegno, $alla, $conVersatiOltre) : ['accordi' => [], 'parti' => []];
-            $dettaglio = array_map(function ($r) use ($unita, $piani, $calcolo, $persona, $inScadenza, $segni) {
+            $dettaglio = array_map(function ($r) use ($unita, $piani, $calcolo, $persona, $inScadenza, $segni, $addebiti) {
+                $seiMesi = $inScadenza ? null : $calcolo->perRiga($r, $persona);
+
                 return [
                     'rata_id' => $r['rata_id'],
                     'immobile_id' => $r['immobile_id'],
                     'numero_rata' => $r['numero_rata'],
                     'piano' => (string) ($piani[$r['piano_rate_id']] ?? ''),
+                    'piano_rate_id' => $r['piano_rate_id'] === null ? null : (int) $r['piano_rate_id'],
+                    // La causale di un addebito a una persona sola; null per le rate dei piani del riparto.
+                    'addebito' => $r['rata_id'] !== null && isset($addebiti[$r['rata_id']]) ? (string) $addebiti[$r['rata_id']] : null,
                     'unita' => $r['immobile_id'] !== null && isset($unita[$r['immobile_id']]) ? $unita[$r['immobile_id']]->etichetta : null,
                     'scadenza' => $r['scadenza'],
                     'residuo' => $r['residuo'],
                     'giorni_ritardo' => $r['giorni_ritardo'],
                     'pregresso' => $r['pregresso'] === null ? null : $r['pregresso'] + ['etichetta' => OriginePregresso::etichetta($r['pregresso'])],
                     'pregresso_nella_rata' => $r['pregresso_nella_rata'],
-                    'sei_mesi' => $inScadenza ? null : $calcolo->perRiga($r, $persona),
+                    'sei_mesi' => $seiMesi,
                     // La parte della rata in un accordo di rientro in corso: il segno, e quanto le lettere lasciano fuori.
                     'accordo' => $segni['parti'][AccordiRientro::chiave($r['rata_id'], $r['immobile_id'])] ?? null,
                 ];
@@ -178,6 +243,9 @@ final class ElencoRateScadute
                 'lettera_in_sospeso' => $lettere[$persona]['in_sospeso'] ?? null,
                 'accordi' => $segni['accordi'],
             ];
+            if ($letterePerTipo) {
+                $riga['lettere_per_tipo'] = $lettere[$persona]['per_tipo'] ?? ['diffida' => null, 'sollecito' => null, 'promemoria' => null];
+            }
             if ($inScadenza) {
                 $riga['prima_scadenza'] = min(array_column($dettaglio, 'scadenza'));
             } else {
@@ -226,21 +294,24 @@ final class ElencoRateScadute
                         continue;
                     }
                 }
+                // «I sei mesi del …»: tiene la persona con almeno una rata di quella data, e segna quelle rate; la riga resta tutto lo scaduto.
+                if (($filtri['sei_mesi_del'] ?? null) !== null) {
+                    $diCui = 0;
+                    foreach ($riga['rate'] as $i => $d) {
+                        $del = ($d['sei_mesi']['piu_vicina'] ?? null) === $filtri['sei_mesi_del'];
+                        $riga['rate'][$i]['del_sei_mesi'] = $del;
+                        $diCui += $del ? (int) $d['residuo'] : 0;
+                    }
+                    if ($diCui <= 0) {
+                        continue;
+                    }
+                    $riga['di_cui_sei_mesi'] = $diCui;
+                }
             }
             $righe->push($riga);
         }
 
-        return $righe->sort(function ($a, $b) use ($filtri, $inScadenza) {
-            if ($inScadenza) {
-                return [$a['prima_scadenza'], -$a['importo'], $a['nome']] <=> [$b['prima_scadenza'], -$b['importo'], $b['nome']];
-            }
-            if ($filtri['ordine'] === 'sei_mesi') {
-                return [$a['sei_mesi']['data'] === null ? 1 : 0, $a['sei_mesi']['data'] ?? '', -$a['importo'], $a['nome']]
-                    <=> [$b['sei_mesi']['data'] === null ? 1 : 0, $b['sei_mesi']['data'] ?? '', -$b['importo'], $b['nome']];
-            }
-
-            return [-$a['importo'], $a['nome'], $a['anagrafica_id']] <=> [-$b['importo'], $b['nome'], $b['anagrafica_id']];
-        })->values();
+        return $righe;
     }
 
     /**

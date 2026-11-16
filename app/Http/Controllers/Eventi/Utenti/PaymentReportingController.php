@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Eventi\Utenti;
 
@@ -76,6 +79,8 @@ class PaymentReportingController extends Controller
                 unset($meta['rejection_reason']);
                 unset($meta['rejected_at']);
             }
+            // E la frase della segnalazione di prima (dove era andato il versamento): questa è una segnalazione nuova.
+            unset($meta['esito_segnalazione'], $meta['segnalazione_chiusa_il']);
 
             $evento->update(['meta' => $meta]);
 
@@ -112,7 +117,8 @@ class PaymentReportingController extends Controller
                 tipo: EventoTipo::VERIFICA_PAGAMENTO,
                 title: "Verifica Incasso: {$evento->title}",
                 description: $descrizioneTask,
-                scadenza: now(),
+                // Il giorno di Roma della segnalazione («segnalato il»), scritto come l'agenda scrive le ore.
+                scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
                 createdByUserId: Auth::id(),
                 condominioId: $condominioId,
                 context: [
@@ -151,7 +157,8 @@ class PaymentReportingController extends Controller
                 }
 
                 $adminMeta = $adminEvent->meta;
-                $adminMeta['action_url'] = route('admin.gestionale.movimenti-rate.create', $actionUrlParams);
+                // Il percorso, non l'indirizzo intero: il collegamento non dipende dall'indirizzo del sito.
+                $adminMeta['action_url'] = route('admin.gestionale.movimenti-rate.create', $actionUrlParams, false);
                 $adminEvent->update(['meta' => $adminMeta]);
             }
 

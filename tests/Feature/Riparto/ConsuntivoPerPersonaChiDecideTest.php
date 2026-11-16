@@ -170,9 +170,21 @@ it('l\'unità mista: il già versato dell\'unità non usato va all\'usufruttuari
 // ─── I periodi della voce diversi fra due piani ──────────────────────────────────────────────────────────────────────────────────────
 
 /** Due piani dell'esercizio con la stessa voce Pulizie: il periodo (01/01–30/06) sul primo, sul secondo, o su nessuno; con o senza il passaggio di U2. */
-function cpdDuePiani($test, ?string $periodoSu, bool $passaggio = true): array
+function cpdDuePiani($test, ?string $periodoSu, bool $passaggio = true, ?int $inquilino = null): array
 {
-    $s = cpcViaVerdi($test);
+    // Con `$inquilino` (la percentuale dell'inquilino sulle voci; 0: nessuna ripartizione per l'inquilino) Nora è inquilina di U2 fino al 30/06 e Olga dal
+    // 01/07, righe scritte a mano una dopo l'altra.
+    $s = $inquilino === null || $inquilino === 0 ? cpcViaVerdi($test) : cpcViaVerdi($test, ['inquilino' => ['U2', 'Nora', $inquilino, '2020-01-01', '2026-06-30']]);
+    if ($inquilino !== null) {
+        foreach ($inquilino === 0 ? [['Nora', '2020-01-01', '2026-06-30'], ['Olga', '2026-07-01', null]] : [['Olga', '2026-07-01', null]] as [$nome, $dal, $al]) {
+            $p = Anagrafica::forceCreate(['nome' => $nome, 'email' => strtolower($nome).'-cpd'.$s['c']->id.'@test.it', 'indirizzo' => 'Via Verdi 1',
+                'codice_fiscale' => strtoupper(substr(md5($nome.$s['c']->id), 0, 16))]);
+            $p->condomini()->syncWithoutDetaching([$s['c']->id]);
+            DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $p->id, 'immobile_id' => $s['unita']['U2']->id, 'tipologia' => 'inquilino', 'quota' => 100,
+                'attivo' => true, 'data_inizio' => $dal, 'data_fine' => $al, 'created_at' => now(), 'updated_at' => now()]);
+            $s['persone'][$nome] = $p;
+        }
+    }
     cpcRateEIncassi($test, $s);
     if ($passaggio) {
         cpcPassaggio($test, $s);
@@ -201,11 +213,102 @@ it('due piani dell\'esercizio con periodi diversi per la stessa voce, e un\'unit
 
     // Pulizie € 3.300,00 non divise: né Bianchi né Rossi le hanno (prima Bianchi 990,00 con il periodo sul primo piano, 490,93 sul secondo). Manutenzioni sì.
     expect($g['non_attribuite'][$s['pulizie']->id] ?? null)->toBe(330000)
+        ->and($g['periodi_diversi_perche'] ?? null)->toBe([$s['pulizie']->id => 'titolare'])
         ->and(cpcDi($c, $s, 'Bianchi', 'U2')['voci'][$s['pulizie']->id] ?? 0)->toBe(0)
         ->and(cpcDi($c, $s, 'Rossi', 'U2')['voci'][$s['pulizie']->id] ?? 0)->toBe(0)
         ->and(cpcDi($c, $s, 'Bianchi', 'U2')['voci'][$s['manutenzioni']->id] ?? 0)->toBeGreaterThan(0)
         ->and($pulizie['motivo'])->toBe('I piani «Preventivo 2026» e «Integrativo 2026» dividono la voce con periodi diversi, e un\'unità della voce ha cambiato titolare: '
             .'il programma non sceglie quale vale. Scrivi la competenza sulle fatture, o correggi i periodi del piano.');
+});
+
+/** Per conto: la spesa delle persone, le non attribuite, le uscite divise e le voci ferme della gestione del caso (il caso non ha già versato dell'unità). */
+function cpdTerminiPerConto(array $c, array $s): array
+{
+    $g = $c['gestioni'][$s['g']->id];
+    $t = [];
+    foreach ($c['persone'][$s['g']->id] ?? [] as $perUnita) {
+        foreach ($perUnita as $r) {
+            foreach ($r['voci'] as $conto => $centesimi) {
+                $t[$conto]['persone'] = ($t[$conto]['persone'] ?? 0) + $centesimi;
+            }
+        }
+    }
+    foreach (['non_attribuite', 'uscite', 'voci_ferme'] as $campo) {
+        foreach ($g[$campo] ?? [] as $conto => $centesimi) {
+            $t[$conto][$campo] = $centesimi;
+        }
+    }
+    ksort($t);
+
+    return array_map(fn (array $x) => ['persone' => $x['persone'] ?? 0, 'non_attribuite' => $x['non_attribuite'] ?? 0, 'uscite' => $x['uscite'] ?? 0,
+        'voci_ferme' => $x['voci_ferme'] ?? 0], $t);
+}
+
+it('la voce ferma per i periodi diversi ha un campo suo con la cifra, accanto alle uscite divise: persone + non attribuite = uscite + voci ferme, per conto e per gestione', function () {
+    $s = cpdDuePiani($this, 'primo');
+    $c = cpcLeggi($this, $s);
+    $g = $c['gestioni'][$s['g']->id];
+    $termini = cpdTerminiPerConto($c, $s);
+    $somma = fn (string $k) => array_sum(array_column($termini, $k));
+
+    // Pulizie € 3.300,00 ferme: fra le non attribuite, con il motivo, e fra le voci ferme, non fra le uscite divise; Manutenzioni € 900,00 divise.
+    expect($g['voci_ferme'] ?? null)->toBe([$s['pulizie']->id => 330000])
+        ->and(array_key_exists($s['pulizie']->id, $g['uscite']))->toBeFalse()
+        ->and($g['uscite'])->toBe([$s['manutenzioni']->id => 90000])
+        ->and(array_filter($termini, fn (array $x) => $x['persone'] + $x['non_attribuite'] !== $x['uscite'] + $x['voci_ferme']))->toBe([])
+        ->and($somma('persone') + $somma('non_attribuite'))->toBe($somma('uscite') + $somma('voci_ferme'))
+        ->and($somma('uscite') + $somma('voci_ferme'))->toBe(420000)
+        // Il controllo per unità resta sulle voci divise: la voce ferma non lo fa dire «non quadra».
+        ->and(ControlliDelConguaglio::perUnita($c)['esito'])->toBe('quadra');
+});
+
+it('senza una voce ferma il campo è vuoto, e le uscite sono tutte le voci, divise', function () {
+    $s = cpdDuePiani($this, 'primo', false);
+    $c = cpcLeggi($this, $s);
+    $termini = cpdTerminiPerConto($c, $s);
+
+    expect($c['gestioni'][$s['g']->id]['voci_ferme'] ?? null)->toBe([])
+        ->and(array_filter($termini, fn (array $x) => $x['persone'] + $x['non_attribuite'] !== $x['uscite'] + $x['voci_ferme']))->toBe([])
+        ->and($c['gestioni'][$s['g']->id]['uscite'])->toEqual([$s['pulizie']->id => 330000, $s['manutenzioni']->id => 90000]);
+});
+
+it('due piani con periodi diversi e una riga datata dentro l\'anno senza un predecessore: è il giorno in cui è stata scritta, non un cambio, e la voce si divide', function () {
+    $s = cpdDuePiani($this, 'primo', false);
+    DB::table('anagrafica_immobile')->where('id', $s['righe']['Verdi'])->update(['data_inizio' => '2026-05-10']);
+    $c = cpcLeggi($this, $s);
+    $g = $c['gestioni'][$s['g']->id];
+
+    // Verdi tutto l'anno per il motore: 200/1000 di 3.300,00 = 660,00. Nessuna voce ferma.
+    expect($g['voci_ferme'])->toBe([])
+        ->and($g['non_attribuite'][$s['pulizie']->id] ?? 0)->toBe(0)
+        ->and(cpcDi($c, $s, 'Verdi', 'U3')['voci'][$s['pulizie']->id] ?? 0)->toBe(66000);
+});
+
+it('due piani con periodi diversi e un cambio del solo inquilino, che nella voce non ha una parte: i periodi non cambiano la parte di nessuno, e la voce si divide', function () {
+    $s = cpdDuePiani($this, 'primo', false, 0);
+    $c = cpcLeggi($this, $s);
+    $g = $c['gestioni'][$s['g']->id];
+
+    // Le voci sono tutte del proprietario: Bianchi tutto l'anno, 300/1000 di 3.300,00 = 990,00.
+    expect($g['voci_ferme'])->toBe([])
+        ->and($g['periodi_diversi'])->toBe([])
+        ->and($g['non_attribuite'][$s['pulizie']->id] ?? 0)->toBe(0)
+        ->and(cpcDi($c, $s, 'Bianchi', 'U2')['voci'][$s['pulizie']->id] ?? 0)->toBe(99000);
+});
+
+it('due piani con periodi diversi e un cambio del solo inquilino, che nella voce ha una parte: la voce resta ferma, e il motivo dice che è cambiato l\'inquilino', function () {
+    $s = cpdDuePiani($this, 'primo', false, 30);
+    $c = cpcLeggi($this, $s);
+    $g = $c['gestioni'][$s['g']->id];
+    $motivo = collect(collect(cpdScheda($s)['righe']['gestioni'])->firstWhere('id', $s['g']->id)['non_attribuite'])->firstWhere('conto_id', $s['pulizie']->id)['motivo'] ?? null;
+
+    expect($g['voci_ferme'])->toBe([$s['pulizie']->id => 330000])
+        ->and($g['periodi_diversi_perche'] ?? null)->toBe([$s['pulizie']->id => 'inquilino'])
+        ->and($motivo)->toBe('I piani «Preventivo 2026» e «Integrativo 2026» dividono la voce con periodi diversi, e un\'unità della voce ha cambiato inquilino: '
+            .'il programma non sceglie quale vale. Scrivi la competenza sulle fatture, o correggi i periodi del piano.')
+        // Per chi legge la stampa: la stessa cosa, senza i piani e senza l'istruzione.
+        ->and(\App\Services\Gestionale\ParoleDelConguaglio::perche($motivo))
+        ->toBe('I piani dell\'esercizio dividono la voce in periodi diversi, e un\'unità della voce ha cambiato inquilino: la spesa non è ancora divisa.');
 });
 
 it('due piani con periodi diversi ma nessun cambio di titolare: la voce si divide come prima, i periodi non cambiano la parte di nessuno', function () {
@@ -299,6 +402,162 @@ it('il già versato dell\'unità non usato senza un cambio di titolare: a chi è
 
     expect((int) (cpcDi($c, $s, 'Bianchi', 'U2')['gia_versato_non_usato']['questo_esercizio'] ?? 0))->toBe(30000)
         ->and($c['gestioni'][$s['g']->id]['gia_versato_da_decidere'] ?? [])->toBe([]);
+});
+
+/**
+ * Via Verdi con Nora inquilina di U2 (il 30 % delle voci) e € 300,00 di già versato dell'unità U2 sulle Pulizie, senza la persona, registrato dopo il piano
+ * (nessun piano lo usa). Con `$cambia` Nora lascia U2 il 30/06 e Olga entra il 01/07, righe scritte a mano una dopo l'altra; Bianchi resta proprietaria
+ * tutto l'anno. Senza, Nora è inquilina tutto l'anno.
+ */
+function cpdSoloInquilino($test, bool $cambia, bool $inquilinoPaga = true): array
+{
+    if ($inquilinoPaga) {
+        $s = cpcViaVerdi($test, ['inquilino' => ['U2', 'Nora', 30, '2020-01-01', $cambia ? '2026-06-30' : null]]);
+    } else {
+        // Le voci senza una parte per l'inquilino (proprietario 100 %): Nora è inquilina di U2, ma nella gestione non paga niente.
+        $s = cpcViaVerdi($test);
+        $nora = Anagrafica::forceCreate(['nome' => 'Nora', 'email' => 'nora-cpd'.$s['c']->id.'@test.it', 'indirizzo' => 'Via Verdi 1',
+            'codice_fiscale' => strtoupper(substr(md5('Nora'.$s['c']->id), 0, 16))]);
+        $nora->condomini()->syncWithoutDetaching([$s['c']->id]);
+        DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $nora->id, 'immobile_id' => $s['unita']['U2']->id, 'tipologia' => 'inquilino', 'quota' => 100,
+            'attivo' => true, 'data_inizio' => '2020-01-01', 'data_fine' => $cambia ? '2026-06-30' : null, 'created_at' => now(), 'updated_at' => now()]);
+        $s['persone']['Nora'] = $nora;
+    }
+    if ($cambia) {
+        $olga = Anagrafica::forceCreate(['nome' => 'Olga', 'email' => 'olga-cpd'.$s['c']->id.'@test.it', 'indirizzo' => 'Via Verdi 1',
+            'codice_fiscale' => strtoupper(substr(md5('Olga'.$s['c']->id), 0, 16))]);
+        $olga->condomini()->syncWithoutDetaching([$s['c']->id]);
+        DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $olga->id, 'immobile_id' => $s['unita']['U2']->id, 'tipologia' => 'inquilino', 'quota' => 100,
+            'attivo' => true, 'data_inizio' => '2026-07-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
+        $s['persone']['Olga'] = $olga;
+    }
+    cpcRateEIncassi($test, $s);
+    ContributoVersato::create(['condominio_id' => $s['c']->id, 'target_type' => Conto::class, 'target_id' => $s['pulizie']->id, 'immobile_id' => $s['unita']['U2']->id,
+        'anagrafica_id' => null, 'importo_cents' => 30000, 'natura' => 'fondo_vincolato', 'origine' => 'migrazione', 'esercizio_id' => $s['e']->id]);
+    cpcSpese($s);
+
+    return $s;
+}
+
+/**
+ * Le cifre dei due casi qui sotto: il già versato dell'unità non usato non entra nel conguaglio, e dove va (alla proprietaria o da decidere) non ne
+ * muove nessuna. Per riga a, spese personali, b, conguaglio, posizione, fuori dalle rate, saldo. Con il cambio, il piano
+ * (generato a gennaio, con Nora fino al 30/06) chiede a Bianchi anche la parte dell'inquilino da luglio, e Olga, entrata dopo, non ha quote.
+ */
+const CPD_CIFRE_CAMBIA_INQUILINO = [
+    'righe' => [
+        'Bianchi U2' => [88200, 0, 102148, -13948, 0, 0, -13948],
+        'Neri U1' => [210000, 0, 200000, 10000, 30000, 0, 40000],
+        'Nora U2' => [18745, 0, 17852, 893, 17852, 0, 18745],
+        'Olga U2' => [19055, 0, 0, 19055, 0, 0, 19055],
+        'Verdi U3' => [84000, 0, 80000, 4000, 0, 0, 4000],
+    ],
+    'totali' => ['a' => 420000, 'personali' => 0, 'b' => 400000, 'conguaglio' => 20000, 'posizione' => 47852, 'fuori_dalle_rate' => 0, 'saldo' => 67852,
+        'non_disponibili' => 0, 'a_non_disponibili' => 0],
+];
+const CPD_CIFRE_SENZA_CAMBIO = [
+    'righe' => [
+        'Bianchi U2' => [88200, 0, 84000, 4200, 0, 0, 4200],
+        'Neri U1' => [210000, 0, 200000, 10000, 30000, 0, 40000],
+        'Nora U2' => [37800, 0, 36000, 1800, 36000, 0, 37800],
+        'Verdi U3' => [84000, 0, 80000, 4000, 0, 0, 4000],
+    ],
+    'totali' => ['a' => 420000, 'personali' => 0, 'b' => 400000, 'conguaglio' => 20000, 'posizione' => 66000, 'fuori_dalle_rate' => 0, 'saldo' => 86000,
+        'non_disponibili' => 0, 'a_non_disponibili' => 0],
+];
+
+/** Tutte le cifre delle righe della gestione, per «persona unità», e i totali, senza il già versato non usato: quello che il già versato non deve muovere. */
+function cpdCifreDelleRighe(array $c, array $s): array
+{
+    $nomi = array_flip(array_map(fn ($p) => $p->id, $s['persone']));
+    $unita = array_flip(array_map(fn ($u) => $u->id, $s['unita']));
+    $righe = [];
+    foreach ($c['persone'][$s['g']->id] as $aid => $perUnita) {
+        foreach ($perUnita as $iid => $r) {
+            $righe[$nomi[$aid].' '.$unita[$iid]] = [$r['a'], $r['personali']['non_chieste'], $r['b']['totale'], $r['conguaglio'], $r['posizione'], $r['fuori_dalle_rate'], $r['saldo']];
+        }
+    }
+    ksort($righe);
+
+    return ['righe' => $righe, 'totali' => $c['gestioni'][$s['g']->id]['totali']];
+}
+
+it('il già versato dell\'unità non usato, quando nell\'esercizio cambia solo l\'inquilino: su nessun foglio, la scheda dice «a chi va lo decidi tu», e nessun\'altra cifra si muove', function () {
+    $s = cpdSoloInquilino($this, true);
+    $c = cpcLeggi($this, $s);
+    $nonUsato = fn (string $chi) => (int) (cpcDi($c, $s, $chi, 'U2')['gia_versato_non_usato']['questo_esercizio'] ?? 0);
+    $scheda = cpdScheda($s)['righe'];
+
+    // Le cifre di tutte le righe e i totali: il già versato non usato non entra nel conguaglio, e dove va non le muove.
+    expect(cpdCifreDelleRighe($c, $s))->toBe(CPD_CIFRE_CAMBIA_INQUILINO)
+        // Con il cambio dell'inquilino, che nella gestione paga una parte, la cifra resta da decidere: può essere denaro dell'inquilina che esce.
+        ->and([$nonUsato('Bianchi'), $nonUsato('Nora'), $nonUsato('Olga')])->toBe([0, 0, 0])
+        ->and($c['gestioni'][$s['g']->id]['gia_versato_da_decidere'])->toBe([$s['unita']['U2']->id => 30000])
+        // La nota dice che cosa è cambiato: l'inquilino, non il titolare.
+        ->and(cpdNote($scheda, $s['unita']['U2']->id))->toContain('Già versato registrato per questa unità e non usato dai piani: € 300,00. L\'unità ha cambiato inquilino: '
+            .'non è sul foglio di nessuno, a chi va lo decidi tu.')
+        ->and(implode(' ', cpdNote($scheda, $s['unita']['U2']->id)))->not->toContain('cambiato titolare');
+});
+
+it('il già versato dell\'unità non usato, quando cambiano il titolare e l\'inquilino: la nota li dice tutti e due', function () {
+    $s = cpdSoloInquilino($this, true);
+    cpcPassaggio($this, $s);
+    $c = cpcLeggi($this, $s);
+
+    expect($c['gestioni'][$s['g']->id]['gia_versato_da_decidere'])->toBe([$s['unita']['U2']->id => 30000])
+        ->and(cpdNote(cpdScheda($s)['righe'], $s['unita']['U2']->id))->toContain('Già versato registrato per questa unità e non usato dai piani: € 300,00. '
+            .'L\'unità ha cambiato titolare e inquilino: non è sul foglio di nessuno, a chi va lo decidi tu.');
+});
+
+it('l\'inquilino cambia, ma nella gestione l\'inquilino non paga niente: il già versato dell\'unità non può essere suo, e va alla proprietaria', function () {
+    $s = cpdSoloInquilino($this, true, false);
+    $c = cpcLeggi($this, $s);
+    $nonUsato = fn (string $chi) => (int) (cpcDi($c, $s, $chi, 'U2')['gia_versato_non_usato']['questo_esercizio'] ?? 0);
+
+    expect([$nonUsato('Bianchi'), $nonUsato('Nora'), $nonUsato('Olga')])->toBe([30000, 0, 0])
+        ->and($c['gestioni'][$s['g']->id]['gia_versato_da_decidere'] ?? [])->toBe([]);
+});
+
+it('un inquilino scritto nel programma a maggio, senza un predecessore né un passaggio, non è un cambio: per il motore c\'è da sempre, e il già versato va alla proprietaria', function () {
+    // La data della riga è il giorno in cui è stata scritta, non quello in cui l'inquilina è entrata: il motore le dà la parte dell'inquilino per tutto l'anno.
+    $s = cpcViaVerdi($this, ['inquilino' => ['U2', 'Nora', 30, '2026-05-10', null]]);
+    cpcRateEIncassi($this, $s);
+    ContributoVersato::create(['condominio_id' => $s['c']->id, 'target_type' => Conto::class, 'target_id' => $s['pulizie']->id, 'immobile_id' => $s['unita']['U2']->id,
+        'anagrafica_id' => null, 'importo_cents' => 30000, 'natura' => 'fondo_vincolato', 'origine' => 'migrazione', 'esercizio_id' => $s['e']->id]);
+    cpcSpese($s);
+    $c = cpcLeggi($this, $s);
+    $nonUsato = fn (string $chi) => (int) (cpcDi($c, $s, $chi, 'U2')['gia_versato_non_usato']['questo_esercizio'] ?? 0);
+
+    // La parte dell'inquilino per 365 giorni: 30 % di 300/1000 di 4.200,00 = 378,00.
+    expect(cpcDi($c, $s, 'Nora', 'U2')['a'])->toBe(37800)
+        ->and([$nonUsato('Bianchi'), $nonUsato('Nora')])->toBe([30000, 0])
+        ->and($c['gestioni'][$s['g']->id]['gia_versato_da_decidere'] ?? [])->toBe([])
+        ->and(implode(' ', cpdNote(cpdScheda($s)['righe'], $s['unita']['U2']->id)))->not->toContain('a chi va lo decidi tu');
+});
+
+it('la riga della proprietaria datata dentro l\'anno, senza un predecessore: è il giorno in cui è stata scritta, non un cambio, e il già versato va a lei', function () {
+    $s = cpcViaVerdi($this);
+    DB::table('anagrafica_immobile')->where('id', $s['righe']['Bianchi'])->update(['data_inizio' => '2026-05-10']);
+    cpcRateEIncassi($this, $s);
+    ContributoVersato::create(['condominio_id' => $s['c']->id, 'target_type' => Conto::class, 'target_id' => $s['pulizie']->id, 'immobile_id' => $s['unita']['U2']->id,
+        'anagrafica_id' => null, 'importo_cents' => 30000, 'natura' => 'fondo_vincolato', 'origine' => 'migrazione', 'esercizio_id' => $s['e']->id]);
+    cpcSpese($s);
+    $c = cpcLeggi($this, $s);
+
+    // Per il motore Bianchi ha U2 tutto l'anno: 300/1000 di 4.200,00.
+    expect(cpcDi($c, $s, 'Bianchi', 'U2')['a'])->toBe(126000)
+        ->and((int) (cpcDi($c, $s, 'Bianchi', 'U2')['gia_versato_non_usato']['questo_esercizio'] ?? 0))->toBe(30000)
+        ->and($c['gestioni'][$s['g']->id]['gia_versato_da_decidere'] ?? [])->toBe([]);
+});
+
+it('lo stesso caso senza il cambio dell\'inquilino: il già versato dell\'unità non usato va alla proprietaria, e nessun\'altra cifra si muove', function () {
+    $s = cpdSoloInquilino($this, false);
+    $c = cpcLeggi($this, $s);
+    $nonUsato = fn (string $chi) => (int) (cpcDi($c, $s, $chi, 'U2')['gia_versato_non_usato']['questo_esercizio'] ?? 0);
+
+    expect([$nonUsato('Bianchi'), $nonUsato('Nora')])->toBe([30000, 0])
+        ->and($c['gestioni'][$s['g']->id]['gia_versato_da_decidere'] ?? [])->toBe([])
+        ->and(cpdCifreDelleRighe($c, $s))->toBe(CPD_CIFRE_SENZA_CAMBIO);
 });
 
 // ─── La spesa personale di un giorno senza titolare ──────────────────────────────────────────────────────────────────────────────────

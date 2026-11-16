@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services\Gestionale;
 
@@ -108,13 +111,22 @@ final class RiepilogoPerCompetenza
         $movimenti = $this->movimentiSenzaFattura($esercizio, $dopo);
         $dettaglio = $this->dettaglioPerVoce($fatture, $movimenti);
 
-        $piani = $this->pianiDellEsercizio($condominio, $esercizio);
+        // I piani degli addebiti a singole persone hanno una riga loro nel blocco delle quote, e nel raccordo: non sono deliberati con le rate e non
+        // sono quote dei piani.
+        [$addebiti, $piani] = $this->pianiDellEsercizio($condominio, $esercizio)->partition(fn (PianoRate $p) => $p->eDegliAddebiti());
+        $piani = $piani->values();
         $deliberato = $this->deliberato($piani);
         $successivi = DB::table('esercizio_gestione as eg')->join('esercizi as e', 'e.id', '=', 'eg.esercizio_id')
             // «Dal giorno dopo»: su SQLite le date sono testo con l'ora, e '2026-01-01 00:00:00' > '2026-01-01' è vero.
             ->whereIn('eg.gestione_id', $gestioni->keys()->all())->where('e.data_inizio', '>=', CarbonImmutable::parse($dal)->addDay()->format('Y-m-d'))->distinct()->pluck('eg.gestione_id')->map(fn ($id) => (int) $id)->flip();
 
         $quote = $this->debiti->quoteDeiPiani((int) $condominio->id, $piani->pluck('id')->map(fn ($id) => (int) $id)->all(), $alla, (int) $esercizio->id);
+        // Del piano degli addebiti, due righe: i contributi (sulla «Gestione rate», fra le quote registrate) e le spese di una sola unità chieste a una
+        // persona, che chiudono un'anticipazione e non sono quote registrate. Una fonte per ognuna: la lettura comune delle loro rate.
+        $addebitiIds = $addebiti->pluck('id')->map(fn ($id) => (int) $id)->all();
+        [$rateContributi, $rateSpese] = $this->rateDegliAddebiti($addebitiIds);
+        $quoteAddebiti = $this->debiti->quoteDeiPiani((int) $condominio->id, $addebitiIds, $alla, (int) $esercizio->id, $rateContributi);
+        $quoteSpeseAddebitate = $this->debiti->quoteDeiPiani((int) $condominio->id, $addebitiIds, $alla, (int) $esercizio->id, $rateSpese);
 
         $blocchi = [];
         foreach ($gestioni as $g) {
@@ -166,7 +178,13 @@ final class RiepilogoPerCompetenza
                 $figli = $this->foglie($vociG, (int) $radice->id);
                 $capitolo = $figli === [] ? $leggi($radice) : $this->capitolo($leggi($radice), array_map($leggi, $figli));
                 if ($capitolo['tipo'] === 'entrata') {
-                    $entrate[] = $capitolo;
+                    // La voce che riceve solo gli interessi e le spese versati dai condòmini resta fuori dalle entrate da terzi, dove sarebbe una riga a
+                    // zero: li dice la riga sotto le entrate. I totali non cambiano.
+                    $soloAccessori = $figli === [] && (int) ($perTipo['accessori'][$radice->id] ?? 0) !== 0
+                        && collect(['preventivo', 'deliberato', 'incassato', 'spese_sulla_voce', 'anno_prima', 'consuntivo'])->every(fn ($k) => (int) ($capitolo[$k] ?? 0) === 0);
+                    if (! $soloAccessori) {
+                        $entrate[] = $capitolo;
+                    }
                 } else {
                     $spese[] = $capitolo;
                 }
@@ -185,6 +203,26 @@ final class RiepilogoPerCompetenza
                     $righeQuote[] = ['riga' => 'esercizi_precedenti', 'deliberate' => null] + $q['pregresso'];
                 }
             }
+            // I contributi addebitati a singole persone e le spese di una sola unità chieste a una persona: una riga ognuna, senza deliberato.
+            foreach (['addebiti' => $quoteAddebiti, 'spese_addebitate' => $quoteSpeseAddebitate] as $nomeRiga => $lette) {
+                if (($qa = $lette[$gestioneId] ?? null) !== null) {
+                    $addebitate = $this->quoteVuote();
+                    foreach ([$qa['quote'], $qa['pregresso']] as $parte) {
+                        foreach ($addebitate as $k => $v) {
+                            $addebitate[$k] = $v + (int) ($parte[$k] ?? 0);
+                        }
+                    }
+                    $righeQuote[] = ['riga' => $nomeRiga, 'deliberate' => null] + $addebitate;
+                }
+            }
+
+            // Il versato dai condòmini per interessi e spese, per voce: non è un'entrata da terzi né uno speso, e riduce le spese da dividere.
+            $versatoAccessori = [];
+            foreach ($vociG as $v) {
+                if (($importo = (int) ($perTipo['accessori'][$v->id] ?? 0)) !== 0) {
+                    $versatoAccessori[] = ['voce_id' => (int) $v->id, 'nome' => $v->nome, 'importo' => $importo];
+                }
+            }
 
             $blocchi[] = [
                 'gestione' => ['id' => $gestioneId, 'nome' => $g->nome, 'tipo' => $g->tipo],
@@ -199,13 +237,16 @@ final class RiepilogoPerCompetenza
                 'totale_spese' => $this->somma($spese, ['preventivo', 'deliberato', 'consuntivo', 'anno_prima', 'pagato', 'da_pagare', 'pagato_in_piu', 'ritenute_da_versare']),
                 'totale_entrate' => $this->somma($entrate, ['preventivo', 'deliberato', 'incassato', 'anno_prima', 'consuntivo', 'pagato', 'da_pagare', 'pagato_in_piu']),
                 'cumulato_opera' => $straordinaria ? $this->spese->cumulatoDellaGestione($gestioneId, $dal) : null,
+                'versato_accessori' => $versatoAccessori,
+                'totale_versato_accessori' => (int) array_sum(array_column($versatoAccessori, 'importo')),
             ];
         }
 
         $fuori = $this->fuoriDaiCapitoli($esercizio, $fatture, $dopo);
         $risultato = $this->pagina->risultatoDi($condominio, $esercizio, $oggi);
         // Le spese per capitolo meno le entrate **che la pagina mostra**: una spesa del giornale che non sta in nessuna riga esce come differenza.
-        $capitoliNetti = (int) array_sum(array_map(fn ($b) => (int) $b['totale_spese']['consuntivo'] + (int) $b['totale_entrate']['consuntivo'] - (int) $b['totale_entrate']['incassato'], $blocchi));
+        $capitoliNetti = (int) array_sum(array_map(fn ($b) => (int) $b['totale_spese']['consuntivo'] + (int) $b['totale_entrate']['consuntivo'] - (int) $b['totale_entrate']['incassato']
+            - (int) $b['totale_versato_accessori'], $blocchi));
         $sommaFuori = $fuori['commissioni_senza_voce']['consuntivo'] + $fuori['contestate']['consuntivo'] + $fuori['non_classificati']['consuntivo'];
         $totaleQuote = $this->totaleQuote($blocchi);
         // La riga che lega le quote pagate ai versamenti dei condòmini del registro: il numero del registro, sommato sul suo perimetro.
@@ -273,6 +314,8 @@ final class RiepilogoPerCompetenza
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('fattura_scrittura as fc')->whereColumn('fc.scrittura_contabile_id', 'sc.id')->where('fc.tipo', 'competenza'))
             // Gli incassi da terzi e i loro storni sono l'incassato della voce di entrata, non una spesa da pagare (`SpesaPerVoceService::perTipo`).
             ->where(fn ($q) => $q->whereNull('sc.tipo_movimento')->orWhereNotIn('sc.tipo_movimento', [TipoMovimentoContabile::INCASSO_DIVERSO->value, TipoMovimentoContabile::STORNO_INCASSO_DIVERSO->value]))
+            // Il versato per interessi e spese, e il suo storno, non è una spesa da pagare: si dice a parte (`SpesaPerVoceService::perTipo`).
+            ->whereNotExists(fn ($q) => \App\Services\Gestionale\Accessori\AccessoriDaIncassare::coppia($q))
             ->groupBy('rs.voce_spesa_id', 'sc.id', 'sc.numero_protocollo', 'sc.causale', 'sc.data_competenza', 'sc.tipo_movimento')
             ->orderBy('sc.data_competenza')->orderBy('sc.id')
             ->select(['rs.voce_spesa_id', 'sc.id', 'sc.numero_protocollo', 'sc.causale', 'sc.data_competenza', 'sc.tipo_movimento'])
@@ -527,18 +570,59 @@ final class RiepilogoPerCompetenza
         return $esito;
     }
 
+    /**
+     * Le rate dei piani degli addebiti divise in due: i contributi, e le spese di una sola unità già fatturate (la quota porta l'addebito diretto, e
+     * l'emissione chiude l'anticipazione dell'unità).
+     *
+     * @param list<int> $pianiIds
+     * @return array{0: list<int>, 1: list<int>}
+     */
+    private function rateDegliAddebiti(array $pianiIds): array
+    {
+        if ($pianiIds === []) {
+            return [[], []];
+        }
+        $spese = [];
+        $tutte = [];
+        foreach (DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->whereIn('rate.piano_rate_id', $pianiIds)
+            ->get(['rate_quote.rata_id', 'rate_quote.regole_calcolo', 'rate_quote.tipo']) as $q) {
+            $regole = is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo, true) : (array) $q->regole_calcolo;
+            $fatturata = (int) ($regole['importi']['addebito_diretto'] ?? 0) > 0;
+            // Gli interessi e le spese senza fattura non sono quote registrate: la loro contropartita è «Accessori da incassare», e non sono in nessuna
+            // delle due righe.
+            if ($q->tipo === \App\Models\Gestionale\RataQuote::TIPO_ACCESSORIO && ! $fatturata) {
+                continue;
+            }
+            $tutte[(int) $q->rata_id] = true;
+            if ($fatturata) {
+                $spese[(int) $q->rata_id] = true;
+            }
+        }
+
+        return [array_keys(array_diff_key($tutte, $spese)), array_keys($spese)];
+    }
+
     private function quoteVuote(): array
     {
-        return ['emesse' => 0, 'pagate' => 0, 'non_pagate' => 0, 'scadute' => 0, 'crediti' => 0, 'credito_riportato' => 0, 'emesse_altrove' => 0];
+        return ['emesse' => 0, 'pagate' => 0, 'non_pagate' => 0, 'scadute' => 0, 'crediti' => 0, 'credito_riportato' => 0, 'emesse_altrove' => 0, 'emesse_scadute' => 0];
     }
 
     /** Il totale delle quote dei blocchi: il deliberato è null se in un blocco non è conservato. */
     private function totaleQuote(array $blocchi): array
     {
         $totale = $this->quoteVuote() + ['deliberate' => 0];
+        $aParte = ['addebiti' => $this->quoteVuote(), 'spese_addebitate' => $this->quoteVuote()];
         $deliberateNote = true;
         foreach ($blocchi as $b) {
             foreach ($b['quote'] as $r) {
+                // I contributi addebitati a singole persone e le spese chieste a una persona stanno a parte: le quote dei piani sono quelle del riparto.
+                if (isset($aParte[$r['riga']])) {
+                    foreach (array_keys($aParte[$r['riga']]) as $k) {
+                        $aParte[$r['riga']][$k] += (int) $r[$k];
+                    }
+
+                    continue;
+                }
                 foreach (array_keys($this->quoteVuote()) as $k) {
                     $totale[$k] += (int) $r[$k];
                 }
@@ -555,6 +639,8 @@ final class RiepilogoPerCompetenza
         $totale['deliberate_voci'] = $deliberateNote ? $totale['deliberate'] - (int) array_sum(array_map(fn ($b) => (int) ($b['spese_personali'] ?? 0), $blocchi)) : null;
         // Il netto della persona, come la Tesoreria: le non pagate meno i crediti sulle rate.
         $totale['netto'] = $totale['non_pagate'] - $totale['crediti'];
+        $totale['addebiti'] = $aParte['addebiti'];
+        $totale['spese_addebitate'] = $aParte['spese_addebitate'];
 
         return $totale;
     }
@@ -567,15 +653,26 @@ final class RiepilogoPerCompetenza
     {
         $piani = $totale['emesse'];
         $altrove = $totale['emesse_altrove'];
+        $degliAddebiti = PianoRate::degliAddebiti()->where('condominio_id', $esercizio->condominio_id)->select('id');
         $altri = (int) DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', fn ($j) => $j->on('rs.scrittura_id', '=', 'sc.id')->whereNull('sc.deleted_at'))
             ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
             ->join('rate', 'rate.id', '=', 'rs.rata_id')
             ->where('sc.esercizio_id', $esercizio->id)->where('sc.tipo_movimento', 'emissione_rata')->where('cc.ruolo', 'crediti_condomini')->where('rs.tipo_riga', 'dare')
             ->when($pianiIds !== [], fn ($q) => $q->whereNotIn('rate.piano_rate_id', $pianiIds))
+            ->whereNotIn('rate.piano_rate_id', $degliAddebiti)
             ->sum('rs.importo');
+        // I contributi addebitati a singole persone dei piani degli addebiti dell'esercizio: la riga «Contributi addebitati a singole persone» del
+        // blocco delle quote, la stessa cifra (una fonte sola per il riepilogo, la Sintesi e il frontespizio). Sono fra le quote registrate; una spesa
+        // di una sola unità già fatturata chiude un'anticipazione, non va sulla «Gestione rate» e qui non c'è. La data di un addebito sta dentro il
+        // suo esercizio (la registrazione la rifiuta fuori): una differenza con il giornale resterebbe fra le altre differenze, visibile.
+        $contributi = (int) ($totale['addebiti']['emesse'] ?? 0);
 
-        return ['quote_piani' => $piani, 'quote_giornale' => $giornale, 'piani_emesse_altrove' => $altrove, 'altri_emesse_qui' => $altri,
-            'altre_differenze' => $piani - ($giornale + $altrove - $altri)];
+        // La loro parte non versata, che le quote pagate e non pagate dei piani non contano: il frontespizio la dice accanto ai contributi.
+        $contributiNonVersati = (int) ($totale['addebiti']['non_pagate'] ?? 0);
+
+        return ['quote_piani' => $piani, 'contributi_addebitati' => $contributi, 'contributi_non_versati' => $contributiNonVersati, 'quote_giornale' => $giornale,
+            'piani_emesse_altrove' => $altrove, 'altri_emesse_qui' => $altri,
+            'altre_differenze' => $piani + $contributi - ($giornale + $altrove - $altri)];
     }
 }

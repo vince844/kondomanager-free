@@ -63,8 +63,11 @@ class StatoPatrimonialeController extends Controller
             'condominio' => $condominio,
             'condomini' => CondominioResource::collection($this->getCondomini())->resolve(),
             'esercizio' => $esercizio,
+            'stato_rendiconto' => \App\Services\Gestionale\VersioniDelRendiconto::statoInTesta($esercizio),
             'esercizi' => $condominio->esercizi()->orderByDesc('data_inizio')->get(),
             'pagina' => $this->pagina->costruisci($condominio, $esercizio),
+            // Gli altri debiti certi, che non sono fatture: li scrive l'amministratore nella nota sintetica, e qui stanno sotto la riga, fuori dal giornale.
+            'debiti_certi' => \App\Services\Gestionale\NotaSinteticaDelRendiconto::contenuto($esercizio)['debiti_certi'],
         ]);
     }
 
@@ -107,6 +110,7 @@ class StatoPatrimonialeController extends Controller
             'controlli' => $c['controlli'] ?? null,
             'esito' => $c['esito'] ?? null,
             'anno_a_cavallo' => $c['anno_a_cavallo'] ?? null,
+            'debiti_certi' => \App\Services\Gestionale\NotaSinteticaDelRendiconto::contenuto($esercizio)['debiti_certi'],
             // Fotografia calcolata, non atto: senza firma come il registro e il giornale (D20).
             // L'atto sottoscritto è il rendiconto (1.12).
             'senza_firma' => true,

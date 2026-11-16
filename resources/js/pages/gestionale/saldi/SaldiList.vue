@@ -9,7 +9,7 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import SaldiGuide from '@/components/guides/SaldiGuide.vue';
 import SaldiDetailPanel from '@/components/gestionale/saldi/SaldiDetailPanel.vue';
 import DichiaraOrigineDialog, { type SaldoDaDichiarare } from '@/components/gestionale/saldi/DichiaraOrigineDialog.vue';
-import { saldiDellaPersonaSenzaOrigine } from '@/lib/gestionale/saldi/origineDaDichiarare';
+import { saldiDellaPersonaSenzaData } from '@/lib/gestionale/saldi/origineDaDichiarare';
 import { Coins, Lock, Search, Building2, Users, ChevronLeft } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { ImmobileConSaldi } from '@/types/gestionale/saldi';
@@ -37,10 +37,11 @@ const saldiDaDichiarare = computed<SaldoDaDichiarare[]>(() => props.immobili.fla
     esercizio_origine_id: s.esercizio_origine_id ?? null,
   }))));
 const apriOrigine = (partenza: number[] = []) => { originePartenza.value = partenza; origineAperta.value = true; };
-// Dall'elenco delle rate scadute («dichiarala dai saldi», `origine_di` nell'indirizzo): la finestra si apre con i saldi di quella persona.
+// Dall'elenco delle rate scadute («dichiarala dai saldi») e dal riquadro dei sei mesi («Dichiara l'origine»), `origine_di` nell'indirizzo: la finestra si
+// apre con i saldi di quella persona che non danno la data dei sei mesi (senza l'origine, o con l'origine «prima del primo esercizio»).
 onMounted(() => {
   const persona = Number(new URLSearchParams(window.location.search).get('origine_di'));
-  const suoi = saldiDellaPersonaSenzaOrigine(props.immobili, persona);
+  const suoi = saldiDellaPersonaSenzaData(props.immobili, persona);
   if (suoi.length) {
     apriOrigine(suoi);
   }

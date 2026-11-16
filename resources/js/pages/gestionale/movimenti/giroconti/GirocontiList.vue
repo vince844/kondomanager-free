@@ -1,9 +1,15 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import GirocontiGuide from '@/components/guides/GirocontiGuide.vue';
 import DataTable from '@/components/gestionale/movimenti/giroconti/Datatable.vue'
 import { createColumns } from '@/components/gestionale/movimenti/giroconti/columns';
@@ -106,10 +112,7 @@ const confirmRiallinea = () => {
                 :condomini="(props.condomini as any)"
             >
                 <template #actions>
-                    <Button variant="outline" size="sm" class="bg-white gap-2 text-violet-700 hover:bg-violet-50 hover:text-violet-800 border-violet-200" @click="showGuide = true">
-                        <Repeat2 class="w-4 h-4" />
-                        Guida completa
-                    </Button>
+                    <PulsanteGuida testo="Guida completa" @click="showGuide = true" />
                 </template>
             </PageHeaderGuide>
 
@@ -119,35 +122,35 @@ const confirmRiallinea = () => {
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
 
                             <!-- Card: Giroconti attivi -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                                <div class="bg-violet-50 p-2.5 rounded-lg border border-violet-100">
+                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 dark:bg-slate-900 dark:border-slate-800">
+                                <div class="bg-violet-50 p-2.5 rounded-lg border border-violet-100 dark:bg-violet-950/30 dark:border-violet-900/50">
                                     <Repeat2 class="w-5 h-5 text-violet-600" />
                                 </div>
                                 <div>
-                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Giroconti attivi</p>
-                                    <p class="text-2xl font-black text-slate-900">{{ stats.giroconti_attivi }}</p>
+                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider dark:text-slate-400">Giroconti attivi</p>
+                                    <p class="text-2xl font-black text-slate-900 dark:text-white">{{ stats.giroconti_attivi }}</p>
                                 </div>
                             </div>
 
                             <!-- Card: Stornati -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                                <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-200">
+                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 dark:bg-slate-900 dark:border-slate-800">
+                                <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
                                     <RotateCcw class="w-5 h-5 text-slate-500" />
                                 </div>
                                 <div>
-                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Stornati</p>
-                                    <p class="text-2xl font-black text-slate-900">{{ stats.stornati }}</p>
+                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider dark:text-slate-400">Stornati</p>
+                                    <p class="text-2xl font-black text-slate-900 dark:text-white">{{ stats.stornati }}</p>
                                 </div>
                             </div>
 
                             <!-- Card: Coperture confermate -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                                <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-100">
+                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 dark:bg-slate-900 dark:border-slate-800">
+                                <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/50">
                                     <CheckCircle class="w-5 h-5 text-emerald-600" />
                                 </div>
                                 <div>
-                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Coperture confermate</p>
-                                    <p class="text-2xl font-black text-slate-900">{{ stats.coperture_confermate }}</p>
+                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider dark:text-slate-400">Coperture confermate</p>
+                                    <p class="text-2xl font-black text-slate-900 dark:text-white">{{ stats.coperture_confermate }}</p>
                                 </div>
                             </div>
 
@@ -158,14 +161,14 @@ const confirmRiallinea = () => {
                         </div>
 
                         <!-- Card riallineamento scritture storiche sui fondi -->
-                        <div v-if="props.riallineamento.length > 0" class="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <div v-if="props.riallineamento.length > 0" class="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-950/20 dark:border-amber-900/50">
                             <div class="flex items-start gap-3">
-                                <div class="bg-amber-100 p-2 rounded-lg border border-amber-200 shrink-0">
+                                <div class="bg-amber-100 p-2 rounded-lg border border-amber-200 shrink-0 dark:bg-amber-900/30 dark:border-amber-800">
                                     <AlertTriangle class="w-5 h-5 text-amber-600" />
                                 </div>
                                 <div class="flex-1 min-w-0">
-                                    <h3 class="text-sm font-bold text-amber-900">Scritture storiche da riallineare</h3>
-                                    <p class="text-xs text-amber-700 mt-1 leading-relaxed">
+                                    <h3 class="text-sm font-bold text-amber-900 dark:text-amber-200">Scritture storiche da riallineare</h3>
+                                    <p class="text-xs text-amber-700 mt-1 leading-relaxed dark:text-amber-300">
                                         Prima della 1.10.0 le coperture da fondo scrivevano righe direttamente sul conto del fondo.
                                         Queste scritture vanno neutralizzate con rettifiche automatiche:
                                         i saldi dei fondi torneranno a riflettere i soli giroconti.
@@ -173,7 +176,7 @@ const confirmRiallinea = () => {
 
                                     <Collapsible v-model:open="isRiallineamentoListOpen" class="mt-3">
                                         <CollapsibleTrigger as-child>
-                                            <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 hover:text-amber-900">
+                                            <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-200">
                                                 <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': isRiallineamentoListOpen }" />
                                                 {{ isRiallineamentoListOpen ? 'Nascondi le scritture' : `Mostra le ${props.riallineamento.length} scritture` }}
                                             </button>
@@ -183,14 +186,14 @@ const confirmRiallinea = () => {
                                                 <li
                                                     v-for="item in props.riallineamento"
                                                     :key="item.scrittura_id"
-                                                    class="flex items-center justify-between gap-3 bg-white/60 border border-amber-100 rounded-md px-3 py-1.5"
+                                                    class="flex items-center justify-between gap-3 bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 dark:bg-slate-900/60 dark:border-amber-900/40"
                                                 >
                                                     <div class="flex items-center gap-2 min-w-0">
-                                                        <span class="text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap">{{ item.protocollo ?? '—' }}</span>
-                                                        <span class="text-[10px] text-amber-600 whitespace-nowrap">{{ item.data ?? '—' }}</span>
-                                                        <span class="text-xs text-amber-800 truncate" :title="item.causale ?? ''">{{ item.causale ?? '—' }}</span>
+                                                        <span class="text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap dark:text-amber-300">{{ item.protocollo ?? '—' }}</span>
+                                                        <span class="text-[10px] text-amber-600 whitespace-nowrap dark:text-amber-400">{{ item.data ?? '—' }}</span>
+                                                        <span class="text-xs text-amber-800 truncate dark:text-amber-300" :title="item.causale ?? ''">{{ item.causale ?? '—' }}</span>
                                                     </div>
-                                                    <span class="text-xs font-bold text-amber-900 whitespace-nowrap">{{ euro(item.importo_netto_fondo) }}</span>
+                                                    <span class="text-xs font-bold text-amber-900 whitespace-nowrap dark:text-amber-200">{{ euro(item.importo_netto_fondo) }}</span>
                                                 </li>
                                             </ul>
                                         </CollapsibleContent>

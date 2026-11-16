@@ -32,7 +32,7 @@ interface SaldoCassa {
     movimenti: number;
     /** In centesimi: la cassa all'inizio dell'esercizio. */
     riporto: number;
-    /** In centesimi, sulla sola cassa: serve a confrontare il registro con l'estratto conto. */
+    /** In centesimi, sulla sola cassa: serve a confrontare il registro con l'estratto conto della banca. */
     entrate: number;
     uscite: number;
 }
@@ -84,6 +84,11 @@ interface Riepilogo {
     /** Sui movimenti mostrati; la somma è il totale del registro. */
     totali_per_tipo: TotalePerTipo[];
     saldi_fine_mese: SaldoFineMese[];
+    /**
+     * Con il filtro di una cassa: come è composto il saldo. I movimenti della cassa nel registro (dal riporto) e le parti dei fondi che non sono passate
+     * da lei (il saldo iniziale di un fondo, un fondo accantonato da una banca poi chiusa), che si sommano al saldo: lo stesso della scheda «Cassa».
+     */
+    composizione?: { movimenti: number; voce_movimenti: string; parti: { voce: string; importo: number; quando: string }[]; saldo: number } | null;
 }
 
 const props = defineProps<{
@@ -93,7 +98,11 @@ const props = defineProps<{
     esercizi: Esercizio[];
     righe: { data: RegistroRow[]; meta: PaginationMeta };
     riepilogo: Riepilogo;
-    filters: { search?: string; data_da?: string; data_a?: string };
+    filters: { search?: string; data_da?: string; data_a?: string; cassa?: number; da?: string };
+    /** Le casse reali del condominio, per il filtro della cassa. */
+    casse?: { id: number; nome: string; tipo: string }[];
+    /** Con il filtro di una cassa: come il suo registro si legge accanto alla scheda «Cassa» del rendiconto, per tutto l'esercizio. */
+    confronto_scheda?: { cassa: string; differenza: number | null; frase: string } | null;
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -117,7 +126,12 @@ const headerBreadcrumbs = computed(() => [
 
 const columns = createColumns();
 
+// «Parziale» è un periodo o una ricerca: con la sola cassa, entrate e uscite sono quelle intere di quella cassa.
 const filtrato = computed(() => !!(props.filters.search || props.filters.data_da || props.filters.data_a));
+const cassaFiltrata = computed(() => (props.filters.cassa ? (props.casse ?? []).find((c) => c.id === Number(props.filters.cassa)) ?? null : null));
+// Il ritorno alla scheda «Cassa» del rendiconto, solo quando si arriva da lì: sotto la testata, così la testata non si allunga.
+const daSchedaCassa = computed(() => props.filters.da === 'cassa');
+const hrefSchedaCassa = computed(() => generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/cassa', { condominio: props.condominio.id, esercizio: props.esercizio.id }));
 
 const formatData = (iso: string) => {
     const [anno, mese, giorno] = iso.split('-');
@@ -140,6 +154,9 @@ const formatData = (iso: string) => {
  */
 const piuCasse = computed(() => props.riepilogo.saldi_per_cassa.length > 1);
 const dettaglioSaldoAperto = ref(false);
+// «Come è composta», chiuso di serie: le voci che fanno il saldo della cassa filtrata.
+const composizione = computed(() => props.riepilogo.composizione ?? null);
+const compostaAperta = ref(false);
 
 const nomeMese = (ym: string) => {
     const [anno, mese] = ym.split('-').map(Number);
@@ -195,7 +212,7 @@ const pageGuides = [
     // banca. Al netto resta solo il denaro mai passato dalla cassa banca (un fondo aperto con un
     // saldo suo). Le ragioni vere per cui non coincide: registro unico su tutte le casse reali (un
     // prelievo verso i contanti compare due volte) e, per un movimento con la data di un altro anno, il registro per esercizio contro la cassa per data.
-    { title: 'Solo denaro che si muove davvero', description: 'Compaiono i movimenti su banca e contanti. Un accantonamento verso un fondo di riserva non è né un\'entrata né un\'uscita — il denaro resta sullo stesso conto corrente — e non compare: la riga della banca continua a contarlo, come la banca. Il saldo in testa somma tutte le casse reali e parte dal riporto. Un movimento con la data di un altro anno conta nel registro dell\'esercizio in cui è scritto, una volta sola: per il confronto con l\'estratto conto a una data vale il saldo della cassa nella situazione patrimoniale, che taglia per data.', icon: Landmark, colorVariant: 'emerald' as const },
+    { title: 'Solo denaro che si muove davvero', description: 'Compaiono i movimenti su banca e contanti. Un accantonamento verso un fondo di riserva non è né un\'entrata né un\'uscita — il denaro resta sullo stesso conto corrente — e non compare: la riga della banca continua a contarlo, come la banca. Il saldo in testa somma tutte le casse reali e parte dal riporto. Un movimento con la data di un altro anno conta nel registro dell\'esercizio in cui è scritto, una volta sola: per il confronto con l\'estratto conto della banca a una data vale il saldo della cassa nella situazione patrimoniale, che taglia per data.', icon: Landmark, colorVariant: 'emerald' as const },
     { title: 'Due date per ogni riga', description: 'La data del movimento, su cui il registro è ordinato, e accanto la data in cui è stato annotato: la norma dà trenta giorni, e uno scarto più lungo è segnalato.', icon: Scale3D, colorVariant: 'amber' as const },
 ];
 </script>
@@ -216,7 +233,7 @@ const pageGuides = [
             >
                 <template #actions>
                     <Button as-child variant="outline" class="h-8 px-3 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/50 shadow-sm shrink-0 gap-2">
-                        <Link :href="hrefRendiconto" data-test="torna-al-rendiconto">Torna al rendiconto</Link>
+                        <Link :href="daSchedaCassa ? hrefSchedaCassa : hrefRendiconto" data-test="torna-al-rendiconto">{{ daSchedaCassa ? 'Torna alla scheda Cassa' : 'Torna al rendiconto' }}</Link>
                     </Button>
                     <DropdownMenu>
                         <DropdownMenuTrigger as-child>
@@ -247,7 +264,11 @@ const pageGuides = [
                             <Alert :message="flashMessage.message" :type="flashMessage.type" />
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                        <div v-if="cassaFiltrata" class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px]">
+                            <span v-if="cassaFiltrata" class="text-slate-600 dark:text-slate-400" data-test="cassa-filtrata">Solo «{{ cassaFiltrata.nome }}»: il riporto, le entrate, le uscite e il saldo sono di questa cassa.</span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4" :class="props.confronto_scheda ? 'mb-2' : 'mb-6'">
                             <div class="border rounded-xl p-4 shadow-sm flex items-center gap-3 bg-slate-50/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800" data-test="riporto">
                                 <div class="p-2.5 rounded-lg border shrink-0 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-800">
                                     <Landmark class="w-5 h-5 text-slate-500 dark:text-slate-400" />
@@ -292,10 +313,48 @@ const pageGuides = [
                                             <ListTree class="w-3.5 h-3.5" />
                                             dettaglio su {{ riepilogo.saldi_per_cassa.length }} casse
                                         </button>
+                                        <button
+                                            v-if="composizione"
+                                            type="button"
+                                            class="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline whitespace-nowrap"
+                                            :aria-expanded="compostaAperta"
+                                            data-test="come-e-composta"
+                                            @click="compostaAperta = !compostaAperta"
+                                        >
+                                            <ListTree class="w-3.5 h-3.5" />
+                                            Come è composta
+                                        </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        <section v-if="composizione && compostaAperta" class="mb-4 rounded-md border bg-white dark:bg-slate-900" data-test="composizione">
+                            <h3 class="px-4 py-3 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold text-slate-700 dark:text-slate-300">Come è composto il saldo{{ cassaFiltrata ? ` di «${cassaFiltrata.nome}»` : '' }}</h3>
+                            <ul class="text-[13px]">
+                                <li class="flex items-start justify-between gap-4 px-4 py-2 border-b border-slate-100 dark:border-slate-800" data-test="parte-movimenti">
+                                    <span class="text-slate-700 dark:text-slate-300">{{ composizione.voce_movimenti }}</span>
+                                    <span class="tabular-nums whitespace-nowrap text-slate-700 dark:text-slate-300">{{ euro(composizione.movimenti) }}</span>
+                                </li>
+                                <li v-for="(p, i) in composizione.parti" :key="i" class="flex items-start justify-between gap-4 px-4 py-2 border-b border-slate-100 dark:border-slate-800" data-test="parte">
+                                    <span class="text-slate-700 dark:text-slate-300">{{ p.voce }}</span>
+                                    <span class="tabular-nums whitespace-nowrap" :class="p.importo < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'">{{ euro(p.importo) }}</span>
+                                </li>
+                                <li class="flex items-start justify-between gap-4 px-4 py-2 border-t-2 border-slate-300 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200" data-test="parte-saldo">
+                                    <span>{{ etichettaSaldo }}</span>
+                                    <span class="tabular-nums whitespace-nowrap">{{ euro(composizione.saldo) }}</span>
+                                </li>
+                            </ul>
+                            <p class="px-4 py-2 border-t border-slate-200 dark:border-slate-800 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                                <template v-if="composizione.parti.length">I movimenti sono le righe del registro, dal riporto. Le altre voci sono denaro dei fondi che non è passato da questa cassa: un fondo è una parte dello stesso conto corrente, e la scheda Cassa e il controllo della banca lo contano nel conto.</template>
+                                <template v-else>Tutto il saldo viene dai movimenti di questa cassa, dal riporto: un fondo accantonato da qui è già dentro, perché resta sullo stesso conto corrente.</template>
+                            </p>
+                        </section>
+
+                        <p v-if="props.confronto_scheda" class="mb-6 text-[12px] leading-snug text-slate-600 dark:text-slate-400" data-test="confronto-scheda">
+                            {{ props.confronto_scheda.frase }}
+                            <Link :href="hrefSchedaCassa" class="font-semibold text-primary hover:underline whitespace-nowrap">Apri la scheda Cassa</Link>
+                        </p>
 
                         <DataTable
                             :columns="columns"
@@ -416,7 +475,7 @@ const pageGuides = [
                     Compaiono solo le casse di liquidità reale — banca e contanti. Un fondo di riserva
                     non è una cassa a sé: quel denaro sta sullo stesso conto corrente, e per questo
                     non ha una riga qui né movimenti propri nel registro. Le entrate e le uscite della
-                    cassa banca sono la riga con cui confrontare l'estratto conto; un prelievo verso i
+                    cassa banca sono la riga con cui confrontare l'estratto conto della banca; un prelievo verso i
                     contanti compare in entrambe le casse, ed è giusto così: quel denaro si è mosso
                     davvero, due volte.
                 </p>

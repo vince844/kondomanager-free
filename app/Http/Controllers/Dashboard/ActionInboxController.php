@@ -1,246 +1,228 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Dashboard;
 
+use App\Helpers\DateHelper;
 use App\Http\Controllers\Controller;
+use App\Models\Condominio;
 use App\Models\Evento;
-use App\Models\Anagrafica;
-use App\Services\Gestionale\InboxService;
+use App\Services\Gestionale\Inbox\CompitoDellaSegnalazione;
+use App\Services\Gestionale\Inbox\ElencoDellInbox;
+use App\Services\Gestionale\Inbox\FasceDeiCompiti;
+use App\Services\Gestionale\Inbox\RiepilogoDellInbox;
+use App\Services\Gestionale\Inbox\TipiDeiCompiti;
+use App\Services\Gestionale\RispostePromemoria;
+use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
+use Carbon\CarbonImmutable;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * La casella delle attività del pannello: i compiti dell'amministratore (verifiche dei pagamenti segnalati, con
- * l'importo e il nome della persona, segnalazioni di guasto, scadenze amministrative).
+ * L'Action inbox, la casella delle attività del pannello: i compiti aperti dell'amministratore (le verifiche dei bonifici segnalati, le rate da emettere e da
+ * incassare, le fatture da pagare, le segnalazioni, le scadenze amministrative) di tutti i condomini o di quello scelto.
  *
- * I compiti sono scadenze in agenda, e la casella ne segue i permessi (Coda 402): si legge con `EventoPolicy::viewAny`
- * («Visualizza scadenze in agenda», la regola con cui la dashboard del pannello mostra le scadenze); «Rifiuta» e
- * «Completa» chiedono `EventoPolicy::chiudiCompito` («Modifica scadenza in agenda») prima di ogni altra verifica.
+ * La pagina porta: le cinque card, i due grafici e «Dove si accumulano», dalla lettura aggregata ({@see RiepilogoDellInbox}); l'elenco dei compiti
+ * ({@see ElencoDellInbox}) con le schede «Tutti / Scaduti / In arrivo» e il loro numero, la ricerca e l'ordine, 15 alla volta («Mostra altri 15»,
+ * `Inertia::scroll`) o, con «Tutti» e più di un gruppo, l'anteprima di ogni gruppo; i condomini dei sei mesi per agire, che la pagina chiede uno alla volta
+ * (`SeiMesiStudioController`). La regola di «scaduto» è una sola ({@see FasceDeiCompiti}), la prossima azione di ogni tipo pure ({@see TipiDeiCompiti}). I
+ * filtri sono nell'indirizzo: `quando` (una scheda, la card «Scaduti» o una barra del grafico per età), `tipo` (una card del tipo o una barra del grafico per
+ * tipo), `cerca`, `ordine`, `condominio_id`; si sommano, e un valore che non c'è non filtra. «Mostra altri 15» chiede solo l'elenco: le letture contate non
+ * si rifanno.
+ *
+ * I compiti sono scadenze in agenda, e la casella ne segue i permessi: si legge con `EventoPolicy::viewAny` («Visualizza scadenze in agenda», la regola con
+ * cui la dashboard del pannello mostra le scadenze); le risposte chiedono `EventoPolicy::chiudiCompito` («Modifica scadenza in agenda») prima di ogni altra
+ * verifica. I compiti delle segnalazioni, con il loro titolo e la loro descrizione, seguono anche la regola della pagina delle segnalazioni: chi non può aprire
+ * una segnalazione non ne legge né ne conta il compito ({@see CompitoDellaSegnalazione::chiVede()}).
+ *
+ * Le risposte a un compito («Fatto, con una nota», «Non serve, con il motivo», «Ricordamelo il…») passano da `risposta()`; «Completa» e «Rifiuta» restano con
+ * il loro effetto e passano dalle stesse funzioni ({@see RispostePromemoria}) e dalle stesse guardie: il compito di una segnalazione che chi risponde non apre
+ * è 404, e «Completa» sul bonifico segnalato ancora in verifica ha la frase di «Fatto». I compiti elencati e contati sono quelli di {@see Evento::scopeCompitiAperti()}:
+ * un compito in attesa di «Ricordamelo» non c'è.
  */
 class ActionInboxController extends Controller
 {
+    use HandleFlashMessages;
     use HasCondomini;
 
-    public function __invoke(Request $request): Response
+    public const RISPOSTE = [RispostePromemoria::FATTO, RispostePromemoria::NON_SERVE, RispostePromemoria::RICORDAMELO];
+
+    public const FRASE_PERCHE = 'Scrivi perché non serve.';
+    public const FRASE_PERCHE_RIFIUTI = 'Scrivi perché rifiuti la segnalazione: il condòmino lo legge.';
+    public const FRASE_DA_DOMANI = 'Scegli un giorno da domani in poi.';
+
+    public function __invoke(Request $request, RiepilogoDellInbox $riepilogo): Response
     {
         Gate::authorize('viewAny', Evento::class);
 
-        $filter       = $request->input('filter', 'all');
-        $condominioId = $request->input('condominio_id');
+        // I filtri dell'indirizzo; le segnalazioni che si vedono vengono da chi legge, non dall'indirizzo.
+        $filtri = ElencoDellInbox::filtri($request->only(['quando', 'tipo', 'cerca', 'ordine', 'condominio_id']), $request->user());
+        $fasce = FasceDeiCompiti::oggi();
+        $elenco = new ElencoDellInbox($fasce);
 
-        // Conteggi rispettano il filtro condominio (se attivo)
-        $counts = $this->getCounts($condominioId ? (int) $condominioId : null);
-        $tasks  = $this->getTasks($filter, $condominioId ? (int) $condominioId : null);
+        // Le letture contate, una volta per la pagina: «Mostra altri 15» chiede solo l'elenco, e non le rifà.
+        $letto = null;
+        $leggi = function () use (&$letto, $riepilogo, $filtri, $fasce) {
+            return $letto ??= $riepilogo->leggi($filtri['condominio_id'], $filtri['segnalazioni'], $fasce);
+        };
+        $perFascia = null;
+        $contati = function () use (&$perFascia, $elenco, $filtri) {
+            return $perFascia ??= $elenco->perFascia($filtri);
+        };
+        $gruppi = fn () => ElencoDellInbox::gruppi($contati(), $filtri['quando']);
 
-        return Inertia::render('dashboard/ActionInbox', [ 
-            'tasks'           => $tasks,
-            'counts'          => $counts,
-            'activeFilter'    => $filter,
-            'condomini'       => $this->getCondomini(),
-            'condominioFilter' => $condominioId ? (int) $condominioId : null,
+        return Inertia::render('dashboard/ActionInbox', [
+            'tasks' => Inertia::scroll(fn () => $elenco->pagina($filtri)),
+            'counts' => fn () => $leggi()['counts'],
+            'grafici' => fn () => $leggi()['grafici'],
+            'dove' => fn () => $leggi()['dove'],
+            'schede' => fn () => ElencoDellInbox::schede($contati()),
+            'gruppi' => $gruppi,
+            'modo' => fn () => ElencoDellInbox::modo($filtri['quando'], $gruppi()),
+            'anteprima' => fn () => ElencoDellInbox::modo($filtri['quando'], $gruppi()) === 'anteprima' ? $elenco->anteprima($filtri, $gruppi()) : [],
+            'filtri' => ['quando' => $filtri['quando'], 'tipo' => $filtri['tipo'], 'cerca' => $filtri['cerca'], 'ordine' => $filtri['ordine'],
+                'condominio_id' => $filtri['condominio_id'], 'scheda' => FasceDeiCompiti::scheda($filtri['quando']),
+                'tipo_nome' => $filtri['tipo'] === null ? null : TipiDeiCompiti::nome($filtri['tipo'])],
+            'condomini' => $this->getCondomini(),
+            // I condomini dei sei mesi per agire, in ordine di nome: la colonna li chiede uno alla volta dopo che la pagina si è aperta. Nessuna cifra qui.
+            'seiMesiCondomini' => fn () => Condominio::query()->when($filtri['condominio_id'] !== null, fn ($q) => $q->whereKey($filtri['condominio_id']))
+                ->orderBy('nome')->orderBy('id')->get(['id', 'nome'])
+                ->map(fn (Condominio $c) => ['id' => (int) $c->id, 'nome' => (string) $c->nome])->values()->all(),
+            // Il giorno dell'amministratore, per «Ricordamelo» (da domani): non quello del browser.
+            'oggi' => DateHelper::oggiUtente(),
         ]);
     }
 
-    private function getTasks(string $filter, ?int $condominioId = null)
-    {
-        $query = Evento::query()
-            ->whereJsonContains('meta->requires_action', true)
-            ->where(fn($q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
-            ->where('is_completed', false)
-            ->with([
-                'condomini:id,nome',
-                'anagrafiche:id,nome' 
-            ]);
-
-        // Filtro per condominio specifico
-        if ($condominioId) {
-            $query->whereHas('condomini', fn($q) => $q->where('condomini.id', $condominioId));
-        }
-
-        match($filter) {
-            'urgent'      => $query->where('start_time', '<=', now()->endOfDay()),
-            'payments'    => $query->whereJsonContains('meta->type', 'verifica_pagamento'),
-            'maintenance' => $query->whereJsonContains('meta->type', 'segnalazione_guasto'),
-            default       => null
-        };
-
-        return Inertia::scroll(
-            $query
-            // L'ora di adesso arriva come parametro, come in `InboxService::getCounts()`: la stessa query vale su ogni
-            // database, e il confronto è con l'ora dell'applicazione, quella con cui `start_time` è scritto.
-            ->orderByRaw("CASE WHEN start_time <= ? THEN 0 ELSE 1 END ASC, start_time ASC", [now()])
-            ->paginate(15)
-            ->withQueryString()
-            ->through(function ($task) {
-                
-                $condominio = $task->condomini->first();
-                
-                // --- LOGICA RECUPERO NOME ---
-                // 1. Proviamo dalla relazione standard
-                $nomeAnagrafica = $task->anagrafiche->first()?->nome;
-
-                // 2. Se è null, proviamo a pescarlo dal JSON usando l'ID
-                if (!$nomeAnagrafica && !empty($task->meta['context']['anagrafica_id'])) {
-                    $anagraficaId = $task->meta['context']['anagrafica_id'];
-                    // Recupero "al volo" (poco costoso per pochi record)
-                    $anagraficaModel = Anagrafica::find($anagraficaId);
-                    if ($anagraficaModel) {
-                        $nomeAnagrafica = $anagraficaModel->nome;
-                    }
-                }
-                // -----------------------------
-
-                $status = $this->getTaskStatus($task);
-                $daysPending = $status === 'expired' ? (int) floor(now()->diffInDays($task->start_time)) : 0;
-
-                return [
-                    'id'           => $task->id,
-                    'title'        => $task->title,
-                    'description'  => $task->description, 
-                    'date'         => $task->start_time->toISOString(),
-                    'condominio'   => $condominio?->nome ?? 'Generale',
-                    'type'         => $task->tipo?->value ?? $task->meta['type'] ?? 'generic',
-                    'amount'       => $task->meta['importo_dichiarato'] 
-                                   ?? $task->meta['totale_rata'] 
-                                   ?? null,
-                    'status'       => $status,
-                    'days_pending' => $daysPending,
-                    'context'      => [
-                        // Ora qui avrai il nome corretto
-                        'anagrafica_nome' => $nomeAnagrafica, 
-                        'action_url'      => $task->meta['action_url'] ?? null,
-                        'related_id'      => $task->meta['context']['related_event_id'] ?? null,
-                    ],
-                ];
-            })
-        );
-    }
-
     /**
-     * Calcola i conteggi per le KPI card, rispettando il filtro condominio.
-     * Quando $condominioId è null usa InboxService (globale, cached).
-     * Quando è specificato, ricalcola filtrato per quel condominio.
+     * Le risposte a un compito della casella, dalle due Inbox: «Fatto» (la nota facoltativa), «Non serve» (il motivo; sul
+     * bonifico segnalato è il rifiuto della segnalazione, che il condòmino legge), «Ricordamelo» (il giorno da domani, nel
+     * calendario dell'amministratore). La guardia è quella di «Rifiuta»: prima il permesso, poi un compito aperto della
+     * casella che chi risponde vede (il compito di una segnalazione solo a chi apre la segnalazione), altrimenti 404.
      */
-    private function getCounts(?int $condominioId = null): array
+    public function risposta(Request $request, Evento $task, RispostePromemoria $risposte): RedirectResponse
     {
-        if (!$condominioId) {
-            return InboxService::getCounts();
+        Gate::authorize('chiudiCompito', Evento::class);
+
+        abort_unless($this->eUnCompitoAperto($task) && $this->loVede($request, $task), 404);
+
+        $tipo = $request->validate(['tipo' => ['required', Rule::in(self::RISPOSTE)]])['tipo'];
+        $utente = $request->user();
+        // Il compito di una segnalazione ha solo «Ricordamelo»: si chiude quando si chiude la segnalazione.
+        if ($tipo !== RispostePromemoria::RICORDAMELO && $this->eUnaSegnalazione($task)) {
+            throw ValidationException::withMessages(['tipo' => CompitoDellaSegnalazione::FRASE_SOLO_RICORDAMELO]);
         }
 
-        $deadline = now()->endOfDay()->toDateTimeString();
+        if ($tipo === RispostePromemoria::FATTO) {
+            $this->fattoSoloDopoLIncasso($task);
+            $dati = $request->validate(['nota' => ['nullable', 'string', 'max:500']]);
+            $risposte->fattoDelCompito($task, $dati['nota'] ?? null, $utente);
 
-        $statsQuery = Evento::query()
-            ->whereJsonContains('meta->requires_action', true)
-            ->where(fn($q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
-            ->where('is_completed', false)
-            ->whereHas('condomini', fn($q) => $q->where('condomini.id', $condominioId));
-
-        // Fix cross-database per SQLite tests vs MySQL
-        $isSqlite = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite';
-        $typeExtract = $isSqlite 
-            ? "JSON_EXTRACT(meta, '$.\"type\"')" 
-            : "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4)";
-
-        $stats = $statsQuery->selectRaw("
-            COUNT(*) as all_tasks,
-            SUM(CASE WHEN start_time <= ? THEN 1 ELSE 0 END) as urgent,
-            SUM(CASE WHEN {$typeExtract} = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
-            SUM(CASE WHEN {$typeExtract} = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
-        ", [$deadline])
-            ->first();
-
-        return [
-            'all'         => (int) ($stats->all_tasks ?? 0),
-            'urgent'      => (int) ($stats->urgent ?? 0),
-            'payments'    => (int) ($stats->payments ?? 0),
-            'maintenance' => (int) ($stats->maintenance ?? 0),
-        ];
-    }
-
-    private function getTaskStatus(Evento $task): string
-    {
-        if (($task->meta['type'] ?? '') === 'verifica_pagamento') {
-            return 'pending_verification';
+            return back()->with($this->flashSuccess('Fatto: il compito è chiuso.'));
         }
 
-        if ($task->start_time->isPast()) {
-            return 'expired';
+        if ($tipo === RispostePromemoria::NON_SERVE) {
+            $bonifico = RispostePromemoria::eUnBonificoSegnalato($task);
+            $frase = $bonifico ? self::FRASE_PERCHE_RIFIUTI : self::FRASE_PERCHE;
+            $dati = $request->validate(['motivo' => ['required', 'string', 'min:3', 'max:255']],
+                ['motivo.required' => $frase, 'motivo.min' => $frase]);
+            $risposte->nonServeDelCompito($task, trim($dati['motivo']), $utente);
+
+            return back()->with($this->flashSuccess($bonifico
+                ? 'Segnalazione rifiutata: il condòmino legge il motivo nel portale.'
+                : 'Non serve: il compito è chiuso.'));
         }
 
-        return 'scheduled';
+        $dati = $request->validate([
+            'giorno' => ['required', 'date_format:Y-m-d', 'after:' . DateHelper::oggiUtente()],
+            'nota' => ['nullable', 'string', 'max:500'],
+        ], ['giorno.required' => self::FRASE_DA_DOMANI, 'giorno.date_format' => self::FRASE_DA_DOMANI, 'giorno.after' => self::FRASE_DA_DOMANI]);
+        $risposte->ricordameloDelCompito($task, $dati['giorno'], $dati['nota'] ?? null, $utente);
+
+        return back()->with($this->flashSuccess('Ti ricordo il compito il ' . CarbonImmutable::parse($dati['giorno'])->format('d/m/Y') . ': è nell\'agenda.'));
     }
 
     /**
-     * Rifiuta una segnalazione di pagamento.
+     * Rifiuta una segnalazione di pagamento: è «Non serve» del bonifico segnalato, con lo stesso effetto di prima
+     * sull'evento del condòmino collegato, e la risposta scritta.
      *
      * Si rifiuta soltanto un compito aperto della casella: uno che chiede un'azione, non privato e non già chiuso, cioè
      * uno di quelli che la casella elenca. Una scadenza privata di un condòmino, una scadenza qualunque dell'agenda o un
      * compito già chiuso non sono compiti da rifiutare: 404, e niente cambia, nemmeno la segnalazione collegata.
      */
-    public function reject(Request $request, Evento $task)
+    public function reject(Request $request, Evento $task, RispostePromemoria $risposte)
     {
         Gate::authorize('chiudiCompito', Evento::class);
 
-        abort_unless($this->eUnCompitoAperto($task), 404);
+        abort_unless($this->eUnCompitoAperto($task) && $this->loVede($request, $task), 404);
+        if ($this->eUnaSegnalazione($task)) {
+            throw ValidationException::withMessages(['reason' => CompitoDellaSegnalazione::FRASE_SOLO_RICORDAMELO]);
+        }
 
         $request->validate([
             'reason' => 'required|string|max:255', 
         ]);
 
-        // 1. Recupera l'evento originale del condòmino (collegato via meta)
-        $userEventId = $task->meta['context']['related_event_id'] ?? null;
-        
-        if ($userEventId) {
-            /** @var \App\Models\Evento|null $userEvent */
-            $userEvent = Evento::find($userEventId);
-            if ($userEvent) {
-                // Aggiorniamo l'evento utente diventa 'rejected'
-                $meta = $userEvent->meta;
-                $meta['status'] = 'rejected'; // Stato specifico per dire "ci hai provato ma no"
-                $meta['rejection_reason'] = $request->input('reason');
-                $meta['rejected_at'] = now()->toIso8601String();
-                
-                $userEvent->update(['meta' => $meta]);
-                
-                // QUI: Potresti inviare una notifica email al condòmino ($userEvent->created_by)
-            }
-        }
-
-        // 2. Chiudi il task Admin
-        $task->update([
-            'is_completed' => true, // O cancellalo se preferisci
-            'completed_at' => now(),
-        ]);
-
-        // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
-        InboxService::clearAdminCache();
+        $risposte->nonServeDelCompito($task, (string) $request->input('reason'), $request->user());
 
         return back()->with('success', 'Segnalazione rifiutata e condòmino notificato.');
     }
 
     /**
-     * Segna un Task Admin come completato dalla Inbox.
+     * Segna un Task Admin come completato dalla Inbox: è «Fatto» senza nota, con la risposta scritta, e con le sue guardie: il compito di una segnalazione
+     * che chi risponde non apre è 404; sul bonifico segnalato ancora in verifica, senza un incasso, la frase di «Fatto», e niente cambia.
      */
-    public function complete(Request $request, Evento $task)
+    public function complete(Request $request, Evento $task, RispostePromemoria $risposte)
     {
         Gate::authorize('chiudiCompito', Evento::class);
 
+        abort_unless($this->loVede($request, $task), 404);
         // Evita di chiudere task già completati o task privati dei condòmini
         if ($task->is_completed || $task->visibility === 'private') {
             return back()->with('error', 'Impossibile completare questo task.');
         }
+        if ($this->eUnaSegnalazione($task)) {
+            throw ValidationException::withMessages(['tipo' => CompitoDellaSegnalazione::FRASE_SOLO_RICORDAMELO]);
+        }
+        $this->fattoSoloDopoLIncasso($task);
 
-        $task->update([
-            'is_completed' => true,
-            'completed_at' => now(),
-        ]);
-
-        InboxService::clearAdminCache();
+        $risposte->fattoDelCompito($task, null, $request->user());
 
         return back()->with('success', 'Task completato.');
+    }
+
+    /** Il compito di una segnalazione di guasto: si chiude con la segnalazione, e qui ha solo «Ricordamelo». */
+    private function eUnaSegnalazione(Evento $task): bool
+    {
+        return ($task->meta['type'] ?? $task->tipo?->value) === CompitoDellaSegnalazione::TIPO;
+    }
+
+    /**
+     * Chi risponde vede il compito: il compito di una segnalazione solo se apre la segnalazione, con la regola delle due Inbox
+     * ({@see CompitoDellaSegnalazione::chiVede()}); gli altri compiti sì.
+     */
+    private function loVede(Request $request, Evento $task): bool
+    {
+        return ! $this->eUnaSegnalazione($task)
+            || CompitoDellaSegnalazione::soloQuelliCheVede(Evento::query()->whereKey($task->getKey()), CompitoDellaSegnalazione::chiVede($request->user()))->exists();
+    }
+
+    /**
+     * Sul bonifico segnalato «Fatto» (e «Completa», che è «Fatto» senza nota) vale dopo un incasso, anche parziale, anche andato su altre rate: senza, il
+     * condòmino resterebbe «in verifica».
+     */
+    private function fattoSoloDopoLIncasso(Evento $task): void
+    {
+        if (RispostePromemoria::eUnBonificoSegnalato($task) && app(\App\Services\Gestionale\SegnalazioneDelBonifico::class)->fattoSpento($task)) {
+            throw ValidationException::withMessages(['tipo' => RispostePromemoria::FRASE_PRIMA_L_INCASSO]);
+        }
     }
 
     /**

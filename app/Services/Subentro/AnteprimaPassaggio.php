@@ -377,6 +377,20 @@ class AnteprimaPassaggio
         ];
         $anteprima['cancello']['avvisi'] = [...$anteprima['cancello']['avvisi'], ...$this->avvisiDelPianoCheSiFerma($tipo, $entrante, $condominio, $immobileIds, $decorrenza)];
 
+        // Gli addebiti a una persona sola di chi esce sulle unità del passaggio, ancora da versare: restano suoi; nella successione con l'arretrato agli
+        // eredi passano agli eredi con l'arretrato, come gli altri debiti del defunto.
+        if ($uscente !== null && ($addebiti = $this->addebitiAperti((int) $uscente->anagrafica_id, $immobileIds, $tipo === 'successione' && $this->arretratoAgliEredi($dati))) !== null) {
+            $anteprima['rate']['frasi'][] = $addebiti;
+        }
+        if (($fraseAccessori = $anteprima['rate']['arretrato']['frase_accessori'] ?? null) !== null) {
+            $anteprima['rate']['frasi'][] = $fraseAccessori;
+        }
+        // Un accordo di rientro in corso di chi esce, con rate coperte sulle unità del passaggio: l'accordo è suo e il passaggio non lo tocca.
+        if ($uscente !== null && ($accordo = $this->accordoAperto($condominio, (int) $uscente->anagrafica_id, $immobileIds,
+            $tipo === 'successione' && $this->arretratoAgliEredi($dati), $decorrenza)) !== null) {
+            $anteprima['rate']['frasi'][] = $accordo;
+        }
+
         if ($sceltaDelConguaglio) {
             // Rilievo R2: le quote che restano a chi esce sono «comprese nel conguaglio» solo se il conguaglio si scrive.
             $anteprima['cancello']['motivi'] = array_map(fn (string $m) => preg_replace('/(compres[ae] nel conguaglio)(?!, se lo scrivi)/u', '$1, se lo scrivi', $m), $anteprima['cancello']['motivi']);
@@ -2356,10 +2370,15 @@ class AnteprimaPassaggio
         $defunto = (int) $uscente->anagrafica_id;
         $gruppi = [];
         $chiave = fn ($gestione, $immobile, $esercizio) => (int) $gestione . '|' . (int) $immobile . '|' . ($esercizio === null ? '' : (int) $esercizio);
-        $aggiungi = function (string $k, array $base, int $posizione, int $bozze) use (&$gruppi) {
-            $gruppi[$k] ??= $base + ['posizione' => 0, 'bozze' => 0];
+        // `addebiti`: la parte della posizione che viene dagli addebiti a una persona sola, che non sono quote; `rate`: le loro rate.
+        $aggiungi = function (string $k, array $base, int $posizione, int $bozze, int $addebiti = 0, ?int $rataId = null) use (&$gruppi) {
+            $gruppi[$k] ??= $base + ['posizione' => 0, 'bozze' => 0, 'addebiti' => 0, 'rate' => []];
             $gruppi[$k]['posizione'] += $posizione;
             $gruppi[$k]['bozze'] += $bozze;
+            $gruppi[$k]['addebiti'] += $addebiti;
+            if ($rataId !== null) {
+                $gruppi[$k]['rate'][$rataId] = $rataId;
+            }
         };
         foreach ($conguaglio['quote'] ?? [] as $q) {
             if ((int) $q['intestatario_id'] !== $defunto) {
@@ -2373,7 +2392,31 @@ class AnteprimaPassaggio
                 $aggiungi($k, $base, (int) $q['importo'] - (int) $q['importo_pagato'], 0);
             }
         }
+        // Gli addebiti a una persona sola del defunto sulle unità del passaggio, ancora da versare: il conguaglio non li legge (non sono del riparto),
+        // e con l'arretrato agli eredi sono debiti del defunto come le quote che non passano. La quota resta dov'è, a suo nome; le righe di saldo la
+        // portano agli eredi per quota. Con l'arretrato a nome del defunto restano suoi, come dice la frase degli addebiti. Gli interessi e le spese
+        // senza fattura no: passano agli eredi come interessi e spese ({@see AccessoriAgliEredi}), sotto. La loro parte si tiene a sé (`addebiti`): le righe
+        // che la portano agli eredi sono righe a parte, fuori da B del conguaglio come l'addebito da cui vengono.
+        $accessori = $this->arretratoAgliEredi($dati) ? AccessoriAgliEredi::aperti($defunto, $immobileIds) : collect();
+        if ($this->arretratoAgliEredi($dati)) {
+            foreach (DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+                ->leftJoin('gestioni', 'gestioni.id', '=', 'piani_rate.gestione_id')
+                ->where('piani_rate.natura', \App\Models\Gestionale\PianoRate::NATURA_ADDEBITI)
+                ->where('rate_quote.anagrafica_id', $defunto)->whereIn('rate_quote.immobile_id', $immobileIds)
+                ->whereColumn('rate_quote.importo_pagato', '<', 'rate_quote.importo')
+                ->whereNotIn('rate_quote.id', $accessori->pluck('id')->all() ?: [0])
+                ->orderBy('rate_quote.id')
+                ->get(['piani_rate.gestione_id as gestione_id', 'gestioni.nome as gestione', 'rate_quote.immobile_id as immobile_id', 'piani_rate.esercizio_id as esercizio_id',
+                    'rate_quote.rata_id as rata_id', 'rate_quote.importo as importo', 'rate_quote.importo_pagato as importo_pagato']) as $a) {
+                $esercizio = $a->esercizio_id === null ? null : (int) $a->esercizio_id;
+                $aperto = (int) $a->importo - (int) $a->importo_pagato;
+                $aggiungi($chiave($a->gestione_id, $a->immobile_id, $esercizio), ['gestione_id' => (int) $a->gestione_id, 'gestione' => $a->gestione,
+                    'immobile_id' => (int) $a->immobile_id, 'esercizio_id' => $esercizio], $aperto, 0, $aperto, (int) $a->rata_id);
+            }
+        }
         $saldi = \App\Models\Saldo::with('gestione')->where('anagrafica_id', $defunto)->whereIn('immobile_id', $immobileIds)->where('is_applicato', false)->get();
+        // Le righe che una successione prima ha scritto al defunto per gli addebiti del suo dante causa restano la parte degli addebiti.
+        $degliAddebiti = Subentro::righeDegliAddebiti($saldi->pluck('subentro_id')->filter()->all());
         // Decisione 67 (3): i saldi letti, anche le righe di un passaggio precedente, sono le fonti dell'arretrato. Il registro le tiene,
         // e il Wallet e l'annullamento di un conguaglio non le cambiano sotto le righe degli eredi.
         $fonti = [];
@@ -2383,7 +2426,8 @@ class AnteprimaPassaggio
             }
             $fonti[] = (int) $sa->id;
             $aggiungi($chiave($sa->gestione_id, $sa->immobile_id, $sa->esercizio_id),
-                ['gestione_id' => (int) $sa->gestione_id, 'gestione' => $sa->gestione?->nome, 'immobile_id' => (int) $sa->immobile_id, 'esercizio_id' => $sa->esercizio_id], (int) $sa->saldo_iniziale, 0);
+                ['gestione_id' => (int) $sa->gestione_id, 'gestione' => $sa->gestione?->nome, 'immobile_id' => (int) $sa->immobile_id, 'esercizio_id' => $sa->esercizio_id], (int) $sa->saldo_iniziale, 0,
+                isset($degliAddebiti[(int) $sa->id]) ? (int) $sa->saldo_iniziale : 0);
         }
         // La coppia di ciascuno per gruppo (gli eredi a debito, il defunto a credito della somma).
         $coppie = [];
@@ -2427,7 +2471,10 @@ class AnteprimaPassaggio
         $perErede = array_fill_keys(array_keys($pesi), 0);
         foreach ($gruppi as $k => $g) {
             $parti = MoneyHelper::ripartisciPerQuote((int) $g['posizione'] + (int) $g['bozze'], $pesi);
+            // Di ogni parte, quanto viene dagli addebiti: diviso per quota a sé, dentro il totale di ciascuno (che resta con un solo arrotondamento).
+            $partiAddebiti = (int) $g['addebiti'] !== 0 ? MoneyHelper::ripartisciPerQuote((int) $g['addebiti'], $pesi) : [];
             $perRiga = [];
+            $diCuiAddebiti = [];
             foreach ($parti as $anagraficaId => $cents) {
                 $totale = (int) $cents - ((int) $anagraficaId === $riferimentoId ? (int) $g['bozze'] : 0);
                 $importo = $totale - (int) ($coppie[$k][(int) $anagraficaId] ?? 0);
@@ -2435,9 +2482,13 @@ class AnteprimaPassaggio
                     $perRiga[(int) $anagraficaId] = $importo;
                     $perErede[(int) $anagraficaId] += $importo;
                 }
+                if ((int) ($partiAddebiti[$anagraficaId] ?? 0) !== 0) {
+                    $diCuiAddebiti[(int) $anagraficaId] = (int) $partiAddebiti[$anagraficaId];
+                }
             }
-            if ($perRiga !== []) {
-                $righe[] = ['gestione_id' => $g['gestione_id'], 'gestione' => $g['gestione'], 'immobile_id' => $g['immobile_id'], 'esercizio_id' => $g['esercizio_id'], 'per_erede' => $perRiga];
+            if ($perRiga !== [] || $diCuiAddebiti !== []) {
+                $righe[] = ['gestione_id' => $g['gestione_id'], 'gestione' => $g['gestione'], 'immobile_id' => $g['immobile_id'], 'esercizio_id' => $g['esercizio_id'], 'per_erede' => $perRiga]
+                    + ($diCuiAddebiti !== [] ? ['di_cui_addebiti' => $diCuiAddebiti, 'rate_degli_addebiti' => array_values($g['rate'])] : []);
             }
         }
         $totale = (int) array_sum($perErede);
@@ -2461,7 +2512,10 @@ class AnteprimaPassaggio
             default => sprintf('Con il conguaglio la posizione di %s si chiude: per ogni erede la parte dei giorni dal decesso e la quota del credito si compensano, e su questi piani nessun erede ha niente da pagare o da ricevere.', $nome),
         };
 
+        $divisione = AccessoriAgliEredi::divisione($accessori, $pesi);
+
         return ['scelta' => Subentro::ARRETRATO_AGLI_EREDI, 'legato' => false, 'resta' => 0, 'resta_formattato' => MoneyHelper::format(0), 'eredi' => $eredi, 'righe' => $righe, 'totale' => $totale, 'fonti' => $fonti,
+            'accessori' => $divisione, 'frase_accessori' => AccessoriAgliEredi::frase($divisione, $nome, $nomi),
             'frase' => match (true) {
                 $totale === 0 => null,
                 // Rilievo L1: un credito del defunto non è un debito dell'eredità (l'art. 754 c.c. parla dei debiti).
@@ -3102,6 +3156,62 @@ class AnteprimaPassaggio
 
     // --- Blocco 2: le rate già emesse ------------------------------------------------------------
 
+    /**
+     * La frase degli addebiti a una persona sola di chi esce sulle unità del passaggio, ancora da versare: «Neri ha addebiti aperti su U1 per
+     * € 50,00: restano a suo nome, il passaggio non li sposta.»; nella successione con l'arretrato agli eredi «… passano agli eredi con
+     * l'arretrato.», perché l'arretrato li conta ({@see arretrato()}): lì senza gli interessi e le spese senza fattura, che hanno la loro frase
+     * ({@see AccessoriAgliEredi::frase()}). Null se non ce ne sono.
+     *
+     * @param list<int> $immobileIds
+     */
+    private function addebitiAperti(int $anagraficaId, array $immobileIds, bool $agliEredi = false): ?string
+    {
+        $perUnita = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+            ->where('piani_rate.natura', \App\Models\Gestionale\PianoRate::NATURA_ADDEBITI)
+            ->where('rate_quote.anagrafica_id', $anagraficaId)->whereIn('rate_quote.immobile_id', $immobileIds)
+            ->whereColumn('rate_quote.importo_pagato', '<', 'rate_quote.importo')
+            ->whereNotIn('rate_quote.id', ($agliEredi ? AccessoriAgliEredi::aperti($anagraficaId, $immobileIds)->pluck('id')->all() : []) ?: [0])
+            ->groupBy('rate_quote.immobile_id')
+            ->selectRaw('rate_quote.immobile_id as immobile_id, SUM(rate_quote.importo - rate_quote.importo_pagato) as aperto')
+            ->get()->mapWithKeys(fn ($r) => [(int) $r->immobile_id => (int) $r->aperto])->filter(fn (int $c) => $c > 0)->all();
+        if ($perUnita === []) {
+            return null;
+        }
+        $nomi = Immobile::whereIn('id', array_keys($perUnita))->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => trim((string) $i->nome) !== '' ? (string) $i->nome : (string) $i->etichetta])->all();
+        ksort($perUnita);
+        $dove = $this->elenco(array_map(fn (int $id) => $nomi[$id] ?? 'un\'unità', array_keys($perUnita)));
+
+        return sprintf('%s ha addebiti aperti su %s per %s: %s',
+            (string) (Anagrafica::find($anagraficaId)?->nome ?? 'Chi esce'), $dove, MoneyHelper::format((int) array_sum($perUnita)),
+            $agliEredi ? 'passano agli eredi con l\'arretrato.' : 'restano a suo nome, il passaggio non li sposta.');
+    }
+
+    /**
+     * La frase dell'accordo di rientro aperto di chi esce che copre rate delle unità del passaggio: «Neri ha un accordo di rientro aperto su U1, del
+     * 15/07/2026: le rate che copre restano a suo nome.» Nella successione con l'arretrato agli eredi l'accordo si chiude per la successione
+     * ({@see AccordiDellaSuccessione}), e la frase lo dice. Null se non ce n'è.
+     *
+     * @param list<int> $immobileIds
+     */
+    private function accordoAperto(Condominio $condominio, int $anagraficaId, array $immobileIds, bool $agliEredi, \DateTimeInterface $decorrenza): ?string
+    {
+        $accordi = AccordiDellaSuccessione::daChiudere((int) $condominio->id, $anagraficaId, $immobileIds);
+        if ($accordi->isEmpty()) {
+            return null;
+        }
+        $unita = \App\Models\Gestionale\AccordoRientroRata::whereIn('accordo_rientro_id', $accordi->pluck('id'))->whereIn('immobile_id', $immobileIds)->pluck('immobile_id')->unique();
+        $nomi = Immobile::whereIn('id', $unita)->orderBy('id')->get()->map(fn (Immobile $i) => trim((string) $i->nome) !== '' ? (string) $i->nome : (string) $i->etichetta)->all();
+        $date = $this->elenco($accordi->map(fn ($a) => $a->data_accordo->format('d/m/Y'))->unique()->values()->all());
+        $uno = $accordi->count() === 1;
+
+        return sprintf('%s ha %s su %s, del %s: %s',
+            (string) (Anagrafica::find($anagraficaId)?->nome ?? 'Chi esce'), $uno ? 'un accordo di rientro aperto' : 'accordi di rientro aperti', $this->elenco($nomi), $date,
+            $agliEredi
+                ? sprintf('con l\'arretrato agli eredi %s per la successione, dal %s, e il debito che resta passa agli eredi con l\'arretrato, per quota; con ognuno puoi registrare un accordo nuovo.',
+                    $uno ? 'l\'accordo si chiude' : 'gli accordi si chiudono', CarbonImmutable::parse($decorrenza)->format('d/m/Y'))
+                : 'le rate che copre restano a suo nome.');
+    }
+
     /** @return Collection<int, array{rata: int, scadenza: string, importo: int, importo_formattato: string, intestatario: string, piano: string}> */
     private function rateEmesse(array $immobileIds): Collection
     {
@@ -3113,6 +3223,8 @@ class AnteprimaPassaggio
             // Decisione 34 (1.11.0-beta.42): emessa è la rata a giornale, non quella che lo stato dice «emessa».
             ->whereExists(\App\Models\Gestionale\Rata::aGiornale())
             ->where('rate_quote.stato', '!=', 'annullata')
+            // Gli addebiti a una persona sola non sono quote che il passaggio riguarda: restano a chi li ha, e una frase loro lo dice.
+            ->where(fn ($q) => $q->whereNull('piani_rate.natura')->orWhere('piani_rate.natura', '!=', \App\Models\Gestionale\PianoRate::NATURA_ADDEBITI))
             ->orderBy('rate.data_scadenza')
             ->orderBy('rate.numero_rata')
             ->get([

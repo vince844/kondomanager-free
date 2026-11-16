@@ -3,23 +3,37 @@
  * La scheda «Controlli» del rendiconto: i controlli, con i numeri veri, e le registrazioni oltre il confine dell'esercizio nei due versi, con l'effetto
  * sul riepilogo, la tabella per tipo e l'elenco (a pagine, con i filtri). Nessun pulsante «correggi»: il programma non sposta le registrazioni da un
  * esercizio all'altro. Ogni numero arriva dal server (`ControlliDelRendiconto`, `AnnoACavallo`).
+ *
+ * Il controllo della banca, quando l'estratto e la contabilità non coincidono, ha sotto ogni conto le possibili cause che il programma trova nei movimenti
+ * (`PisteDellaBanca`): ognuna con la correzione consigliata, che apre l'azione che il programma ha già, e «Ignora» con una nota, che resta nel registro.
  */
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RendicontoControlliGuide from '@/components/guides/RendicontoControlliGuide.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, XCircle, AlertTriangle, CircleDashed, ArrowRight, ListChecks, CalendarRange, Printer, Landmark } from 'lucide-vue-next';
+import { CheckCircle2, XCircle, AlertTriangle, CircleDashed, ArrowRight, ListChecks, CalendarRange, Printer, Landmark, EyeOff, RotateCcw } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
-// «non_calcolato»: un controllo del conguaglio che la richiesta non ha calcolato (senza la sua lettura).
+// «non_calcolato»: un controllo del conguaglio che la richiesta non ha calcolato (senza la sua lettura), o la banca senza l'estratto scritto.
 type Esito = 'quadra' | 'non_quadra' | 'segnalazione' | 'non_calcolato';
-interface Controllo { id: string; nome: string; titolo: string; sinistra: number; destra: number; segno?: string; esito: Esito; nota: string; rimedio: string | null; azione: string | null; azione_parametro?: string | null; non_letto?: boolean }
+interface Correzione { etichetta: string; rotta: string; parametri: Record<string, number | string>; query: Record<string, number | string> }
+interface Pista { chiave: string; tipo: string; frase: string; correzione: Correzione | null; ignorata: { quando: string; utente: string; nota: string } | null }
+interface ContoBanca { cassa_id: number; cassa: string; data: string; estratto: number | null; contabilita: number; sul_conto?: number; nei_fondi?: number; differenza: number | null; piste?: Pista[] }
+interface Controllo {
+    id: string; nome: string; titolo: string; sinistra: number; destra: number; segno?: string; esito: Esito; nota: string; rimedio: string | null; azione: string | null;
+    azione_parametro?: string | null; non_letto?: boolean;
+    /** Il controllo della banca: quanti conti, di quanti è scritto l'estratto, e i conti con le possibili cause di una differenza. */
+    conti?: number; scritti?: number; banche?: ContoBanca[];
+    /** «Casse reali sotto zero»: quante parti libere di un conto sono andate sotto zero con il conto (i fondi dentro) sopra zero. */
+    liberi?: number;
+}
 interface RigaConfine { scrittura_id: number; verso: 'A' | 'B'; data: string; esercizio_id: number; esercizio: string; protocollo: string | null; tipo: string; categoria: string; etichetta: string; causale: string | null; importo: number; rossa: boolean; senza_esercizio: boolean; nota: string | null }
 interface AnnoACavallo {
     dal: string; al: string; numero: number; rosse: number; da_leggere: number;
@@ -47,11 +61,14 @@ const coloreEsito = (e: Esito) => ({ quadra: 'text-emerald-700 dark:text-emerald
 const iconaEsito = (e: Esito) => ({ quadra: CheckCircle2, non_quadra: XCircle, segnalazione: AlertTriangle, non_calcolato: CircleDashed }[e]);
 const testoEsito = (e: Esito) => ({ quadra: 'torna', non_quadra: 'non torna', segnalazione: 'da leggere', non_calcolato: 'non calcolato' }[e]);
 const conteggio = (c: Controllo): string | null => {
-    if (c.id === 'CN') return `${c.sinistra} ${c.sinistra === 1 ? 'cassa' : 'casse'} sotto zero`;
+    if (c.id === 'CN') return `${c.sinistra} ${c.sinistra === 1 ? 'cassa' : 'casse'} sotto zero` + (c.liberi ? `; ${c.liberi} ${c.liberi === 1 ? 'parte libera' : 'parti libere'} sotto zero` : '');
     if (c.id === 'AC') return `${c.sinistra} ${c.sinistra === 1 ? 'registrazione' : 'registrazioni'} oltre il confine`;
     if (c.id === 'GE') return `${c.sinistra} ${c.sinistra === 1 ? 'fattura' : 'fatture'} con voci di un'altra gestione`;
     // I quattro controlli del conguaglio senza la lettura non hanno cifre; i due per unità dicono quante non tornano su quante.
     if (c.non_letto) return '—';
+    // La banca senza un conto, o senza l'estratto scritto: non due cifre a zero, ma che cosa manca.
+    if (c.id === 'BC' && c.conti === 0) return 'nessun conto in banca';
+    if (c.id === 'BC' && c.esito === 'non_calcolato') return c.scritti ? `saldo della banca scritto per ${c.scritti} ${c.scritti === 1 ? 'conto' : 'conti'} su ${c.conti}` : 'saldo della banca non scritto';
     if (c.id === 'CU' || c.id === 'CB') return `${c.sinistra} unità su ${c.destra} non ${c.sinistra === 1 ? 'torna' : 'tornano'}`;
     return null;
 };
@@ -70,6 +87,7 @@ const hrefAzione = (c: Controllo): string | null => {
         case 'titolari': return generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: props.condominio.id, immobile: c.azione_parametro ?? '' });
         case 'piano': return generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/:pianoRate', { ...base, pianoRate: c.azione_parametro ?? '' });
         case 'anno-a-cavallo': return '#anno-a-cavallo';
+        case 'nota': return generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/nota', base);
         default: return null;
     }
 };
@@ -77,8 +95,37 @@ const etichettaAzione = (az: string | null) => ({
     'libro-giornale': 'Apri il Libro Giornale', 'prima-nota': 'Apri il registro di contabilità', giroconti: 'Vai ai giroconti', casse: 'Vai alle casse',
     esercizio: 'Modifica l\'esercizio', cassa: 'Registra il saldo iniziale', riepilogo: 'Apri il riepilogo finanziario', condomini: 'Apri i condòmini',
     conguaglio: 'Apri il conguaglio', titolari: 'Apri i titolari dell\'unità', piano: 'Apri il piano rate',
-    'anno-a-cavallo': 'Vedi l\'elenco',
+    'anno-a-cavallo': 'Vedi l\'elenco', nota: 'Apri la nota sintetica',
 }[az ?? ''] ?? 'Vai');
+
+/* ─── Il controllo della banca: le possibili cause di una differenza, la correzione consigliata, «Ignora» con la nota ─── */
+const contiConDifferenza = (c: Controllo) => (c.banche ?? []).filter((b) => b.differenza !== null && b.differenza !== 0);
+const aperte = (b: ContoBanca) => (b.piste ?? []).filter((p) => p.ignorata === null);
+const ignorate = (b: ContoBanca) => (b.piste ?? []).filter((p) => p.ignorata !== null);
+const hrefCorrezione = (k: Correzione) => {
+    const q = new URLSearchParams(Object.entries(k.query).map(([a, v]) => [a, String(v)])).toString();
+    return route(generateRoute(k.rotta), k.parametri) + (q ? `?${q}` : '');
+};
+// Con i fondi, che stanno sullo stesso conto corrente, la contabilità dice le sue due parti.
+const contabilitaDi = (b: ContoBanca) => (b.nei_fondi ? `${euro(b.contabilita)} (${euro(b.sul_conto ?? 0)} sul conto e ${euro(b.nei_fondi)} nei fondi)` : euro(b.contabilita));
+const versoDi = (d: number) => (d > 0 ? 'in più secondo la banca' : 'in più nella contabilità');
+// Accanto a «non calcolato»: per ogni conto senza il saldo della banca, la nota sintetica aperta sul campo del saldo di quel conto.
+const senzaSaldo = (c: Controllo) => (c.id === 'BC' && c.esito === 'non_calcolato' ? (c.banche ?? []).filter((b) => b.estratto === null) : []);
+const hrefScriviSaldo = (b: ContoBanca) => `${generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/nota', base)}?banca=${b.cassa_id}`;
+const inIgnora = ref<string | null>(null);
+const notaIgnora = ref('');
+const erroreIgnora = ref<string | null>(null);
+const apriIgnora = (b: ContoBanca, p: Pista) => { inIgnora.value = `${b.cassa_id}:${p.chiave}`; notaIgnora.value = ''; erroreIgnora.value = null; };
+const inviaIgnora = (b: ContoBanca, p: Pista) => {
+    if (notaIgnora.value.trim().length < 3) { erroreIgnora.value = 'Scrivi perché la ignori: la nota resta nel registro, accanto al controllo.'; return; }
+    router.post(route(generateRoute('gestionale.esercizi.rendiconto.controlli.banca.ignora'), base), { cassa_id: b.cassa_id, chiave: p.chiave, nota: notaIgnora.value.trim() }, {
+        preserveScroll: true,
+        onSuccess: () => { inIgnora.value = null; },
+        onError: (e: Record<string, string>) => { erroreIgnora.value = e.nota ?? Object.values(e)[0] ?? 'La causa non è stata ignorata.'; },
+    });
+};
+const riapri = (b: ContoBanca, p: Pista) => router.post(route(generateRoute('gestionale.esercizi.rendiconto.controlli.banca.riapri'), base),
+    { cassa_id: b.cassa_id, chiave: p.chiave }, { preserveScroll: true });
 
 /** «Apri nel Libro Giornale»: il giornale dell'esercizio in cui la registrazione sta, cercato sul suo protocollo. */
 const hrefGiornale = (r: RigaConfine) => {
@@ -109,6 +156,8 @@ const segnoRiga = (r: RigaConfine) => (r.categoria === 'fattura_pregressa' ? 'pr
 const versoTesto = { A: 'scritte qui, con la data fuori', B: 'con la data di questo esercizio, scritte in un altro' } as const;
 const stampa = () => window.open(`${route(generateRoute('gestionale.esercizi.stato-patrimoniale.print'), base)}?parte=controlli`, '_blank');
 
+// La guida della scheda, che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Movimenti' },
@@ -117,8 +166,8 @@ const headerBreadcrumbs = computed(() => [
 ]);
 const pageGuides = [
     { title: 'I controlli, con i numeri veri', description: 'Uguaglianze e conteggi con i numeri del programma, non un semaforo. Quando uno non torna, la riga dice che cosa è successo, che cosa fare, e porta nella pagina dove si fa.', icon: ListChecks, colorVariant: 'amber' as const },
-    { title: 'Oltre il confine dell\'esercizio', description: 'Le registrazioni con la data del fatto in un esercizio e scritte in un altro. In rosso quelle che cambiano che cosa il riepilogo per competenza conta; da leggere il denaro che attraversa il confine. Una fattura registrata come pregressa è in rosso nell\'esercizio della sua data, dove cambia la competenza, e da leggere in quello in cui sta, che non la conta come costo; se ha una parte non coperta dai saldi iniziali, quella parte è un costo dell\'esercizio in cui sta, e la riga resta rossa anche lì.', icon: CalendarRange, colorVariant: 'blue' as const },
-    { title: 'Quello che resta a te', description: 'Il programma non vede l\'estratto conto della banca né le fatture che non hai registrato: il confronto del saldo con la banca e la ricerca di ciò che manca restano un controllo tuo. Si parte dal registro di contabilità.', icon: Landmark, colorVariant: 'emerald' as const },
+    { title: 'Oltre il confine dell\'esercizio', description: 'Le registrazioni con la data del fatto in un esercizio e scritte in un altro. In rosso quelle che cambiano che cosa il riepilogo per competenza conta; da leggere il denaro che attraversa il confine. Una fattura registrata come pregressa è in rosso nell\'esercizio della sua data, dove cambia la competenza, e da leggere in quello in cui sta, che non la conta come costo; se ha una parte non coperta dai saldi iniziali, quella parte è un costo dell\'esercizio in cui sta, e la riga resta rossa anche lì. Un incasso di interessi o spese addebitati cambia le spese dell\'esercizio in cui sta: versato a gennaio con l\'anno prima ancora aperto, la riga è rossa.', icon: CalendarRange, colorVariant: 'blue' as const },
+    { title: 'Quello che resta a te', description: 'Il programma non vede l\'estratto conto della banca né le fatture che non hai registrato. Il saldo della banca si confronta nell\'ultimo controllo, se scrivi nella nota sintetica il saldo che dice la banca: quando non coincide, il controllo dice le possibili cause che trova nei movimenti, ognuna con la correzione consigliata, che confermi tu, o «Ignora» con una nota. La ricerca di ciò che manca resta un controllo tuo. Si parte dal registro di contabilità.', icon: Landmark, colorVariant: 'emerald' as const },
 ];
 </script>
 
@@ -127,6 +176,9 @@ const pageGuides = [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
                 page-title="Controlli del rendiconto"
                 :page-subtitle="`I controlli: ${props.esito.frase}.`"
                 :guides="pageGuides"
@@ -161,6 +213,7 @@ const pageGuides = [
                                         <div class="text-[13px] font-semibold tabular-nums text-slate-800 dark:text-slate-200">
                                             <template v-if="conteggio(c)">{{ conteggio(c) }}</template>
                                             <template v-else>{{ euro(c.sinistra) }} <span class="text-slate-400 dark:text-slate-500 font-normal">{{ c.segno ?? (c.esito === 'non_quadra' ? '≠' : '=') }}</span> {{ euro(c.destra) }}</template>
+                                            <span v-for="b in senzaSaldo(c)" :key="b.cassa_id" class="ml-2 whitespace-nowrap"><Link :href="hrefScriviSaldo(b)" class="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:underline" :data-scrivi-saldo="b.cassa_id">{{ senzaSaldo(c).length > 1 ? `Scrivi il saldo della banca di «${b.cassa}»` : 'Scrivi il saldo della banca' }} <ArrowRight class="w-3 h-3" /></Link></span>
                                         </div>
                                         <div class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">{{ c.titolo }}</div>
                                     </div>
@@ -169,7 +222,38 @@ const pageGuides = [
                                 <div v-if="c.rimedio" class="mt-2 pt-2 border-t border-dashed text-[11.5px] leading-snug flex flex-col sm:flex-row sm:items-center gap-x-4 gap-y-1" :class="coloreEsito(c.esito)">
                                     <div class="min-w-0"><span class="font-semibold">Come rimediare:</span> {{ c.rimedio }}</div>
                                     <a v-if="c.azione === 'anno-a-cavallo'" href="#anno-a-cavallo" class="inline-flex items-center gap-1 font-semibold hover:underline shrink-0 whitespace-nowrap">{{ etichettaAzione(c.azione) }} <ArrowRight class="w-3 h-3" /></a>
-                                    <Link v-else-if="hrefAzione(c)" :href="hrefAzione(c)!" class="inline-flex items-center gap-1 font-semibold hover:underline shrink-0 whitespace-nowrap">{{ etichettaAzione(c.azione) }} <ArrowRight class="w-3 h-3" /></Link>
+                                    <Link v-else-if="hrefAzione(c) && senzaSaldo(c).length === 0" :href="hrefAzione(c)!" class="inline-flex items-center gap-1 font-semibold hover:underline shrink-0 whitespace-nowrap">{{ etichettaAzione(c.azione) }} <ArrowRight class="w-3 h-3" /></Link>
+                                </div>
+                                <!-- La banca: per ogni conto con una differenza, le possibili cause, la correzione consigliata e «Ignora» con la nota. -->
+                                <div v-for="b in (c.id === 'BC' ? contiConDifferenza(c) : [])" :key="b.cassa_id" class="mt-2 pt-2 border-t border-dashed text-[11.5px] leading-snug space-y-1.5" :data-banca="b.cassa_id">
+                                    <p class="text-slate-700 dark:text-slate-300"><b>{{ b.cassa }}</b> al {{ formatData(b.data) }}: secondo la banca {{ euro(b.estratto ?? 0) }}, registrato in KondoManager {{ contabilitaDi(b) }}; la differenza è {{ euro(Math.abs(b.differenza ?? 0)) }}, {{ versoDi(b.differenza ?? 0) }}.</p>
+                                    <p v-if="aperte(b).length === 0 && ignorate(b).length === 0" class="text-slate-600 dark:text-slate-400" data-test="nessuna-causa">
+                                        Nei movimenti del conto il programma non trova una causa con questo importo: confronta l'estratto conto della banca con il registro di contabilità, riga per riga.
+                                        <Link :href="hrefAzione({ ...c, azione: 'prima-nota', azione_parametro: null })!" class="inline-flex items-center gap-1 font-semibold hover:underline whitespace-nowrap">Apri il registro di contabilità <ArrowRight class="w-3 h-3" /></Link>
+                                    </p>
+                                    <template v-if="aperte(b).length">
+                                        <p class="font-semibold text-amber-800 dark:text-amber-300">Può dipendere da:</p>
+                                        <div v-for="p in aperte(b)" :key="p.chiave" class="pl-3 border-l-2 border-amber-200 dark:border-amber-900 space-y-1" :data-pista="p.chiave">
+                                            <p class="text-slate-700 dark:text-slate-300">{{ p.frase }}</p>
+                                            <div v-if="inIgnora !== `${b.cassa_id}:${p.chiave}`" class="flex flex-wrap items-center gap-2">
+                                                <Link v-if="p.correzione" :href="hrefCorrezione(p.correzione)" class="inline-flex items-center gap-1 font-semibold text-amber-800 dark:text-amber-300 hover:underline" data-test="correzione">{{ p.correzione.etichetta }} <ArrowRight class="w-3 h-3" /></Link>
+                                                <Button size="sm" variant="ghost" class="h-7 px-2 gap-1 text-[11.5px]" data-test="ignora" @click="apriIgnora(b, p)"><EyeOff class="w-3.5 h-3.5" /> Ignora</Button>
+                                            </div>
+                                            <div v-else class="flex flex-col sm:flex-row sm:items-center gap-2" data-test="finestra-ignora">
+                                                <input v-model="notaIgnora" maxlength="500" placeholder="Perché la ignori, per esempio: assegno non ancora incassato" class="h-8 flex-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-[12px]" data-test="nota-ignora" />
+                                                <div class="flex gap-2">
+                                                    <Button size="sm" class="h-7" data-test="conferma-ignora" @click="inviaIgnora(b, p)">Ignora, con questa nota</Button>
+                                                    <Button size="sm" variant="ghost" class="h-7" @click="inIgnora = null">Annulla</Button>
+                                                </div>
+                                                <p v-if="erroreIgnora" class="text-rose-600 dark:text-rose-400" data-test="errore-ignora">{{ erroreIgnora }}</p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <div v-for="p in ignorate(b)" :key="p.chiave" class="pl-3 border-l-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400" :data-ignorata="p.chiave">
+                                        <p>{{ p.frase }}</p>
+                                        <p class="flex flex-wrap items-center gap-2"><span data-test="ignorata">Ignorata il {{ p.ignorata!.quando }}{{ p.ignorata!.utente ? ` da ${p.ignorata!.utente}` : '' }}: {{ p.ignorata!.nota }}</span>
+                                            <Button size="sm" variant="ghost" class="h-7 px-2 gap-1 text-[11.5px]" data-test="riapri" @click="riapri(b, p)"><RotateCcw class="w-3.5 h-3.5" /> Riapri</Button></p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -249,5 +333,6 @@ const pageGuides = [
                 </section>
             </div>
         </div>
+        <RendicontoControlliGuide v-model:open="mostraGuida" />
     </GestionaleLayout>
 </template>

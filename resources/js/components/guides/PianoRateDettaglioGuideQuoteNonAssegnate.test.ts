@@ -76,11 +76,12 @@ describe('PianoRateDettaglioGuide — i tre stati di «Copertura spese» (Coda 4
 });
 
 describe('RipartoUsufruttoGuide — gli scoperti dopo il censimento (D143)', () => {
-    test('non promette un addebito manuale: dice di riaprire il piano con i passi del pulsante, e che il programma non ha un addebito individuale', () => {
+    test('non promette un addebito manuale: dice di riaprire il piano con i passi del pulsante, o di addebitare la quota di un\'unità a una persona', () => {
         const t = testo(RipartoUsufruttoGuide);
 
         expect(t).not.toContain('addebito manuale');
-        expect(t).toContain('va prima riaperto con i passi che il pulsante elenca — annullare le emissioni, e prima ancora stornare gli incassi — e poi ricalcolato. Il programma non ha un addebito individuale.');
+        expect(t).toContain('va prima riaperto con i passi che il pulsante elenca — annullare le emissioni, e prima ancora stornare gli incassi — e poi ricalcolato. '
+            + 'La quota di un\'unità si può anche addebitare a una persona, senza riaprire il piano: «Addebita a una persona» nel riquadro delle quote non assegnate.');
     });
 
     test('controprova — se il piano si ricalcola ancora, basta ricalcolarlo, senza fatture finte', () => {

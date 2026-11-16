@@ -1,8 +1,12 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * I testi che promettevano un incrocio, un sollecito o una tracciabilità che il programma non aveva, e che con l'elenco «Rate scadute» dicono
- * quello che fa: l'avviso del deficit di un debito ereditato porta alle rate scadute del condominio (non alle fatture) e non dice «morosità»; la
+ * quello che fa: l'avviso del deficit di un debito ereditato chiede un piano di ripianamento per la parte che nessuna rata chiede (non le rate scadute, che
+ * non la portano, né le fatture) e non dice «morosità»; la
  * chiave della guida dei pagamenti parziali che nessuno usava non c'è più, in nessuna lingua; la pagina delle impostazioni della posta non parla
  * di comunicazioni «ufficiali».
  */
@@ -14,7 +18,7 @@ require_once __DIR__.'/GestionaleTestHelpers.php';
 
 uses(RefreshDatabase::class);
 
-it('l\'avviso del deficit di un debito ereditato porta alle rate scadute del condominio, con parole che non giudicano nessuno', function () {
+it('l\'avviso del deficit di un debito ereditato chiede il piano di ripianamento per la parte che nessuna rata chiede, con parole che non giudicano nessuno', function () {
     [$condominio, $esercizio, $gestione, $fornitore] = setupContabile();
     \App\Models\CategoriaEvento::firstOrCreate(['name' => 'Scadenze amministrative'], ['description' => 'prova']);
     $user = \App\Models\User::factory()->create();
@@ -31,10 +35,13 @@ it('l\'avviso del deficit di un debito ereditato porta alle rate scadute del con
     (new \App\Listeners\Gestionale\SyncScadenziarioWithFattura())->handle(new \App\Events\Gestionale\FatturaRegistrata($fattura, $user->id));
 
     $evento = \App\Models\Evento::where('meta->type', 'pianifica_ripianamento_deficit')->sole();
-    expect($evento->meta['titolo_azione'])->toBe('Vedi le rate scadute')
-        ->and($evento->meta['action_url'])->toBe(route('admin.gestionale.rate-scadute.index', ['condominio' => $condominio->id]))
+    expect($evento->meta['titolo_azione'])->toBe('Prepara il piano di ripianamento')
+        ->and($evento->meta['action_url'])->toBe(route('admin.gestionale.esercizi.piani-rate.create', ['condominio' => $condominio->id, 'esercizio' => $esercizio->id,
+            'tipo' => 'straordinario'], false))
         ->and(mb_strtolower($evento->description))->not->toContain('moros')
-        ->and($evento->description)->toContain('Chi deve ancora pagare le rate è nell\'elenco delle rate scadute del condominio.');
+        ->and($evento->description)->toContain('è scoperto per € 122,00: è la parte che i pregressi chiesti ai condòmini non coprono, e nessuna rata la chiede.')
+        ->and($evento->description)->toContain('Si ripiana con un piano rate che chieda ai condòmini la cifra che manca: «Prepara il piano di ripianamento».')
+        ->and($evento->description)->not->toContain('rate scadute');
 });
 
 it('la chiave della guida dei pagamenti parziali che nessuno usava non c\'è più in nessuna lingua, e la posta non promette comunicazioni «ufficiali»', function () {

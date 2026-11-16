@@ -38,4 +38,10 @@ enum EventoTipo: string
      * conguagliare, non un errore.
      */
     case ECCEDENZA_GIA_VERSATO_RILEVATA = 'eccedenza_gia_versato_rilevata';
+
+    /**
+     * Un promemoria nell'agenda scritto dall'amministratore con «Ricordamelo» o «Mettilo in agenda» (i sei mesi per agire, i 180 giorni del rendiconto): non è
+     * un compito (`meta.requires_action` falso), riporta al compito o alla riga da cui è nato.
+     */
+    case PROMEMORIA = 'promemoria';
 }

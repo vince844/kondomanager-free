@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services;
 
@@ -54,6 +57,8 @@ class CommentoEventoService
                     'contatore'        => ($meta['contatore'] ?? 0) + 1,
                     'ultima_anteprima' => $anteprima,
                     'ultimo_autore'    => $autore,
+                    // Il momento del commento nuovo: lo legge la regola dei compiti in attesa di «Ricordamelo» (`Evento::scopeCompitiAperti()`).
+                    'ultimo_arrivo'    => now()->utc()->format('Y-m-d H:i:s'),
                 ]),
                 'updated_at' => now(),
             ]);
@@ -63,7 +68,8 @@ class CommentoEventoService
                 tipo: EventoTipo::COMMENTO,
                 title: 'Nuovo commento — ' . $titolo,
                 description: $description,
-                scadenza: now()->addDays(2),
+                // Due giorni dal giorno di Roma, scritti come l'agenda scrive le ore.
+                scadenza: \App\Helpers\DateHelper::adessoComeSiLegge()->addDays(2),
                 createdByUserId: $commento->user_id,
                 condominioId: $commento->condominio_id,
                 context: [
@@ -72,6 +78,7 @@ class CommentoEventoService
                 actionUrl: null, // l'admin cliccherà sul dettaglio dalla UI, se presente
                 extraMeta: [
                     'contatore'        => 1,
+                    'ultimo_arrivo'    => now()->utc()->format('Y-m-d H:i:s'),
                     'ultima_anteprima' => $anteprima,
                     'ultimo_autore'    => $autore,
                 ],

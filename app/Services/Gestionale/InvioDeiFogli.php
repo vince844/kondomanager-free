@@ -81,7 +81,7 @@ final class InvioDeiFogli
 
     /** La riga fissa del messaggio di chi ha un foglio con una parte non ancora calcolata (il conguaglio di una sua unità non si calcola). Le stesse parole del
      * foglio («non ancora calcolato», «l'amministratore»: lo studio può non esserci nelle impostazioni); mai «pronto», come nelle stampe della proposta. */
-    public const FRASE_NON_PRONTO = 'Una parte del suo foglio non è ancora calcolata: l\'amministratore le scriverà appena possibile.';
+    public const FRASE_NON_PRONTO = 'Una parte del suo foglio non è ancora calcolata: questo foglio non ha la sua cifra.';
 
     public const LUNGHEZZA_OGGETTO = 200;
 
@@ -625,7 +625,7 @@ final class InvioDeiFogli
                     'path'         => $percorso,
                     'mime_type'    => 'application/pdf',
                     'file_size'    => strlen($pdf),
-                    'created_by'   => $utente?->id ?? 1,
+                    'created_by'   => $utente?->id,
                     'is_published' => false,
                     'is_approved'  => true,
                 ]);

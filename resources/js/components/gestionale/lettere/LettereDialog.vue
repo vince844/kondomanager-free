@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 /**
  * La finestra delle lettere ai condòmini, dall'elenco delle rate scadute (le persone spuntate o «tutte le N dei filtri») o dall'estratto conto
@@ -36,10 +41,10 @@ import {
     type ModelloDellaFinestra, type ModelloRicordato,
 } from '@/lib/gestionale/lettere/modelli';
 import {
-    CANALI_SPEDIZIONE, FRASE_CAMPI, FRASE_CONSERVATO, FRASE_FATTO, FRASE_SENZA_IBAN, FRASE_SENZA_TESTO, fraseDelloStudio, FRASE_TESTO_DEL_PROGRAMMA,
-    domani, testoAccordiPassati, testoAccordoPassato, type FormaDelTermine,
+    CANALI_SPEDIZIONE, FRASE_CONSERVATO, FRASE_FATTO, FRASE_SENZA_IBAN, FRASE_SENZA_TESTO, fraseDelloStudio, FRASE_TESTO_DEL_PROGRAMMA,
+    domani, fraseDeiCampi, testoAccordiPassati, testoAccordoPassato, type FormaDelTermine,
     FRASE_TESTO_SINGOLO, NOMI_CANALI, SOLO_CARTA, coperteDalCredito, personeDelCanale, personeViste, testoAggiunte, testoConteggi, testoCredito, testoGestione,
-    testoOltreTetto, testoRestanti, testoUscite,
+    testoOltreTetto, testoRestanti, testoUscite, testiSegnapostiAZero,
     type CanaleLettera, type PersonaDellAnteprima, type TipoLettera,
 } from '@/lib/gestionale/lettere/lettere';
 
@@ -53,6 +58,11 @@ const props = defineProps<{
     filtri?: Record<string, unknown>;
     /** La vista da cui si parte: dalle rate «in scadenza» il tipo di serie è il promemoria. */
     vista?: string;
+    /**
+     * Il tipo da cui parte la finestra, quando chi la apre propone un passo (il riquadro dei sei mesi: «Manda la diffida»): una proposta visibile, che si
+     * cambia qui. Senza, il tipo di serie.
+     */
+    tipoIniziale?: TipoLettera | null;
     giorni?: number;
     oggi: string;
 }>();
@@ -65,6 +75,8 @@ interface Opzioni {
     tipi: Array<{ tipo: TipoLettera; nome: string; solo_carta: boolean; conservato: boolean }>;
     /** I testi del programma, uno per tipo: non si cambiano. */
     testi: Record<TipoLettera, string>;
+    /** I campi che il testo può usare, con la loro descrizione (`TestiLettere::CAMPI`): la riga dei campi li nomina tutti. */
+    campi?: Record<string, string>;
     /** I modelli dello studio validi nel condominio, per tutti i tipi, nell'ordine del server. */
     modelli?: ModelloDellaFinestra[];
     /** L'ultimo modello di ogni tipo nel condominio, dalla riga dell'ultima lettera. */
@@ -77,6 +89,8 @@ interface Opzioni {
     carta_intestata?: boolean;
     senza_server_posta: boolean;
     puo_salvare_il_testo: boolean;
+    /** Il termine di serie delle regole del recupero del condominio, se lo dicono. */
+    termine_di_serie?: number | null;
 }
 
 const opzioni = ref<Opzioni | null>(null);
@@ -99,7 +113,9 @@ const dataTermine = ref('');
 function terminePer(t: TipoLettera) {
     const ricordato = t === 'sollecito' ? (opzioni.value?.scelta_ricordata.termini?.sollecito ?? null) : null;
     formaTermine.value = t === 'sollecito' ? (ricordato?.forma ?? 'giorni') : null;
-    termine.value = ricordato?.giorni ? String(ricordato.giorni) : '';
+    // Senza un termine ricordato, quello di serie delle regole del recupero del condominio, se lo dicono.
+    const diSerie = t === 'sollecito' && !ricordato && opzioni.value?.termine_di_serie ? String(opzioni.value.termine_di_serie) : '';
+    termine.value = ricordato?.giorni ? String(ricordato.giorni) : diSerie;
     dataTermine.value = '';
 }
 const cassaId = ref<number | null>(null);
@@ -126,7 +142,7 @@ watch(() => props.open, async (aperta) => {
     if (!aperta) {
         return;
     }
-    tipo.value = props.vista === 'in_scadenza' ? 'promemoria' : 'sollecito';
+    tipo.value = props.tipoIniziale ?? (props.vista === 'in_scadenza' ? 'promemoria' : 'sollecito');
     invalida();
     fatto.value = false;
     escluse.value = [];
@@ -524,7 +540,7 @@ const alternaIndirizzo = (t: string) => {
                         <Button size="sm" variant="outline" class="h-7 text-xs" data-testid="torna-al-testo" @click="tornaAlTestoDiPrima">Torna al testo di prima</Button>
                     </p>
                     <Textarea id="testo-lettera" v-model="testo" rows="6" data-testid="testo" @update:model-value="testoToccato = true; testoPrima = null; invalida()" />
-                    <p class="text-xs text-slate-500 dark:text-slate-400">{{ FRASE_CAMPI }}</p>
+                    <p v-if="fraseDeiCampi(opzioni.campi)" class="text-xs text-slate-500 dark:text-slate-400" data-testid="frase-campi">{{ fraseDeiCampi(opzioni.campi) }}</p>
                     <p v-if="!testo.trim() && soloCarta" class="text-xs text-amber-800 dark:text-amber-300">{{ FRASE_SENZA_TESTO }}</p>
                     <p v-else-if="testoDelProgramma" class="text-xs text-amber-800 dark:text-amber-300" data-testid="testo-del-programma">{{ FRASE_TESTO_DEL_PROGRAMMA }}</p>
                     <p v-if="singola" class="text-xs text-slate-500 dark:text-slate-400" data-testid="testo-singolo">{{ FRASE_TESTO_SINGOLO }}</p>
@@ -619,6 +635,7 @@ const alternaIndirizzo = (t: string) => {
                     <Button v-if="coperte.length" size="sm" variant="outline" class="h-7 text-xs" data-testid="togli-coperti" @click="togliCoperte">
                         Togli chi ha un credito che copre la lettera ({{ coperte.length }})
                     </Button>
+                    <p v-for="f in testiSegnapostiAZero(testo, anteprima)" :key="f" class="text-xs text-slate-600 dark:text-slate-300" data-testid="segnaposti-a-zero">{{ f }}</p>
                     <p v-if="anteprima.senza_niente.length" class="text-xs text-slate-600 dark:text-slate-300">
                         Niente da scrivere in questa lettera per: {{ anteprima.senza_niente.join(', ') }}.
                     </p>

@@ -43,7 +43,7 @@ final class ConguaglioDelRendiconto
     /** I fogli della persona in un archivio, per richiesta: come le ricevute. */
     public const FOGLI_PER_RICHIESTA = 200;
 
-    public const FRASE_PROPOSTA = 'Proposta di conguaglio da approvare dall\'assemblea: diventa una richiesta solo con l\'approvazione.';
+    public const FRASE_PROPOSTA = 'Proposta di conguaglio, da approvare dall\'assemblea: il programma la calcola e la stampa, non la registra.';
 
     /** Accanto al saldo finale, quando un piano ha rate non ancora emesse: il saldo non le comprende ancora. */
     public const FRASE_NON_EMESSE = 'Quando un piano dell\'esercizio ha rate non ancora emesse, il saldo finale non le comprende: accanto c\'è quanto si aggiunge quando il piano le emette.';
@@ -54,7 +54,9 @@ final class ConguaglioDelRendiconto
 
     public const FRASE_GIORNI = 'Accanto a chi ha avuto l\'unità per una parte dell\'anno ci sono i suoi giorni: la sua parte è per quei giorni.';
 
-    public const FRASE_CENTESIMI = 'Ogni voce è divisa al centesimo: il resto va a chi ha la parte decimale più grande, e per questo non c\'è una riga di arrotondamenti.';
+    /** Una frase sola per la scheda, le stampe del conguaglio e la nota sintetica: «il resto» un condòmino lo legge come il resto della spesa. */
+    public const FRASE_CENTESIMI = 'Ogni voce è divisa fino al centesimo. I pochi centesimi che la divisione lascia vanno, uno per uno, a chi nel calcolo ne aveva la frazione '
+        .'più grande: per questo non c\'è una riga di arrotondamenti.';
 
     public const FRASE_COLONNE = 'Conguaglio = spese dell\'esercizio + spese personali non ancora chieste − quote dei piani. Saldo finale = posizione sulle rate + saldi fuori dalle rate + conguaglio.';
 
@@ -80,6 +82,12 @@ final class ConguaglioDelRendiconto
         'periodi_diversi' => 'I piani dell\'esercizio dividono la voce con periodi diversi, e un\'unità della voce ha cambiato titolare: il programma non sceglie quale vale. '
             .'Scrivi la competenza sulle fatture, o correggi i periodi del piano.',
     ];
+
+    /**
+     * Che cosa è cambiato nell'unità, a parole: per il già versato dell'unità non usato da decidere e per la voce ferma per i periodi diversi
+     * ({@see ConsuntivoPerPersona}, `gia_versato_da_decidere_perche` e `periodi_diversi_perche`, con le stesse chiavi).
+     */
+    public const CAMBIO_DELL_UNITA = ['titolare' => 'titolare', 'inquilino' => 'inquilino', 'titolare_e_inquilino' => 'titolare e inquilino'];
 
     /** Il motivo di ripiego, per un codice che non ha la sua frase. */
     public const MOTIVO_DI_RIPIEGO = 'Il programma non ha potuto dividerla fra le persone. Guarda la voce nel piano dei conti.';
@@ -281,7 +289,7 @@ final class ConguaglioDelRendiconto
                 $unita[(int) $i->id] = (string) $i->etichetta;
             }
         }
-        $giorni = $this->giorniDiTitolarita($esercizio, array_keys($iids));
+        $giorni = $this->giorniDelleRighe($esercizio, array_keys($iids));
         $conti = [];
         foreach ($letto['gestioni'] as $g) {
             foreach (array_keys($g['non_attribuite'] ?? []) as $cid) {
@@ -322,13 +330,23 @@ final class ConguaglioDelRendiconto
                     $righe[] = $riga;
                 }
             }
+            // Gli addebiti a singole persone che coprono le spese non attribuite di questa gestione nell'esercizio: per la scheda, non per le stampe.
+            $coperti = $perStampa ? [] : app(Addebiti\AddebitiIndividuali::class)->copertiNellEsercizio((int) $condominio->id, (int) $gid, (int) $esercizio->id);
+            $copertiPerVoce = [];
+            foreach ($coperti as $c) {
+                $copertiPerVoce[(int) ($c['conto_id'] ?? 0)] = ($copertiPerVoce[(int) ($c['conto_id'] ?? 0)] ?? 0) + $c['importo'];
+            }
             $gestioni[] = [
                 'id' => (int) $gid, 'nome' => $g['nome'], 'tipo' => $g['tipo'], 'non_calcolabile' => $g['non_calcolabile'],
                 'righe' => self::conSubtotali($righe), 'totali' => $g['totali'] + ['non_emesse' => $nonEmesse],
                 'non_attribuite' => array_map(fn ($cid, $importo) => ['conto_id' => (int) $cid, 'voce' => (string) ($nomiConti[$cid]->nome ?? ''),
                     'piano_conto_id' => isset($nomiConti[$cid]) ? (int) $nomiConti[$cid]->piano_conto_id : null, 'importo' => (int) $importo,
-                    'motivo' => isset($g['periodi_diversi'][$cid]) ? self::frasePeriodiDiversi($g['periodi_diversi'][$cid]) : self::motivo($g['motivi'][$cid] ?? [])],
+                    'motivo' => isset($g['periodi_diversi'][$cid]) ? self::frasePeriodiDiversi($g['periodi_diversi'][$cid], $g['periodi_diversi_perche'][$cid] ?? 'titolare')
+                        : self::motivo($g['motivi'][$cid] ?? [])]
+                    // La parte coperta da addebiti a singole persone, solo quando c'è.
+                    + (($copertiPerVoce[(int) $cid] ?? 0) !== 0 ? ['coperti' => $copertiPerVoce[(int) $cid]] : []),
                     array_keys($g['non_attribuite'] ?? []), array_values($g['non_attribuite'] ?? [])),
+                'addebiti' => $perStampa ? null : self::addebitiDellaGestione($g, $coperti),
                 'in_corso' => self::operaInCorso($g, (int) $gid, $perStampa),
                 'opera_finita' => self::operaFinita($g),
                 'coperture' => $coperture[(int) $gid] ?? [],
@@ -342,7 +360,7 @@ final class ConguaglioDelRendiconto
         foreach ($letto['da_altre_gestioni']['persone'] ?? [] as $aid => $perUnita) {
             foreach ($perUnita as $iid => $r) {
                 $altre[] = ['anagrafica_id' => (int) $aid, 'nome' => (string) ($nomi[$aid] ?? ''), 'immobile_id' => (int) $iid, 'unita' => $unita[$iid] ?? null,
-                    'giorni' => null, 'a' => 0, 'personali' => $r['personali']['non_chieste'], 'b' => 0, 'b_non_emesse' => 0, 'non_emesse' => 0, 'conguaglio' => $r['conguaglio'],
+                    'giorni' => null, 'giorni_per_ruolo' => [], 'a' => 0, 'personali' => $r['personali']['non_chieste'], 'b' => 0, 'b_non_emesse' => 0, 'non_emesse' => 0, 'conguaglio' => $r['conguaglio'],
                     'posizione' => $r['posizione'], 'fuori' => 0, 'saldo' => $r['saldo'], 'non_disponibile' => null, 'note' => [], 'subtotale' => false];
             }
         }
@@ -370,8 +388,9 @@ final class ConguaglioDelRendiconto
     }
 
     /**
-     * Il secondo momento, come righe e non come una situazione patrimoniale: dopo l'approvazione e la scrittura del conguaglio, i crediti verso i
-     * condòmini sono quelli di oggi (letti da dove li legge la situazione patrimoniale), meno le spese personali che il conguaglio chiede (oggi sono già
+     * Il secondo momento, come righe e non come una situazione patrimoniale: se l'assemblea approva e il conguaglio si registra (il programma lo calcola
+     * e non lo registra), i crediti verso i condòmini sono quelli di oggi (letti da dove li legge la situazione patrimoniale), meno le spese personali
+     * comprese nel conguaglio (oggi sono già
      * fra i crediti, come spese anticipate per singole unità), più i conguagli a debito; i debiti verso i condòmini per il conguaglio sono i conguagli a
      * credito. Nessun netto fra persone né fra unità; le righe non disponibili non contano.
      *
@@ -407,8 +426,8 @@ final class ConguaglioDelRendiconto
         $euro = fn (int $c) => '€ '.number_format($c / 100, 2, ',', '.');
 
         return ['crediti_oggi' => $oggi, 'personali' => $personali, 'a_debito' => $aDebito, 'fuori' => $fuori, 'crediti_dopo' => $dopo, 'a_credito' => $aCredito,
-            'frase' => 'Dopo l\'approvazione e la scrittura del conguaglio: crediti verso i condòmini '.$euro($dopo).' (oggi '.$euro($oggi)
-                .', meno le spese personali che il conguaglio chiede '.$euro($personali).', più i conguagli a debito '.$euro($aDebito)
+            'frase' => 'Se l\'assemblea approva e il conguaglio si registra (il programma lo calcola, non lo registra): crediti verso i condòmini '.$euro($dopo)
+                .' (oggi '.$euro($oggi).', meno le spese personali comprese nel conguaglio '.$euro($personali).', più i conguagli a debito '.$euro($aDebito)
                 .($fuori === 0 ? '' : ', più i saldi non ancora a giornale '.$euro($fuori)).'); debiti verso i condòmini per i conguagli a credito '
                 .$euro($aCredito).'.'.($nonDisponibili === 0 ? '' : ' Le righe non disponibili ('.$nonDisponibili.') non sono contate.')];
     }
@@ -455,14 +474,22 @@ final class ConguaglioDelRendiconto
         return $avvisi;
     }
 
-    /** La voce ferma per i periodi diversi di due piani: quali piani, e che cosa fare. */
-    public static function frasePeriodiDiversi(array $piani): string
+    /** La voce ferma per i periodi diversi di due piani: quali piani, che cosa è cambiato nell'unità (`titolare`, `inquilino`, `titolare_e_inquilino`), e che cosa fare. */
+    public static function frasePeriodiDiversi(array $piani, string $perche = 'titolare'): string
     {
         $nomi = array_map(fn (string $n) => '«'.$n.'»', $piani);
         $elenco = count($nomi) === 1 ? $nomi[0] : implode(', ', array_slice($nomi, 0, -1)).' e '.end($nomi);
 
-        return 'I piani '.$elenco.' dividono la voce con periodi diversi, e un\'unità della voce ha cambiato titolare: il programma non sceglie quale vale. '
-            .'Scrivi la competenza sulle fatture, o correggi i periodi del piano.';
+        return self::conIlCambio('I piani '.$elenco.mb_substr(self::MOTIVI['periodi_diversi'], mb_strlen('I piani dell\'esercizio')), $perche);
+    }
+
+    /**
+     * Una frase che dice «ha cambiato titolare», con quello che è cambiato davvero: «ha cambiato inquilino», «ha cambiato titolare e inquilino». Con il
+     * solo inquilino «titolare» manderebbe a cercare un passaggio di proprietà che non c'è.
+     */
+    public static function conIlCambio(string $frase, string $perche): string
+    {
+        return str_replace('ha cambiato titolare:', 'ha cambiato '.(self::CAMBIO_DELL_UNITA[$perche] ?? self::CAMBIO_DELL_UNITA['titolare']).':', $frase);
     }
 
     /** Le spese personali di un'unità che non tornano con le sue anticipazioni aperte: le cifre, e dove guardare. */
@@ -598,8 +625,9 @@ final class ConguaglioDelRendiconto
                 $note[] = 'Spese personali chieste con rate non ancora emesse: '.$euro($r['personali']['chieste_non_emesse']).'.';
             }
             if ((int) ($r['gia_versato_da_decidere'] ?? 0) !== 0) {
-                $note[] = 'Già versato registrato per questa unità e non usato dai piani: '.$euro((int) $r['gia_versato_da_decidere']).'. L\'unità ha cambiato titolare: '
-                    .'non è sul foglio di nessuno, a chi va lo decidi tu.';
+                // Che cosa è cambiato, detto com'è: con il solo inquilino «titolare» manderebbe a cercare un passaggio di proprietà che non c'è.
+                $note[] = self::conIlCambio('Già versato registrato per questa unità e non usato dai piani: '.$euro((int) $r['gia_versato_da_decidere']).'. L\'unità ha cambiato titolare: '
+                    .'non è sul foglio di nessuno, a chi va lo decidi tu.', (string) ($r['gia_versato_da_decidere_perche'] ?? 'titolare'));
             }
             foreach ($r['passaggio_non_registrato'] ?? [] as $frase) {
                 $note[] = $frase.' Registra il passaggio dalla pagina dei titolari dell\'unità.';
@@ -615,7 +643,8 @@ final class ConguaglioDelRendiconto
 
         return [
             'anagrafica_id' => $aid, 'nome' => (string) ($nomi[$aid] ?? ''), 'immobile_id' => $iid, 'unita' => $unita[$iid] ?? null,
-            'giorni' => $giorni[$aid][$iid] ?? null,
+            // I giorni di chi ha avuto l'unità per una parte dell'anno; con più ruoli sull'unità, quelli di ogni ruolo ({@see giorniDellaRiga()}).
+            'giorni' => $giorni[$aid][$iid]['giorni'] ?? null, 'giorni_per_ruolo' => $giorni[$aid][$iid]['giorni_per_ruolo'] ?? [],
             'a' => (int) $r['a'], 'personali' => (int) $r['personali']['non_chieste'], 'b' => $r['b']['totale'], 'b_non_emesse' => (int) $r['b']['di_cui_non_emesse'],
             // Le rate non ancora emesse dei piani dell'esercizio (la spesa delle quote, anche personale): il saldo non le comprende ancora.
             'non_emesse' => (int) $r['b']['di_cui_non_emesse'] + (int) ($r['personali']['chieste_non_emesse'] ?? 0),
@@ -655,7 +684,7 @@ final class ConguaglioDelRendiconto
             if (count($sue) < 2) {
                 continue;
             }
-            $s = ['anagrafica_id' => $aid, 'nome' => 'Totale di '.$sue[0]['nome'], 'immobile_id' => null, 'unita' => count($sue).' unità', 'giorni' => null, 'non_disponibile' => null,
+            $s = ['anagrafica_id' => $aid, 'nome' => 'Totale di '.$sue[0]['nome'], 'immobile_id' => null, 'unita' => count($sue).' unità', 'giorni' => null, 'giorni_per_ruolo' => [], 'non_disponibile' => null,
                 'note' => [], 'subtotale' => true];
             foreach (['a', 'personali', 'b', 'b_non_emesse', 'non_emesse', 'conguaglio', 'posizione', 'fuori', 'saldo'] as $k) {
                 $valori = array_column($sue, $k);
@@ -668,11 +697,14 @@ final class ConguaglioDelRendiconto
     }
 
     /**
-     * I giorni di titolarità nell'esercizio di ogni persona su ogni unità (`RisolutoreTitolari::giorniDiTitolarita`, la regola del motore), solo per
-     * chi l'ha avuta per una parte dell'anno.
+     * I giorni di titolarità nell'esercizio di ogni persona su ogni unità, ruolo per ruolo (`RisolutoreTitolari::giorniDiTitolarita`, la regola del
+     * motore): i giorni di più righe dello stesso ruolo si sommano, fino ai giorni dell'esercizio; quelli di ruoli diversi no, perché il motore divide
+     * ogni voce ruolo per ruolo. L'inquilina tutto l'anno che compra l'unità dal 01/03 ha 365 giorni da inquilina e 306 da proprietaria, non 365.
+     * Ogni ruolo con almeno un giorno, anche tutto l'anno (così chi legge sa se la persona ha più ruoli sull'unità), in ordine del primo giorno
+     * delle sue righe.
      *
      * @param  list<int>  $iids
-     * @return array<int, array<int,int>>
+     * @return array<int, array<int, array<string,int>>> persona => unità => ruolo => giorni
      */
     public function giorniDiTitolarita(Esercizio $esercizio, array $iids): array
     {
@@ -680,26 +712,85 @@ final class ConguaglioDelRendiconto
         $tutti = $periodo->giorni();
         $risolutore = app(RisolutoreTitolari::class);
         $giorni = [];
+        $primo = [];
         foreach (array_chunk($iids, 1000) as $ids) {
-            // Le sole righe attive, come il motore (una riga spenta non partecipa); i giorni di più righe della stessa persona si sommano.
+            // Le sole righe attive, come il motore (una riga spenta non partecipa).
             $righe = DB::table('anagrafica_immobile')->whereIn('immobile_id', $ids)->where('attivo', true)
                 ->get(['id', 'anagrafica_id', 'immobile_id', 'tipologia', 'quota', 'attivo', 'data_inizio', 'data_fine']);
             foreach ($righe->groupBy(fn ($r) => $r->immobile_id.'|'.$r->tipologia) as $coppia) {
                 foreach ($coppia as $r) {
                     $n = $risolutore->giorniDiTitolarita($r, $periodo, $coppia);
-                    $giorni[(int) $r->anagrafica_id][(int) $r->immobile_id] = min($tutti, ($giorni[(int) $r->anagrafica_id][(int) $r->immobile_id] ?? 0) + $n);
+                    if ($n <= 0) {
+                        continue;
+                    }
+                    [$aid, $iid, $ruolo] = [(int) $r->anagrafica_id, (int) $r->immobile_id, (string) $r->tipologia];
+                    $giorni[$aid][$iid][$ruolo] = min($tutti, ($giorni[$aid][$iid][$ruolo] ?? 0) + $n);
+                    $dal = substr((string) ($r->data_inizio ?? ''), 0, 10);
+                    $primo[$aid][$iid][$ruolo] = min($primo[$aid][$iid][$ruolo] ?? $dal, $dal);
                 }
             }
         }
         foreach ($giorni as $aid => $perUnita) {
-            foreach ($perUnita as $iid => $n) {
-                if ($n >= $tutti || $n <= 0) {
-                    unset($giorni[$aid][$iid]);
+            foreach ($perUnita as $iid => $perRuolo) {
+                if (count($perRuolo) > 1) {
+                    uksort($giorni[$aid][$iid], fn ($a, $b) => [$primo[$aid][$iid][$a], $a] <=> [$primo[$aid][$iid][$b], $b]);
                 }
             }
         }
 
         return $giorni;
+    }
+
+    /**
+     * I giorni che dice la riga di ogni persona su ogni unità ({@see giorniDellaRiga()}), solo per le righe che ne hanno da dire.
+     *
+     * @param  list<int>  $iids
+     * @param  array<int, array<int, array<string,int>>>|null  $perRuolo  i giorni per ruolo già letti ({@see giorniDiTitolarita()}), se chi chiama li ha
+     * @return array<int, array<int, array{giorni: ?int, giorni_per_ruolo: list<array{ruolo:string, giorni:int}>}>>
+     */
+    public function giorniDelleRighe(Esercizio $esercizio, array $iids, ?array $perRuolo = null): array
+    {
+        $tutti = PeriodoCompetenza::daEsercizio($esercizio)->giorni();
+        $esito = [];
+        foreach ($perRuolo ?? $this->giorniDiTitolarita($esercizio, $iids) as $aid => $perUnita) {
+            foreach ($perUnita as $iid => $perRuolo) {
+                $riga = self::giorniDellaRiga($perRuolo, $tutti);
+                if ($riga['giorni'] !== null || $riga['giorni_per_ruolo'] !== []) {
+                    $esito[$aid][$iid] = $riga;
+                }
+            }
+        }
+
+        return $esito;
+    }
+
+    /**
+     * I giorni che dice la riga di una persona su un'unità, dai giorni dei suoi ruoli. Con un ruolo solo, `giorni`: i suoi giorni se non ha avuto
+     * l'unità tutto l'anno, altrimenti null. Con più ruoli sulla stessa unità e almeno uno per una parte dell'anno, `giorni_per_ruolo`: i giorni di
+     * ogni ruolo, con il ruolo, anche di quello tenuto tutto l'anno, perché la spesa della riga comprende la parte di ognuno; e `giorni` è null,
+     * perché un numero solo direbbe che la sua parte è per quei giorni, e non lo è. Con più ruoli tutti per l'anno intero, niente.
+     *
+     * @param  array<string,int>  $perRuolo  ruolo => giorni nell'esercizio ({@see giorniDiTitolarita()})
+     * @return array{giorni: ?int, giorni_per_ruolo: list<array{ruolo:string, giorni:int}>}
+     */
+    public static function giorniDellaRiga(array $perRuolo, int $tutti): array
+    {
+        if (count($perRuolo) <= 1) {
+            $n = (int) (array_values($perRuolo)[0] ?? 0);
+
+            return ['giorni' => $n > 0 && $n < $tutti ? $n : null, 'giorni_per_ruolo' => []];
+        }
+        if (array_filter($perRuolo, fn ($n) => $n > 0 && $n < $tutti) === []) {
+            return ['giorni' => null, 'giorni_per_ruolo' => []];
+        }
+        $tuttiIRuoli = [];
+        foreach ($perRuolo as $ruolo => $n) {
+            if ($n > 0) {
+                $tuttiIRuoli[] = ['ruolo' => (string) $ruolo, 'giorni' => (int) $n];
+            }
+        }
+
+        return ['giorni' => null, 'giorni_per_ruolo' => $tuttiIRuoli];
     }
 
     /**
@@ -735,8 +826,10 @@ final class ConguaglioDelRendiconto
                 $unita[(int) $i->id] = ['etichetta' => (string) $i->etichetta, 'interno' => (string) ($i->interno ?? ''), 'nome' => (string) ($i->nome ?? '')];
             }
         }
-        $giorni = $this->giorniDiTitolarita($esercizio, array_keys($iids));
+        $perRuolo = $this->giorniDiTitolarita($esercizio, array_keys($iids));
+        $giorni = $this->giorniDelleRighe($esercizio, array_keys($iids), $perRuolo);
         $sigle = ['proprietario' => 'P', 'nuda_proprietario' => 'NP', 'usufruttuario' => 'U', 'inquilino' => 'I'];
+        $sigla = fn (string $ruolo) => $sigle[$ruolo] ?? strtoupper(substr($ruolo, 0, 1));
 
         $gestioni = [];
         foreach ($letto['gestioni'] as $gid => $g) {
@@ -759,8 +852,11 @@ final class ConguaglioDelRendiconto
                         continue;
                     }
                     $ruolo = (string) ($pt['ruoli'][$aid][$iid] ?? 'proprietario');
+                    // La colonna dice tutti i ruoli della persona sull'unità nell'esercizio, nell'ordine dei giorni; senza giorni, quello del motore.
+                    $ruoli = array_keys($perRuolo[$aid][$iid] ?? []) ?: [$ruolo];
                     $righe[] = ['immobile_id' => (int) $iid, 'unita' => $unita[$iid]['etichetta'] ?? '', 'anagrafica_id' => (int) $aid, 'nome' => (string) ($nomi[$aid] ?? ''),
-                        'ruolo' => $sigle[$ruolo] ?? strtoupper(substr($ruolo, 0, 1)), 'giorni' => $giorni[$aid][$iid] ?? null, 'tabelle' => $celle,
+                        'ruolo' => implode(', ', array_map($sigla, $ruoli)), 'giorni' => $giorni[$aid][$iid]['giorni'] ?? null,
+                        'giorni_per_ruolo' => $giorni[$aid][$iid]['giorni_per_ruolo'] ?? [], 'tabelle' => $celle,
                         'gia_versato' => -(int) $r['gia_versato_unita'], 'totale' => (int) $r['a'], '_ordine' => [$unita[$iid]['interno'] ?? '', $unita[$iid]['nome'] ?? '', $ruolo]];
                     $totaleVersato -= (int) $r['gia_versato_unita'];
                     $gran += (int) $r['a'];
@@ -794,5 +890,49 @@ final class ConguaglioDelRendiconto
         arsort($motivi);
 
         return self::MOTIVI[(string) array_key_first($motivi)] ?? self::MOTIVO_DI_RIPIEGO;
+    }
+
+    /** Le spese non attribuite che hanno un'unità: i giorni senza un titolare, la tabella senza titolare, i titolari fuori dai giorni della voce. */
+    private const NON_ATTRIBUITE_CON_UNITA = ['senza_titolare', 'giorni_senza_titolare', 'titolari_fuori_competenza'];
+
+    /**
+     * Gli addebiti a singole persone accanto alle spese non attribuite di una gestione: quanto coprono, a chi, e quanto resta delle spese non
+     * attribuite che hanno un'unità (le altre, una voce senza tabella, sono di nessuna unità e non si addebitano). Il preventivo e il consuntivo
+     * dicono cifre diverse per gli stessi giorni: l'addebito viene dalla quota non assegnata del piano, le non attribuite dalla spesa dell'anno;
+     * quello che resta si può addebitare dalla stessa scheda. Null se la gestione non ha né l'una né l'altra cosa.
+     *
+     * @param  array<string,mixed>  $g  la gestione della lettura
+     * @param  list<array{anagrafica_id: int, immobile_id: ?int, conto_id: ?int, importo: int}>  $coperti
+     * @return array{coperti: int, non_attribuite: int, restano: int, per_persona: list<array{anagrafica_id: int, nome: string, unita: ?string, importo: int}>, frase: string}|null
+     */
+    private static function addebitiDellaGestione(array $g, array $coperti): ?array
+    {
+        $conUnita = 0;
+        foreach ($g['non_attribuite'] ?? [] as $cid => $importo) {
+            $perMotivo = array_intersect_key($g['motivi'][$cid] ?? [], array_flip(self::NON_ATTRIBUITE_CON_UNITA));
+            $conUnita += min(max(0, (int) $importo), (int) array_sum($perMotivo));
+        }
+        $totale = (int) array_sum(array_column($coperti, 'importo'));
+        if ($totale === 0 && $conUnita === 0) {
+            return null;
+        }
+        $perPersona = [];
+        foreach ($coperti as $c) {
+            $k = $c['anagrafica_id'] . '|' . ($c['immobile_id'] ?? '');
+            $perPersona[$k] ??= ['anagrafica_id' => $c['anagrafica_id'], 'immobile_id' => $c['immobile_id'], 'importo' => 0];
+            $perPersona[$k]['importo'] += $c['importo'];
+        }
+        $nomi = Anagrafica::whereIn('id', array_column($perPersona, 'anagrafica_id') ?: [0])->pluck('nome', 'id');
+        $unita = Immobile::whereIn('id', array_filter(array_column($perPersona, 'immobile_id')) ?: [0])->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => (string) $i->etichetta]);
+        $righe = array_values(array_map(fn ($p) => ['anagrafica_id' => (int) $p['anagrafica_id'], 'nome' => (string) ($nomi[$p['anagrafica_id']] ?? ''),
+            'unita' => $p['immobile_id'] === null ? null : ($unita[$p['immobile_id']] ?? null), 'importo' => (int) $p['importo']], $perPersona));
+        $restano = max(0, $conUnita - $totale);
+        $euro = fn (int $c) => '€ '.number_format($c / 100, 2, ',', '.');
+        $frase = $totale > 0
+            ? 'Addebitati per queste spese: ' . implode(', ', array_map(fn ($r) => $euro($r['importo']) . ' a ' . $r['nome'] . ($r['unita'] !== null ? ' (' . $r['unita'] . ')' : ''), $righe)) . '.'
+                . ($restano > 0 ? ' Restano ' . $euro($restano) . ' delle spese non attribuite di giorni senza titolare.' : '')
+            : 'Spese non attribuite di giorni senza titolare: ' . $euro($conUnita) . '. Si possono addebitare a una persona.';
+
+        return ['coperti' => $totale, 'non_attribuite' => $conUnita, 'restano' => $restano, 'per_persona' => $righe, 'frase' => $frase];
     }
 }

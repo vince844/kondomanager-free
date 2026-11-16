@@ -291,6 +291,47 @@ defineEmits(['update:open']);
             </div>
           </section>
 
+          <!-- 10 — L'origine del pregresso -->
+          <section data-testid="guida-origine-del-pregresso">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Dichiara l'origine del pregresso</h3>
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <ul class="space-y-2">
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>A che cosa serve.</strong> Dice di quando è il debito riportato da prima. L'elenco delle rate scadute ne conta la fascia di ritardo e le date dei sei mesi per agire. L'importo del saldo non cambia, nemmeno per un saldo che un piano rate ha già preso, né il lucchetto.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Quando si usa.</strong> Accanto a ogni saldo a debito c'è la sua origine. «origine non dichiarata» vuol dire che nessuno l'ha detta: un saldo scritto lasciando «Non dichiarata» nel campo «Origine del pregresso (facoltativa)», o arrivato da un'importazione che non diceva il suo esercizio, o ne diceva uno che il condominio non ha. Senza origine il debito conta come il più vecchio: «oltre 90 giorni», senza un numero di giorni e senza le date dei sei mesi.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Per un saldo</strong>: un clic sulla sua origine, accanto alla cifra, apre la finestra con quel saldo già scelto. <strong>Per tanti</strong>: «Dichiara l'origine del pregresso, in blocco», sopra l'elenco, apre la finestra con tutti i saldi a debito dei condòmini, di tutte le unità, senza nessuno già scelto.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Le voci del menu «Origine».</strong> Un esercizio del condominio: il debito è di quell'esercizio. «Dovuto con questo piano»: il debito si chiede adesso, con questo piano (per esempio un conguaglio), e i giorni si contano dalla scadenza della rata. «Prima del primo esercizio»: più vecchio del primo esercizio che il programma conosce. «Togli l'origine (non dichiarata)»: il saldo torna senza origine. Nessuna voce è già scelta.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span>Se il saldo contiene debiti di più esercizi, dichiara il più vecchio: l'elenco conta da quello.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span>«Solo quelli senza origine» mostra solo i saldi che non l'hanno; «Scegli tutti i N» sceglie i saldi che vedi, e «Togli tutti» li toglie. Il pulsante in fondo dice quanti saldi riceve la voce, e resta spento finché mancano la voce o un saldo.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span><strong>Da «Rate scadute».</strong> Nella riga di una persona con un pregresso di origine non dichiarata c'è «dichiarala dai saldi»: apre questa pagina con la finestra, e con i saldi a debito di quella persona senza origine già scelti, di tutte le sue unità. Prima di confermare puoi togliere quelli che non vuoi: niente si dichiara senza la tua scelta.</span>
+                </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span>Resta chi ha dichiarato l'origine e quando, perché l'origine cambia la fascia e le date dei sei mesi anche di rate già emesse. Il messaggio dopo la conferma dice che l'importo non cambia.</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
         </div>
       </div>
     </SheetContent>

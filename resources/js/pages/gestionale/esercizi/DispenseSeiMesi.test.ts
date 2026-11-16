@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 // @vitest-environment jsdom
 
 /**
@@ -135,5 +138,22 @@ describe('la pagina della dispensa, dopo il riordino', () => {
         expect(monta().findComponent({ name: 'PageHeaderGuide' }).props('backUrl')).toBe('/gestionale/3/esercizi');
         precedente = null;
     });
-});
 
+    test('«Togli anche il sollecito in tesoreria»: la casella del modulo, spenta, con la sua frase; il modulo la manda', async () => {
+        const pagina = monta();
+        const casella = pagina.get('[data-testid="togli-sollecito"]');
+        expect(casella.text()).toContain('Togli anche il sollecito in tesoreria');
+        expect(casella.text()).toContain('La dispensa toglie le azioni verso il legale (la diffida, il fascicolo). Spunta qui se l\'assemblea ha deciso di non chiedere nemmeno il pagamento con un sollecito.');
+        expect(casella.find('button[role="checkbox"]').attributes('aria-checked')).toBe('false');
+    });
+
+    test('nell\'elenco la riga dice la scelta, e la casella la cambia con la sua rotta', async () => {
+        const pagina = monta();
+        await pagina.setProps({ dispense: [{ id: 4, data_delibera: '2027-03-20', numero_verbale: '12', nota: null, tutte_le_persone: true, esercizi: [{ id: 1, nome: 'Esercizio 2026' }],
+            persone: [], revocata_il: null, nota_revoca: null, verbale: null, togli_sollecito_tesoreria: true }] } as any);
+        const riga = pagina.get('[data-testid="dispensa"]');
+        expect(riga.text()).toContain('Toglie anche il sollecito in tesoreria');
+        await riga.get('[data-testid="sollecito-della-dispensa"] button[role="checkbox"]').trigger('click');
+        expect(post).toHaveBeenCalledWith('/gestionale.dispense.sollecito', { togli: false }, expect.anything());
+    });
+});

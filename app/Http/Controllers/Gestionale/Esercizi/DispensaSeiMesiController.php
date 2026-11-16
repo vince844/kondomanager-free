@@ -41,6 +41,7 @@ class DispensaSeiMesiController extends Controller
                 'numero_verbale' => $d->numero_verbale,
                 'nota' => $d->nota,
                 'tutte_le_persone' => $d->tutte_le_persone,
+                'togli_sollecito_tesoreria' => (bool) $d->togli_sollecito_tesoreria,
                 'esercizi' => $d->esercizi->map(fn ($e) => ['id' => $e->id, 'nome' => $e->nome])->values(),
                 'persone' => $d->persone->map(fn ($p) => ['id' => $p->id, 'nome' => $p->nome])->values(),
                 'revocata_il' => $d->revocata_il?->format('Y-m-d'),
@@ -72,6 +73,8 @@ class DispensaSeiMesiController extends Controller
             'per_tutti' => ['required', Rule::in(['0', '1', 0, 1, true, false])],
             'persone' => [Rule::requiredIf(fn () => ! filter_var($request->input('per_tutti'), FILTER_VALIDATE_BOOLEAN)), 'array'],
             'persone.*' => ['integer'],
+            // Una scelta di lavoro dell'amministratore, non una parte della delibera: di serie la dispensa lascia il sollecito in tesoreria.
+            'togli_sollecito_tesoreria' => ['nullable', 'boolean'],
             'verbale' => ['nullable', 'file', 'extensions:pdf,jpg,jpeg,png', 'max:' . LimiteCaricamento::regolaMax(10.0), \App\Support\FileComeIlNome::regola()],
         ], [
             'data_delibera.required' => 'Scrivi la data dell\'assemblea che ha deliberato la dispensa.',
@@ -99,6 +102,7 @@ class DispensaSeiMesiController extends Controller
                     'numero_verbale' => $dati['numero_verbale'] ?? null,
                     'nota' => $dati['nota'] ?? null,
                     'tutte_le_persone' => $tutti,
+                    'togli_sollecito_tesoreria' => (bool) ($dati['togli_sollecito_tesoreria'] ?? false),
                     'registrata_da' => $request->user()?->id,
                 ]);
                 $dispensa->esercizi()->sync($esercizi);
@@ -113,7 +117,7 @@ class DispensaSeiMesiController extends Controller
                         'path' => $percorso,
                         'mime_type' => $file->getMimeType(),
                         'file_size' => $file->getSize(),
-                        'created_by' => $request->user()?->id ?? 1,
+                        'created_by' => $request->user()?->id,
                         'is_published' => false,
                         'is_approved' => true,
                     ]);
@@ -145,6 +149,21 @@ class DispensaSeiMesiController extends Controller
         $d->update(['revocata_il' => $dati['revocata_il'], 'nota_revoca' => $dati['nota_revoca'] ?? null, 'revocata_da' => $request->user()?->id]);
 
         return back()->with($this->flashSuccess('Dispensa revocata: accanto alle date si legge «dispensa revocata il …».'));
+    }
+
+    /**
+     * «Togli anche il sollecito in tesoreria», cambiata dall'elenco delle dispense: è una scelta di lavoro, non una parte della delibera, e si cambia anche
+     * dopo. La dispensa toglie sempre i passi verso il legale; con la casella, in tesoreria, anche il sollecito.
+     */
+    public function sollecito(Request $request, Condominio $condominio, string|int $dispensa): RedirectResponse
+    {
+        $d = $this->assicuraDispensa($condominio, $dispensa);
+        $dati = $request->validate(['togli' => ['required', 'boolean']]);
+        $d->update(['togli_sollecito_tesoreria' => (bool) $dati['togli']]);
+
+        return back()->with($this->flashSuccess((bool) $dati['togli']
+            ? 'Fatto: la dispensa toglie anche il sollecito in tesoreria.'
+            : 'Fatto: con questa dispensa la tesoreria propone di nuovo il sollecito.'));
     }
 
     public function verbale(Condominio $condominio, string|int $dispensa)

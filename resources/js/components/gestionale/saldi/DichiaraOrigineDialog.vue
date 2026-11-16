@@ -10,6 +10,7 @@ import { usePermission } from '@/composables/permissions';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import vSelect from 'vue-select';
 import { SPIEGAZIONE_VOCI, daScelta, etichettaOrigine, opzioniOrigine, type EsercizioDellOrigine } from '@/lib/gestionale/debiti/originePregresso';
 
 export interface SaldoDaDichiarare { id: number; etichetta: string; importo: number; origine_dichiarata?: string | null; esercizio_origine_id?: number | null }
@@ -47,6 +48,8 @@ const alternaTutti = () => {
     const ids = visibili.value.map((s) => s.id);
     scelti.value = tuttiVisibili.value ? scelti.value.filter((id) => !ids.includes(id)) : [...new Set([...scelti.value, ...ids])];
 };
+// Le voci del menu «Origine»: gli esercizi, le due voci senza esercizio, e la voce che toglie l'origine.
+const vociDelMenu = computed(() => [...opzioniOrigine(props.esercizi), { value: 'non_dichiarata', text: 'Togli l\'origine (non dichiarata)' }]);
 const euro = (c: number) => `€ ${new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: 'always' } as Intl.NumberFormatOptions).format(c / 100)}`;
 
 function conferma() {
@@ -69,23 +72,23 @@ function conferma() {
 
 <template>
     <Dialog :open="open" @update:open="(v: boolean) => emit('update:open', v)">
-        <DialogContent class="sm:max-w-[620px]">
+        <!-- All'apertura il cursore non va nel menu, che prendendolo si aprirebbe da sé. -->
+        <DialogContent class="sm:max-w-[620px]" @open-auto-focus.prevent>
             <DialogHeader>
                 <DialogTitle>Dichiara l'origine del pregresso</DialogTitle>
                 <DialogDescription>Di quando è il debito: l'elenco delle rate scadute ne conta la fascia e le date dei sei mesi. L'importo non cambia.</DialogDescription>
             </DialogHeader>
 
             <div class="space-y-3 text-sm">
-                <label class="space-y-1 block">
+                <div class="space-y-1">
                     <span class="block text-xs font-semibold text-slate-600 dark:text-slate-300">Origine</span>
-                    <select v-model="voce" data-testid="voce-origine" class="h-9 w-full rounded-md border px-2 bg-transparent">
-                        <option value="" disabled>Scegli…</option>
-                        <option v-for="o in opzioniOrigine(esercizi)" :key="o.value" :value="o.value">{{ o.text }}</option>
-                        <option value="non_dichiarata">Togli l'origine (non dichiarata)</option>
-                    </select>
+                    <div class="menu-campo" data-testid="voce-origine">
+                        <v-select :model-value="voce || null" :options="vociDelMenu" label="text" :reduce="(o: { value: string }) => o.value" :searchable="false"
+                            :clearable="false" placeholder="Scegli…" class="w-full" @update:model-value="(v: string | null) => (voce = v ?? '')" />
+                    </div>
                     <span class="block text-xs text-slate-500 dark:text-slate-400" data-testid="frase-origine">{{ fraseOrigine }}</span>
                     <span class="block text-xs text-slate-500 dark:text-slate-400">{{ SPIEGAZIONE_VOCI }}</span>
-                </label>
+                </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <label class="flex items-center gap-2"><Checkbox :model-value="soloSenza" @update:model-value="(v: any) => (soloSenza = !!v)" /> Solo quelli senza origine</label>

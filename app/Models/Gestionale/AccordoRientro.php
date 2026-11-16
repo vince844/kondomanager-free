@@ -12,12 +12,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
- * L'accordo di rientro di una persona, come registro: la data, «fino al» (la data dell'ultima rata dell'accordo), le rate coperte con
- * l'importo riconosciuto di ognuna, «autorizzato dall'assemblea» (sì o no, con la data e il verbale se sì), una nota, la scansione firmata (un
- * `Documento` dell'accordo, che non entra nell'archivio né nel portale); poi la chiusura. Non si cancella: si chiude.
+ * L'accordo di rientro di una persona: la data, le rate coperte con l'importo riconosciuto di ognuna, il calendario (le rate dell'accordo, con il
+ * giorno e l'importo; la somma è il debito riconosciuto), «fino al» (il giorno dell'ultima rata del calendario), la regola di decadenza scelta
+ * dall'amministratore, «autorizzato dall'assemblea» (sì o no, con la data e il verbale se sì), una nota, la scansione firmata (un `Documento`
+ * dell'accordo, che non entra nell'archivio né nel portale); poi la chiusura, che può essere la decadenza registrata. Non si cancella: si chiude.
  *
- * Non sposta denaro e non ha un calendario: le rate coperte restano scadute (il debito originario resta a giornale), e le lettere proposte
- * lasciano fuori la parte riconosciuta. Non è la dispensa dei sei mesi: sono due delibere diverse.
+ * Non sposta denaro: le rate coperte restano scadute (il debito originario resta a giornale), e le lettere proposte lasciano fuori la parte
+ * riconosciuta. Il programma segnala quando la regola di decadenza si verifica e conserva il giorno; la decadenza la registra l'amministratore.
+ * Non è la dispensa dei sei mesi: sono due delibere diverse. Gli accordi registrati senza calendario restano senza.
  */
 class AccordoRientro extends Model
 {
@@ -25,7 +27,7 @@ class AccordoRientro extends Model
 
     protected $fillable = [
         'condominio_id', 'anagrafica_id', 'data_accordo', 'fino_al', 'autorizzato_assemblea', 'data_autorizzazione', 'verbale_autorizzazione', 'nota',
-        'chiuso_il', 'nota_chiusura', 'registrato_da', 'chiuso_da',
+        'decadenza_rate', 'decadenza_giorni', 'chiuso_il', 'decadenza_registrata_il', 'nota_chiusura', 'registrato_da', 'chiuso_da',
     ];
 
     protected $casts = [
@@ -36,6 +38,10 @@ class AccordoRientro extends Model
         'autorizzato_assemblea' => 'boolean',
         'data_autorizzazione' => 'date',
         'chiuso_il' => 'date',
+        'decadenza_rate' => 'integer',
+        'decadenza_giorni' => 'integer',
+        'segnali' => 'array',
+        'decadenza_registrata_il' => 'date',
     ];
 
     public function condominio(): BelongsTo
@@ -52,6 +58,12 @@ class AccordoRientro extends Model
     public function rate(): HasMany
     {
         return $this->hasMany(AccordoRientroRata::class, 'accordo_rientro_id');
+    }
+
+    /** Il calendario: le rate dell'accordo, in ordine. */
+    public function scadenze(): HasMany
+    {
+        return $this->hasMany(AccordoRientroScadenza::class, 'accordo_rientro_id')->orderBy('numero');
     }
 
     /** La scansione dell'accordo firmato. */

@@ -142,7 +142,9 @@ it('alle 00:30 del 15/12 a Roma la finestra va fino al 14/01 e la rata del 14/12
         ->and($t->scenarioOttimisticoCents)->toBe(36000);
 });
 
-it('le prime cinque persone per scaduto, e «e altri N» con lo scaduto per fasce di tutte', function () {
+// Dalla 1.12.0-beta.10 la regola delle 8: fino a 8 persone tutte, mai «e altri 1» o «e altri 2»; oltre, le prime 5 e quante mancano con la loro cifra
+// (`tests/Feature/Treasury/TreasuryOttoTest.php`).
+it('le persone per scaduto, tutte fino a 8, con lo scaduto per fasce di tutte', function () {
     $this->travelTo('2026-03-20 10:00:00');
     $unita = [];
     foreach (range(1, 7) as $n) {
@@ -154,9 +156,11 @@ it('le prime cinque persone per scaduto, e «e altri N» con lo scaduto per fasc
 
     $t = tgsStato($s);
     $quota = fn (int $n) => (int) DB::table('rate_quote')->where('id', lcdQuota($s, "p{$n}", 1))->value('importo');
-    expect(collect($t->morositaImpattanti)->pluck('condomino')->all())->toBe(['P7', 'P6', 'P5', 'P4', 'P3'])
+    expect(collect($t->morositaImpattanti)->pluck('condomino')->all())->toBe(['P7', 'P6', 'P5', 'P4', 'P3', 'P2', 'P1'])
         ->and($t->morositaImpattanti[0]['importoCents'])->toBe($quota(7))
-        ->and($t->morositaAltri)->toBe(2)
+        ->and($t->morositaAltri)->toBe(0)
+        ->and($t->morositaAltriCents)->toBe(0)
+        ->and($t->morositaPersone)->toBe(7)
         ->and($t->scadutoPerFasce)->toBe(['1_30' => 0, '31_90' => 28000, 'oltre_90' => 0])
         ->and(array_sum(array_map($quota, range(1, 7))))->toBe(28000);
 });

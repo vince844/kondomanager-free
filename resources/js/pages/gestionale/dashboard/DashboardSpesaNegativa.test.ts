@@ -26,7 +26,7 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     Head: { template: '<span />' },
     Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
     InfiniteScroll: { template: '<div><slot /></div>' },
-    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn() },
+    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn(), on: () => () => undefined },
     usePage: () => ({ props: { flash: {}, auth: { user: { roles: ['amministratore'], permissions: [] } } } }),
 }));
 vi.mock('@/composables/permissions', () => ({

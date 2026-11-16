@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 /**
  * Le parole delle lettere ai condòmini (promemoria, sollecito, diffida, messa in mora): i tipi, i canali, l'ultima lettera di una persona,
  * gli stati del registro, le frasi della finestra. Le regole stanno nel server (`EmissioneLettere`, `RegistroLettere`): qui c'è quello che
@@ -22,7 +25,17 @@ export const CANALI_SPEDIZIONE: Record<string, string> = {
 /** Diffida e messa in mora non partono per email dal programma (la stessa frase del server). */
 export const SOLO_CARTA = 'Diffida e messa in mora non partono per email dal programma: stampale o scarica un PDF per persona, spediscile, poi registra la spedizione.';
 
-export const FRASE_CAMPI = 'Nel testo puoi usare [nome], [totale], [termine] e [condominio]: si riempiono per ogni persona.';
+/**
+ * La riga dei campi della finestra, dai campi che il server manda con le opzioni (`TestiLettere::CAMPI`): tutti, nel loro ordine. Una lista sola,
+ * quella del server: un campo nuovo entra nella frase da sé. Null senza la lista.
+ */
+export function fraseDeiCampi(campi: Record<string, string> | null | undefined): string | null {
+    const nomi = Object.keys(campi ?? {});
+    if (nomi.length === 0) return null;
+    const elenco = nomi.length === 1 ? nomi[0] : `${nomi.slice(0, -1).join(', ')} e ${nomi[nomi.length - 1]}`;
+
+    return `Nel testo puoi usare ${elenco}: ${nomi.length === 1 ? 'si riempie' : 'si riempiono'} per ogni persona.`;
+}
 
 export const FRASE_SENZA_TESTO = 'Una diffida o una messa in mora non parte senza testo: scrivi il tuo, o parti da quello del programma o da un modello.';
 
@@ -316,4 +329,21 @@ export function personeDelCanale(persone: PersonaDellAnteprima[], canali: Record
 /** Le persone viste nell'anteprima e rimaste nell'invio: il confine delle azioni. */
 export function personeViste(persone: PersonaDellAnteprima[], escluse: number[]): number[] {
     return persone.filter((p) => !escluse.includes(p.id)).map((p) => p.id);
+}
+
+/**
+ * I segnaposto `[interessi]` e `[spese]` si riempiono con gli addebiti registrati fra le righe della lettera, e stanno nel suo totale: chi non ne ha
+ * fra le righe riceve «€ 0,00». La finestra lo dice, quando il testo li usa.
+ */
+export function testiSegnapostiAZero(testo: string, aZero: { interessi_a_zero?: number; spese_a_zero?: number }): string[] {
+    const frasi: string[] = [];
+    const persone = (n: number) => (n === 1 ? '1 persona' : `${n} persone`);
+    if (testo.includes('[interessi]') && (aZero.interessi_a_zero ?? 0) > 0) {
+        frasi.push(`Per ${persone(aZero.interessi_a_zero!)} [interessi] è € 0,00: fra le righe della lettera non hanno interessi di mora registrati.`);
+    }
+    if (testo.includes('[spese]') && (aZero.spese_a_zero ?? 0) > 0) {
+        frasi.push(`Per ${persone(aZero.spese_a_zero!)} [spese] è € 0,00: fra le righe della lettera non hanno spese per il ritardo registrate.`);
+    }
+
+    return frasi;
 }

@@ -1,22 +1,40 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { Head, Link, InfiniteScroll, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, InfiniteScroll, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { etichettaFabbisogno } from '@/lib/gestionale/pianiRate/totaliPerTipo';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Files, Wrench, BookOpen, Link2 } from 'lucide-vue-next';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Files, Wrench, BookOpen, Link2, Check } from 'lucide-vue-next';
 import TreasuryGuardianWidget from './components/TreasuryGuardianWidget.vue';
 import ControlliPostImportWidget from '@/pages/gestionale/dashboard/components/ControlliPostImportWidget.vue';
 import CreditiDaCompensareWidget from './components/CreditiDaCompensareWidget.vue';
+import SaldoPrevistoCard from './components/SaldoPrevistoCard.vue';
+import DashboardCondominioGuide from '@/components/guides/DashboardCondominioGuide.vue';
+import { SCENARIO_DI_SERIE, type Scenario } from '@/lib/gestionale/tesoreria/saldoPrevisto';
+import {
+    SCHEDE_DELLA_INBOX, cifraItaliana, coloreDellaData, compitiDellaScheda, dataDellaRiga, testoFuoriDalleSchede, testoSchedaVuota, type SchedaDellaInbox,
+} from '@/lib/inbox/inboxDelCondominio';
+import { eDelSito, type Gruppo } from '@/lib/inbox/actionInbox';
+import SeiMesiPerAgireWidget from '@/components/gestionale/seiMesi/SeiMesiPerAgireWidget.vue';
+import SeiMesiCompito from '@/components/gestionale/seiMesi/SeiMesiCompito.vue';
+import SeiMesiRisposte from '@/components/gestionale/seiMesi/SeiMesiRisposte.vue';
+import MenuDelCompito from '@/components/inbox/MenuDelCompito.vue';
+import RisposteDelCompito from '@/components/inbox/RisposteDelCompito.vue';
+import Alert from '@/components/Alert.vue';
+import { useGiroFlashDelleVisiteIntere } from '@/composables/useGiroFlash';
+import type { RigaDelRegistro, VoceDelCompito } from '@/lib/inbox/risposteDelCompito';
+import type { Flash } from '@/types/flash';
+import type { Compito, RichiestaDiRisposta, SeiMesi } from '@/lib/gestionale/debiti/seiMesiPerAgire';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -81,29 +99,141 @@ const props = defineProps<{
       id: number;
       type: string;
       title: string;
+      /** Il titolo senza il nome del condominio ripetuto, e la riga sotto con la rata, la cifra o la fattura (le regole dell'Action inbox). */
+      titolo?: string;
+      sotto?: string;
+      /** La riga sotto è la prima riga della descrizione: la riga mostra la descrizione una volta sola. */
+      sotto_dalla_descrizione?: boolean;
       description: string;
       action_url: string | null;
+      /** «expired» solo per gli scaduti della regola di `FasceDeiCompiti`: le segnalazioni e i bonifici segnalati non scadono. */
       status: string;
       days_pending?: number;
-      context: { anagrafica_nome: string | null }
+      /** Il giorno del compito, i giorni da oggi, il gruppo («scaduti», «segnalazioni», «bonifici», «avanti»). */
+      giorno?: string;
+      giorni?: number;
+      gruppo?: Gruppo;
+      /** La prossima azione del tipo (la mappa unica delle due Inbox): un collegamento, o «Segna come fatto» senza indirizzo. */
+      azione?: { testo: string; url: string | null };
+      /** La priorità di una segnalazione: solo «urgente» e «alta». */
+      priorita?: 'urgente' | 'alta' | null;
+      context: { anagrafica_nome: string | null };
+      /** Le risposte del compito: perché è tornato prima del giorno di «Ricordamelo», il registro. */
+      risposta?: { tornato: string | null; registro: RigaDelRegistro[] } | null;
+      /** Per i tipi in cui il giorno è una scadenza: «Ricordamelo» scrive un promemoria a parte. */
+      promemoria_a_parte?: boolean;
     }>;
   };
   widgets?: Record<string, any>;
+  /** Il riquadro «Sei mesi per agire», calcolato a ogni apertura. */
+  seiMesi?: SeiMesi | null;
+  /** I compiti dei sei mesi e dei 180 giorni: non sono eventi dell'agenda, si calcolano con il riquadro. */
+  compitiSeiMesi?: Compito[];
+  /** Quanti compiti dell'Inbox operativa sono scaduti, contati dal server con la regola di `FasceDeiCompiti` (non solo quelli della pagina caricata). */
+  inboxScaduti?: number;
+  /** Il numero di ogni scheda dell'Inbox operativa, contato dal server per tutte le schede (non segue la scheda scelta). */
+  inboxSchede?: { tutti: number; scaduti: number; in_arrivo: number };
+  /** La scheda scelta («Tutte» senza filtro). */
+  inboxScheda?: SchedaDellaInbox;
+  /** Il giorno dell'amministratore, per «Ricordamelo» sui compiti dell'agenda (da domani). */
+  oggi?: string;
 }>()
 
 const { generatePath, hasPermission } = usePermission();
 
-// «Rifiuta» e «Completa» dei compiti chiudono una scadenza in agenda, e le loro rotte (`admin.inbox.reject`,
-// `admin.inbox.complete`) chiedono «Modifica scadenza in agenda» (`EventoPolicy::chiudiCompito`, Coda 402): senza il
-// permesso i due comandi non compaiono, e restano «Registra» e «Risolvi».
+// Le risposte ai compiti (il menu «⋯»: «Fatto», «Non serve», «Ricordamelo») chiudono o spostano una scadenza in agenda, e
+// la loro rotta (`admin.inbox.risposta`) chiede «Modifica scadenza in agenda» (`EventoPolicy::chiudiCompito`): senza il
+// permesso il menu non compare, e restano «Registra» e «Risolvi».
 const puoChiudereCompiti = computed(() => hasPermission([Permission.EDIT_EVENTS]));
 const { euro } = useCurrencyFormatter();
+
+// I numeri in testa all'Inbox sommano i compiti dell'agenda, contati dal server per tutte le schede, e quelli dei sei mesi; quello della barra laterale conta
+// solo l'agenda. Senza i numeri delle schede (una pagina di prima) valgono il totale caricato e gli scaduti.
+const compitiSeiMesi = computed(() => props.compitiSeiMesi ?? []);
+const schedaInbox = computed<SchedaDellaInbox>(() => props.inboxScheda ?? 'tutti');
+const numeriSchede = computed(() => {
+    const agenda = props.inboxSchede ?? { tutti: props.inboxTasks?.total ?? 0, scaduti: props.inboxScaduti ?? 0, in_arrivo: 0 };
+    const seiMesiScaduti = compitiDellaScheda(compitiSeiMesi.value, 'scaduti').length;
+
+    return {
+        tutti: agenda.tutti + compitiSeiMesi.value.length,
+        scaduti: agenda.scaduti + seiMesiScaduti,
+        in_arrivo: agenda.in_arrivo + compitiSeiMesi.value.length - seiMesiScaduti,
+        // Le segnalazioni e i bonifici segnalati, che non scadono: né in «Scadute» né in «In arrivo».
+        fuori: Math.max(0, agenda.tutti - agenda.scaduti - agenda.in_arrivo),
+    };
+});
+const totaleAttivita = computed(() => numeriSchede.value.tutti);
+// I compiti dei sei mesi della scheda scelta: sono tutti nella pagina, si scelgono qui con la stessa regola del server.
+const compitiSeiMesiDellaScheda = computed(() => compitiDellaScheda(compitiSeiMesi.value, schedaInbox.value));
+const fraseFuoriDalleSchede = computed(() => testoFuoriDalleSchede(schedaInbox.value, numeriSchede.value.fuori));
+// La lista dentro la card, da capo quando cambia la scheda.
+const listaInbox = ref<HTMLElement | null>(null);
+// La scheda che si sta caricando: il segno di caricamento sta dentro la card, accanto al titolo, e la lista resta com'è finché non arriva la nuova.
+const schedaInArrivo = ref<SchedaDellaInbox | null>(null);
+/**
+ * Una scheda rilegge dal server solo l'Inbox (i compiti arrivano 15 alla volta, quindi il filtro non si può fare con le righe già nella pagina): solo le prop
+ * del riquadro, la pagina dov'è (`preserveScroll`, `preserveState`), senza la barra di avanzamento in cima alla pagina (una richiesta `async`, come lo
+ * scorrimento), con il filtro nell'indirizzo (`?inbox=scaduti`) e la lista da capo. La tesoreria, i sei mesi e la copertura non si rifanno.
+ */
+function scegliScheda(scheda: SchedaDellaInbox) {
+    if (scheda === schedaInbox.value || schedaInArrivo.value !== null) return;
+    const indirizzo = new URL(window.location.href);
+    if (scheda === 'tutti') indirizzo.searchParams.delete('inbox');
+    else indirizzo.searchParams.set('inbox', scheda);
+    indirizzo.searchParams.delete('page');
+    router.get(`${indirizzo.pathname}${indirizzo.search}`, {}, {
+        only: ['inboxTasks', 'inboxSchede', 'inboxScaduti', 'inboxScheda'],
+        reset: ['inboxTasks'],
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        async: true,
+        showProgress: false,
+        onStart: () => { schedaInArrivo.value = scheda; },
+        onFinish: () => { schedaInArrivo.value = null; },
+        onSuccess: () => listaInbox.value?.scrollTo?.({ top: 0 }),
+    });
+}
+// Per ogni persona la prima riga dei sei mesi in cui compare: la tesoreria ci manda chi ha la prossima azione lì («La prossima azione è nei sei mesi ↓»).
+const righeSeiMesi = computed<Record<number, string>>(() => {
+    const mappa: Record<number, string> = {};
+    for (const riga of props.seiMesi?.righe ?? []) {
+        for (const p of [...(riga.tutte ?? []), ...(riga.persone ?? [])]) {
+            mappa[p.anagrafica_id] ??= riga.chiave;
+        }
+    }
+
+    return mappa;
+});
+// Le finestre delle risposte, una sola per la pagina: le aprono il riquadro dei sei mesi e i suoi compiti.
+const risposte = ref<InstanceType<typeof SeiMesiRisposte> | null>(null);
+const apriRisposta = (r: RichiestaDiRisposta) => risposte.value?.apri(r);
+// Le finestre delle risposte ai compiti dell'agenda, una sola per la pagina: le apre il menu di ogni riga.
+const risposteDeiCompiti = ref<InstanceType<typeof RisposteDelCompito> | null>(null);
+const rispondiAlCompito = (voce: VoceDelCompito, task: NonNullable<typeof props.inboxTasks>['data'][number]) => risposteDeiCompiti.value?.apri(voce, task);
+// Il messaggio dopo una risposta, in alto, una volta.
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash?.message);
+// Solo le visite intere: lo scorrimento della lista e i riquadri ricaricati non rimettono il messaggio di prima.
+const giroFlash = useGiroFlashDelleVisiteIntere();
 const showOrphansModal = ref(false);
 
+// La guida della pagina, nel cassetto, dal pulsante «Guida» dell'intestazione.
+const mostraGuida = ref(false);
+// Lo scenario del saldo previsto, scelto nella card: lo segue anche «Fra 30 giorni» della tesoreria. All'apertura «Senza le rate».
+const scenarioTesoreria = ref<Scenario>(SCENARIO_DI_SERIE);
+// La riga di un compito dell'Inbox: il gruppo dal server; una riga di prima, senza gruppo, si legge dallo stato.
+type CompitoDellInbox = NonNullable<typeof props.inboxTasks>['data'][number];
+const gruppoDi = (task: CompitoDellInbox): Gruppo => task.gruppo ?? (task.status === 'expired' ? 'scaduti' : 'avanti');
+const datiDellaData = (task: CompitoDellInbox) => ({ gruppo: gruppoDi(task), giorno: task.giorno ?? '', giorni: task.giorni ?? -(task.days_pending ?? 0) });
+const PULSANTE_AZIONE = 'inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border bg-white px-3 text-xs font-bold shadow-sm transition-all dark:bg-slate-800';
+
 const pageGuides = [
-  { title: 'Bilancio Sotto Controllo', description: 'Il Validatore Budget monitora in tempo reale se le rate generate coprono tutte le spese preventivate.', icon: Zap, colorVariant: 'blue' as const },
-  { title: 'Alert Operativi', description: 'Il sistema ti segnala anomalie fiscali o mancanze di fondi prima che diventino problemi contabili.', icon: ShieldAlert, colorVariant: 'amber' as const },
-  { title: 'Inbox Condominiale', description: 'Gestisci le richieste e i task specifici di questo fabbricato. Le azioni rapide ti permettono di rispondere subito ai condòmini.', icon: Inbox, colorVariant: 'emerald' as const }
+  { title: 'Copertura del bilancio', description: 'Il preventivo e gli sfori autorizzati confrontati con le rate emesse e i fondi deliberati: dice se il piano rate copre le spese.', icon: Zap, colorVariant: 'blue' as const },
+  // La tesoreria a 30 giorni: la fila con il disponibile, i due cassetti e il grafico del saldo previsto.
+  { title: 'Tesoreria a 30 giorni', description: 'Il disponibile di oggi, con «Da dove viene»; le fatture in scadenza e le rate scadute dei condòmini in due cassetti, ognuna con la sua prossima azione; accanto, il saldo previsto giorno per giorno, con il giorno in cui va sotto zero.', icon: ShieldAlert, colorVariant: 'amber' as const },
+  { title: 'Inbox operativa', description: 'I compiti aperti di questo condominio, ognuno con la sua prossima azione; dal menu «Fatto», «Non serve» e «Ricordamelo».', icon: Inbox, colorVariant: 'emerald' as const }
 ];
 
 type StatoCopertura = 'loading' | 'misaligned' | 'deficit' | 'documented' | 'surplus' | 'integrated' | 'aligned';
@@ -163,12 +293,12 @@ const suggerimentoOperativo = computed(() => {
         if (props.copertura?.scoperto_count && props.copertura.scoperto_count > 0) {
             return "Hai voci di spesa non associate. Aggiungile a un piano rate esistente o creane uno nuovo.";
         } else {
-            return "Il preventivo è aumentato. Vai nel Piano Rate e clicca 'Ricalcola' per aggiornare le rate. Se le rate sono già emesse, crea una nuova voce di spesa per la differenza.";
+            return "Il preventivo è aumentato. Apri il piano rate e premi «Ricalcola» per aggiornare le rate. Se le rate sono già emesse, crea una nuova voce di spesa per la differenza.";
         }
     }
     if (statoCopertura.value === 'documented') {
         // D143: niente «conguaglio» né «addebito manuale», che il programma non ha. Le strade sono quelle della pagina del piano.
-        return "Il fabbisogno scoperto è stato registrato con motivazione. Censisci l'anagrafica mancante e ricalcola il piano; se le rate sono già emesse, prima vanno annullate le emissioni (e prima ancora stornati gli incassi). Il programma non ha un addebito individuale.";
+        return "Il fabbisogno scoperto è stato registrato con motivazione. Censisci l'anagrafica mancante e ricalcola il piano; se le rate sono già emesse, prima vanno annullate le emissioni (e prima ancora stornati gli incassi). La quota di un'unità si può anche addebitare a una persona, dal riquadro delle quote non assegnate del piano.";
     }
     if (statoCopertura.value === 'surplus') {
         return "Stai incassando più del necessario. Verifica se ci sono arrotondamenti eccessivi o voci duplicate nei piani rate. Se hai modificato il preventivo, ricorda di ricalcolare le rate per allineare tutto.";
@@ -211,34 +341,6 @@ const larghezzaBarra = computed(() => {
     return Math.min(rawPct, 100) + '%';
 });
 
-const completeTask = (taskId: number) => {
-    router.patch(route('admin.inbox.complete', { task: taskId }), {}, { preserveScroll: true });
-};
-
-const isRejectModalOpen = ref(false);
-const taskToReject = ref<any>(null);
-const rejectForm = useForm({ reason: '' });
-
-const openRejectModal = (task: any) => {
-    taskToReject.value = task;
-    rejectForm.reason = ''; 
-    rejectForm.clearErrors();
-    isRejectModalOpen.value = true;
-};
-
-const closeRejectModal = () => {
-    isRejectModalOpen.value = false;
-    setTimeout(() => taskToReject.value = null, 300); 
-};
-
-const confirmReject = () => {
-    if (!taskToReject.value) return;
-    rejectForm.post(route('admin.inbox.reject', taskToReject.value.id), {
-        preserveScroll: true,
-        onSuccess: () => closeRejectModal(),
-    });
-};
-
 // Altezza di Inbox Operativa agganciata a quella reale di Copertura Bilancio.
 // CSS puro (grid items-stretch) non basta: fa crescere il piu' corto per
 // raggiungere il piu' alto, mai il contrario — se Inbox ha molte attivita'
@@ -274,7 +376,12 @@ onUnmounted(() => {
 
     <GestionaleLayout :breadcrumbs="[]">
         <div class="px-6 py-8 space-y-6">
-            
+
+            <!-- Il messaggio dopo una risposta a un compito -->
+            <div v-if="flashMessage">
+                <Alert :key="giroFlash" :message="flashMessage.message" :type="flashMessage.type" />
+            </div>
+
             <PageHeaderGuide
                 page-title="Dashboard gestionale"
                 page-subtitle="Monitora la salute contabile e fiscale del condominio in tempo reale."
@@ -284,6 +391,10 @@ onUnmounted(() => {
                 :condomini="props.condomini"
                 :esercizio="props.esercizio"
                 :esercizi="props.esercizi"
+                :has-text-guide="true"
+                text-guide-title="Guida"
+                :una-fila="true"
+                @open-text-guide="mostraGuida = true"
             />
 
             <div class="grid gap-3 md:grid-cols-3 lg:grid-cols-12 items-stretch">
@@ -301,7 +412,7 @@ onUnmounted(() => {
                         alla stessa altezza mettendole lo scroll dentro. Il pavimento vale solo
                         finche' non c'e' abbastanza contenuto da superarlo.
                     -->
-                    <div v-if="copertura" ref="coperturaCardRef" class="relative flex min-h-[430px] flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
+                    <div v-if="copertura" ref="coperturaCardRef" data-testid="copertura-bilancio" class="relative flex min-h-[430px] flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
                         <div class="absolute -right-6 -top-6 text-slate-50 dark:text-slate-800/50 pointer-events-none transition-colors group-hover:text-slate-100 dark:group-hover:text-slate-800">
                             <Wallet class="h-32 w-32 opacity-50" />
                         </div>
@@ -321,7 +432,7 @@ onUnmounted(() => {
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger>
-                                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold border cursor-help transition-colors"
+                                            <div class="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-bold border cursor-help transition-colors"
                                                 :class="{
                                                     'bg-red-50 text-red-700 border-red-100 hover:bg-red-100': statoCopertura === 'misaligned',
                                                     'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100': statoCopertura === 'deficit',
@@ -350,7 +461,7 @@ onUnmounted(() => {
     
                                     <div class="bg-slate-50/50 dark:bg-slate-800/30 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-center">
                                         <div class="flex items-center gap-1.5 mb-1.5">
-                                            <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">{{ nomeRiquadroFabbisogno }}</p>
+                                            <p class="text-[11px] text-slate-400 uppercase font-black tracking-widest">{{ nomeRiquadroFabbisogno }}</p>
                                             <TooltipProvider>
                                                 <Tooltip>
                                                     <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
@@ -366,7 +477,7 @@ onUnmounted(() => {
                                     <div class="bg-slate-50/50 dark:bg-slate-800/30 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-center">
     
                                         <div class="flex items-center gap-1.5 mb-1.5">
-                                            <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">Coperture Attive</p>
+                                            <p class="text-[11px] text-slate-400 uppercase font-black tracking-widest">Coperture attive</p>
                                             <TooltipProvider>
                                                 <Tooltip>
                                                     <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
@@ -379,17 +490,19 @@ onUnmounted(() => {
 
                                         <div class="space-y-2">
                                             <div class="flex justify-between items-center gap-1.5 w-full">
-                                                <p class="text-[9px] text-slate-500 uppercase font-bold truncate">Rate</p>
+                                                <p class="text-[11px] text-slate-500 uppercase font-bold truncate">Rate</p>
                                                 <p class="text-sm font-black text-slate-900 dark:text-white shrink-0 whitespace-nowrap leading-none" 
                                                 :class="{'text-blue-600': statoCopertura === 'surplus', 'text-red-600': statoCopertura === 'misaligned'}">
                                                     {{ euro(copertura.pianificato) }}
                                                 </p>
                                             </div>
                                             
-                                            <div v-if="copertura.virtuale > 0" class="flex justify-between items-center gap-1.5 w-full pt-2 border-t border-slate-200 dark:border-slate-700/50">
-                                                <div class="flex items-center gap-1 min-w-0">
-                                                    <p class="text-[9px] text-emerald-600/90 uppercase font-bold truncate">Fondi/Extra</p>
-                                                    <TooltipProvider>
+                                            <!--
+                                                «Fondi/Extra» intera, mai con i puntini: se accanto alla cifra non ci sta su una riga va su due dopo la barra («Extra» e la «i»
+                                                restano insieme); quando la card è stretta (al telefono, fra 768 e 1.023 pixel) la cifra va sotto, a destra.
+                                            -->
+                                            <div v-if="copertura.virtuale > 0" class="flex flex-wrap justify-between items-center gap-x-1.5 gap-y-1 w-full pt-2 border-t border-slate-200 dark:border-slate-700/50">
+                                                <div data-testid="etichetta-fondi-extra" class="flex-1 text-[11px] leading-tight text-emerald-600/90 uppercase font-bold">Fondi/<wbr><span class="inline-flex items-center gap-1 whitespace-nowrap"><span data-testid="parola-extra">Extra</span><TooltipProvider>
                                                         <Tooltip>
                                                             <TooltipTrigger as-child>
                                                                 <Info class="w-3 h-3 text-emerald-500/60 cursor-help outline-none shrink-0" />
@@ -398,9 +511,8 @@ onUnmounted(() => {
                                                                 <p class="text-xs">Sfori senza una rata: coperti da un fondo di riserva, o lasciati al conguaglio per persona, calcolato nel rendiconto.</p>
                                                             </TooltipContent>
                                                         </Tooltip>
-                                                    </TooltipProvider>
-                                                </div>
-                                                <p class="text-xs font-black text-emerald-600 shrink-0 whitespace-nowrap leading-none">
+                                                    </TooltipProvider></span></div>
+                                                <p data-testid="cifra-fondi-extra" class="ml-auto text-xs font-black text-emerald-600 shrink-0 whitespace-nowrap leading-none">
                                                     + {{ euro(copertura.virtuale) }}
                                                 </p>
                                             </div>
@@ -410,10 +522,10 @@ onUnmounted(() => {
 
                                 <div class="mt-4">
                                     <div class="flex justify-between items-center mb-1.5 px-0.5">
-                                        <span class="text-[8px] font-black uppercase text-slate-400 tracking-widest">Avanzamento Coperture Condivise</span>
-                                        <span class="text-[10px] font-bold tabular-nums"
+                                        <span class="text-[11px] font-black uppercase text-slate-400 tracking-widest">Avanzamento delle coperture condivise</span>
+                                        <span class="text-xs font-bold tabular-nums"
                                             :class="{'text-red-600': statoCopertura === 'misaligned', 'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-indigo-600': statoCopertura === 'integrated', 'text-emerald-600': statoCopertura === 'aligned'}">
-                                            {{ percentualeFormattata }}%
+                                            {{ percentualeFormattata.replace('.', ',') }} %
                                         </span>
                                     </div>
                                     <div class="relative h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
@@ -426,12 +538,12 @@ onUnmounted(() => {
                             </div>
 
                             <div class="mb-4 pt-4 border-t border-dashed border-slate-200 dark:border-slate-800">
-                                <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Proiezione Uscite (Mastro C/C)</h4>
+                                <h4 class="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Proiezione delle uscite (mastro C/C)</h4>
                                 
                                 <div class="space-y-1">
                                     <div class="flex justify-between items-center px-1">
-                                        <span class="text-[10px] font-medium text-slate-500">Fatturato condiviso</span>
-                                        <span class="text-[10px] font-bold text-slate-600">
+                                        <span class="text-xs font-medium text-slate-500">Fatturato condiviso</span>
+                                        <span class="text-xs font-bold text-slate-600">
                                             {{ euro(copertura.uscite_totali - copertura.addebiti_personali) }}
                                         </span>
                                     </div>
@@ -439,7 +551,7 @@ onUnmounted(() => {
                                     <div v-if="copertura.addebiti_personali > 0" class="flex justify-between items-center bg-amber-50/50 dark:bg-amber-900/10 px-2 py-1.5 rounded-md border border-amber-100 dark:border-amber-800/50 mt-1.5">
                                         <div class="flex items-center gap-1.5">
                                             <User class="w-3 h-3 text-amber-500" />
-                                            <span class="text-[9px] font-bold text-amber-700 dark:text-amber-500 uppercase tracking-wide">Addebiti Diretti (Art. 63)</span>
+                                            <span class="text-[11px] font-bold text-amber-700 dark:text-amber-500 uppercase tracking-wide">Addebiti diretti (art. 63)</span>
                                             <TooltipProvider>
                                                 <Tooltip>
                                                     <TooltipTrigger><Info class="w-3 h-3 text-amber-600/70" /></TooltipTrigger>
@@ -447,12 +559,12 @@ onUnmounted(() => {
                                                 </Tooltip>
                                             </TooltipProvider>
                                         </div>
-                                        <span class="text-[10px] font-black text-amber-600">+ {{ euro(copertura.addebiti_personali) }}</span>
+                                        <span class="text-xs font-black text-amber-600">+ {{ euro(copertura.addebiti_personali) }}</span>
                                     </div>
                                     
                                     <div class="flex justify-between items-center pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 px-1">
                                         <div class="flex items-center gap-1.5">
-                                            <span class="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Totale da pagare (Fornitori)</span>
+                                            <span class="text-xs font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Totale da pagare (Fornitori)</span>
                                             <TooltipProvider>
                                                 <Tooltip>
                                                     <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
@@ -468,8 +580,8 @@ onUnmounted(() => {
                             <div v-if="statoCopertura === 'misaligned'" class="bg-red-50/80 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg p-3 mt-4">
                                 <div class="flex items-center gap-2 mb-2 pb-2 border-b border-red-200/50">
                                     <ShieldAlert class="w-4 h-4 text-red-600" />
-                                    <span class="text-[10px] font-black text-red-700 uppercase tracking-widest">
-                                        Ricalcolo Necessario
+                                    <span class="text-xs font-black text-red-700 uppercase tracking-widest">
+                                        Ricalcolo necessario
                                     </span>
                                 </div>
                                 
@@ -477,7 +589,7 @@ onUnmounted(() => {
                                   Coda 414 (D138): la frase diceva «Hai modificato il preventivo spese… Ricalcola i seguenti piani», ma l'elenco ha anche piani
                                   che non si ricalcolano più (rate emesse, incassi) e piani scostati per un'altra ragione. I piani in «quota aperta» non ci sono.
                                 -->
-                                <p class="text-[10px] text-red-800/80 dark:text-red-400 leading-tight mb-3">
+                                <p class="text-xs text-red-800/80 dark:text-red-400 leading-tight mb-3">
                                     Le rate di questi piani non corrispondono a quello che il piano chiede. Apri il piano: «Copertura spese» dice di quanto, e il pulsante «Ricalcola» dice se si ricalcola ancora.
                                 </p>
 
@@ -485,11 +597,11 @@ onUnmounted(() => {
                                     <div v-for="piano in props.pianiDisallineati" :key="piano.id" 
                                          class="flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded border border-red-100 dark:border-red-800">
                                         <div class="flex flex-col">
-                                            <span class="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate max-w-[120px]" :title="piano.nome">{{ piano.nome }}</span>
-                                            <span class="text-[9px] font-medium text-red-600">Delta: {{ piano.delta > 0 ? '+' : '' }}{{ euro(piano.delta) }}</span>
+                                            <span class="text-xs font-bold text-slate-700 dark:text-slate-200 truncate max-w-[120px]" :title="piano.nome">{{ piano.nome }}</span>
+                                            <span class="text-[11px] font-medium text-red-600">Differenza: {{ piano.delta > 0 ? '+' : '' }}{{ euro(piano.delta) }}</span>
                                         </div>
                                         <Link :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/:pianoRate', { condominio: condominio.id, esercizio: esercizio.id, pianoRate: piano.id })">
-                                            <Button size="sm" class="h-6 text-[9px] px-2 bg-red-600 hover:bg-red-700 text-white font-bold">
+                                            <Button size="sm" class="h-6 text-[11px] px-2 bg-red-600 hover:bg-red-700 text-white font-bold">
                                                 Apri
                                             </Button>
                                         </Link>
@@ -499,12 +611,12 @@ onUnmounted(() => {
 
                             <div v-else-if="statoCopertura === 'deficit'" class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3 mt-4">
                                 <div class="flex justify-between items-center mb-2">
-                                    <span class="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">
+                                    <span class="text-xs font-bold text-amber-700 uppercase flex items-center gap-1">
                                         <AlertTriangle class="w-3 h-3" /> Fabbisogno scoperto: {{ euro(totaleScopertoOperativo) }}
                                     </span>
-                                    <span class="text-[9px] text-amber-600/70" v-if="copertura.scoperto_count > 0">{{ copertura.scoperto_count }} voci</span>
+                                    <span class="text-[11px] text-amber-600/70" v-if="copertura.scoperto_count > 0">{{ copertura.scoperto_count }} voci</span>
                                 </div>
-                                <div class="text-[10px] text-slate-600 dark:text-slate-400 leading-tight mb-2 border-l-2 border-amber-300 pl-2">
+                                <div class="text-xs text-slate-600 dark:text-slate-400 leading-tight mb-2">
                                     {{ suggerimentoOperativo }}
                                 </div>
                             </div>
@@ -512,26 +624,26 @@ onUnmounted(() => {
                             <div v-else-if="statoCopertura === 'documented'" class="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg p-3 mt-4">
                                 <div class="flex items-center gap-2 mb-2">
                                     <BookOpen class="w-3.5 h-3.5 text-slate-500" />
-                                    <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Scoperto documentato</span>
+                                    <span class="text-xs font-bold text-slate-600 uppercase tracking-wide">Scoperto documentato</span>
                                 </div>
-                                <div class="text-[10px] text-slate-600 dark:text-slate-400 leading-tight border-l-2 border-slate-300 pl-2">
+                                <div class="text-xs text-slate-600 dark:text-slate-400 leading-tight">
                                     {{ suggerimentoOperativo }}
                                 </div>
                             </div>
 
                             <div v-else-if="statoCopertura === 'surplus'" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-3 flex flex-col justify-center text-blue-700 mt-4">
-                                <div class="flex items-center gap-2 mb-1"><Lightbulb class="w-4 h-4" /><span class="text-xs font-bold uppercase">Verifica Eccedenza</span></div>
-                                <p class="text-[10px] opacity-90 leading-tight">Stai incassando più del fabbisogno reale. Se non è voluto (es. arrotondamenti), verifica i piani rate.</p>
+                                <div class="flex items-center gap-2 mb-1"><Lightbulb class="w-4 h-4" /><span class="text-xs font-bold uppercase">Verifica l'eccedenza</span></div>
+                                <p class="text-xs opacity-90 leading-tight">Stai incassando più del fabbisogno reale. Se non è voluto (es. arrotondamenti), verifica i piani rate.</p>
                             </div>
 
                             <div v-else-if="statoCopertura === 'integrated'" class="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-lg p-3 flex flex-col justify-center text-indigo-700 mt-4">
-                                <div class="flex items-center gap-2 mb-1"><CheckCircle2 class="w-4 h-4" /><span class="text-xs font-bold uppercase">Sforo Recuperato</span></div>
-                                <p class="text-[10px] opacity-90 leading-tight">Ottimo lavoro. Hai integrato il piano rate coprendo con successo gli extra costi registrati in contabilità.</p>
+                                <div class="flex items-center gap-2 mb-1"><CheckCircle2 class="w-4 h-4" /><span class="text-xs font-bold uppercase">Sforo recuperato</span></div>
+                                <p class="text-xs opacity-90 leading-tight">Ottimo lavoro. Hai integrato il piano rate coprendo con successo gli extra costi registrati in contabilità.</p>
                             </div>
                         </div>
 
                         <div class="mt-auto border-t border-slate-100 dark:border-slate-800 px-4 py-3 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                        <span class="text-[10px] text-slate-400 font-medium">
+                        <span class="text-xs text-slate-400 font-medium">
                             {{ statoCopertura === 'misaligned' ? 'Azione critica' : statoCopertura === 'deficit' ? 'Azione richiesta' : statoCopertura === 'documented' ? 'Ricorda di recuperarla' : statoCopertura === 'surplus' ? 'Verifica consigliata' : 'Tutto in ordine' }}
                         </span>
                         
@@ -540,14 +652,14 @@ onUnmounted(() => {
                             @click="showOrphansModal = true"
                             variant="outline"
                             size="sm"
-                            class="h-7 text-[10px] font-bold uppercase border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300 gap-1.5"
+                            class="h-7 text-xs font-bold uppercase border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300 gap-1.5"
                         >
                             Analizza voci <ArrowRight class="w-3 h-3" />
                         </Button>
                         <Link v-else :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.id, esercizio: esercizio.id })">
                             <Button
                                 size="sm"
-                                class="h-7 text-[10px] font-bold uppercase gap-1.5"
+                                class="h-7 text-xs font-bold uppercase gap-1.5"
                                 :variant="statoCopertura === 'surplus' || statoCopertura === 'integrated' ? 'outline' : 'default'"
                                 :class="{'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300': statoCopertura === 'surplus', 'border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300': statoCopertura === 'integrated', 'bg-red-600 hover:bg-red-700 text-white': statoCopertura === 'misaligned'}"
                             >
@@ -566,12 +678,32 @@ onUnmounted(() => {
                         :style="coperturaHeight ? { height: coperturaHeight + 'px' } : {}"
                     >
 
-                        <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
-                            <div class="flex items-center gap-2">
-                                <Inbox class="w-4 h-4 text-slate-400" />
-                                <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Inbox Operativa</h3>
+                        <!--
+                            La testata: il titolo e, a destra, le schede come nell'Action inbox (un gruppo di pulsanti con il numero di ognuna, «Scadute» rosso quando ce
+                            n'è, lo zero grigio); la scelta rilegge solo l'Inbox dal server, con il segno di caricamento accanto al titolo. Al telefono le schede vanno
+                            sotto il titolo, su una riga loro, larghe quanto la card (ognuna quanto il suo testo; con numeri molto lunghi vanno a capo, mai di lato).
+                            Sotto, solo quando serve, la riga sulle segnalazioni e i bonifici, che stanno in «Tutte».
+                        -->
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0" data-testid="testata-inbox">
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div class="flex min-h-8 items-center gap-2">
+                                    <Inbox class="w-4 h-4 text-slate-400" />
+                                    <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Inbox operativa</h3>
+                                    <Loader2 v-if="schedaInArrivo" class="h-3.5 w-3.5 animate-spin text-slate-400" data-testid="inbox-in-caricamento" aria-label="Carico la scheda" />
+                                </div>
+                                <div v-if="totaleAttivita > 0" class="flex w-full flex-wrap rounded-lg bg-slate-100 p-1 text-xs dark:bg-slate-800 sm:inline-flex sm:w-auto sm:flex-nowrap" role="group"
+                                    aria-label="Le schede dell'Inbox operativa" :aria-busy="schedaInArrivo ? 'true' : 'false'" data-testid="schede-inbox">
+                                    <button v-for="s in SCHEDE_DELLA_INBOX" :key="s.chiave" type="button" :data-testid="`scheda-inbox-${s.chiave}`"
+                                        :aria-pressed="schedaInbox === s.chiave ? 'true' : 'false'" class="flex-auto rounded-md px-2 py-1.5 whitespace-nowrap sm:flex-none sm:px-2.5"
+                                        :class="schedaInbox === s.chiave ? 'bg-white font-bold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white' : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'"
+                                        @click="scegliScheda(s.chiave)">
+                                        {{ s.etichetta }}
+                                        <span class="tabular-nums" :class="numeriSchede[s.chiave] === 0 ? 'text-slate-400 dark:text-slate-500'
+                                            : s.chiave === 'scaduti' ? 'font-semibold text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'">{{ cifraItaliana(numeriSchede[s.chiave]) }}</span>
+                                    </button>
+                                </div>
                             </div>
-                            <Badge v-if="inboxTasks.total > 0" variant="destructive" class="font-bold rounded-md text-[10px]">{{ inboxTasks.total }} ATTIVITÀ</Badge>
+                            <p v-if="fraseFuoriDalleSchede" class="mt-2 text-xs text-slate-500 dark:text-slate-400" data-testid="fuori-dalle-schede">{{ fraseFuoriDalleSchede }}</p>
                         </div>
 
                         <!-- min-h-0 e' essenziale: senza, un figlio flex con
@@ -579,20 +711,29 @@ onUnmounted(() => {
                              perche' il default CSS e' min-height:auto (si adatta
                              al contenuto). Bug invisibile con Inbox vuota,
                              evidente con molte attivita' reali. -->
-                        <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2">
+                        <div ref="listaInbox" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2 transition-opacity" :class="{ 'opacity-60': schedaInArrivo }">
+                            <!-- I compiti dei sei mesi e del rendiconto della scheda scelta, sopra quelli dell'agenda: calcolati con il riquadro, non scritti nell'agenda. -->
+                            <ul v-if="compitiSeiMesiDellaScheda.length" role="list" class="space-y-2" :class="{ 'mb-2': inboxTasks.data && inboxTasks.data.length }" data-testid="compiti-sei-mesi">
+                                <SeiMesiCompito v-for="c in compitiSeiMesiDellaScheda" :key="c.chiave" :compito="c" :puo-rispondere="puoChiudereCompiti" @rispondi="apriRisposta" />
+                            </ul>
                             <template v-if="inboxTasks.data && inboxTasks.data.length > 0">
                                 <InfiniteScroll data="inboxTasks" preserve-url>
                                     <ul role="list" class="space-y-2">
-                                        <li v-for="task in inboxTasks.data" :key="task.id"
+                                        <!--
+                                            Le regole dell'Action inbox, una sola per le due: lo scaduto è quello di `FasceDeiCompiti` (un compito di oggi
+                                            no; le segnalazioni e i bonifici segnalati non scadono); al posto di «Risolvi» la prossima azione del tipo, o «Segna come fatto», che apre la
+                                            risposta «Fatto»; la priorità della segnalazione in minuscolo; il menu «⋯» di sempre (per la segnalazione solo «Ricordamelo»).
+                                        -->
+                                        <li v-for="task in inboxTasks.data" :key="task.id" data-testid="compito-inbox"
                                             class="p-4 rounded-lg border transition-all group"
-                                            :class="task.status === 'expired'
+                                            :class="gruppoDi(task) === 'scaduti'
                                                 ? 'border-y-transparent border-r-transparent bg-red-100/20 dark:bg-red-900/10'
                                                 : 'border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'"
                                         >
                                             <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                                                <div class="flex items-start gap-3 flex-1">
+                                                <div class="flex items-start gap-3 flex-1 min-w-0">
                                                     <div class="mt-1 shrink-0 text-slate-400">
-                                                        <TriangleAlert v-if="task.status === 'expired'" class="w-5 h-5 text-red-500" />
+                                                        <TriangleAlert v-if="gruppoDi(task) === 'scaduti'" class="w-5 h-5 text-red-500" />
                                                         <ArrowDownToLine v-else-if="task.type === 'controllo_incassi'" class="w-5 h-5 text-purple-500" />
                                                         <ArrowUpFromLine v-else-if="task.type === 'emissione_rata'" class="w-5 h-5 text-blue-500" />
                                                         <Banknote v-else-if="task.type === 'verifica_pagamento'" class="w-5 h-5 text-amber-500" />
@@ -601,52 +742,38 @@ onUnmounted(() => {
                                                         <Wrench v-else-if="task.type === 'segnalazione_guasto'" class="w-5 h-5 text-orange-500" />
                                                         <CalendarClock v-else class="w-5 h-5" />
                                                     </div>
-                                                    <div class="flex-1">
-                                                        <h3 class="text-sm font-bold text-slate-900 dark:text-white" :class="{'text-red-700 dark:text-red-400': task.status === 'expired'}">{{ task.title }}</h3>
-                                                        <p class="text-[13px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed pr-6">{{ task.description }}</p>
-                                                        <div class="flex items-center gap-3 mt-2 text-[10px] font-bold uppercase text-slate-400">
-                                                            <span v-if="task.type === 'verifica_pagamento'" class="text-amber-500 flex items-center gap-1">
-                                                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> DA VERIFICARE
-                                                            </span>
-                                                            <span v-else-if="task.status === 'expired'" class="text-red-500 flex items-center gap-1">
-                                                                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> SCADUTO {{ (task.days_pending ?? 0) > 0 ? `DA ${task.days_pending ?? 0} GIORN${(task.days_pending ?? 0) === 1 ? 'O' : 'I'}` : '' }}
-                                                            </span>
-                                                            <span v-else class="text-emerald-500 flex items-center gap-1">
-                                                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DA FARE
-                                                            </span>
+                                                    <div class="flex-1 min-w-0">
+                                                        <div class="flex min-w-0 items-center gap-2">
+                                                            <h3 class="text-sm font-bold text-slate-900 dark:text-white" :class="{'text-red-700 dark:text-red-400': gruppoDi(task) === 'scaduti'}" :title="task.title">{{ task.titolo ?? task.title }}</h3>
+                                                            <span v-if="task.priorita" data-testid="priorita" class="shrink-0 rounded-md border px-1.5 py-px text-xs font-semibold"
+                                                                :class="task.priorita === 'urgente'
+                                                                    ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+                                                                    : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'">{{ task.priorita }}</span>
                                                         </div>
+                                                        <!-- La riga sotto con la rata, la cifra o la fattura; quando è la prima riga della descrizione, la descrizione basta, una volta sola. -->
+                                                        <p v-if="task.sotto && !task.sotto_dalla_descrizione" class="text-xs text-slate-600 dark:text-slate-300 mt-0.5">{{ task.sotto }}</p>
+                                                        <p v-if="task.description" class="text-[13px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed pr-6" :title="task.description">{{ task.description }}</p>
+                                                        <p v-if="task.risposta?.tornato" class="mt-1 text-xs text-slate-600 dark:text-slate-300">{{ task.risposta.tornato }}</p>
+                                                        <p class="mt-2 text-xs font-medium tabular-nums" :class="coloreDellaData(datiDellaData(task))" data-testid="data-compito">{{ dataDellaRiga(datiDellaData(task)) }}</p>
                                                     </div>
                                                 </div>
 
+                                                <!-- La prossima azione del tipo e il menu «⋯» delle risposte, come nel compito dei sei mesi. -->
                                                 <div class="shrink-0 flex items-center gap-2">
-    
-                                                    <template v-if="task.type === 'verifica_pagamento'">
-                                                        <button v-if="puoChiudereCompiti" @click="openRejectModal(task)" title="Rifiuta segnalazione"
-                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-red-600 hover:border-red-200 hover:bg-red-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
-                                                            <XCircle class="w-4 h-4" />
-                                                        </button>
-                                                        
-                                                        <a v-if="task.action_url" :href="task.action_url" 
-                                                        class="inline-flex items-center justify-center h-7 px-3 text-xs font-bold transition-all rounded-md bg-white border border-slate-200 text-slate-700 shadow-sm hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400">
-                                                            Registra <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
-                                                        </a>
-                                                    </template>
-
-                                                    <template v-else>
-                                                        <button v-if="puoChiudereCompiti" @click="completeTask(task.id)" title="Segna come completato"
-                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
-                                                            <CheckCircle2 class="w-4 h-4" />
-                                                        </button>
-
-                                                        <a v-if="task.action_url" :href="task.action_url" 
-                                                            class="inline-flex items-center justify-center h-7 px-3 text-xs font-bold transition-all rounded-md bg-white border shadow-sm dark:bg-slate-800"
-                                                            :class="task.status === 'expired' 
-                                                                ? 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30' 
-                                                                : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-indigo-700 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-200 dark:hover:text-indigo-400'">
-                                                            Risolvi <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
-                                                        </a>
-                                                    </template>
-                                                    
+                                                    <!-- Con Inertia e il prefetch; un indirizzo di un'altra origine resta un collegamento normale. -->
+                                                    <component :is="eDelSito((task.azione?.url ?? task.action_url)!) ? Link : 'a'" v-if="task.azione?.url ?? task.action_url"
+                                                        :href="(task.azione?.url ?? task.action_url)!" v-bind="eDelSito((task.azione?.url ?? task.action_url)!) ? { prefetch: true } : {}"
+                                                        data-testid="prossima-azione" :class="PULSANTE_AZIONE"
+                                                        class="border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-indigo-700 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-200 dark:hover:text-indigo-400">
+                                                        {{ task.azione?.testo ?? 'Apri il compito' }} <ArrowRight class="w-3.5 h-3.5" />
+                                                    </component>
+                                                    <button v-else type="button" data-testid="prossima-azione" :disabled="!puoChiudereCompiti" :class="PULSANTE_AZIONE"
+                                                        :title="puoChiudereCompiti ? undefined : 'Serve il permesso «Modifica scadenza in agenda».'"
+                                                        class="border-slate-200 text-slate-600 enabled:hover:border-indigo-300 enabled:hover:text-indigo-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+                                                        @click="rispondiAlCompito('fatto', task)">
+                                                        <Check class="w-3.5 h-3.5" /> {{ task.azione?.testo ?? 'Segna come fatto' }}
+                                                    </button>
+                                                    <MenuDelCompito v-if="puoChiudereCompiti" :compito="task" @scegli="(v) => rispondiAlCompito(v, task)" />
                                                 </div>
 
                                             </div>
@@ -658,7 +785,11 @@ onUnmounted(() => {
                                 </InfiniteScroll>
                             </template>
                             
-                            <div v-else class="h-full flex flex-col items-center justify-center p-12 text-center">
+                            <div v-else-if="!compitiSeiMesiDellaScheda.length && schedaInbox !== 'tutti'" class="h-full flex flex-col items-center justify-center p-12 text-center">
+                                <CheckCircle2 class="w-10 h-10 text-slate-300 dark:text-slate-600 mb-3" />
+                                <p class="text-sm font-semibold text-slate-500 dark:text-slate-400" data-testid="scheda-vuota">{{ testoSchedaVuota(schedaInbox) }}</p>
+                            </div>
+                            <div v-else-if="!compitiSeiMesi.length" class="h-full flex flex-col items-center justify-center p-12 text-center">
                                 <CheckCircle2 class="w-12 h-12 text-emerald-500/20 mb-4" />
                                 <h3 class="text-sm font-black text-slate-400 uppercase tracking-widest">Inbox vuota</h3>
                             </div>
@@ -666,10 +797,6 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Riga widget a piena larghezza, stesso rapporto 1/3 : 2/3 della
-                     riga sopra (Copertura Bilancio : Inbox = 4:8). Crediti a
-                     sinistra (piu' stretto, contenuto breve), Tesoreria a destra
-                     (piu' denso). Se manca uno dei due, l'altro prende tutta la riga. -->
                 <!--
                     Sopra gli altri due: dopo una migrazione è la cosa più urgente che ci sia, e
                     sparisce da sola quando l'ultima voce si chiude.
@@ -682,19 +809,34 @@ onUnmounted(() => {
                     class="md:col-span-3 lg:col-span-12"
                 />
 
-                <div class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
-                    <CreditiDaCompensareWidget
-                        v-if="widgets?.crediti_da_compensare"
-                        :crediti="widgets.crediti_da_compensare"
-                        class="lg:col-span-1"
-                        :class="{ 'lg:col-span-3': !widgets?.treasury_guardian }"
-                    />
+                <!-- I sei mesi per agire e il rendiconto in assemblea: a tutta larghezza, prima della fila dei crediti e della tesoreria. -->
+                <SeiMesiPerAgireWidget
+                    v-if="seiMesi"
+                    :sei-mesi="seiMesi"
+                    :condominio-id="condominio.id"
+                    :puo-rispondere="puoChiudereCompiti"
+                    class="md:col-span-3 lg:col-span-12"
+                    @rispondi="apriRisposta"
+                />
+
+                <!-- La fila della tesoreria, sempre due terzi e un terzo: a sinistra la tesoreria con le quattro cifre e i due cassetti; a destra il
+                     saldo previsto e sotto, quando c'è, «Crediti da compensare». Ogni card tiene la sua altezza: la colonna accanto non la allunga. Al telefono una
+                     colonna, nello stesso ordine. -->
+                <div class="md:col-span-3 lg:col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-3 items-start" data-testid="fila-tesoreria">
                     <TreasuryGuardianWidget
                         v-if="widgets?.treasury_guardian"
                         :treasury="widgets.treasury_guardian"
+                        :righe-sei-mesi="righeSeiMesi"
+                        :scenario="scenarioTesoreria"
                         class="lg:col-span-2"
-                        :class="{ 'lg:col-span-3': !widgets?.crediti_da_compensare }"
                     />
+                    <div v-if="widgets?.treasury_guardian?.saldoPrevisto || widgets?.crediti_da_compensare" class="flex min-w-0 flex-col gap-3"
+                        :class="widgets?.treasury_guardian ? 'lg:col-span-1' : 'lg:col-span-3'">
+                        <SaldoPrevistoCard v-if="widgets?.treasury_guardian?.saldoPrevisto" v-model:scenario="scenarioTesoreria" :saldo-previsto="widgets.treasury_guardian.saldoPrevisto"
+                            :recupero="widgets.treasury_guardian.recupero ?? null" :suggerisce="widgets.treasury_guardian.suggerisceAzione !== false"
+                            :condominio-id="condominio.id" :oggi="widgets.treasury_guardian.oggi ?? oggi ?? ''" :dati-delle-azioni="widgets.treasury_guardian.datiDelleAzioni ?? null" />
+                        <CreditiDaCompensareWidget v-if="widgets?.crediti_da_compensare" :crediti="widgets.crediti_da_compensare" />
+                    </div>
                 </div>
 
             </div>
@@ -705,7 +847,7 @@ onUnmounted(() => {
                 <div class="w-full max-w-4xl overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl flex flex-col max-h-[85vh]">
                     <div class="flex items-center justify-between border-b p-6 shrink-0">
                         <div>
-                            <h3 class="text-lg font-black text-slate-900 dark:text-white">Audit spese scoperte</h3>
+                            <h3 class="text-lg font-black text-slate-900 dark:text-white">Spese scoperte</h3>
                             <p class="text-xs text-slate-500 uppercase font-bold tracking-tight">Dettaglio fatture in sospeso e sforo budget</p>
                         </div>
                         <button @click="showOrphansModal = false" class="rounded-full p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -721,7 +863,7 @@ onUnmounted(() => {
 
                         <div v-if="fattureScoperte && fattureScoperte.length > 0" class="mb-8">
                             <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                <AlertTriangle class="w-3.5 h-3.5 text-amber-500" /> Fatture in sospeso (Imprevisti / Art. 63)
+                                <AlertTriangle class="w-3.5 h-3.5 text-amber-500" /> Fatture in sospeso (imprevisti / art. 63)
                             </h4>
                             
                             <div class="space-y-4">
@@ -751,7 +893,7 @@ onUnmounted(() => {
                                     </div>
                                     
                                     <div class="p-5">
-                                        <div class="space-y-3 pl-3 border-l-2 border-amber-200/60">
+                                        <div class="space-y-3">
                                             <div v-for="riga in fat.righe" :key="riga.id" class="flex justify-between items-start text-xs">
                                                 <div class="flex items-start gap-2">
                                                     <div class="mt-0.5">
@@ -789,7 +931,7 @@ onUnmounted(() => {
 
                         <div v-if="copertura?.orfani && copertura.orfani.filter(o => !o.nome.includes('Imprevisto -')).length > 0">
                             <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                <TrendingDown class="w-3.5 h-3.5 text-rose-500" /> Sforamenti Budget Preventivo
+                                <TrendingDown class="w-3.5 h-3.5 text-rose-500" /> Sfori del preventivo
                             </h4>
                             
                             <div class="space-y-3">
@@ -814,15 +956,15 @@ onUnmounted(() => {
                                                 <span class="text-xs text-slate-500 font-medium">{{ orfano.gestione }}</span>
                                                 <span v-if="orfano.strategia === 'fondo_riserva'" 
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-600 text-white">
-                                                    Fondo Riserva
+                                                    Fondo riserva
                                                 </span>
                                                 <span v-else-if="orfano.strategia === 'conguaglio'" 
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-600 text-white">
-                                                    A Consuntivo
+                                                    A consuntivo
                                                 </span>
                                                 <span v-else-if="orfano.strategia === 'rata_integrativa'" 
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-600 text-white">
-                                                    Rata Integrativa
+                                                    Rata integrativa
                                                 </span>
                                                 <span v-else-if="orfano.spesa_negativa"
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">
@@ -830,7 +972,7 @@ onUnmounted(() => {
                                                 </span>
                                                 <span v-else 
                                                     class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">
-                                                    Sforo Aperto
+                                                    Sforo aperto
                                                 </span>
                                             </div>
                                         </div>
@@ -846,12 +988,10 @@ onUnmounted(() => {
 
                                     <div class="p-5">
                                         <div class="flex items-start justify-between gap-4">
-                                            <p class="text-sm text-slate-500 leading-relaxed border-l-2 pl-3"
+                                            <p class="text-sm text-slate-500 leading-relaxed"
                                                 :class="{
-                                                    'border-indigo-200 text-indigo-600/70': orfano.strategia === 'conguaglio',
-                                                    'border-emerald-200 text-emerald-600/70': orfano.strategia === 'fondo_riserva',
-                                                    'border-amber-200': orfano.strategia === 'rata_integrativa',
-                                                    'border-rose-200': !['conguaglio', 'fondo_riserva', 'rata_integrativa'].includes(orfano.strategia)
+                                                    'text-indigo-600/70': orfano.strategia === 'conguaglio',
+                                                    'text-emerald-600/70': orfano.strategia === 'fondo_riserva',
                                                 }">
                                                 <template v-if="orfano.strategia === 'rata_integrativa'">
                                                     La spesa ha superato il preventivo. Emetti una rata integrativa per recuperare la differenza.
@@ -898,53 +1038,12 @@ onUnmounted(() => {
             </div>
         </Transition>
 
-        <Dialog v-model:open="isRejectModalOpen">
-            <DialogContent class="sm:max-w-[450px]">
-                <DialogHeader>
-                    <DialogTitle class="flex items-center gap-2 text-red-600">
-                        <AlertTriangle class="w-5 h-5" />
-                        Rifiuta segnalazione
-                    </DialogTitle>
-                    <DialogDescription>
-                        Stai per rifiutare il pagamento segnalato da 
-                        <span class="font-bold text-slate-900">{{ taskToReject?.context?.anagrafica_nome || 'Condòmino' }}</span>.
-                        <strong> Attenzione: questa azione sarà irreversibile.</strong>
-                    </DialogDescription>
-                </DialogHeader>
+        <SeiMesiRisposte ref="risposte" :condominio-id="condominio.id" :oggi="seiMesi?.oggi ?? ''" />
 
-                <div class="grid gap-4 py-4">
-                    <div class="grid gap-2">
-                        <Label htmlFor="reason" class="text-slate-900">
-                            Motivazione (visibile all'utente)
-                        </Label>
-                        <Textarea 
-                            id="reason" 
-                            v-model="rejectForm.reason" 
-                            placeholder="Es: Bonifico non trovato nell'estratto conto..." 
-                            class="resize-none min-h-[100px]"
-                            :class="{'border-red-500 focus-visible:ring-red-500': rejectForm.errors.reason}"
-                        />
-                        <p v-if="rejectForm.errors.reason" class="text-[11px] text-red-600 font-medium">
-                            {{ rejectForm.errors.reason }}
-                        </p>
-                    </div>
-                </div>
+        <RisposteDelCompito ref="risposteDeiCompiti" :oggi="oggi ?? seiMesi?.oggi ?? ''" />
 
-                <DialogFooter>
-                    <Button variant="outline" @click="isRejectModalOpen = false" :disabled="rejectForm.processing">
-                        Annulla
-                    </Button>
-                    <Button 
-                        variant="destructive" 
-                        @click="confirmReject" 
-                        :disabled="rejectForm.processing || !rejectForm.reason"
-                    >
-                        <Loader2 v-if="rejectForm.processing" class="w-4 h-4 mr-2 animate-spin" />
-                        Conferma rifiuto
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        <!-- La guida della pagina, nel cassetto: il pulsante «Guida» dell'intestazione. -->
+        <DashboardCondominioGuide v-model:open="mostraGuida" />
 
     </GestionaleLayout>
 </template>

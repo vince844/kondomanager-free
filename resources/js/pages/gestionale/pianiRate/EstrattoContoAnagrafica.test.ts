@@ -72,6 +72,14 @@ describe('la card «Addebiti» dell\'estratto conto', () => {
         expect(addebiti!.description).toMatch(/rimbors/i);
         // Controllo: restano le rate emesse, che sono il grosso del totale.
         expect(addebiti!.description).toMatch(/rate emesse/i);
+        // Gli addebiti a una persona sola sono emessi quando si registrano: sono nel totale, e la card lo dice.
+        expect(addebiti!.description).toContain('gli addebiti personali');
+    });
+
+    test('la card «Saldo Iniziale» parla all\'amministratore: il credito è della persona, non «a tuo favore»', () => {
+        const saldo = guide().find((g) => g.title === 'Saldo Iniziale');
+        expect(saldo!.description).not.toMatch(/a tuo favore/i);
+        expect(saldo!.description).toContain('in verde un credito della persona');
     });
 
     test('controllo: le altre due card ci sono ancora', () => {

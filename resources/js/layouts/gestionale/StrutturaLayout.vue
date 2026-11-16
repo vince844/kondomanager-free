@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
-import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins, HandCoins } from 'lucide-vue-next';
+import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins, HandCoins, Percent, Settings2 } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import NavSezione from '@/components/NavSezione.vue';
@@ -53,6 +53,18 @@ const topbarNavItems: LinkItem[] = [
     icon: HandCoins,
     title: 'Già versato',
     href: generatePath('gestionale/:condominio/contributi', { condominio: condominio.value.id }),
+  },
+  {
+    type: 'link',
+    icon: Percent,
+    title: 'Recupero dei crediti',
+    href: generatePath('gestionale/:condominio/recupero-crediti', { condominio: condominio.value.id }),
+  },
+  {
+    type: 'link',
+    icon: Settings2,
+    title: 'Impostazioni',
+    href: generatePath('gestionale/:condominio/impostazioni', { condominio: condominio.value.id }),
   }
 ];
 

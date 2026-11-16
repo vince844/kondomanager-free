@@ -37,3 +37,74 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* I menu dei campi (`v-select`) dentro i moduli e le finestre: alti come i campi accanto (h-8, o h-7 con `menu-campo-piccolo`), con il testo del
+   riquadro in cui stanno, leggibili nel tema scuro; le voci lunghe vanno a capo nel menu aperto invece di tagliarsi. Come i menu delle ricevute e del
+   tasso legale; solo dove c'è la classe: gli altri menu del programma restano come sono. */
+.menu-campo .v-select {
+    --vs-font-size: 1em;
+    --vs-line-height: 1.25;
+    --vs-border-radius: 0.375rem;
+    --vs-border-color: var(--input);
+    --vs-controls-color: rgb(100 116 139);
+    --vs-disabled-bg: transparent;
+    background: transparent;
+}
+.menu-campo .vs__dropdown-toggle {
+    min-height: 2rem;
+    padding: 0;
+    align-items: center;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.menu-campo.menu-campo-piccolo .vs__dropdown-toggle {
+    min-height: 1.75rem;
+}
+.menu-campo .vs__selected-options {
+    align-items: center;
+    padding-left: 6px;
+}
+.menu-campo .vs__selected,
+.menu-campo .vs__search {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+.menu-campo .vs__search,
+.menu-campo .vs__search::placeholder {
+    font-size: 1em !important;
+}
+.menu-campo .vs__actions {
+    padding: 0 8px 0 4px;
+}
+.menu-campo .vs__open-indicator {
+    transform: scale(0.75);
+}
+.menu-campo .vs--open .vs__open-indicator {
+    transform: rotate(180deg) scale(0.75);
+}
+.menu-campo .vs__dropdown-menu {
+    font-size: 1em;
+    max-height: 16rem;
+}
+.menu-campo .vs__dropdown-option {
+    white-space: normal;
+}
+.menu-campo .vs--disabled {
+    opacity: 0.6;
+}
+.dark .menu-campo .v-select {
+    --vs-dropdown-bg: rgb(15 23 42);
+    --vs-dropdown-color: rgb(226 232 240);
+    --vs-dropdown-option-color: rgb(226 232 240);
+    --vs-selected-color: rgb(226 232 240);
+    --vs-search-input-color: rgb(226 232 240);
+    --vs-controls-color: rgb(148 163 184);
+    --vs-border-color: var(--input);
+}
+.dark .menu-campo .vs__dropdown-toggle {
+    background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+.dark .menu-campo .vs__dropdown-option--highlight {
+    background: rgb(30 41 59) !important;
+    color: rgb(241 245 249) !important;
+}

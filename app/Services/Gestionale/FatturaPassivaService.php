@@ -1443,7 +1443,7 @@ class FatturaPassivaService
                 'path' => $path,
                 'mime_type' => $file->getMimeType(),
                 'file_size' => $file->getSize(),
-                'created_by' => Auth::id() ?? 1,
+                'created_by' => Auth::id(),
                 'is_published' => false,
                 'is_approved' => true,
             ]);

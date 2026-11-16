@@ -143,6 +143,21 @@ it('⚠️ il cruscotto lo trova allineato: atteso e generato coincidono', funct
     expect($servizio->eDisallineato($piano))->toBeFalse();
 });
 
+it("il piano rate ha l'esercizio scritto, e il conguaglio non avvisa che lo deduce", function () {
+    // Un piano senza `esercizio_id` è letto dall'esercizio dedotto dalla sua data: la scheda
+    // «Conguaglio» lo dice con un avviso, giusto per un piano così ma non per la demo.
+    $c = creaDimostrativo()['condominio'];
+    $piano = PianoRate::where('condominio_id', $c->id)->firstOrFail();
+    $esercizio = $c->esercizi()->latest('id')->firstOrFail();
+
+    expect($piano->esercizio_id)->toBe($esercizio->id);
+
+    $letto = app(\App\Services\Gestionale\ConsuntivoPerPersona::class)->perEsercizio($esercizio);
+    foreach ($letto['gestioni'] ?? [] as $g) {
+        expect($g['piani_dedotti'] ?? [])->toBe([]);
+    }
+});
+
 it("⚠️ l'Inbox operativa non è vuota", function () {
     // ⚠️ **Su richiesta di Vincenzo, ed è il difetto più grosso che aveva la demo.** L'Inbox è il
     // posto in cui il programma dice all'amministratore *cosa deve fare oggi*: è la differenza fra
@@ -282,6 +297,79 @@ it('la nota di credito riduce davvero il bonifico', function () {
 |--------------------------------------------------------------------------
 */
 
+it('il saldo della banca è già scritto nella nota sintetica, uguale al saldo registrato: il controllo della banca torna', function () {
+    $c = creaDimostrativo()['condominio'];
+    $e = $c->esercizi()->latest('id')->firstOrFail();
+    $banca = \App\Models\Gestionale\Cassa::where('condominio_id', $c->id)->where('tipo', 'banca')->firstOrFail();
+    $scritto = \App\Services\Gestionale\NotaSinteticaDelRendiconto::contenuto($e)['banca'][(string) $banca->id] ?? null;
+    // Il saldo vero della banca, dal registro di contabilità (un'altra vista): il conto corrente con il fondo dentro.
+    $registro = app(\App\Services\Gestionale\RegistroContabilitaService::class)->registroConRiepilogo($e, ['cassa' => $banca->id]);
+    $controllo = collect(app(\App\Services\Gestionale\ControlliDelRendiconto::class)->perEsercizio($c, $e)['controlli'])->firstWhere('id', 'BC');
+
+    expect($scritto)->not->toBeNull()
+        ->and($scritto['saldo'])->toBe($registro['saldo_finale'])
+        ->and($scritto['data'])->toBe(\App\Helpers\DateHelper::oggiUtente())
+        ->and($controllo['esito'])->toBe('quadra')
+        ->and($controllo['sinistra'])->toBe($controllo['destra']);
+});
+
+it('il fondo dei lavori nasce vincolato ai lavori, con il vincolo: la scheda «Cassa» lo dice e lo tiene fuori da «Si può usare»', function () {
+    $c = creaDimostrativo()['condominio'];
+    $e = $c->esercizi()->latest('id')->firstOrFail();
+    $fondo = \App\Models\Gestionale\Cassa::where('condominio_id', $c->id)->where('tipo', 'fondo')->firstOrFail();
+    $conto = collect(app(\App\Services\Gestionale\RiepilogoFinanziarioService::class)->perEsercizio($e, \App\Helpers\DateHelper::oggiUtente())['conti'])
+        ->firstWhere('tipo', 'banca');
+    $per = collect($conto['di_cui'])->keyBy(fn ($d) => $d['tipo'] === 'libero' ? 'libero' : $d['cassa']);
+
+    expect([$fondo->nome, $fondo->sottotipo_fondo, $fondo->vincolo_descrizione, (bool) $fondo->is_override_assemblea, $fondo->is_utilizzabile_per_imprevisti])
+        ->toBe(['Fondo lavori straordinari', 'vincolato_lavori', 'rifacimento del lastrico solare', false, false])
+        ->and($per['Fondo lavori straordinari']['tipo_fondo'])->toBe(['testo' => 'vincolato ai lavori: rifacimento del lastrico solare', 'tono' => 'vincolato'])
+        ->and($per['Fondo lavori straordinari']['finale'])->toBeGreaterThan(0)
+        // Il fondo vincolato resta fuori: si può usare la sola parte libera.
+        ->and($conto['si_puo_usare'])->toBe($per['libero']['finale'])
+        ->and($conto['si_puo_usare'])->toBe($conto['finale'] - $per['Fondo lavori straordinari']['finale']);
+});
+
+it('con un secondo fondo, generico, accantonato dalle pagine: la parte libera dice € 1.800,00 messi nei fondi, e si può usare anche il fondo generico', function () {
+    $c = creaDimostrativo()['condominio'];
+    $e = $c->esercizi()->latest('id')->firstOrFail();
+    $banca = \App\Models\Gestionale\Cassa::where('condominio_id', $c->id)->where('tipo', 'banca')->firstOrFail();
+    $leggi = fn () => collect(app(\App\Services\Gestionale\RiepilogoFinanziarioService::class)->perEsercizio($e, \App\Helpers\DateHelper::oggiUtente())['conti'])
+        ->firstWhere('cassa_id', $banca->id);
+    // Come nel condominio dimostrativo di prova: il «Fondo di riserva», generico, con un giroconto di € 300,00 dal conto corrente. Prima un incasso, perché
+    // il giroconto vuole il denaro sulla parte libera: la persona con il residuo più alto paga le sue quote (un incasso entra in banca, non nei fondi).
+    $residui = \App\Models\Gestionale\RataQuote::whereIn('rata_id', DB::table('rate')->whereIn('piano_rate_id', PianoRate::where('condominio_id', $c->id)->pluck('id'))->pluck('id'))
+        ->get()->filter(fn ($q) => (int) $q->importo > (int) $q->importo_pagato)->groupBy('anagrafica_id')
+        ->sortByDesc(fn ($q) => $q->sum(fn ($x) => (int) $x->importo - (int) $x->importo_pagato));
+    $chi = $residui->keys()->first();
+    $dettaglio = $residui->first()->map(fn ($q) => ['rata_id' => $q->id, 'importo' => ((int) $q->importo - (int) $q->importo_pagato) / 100])->values()->all();
+    $gestione = DB::table('scritture_contabili')->where('condominio_id', $c->id)->where('tipo_movimento', 'giroconto')->value('gestione_id');
+    app(\App\Actions\Gestionale\Movimenti\StoreIncassoRateAction::class)->execute(['pagante_id' => $chi, 'cassa_id' => $banca->id, 'gestione_id' => $gestione,
+        'data_pagamento' => \App\Helpers\DateHelper::oggiUtente(), 'importo_totale' => round(array_sum(array_column($dettaglio, 'importo')), 2), 'descrizione' => 'Saldo delle rate',
+        'eccedenza' => 0, 'dettaglio_pagamenti' => $dettaglio], $c, $e);
+    $prima = $leggi();
+    expect(collect($prima['di_cui'])->firstWhere('tipo', 'libero')['finale'])->toBeGreaterThanOrEqual(30000);
+    $riserva = app(\App\Actions\Cassa\CreateCassaAction::class)->execute($c, ['nome' => 'Fondo di riserva', 'tipo' => 'fondo', 'saldo_iniziale' => '0,00',
+        'sottotipo_fondo' => 'generico']);
+    app(\App\Actions\Gestionale\Movimenti\RegistraGirocontoAction::class)->execute([
+        'cassa_origine_id' => $banca->id, 'cassa_destinazione_id' => $riserva->id, 'importo' => 300.00,
+        'data_operazione' => \App\Helpers\DateHelper::oggiUtente(), 'causale' => 'Accantonamento al fondo di riserva',
+        'gestione_id' => $gestione, 'esercizio_id' => $e->id,
+    ], $c, $e);
+    $dopo = $leggi();
+    $per = collect($dopo['di_cui'])->keyBy(fn ($d) => $d['tipo'] === 'libero' ? 'libero' : $d['cassa']);
+
+    // Il conto non cambia; la parte libera scende di € 300,00 e lo dice: € 1.500,00 nel fondo dei lavori più € 300,00 nella riserva = € 1.800,00.
+    expect($dopo['finale'])->toBe($prima['finale'])
+        ->and($per['libero']['messi_nei_fondi'])->toBe(180000)
+        ->and($per['libero']['tornati_dai_fondi'])->toBe(0)
+        ->and($per['Fondo di riserva']['finale'])->toBe(30000)
+        ->and($per['libero']['finale'])->toBe($prima['finale'] - 180000)
+        // Si può usare: la parte libera e la riserva generica; il fondo dei lavori, vincolato, no.
+        ->and($dopo['si_puo_usare'])->toBe($per['libero']['finale'] + 30000)
+        ->and($dopo['si_puo_usare'])->toBe($dopo['finale'] - $per['Fondo lavori straordinari']['finale']);
+});
+
 it('⚠️ si rimuove senza lasciare niente indietro', function () {
     $azione = app(CreaCondominioDimostrativoAction::class);
     $primaCondomini = Condominio::count();
@@ -294,7 +382,7 @@ it('⚠️ si rimuove senza lasciare niente indietro', function () {
     $residui = [];
     foreach (['fatture_passive', 'pagamenti_fornitori', 'scritture_contabili', 'casse',
               'conti_contabili', 'immobili', 'tabelle', 'esercizi', 'gestioni', 'piani_conti',
-              'piani_rate', 'saldi'] as $tabella) {
+              'piani_rate', 'saldi', 'rendiconto_versioni', 'note_sintetiche'] as $tabella) {
         $n = DB::table($tabella)->where('condominio_id', $c->id)->count();
         if ($n > 0) {
             $residui[$tabella] = $n;
@@ -309,6 +397,50 @@ it('⚠️ si rimuove senza lasciare niente indietro', function () {
         "sparito. Una tabella nuova che punti a un'entità del condominio va aggiunta a quell'ordine.\n\n".
         'Vedi `CreaCondominioDimostrativoAction::rimuovi()`.'
     );
+});
+
+it('⚠️ si rimuove anche con il rendiconto fermato e approvato, con il suo PDF e il verbale: niente resta, nemmeno i file', function () {
+    // Le versioni del rendiconto hanno la chiave verso l'esercizio e il condominio che non cancella in cascata: senza toglierle prima, la rimozione
+    // della demo si fermava sul vincolo, e il pulsante che il programma offre non funzionava più dopo aver provato «Ferma per l'assemblea».
+    \Illuminate\Support\Facades\Storage::fake('local');
+    $azione = app(CreaCondominioDimostrativoAction::class);
+    $c = $azione->esegui()['condominio'];
+    $esercizio = $c->esercizi()->latest('id')->firstOrFail();
+    // Il dimostrativo ha già la sua nota, con il saldo della banca: la si riscrive.
+    \App\Models\Gestionale\NotaSintetica::updateOrCreate(['esercizio_id' => $esercizio->id], ['condominio_id' => $c->id, 'contenuto' => ['altre' => ['testo' => 'Prova.']]]);
+    $servizio = app(\App\Services\Gestionale\VersioniDelRendiconto::class);
+    $versione = $servizio->ferma($c, $esercizio, ['riepilogo'], false, false, auth()->user());
+    $servizio->approva($versione, ['data_delibera' => \App\Helpers\DateHelper::oggiUtente(), 'numero_verbale' => '1', 'riparto_approvato' => true],
+        \Illuminate\Http\UploadedFile::fake()->createWithContent('verbale.pdf', "%PDF-1.4\nverbale\n%%EOF"), auth()->user());
+    $percorsi = \App\Models\Documento::where('documentable_type', \App\Models\Gestionale\RendicontoVersione::class)->pluck('path')->all();
+    expect($percorsi)->toHaveCount(2);
+    foreach ($percorsi as $percorso) {
+        expect(\Illuminate\Support\Facades\Storage::disk('local')->exists($percorso))->toBeTrue();
+    }
+
+    $azione->rimuovi($c);
+
+    expect(Condominio::find($c->id))->toBeNull()
+        ->and(DB::table('rendiconto_versioni')->count())->toBe(0)
+        ->and(DB::table('note_sintetiche')->count())->toBe(0)
+        ->and(\App\Models\Documento::where('documentable_type', \App\Models\Gestionale\RendicontoVersione::class)->count())->toBe(0);
+    foreach ($percorsi as $percorso) {
+        expect(\Illuminate\Support\Facades\Storage::disk('local')->exists($percorso))->toBeFalse();
+    }
+});
+
+it('un condominio vero con un rendiconto conservato non si elimina, e la frase nomina il rendiconto', function () {
+    $vero = Condominio::factory()->create(['is_demo' => false]);
+    $esercizio = \App\Models\Esercizio::factory()->create(['condominio_id' => $vero->id, 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'chiuso']);
+    \App\Models\Gestionale\RendicontoVersione::create(['condominio_id' => $vero->id, 'esercizio_id' => $esercizio->id, 'numero' => 1, 'stato' => 'presentata', 'forma' => 1,
+        'cifre' => [], 'calcolato_il' => '2026-03-01 09:00:00']);
+
+    $this->delete(route('condomini.destroy', ['condominio' => $vero->id]));
+
+    expect(Condominio::find($vero->id))->not->toBeNull()
+        // La frase dice quale versione trattiene il condominio, e dove si guarda: una fermata e mai approvata si elimina dalla Sintesi.
+        ->and(session('message')['message'] ?? '')->toContain('ha un rendiconto conservato per l\'assemblea, e per questo non può essere eliminato: la versione 1 del rendiconto')
+        ->and(session('message')['message'] ?? '')->toContain('fermata per l\'assemblea il 01/03/2026 e mai approvata: si elimina dalla Sintesi del rendiconto.');
 });
 
 it('⚠️ non usa le factory: Faker non esiste su un\'installazione vera', function () {

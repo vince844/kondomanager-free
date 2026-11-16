@@ -383,9 +383,9 @@ test('Storno di pagamento: la fattura torna come uscita con residuo corretto (§
 | Le righe d'azione del widget si aprono davvero
 |--------------------------------------------------------------------------
 |
-| `TreasuryActionRow.vue` chiama `route(azione.route, azione.routeParams)` di Ziggy: con un nome che non
-| esiste, o con un parametro che la rotta pretende e non c'è, Ziggy solleva, il componente prende
-| l'eccezione e la riga diventa un testo che non porta da nessuna parte. Le tre azioni chiamavano
+| La tesoreria (`TreasuryGuardianWidget.vue`: «Apri i piani rate →», «Apri le fatture pregresse →») chiama
+| `route(azione.route, azione.routeParams)` di Ziggy: con un nome che non esiste, o con un parametro che la
+| rotta pretende e non c'è, Ziggy solleva, il componente prende l'eccezione e il collegamento non c'è. Le tre azioni chiamavano
 | `gestionale.rate.index`, `gestionale.piani-rate.index` e `gestionale.fatture.index`: nomi senza il
 | prefisso `admin.` (e il primo non è mai esistito), senza il condominio e, per i piani rate, senza
 | l'esercizio. La guardia sui nomi di rotta delle schermate legge solo i sorgenti `.vue` e `.ts`, e i

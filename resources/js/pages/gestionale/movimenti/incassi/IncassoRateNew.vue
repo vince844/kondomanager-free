@@ -10,18 +10,19 @@ import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertCircle, BookOpen, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock, Wallet } from 'lucide-vue-next';
+import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock, Wallet } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import IncassoRateGuide from '@/components/guides/IncassoRateGuide.vue';
 import { useDebitiLoader } from '@/composables/useDebitiLoader';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Rata } from '@/types/gestionale/rata';
 import { pianificaCoperture } from '@/lib/gestionale/incassi/pianoCreditoIncasso';
-import { firmaOrdine, fraseFuoriOrdine, imputazioneMancante, SCELTE_IMPUTAZIONE, type RispostaOrdine, type SceltaImputazione } from '@/lib/gestionale/incassi/imputazione';
+import { FRASE_VERSAMENTO_ACCORDO, firmaOrdine, fraseFuoriOrdine, imputazioneMancante, SCELTE_IMPUTAZIONE, testoAccordoIncasso, type RispostaOrdine, type SceltaImputazione } from '@/lib/gestionale/incassi/imputazione';
 import { oggiLocale } from '@/lib/giorno';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 
@@ -112,7 +113,7 @@ const {
     pagaScadute: pagaScaduteComposable
 } = usePaymentDistribution();
 
-const { fetchDebiti: fetchDebitiAPI, noteSolidarieta } = useDebitiLoader();
+const { fetchDebiti: fetchDebitiAPI, noteSolidarieta, accordo: accordoDellaPersona } = useDebitiLoader();
 
 const searchMode = ref<'persona' | 'immobile'>('persona');
 const selectedImmobileId = ref<number | null>(null);
@@ -150,6 +151,11 @@ const form = useForm({
      */
     imputazione_scelta: null as SceltaImputazione | null,
     imputazione_nota: '',
+    /**
+     * «Versamento dell'accordo»: con un accordo di rientro in corso il versamento va alle rate che l'accordo copre (prima gli interessi e le spese,
+     * poi il capitale più vecchio); senza, alle rate fuori dall'accordo. Non è già scelto.
+     */
+    versamento_accordo: false,
 });
 
 const rateList = ref<Rata[]>([]);
@@ -182,6 +188,7 @@ watch(() => form.pagante_id, (v) => {
     sceltaDalPortale = v !== null && v === paganteDelPortale;
     form.imputazione_scelta = sceltaDalPortale ? 'indicata_dal_versante' : null;
     form.imputazione_nota = '';
+    form.versamento_accordo = false;
 });
 
 /**
@@ -431,6 +438,7 @@ const datiOrdine = () => ({
     credito_prima: form.credito_prima,
     credito_fra_gestioni: form.credito_fra_gestioni,
     dettaglio_pagamenti: form.dettaglio_pagamenti,
+    versamento_accordo: form.versamento_accordo,
 });
 const firmaCorrente = computed(() => firmaOrdine(datiOrdine()));
 const rispostaOrdine = ref<{ firma: string; risposta: RispostaOrdine | null; fallita: boolean } | null>(null);
@@ -445,7 +453,8 @@ const verificaOrdineFallita = computed(() => ordineCorrente.value?.fallita === t
 // Con la verifica fallita la scelta si mostra lo stesso, facoltativa: chi sa a che cosa va il versamento lo può dire, e il server la usa se
 // la distribuzione si discosta.
 const mostraSceltaImputazione = computed(() => esitoOrdine.value?.esito === 'fuori_ordine' || verificaOrdineFallita.value);
-const testoFuoriOrdine = computed(() => fraseFuoriOrdine(esitoOrdine.value, euroDaCentesimi, (rataId) => rateList.value.some((r) => r.rata_padre_id === rataId), versatoDa.value?.nome ?? null));
+const testoFuoriOrdine = computed(() => fraseFuoriOrdine(esitoOrdine.value, euroDaCentesimi, (rataId) => rateList.value.some((r) => r.rata_padre_id === rataId), versatoDa.value?.nome ?? null,
+    !!accordoDellaPersona.value));
 
 const verificaOrdine = async (): Promise<RispostaOrdine | null> => {
     if (attesaOrdine) { clearTimeout(attesaOrdine); attesaOrdine = null; }
@@ -823,9 +832,25 @@ const runDistribution = async () => {
         // senza «Versato da», si copre la sola rata della segnalazione e il resto è parte in più, come sempre.
         const centesimi = (euro: number) => Math.round(euro * 100);
         const soloRataDelLink = ramoDelLink && righeCredito.length > 0;
-        const debiti = (soloRataDelLink ? [rataTarget!] : rateList.value.filter(r => parseResiduoQuota(r.residuo) > 0));
+        // L'ordine con un accordo di rientro in corso, come il server (`OrdineImputazione::esito`): senza la scelta la parte di ogni rata fuori
+        // dall'accordo; con «Versamento dell'accordo» prima la parte dentro, nell'ordine dell'accordo (prima gli interessi e le spese), poi la parte
+        // fuori nell'ordine di sempre. Una rata coperta in parte ha due posti: la seconda chiave è il suo id con il segno meno.
+        const parti = (r: Rata) => {
+            const residuo = centesimi(parseResiduoQuota(r.residuo));
+            const dentro = Math.min(residuo, centesimi(r.in_accordo ?? 0));
+            return { dentro, fuori: residuo - dentro };
+        };
+        const conDebito = rateList.value.filter(r => parseResiduoQuota(r.residuo) > 0);
+        const fila: Array<{ chiave: number; residuo: number; gestione: number | null }> = [
+            ...(form.versamento_accordo
+                ? conDebito.filter(r => parti(r).dentro > 0).sort((a, b) => (a.ordine_accordo ?? 0) - (b.ordine_accordo ?? 0))
+                    .map(r => ({ chiave: r.id, residuo: parti(r).dentro, gestione: r.gestione_id ?? null }))
+                : []),
+            ...conDebito.filter(r => parti(r).fuori > 0)
+                .map(r => ({ chiave: form.versamento_accordo ? -r.id : r.id, residuo: parti(r).fuori, gestione: r.gestione_id ?? null })),
+        ];
         const esito = pianificaCoperture(
-            debiti.map(r => ({ chiave: r.id, residuo: centesimi(parseResiduoQuota(r.residuo)), gestione: r.gestione_id ?? null })),
+            soloRataDelLink ? [{ chiave: rataTarget!.id, residuo: centesimi(parseResiduoQuota(rataTarget!.residuo)), gestione: rataTarget!.gestione_id ?? null }] : fila,
             righeCredito.map(r => ({ chiave: r.id, disponibile: centesimi(creditoRiga(r)), gestione: r.gestione_id ?? null })),
             centesimi(importoNumerico.value),
             soloRataDelLink ? true : creditoPrimaScelto.value,
@@ -834,7 +859,7 @@ const runDistribution = async () => {
 
         rateList.value.forEach(r => {
             if (parseResiduoQuota(r.residuo) > 0) {
-                const coperto = esito.copertura[r.id] ?? 0;
+                const coperto = (esito.copertura[r.id] ?? 0) + (esito.copertura[-r.id] ?? 0);
                 r.da_pagare = coperto / 100;
                 r.selezionata = coperto > 0;
             } else if (creditoRiga(r) > 0) {
@@ -867,6 +892,13 @@ const runDistribution = async () => {
 
 const distributeAuto = () => {
     runDistribution();
+};
+
+/** «Versamento dell'accordo» scelto o tolto: la distribuzione torna automatica sul perimetro nuovo. */
+const cambiaVersamentoAccordo = (v: boolean) => {
+    form.versamento_accordo = v;
+    mode.value = 'auto';
+    if (rateList.value.length > 0) runDistribution();
 };
 
 const handleManualChange = (rata: any, val: string | number) => {
@@ -953,7 +985,7 @@ const pagaTutto = () => {
 
 const pagaScadute = async () => {
     mode.value = 'manual';
-    const somma = pagaScaduteComposable(rateList.value);
+    const somma = pagaScaduteComposable(rateList.value, form.versamento_accordo);
     form.importo_totale = somma;
     rateList.value = [...rateList.value];
     await nextTick();
@@ -1265,9 +1297,7 @@ onMounted(async () => {
                             pannello dalle tre schede qui sotto — che sono anch'esse una guida,
                             ma di un'altra scala.
                         -->
-                        <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
-                            <BookOpen class="h-4 w-4" /> Guida completa
-                        </Button>
+                        <PulsanteGuida testo="Guida completa" @click="mostraGuida = true" />
                     </template>
                 </PageHeaderGuide>
             </div>
@@ -1688,7 +1718,7 @@ onMounted(async () => {
                             <div class="flex items-center gap-2" v-if="rateList.length">
                                 <Button size="sm" variant="ghost" @click="resetAllocation" class="h-7 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 px-2"><RotateCcw class="w-3 h-3 mr-1"/> Resetta</Button>
                                 <div class="h-3 w-px bg-gray-300 mx-1"></div>
-                                <Button size="sm" variant="outline" @click="pagaScadute" title="Le rate con la scadenza passata, anche quelle non ancora emesse" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga scadute</Button>
+                                <Button size="sm" variant="outline" @click="pagaScadute" title="Le rate con la scadenza passata, anche quelle non ancora emesse, e gli interessi e le spese addebitati già scaduti o che scadono oggi" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga scadute</Button>
                                 <Button size="sm" variant="outline" @click="pagaTutto" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga tutto</Button>
                             </div>
                         </div>
@@ -1755,6 +1785,19 @@ onMounted(async () => {
                                 <div>
                                     <span class="text-xs font-bold block mb-0.5">Chi risponde in solido</span>
                                     <span class="text-[11px] leading-snug block opacity-90">{{ nota }}</span>
+                                </div>
+                            </div>
+
+                            <!-- L'accordo di rientro in corso: la parte delle rate che copre esce dall'ordine proposto; «Versamento dell'accordo» la paga. -->
+                            <div v-if="accordoDellaPersona && rateList.length > 0" data-testid="accordo-incasso" class="bg-sky-50/80 border-b border-sky-100 px-4 py-2.5 flex items-start gap-3 text-sky-900 shrink-0">
+                                <div class="p-1 bg-sky-100 rounded-full mt-0.5 shrink-0"><Info class="w-4 h-4 text-sky-600" /></div>
+                                <div class="flex-1">
+                                    <span class="text-xs font-bold block mb-0.5">{{ testoAccordoIncasso(accordoDellaPersona) }}</span>
+                                    <label class="mt-1 flex cursor-pointer items-center gap-2 text-xs font-semibold" data-testid="versamento-accordo">
+                                        <input type="checkbox" :checked="form.versamento_accordo" class="w-3.5 h-3.5 rounded border-sky-300" @change="cambiaVersamentoAccordo(($event.target as HTMLInputElement).checked)" />
+                                        Versamento dell'accordo
+                                    </label>
+                                    <span class="text-[11px] leading-snug block opacity-90 mt-0.5">{{ FRASE_VERSAMENTO_ACCORDO }}</span>
                                 </div>
                             </div>
 
@@ -1851,6 +1894,7 @@ onMounted(async () => {
                                         </td>
                                         <td class="p-3 align-top">
                                             <div class="text-xs font-bold text-gray-800 mb-0.5">{{ r.descrizione }}</div>
+                                            <div v-if="(r.in_accordo ?? 0) > 0" class="text-[10px] text-sky-700 font-medium" data-testid="parte-nell-accordo">nell'accordo di rientro: {{ euro(r.in_accordo ?? 0) }}</div>
 
                                             <div class="text-[11px] text-blue-600 font-medium flex items-center gap-1 max-w-[200px]" :title="r.intestatari_full || r.intestatario">
                                                 <User class="w-3 h-3 opacity-70 shrink-0"/>

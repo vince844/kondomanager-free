@@ -51,7 +51,7 @@ class SituazioneDebitoriaController extends Controller
             $anagrafica = \App\Models\Anagrafica::find($request->anagrafica_id);
             $note = $anagrafica ? app(\App\Services\Subentro\NotaSolidarieta::class)->per($condominio, $anagrafica) : [];
         } else {
-            return response()->json(['rate' => [], 'note_solidarieta' => []]);
+            return response()->json(['rate' => [], 'note_solidarieta' => [], 'accordo' => null]);
         }
 
         // 4. Esecuzione
@@ -59,8 +59,14 @@ class SituazioneDebitoriaController extends Controller
             ->orderBy('data_scadenza', 'asc') 
             ->get();
 
+        // Gli accordi di rientro in corso oggi delle persone delle quote: la parte di ogni (persona, rata, unità) che l'accordo copre esce
+        // dall'ordine proposto, e «Versamento dell'accordo» la paga, nel suo ordine.
+        $oggi = \App\Helpers\DateHelper::oggiUtente();
+        $accordi = app(\App\Services\Gestionale\Debiti\AccordiRientro::class);
+        $partiInAccordo = $accordi->partiInCorso((int) $condominio->id, $rawQuotes->pluck('anagrafica_id')->filter()->unique()->map(fn ($id) => (int) $id)->values()->all(), $oggi);
+
         // 5. AGGREGAZIONE PER RATA PADRE
-        $groupedRate = $rawQuotes->groupBy('rata_id')->map(function ($gruppoQuotes) use ($condominio) {
+        $groupedRate = $rawQuotes->groupBy('rata_id')->map(function ($gruppoQuotes) use ($condominio, $partiInAccordo) {
             
             $first = $gruppoQuotes->first();
             
@@ -237,6 +243,11 @@ class SituazioneDebitoriaController extends Controller
             // dell'amministratore. Il campo guarda solo la data: che la rata sia emessa lo dice `is_emitted` (il badge «Scaduta» del
             // modulo li guarda tutti e due; «Mostra scadute» e «Paga scadute» solo la data, per restare in testa all'ordine).
             $scadenza = Scadenza::giorno($first->rata->data_scadenza);
+            $accessorio = $gruppoQuotes->contains(fn ($q) => $q->tipo === \App\Models\Gestionale\RataQuote::TIPO_ACCESSORIO);
+            // La parte della rata in un accordo di rientro in corso, per le quote a debito di chi ha l'accordo; mai più del residuo della riga.
+            $inAccordo = (int) $gruppoQuotes->sum(fn ($q) => ($q->importo - $q->importo_pagato) > 0
+                ? min($q->importo - $q->importo_pagato, $partiInAccordo[(int) $q->anagrafica_id][\App\Services\Gestionale\Debiti\AccordiRientro::chiave($q->rata_id, $q->immobile_id)] ?? 0) : 0);
+            $inAccordo = max(0, min($inAccordo, $residuoNetto));
 
             return [
                 'id'              => $first->id,
@@ -260,7 +271,14 @@ class SituazioneDebitoriaController extends Controller
                 // a `tipo = 'ordinaria'`, e il passaggio scrive gemelle `saldo_iniziale` su qualunque rata).
                 'pregresso'       => (int) $first->rata->numero_rata === 0,
                 // La posizione nell'ordine proposto: solo le righe con una quota a debito (sotto, dopo l'ordinamento).
-                'chiave_ordine'   => OrdineImputazione::chiave($scadenza, (int) $first->rata->numero_rata, $isEmitted, (int) $first->rata_id),
+                // Un interesse o una spesa addebitati alla persona, scaduti o del giorno, vengono prima del capitale (art. 1194 c.c.):
+                // `in_testa`, che «Paga scadute» paga con le rate scadute; uno che scade più avanti sta fra le rate.
+                'accessorio'      => $accessorio,
+                'in_testa'        => OrdineImputazione::inTesta($accessorio, $scadenza),
+                // La parte nell'accordo di rientro, in euro come `residuo`: fuori dall'ordine proposto; «Versamento dell'accordo» paga solo questa.
+                'in_accordo'      => MoneyHelper::fromCents($inAccordo),
+                'in_accordo_cents' => $inAccordo,
+                'chiave_ordine'   => OrdineImputazione::chiave($scadenza, (int) $first->rata->numero_rata, $isEmitted, (int) $first->rata_id, $accessorio),
                 'a_debito'        => $gruppoQuotes->contains(fn ($q) => ($q->importo - $q->importo_pagato) > 0),
                 'is_published'    => $isPublished,
                 'dettaglio_quote' => $dettaglioTooltip 
@@ -270,15 +288,31 @@ class SituazioneDebitoriaController extends Controller
         ->sortBy('chiave_ordine')
         ->values();
 
-        // Le righe nell'ordine che il programma propone, con la posizione fra quelle a debito (una riga solo a credito non ne ha).
+        // Le righe nell'ordine che il programma propone, con la posizione fra quelle a debito (una riga solo a credito non ne ha); e la posizione
+        // nell'ordine dell'accordo, fra le righe con una parte nell'accordo: lo stesso ordine, ristretto a loro.
         $posizione = 0;
-        $groupedRate = $groupedRate->map(function (array $r) use (&$posizione) {
+        $posizioneAccordo = 0;
+        $groupedRate = $groupedRate->map(function (array $r) use (&$posizione, &$posizioneAccordo) {
             $r['ordine'] = $r['a_debito'] ? ++$posizione : null;
-            unset($r['chiave_ordine'], $r['a_debito']);
+            $r['ordine_accordo'] = $r['in_accordo_cents'] > 0 ? ++$posizioneAccordo : null;
+            unset($r['chiave_ordine'], $r['a_debito'], $r['in_accordo_cents']);
 
             return $r;
         });
 
-        return response()->json(['rate' => $groupedRate, 'note_solidarieta' => array_map(fn ($n) => $n['testo'], $note)]);
+        // Per la persona cercata, l'accordo di rientro in corso oggi: il giorno, quanto è ancora nell'accordo, la prossima rata del calendario non versata.
+        $accordo = null;
+        if ($request->filled('anagrafica_id') && ! $request->filled('immobile_id') && isset($partiInAccordo[(int) $request->anagrafica_id])) {
+            $suoi = $accordi->inCorso((int) $condominio->id, $oggi, [(int) $request->anagrafica_id])[(int) $request->anagrafica_id] ?? collect();
+            $lettura = app(\App\Services\Gestionale\Debiti\LetturaDebiti::class)->perPersona((int) $condominio->id, (int) $request->anagrafica_id, $oggi)['rate'];
+            $segno = $accordi->segni($suoi, $lettura, $oggi, false)['accordi'][0] ?? null;
+            $accordo = $segno === null ? null : [
+                'id' => $segno['id'], 'data_accordo' => $segno['data_accordo'], 'in_accordo' => (int) array_sum($partiInAccordo[(int) $request->anagrafica_id]),
+                'prossima' => $segno['prossima'] === null ? null : ['numero' => $segno['prossima']['numero'], 'data' => $segno['prossima']['data'], 'mancano' => $segno['prossima']['mancano']],
+                'rate_non_versate' => $segno['rate_non_versate'],
+            ];
+        }
+
+        return response()->json(['rate' => $groupedRate, 'note_solidarieta' => array_map(fn ($n) => $n['testo'], $note), 'accordo' => $accordo]);
     }
 }

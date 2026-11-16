@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services\Gestionale;
 
@@ -30,8 +33,9 @@ use Illuminate\Support\Facades\DB;
  * valuta un accantonamento». Rosso solo se un fondo ha meno di quanto gli è stato assegnato.
  *
  * ⚠️ **`sottotipo_fondo` mancante vale «vincolato».** Un fondo legacy mai risalvato ha il sottotipo
- * a NULL; `TreasuryGuardianService` lo conta fra i vincolati, e qui non si legge il contrario:
- * solo il `generico` esplicito è liberamente utilizzabile. Etichetta «sottotipo non indicato».
+ * a NULL; la tesoreria lo conta fra i vincolati, e qui non si legge il contrario. Se un fondo si può
+ * usare lo dice una regola sola, {@see TipoDelFondo::siPuoUsare()}: il generico, o un fondo vincolato
+ * che l'assemblea ha sbloccato. Etichetta «tipo non indicato» per il fondo senza tipo.
  *
  * ⚠️ **I contributi versati non hanno una data di competenza.** `created_at` è quando sono stati
  * dichiarati — e viene azzerato da un risalvataggio — quindi non si taglia per data: R8 è un
@@ -47,7 +51,7 @@ class LiquiditaVincolataService
     private const SOTTOTIPI = ['generico' => 'generico', 'vincolato_lavori' => 'vincolato ai lavori', 'tfr' => 'TFR', 'morosita' => 'morosità'];
 
     /** L'etichetta di un fondo che non ha il sottotipo: la pagina la mostra, la stampa non scrive niente al suo posto ({@see ParoleDellaStampa::fondo()}). */
-    public const SOTTOTIPO_NON_INDICATO = 'sottotipo non indicato';
+    public const SOTTOTIPO_NON_INDICATO = 'tipo non indicato';
 
     /**
      * @param  array<int, array<string, mixed>>  $vociAttivo  le voci dell'attivo della fotografia
@@ -61,7 +65,8 @@ class LiquiditaVincolataService
         $casse = DB::table('casse')
             ->where('condominio_id', $condominio->id)
             ->whereNotNull('conto_contabile_id')
-            ->get(['id', 'nome', 'tipo', 'sottotipo_fondo', 'conto_contabile_id']);
+            ->orderBy('id')
+            ->get(['id', 'nome', 'tipo', 'sottotipo_fondo', 'conto_contabile_id', 'attiva', 'is_override_assemblea', 'vincolo_descrizione', 'motivazione_override']);
 
         $contributi = ContributoVersato::query()
             ->where('condominio_id', $condominio->id)
@@ -74,6 +79,7 @@ class LiquiditaVincolataService
         $vincolati = $ancoraLiquidi->where('natura', ContributoVersato::NATURA_FONDO_VINCOLATO);
 
         $libera = 0;
+        $libere = [];
         $fondi = [];
         $inFondi = 0;
         $vincolata = 0;
@@ -87,7 +93,10 @@ class LiquiditaVincolataService
             $contiClassificati[$conto] = true;
 
             if ($cassa->tipo === 'fondo') {
-                $vincolato = $cassa->sottotipo_fondo !== 'generico';
+                // La regola della scheda «Cassa» e della spesa imprevista: un fondo sbloccato dall'assemblea si può usare, come il generico.
+                $sottotipo = filled($cassa->sottotipo_fondo) ? (string) $cassa->sottotipo_fondo : null;
+                $sbloccato = (bool) $cassa->is_override_assemblea;
+                $vincolato = ! TipoDelFondo::siPuoUsare($sottotipo, $sbloccato);
                 $vincoloSuQuesto = (int) $vincolati->where('cassa_id', (int) $cassa->id)->sum('importo_cents');
                 $fondi[] = [
                     'cassa_id' => (int) $cassa->id,
@@ -96,17 +105,25 @@ class LiquiditaVincolataService
                     'sottotipo_label' => self::SOTTOTIPI[$cassa->sottotipo_fondo ?? ''] ?? self::SOTTOTIPO_NON_INDICATO,
                     'saldo' => $saldo,
                     'vincolato' => $vincolato,
+                    'sbloccato' => $sbloccato && $sottotipo !== 'generico',
+                    'etichetta' => TipoDelFondo::etichetta($sottotipo, $cassa->vincolo_descrizione, $sbloccato, $cassa->motivazione_override),
+                    'attiva' => (bool) $cassa->attiva,
+                    'conto_contabile_id' => $conto,
                     'vincolo_registrato' => $vincoloSuQuesto,
                     'scoperto' => max(0, $vincoloSuQuesto - $saldo),
                 ];
                 $inFondi += $saldo;
-                if ($vincolato) {
-                    $vincolata += $saldo;
-                } else {
+                // Vincolata è ciò che i fondi trattengono (`TipoDelFondo::trattiene`): un fondo vincolato in rosso ha pagato con la parte libera, e non
+                // trattiene niente.
+                $vincolata += TipoDelFondo::trattiene($saldo, ! $vincolato);
+                if (! $vincolato) {
                     $generica += $saldo;
                 }
             } elseif (in_array($cassa->tipo, ['banca', 'contanti'], true)) {
                 $libera += $saldo;
+                // Le casse reali una per una: la somma è `libera`, il nome e il tipo li legge «Da dove viene» della tesoreria.
+                $libere[] = ['cassa_id' => (int) $cassa->id, 'cassa' => $cassa->nome, 'tipo' => $cassa->tipo, 'saldo' => $saldo, 'attiva' => (bool) $cassa->attiva,
+                    'conto_contabile_id' => $conto];
             }
         }
 
@@ -114,18 +131,22 @@ class LiquiditaVincolataService
         // di liquidità senza cassa, saldi di apertura non registrati. Va mostrato con il suo nome.
         $altra = $totale - $libera - $inFondi;
         $altraVoci = [];
+        // Ogni voce dice anche il suo tipo, il nome e, se c'è, la cassa e il conto: la tesoreria le elenca una per una.
         if ($liquiditaNonContabilizzata !== 0) {
-            $altraVoci[] = ['voce' => 'Saldi di apertura non ancora registrati a giornale', 'saldo' => $liquiditaNonContabilizzata];
+            $altraVoci[] = ['voce' => 'Saldi di apertura non ancora registrati a giornale', 'saldo' => $liquiditaNonContabilizzata, 'tipo' => 'non_registrati',
+                'nome' => null, 'cassa_id' => null, 'conto_contabile_id' => null, 'attiva' => true];
         }
         foreach ($vociAttivo as $v) {
             if ($v['categoria'] === 'liquidita' && ! isset($contiClassificati[(int) $v['id']]) && (int) $v['saldo'] !== 0) {
-                $altraVoci[] = ['voce' => $v['nome'].' (conto senza cassa)', 'saldo' => (int) $v['saldo']];
+                $altraVoci[] = ['voce' => $v['nome'].' (conto senza cassa)', 'saldo' => (int) $v['saldo'], 'tipo' => 'senza_cassa',
+                    'nome' => trim(($v['codice'] ?? '').' '.$v['nome']), 'cassa_id' => null, 'conto_contabile_id' => (int) $v['id'], 'attiva' => true];
             }
         }
         foreach ($casse->where('tipo', 'virtuale') as $cassa) {
             $saldo = (int) ($saldiPerConto[(int) $cassa->conto_contabile_id]['saldo'] ?? 0);
             if ($saldo !== 0) {
-                $altraVoci[] = ['voce' => $cassa->nome.' (cassa virtuale)', 'saldo' => $saldo];
+                $altraVoci[] = ['voce' => $cassa->nome.' (cassa virtuale)', 'saldo' => $saldo, 'tipo' => 'virtuale', 'nome' => $cassa->nome, 'cassa_id' => (int) $cassa->id,
+                    'conto_contabile_id' => (int) $cassa->conto_contabile_id, 'attiva' => (bool) $cassa->attiva];
             }
         }
 
@@ -149,6 +170,7 @@ class LiquiditaVincolataService
         return [
             'liquidita_totale' => $totale,
             'libera' => $libera,
+            'libere' => $libere,
             'in_fondi' => $inFondi,
             'vincolata' => $vincolata,
             'generica' => $generica,

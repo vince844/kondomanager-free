@@ -47,7 +47,7 @@ const props = (extra: Record<string, unknown> = {}) => ({
         ],
         pagine: { corrente: 1, ultima: 2, per_pagina: 200, righe: 450, dopo: 250 },
     },
-    frasi: { proposta: 'Proposta di conguaglio da approvare dall\'assemblea: diventa una richiesta solo con l\'approvazione.', segno: 'Positivo vuol dire da versare, negativo a credito.',
+    frasi: { proposta: 'Proposta di conguaglio, da approvare dall\'assemblea: il programma la calcola e la stampa, non la registra.', segno: 'Positivo vuol dire da versare, negativo a credito.',
         competenza: 'Per competenza.', giorni: 'I giorni.', centesimi: 'Al centesimo.', colonne: 'Conguaglio = A + personali − B.' },
     fogli: { tutto: { tutte: 230, a_debito: 120, con_email: 90 }, pagina: { tutte: 200, a_debito: 100, con_email: 80 }, tetto: 200, ricordata: 'tutte' },
     ...extra,
@@ -95,12 +95,32 @@ describe('la scheda «Conguaglio»', () => {
         expect(p.find('[data-scheda="conguaglio"]').attributes('aria-current')).toBe('page');
     });
 
+    test('chi ha avuto l\'unità in più di un ruolo: sotto l\'unità i giorni di ogni ruolo, con il ruolo; con un ruolo solo il numero dei giorni', () => {
+        const righe = (extra: Record<string, unknown>) => props({ conguaglio: { ...props().conguaglio, righe: [riga(extra)] } });
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        const monta2 = (extra: Record<string, unknown>) => mount(Pagina, { props: righe(extra) as any, global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, PageHeaderGuide: slot, Alert: slot } } });
+        const due = monta2({ nome: 'Nora', giorni: null, giorni_per_ruolo: [{ ruolo: 'inquilino', giorni: 59 }, { ruolo: 'proprietario', giorni: 306 }] });
+        expect(testo(due.find('[data-test="giorni"]').html())).toBe('59 giorni come inquilino, 306 giorni come proprietario');
+        due.unmount();
+        const nuda = monta2({ nome: 'Nina', giorni: null, giorni_per_ruolo: [{ ruolo: 'nuda_proprietario', giorni: 1 }] });
+        expect(testo(nuda.find('[data-test="giorni"]').html())).toBe('1 giorno come nudo proprietario');
+        nuda.unmount();
+        const uno = monta2({ nome: 'Bianchi', giorni: 181, giorni_per_ruolo: [] });
+        expect(testo(uno.find('[data-test="giorni"]').html())).toBe('181 giorni');
+        uno.unmount();
+        // Tutto l'anno, o una riga senza i giorni per ruolo: niente.
+        const tutto = monta2({ giorni: null });
+        expect(tutto.find('[data-test="giorni"]').exists()).toBe(false);
+        tutto.unmount();
+    });
+
     test('il sottotitolo: l\'esercizio e la frase della proposta, con un punto e i due punti una volta sola', () => {
         const slot = { template: '<div><slot /></div>' };
         w = mount(Pagina, { props: props() as any, global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, Alert: slot,
             PageHeaderGuide: { props: ['pageSubtitle'], template: '<div data-test="sottotitolo">{{ pageSubtitle }}</div>' } } } });
         const sotto = w.find('[data-test="sottotitolo"]').text();
-        expect(sotto).toBe('Esercizio 2026. Proposta di conguaglio da approvare dall\'assemblea: diventa una richiesta solo con l\'approvazione.');
+        expect(sotto).toBe('Esercizio 2026. Proposta di conguaglio, da approvare dall\'assemblea: il programma la calcola e la stampa, non la registra.');
         expect(sotto.split(':')).toHaveLength(2);
     });
 
@@ -176,7 +196,7 @@ describe('la scheda «Conguaglio»', () => {
 
     test('il secondo momento: la frase del server sotto la tabella; senza, niente', () => {
         const base = props().conguaglio as any;
-        const frase = 'Dopo l\'approvazione e la scrittura del conguaglio: crediti verso i condòmini € 580,00 (oggi € 380,00, meno le spese personali che il conguaglio chiede € 80,00, più i conguagli a debito € 280,00); debiti verso i condòmini per i conguagli a credito € 0,00.';
+        const frase = 'Se l\'assemblea approva e il conguaglio si registra (il programma lo calcola, non lo registra): crediti verso i condòmini € 580,00 (oggi € 380,00, meno le spese personali comprese nel conguaglio € 80,00, più i conguagli a debito € 280,00); debiti verso i condòmini per i conguagli a credito € 0,00.';
         const p = monta({ conguaglio: { ...base, secondo_momento: { crediti_oggi: 38000, personali: 8000, a_debito: 28000, crediti_dopo: 58000, a_credito: 0, frase } } });
         expect(testo(p.find('[data-test="secondo-momento"]').html())).toBe(frase);
         expect(monta().find('[data-test="secondo-momento"]').exists()).toBe(false);
@@ -187,5 +207,50 @@ describe('la scheda «Conguaglio»', () => {
         for (const parola of ['dovuto', 'esigibile', 'pronto', 'conforme', 'corretto', 'in regola']) {
             expect(t).not.toMatch(new RegExp(`(^|[^\\p{L}])${parola}($|[^\\p{L}])`, 'u'));
         }
+    });
+});
+
+describe('la scheda «Conguaglio» con gli addebiti a singole persone', () => {
+    const conAddebiti = (addebiti: unknown, coperti = 5096) => {
+        const base = props();
+        const g = { ...base.conguaglio.gestioni[0], non_attribuite: [{ conto_id: 5, voce: 'Pulizie', piano_conto_id: 4, importo: 5605, coperti, motivo: 'In alcuni giorni l\'unità non aveva un titolare.' }], addebiti };
+
+        return monta({ conguaglio: { ...base.conguaglio, gestioni: [g] } });
+    };
+
+    test('la voce dice quanto è addebitato per lei; la gestione dice a chi e quanto resta, con «Addebita a una persona»', () => {
+        const p = conAddebiti({ coperti: 6795, non_attribuite: 7134, restano: 339, per_persona: [{ anagrafica_id: 4, nome: 'Verdi', unita: 'Int. U3', importo: 6795 }],
+            frase: 'Addebitati per queste spese: € 67,95 a Verdi (Int. U3). Restano € 3,39 delle spese non attribuite di giorni senza titolare.' });
+        expect(testo(p.find('[data-test="non-attribuita"]').html())).toContain('Pulizie (Ordinaria 2026): € 56,05 non attribuiti; addebitati per questa voce € 50,96.');
+        expect(testo(p.find('[data-test="coperti-da-addebiti"]').html()))
+            .toBe('Ordinaria 2026: Addebitati per queste spese: € 67,95 a Verdi (Int. U3). Restano € 3,39 delle spese non attribuite di giorni senza titolare. Addebita a una persona');
+        expect(p.find('[data-test="addebita-non-attribuite"]').exists()).toBe(true);
+    });
+
+    test('quando non resta niente il pulsante non c\'è; senza addebiti né spese con un\'unità la riga non c\'è', () => {
+        const tutto = conAddebiti({ coperti: 7134, non_attribuite: 7134, restano: 0, per_persona: [], frase: 'Addebitati per queste spese: € 71,34 a Verdi (Int. U3).' });
+        expect(tutto.find('[data-test="addebita-non-attribuite"]').exists()).toBe(false);
+        expect(conAddebiti(null, 0).find('[data-test="coperti-da-addebiti"]').exists()).toBe(false);
+        expect(testo(conAddebiti(null, 0).find('[data-test="non-attribuita"]').html())).toContain('€ 56,05 non attribuiti. In alcuni giorni');
+    });
+});
+
+describe('la guida della scheda', () => {
+    test('il pulsante «Guida» dell\'intestazione, uno solo, apre la guida della scheda «Conguaglio»', async () => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: props() as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, Alert: slot,
+                PageHeaderGuide: { props: { hasTextGuide: Boolean, textGuideTitle: String }, emits: ['open-text-guide'],
+                template: '<div><button v-if="hasTextGuide" type="button" data-testid="apri-guida" @click="$emit(\'open-text-guide\')">{{ textGuideTitle }}</button><slot name="actions" /></div>' },
+                RendicontoConguaglioGuide: { props: ['open'], template: '<div v-if="open" data-testid="guida-aperta" />' } } },
+        });
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(false);
+        expect(w.findAll('button').filter((b) => b.text().trim() === 'Guida')).toHaveLength(1);
+        const pulsante = w.get('[data-testid="apri-guida"]');
+        expect(pulsante.text().trim()).toBe('Guida');
+        await pulsante.trigger('click');
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(true);
     });
 });

@@ -140,11 +140,11 @@ describe('i filtri', () => {
         const p = monta({ persone_totali: 2, totale: 149000 });
         const fila = () => p.findAll('[data-testid="seleziona-tutte"], [data-testid="togli-scelta"], [data-testid="prepara-lettere"], [data-testid="stampa"], [data-testid="dispense-sei-mesi"]')
             .map((b) => b.attributes('data-testid'));
-        expect(fila()).toEqual(['seleziona-tutte', 'prepara-lettere', 'stampa', 'dispense-sei-mesi']);
+        expect(fila()).toEqual(['seleziona-tutte', 'prepara-lettere', 'stampa']);
         expect(p.get('[data-testid="seleziona-tutte"]').text()).toBe('Seleziona tutte le 2 dei filtri');
         await p.get('[data-testid="seleziona-tutte"]').trigger('click');
         expect(p.get('[data-testid="selezionate"]').text()).toBe('Selezionate: 2.');
-        expect(fila()).toEqual(['togli-scelta', 'prepara-lettere', 'stampa', 'dispense-sei-mesi']);
+        expect(fila()).toEqual(['togli-scelta', 'prepara-lettere', 'stampa']);
         await p.get('[data-testid="togli-scelta"]').trigger('click');
         expect(p.find('[data-testid="selezionate"]').exists()).toBe(false);
         expect(fila()[0]).toBe('seleziona-tutte');

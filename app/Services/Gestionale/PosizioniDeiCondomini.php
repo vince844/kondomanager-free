@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services\Gestionale;
 
@@ -220,12 +223,15 @@ final class PosizioniDeiCondomini
 
         $persone = array_values(array_unique(array_column($righe, 'anagrafica_id')));
         $lettere = $this->lettere->ultimePerPersone((int) $condominio->id, $persone, $oggi);
+        // Un addebito a una persona sola (interessi, spese, un contributo) si chiama con la sua causale, e non si conta fra le rate.
+        $addebiti = \App\Models\Gestionale\PianoRate::causaliDegliAddebiti(array_column($righe, 'rata_id'));
         $nomi = $persone === [] ? [] : Anagrafica::whereIn('id', $persone)->pluck('nome', 'id')->all();
         $unita = Immobile::whereIn('id', array_values(array_unique(array_filter(array_column($righe, 'immobile_id')))) ?: [0])->get()->keyBy('id');
         $perPersona = [];
         foreach ($righe as $i => $r) {
             $conta = $lettere[$r['anagrafica_id']]['conta'] ?? null;
             $righe[$i]['nome'] = (string) ($nomi[$r['anagrafica_id']] ?? '');
+            $righe[$i]['addebito'] = $addebiti[(int) $r['rata_id']] ?? null;
             $righe[$i]['unita'] = $r['immobile_id'] !== null && isset($unita[$r['immobile_id']]) ? $unita[$r['immobile_id']]->etichetta : null;
             $righe[$i]['lettera'] = $conta === null ? null : ['tipo' => self::TIPI_LETTERA[$conta['tipo']] ?? (string) $conta['tipo'], 'data' => $conta['data_dei_filtri'] ?? $conta['data']];
             $perPersona[$r['anagrafica_id']] = ($perPersona[$r['anagrafica_id']] ?? 0) + ($r['scaduta'] ? $r['importo'] : 0);

@@ -24,6 +24,19 @@ const saldi = [
 ];
 
 let w: VueWrapper | null = null;
+const pulito = (t: string | null | undefined) => (t ?? '').replace(/\s+/g, ' ').trim();
+/** Il menu «Origine» (`v-select`): si apre e si fa clic sulla voce con quel testo. */
+const menu = () => document.body.querySelector('[data-testid="voce-origine"] .v-select') as HTMLElement;
+const vociDelMenu = async () => {
+    menu().querySelector('.vs__search')!.dispatchEvent(new FocusEvent('focus'));
+    await flushPromises();
+    return [...menu().querySelectorAll('.vs__dropdown-option')].map((o) => pulito(o.textContent));
+};
+const nelMenu = async (testo: string) => {
+    await vociDelMenu();
+    ([...menu().querySelectorAll('.vs__dropdown-option')].find((o) => pulito(o.textContent) === testo) as HTMLElement).click();
+    await flushPromises();
+};
 afterEach(() => { w?.unmount(); w = null; post.mockReset(); document.body.innerHTML = ''; });
 
 async function apri(partenza: number[] = []) {
@@ -36,16 +49,20 @@ describe('la finestra', () => {
     test('la frase accanto al campo, e nessuna voce già scelta: il pulsante è fermo finché non si sceglie', async () => {
         await apri([11]);
         expect(document.body.querySelector('[data-testid="frase-origine"]')?.textContent).toBe(FRASE);
-        expect((document.body.querySelector('[data-testid="voce-origine"]') as HTMLSelectElement).value).toBe('');
+        // Il menu è un `v-select`, non il menu del browser; all'apertura della finestra non si apre da solo, e nessuna voce è scelta.
+        expect(document.body.querySelector('[data-testid="voce-origine"] select')).toBeNull();
+        expect(menu()).not.toBeNull();
+        expect(menu().classList.contains('vs--open')).toBe(false);
+        expect(document.activeElement?.classList.contains('vs__search')).toBe(false);
+        expect(menu().querySelector('.vs__selected')).toBeNull();
+        expect((menu().querySelector('.vs__search') as HTMLInputElement).placeholder).toBe('Scegli…');
         expect((document.body.querySelector('[data-testid="conferma-origine"]') as HTMLButtonElement).disabled).toBe(true);
     });
 
     test('scelto l\'esercizio 2023 per il saldo di partenza, la richiesta porta il saldo, la voce e l\'esercizio', async () => {
         await apri([11]);
-        const voce = document.body.querySelector('[data-testid="voce-origine"]') as HTMLSelectElement;
-        voce.value = 'esercizio:4';
-        voce.dispatchEvent(new Event('change'));
-        await flushPromises();
+        await nelMenu('Esercizio 2023');
+        expect(pulito(menu().querySelector('.vs__selected')?.textContent)).toBe('Esercizio 2023');
         (document.body.querySelector('[data-testid="conferma-origine"]') as HTMLButtonElement).click();
         await flushPromises();
 
@@ -61,6 +78,23 @@ describe('la finestra', () => {
         expect(testo).toContain('origine: Esercizio 2025');
         const tutti = [...document.body.querySelectorAll('button')].find((b) => b.textContent?.includes('Scegli tutti i 2'));
         expect(tutti).toBeTruthy();
+    });
+});
+
+describe('il menu «Origine»', () => {
+    test('le voci: gli esercizi, «Dovuto con questo piano», «Prima del primo esercizio», «Togli l\'origine (non dichiarata)»; con l\'ultima il pulsante toglie', async () => {
+        await apri([11, 12]);
+        expect(await vociDelMenu()).toEqual(['Esercizio 2025', 'Esercizio 2023', 'Dovuto con questo piano', 'Prima del primo esercizio', 'Togli l\'origine (non dichiarata)']);
+        await nelMenu('Togli l\'origine (non dichiarata)');
+        expect(pulito(document.body.querySelector('[data-testid="conferma-origine"]')?.textContent)).toBe('Togli l\'origine da 2 saldi');
+        (document.body.querySelector('[data-testid="conferma-origine"]') as HTMLButtonElement).click();
+        await flushPromises();
+        expect(post.mock.calls[0][1]).toEqual({ saldi: [11, 12], origine: 'non_dichiarata' });
+    });
+
+    test('il menu ha l\'aspetto dei menu dei moduli (`menu-campo`)', async () => {
+        await apri();
+        expect(document.body.querySelector('[data-testid="voce-origine"]')!.classList.contains('menu-campo')).toBe(true);
     });
 });
 

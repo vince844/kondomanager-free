@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 @extends('pdf.base')
 {{-- I titoli e i loro filetti hanno il colore della carta dello studio; senza un colore, quello di sempre. --}}
 @php
@@ -116,9 +121,8 @@
 
 {{-- NOTE LEGALI --}}
 <div style="margin-top: 12px; font-size: 7pt; color: #666; border-top: 1px solid #ccc; padding-top: 6px;">
-    Documento redatto ai sensi dell'art. 1135 c.c. e dell'art. 63 disp. att. c.c.
-    (riscossione dei contributi condominiali). Il mancato pagamento entro la scadenza indicata può comportare
-    l'applicazione degli interessi legali ai sensi dell'art. 1284 c.c.
+    Documento redatto ai sensi dell'art. 63 disp. att. c.c. (riscossione dei contributi condominiali).
+    Il mancato pagamento entro la scadenza indicata può comportare gli interessi di mora al tasso del condominio (artt. 1224 e 1282 c.c.).
 </div>
 
 @endsection

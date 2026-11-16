@@ -1,4 +1,9 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Il riepilogo finanziario per competenza dell'esercizio: la stampa. Legge lo stesso array della pagina (`RiepilogoPerCompetenza::perEsercizio()`): nessuna
   somma qui. Il dettaglio per spesa (una riga per fattura o movimento, con la sua voce) è a scelta, in fondo.
 
@@ -30,7 +35,8 @@
         ? $fmt($v[$c]).($c === 'deliberato' && ! empty($v['deliberato_diviso_oggi']) ? ' *' : '')
         // Il preventivo che le voci non portano più (portano quello dell'anno dopo) è nel verbale dell'assemblea.
         : ($c === 'preventivo' && $v[$c.'_stato'] === 'non_conservato' ? 'nel verbale dell\'assemblea' : $perche($v[$c.'_stato']));
-    $nomeRiga = ['ordinarie' => 'Quote ordinarie', 'straordinarie' => 'Quote straordinarie', 'esercizi_precedenti' => 'Esercizi precedenti'];
+    $nomeRiga = ['ordinarie' => 'Quote ordinarie', 'straordinarie' => 'Quote straordinarie', 'esercizi_precedenti' => 'Esercizi precedenti',
+        'addebiti' => 'Contributi addebitati a singole persone', 'spese_addebitate' => 'Spese di una sola unità chieste a una persona'];
     $dettaglio = $dettaglio ?? false;
     // Il dettaglio per spesa, una riga per fattura o movimento con la sua voce, nell'ordine della pagina; le righe sono quelle dell'array, nessuna somma.
     $righeDettaglio = [];
@@ -114,13 +120,13 @@
 @endif
 
 <htmlpagefooter name="rfPiede">
-    @include('pdf._carta.piede_inter', ['giorno' => \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y'), 'parte' => $parte_del_fascicolo ?? null])
+    @include('pdf._carta.piede_inter', ['giorno' => ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y'), 'parte' => $parte_del_fascicolo ?? null])
 </htmlpagefooter>
 <sethtmlpagefooter name="rfPiede" page="ALL" value="on" />
 
 @if($conStudio)
 @component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => 'Riepilogo finanziario'])
-<b>{{ $esercizio->nome }}</b> · dal <b>{{ $dataIt($r['esercizio']['dal']) }}</b> al <b>{{ $dataIt($r['esercizio']['al']) }}</b> · Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+<b>{{ $esercizio->nome }}</b> · dal <b>{{ $dataIt($r['esercizio']['dal']) }}</b> al <b>{{ $dataIt($r['esercizio']['al']) }}</b> · Stampato il <b>{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
 @endcomponent
 @else
 <table class="testata">
@@ -136,7 +142,7 @@
         <td class="doc">
             <b>{{ $esercizio->nome }}</b><br>
             dal <b>{{ $dataIt($r['esercizio']['dal']) }}</b> al <b>{{ $dataIt($r['esercizio']['al']) }}</b><br>
-            Stampato il <b>{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+            Stampato il <b>{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>
@@ -218,6 +224,12 @@
 </table>
 @endif
 
+{{-- Gli interessi e le spese versati dai condòmini: sulla loro voce, fuori dalle entrate da terzi. --}}
+@if(! empty($b['versato_accessori']))
+<p class="eq" data-riga="versato-accessori">Interessi e spese versati dai condòmini <b>{{ $fmt($b['totale_versato_accessori']) }}</b>
+    <span class="d">({{ implode(', ', array_map(fn ($v) => $v['nome'] . ' ' . $fmt($v['importo']), $b['versato_accessori'])) }}): addebitati a singole persone, non sono entrate da terzi; riducono le spese da dividere.</span></p>
+@endif
+
 @if(count($b['quote']) > 0)
 <table class="p" style="margin-top: 8px;">
     <thead><tr><th>Quote dei condòmini</th><th class="n">Deliberate</th><th class="n">Emesse</th><th class="n">Pagate</th><th class="n">Non pagate</th><th class="n">di cui scadute</th><th class="n">Crediti sulle rate</th><th class="n">Credito riportato</th></tr></thead>
@@ -251,11 +263,11 @@
 
 <h2>Il risultato</h2>
 <p class="eq">Risultato: quote registrate in questo esercizio <b>{{ $fmt($r['risultato']['quote_emesse']) }}</b> − costi <b>{{ $fmt($r['risultato']['costi']) }}</b> = <b>{{ $fmt($r['risultato']['risultato']) }}</b> ({{ \App\Services\Gestionale\RiepilogoPerCompetenza::comeRisultato($r['risultato']['risultato']) }}).</p>
-<p class="eq">Costi dell'esercizio <b>{{ $fmt($r['riconciliazione']['costi']) }}</b> = spese per capitolo meno entrate <b>{{ $fmt($r['riconciliazione']['capitoli_netti']) }}</b>
+<p class="eq">Costi dell'esercizio <b>{{ $fmt($r['riconciliazione']['costi']) }}</b> = spese per capitolo meno entrate{{ collect($r['blocchi'])->contains(fn ($b) => ($b['totale_versato_accessori'] ?? 0) !== 0) ? ' e interessi e spese versati' : '' }} <b>{{ $fmt($r['riconciliazione']['capitoli_netti']) }}</b>
     + commissioni bancarie non attribuite a una spesa <b>{{ $fmt($r['riconciliazione']['commissioni_senza_voce']) }}</b> + fatture contestate <b>{{ $fmt($r['riconciliazione']['contestate']) }}</b>@foreach($altriCosti as [$prima, $importo, $dopo]) + {{ $prima }} <b>{{ $fmt($importo) }}</b>{{ $dopo }}@endforeach.</p>
 <p class="eq">Quote dei piani dell'esercizio <b>{{ $fmt($r['raccordo_quote']['quote_piani']) }}</b> = quote registrate in questo esercizio <b>{{ $fmt($r['raccordo_quote']['quote_giornale']) }}</b>
-    + rate di questi piani emesse in un altro esercizio <b>{{ $fmt($r['raccordo_quote']['piani_emesse_altrove']) }}</b> − rate di altri piani emesse in questo <b>{{ $fmt($r['raccordo_quote']['altri_emesse_qui']) }}</b>@if($r['raccordo_quote']['altre_differenze']) + <b>{{ $fmt($r['raccordo_quote']['altre_differenze']) }}</b> di debiti riportati dentro le rate @endif.</p>
-<p class="eq">Le quote pagate, versate o compensate con un credito, sono <b>{{ $fmt($r['quote']['totale']['pagate']) }}</b>; i versamenti dei condòmini nel registro di contabilità di questo esercizio sono <b>{{ $fmt($r['quote']['totale']['versamenti_registro']) }}</b>.
+    @if(! empty($r['raccordo_quote']['contributi_addebitati']))− contributi addebitati a singole persone <b>{{ $fmt($r['raccordo_quote']['contributi_addebitati']) }}</b> @endif+ rate di questi piani emesse in un altro esercizio <b>{{ $fmt($r['raccordo_quote']['piani_emesse_altrove']) }}</b> − rate di altri piani emesse in questo <b>{{ $fmt($r['raccordo_quote']['altri_emesse_qui']) }}</b>@if($r['raccordo_quote']['altre_differenze']) + <b>{{ $fmt($r['raccordo_quote']['altre_differenze']) }}</b> di debiti riportati dentro le rate @endif.</p>
+<p class="eq">Le quote pagate, versate o compensate con un credito, sono <b>{{ $fmt($r['quote']['totale']['pagate']) }}</b>; i versamenti dei condòmini nel registro di contabilità di questo esercizio sono <b>{{ $fmt($r['quote']['totale']['versamenti_registro']) }}</b>{{ ($versatiAccessori = (int) collect($r['blocchi'])->sum(fn ($b) => (int) ($b['totale_versato_accessori'] ?? 0))) !== 0 ? ': '.$fmt($versatiAccessori).' sono interessi e spese versati dai condòmini' : '' }}.
     Le non pagate sono contate senza togliere i crediti sulle rate: <b>{{ $fmt($r['quote']['totale']['non_pagate']) }}</b>, e accanto <b>{{ $fmt($r['quote']['totale']['crediti']) }}</b> di crediti sulle rate.</p>
 </div>
 

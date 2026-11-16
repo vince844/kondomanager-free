@@ -261,6 +261,14 @@ class CondominioController extends Controller
             return $this->eliminaDimostrativo($condominio, app(CreaCondominioDimostrativoAction::class));
         }
 
+        // Un rendiconto conservato per l'assemblea trattiene il condominio, come la sua contabilità: la chiave non cancella in cascata. La frase dice
+        // quale versione e dove si guarda; una fermata e mai approvata si elimina dalla Sintesi del rendiconto.
+        $versioni = \App\Services\Gestionale\VersioniDelRendiconto::perIlRifiuto(\App\Models\Gestionale\RendicontoVersione::where('condominio_id', $condominio->id), true);
+        if ($versioni !== []) {
+            return back()->with($this->flashError("«{$condominio->nome}» ha un rendiconto conservato per l'assemblea, e per questo non può essere eliminato: "
+                .implode('; ', $versioni).'.'));
+        }
+
         try {
            
             $condominio->delete();
@@ -296,7 +304,7 @@ class CondominioController extends Controller
 
             return back()->with($this->flashError(
                 $bloccante
-                    ? "«{$condominio->nome}» ha movimenti contabili registrati — pagamenti, deleghe F24 o casse — e per questo non può essere eliminato: cancellarlo butterebbe via la sua contabilità. Se non lo amministri più, per ora puoi rinominarlo per distinguerlo dagli altri."
+                    ? self::fraseDelRifiuto($condominio)
                     : __('condomini.error_delete_building')
             ));
 
@@ -309,6 +317,12 @@ class CondominioController extends Controller
             );
         }
       
+    }
+
+    /** Perché un condominio con la contabilità, o con un rendiconto conservato, non si elimina: la frase che l'amministratore legge. */
+    private static function fraseDelRifiuto(Condominio $condominio): string
+    {
+        return "«{$condominio->nome}» ha movimenti contabili registrati (pagamenti, deleghe F24 o casse) o un rendiconto conservato per l'assemblea, e per questo non può essere eliminato: cancellarlo butterebbe via la sua contabilità. Se non lo amministri più, per ora puoi rinominarlo per distinguerlo dagli altri.";
     }
 
     /**

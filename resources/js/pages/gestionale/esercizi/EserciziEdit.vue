@@ -21,7 +21,9 @@ import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
   condominio: Building;
-  esercizio: Esercizio
+  esercizio: Esercizio;
+  /** Lo stato del rendiconto dell'esercizio: in bozza, fermato per l'assemblea, approvato. */
+  stato_rendiconto?: { stato: 'bozza' | 'presentata' | 'approvata'; frase: string };
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -85,6 +87,11 @@ const submit = () => {
 
             <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
                 <section class="w-full">
+
+                    <p v-if="props.stato_rendiconto" class="mb-3 text-[12.5px] text-slate-600 dark:text-slate-300" data-test="stato-rendiconto">
+                        Il rendiconto: {{ props.stato_rendiconto.frase }}
+                        <Link :href="generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto', { condominio: props.condominio.id, esercizio: props.esercizio.id })" class="ml-1 font-semibold underline">Apri il rendiconto</Link>
+                    </p>
 
                     <form class="space-y-2" @submit.prevent="submit">
 

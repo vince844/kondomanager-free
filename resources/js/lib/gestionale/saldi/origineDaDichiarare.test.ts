@@ -3,7 +3,7 @@
  * quelli a debito senza un'origine dichiarata, di tutte le sue unità.
  */
 import { describe, expect, test } from 'vitest';
-import { saldiDellaPersonaSenzaOrigine } from './origineDaDichiarare';
+import { saldiDellaPersonaSenzaData, saldiDellaPersonaSenzaOrigine } from './origineDaDichiarare';
 
 const saldo = (id: number, anagrafica_id: number | null, extra: Record<string, unknown> = {}) => ({ id, anagrafica_id, saldo_iniziale: 5000, fornitore_id: null, origine_dichiarata: null, ...extra });
 
@@ -19,5 +19,14 @@ describe('i saldi della persona da dichiarare', () => {
 
     test('la persona dall\'indirizzo: un numero, altrimenti nessuna', () => {
         expect(saldiDellaPersonaSenzaOrigine([{ saldi: [saldo(1, 7)] }], Number('x'))).toEqual([]);
+    });
+});
+
+describe('i saldi della persona senza la data dei sei mesi', () => {
+    test('dal riquadro dei sei mesi («Dichiara l\'origine»): anche quelli con l\'origine «prima del primo esercizio», che non danno la data', () => {
+        const immobili = [{ saldi: [saldo(1, 7, { origine_dichiarata: 'prima_del_primo' }), saldo(2, 7), saldo(3, 7, { origine_dichiarata: 'esercizio' }),
+            saldo(4, 7, { origine_dichiarata: 'con_il_piano' }), saldo(5, 8, { origine_dichiarata: 'prima_del_primo' })] }];
+        expect(saldiDellaPersonaSenzaData(immobili, 7)).toEqual([1, 2]);
+        expect(saldiDellaPersonaSenzaOrigine(immobili, 7)).toEqual([2]);
     });
 });

@@ -36,7 +36,8 @@ final class QuoteNateDopoIlPassaggio
      * nuovo inquilino va al proprietario (il ripiego della decisione 22) sì. Una quota senza
      * dettaglio del riparto, non nata dal motore, conta solo se è di chi è entrato. Le gemelle del pregresso, che un
      * passaggio scrive con `divisa_da` (questo, o un altro della stessa unità registrato dopo con un rogito anteriore),
-     * non sono un piano nuovo e non contano.
+     * non sono un piano nuovo e non contano; nemmeno le quote degli interessi e delle spese che una successione passa agli eredi
+     * (`dagli_eredi`), che l'annullamento rimette da sé ({@see AccessoriAgliEredi}).
      *
      * Con `$pianoId` solo le quote di quel piano.
      *
@@ -63,7 +64,7 @@ final class QuoteNateDopoIlPassaggio
             })
             ->whereNotIn('rate_quote.id', $voci)
             ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.anagrafica_id', 'rate_quote.immobile_id', 'rate_quote.importo', 'rate_quote.scrittura_contabile_id', 'rate_quote.importo_pagato', 'rate_quote.regole_calcolo', 'rate_quote.created_at', 'rate.numero_rata', 'rate.piano_rate_id', 'piani_rate.nome as piano_nome'])
-            ->reject(fn ($q) => isset(self::regole($q)['divisa_da']))
+            ->reject(fn ($q) => isset(self::regole($q)['divisa_da']) || isset(self::regole($q)['dagli_eredi']))
             ->values();
         if ($quote->isEmpty()) {
             return $quote;

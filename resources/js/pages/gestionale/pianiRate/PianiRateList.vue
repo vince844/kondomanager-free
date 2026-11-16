@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import DataTable from '@/components/gestionale/pianiRate/DataTable.vue';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { createColumns } from '@/components/gestionale/pianiRate/columns';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { CalendarDays, Layers, Coins } from 'lucide-vue-next';
@@ -21,9 +22,13 @@ const props = defineProps<{
   esercizi: Esercizio[];
   pianiRate: PianoRate[];
   meta: PaginationMeta;
+  /** I piani degli addebiti a singole persone dell'esercizio, a parte: non hanno capitoli, delibera né allineamento. */
+  pianiAddebiti?: Array<{ id: number; nome: string; gestione: string; addebiti: number; totale: number }>;
 }>()
 
 const { generatePath } = usePermission();
+const { euro } = useCurrencyFormatter();
+const hrefPiano = (id: number) => generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/:pianoRate', { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoRate: id });
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
@@ -100,6 +105,18 @@ const pageGuides = computed(() => [
                 :condominio="props.condominio"
                 :data="props.pianiRate"
               />
+          </div>
+
+          <!-- I piani degli addebiti a singole persone: una rata per addebito, registrati e annullati dall'estratto conto della persona. -->
+          <div v-if="props.pianiAddebiti?.length" class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 shadow-sm p-4 space-y-2" data-test="piani-addebiti">
+              <h3 class="font-semibold text-slate-800 dark:text-slate-200">Addebiti individuali</h3>
+              <p class="text-[12px] text-slate-500 dark:text-slate-400">Le somme chieste a singole persone, fuori dal riparto: un piano per gestione, una rata per addebito. Non si generano e non si approvano: ogni addebito si registra dall'estratto conto della persona, dal piano con le quote non assegnate o dalla scheda «Conguaglio».</p>
+              <ul class="text-sm space-y-1">
+                  <li v-for="p in props.pianiAddebiti" :key="p.id" data-test="piano-addebiti">
+                      <Link :href="hrefPiano(p.id)" class="underline decoration-dotted underline-offset-4">{{ p.nome }}</Link>
+                      <span class="text-slate-500 dark:text-slate-400"> · {{ p.addebiti === 1 ? '1 addebito' : `${p.addebiti} addebiti` }}, {{ euro(p.totale) }}</span>
+                  </li>
+              </ul>
           </div>
 
         </section>

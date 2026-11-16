@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 use App\Http\Controllers\Gestionale\Controlli\ControlliPostImportController;
 use App\Http\Controllers\Gestionale\Casse\CassaController;
@@ -91,6 +94,11 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/', DashboardController::class)
         ->name('index');
+
+    // Le risposte dell'amministratore dal riquadro «Sei mesi per agire» e dal suo compito nell'Inbox (hai agito, fatto, non serve, ricordamelo, riapri,
+    // mettilo in agenda): l'esercizio e le persone sono nel corpo della richiesta, e il controller li cerca dentro il condominio.
+    Route::post('/sei-mesi/risposta', \App\Http\Controllers\Gestionale\Dashboard\SeiMesiRisposteController::class)
+        ->name('sei-mesi.risposta');
     
     // «Da controllare dopo l'importazione». Sta qui e non nel gruppo dell'import perché la
     // domanda arriva giorni dopo, quando l'uuid del lotto non ce l'ha più nessuno — e perché il
@@ -160,6 +168,7 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('dispense-sei-mesi', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'index'])->name('dispense.index');
     Route::post('dispense-sei-mesi', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'store'])->name('dispense.store');
     Route::post('dispense-sei-mesi/{dispensa}/revoca', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'revoca'])->name('dispense.revoca');
+    Route::post('dispense-sei-mesi/{dispensa}/sollecito', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'sollecito'])->name('dispense.sollecito');
     Route::get('dispense-sei-mesi/{dispensa}/verbale', [\App\Http\Controllers\Gestionale\Esercizi\DispensaSeiMesiController::class, 'verbale'])->name('dispense.verbale');
 
     // Già versato per voce di spesa: alimenta il netting del riparto (beta.26).
@@ -374,6 +383,15 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/anagrafiche/{anagrafica}/estratto-conto/print', [EstrattoContoAnagraficaController::class, 'print'])
         ->name('anagrafiche.estratto-conto.print');
 
+    // Il fascicolo per il legale di una persona. L'anteprima per la finestra (un GET: non scrive niente), l'archivio .zip con la riga del
+    // registro della persona, e l'indice e il prospetto conservati, riaperti dalla sua pagina. Solo nel pannello, mai fra le rotte del portale.
+    Route::get('/anagrafiche/{anagrafica}/fascicolo-legale', [\App\Http\Controllers\Gestionale\Movimenti\FascicoloLegaleController::class, 'anteprima'])
+        ->name('anagrafiche.fascicolo-legale');
+    Route::post('/anagrafiche/{anagrafica}/fascicolo-legale', [\App\Http\Controllers\Gestionale\Movimenti\FascicoloLegaleController::class, 'prepara'])
+        ->name('anagrafiche.fascicolo-legale.prepara');
+    Route::get('/anagrafiche/{anagrafica}/fascicolo-legale/documenti/{documento}', [\App\Http\Controllers\Gestionale\Movimenti\FascicoloLegaleController::class, 'documento'])
+        ->whereNumber('documento')->name('anagrafiche.fascicolo-legale.documento');
+
     // B2, S6: il rimborso del credito dall'estratto conto — denaro che esce a fronte di una quota a credito.
     Route::post('/anagrafiche/{anagrafica}/rimborsi', [\App\Http\Controllers\Gestionale\Rimborsi\RimborsoCreditoController::class, 'store'])
         ->name('anagrafiche.rimborsi.store');
@@ -413,8 +431,48 @@ Route::prefix('/gestionale/{condominio}')
         ->name('esercizi.rendiconto.cassa');
     Route::get('esercizi/{esercizio}/rendiconto/controlli', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoController::class, 'controlli'])
         ->name('esercizi.rendiconto.controlli');
+    // Le possibili cause di una differenza con la banca: «Ignora» con la nota, «Riapri». Il registro sta nella nota sintetica, e lo scrive solo il programma.
+    Route::post('esercizi/{esercizio}/rendiconto/controlli/banca/ignora', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoBancaController::class, 'ignora'])
+        ->name('esercizi.rendiconto.controlli.banca.ignora');
+    Route::post('esercizi/{esercizio}/rendiconto/controlli/banca/riapri', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoBancaController::class, 'riapri'])
+        ->name('esercizi.rendiconto.controlli.banca.riapri');
     Route::get('esercizi/{esercizio}/rendiconto/fascicolo', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoController::class, 'fascicolo'])
         ->name('esercizi.rendiconto.fascicolo');
+
+    // La nota sintetica esplicativa del rendiconto: la scheda, la bozza, la copia da un altro esercizio, i testi dello studio, la stampa da sola. Dietro il
+    // pannello, mai fra le rotte del portale.
+    Route::get('esercizi/{esercizio}/rendiconto/nota', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'show'])
+        ->name('esercizi.rendiconto.nota');
+    Route::put('esercizi/{esercizio}/rendiconto/nota', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'update'])
+        ->name('esercizi.rendiconto.nota.update');
+    Route::get('esercizi/{esercizio}/rendiconto/nota/copia', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'copia'])
+        ->name('esercizi.rendiconto.nota.copia');
+    Route::get('esercizi/{esercizio}/rendiconto/nota/stampa', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'stampa'])
+        ->name('esercizi.rendiconto.nota.stampa');
+    Route::post('esercizi/{esercizio}/rendiconto/nota/genera', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'genera'])
+        ->name('esercizi.rendiconto.nota.genera');
+    Route::post('nota-sintetica/testi', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'salvaTesto'])
+        ->name('nota-sintetica.testi.store');
+    // `{testo}` arriva grezzo: che sia un testo della nota valido nel condominio lo controlla il controller (404).
+    Route::put('nota-sintetica/testi/{testo}', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'rinominaTesto'])
+        ->name('nota-sintetica.testi.update');
+    Route::delete('nota-sintetica/testi/{testo}', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoNotaController::class, 'eliminaTesto'])
+        ->name('nota-sintetica.testi.destroy');
+
+    // Le versioni del rendiconto per l'assemblea: «Ferma per l'assemblea», le parti conservate una per una, il PDF mandato, l'approvazione, l'eliminazione
+    // di una versione mai approvata, e i documenti di una versione. Dietro il pannello, mai fra le rotte del portale.
+    Route::post('esercizi/{esercizio}/rendiconto/versioni', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoVersioniController::class, 'store'])
+        ->name('esercizi.rendiconto.versioni.store');
+    Route::post('esercizi/{esercizio}/rendiconto/versioni/{versione}/parti', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoVersioniController::class, 'parte'])
+        ->whereNumber('versione')->name('esercizi.rendiconto.versioni.parte');
+    Route::post('esercizi/{esercizio}/rendiconto/versioni/{versione}/pdf', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoVersioniController::class, 'carica'])
+        ->whereNumber('versione')->name('esercizi.rendiconto.versioni.carica');
+    Route::post('esercizi/{esercizio}/rendiconto/versioni/{versione}/approvazione', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoVersioniController::class, 'approva'])
+        ->whereNumber('versione')->name('esercizi.rendiconto.versioni.approva');
+    Route::delete('esercizi/{esercizio}/rendiconto/versioni/{versione}', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoVersioniController::class, 'destroy'])
+        ->whereNumber('versione')->name('esercizi.rendiconto.versioni.destroy');
+    Route::get('esercizi/{esercizio}/rendiconto/versioni/{versione}/documenti/{documento}', [\App\Http\Controllers\Gestionale\Movimenti\RendicontoVersioniController::class, 'documento'])
+        ->whereNumber('versione')->whereNumber('documento')->name('esercizi.rendiconto.versioni.documento');
 
     // Il rendiconto: il riepilogo finanziario per competenza, una scheda con la sua richiesta, e la sua stampa.
     Route::get('esercizi/{esercizio}/rendiconto/riepilogo-finanziario', [RiepilogoPerCompetenzaController::class, 'index'])
@@ -540,7 +598,37 @@ Route::prefix('/gestionale/{condominio}')
     Route::post('accordi-rientro', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'store'])->name('accordi-rientro.store');
     Route::post('accordi-rientro/{accordo}/autorizza', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'autorizza'])->name('accordi-rientro.autorizza');
     Route::post('accordi-rientro/{accordo}/chiudi', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'chiudi'])->name('accordi-rientro.chiudi');
+    // La decadenza, registrata dall'amministratore: chiude l'accordo. La stampa dell'accordo con il calendario, per la persona (un GET: non scrive niente).
+    Route::post('accordi-rientro/{accordo}/decadenza', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'decadenza'])->name('accordi-rientro.decadenza');
+    Route::get('accordi-rientro/{accordo}/stampa', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'stampa'])->name('accordi-rientro.stampa');
     Route::get('accordi-rientro/{accordo}/documento', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'documento'])->name('accordi-rientro.documento');
+
+    // Gli addebiti a una persona sola, dal riquadro delle quote non assegnate del piano, dall'estratto conto e dalla scheda «Conguaglio»: la proposta,
+    // la registrazione, l'annullamento. `{addebito}` arriva grezzo: che sia un addebito di questo condominio lo controlla il controller (404).
+    Route::get('addebiti/proposta', [\App\Http\Controllers\Gestionale\Movimenti\AddebitiController::class, 'proposta'])->name('addebiti.proposta');
+    Route::post('addebiti', [\App\Http\Controllers\Gestionale\Movimenti\AddebitiController::class, 'store'])->name('addebiti.store');
+    Route::post('addebiti/{addebito}/annulla', [\App\Http\Controllers\Gestionale\Movimenti\AddebitiController::class, 'annulla'])->name('addebiti.annulla');
+
+    // Gli interessi di mora, dall'elenco delle rate scadute: la proposta a una data per le persone scelte, riga per riga, e la registrazione delle righe
+    // tenute. Le spese per il ritardo senza fattura in blocco: la proposta (l'unità di ognuno, dove si scrivono, le voci). Le persone devono essere di
+    // questo condominio (404).
+    Route::get('addebiti/interessi/proposta', [\App\Http\Controllers\Gestionale\Movimenti\InteressiController::class, 'proposta'])->name('addebiti.interessi.proposta');
+    Route::post('addebiti/interessi', [\App\Http\Controllers\Gestionale\Movimenti\InteressiController::class, 'store'])->name('addebiti.interessi.store');
+    Route::get('addebiti/spese/proposta', [\App\Http\Controllers\Gestionale\Movimenti\InteressiController::class, 'spese'])->name('addebiti.spese.proposta');
+
+    // Le regole del recupero dei crediti del condominio, con la loro storia: l'elenco, una regola nuova, l'eliminazione di una regola mai usata.
+    // `{regola}` arriva grezzo: che sia di questo condominio lo controlla il controller (404).
+    Route::get('recupero-crediti', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'index'])->name('recupero-crediti.index');
+    Route::post('recupero-crediti', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'store'])->name('recupero-crediti.store');
+    // Il tasso legale di un anno che il programma non ha ancora, scritto a mano per tutti i condomini: lo scrive e lo toglie chi gestisce le impostazioni
+    // generali (il controller, 403). L'anno arriva nel corpo; queste due stanno prima di `{regola}`, che altrimenti prenderebbe «tasso-legale».
+    Route::post('recupero-crediti/tasso-legale', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'scriviTassoLegale'])->name('recupero-crediti.tasso-legale.store');
+    Route::delete('recupero-crediti/tasso-legale', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'togliTassoLegale'])->name('recupero-crediti.tasso-legale.destroy');
+    Route::delete('recupero-crediti/{regola}', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'destroy'])->name('recupero-crediti.destroy');
+
+    // Le impostazioni del condominio, la scheda «Impostazioni» dell'area «Condominio»: la pagina e «Salva» (chi modifica il condominio, il controller: 403).
+    Route::get('impostazioni', [\App\Http\Controllers\Gestionale\Struttura\ImpostazioniCondominioController::class, 'index'])->name('impostazioni.index');
+    Route::post('impostazioni', [\App\Http\Controllers\Gestionale\Struttura\ImpostazioniCondominioController::class, 'update'])->name('impostazioni.update');
 
     // 1.12.0-beta.4: le lettere ai condòmini (promemoria, sollecito, diffida, messa in mora) dalle rate scadute e dall'estratto conto. Il PDF si
     // chiede con un POST (la stampa scrive il registro); un GET sugli stessi indirizzi riporta alle rate scadute con una frase. `{invio}` e

@@ -4,9 +4,8 @@ import { Head, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import GiaVersatoGuide from '@/components/guides/GiaVersatoGuide.vue';
-import { Button } from '@/components/ui/button';
-import { BookOpen } from 'lucide-vue-next';
 import { Input } from '@/components/ui/input';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
@@ -97,9 +96,7 @@ const guide = [
           punti in cui serve.
         -->
         <template #actions>
-          <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
-            <BookOpen class="h-4 w-4" /> Guida completa
-          </Button>
+          <PulsanteGuida testo="Guida completa" @click="mostraGuida = true" />
         </template>
       </PageHeaderGuide>
 

@@ -12,11 +12,17 @@ namespace App\Services\Gestionale\Invii;
  * della richiesta finito, la memoria finita), i pezzi e lo .zip si tolgono alla fine della richiesta: il primo {@see aggiungi()} lo chiede con
  * `register_shutdown_function`. Lo .zip si toglie così anche quando il tempo finisce mentre si chiude. Restano nella cartella temporanea solo se il
  * processo non arriva alla fine della richiesta: chiuso da PHP qualche secondo dopo il tempo, o ucciso.
+ *
+ * Un nome già usato (senza guardare le maiuscole, come i dischi di Windows e del Mac) si rifiuta, e il rifiuto toglie tutto: prima l'elenco si riscriveva, e
+ * il file di prima, con i dati della persona, restava nella cartella temporanea. Chi chiama passa i nomi da {@see InviiPerPersona::nomeLibero()}.
  */
 final class ArchivioAPezzi
 {
     /** @var array<string, string> il nome nell'archivio => il file temporaneo */
     private array $pezzi = [];
+
+    /** @var array<string, true> i nomi già usati, in minuscolo */
+    private array $usati = [];
 
     private ?string $zip = null;
 
@@ -35,6 +41,10 @@ final class ArchivioAPezzi
             $this->allaFine = true;
             register_shutdown_function(fn () => $this->togli());
         }
+        if (isset($this->usati[mb_strtolower($nome)])) {
+            $this->fallisci();
+        }
+        $this->usati[mb_strtolower($nome)] = true;
         $percorso = tempnam(sys_get_temp_dir(), 'km_pezzo_');
         if ($percorso === false) {
             $this->fallisci();
@@ -94,8 +104,11 @@ final class ArchivioAPezzi
         $this->pezzi = [];
     }
 
+    /** Toglie tutto quello che c'è sul disco (i pezzi e lo .zip) e lo dice con l'eccezione di chi chiama. */
     private function fallisci(): never
     {
+        $this->togli();
+
         throw new ($this->eccezione)(InviiPerPersona::ARCHIVIO_NON_FATTO);
     }
 }

@@ -43,13 +43,10 @@ function ltCreaCassaLiquidita(int $condominioId, int $saldoInizialeCents): Cassa
     ]);
 }
 
+/** La liquidità della tesoreria: dalla 1.12.0-beta.10 è la fotografia dello Stato patrimoniale a oggi, con le aperture sempre (`DisponibilitaDiOggi`). */
 function ltLiquidita($condominio, ?int $gestioneId = null): int
 {
-    $svc = app(TreasuryGuardianService::class);
-    $metodo = new ReflectionMethod($svc, 'calcolaLiquidita');
-    $metodo->setAccessible(true);
-
-    return $metodo->invoke($svc, $condominio->id, $gestioneId);
+    return app(TreasuryGuardianService::class)->perCondominio((int) $condominio->id, $gestioneId)->liquiditaTotaleCents;
 }
 
 test('la liquidità non cambia dopo la migrazione dell\'apertura a giornale', function () {

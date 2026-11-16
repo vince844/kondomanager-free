@@ -2,9 +2,10 @@
  * Il widget «Tesoreria a 30gg»: i testi sui fondi vincolati dicono quello che il calcolo fa.
  *
  * Si legge il sorgente, come nei test delle guide: conta la frase, non il disegno. Il servizio toglie
- * i fondi dal disponibile (`TreasuryGuardianService::calcolaFondiVincolati`); l'avviso compare quando il
- * condominio ha un fondo riserva ma senza somme accantonate. Non deve dire che il calcolo «non distingue
- * ancora» i fondi, né rimandare a una funzione («Voci Accantonamento») che nel programma non esiste.
+ * dal disponibile i fondi che non si possono usare (`DisponibilitaDiOggi`, con la regola di `TipoDelFondo`), e
+ * «Da dove viene» li mostra come righe tolte; l'avviso compare quando il condominio ha un fondo ma nessun fondo
+ * ha denaro. Non deve dire che il calcolo «non distingue ancora» i fondi, né rimandare a una funzione («Voci
+ * Accantonamento») che nel programma non esiste.
  */
 import { describe, expect, test } from 'vitest';
 import fs from 'node:fs';

@@ -70,6 +70,30 @@ export function numeroDellaScheda(lettere: LetteraPerLaScheda[], documenti: Docu
     return vociDellaCorrispondenza(lettere, documenti).length;
 }
 
+/** I nomi dei tipi, al singolare e al plurale, nell'ordine del filtro della scheda (`TIPI_DEI_FILTRI`). */
+const NOMI_NEL_RIASSUNTO: Array<{ chiave: string; uno: string; tanti: string }> = [
+    { chiave: 'lettera', uno: 'lettera', tanti: 'lettere' },
+    { chiave: 'ricevuta', uno: 'ricevuta', tanti: 'ricevute' },
+    { chiave: 'avviso_compensazione', uno: 'avviso di compensazione', tanti: 'avvisi di compensazione' },
+    { chiave: 'altro', uno: 'altro documento', tanti: 'altri documenti' },
+];
+
+/**
+ * Che cosa c'è nella scheda, per il collegamento della card «Lettere»: «3 ricevute», «1 lettera e 2 ricevute», «2 lettere, 1 ricevuta e 1 avviso di
+ * compensazione». Le voci sono quelle del numero della scheda ({@link vociDellaCorrispondenza}): le ricevute segnate «non serve comunicarla» sono
+ * ricevute, come nel filtro. Vuoto senza voci.
+ */
+export function riassuntoDellaCorrispondenza(lettere: LetteraPerLaScheda[], documenti: DocumentoInviato[]): string {
+    const conti = new Map<string, number>();
+    for (const v of vociDellaCorrispondenza(lettere, documenti)) {
+        const chiave = v.genere === 'lettera' ? 'lettera' : (NOMI_NEL_RIASSUNTO.some((n) => n.chiave === v.tipo) ? v.tipo : 'altro');
+        conti.set(chiave, (conti.get(chiave) ?? 0) + 1);
+    }
+    const parti = NOMI_NEL_RIASSUNTO.filter((n) => conti.has(n.chiave)).map((n) => `${conti.get(n.chiave)} ${conti.get(n.chiave) === 1 ? n.uno : n.tanti}`);
+
+    return parti.length > 1 ? `${parti.slice(0, -1).join(', ')} e ${parti.at(-1)}` : (parti[0] ?? '');
+}
+
 /** Il filtro per tipo («lettere» vuol dire i quattro tipi) e per periodo, sul giorno di emissione, con gli estremi compresi. */
 export function filtraCorrispondenza<V extends { genere: string; tipo: string; emessa_il: string }>(voci: V[], f: FiltriCorrispondenza): V[] {
     return voci.filter((v) => (f.tipo === '' || (f.tipo === 'lettere' ? v.genere === 'lettera' : v.tipo === f.tipo))

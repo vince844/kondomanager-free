@@ -69,7 +69,7 @@ const truncatedName = (name: string, length: number = 80) => {
                         <p class="text-[10px] font-medium text-slate-400 mt-0.5">
                             {{ trans('documenti.visibility.sent_on_by_category', {
                                 date: documento.created_at,
-                                name: documento.created_by.user.name,
+                                name: documento.created_by?.user?.name ?? 'utente eliminato',
                                 // Le categorie sono più d'una: si elencano tutte, in ordine
                                 // alfabetico, perché la frase dice «nella categoria …» e leggerne
                                 // una sola quando ce ne sono tre sarebbe una mezza verità.

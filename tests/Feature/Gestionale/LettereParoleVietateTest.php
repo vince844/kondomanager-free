@@ -72,6 +72,11 @@ it('le frasi del server delle rate scadute, delle date, del pregresso e delle le
         \App\Services\Gestionale\Invii\InviiPerPersona::class, \App\Services\Gestionale\Ricevute\LimiteAltroIndirizzo::class,
         \App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, \App\Services\Gestionale\Ricevute\AvvisiCompensazione::class,
         \App\Notifications\Gestionale\AvvisoCompensazioneNotification::class,
+        // I sei mesi per agire: la regola del passo, il riquadro, le risposte.
+        \App\Services\Gestionale\Debiti\PassoProposto::class, \App\Services\Gestionale\Debiti\SeiMesiPerAgire::class, \App\Services\Gestionale\RispostePromemoria::class,
+        \App\Http\Controllers\Gestionale\Dashboard\SeiMesiRisposteController::class,
+        // Il fascicolo per il legale.
+        \App\Services\Gestionale\Debiti\FascicoloLegale::class, \App\Http\Controllers\Gestionale\Movimenti\FascicoloLegaleController::class,
     ];
     $trovate = [];
     foreach ($classi as $classe) {

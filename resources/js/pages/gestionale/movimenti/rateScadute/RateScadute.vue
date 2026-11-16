@@ -10,6 +10,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import { GUIDE_RATE_SCADUTE } from '@/lib/gestionale/debiti/guideRateScadute';
 import Alert from '@/components/Alert.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,18 +22,20 @@ import 'vue-select/dist/vue-select.css';
 import SpiegazioneDelFiltro from '@/components/gestionale/debiti/SpiegazioneDelFiltro.vue';
 import RateScaduteGuide from '@/components/guides/RateScaduteGuide.vue';
 import { usePermission } from '@/composables/permissions';
-import { AlertTriangle, ChevronDown, ChevronRight, ListChecks, Mail, Printer, Scale, Send, X } from 'lucide-vue-next';
+import { AlertTriangle, ChevronDown, ChevronRight, Coins, Lightbulb, ListChecks, Mail, Printer, Scale, Send, X } from 'lucide-vue-next';
 import axios from 'axios';
 import LettereDialog from '@/components/gestionale/lettere/LettereDialog.vue';
 import AccordoRientroDialog from '@/components/gestionale/accordi/AccordoRientroDialog.vue';
-import { testoParteInAccordo, testoSegnoAccordo, type AccordoRientro, type ParteInAccordo } from '@/lib/gestionale/debiti/accordiRientro';
+import ProponiInteressiDialog from '@/components/gestionale/addebiti/ProponiInteressiDialog.vue';
+import AddebitaSpesaDialog from '@/components/gestionale/addebiti/AddebitaSpesaDialog.vue';
+import { testoParteInAccordo, testoSegnaleBreve, testoSegnoAccordo, type AccordoRientro, type ParteInAccordo } from '@/lib/gestionale/debiti/accordiRientro';
 import { CANALI_SPEDIZIONE, testoRiprova, testoUltimaLettera, type UltimaLettera } from '@/lib/gestionale/lettere/lettere';
 import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { alterna, quanteSelezionate, selezionaPagina, selezioneVuota, tutteDeiFiltri, type Selezione } from '@/lib/gestionale/incassi/ricevute';
 import {
     FRASE_DATA_PASSATA, FRASE_RISERVATEZZA, NOTA_PREGRESSO_NELLA_RATA, PERSONE_NEL_MENU, RIGA_TESORERIA, SPIEGAZIONI_DEI_FILTRI, euroTesto, giorno, personeDelMenu,
     testoData, testoDispensa, testoGiorniDellaRata,
-    testoNonEmesse, testoSeiMesiDellaPersona, testoTotale, titoloVista, type NonEmesse, type SeiMesiDellaRata,
+    testoNonEmesse, testoSeiMesiDellaPersona, testoTotale, titoloVista, testoSeiMesiDel, testoDiCui, type NonEmesse, type SeiMesiDellaRata,
 } from '@/lib/gestionale/debiti/rateScadute';
 import type { Flash } from '@/types/flash';
 
@@ -40,17 +43,21 @@ interface Rata {
     rata_id: number; numero_rata: number; piano: string; unita: string | null; scadenza: string; residuo: number; giorni_ritardo: number | null;
     pregresso: { origine: string; etichetta: string } | null; pregresso_nella_rata: boolean; sei_mesi: SeiMesiDellaRata | null;
     accordo?: ParteInAccordo | null;
+    /** Con il filtro «I sei mesi del …»: la rata è di quella data. */
+    del_sei_mesi?: boolean;
 }
 interface Riga {
     anagrafica_id: number; nome: string; unita: string[]; importo: number; credito: number | null; rate: Rata[];
     fasce?: { '1_30': number; '31_90': number; oltre_90: number }; ritardo_testo?: string; prima_scadenza?: string;
     sei_mesi?: { data: string | null; dispensa: any; mancano: number }; con_pregresso?: boolean; origine_non_dichiarata?: boolean;
     ultima_lettera?: UltimaLettera | null; lettera_in_sospeso?: UltimaLettera | null; accordi?: AccordoRientro[];
+    /** Con il filtro «I sei mesi del …»: quanto dello scaduto è di quella data. */
+    di_cui_sei_mesi?: number;
 }
 interface Filtri {
     alla: string; vista: string; giorni: number; cerca: string | null; anagrafica_id: number | null; fascia: string | null; minimo: number | null;
     gestione_id: number | null; sei_mesi_entro: number | null; con_pregresso: boolean; ordine: string;
-    senza_lettere_da?: number | null; mai_scritto?: boolean; da_spedire?: boolean; con_accordo?: boolean;
+    senza_lettere_da?: number | null; mai_scritto?: boolean; da_spedire?: boolean; con_accordo?: boolean; sei_mesi_del?: string | null;
 }
 
 const props = defineProps<{
@@ -59,6 +66,12 @@ const props = defineProps<{
     totale: number; persone_totali: number; filtri: Filtri; oggi: string; non_emesse: NonEmesse | null;
     gestioni: Array<{ id: number; nome: string }>; persone?: Array<{ id: number; nome: string }>; persona_della_porta: string | null; testo_norma: string; frase_festivo?: string; frase_sei_mesi?: string;
     lettere_da_riprovare?: number; lettere_in_coda_da_tempo?: number;
+    /** I suggerimenti che chiedono le regole del recupero: suggerimenti, mai azioni. */
+    suggerimenti?: Array<{ chiave: string; frase: string; persone: number[]; porta: 'seleziona' | 'proponi_interessi' }>;
+    /** Il tasso degli interessi di mora di oggi, con la sua fonte. */
+    regole_del_recupero?: string | null;
+    /** «I sei mesi del …», dal riquadro dei sei mesi: la data, l'esercizio da cui viene, quante persone e la cifra di quell'esercizio. */
+    sei_mesi_del?: { data: string; esercizio: string | null; persone: number; cifra: number } | null;
 }>();
 
 const { generateRoute, generatePath } = usePermission();
@@ -89,6 +102,9 @@ const f = ref({
 // sopra l'elenco con la × e la porta alla stampa e alle lettere, così l'elenco, la stampa e le lettere hanno le stesse persone.
 const cercaDallIndirizzo = ref(props.filtri.cerca ?? '');
 const togliCerca = () => { cercaDallIndirizzo.value = ''; selezione.value = selezioneVuota(); applica(); };
+// «I sei mesi del …» arriva dal riquadro dei sei mesi («Tutte le rate di questo esercizio →»): tiene le persone con rate di quella data, e si toglie con la ×.
+const seiMesiDel = ref(props.filtri.sei_mesi_del ?? '');
+const togliSeiMesiDel = () => { seiMesiDel.value = ''; selezione.value = selezioneVuota(); applica(); };
 const parametri = (vista = props.filtri.vista) => ({
     condominio: props.condominio.id,
     cerca: cercaDallIndirizzo.value || undefined,
@@ -106,6 +122,7 @@ const parametri = (vista = props.filtri.vista) => ({
     mai_scritto: f.value.mai_scritto ? 1 : undefined,
     da_spedire: f.value.da_spedire ? 1 : undefined,
     con_accordo: f.value.con_accordo ? 1 : undefined,
+    sei_mesi_del: seiMesiDel.value || undefined,
     per_page: props.righe.meta.per_page,
 });
 function applica(paginaN?: number, vista?: string) {
@@ -204,6 +221,26 @@ const scriviA = (r: Riga) => {
 };
 const ricaricaDopoLeLettere = () => router.reload({ only: ['righe', 'lettere_da_riprovare', 'lettere_in_coda_da_tempo'] });
 
+// ── Gli interessi e le spese per il ritardo ─────────────────────────────
+// Per le persone scelte, o per tutte quelle dei filtri, che il server rilegge.
+const finestraInteressi = ref(false);
+const finestraSpesa = ref(false);
+const personeDelleAzioni = ref<number[] | null>(null);
+const sceltePerLeAzioni = (): number[] | null => (quante.value > 0 && !selezione.value.tutte ? [...selezione.value.ids] : null);
+const proponiInteressi = (persone: number[] | null) => { personeDelleAzioni.value = persone; finestraInteressi.value = true; };
+const addebitaSpesa = () => { personeDelleAzioni.value = sceltePerLeAzioni(); finestraSpesa.value = true; };
+// Un suggerimento porta alle sue persone: le sceglie nell'elenco, o apre la proposta degli interessi per loro. Niente si scrive.
+function seguiSuggerimento(s: { persone: number[]; porta: string }) {
+    if (s.porta === 'proponi_interessi') {
+        proponiInteressi(s.persone);
+
+        return;
+    }
+    selezione.value = { tutte: false, ids: [...s.persone] };
+}
+const indirizzoRegole = computed(() => route(generateRoute('gestionale.recupero-crediti.index'), { condominio: props.condominio.id }));
+const ricaricaDopoGliAddebiti = () => router.reload({ only: ['righe', 'totale', 'persone_totali', 'suggerimenti'] });
+
 // ── L'accordo di rientro, dalla riga ────────────────────────────────────
 const finestraAccordo = ref(false);
 const personaDellAccordo = ref<{ id: number; nome: string } | null>(null);
@@ -284,14 +321,20 @@ const breadcrumbs = computed(() => [
             <PageHeaderGuide
                 :page-title="titolo"
                 page-subtitle="Chi deve ancora pagare, persona per persona: lo scaduto, le fasce, il ritardo e le date dei sei mesi."
-                :guides="[]"
+                :guides="GUIDE_RATE_SCADUTE"
                 :breadcrumbs="(breadcrumbs as any)"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
                 has-text-guide
                 text-guide-title="Guida"
                 @open-text-guide="mostraGuida = true"
-            />
+            >
+                <!-- Le dispense dei sei mesi sono un'altra pagina: un collegamento accanto alla guida, con l'aspetto dei pulsanti dell'intestazione. -->
+                <template #actions>
+                    <Link v-if="!inScadenza" :href="indirizzoDispense" data-testid="dispense-sei-mesi"
+                        class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"><Scale class="w-3.5 h-3.5" />Dispense dei sei mesi</Link>
+                </template>
+            </PageHeaderGuide>
             <MovimentiLayout>
                 <div class="space-y-3">
                     <p data-testid="riga-tesoreria" class="text-xs text-slate-500 dark:text-slate-400">{{ RIGA_TESORERIA }}</p>
@@ -430,9 +473,23 @@ const breadcrumbs = computed(() => [
                         <span>{{ frasNonEmesse }} <Link :href="indirizzoPiani" class="underline">Vai ai piani rate</Link></span>
                     </p>
 
+                    <!-- I suggerimenti che chiedono le regole del recupero: dicono quante persone e quali; scegliere o proporre resta tuo. -->
+                    <div v-if="(suggerimenti ?? []).length" class="space-y-1 rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 p-2 text-xs text-sky-900 dark:text-sky-100" data-testid="suggerimenti">
+                        <p v-for="sg in suggerimenti" :key="sg.chiave" class="flex flex-wrap items-center gap-2" :data-testid="`suggerimento-${sg.chiave}`">
+                            <Lightbulb class="w-4 h-4 shrink-0" /> <span>{{ sg.frase }}</span>
+                            <Button size="sm" variant="outline" class="h-7 text-xs" @click="seguiSuggerimento(sg)">{{ sg.porta === 'proponi_interessi' ? 'Proponi gli interessi' : 'Scegli queste persone' }}</Button>
+                        </p>
+                        <p class="text-[11px]">Dalle <Link :href="indirizzoRegole" class="underline">regole del recupero</Link> del condominio<template v-if="regole_del_recupero"> (tasso di oggi: {{ regole_del_recupero }})</template>.</p>
+                    </div>
+
                     <p v-if="cercaDallIndirizzo" class="flex flex-wrap items-center gap-2 text-xs" data-testid="filtro-cerca">
                         Solo i nomi con «{{ cercaDallIndirizzo }}».
                         <Button size="sm" variant="ghost" class="h-7 text-xs" data-testid="togli-cerca" @click="togliCerca"><X class="w-3.5 h-3.5 mr-1" /> Tutti i nomi</Button>
+                    </p>
+
+                    <p v-if="sei_mesi_del && seiMesiDel" class="flex flex-wrap items-center gap-2 text-xs" data-testid="filtro-sei-mesi-del">
+                        {{ testoSeiMesiDel(sei_mesi_del) }}
+                        <Button size="sm" variant="ghost" class="h-7 text-xs" data-testid="togli-sei-mesi-del" @click="togliSeiMesiDel"><X class="w-3.5 h-3.5 mr-1" /> Tutte le date</Button>
                     </p>
 
                     <!-- Il totale, la scelta e la stampa -->
@@ -458,9 +515,9 @@ const breadcrumbs = computed(() => [
                             <Button v-if="filtri.da_spedire" size="sm" variant="outline" :disabled="daSpedire.length === 0" data-testid="spedizione-in-blocco" @click="apriSpedizione">
                                 <Send class="w-4 h-4 mr-2" /> Registra la spedizione
                             </Button>
-                            <!-- Un collegamento con l'aspetto degli altri pulsanti della fila: l'icona, il carattere e l'altezza. -->
-                            <Button v-if="!inScadenza" as-child size="sm" variant="outline">
-                                <Link :href="indirizzoDispense" data-testid="dispense-sei-mesi"><Scale class="w-4 h-4 mr-2" /> Dispense dei sei mesi</Link>
+                            <!-- Gli interessi si propongono dal suggerimento, che dice per chi: un pulsante solo. -->
+                            <Button v-if="!inScadenza" size="sm" variant="outline" :disabled="persone_totali === 0" data-testid="spese-del-ritardo" @click="addebitaSpesa">
+                                <Coins class="w-4 h-4 mr-2" /> {{ quante > 0 && !selezione.tutte ? 'Spese del ritardo alle selezionate' : 'Spese del ritardo' }}
                             </Button>
                         </div>
                     </div>
@@ -524,10 +581,14 @@ const breadcrumbs = computed(() => [
                                             </span>
                                             <span v-for="a in r.accordi ?? []" :key="a.id" class="block text-[11px] text-sky-800 dark:text-sky-300" data-testid="segno-accordo">
                                                 {{ testoSegnoAccordo(a) }}
+                                                <span v-if="testoSegnaleBreve(a)" class="block text-amber-800 dark:text-amber-300" data-testid="segnale-accordo">{{ testoSegnaleBreve(a) }}</span>
                                             </span>
                                         </td>
                                         <td class="p-2">{{ r.unita.join(', ') }}</td>
-                                        <td class="p-2 text-right font-semibold whitespace-nowrap">{{ euroTesto(r.importo) }}</td>
+                                        <td class="p-2 text-right font-semibold whitespace-nowrap">
+                                            {{ euroTesto(r.importo) }}
+                                            <span v-if="r.di_cui_sei_mesi && sei_mesi_del" class="block text-xs font-normal text-slate-500 dark:text-slate-400" data-testid="di-cui-sei-mesi">{{ testoDiCui(sei_mesi_del.data, r.di_cui_sei_mesi) }}</span>
+                                        </td>
                                         <template v-if="!inScadenza && r.fasce">
                                             <td class="p-2 text-right whitespace-nowrap">{{ r.fasce['1_30'] ? euroTesto(r.fasce['1_30']) : '' }}</td>
                                             <td class="p-2 text-right whitespace-nowrap">{{ r.fasce['31_90'] ? euroTesto(r.fasce['31_90']) : '' }}</td>
@@ -561,7 +622,8 @@ const breadcrumbs = computed(() => [
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <tr v-for="rata in r.rate" :key="`${rata.rata_id}-${rata.unita}`" class="border-t align-top">
+                                                    <tr v-for="rata in r.rate" :key="`${rata.rata_id}-${rata.unita}`" class="border-t align-top"
+                                                        :class="{ 'bg-amber-50/70 dark:bg-amber-900/20': rata.del_sei_mesi }" :data-sei-mesi="rata.del_sei_mesi ? 'si' : undefined">
                                                         <td class="p-1">{{ rata.unita }}</td>
                                                         <td class="p-1">{{ rata.piano }}</td>
                                                         <td class="p-1">
@@ -628,6 +690,9 @@ const breadcrumbs = computed(() => [
                     :filtri="filtriDelServer()" :vista="filtri.vista" :giorni="filtri.giorni" :oggi="oggi" @fatto="ricaricaDopoLeLettere" />
                 <RateScaduteGuide v-model:open="mostraGuida" :testo-norma="testo_norma" />
                 <AccordoRientroDialog v-model:open="finestraAccordo" :condominio-id="condominio.id" :persona="personaDellAccordo" :oggi="oggi" @fatto="ricaricaDopoLAccordo" />
+                <ProponiInteressiDialog v-model:open="finestraInteressi" :condominio-id="condominio.id" :oggi="oggi" :persone="personeDelleAzioni" :filtri="filtriDelServer()"
+                    @fatto="ricaricaDopoGliAddebiti" />
+                <AddebitaSpesaDialog v-model:open="finestraSpesa" :condominio-id="condominio.id" :persone="personeDelleAzioni" :filtri="filtriDelServer()" @fatto="ricaricaDopoGliAddebiti" />
             </MovimentiLayout>
         </div>
     </GestionaleLayout>

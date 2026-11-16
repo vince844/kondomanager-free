@@ -133,6 +133,9 @@ class StornoIncassoRateAction
                         'anagrafica_id'      => $riga->anagrafica_id,
                         'rata_id'            => $riga->rata_id,
                         'immobile_id'        => $riga->immobile_id,
+                        // La voce di una riga (gli interessi e le spese versati, che passano da «Accessori da incassare» alla voce): lo specchio la
+                        // porta, perché il consuntivo per voce la tolga.
+                        'voce_spesa_id'      => $riga->voce_spesa_id,
                         'tipo_riga'          => $riga->tipo_riga === 'dare' ? 'avere' : 'dare',
                         'importo'            => $riga->importo,
                     ]);

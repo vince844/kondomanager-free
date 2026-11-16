@@ -6,6 +6,7 @@ import {
     payloadSelezione,
     pronteDaEmettere,
     quanteSelezionate,
+    testoDellaScelta,
     selezionaPagina,
     selezioneVuota,
     testoAnteprima,
@@ -107,6 +108,15 @@ describe('la selezione', () => {
         expect(s.ids).toEqual([]);
         s = selezionaPagina(alterna(selezioneVuota(), 7), [1, 2]);
         expect(s.ids).toEqual([7, 1, 2]);
+    });
+
+    test('il conteggio della riga: le ricevute dei filtri, poi quante su quante, al singolare e al plurale', () => {
+        expect(testoDellaScelta(0, 1)).toBe('1 ricevuta con questi filtri');
+        expect(testoDellaScelta(0, 12)).toBe('12 ricevute con questi filtri');
+        expect(testoDellaScelta(0, 0)).toBe('0 ricevute con questi filtri');
+        expect(testoDellaScelta(1, 1)).toBe('1 selezionata su 1 con questi filtri');
+        expect(testoDellaScelta(1, 12)).toBe('1 selezionata su 12 con questi filtri');
+        expect(testoDellaScelta(3, 12)).toBe('3 selezionate su 12 con questi filtri');
     });
 });
 

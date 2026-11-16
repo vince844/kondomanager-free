@@ -60,7 +60,7 @@ const QUOTA_APERTA = { stato: 'quota_aperta', atteso_cents: 250000, generato_cen
 
 type Opzioni = {
     capitoli?: unknown[]; voci?: unknown[] | null; scarto?: number; nota?: string | null; allineamento?: unknown; disallineato?: boolean;
-    ratePure?: unknown[]; fermo?: unknown; movimenti?: unknown[];
+    ratePure?: unknown[]; fermo?: unknown; movimenti?: unknown[]; addebiti?: unknown[]; degliAddebiti?: unknown;
 };
 
 async function monta(o: Opzioni = {}) {
@@ -76,7 +76,7 @@ async function monta(o: Opzioni = {}) {
             },
             allineamento: (o.allineamento ?? QUOTA_APERTA) as never, disallineato: o.disallineato ?? false,
             quotePerAnagrafica: [], quotePerImmobile: [], ratePure: o.ratePure ?? [], needsMigration: false, sources: [], destinations: [], copertura: null,
-            fermo_del_piano: (o.fermo ?? null) as never,
+            fermo_del_piano: (o.fermo ?? null) as never, addebiti_delle_quote: (o.addebiti ?? []) as never, degli_addebiti: (o.degliAddebiti ?? null) as never,
         },
         global: { stubs: { GestionaleLayout: { template: '<div><slot /></div>' }, PageHeaderGuide: true, VueDatePicker: true, PianoRateSpaccatoSheet: true, ModalSpostaSpesa: true, BudgetHistoryPopover: true, DestinatariWarning: true, DestinatariWarningDefunto: true, ScopertoWarning: true, Head: { template: '<span />' }, Link: { template: '<a><slot /></a>' } }, mocks: { route: (n: string) => `/${n}` } },
     });
@@ -177,7 +177,7 @@ describe('il riquadro in cima: le strade che esistono (D143)', () => {
         await monta({ ratePure: EMESSA, fermo: FERMO });
 
         expect(riquadro()).toContain('→ Le rate sono già emesse. Per includere la quota bisogna riaprire il piano con i passi elencati sul pulsante Ricalcola '
-            + '(annullare le emissioni, e prima stornare gli incassi se ce ne sono), poi censire il titolare che manca e premere Ricalcola. Il programma non ha un addebito individuale.');
+            + '(annullare le emissioni, e prima stornare gli incassi se ce ne sono), poi censire il titolare che manca e premere Ricalcola.');
         expect(testo()).not.toContain('addebito manuale');
         expect(testo()).not.toContain('conguaglio di fine anno');
     });
@@ -185,9 +185,30 @@ describe('il riquadro in cima: le strade che esistono (D143)', () => {
     test('fermo senza emissioni (un incasso, un passaggio): il motivo è sul pulsante, e nessuna promessa', async () => {
         await monta({ fermo: { ragioni: ['ha un incasso su una sua quota'], passaggi: [], rimedi: ['annulla quel movimento (lo registri di nuovo dopo il ricalcolo)'] } });
 
-        expect(riquadro()).toContain('→ Il piano non si ricalcola più: il motivo e come riaprirlo sono sul pulsante Ricalcola. Finché resta così, la quota non è addebitata a nessuno; il programma non ha un addebito individuale.');
+        expect(riquadro()).toContain('→ Il piano non si ricalcola più: il motivo e come riaprirlo sono sul pulsante Ricalcola. Finché resta così, la quota non è addebitata a nessuno.');
         expect(testo()).not.toContain('addebito manuale');
         expect(testo()).not.toContain('conguaglio di fine anno');
+    });
+
+    test('la quota di un\'unità si addebita a una persona dalla sua riga: quanto resta e il pulsante; le strade lo dicono', async () => {
+        await monta({ ratePure: EMESSA, fermo: FERMO, addebiti: [
+            { chiave: CANTINA.chiave, immobile_id: 3, immobile_nome: 'Cantina 1', conto_nome: 'Riscaldamento', addebitabile: true, addebitato_cents: 2500, resta_cents: 5000 },
+        ] });
+
+        expect(riquadro()).toContain('Da addebitare a una persona: Cantina 1: restano € 50,00 (già addebitati € 25,00) Addebita a una persona');
+        expect(riquadro()).toContain('premere Ricalcola. Oppure addebita la quota di un\'unità a una persona, dalla sua riga qui sopra.');
+        expect(document.body.querySelectorAll('[data-addebita]')).toHaveLength(1);
+    });
+
+    test('la quota senza un\'unità (la voce senza tabella) non ha «Addebita a una persona»; una quota tutta addebitata nemmeno', async () => {
+        await monta({ fermo: { ragioni: ['ha un incasso su una sua quota'], passaggi: [], rimedi: ['annulla quel movimento'] }, addebiti: [
+            { chiave: 'conto_senza_tabella||9||||', immobile_id: null, immobile_nome: null, conto_nome: 'Ascensore', addebitabile: false, addebitato_cents: 0, resta_cents: 12000 },
+            { chiave: CANTINA.chiave, immobile_id: 3, immobile_nome: 'Cantina 1', conto_nome: 'Riscaldamento', addebitabile: true, addebitato_cents: 7500, resta_cents: 0 },
+        ] });
+
+        expect(riquadro()).toContain('Da addebitare a una persona: Cantina 1: tutto addebitato (già addebitati € 75,00)');
+        expect(document.body.querySelectorAll('[data-addebita]')).toHaveLength(0);
+        expect(riquadro()).not.toContain('Ascensore: restano');
     });
 });
 
@@ -507,5 +528,23 @@ describe('la quota aperta con tante unità (Coda 433)', () => {
             allineamento: { stato: 'allineato', atteso_cents: 250000, generato_cents: 250000, scarto_cents: 0, scarto_registrato_cents: null } });
 
         expect(riquadro()).toContain('Nessuna quota è rimasta senza destinatario, ma 2 unità non hanno un millesimo: la loro parte l\'hanno pagata le altre.');
+    });
+});
+
+describe('la pagina del piano degli addebiti a singole persone', () => {
+    test('dice che cosa è e non offre le azioni del riparto (l\'interruttore Approvato/Bozza, l\'emissione, Ricalcola) né la copertura delle spese', async () => {
+        const frase = '«Addebiti individuali – Ordinaria 2026» è il piano degli addebiti a singole persone: non si genera, non si ricalcola, non si approva e non si modifica. '
+            + 'Ogni addebito si annulla dall\'estratto conto della persona.';
+        await monta({ voci: [], nota: null, degliAddebiti: { frase } });
+        expect(pulisci(document.body.querySelector('[data-riquadro="piano-degli-addebiti"]')?.textContent)).toBe(frase);
+        expect(testo()).not.toContain('Approvato');
+        expect(testo()).not.toContain('Bozza');
+        expect(testo()).not.toContain('Copertura spese');
+
+        pagina?.unmount();
+        document.body.innerHTML = '';
+        await monta({ voci: [], nota: null });
+        expect(document.body.querySelector('[data-riquadro="piano-degli-addebiti"]')).toBeNull();
+        expect(testo()).toContain('Bozza');
     });
 });

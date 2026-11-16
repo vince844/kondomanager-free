@@ -10,7 +10,10 @@ import type { Building } from '@/types/buildings'
 
 const { toItalian } = useDateConverter();
 
-export function getColumns(condominio: Building): ColumnDef<Esercizio>[] {
+/** Lo stato del rendiconto di un esercizio, come lo manda il server: in bozza, fermato per l'assemblea, approvato. */
+export interface StatoRendicontoBreve { stato: 'bozza' | 'presentata' | 'approvata'; frase: string; breve: string }
+
+export function getColumns(condominio: Building, statiRendiconto: Record<number, StatoRendicontoBreve> = {}): ColumnDef<Esercizio>[] {
   return [
     {
       accessorKey: 'nome',
@@ -51,6 +54,16 @@ export function getColumns(condominio: Building): ColumnDef<Esercizio>[] {
           h('span', stato.label)
         ]);
       }
+    },
+    {
+      id: 'rendiconto',
+      header: 'Rendiconto',
+      cell: ({ row }) => {
+        const stato = statiRendiconto[(row.original as Esercizio).id];
+        if (!stato) return h('span', '–');
+        const colore = { bozza: 'text-slate-500 dark:text-slate-400', presentata: 'text-sky-700 dark:text-sky-300', approvata: 'text-emerald-700 dark:text-emerald-300' }[stato.stato];
+        return h('span', { class: colore, title: stato.frase, 'data-stato-rendiconto': stato.stato }, stato.breve);
+      },
     },
     {
       id: 'actions',

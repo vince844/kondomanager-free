@@ -109,7 +109,7 @@ function deleteDocumento() {
       <Link
         v-if="hasPermission([Permission.EDIT_ARCHIVE_DOCUMENTS]) || 
               (hasPermission([Permission.EDIT_OWN_ARCHIVE_DOCUMENTS]) && 
-              documento.created_by.user.id === auth.user.id)"
+              documento.created_by?.user?.id === auth.user.id)"
         :href="route(generateRoute('documenti.edit'), { id: documento.id })"
         class="text-gray-700 hover:text-blue-600 transition-colors"
         :title="trans('documenti.actions.edit_document')"
@@ -120,7 +120,7 @@ function deleteDocumento() {
       <button
         v-if="hasPermission([Permission.DELETE_ARCHIVE_DOCUMENTS]) || 
               (hasPermission([Permission.DELETE_OWN_ARCHIVE_DOCUMENTS]) && 
-              documento.created_by.user.id === auth.user.id)"
+              documento.created_by?.user?.id === auth.user.id)"
         @click="handleDelete(documento)"
         class="text-gray-700 hover:text-red-600 transition-colors"
         :title="trans('documenti.actions.delete_document')"
@@ -135,7 +135,7 @@ function deleteDocumento() {
         {{ 
           trans('documenti.visibility.sent_on_by', { 
               date: documento.created_at, 
-              name: documento.created_by.user.name,
+              name: documento.created_by?.user?.name ?? 'utente eliminato',
           }) 
         }}
       </span>

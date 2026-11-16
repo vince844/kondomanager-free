@@ -1834,6 +1834,8 @@ final class ConguaglioPassaggio
             // Fino alla beta.41 contava anche lo stato «emessa» di una rata senza scritture: il conguaglio e il ricalcolo
             // sistemavano la stessa quota due volte (DC5).
             ->whereIn('rate.piano_rate_id', \App\Models\Gestionale\PianoRate::immutabiliFra($candidati))
+            // Un addebito a una persona sola resta a chi l'ha avuto: non è una quota del riparto da dividere per giorni fra chi esce e chi entra.
+            ->where(fn ($q) => $q->whereNull('piani_rate.natura')->orWhere('piani_rate.natura', '!=', \App\Models\Gestionale\PianoRate::NATURA_ADDEBITI))
             ->where('rate_quote.stato', '!=', 'annullata')
             ->orderBy('rate.piano_rate_id')->orderBy('rate.numero_rata')
             ->get(['rate_quote.id', 'rate_quote.rata_id', 'rate_quote.immobile_id', 'rate_quote.anagrafica_id', 'immobili.nome as immobile_nome', 'rate_quote.importo', 'rate_quote.importo_pagato', 'rate_quote.stato as stato_quota', 'rate_quote.regole_calcolo', 'rate.numero_rata', 'rate.data_scadenza', 'rate.piano_rate_id', 'rate.stato as stato_rata', 'gestioni.tipo as natura_gestione',

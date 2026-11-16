@@ -1,9 +1,16 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft, BookOpen, Menu } from 'lucide-vue-next';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
 import { usePermission } from "@/composables/permissions";
+import SceltaCondominio from '@/components/SceltaCondominio.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -40,6 +47,12 @@ const props = defineProps<{
   // Props opzionali per il pulsante indietro custom
   backUrl?: string | null;
   backText?: string;
+
+  /**
+   * I pulsanti su una fila che non va a capo (da `xl`), con il nome del condominio troncato con i puntini: la pagina che lo chiede ha i pulsanti alti uguali
+   * in una riga sola. Senza, la fila va a capo quando non ci sta, come prima.
+   */
+  unaFila?: boolean;
 }>();
 
 defineEmits(['open-text-guide']);
@@ -138,8 +151,9 @@ function selectEsercizio(esercizioId: number | string) {
         </button>
 
         <!-- Contenitore Pulsanti -->
-        <div :class="[
+        <div data-testid="pulsanti-intestazione" :class="[
           'w-full md:w-auto flex-col md:flex-row flex-wrap items-stretch md:items-center gap-2',
+          unaFila ? 'xl:flex-nowrap' : '',
           isMobileMenuOpen ? 'flex' : 'hidden md:flex'
         ]">
 
@@ -153,25 +167,21 @@ function selectEsercizio(esercizioId: number | string) {
         </Link>
 
         <template v-if="condominio">
-          <DropdownMenu v-if="showCondominioDropdown">
-            <DropdownMenuTrigger
+          <!-- Con tanti condomini un menu con una voce per ognuno era lungo quanto la pagina: il riquadro con la ricerca, come nella dashboard social. -->
+          <SceltaCondominio v-if="showCondominioDropdown" :condomini="condomini!" :scelto="condominio.id" @scegli="(id) => id !== null && selectCondominio(id)">
+            <button
+              type="button"
+              data-testid="scegli-condominio"
               class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
-              <Building2 class="w-3.5 h-3.5 text-slate-400" />
-              {{ condominio.nome }}
-              <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
-            </DropdownMenuTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuContent align="end" class="min-w-[180px]">
-                <DropdownMenuItem v-for="c in condomini" :key="c.id" class="cursor-pointer" :class="{ 'font-semibold text-primary': c.id === condominio.id }" @click="selectCondominio(c.id)">
-                  {{ c.nome }}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenuPortal>
-          </DropdownMenu>
+              <Building2 class="w-3.5 h-3.5 shrink-0 text-slate-400" />
+              <span data-testid="nome-condominio" :class="unaFila ? 'max-w-[16rem] truncate' : ''" :title="unaFila ? condominio.nome : undefined">{{ condominio.nome }}</span>
+              <ChevronDown class="w-3.5 h-3.5 shrink-0 text-slate-400" />
+            </button>
+          </SceltaCondominio>
           <div v-else class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
-            <Building2 class="w-3.5 h-3.5 text-slate-400" />
-            <span class="text-slate-700 dark:text-slate-300">{{ condominio.nome }}</span>
+            <Building2 class="w-3.5 h-3.5 shrink-0 text-slate-400" />
+            <span data-testid="nome-condominio" class="text-slate-700 dark:text-slate-300" :class="unaFila ? 'max-w-[16rem] truncate' : ''" :title="unaFila ? condominio.nome : undefined">{{ condominio.nome }}</span>
           </div>
 
           <template v-if="esercizio">
@@ -227,10 +237,7 @@ function selectEsercizio(esercizioId: number | string) {
         </DropdownMenu>
 
         <!-- Bottone singola guida (legacy support) -->
-        <button v-else-if="hasTextGuide" @click="$emit('open-text-guide')" class="inline-flex h-8 items-center justify-center gap-2 text-xs font-bold px-3 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 transition-colors dark:bg-indigo-950/30 dark:text-indigo-400">
-          <BookOpen class="w-3.5 h-3.5" />
-          {{ textGuideTitle || 'Guida' }}
-        </button>
+        <PulsanteGuida v-else-if="hasTextGuide" :testo="textGuideTitle || 'Guida'" @click="$emit('open-text-guide')" />
 
         <slot name="actions"></slot>
 

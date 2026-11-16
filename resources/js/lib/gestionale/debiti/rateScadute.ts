@@ -165,3 +165,16 @@ export function personeDelMenu<T extends { nome: string }>(persone: readonly T[]
 
     return { mostrate: trovate.slice(0, quante), altre: Math.max(0, trovate.length - quante) };
 }
+
+/**
+ * La testata del filtro «I sei mesi del …», che arriva dal riquadro dei sei mesi: «Persone con rate dei sei mesi del 30/06/2026 (esercizio 2025): 4,
+ * € 3.240,00 di quell'esercizio.» Le persone tengono tutto il loro scaduto; la cifra è la parte di quella data.
+ */
+export function testoSeiMesiDel(s: { data: string; esercizio: string | null; persone: number; cifra: number }): string {
+    const esercizio = s.esercizio ? ` (esercizio ${s.esercizio.replace(/^esercizio\s+/i, '')})` : '';
+
+    return `Persone con rate dei sei mesi del ${giorno(s.data)}${esercizio}: ${s.persone}, ${euroTesto(s.cifra)} di quell'esercizio.`;
+}
+
+/** Sotto la cifra della riga: «di cui dei sei mesi del 30/06/2026: € 900,00». */
+export const testoDiCui = (data: string, cifra: number): string => `di cui dei sei mesi del ${giorno(data)}: ${euroTesto(cifra)}`;

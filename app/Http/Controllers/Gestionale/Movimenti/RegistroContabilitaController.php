@@ -7,6 +7,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Services\Gestionale\RegistroContabilitaService;
+use App\Services\Gestionale\RiepilogoFinanziarioService;
 use App\Services\PDF\PdfService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
@@ -36,9 +37,16 @@ class RegistroContabilitaController extends Controller
             abort(403, 'L\'esercizio non appartiene a questo condominio.');
         }
 
-        $filtri = $this->filtriApplicati($request);
-        $registro = app(RegistroContabilitaService::class)->registroConRiepilogo($esercizio, $filtri);
+        $filtri = $this->filtriApplicati($request, $condominio);
+        $servizio = app(RegistroContabilitaService::class);
+        $registro = $servizio->registroConRiepilogo($esercizio, $filtri);
         $righe = $registro['righe'];
+        // Con il filtro di una cassa, la riga che dice come il registro di quella cassa si legge accanto alla scheda «Cassa» del rendiconto.
+        $confronto = null;
+        if (isset($filtri['cassa'])) {
+            $prospetto = app(RiepilogoFinanziarioService::class);
+            $confronto = $servizio->confrontoConLaScheda($esercizio, $filtri['cassa'], $prospetto->perEsercizio($esercizio), $prospetto->coppieStornate($esercizio));
+        }
 
         $totaleEntrate = (int) array_sum(array_column($righe, 'entrata'));
         $totaleUscite = (int) array_sum(array_column($righe, 'uscita'));
@@ -87,8 +95,13 @@ class RegistroContabilitaController extends Controller
                 'riporto' => $registro['riporto'],
                 'totali_per_tipo' => $registro['totali_per_tipo'],
                 'saldi_fine_mese' => $registro['saldi_fine_mese'],
+                // Con il filtro di una cassa: i movimenti della cassa e le parti dei fondi che non sono passate da lei, che si sommano al saldo.
+                'composizione' => $registro['composizione'] ?? null,
             ],
             'filters' => $filtri,
+            // Le casse reali, per il filtro della cassa.
+            'casse' => self::casseReali($condominio),
+            'confronto_scheda' => $confronto,
         ]);
     }
 
@@ -98,7 +111,7 @@ class RegistroContabilitaController extends Controller
             abort(403, 'L\'esercizio non appartiene a questo condominio.');
         }
 
-        $filtri = $this->filtriApplicati($request);
+        $filtri = $this->filtriApplicati($request, $condominio);
         $registro = app(RegistroContabilitaService::class)->registroConRiepilogo($esercizio, $filtri);
         $righe = $registro['righe'];
 
@@ -119,6 +132,7 @@ class RegistroContabilitaController extends Controller
             'data_da' => $this->dataFiltroLeggibile($filtri['data_da'] ?? null),
             'data_a' => $this->dataFiltroLeggibile($filtri['data_a'] ?? null),
             'search' => $filtri['search'] ?? null,
+            'cassa' => isset($filtri['cassa']) ? collect(self::casseReali($condominio))->firstWhere('id', $filtri['cassa'])['nome'] ?? null : null,
         ], $request->boolean('annotazioni')), self::OPZIONI_STAMPA);
 
         $nomeFile = PdfService::nomeFile('registro-contabilita', $condominio->nome, $esercizio->data_inizio->format('Y'), null);
@@ -160,7 +174,7 @@ class RegistroContabilitaController extends Controller
     /**
      * I dati della vista della stampa del registro, dal registro già letto: li usa anche il fascicolo del rendiconto, che stampa la copia per l'assemblea.
      *
-     * @param  array{data_da:?string, data_a:?string, search:?string}  $filtri  i filtri come si leggono nella fascia
+     * @param  array{data_da:?string, data_a:?string, search:?string, cassa?:?string}  $filtri  i filtri come si leggono nella fascia
      */
     public static function datiDellaStampa(Condominio $condominio, Esercizio $esercizio, array $registro, array $filtri, bool $annotazioni): array
     {
@@ -201,6 +215,7 @@ class RegistroContabilitaController extends Controller
             'riporto' => $registro['riporto'],
             'totali_per_tipo' => $registro['totali_per_tipo'],
             'saldi_fine_mese' => $registro['saldi_fine_mese'],
+            'composizione' => $registro['composizione'] ?? null,
         ];
     }
 
@@ -213,17 +228,31 @@ class RegistroContabilitaController extends Controller
      * valle: prima la pagina dichiarava «(parziale)» su un registro intero, e la stampa scriveva
      * «estratto parziale · ricerca: «   »» per tre spazi nella casella.
      *
-     * @return array{search?:string, data_da?:string, data_a?:string}
+     * La cassa vale solo se è una cassa reale (banca o contanti) di questo condominio; `da=cassa` dice che si arriva dalla scheda «Cassa» del
+     * rendiconto, e la pagina mostra il ritorno: viaggia con i filtri, così resta cambiando pagina o filtro.
+     *
+     * @return array{search?:string, data_da?:string, data_a?:string, cassa?:int, da?:string}
      */
-    private function filtriApplicati(Request $request): array
+    private function filtriApplicati(Request $request, Condominio $condominio): array
     {
         $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        $cassa = filter_var($request->input('cassa'), FILTER_VALIDATE_INT);
 
         return array_filter([
             'search' => $search !== '' ? $search : null,
             'data_da' => RegistroContabilitaService::dataValida($request->input('data_da')),
             'data_a' => RegistroContabilitaService::dataValida($request->input('data_a')),
+            'cassa' => $cassa !== false && collect(self::casseReali($condominio))->contains('id', $cassa) ? (int) $cassa : null,
+            'da' => $request->input('da') === 'cassa' ? 'cassa' : null,
         ], fn ($v) => $v !== null);
+    }
+
+    /** Le casse reali del condominio, quelle che il registro legge: banca e contanti. @return list<array{id:int, nome:string, tipo:string}> */
+    private static function casseReali(Condominio $condominio): array
+    {
+        return \Illuminate\Support\Facades\DB::table('casse')->where('condominio_id', $condominio->id)->whereIn('tipo', \App\Services\Gestionale\RiportoDiCassa::CASSE_REALI)
+            ->orderByRaw("CASE WHEN tipo = 'banca' THEN 0 ELSE 1 END")->orderBy('nome')->get(['id', 'nome', 'tipo'])
+            ->map(fn ($c) => ['id' => (int) $c->id, 'nome' => (string) $c->nome, 'tipo' => (string) $c->tipo])->all();
     }
 
     /** Da `Y-m-d` già validata a `d/m/Y` per la fascia della stampa. */

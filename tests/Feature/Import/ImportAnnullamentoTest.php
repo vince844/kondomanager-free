@@ -367,3 +367,32 @@ it('il verdetto costa lo stesso su un lotto grande e su uno piccolo', function (
             "Il verdetto è costato {$query} query su 61 item: sta risolvendo una riga alla volta."
         );
 });
+
+it('⛔ non annulla un condominio con un rendiconto conservato per l\'assemblea, né con una nota sintetica scritta, e dice perché', function () {
+    // La versione del rendiconto ha la chiave verso il condominio che non cancella in cascata: senza questa riga l'annullamento diceva «si può» e
+    // finiva in un errore del database. La nota sintetica scende a cascata con il condominio: sarebbe sparita in silenzio.
+    $condominio = Condominio::factory()->create();
+    $esercizio = \App\Models\Esercizio::factory()->create(['condominio_id' => $condominio->id]);
+    \App\Models\Gestionale\RendicontoVersione::create(['condominio_id' => $condominio->id, 'esercizio_id' => $esercizio->id, 'numero' => 1, 'stato' => 'presentata',
+        'forma' => 1, 'cifre' => [], 'calcolato_il' => '2027-03-01 09:00:00']);
+    $lotto = lottoCheHaCreato($condominio);
+
+    $verdetto = app(AnnullamentoImportazione::class)->verdetto($lotto);
+    $risposta = $this->actingAs(utenteCheAnnulla())->delete(route('import.annulla', $lotto->uuid));
+
+    expect($verdetto->possibile)->toBeFalse()
+        ->and($verdetto->impedimenti)->toBe(['rendiconti conservati per l\'assemblea' => 1])
+        ->and($risposta->status())->not->toBe(500)
+        ->and(Condominio::whereKey($condominio->id)->exists())->toBeTrue();
+
+    $altro = Condominio::factory()->create();
+    $esercizioAltro = \App\Models\Esercizio::factory()->create(['condominio_id' => $altro->id]);
+    \App\Models\Gestionale\NotaSintetica::create(['condominio_id' => $altro->id, 'esercizio_id' => $esercizioAltro->id, 'contenuto' => ['parti' => ['altre' => ['testo' => 'I contratti.']]]]);
+    $lottoAltro = lottoCheHaCreato($altro);
+
+    $this->actingAs(utenteCheAnnulla())->delete(route('import.annulla', $lottoAltro->uuid));
+
+    expect(app(AnnullamentoImportazione::class)->verdetto($lottoAltro)->impedimenti)->toBe(['note sintetiche del rendiconto' => 1])
+        ->and(Condominio::whereKey($altro->id)->exists())->toBeTrue()
+        ->and(\App\Models\Gestionale\NotaSintetica::where('condominio_id', $altro->id)->count())->toBe(1);
+});

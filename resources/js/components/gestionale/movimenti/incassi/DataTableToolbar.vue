@@ -6,6 +6,7 @@ import { usePage, Link } from '@inertiajs/vue3';
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Search, Plus, X, FileText } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
@@ -50,6 +51,13 @@ const statoLabels: Record<string, string> = { annullata: 'Stornata', fuori_ordin
 // Maiuscola solo all'inizio: «Fuori ordine, non dichiarata», non «Fuori Ordine, Non Dichiarata».
 const statoLabel = (s: string) => statoLabels[s] ?? (s.charAt(0).toUpperCase() + s.slice(1))
 
+// Le ricevute da emettere, contate come la pagina «Ricevute» quando si apre: il numero sta sul pulsante, il giorno da cui contano nel suggerimento.
+const daEmettere = computed(() => page.props.ricevute_mancanti?.numero ?? 0)
+const fraseDaEmettere = computed(() => {
+  const dal = (page.props.ricevute_mancanti?.dal ?? '').split('-').reverse().join('/')
+  return `Ricevute mai emesse dei versamenti dal ${dal} a oggi. La pagina «Ricevute» si apre su queste.`
+})
+
 const isFiltered = computed(() => !!(globalFilter.value || stato.value || dataDa.value || dataA.value))
 const resetFilter = () => {
   globalFilter.value = ''
@@ -60,9 +68,10 @@ const resetFilter = () => {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center justify-between gap-2 w-full">
+  <!-- Dal portatile in su filtri e pulsanti stanno sulla stessa riga: se lo spazio non basta vanno a capo i filtri, i pulsanti restano in alto a destra. -->
+  <div class="flex w-full flex-col gap-2 lg:flex-row lg:items-start lg:justify-between" data-testid="barra-incassi">
 
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex min-w-0 flex-wrap items-center gap-2 lg:flex-1" data-testid="filtri-incassi">
 
       <!-- Ricerca libera -->
       <div class="relative">
@@ -106,21 +115,29 @@ const resetFilter = () => {
 
     </div>
 
-    <div class="flex flex-wrap items-center gap-2">
-    <!-- Le ricevute (1.12.0-beta.2): la pagina si apre sulle ricevute mai emesse dei versamenti recenti. -->
-    <Button as-child variant="outline">
-        <Link
-          :href="route(generateRoute('gestionale.ricevute.index'), { condominio: condominioId })"
-          class="inline-flex items-center gap-2 px-3 py-2 h-auto text-xs font-medium"
-        >
-          <FileText class="w-3.5 h-3.5" />
-          Ricevute
-          <!-- Contate come la pagina che si apre: i versamenti dal primo del mese scorso, e lo dice. -->
-          <span v-if="(page.props.ricevute_mancanti?.numero ?? 0) > 0" class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
-            {{ page.props.ricevute_mancanti!.numero }} senza ricevuta dal {{ page.props.ricevute_mancanti!.dal.split('-').reverse().join('/') }}
-          </span>
-        </Link>
-    </Button>
+    <!-- I tre pulsanti non vanno a capo e non si stringono; sul telefono, dove non ci stanno in una riga, sì. -->
+    <div class="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap" data-testid="azioni-incassi">
+    <!-- Le ricevute: la pagina si apre sulle ricevute mai emesse dei versamenti recenti. -->
+    <TooltipProvider :delay-duration="200">
+      <Tooltip :disabled="daEmettere === 0">
+        <TooltipTrigger as-child>
+          <Button as-child variant="outline">
+            <Link
+              :href="route(generateRoute('gestionale.ricevute.index'), { condominio: condominioId })"
+              class="inline-flex items-center gap-2 px-3 py-2 h-auto text-xs font-medium"
+              data-azione="ricevute"
+            >
+              <FileText class="w-3.5 h-3.5" />
+              Ricevute
+              <span v-if="daEmettere > 0" class="whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200" data-testid="ricevute-da-emettere">
+                {{ daEmettere }} da emettere
+              </span>
+            </Link>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent v-if="daEmettere > 0" class="max-w-72 text-xs leading-snug"><p>{{ fraseDaEmettere }}</p></TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
 
     <!-- L'incasso da terzi: l'affitto dell'antenna, gli interessi, un rimborso. Dopo la registrazione si torna qui. -->
     <Button as-child variant="outline">

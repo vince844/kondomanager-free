@@ -84,15 +84,21 @@ final class LetturaDebiti
      * La stessa lettura di {@see perCondominio()}, fatta per gruppi di persone: ogni gruppo è l'esito di `perCondominio` ristretto alle sue
      * persone, con le stesse regole, e la memoria resta quella di un gruppo. Per chi legge tutto il condominio e tiene solo ciò che mostra (le
      * posizioni dei condòmini e i crediti per anzianità del rendiconto). Le persone sono quelle con righe sui due mastri fino alla data e, oggi,
-     * quelle con un credito disponibile: le stesse di `perCondominio`.
+     * quelle con un credito disponibile: le stesse di `perCondominio`. Con una gestione, la lettura di ogni gruppo è ristretta a quella gestione, come
+     * `perCondominio` con la gestione. Con `$solo` le sole persone date, fra quelle della lettura (chi legge poche persone non legge le altre).
      *
+     * @param  list<int>|null  $solo
      * @return \Generator<int, array<int, array<string,mixed>>>
      */
-    public function perCondominioABlocchi(int $condominioId, ?string $alla = null, int $persone = 250): \Generator
+    public function perCondominioABlocchi(int $condominioId, ?string $alla = null, int $persone = 250, ?int $gestioneId = null, ?array $solo = null): \Generator
     {
         $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
-        foreach (array_chunk($this->personeDellaLettura($condominioId, $alla), max(1, $persone)) as $blocco) {
-            yield $this->leggi($condominioId, $alla, null, $blocco);
+        $ids = $this->personeDellaLettura($condominioId, $alla);
+        if ($solo !== null) {
+            $ids = array_values(array_intersect($ids, array_map('intval', $solo)));
+        }
+        foreach (array_chunk($ids, max(1, $persone)) as $blocco) {
+            yield $this->leggi($condominioId, $alla, $gestioneId, $blocco);
         }
     }
 
@@ -412,14 +418,16 @@ final class LetturaDebiti
      * - emesse altrove: il DARE delle scritture di emissione scritte in un esercizio diverso da `$esercizioId` (una rata del piano emessa nell'esercizio dopo).
      *
      * @param  list<int>  $pianiIds
+     * @param  list<int>|null  $soloRate  se dato, le sole rate di questi piani con questi id (le due parti del piano degli addebiti)
      * @return array<int, array{quote: array<string,int>, pregresso: array<string,int>}>  per gestione
      */
-    public function quoteDeiPiani(int $condominioId, array $pianiIds, ?string $alla = null, ?int $esercizioId = null): array
+    public function quoteDeiPiani(int $condominioId, array $pianiIds, ?string $alla = null, ?int $esercizioId = null, ?array $soloRate = null): array
     {
         $alla = Scadenza::giorno($alla ?? DateHelper::oggiUtente());
         $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
         $rate = $pianiIds === [] ? collect() : DB::table('rate')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
-            ->whereIn('rate.piano_rate_id', $pianiIds)->get(['rate.id', 'rate.data_scadenza', 'piani_rate.gestione_id'])->keyBy('id');
+            ->whereIn('rate.piano_rate_id', $pianiIds)->when($soloRate !== null, fn ($q) => $q->whereIn('rate.id', $soloRate ?: [0]))
+            ->get(['rate.id', 'rate.data_scadenza', 'piani_rate.gestione_id'])->keyBy('id');
         if ($rate->isEmpty()) {
             return [];
         }
@@ -454,7 +462,7 @@ final class LetturaDebiti
             }
         }
 
-        $vuoto = ['emesse' => 0, 'pagate' => 0, 'non_pagate' => 0, 'scadute' => 0, 'crediti' => 0, 'credito_riportato' => 0, 'emesse_altrove' => 0];
+        $vuoto = ['emesse' => 0, 'pagate' => 0, 'non_pagate' => 0, 'scadute' => 0, 'crediti' => 0, 'credito_riportato' => 0, 'emesse_altrove' => 0, 'emesse_scadute' => 0];
         $esito = [];
         foreach ($chiavi as $k => $c) {
             if (! isset($emesse[$k])) {
@@ -479,6 +487,8 @@ final class LetturaDebiti
             $e['emesse_altrove'] += $c['emesse_altrove'];
             if (Scadenza::scaduta(Scadenza::giorno($rata->data_scadenza), $alla)) {
                 $e['scadute'] += $residuo;
+                // Le quote emesse delle rate scadute: la base della parte non versata delle rate già scadute.
+                $e['emesse_scadute'] += $c['emesse'];
             }
             unset($e);
         }

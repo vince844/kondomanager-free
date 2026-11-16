@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Coda 75 — su una gestione agganciata a più esercizi, la pagina del piano, «Sposta spesa» e i collegamenti dei task leggono l'esercizio del piano.
@@ -246,8 +249,8 @@ it('Coda 75 — il task delle quote non assegnate porta al piano dentro il suo e
     $p27 = b60ePiano($this, $s, '2027', $accetta);
 
     $link = fn (PianoRate $p) => Evento::where('meta->type', EventoTipo::SCOPERTO_DOCUMENTATO->value)->where('meta->context->piano_rate_id', $p->id)->firstOrFail()->meta['action_url'];
-    expect($link($p26))->toBe("/gestionale/{$s['c']->id}/esercizi/{$s['es']['2026']->id}/piani-rate/{$p26->id}")
-        ->and($link($p27))->toBe("/gestionale/{$s['c']->id}/esercizi/{$s['es']['2027']->id}/piani-rate/{$p27->id}");
+    expect($link($p26))->toBe("/admin/gestionale/{$s['c']->id}/esercizi/{$s['es']['2026']->id}/piani-rate/{$p26->id}")
+        ->and($link($p27))->toBe("/admin/gestionale/{$s['c']->id}/esercizi/{$s['es']['2027']->id}/piani-rate/{$p27->id}");
 })->with(B60E_ORDINI);
 
 it('Coda 75 — il task dell\'eccedenza del già versato porta al piano dentro il suo esercizio, per il 2026 e per il 2027', function (array $ordine) {
@@ -263,7 +266,7 @@ it('Coda 75 — il task dell\'eccedenza del già versato porta al piano dentro i
         $p = b60ePiano($this, $s, $anno);
         $evento = Evento::where('meta->type', EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA->value)->where('meta->context->piano_rate_id', $p->id)->firstOrFail();
         expect($evento->meta['context']['totale_cents'])->toBe(20000);
-        $link[$anno] = [$evento->meta['action_url'], "/gestionale/{$s['c']->id}/esercizi/{$s['es'][$anno]->id}/piani-rate/{$p->id}"];
+        $link[$anno] = [$evento->meta['action_url'], "/admin/gestionale/{$s['c']->id}/esercizi/{$s['es'][$anno]->id}/piani-rate/{$p->id}"];
     }
 
     expect($link['2026'][0])->toBe($link['2026'][1])

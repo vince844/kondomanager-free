@@ -9,12 +9,14 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 
 const get = vi.fn();
+const post = vi.fn();
 vi.mock('@inertiajs/vue3', () => ({
     Head: { template: '<span />' },
     Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
-    router: { get: (...a: unknown[]) => get(...a) },
+    router: { get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a) },
     usePage: () => ({ props: {} }),
 }));
+(globalThis as unknown as { route: unknown }).route = (nome: string, p: Record<string, unknown> = {}) => `/${nome}/${Object.values(p).join('/')}`;
 vi.mock('@/composables/permissions', () => ({
     usePermission: () => ({
         generateRoute: (nome: string) => nome,
@@ -46,20 +48,35 @@ const anno = (extra: Record<string, unknown> = {}) => ({
 });
 
 let w: VueWrapper | null = null;
-const monta = (a: Record<string, unknown> = {}, conGuide = false) => {
+const monta = (a: Record<string, unknown> = {}, conGuide = false, lista: unknown[] = controlli) => {
     w?.unmount();
     const slot = { template: '<div><slot /></div>' };
     const guide = { props: ['guides'], template: '<div><p v-for="g in guides" :key="g.title" data-guida>{{ g.title }}: {{ g.description }}</p></div>' };
     w = mount(Pagina, {
         props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], controlli, esito: { frase: '1 torna, 2 non tornano, 1 da leggere', riga_fissa: 'I controlli verificano…' },
-            anno_a_cavallo: anno(a) } as any,
+            anno_a_cavallo: anno(a), controlli: lista } as any,
         global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, PageHeaderGuide: conGuide ? guide : true } },
     });
 
     return w;
 };
 const testo = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-afterEach(() => { w?.unmount(); w = null; get.mockReset(); });
+afterEach(() => { w?.unmount(); w = null; get.mockReset(); post.mockReset(); });
+
+/** Il controllo della banca: un conto, con l'estratto e la contabilità, e le sue cause. */
+const banca = (extra: Record<string, unknown> = {}) => ({
+    id: 'BC', nome: 'Il saldo della banca e la contabilità', titolo: 'L\'estratto contro il conto', sinistra: 465000, destra: 459000, esito: 'segnalazione',
+    nota: 'Il conto «Banca principale» al 31/12/2026: …', rimedio: 'Qui sotto le possibili cause che il programma trova nei movimenti, ognuna con la correzione consigliata.', azione: 'nota',
+    conti: 1, scritti: 1,
+    banche: [{ cassa_id: 7, cassa: 'Banca principale', data: '2026-12-31', estratto: 465000, contabilita: 459000, differenza: 6000, piste: [
+        { chiave: 'transito:5', tipo: 'transito', frase: 'Può dipendere da un movimento registrato in contabilità che la banca al 31/12/2026 non aveva ancora: pagamento fornitore del 30/12/2026.',
+            correzione: { etichetta: 'Modifica la data del pagamento', rotta: 'gestionale.pagamenti-fornitori.edit', parametri: { condominio: 3, pagamento: 8 }, query: {} }, ignorata: null },
+        { chiave: 'spese:2026-12-31:6000', tipo: 'spese_banca', frase: 'Può dipendere dalle spese della banca.',
+            correzione: { etichetta: 'Registra la spesa', rotta: 'gestionale.regolazioni-immediate.create', parametri: { condominio: 3 }, query: { cassa_id: 7, importo: '60.00' } }, ignorata: null },
+        { chiave: 'fondi:2026-12-31:6000', tipo: 'fondi', frase: 'Può dipendere dai fondi.', correzione: null, ignorata: { quando: '02/03/2027', utente: 'Anna', nota: 'Il fondo riserva' } },
+    ] }],
+    ...extra,
+});
 
 describe('la scheda «Controlli»', () => {
     test('i controlli: un\'uguaglianza con i suoi due numeri, un conteggio dove il controllo conta, il rimedio con il suo collegamento', () => {
@@ -135,7 +152,8 @@ describe('la scheda «Controlli»', () => {
         const guida = monta({}, true).findAll('[data-guida]').map((g) => g.text()).find((t) => t.startsWith('Oltre il confine dell\'esercizio'));
         expect(guida).toBe('Oltre il confine dell\'esercizio: Le registrazioni con la data del fatto in un esercizio e scritte in un altro. In rosso quelle che cambiano che cosa il riepilogo per competenza conta; '
             + 'da leggere il denaro che attraversa il confine. Una fattura registrata come pregressa è in rosso nell\'esercizio della sua data, dove cambia la competenza, '
-            + 'e da leggere in quello in cui sta, che non la conta come costo; se ha una parte non coperta dai saldi iniziali, quella parte è un costo dell\'esercizio in cui sta, e la riga resta rossa anche lì.');
+            + 'e da leggere in quello in cui sta, che non la conta come costo; se ha una parte non coperta dai saldi iniziali, quella parte è un costo dell\'esercizio in cui sta, e la riga resta rossa anche lì. '
+            + 'Un incasso di interessi o spese addebitati cambia le spese dell\'esercizio in cui sta: versato a gennaio con l\'anno prima ancora aperto, la riga è rossa.');
     });
 
     test('i filtri chiedono al server le righe; quando sono più di una pagina, le pagine con i filtri scelti', async () => {
@@ -229,5 +247,110 @@ describe('i controlli del conguaglio', () => {
             expect(t).toContain('—');
             expect(t).not.toContain('€ 0,00');
         }
+    });
+});
+
+describe('il controllo della banca', () => {
+    test('senza un conto in banca, o senza il saldo della banca, dice che cosa manca e non due cifre a zero; accanto, «Scrivi il saldo della banca» apre la nota sul campo di quel conto', () => {
+        const senzaConti = monta({}, false, [banca({ esito: 'quadra', sinistra: 0, destra: 0, conti: 0, scritti: 0, banche: [], rimedio: null, azione: null })]).find('[data-controllo="BC"]');
+        expect(testo(senzaConti.html())).toContain('nessun conto in banca');
+        expect(testo(senzaConti.html())).not.toContain('€ 0,00 = € 0,00');
+        expect(senzaConti.find('[data-scrivi-saldo]').exists()).toBe(false);
+        const senzaSaldo = { cassa_id: 7, cassa: 'Banca principale', data: '2026-12-31', estratto: null, contabilita: 459000, differenza: null, piste: [] };
+        const senzaEstratto = monta({}, false, [banca({ esito: 'non_calcolato', sinistra: 0, destra: 0, scritti: 0, banche: [senzaSaldo],
+            rimedio: 'Scrivi nella nota sintetica il saldo che leggi sull\'estratto conto che ti manda la banca.' })]).find('[data-controllo="BC"]');
+        expect(testo(senzaEstratto.html())).toContain('saldo della banca non scritto');
+        expect(testo(senzaEstratto.html())).toContain('non calcolato');
+        const scrivi = senzaEstratto.get('[data-scrivi-saldo="7"]');
+        expect(scrivi.text()).toBe('Scrivi il saldo della banca');
+        expect(scrivi.attributes('href')).toBe('/gestionale/3/esercizi/9/rendiconto/nota?banca=7');
+        // Un collegamento solo: il generico «Apri la nota sintetica» non si ripete sotto.
+        expect(senzaEstratto.findAll('a').filter((a) => a.text().includes('Apri la nota sintetica'))).toHaveLength(0);
+        // Con due conti senza il saldo, uno per conto, con il suo nome.
+        const unoSuDue = monta({}, false, [banca({ esito: 'non_calcolato', sinistra: 0, destra: 0, conti: 2, scritti: 1, banche: [
+            { ...senzaSaldo, estratto: 465000, differenza: 0 }, { ...senzaSaldo, cassa_id: 9, cassa: 'Banca seconda' }] })]).find('[data-controllo="BC"]');
+        expect(testo(unoSuDue.html())).toContain('saldo della banca scritto per 1 conto su 2');
+        expect(unoSuDue.findAll('[data-scrivi-saldo]').map((a) => a.attributes('data-scrivi-saldo'))).toEqual(['9']);
+        const dueSenza = monta({}, false, [banca({ esito: 'non_calcolato', sinistra: 0, destra: 0, conti: 2, scritti: 0, banche: [senzaSaldo, { ...senzaSaldo, cassa_id: 9, cassa: 'Banca seconda' }] })])
+            .find('[data-controllo="BC"]');
+        expect(dueSenza.findAll('[data-scrivi-saldo]').map((a) => a.text())).toEqual(['Scrivi il saldo della banca di «Banca principale»', 'Scrivi il saldo della banca di «Banca seconda»']);
+        expect(testo(senzaEstratto.html())).not.toMatch(/estratto non scritto|nell'estratto/);
+    });
+
+    test('una differenza: il conto con le due cifre, le possibili cause con la correzione consigliata, le ignorate con la loro nota', () => {
+        const b = monta({}, false, [banca()]).find('[data-controllo="BC"]');
+        expect(testo(b.find('[data-banca="7"]').html())).toContain('Banca principale al 31/12/2026: secondo la banca € 4.650,00, registrato in KondoManager € 4.590,00; la differenza è € 60,00, in più secondo la banca.');
+        // Con i fondi, la contabilità dice le sue due parti.
+        const conFondi = monta({}, false, [banca({ banche: [{ cassa_id: 7, cassa: 'Banca principale', data: '2026-12-31', estratto: 465000, contabilita: 459000, sul_conto: 409000,
+            nei_fondi: 50000, differenza: 6000, piste: [] }] })]).find('[data-banca="7"]');
+        expect(testo(conFondi.html())).toContain('registrato in KondoManager € 4.590,00 (€ 4.090,00 sul conto e € 500,00 nei fondi); la differenza è € 60,00');
+        expect(b.find('[data-pista="transito:5"] [data-test="correzione"]').attributes('href')).toBe('/gestionale.pagamenti-fornitori.edit/3/8');
+        expect(b.find('[data-pista="transito:5"] [data-test="correzione"]').text()).toContain('Modifica la data del pagamento');
+        expect(b.find('[data-pista="spese:2026-12-31:6000"] [data-test="correzione"]').attributes('href')).toBe('/gestionale.regolazioni-immediate.create/3?cassa_id=7&importo=60.00');
+        // La causa ignorata non è fra le aperte: dice quando, chi e perché, e si riapre.
+        expect(b.find('[data-pista="fondi:2026-12-31:6000"]').exists()).toBe(false);
+        expect(testo(b.find('[data-ignorata="fondi:2026-12-31:6000"]').html())).toContain('Ignorata il 02/03/2027 da Anna: Il fondo riserva');
+        expect(testo(b.html())).not.toMatch(/errore|sbagliat/i);
+    });
+
+    test('«Ignora» chiede la nota prima di mandarla; «Riapri» la riapre', async () => {
+        const b = monta({}, false, [banca()]).find('[data-controllo="BC"]');
+        await b.find('[data-pista="transito:5"] [data-test="ignora"]').trigger('click');
+        await b.find('[data-test="conferma-ignora"]').trigger('click');
+        expect(post).not.toHaveBeenCalled();
+        expect(b.find('[data-test="errore-ignora"]').text()).toContain('Scrivi perché la ignori');
+        await b.find('[data-test="nota-ignora"]').setValue('  Assegno non ancora incassato ');
+        await b.find('[data-test="conferma-ignora"]').trigger('click');
+        expect(post).toHaveBeenCalledTimes(1);
+        expect(post.mock.calls[0][0]).toBe('/gestionale.esercizi.rendiconto.controlli.banca.ignora/3/9');
+        expect(post.mock.calls[0][1]).toEqual({ cassa_id: 7, chiave: 'transito:5', nota: 'Assegno non ancora incassato' });
+        await b.find('[data-ignorata="fondi:2026-12-31:6000"] [data-test="riapri"]').trigger('click');
+        expect(post.mock.calls[1][0]).toBe('/gestionale.esercizi.rendiconto.controlli.banca.riapri/3/9');
+        expect(post.mock.calls[1][1]).toEqual({ cassa_id: 7, chiave: 'fondi:2026-12-31:6000' });
+    });
+
+    test('una differenza senza cause trovate nei movimenti: lo dice, e porta al registro di contabilità', () => {
+        const b = monta({}, false, [banca({ banche: [{ cassa_id: 7, cassa: 'Banca principale', data: '2026-12-31', estratto: 465000, contabilita: 459000, differenza: 6000, piste: [] }] })])
+            .find('[data-controllo="BC"]');
+        expect(b.find('[data-test="nessuna-causa"]').text()).toContain('il programma non trova una causa con questo importo');
+        expect(b.find('[data-test="nessuna-causa"] a').attributes('href')).toBe('/gestionale/3/esercizi/9/registro-contabilita');
+    });
+});
+
+describe('la guida della scheda', () => {
+    test('il pulsante «Guida» dell\'intestazione, uno solo, apre la guida della scheda «Controlli»', async () => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], controlli, esito: { frase: '1 torna, 2 non tornano, 1 da leggere', riga_fissa: 'I controlli verificano…' }, anno_a_cavallo: anno() } as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot,
+                PageHeaderGuide: { props: { hasTextGuide: Boolean, textGuideTitle: String }, emits: ['open-text-guide'],
+                template: '<div><button v-if="hasTextGuide" type="button" data-testid="apri-guida" @click="$emit(\'open-text-guide\')">{{ textGuideTitle }}</button><slot name="actions" /></div>' },
+                RendicontoControlliGuide: { props: ['open'], template: '<div v-if="open" data-testid="guida-aperta" />' } } },
+        });
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(false);
+        expect(w.findAll('button').filter((b) => b.text().trim() === 'Guida')).toHaveLength(1);
+        const pulsante = w.get('[data-testid="apri-guida"]');
+        expect(pulsante.text().trim()).toBe('Guida');
+        await pulsante.trigger('click');
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(true);
+    });
+});
+
+describe('«Casse reali sotto zero» con i fondi dentro', () => {
+    test('la parte libera sotto zero, con il conto sopra zero, è un avviso a parte: il conteggio lo dice accanto alle casse, la frase e il rimedio sono i suoi', () => {
+        const cn = { id: 'CN', nome: 'Casse reali sotto zero', titolo: 'Nessuna banca (con i fondi dentro) o cassa contanti sotto zero, in nessun giorno dell\'esercizio',
+            sinistra: 0, destra: 0, liberi: 1, esito: 'segnalazione', azione: 'giroconti',
+            nota: 'Il conto «Conto corrente» con i suoi fondi non è mai sceso sotto zero, ma la sua parte libera sì: € -300,00 il 01/06/2026. Vuol dire che un pagamento ha usato il denaro di un fondo, che sta sullo stesso conto.',
+            rimedio: 'Di solito è un pagamento fatto con il denaro di un fondo senza il giroconto prima.' };
+        const r = monta({}, false, [cn]).find('[data-controllo="CN"]');
+        expect(testo(r.html())).toContain('0 casse sotto zero; 1 parte libera sotto zero');
+        expect(testo(r.html())).toContain('da leggere');
+        expect(testo(r.html())).toContain('Vuol dire che un pagamento ha usato il denaro di un fondo');
+        expect(r.find('a').text()).toContain('Vai ai giroconti');
+        const senza = monta({}, false, [{ ...cn, liberi: 0, esito: 'quadra', nota: 'Banca e contanti non sono mai scesi sotto zero, giorno per giorno.', rimedio: null, azione: null }])
+            .find('[data-controllo="CN"]');
+        expect(testo(senza.html())).toContain('0 casse sotto zero');
+        expect(testo(senza.html())).not.toContain('parte libera');
     });
 });

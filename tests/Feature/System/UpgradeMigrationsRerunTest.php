@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,7 +33,8 @@ uses(RefreshDatabase::class);
  * `contributi_versati`, le ultime aggiunte — non avevano alcuna guardia.
  */
 it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
-    $path = database_path("migrations/{$file}.php");
+    // Le migrazioni delle impostazioni stanno in `database/settings/`, e nel dataset si scrivono con la cartella davanti.
+    $path = str_starts_with($file, 'settings/') ? database_path("{$file}.php") : database_path("migrations/{$file}.php");
 
     expect(file_exists($path))->toBeTrue("Migrazione non trovata: {$file}");
 
@@ -265,6 +269,40 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     '2026_11_08_200000_add_allegati_to_segnalazioni_e_comunicazioni',
     '2026_11_08_200100_add_moderazione_to_documenti',
     '2026_11_08_200300_seed_preferenze_notifica_allegati',
+    // L'autore di un documento che si elimina lascia vuoto: la chiave in cascata tolta, la colonna vuotabile, la chiave nuova, tre statement su MySQL
+    // con tre guardie (l'ordine non è libero: una chiave «lascia vuoto» su una colonna `NOT NULL` è rifiutata). Gli stati a metà li prova il test sotto.
+    '2026_11_14_100000_documenti_created_by_null_on_delete',
+    // La bozza della nota sintetica, una per esercizio: la tabella, un indice unico e tre chiavi esterne, ognuno con la sua guardia.
+    '2026_11_14_100100_create_note_sintetiche_table',
+    // Le versioni del rendiconto: la tabella, un indice unico e cinque chiavi esterne, ognuno con la sua guardia. Le due chiavi verso l'esercizio e il
+    // condominio non cancellano in cascata. Gli stati a metà li prova il test sotto.
+    '2026_11_14_100200_create_rendiconto_versioni_table',
+    // La natura del piano rate («addebiti» per il piano degli addebiti a singole persone): una colonna vuotabile, una guardia. La prova su MySQL è in
+    // `tests/Unit/Gestionale/NaturaPianiRateMigrazioneMysqlTest.php`.
+    '2026_11_15_100000_add_natura_to_piani_rate_table',
+    // Le regole del recupero dei crediti di ogni condominio, con la storia: la tabella, un indice unico e due chiavi esterne, ognuno con la sua
+    // guardia. Lo stato a metà lo prova il test sotto; su MySQL `tests/Unit/Gestionale/RegoleRecuperoMigrazioneMysqlTest.php`.
+    '2026_11_15_110000_create_regole_recupero_table',
+    // Il calendario dell'accordo di rientro e la regola di decadenza: la tabella delle rate, il suo indice unico, la sua chiave esterna e quattro
+    // colonne sull'accordo, ognuno con la sua guardia. Lo stato a metà lo prova il test sotto; su MySQL
+    // `tests/Unit/Gestionale/CalendarioAccordoMigrazioneMysqlTest.php`.
+    '2026_11_15_120000_add_calendario_e_decadenza_to_accordi_rientro',
+    // Le risposte dell'amministratore ai promemoria (i sei mesi per agire, i 180 giorni del rendiconto, i compiti dell'agenda) e la scelta della dispensa sul
+    // sollecito in tesoreria: la tabella, l'indice unico, due indici, sette chiavi esterne e la colonna della dispensa, ognuno con la sua guardia. Lo stato a metà
+    // lo prova il test sotto.
+    '2026_11_15_140000_create_risposte_promemoria_table',
+    // Le impostazioni del condominio (una riga per condominio, le colonne con il loro tipo): la tabella, l'indice unico e le due chiavi esterne, ognuno con la
+    // sua guardia. Lo stato a metà lo prova il test sotto.
+    '2026_11_15_200000_create_impostazioni_condominio_table',
+    // La correzione una volta sola delle rate segnalate rimaste «in verifica» con il compito chiuso: solo dati, nessuna struttura; rieseguita non trova
+    // niente. Il suo effetto lo prova `tests/Feature/Gestionale/BonificoSegnalatoChiusoTest.php`.
+    '2026_11_15_210000_sblocca_le_rate_segnalate_con_il_compito_chiuso',
+    // I compiti dell'Inbox delle segnalazioni già aperte o in lavorazione: solo dati, nessuna struttura; rieseguita non fa doppioni. Il suo effetto lo prova
+    // `tests/Feature/Dashboard/ActionInboxSegnalazioniTest.php`.
+    '2026_11_15_230000_crea_i_compiti_delle_segnalazioni_aperte',
+    // La riga «passo_proposto» delle impostazioni generali si toglie (la scelta è del condominio): `deleteIfExists`, rieseguita non trova niente. Il suo
+    // effetto lo prova `tests/Feature/Impostazioni/ImpostazioniPassoPropostoTest.php`.
+    'settings/2026_11_15_200100_remove_passo_proposto_from_general_settings',
 ]);
 
 it('la migrazione dei modelli delle lettere interrotta dopo la tabella e prima dell\'indice e delle chiavi si riprende e li mette, uno per nome', function () {
@@ -788,4 +826,227 @@ it('la migrazione della carta per gruppo si riprende e non tocca una scelta già
     expect($valore())->toBeNull();
     $migration->up();
     expect(json_decode((string) $valore(), true))->toBe($vuoto);
+});
+
+it('la migrazione dell\'autore dei documenti si riprende dopo ognuno dei suoi tre passi, e una riga senza autore resta', function () {
+    $path = database_path('migrations/2026_11_14_100000_documenti_created_by_null_on_delete.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_14_100000_documenti_created_by_null_on_delete');
+    $migration = require $path;
+    $stato = fn () => [
+        'vuotabile' => (bool) collect(Schema::getColumns('documenti'))->firstWhere('name', 'created_by')['nullable'],
+        'chiavi' => collect(Schema::getForeignKeys('documenti'))->filter(fn ($k) => $k['columns'] === ['created_by'])
+            ->map(fn ($k) => $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->values()->all(),
+    ];
+    $atteso = ['vuotabile' => true, 'chiavi' => ['users set null']];
+    expect($stato())->toBe($atteso);
+
+    // Com'era prima: la chiave in cascata, la colonna obbligatoria.
+    $migration->down();
+    expect($stato())->toBe(['vuotabile' => false, 'chiavi' => ['users cascade']]);
+
+    // Interrotta dopo il primo passo: la chiave in cascata tolta, la colonna ancora obbligatoria.
+    Schema::table('documenti', fn ($table) => $table->dropForeign(['created_by']));
+    expect($stato())->toBe(['vuotabile' => false, 'chiavi' => []]);
+    $migration->up();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo il secondo passo: la colonna vuotabile, nessuna chiave.
+    Schema::table('documenti', fn ($table) => $table->dropForeign(['created_by']));
+    expect($stato())->toBe(['vuotabile' => true, 'chiavi' => []]);
+    $migration->up();
+    expect($stato())->toBe($atteso);
+
+    // Un documento che ha perso l'autore: il ritorno indietro rimette la cascata e lascia la colonna vuotabile, senza toccare la riga.
+    $id = DB::table('documenti')->insertGetId(['name' => 'Verbale', 'description' => 'Verbale', 'path' => 'documenti/v.pdf', 'created_by' => null,
+        'created_at' => now(), 'updated_at' => now()]);
+    $migration->down();
+    expect($stato())->toBe(['vuotabile' => true, 'chiavi' => ['users cascade']])
+        ->and(DB::table('documenti')->where('id', $id)->exists())->toBeTrue();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione delle versioni del rendiconto e quella della nota interrotte dopo la tabella si riprendono e mettono l\'indice e le chiavi, una per nome', function () {
+    $stato = fn (string $t, string $prefisso) => [
+        'indici' => collect(Schema::getIndexes($t))->pluck('name')->filter(fn ($n) => str_starts_with($n, $prefisso))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys($t))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $versioni = require database_path('migrations/2026_11_14_100200_create_rendiconto_versioni_table.php');
+    $nota = require database_path('migrations/2026_11_14_100100_create_note_sintetiche_table.php');
+    $attesoVersioni = ['indici' => ['rendiconto_versioni_numero_unico'], 'chiavi' => ['approvata_da>users set null', 'condominio_id>condomini restrict',
+        'creata_da>users set null', 'esercizio_id>esercizi restrict', 'verbale_documento_id>documenti set null']];
+    $attesoNota = ['indici' => ['note_sintetiche_esercizio_unica'], 'chiavi' => ['aggiornata_da>users set null', 'condominio_id>condomini cascade',
+        'esercizio_id>esercizi cascade']];
+    expect($stato('rendiconto_versioni', 'rendiconto_versioni'))->toBe($attesoVersioni)
+        ->and($stato('note_sintetiche', 'note_sintetiche'))->toBe($attesoNota);
+
+    // Interrotte dopo la tabella: l'indice e tre chiavi della versione, l'indice e una chiave della nota mancano.
+    Schema::table('rendiconto_versioni', function ($table) {
+        $table->dropForeign(['esercizio_id']);
+        $table->dropForeign(['condominio_id']);
+        $table->dropForeign(['verbale_documento_id']);
+    });
+    Schema::table('rendiconto_versioni', fn ($table) => $table->dropUnique('rendiconto_versioni_numero_unico'));
+    Schema::table('note_sintetiche', fn ($table) => $table->dropForeign(['esercizio_id']));
+    Schema::table('note_sintetiche', fn ($table) => $table->dropUnique('note_sintetiche_esercizio_unica'));
+    expect($stato('rendiconto_versioni', 'rendiconto_versioni'))->toBe(['indici' => [], 'chiavi' => ['approvata_da>users set null', 'creata_da>users set null']])
+        ->and($stato('note_sintetiche', 'note_sintetiche'))->toBe(['indici' => [], 'chiavi' => ['aggiornata_da>users set null', 'condominio_id>condomini cascade']]);
+
+    $versioni->up();
+    $versioni->up();
+    $nota->up();
+    $nota->up();
+    expect($stato('rendiconto_versioni', 'rendiconto_versioni'))->toBe($attesoVersioni)
+        ->and($stato('note_sintetiche', 'note_sintetiche'))->toBe($attesoNota);
+
+    $versioni->down();
+    $versioni->down();
+    $nota->down();
+    expect(Schema::hasTable('rendiconto_versioni'))->toBeFalse()->and(Schema::hasTable('note_sintetiche'))->toBeFalse();
+    $nota->up();
+    $versioni->up();
+    expect($stato('rendiconto_versioni', 'rendiconto_versioni'))->toBe($attesoVersioni)
+        ->and($stato('note_sintetiche', 'note_sintetiche'))->toBe($attesoNota);
+});
+
+it('la migrazione delle regole del recupero interrotta dopo la tabella si riprende e mette l\'indice e le chiavi, uno per nome', function () {
+    $migration = require database_path('migrations/2026_11_15_110000_create_regole_recupero_table.php');
+    $stato = fn () => [
+        'indici' => collect(Schema::getIndexes('regole_recupero'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'regole_recupero'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('regole_recupero'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $atteso = ['indici' => ['regole_recupero_dal_unico'], 'chiavi' => ['condominio_id>condomini cascade', 'creata_da>users set null']];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la tabella: l'indice unico e la chiave del condominio mancano.
+    Schema::table('regole_recupero', fn ($table) => $table->dropForeign(['condominio_id']));
+    Schema::table('regole_recupero', fn ($table) => $table->dropUnique('regole_recupero_dal_unico'));
+    expect($stato())->toBe(['indici' => [], 'chiavi' => ['creata_da>users set null']]);
+
+    $migration->up();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+
+    $migration->down();
+    $migration->down();
+    expect(Schema::hasTable('regole_recupero'))->toBeFalse();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione del calendario dell\'accordo interrotta dopo la tabella e una colonna si riprende e mette l\'indice, la chiave e le colonne, uno per nome', function () {
+    $migration = require database_path('migrations/2026_11_15_120000_add_calendario_e_decadenza_to_accordi_rientro.php');
+    $colonne = ['decadenza_giorni', 'decadenza_rate', 'decadenza_registrata_il', 'segnali'];
+    $stato = fn () => [
+        'indici' => collect(Schema::getIndexes('accordo_rientro_scadenze'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'accordo_rientro_scadenze'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('accordo_rientro_scadenze'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+        'colonne' => collect(Schema::getColumnListing('accordi_rientro'))->intersect($colonne)->sort()->values()->all(),
+    ];
+    $atteso = ['indici' => ['accordo_rientro_scadenze_numero_unico'], 'chiavi' => ['accordo_rientro_id>accordi_rientro cascade'], 'colonne' => $colonne];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la tabella e la prima colonna: l'indice, la chiave e tre colonne mancano.
+    Schema::table('accordo_rientro_scadenze', fn ($table) => $table->dropForeign(['accordo_rientro_id']));
+    Schema::table('accordo_rientro_scadenze', fn ($table) => $table->dropUnique('accordo_rientro_scadenze_numero_unico'));
+    foreach (['decadenza_giorni', 'segnali', 'decadenza_registrata_il'] as $colonna) {
+        Schema::table('accordi_rientro', fn ($table) => $table->dropColumn($colonna));
+    }
+    expect($stato())->toBe(['indici' => [], 'chiavi' => [], 'colonne' => ['decadenza_rate']]);
+
+    $migration->up();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+
+    $migration->down();
+    $migration->down();
+    expect(Schema::hasTable('accordo_rientro_scadenze'))->toBeFalse()
+        ->and(collect(Schema::getColumnListing('accordi_rientro'))->intersect($colonne)->values()->all())->toBe([]);
+    $migration->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione del tasso legale scritto a mano si riprende e non tocca un tasso già scritto; tornata indietro si rimette vuota', function () {
+    $path = database_path('settings/2026_11_15_130000_create_tasso_legale_settings.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_15_130000_create_tasso_legale_settings');
+    $migration = require $path;
+    $riga = fn () => DB::table('settings')->where('group', 'tasso_legale')->where('name', 'scritti_a_mano');
+    expect($riga()->count())->toBe(1)->and($riga()->value('payload'))->toBe(json_encode([]));
+
+    // Un tasso già scritto: la ripresa non lo tocca, e la riga resta una.
+    $scritto = [['anno' => 2027, 'tasso_e4' => 22500, 'fonte' => 'D.M. 10/12/2026', 'scritto_da' => null, 'scritto_da_nome' => 'Studio', 'scritto_il' => '2026-12-16']];
+    $riga()->update(['payload' => json_encode($scritto)]);
+    $migration->up();
+    $migration->up();
+    expect($riga()->count())->toBe(1)->and(json_decode((string) $riga()->value('payload'), true))->toBe($scritto);
+
+    $migration->down();
+    $migration->down();
+    expect($riga()->count())->toBe(0);
+    $migration->up();
+    expect($riga()->count())->toBe(1)->and(app(\App\Settings\TassoLegaleSettings::class)->refresh()->scritti_a_mano)->toBe([]);
+});
+
+it('la migrazione delle risposte ai promemoria interrotta dopo la tabella si riprende e mette gli indici, le chiavi e la colonna della dispensa, uno per nome', function () {
+    $migration = require database_path('migrations/2026_11_15_140000_create_risposte_promemoria_table.php');
+    $stato = fn () => [
+        'indici' => collect(Schema::getIndexes('risposte_promemoria'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'risposte_promemoria'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('risposte_promemoria'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+        'colonna' => Schema::hasColumn('dispense_sei_mesi', 'togli_sollecito_tesoreria'),
+    ];
+    $atteso = [
+        'indici' => ['risposte_promemoria_argomento_stato_index', 'risposte_promemoria_chiave_unica', 'risposte_promemoria_condominio_argomento_index'],
+        'chiavi' => ['agenda_evento_id>eventi set null', 'aggiornata_da>users set null', 'anagrafica_id>anagrafiche cascade', 'condominio_id>condomini cascade',
+            'esercizio_id>esercizi cascade', 'evento_id>eventi set null', 'promemoria_evento_id>eventi set null'],
+        'colonna' => true,
+    ];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la tabella: l'indice unico, una chiave e la colonna della dispensa mancano.
+    Schema::table('risposte_promemoria', fn ($table) => $table->dropForeign(['esercizio_id']));
+    Schema::table('risposte_promemoria', fn ($table) => $table->dropUnique('risposte_promemoria_chiave_unica'));
+    Schema::table('dispense_sei_mesi', fn ($table) => $table->dropColumn('togli_sollecito_tesoreria'));
+    expect($stato()['indici'])->not->toContain('risposte_promemoria_chiave_unica')
+        ->and($stato()['chiavi'])->not->toContain('esercizio_id>esercizi cascade')
+        ->and($stato()['colonna'])->toBeFalse();
+
+    $migration->up();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+
+    $migration->down();
+    $migration->down();
+    expect(Schema::hasTable('risposte_promemoria'))->toBeFalse()->and(Schema::hasColumn('dispense_sei_mesi', 'togli_sollecito_tesoreria'))->toBeFalse();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione delle impostazioni del condominio interrotta dopo la tabella si riprende e mette l\'indice unico e le chiavi, uno per nome', function () {
+    $migration = require database_path('migrations/2026_11_15_200000_create_impostazioni_condominio_table.php');
+    $stato = fn () => [
+        'colonne' => collect(['condominio_id', 'recupero_salita', 'recupero_suggerisce_azione', 'aggiornate_da'])->filter(fn ($c) => Schema::hasColumn('impostazioni_condominio', $c))->values()->all(),
+        'indici' => collect(Schema::getIndexes('impostazioni_condominio'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'impostazioni_condominio'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('impostazioni_condominio'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $atteso = [
+        'colonne' => ['condominio_id', 'recupero_salita', 'recupero_suggerisce_azione', 'aggiornate_da'],
+        'indici' => ['impostazioni_condominio_condominio_unico'],
+        'chiavi' => ['aggiornate_da>users set null', 'condominio_id>condomini cascade'],
+    ];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la tabella: l'indice unico e una chiave mancano.
+    Schema::table('impostazioni_condominio', fn ($table) => $table->dropForeign(['condominio_id']));
+    Schema::table('impostazioni_condominio', fn ($table) => $table->dropUnique('impostazioni_condominio_condominio_unico'));
+    expect($stato()['indici'])->toBe([])->and($stato()['chiavi'])->toBe(['aggiornate_da>users set null']);
+
+    $migration->up();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+
+    $migration->down();
+    $migration->down();
+    expect(Schema::hasTable('impostazioni_condominio'))->toBeFalse();
+    $migration->up();
+    expect($stato())->toBe($atteso);
 });

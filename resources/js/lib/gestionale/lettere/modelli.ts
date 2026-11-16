@@ -24,7 +24,7 @@ export interface ModelloDellaPagina {
 }
 
 /** I valori con cui la pagina mostra l'anteprima di un testo, scritti dal server come li scrive la lettera. */
-export interface Esempio { nome: string; totale: string; termine: string; condominio: string; esercizio?: string }
+export interface Esempio { nome: string; totale: string; termine: string; condominio: string; esercizio?: string; interessi?: string; spese?: string; tasso?: string }
 
 /** A chi non può salvare i modelli, nella finestra: chi li salva, e che qui il testo cambia solo per queste lettere. */
 export const FRASE_MODELLI_SENZA_PERMESSO = 'I modelli li salva chi gestisce le impostazioni di stampa: qui cambi il testo solo per queste lettere.';
@@ -107,7 +107,12 @@ export function riempiEsempio(testo: string, esempio: Esempio, campiDelTipo?: Re
     if (esempio.esercizio !== undefined) {
         campi['[esercizio]'] = esempio.esercizio;
     }
+    for (const k of ['interessi', 'spese', 'tasso'] as const) {
+        if (esempio[k] !== undefined) {
+            campi[`[${k}]`] = esempio[k] as string;
+        }
+    }
 
     // Con i campi del tipo, solo quelli si riempiono: gli altri restano come sono scritti, come li lascia (o li rifiuta) il server.
-    return base.replace(/\[(nome|totale|termine|condominio|esercizio)\]/g, (c) => (campiDelTipo && !(c in campiDelTipo) ? c : (campi[c] ?? c)));
+    return base.replace(/\[(nome|totale|termine|condominio|esercizio|interessi|spese|tasso)\]/g, (c) => (campiDelTipo && !(c in campiDelTipo) ? c : (campi[c] ?? c)));
 }

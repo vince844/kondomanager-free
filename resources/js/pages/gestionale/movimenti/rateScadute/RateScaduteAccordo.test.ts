@@ -86,3 +86,19 @@ describe('l\'accordo di rientro nell\'elenco', () => {
         expect(w!.get('[data-testid="finestra-accordo"]').text()).toBe('Giulia');
     });
 });
+
+describe('l\'accordo con il calendario nella riga', () => {
+    test('il segno dice a che punto è il calendario, e il giorno in cui la condizione di decadenza si è verificata; senza segnali niente', () => {
+        const conCalendario = { ...accordo, calendario: [
+            { numero: 1, data: '2026-07-31', importo: 7531, versato: 7531, mancano: 0, versata: true, scaduta: true },
+            { numero: 2, data: '2026-08-31', importo: 7531, versato: 0, mancano: 7531, versata: false, scaduta: true },
+        ], rate_non_versate: 1, segnali: { rate: null, giorni: { il: '2026-09-16', rate: [{ numero: 2, data: '2026-08-31', importo: 7531, versato: 0 }] } } };
+        monta({ righe: { data: [{ ...giulia, accordi: [conCalendario] }], meta: { current_page: 1, last_page: 1, per_page: 20, total: 1, from: 1, to: 1 } } });
+        expect(pulito(document.body.querySelector('[data-testid="segno-accordo"]')?.textContent ?? '')).toContain('Calendario: una rata non versata.');
+        expect(pulito(document.body.querySelector('[data-testid="segnale-accordo"]')?.textContent ?? ''))
+            .toBe('La condizione di decadenza scritta nell\'accordo si è verificata il 16/09/2026.');
+        w?.unmount();
+        monta();
+        expect(document.body.querySelector('[data-testid="segnale-accordo"]')).toBeNull();
+    });
+});

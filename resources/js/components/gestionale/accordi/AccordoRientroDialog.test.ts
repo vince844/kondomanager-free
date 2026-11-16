@@ -46,9 +46,14 @@ describe('la finestra dell\'accordo', () => {
         expect(rate).toHaveLength(2);
         expect(pulito(rate[0].textContent ?? '')).toContain('residuo € 750,00');
         (rate[0].querySelector('button[role="checkbox"]') as HTMLElement).click();
-        const fino = corpo().querySelector<HTMLInputElement>('[data-testid="fino-al"]')!;
-        fino.value = '2026-12-15';
-        fino.dispatchEvent(new Event('input'));
+        await flushPromises();
+        // Il calendario: una rata il 15/12, tutto il debito riconosciuto.
+        const numero = corpo().querySelector<HTMLInputElement>('[data-testid="numero-rate"]')!;
+        numero.value = '1';
+        numero.dispatchEvent(new Event('input'));
+        const prima = corpo().querySelector<HTMLInputElement>('[data-testid="prima-rata"]')!;
+        prima.value = '2026-12-15';
+        prima.dispatchEvent(new Event('input'));
         await flushPromises();
         const registra = corpo().querySelector<HTMLButtonElement>('[data-testid="registra-accordo"]')!;
         expect(registra.disabled).toBe(true);
@@ -66,7 +71,9 @@ describe('la finestra dell\'accordo', () => {
         expect(dati.get('rate[0][rata_id]')).toBe('1');
         expect(dati.get('rate[0][importo]')).toBe('750,00');
         expect(dati.get('rate[1][rata_id]')).toBeNull();
-        expect(dati.get('fino_al')).toBe('2026-12-15');
+        expect(dati.get('fino_al')).toBeNull();
+        expect(dati.get('scadenze[0][data]')).toBe('2026-12-15');
+        expect(dati.get('scadenze[0][importo]')).toBe('750,00');
         expect(pulito(corpo().textContent ?? '')).toContain('Accordo registrato.');
     });
 

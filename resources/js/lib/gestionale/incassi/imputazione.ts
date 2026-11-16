@@ -8,7 +8,9 @@
  * che è un pagamento segnalato da chi ha versato).
  */
 
-export type EsitoImputazione = 'ordine_scadenze' | 'fuori_ordine' | 'compensazione';
+import { euroTesto } from '@/lib/gestionale/debiti/rateScadute';
+
+export type EsitoImputazione = 'ordine_scadenze' | 'fuori_ordine' | 'compensazione' | 'accordo_rientro';
 export type SceltaImputazione = 'indicata_dal_versante' | 'scelta_amministratore';
 
 /** La rata più vecchia che l'incasso lascia aperta, come la manda il server; `resta` in centesimi, la scadenza `aaaa-mm-gg`. */
@@ -29,7 +31,15 @@ export interface RispostaOrdine {
     rata_aperta: RataAperta | null;
     /** A scostarsi è la parte in più che diventa credito mentre una rata resta aperta. */
     parte_in_piu: boolean;
+    /** Senza «Versamento dell'accordo», denaro sulla parte di una rata che un accordo di rientro copre. */
+    nell_accordo?: boolean;
+    /** Con «Versamento dell'accordo», denaro su una parte che l'accordo non copre. */
+    fuori_dall_accordo?: boolean;
 }
+
+/** Sopra la scelta «Versamento dell'accordo»: dove va il versamento con la scelta, e dove senza. */
+export const FRASE_VERSAMENTO_ACCORDO = 'Il versamento va alle rate che l\'accordo copre: prima gli interessi e le spese, poi il capitale più vecchio. '
+    + 'Senza la scelta va alle rate fuori dall\'accordo.';
 
 /**
  * Le due dichiarazioni, nell'ordine. La nota è facoltativa per tutte e due (decisione 219): chi registra cento incassi fuori ordine non
@@ -48,7 +58,19 @@ const gg = (data: string) => data.slice(0, 10).split('-').reverse().join('/');
  * la scadenza passata, la domanda compare a ogni incasso, e chi la legge deve capire perché). Con `aSchermo`, se la rata non è fra le righe
  * a schermo (il filtro della gestione, la ricerca per unità) dice come vederla. Null se la distribuzione segue l'ordine o la risposta non c'è.
  */
-export function fraseFuoriOrdine(risposta: RispostaOrdine | null, euro: (centesimi: number) => string, aSchermo?: (rataId: number) => boolean, versatoDa?: string | null): string | null {
+export function fraseFuoriOrdine(risposta: RispostaOrdine | null, euro: (centesimi: number) => string, aSchermo?: (rataId: number) => boolean, versatoDa?: string | null,
+    conLaScelta = true): string | null {
+    // Con un accordo di rientro: denaro sulle rate dell'accordo senza la scelta, o fuori dall'accordo prima che l'accordo sia pagato con la scelta. La
+    // scelta c'è solo cercando la persona: cercando l'unità la frase dice come averla.
+    if (risposta?.esito === 'fuori_ordine' && risposta.nell_accordo) {
+        return conLaScelta
+            ? 'Questo versamento va anche a rate dell\'accordo di rientro: se è un versamento dell\'accordo, scegli «Versamento dell\'accordo»; se no, di\' chi ha scelto.'
+            : 'Questo versamento va anche a rate dell\'accordo di rientro: per un versamento dell\'accordo cerca la persona e scegli «Versamento dell\'accordo»; se no, di\' chi ha scelto.';
+    }
+    if (risposta?.esito === 'fuori_ordine' && risposta.fuori_dall_accordo) {
+        return 'Con «Versamento dell\'accordo» il versamento va prima alle rate che l\'accordo copre, e questo paga altre rate mentre l\'accordo ne ha ancora aperte: '
+            + 'togli la scelta, o di\' chi ha scelto.';
+    }
     const r = risposta?.esito === 'fuori_ordine' ? risposta.rata_aperta : null;
     if (!r) return null;
 
@@ -63,6 +85,16 @@ export function fraseFuoriOrdine(risposta: RispostaOrdine | null, euro: (centesi
         : `La parte in più resta a credito mentre è ancora aperta ${rata}`;
 
     return (risposta!.parte_in_piu ? parteInPiu : `Questo versamento non segue l'ordine delle scadenze: resta aperta ${rata}`) + comeVederla;
+}
+
+/**
+ * L'accordo di rientro in corso della persona, sopra le rate: il giorno, quanto è ancora nell'accordo, la prossima rata del calendario e quanto ne manca.
+ * Le cifre in centesimi, le date `aaaa-mm-gg`.
+ */
+export function testoAccordoIncasso(a: { data_accordo: string; in_accordo: number; prossima: { numero: number; data: string; mancano: number } | null }): string {
+    const prossima = a.prossima ? `; la prossima rata del calendario è la ${a.prossima.numero} del ${gg(a.prossima.data)}, mancano ${euroTesto(a.prossima.mancano)}` : '';
+
+    return `Accordo di rientro del ${gg(a.data_accordo)}: nell'accordo ${euroTesto(a.in_accordo)}${prossima}.`;
 }
 
 /** Che cosa manca prima di confermare, o null. */
@@ -83,6 +115,8 @@ export interface DatiOrdine {
     credito_prima: boolean | null;
     credito_fra_gestioni: boolean | null;
     dettaglio_pagamenti: Array<{ rata_id: number; importo: number }>;
+    /** «Versamento dell'accordo»: cambia il perimetro dell'ordine. */
+    versamento_accordo?: boolean;
 }
 
 /**
@@ -91,5 +125,5 @@ export interface DatiOrdine {
  */
 export function firmaOrdine(d: DatiOrdine): string {
     return JSON.stringify([d.pagante_id, d.versato_da_id, d.gestione_id, Number(d.importo_totale) || 0, d.eccedenza, d.credito_prima, d.credito_fra_gestioni,
-        d.dettaglio_pagamenti.map((p) => [p.rata_id, p.importo])]);
+        d.dettaglio_pagamenti.map((p) => [p.rata_id, p.importo]), d.versamento_accordo === true]);
 }

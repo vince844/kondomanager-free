@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Policies;
 
@@ -6,6 +9,7 @@ use App\Enums\EventoTipo;
 use App\Enums\Permission;
 use App\Models\Evento;
 use App\Models\User;
+use App\Services\Gestionale\Inbox\CompitoDellaSegnalazione;
 use App\Traits\PerimetroFuoriPannello;
 use Illuminate\Auth\Access\Response;
 
@@ -52,9 +56,16 @@ class EventoPolicy
      * `nelPerimetroFuoriPannello()`: stessa correzione della Coda 185 sulle segnalazioni (giro di
      * sicurezza della 1.11.0-beta.39). Prima rispondeva sì a qualunque evento, e un condòmino con
      * quel permesso concesso da solo nascondeva o spostava la rata di un altro palazzo.
+     *
+     * Il compito di una segnalazione si apre e si modifica solo da chi apre la segnalazione ({@see compitoCheVede()}): la pagina di modifica ne mostra il
+     * titolo e la descrizione.
      */
     public function update(User $user, Evento $evento): Response
     {
+        if (! self::compitoCheVede($user, $evento)) {
+            return Response::deny(__('policies.edit_events'));
+        }
+
         if ($user->hasPermissionTo(Permission::EDIT_EVENTS->value)
             && ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value) || $this->nelPerimetroFuoriPannello($user, $evento))) {
             return Response::allow();
@@ -131,10 +142,14 @@ class EventoPolicy
      *
      * Come `update()`: `DELETE_EVENTS` da solo, senza pannello, vale solo dentro
      * `nelPerimetroFuoriPannello()`. Prima cancellava qualunque evento, rate e compiti
-     * dell'amministratore compresi.
+     * dell'amministratore compresi. Il compito di una segnalazione, come in `update()`, solo da chi apre la segnalazione.
      */
     public function delete(User $user, Evento $evento): Response
     {
+        if (! self::compitoCheVede($user, $evento)) {
+            return Response::deny(__('policies.delete_events'));
+        }
+
         if ($user->hasPermissionTo(Permission::DELETE_EVENTS->value)
             && ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value) || $this->nelPerimetroFuoriPannello($user, $evento))) {
             return Response::allow();
@@ -169,6 +184,19 @@ class EventoPolicy
         }
 
         return $this->nelPerimetroDellUtente($user, $evento);
+    }
+
+    /**
+     * Il compito di una segnalazione si tocca solo da chi apre la segnalazione, con la regola delle due Inbox ({@see CompitoDellaSegnalazione::chiVede()}):
+     * chi ha «Modifica scadenza in agenda» e non apre le segnalazioni non ne legge il titolo dalla pagina di modifica. Gli altri eventi non si leggono.
+     */
+    private static function compitoCheVede(User $user, Evento $evento): bool
+    {
+        if (($evento->tipo?->value ?? data_get($evento->meta, 'type')) !== CompitoDellaSegnalazione::TIPO) {
+            return true;
+        }
+
+        return CompitoDellaSegnalazione::soloQuelliCheVede(Evento::query()->whereKey($evento->getKey()), CompitoDellaSegnalazione::chiVede($user))->exists();
     }
 
     /**

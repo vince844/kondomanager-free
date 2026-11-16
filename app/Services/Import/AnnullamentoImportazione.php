@@ -95,6 +95,11 @@ final class AnnullamentoImportazione
         'condominio_evento' => 'eventi in agenda',
         'segnalazioni' => 'segnalazioni',
         'commenti' => 'commenti',
+
+        // Il rendiconto: le versioni fermate per l'assemblea (la loro chiave verso il condominio non cancella in cascata) e la nota sintetica scritta
+        // (che se ne andrebbe con il condominio).
+        'rendiconto_versioni' => 'rendiconti conservati per l\'assemblea',
+        'note_sintetiche' => 'note sintetiche del rendiconto',
     ];
 
     public function verdetto(ImportBatch $lotto): VerdettoAnnullamento

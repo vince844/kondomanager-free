@@ -42,7 +42,7 @@ const CONDOMINIO = { id: 7, nome: 'Condominio Demo' };
 const APERTO = { id: 1, nome: '2026', stato: 'aperto', data_inizio: '2026-01-01', data_fine: '2026-12-31', descrizione: '', note: '' };
 const CHIUSO = { id: 2, nome: '2025', stato: 'chiuso', data_inizio: '2025-01-01', data_fine: '2025-12-31', descrizione: '', note: '' };
 
-function apri(esercizio = APERTO, esercizi = [APERTO, CHIUSO]) {
+function apri(esercizio = APERTO, esercizi = [APERTO, CHIUSO], pianiAddebiti: unknown[] = []) {
     pagina = mount(PianiRateList, {
         props: {
             condominio: CONDOMINIO as never,
@@ -51,6 +51,7 @@ function apri(esercizio = APERTO, esercizi = [APERTO, CHIUSO]) {
             esercizi: esercizi as never,
             pianiRate: [],
             meta: { current_page: 1, last_page: 1, per_page: 10, total: 0 } as never,
+            pianiAddebiti: pianiAddebiti as never,
         },
         global: { stubs: { GestionaleLayout: { template: '<div><slot /></div>' }, DataTable: true } },
     });
@@ -95,5 +96,17 @@ describe('il riquadro «Gestione saldi pregressi» porta ai saldi iniziali (Coda
         expect(riquadro('Piani Integrativi').find('a').exists()).toBe(false);
         expect(riquadro('Emissione Rate').text()).toContain('Pianifica le scadenze per la riscossione delle quote.');
         expect(riquadro('Gestione Saldi Pregressi').text()).toContain('Consigliamo di isolare il "Saldo Iniziale" dell\'anno precedente in una rata separata.');
+    });
+});
+
+describe('i piani degli addebiti a singole persone, a parte sotto l\'elenco', () => {
+    test('un piano per riga, con il numero degli addebiti e il totale, e il collegamento alla sua pagina; senza piani la sezione non c\'è', () => {
+        const p = apri(APERTO, [APERTO, CHIUSO], [{ id: 9, nome: 'Addebiti individuali – Ordinaria 2026', gestione: 'Ordinaria 2026', addebiti: 2, totale: 7500 }]);
+        const righe = p.findAll('[data-test="piano-addebiti"]');
+        expect(righe).toHaveLength(1);
+        expect(righe[0].text().replace(/\s+/g, ' ').replace(/\u00a0/g, ' ')).toBe('Addebiti individuali – Ordinaria 2026 · 2 addebiti, € 75,00');
+        expect(righe[0].find('a').attributes('href')).toBe('/admin/gestionale/7/esercizi/1/piani-rate/9');
+        expect(p.find('[data-test="piani-addebiti"] h3').text()).toBe('Addebiti individuali');
+        expect(apri().find('[data-test="piani-addebiti"]').exists()).toBe(false);
     });
 });

@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
@@ -198,6 +201,8 @@ class GirocontoController extends Controller
      */
     public function create(Request $request, Condominio $condominio, SaldoCassaService $saldi): Response
     {
+        $casse = $saldi->saldiPerCondominio($condominio);
+
         $copertureInAttesa = FatturaCopertura::where('tipo_copertura', 'fondo_riserva')
             ->where('stato', 'pianificata')
             ->where('importo', '>', 0)
@@ -241,10 +246,51 @@ class GirocontoController extends Controller
                     'tipo' => $g->tipo,
                     'esercizio_ids' => $g->esercizi->pluck('id')->toArray(),
                 ]),
-            'casse' => $saldi->saldiPerCondominio($condominio),
+            'casse' => $casse,
             'coperture_in_attesa' => $copertureInAttesa,
             'copertura_preselezionata_id' => $request->integer('copertura_id') ?: null,
+            'preselezione' => self::preselezione($request, $casse),
         ]);
+    }
+
+    /**
+     * Il giroconto che arriva già impostato dall'indirizzo, come lo apre l'azione consigliata della tesoreria «Sposta € … da … a …»
+     * (`?origine=…&destinazione=…&importo=…`): la cassa di partenza e quella di arrivo sono casse attive di questo condominio, diverse fra loro; la cifra è in
+     * centesimi, sopra zero. Un parametro che non torna si ignora da solo e la pagina resta quella di sempre. Non si scrive niente: i campi sono solo già
+     * compilati, e l'amministratore registra.
+     *
+     * Le regole della pagina sulle due gambe valgono anche qui: in partenza non un fondo che non si può usare (la pagina non lo lascia scegliere senza la
+     * delibera), e con un fondo l'altra cassa è una banca o un altro fondo.
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $casse  le casse attive del condominio, con il saldo
+     * @return array{origine: ?int, destinazione: ?int, importo_cents: ?int}
+     */
+    private static function preselezione(Request $request, \Illuminate\Support\Collection $casse): array
+    {
+        $numero = fn (string $chiave, int $massimo = PHP_INT_MAX) => is_scalar($request->query($chiave))
+            ? (filter_var($request->query($chiave), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => $massimo]]) ?: null)
+            : null;
+        $cassa = fn (?int $id) => $id === null ? null : $casse->firstWhere('id', $id);
+
+        $origine = $cassa($numero('origine'));
+        if ($origine !== null && $origine['tipo'] === 'fondo' && ! $origine['is_utilizzabile_per_imprevisti']) {
+            $origine = null;
+        }
+        $destinazione = $cassa($numero('destinazione'));
+        if ($destinazione !== null && $origine !== null) {
+            $conUnFondo = $origine['tipo'] === 'fondo' || $destinazione['tipo'] === 'fondo';
+            $altre = array_diff([$origine['tipo'], $destinazione['tipo']], ['banca', 'fondo']);
+            if ($destinazione['id'] === $origine['id'] || ($conUnFondo && $altre !== [])) {
+                $destinazione = null;
+            }
+        }
+
+        return [
+            'origine' => $origine['id'] ?? null,
+            'destinazione' => $destinazione['id'] ?? null,
+            // Fino a un miliardo di euro: oltre è un errore di battitura, non un giroconto.
+            'importo_cents' => $numero('importo', 100_000_000_000),
+        ];
     }
 
     public function store(

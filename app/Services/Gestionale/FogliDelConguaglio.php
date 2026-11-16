@@ -157,7 +157,8 @@ final class FogliDelConguaglio
                 $nd = $r['non_disponibile'] !== null;
                 $nonDisponibile = $nonDisponibile || $nd;
                 $unita[] = [
-                    'unita' => (string) ($contesto['unita'][$iid] ?? ''), 'giorni' => $contesto['giorni'][$aid][$iid] ?? null, 'voci' => $voci,
+                    'unita' => (string) ($contesto['unita'][$iid] ?? ''), 'giorni' => $contesto['giorni'][$aid][$iid]['giorni'] ?? null,
+                    'giorni_per_ruolo' => $contesto['giorni'][$aid][$iid]['giorni_per_ruolo'] ?? [], 'voci' => $voci,
                     'a' => (int) $r['a'], 'gia_versato_unita' => (int) $r['gia_versato_unita'],
                     'personali' => (int) $r['personali']['non_chieste'], 'personali_righe' => array_map(fn ($p) => ['giorno' => $p['giorno'], 'importo' => (int) $p['importo']], $r['personali']['righe']),
                     'competenze_scritte' => array_map(fn ($c) => $c + ['voce' => (string) ($contesto['voci'][$c['conto_id']] ?? '')], $r['competenze_scritte'] ?? []),
@@ -295,7 +296,8 @@ final class FogliDelConguaglio
             'nomi_tabelle' => $nomiTabelle,
             'unita' => $unita,
             'anagrafiche' => Anagrafica::whereIn('id', $aids ?: [0])->get()->keyBy('id')->all(),
-            'giorni' => $this->conguaglio->giorniDiTitolarita($esercizio, array_keys($iids)),
+            // I giorni che dice ogni riga: con più ruoli sulla stessa unità, quelli di ogni ruolo.
+            'giorni' => $this->conguaglio->giorniDelleRighe($esercizio, array_keys($iids)),
             'anno_prima' => $annoPrima,
         ];
     }

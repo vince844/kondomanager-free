@@ -29,6 +29,7 @@
         $filtriAttivi[] = 'periodo dall\'inizio dell\'esercizio al '.$filtri['data_a'];
     }
     if ($filtri['search']) { $filtriAttivi[] = 'ricerca: «'.$filtri['search'].'»'; }
+    if (! empty($filtri['cassa'])) { $filtriAttivi[] = 'cassa: «'.$filtri['cassa'].'»'; }
     $parziale = count($filtriAttivi) > 0;
     // ⚠️ Il saldo NON si ricalcola qui: lo porta il controller dal servizio, calcolato
     // sull'esercizio intero alla data di riferimento. La vista lo ricavava dall'ultima riga
@@ -188,7 +189,7 @@
 
 @if($conStudio)
 @component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => 'Registro di contabilità'])
-<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
 @endcomponent
 @else
 <table class="testata">
@@ -203,7 +204,7 @@
         <td class="doc">
             <b class="forte">{{ $esercizio->nome }}</b><br>
             dal <b class="forte">{{ $esercizio->data_inizio->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine->format('d/m/Y') }}</b><br>
-            Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+            Stampato il <b class="forte">{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>
@@ -276,6 +277,12 @@
         </td>
     </tr>
 </table>
+
+@if(($composizione ?? null) !== null && $composizione['parti'] !== [])
+{{-- Il saldo della cassa con il denaro dei fondi che non è passato da lei: come è composto, voce per voce, come nella pagina. --}}
+@php $euroLegato = fn (int $c) => '€'."\u{a0}".number_format($c / 100, 2, ',', '.'); @endphp
+<p class="d" style="margin: -6px 0 12px;">Il saldo di cassa è composto così: {{ $composizione['voce_movimenti'] }} {{ $euroLegato($composizione['movimenti']) }}@foreach($composizione['parti'] as $parte); {{ $parte['voce'] }} {{ $euroLegato($parte['importo']) }}@endforeach; insieme {{ $euroLegato($composizione['saldo']) }}.</p>
+@endif
 
 @if(count($saldi_per_cassa ?? []) > 1)
 {{-- ⚠️ **Con più di una cassa il totale non basta, e in stampa pesa il doppio.** Questo è il

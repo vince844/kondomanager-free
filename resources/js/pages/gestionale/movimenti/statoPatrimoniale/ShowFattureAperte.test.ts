@@ -115,7 +115,7 @@ describe('la situazione patrimoniale alla data', () => {
     test('la scheda «Situazione patrimoniale» del rendiconto: accesa nella riga delle schede; i controlli e la cassa stanno nelle loro schede', () => {
         const p = monta();
         expect(p.find('[data-scheda="situazione"]').attributes('aria-current')).toBe('page');
-        expect(p.findAll('[data-scheda]')).toHaveLength(7);
+        expect(p.findAll('[data-scheda]')).toHaveLength(8);
         expect(p.findAll('[data-test="altre-schede"] a').map((a) => a.attributes('href'))).toEqual(['/gestionale/3/esercizi/9/rendiconto/controlli', '/gestionale/3/esercizi/9/rendiconto/cassa']);
         expect(p.text()).not.toContain('Controlli di quadratura');
     });
@@ -222,9 +222,30 @@ describe('la situazione patrimoniale alla data', () => {
         // Il registro di contabilità non ha le casse fondo, i contributi versati non hanno una data: la frase non manda lì (SA4).
         expect(testoPagina).not.toContain('registro di contabilità');
         expect(testoPagina).not.toContain('lo ricavi dai contributi versati');
-        expect(testoPagina).toContain('il programma non ha una nota esplicativa del rendiconto dove scriverlo.');
+        // Il debito che non è una fattura ha il suo posto: l'elenco «Altri debiti certi» della nota sintetica, e la pagina lo dice.
+        expect(testoPagina).toContain('scrivilo nella nota sintetica, nell\'elenco «Altri debiti certi»: compare qui sotto la riga, fuori dal giornale e dai totali.');
         expect(testoPagina).toContain('Cosa questa pagina non fa');
-        expect(testoPagina).toContain('Il programma non ha la riconciliazione bancaria: il confronto con l\'estratto conto lo fai tu.');
+        expect(testoPagina).toContain('Il programma non ha la riconciliazione bancaria; il saldo alla fine dell\'esercizio si confronta nella nota sintetica, se scrivi il saldo che dice la banca.');
         expect(testoPagina).toContain('Il programma non ha una chiusura guidata dell\'esercizio: la fotografia al 31/12 di un esercizio finito si rifà a ogni lettura, con le registrazioni che ci sono.');
+    });
+});
+
+describe('la guida della scheda', () => {
+    test('il pulsante «Guida» dell\'intestazione, uno solo, apre la guida della scheda «Situazione patrimoniale»', async () => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], pagina: pagina() } as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot, DropdownMenu: true,
+                PageHeaderGuide: { props: { hasTextGuide: Boolean, textGuideTitle: String }, emits: ['open-text-guide'],
+                template: '<div><button v-if="hasTextGuide" type="button" data-testid="apri-guida" @click="$emit(\'open-text-guide\')">{{ textGuideTitle }}</button><slot name="actions" /></div>' },
+                RendicontoSituazioneGuide: { props: ['open'], template: '<div v-if="open" data-testid="guida-aperta" />' } } },
+        });
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(false);
+        expect(w.findAll('button').filter((b) => b.text().trim() === 'Guida')).toHaveLength(1);
+        const pulsante = w.get('[data-testid="apri-guida"]');
+        expect(pulsante.text().trim()).toBe('Guida');
+        await pulsante.trigger('click');
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(true);
     });
 });

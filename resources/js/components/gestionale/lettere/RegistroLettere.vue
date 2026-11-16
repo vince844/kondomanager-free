@@ -219,7 +219,7 @@ const eventoTesto = (e: LetteraDelRegistro['eventi'][number]) => {
             <ul v-if="v.lettera.prove.length" class="space-y-0.5">
                 <li v-for="p in v.lettera.prove" :key="p.id" class="flex flex-wrap items-center gap-2">
                     <a :href="rotta('prove.scarica', { invio: p.invio_id, documento: p.id })" class="underline">{{ p.nome }}</a>
-                    <span v-if="p.aggiunta_il" class="text-slate-500">allegata il {{ giorno(p.aggiunta_il) }}</span>
+                    <span v-if="p.aggiunta_il" class="text-slate-500 dark:text-slate-400">allegata il {{ giorno(p.aggiunta_il) }}</span>
                     <Button v-if="p.rimovibile" size="sm" variant="ghost" class="h-6 text-[11px]" @click="togli(p.invio_id, p.id)">Togli</Button>
                 </li>
             </ul>

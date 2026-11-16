@@ -82,11 +82,19 @@ class PianoRateController extends Controller
         // quella che l'utente aveva già fatto su questo elenco, altrimenti le impostazioni generali.
         $validated['per_page'] = $this->righePerPagina($request);
 
+        // I piani degli addebiti a singole persone stanno a parte, sotto l'elenco: non hanno capitoli, delibera né allineamento.
         $pianiRate = PianoRate::with(['gestione'])
             ->where('condominio_id', $condominio->id)
+            ->delRiparto()
             ->whereHas('gestione.esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
             ->tap(fn ($q) => $this->ordina($q, $validated, PianoRateIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
             ->paginate($validated['per_page']);
+        $pianiAddebiti = PianoRate::with('gestione:id,nome')->withCount('rate')->withSum('rate', 'importo_totale')
+            ->where('condominio_id', $condominio->id)->degliAddebiti()->where('esercizio_id', $esercizio->id)
+            ->orderBy('gestione_id')->get()
+            ->map(fn (PianoRate $p) => ['id' => (int) $p->id, 'nome' => (string) $p->nome, 'gestione' => (string) ($p->gestione?->nome ?? ''),
+                'addebiti' => (int) $p->rate_count, 'totale' => (int) ($p->rate_sum_importo_totale ?? 0)])
+            ->values()->all();
 
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
@@ -98,6 +106,7 @@ class PianoRateController extends Controller
             'esercizi' => $esercizi,
             'condomini' => CondominioResource::collection($this->getCondomini()),
             'pianiRate' => PianoRateResource::collection($pianiRate)->resolve(),
+            'pianiAddebiti' => $pianiAddebiti,
             'meta' => [
                 'current_page' => $pianiRate->currentPage(),
                 'last_page' => $pianiRate->lastPage(),
@@ -152,7 +161,9 @@ class PianoRateController extends Controller
             // dell'anno prima sulla stessa gestione (riusata su più esercizi) non fa più scattare
             // l'etichetta «Integrativa». I piani vecchi senza colonna (nulla) contano ancora: meglio
             // un'etichetta prudente di un preventivo che si crede primo.
+            // Il piano degli addebiti a singole persone non è il preventivo: un addebito di gennaio non fa «Integrativa» il primo piano dell'anno.
             $hasPianoEsistente = PianoRate::where('gestione_id', $gestioneSelezionata->id)
+                ->delRiparto()
                 ->where('tipo', 'ordinario')
                 ->where('contesto_creazione', 'preventivo_iniziale')
                 ->where(fn ($q) => $q->where('esercizio_id', $esercizio->id)->orWhereNull('esercizio_id'))
@@ -730,6 +741,14 @@ class PianoRateController extends Controller
                 ->where('meta->is_emitted', true)        
                 ->where('meta->is_published', false)     
                 ->exists(),
+            // Il piano degli addebiti a singole persone: la pagina non offre le azioni del riparto (generare, ricalcolare, approvare, emettere).
+            'degli_addebiti' => $pianoRate->eDegliAddebiti() ? ['frase' => $pianoRate->rifiutoDegliAddebiti()] : null,
+            // Le quote non assegnate che si possono addebitare a una persona (quelle di un'unità), con quanto è già addebitato e quanto resta.
+            'addebiti_delle_quote' => $pianoRate->eDegliAddebiti() ? [] : array_map(fn (array $v) => [
+                'chiave' => (string) ($v['chiave'] ?? ''), 'immobile_id' => $v['immobile_id'] ?? null, 'immobile_nome' => $v['immobile_nome'] ?? null,
+                'conto_nome' => $v['conto_nome'] ?? null, 'addebitabile' => (bool) $v['addebitabile'], 'addebitato_cents' => (int) $v['addebitato_cents'],
+                'resta_cents' => (int) $v['resta_cents'],
+            ], app(\App\Services\Gestionale\Addebiti\AddebitiIndividuali::class)->quoteDaAddebitare($pianoRate)),
         ]);
     }
 
@@ -757,6 +776,11 @@ class PianoRateController extends Controller
      */
     public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
+        // Il piano degli addebiti nasce approvato senza una delibera, e resta così: una bozza toglierebbe gli addebiti dallo scadenziario.
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            return back()->with($this->flashError($rifiuto));
+        }
+
         // Con «Urgenza» (art. 1135 co. 2 c.c.) non c'è una delibera da registrare: la data non si chiede e, se
         // arriva, non si scrive — stessa guardia di `store()` (decisione 12, verifica S6 R2, S8-32). La
         // competenza dello straordinario d'urgenza si dichiara sulle fatture del piano.
@@ -911,6 +935,10 @@ class PianoRateController extends Controller
      */
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): RedirectResponse
     {
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            return back()->with($this->flashError($rifiuto));
+        }
+
         // 1. IL MURO CONTABILE: Controlli prima di permettere l'eliminazione
         
         // A. Controllo Incassi (Pagamenti registrati)
@@ -1060,6 +1088,10 @@ class PianoRateController extends Controller
      */
     public function detachCapitolo(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, $capitoloId)
     {
+        if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
+            return back()->with($this->flashError($rifiuto));
+        }
+
         // B2, cancello (2): il ricalcolo dopo la rimozione può cambiare i destinatari rispetto al piano
         // com'era (un titolare chiuso nel frattempo dall'elenco titolari). La presa d'atto è
         // dell'amministratore, non del programma: stessa forma di `PianoRateGenerationController`.

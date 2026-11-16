@@ -55,11 +55,22 @@ final class SeiMesi
     /** @var list<array{id:int, nome:string, data_inizio:string, data_fine:string, stato:string}> */
     private array $esercizi = [];
 
-    /** @var list<array{id:int, data_delibera:string, numero_verbale:?string, revocata_il:?string, tutte:bool, esercizi:list<int>, persone:list<int>}> */
+    /** @var list<array{id:int, data_delibera:string, numero_verbale:?string, revocata_il:?string, tutte:bool, togli_sollecito:bool, esercizi:list<int>, persone:list<int>}> */
     private array $dispense = [];
 
     /** @var array<int, array{straordinaria:bool, esercizio:?array, dedotto:bool, delibera:?string}> */
     private array $piani = [];
+
+    /** Le persone nominate in una dispensa «solo per alcune»: per le altre le date di una rata non dipendono dalla persona. @var array<int, true> */
+    private array $conDispensaPropria = [];
+
+    /**
+     * Le date già calcolate in questo calcolo, per la stessa rata vista da fuori (la scadenza, il piano, il pregresso) e, solo per chi è in una dispensa
+     * per alcune persone, la persona: in un condominio le rate di un piano hanno le stesse date per tutti. Il calcolo vive una lettura.
+     *
+     * @var array<string, array<string,mixed>>
+     */
+    private array $giaCalcolate = [];
 
     public function __construct(private readonly CompetenzaDelPiano $competenza) {}
 
@@ -92,9 +103,15 @@ final class SeiMesi
             'id' => (int) $d->id, 'data_delibera' => Scadenza::giorno($d->data_delibera), 'numero_verbale' => $d->numero_verbale,
             'revocata_il' => $d->revocata_il === null || ($alla !== null && Scadenza::giorno($d->revocata_il) > $alla) ? null : Scadenza::giorno($d->revocata_il),
             'tutte' => (bool) $d->tutte_le_persone,
+            'togli_sollecito' => (bool) ($d->togli_sollecito_tesoreria ?? false),
             'esercizi' => $esercizi->get($d->id, collect())->pluck('esercizio_id')->map(fn ($x) => (int) $x)->all(),
             'persone' => $persone->get($d->id, collect())->pluck('anagrafica_id')->map(fn ($x) => (int) $x)->all(),
         ])->all();
+        foreach ($c->dispense as $d) {
+            foreach ($d['tutte'] ? [] : $d['persone'] as $p) {
+                $c->conDispensaPropria[$p] = true;
+            }
+        }
 
         return $c;
     }
@@ -106,12 +123,23 @@ final class SeiMesi
      * `senza_delibera`, `senza_competenza`, `origine_non_dichiarata`, `prima_del_primo`), `doppio` (due esercizi contengono la data), `dedotto` (la competenza
      * dedotta), `prima_della_scadenza` (la data viene prima della scadenza della rata: non va in evidenza), `data_cercata` e
      * `esercizio_da_chiudere` per l'esercizio che manca, `dispensa`. Poi la più vicina fra quelle che ci sono (prima le date non coperte
-     * da una dispensa) e la sua dispensa.
+     * da una dispensa), la sua dispensa e il suo esercizio (`piu_vicina_esercizio`: chi raggruppa le rate per esercizio non rifà la scelta).
      *
      * @param  array<string,mixed>  $riga
-     * @return array{dalla_scadenza:array<string,mixed>, dalla_competenza:array<string,mixed>, coincidono:bool, piu_vicina:?string, piu_vicina_dispensa:?array}
+     * @return array{dalla_scadenza:array<string,mixed>, dalla_competenza:array<string,mixed>, coincidono:bool, piu_vicina:?string, piu_vicina_dispensa:?array, piu_vicina_esercizio:?array}
      */
     public function perRiga(array $riga, int $anagraficaId): array
+    {
+        $pregresso = $riga['pregresso'] ?? null;
+        $chiave = Scadenza::giorno((string) $riga['scadenza']) . '|' . (int) ($riga['piano_rate_id'] ?? 0) . '|'
+            . ($pregresso === null ? '-' : ($pregresso['origine'] ?? '') . ':' . ($pregresso['esercizio']['id'] ?? '') . ':' . ($pregresso['esercizio']['data_fine'] ?? ''))
+            . '|' . (isset($this->conDispensaPropria[$anagraficaId]) ? $anagraficaId : '*');
+
+        return $this->giaCalcolate[$chiave] ??= $this->calcolaRiga($riga, $anagraficaId);
+    }
+
+    /** Le due date di una riga, calcolate. */
+    private function calcolaRiga(array $riga, int $anagraficaId): array
     {
         $scadenza = Scadenza::giorno((string) $riga['scadenza']);
         $pregresso = $riga['pregresso'] ?? null;
@@ -237,7 +265,8 @@ final class SeiMesi
         $inVigore = array_values(array_filter($copre, fn ($d) => $d['revocata_il'] === null));
         $d = $inVigore !== [] ? end($inVigore) : end($copre);
 
-        return ['id' => $d['id'], 'data_delibera' => $d['data_delibera'], 'numero_verbale' => $d['numero_verbale'], 'revocata_il' => $d['revocata_il']];
+        return ['id' => $d['id'], 'data_delibera' => $d['data_delibera'], 'numero_verbale' => $d['numero_verbale'], 'revocata_il' => $d['revocata_il'],
+            'togli_sollecito' => $d['togli_sollecito']];
     }
 
     private function esito(array $dallaScadenza, array $dallaCompetenza, bool $coincidono): array
@@ -259,6 +288,77 @@ final class SeiMesi
             'coincidono' => $coincidono,
             'piu_vicina' => $piuVicina['data'] ?? null,
             'piu_vicina_dispensa' => $piuVicina !== null && $piuVicina['dispensa'] !== null && $piuVicina['dispensa']['revocata_il'] === null ? $piuVicina['dispensa'] : null,
+            'piu_vicina_esercizio' => $piuVicina['esercizio'] ?? null,
         ];
+    }
+
+    /**
+     * Perché una rata non ha la data dei sei mesi: le parole della cella dell'elenco (`testoData()` in `rateScadute.ts`), dalla data dalla scadenza o, se lì
+     * non c'è un perché, da quella dalla competenza. Null se la rata ha una data.
+     *
+     * @param  array{dalla_scadenza:array<string,mixed>, dalla_competenza:array<string,mixed>, piu_vicina:?string}  $esito
+     */
+    /**
+     * Le rate senza la data dei sei mesi, nel riquadro: perché la data manca (la prima delle due date che dice perché, come {@see percheSenzaData()}), una
+     * spiegazione, e la prossima azione che quel perché chiede: «Dichiara l'origine» per il saldo riportato senza l'origine o con l'origine «prima del primo
+     * esercizio», «Crea l'esercizio» quando manca l'esercizio che contiene la data, il piano rate quando mancano la delibera o l'esercizio di competenza o la
+     * data viene prima degli esercizi. Null se la data c'è.
+     *
+     * @return array{caso: string, perche: string, spiegazione: string, azione: array{tipo: string, etichetta: string}}|null
+     */
+    public static function senzaData(array $esito): ?array
+    {
+        if (($esito['piu_vicina'] ?? null) !== null) {
+            return null;
+        }
+        $giorno = fn (?string $d) => $d === null ? '' : CarbonImmutable::parse($d)->format('d/m/Y');
+        $origine = ['tipo' => 'origine', 'etichetta' => 'Dichiara l\'origine'];
+        $piano = ['tipo' => 'piano', 'etichetta' => 'Apri il piano rate'];
+        foreach ([$esito['dalla_scadenza'] ?? [], $esito['dalla_competenza'] ?? []] as $v) {
+            $motivo = match ($v['stato'] ?? null) {
+                'origine_non_dichiarata' => ['Saldo riportato senza l\'origine.', 'Il programma non sa di quale esercizio è il debito, quindi non sa da quando contare.', $origine],
+                'prima_del_primo' => ['Saldo riportato con l\'origine «prima del primo esercizio».', 'Il programma non ha quell\'esercizio, quindi non sa quando chiude.', $origine],
+                'manca_esercizio' => ['L\'esercizio che contiene il ' . $giorno($v['data_cercata'] ?? null) . ' non c\'è.',
+                    'I sei mesi si contano dalla chiusura di quell\'esercizio: quando c\'è, la data si calcola.', ['tipo' => 'esercizio', 'etichetta' => 'Crea l\'esercizio']],
+                'prima_degli_esercizi' => ['Il ' . $giorno($v['data_cercata'] ?? null) . ' viene prima del primo esercizio del programma.',
+                    'Il programma non sa quando chiudeva l\'esercizio di quel giorno.', $piano],
+                'senza_delibera' => ['Il piano straordinario non ha la data della delibera.', 'Per la straordinaria i sei mesi si contano dall\'esercizio della delibera.',
+                    ['tipo' => 'piano', 'etichetta' => 'Scrivi la data della delibera']],
+                'senza_competenza' => ['Il piano non ha un esercizio di competenza.', 'Il programma non sa da quale esercizio contare i sei mesi.', $piano],
+                default => null,
+            };
+            if ($motivo !== null) {
+                return ['caso' => (string) $v['stato'], 'perche' => $motivo[0], 'spiegazione' => $motivo[1], 'azione' => $motivo[2]];
+            }
+        }
+
+        return ['caso' => 'altro', 'perche' => 'La data dei sei mesi non si calcola.', 'spiegazione' => 'Le rate della persona sono nel suo estratto conto.',
+            'azione' => ['tipo' => 'estratto', 'etichetta' => 'Apri l\'estratto conto']];
+    }
+
+    public static function percheSenzaData(array $esito): ?string
+    {
+        if (($esito['piu_vicina'] ?? null) !== null) {
+            return null;
+        }
+        $giorno = fn (?string $d) => $d === null ? '' : CarbonImmutable::parse($d)->format('d/m/Y');
+        foreach ([$esito['dalla_scadenza'], $esito['dalla_competenza']] as $v) {
+            $frase = match ($v['stato'] ?? null) {
+                'manca_esercizio' => ($v['esercizio_da_chiudere'] ?? null) !== null
+                    ? 'L\'esercizio che contiene il ' . $giorno($v['data_cercata']) . ' non c\'è, e il programma non apre l\'esercizio successivo: questa data non si calcola.'
+                    : 'L\'esercizio che contiene il ' . $giorno($v['data_cercata']) . ' non c\'è: questa data non si calcola.',
+                'prima_degli_esercizi' => 'Il ' . $giorno($v['data_cercata']) . ' viene prima del primo esercizio del programma: la data non si calcola.',
+                'senza_delibera' => 'Il piano straordinario non ha la data della delibera: la data dalla competenza non si calcola. Scrivila nel piano rate.',
+                'senza_competenza' => 'Il piano non ha un esercizio di competenza: la data dalla competenza non si calcola.',
+                'origine_non_dichiarata' => 'Origine non dichiarata: le date non si calcolano.',
+                'prima_del_primo' => 'Pregresso di prima del primo esercizio: le date non si calcolano.',
+                default => null,
+            };
+            if ($frase !== null) {
+                return $frase;
+            }
+        }
+
+        return 'La data dei sei mesi non si calcola.';
     }
 }

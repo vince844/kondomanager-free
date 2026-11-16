@@ -98,9 +98,12 @@ class PianoRateResource extends JsonResource
                 ->where(function ($q) {
                     $q->where('rate_quote.tipo', 'saldo_iniziale')
                       ->orWhere(function ($or) {
-                          // Confronto bindato: '0' passa come parametro preparato, mai inline nel SQL
+                          // Confronto bindato: '0' passa come parametro preparato, mai inline nel SQL. SQLite (le prove) non ha JSON_UNQUOTE:
+                          // lì il valore si porta a testo, così 0 e '0' si leggono uguali come su MySQL.
                           $or->whereRaw(
-                                  "JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) != ?",
+                                  DB::connection()->getDriverName() === 'sqlite'
+                                      ? "CAST(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato') AS TEXT) != ?"
+                                      : "JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) != ?",
                                   ['0']
                               )
                              ->whereRaw(

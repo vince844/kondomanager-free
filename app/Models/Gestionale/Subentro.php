@@ -228,6 +228,79 @@ class Subentro extends Model
         return array_values(array_map('intval', (array) ($this->registro['arretrato']['saldi'] ?? [])));
     }
 
+    /**
+     * Delle righe dell'arretrato, quelle che portano agli eredi gli addebiti a una persona sola del defunto (un contributo, una spesa con la fattura dello
+     * studio): sono righe a parte, perché l'addebito non è una quota e il conguaglio le tiene fuori da B. Sono anche fra `saldiDellArretrato()`.
+     *
+     * @return list<int>
+     */
+    public function saldiDegliAddebiti(): array
+    {
+        return array_values(array_map('intval', (array) ($this->registro['arretrato']['addebiti']['saldi'] ?? [])));
+    }
+
+    /**
+     * Le rate degli addebiti del defunto che la successione ha passato agli eredi: con le righe dell'arretrato (`saldiDegliAddebiti()`), o divisi fra
+     * loro sulla stessa rata (gli interessi e le spese senza fattura, `arretrato.accessori`).
+     *
+     * @return list<int>
+     */
+    public function rateDegliAddebitiPassati(): array
+    {
+        $rate = array_map('intval', (array) ($this->registro['arretrato']['addebiti']['rate'] ?? []));
+        $quote = array_values(array_filter(array_map(fn ($r) => (int) ($r['quota_id'] ?? 0), (array) ($this->registro['arretrato']['accessori'] ?? []))));
+        if ($quote !== []) {
+            $rate = [...$rate, ...RataQuote::whereIn('id', $quote)->pluck('rata_id')->map(fn ($id) => (int) $id)->all()];
+        }
+
+        return array_values(array_unique($rate));
+    }
+
+    /**
+     * Le righe di saldo che portano agli eredi gli addebiti del defunto, fra quelle dei passaggi dati (id della riga => true).
+     *
+     * @param array<int, int|string|null> $subentroIds
+     * @return array<int, true>
+     */
+    public static function righeDegliAddebiti(array $subentroIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $subentroIds))));
+        if ($ids === []) {
+            return [];
+        }
+
+        return array_fill_keys(self::whereIn('id', $ids)->where('tipo_passaggio', 'successione')->get(['id', 'registro'])
+            ->flatMap(fn (self $s) => $s->saldiDegliAddebiti())->all(), true);
+    }
+
+    /**
+     * La successione che ha passato agli eredi l'addebito di ogni rata data (rata => passaggio): l'addebito non si annulla finché il passaggio c'è.
+     *
+     * @param list<int> $rataIds
+     * @param list<int> $condominioIds
+     * @return array<int, self>
+     */
+    public static function passaggiDegliAddebiti(array $rataIds, array $condominioIds): array
+    {
+        $rataIds = array_flip(array_map('intval', $rataIds));
+        if ($rataIds === [] || $condominioIds === []) {
+            return [];
+        }
+        $esito = [];
+        foreach (self::whereIn('condominio_id', $condominioIds)->where('tipo_passaggio', 'successione')->orderBy('id')->get() as $s) {
+            if (! isset($s->registro['arretrato']['addebiti']) && ! isset($s->registro['arretrato']['accessori'])) {
+                continue;
+            }
+            foreach ($s->rateDegliAddebitiPassati() as $rataId) {
+                if (isset($rataIds[$rataId])) {
+                    $esito[$rataId] ??= $s;
+                }
+            }
+        }
+
+        return $esito;
+    }
+
     /** Decisione 67 (3): i saldi del defunto da cui l'arretrato agli eredi è stato calcolato. */
     public function fontiDellArretrato(): array
     {

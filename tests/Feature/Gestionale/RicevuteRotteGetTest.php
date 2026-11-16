@@ -69,7 +69,7 @@ test('un GET su uno dei tre indirizzi dei PDF riporta alla pagina delle ricevute
 test('le frasi dicono da quale pulsante il PDF si riapre, in italiano, e la stampa dice che non ha stampato niente', function () {
     expect(RicevuteIncassiController::FRASI_RIAPRI_PDF['stampa'])->toContain('«Stampa o invia ricevuta»')->toContain('non ha stampato niente')->toContain('esce come copia')->not->toContain('premi «Stampa»')
         ->and(RicevuteIncassiController::FRASI_RIAPRI_PDF['pdf-anteprima'])->toContain('«Anteprima»')
-        ->and(RicevuteIncassiController::FRASI_RIAPRI_PDF['pdf-per-persona'])->toContain('«Scarica un PDF per persona»');
+        ->and(RicevuteIncassiController::FRASI_RIAPRI_PDF['pdf-per-persona'])->toContain('premi «PDF per persona»')->not->toContain('«Scarica un PDF per persona»');
     foreach (RicevuteIncassiController::FRASI_RIAPRI_PDF as $frase) {
         expect($frase)->not->toMatch('/405|Method|GET|POST/');
     }

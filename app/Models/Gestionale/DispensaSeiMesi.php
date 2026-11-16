@@ -19,19 +19,23 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  *
  * Il programma la mostra accanto alle date dei sei mesi che copre e non ricalcola niente. Non è l'accordo di rientro: sono due delibere
  * diverse.
+ *
+ * `togli_sollecito_tesoreria` è una scelta di lavoro dell'amministratore, non una parte della delibera: la dispensa toglie sempre i passi verso il legale; con
+ * la casella, in tesoreria, anche il sollecito. Si cambia anche dopo, dall'elenco delle dispense.
  */
 class DispensaSeiMesi extends Model
 {
     protected $table = 'dispense_sei_mesi';
 
     protected $fillable = [
-        'condominio_id', 'data_delibera', 'numero_verbale', 'nota', 'tutte_le_persone', 'revocata_il', 'nota_revoca', 'registrata_da', 'revocata_da',
+        'condominio_id', 'data_delibera', 'numero_verbale', 'nota', 'tutte_le_persone', 'togli_sollecito_tesoreria', 'revocata_il', 'nota_revoca', 'registrata_da', 'revocata_da',
     ];
 
     protected $casts = [
         'data_delibera' => 'date',
         'revocata_il' => 'date',
         'tutte_le_persone' => 'boolean',
+        'togli_sollecito_tesoreria' => 'boolean',
     ];
 
     public function condominio(): BelongsTo

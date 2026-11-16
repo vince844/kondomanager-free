@@ -1,8 +1,13 @@
 {{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
+{{--
   Il conguaglio per persona, la stampa: una riga per persona e unità di ogni gestione, dall'array di `ConguaglioDelRendiconto::righe()` (per la stampa:
   senza le note dei passaggi né gli avvisi, che sono per l'amministratore). Nove colonne, A4 orizzontale.
 
-  Va ai condòmini con il fascicolo: le parole sono le loro (`ParoleDelConguaglio`). Quello che è già da versare (le rate già chieste e non pagate, e le
+  Va ai condòmini con il fascicolo: le parole sono le loro (`ParoleDelConguaglio`). Quello che è già da versare (le rate e gli addebiti già chiesti e non pagati, e le
   altre somme fuori dalle rate) e la proposta di conguaglio, che è solo proposta, stanno in due colonne distinte; il totale è il saldo se l'assemblea approva.
 
   La carta del riepilogo finanziario (§ 7-quinquies di docs/registri_contabili.md: Inter e Fraunces, la palette del fac-simile), in orizzontale: la
@@ -28,7 +33,7 @@
     $segnoNota = fn (int $c) => '€'."\u{00A0}".($c > 0 ? '+' : '').number_format($c / 100, 2, ',', '.');
     // Accanto al saldo, le rate dei piani non ancora chieste: quanto diventa il saldo quando saranno chieste.
     $quandoChieste = fn (?int $saldo, ?int $nonEmesse) => (int) $nonEmesse === 0 || $saldo === null ? '' : 'quando saranno chieste le altre rate: '.$segnoNota($saldo + (int) $nonEmesse);
-    // Già da versare: le rate già chieste e non pagate, e le altre somme fuori dalle rate.
+    // Già da versare: le rate e gli addebiti già chiesti e non pagati, e le altre somme fuori dalle rate.
     $gia = fn (array $r, string $fuori = 'fuori') => ($r['posizione'] ?? null) === null && ($r[$fuori] ?? null) === null ? null : (int) ($r['posizione'] ?? 0) + (int) ($r[$fuori] ?? 0);
     $g = $conguaglio;
     $titoloStampa = 'Conguaglio per persona';
@@ -81,6 +86,9 @@
     {{-- Le intestazioni stanno nelle loro colonne («DELL'ESERCIZIO» in una): una parola più larga farebbe rimpicciolire a mPDF la tabella con
          l'intestazione, e non la tabella in fondo, che non la ha. --}}
     table.p th { font-size: 5.8pt; letter-spacing: 0; padding: 4px; }
+    {{-- `.n` non va a capo, e anche sull'intestazione fissava la colonna alla sua riga intera: la tabella con l'intestazione si allargava
+         dove l'intestazione è lunga e le colonne non coincidevano con quelle della tabella in fondo, che non la ha. --}}
+    table.p th.n { white-space: normal; }
     table.p td { padding: 3px 4px; }
     table.p tr.sub td { background: #F4F5F7; font-weight: bold; color: #0E2238; }
     table.p tr.tot td { padding: 5px 4px; }
@@ -98,12 +106,12 @@
 
 <div class="chiusura">
     <b>Come leggere questo prospetto.</b> {{ C::FRASE_SEGNO }}
-    Proposta di conguaglio = spese dell'esercizio + spese personali non ancora chieste − quote dei piani. Già da versare: le rate già chieste e non pagate,
+    Proposta di conguaglio = spese dell'esercizio + spese personali non ancora chieste − quote dei piani. Già da versare: le rate e gli addebiti già chiesti e non pagati,
     e le altre somme fuori dalle rate. Saldo se l'assemblea approva = già da versare + proposta di conguaglio.
     Le quote dei piani comprendono anche le rate non ancora chieste: sotto la cifra c'è quanto ne manca, e sotto il saldo quanto diventa quando saranno chieste.
     {{ C::FRASE_COMPETENZA }} {{ C::FRASE_GIORNI }} {{ C::FRASE_CENTESIMI }}
     Una riga per persona e unità, in ordine di nome (nel consuntivo per tabella l'ordine è quello delle unità): chi ha più unità ha anche la riga del suo
-    totale. Una cella vuota vuol dire zero. «Non ancora calcolato»: l'amministratore completerà la cifra di quella riga.
+    totale. Una cella vuota vuol dire zero. «Non ancora calcolato»: la cifra di quella riga non c'è, e la riga non entra nei totali.
 </div>
 
 @foreach($sezioni as $s)
@@ -210,7 +218,7 @@
     </tbody>
 </table>
 @if($nonPronte !== 0)
-<p class="eq">Le righe con la proposta non ancora calcolata ({{ $nonPronte }}@if((int) ($t['a_non_disponibili'] ?? 0) !== 0), spese dell'esercizio {{ $euro((int) $t['a_non_disponibili']) }}@endif) non sono nei totali: l'amministratore le completerà.</p>
+<p class="eq">Le righe con la proposta non ancora calcolata ({{ $nonPronte }}@if((int) ($t['a_non_disponibili'] ?? 0) !== 0), spese dell'esercizio {{ $euro((int) $t['a_non_disponibili']) }}@endif) non sono nei totali.</p>
 @endif
 {{-- Il secondo momento, in due frasi per chi legge: quanto avranno da versare i condòmini e quanto restituirà il condominio, se l'assemblea approva. --}}
 @if(! empty($g['secondo_momento']))

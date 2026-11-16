@@ -322,6 +322,13 @@ export function quanteSelezionate(s: Selezione, totaleDeiFiltri: number): number
     return s.tutte ? totaleDeiFiltri : s.ids.length;
 }
 
+/** Il conteggio della riga della selezione: le ricevute dei filtri e, se ne hai scelta qualcuna, quante su quante. */
+export function testoDellaScelta(quante: number, totaleDeiFiltri: number): string {
+    return quante > 0
+        ? `${conta(quante, 'selezionata', 'selezionate')} su ${totaleDeiFiltri} con questi filtri`
+        : `${conta(totaleDeiFiltri, 'ricevuta', 'ricevute')} con questi filtri`;
+}
+
 /** Quello che la richiesta porta: la lista, o «tutte» con i filtri, che il server rilegge da sé. */
 export function payloadSelezione(s: Selezione, filtri: Record<string, unknown>): Record<string, unknown> {
     return s.tutte ? { tutte: 1, filtri } : { incassi: s.ids };

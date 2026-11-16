@@ -1,3 +1,8 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script lang="ts">
 /** La pagina da cui si è arrivati alle dispense. Resta fra una visita e l'altra della pagina: registrare o revocare una dispensa ricarica la pagina, e
  * dopo la «pagina precedente» sarebbe la pagina stessa. */
@@ -34,6 +39,8 @@ import type { Flash } from '@/types/flash';
 interface Dispensa {
     id: number; data_delibera: string; numero_verbale: string | null; nota: string | null; tutte_le_persone: boolean;
     esercizi: Array<{ id: number; nome: string }>; persone: Array<{ id: number; nome: string }>; revocata_il: string | null; nota_revoca: string | null; verbale: string | null;
+    /** La dispensa toglie anche il sollecito in tesoreria: una scelta di lavoro, di serie no. */
+    togli_sollecito_tesoreria?: boolean;
 }
 const props = defineProps<{
     condominio: { id: number; nome: string }; condomini: any; esercizio: any;
@@ -46,7 +53,7 @@ const page = usePage<{ flash?: { message?: Flash }; errors?: Record<string, stri
 const flashMessage = computed(() => page.props.flash?.message);
 const errori = computed(() => page.props.errors ?? {});
 
-const nuova = ref({ data_delibera: '', numero_verbale: '', nota: '', esercizi: [] as number[], per_tutti: '' as '' | '1' | '0', persone: [] as number[] });
+const nuova = ref({ data_delibera: '', numero_verbale: '', nota: '', esercizi: [] as number[], per_tutti: '' as '' | '1' | '0', persone: [] as number[], togli_sollecito_tesoreria: false });
 const verbale = ref<File | null>(null);
 // «Solo per alcune persone»: un menu con la ricerca, come la scelta della persona nelle rate scadute; con un condominio grande ne mostra 50,
 // e le persone già scelte restano fra le opzioni perché il campo ne mostri il nome.
@@ -61,8 +68,15 @@ const alterna = (lista: number[], id: number) => (lista.includes(id) ? lista.fil
 function registra() {
     router.post(route(generateRoute('gestionale.dispense.store'), { condominio: props.condominio.id }), {
         ...nuova.value, ...(verbale.value ? { verbale: verbale.value } : {}),
-    }, { forceFormData: true, preserveScroll: true, onSuccess: () => { nuova.value = { data_delibera: '', numero_verbale: '', nota: '', esercizi: [], per_tutti: '', persone: [] }; verbale.value = null; } });
+    }, { forceFormData: true, preserveScroll: true, onSuccess: () => { nuova.value = { data_delibera: '', numero_verbale: '', nota: '', esercizi: [], per_tutti: '', persone: [], togli_sollecito_tesoreria: false }; verbale.value = null; } });
 }
+
+/** «Togli anche il sollecito in tesoreria», cambiata dall'elenco: una scelta di lavoro, non una parte della delibera. */
+function cambiaSollecito(d: Dispensa, togli: boolean) {
+    router.post(route(generateRoute('gestionale.dispense.sollecito'), { condominio: props.condominio.id, dispensa: d.id }), { togli }, { preserveScroll: true });
+}
+const SPIEGAZIONE_SOLLECITO = 'La dispensa toglie le azioni verso il legale (la diffida, il fascicolo). Spunta qui se l\'assemblea ha deciso di non chiedere nemmeno il '
+    + 'pagamento con un sollecito.';
 
 const revoca = ref<{ id: number | null; revocata_il: string; nota_revoca: string }>({ id: null, revocata_il: '', nota_revoca: '' });
 function revoca_conferma() {
@@ -135,6 +149,10 @@ const breadcrumbs = computed(() => [
                     <p v-if="d.nota" class="text-xs text-slate-500">{{ d.nota }}</p>
                     <p v-if="d.nota_revoca" class="text-xs text-slate-500">Revoca: {{ d.nota_revoca }}</p>
                     <a v-if="d.verbale" :href="indirizzoVerbale(d)" class="text-xs underline">Verbale: {{ d.verbale }}</a>
+                    <label v-if="!d.revocata_il" class="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300" data-testid="sollecito-della-dispensa">
+                        <Checkbox :model-value="!!d.togli_sollecito_tesoreria" @update:model-value="(v: boolean | 'indeterminate') => cambiaSollecito(d, v === true)" />
+                        {{ d.togli_sollecito_tesoreria ? 'Toglie anche il sollecito in tesoreria' : 'Togli anche il sollecito in tesoreria' }}
+                    </label>
                     <div v-if="revoca.id === d.id" class="flex flex-wrap items-end gap-2 pt-2">
                         <label class="text-xs space-y-1"><span class="block">Data della revoca</span><Input v-model="revoca.revocata_il" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
                         <label class="text-xs space-y-1 flex-1 min-w-[200px]"><span class="block">Nota</span><Input v-model="revoca.nota_revoca" class="h-8 text-xs" /></label>
@@ -189,6 +207,13 @@ const breadcrumbs = computed(() => [
                             <template #no-options>Nessuna persona con questo nome.</template>
                         </v-select>
                     </div>
+                </div>
+                <div class="text-xs space-y-1" data-testid="togli-sollecito">
+                    <label class="flex items-center gap-1.5 font-medium">
+                        <Checkbox :model-value="nuova.togli_sollecito_tesoreria" @update:model-value="(v: boolean | 'indeterminate') => (nuova.togli_sollecito_tesoreria = v === true)" />
+                        Togli anche il sollecito in tesoreria
+                    </label>
+                    <span class="block text-slate-500 dark:text-slate-400">{{ SPIEGAZIONE_SOLLECITO }}</span>
                 </div>
                 <label class="text-xs space-y-1 block"><span class="block">Nota</span><Textarea v-model="nuova.nota" rows="2" class="text-xs" /></label>
                 <ul v-if="Object.keys(errori).length" class="text-xs text-rose-700 dark:text-rose-300 list-disc pl-4">

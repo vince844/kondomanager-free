@@ -1,10 +1,14 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Listeners\Gestionale;
 
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\FatturaRegistrata;
+use App\Helpers\DateHelper;
 use App\Helpers\MoneyHelper;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
@@ -29,10 +33,11 @@ class SyncScadenziarioWithFattura implements ShouldQueue
 
         $catAdmin = CategoriaEvento::where('name', 'Scadenze amministrative')->firstOrFail();
 
+        // I collegamenti dei compiti si salvano come percorso: non dipendono dall'indirizzo del sito.
         $urlAzione = route('admin.gestionale.fatture.index', [
             'condominio' => $condominio->id,
             'search'     => $fattura->numero_documento,
-        ]);
+        ], false);
 
         // --- EVENTO PAGAMENTO ---
         $start = $fattura->data_scadenza->copy()->setTime(9, 0);
@@ -63,7 +68,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                     'action_url'       => route('admin.gestionale.pagamenti-fornitori.create', [
                         'condominio' => $condominio->id,
                         'fattura_id' => $fattura->id,
-                    ]),
+                    ], false),
                     'context'          => [
                         'fattura_id'   => $fattura->id,
                         'fornitore_id' => $fornitore->id,
@@ -73,9 +78,11 @@ class SyncScadenziarioWithFattura implements ShouldQueue
         )->condomini()->syncWithoutDetaching([$condominio->id]);
 
         // --- EVENTO RATIFICA SFORO (solo se la fattura è in sforo_motivato) ---
+        // I giorni dei compiti qui sotto partono dal giorno di Roma, scritti come l'agenda scrive le ore (`DateHelper::adessoComeSiLegge`): fra le 00:00 e
+        // l'01:00 di Roma (le 02:00 d'estate) `now()` è ancora ieri, e il compito nasceva un giorno prima.
         // --- EVENTO 1: CONVOCAZIONE IMMEDIATA (Obbligo Legale Art. 1135) ---
         if ($fattura->stato_approvazione === 'sforo_motivato') {
-            $scadenzaConvocazione = now()->addDays(7)->setTime(9, 0);
+            $scadenzaConvocazione = DateHelper::adessoComeSiLegge()->addDays(7)->setTime(9, 0);
 
             Evento::updateOrCreate(
                 [
@@ -103,7 +110,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
             )->condomini()->syncWithoutDetaching([$condominio->id]);
 
             // --- EVENTO 2: RATIFICA IN ASSEMBLEA (Obiettivo Finale) ---
-            $scadenzaRatifica = now()->addDays(30)->setTime(9, 0);
+            $scadenzaRatifica = DateHelper::adessoComeSiLegge()->addDays(30)->setTime(9, 0);
 
             Evento::updateOrCreate(
                 [
@@ -135,7 +142,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
         $haSopravvenienza = $fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists();
         
         if ($haSopravvenienza) {
-            $scadenzaRate = now()->addDays(7)->setTime(9, 0); // Promemoria tra 1 settimana
+            $scadenzaRate = DateHelper::adessoComeSiLegge()->addDays(7)->setTime(9, 0); // Promemoria tra 1 settimana
 
             Evento::updateOrCreate(
                 [
@@ -160,7 +167,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                         'action_url' => route('admin.gestionale.esercizi.piani-rate.create', [
                             'condominio' => $condominio->id,
                             'esercizio'  => $fattura->esercizio_id
-                        ]),
+                        ], false),
                         'context'         => [
                             'fattura_id' => $fattura->id,
                         ],
@@ -194,7 +201,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
             $bucoCents = max(0, $debitoIniziale - $rataZeroRichiesta);
 
             if ($bucoCents > 0) {
-                $scadenzaDeficit = now()->addDays(15)->setTime(9, 0);
+                $scadenzaDeficit = DateHelper::adessoComeSiLegge()->addDays(15)->setTime(9, 0);
 
                 Evento::updateOrCreate(
                     [
@@ -207,7 +214,9 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                         'end_time'    => $scadenzaDeficit->copy()->addHour(),
                         'created_by'  => $userId,
                         // FORMATTAZIONE CORRETTA: Passiamo i centesimi al MoneyHelper
-                        'description' => "Il debito ereditato ({$fornitore->ragione_sociale}) è scoperto per " . MoneyHelper::format($bucoCents) . ". Poiché non hai creato sopravvenienze, questi soldi mancheranno dal conto corrente ordinario. Chi deve ancora pagare le rate è nell'elenco delle rate scadute del condominio.",
+                        // Lo scoperto è la parte del debito che i pregressi chiesti ai condòmini non coprono: nessuna rata la chiede, e sollecitare le rate scadute
+                        // non la porta. La descrizione dice ciò che il compito chiede; i compiti già scritti restano come sono.
+                        'description' => "Il debito ereditato ({$fornitore->ragione_sociale}) è scoperto per " . MoneyHelper::format($bucoCents) . ": è la parte che i pregressi chiesti ai condòmini non coprono, e nessuna rata la chiede. Poiché non hai creato sopravvenienze, questi soldi mancheranno dal conto corrente ordinario. Si ripiana con un piano rate che chieda ai condòmini la cifra che manca: «Prepara il piano di ripianamento».",
                         'category_id' => $catAdmin->id,
                         'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden',
                         'is_approved' => true,
@@ -216,9 +225,11 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                             'requires_action' => true,
                             'condominio_nome' => $condominio->nome,
                             'importo_buco'    => $bucoCents, // Salviamo sempre in centesimi
-                            // Il deficit si recupera dai condòmini che devono ancora pagare: l'azione porta al loro elenco, non alle fatture.
-                            'titolo_azione'   => 'Vedi le rate scadute',
-                            'action_url'      => route('admin.gestionale.rate-scadute.index', ['condominio' => $condominio->id]),
+                            // Il deficit si ripiana con un piano rate straordinario del condominio: l'azione porta alla sua creazione (la mappa dei compiti la apre
+                            // nell'esercizio aperto di oggi).
+                            'titolo_azione'   => 'Prepara il piano di ripianamento',
+                            'action_url'      => route('admin.gestionale.esercizi.piani-rate.create', ['condominio' => $condominio->id, 'esercizio' => $fattura->esercizio_id,
+                                'tipo' => 'straordinario'], false),
                             'context'         => [
                                 'saldo_id' => $fattura->saldo_patrimoniale_id,
                             ],

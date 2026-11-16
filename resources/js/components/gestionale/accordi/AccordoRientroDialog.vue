@@ -1,9 +1,12 @@
 <script setup lang="ts">
 /**
- * L'accordo di rientro di una persona, dalla sua riga dell'elenco «Rate scadute»: gli accordi che ha (con il segno delle due cifre,
- * l'autorizzazione, la nota, la scansione, la chiusura) e il modulo per registrarne uno. L'accordo è un registro: le rate coperte si scelgono fra
- * le scadute della persona il giorno dell'accordo, con l'importo riconosciuto proposto dal residuo di quel giorno; «autorizzato dall'assemblea»
- * non ha una risposta già scelta. Un accordo alla volta: è un atto con una persona. Non si cancella: si chiude.
+ * L'accordo di rientro di una persona, dalla sua riga dell'elenco «Rate scadute» e dal suo estratto conto: gli accordi che ha (con il segno delle due
+ * cifre, il calendario con quanto è versato di ogni rata, la regola di decadenza e i suoi segnali, l'autorizzazione, la nota, la scansione, la chiusura e
+ * la decadenza registrata) e il modulo per registrarne uno. Le rate coperte si scelgono fra le scadute della persona il giorno dell'accordo (gli
+ * interessi e le spese registrati anche quel giorno), con l'importo riconosciuto proposto dal residuo di quel giorno. Il calendario si propone dal
+ * numero delle rate e dal giorno della prima (rate uguali, l'ultima con i centesimi, ogni mese) e si cambia riga per riga; la somma deve fare il debito
+ * riconosciuto. La regola di decadenza proposta è quella dell'ultimo accordo del condominio. «Autorizzato dall'assemblea» non ha una risposta già scelta.
+ * Un accordo alla volta: è un atto con una persona. Non si cancella: si chiude.
  *
  * Le rate si rileggono quando cambia la data dell'accordo: una risposta arrivata dopo un altro cambio della data si scarta.
  */
@@ -15,16 +18,21 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import CampoFile from '@/components/CampoFile.vue';
+import CalendarioDellAccordo from '@/components/gestionale/accordi/CalendarioDellAccordo.vue';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
-import { FRASE_AUTORIZZAZIONE, FRASE_IMPORTO, FRASE_NON_SCADUTE, FRASE_REGISTRO, testoAutorizzazione, testoSegnoAccordo, type AccordoRientro } from '@/lib/gestionale/debiti/accordiRientro';
+import { centesimiDaImporto } from '@/lib/gestionale/pianiRate/totaliPerTipo';
+import {
+    FRASE_AUTORIZZAZIONE, FRASE_CALENDARIO, FRASE_CALENDARIO_IN_ORDINE, FRASE_DECADENZA, FRASE_IMPORTO, FRASE_NON_SCADUTE, FRASE_REGISTRO, FRASE_REGOLA,
+    FRASE_REGOLA_DI_SERIE, proponiCalendario, sommaCheNonTorna, testoAutorizzazione, testoSegnoAccordo, type AccordoRientro, type RegolaDiDecadenza,
+} from '@/lib/gestionale/debiti/accordiRientro';
 
-interface RataPossibile { rata_id: number; immobile_id: number | null; numero_rata: number; piano: string; unita: string | null; scadenza: string; residuo: number }
+interface RataPossibile { rata_id: number; immobile_id: number | null; numero_rata: number; piano: string; unita: string | null; scadenza: string; residuo: number; causale?: string | null }
 interface AccordoDellaPersona extends AccordoRientro {
     in_corso: boolean;
     documento: string | null;
-    rate: Array<{ rata_id: number; immobile_id: number | null; riconosciuto: number; unita: string | null; piano: string; numero_rata: number; scadenza: string | null }>;
+    rate: Array<{ rata_id: number; immobile_id: number | null; riconosciuto: number; unita: string | null; piano: string; numero_rata: number; scadenza: string | null; causale?: string | null }>;
 }
 
 const props = defineProps<{ open: boolean; condominioId: number; persona: { id: number; nome: string } | null; oggi: string }>();
@@ -43,18 +51,27 @@ let numeroLettura = 0;
 const chiave = (r: { rata_id: number; immobile_id: number | null }) => `${r.rata_id}|${r.immobile_id ?? ''}`;
 const centesimiInEuro = (c: number) => (c / 100).toFixed(2).replace('.', ',');
 
-const modulo = ref({
-    data_accordo: props.oggi,
-    fino_al: '',
+/** Il modulo vuoto: niente è già scelto, salvo la data di oggi e la regola dell'ultimo accordo del condominio (messa quando arriva). */
+const vuoto = (data: string) => ({
+    data_accordo: data,
     scelte: {} as Record<string, boolean>,
     importi: {} as Record<string, string>,
+    numero: '',
+    prima: '',
+    calendario: [] as Array<{ data: string; importo: string }>,
+    decadenza_rate: '',
+    decadenza_giorni: '',
     autorizzato: null as null | '0' | '1',
     data_autorizzazione: '',
     verbale_autorizzazione: '',
     nota: '',
 });
+const modulo = ref(vuoto(props.oggi));
+const regolaDiSerie = ref<RegolaDiDecadenza | null>(null);
+let regolaProposta = false;
 const file = ref<File | null>(null);
 const chiusura = ref<Record<number, { chiuso_il: string; nota_chiusura: string }>>({});
+const decadenza = ref<Record<number, { data: string; nota: string }>>({});
 const autorizzazione = ref<Record<number, { data_autorizzazione: string; verbale_autorizzazione: string }>>({});
 
 async function leggi(data?: string) {
@@ -73,6 +90,15 @@ async function leggi(data?: string) {
         possibili.value = r.rate;
         modulo.value.scelte = {};
         modulo.value.importi = Object.fromEntries(r.rate.map((p: RataPossibile) => [chiave(p), centesimiInEuro(p.residuo)]));
+        // La regola dell'ultimo accordo del condominio, una volta per apertura: poi la cambia l'amministratore.
+        regolaDiSerie.value = r.regola_di_serie ?? null;
+        if (!regolaProposta) {
+            regolaProposta = true;
+            if (r.regola_di_serie) {
+                modulo.value.decadenza_rate = r.regola_di_serie.rate != null ? String(r.regola_di_serie.rate) : '';
+                modulo.value.decadenza_giorni = r.regola_di_serie.giorni != null ? String(r.regola_di_serie.giorni) : '';
+            }
+        }
     } catch (e) {
         if (numero === numeroLettura) {
             errore.value = frasePerErrore(e, 'Gli accordi non si sono caricati. Riprova.');
@@ -84,7 +110,9 @@ watch(() => props.open, (aperta) => {
     if (!aperta) {
         return;
     }
-    modulo.value = { data_accordo: props.oggi, fino_al: '', scelte: {}, importi: {}, autorizzato: null, data_autorizzazione: '', verbale_autorizzazione: '', nota: '' };
+    modulo.value = vuoto(props.oggi);
+    regolaProposta = false;
+    regolaDiSerie.value = null;
     file.value = null;
     esito.value = null;
     accordi.value = [];
@@ -99,7 +127,31 @@ watch(() => modulo.value.data_accordo, (data, prima) => {
 });
 
 const scelte = computed(() => possibili.value.filter((p) => modulo.value.scelte[chiave(p)]));
-const pronto = computed(() => scelte.value.length > 0 && !!modulo.value.fino_al && modulo.value.autorizzato !== null
+
+/** Il debito riconosciuto: la somma degli importi delle rate scelte, in centesimi. */
+const riconosciuto = computed(() => scelte.value.reduce((s, p) => s + centesimiDaImporto(modulo.value.importi[chiave(p)]), 0));
+
+/** La proposta del calendario: si rifà quando cambiano il debito, il numero delle rate o il giorno della prima; le righe cambiate a mano restano fino ad allora. */
+watch([riconosciuto, () => modulo.value.numero, () => modulo.value.prima], () => {
+    const n = Number.parseInt(String(modulo.value.numero), 10);
+    modulo.value.calendario = proponiCalendario(riconosciuto.value, Number.isFinite(n) ? n : 0, modulo.value.prima)
+        .map((r) => ({ data: r.data, importo: centesimiInEuro(r.importo) }));
+});
+
+/** Che cosa non torna nel calendario: i giorni in ordine dal giorno dell'accordo e ogni rata più di zero, poi la somma. Null se torna. */
+const controlloCalendario = computed<string | null>(() => {
+    const righe = modulo.value.calendario;
+    if (!righe.length) {
+        return null;
+    }
+    const inOrdine = righe.every((r, i) => !!r.data && r.data >= modulo.value.data_accordo && (i === 0 || r.data > righe[i - 1].data)
+        && centesimiDaImporto(r.importo) > 0);
+
+    return inOrdine ? sommaCheNonTorna(righe.map((r) => centesimiDaImporto(r.importo)), riconosciuto.value) : FRASE_CALENDARIO_IN_ORDINE;
+});
+const ultimaRata = computed(() => modulo.value.calendario[modulo.value.calendario.length - 1]?.data ?? null);
+
+const pronto = computed(() => scelte.value.length > 0 && modulo.value.calendario.length > 0 && controlloCalendario.value === null && modulo.value.autorizzato !== null
     && (modulo.value.autorizzato === '0' || !!modulo.value.data_autorizzazione));
 
 async function registra() {
@@ -109,7 +161,16 @@ async function registra() {
     const corpo = new FormData();
     corpo.append('anagrafica_id', String(props.persona?.id ?? ''));
     corpo.append('data_accordo', modulo.value.data_accordo);
-    corpo.append('fino_al', modulo.value.fino_al);
+    modulo.value.calendario.forEach((r, i) => {
+        corpo.append(`scadenze[${i}][data]`, r.data);
+        corpo.append(`scadenze[${i}][importo]`, r.importo);
+    });
+    if (String(modulo.value.decadenza_rate).trim() !== '') {
+        corpo.append('decadenza_rate', String(modulo.value.decadenza_rate).trim());
+    }
+    if (String(modulo.value.decadenza_giorni).trim() !== '') {
+        corpo.append('decadenza_giorni', String(modulo.value.decadenza_giorni).trim());
+    }
     scelte.value.forEach((p, i) => {
         corpo.append(`rate[${i}][rata_id]`, String(p.rata_id));
         if (p.immobile_id !== null) {
@@ -133,7 +194,7 @@ async function registra() {
     try {
         const r = (await axios.post(rotta('store'), corpo)).data;
         esito.value = r.messaggio;
-        modulo.value = { ...modulo.value, fino_al: '', scelte: {}, autorizzato: null, data_autorizzazione: '', verbale_autorizzazione: '', nota: '' };
+        modulo.value = { ...vuoto(modulo.value.data_accordo), decadenza_rate: modulo.value.decadenza_rate, decadenza_giorni: modulo.value.decadenza_giorni };
         file.value = null;
         emit('fatto');
         await leggi();
@@ -169,10 +230,25 @@ async function autorizza(a: AccordoDellaPersona) {
     }
 }
 
+async function registraDecadenza(a: AccordoDellaPersona) {
+    errore.value = null;
+    const d = decadenza.value[a.id];
+    try {
+        const r = (await axios.post(rotta('decadenza', { accordo: a.id }), { data: d?.data, nota: d?.nota || null })).data;
+        esito.value = r.messaggio;
+        emit('fatto');
+        await leggi();
+    } catch (e) {
+        errore.value = frasePerErrore(e, 'La decadenza non è stata registrata. Riprova.');
+    }
+}
+
 const apriChiusura = (a: AccordoDellaPersona) => { chiusura.value = { ...chiusura.value, [a.id]: { chiuso_il: props.oggi, nota_chiusura: '' } }; };
+const apriDecadenza = (a: AccordoDellaPersona) => { decadenza.value = { ...decadenza.value, [a.id]: { data: props.oggi, nota: '' } }; };
 const apriAutorizzazione = (a: AccordoDellaPersona) => { autorizzazione.value = { ...autorizzazione.value, [a.id]: { data_autorizzazione: '', verbale_autorizzazione: '' } }; };
-const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null }) =>
-    `${r.unita ? `${r.unita}, ` : ''}${r.numero_rata === 0 ? 'rata 0 (pregresso)' : `rata ${r.numero_rata}`}${r.piano ? ` — ${r.piano}` : ''}`;
+const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null; causale?: string | null }) => r.causale
+    ? `${r.unita ? `${r.unita}, ` : ''}${r.causale}`
+    : `${r.unita ? `${r.unita}, ` : ''}${r.numero_rata === 0 ? 'rata 0 (pregresso)' : `rata ${r.numero_rata}`}${r.piano ? ` — ${r.piano}` : ''}`;
 </script>
 
 <template>
@@ -193,13 +269,30 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null 
                         <ul class="list-disc pl-4">
                             <li v-for="r in a.rate" :key="`${r.rata_id}-${r.immobile_id}`">{{ nomeRata(r) }}: riconosciuti {{ euroTesto(r.riconosciuto) }}</li>
                         </ul>
+                        <CalendarioDellAccordo :accordo="a" />
                         <p v-if="a.documento">
                             <a :href="rotta('documento', { accordo: a.id })" target="_blank" rel="noopener" class="underline">{{ a.documento }}</a>
                         </p>
-                        <p v-if="a.chiuso_il" data-testid="chiuso">Chiuso il {{ giorno(a.chiuso_il) }}{{ a.nota_chiusura ? `: ${a.nota_chiusura}` : '.' }}</p>
+                        <!-- L'accordo con il calendario, stampato per la persona. -->
+                        <p v-if="a.calendario">
+                            <a :href="rotta('stampa', { accordo: a.id })" target="_blank" rel="noopener" class="underline" data-testid="stampa-accordo">Stampa l'accordo</a>
+                        </p>
+                        <p v-if="a.decadenza_registrata_il" data-testid="decadenza-registrata">Decadenza registrata il {{ giorno(a.decadenza_registrata_il) }}{{ a.nota_chiusura ? `: ${a.nota_chiusura}` : '.' }}</p>
+                        <p v-else-if="a.chiuso_il" data-testid="chiuso">Chiuso il {{ giorno(a.chiuso_il) }}{{ a.nota_chiusura ? `: ${a.nota_chiusura}` : '.' }}</p>
                         <div v-else class="flex flex-wrap gap-2">
-                            <Button v-if="!a.autorizzato_assemblea && !autorizzazione[a.id]" size="sm" variant="ghost" class="h-7 text-xs" @click="apriAutorizzazione(a)">Registra l'autorizzazione dell'assemblea</Button>
-                            <Button v-if="!chiusura[a.id]" size="sm" variant="ghost" class="h-7 text-xs" data-testid="apri-chiusura" @click="apriChiusura(a)">Chiudi l'accordo</Button>
+                            <Button v-if="!a.autorizzato_assemblea && !autorizzazione[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" @click="apriAutorizzazione(a)">Registra l'autorizzazione dell'assemblea</Button>
+                            <Button v-if="!chiusura[a.id] && !decadenza[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-chiusura" @click="apriChiusura(a)">Chiudi l'accordo</Button>
+                            <Button v-if="!decadenza[a.id] && !chiusura[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-decadenza" @click="apriDecadenza(a)">Registra la decadenza</Button>
+                        </div>
+                        <div v-if="decadenza[a.id] && !a.chiuso_il" class="space-y-1" data-testid="modulo-decadenza">
+                            <p class="text-slate-500">{{ FRASE_DECADENZA }}</p>
+                            <div class="flex flex-wrap items-end gap-2">
+                                <label class="space-y-1"><span class="block text-slate-500">Decadenza dal</span>
+                                    <Input v-model="decadenza[a.id].data" type="date" :min="a.data_accordo" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
+                                <label class="space-y-1"><span class="block text-slate-500">Nota</span>
+                                    <Input v-model="decadenza[a.id].nota" class="h-8 w-[220px] text-xs" /></label>
+                                <Button size="sm" variant="outline" class="h-8 text-xs" :disabled="!decadenza[a.id].data" data-testid="conferma-decadenza" @click="registraDecadenza(a)">Conferma la decadenza</Button>
+                            </div>
                         </div>
                         <div v-if="autorizzazione[a.id] && !a.autorizzato_assemblea" class="flex flex-wrap items-end gap-2">
                             <label class="space-y-1"><span class="block text-slate-500">Data della delibera</span>
@@ -224,12 +317,10 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null 
                     <div class="flex flex-wrap gap-3 text-xs">
                         <label class="space-y-1"><span class="block text-slate-500">Data dell'accordo</span>
                             <Input v-model="modulo.data_accordo" type="date" :max="oggi" class="h-8 w-[150px] text-xs" data-testid="data-accordo" /></label>
-                        <label class="space-y-1"><span class="block text-slate-500">Fino al (l'ultima rata dell'accordo)</span>
-                            <Input v-model="modulo.fino_al" type="date" :min="modulo.data_accordo" class="h-8 w-[150px] text-xs" data-testid="fino-al" /></label>
                     </div>
 
                     <div class="space-y-1 text-xs">
-                        <p class="text-slate-500">Le rate che può coprire: quelle già scadute al {{ giorno(modulo.data_accordo) }}, con il residuo di quel giorno. {{ FRASE_IMPORTO }}</p>
+                        <p class="text-slate-500">Le rate che può coprire: quelle già scadute al {{ giorno(modulo.data_accordo) }}, e gli interessi e le spese registrati fino a quel giorno, con il residuo di quel giorno. {{ FRASE_IMPORTO }}</p>
                         <p class="text-slate-500" data-testid="frase-non-scadute">{{ FRASE_NON_SCADUTE }}</p>
                         <p v-if="!possibili.length" data-testid="nessuna-rata">Il {{ giorno(modulo.data_accordo) }} {{ persona?.nome }} non ha rate scadute da coprire.</p>
                         <div v-for="p in possibili" :key="chiave(p)" class="flex flex-wrap items-center gap-2" data-testid="rata-possibile">
@@ -238,6 +329,40 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null 
                             <Input v-model="modulo.importi[chiave(p)]" inputmode="decimal" :disabled="!modulo.scelte[chiave(p)]" class="h-7 w-[110px] text-xs" aria-label="Importo riconosciuto" />
                         </div>
                     </div>
+
+                    <fieldset class="space-y-2 text-xs" data-testid="calendario">
+                        <legend class="text-slate-500">Il calendario</legend>
+                        <p>Il debito riconosciuto: <strong>{{ euroTesto(riconosciuto) }}</strong>, la somma delle rate scelte sopra.</p>
+                        <div class="flex flex-wrap items-end gap-3">
+                            <label class="space-y-1"><span class="block text-slate-500">Numero di rate</span>
+                                <Input v-model="modulo.numero" type="number" min="1" max="120" class="h-8 w-[90px] text-xs" data-testid="numero-rate" /></label>
+                            <label class="space-y-1"><span class="block text-slate-500">La prima il</span>
+                                <Input v-model="modulo.prima" type="date" :min="modulo.data_accordo" class="h-8 w-[150px] text-xs" data-testid="prima-rata" /></label>
+                            <span class="pb-2 text-slate-500">poi ogni mese</span>
+                        </div>
+                        <p class="text-slate-500">{{ FRASE_CALENDARIO }}</p>
+                        <div v-for="(r, i) in modulo.calendario" :key="i" class="flex flex-wrap items-center gap-2" data-testid="rata-del-calendario">
+                            <span class="w-14 text-slate-500">Rata {{ i + 1 }}</span>
+                            <Input v-model="r.data" type="date" :min="modulo.data_accordo" class="h-7 w-[150px] text-xs" :aria-label="`Il giorno della rata ${i + 1}`" />
+                            <Input v-model="r.importo" inputmode="decimal" class="h-7 w-[110px] text-xs" :aria-label="`L'importo della rata ${i + 1}`" />
+                        </div>
+                        <p v-if="ultimaRata && !controlloCalendario" class="text-slate-500" data-testid="fino-al">Fino al {{ giorno(ultimaRata) }}: l'ultima rata del calendario.</p>
+                        <p v-if="controlloCalendario" class="text-red-700 dark:text-red-400" data-testid="controllo-calendario">{{ controlloCalendario }}</p>
+                    </fieldset>
+
+                    <fieldset class="space-y-1 text-xs" data-testid="regola">
+                        <legend class="text-slate-500">La regola di decadenza</legend>
+                        <label class="flex flex-wrap items-center gap-2">
+                            <Input v-model="modulo.decadenza_rate" type="number" min="1" class="h-7 w-[70px] text-xs" data-testid="decadenza-rate" />
+                            <span>rate del calendario non versate, anche non consecutive</span>
+                        </label>
+                        <label class="flex flex-wrap items-center gap-2">
+                            <Input v-model="modulo.decadenza_giorni" type="number" min="0" max="365" class="h-7 w-[70px] text-xs" data-testid="decadenza-giorni" />
+                            <span>giorni dopo una rata non versata</span>
+                        </label>
+                        <p class="text-slate-500">{{ FRASE_REGOLA }}</p>
+                        <p v-if="regolaDiSerie" class="text-slate-500" data-testid="regola-di-serie">{{ FRASE_REGOLA_DI_SERIE }}</p>
+                    </fieldset>
 
                     <fieldset class="space-y-1 text-xs">
                         <legend class="text-slate-500">Autorizzato dall'assemblea</legend>

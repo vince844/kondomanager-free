@@ -9,8 +9,10 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RendicontoSintesiGuide from '@/components/guides/RendicontoSintesiGuide.vue';
 import Alert from '@/components/Alert.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
+import RendicontoPerLAssemblea, { type Confronto, type Versione } from '@/components/gestionale/movimenti/rendiconto/RendicontoPerLAssemblea.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { comeRisultato } from '@/lib/gestionale/rendiconto/risultato';
@@ -21,7 +23,7 @@ import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Flash } from '@/types/flash';
 
-// «non_calcolato»: un controllo del conguaglio che la richiesta non ha calcolato (senza la sua lettura).
+// «non_calcolato»: un controllo del conguaglio che la richiesta non ha calcolato (senza la sua lettura), o la banca senza l'estratto scritto.
 type Esito = 'quadra' | 'non_quadra' | 'segnalazione' | 'non_calcolato';
 interface Sintesi {
     esercizio: { id: number; nome: string; dal: string; al: string };
@@ -49,11 +51,17 @@ interface Sintesi {
     prospetto: {
         preventivo: number | null; preventivo_solo_ordinarie?: boolean; deliberato: number | null; avvertenza_deliberato: string | null; avvertenza_deliberato_piani?: string[]; avvertenza_deliberato_ricostruito?: string | null; quote_piani: number; quote_pagate: number; quote_non_pagate: number; costi: number;
         quote_giornale: number; risultato: number; in_fondi: number;
-        raccordo_quote: { quote_piani: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
+        raccordo_quote: { quote_piani: number; contributi_addebitati?: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
+        /** I contributi addebitati a singole persone registrati nell'esercizio: fra le quote registrate, non fra le quote dei piani. */
+        contributi_addebitati?: number;
     };
 }
 
-const props = defineProps<{ condominio: Building; condomini: Building[]; esercizio: Esercizio; esercizi: Esercizio[]; sintesi: Sintesi; parti: string[] }>();
+/** `versioni`: il rendiconto fermato per l'assemblea, la più recente prima, senza le cifre; `nomi_parti`: i nomi delle parti del fascicolo. */
+/** `nota`: se la nota sintetica è vuota e che cosa le manca, per le finestre del fascicolo e di «Ferma per l'assemblea» (si dice, non si ferma niente). */
+/** `confronto`: le cifre di oggi contro la versione approvata e contro l'ultima fermata (`ConfrontoDelRendiconto`); null senza versioni. */
+const props = defineProps<{ condominio: Building; condomini: Building[]; esercizio: Esercizio; esercizi: Esercizio[]; sintesi: Sintesi; parti: string[];
+    versioni?: Versione[]; nomi_parti?: Record<string, string>; oggi?: string; nota?: { vuota: boolean; mancanze: string[] }; confronto?: Confronto | null }>();
 
 const { generatePath, generateRoute } = usePermission();
 /** Il messaggio che il server lascia in sessione: il fascicolo che non parte torna a questa pagina con la frase che dice quale parte togliere. */
@@ -81,12 +89,13 @@ const hrefControllo = (id: string) => `${generatePath('gestionale/:condominio/es
 const hrefCommissioni = generatePath('gestionale/:condominio/esercizi/:esercizio/commissioni-senza-voce', base);
 const hrefRiepilogo = generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/riepilogo-finanziario', base);
 const hrefConguaglio = generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/conguaglio', base);
+const hrefNota = generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/nota', base);
 /** Il conguaglio con il più quando è a debito. */
 const conSegno = (v: number) => (v > 0 ? euro(v).replace(/^€(\s*)/, '€$1+') : euro(v));
 
 /* ─── Il fascicolo: le parti a spunta, l'ordine resta quello fisso; la scelta si ricorda in questo browser, per chi lavora ─── */
 const nomiParti: Record<string, string> = {
-    riepilogo: 'Riepilogo finanziario', situazione: 'Situazione patrimoniale', cassa: 'Entrate e uscite per cassa',
+    nota: 'Nota sintetica esplicativa', riepilogo: 'Riepilogo finanziario', situazione: 'Situazione patrimoniale', cassa: 'Entrate e uscite per cassa',
     condomini: 'Condòmini: posizioni e crediti per anzianità', conguaglio: 'Riparto del consuntivo e conguaglio', registro: 'Registro di contabilità', controlli: 'Controlli',
 };
 const utente = (usePage().props as { auth?: { user?: { id?: number } } }).auth?.user?.id ?? 0;
@@ -120,6 +129,8 @@ const scaricaFascicolo = () => {
     window.setTimeout(() => { inPreparazione.value = false; }, 60_000);
 };
 
+// La guida della scheda, che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Movimenti' },
@@ -128,8 +139,8 @@ const headerBreadcrumbs = computed(() => [
 
 const pageGuides = [
     { title: 'Il rendiconto in una pagina', description: 'In alto l\'esito dei controlli, poi quattro numeri e il prospetto della gestione. Ogni numero viene da una scheda: il riepilogo finanziario, la situazione patrimoniale, i controlli. Con più gestioni qui sono sommate.', icon: Scale, colorVariant: 'blue' as const },
-    { title: 'I controlli, con i numeri veri', description: 'Dicono se i numeri del programma tornano fra loro. Non dicono che il saldo della banca è quello dell\'estratto conto, né che ogni fattura è stata registrata: quello resta un controllo tuo.', icon: ListChecks, colorVariant: 'amber' as const },
-    { title: 'Il fascicolo per l\'assemblea', description: '«Scarica il fascicolo» mette le schede in un PDF solo, con il frontespizio e l\'indice, sempre nello stesso ordine: riepilogo, situazione patrimoniale, cassa, condòmini, conguaglio, registro, controlli. Le parti si scelgono con le spunte, e la scelta resta in questo browser.', icon: FileDown, colorVariant: 'emerald' as const },
+    { title: 'I controlli, con i numeri veri', description: 'Dicono se i numeri del programma tornano fra loro; non dicono che ogni fattura e ogni entrata è stata registrata. Il saldo registrato si confronta con quello che dice la banca solo se lo scrivi nella nota sintetica, come lo leggi sull\'estratto conto che ti manda la banca.', icon: ListChecks, colorVariant: 'amber' as const },
+    { title: 'Il fascicolo per l\'assemblea', description: '«Scarica il fascicolo» mette le schede in un PDF solo, con il frontespizio e l\'indice, sempre nello stesso ordine: la nota sintetica, riepilogo, situazione patrimoniale, cassa, condòmini, conguaglio, registro, controlli. Le parti si scelgono con le spunte, e la scelta resta in questo browser. «Ferma per l\'assemblea», in fondo alla pagina, conserva le cifre e il PDF con le stesse parti; dopo l\'assemblea si registra l\'approvazione.', icon: FileDown, colorVariant: 'emerald' as const },
 ];
 </script>
 
@@ -138,6 +149,9 @@ const pageGuides = [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
                 page-title="Rendiconto"
                 :page-subtitle="`${s.esercizio.nome} · ${s.stato.frase}`"
                 :guides="pageGuides"
@@ -167,6 +181,12 @@ const pageGuides = [
                                 </label>
                                 <p class="text-[11px] text-slate-500 dark:text-slate-400" data-test="lettere-nota">Nei crediti per anzianità, accanto a ogni persona. Il fascicolo va a tutti i condòmini: di serie la colonna non c'è. Nella scheda «Condòmini» resta.</p>
                             </template>
+                            <div v-if="props.nota && (props.nota.vuota || props.nota.mancanze.length)" class="text-[11px] text-amber-800 dark:text-amber-300" data-test="fascicolo-nota-mancanze">
+                                <p v-if="props.nota.vuota || !scelte.includes('nota')">Il fascicolo non conterrà la nota sintetica, e il frontespizio lo dirà ai condòmini.</p>
+                                <template v-else><p v-for="m in props.nota.mancanze" :key="m">{{ m }}</p></template>
+                                <Link :href="hrefNota" class="underline font-semibold">Scrivi la nota</Link>
+                            </div>
+                            <p v-if="props.confronto?.approvata?.cambiato" class="text-[11px] text-amber-800 dark:text-amber-300" data-test="fascicolo-dopo-approvazione">Il fascicolo ha le cifre di oggi, che non sono quelle approvate il {{ props.confronto.approvata.giorno }}: il rendiconto approvato è il PDF della versione {{ props.confronto.approvata.numero }}, nel riquadro «Il rendiconto per l'assemblea».</p>
                             <p class="text-[11px] text-slate-500 dark:text-slate-400">Le parti escono sempre in quest'ordine, con un frontespizio che ha l'esito dei controlli e l'indice. Ognuna si stampa anche da sola dalla sua scheda.</p>
                             <p class="text-[11px] text-slate-500 dark:text-slate-400">La scelta resta su questo computer.</p>
                             <Button size="sm" class="w-full" :disabled="scelte.length === 0 || inPreparazione" data-test="scarica-fascicolo" @click="scaricaFascicolo">Scarica il fascicolo</Button>
@@ -256,6 +276,7 @@ const pageGuides = [
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Preventivo{{ s.prospetto.preventivo_solo_ordinarie ? ' delle gestioni ordinarie' : '' }}</td><td class="py-2 px-4 text-right tabular-nums">{{ importo(s.prospetto.preventivo) }}</td></tr>
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Deliberato con le rate</td><td class="py-2 px-4 text-right tabular-nums">{{ deliberatoTesto(s.prospetto.deliberato) }}</td></tr>
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Quote dei piani dell'esercizio</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.quote_piani) }}</td></tr>
+                                    <tr v-if="s.prospetto.contributi_addebitati" class="border-b border-slate-100 dark:border-slate-800" data-test="contributi-addebitati"><td class="py-2 px-4">Contributi addebitati a singole persone</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.contributi_addebitati) }}</td></tr>
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Quote pagate</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.quote_pagate) }}</td></tr>
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Costi dell'esercizio</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.costi) }}</td></tr>
                                     <tr class="font-semibold" data-test="risultato">
@@ -269,14 +290,29 @@ const pageGuides = [
                             <p v-for="(frase, i) in s.prospetto.avvertenza_deliberato_piani ?? []" :key="`piano-${i}`" class="px-4 pb-2 text-[11.5px] text-slate-500 dark:text-slate-400" data-test="deliberato-piani">{{ frase }}</p>
                             <p v-if="s.prospetto.avvertenza_deliberato_ricostruito" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="deliberato-ricostruito">{{ s.prospetto.avvertenza_deliberato_ricostruito }}</p>
                             <p v-if="s.prospetto.quote_piani !== s.prospetto.quote_giornale" class="px-4 py-2 text-[11.5px] text-slate-500 dark:text-slate-400 border-t" data-test="raccordo-quote">
-                                Quote dei piani dell'esercizio {{ euro(s.prospetto.raccordo_quote.quote_piani) }} = quote registrate in questo esercizio {{ euro(s.prospetto.raccordo_quote.quote_giornale) }}
+                                Quote dei piani dell'esercizio {{ euro(s.prospetto.raccordo_quote.quote_piani) }} = quote registrate in questo esercizio {{ euro(s.prospetto.raccordo_quote.quote_giornale) }}{{ s.prospetto.raccordo_quote.contributi_addebitati ? ` − contributi addebitati a singole persone ${euro(s.prospetto.raccordo_quote.contributi_addebitati)}` : '' }}
                                 + rate di questi piani emesse in un altro esercizio {{ euro(s.prospetto.raccordo_quote.piani_emesse_altrove) }}
                                 − rate di altri piani emesse in questo {{ euro(s.prospetto.raccordo_quote.altri_emesse_qui) }}<template v-if="s.prospetto.raccordo_quote.altre_differenze"> + {{ euro(s.prospetto.raccordo_quote.altre_differenze) }} di debiti riportati dentro le rate</template>.
                             </p>
                         </div>
+
+                        <!-- Il rendiconto per l'assemblea: fermarlo con le parti scelte del fascicolo, le versioni con i loro PDF, l'approvazione -->
+                        <RendicontoPerLAssemblea
+                            :condominio-id="props.condominio.id"
+                            :esercizio-id="props.esercizio.id"
+                            :versioni="props.versioni ?? []"
+                            :nomi-parti="props.nomi_parti ?? nomiParti"
+                            :oggi="props.oggi ?? ''"
+                            :scelte="props.parti.filter((p) => scelte.includes(p))"
+                            :dettaglio="dettaglio"
+                            :lettere="lettere"
+                            :nota-mancanze="props.nota ? (props.nota.vuota || !scelte.includes('nota') ? ['Il fascicolo non conterrà la nota sintetica, e il frontespizio lo dirà ai condòmini.'] : props.nota.mancanze) : []"
+                            :confronto="props.confronto ?? null"
+                        />
                     </MovimentiLayout>
                 </section>
             </div>
         </div>
+        <RendicontoSintesiGuide v-model:open="mostraGuida" />
     </GestionaleLayout>
 </template>

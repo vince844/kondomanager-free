@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
@@ -259,9 +262,10 @@ class IncassoRateController extends Controller
         $eventiRata->allineaPagato($coppie);
 
         // Chiusura del Task Admin
-        // Solo un'attività di **questo** condominio (lente sicurezza della Fase 1-bis della beta.40): l'id arriva dal
-        // browser, e con `Evento::find()` si chiudeva un'attività di qualunque palazzo. Se non c'è — cancellata nel
-        // frattempo, o di un altro condominio — l'incasso resta registrato e non si chiude niente.
+        // Solo un'attività di **questo** condominio: l'id arriva dal browser, e con `Evento::find()` si chiudeva un'attività
+        // di qualunque palazzo. E solo il compito di un bonifico segnalato, che è quello che porta qui con «Registra l'incasso»: un
+        // incasso non chiude una segnalazione di guasto o un'altra scadenza dell'agenda. Se non c'è — cancellata nel
+        // frattempo, di un altro condominio o di un altro tipo — l'incasso resta registrato e non si chiude niente.
         $relatedTaskId = $request->validated('related_task_id');
 
         if ($relatedTaskId) {
@@ -269,11 +273,16 @@ class IncassoRateController extends Controller
             $task = Evento::whereHas('condomini', fn ($q) => $q->where('condomini.id', $condominio->id))
                 ->find((int) $relatedTaskId);
 
-            if ($task && !$task->is_completed) {
-                $task->update([
-                    'is_completed' => true,
-                    'completed_at' => now(),
-                ]);
+            if ($task && \App\Services\Gestionale\RispostePromemoria::eUnBonificoSegnalato($task)) {
+                if (! $task->is_completed) {
+                    $task->update([
+                        'is_completed' => true,
+                        'completed_at' => now(),
+                    ]);
+                }
+                // La segnalazione del bonifico non resta «in verifica»: la rata segnalata si riallinea alle quote (pagata, in parte, o di nuovo da versare
+                // se l'incasso è andato su altre rate), e il portale dice dove è andato il versamento.
+                app(\App\Services\Gestionale\SegnalazioneDelBonifico::class)->chiusa($task, $scrittura);
             }
         }
 

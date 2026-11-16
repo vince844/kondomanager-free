@@ -54,7 +54,7 @@ class ModelliLettereController extends Controller
             'frase_proposta_per_tipo' => [InvioDeiFogli::TIPO => InvioDeiFogli::FRASE_PROPOSTA],
             // I valori con cui la pagina mostra l'anteprima di un testo: scritti come li scrive la lettera.
             'esempio'             => ['nome' => 'Maria Bianchi', 'totale' => TestiLettere::euro(18000), 'termine' => TestiLettere::termine(15), 'condominio' => 'Le Rose',
-                'esercizio' => 'Esercizio 2026'],
+                'esercizio' => 'Esercizio 2026', 'interessi' => TestiLettere::euro(118), 'spese' => TestiLettere::euro(2500), 'tasso' => '1,60 % annuo, tasso legale'],
             'puo_modificare'      => self::puoModificare($request),
         ]);
     }

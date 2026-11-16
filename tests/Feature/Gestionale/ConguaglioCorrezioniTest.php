@@ -93,8 +93,9 @@ it('il foglio della persona scaricato da solo ha i millesimi, come quello dell\'
 });
 
 it('il già versato non usato dell\'unità va una volta sola, ai titolari di diritto reale: non sul foglio dell\'inquilino, una nota sola nella scheda', function () {
-    // U1 ha versato € 2.000,00 per le Pulizie, il piano ne usa 1.500,00: € 500,00 non usati. Gialli inquilino di U1 al 30 % fino al 30/06: niente.
-    $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]], 'inquilino' => ['U1', 'Gialli', 30, '2020-01-01', '2026-06-30']]);
+    // U1 ha versato € 2.000,00 per le Pulizie, il piano ne usa 1.500,00: € 500,00 non usati. Gialli inquilino di U1 al 30 % tutto l'anno: niente. Con un
+    // inquilino che lascia l'unità nell'esercizio la cifra non va a nessuno: il test qui sotto.
+    $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]], 'inquilino' => ['U1', 'Gialli', 30, '2020-01-01', null]]);
     cpcRateEIncassi($this, $s);
     cpcSpese($s);
     $this->travelTo('2027-01-10 10:00:00');
@@ -114,6 +115,32 @@ it('il già versato non usato dell\'unità va una volta sola, ai titolari di dir
     }
     expect($note)->toBe(['Neri: Già versato registrato per questo esercizio e non usato dai suoi piani: € 500,00. Non entra nel conguaglio, e il programma non lo sposta da solo: '
         .'che cosa farne lo decidi tu (per esempio con un piano che lo usa).']);
+});
+
+it('lo stesso già versato con l\'inquilino che lascia l\'unità il 30/06: non va sul foglio di nessuno, e le righe dell\'unità dicono «a chi va lo decidi tu»', function () {
+    // Il contributo dell'unità non dice chi l'ha versato: può essere denaro dell'inquilino che esce. Con il cambio dell'inquilino la cifra resta da decidere.
+    $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]], 'inquilino' => ['U1', 'Gialli', 30, '2020-01-01', '2026-06-30']]);
+    cpcRateEIncassi($this, $s);
+    cpcSpese($s);
+    $this->travelTo('2027-01-10 10:00:00');
+    $c = app(ConguaglioDelRendiconto::class);
+    $f = app(FogliDelConguaglio::class);
+    $letto = $c->leggi($s['e'], [], true);
+    $note = [];
+    foreach ($c->righe($s['c'], $s['e'], $letto)['gestioni'][0]['righe'] as $r) {
+        foreach ($r['note'] as $n) {
+            if (str_contains($n, 'Già versato')) {
+                $note[] = $r['nome'] . ': ' . $n;
+            }
+        }
+    }
+    // La nota dice che cosa è cambiato: l'inquilino, non il titolare.
+    $frase = 'Già versato registrato per questa unità e non usato dai piani: € 500,00. L\'unità ha cambiato inquilino: non è sul foglio di nessuno, a chi va lo decidi tu.';
+
+    expect($f->datiDelFoglio($s['c'], $s['e'], $letto, $s['persone']['Gialli']->id)['spiegano']['gia_versato_non_usato'])->toBe(0)
+        ->and($f->datiDelFoglio($s['c'], $s['e'], $letto, $s['persone']['Neri']->id)['spiegano']['gia_versato_non_usato'])->toBe(0)
+        ->and($letto['gestioni'][$s['g']->id]['gia_versato_da_decidere'])->toBe([$s['unita']['U1']->id => 50000])
+        ->and($note)->toBe(['Gialli: '.$frase, 'Neri: '.$frase]);
 });
 
 it('il già versato per tutti gli esercizi non usato lo dice, senza confonderlo con quello dell\'esercizio', function () {
@@ -150,7 +177,7 @@ it('con righe non disponibili la scheda e le due stampe dicono la loro spesa del
         ->and($tabelle['gestioni'][0]['a_non_disponibili'])->toBe(126000);
     $persona = vrmTesto(view('pdf.gestionale.conguaglio_per_persona', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'conguaglio' => $righe])->render());
     $tabella = vrmTesto(view('pdf.gestionale.consuntivo_per_tabella', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'consuntivo' => $tabelle])->render());
-    expect($persona)->toContain('Le righe con la proposta non ancora calcolata (2, spese dell\'esercizio € 1.260,00) non sono nei totali: l\'amministratore le completerà.')
+    expect($persona)->toContain('Le righe con la proposta non ancora calcolata (2, spese dell\'esercizio € 1.260,00) non sono nei totali.')
         ->and($tabella)->toContain('di cui nelle righe del conguaglio non disponibili: € 1.260,00');
 });
 
@@ -209,9 +236,11 @@ it('i giorni della scheda vengono dalle sole righe attive, come il motore', func
         'attivo' => false, 'data_inizio' => '2026-07-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
     DB::table('anagrafica_immobile')->where('id', $s['righe']['Neri'])->update(['data_fine' => '2026-06-30']);
     $this->travelTo('2027-01-10 10:00:00');
-    $giorni = app(ConguaglioDelRendiconto::class)->giorniDiTitolarita($s['e'], [$s['unita']['U1']->id]);
+    // I giorni sono per ruolo: quelli del proprietario, e la riga della scheda li dice.
+    $k = app(ConguaglioDelRendiconto::class);
 
-    expect($giorni[$s['persone']['Neri']->id][$s['unita']['U1']->id] ?? null)->toBe(181);
+    expect($k->giorniDiTitolarita($s['e'], [$s['unita']['U1']->id])[$s['persone']['Neri']->id][$s['unita']['U1']->id] ?? null)->toBe(['proprietario' => 181])
+        ->and($k->giorniDelleRighe($s['e'], [$s['unita']['U1']->id])[$s['persone']['Neri']->id][$s['unita']['U1']->id]['giorni'] ?? null)->toBe(181);
 });
 
 it('il totale del deliberato è «non disponibile» quando lo è un blocco, anche senza rate emesse', function () {
@@ -611,8 +640,9 @@ it('i giorni di due righe attive della stessa persona sulla stessa unità si som
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $s['persone']['Neri']->id, 'immobile_id' => $s['unita']['U1']->id, 'tipologia' => 'proprietario', 'quota' => 100,
         'attivo' => true, 'data_inizio' => '2026-07-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
     $this->travelTo('2027-01-10 10:00:00');
-    $giorni = app(ConguaglioDelRendiconto::class)->giorniDiTitolarita($s['e'], [$s['unita']['U1']->id]);
+    $k = app(ConguaglioDelRendiconto::class);
 
-    // L'anno intero non ha i giorni accanto (181 + 184 = 365): con la regola del massimo sarebbero 184.
-    expect($giorni[$s['persone']['Neri']->id][$s['unita']['U1']->id] ?? null)->toBeNull();
+    // L'anno intero non ha i giorni accanto (181 + 184 = 365): con la regola del massimo sarebbero 184. Le due righe sono dello stesso ruolo, e si sommano.
+    expect($k->giorniDiTitolarita($s['e'], [$s['unita']['U1']->id])[$s['persone']['Neri']->id][$s['unita']['U1']->id] ?? null)->toBe(['proprietario' => 365])
+        ->and($k->giorniDelleRighe($s['e'], [$s['unita']['U1']->id])[$s['persone']['Neri']->id][$s['unita']['U1']->id] ?? null)->toBeNull();
 });

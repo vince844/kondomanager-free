@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * # Allegati, il giro di correzioni: moderazione, Inbox, email e testi (Coda 460)
@@ -69,7 +72,7 @@ test('la voce «allegato» dell\'Inbox porta alla scheda dell\'elemento nel pann
 
     $voci = DB::table('eventi')->where('tipo', 'allegato')->where('eventable_id', $s->id)->where('is_completed', false)->get();
     expect($voci)->toHaveCount(1)
-        ->and(json_decode($voci->first()->meta, true)['action_url'] ?? null)->toBe(route('admin.segnalazioni.show', $s));
+        ->and(json_decode($voci->first()->meta, true)['action_url'] ?? null)->toBe(route('admin.segnalazioni.show', $s, false));
 });
 
 test('l\'email ai vicini non mostra mai l\'indirizzo email di chi ha caricato, nemmeno quando il nome manca', function () {

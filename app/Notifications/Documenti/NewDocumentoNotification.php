@@ -49,7 +49,7 @@ class NewDocumentoNotification extends LocalizedNotification implements ShouldQu
                 'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome)
             ]))
             ->line(__('notifications.new_document.line_1', [
-                'user' => self::nomeComeTesto($this->documento->createdBy->name)
+                'user' => self::nomeComeTesto($this->documento->createdBy?->name ?? \App\Http\Resources\Documenti\DocumentoResource::AUTORE_ELIMINATO)
             ]))
             ->line('**' . __('notifications.new_document.title') . ':** ' . self::testoComeTesto($this->documento->name))
             ->line('**' . __('notifications.new_document.description') . ':** ' . Str::ucfirst(self::testoComeTesto($this->documento->description)))

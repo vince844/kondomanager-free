@@ -57,7 +57,11 @@ class CreaCondominioDimostrativoAction
             );
         }
 
-        DB::transaction(function () use ($condominio) {
+        // I file dei documenti delle versioni del rendiconto si tolgono dal disco dopo che la cancellazione è andata a buon fine: se si ferma a metà,
+        // le righe tornano indietro e i file devono esserci ancora.
+        $fileDelleVersioni = [];
+
+        DB::transaction(function () use ($condominio, &$fileDelleVersioni) {
             $id = $condominio->id;
 
             $contiContabili = DB::table('conti_contabili')->where('condominio_id', $id)->pluck('id');
@@ -84,6 +88,7 @@ class CreaCondominioDimostrativoAction
              *   saldi                -> gestioni                     RESTRICT
              *   fatture_passive      -> esercizi                     NO ACTION
              *   righe_fattura        -> conti                        NO ACTION
+             *   rendiconto_versioni  -> condomini, esercizi          RESTRICT
              *
              * Ognuno di questi, se lasciato in piedi, ferma tutta la cancellazione con un errore
              * SQL grezzo. Si va quindi dalle foglie alla radice, e **solo alla fine** si cancella il
@@ -113,6 +118,15 @@ class CreaCondominioDimostrativoAction
 
             // 5. Le casse, che bloccano i conti contabili.
             DB::table('casse')->where('condominio_id', $id)->delete();
+
+            // 5-bis. Le versioni del rendiconto, che bloccano gli esercizi e il condominio, con i loro documenti (il PDF conservato, le parti, il
+            //    verbale): la versione li ha come `documentable`, che il database non porta via da solo.
+            $versioni = DB::table('rendiconto_versioni')->where('condominio_id', $id)->pluck('id');
+            $documentiDelleVersioni = DB::table('documenti')->where('documentable_type', \App\Models\Gestionale\RendicontoVersione::class)
+                ->whereIn('documentable_id', $versioni);
+            $fileDelleVersioni = (clone $documentiDelleVersioni)->pluck('path')->all();
+            $documentiDelleVersioni->delete();
+            DB::table('rendiconto_versioni')->where('condominio_id', $id)->delete();
 
             // 6. Il condominio: da qui scendono a cascata immobili, tabelle, esercizi, gestioni,
             //    piani dei conti, voci, piani rate, rate e quote.
@@ -174,6 +188,10 @@ class CreaCondominioDimostrativoAction
                 ->whereNotIn('id', $eventiSuperstiti->isEmpty() ? [0] : $eventiSuperstiti)
                 ->delete();
         });
+
+        foreach ($fileDelleVersioni as $percorso) {
+            app(\App\Services\Documenti\ArchivioDocumenti::class)->elimina($percorso);
+        }
     }
 
     /**

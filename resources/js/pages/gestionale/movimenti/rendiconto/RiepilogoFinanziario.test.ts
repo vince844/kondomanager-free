@@ -293,3 +293,61 @@ describe('il riepilogo finanziario', () => {
         }
     });
 });
+
+describe('il riepilogo finanziario con i contributi addebitati a singole persone', () => {
+    test('il blocco delle quote ha la riga loro, senza deliberato; il raccordo li toglie dalle quote registrate', () => {
+        const base = riepilogo();
+        const blocco = { ...base.blocchi[0], quote: [...base.blocchi[0].quote,
+            { riga: 'addebiti', deliberate: null, emesse: 6795, pagate: 0, non_pagate: 6795, scadute: 0, crediti: 0, credito_riportato: 0, emesse_altrove: 0 }] };
+        const pagina = monta({ blocchi: [blocco], raccordo_quote: { quote_piani: 411000, contributi_addebitati: 6795, quote_giornale: 407795, piani_emesse_altrove: 0, altri_emesse_qui: 0, altre_differenze: 10000 } });
+        const celle = pagina.findAll('[data-test="quote"] tbody tr')[2].findAll('td').map((c) => testo(c.text()).replace(/\s+/g, ' '));
+        expect(celle).toEqual(['Contributi addebitati a singole persone', '—', '€ 67,95', '€ 0,00', '€ 67,95 di cui scadute € 0,00', '€ 0,00', '—']);
+        expect(testo(pagina.find('[data-test="raccordo-quote"]').text()).replace(/\s+/g, ' '))
+            .toContain('= quote registrate in questo esercizio € 4.077,95 − contributi addebitati a singole persone € 67,95 + rate di questi piani');
+    });
+
+    test('le spese di una sola unità chieste a una persona hanno una riga loro, con il loro nome, separata dai contributi', () => {
+        const base = riepilogo();
+        const blocco = { ...base.blocchi[0], quote: [...base.blocchi[0].quote,
+            { riga: 'addebiti', deliberate: null, emesse: 5000, pagate: 0, non_pagate: 5000, scadute: 0, crediti: 0, credito_riportato: 0, emesse_altrove: 0 },
+            { riga: 'spese_addebitate', deliberate: null, emesse: 2500, pagate: 0, non_pagate: 2500, scadute: 0, crediti: 0, credito_riportato: 0, emesse_altrove: 0 }] };
+        const righe = monta({ blocchi: [blocco] }).findAll('[data-test="quote"] tbody tr').map((r) => r.findAll('td').map((c) => testo(c.text()).replace(/\s+/g, ' ')).slice(0, 3));
+        expect(righe.slice(2)).toEqual([['Contributi addebitati a singole persone', '—', '€ 50,00'], ['Spese di una sola unità chieste a una persona', '—', '€ 25,00']]);
+    });
+
+    test('controprova — senza contributi il raccordo non li nomina', () => {
+        expect(testo(monta().find('[data-test="raccordo-quote"]').text())).not.toContain('contributi addebitati');
+    });
+});
+
+describe('gli interessi e le spese versati dai condòmini', () => {
+    test('una riga loro sotto le entrate, fuori dalle entrate da terzi; la riga dei costi li nomina', () => {
+        const blocco = { ...riepilogo().blocchi[0], versato_accessori: [{ voce_id: 16, nome: 'Interessi di mora', importo: 92 }], totale_versato_accessori: 92 };
+        const pagina = monta({ blocchi: [blocco] });
+        expect(testo(pagina.get('[data-test="versato-accessori"]').text())).toContain('Interessi e spese versati dai condòmini: € 0,92 (Interessi di mora € 0,92).');
+        expect(testo(pagina.get('[data-test="riconciliazione"]').text())).toContain('spese per capitolo meno entrate e interessi e spese versati');
+        const senza = monta();
+        expect(senza.find('[data-test="versato-accessori"]').exists()).toBe(false);
+        expect(testo(senza.get('[data-test="riconciliazione"]').text())).not.toContain('interessi e spese versati');
+    });
+});
+
+describe('la guida della scheda', () => {
+    test('il pulsante «Guida» dell\'intestazione, uno solo, apre la guida della scheda «Riepilogo finanziario»', async () => {
+        w?.unmount();
+        const slot = { template: '<div><slot /></div>' };
+        w = mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Via Roma' }, condomini: [], esercizio: { id: 9, nome: 'Esercizio 2026' }, esercizi: [], riepilogo: riepilogo() } as any,
+            global: { stubs: { GestionaleLayout: slot, MovimentiLayout: slot,
+                PageHeaderGuide: { props: { hasTextGuide: Boolean, textGuideTitle: String }, emits: ['open-text-guide'],
+                template: '<div><button v-if="hasTextGuide" type="button" data-testid="apri-guida" @click="$emit(\'open-text-guide\')">{{ textGuideTitle }}</button><slot name="actions" /></div>' },
+                RendicontoRiepilogoGuide: { props: ['open'], template: '<div v-if="open" data-testid="guida-aperta" />' } } },
+        });
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(false);
+        expect(w.findAll('button').filter((b) => b.text().trim() === 'Guida')).toHaveLength(1);
+        const pulsante = w.get('[data-testid="apri-guida"]');
+        expect(pulsante.text().trim()).toBe('Guida');
+        await pulsante.trigger('click');
+        expect(w.find('[data-testid="guida-aperta"]').exists()).toBe(true);
+    });
+});

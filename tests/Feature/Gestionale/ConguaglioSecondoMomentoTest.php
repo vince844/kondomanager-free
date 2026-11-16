@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Il secondo momento nella scheda «Conguaglio» e nella stampa del conguaglio per persona: dopo l'approvazione e la scrittura del conguaglio i crediti verso i
- * condòmini sono i crediti di oggi (letti dalla situazione patrimoniale), meno le spese personali che il conguaglio chiede (oggi sono già fra i crediti, come
+ * Il secondo momento nella scheda «Conguaglio» e nella stampa del conguaglio per persona: se l'assemblea approva e il conguaglio si registra, i crediti verso i
+ * condòmini sono i crediti di oggi (letti dalla situazione patrimoniale), meno le spese personali comprese nel conguaglio (oggi sono già fra i crediti, come
  * spese anticipate per singole unità), più i conguagli a debito; i debiti verso i condòmini per il conguaglio sono i conguagli a credito. Righe, non una
  * situazione patrimoniale; nessuna promessa che il programma lo scriva.
  *
@@ -52,7 +52,7 @@ it('i conguagli a debito: crediti di oggi 380,00 − spese personali 80,00 + con
     // I conguagli: Neri +100,00, Bianchi +29,75, Rossi +30,25, Verdi +120,00 (40,00 + 80,00 di citofono): a debito 280,00, a credito 0.
     expect($p['secondo_momento'])->toMatchArray(['crediti_oggi' => 38000, 'personali' => 8000, 'a_debito' => 28000, 'crediti_dopo' => 58000, 'a_credito' => 0])
         ->and($p['secondo_momento']['crediti_oggi'])->toBe($situazione['sintesi']['crediti_condomini'])
-        ->and($p['secondo_momento']['frase'])->toBe('Dopo l\'approvazione e la scrittura del conguaglio: crediti verso i condòmini € 580,00 (oggi € 380,00, meno le spese personali che il conguaglio chiede € 80,00, più i conguagli a debito € 280,00); debiti verso i condòmini per i conguagli a credito € 0,00.');
+        ->and($p['secondo_momento']['frase'])->toBe('Se l\'assemblea approva e il conguaglio si registra (il programma lo calcola, non lo registra): crediti verso i condòmini € 580,00 (oggi € 380,00, meno le spese personali comprese nel conguaglio € 80,00, più i conguagli a debito € 280,00); debiti verso i condòmini per i conguagli a credito € 0,00.');
 });
 
 it('i conguagli a credito: tutti sotto zero, i crediti restano quelli delle rate e i debiti sono la somma dei conguagli, 620,00', function () {

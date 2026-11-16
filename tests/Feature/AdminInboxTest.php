@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 use App\Models\Commento;
 use App\Models\Segnalazione;
@@ -16,6 +19,7 @@ it('creates an admin inbox event when a new comment is posted', function () {
     
     $segnalazione = Segnalazione::factory()->create([
         'priority' => 'urgente',
+        'stato' => 'aperta',
         'condominio_id' => $condominio->id
     ]);
 
@@ -50,6 +54,7 @@ it('aggregates multiple comments into the same admin inbox event', function () {
 
     $segnalazione = Segnalazione::factory()->create([
         'priority' => 'media',
+        'stato' => 'aperta',
         'condominio_id' => $condominio->id
     ]);
     

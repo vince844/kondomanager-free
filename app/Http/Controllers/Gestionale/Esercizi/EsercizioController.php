@@ -77,6 +77,8 @@ class EsercizioController extends Controller
             'esercizio'  => $esercizio,
             'condomini'  => CondominioResource::collection($this->getCondomini()),
             'esercizi'   => EsercizioResource::collection($esercizi)->resolve(),
+            // Lo stato del rendiconto di ogni esercizio della pagina: in bozza, fermato per l'assemblea, approvato.
+            'stati_rendiconto' => \App\Services\Gestionale\VersioniDelRendiconto::statiInTesta(collect($esercizi->items())->pluck('id')->map(fn ($id) => (int) $id)->all()),
             'meta'       => [
                 'current_page' => $esercizi->currentPage(),
                 'last_page'    => $esercizi->lastPage(),
@@ -195,6 +197,7 @@ class EsercizioController extends Controller
         return Inertia::render('gestionale/esercizi/EserciziEdit', [
             'condominio' => $condominio,
             'esercizio'  => new EsercizioResource($esercizio),
+            'stato_rendiconto' => \App\Services\Gestionale\VersioniDelRendiconto::statoInTesta($esercizio),
         ]);
     }
 
@@ -440,6 +443,16 @@ class EsercizioController extends Controller
         $deleghe = DB::table('deleghe_f24')->where('esercizio_id', $esercizio->id)->count();
         if ($deleghe > 0) {
             $frasi[] = $deleghe === 1 ? '1 delega F24' : "{$deleghe} deleghe F24";
+        }
+
+        // Il rendiconto conservato per l'assemblea: la chiave non cancella in cascata, e il PDF che i condòmini hanno ricevuto non si butta via con
+        // l'esercizio. La frase dice ogni versione: una fermata e mai approvata si elimina dalla Sintesi, un'approvata resta.
+        $frasi = [...$frasi, ...\App\Services\Gestionale\VersioniDelRendiconto::perIlRifiuto(
+            \App\Models\Gestionale\RendicontoVersione::where('esercizio_id', $esercizio->id), false)];
+        // La nota sintetica scritta se ne andrebbe con l'esercizio; una bozza salvata senza niente dentro no.
+        $nota = \App\Models\Gestionale\NotaSintetica::where('esercizio_id', $esercizio->id)->first();
+        if ($nota !== null && ! \App\Services\Gestionale\NotaSinteticaDelRendiconto::bozzaVuota(\App\Services\Gestionale\NotaSinteticaDelRendiconto::normalizza((array) $nota->contenuto))) {
+            $frasi[] = 'la nota sintetica del rendiconto, scritta';
         }
 
         return $frasi;

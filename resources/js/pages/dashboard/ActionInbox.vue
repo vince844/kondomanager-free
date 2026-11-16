@@ -1,586 +1,454 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+-->
 <script setup lang="ts">
-
+/**
+ * L'Action inbox: i compiti aperti dello studio, di tutti i condomini o di quello scelto (tutta la pagina segue il condominio scelto).
+ *
+ * In alto l'intestazione («Guida» con il cassetto, il selettore dei condomini con la ricerca, «Dashboard», alti uguali) e le cinque card filtro. Sotto, a due
+ * terzi, l'elenco dei compiti: le schede «Tutti / Scaduti / In arrivo» con il loro numero, la ricerca e l'ordine; con «Tutti» l'anteprima di ogni gruppo
+ * (fino a 8 righe tutte, oltre le prime 5 e «e altri N», che apre la scheda), nelle schede 15 alla volta con «Mostra altri 15» e «Mostrati N di M». A destra,
+ * dall'alto: «Da quanto aspettano», «Per tipo», «Sei mesi per agire» (con il cassetto, chiuso di serie), «Dove si accumulano».
+ *
+ * Tutti i numeri arrivano dal server (`ActionInboxController`): le card, i grafici, le schede e i gruppi, con la regola di «scaduto» di `FasceDeiCompiti`.
+ * Ogni filtro (una card, una barra, una scheda, la ricerca, l'ordine, il condominio) è nell'indirizzo. Un filtro dell'elenco rilegge solo l'elenco (le
+ * schede, i gruppi, l'anteprima), con la pagina dov'è e un segno di caricamento accanto a «Compiti»; il condominio rilegge la pagina. La casella si legge con
+ * «Visualizza scadenze in agenda»; le risposte a un compito chiedono «Modifica scadenza in agenda»: senza, né il menu «⋯» né «Segna come fatto».
+ */
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link, InfiniteScroll, router, useForm } from '@inertiajs/vue3';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { Head, InfiniteScroll, Link, router, usePage } from '@inertiajs/vue3';
+import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 import {
-    Banknote, AlertTriangle, Wrench, CheckCircle2, XCircle, ArrowRight,
-    Inbox, ChevronLeft, Loader2, Building2, User,
-    ArrowUpFromLine, ArrowDownToLine, MessageSquare, Files, TriangleAlert,
-    CalendarClock, ChevronDown, X, Zap
+    ArrowLeft, Banknote, Building2, CalendarClock, ChevronsUpDown, Hourglass, Inbox, Loader, Search, TriangleAlert, Wrench, X,
 } from 'lucide-vue-next';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { usePermission } from '@/composables/permissions';
 import { Permission } from '@/enums/Permission';
+import { useGiroFlashDelleVisiteIntere } from '@/composables/useGiroFlash';
+import { useSeiMesiDelloStudio } from '@/composables/useSeiMesiDelloStudio';
+import Alert from '@/components/Alert.vue';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
+import SceltaCondominio from '@/components/SceltaCondominio.vue';
+import ActionInboxGuide from '@/components/guides/ActionInboxGuide.vue';
+import CardDellInbox from '@/components/inbox/CardDellInbox.vue';
+import RigaDelCompito from '@/components/inbox/RigaDelCompito.vue';
+import RisposteDelCompito from '@/components/inbox/RisposteDelCompito.vue';
+import SeiMesiCassetto from '@/components/gestionale/seiMesi/SeiMesiCassetto.vue';
+import SeiMesiColonna from '@/components/gestionale/seiMesi/SeiMesiColonna.vue';
+import type { VoceDelCompito } from '@/lib/inbox/risposteDelCompito';
+import {
+    DESCRIZIONE_ETA, ETICHETTA_RICERCA, ORDINI, SCHEDE, SEGNAPOSTO_RICERCA, SOPRATITOLO, TITOLO, descrizioneDellaPagina, descrizioneEta, descrizioneTipi, filtriAttivi, parametri, righeConIGruppi,
+    numero, schedaDellaFascia, testoAltriTipi, testoCardSeiMesi, testoEAltri, testoFuoriDalGrafico, testoMostraAltri, testoMostrati, testoScaduti, testoSettimana, titoloDelGruppo,
+    type Conteggi, type Dove, type Filtri, type Grafici, type Gruppi, type Gruppo, type GruppoInAnteprima, type RigaCompito, type Schede,
+} from '@/lib/inbox/actionInbox';
+import { FRASE_NORMA_CARD, contoSeiMesi, type CondominioBreve } from '@/lib/gestionale/debiti/seiMesiDelloStudio';
+import type { Flash } from '@/types/flash';
 
-// --- PROPS ---
+// I grafici con Chart.js si caricano solo qui, a parte.
+const GraficoDellInbox = defineAsyncComponent(() => import('@/components/inbox/GraficoDellInbox.vue'));
+
 const props = defineProps<{
-    tasks: { data: any[], links: any[], total: number };
-    counts: { all: number, urgent: number, payments: number, maintenance: number };
-    activeFilter: string;
-    condomini: Array<{ id: number; nome: string }>;
-    condominioFilter: number | null;
+    tasks: { data: RigaCompito[]; total?: number };
+    counts: Conteggi & { segnalazioni_urgenti?: number };
+    grafici: Grafici;
+    dove: Dove[];
+    schede: Schede;
+    gruppi: Gruppi;
+    modo: 'anteprima' | 'elenco';
+    anteprima: GruppoInAnteprima[];
+    filtri: Filtri;
+    condomini: CondominioBreve[];
+    seiMesiCondomini: CondominioBreve[];
+    /** Il giorno dell'amministratore, per «Ricordamelo» (da domani). */
+    oggi?: string;
 }>();
 
-const isLoading = ref(false);
-
-// La casella si legge con «Visualizza scadenze in agenda»; «Rifiuta» e «Completa» chiudono un compito, che è una scadenza
-// in agenda, e chiedono «Modifica scadenza in agenda» (`EventoPolicy::chiudiCompito`, Coda 402): senza il permesso i due
-// comandi non compaiono, e restano «Registra» e «Risolvi», che portano alla pagina del compito.
 const { hasPermission } = usePermission();
 const puoChiudere = computed(() => hasPermission([Permission.EDIT_EVENTS]));
-const isRejectModalOpen = ref(false);
-const taskToReject = ref<any>(null);
-const isCondominioDropdownOpen = ref(false);
+// Le finestre delle risposte, una sola per la pagina: le aprono il menu «⋯» e «Segna come fatto» di ogni riga.
+const risposte = ref<InstanceType<typeof RisposteDelCompito> | null>(null);
+const rispondi = (voce: VoceDelCompito, riga: RigaCompito) => risposte.value?.apri(voce, riga);
+// Il messaggio dopo una risposta, in alto, una volta: «Mostra altri 15» non lo rimette.
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash?.message);
+const giroFlash = useGiroFlashDelleVisiteIntere();
 
-// Chiude il dropdown se si clicca fuori
-const handleOutsideClick = () => { isCondominioDropdownOpen.value = false; };
-onMounted(() => document.addEventListener('click', handleOutsideClick));
-onUnmounted(() => document.removeEventListener('click', handleOutsideClick));
+const mostraGuida = ref(false);
+const cassettoAperto = ref(false);
+// «Per tipo»: al più 8 barre nel riquadro (la regola delle 8); oltre, «e altri N tipi» apre una finestra con tutti i tipi, e un clic su un tipo filtra.
+const BARRE_DEI_TIPI = 8;
+const graficiNelRiquadro = computed<Grafici>(() => (props.grafici.tipi.length > BARRE_DEI_TIPI
+    ? { ...props.grafici, tipi: props.grafici.tipi.slice(0, BARRE_DEI_TIPI) } : props.grafici));
+const altriTipi = computed(() => Math.max(0, props.grafici.tipi.length - BARRE_DEI_TIPI));
+const finestraTipi = ref(false);
+function scegliTipo(tipo: string) {
+    finestraTipi.value = false;
+    alterna('tipo', tipo);
+}
 
-const rejectForm = useForm({ reason: '' });
+// I sei mesi per agire: una fila sola per la colonna, la card e il cassetto.
+const seiMesi = reactive(useSeiMesiDelloStudio(() => props.seiMesiCondomini));
+const contoDeiSeiMesi = computed(() => contoSeiMesi(seiMesi.esiti));
 
-const openRejectModal = (task: any) => {
-    taskToReject.value = task;
-    rejectForm.reason = '';
-    rejectForm.clearErrors();
-    isRejectModalOpen.value = true;
-};
+const nomeDelCondominio = computed(() => (props.filtri.condominio_id ? props.condomini.find((c) => c.id === props.filtri.condominio_id)?.nome ?? null : null));
+const scheda = computed(() => props.filtri.scheda ?? 'tutti');
+const attivi = computed(() => filtriAttivi(props.filtri, props.grafici));
+const aperti = computed(() => props.schede?.tutti ?? props.counts.all);
 
-const closeRejectModal = () => {
-    isRejectModalOpen.value = false;
-    setTimeout(() => taskToReject.value = null, 300);
-};
-
-const confirmReject = () => {
-    if (!taskToReject.value) return;
-    rejectForm.post(route('admin.inbox.reject', taskToReject.value.id), {
+/**
+ * Le prop dell'elenco. Le card, i grafici, «Dove si accumulano» e i sei mesi seguono solo il condominio: una scheda, una barra, una card filtro, la ricerca o
+ * l'ordine rileggono solo queste, e l'elenco da capo.
+ */
+const PROP_DELL_ELENCO = ['tasks', 'schede', 'gruppi', 'modo', 'anteprima', 'filtri'];
+/** L'elenco che si sta rileggendo: il segno di caricamento accanto a «Compiti». */
+const elencoInArrivo = ref(false);
+/**
+ * Rilegge con i filtri cambiati: tutti i filtri sono nell'indirizzo. La pagina resta dov'è (`preserveScroll`, `preserveState`), senza la barra di avanzamento in
+ * cima; se il condominio non cambia, solo l'elenco.
+ */
+function vai(cambia: Partial<Filtri>) {
+    const nuovi = { ...props.filtri, ...cambia };
+    const soloLElenco = (nuovi.condominio_id ?? null) === (props.filtri.condominio_id ?? null);
+    router.get(route('admin.inbox'), parametri(nuovi), {
+        preserveState: true,
         preserveScroll: true,
-        onSuccess: () => closeRejectModal(),
+        showProgress: false,
+        ...(soloLElenco ? { only: PROP_DELL_ELENCO, reset: ['tasks'] } : {}),
+        onStart: () => { elencoInArrivo.value = true; },
+        onFinish: () => { elencoInArrivo.value = false; },
     });
-};
+}
+const alterna = <K extends 'quando' | 'tipo'>(chiave: K, valore: string) => vai({ [chiave]: props.filtri[chiave] === valore ? null : valore } as Partial<Filtri>);
+/** Una barra del grafico per età: scelta, restringe la sua scheda; scelta di nuovo, torna alla scheda. */
+const scegliFascia = (fascia: string) => vai({ quando: props.filtri.quando === fascia ? schedaDellaFascia(fascia) : fascia });
+const togliFiltro = (chiave: 'quando' | 'tipo') => vai(chiave === 'quando' ? { quando: schedaDellaFascia(props.filtri.quando ?? '') } : { tipo: null });
 
-const completeTask = (taskId: number) => {
-    router.patch(route('admin.inbox.complete', { task: taskId }), {}, { preserveScroll: true });
-};
+// La ricerca: si manda dopo una pausa nella scrittura, o subito con Invio.
+const cerca = ref(props.filtri.cerca ?? '');
+watch(() => props.filtri.cerca, (c) => { if ((c ?? '') !== cerca.value.trim()) cerca.value = c ?? ''; });
+let attesa: ReturnType<typeof setTimeout> | null = null;
+function cercaSubito() {
+    if (attesa) clearTimeout(attesa);
+    attesa = null;
+    if ((props.filtri.cerca ?? '') !== cerca.value.trim()) vai({ cerca: cerca.value.trim() || null });
+}
+function cercaDopo() {
+    if (attesa) clearTimeout(attesa);
+    attesa = setTimeout(cercaSubito, 400);
+}
 
-// --- DESIGN TOKENS ---
-const STATUS_TOKENS: Record<string, { border: string, bg: string, iconBg: string, iconColor: string, text: string }> = {
-    expired: {
-        border: 'border-l-red-500',
-        bg: 'hover:bg-red-50/30',
-        iconBg: 'bg-red-100',
-        iconColor: 'text-red-600',
-        text: 'text-red-700'
-    },
-    controllo_incassi: {
-        border: 'border-l-purple-500',
-        bg: 'hover:bg-purple-50/30',
-        iconBg: 'bg-purple-100',
-        iconColor: 'text-purple-600',
-        text: 'text-purple-700'
-    },
-    emissione_rata: {
-        border: 'border-l-blue-500',
-        bg: 'hover:bg-blue-50/30',
-        iconBg: 'bg-blue-100',
-        iconColor: 'text-blue-600',
-        text: 'text-blue-700'
-    },
-    verifica_pagamento: {
-        border: 'border-l-amber-500',
-        bg: 'hover:bg-amber-50/30',
-        iconBg: 'bg-amber-100',
-        iconColor: 'text-amber-600',
-        text: 'text-amber-700'
-    },
-    commento: {
-        border: 'border-l-indigo-500',
-        bg: 'hover:bg-indigo-50/30',
-        iconBg: 'bg-indigo-100',
-        iconColor: 'text-indigo-600',
-        text: 'text-indigo-700'
-    },
-    allegato: {
-        border: 'border-l-indigo-500',
-        bg: 'hover:bg-indigo-50/30',
-        iconBg: 'bg-indigo-100',
-        iconColor: 'text-indigo-600',
-        text: 'text-indigo-700'
-    },
-    segnalazione_guasto: {
-        border: 'border-l-orange-500',
-        bg: 'hover:bg-orange-50/30',
-        iconBg: 'bg-orange-100',
-        iconColor: 'text-orange-600',
-        text: 'text-orange-700'
-    },
-    scheduled: {
-        border: 'border-l-slate-400',
-        bg: 'hover:bg-slate-50',
-        iconBg: 'bg-slate-100',
-        iconColor: 'text-slate-600',
-        text: 'text-slate-700'
-    }
-};
+/** «e altri N»: la scheda del gruppo; per le segnalazioni e i bonifici, che non hanno una scheda, il loro tipo. */
+const apriGruppo = (g: Gruppo) => vai(g === 'scaduti' ? { quando: 'scaduti' } : g === 'avanti' ? { quando: 'in_arrivo' }
+    : { tipo: g === 'segnalazioni' ? 'segnalazione_guasto' : 'verifica_pagamento' });
+/** Il pallino del gruppo: rosso gli scaduti, arancio le segnalazioni, azzurro i bonifici, indaco gli altri. */
+const PALLINI: Record<Gruppo, string> = { scaduti: 'bg-red-500', segnalazioni: 'bg-orange-500', bonifici: 'bg-sky-500', avanti: 'bg-indigo-500' };
 
-// --- FILTRI ---
-const setFilter = (filter: string) => {
-    if (props.activeFilter === filter) return;
-    isLoading.value = true;
-    router.get(route('admin.inbox'), {
-        filter,
-        condominio_id: props.condominioFilter ?? undefined
-    }, {
-        preserveState: true,
-        preserveScroll: false,
-        onFinish: () => setTimeout(() => isLoading.value = false, 300)
-    });
-};
+const vociDellElenco = computed(() => righeConIGruppi(props.tasks?.data ?? [], props.gruppi));
+const mostrateInAnteprima = computed(() => props.anteprima.reduce((n, g) => n + g.righe.length, 0));
+const totaleElenco = computed(() => props.tasks?.total ?? props.gruppi.scaduti + (props.gruppi.segnalazioni ?? 0) + props.gruppi.bonifici + props.gruppi.avanti);
+const vuoto = computed(() => (props.modo === 'anteprima' ? props.anteprima.length === 0 : (props.tasks?.data ?? []).length === 0));
+const massimoDove = computed(() => Math.max(1, ...props.dove.map((d) => d.valore)));
 
-const setCondominioFilter = (condominioId: number | null) => {
-    isCondominioDropdownOpen.value = false;
-    isLoading.value = true;
-    router.get(route('admin.inbox'), {
-        filter: props.activeFilter,
-        condominio_id: condominioId ?? undefined,
-    }, {
-        preserveState: true,
-        preserveScroll: false,
-        onFinish: () => setTimeout(() => isLoading.value = false, 300),
-    });
-};
+const fraseSegnalazioni = computed(() => {
+    const urgenti = props.counts.segnalazioni_urgenti ?? 0;
 
-const selectedCondominioNome = computed(() => {
-    if (!props.condominioFilter) return null;
-    return props.condomini.find(c => c.id === props.condominioFilter)?.nome ?? null;
+    return urgenti > 0 ? `di cui ${urgenti} ${urgenti === 1 ? 'urgente' : 'urgenti'}` : 'guasti aperti';
 });
 
-const formatMoney = (val: any) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(val / 100);
+/** Il valore di una voce del menu dell'ordine, per l'indirizzo. */
+const valoreDellOrdine = (o: { valore: string }) => o.valore;
 
-// --- COLORI ---
-const getNativeToken = (task: any) => STATUS_TOKENS[task.type] || STATUS_TOKENS[task.status] || STATUS_TOKENS.scheduled;
-const getUrgencyToken = (task: any) => task.status === 'expired' ? STATUS_TOKENS.expired : getNativeToken(task);
-const getTaskStyle = (task: any) => { const t = getUrgencyToken(task); return `${t.border} ${t.bg}`; };
-const getTaskIconStyle = (task: any) => { const t = task.status === 'expired' ? STATUS_TOKENS.expired : getNativeToken(task); return `${t.iconBg} ${t.iconColor}`; };
-const getTaskTextColor = (task: any) => getNativeToken(task).text;
-
-const getDateLabel = (dateStr: string | null) => {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('it-IT', { day: '2-digit', month: 'long' });
-};
+// Le colonne fisse dell'elenco da xl: le stesse in `RigaDelCompito.vue`.
+const COLONNE = 'xl:grid-cols-[2.25rem_minmax(0,1fr)_10rem_7.5rem_11.5rem_2rem]';
+const PULSANTE = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 shadow-sm dark:border-slate-700 dark:bg-slate-900';
 </script>
 
 <template>
-    <Head title="Action Inbox" />
+    <Head :title="TITOLO" />
 
     <AppLayout>
-        <div class="px-6 py-8 space-y-6">
+        <div class="mx-auto max-w-[1440px] space-y-5 px-4 py-7 sm:px-6">
+            <div v-if="flashMessage">
+                <Alert :key="giroFlash" :message="flashMessage.message" :type="flashMessage.type" />
+            </div>
 
-            <!-- TOP BAR -->
-            <div class="flex flex-col-reverse md:flex-row justify-between items-stretch md:items-center gap-3">
-                <div>
-                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Centro operativo</p>
-                    <div class="flex items-center gap-3">
-                        <h1 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                            Action Inbox
-                        </h1>
-                        <Badge
-                            v-if="tasks.total > 0"
-                            variant="destructive"
-                            class="font-black rounded-md text-[10px] h-5 px-1.5"
-                        >
-                            {{ tasks.total }}
-                        </Badge>
-                        <span v-if="condominioFilter" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md dark:bg-indigo-900/20 dark:border-indigo-700 dark:text-indigo-400">
-                            {{ selectedCondominioNome }}
-                        </span>
+            <!-- L'intestazione: il titolo con il numero dei compiti aperti, la descrizione; «Guida», il condominio, «Dashboard», alti uguali. -->
+            <div class="flex flex-col justify-between gap-3 md:flex-row md:items-end">
+                <div class="min-w-0">
+                    <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400">{{ SOPRATITOLO }}</p>
+                    <div class="mt-0.5 flex items-center gap-2.5">
+                        <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{{ TITOLO }}</h1>
+                        <span data-testid="numero-aperti" class="rounded-md border px-1.5 py-0.5 text-xs font-bold tabular-nums"
+                            :class="counts.all > 0 ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+                                : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'">{{ numero(counts.all) }}</span>
                     </div>
+                    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ descrizioneDellaPagina(nomeDelCondominio) }}</p>
                 </div>
-
-                <!-- Destra: back button + filtro condominio -->
-                <div class="flex items-center gap-2 w-full md:w-auto sm:justify-end">
-
-                    <!-- Back button — stile outline compatto come da pattern gestionale -->
-                    <Link :href="route('admin.dashboard')">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            class="h-9 text-[11px] font-bold uppercase tracking-wide gap-1.5 text-slate-600"
-                        >
-                            <ChevronLeft class="w-3.5 h-3.5" />
-                            Dashboard
-                        </Button>
+                <div class="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                    <PulsanteGuida data-testid="pulsante-guida" @click="mostraGuida = true" />
+                    <SceltaCondominio :condomini="condomini" :scelto="filtri.condominio_id" tutti="Tutti i condomini"
+                        @scegli="(id) => vai({ condominio_id: id === null ? null : Number(id) })">
+                        <template #default>
+                            <button type="button" data-testid="filtro-condominio" :class="PULSANTE"
+                                class="min-w-[15rem] max-w-full text-sm font-medium text-slate-700 hover:border-slate-300 dark:text-slate-200">
+                                <Search class="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                <span class="truncate">{{ nomeDelCondominio ?? 'Tutti i condomini' }}</span>
+                                <ChevronsUpDown class="ml-auto h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            </button>
+                        </template>
+                    </SceltaCondominio>
+                    <Link :href="route('admin.dashboard')" data-testid="torna-dashboard" :class="PULSANTE"
+                        class="text-xs font-bold text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800">
+                        <ArrowLeft class="h-3.5 w-3.5" /> Dashboard
                     </Link>
-                    <div class="relative">
-                        <button
-                            @click.stop="isCondominioDropdownOpen = !isCondominioDropdownOpen"
-                            class="inline-flex items-center gap-2 h-9 px-3 rounded-lg border text-sm font-semibold transition-all"
-                            :class="condominioFilter
-                                ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-700 dark:text-indigo-400'
-                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300'"
-                        >
-                            <Building2 class="w-3.5 h-3.5" />
-                            <span class="max-w-[160px] truncate text-[12px]">{{ selectedCondominioNome ?? 'Tutti i condomini' }}</span>
-                            <ChevronDown class="w-3.5 h-3.5 opacity-50 transition-transform" :class="{ 'rotate-180': isCondominioDropdownOpen }" />
-                        </button>
-
-                        <Transition
-                            enter-active-class="transition duration-100 ease-out"
-                            enter-from-class="opacity-0 scale-95"
-                            enter-to-class="opacity-100 scale-100"
-                            leave-active-class="transition duration-75 ease-in"
-                            leave-from-class="opacity-100 scale-100"
-                            leave-to-class="opacity-0 scale-95"
-                        >
-                            <div
-                                v-if="isCondominioDropdownOpen"
-                                @click.stop
-                                class="absolute top-full right-0 mt-1.5 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 overflow-hidden"
-                            >
-                                <div class="p-1.5 max-h-64 overflow-y-auto custom-scrollbar">
-                                    <button
-                                        @click="setCondominioFilter(null)"
-                                        class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                                        :class="!condominioFilter ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'"
-                                    >
-                                        <Inbox class="w-3.5 h-3.5 opacity-50" /> Tutti i condomini
-                                    </button>
-                                    <div class="my-1 border-t border-slate-100 dark:border-slate-800"></div>
-                                    <button
-                                        v-for="c in condomini" :key="c.id"
-                                        @click="setCondominioFilter(c.id)"
-                                        class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-                                        :class="condominioFilter === c.id ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'"
-                                    >
-                                        <Building2 class="w-3.5 h-3.5 opacity-50" />
-                                        <span class="truncate">{{ c.nome }}</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </Transition>
-                    </div>
-
-                    <button
-                        v-if="condominioFilter"
-                        @click="setCondominioFilter(null)"
-                        class="inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors dark:bg-red-900/20 dark:border-red-800"
-                    >
-                        <X class="w-3 h-3" /> Rimuovi
-                    </button>
                 </div>
             </div>
 
-            <!-- KPI CARDS — stesso stile delle card Dashboard.vue admin -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-
-                <!-- Scaduti / Urgenti -->
-                <div
-                    class="relative flex flex-col justify-between overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md cursor-pointer group"
-                    :class="activeFilter === 'urgent'
-                        ? 'border-red-400 ring-1 ring-red-400'
-                        : counts.urgent > 0 ? 'border-red-200 dark:border-red-900/40' : 'border-sidebar-border/70'"
-                    @click="setFilter('urgent')"
-                >
-                    <div class="absolute -right-5 -top-5 pointer-events-none transition-colors"
-                         :class="counts.urgent > 0 ? 'text-red-100 dark:text-red-900/30' : 'text-slate-100 dark:text-slate-800'">
-                        <TriangleAlert class="h-24 w-24" />
-                    </div>
-                    <div class="p-5 relative z-10">
-                        <div class="flex items-center gap-2 mb-3">
-                            <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Scaduti / Urgenti</p>
-                            <span v-if="counts.urgent > 0" class="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                        </div>
-                        <p class="text-3xl font-black" :class="counts.urgent > 0 ? 'text-red-600 dark:text-red-500' : 'text-slate-700 dark:text-slate-200'">
-                            {{ counts.urgent }}
-                        </p>
-                    </div>
-                    <div class="border-t px-4 py-2.5 flex items-center justify-between transition-colors"
-                         :class="counts.urgent > 0 ? 'border-red-100 dark:border-red-900/30 bg-red-50/50 dark:bg-red-900/10' : 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50'">
-                        <span class="text-[10px] font-medium" :class="counts.urgent > 0 ? 'text-red-600/80' : 'text-slate-400'">
-                            {{ counts.urgent > 0 ? 'Azione richiesta' : 'Nessun ritardo' }}
-                        </span>
-                        <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                </div>
-
-                <!-- Verifiche incassi -->
-                <div
-                    class="relative flex flex-col justify-between overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md cursor-pointer group"
-                    :class="activeFilter === 'payments'
-                        ? 'border-purple-400 ring-1 ring-purple-400'
-                        : 'border-sidebar-border/70'"
-                    @click="setFilter('payments')"
-                >
-                    <div class="absolute -right-5 -top-5 text-slate-100 dark:text-slate-800 pointer-events-none">
-                        <ArrowDownToLine class="h-24 w-24" />
-                    </div>
-                    <div class="p-5 relative z-10">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Verifiche incassi</p>
-                        <p class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ counts.payments }}</p>
-                    </div>
-                    <div class="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                        <span class="text-[10px] text-slate-400 font-medium">Segnalazioni condòmini</span>
-                        <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                </div>
-
-                <!-- Ticket & Manutenzione -->
-                <div
-                    class="relative flex flex-col justify-between overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md cursor-pointer group"
-                    :class="activeFilter === 'maintenance'
-                        ? 'border-orange-400 ring-1 ring-orange-400'
-                        : 'border-sidebar-border/70'"
-                    @click="setFilter('maintenance')"
-                >
-                    <div class="absolute -right-5 -top-5 text-slate-100 dark:text-slate-800 pointer-events-none">
-                        <Wrench class="h-24 w-24" />
-                    </div>
-                    <div class="p-5 relative z-10">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Ticket & Manut.</p>
-                        <p class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ counts.maintenance }}</p>
-                    </div>
-                    <div class="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                        <span class="text-[10px] text-slate-400 font-medium">Guasti e segnalazioni</span>
-                        <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                </div>
-
-                <!-- Tutte le attività -->
-                <div
-                    class="relative flex flex-col justify-between overflow-hidden rounded-xl border bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md cursor-pointer group"
-                    :class="activeFilter === 'all'
-                        ? 'border-slate-500 ring-1 ring-slate-400'
-                        : 'border-sidebar-border/70'"
-                    @click="setFilter('all')"
-                >
-                    <div class="absolute -right-5 -top-5 text-slate-100 dark:text-slate-800 pointer-events-none">
-                        <Zap class="h-24 w-24" />
-                    </div>
-                    <div class="p-5 relative z-10">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Tutte le attività</p>
-                        <p class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ counts.all }}</p>
-                    </div>
-                    <div class="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                        <span class="text-[10px] text-slate-400 font-medium">Reset filtri</span>
-                        <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                </div>
-
+            <!-- Le cinque card: un clic filtra l'elenco; «Sei mesi» apre il cassetto. -->
+            <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                <CardDellInbox data-testid="card-scaduti" etichetta="Scaduti" :icona="TriangleAlert" :numero="counts.scaduti" :frase="testoScaduti(counts)"
+                    piede="Azione richiesta" rossa :scelta="filtri.quando === 'scaduti'" @scegli="alterna('quando', 'scaduti')" />
+                <CardDellInbox data-testid="card-settimana" etichetta="Prossimi 7 giorni" :icona="CalendarClock" :numero="counts.settimana" :frase="testoSettimana(counts)"
+                    piede="Questa settimana" :scelta="filtri.quando === 'prossimi_7'" @scegli="alterna('quando', 'prossimi_7')" />
+                <CardDellInbox data-testid="card-bonifici" etichetta="Bonifici segnalati" :icona="Banknote" :numero="counts.bonifici" frase="dai condòmini, da verificare"
+                    piede="Dal portale" :scelta="filtri.tipo === 'verifica_pagamento'" @scegli="alterna('tipo', 'verifica_pagamento')" />
+                <CardDellInbox data-testid="card-segnalazioni" etichetta="Segnalazioni" :icona="Wrench" :numero="counts.segnalazioni" :frase="fraseSegnalazioni"
+                    piede="Dal portale" :scelta="filtri.tipo === 'segnalazione_guasto'" @scegli="alterna('tipo', 'segnalazione_guasto')" />
+                <CardDellInbox data-testid="card-sei-mesi" etichetta="Sei mesi" :icona="Hourglass" :numero="contoDeiSeiMesi.adesso + contoDeiSeiMesi.rendiconti"
+                    :frase="testoCardSeiMesi(contoDeiSeiMesi, seiMesi)" :piede="FRASE_NORMA_CARD" rossa @scegli="cassettoAperto = true" />
             </div>
 
-            <!-- LISTA TASK -->
-            <div class="rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm overflow-hidden relative">
-
-                <!-- Header colonne -->
-                <div class="hidden md:grid grid-cols-12 gap-4 px-6 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    <div class="col-span-2">Scadenza</div>
-                    <div class="col-span-3">Condominio</div>
-                    <div class="col-span-4">Attività</div>
-                    <div class="col-span-3 text-right">Azioni</div>
-                </div>
-
-                <!-- Loading overlay -->
-                <div v-if="isLoading"
-                     class="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center">
-                    <div class="flex flex-col items-center gap-3">
-                        <Loader2 class="w-7 h-7 text-indigo-600 animate-spin" />
-                        <span class="text-xs text-slate-400 font-bold tracking-widest uppercase">Caricamento...</span>
+            <div class="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">
+                <!-- L'elenco dei compiti, a due terzi. -->
+                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:col-span-2"
+                    :aria-busy="elencoInArrivo ? 'true' : 'false'" data-testid="sezione-elenco">
+                    <div class="flex items-center justify-between gap-3 px-5 pt-4">
+                        <h2 class="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-white">Compiti
+                            <Loader v-if="elencoInArrivo" class="h-4 w-4 animate-spin text-slate-400" data-testid="elenco-in-caricamento" aria-label="Carico l'elenco" /></h2>
+                        <span data-testid="aperti-elenco" class="text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">{{ numero(aperti) }} aperti</span>
                     </div>
-                </div>
 
-                <!-- Lista con InfiniteScroll -->
-                <div v-if="tasks.data.length > 0">
-                    <InfiniteScroll data="tasks" preserve-url>
-                        <div v-for="task in tasks.data" :key="task.id"
-                             class="group relative grid grid-cols-1 md:grid-cols-12 gap-4 px-6 py-5 border-b border-slate-100 dark:border-slate-800 items-center transition-all border-l-[3px]"
-                             :class="getTaskStyle(task)">
-
-                            <!-- Scadenza -->
-                            <div class="col-span-2 flex items-center gap-3">
-                                <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                                     :class="getTaskIconStyle(task)">
-                                    <TriangleAlert v-if="task.status === 'expired'" class="w-4 h-4" />
-                                    <ArrowDownToLine v-else-if="task.type === 'controllo_incassi'" class="w-4 h-4" />
-                                    <ArrowUpFromLine v-else-if="task.type === 'emissione_rata'" class="w-4 h-4" />
-                                    <Banknote v-else-if="task.type === 'verifica_pagamento'" class="w-4 h-4" />
-                                    <MessageSquare v-else-if="task.type === 'commento'" class="w-4 h-4" />
-                                    <Files v-else-if="task.type === 'allegato'" class="w-4 h-4" />
-                                    <Wrench v-else-if="task.type === 'segnalazione_guasto'" class="w-4 h-4" />
-                                    <CalendarClock v-else class="w-4 h-4" />
-                                </div>
-                                <div class="flex flex-col">
-                                    <span class="text-sm font-bold tabular-nums leading-none"
-                                          :class="task.status === 'expired' ? 'text-red-600' : getTaskTextColor(task)">
-                                        {{ getDateLabel(task.date) }}
-                                    </span>
-                                    <span v-if="task.status === 'expired'" class="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 mt-0.5">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block"></span> SCADUTO {{ task.days_pending > 0 ? `DA ${task.days_pending} GIORN${task.days_pending === 1 ? 'O' : 'I'}` : '' }}
-                                    </span>
-                                    <span v-else class="text-[11px] text-slate-400 mt-1 capitalize">
-                                        {{ new Date(task.date).toLocaleDateString('it-IT', { weekday: 'short' }) }}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <!-- Condominio -->
-                            <div class="col-span-3 flex items-center gap-2">
-                                <Building2 class="w-4 h-4 text-slate-300 shrink-0" />
-                                <span class="text-sm font-semibold text-slate-700 dark:text-slate-300 line-clamp-1" :title="task.condominio">
-                                    {{ task.condominio }}
+                    <!-- Le schede, la ricerca, l'ordine. -->
+                    <div class="flex flex-wrap items-center gap-2 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                        <div class="inline-flex rounded-lg bg-slate-100 p-1 text-xs dark:bg-slate-800" role="group" aria-label="Le schede dell'elenco">
+                            <button v-for="s in SCHEDE" :key="s.chiave" type="button" :data-testid="`scheda-${s.chiave}`" :aria-pressed="scheda === s.chiave ? 'true' : 'false'"
+                                class="rounded-md px-3 py-1.5 whitespace-nowrap"
+                                :class="scheda === s.chiave ? 'bg-white font-bold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-white' : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'"
+                                @click="vai({ quando: s.quando })">
+                                {{ s.etichetta }}
+                                <span class="tabular-nums" :class="s.chiave === 'scaduti' && schede.scaduti > 0 ? 'font-semibold text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'">
+                                    {{ numero(schede[s.chiave]) }}
                                 </span>
-                            </div>
-
-                            <!-- Attività -->
-                            <div class="col-span-4 flex flex-col justify-center py-1">
-                                <div class="text-sm font-bold mb-1 leading-tight"
-                                     :class="task.status === 'expired' ? 'text-red-700 dark:text-red-400' : getTaskTextColor(task)">
-                                    {{ task.title }}
-                                </div>
-                                <p class="text-xs text-slate-500 dark:text-slate-400 leading-snug line-clamp-2 mb-2" :title="task.description">
-                                    {{ task.description }}
-                                </p>
-                                <div class="flex items-center gap-3">
-                                    <span v-if="task.amount" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0 shadow-sm">
-                                        {{ formatMoney(task.amount) }}
-                                    </span>
-                                    <div v-if="task.context.anagrafica_nome" class="flex items-center text-[10px] text-slate-400 truncate">
-                                        <User class="w-3 h-3 mr-1.5 shrink-0" />
-                                        <span class="truncate font-medium">{{ task.context.anagrafica_nome }}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Azioni -->
-                            <div class="col-span-3 flex justify-end items-center gap-2">
-
-                                <!-- Verifica pagamento (segnalazione condòmino) -->
-                                <template v-if="task.type === 'verifica_pagamento'">
-                                    <button
-                                        v-if="puoChiudere"
-                                        size="sm"
-                                        class="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-red-600 hover:border-red-200 hover:bg-red-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700"
-                                        title="Rifiuta segnalazione"
-                                        @click="openRejectModal(task)"
-                                    >
-                                        <XCircle class="w-4 h-4" />
-                                    </button>
-                                    <a
-                                        :href="task.context.action_url || '#'"
-                                        :class="{ 'pointer-events-none opacity-50': !task.context.action_url }"
-                                        class="inline-flex items-center justify-center h-8 px-3 text-xs font-bold transition-all rounded-md bg-white border border-slate-200 shadow-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:text-emerald-400"
-                                    >
-                                        Registra <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
-                                    </a>
-                                </template>
-
-                                <!-- Tutti gli altri: bottone completa (con il permesso) + link risolvi (se action_url) -->
-                                <template v-else>
-                                    <button
-                                        v-if="puoChiudere"
-                                        @click="completeTask(task.id)"
-                                        title="Segna come completato"
-                                        class="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700"
-                                    >
-                                        <CheckCircle2 class="w-4 h-4" />
-                                    </button>
-                                    <a v-if="task.context.action_url"
-                                       :href="task.context.action_url"
-                                       class="inline-flex items-center justify-center h-8 px-3 text-xs font-bold transition-all rounded-md bg-white border shadow-sm dark:bg-slate-800"
-                                       :class="task.status === 'expired'
-                                           ? 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30'
-                                           : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-indigo-700 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-200 dark:hover:text-indigo-400'"
-                                    >
-                                        Risolvi <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
-                                    </a>
-                                </template>
-                            </div>
+                            </button>
                         </div>
+                        <label class="flex h-9 min-w-[12rem] flex-1 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+                            <Search class="h-4 w-4 shrink-0 text-slate-400" />
+                            <input v-model="cerca" type="search" data-testid="cerca" :placeholder="SEGNAPOSTO_RICERCA" :aria-label="ETICHETTA_RICERCA"
+                                class="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-slate-100"
+                                @input="cercaDopo" @keydown.enter.prevent="cercaSubito" />
+                        </label>
+                        <div class="menu-inbox w-full sm:w-48" data-testid="ordine">
+                            <v-select :model-value="filtri.ordine" :options="ORDINI" label="etichetta" :reduce="valoreDellOrdine" :searchable="false"
+                                :clearable="false" @update:model-value="(v: string) => vai({ ordine: v })" />
+                        </div>
+                    </div>
 
-                        <template #loading>
-                            <div class="py-6 flex items-center justify-center text-slate-400 border-t border-slate-100 dark:border-slate-800">
-                                <Loader2 class="w-5 h-5 animate-spin mr-2" />
-                                <span class="text-xs font-medium">Caricamento...</span>
+                    <!-- I filtri attivi dentro la scheda: la barra scelta e il tipo, ognuno si toglie da sé. -->
+                    <div v-if="attivi.length" class="flex flex-wrap items-center gap-2 border-b border-slate-100 px-5 py-2 dark:border-slate-800">
+                        <span class="text-xs text-slate-500 dark:text-slate-400">Filtrati per</span>
+                        <button v-for="f in attivi" :key="f.chiave" type="button" data-testid="filtro-attivo"
+                            class="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300"
+                            :aria-label="`Togli il filtro ${f.testo}`" @click="togliFiltro(f.chiave)">
+                            {{ f.testo }} <X class="h-3 w-3" />
+                        </button>
+                        <button type="button" data-testid="togli-filtri" class="text-xs font-bold text-slate-500 hover:underline dark:text-slate-400"
+                            @click="vai({ quando: null, tipo: null, cerca: null })">Togli i filtri</button>
+                    </div>
+
+                    <div data-testid="intestazione-elenco"
+                        class="hidden gap-3 whitespace-nowrap border-b border-slate-100 bg-slate-50/60 px-5 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/40 xl:grid"
+                        :class="COLONNE">
+                        <span></span><span>Compito</span><span>Condominio</span><span>Scadenza</span><span>Prossima azione</span><span></span>
+                    </div>
+
+                    <div v-if="vuoto" class="flex flex-col items-center px-8 py-14 text-center">
+                        <Inbox class="mb-3 h-8 w-8 text-slate-300 dark:text-slate-600" />
+                        <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">Nessun compito qui.</p>
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ attivi.length || filtri.cerca ? 'Togli un filtro o cambia la ricerca.' : 'Niente da fare, per adesso.' }}</p>
+                    </div>
+
+                    <!-- «Tutti» con più gruppi: l'anteprima di ogni gruppo, con «e altri N» che apre la sua scheda. -->
+                    <template v-else-if="modo === 'anteprima'">
+                        <template v-for="g in anteprima" :key="g.gruppo">
+                            <div data-testid="gruppo" class="flex items-center gap-2 border-b border-slate-100 px-5 py-2 dark:border-slate-800"
+                                :class="g.gruppo === 'scaduti' ? 'bg-red-50/50 dark:bg-red-950/20' : 'bg-slate-50/60 dark:bg-slate-800/40'">
+                                <span class="h-1.5 w-1.5 rounded-full" :class="PALLINI[g.gruppo]"></span>
+                                <p class="text-[11px] font-bold uppercase tracking-widest" :class="g.gruppo === 'scaduti' ? 'text-red-700 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'">{{ titoloDelGruppo(g.gruppo) }}</p> <span class="text-xs font-bold tabular-nums" :class="g.gruppo === 'scaduti' ? 'text-red-600 dark:text-red-400' : 'text-slate-500'">{{ numero(g.numero) }}</span>
+                            </div>
+                            <RigaDelCompito v-for="r in g.righe" :key="r.id" :riga="r" :puo-chiudere="puoChiudere" @rispondi="(v) => rispondi(v, r)" />
+                            <button v-if="g.numero > g.righe.length" type="button" data-testid="e-altri"
+                                class="flex w-full items-center gap-2 border-b border-slate-100 px-5 py-2.5 text-left text-xs text-slate-500 hover:bg-slate-50 hover:text-indigo-700 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800/40 dark:hover:text-indigo-300"
+                                @click="apriGruppo(g.gruppo)">
+                                <Loader class="h-3.5 w-3.5" /> {{ testoEAltri(g.gruppo, g.numero - g.righe.length) }}
+                            </button>
+                        </template>
+                        <div class="px-5 py-3.5 text-xs text-slate-500 dark:text-slate-400" data-testid="mostrati">{{ testoMostrati(mostrateInAnteprima, totaleElenco) }}</div>
+                    </template>
+
+                    <!-- Le schede, e «Tutti» con un gruppo solo: 15 alla volta, con «Mostra altri 15». -->
+                    <InfiniteScroll v-else data="tasks" manual preserve-url>
+                        <template v-for="v in vociDellElenco" :key="v.tipo === 'gruppo' ? `g-${v.gruppo}` : v.riga.id">
+                            <div v-if="v.tipo === 'gruppo'" data-testid="gruppo" class="flex items-center gap-2 border-b border-slate-100 px-5 py-2 dark:border-slate-800"
+                                :class="v.gruppo === 'scaduti' ? 'bg-red-50/50 dark:bg-red-950/20' : 'bg-slate-50/60 dark:bg-slate-800/40'">
+                                <span class="h-1.5 w-1.5 rounded-full" :class="PALLINI[v.gruppo]"></span>
+                                <p class="text-[11px] font-bold uppercase tracking-widest" :class="v.gruppo === 'scaduti' ? 'text-red-700 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'">{{ v.titolo }}</p> <span class="text-xs font-bold tabular-nums" :class="v.gruppo === 'scaduti' ? 'text-red-600 dark:text-red-400' : 'text-slate-500'">{{ numero(v.numero) }}</span>
+                            </div>
+                            <RigaDelCompito v-else :riga="v.riga" :puo-chiudere="puoChiudere" @rispondi="(voce) => rispondi(voce, v.riga)" />
+                        </template>
+                        <template #next="{ fetch, hasMore, loading }">
+                            <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+                                <span class="text-xs text-slate-500 dark:text-slate-400" data-testid="mostrati">{{ testoMostrati(tasks.data.length, totaleElenco) }}</span>
+                                <button v-if="hasMore" type="button" data-testid="mostra-altri" :disabled="loading"
+                                    class="h-9 rounded-md border border-indigo-200 bg-indigo-50 px-4 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300"
+                                    @click="fetch">
+                                    {{ loading ? 'Arrivano…' : testoMostraAltri(tasks.data.length, totaleElenco) }}
+                                </button>
+                                <span class="hidden w-24 sm:block"></span>
                             </div>
                         </template>
                     </InfiniteScroll>
-                </div>
+                </section>
 
-                <!-- Stato vuoto -->
-                <div v-if="tasks.data.length === 0 && !isLoading" class="flex flex-col items-center justify-center text-center py-20 px-8">
-                    <div class="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                        <Inbox class="w-10 h-10 text-slate-300" />
-                    </div>
-                    <h3 class="text-base font-black text-slate-800 dark:text-white uppercase tracking-widest">Inbox vuota 🚀</h3>
-                    <p class="text-slate-500 mt-2 max-w-xs mx-auto text-sm leading-relaxed">
-                        <template v-if="condominioFilter">
-                            Nessuna attività per <strong>{{ selectedCondominioNome }}</strong>.
-                        </template>
-                        <template v-else>
-                            Nessuna attività urgente richiede attenzione.
-                        </template>
-                    </p>
-                    <button v-if="condominioFilter" @click="setCondominioFilter(null)"
-                            class="mt-4 text-xs font-bold text-indigo-600 hover:underline">
-                        Mostra tutti i condomini
-                    </button>
+                <!-- La colonna di destra: i due grafici, i sei mesi, dove si accumulano. -->
+                <div class="space-y-3">
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h2 class="text-sm font-bold text-slate-900 dark:text-white">Da quanto aspettano</h2>
+                                <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{ DESCRIZIONE_ETA }}</p>
+                            </div>
+                            <div data-testid="chiave-eta" class="flex items-center gap-3 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+                                <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-red-500"></span>scaduti</span> <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm bg-indigo-500"></span>in arrivo</span>
+                            </div>
+                        </div>
+                        <div class="relative mt-3 h-48" role="img" :aria-label="descrizioneEta(grafici)" data-testid="grafico-eta">
+                            <GraficoDellInbox grafico="eta" :grafici="grafici" :scelta="filtri.quando" @scegli="scegliFascia" />
+                        </div>
+                        <p v-if="testoFuoriDalGrafico(grafici.fuori)" class="mt-2 text-xs text-slate-500 dark:text-slate-400">{{ testoFuoriDalGrafico(grafici.fuori) }}</p>
+                    </section>
+
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <h2 class="text-sm font-bold text-slate-900 dark:text-white">Per tipo</h2>
+                        <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Un clic su un tipo filtra.</p>
+                        <div class="relative mt-3" :style="{ height: `${Math.max(3, graficiNelRiquadro.tipi.length) * 1.75 + 1}rem` }" role="img"
+                            :aria-label="descrizioneTipi(grafici)" data-testid="grafico-tipi">
+                            <GraficoDellInbox grafico="tipi" :grafici="graficiNelRiquadro" :scelta="filtri.tipo" @scegli="(t) => alterna('tipo', t)" />
+                        </div>
+                        <button v-if="altriTipi" type="button" data-testid="altri-tipi" class="mt-2 text-xs font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                            @click="finestraTipi = true">{{ testoAltriTipi(altriTipi) }}</button>
+                    </section>
+
+                    <SeiMesiColonna :stato="seiMesi" :condominio="nomeDelCondominio" @apri-elenco="cassettoAperto = true" />
+
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <h2 class="text-sm font-bold text-slate-900 dark:text-white">Dove si accumulano</h2>
+                        <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">I condomini con più compiti aperti. Un clic filtra.</p>
+                        <div class="mt-3 space-y-1">
+                            <component :is="d.condominio_id ? 'button' : 'div'" v-for="d in dove" :key="d.condominio_id ?? 'generale'" data-testid="dove"
+                                :type="d.condominio_id ? 'button' : undefined"
+                                class="grid w-full grid-cols-[minmax(0,1fr)_6rem_2rem] items-center gap-3 rounded-md px-1 py-1 text-left text-sm"
+                                :class="d.condominio_id ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50' : ''"
+                                :title="d.condominio_id ? undefined : 'I compiti senza un condominio'"
+                                @click="d.condominio_id && vai({ condominio_id: d.condominio_id })">
+                                <span class="flex min-w-0 items-center gap-1.5 truncate text-slate-700 dark:text-slate-200">
+                                    <Building2 v-if="d.condominio_id" class="h-3.5 w-3.5 shrink-0 text-slate-400" />{{ d.nome }}
+                                </span> <span class="h-2 overflow-hidden rounded-sm bg-slate-100 dark:bg-slate-800">
+                                    <span class="block h-full rounded-sm bg-indigo-400 dark:bg-indigo-500" :style="{ width: `${Math.round((d.valore / massimoDove) * 100)}%` }"></span>
+                                </span> <span class="text-right font-semibold tabular-nums text-slate-900 dark:text-white">{{ numero(d.valore) }}</span>
+                            </component>
+                            <p v-if="!dove.length" class="text-xs text-slate-500 dark:text-slate-400">Nessun compito aperto.</p>
+                            <button v-if="filtri.condominio_id" type="button" class="pt-1 text-xs font-bold text-indigo-600 hover:underline dark:text-indigo-400"
+                                @click="vai({ condominio_id: null })">Tutti i condomini</button>
+                        </div>
+                    </section>
                 </div>
             </div>
-
         </div>
 
-        <!-- Modal Rifiuto -->
-        <Dialog v-model:open="isRejectModalOpen">
-            <DialogContent class="sm:max-w-[450px]">
-                <DialogHeader>
-                    <DialogTitle class="flex items-center gap-2 text-red-600">
-                        <AlertTriangle class="w-5 h-5" />
-                        Rifiuta segnalazione
-                    </DialogTitle>
-                    <DialogDescription>
-                        Stai per rifiutare il pagamento segnalato da
-                        <span class="font-bold text-slate-900">{{ taskToReject?.context?.anagrafica_nome || 'Condòmino' }}</span>.
-                        <strong> Attenzione: questa azione sarà irreversibile.</strong>
-                    </DialogDescription>
-                </DialogHeader>
-                <div class="grid gap-4 py-4">
-                    <div class="grid gap-2">
-                        <Label htmlFor="reason" class="text-slate-900">Motivazione (visibile all'utente)</Label>
-                        <Textarea
-                            id="reason"
-                            v-model="rejectForm.reason"
-                            placeholder="Es: Bonifico non trovato nell'estratto conto..."
-                            class="resize-none min-h-[100px]"
-                            :class="{ 'border-red-500 focus-visible:ring-red-500': rejectForm.errors.reason }"
-                        />
-                        <p v-if="rejectForm.errors.reason" class="text-[11px] text-red-600 font-medium">
-                            {{ rejectForm.errors.reason }}
-                        </p>
+        <SeiMesiCassetto v-model:open="cassettoAperto" :stato="seiMesi" :condominio="nomeDelCondominio" @riprova="seiMesi.riprova" />
+        <ActionInboxGuide v-model:open="mostraGuida" />
+
+        <!-- Tutti i tipi aperti, quando sono più delle 8 barre del riquadro «Per tipo»: un clic su un tipo filtra l'elenco, come una barra. -->
+        <Dialog v-model:open="finestraTipi">
+            <DialogContent :show-close-button="false" class="max-h-[92dvh] gap-0 overflow-y-auto p-0 sm:max-w-[480px]" data-testid="finestra-tipi">
+                <DialogHeader class="space-y-0 border-b border-slate-100 px-5 py-4 text-left dark:border-slate-800">
+                    <div class="flex items-start justify-between gap-3">
+                        <DialogTitle class="text-lg font-bold text-slate-900 dark:text-white">Per tipo</DialogTitle>
+                        <DialogClose class="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200">
+                            <X class="h-4 w-4" /> Chiudi
+                        </DialogClose>
                     </div>
+                    <DialogDescription class="mt-2 text-sm text-slate-600 dark:text-slate-300">Tutti i tipi dei compiti aperti, dal più numeroso. Un clic su un tipo filtra l'elenco.</DialogDescription>
+                </DialogHeader>
+                <div class="grid gap-1 px-3 py-3">
+                    <button v-for="t in grafici.tipi" :key="t.tipo" type="button" data-testid="voce-tipo" :aria-pressed="filtri.tipo === t.tipo"
+                        class="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                        :class="filtri.tipo === t.tipo ? 'bg-indigo-50 font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'"
+                        @click="scegliTipo(t.tipo)">
+                        <span class="truncate">{{ t.etichetta }}</span> <span class="text-right font-semibold tabular-nums">{{ numero(t.valore) }}</span>
+                    </button>
                 </div>
-                <DialogFooter>
-                    <Button variant="outline" @click="isRejectModalOpen = false" :disabled="rejectForm.processing">Annulla</Button>
-                    <Button
-                        variant="destructive"
-                        @click="confirmReject"
-                        :disabled="rejectForm.processing || !rejectForm.reason"
-                    >
-                        <Loader2 v-if="rejectForm.processing" class="w-4 h-4 mr-2 animate-spin" />
-                        Conferma rifiuto
-                    </Button>
-                </DialogFooter>
             </DialogContent>
         </Dialog>
+        <RisposteDelCompito ref="risposte" :oggi="oggi ?? ''" />
     </AppLayout>
 </template>
 
-<style scoped>
-.custom-scrollbar::-webkit-scrollbar { width: 4px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-.dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+<style>
+/* Il menu dell'ordine: alto come la ricerca accanto, con il testo del riquadro, e leggibile nel tema scuro. Solo qui. */
+.menu-inbox .v-select {
+    --vs-font-size: 0.875rem;
+    --vs-line-height: 1.25;
+    --vs-border-radius: 0.375rem;
+    --vs-border-color: var(--input);
+    --vs-controls-color: rgb(100 116 139);
+    background: transparent;
+}
+.menu-inbox .vs__dropdown-toggle {
+    min-height: 2.25rem;
+    padding: 0;
+    align-items: center;
+}
+.menu-inbox .vs__selected-options {
+    align-items: center;
+    padding-left: 6px;
+}
+.menu-inbox .vs__selected,
+.menu-inbox .vs__search {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+.menu-inbox .vs__actions {
+    padding: 0 8px 0 4px;
+}
+.menu-inbox .vs__open-indicator {
+    transform: scale(0.75);
+}
+.menu-inbox .vs--open .vs__open-indicator {
+    transform: rotate(180deg) scale(0.75);
+}
+.dark .menu-inbox .v-select {
+    --vs-dropdown-bg: rgb(15 23 42);
+    --vs-dropdown-color: rgb(226 232 240);
+    --vs-dropdown-option-color: rgb(226 232 240);
+    --vs-selected-color: rgb(226 232 240);
+    --vs-search-input-color: rgb(226 232 240);
+    --vs-controls-color: rgb(148 163 184);
+    --vs-border-color: rgb(51 65 85);
+}
 </style>

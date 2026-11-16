@@ -220,6 +220,21 @@ defineEmits(['update:open']);
                         </section>
 
                         <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Con un accordo di rientro in corso</h3>
+                            <p>
+                                Sopra le rate un riquadro dice l'accordo, quanto è ancora nell'accordo e la prossima rata del
+                                calendario; ogni riga dice la sua parte nell'accordo. Senza una scelta il versamento va alle rate
+                                fuori dall'accordo: la parte coperta esce dall'ordine proposto, e «Paga scadute» non la prende.
+                                Con <strong>«Versamento dell'accordo»</strong> il versamento va prima alle rate che l'accordo copre,
+                                prima gli interessi e le spese, poi il capitale più vecchio, e quello che avanza alle altre rate
+                                nell'ordine di sempre; l'incasso lo dice anche sulla ricevuta. Denaro sulle rate dell'accordo senza la
+                                scelta, o sulle altre rate prima che l'accordo sia pagato con la scelta, è fuori dall'ordine: il modulo
+                                chiede chi ha scelto, come sopra. La scelta c'è cercando la persona; dopo l'ultima rata del calendario
+                                le rate coperte tornano nell'ordine di sempre e la scelta non c'è più.
+                            </p>
+                        </section>
+
+                        <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">«Resetta» non riporta all'inizio</h3>
                             <p>
                                 Svuota l'importo e azzera tutte le righe, ma lascia la pagina in

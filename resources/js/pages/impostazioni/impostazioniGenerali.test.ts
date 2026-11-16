@@ -92,3 +92,14 @@ describe('impostazioniGenerali — il ruolo della registrazione (Coda 258, decis
         expect(chiamata[1]).toMatchObject({ default_user_role: 'utente', app_name: 'Condominio «Aurora»', default_per_page: 30 });
     });
 });
+
+describe('impostazioniGenerali — la prossima azione non è più qui', () => {
+    test('la scelta fra «Il programma suggerisce la prossima azione» e «Scelgo io» è del condominio: la pagina non ha la riga, e il modulo non la manda', () => {
+        const wrapper = monta(true);
+
+        expect(wrapper.find('[data-test="passo-proposto"]').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Il programma propone il passo');
+        (wrapper.vm as unknown as { $: { setupState: { submit: () => void } } }).$.setupState.submit();
+        expect(Object.keys(vi.mocked(router.post).mock.calls.at(-1)![1] as Record<string, unknown>)).not.toContain('passo_proposto');
+    });
+});

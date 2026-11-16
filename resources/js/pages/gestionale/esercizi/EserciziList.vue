@@ -4,7 +4,7 @@ import { computed } from "vue";
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import DataTable from '@/components/gestionale/esercizi/DataTable.vue';
-import { getColumns } from '@/components/gestionale/esercizi/columns';
+import { getColumns, type StatoRendicontoBreve } from '@/components/gestionale/esercizi/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -19,11 +19,13 @@ const props = defineProps<{
   condomini: Building[];
   esercizi: Esercizio[];
   meta: PaginationMeta;
+  /** Lo stato del rendiconto di ogni esercizio della pagina. */
+  stati_rendiconto?: Record<number, StatoRendicontoBreve>;
 }>()
 
 const { generatePath } = usePermission();
 
-const columns = computed(() => getColumns(props.condominio));
+const columns = computed(() => getColumns(props.condominio, props.stati_rendiconto ?? {}));
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);

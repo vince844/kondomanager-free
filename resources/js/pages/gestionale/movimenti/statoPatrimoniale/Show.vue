@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RendicontoSituazioneGuide from '@/components/guides/RendicontoSituazioneGuide.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
@@ -20,7 +21,7 @@ interface Gruppo { gruppo: string; ordine: number; voci: Voce[]; totale: number 
 type Esito = 'quadra' | 'non_quadra' | 'segnalazione';
 interface Controllo { id: string; nome: string; titolo: string; sinistra: number; destra: number; segno?: string; esito: Esito; nota: string; rimedio: string | null; azione: string | null; azione_parametro?: string | null }
 interface RigaRiepilogo { cassa_id: number; conto_contabile_id: number | null; cassa: string; tipo: string; iniziale: number; entrate: number; uscite: number; finale: number; negativa: boolean; minimo: number | null; minimo_il: string | null }
-interface Fondo { cassa_id: number; cassa: string; sottotipo: string | null; sottotipo_label: string; saldo: number; vincolato: boolean; vincolo_registrato: number; scoperto: number }
+interface Fondo { cassa_id: number; cassa: string; sottotipo: string | null; sottotipo_label: string; saldo: number; vincolato: boolean; sbloccato?: boolean; vincolo_registrato: number; scoperto: number }
 interface Fattura { id: number; fornitore: string; numero: string | null; data: string | null; scadenza: string | null; residuo: number; nota_credito: boolean; contestata: boolean; pregressa: boolean; esercizio_id: number; gestione_id: number | null }
 interface RigaFondo { cassa_id: number; cassa: string; conto_contabile_id: number; iniziale: number; accantonato: number; utilizzato: number; finale: number; saldo_alla_data: number; vincolo: number; scoperto: number | null }
 interface RigaGestione { gestione: { id: number; nome: string; tipo: string }; costi: number; quote_emesse: number; crediti: number; debiti: number; cumulato_opera: { dal: string | null; consuntivo: number } | null }
@@ -64,7 +65,9 @@ interface Pagina {
     controlli: Controllo[];
 }
 
-const props = defineProps<{ condominio: Building; condomini: Building[]; esercizio: Esercizio; esercizi: Esercizio[]; pagina: Pagina }>();
+// Gli altri debiti certi, che non sono fatture: scritti dall'amministratore nella nota sintetica, mostrati sotto la riga, fuori dal giornale.
+interface DebitoCerto { creditore: string; importo: number | null; fonte: string; scadenza: string | null }
+const props = defineProps<{ condominio: Building; condomini: Building[]; esercizio: Esercizio; esercizi: Esercizio[]; pagina: Pagina; debiti_certi?: DebitoCerto[] }>();
 
 const { generatePath, generateRoute } = usePermission();
 const { euro } = useCurrencyFormatter();
@@ -73,6 +76,8 @@ const p = computed(() => props.pagina);
 const formatData = (iso: string | null) => { if (!iso) return '—'; const [a, m, g] = iso.split('-'); return `${g}/${m}/${a}`; };
 const importo = (v: number) => v < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-200';
 
+// La guida della scheda, che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Movimenti' },
@@ -104,6 +109,7 @@ const hrefFatture = generatePath('gestionale/:condominio/fatture', { condominio:
 const hrefRateScadute = computed(() => `${generatePath('gestionale/:condominio/rate-scadute', { condominio: props.condominio.id })}?alla=${p.value.data}`);
 const hrefPaga = (f: Fattura) => generatePath('gestionale/:condominio/pagamenti-fornitori/create', { condominio: props.condominio.id }) + `?fattura_id=${f.id}`;
 const hrefF24 = generatePath('gestionale/:condominio/f24', { condominio: props.condominio.id });
+const hrefNota = generatePath('gestionale/:condominio/esercizi/:esercizio/rendiconto/nota', { condominio: props.condominio.id, esercizio: props.esercizio.id });
 const scaduta = (f: Fattura) => !!f.scadenza && f.scadenza < p.value.debiti.alla;
 const senzaGestione = computed(() => p.value.per_gestione.senza_voce !== 0 || p.value.per_gestione.differenza_debiti !== 0
     || Object.values(p.value.per_gestione.senza_gestione).some(v => v !== 0));
@@ -131,6 +137,9 @@ const pageGuides = [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
                 page-title="Situazione patrimoniale"
                 :page-subtitle="`Situazione al ${formatData(p.data)}: i conti, le fatture aperte, la divisione per gestione e la liquidità.`"
                 :guides="pageGuides"
@@ -353,7 +362,11 @@ const pageGuides = [
                                     <span>Debiti verso l'Erario {{ euro(p.debiti.saldo_erario) }}<template v-if="p.debiti.erario_su_fatture_non_pagate !== 0">, di cui {{ euro(p.debiti.erario_su_fatture_non_pagate) }} di ritenute su fatture non ancora pagate: fino al pagamento sono un debito verso il fornitore</template>.</span>
                                     <Button as-child size="sm" variant="outline" class="h-7 px-2.5 text-[11px] font-semibold"><Link :href="hrefF24">F24 <ArrowRight class="w-3 h-3" /></Link></Button>
                                 </p>
-                                <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Contiene i debiti registrati come fatture: un debito che non è una fattura (un debito da una sentenza, il TFR del portiere, un debito verso l'amministratore di prima) va detto a parte all'assemblea, o registrato come fattura del creditore: il programma non ha una nota esplicativa del rendiconto dove scriverlo.</p>
+                                <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400" data-test="frase-debiti-certi">Contiene i debiti registrati come fatture. Un debito che non è una fattura (un debito da una sentenza, il TFR del portiere, un debito verso l'amministratore di prima) scrivilo nella nota sintetica, nell'elenco «Altri debiti certi»: compare qui sotto la riga, fuori dal giornale e dai totali. <Link :href="hrefNota" class="font-semibold underline">Scrivili nella nota</Link></p>
+                                <div v-if="props.debiti_certi && props.debiti_certi.length" class="mt-2 rounded border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2 text-[12px]" data-test="debiti-certi">
+                                    <p class="text-slate-600 dark:text-slate-400 mb-1">Altri debiti certi, che non sono fatture: non sono nel giornale né nei totali, li hai scritti nella nota sintetica.</p>
+                                    <p v-for="(d, i) in props.debiti_certi" :key="i" class="text-slate-800 dark:text-slate-200">{{ d.creditore }} <b class="tabular-nums">{{ d.importo === null ? '' : euro(d.importo) }}</b><span v-if="d.fonte"> · {{ d.fonte }}</span><span v-if="d.scadenza"> · scadenza {{ formatData(d.scadenza) }}</span></p>
+                                </div>
                             </div>
                         </div>
 
@@ -419,7 +432,7 @@ const pageGuides = [
                                         </tr>
                                         <tr v-for="f in p.liquidita.fondi" :key="f.cassa" class="border-b border-slate-100 dark:border-slate-800">
                                             <td class="py-1.5 text-slate-700 dark:text-slate-300 align-middle">
-                                                <div class="leading-snug">{{ f.cassa }} <span class="text-[11px] text-slate-400 dark:text-slate-500">· {{ f.sottotipo_label }}{{ f.vincolato ? ', vincolato' : ', liberamente utilizzabile' }}</span></div>
+                                                <div class="leading-snug">{{ f.cassa }} <span class="text-[11px] text-slate-400 dark:text-slate-500">· {{ f.sottotipo_label }}{{ f.vincolato ? ', vincolato' : f.sbloccato ? ', sbloccato dall\'assemblea: si può usare' : ', liberamente utilizzabile' }}</span></div>
                                                 <!-- Per un esercizio finito il vincolo è quello di oggi e il confronto non si fa, come nel controllo e nel movimento dei fondi. -->
                                                 <div v-if="f.vincolo_registrato !== 0" class="text-[11px] leading-snug" :class="f.scoperto > 0 && p.stato_esercizio !== 'chiuso' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'" data-test="vincolo-fondo">vincolo assegnato {{ euro(f.vincolo_registrato) }}<template v-if="f.scoperto > 0 && p.stato_esercizio !== 'chiuso'"> — mancano {{ euro(f.scoperto) }}</template></div>
                                             </td>
@@ -535,7 +548,7 @@ const pageGuides = [
                         <div class="rounded-md border border-dashed bg-slate-50/50 dark:bg-slate-800/30 p-4 text-[12px] text-slate-600 dark:text-slate-400 leading-relaxed space-y-1.5">
                             <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">Cosa questa pagina non fa</div>
                             <p><b>Non elenca i condòmini che devono soldi</b> — solo il totale. Le posizioni di ognuno e i crediti per anzianità sono nella scheda <Link :href="hrefCondomini" class="underline">Condòmini</Link>; l'elenco di chi ha rate scadute, con le sue unità, è nella pagina <Link :href="hrefRateScadute" class="underline">Rate scadute</Link>: lì lo scaduto di ognuno è lordo, senza togliere il credito, e non è la voce «Crediti verso i condòmini», che è il saldo di tutte le quote emesse.</p>
-                            <p><b>Non confronta con l'estratto conto della banca.</b> Il programma non ha la riconciliazione bancaria: il confronto con l'estratto conto lo fai tu.</p>
+                            <p><b>Non confronta con l'estratto conto della banca movimento per movimento.</b> Il programma non ha la riconciliazione bancaria; il saldo alla fine dell'esercizio si confronta nella nota sintetica, se scrivi il saldo che dice la banca.</p>
                             <p><b>Non chiude l'esercizio.</b> Quote e costi si accumulano dal primo esercizio: il cumulato da conguagliare è {{ euro(p.risultato_gestione.cumulato) }}. Il programma non ha una chiusura guidata dell'esercizio: la fotografia al 31/12 di un esercizio finito si rifà a ogni lettura, con le registrazioni che ci sono.</p>
                             <p><b>Non ha conti di ricavo</b>, per questo non dichiara mai i conti «in pari». <b>Non sceglie una data qualunque</b>: oggi per l'esercizio aperto, la data di fine per uno finito.</p>
                         </div>
@@ -544,5 +557,6 @@ const pageGuides = [
             </div>
         </div>
 
+        <RendicontoSituazioneGuide v-model:open="mostraGuida" />
     </GestionaleLayout>
 </template>

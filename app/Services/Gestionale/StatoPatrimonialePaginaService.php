@@ -39,7 +39,21 @@ use Illuminate\Support\Facades\DB;
 class StatoPatrimonialePaginaService
 {
     /** Quando la liquidità torna con la cassa: il confronto con la banca resta da fare, e il programma non lo fa. */
-    public const FRASE_BANCA = 'Il confronto con l\'estratto conto della banca resta un controllo tuo: il programma non può farlo.';
+    public const FRASE_BANCA = 'Il confronto con il saldo che dice la banca si fa nella nota sintetica, se lo scrivi come lo leggi sull\'estratto conto della banca: il programma dice la differenza.';
+
+    /**
+     * La parte libera di un conto sotto zero, con il conto (i fondi dentro) sopra zero: il conto è sempre stato coperto, ma un pagamento ha usato il denaro
+     * di un fondo. Un avviso, non un errore.
+     */
+    public static function fraseLiberoSottoZero(string $cassa, string $minimo, string $giorno): string
+    {
+        return 'Il conto «'.$cassa.'» con i suoi fondi non è mai sceso sotto zero, ma la sua parte libera sì: '.$minimo.($giorno !== '' ? ' il '.$giorno : '')
+            .'. Vuol dire che un pagamento ha usato il denaro di un fondo, che sta sullo stesso conto.';
+    }
+
+    /** Che cosa fare quando la parte libera di un conto va sotto zero. */
+    public const RIMEDIO_LIBERO_SOTTO_ZERO = 'Di solito è un pagamento fatto con il denaro di un fondo senza il giroconto prima. Se la spesa era del fondo, registra il '
+        .'giroconto dal fondo al conto con la data del pagamento; se non lo era, il fondo va ricostituito con un giroconto dal conto, quando il conto lo permette.';
 
     /** Vincoli e casse fondo, per un esercizio finito: i vincoli dichiarati si leggono a oggi, e il confronto alla data di fine non si fa. */
     public const NOTA_VINCOLI_A_OGGI = 'I vincoli dichiarati si leggono a oggi: questo confronto vale per l\'esercizio aperto, non alla data di un esercizio finito. Il programma non dà il residuo vincolato di un fondo alla data di fine, perché i vincoli dichiarati non hanno una data: il saldo di ogni cassa fondo a quella data è nella situazione patrimoniale, e i suoi movimenti nel mastrino del suo conto. Il movimento dei fondi dice per ogni fondo l\'iniziale, l\'accantonato e l\'utilizzato dell\'esercizio; il residuo vincolato di un\'opera si legge anche con l\'importo votato dall\'assemblea, che questo prospetto non riporta.';
@@ -76,6 +90,7 @@ class StatoPatrimonialePaginaService
         'debiti_fornitori'       => ['gruppo' => 'Debiti verso fornitori', 'ordine' => 10],
         'debiti_erario_ritenute' => ['gruppo' => "Debiti verso l'Erario", 'ordine' => 20],
         'anticipi_condomini'     => ['gruppo' => 'Anticipi ricevuti dai condòmini', 'ordine' => 30],
+        'accessori_da_incassare' => ['gruppo' => 'Interessi e spese addebitati ai condòmini, da incassare', 'ordine' => 35],
         'gestione_rate'          => ['gruppo' => 'Quote emesse ai condòmini', 'ordine' => 40],
         'passate_gestioni'       => ['gruppo' => 'Riporti da esercizi precedenti', 'ordine' => 50],
     ];
@@ -228,7 +243,9 @@ class StatoPatrimonialePaginaService
         $debitiErario = $ruolo($pas, 'debiti_erario_ritenute');
         $anticipi = $ruolo($pas, 'anticipi_condomini');
         $riporti = $ruolo($pas, 'passate_gestioni');
-        $altriPassivi = $this->sommaSe($pas, fn ($v) => ! in_array($v['ruolo'], ['gestione_rate', 'passate_gestioni', 'debiti_fornitori', 'debiti_erario_ritenute', 'anticipi_condomini'], true));
+        $accessori = $ruolo($pas, 'accessori_da_incassare');
+        $altriPassivi = $this->sommaSe($pas, fn ($v) => ! in_array($v['ruolo'], ['gestione_rate', 'passate_gestioni', 'debiti_fornitori', 'debiti_erario_ritenute', 'anticipi_condomini',
+            'accessori_da_incassare'], true));
 
         $righe = [
             ['voce' => 'Risultato di gestione dell\'esercizio', 'natura' => 'quote registrate in questo esercizio − costi', 'effetto' => $risultatoGestione],
@@ -242,6 +259,8 @@ class StatoPatrimonialePaginaService
             ['voce' => 'Variazione dei debiti verso l\'Erario', 'natura' => 'più ritenute da versare, più cassa; ritenute versate, meno cassa', 'effetto' => $debitiErario],
             ['voce' => 'Anticipi ricevuti dai condòmini', 'natura' => 'incassati prima dell\'emissione', 'effetto' => $anticipi],
             ['voce' => 'Riporti da esercizi precedenti', 'natura' => 'pregresso portato a giornale', 'effetto' => $riporti],
+            // Gli interessi e le spese addebitati senza fattura: il credito verso la persona e la sua contropartita si muovono insieme, e la cassa no.
+            ['voce' => 'Interessi e spese addebitati ai condòmini', 'natura' => 'addebitati e non ancora versati', 'effetto' => $accessori],
             ['voce' => 'Altri crediti', 'natura' => 'IVA e crediti verso terzi', 'effetto' => -$altriAttivi],
             ['voce' => 'Altre passività', 'natura' => 'poste senza un ruolo dichiarato', 'effetto' => $altriPassivi],
             ['voce' => 'Ricavi contabilizzati', 'natura' => 'conti di tipo ricavo', 'effetto' => $flussi['ricavi']],
@@ -505,6 +524,7 @@ class StatoPatrimonialePaginaService
         $lordiOltre = array_values(array_filter([$oltre['dopo_la_fine']['lordo'], $oltre['di_un_esercizio_dopo']['lordo']]));
 
         $negative = $riepilogo['casse_reali_negative'];
+        $liberi = $riepilogo['liberi_negativi'] ?? [];
         $cnSenzaApertura = $negative !== [] && ($negative[0]['iniziale'] ?? 0) === 0;
         $fmt = fn (int $c) => '€ '.number_format($c / 100, 2, ',', '.');
         $dataIt = fn (?string $d) => $d ? Carbon::parse($d)->format('d/m/Y') : '';
@@ -631,12 +651,14 @@ class StatoPatrimonialePaginaService
             [
                 'id' => 'CN',
                 'nome' => 'Casse reali sotto zero',
-                'titolo' => 'Nessuna banca o cassa contanti sotto zero, in nessun giorno dell\'esercizio',
+                'titolo' => 'Nessuna banca (con i fondi dentro) o cassa contanti sotto zero, in nessun giorno dell\'esercizio',
                 'sinistra' => count($negative),
                 'destra' => 0,
-                'esito' => $negative === [] ? 'quadra' : 'non_quadra',
-                'nota' => $negative === []
-                    ? 'Banca e contanti non sono mai scesi sotto zero, giorno per giorno.'
+                // La banca si guarda con i fondi dentro, che sono parte dello stesso conto; la sua parte libera sotto zero è un avviso a parte.
+                'liberi' => count($liberi),
+                'esito' => $negative !== [] ? 'non_quadra' : ($liberi === [] ? 'quadra' : 'segnalazione'),
+                'nota' => ($negative === []
+                    ? ($liberi === [] ? 'Banca e contanti non sono mai scesi sotto zero, giorno per giorno.' : '')
                     : implode('; ', array_map(fn ($n) => $n['cassa'].' a '.$fmt($n['minimo']).($n['data'] ? ' il '.$dataIt($n['data']) : ''), $negative)).'. '
                         // La diagnosi più precisa che i dati permettono («Via delle Acacie», 12/09/2026):
                         // senza apertura e senza incassi non c'è un movimento da cercare nel registro di contabilità.
@@ -644,12 +666,13 @@ class StatoPatrimonialePaginaService
                             ? ($negative[0]['entrate'] === 0
                                 ? 'Questa cassa non ha un saldo di apertura e nessun incasso nell\'esercizio: i pagamenti sono usciti da un conto che, nella contabilità, era vuoto.'
                                 : 'Questa cassa non ha un saldo di apertura: i pagamenti sono usciti prima che gli incassi registrati bastassero.')
-                            : 'Un conto reale non può contenere meno di niente: manca un\'entrata, o un movimento è sulla cassa sbagliata.'),
-                'rimedio' => $negative === [] ? null
+                            : 'Un conto reale non può contenere meno di niente: manca un\'entrata, o un movimento è sulla cassa sbagliata.'))
+                    .($liberi === [] ? '' : ($negative === [] ? '' : ' ').implode(' ', array_map(fn ($l) => self::fraseLiberoSottoZero($l['cassa'], $fmt($l['minimo']), $dataIt($l['data'])), $liberi))),
+                'rimedio' => $negative === [] ? ($liberi === [] ? null : self::RIMEDIO_LIBERO_SOTTO_ZERO)
                     : ($cnSenzaApertura
                         ? 'Se a inizio esercizio c\'erano soldi sul conto, registra il saldo iniziale della cassa: è quello che manca. Se i condòmini hanno versato, registra gli incassi delle rate. Se il conto era davvero a zero e nessuno ha versato, quel pagamento non può essere uscito da qui: nel registro di contabilità spostalo sulla cassa giusta.'
                         : 'Apri il registro di contabilità su quella cassa e cerca il movimento intorno a quella data: registra l\'entrata mancante o spostalo sulla cassa giusta.'),
-                'azione' => $negative === [] ? null : ($cnSenzaApertura ? 'cassa' : 'prima-nota'),
+                'azione' => $negative === [] ? ($liberi === [] ? null : 'giroconti') : ($cnSenzaApertura ? 'cassa' : 'prima-nota'),
                 'azione_parametro' => $negative === [] ? null : ($cnSenzaApertura ? (string) $negative[0]['cassa_id'] : $negative[0]['cassa']),
             ],
         ];

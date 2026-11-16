@@ -20,3 +20,28 @@ export function useGiroFlash(): Ref<number> {
 
     return giro;
 }
+
+/**
+ * Come {@link useGiroFlash}, ma cresce solo con le visite intere: un caricamento parziale (lo scorrimento di una lista, un riquadro ricaricato, `only`,
+ * `except` o `reset`) lascia alla pagina il messaggio di prima, e rimontare l'`Alert` lo farebbe ricomparire. Per le pagine che restano montate e caricano a
+ * pezzi: la casella delle attività e la dashboard del condominio.
+ */
+export function useGiroFlashDelleVisiteIntere(): Ref<number> {
+    const giro = ref(0);
+    let parziale = false;
+    const viaInizio = router.on('start', (evento) => {
+        const visita = (evento as CustomEvent<{ visit?: { only?: unknown[]; except?: unknown[]; reset?: unknown[] } }>).detail?.visit;
+        parziale = (visita?.only?.length ?? 0) > 0 || (visita?.except?.length ?? 0) > 0 || (visita?.reset?.length ?? 0) > 0;
+    });
+    const viaRiuscita = router.on('success', () => {
+        if (!parziale) {
+            giro.value++;
+        }
+    });
+    onUnmounted(() => {
+        viaInizio();
+        viaRiuscita();
+    });
+
+    return giro;
+}

@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services\Gestionale\Lettere;
 
@@ -30,6 +33,9 @@ final class TestiLettere
         '[totale]'      => 'il totale della lettera',
         '[termine]'     => 'il termine per il versamento',
         '[condominio]'  => 'il nome del condominio',
+        '[interessi]'   => 'gli interessi di mora addebitati alla persona fra le righe della lettera, già compresi nel totale',
+        '[spese]'       => 'le spese per il ritardo addebitate alla persona fra le righe della lettera, già comprese nel totale',
+        '[tasso]'       => 'il tasso degli interessi di mora del condominio, con la sua fonte',
     ];
 
     public const LUNGHEZZA_MASSIMA = 5000;
@@ -42,13 +48,13 @@ final class TestiLettere
     public const DI_SERIE = [
         'promemoria' => "Gentile [nome],\nle ricordiamo le sue rate del condominio [condominio] che scadono nei prossimi giorni, indicate qui sotto, "
             . "per un totale di [totale].\nSe ha già versato, non tenga conto di questo promemoria.",
-        'sollecito' => "Gentile [nome],\ndalla contabilità del condominio [condominio] risultano da versare le rate indicate qui sotto, per un totale "
+        'sollecito' => "Gentile [nome],\ndalla contabilità del condominio [condominio] risultano da versare le somme indicate qui sotto, per un totale "
             . "di [totale]. Le chiediamo di versare entro [termine].\nSe ha già versato, "
             . 'non tenga conto di questa lettera e ci mandi, se può, la ricevuta del bonifico.',
-        'diffida' => "Gentile [nome],\ndalla contabilità del condominio [condominio] risultano ancora da versare le rate indicate qui sotto, per un "
+        'diffida' => "Gentile [nome],\ndalla contabilità del condominio [condominio] risultano ancora da versare le somme indicate qui sotto, per un "
             . "totale di [totale].\nLe chiediamo con fermezza di versare il totale entro [termine].\nSe il versamento non arriva "
             . "entro quel termine, il condominio potrà procedere al recupero del credito.\nSe ha già versato, ci mandi la ricevuta del bonifico.",
-        'messa_in_mora' => "Gentile [nome],\ncon questa lettera il condominio [condominio] le chiede formalmente il pagamento delle rate "
+        'messa_in_mora' => "Gentile [nome],\ncon questa lettera il condominio [condominio] le chiede formalmente il pagamento delle somme "
             . "indicate qui sotto, per un totale di [totale], entro [termine].\nSe il pagamento non arriva entro quel termine, il condominio potrà "
             . "procedere al recupero del credito.\nSe ha già versato, ci mandi la ricevuta del bonifico.",
     ];
@@ -61,8 +67,13 @@ final class TestiLettere
      * campo resta vuoto (il server non lo permette: un testo con `[termine]` vuole un termine). Se il nome del condominio comincia già con
      * «Condominio», «condominio [condominio]» diventa il nome e basta: «del condominio [condominio]» con «Condominio Le Rose» è «del Condominio
      * Le Rose». Il campo da solo è sempre il nome com'è.
+     *
+     * Gli interessi, le spese e il tasso si riempiono solo con ciò che è registrato: gli addebiti della persona non ancora versati («€ 0,00» se non ce
+     * ne sono), il tasso delle regole del recupero del giorno. Mai una cifra calcolata e non registrata.
+     *
+     * @param array{interessi?: int, spese?: int, tasso?: ?string} $accessori
      */
-    public static function riempi(string $modello, string $nome, int $totale, ?string $termine, string $condominio): string
+    public static function riempi(string $modello, string $nome, int $totale, ?string $termine, string $condominio, array $accessori = []): string
     {
         if (self::cominciaConCondominio($condominio)) {
             $modello = preg_replace('/(?<![\p{L}\p{N}])condominio\s+\[condominio\]/iu', '[condominio]', $modello) ?? $modello;
@@ -73,6 +84,9 @@ final class TestiLettere
             '[totale]'     => self::euro($totale),
             '[termine]'    => (string) $termine,
             '[condominio]' => $condominio,
+            '[interessi]'  => self::euro((int) ($accessori['interessi'] ?? 0)),
+            '[spese]'      => self::euro((int) ($accessori['spese'] ?? 0)),
+            '[tasso]'      => (string) ($accessori['tasso'] ?? ''),
         ]);
     }
 

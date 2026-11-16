@@ -39,7 +39,7 @@ class UpdatedDocumentoNotification extends LocalizedNotification implements Shou
                 'name' => self::nomeComeTesto($notifiable->name ?? $notifiable->nome),
             ]))
             ->line(__('notifications.updated_document.line_1', [
-                'user' => self::nomeComeTesto($this->documento->updatedBy?->name ?? $this->documento->createdBy->name),
+                'user' => self::nomeComeTesto($this->documento->updatedBy?->name ?? $this->documento->createdBy?->name ?? \App\Http\Resources\Documenti\DocumentoResource::AUTORE_ELIMINATO),
             ]))
             ->line('**' . __('notifications.updated_document.title') . ':** ' . self::testoComeTesto($this->documento->name))
             ->line('**' . __('notifications.updated_document.description') . ':** ' . Str::ucfirst(self::testoComeTesto($this->documento->description)))

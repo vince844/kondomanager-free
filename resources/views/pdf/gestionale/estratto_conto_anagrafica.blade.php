@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 @extends('pdf.base')
 {{-- I titoli e i loro filetti hanno il colore della carta dello studio; senza un colore, quello di sempre. --}}
 @php
@@ -68,7 +73,7 @@
         <td style="width: 25%; padding: 6px 8px; border: 1px solid #d1dbe8; border-radius: 3px; background: #f9fafb;">
             <div style="font-size: 6.5pt; font-weight: bold; text-transform: uppercase; color: #999; letter-spacing: 0.5px; margin-bottom: 2px;">Totale addebiti</div>
             <div style="font-size: 10pt; font-weight: bold; color: #1a202c;">{{ $stats['totale_addebiti'] }}</div>
-            <div style="font-size: 6pt; text-transform: uppercase; margin-top: 1px; color: #aaa;">Rate emesse</div>
+            <div style="font-size: 6pt; text-transform: uppercase; margin-top: 1px; color: #aaa;">Rate emesse e addebiti</div>
         </td>
         <td style="width: 3px;"></td>
         {{-- Totale versato --}}
@@ -276,9 +281,8 @@
 
 {{-- NOTE LEGALI --}}
 <div style="margin-top: 12px; font-size: 6.5pt; color: #888; border-top: 0.5px solid #ccc; padding-top: 5px;">
-    Documento redatto ai sensi dell'art. 1135 c.c. (gestione condominiale) e dell'art. 63 disp. att. c.c.
-    (riscossione dei contributi condominiali). Il mancato pagamento entro la scadenza indicata può comportare
-    l'applicazione degli interessi legali ai sensi dell'art. 1284 c.c.
+    Documento redatto ai sensi dell'art. 63 disp. att. c.c. (riscossione dei contributi condominiali).
+    Il mancato pagamento entro la scadenza indicata può comportare gli interessi di mora al tasso del condominio (artt. 1224 e 1282 c.c.).
 </div>
 
 @endsection

@@ -26,6 +26,9 @@ class ModelloTesto extends Model
 
     public const AMBITO_LETTERA = 'lettera';
 
+    /** I testi dello studio per la nota sintetica del rendiconto: il tipo è il campo della nota ({@see \App\Services\Gestionale\TestiDellaNota}). */
+    public const AMBITO_NOTA = 'nota_sintetica';
+
     public const LUNGHEZZA_NOME = 120;
 
     protected $fillable = ['ambito', 'tipo', 'nome', 'testo', 'condominio_id', 'created_by', 'updated_by'];

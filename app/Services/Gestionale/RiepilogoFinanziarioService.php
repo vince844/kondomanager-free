@@ -59,6 +59,8 @@ class RiepilogoFinanziarioService
      * @return array{
      *   dal:string, al:string, stato_esercizio:string,
      *   righe: array<int, array<string, mixed>>,
+     *   conti: list<array<string, mixed>>,
+     *   fra_le_casse: int,
      *   totale: array{iniziale:int, entrate:int, uscite:int, finale:int},
      *   giroconti: array{entrate:int, uscite:int},
      *   giroconti_fra_fondi: int,
@@ -82,7 +84,7 @@ class RiepilogoFinanziarioService
         $casse = DB::table('casse')
             ->where('condominio_id', $esercizio->condominio_id)
             ->whereNotNull('conto_contabile_id')
-            ->get(['id', 'nome', 'tipo', 'sottotipo_fondo', 'conto_contabile_id', 'saldo_iniziale']);
+            ->get(['id', 'nome', 'tipo', 'sottotipo_fondo', 'vincolo_descrizione', 'is_override_assemblea', 'motivazione_override', 'conto_contabile_id', 'saldo_iniziale', 'attiva']);
 
         if ($casse->isEmpty()) {
             return $this->vuoto($dal, $al, $stato);
@@ -100,13 +102,7 @@ class RiepilogoFinanziarioService
         //    quadrerebbe più. Lo stesso criterio del registro: figlia `storno_*` con padre, oppure
         //    la `rettifica` di un incasso (`stato = annullata`); le rettifiche di RiallineaFondi non
         //    sono storni e restano.
-        $coppie = DB::table('scritture_contabili as f')
-            ->join('scritture_contabili as p', 'p.id', '=', 'f.scrittura_padre_id')
-            ->whereNull('f.deleted_at')->whereNull('p.deleted_at')
-            ->where('f.esercizio_id', $esercizio->id)->where('p.esercizio_id', $esercizio->id)
-            // Elenco esplicito, non LIKE: `storno_credito` non è uno storno (vedi l'enum).
-            ->where(fn ($q) => $q->whereIn('f.tipo_movimento', TipoMovimentoContabile::storniDiScrittura())->orWhere('p.stato', 'annullata'))
-            ->get(['f.id as figlia', 'p.id as padre']);
+        $coppie = $this->coppie($esercizio);
         $esclusi = $coppie->flatMap(fn ($c) => [(int) $c->figlia, (int) $c->padre])->unique()->values()->all();
         // Per la nota si contano i soli movimenti di CASSA annullati: un incasso stornato ha anche una
         // figlia «quota a credito» senza righe di cassa, e contarla farebbe dire «3 movimenti» per uno.
@@ -189,7 +185,8 @@ class RiepilogoFinanziarioService
         }
 
         // 4. Il minimo giorno per giorno delle casse reali.
-        $minimi = $this->minimiCasseReali($esercizio, $casse, $iniziali, $esclusi);
+        $variazioni = $this->variazioniGiornaliere($esercizio, $casse, $esclusi);
+        $minimi = $this->minimiCasseReali($casse, $iniziali, $variazioni);
 
         $righe = [];
         $totale = ['iniziale' => 0, 'entrate' => 0, 'uscite' => 0, 'finale' => 0];
@@ -252,11 +249,19 @@ class RiepilogoFinanziarioService
             Log::warning('Riepilogo finanziario: il piede non quadra', ['esercizio' => $esercizio->id, 'totale' => $totale]);
         }
 
+        // Le stesse righe come le legge la scheda «Cassa»: ogni cassa reale con dentro i fondi che le appartengono, e le righe «di cui».
+        $conIFondi = app(FondiNelConto::class)->perEsercizio($esercizio, $casse, $righe, $esclusi, $interno);
+        // Sotto zero si guarda il conto con i fondi dentro: la banca vera. La parte libera sotto zero, con il conto sopra zero, è un'altra cosa (un
+        // pagamento fatto con il denaro di un fondo senza il giroconto prima), e si dice a parte.
+        [$conIFondi['conti'], $negative, $liberiNegativi] = $this->sottoZeroConIFondi($casse, $iniziali, $variazioni, $conIFondi, $righe);
+
         return [
             'dal' => $dal,
             'al' => $al,
             'stato_esercizio' => $stato,
             'righe' => $righe,
+            'conti' => $conIFondi['conti'],
+            'fra_le_casse' => $conIFondi['fra_le_casse'],
             'totale' => $totale,
             'giroconti' => ['entrate' => $interno, 'uscite' => $interno],
             'giroconti_fra_fondi' => $fraFondi,
@@ -264,7 +269,31 @@ class RiepilogoFinanziarioService
             'stornate' => $stornate,
             'piede_quadra' => $piedeQuadra,
             'casse_reali_negative' => $negative,
+            'liberi_negativi' => $liberiNegativi,
+            'banca_unica' => $conIFondi['banca_unica'],
         ];
+    }
+
+    /**
+     * Le registrazioni delle coppie originale + storno dell'esercizio, che il prospetto non conta fra i flussi: il registro di contabilità le mostra, e la
+     * riga che spiega la differenza con la scheda «Cassa» le legge da qui.
+     *
+     * @return list<int>
+     */
+    public function coppieStornate(Esercizio $esercizio): array
+    {
+        return $this->coppie($esercizio)->flatMap(fn ($c) => [(int) $c->figlia, (int) $c->padre])->unique()->values()->all();
+    }
+
+    private function coppie(Esercizio $esercizio)
+    {
+        return DB::table('scritture_contabili as f')
+            ->join('scritture_contabili as p', 'p.id', '=', 'f.scrittura_padre_id')
+            ->whereNull('f.deleted_at')->whereNull('p.deleted_at')
+            ->where('f.esercizio_id', $esercizio->id)->where('p.esercizio_id', $esercizio->id)
+            // Elenco esplicito, non LIKE: `storno_credito` non è uno storno (vedi l'enum).
+            ->where(fn ($q) => $q->whereIn('f.tipo_movimento', TipoMovimentoContabile::storniDiScrittura())->orWhere('p.stato', 'annullata'))
+            ->get(['f.id as figlia', 'p.id as padre']);
     }
 
     /**
@@ -273,20 +302,34 @@ class RiepilogoFinanziarioService
      *
      * @return array<int, array{minimo:int, data:?string}>  per conto contabile
      */
-    private function minimiCasseReali(Esercizio $esercizio, $casse, $iniziali, array $esclusi = []): array
+    private function minimiCasseReali($casse, $iniziali, array $variazioni): array
+    {
+        $minimo = [];
+        foreach ($casse->whereIn('tipo', self::CASSE_REALI) as $cassa) {
+            $conto = (int) $cassa->conto_contabile_id;
+            $minimo[$conto] = self::minimoDi((int) $cassa->saldo_iniziale + (int) ($iniziali[$conto] ?? 0), $variazioni[$conto] ?? []);
+        }
+
+        return $minimo;
+    }
+
+    /**
+     * La variazione di ogni giorno delle casse reali nell'esercizio, per conto: le righe dell'esercizio senza le aperture e senza le coppie stornate.
+     *
+     * ⚠️ **Un giorno per volta, non una scrittura per volta.** `data_competenza` è una data senza ora: dentro lo stesso giorno l'ordine delle scritture
+     * è quello di inserimento, non un fatto. Sommando riga per riga, una spesa da 800 e il suo storno dello stesso giorno facevano passare la banca per
+     * −72 «alle 16:58», un istante che nessun estratto conto ha mai visto — il controllo restava rosso dopo lo storno. Il saldo di fine giornata è
+     * l'unica grandezza definita, ed è quella che il registro (art. 2219, storno = riga nuova) e l'estratto conto possono confermare. Trovato al test
+     * reale del 12/09/2026.
+     *
+     * @return array<int, array<string, int>>  per conto contabile, per giorno (`Y-m-d`)
+     */
+    private function variazioniGiornaliere(Esercizio $esercizio, $casse, array $esclusi): array
     {
         $contiReali = $casse->whereIn('tipo', self::CASSE_REALI)->pluck('conto_contabile_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         if ($contiReali === []) {
             return [];
         }
-
-        // ⚠️ **Un giorno per volta, non una scrittura per volta.** `data_competenza` è una data
-        // senza ora: dentro lo stesso giorno l'ordine delle scritture è quello di inserimento, non
-        // un fatto. Sommando riga per riga, una spesa da 800 e il suo storno dello stesso giorno
-        // facevano passare la banca per −72 «alle 16:58», un istante che nessun estratto conto ha
-        // mai visto — il controllo restava rosso dopo lo storno. Il saldo di fine giornata è
-        // l'unica grandezza definita, ed è quella che il registro (art. 2219, storno = riga nuova)
-        // e l'estratto conto possono confermare. Trovato al test reale del 12/09/2026.
         $giorni = DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', fn ($j) => $j->on('rs.scrittura_id', '=', 'sc.id')->whereNull('sc.deleted_at'))
             ->whereIn('rs.conto_contabile_id', $contiReali)
@@ -301,31 +344,87 @@ class RiepilogoFinanziarioService
                 'sc.data_competenza',
                 DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END), 0) as variazione"),
             ]);
-
-        $saldo = [];
-        $minimo = [];
-        foreach ($casse->whereIn('tipo', self::CASSE_REALI) as $cassa) {
-            $conto = (int) $cassa->conto_contabile_id;
-            $saldo[$conto] = (int) $cassa->saldo_iniziale + (int) ($iniziali[$conto] ?? 0);
-            $minimo[$conto] = ['minimo' => $saldo[$conto], 'data' => null];
-        }
+        $variazioni = [];
         foreach ($giorni as $g) {
-            $conto = (int) $g->conto_contabile_id;
-            $saldo[$conto] += (int) $g->variazione;
-            if ($saldo[$conto] < $minimo[$conto]['minimo']) {
-                $minimo[$conto] = ['minimo' => $saldo[$conto], 'data' => Carbon::parse($g->data_competenza)->format('Y-m-d')];
+            $giorno = Carbon::parse($g->data_competenza)->format('Y-m-d');
+            $variazioni[(int) $g->conto_contabile_id][$giorno] = ($variazioni[(int) $g->conto_contabile_id][$giorno] ?? 0) + (int) $g->variazione;
+        }
+
+        return $variazioni;
+    }
+
+    /** Il saldo più basso, giorno per giorno, da un iniziale e dalle variazioni di ogni giorno; e il giorno (null se è l'iniziale). @return array{minimo:int, data:?string} */
+    private static function minimoDi(int $iniziale, array $giorni): array
+    {
+        ksort($giorni);
+        $saldo = $iniziale;
+        $minimo = ['minimo' => $iniziale, 'data' => null];
+        foreach ($giorni as $giorno => $variazione) {
+            $saldo += $variazione;
+            if ($saldo < $minimo['minimo']) {
+                $minimo = ['minimo' => $saldo, 'data' => (string) $giorno];
             }
         }
 
         return $minimo;
     }
 
+    /**
+     * Le casse reali sotto zero guardano il conto con i fondi dentro (le partizioni che gli appartengono, {@see FondiNelConto}): il minimo giorno per giorno
+     * della banca vera. La parte libera (il conto contabile della banca da solo) che va sotto zero mentre il conto con i fondi no è un avviso a parte.
+     * Le righe dei conti della scheda prendono il minimo del conto, e la riga «di cui libero» il suo.
+     *
+     * @return array{0: list<array<string,mixed>>, 1: list<array<string,mixed>>, 2: list<array<string,mixed>>}  i conti, le casse sotto zero, le parti libere sotto zero
+     */
+    private function sottoZeroConIFondi($casse, $iniziali, array $variazioni, array $conIFondi, array $righe): array
+    {
+        $riga = collect($righe)->keyBy('cassa_id');
+        $negative = [];
+        $liberi = [];
+        $conti = [];
+        foreach ($conIFondi['conti'] as $c) {
+            $reale = ! $c['senza_banca'] && in_array($c['tipo'], self::CASSE_REALI, true);
+            if (! $reale) {
+                $conti[] = $c;
+
+                continue;
+            }
+            $conto = (int) $c['conto_contabile_id'];
+            $dentro = $conIFondi['partizioni_nel_conto'][$c['cassa_id']] ?? ['iniziale' => 0, 'giorni' => []];
+            $giorni = $variazioni[$conto] ?? [];
+            foreach ($dentro['giorni'] as $giorno => $delta) {
+                $giorni[$giorno] = ($giorni[$giorno] ?? 0) + $delta;
+            }
+            $libero = $riga[$c['cassa_id']];
+            $minimo = $c['di_cui'] === [] ? ['minimo' => (int) $libero['minimo'], 'data' => $libero['minimo_il']]
+                : self::minimoDi((int) $libero['iniziale'] + (int) $dentro['iniziale'], $giorni);
+            $c['negativa'] = $minimo['minimo'] < 0;
+            $c['minimo'] = $minimo['minimo'];
+            $c['minimo_il'] = $minimo['data'];
+            $c['libero_negativo'] = $c['di_cui'] !== [] && ! $c['negativa'] && (bool) $libero['negativa'];
+            $c['libero_minimo'] = $c['di_cui'] === [] ? null : (int) $libero['minimo'];
+            $c['libero_minimo_il'] = $c['di_cui'] === [] ? null : $libero['minimo_il'];
+            if ($c['negativa']) {
+                $negative[] = ['cassa' => $c['cassa'], 'cassa_id' => $c['cassa_id'], 'minimo' => $minimo['minimo'], 'data' => $minimo['data'],
+                    // Per la diagnosi: un conto senza apertura e senza incassi non ha «un movimento sbagliato», gli mancano il saldo iniziale o gli incassi.
+                    'iniziale' => $c['iniziale'], 'entrate' => $c['entrate']];
+            }
+            if ($c['libero_negativo']) {
+                $liberi[] = ['cassa' => $c['cassa'], 'cassa_id' => $c['cassa_id'], 'minimo' => (int) $libero['minimo'], 'data' => $libero['minimo_il'],
+                    'nei_fondi' => (int) array_sum(array_map(fn ($d) => $d['tipo'] === 'libero' ? 0 : (int) $d['finale'], $c['di_cui']))];
+            }
+            $conti[] = $c;
+        }
+
+        return [$conti, $negative, $liberi];
+    }
+
     private function vuoto(string $dal, string $al, string $stato): array
     {
         return [
             'dal' => $dal, 'al' => $al, 'stato_esercizio' => $stato,
-            'righe' => [], 'totale' => ['iniziale' => 0, 'entrate' => 0, 'uscite' => 0, 'finale' => 0],
-            'giroconti' => ['entrate' => 0, 'uscite' => 0], 'giroconti_fra_fondi' => 0, 'giroconti_dei_fondi' => [], 'stornate' => ['coppie' => 0, 'importo' => 0], 'piede_quadra' => true, 'casse_reali_negative' => [],
+            'righe' => [], 'conti' => [], 'fra_le_casse' => 0, 'totale' => ['iniziale' => 0, 'entrate' => 0, 'uscite' => 0, 'finale' => 0],
+            'giroconti' => ['entrate' => 0, 'uscite' => 0], 'giroconti_fra_fondi' => 0, 'giroconti_dei_fondi' => [], 'stornate' => ['coppie' => 0, 'importo' => 0], 'piede_quadra' => true, 'casse_reali_negative' => [], 'liberi_negativi' => [], 'banca_unica' => null,
         ];
     }
 }

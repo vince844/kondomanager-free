@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Http\Middleware;
 
@@ -8,9 +11,8 @@ use App\Support\FunzioniInstallazione;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
-use App\Models\Evento;
+use App\Services\Gestionale\InboxService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 use App\Services\UpdateService;
 
@@ -84,31 +86,20 @@ class HandleInertiaRequests extends Middleware
                 ? url()->previous()
                 : null,
 
-            // Aggiungiamo il contatore globale admin inbox (con caching e logica ibrida)
-            'inbox_count' => $request->user() ? Cache::remember('inbox_count_' . $request->user()->id, now()->addMinutes(10), function () use ($request) {
+            // Il numero dei compiti dello studio, solo a chi ha il pannello: lo legge solo la dashboard del pannello, e a un condòmino non serve (decide il
+            // pannello, non il ruolo: la regola di `RegoleAllegati::haPannello`).
+            'inbox_count' => $request->user() && RegoleAllegati::haPannello($request->user()) ? Cache::remember('inbox_count_' . $request->user()->id, now()->addMinutes(10), function () use ($request) {
 
                 // --- IL FIX FONDAMENTALE ---
                 // Se la colonna 'meta' non esiste, non eseguire la query.
-                if (!Schema::hasColumn('eventi', 'meta')) {
+                // Così anche la tabella delle risposte, che la regola dei compiti aperti legge: prima della migrazione, niente numero.
+                if (!Schema::hasColumn('eventi', 'meta') || !Schema::hasTable('risposte_promemoria')) {
                     return 0;
                 }
 
-                return Evento::query()
-                    // 1. Deve richiedere azione
-                    ->whereJsonContains('meta->requires_action', true)
-                    // 2. NON deve essere completato
-                    ->where('is_completed', false)
-                    // 3. IL FIX: Logica Ibrida (Tempo O Tipo)
-                    ->where(function (Builder $query) {
-                        // A. Scadenze temporali (es. rate scadute, lavori in data X)
-                        $query->where('start_time', '<=', now())
-                        // B. Priorità di TIPO (mostra SEMPRE, anche se la data è futura)
-                        ->orWhereJsonContains('meta->type', 'verifica_pagamento') // Segnalazione utente
-                        ->orWhereJsonContains('meta->type', 'segnalazione_guasto');     // Segnalazione guasto
-                    })
-                    // 4. Logica visibilità
-                    ->where(fn(Builder $q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
-                    ->count();
+                // I compiti aperti con il giorno arrivato (oggi compreso, nel giorno dell'amministratore), i bonifici segnalati e le segnalazioni che questo
+                // utente può aprire: la regola dell'Action inbox, scritta in un posto (`FasceDeiCompiti`, `CompitoDellaSegnalazione::chiVede`).
+                return InboxService::numeroPerIlMenu(\App\Services\Gestionale\Inbox\CompitoDellaSegnalazione::chiVede($request->user()));
             }) : 0,
 
             'allegati_in_attesa' => fn () => Schema::hasTable('documenti')

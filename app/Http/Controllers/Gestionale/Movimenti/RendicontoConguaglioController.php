@@ -134,6 +134,7 @@ class RendicontoConguaglioController extends Controller
             'condominio' => $condominio,
             'condomini' => CondominioResource::collection($this->getCondomini())->resolve(),
             'esercizio' => $esercizio,
+            'stato_rendiconto' => \App\Services\Gestionale\VersioniDelRendiconto::statoInTesta($esercizio),
             'esercizi' => $condominio->esercizi()->orderByDesc('data_inizio')->get(),
             'conguaglio' => $scheda,
             'frasi' => ['proposta' => ConguaglioDelRendiconto::FRASE_PROPOSTA, 'segno' => ConguaglioDelRendiconto::FRASE_SEGNO,

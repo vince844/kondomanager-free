@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 // @vitest-environment jsdom
 
 /**
@@ -22,7 +25,7 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     Head: { template: '<span />' },
     Link: { template: '<a><slot /></a>' },
     InfiniteScroll: { template: '<div><slot /></div>' },
-    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn() },
+    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn(), on: () => () => undefined },
     usePage: () => ({ props: { flash: {}, auth: { user: { roles: ['amministratore'], permissions: [] } } } }),
 }));
 vi.mock('@/composables/permissions', () => ({
@@ -77,13 +80,13 @@ describe('l\'elenco «Ricalcolo necessario» del cruscotto (Coda 414, D138)', ()
         await monta([{ id: 7, nome: 'Riscaldamento 2026', gestione: 'Gestione ordinaria', delta: -2500 }]);
 
         expect(testo()).toContain('Riscaldamento 2026');
-        expect(testo()).toContain('Delta: € -25,00');
+        expect(testo()).toContain('Differenza: € -25,00');
         expect(testo()).toContain('Apri');
     });
 
     test('controprova — senza piani nell\'elenco (un piano in quota aperta non c\'è) il riquadro «Ricalcolo necessario» non compare', async () => {
         await monta([]);
 
-        expect(testo()).not.toContain('Ricalcolo Necessario');
+        expect(testo()).not.toContain('Ricalcolo necessario');
     });
 });

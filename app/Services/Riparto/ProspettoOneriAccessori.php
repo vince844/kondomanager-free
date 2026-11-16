@@ -2265,8 +2265,11 @@ final class ProspettoOneriAccessori
      */
     private function pianiDellEsercizio(Immobile $unita, Esercizio $esercizio): array
     {
+        // Il piano degli addebiti a singole persone non è un preventivo: le sue somme sono chieste a una persona, fuori dal riparto, e non ci sono
+        // voci da dividere fra proprietario e inquilino.
         $candidati = PianoRate::with('gestione')->where('condominio_id', $unita->condominio_id)
             ->where(fn ($q) => $q->where('esercizio_id', $esercizio->id)->orWhereNull('esercizio_id'))
+            ->delRiparto()
             ->orderBy('id')->get();
         $gestioniDellEsercizio = DB::table('esercizio_gestione')->where('esercizio_id', $esercizio->id)->pluck('gestione_id')->map(fn ($id) => (int) $id)->flip()->all();
 

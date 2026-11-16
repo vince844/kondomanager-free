@@ -2,9 +2,10 @@
 
 /**
  * Coda 533 (decisione 231): le due schede dell'estratto conto. Si apre «Movimenti contabili»; «Corrispondenza (N)» ha nel nome il numero delle
- * voci dell'elenco della scheda (lettere e documenti, contati con la stessa funzione: `numeroDellaScheda`); in testa la riga dell'ultima lettera
- * con il testo della colonna di «Rate scadute» e «poi: …»; «Vedi la corrispondenza» apre la scheda; `?scheda=corrispondenza` nell'indirizzo la
- * apre all'arrivo.
+ * voci dell'elenco della scheda (lettere e documenti, contati con la stessa funzione: `numeroDellaScheda`); la card «Lettere», nella colonna di destra
+ * sotto «Unità immobiliari», con l'ultima lettera e il testo della colonna di «Rate scadute» (due righe al massimo, una se dopo c'è una lettera in coda,
+ * il testo intero nel `title`) e «poi: …» in una riga, «Prepara una lettera» e «Vedi la corrispondenza (N)» sulla stessa riga, il secondo un
+ * collegamento che apre la scheda; `?scheda=corrispondenza` nell'indirizzo la apre all'arrivo.
  *
  * Perché `shallowMount`: le schede sono componenti della libreria, e il test legge la scheda scelta dalla prop che la pagina passa (`modelValue`).
  * Che cosa NON copre: l'elenco della scheda (`RegistroLettereCorrispondenza.test.ts`), i dati (`CorrispondenzaDellaPersonaTest.php`).
@@ -74,9 +75,10 @@ describe('le schede dell\'estratto conto', () => {
         expect(numeroDellaScheda(lettere, documenti as never)).toBe(vociDellaCorrispondenza(lettere, documenti as never).length);
     });
 
-    test('in testa l\'ultima lettera con il testo della colonna di «Rate scadute» e «poi: …»; «Vedi la corrispondenza» apre la scheda', async () => {
+    test('la card «Lettere»: l\'ultima lettera con il testo della colonna di «Rate scadute» e «poi: …»; «Vedi la corrispondenza» apre la scheda', async () => {
         const w = monta();
         const riga = w.get('[data-testid="ultima-lettera-in-testa"]');
+        expect(riga.get('h3').text()).toBe('Lettere');
         expect(riga.findAll('span').map((x) => x.text())).toEqual(['Ultima lettera:', 'Sollecito spedito il 06/03/2026 con raccomandata A/R n. RA1',
             'poi: Promemoria in coda dal 07/03/2026']);
         expect(riga.text()).toContain('poi: Promemoria in coda dal 07/03/2026');
@@ -89,7 +91,7 @@ describe('le schede dell\'estratto conto', () => {
         expect(scorri).toHaveBeenCalledTimes(1);
     });
 
-    test('con la sola lettera in coda o non partita la riga dice «Nessuna lettera» come la colonna di «Rate scadute», poi «poi: …»', () => {
+    test('con la sola lettera in coda o non partita la card dice «Nessuna lettera» come la colonna di «Rate scadute», poi «poi: …»', () => {
         const w = monta({ ultima_lettera: { ultima: null, in_sospeso: inCoda } });
         expect(w.get('[data-testid="ultima-lettera-in-testa"]').findAll('span').map((x) => x.text()))
             .toEqual(['Ultima lettera:', 'Nessuna lettera', 'poi: Promemoria in coda dal 07/03/2026']);
@@ -112,7 +114,66 @@ describe('le schede dell\'estratto conto', () => {
         ricarica.mockRestore();
     });
 
-    test('senza lettere la riga lo dice; senza nessun documento «Vedi la corrispondenza» non c\'è', () => {
+    test('con l\'ultima lettera e niente in coda la card dice l\'ultima, senza «poi: …»', () => {
+        const w = monta({ ultima_lettera: { ultima, in_sospeso: null } });
+        expect(w.get('[data-testid="ultima-lettera-in-testa"]').findAll('span').map((x) => x.text()))
+            .toEqual(['Ultima lettera:', 'Sollecito spedito il 06/03/2026 con raccomandata A/R n. RA1']);
+        expect(w.get('[data-testid="ultima-lettera-in-testa"]').text()).not.toContain('poi:');
+    });
+
+    test('la card sta nella colonna di destra, sotto «Unità immobiliari», e non più in una riga a tutta larghezza; «Prepara una lettera» apre la finestra', async () => {
+        const w = monta();
+        const card = w.get('[data-testid="ultima-lettera-in-testa"]');
+        const colonna = card.element.parentElement!;
+        expect(colonna.className).toContain('lg:absolute');
+        expect(colonna.parentElement!.className).toContain('lg:col-span-4');
+        expect(colonna.firstElementChild!.querySelector('[data-testid="unita-della-persona"]')).not.toBeNull();
+        expect(colonna.lastElementChild).toBe(card.element);
+        expect(w.findComponent(LettereDialog).props('open')).toBe(false);
+        await card.get('[data-testid="card-prepara-una-lettera"]').trigger('click');
+        expect(w.findComponent(LettereDialog).props('open')).toBe(true);
+    });
+
+    test('l\'ultima lettera in due righe al massimo, con il testo intero nel `title`; una riga se dopo c\'è una lettera in coda, che sta in una riga', () => {
+        const sola = monta({ ultima_lettera: { ultima, in_sospeso: null } }).get('[data-testid="testo-ultima-lettera"]');
+        expect(sola.classes()).toContain('line-clamp-2');
+        expect(sola.attributes('title')).toBe('Ultima lettera: Sollecito spedito il 06/03/2026 con raccomandata A/R n. RA1');
+        const w = monta();
+        const conLaSeconda = w.get('[data-testid="testo-ultima-lettera"]');
+        expect(conLaSeconda.classes()).toContain('line-clamp-1');
+        expect(conLaSeconda.classes()).not.toContain('line-clamp-2');
+        const inCodaDopo = w.get('[data-testid="lettera-in-sospeso"]');
+        expect(inCodaDopo.classes()).toContain('truncate');
+        expect(inCodaDopo.attributes('title')).toBe('poi: Promemoria in coda dal 07/03/2026');
+        const nessuna = monta({ lettere: [], ultima_lettera: { ultima: null, in_sospeso: null } }).get('[data-testid="testo-ultima-lettera"]');
+        expect(nessuna.classes()).toContain('line-clamp-2');
+    });
+
+    test('«Prepara una lettera» e «Vedi la corrispondenza (N)» sulla stessa riga, il secondo un collegamento, non un pulsante', () => {
+        const w = monta();
+        const prepara = w.get('[data-testid="card-prepara-una-lettera"]');
+        const vedi = w.get('[data-testid="vedi-la-corrispondenza"]');
+        expect(vedi.element.parentElement).toBe(prepara.element.parentElement);
+        const riga = prepara.element.parentElement!;
+        expect([...riga.classList]).toEqual(expect.arrayContaining(['flex', 'items-center']));
+        expect(riga.children).toHaveLength(2);
+        // Il collegamento dice che cosa c'è: con i nomi dei tipi della scheda, contati come la scheda.
+        expect(vedi.text()).toBe('Corrispondenza: 1 lettera e 2 ricevute');
+        expect(vedi.attributes('title')).toBe('Vedi la corrispondenza: 1 lettera e 2 ricevute');
+        expect(vedi.classes()).toEqual(expect.arrayContaining(['hover:underline', 'text-[11px]']));
+        expect(vedi.classes().filter((c) => /^(border|h-7|bg-)/.test(c))).toEqual([]);
+        expect(prepara.classes()).toEqual(expect.arrayContaining(['h-7', 'shrink-0', 'rounded-md']));
+    });
+
+    test('senza lettere e con due ricevute la card non si contraddice: «Nessuna lettera» accanto a «Corrispondenza: 2 ricevute»', () => {
+        const w = monta({ lettere: [], ultima_lettera: { ultima: null, in_sospeso: null } });
+        expect(w.get('[data-testid="ultima-lettera-in-testa"]').text()).toContain('Nessuna lettera a questa persona in questo condominio.');
+        expect(w.get('[data-testid="vedi-la-corrispondenza"]').text()).toBe('Corrispondenza: 2 ricevute');
+        // La scheda in basso resta com'è.
+        expect(w.findAllComponents(TabsTrigger).map((t) => t.text())).toContain('Corrispondenza (2)');
+    });
+
+    test('senza lettere la card lo dice; senza nessun documento «Vedi la corrispondenza» non c\'è', () => {
         const senzaLettere = monta({ lettere: [], ultima_lettera: { ultima: null, in_sospeso: null } });
         expect(senzaLettere.get('[data-testid="ultima-lettera-in-testa"]').text()).toContain('Nessuna lettera a questa persona in questo condominio.');
         expect(senzaLettere.find('[data-testid="vedi-la-corrispondenza"]').exists()).toBe(true);

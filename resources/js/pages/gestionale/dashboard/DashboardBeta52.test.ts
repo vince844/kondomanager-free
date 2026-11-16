@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 // @vitest-environment jsdom
 
 /**
@@ -14,7 +17,7 @@
  * netto che non è maggiore di zero (la sola entrata) non c'è niente da coprire, e la percentuale non si calcola: è 100,0 % (barra piena) se il
  * piano non chiede più del netto, cioè il delta non è positivo, e 0,0 % (barra vuota) se ne chiede meno. Un punto che resta sulla chiave tolta
  * mostrerebbe «NaN %» senza che nessun altro test se ne accorga: per questo si monta la pagina vera. La percentuale si legge dal suo riquadro e si
- * confronta per intero: «0.0%» non deve passare per «100.0%», né «50.0%» per «150.0%».
+ * confronta per intero: «0,0 %» non deve passare per «100,0 %», né «50,0 %» per «150,0 %».
  *
  * Le frasi che dicono come si ottiene il netto («da ripartire … (spese …, entrate …)») si firmano con la clausola del motore, letta alla lettera:
  * `in_array($conto->tipo, ['spesa', 'uscita']) ? abs($importo) : -abs($importo)` (`CalcoloQuoteService::processaConti`, il ramo con l'importo del piano e quello con l'importo della voce): le voci di
@@ -32,7 +35,7 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     Head: { template: '<span />' },
     Link: { template: '<a><slot /></a>' },
     InfiniteScroll: { template: '<div><slot /></div>' },
-    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn() },
+    router: { post: vi.fn(), get: vi.fn(), patch: vi.fn(), reload: vi.fn(), on: () => () => undefined },
     usePage: () => ({ props: { flash: {}, auth: { user: { roles: ['amministratore'], permissions: [] } } } }),
 }));
 vi.mock('@/composables/permissions', () => ({
@@ -83,9 +86,9 @@ function riquadro() {
 
 const larghezzaBarra = () => (document.body.querySelector('div.h-full.transition-all') as HTMLElement | null)?.getAttribute('style') ?? '';
 
-/** La percentuale di avanzamento, letta per intero dal suo riquadro («100.0%», e non un pezzo del testo della pagina). */
+/** La percentuale di avanzamento, letta per intero dal suo riquadro («100,0 %», e non un pezzo del testo della pagina). */
 function percentuale(): string {
-    const etichetta = [...document.body.querySelectorAll('span')].find((s) => normalizza(s.textContent) === 'Avanzamento Coperture Condivise');
+    const etichetta = [...document.body.querySelectorAll('span')].find((s) => normalizza(s.textContent) === 'Avanzamento delle coperture condivise');
     expect(etichetta, 'il riquadro dell\'avanzamento non c\'è').toBeDefined();
 
     return normalizza(etichetta!.nextElementSibling?.textContent);
@@ -118,14 +121,14 @@ describe('il riquadro in alto a sinistra', () => {
         expect(testo()).not.toContain('Da ripartire');
     });
 
-    // Cambiata l\'attesa del test (prima «0.0%» e barra vuota): un piano di sola entrata generato per intero è «allineato», e il riquadro accanto dice che
+    // Cambiata l\'attesa del test (prima «0,0 %» e barra vuota): un piano di sola entrata generato per intero è «allineato», e il riquadro accanto dice che
     // il piano copre esattamente il preventivo. Una percentuale di 0,0 % con la barra vuota nello stesso riquadro si contraddiceva; non c\'è niente da
     // coprire e il piano non chiede più del netto, quindi la copertura è completa.
     test('con la sola entrata il netto è negativo: € -240,00, nessuna percentuale da calcolare, e un piano che copre il netto dice 100,0 % con la barra piena', async () => {
         await monta({ spese: 0, entrate: 24000, da_ripartire: -24000, pianificato: -24000, delta: 0, percentuale: 0 });
 
         expect(riquadro()).toMatchObject({ etichetta: 'Da ripartire', valore: '€ -240,00' });
-        expect(percentuale()).toBe('100.0%');
+        expect(percentuale()).toBe('100,0 %');
         expect(testo()).not.toContain('NaN');
         expect(larghezzaBarra()).toContain('width: 100%');
         expect(testo()).toContain('Il piano rate copre esattamente il preventivo di spesa originale.');
@@ -134,21 +137,21 @@ describe('il riquadro in alto a sinistra', () => {
     test('con la sola entrata fuori dal piano (il piano chiede zero, più del netto di −240,00): ancora 100,0 %, perché non c\'è niente da coprire', async () => {
         await monta({ spese: 0, entrate: 24000, da_ripartire: -24000, pianificato: 0, delta: -24000, percentuale: 0 });
 
-        expect(percentuale()).toBe('100.0%');
+        expect(percentuale()).toBe('100,0 %');
         expect(larghezzaBarra()).toContain('width: 100%');
     });
 
     test('con la sola entrata e un piano che accredita più del netto (delta positivo): 0,0 % e barra vuota', async () => {
         await monta({ spese: 0, entrate: 24000, da_ripartire: -24000, pianificato: -48000, delta: 24000, percentuale: 0 });
 
-        expect(percentuale()).toBe('0.0%');
+        expect(percentuale()).toBe('0,0 %');
         expect(larghezzaBarra()).toContain('width: 0%');
     });
 
     test('un netto zero (spese e entrate uguali) con un piano a zero: 100,0 %', async () => {
         await monta({ spese: 24000, entrate: 24000, da_ripartire: 0, pianificato: 0, delta: 0, percentuale: 0 });
 
-        expect(percentuale()).toBe('100.0%');
+        expect(percentuale()).toBe('100,0 %');
         expect(larghezzaBarra()).toContain('width: 100%');
     });
 });
@@ -160,7 +163,7 @@ describe('la barra e la percentuale dividono per il netto', () => {
             orfani: [{ id: 9, nome: 'Manutenzione ascensore', importo: 48000, strategia: 'nuovo', gestione: 'Gestione ordinaria' }], scoperto_count: 1,
         });
 
-        expect(percentuale()).toBe('50.0%');
+        expect(percentuale()).toBe('50,0 %');
         expect(testo()).not.toContain('NaN');
         expect(larghezzaBarra()).toContain('width: 50%');
     });
@@ -171,7 +174,7 @@ describe('la barra e la percentuale dividono per il netto', () => {
             orfani: [{ id: 9, nome: 'Manutenzione ascensore', importo: 48000, strategia: 'nuovo', gestione: 'Gestione ordinaria' }], scoperto_count: 1,
         });
 
-        expect(percentuale()).toBe('50.0%');
+        expect(percentuale()).toBe('50,0 %');
         expect(larghezzaBarra()).toContain('width: 50%');
     });
 });

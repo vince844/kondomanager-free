@@ -32,6 +32,9 @@ final class ParoleDellaStampa
         ControlliDelConguaglio::RIMEDIO_PASSAGGIO_ANCHE => 'Con il passaggio registrato, chi entra conta dal giorno in cui entra.',
         ControlliDelConguaglio::RIMEDIO_PERSONALI => 'Una spesa per una sola unità non è né fra quelle da chiedere né in un piano: l\'amministratore la cerca fra le fatture '
             .'dell\'unità e i piani che le chiedono.',
+        SaldiDelleBanche::RIMEDIO_SCRIVI => 'Il saldo che dice la banca si scrive nella nota sintetica: senza, il confronto non si fa.',
+        SaldiDelleBanche::RIMEDIO_CAUSE => 'Una differenza fra il saldo che dice la banca e quello della contabilità può dipendere da un movimento non ancora arrivato in banca, da uno '
+            .'registrato con un\'altra data o su un altro conto, o dalle spese della banca: l\'amministratore la spiega in assemblea.',
         RiepilogoPerCompetenza::FRASE_DELIBERATO_SPOSTATO => 'Un piano delle rate cambiato spostando una spesa da una voce a un\'altra non si rifà: '
             .'le sue voci di oggi possono non dire quanto chiedevano le rate.',
     ];

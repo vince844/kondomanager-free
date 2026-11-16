@@ -3,13 +3,14 @@
  * La pagina delle ricevute (1.12.0-beta.2, decisioni 200 e 201): il lavoro di tutti i mesi in un clic. Si apre sulle ricevute mai emesse dei
  * versamenti dal primo del mese scorso; i filtri, la scelta delle righe o di «tutte le N dei filtri», la stampa e l'invio in blocco con
  * l'anteprima, e dopo l'invio il passo successivo (le ricevute da stampare per chi non ha un indirizzo). Per chi manda le ricevute dal suo
- * programma di posta, «Scarica un PDF per persona»: un archivio .zip con un PDF per persona e l'elenco degli indirizzi (decisione 207.2).
+ * programma di posta, «PDF per persona»: un archivio .zip con un PDF per persona e l'elenco degli indirizzi.
  */
 import { computed, ref, watch } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RicevuteIncassiGuide from '@/components/guides/RicevuteIncassiGuide.vue';
 import RicevutaDialog from '@/components/gestionale/movimenti/incassi/RicevutaDialog.vue';
 import CompensazioniSenzaAvviso from '@/components/gestionale/movimenti/incassi/CompensazioniSenzaAvviso.vue';
 import SceltaBollo from '@/components/gestionale/movimenti/incassi/SceltaBollo.vue';
@@ -22,15 +23,17 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import MultiSelect from '@/components/ui/multi-select/MultiSelect.vue';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { AlertTriangle, Archive, Eye, FileText, Loader2, Mail, Printer, X } from 'lucide-vue-next';
+import { AlertTriangle, Archive, CalendarClock, Eye, FileText, ListChecks, Loader2, Mail, Printer, X } from 'lucide-vue-next';
 import {
     AVVISO_PEC, FRASE_BOLLO, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, NOTA_MODO_UNICO, RIGA_ORIGINALE, TIPI_INDIRIZZO, alterna, apriPdfInUnaScheda, bolliRichiesti,
     estremiDaMandare, etichettaParteDelPdf, fraseDaErroreConFile, frasePerErrore, nomeDalContentDisposition, payloadSelezione, pronteDaEmettere, quanteSelezionate,
     riepilogoDelleScelte, scaricaFile, selezionaPagina, selezioneVuota, soloPersoneDaMandare, statoConModo, testoAltriIndirizzi, testoAnteprima, testoCausali,
     testoConfermaInviaDiNuovo, testoConfermaNonServe, testoConfermaRiprova, testoDelPdf, testoEmissione,
-    testoLimiteRiprova, testoEsitoInvio, testoRegistratiDiRecente, testoRestantiBlocco, testoRestantiRiprova, testoRiepilogo, testoTetto, tutteDeiFiltri, unisciEsiti, verificaIlFile,
+    testoDellaScelta, testoLimiteRiprova, testoEsitoInvio, testoRegistratiDiRecente, testoRestantiBlocco, testoRestantiRiprova, testoRiepilogo, testoTetto, tutteDeiFiltri, unisciEsiti, verificaIlFile,
     type Emissione, type PersonaAnteprima, type Selezione,
 } from '@/lib/gestionale/incassi/ricevute';
 import type { Flash } from '@/types/flash';
@@ -86,6 +89,24 @@ const f = ref({
     ricevuta: props.filters.ricevuta ?? 'mai',
 });
 const opzioniPersone = computed(() => props.persone.map((p) => ({ text: p.nome, value: String(p.id) })));
+// Le voci dei menu dei filtri e dell'ordine. Un filtro vuoto vale «tutte»: nel menu è il segnaposto, e la × lo riporta lì.
+type Voce = { valore: string; etichetta: string };
+const valoreDi = (v: Voce) => v.valore;
+const VOCI_RICEVUTA: Voce[] = [
+    { valore: 'mai', etichetta: 'Mai emessa' },
+    { valore: 'stampata', etichetta: 'Già stampata' },
+    { valore: 'inviata', etichetta: 'Già inviata o in coda' },
+    { valore: 'tutte', etichetta: 'Tutte' },
+];
+const VOCI_EMAIL: Voce[] = [{ valore: 'con', etichetta: 'Con email' }, { valore: 'senza', etichetta: 'Senza email' }];
+const VOCI_SOGLIA: Voce[] = [{ valore: 'sopra', etichetta: 'Sopra € 77,47' }, { valore: 'fino', etichetta: 'Fino a € 77,47' }];
+const VOCI_ORDINE: Voce[] = [
+    { valore: 'persona', etichetta: 'Per persona' },
+    { valore: 'unita', etichetta: 'Per unità' },
+    { valore: 'data', etichetta: 'Per data del versamento' },
+];
+const vociGestione = computed<Voce[]>(() => props.gestioni.map((g) => ({ valore: String(g.id), etichetta: g.nome })));
+const vociCassa = computed<Voce[]>(() => props.casse.map((c) => ({ valore: String(c.id), etichetta: c.nome })));
 const parametri = () => ({
     condominio: props.condominio.id,
     ricevuta: f.value.ricevuta,
@@ -114,6 +135,8 @@ const idsPagina = computed(() => props.incassi.data.map((r) => r.id));
 const quante = computed(() => quanteSelezionate(selezione.value, props.totale));
 const spuntata = (id: number) => selezione.value.tutte || selezione.value.ids.includes(id);
 const paginaSpuntata = computed(() => idsPagina.value.length > 0 && idsPagina.value.every(spuntata));
+// «Seleziona tutte le N dei filtri» serve finché non sono già tutte, e solo con più di una: con una sola basta la sua casella.
+const mancaQualcuna = computed(() => props.totale > 1 && quante.value < props.totale);
 
 // ── La finestra di una ricevuta ─────────────────────────────────────────
 const incassoAperto = ref<number | null>(null);
@@ -124,7 +147,7 @@ const ricarica = () => router.reload({ only: ['incassi', 'totale', 'non_partite'
 const includiLeRecenti = () => { if (props.registrati_di_recente) f.value.data_da = props.registrati_di_recente.dal; };
 
 // ── Il blocco: anteprima, stampa, invio ─────────────────────────────────
-// `persone`: «Scarica un PDF per persona», con le stesse scelte della stampa (decisione 207.2).
+// `persone`: «PDF per persona», con le stesse scelte della stampa.
 const blocco = ref<{ aperto: boolean; modo: 'stampa' | 'invio' | 'persone' }>({ aperto: false, modo: 'invio' });
 const anteprima = ref<any>(null);
 const caricamento = ref(false);
@@ -143,6 +166,12 @@ const messaggio = ref<string | null>(null);
 // legge in testa alla pagina.
 let aperturaBlocco = 0;
 const stessaApertura = (apertura: number) => blocco.value.aperto && apertura === aperturaBlocco;
+// Dopo una stampa o un invio le ricevute scelte non sono più «mai emesse»: la pagina si ricarica e, con quel filtro, escono dall'elenco. La scelta si
+// toglie nella finestra che ha chiesto la richiesta; se la finestra è chiusa si toglie lo stesso, ma una finestra riaperta nel frattempo è fatta
+// su quella scelta, e la tiene.
+function togliLaScelta(apertura: number) {
+    if (stessaApertura(apertura) || !blocco.value.aperto) selezione.value = selezioneVuota();
+}
 // Una richiesta del blocco che scrive nel registro o manda email (l'archivio, l'invio) è in corso: finché non risponde un'altra uguale non parte,
 // neanche da una finestra riaperta nel frattempo.
 const richiestaInCorso = ref(false);
@@ -260,7 +289,7 @@ watch(ordine, () => { if (blocco.value.aperto && anteprima.value?.oltre_tetto) {
 const pdfInArrivo = ref(false);
 const pdfSenzaScheda = ref(false);
 const pdfArrivato = ref<string | null>(null);
-async function apriIlPdf(stampa: boolean, campi: Record<string, unknown>): Promise<boolean> {
+async function apriIlPdf(stampa: boolean, campi: Record<string, unknown>, tuttaLaScelta = false): Promise<boolean> {
     if (pdfInArrivo.value) return false;
     const apertura = aperturaBlocco;
     pdfInArrivo.value = true;
@@ -280,6 +309,8 @@ async function apriIlPdf(stampa: boolean, campi: Record<string, unknown>): Promi
         const frase = testoDelPdf(pdf, { stampa, una: false });
         if (stessaApertura(apertura)) pdfArrivato.value = frase;
         else inUnAltraApertura(frase, true, stampa);
+        // La scelta si toglie solo quando la stampa ha coperto tutte le righe scelte: una parte di molte, o un gruppo scelto a parte, la lasciano.
+        if (stampa && tuttaLaScelta) togliLaScelta(apertura);
         if (stampa) ricarica();
 
         return true;
@@ -294,8 +325,8 @@ async function apriIlPdf(stampa: boolean, campi: Record<string, unknown>): Promi
     }
 }
 
-function stampaInBlocco(soloIncassi?: number[]): Promise<boolean> {
-    return apriIlPdf(true, { ...(soloIncassi ? { incassi: soloIncassi, ...sceltePerIlServer() } : corpo()), ordine: ordine.value });
+function stampaInBlocco(soloIncassi?: number[], tuttaLaScelta = !soloIncassi): Promise<boolean> {
+    return apriIlPdf(true, { ...(soloIncassi ? { incassi: soloIncassi, ...sceltePerIlServer() } : corpo()), ordine: ordine.value }, tuttaLaScelta);
 }
 
 // Più ricevute del tetto di un PDF: una parte per volta, ogni parte con le persone intere. Si passa alla parte dopo quando questa è stampata:
@@ -306,10 +337,10 @@ async function stampaLaParte() {
     const parte = partiPdf.value[indice];
     if (!parte || pdfInArrivo.value) return;
     // La parte è di questa apertura: una finestra riaperta nel frattempo riparte dalla prima.
-    if (await stampaInBlocco(parte) && stessaApertura(apertura)) partePdf.value = indice < partiPdf.value.length - 1 ? indice + 1 : partiPdf.value.length;
+    if (await stampaInBlocco(parte, indice >= partiPdf.value.length - 1) && stessaApertura(apertura)) partePdf.value = indice < partiPdf.value.length - 1 ? indice + 1 : partiPdf.value.length;
 }
 
-// «Scarica un PDF per persona»: l'archivio .zip arriva come file e si salva; ogni ricevuta risulta stampata.
+// «PDF per persona»: l'archivio .zip arriva come file e si salva; ogni ricevuta risulta stampata.
 const scaricato = ref<string | null>(null);
 async function scaricaPerPersona() {
     if (richiestaInCorso.value) return;
@@ -326,6 +357,7 @@ async function scaricaPerPersona() {
         const frase = `Archivio scaricato: ${nome}. Le ricevute risultano stampate. Aprilo, e manda a ogni persona il suo PDF dal tuo programma di posta; gli indirizzi sono in «Indirizzi email.txt».`;
         if (stessaApertura(apertura)) scaricato.value = frase;
         else inUnAltraApertura(frase, true, true);
+        togliLaScelta(apertura);
         ricarica();
     } catch (e: any) {
         const frase = await fraseDaErroreConFile(e, 'Non è stato possibile preparare l\'archivio. Riprova.');
@@ -440,6 +472,30 @@ async function nonServeComunicarla(id: number, avviso = false) {
     ricarica();
 }
 
+// La testata: la freccia verso gli incassi, la guida di lato e le tre schede.
+const mostraGuida = ref(false);
+const indirizzoIncassi = computed(() => route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }));
+const pageGuides = [
+    {
+        title: 'Una o tante',
+        description: 'Scegli con i filtri e le caselle; poi stampi, scarichi un PDF per persona o mandi per email.',
+        icon: ListChecks,
+        colorVariant: 'blue' as const,
+    },
+    {
+        title: 'Da dove parte',
+        description: 'La pagina si apre sulle ricevute mai emesse dal primo del mese scorso. I filtri cambiano la scelta.',
+        icon: CalendarClock,
+        colorVariant: 'amber' as const,
+    },
+    {
+        title: 'Le email',
+        description: 'Partono in coda. Se una resta ferma più di un\'ora la pagina lo dice; chi non ha un indirizzo si stampa.',
+        icon: Mail,
+        colorVariant: 'emerald' as const,
+    },
+];
+
 const breadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Incassi Rate', href: route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }) },
@@ -454,12 +510,17 @@ const breadcrumbs = computed(() => [
             <PageHeaderGuide
                 page-title="Ricevute degli incassi"
                 page-subtitle="Stampa o invia per email le ricevute dei versamenti, una o tante. La pagina si apre sulle ricevute mai emesse dal primo del mese scorso."
-                :guides="[]"
+                :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
+                :back-url="indirizzoIncassi"
+                back-text="Incassi"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
                 :esercizio="props.esercizio"
                 :esercizi="props.esercizi"
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
             />
 
             <div v-if="flashMessage">
@@ -501,82 +562,110 @@ const breadcrumbs = computed(() => [
             </div>
             <p v-if="messaggio" data-testid="messaggio-pagina" class="rounded-lg border bg-slate-50 dark:bg-slate-800/60 p-2 text-sm">{{ messaggio }}</p>
 
-            <!-- I filtri -->
-            <div class="flex flex-wrap items-end gap-3 rounded-xl border bg-white dark:bg-slate-900 p-3 text-xs">
-                <label class="space-y-1">
+            <!-- I filtri: i menu sono quelli del programma, alti come i campi accanto. -->
+            <div class="menu-ricevute flex flex-wrap items-end gap-3 rounded-xl border bg-white dark:bg-slate-900 p-3 text-xs" data-testid="filtri-ricevute">
+                <div class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-ricevuta">
                     <span class="block text-slate-500 dark:text-slate-400">Ricevuta</span>
-                    <select v-model="f.ricevuta" class="h-8 rounded-md border px-2 bg-transparent">
-                        <option value="mai">Mai emessa</option>
-                        <option value="stampata">Già stampata</option>
-                        <option value="inviata">Già inviata o in coda</option>
-                        <option value="tutte">Tutte</option>
-                    </select>
-                </label>
-                <label class="space-y-1">
+                    <v-select
+                        :model-value="f.ricevuta"
+                        :options="VOCI_RICEVUTA"
+                        label="etichetta"
+                        :reduce="valoreDi"
+                        :searchable="false"
+                        :clearable="false"
+                        class="w-full sm:w-[190px]"
+                        @update:model-value="(v: string) => (f.ricevuta = v)"
+                    />
+                </div>
+                <label class="flex flex-col gap-1 w-full sm:w-auto">
                     <span class="block text-slate-500 dark:text-slate-400">Versamento dal</span>
-                    <Input v-model="f.data_da" type="date" class="h-8 w-[140px] text-xs" />
+                    <Input v-model="f.data_da" type="date" class="h-8 w-full sm:w-[140px] text-xs" />
                 </label>
-                <label class="space-y-1">
+                <label class="flex flex-col gap-1 w-full sm:w-auto">
                     <span class="block text-slate-500 dark:text-slate-400">al</span>
-                    <Input v-model="f.data_a" type="date" class="h-8 w-[140px] text-xs" />
+                    <Input v-model="f.data_a" type="date" class="h-8 w-full sm:w-[140px] text-xs" />
                 </label>
-                <label class="space-y-1">
+                <div class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-gestione">
                     <span class="block text-slate-500 dark:text-slate-400">Gestione</span>
-                    <select v-model="f.gestione_id" class="h-8 rounded-md border px-2 bg-transparent">
-                        <option value="">Tutte</option>
-                        <option v-for="g in gestioni" :key="g.id" :value="String(g.id)">{{ g.nome }}</option>
-                    </select>
-                </label>
-                <label class="space-y-1">
+                    <v-select
+                        :model-value="f.gestione_id || null"
+                        :options="vociGestione"
+                        label="etichetta"
+                        :reduce="valoreDi"
+                        placeholder="Tutte"
+                        class="w-full sm:w-[200px]"
+                        @update:model-value="(v: string | null) => (f.gestione_id = v ?? '')"
+                    >
+                        <template #no-options>Nessuna gestione con questo nome.</template>
+                    </v-select>
+                </div>
+                <div class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-cassa">
                     <span class="block text-slate-500 dark:text-slate-400">Cassa</span>
-                    <select v-model="f.cassa_id" class="h-8 rounded-md border px-2 bg-transparent">
-                        <option value="">Tutte</option>
-                        <option v-for="c in casse" :key="c.id" :value="String(c.id)">{{ c.nome }}</option>
-                    </select>
-                </label>
-                <label class="space-y-1">
+                    <v-select
+                        :model-value="f.cassa_id || null"
+                        :options="vociCassa"
+                        label="etichetta"
+                        :reduce="valoreDi"
+                        placeholder="Tutte"
+                        class="w-full sm:w-[180px]"
+                        @update:model-value="(v: string | null) => (f.cassa_id = v ?? '')"
+                    >
+                        <template #no-options>Nessuna cassa con questo nome.</template>
+                    </v-select>
+                </div>
+                <div class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-email">
                     <span class="block text-slate-500 dark:text-slate-400">Email</span>
-                    <select v-model="f.email" class="h-8 rounded-md border px-2 bg-transparent">
-                        <option value="">Con o senza</option>
-                        <option value="con">Con email</option>
-                        <option value="senza">Senza email</option>
-                    </select>
-                </label>
-                <label class="space-y-1">
+                    <v-select
+                        :model-value="f.email || null"
+                        :options="VOCI_EMAIL"
+                        label="etichetta"
+                        :reduce="valoreDi"
+                        :searchable="false"
+                        placeholder="Con o senza"
+                        class="w-full sm:w-[150px]"
+                        @update:model-value="(v: string | null) => (f.email = v ?? '')"
+                    />
+                </div>
+                <div class="flex flex-col gap-1 w-full sm:w-auto" data-testid="filtro-soglia">
                     <span class="block text-slate-500 dark:text-slate-400">Importo</span>
-                    <select v-model="f.soglia" class="h-8 rounded-md border px-2 bg-transparent">
-                        <option value="">Tutti</option>
-                        <option value="sopra">Sopra € 77,47</option>
-                        <option value="fino">Fino a € 77,47</option>
-                    </select>
-                </label>
-                <div class="space-y-1 min-w-[220px]">
+                    <v-select
+                        :model-value="f.soglia || null"
+                        :options="VOCI_SOGLIA"
+                        label="etichetta"
+                        :reduce="valoreDi"
+                        :searchable="false"
+                        placeholder="Tutti"
+                        class="w-full sm:w-[160px]"
+                        @update:model-value="(v: string | null) => (f.soglia = v ?? '')"
+                    />
+                </div>
+                <div class="space-y-1 w-full sm:w-auto sm:min-w-[220px]">
                     <span class="block text-slate-500 dark:text-slate-400">Persone (vuoto: tutte)</span>
                     <MultiSelect v-model="f.persone" :options="opzioniPersone" text="text" value="value" placeholder="Cerca per nome" />
                 </div>
             </div>
 
-            <!-- La scelta e le azioni -->
-            <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <div class="flex flex-wrap items-center gap-2">
+            <!-- La scelta e le azioni: il conteggio a sinistra, i tre pulsanti a destra. Quando si sceglie cambia solo la parte di sinistra, che va a
+                 capo se serve: i pulsanti restano dove sono. Sul telefono stanno sotto il conteggio. -->
+            <div class="flex flex-col gap-2 text-sm md:flex-row md:items-start md:justify-between" data-testid="riga-della-scelta">
+                <div class="flex min-h-8 min-w-0 flex-wrap items-center gap-x-2 gap-y-1 md:flex-1" data-testid="scelta-delle-righe">
                     <!-- Sul telefono l'intestazione della tabella non c'è: la casella che spunta la pagina sta qui. -->
                     <label v-if="incassi.data.length" data-testid="seleziona-pagina-telefono" class="flex items-center gap-2 text-xs md:hidden">
                         <Checkbox :model-value="paginaSpuntata" :disabled="selezione.tutte" @update:model-value="selezione = selezionaPagina(selezione, idsPagina)" /> Seleziona questa pagina
                     </label>
-                    <span>{{ totale === 1 ? '1 ricevuta' : `${totale} ricevute` }} con questi filtri.</span>
-                    <span v-if="quante > 0" class="font-medium">Selezionate: {{ quante }}.</span>
-                    <Button v-if="!selezione.tutte && totale > 0" size="sm" variant="ghost" class="h-7 text-xs" @click="selezione = tutteDeiFiltri(selezione)">
+                    <span data-testid="conteggio-scelta" :class="{ 'font-medium': quante > 0 }">{{ testoDellaScelta(quante, totale) }}</span>
+                    <Button v-if="mancaQualcuna" size="sm" variant="ghost" class="h-7 text-xs" @click="selezione = tutteDeiFiltri(selezione)">
                         Seleziona tutte le {{ totale }} dei filtri
                     </Button>
                     <Button v-if="quante > 0" size="sm" variant="ghost" class="h-7 text-xs" @click="selezione = selezioneVuota()">
                         <X class="w-3.5 h-3.5 mr-1" /> Togli la scelta
                     </Button>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" :disabled="quante === 0" @click="apriBlocco('stampa')"><Printer class="w-4 h-4 mr-2" /> Stampa le selezionate</Button>
+                <div class="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap" data-testid="azioni-della-scelta">
+                    <Button size="sm" variant="outline" :disabled="quante === 0" @click="apriBlocco('stampa')"><Printer class="w-4 h-4 mr-2" /> Stampa</Button>
                     <!-- Per chi le manda dal suo programma di posta: un PDF per persona in un archivio, con gli indirizzi. -->
-                    <Button size="sm" variant="outline" :disabled="quante === 0" @click="apriBlocco('persone')"><Archive class="w-4 h-4 mr-2" /> Scarica un PDF per persona</Button>
-                    <Button size="sm" :disabled="quante === 0" @click="apriBlocco('invio')"><Mail class="w-4 h-4 mr-2" /> Invia per email le selezionate</Button>
+                    <Button size="sm" variant="outline" :disabled="quante === 0" @click="apriBlocco('persone')"><Archive class="w-4 h-4 mr-2" /> PDF per persona</Button>
+                    <Button size="sm" :disabled="quante === 0" @click="apriBlocco('invio')"><Mail class="w-4 h-4 mr-2" /> Invia per email</Button>
                 </div>
             </div>
 
@@ -623,6 +712,7 @@ const breadcrumbs = computed(() => [
             </div>
         </div>
 
+        <RicevuteIncassiGuide v-model:open="mostraGuida" />
         <RicevutaDialog v-model:open="finestraAperta" :condominio-id="condominio.id" :incasso-id="incassoAperto" @emessa="ricarica" @avviso="(frase: string) => (messaggio = frase)" />
         <ConfirmDialog v-model="conferma.aperta" :title="conferma.titolo" :description="conferma.testo" :confirm-text="conferma.pulsante" @confirm="conferma.azione()" />
 
@@ -712,18 +802,24 @@ const breadcrumbs = computed(() => [
                     </div>
 
                     <template v-if="blocco.modo === 'stampa'">
-                        <label class="space-y-1 block">
-                            <span class="font-medium">Ordine</span>
-                            <select v-model="ordine" :disabled="partePdf > 0 || anteprimaInCorso || pdfInArrivo" class="h-8 rounded-md border px-2 bg-transparent block disabled:opacity-60">
-                                <option value="persona">Per persona</option>
-                                <option value="unita">Per unità</option>
-                                <option value="data">Per data del versamento</option>
-                            </select>
-                            <span class="text-xs text-muted-foreground">Le ricevute della stessa persona restano insieme, con l'indirizzo sulla prima: una busta per persona.</span>
+                        <div class="menu-ricevute space-y-1" data-testid="ordine-stampa">
+                            <span class="block font-medium">Ordine</span>
+                            <v-select
+                                :model-value="ordine"
+                                :options="VOCI_ORDINE"
+                                label="etichetta"
+                                :reduce="valoreDi"
+                                :searchable="false"
+                                :clearable="false"
+                                :disabled="partePdf > 0 || anteprimaInCorso || pdfInArrivo"
+                                class="w-full sm:w-[240px]"
+                                @update:model-value="(v: 'persona' | 'unita' | 'data') => (ordine = v)"
+                            />
+                            <span class="block text-xs text-muted-foreground">Le ricevute della stessa persona restano insieme, con l'indirizzo sulla prima: una busta per persona.</span>
                             <span v-if="anteprima.oltre_tetto" class="block text-xs text-muted-foreground">
                                 {{ partePdf > 0 ? 'Una parte è già stampata: l\'ordine non si cambia a metà.' : 'L\'ordine vale per tutte le parti, dalla prima all\'ultima.' }}
                             </span>
-                        </label>
+                        </div>
                         <p v-if="anteprima.senza_indirizzo_postale.length" class="text-xs text-amber-700 dark:text-amber-300">
                             Senza indirizzo postale, il riquadro della busta resta vuoto: {{ anteprima.senza_indirizzo_postale.join(', ') }}.
                         </p>
@@ -843,3 +939,74 @@ const breadcrumbs = computed(() => [
         </Dialog>
     </GestionaleLayout>
 </template>
+
+<style>
+/* I menu della pagina delle ricevute (i filtri e l'ordine della stampa): alti come i campi accanto, con il testo del riquadro in cui stanno, e
+   leggibili nel tema scuro. Come quelli dei filtri delle rate scadute; solo qui: gli altri menu del programma restano come sono. */
+.menu-ricevute .v-select {
+    --vs-font-size: 1em;
+    --vs-line-height: 1.25;
+    --vs-border-radius: 0.375rem;
+    --vs-border-color: var(--input);
+    --vs-controls-color: rgb(100 116 139);
+    --vs-disabled-bg: transparent;
+    background: transparent;
+}
+.menu-ricevute .vs__dropdown-toggle {
+    min-height: 2rem;
+    padding: 0;
+    align-items: center;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+.menu-ricevute .vs__selected-options {
+    align-items: center;
+    padding-left: 6px;
+}
+/* Il testo al centro del campo: niente margine in alto né lo spazio che `custom.css` dà alla ricerca. */
+.menu-ricevute .vs__selected,
+.menu-ricevute .vs__search {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+.menu-ricevute .vs__search,
+.menu-ricevute .vs__search::placeholder {
+    font-size: 1em !important;
+}
+.menu-ricevute .vs__actions {
+    padding: 0 8px 0 4px;
+}
+/* La freccia più piccola, come quella degli altri menu del programma; aperta si gira come prima. */
+.menu-ricevute .vs__open-indicator {
+    transform: scale(0.75);
+}
+.menu-ricevute .vs--open .vs__open-indicator {
+    transform: rotate(180deg) scale(0.75);
+}
+.menu-ricevute .vs__dropdown-menu {
+    font-size: 1em;
+    max-height: 18rem;
+}
+/* Fermo, come gli altri campi fermi del programma. */
+.menu-ricevute .vs--disabled {
+    opacity: 0.6;
+}
+.dark .menu-ricevute .v-select {
+    --vs-dropdown-bg: rgb(15 23 42);
+    --vs-dropdown-color: rgb(226 232 240);
+    --vs-dropdown-option-color: rgb(226 232 240);
+    --vs-selected-color: rgb(226 232 240);
+    --vs-search-input-color: rgb(226 232 240);
+    --vs-controls-color: rgb(148 163 184);
+    --vs-border-color: var(--input);
+}
+/* Nel tema scuro lo sfondo dei campi di testo del programma (`dark:bg-input/30`), perché i menu non sembrino un'altra cosa. */
+.dark .menu-ricevute .vs__dropdown-toggle {
+    background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+/* `custom.css` evidenzia la voce con un grigio chiarissimo e il testo nero: nel tema scuro diventava una barra bianca. */
+.dark .menu-ricevute .vs__dropdown-option--highlight {
+    background: rgb(30 41 59) !important;
+    color: rgb(241 245 249) !important;
+}
+</style>

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Zap, Landmark, AlertTriangle, ArrowRight, FileText, Info } from 'lucide-vue-next';
@@ -34,7 +35,10 @@ const props = defineProps<{
     casse: Cassa[];
     fornitori: FornitoreOpt[];
     prossimo_protocollo: string;
+    /** Il modulo aperto già compilato da un'altra pagina (le spese della banca dal controllo della banca): l'amministratore lo rilegge e salva lui. */
+    precompilata?: { cassa_id: number | null; esercizio_id: number | null; conto_id: number | null; data_operazione: string | null; importo: string | null; causale: string | null } | null;
 }>();
+const pre = props.precompilata ?? null;
 
 const { generateRoute, generatePath } = usePermission();
 const { euro } = useCurrencyFormatter({ fromCents: false });
@@ -84,14 +88,14 @@ interface FormRegolazioneImmediata {
 // NB: il campo NON può chiamarsi `data` — useForm di Inertia espone già un metodo
 // form.data(), la collisione impedisce al v-model di legarsi e il campo resta vuoto.
 const form = useForm<FormRegolazioneImmediata>({
-    esercizio_id: props.esercizi.length === 1 ? props.esercizi[0].id : null,
+    esercizio_id: pre?.esercizio_id ?? (props.esercizi.length === 1 ? props.esercizi[0].id : null),
     gestione_id: null,
-    conto_id: null,
-    cassa_id: props.casse.length === 1 ? props.casse[0].id : null,
+    conto_id: pre?.conto_id ?? null,
+    cassa_id: pre?.cassa_id ?? (props.casse.length === 1 ? props.casse[0].id : null),
     fornitore_id: null,
-    data_operazione: oggi,
-    causale: '',
-    importo: 0,
+    data_operazione: pre?.data_operazione ?? oggi,
+    causale: pre?.causale ?? '',
+    importo: pre?.importo ? Number(pre.importo) : 0,
 });
 
 // Le gestioni disponibili dipendono dall'esercizio scelto (stessa regola del form fattura).
@@ -200,10 +204,7 @@ function onKeydown(e: KeyboardEvent) {
                 back-text="Indietro"
             >
                 <template #actions>
-                    <Button variant="outline" size="sm" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200" @click="showGuideCompleta = true">
-                        <Zap class="w-4 h-4" />
-                        Guida completa
-                    </Button>
+                    <PulsanteGuida testo="Guida completa" @click="showGuideCompleta = true" />
                 </template>
             </PageHeaderGuide>
 

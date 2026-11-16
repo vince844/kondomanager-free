@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Services\Gestionale;
 
@@ -24,22 +27,21 @@ use Carbon\CarbonImmutable;
  */
 final class SintesiDelRendiconto
 {
-    public const FRASE_LIQUIDITA = 'Secondo la contabilità: non è il saldo dell\'estratto conto della banca, e il confronto è un controllo tuo.';
+    public const FRASE_LIQUIDITA = 'Secondo la contabilità: non è il saldo dell\'estratto conto della banca. Se scrivi nella nota sintetica il saldo che dice la banca, il programma dice la differenza.';
 
     public function __construct(private readonly ControlliDelRendiconto $controlli, private readonly CommissioniSenzaVoce $commissioni,
         private readonly ConguaglioDelRendiconto $conguaglio) {}
 
     /**
-     * Chi ha già letto i controlli (il fascicolo) li passa, così non si leggono due volte nella stessa richiesta; la lettura del conguaglio la passa
-     * con loro, o da sola.
+     * Chi ha già letto i controlli (il fascicolo, la pagina della Sintesi) li passa, così non si leggono due volte nella stessa richiesta; la lettura del
+     * conguaglio la passa con loro, o da sola, con il suo peso.
      *
      * @return array<string,mixed>
      */
-    public function perEsercizio(Condominio $condominio, Esercizio $esercizio, ?string $oggi = null, ?array $controlli = null, ?array $conguaglio = null): array
+    public function perEsercizio(Condominio $condominio, Esercizio $esercizio, ?string $oggi = null, ?array $controlli = null, ?array $conguaglio = null, ?int $peso = null): array
     {
         $oggi = $oggi ?? DateHelper::oggiUtente();
         $conguaglio ??= $controlli['conguaglio'] ?? null;
-        $peso = null;
         // Chi passa i controlli senza la lettura (il frontespizio del fascicolo) non mostra il riquadro: la lettura qui non si fa.
         if ($conguaglio === null && $controlli === null) {
             $peso = $this->conguaglio->peso($esercizio);
@@ -137,8 +139,14 @@ final class SintesiDelRendiconto
                 // Coda 557: il deliberato dei piani di prima ricostruito, con la sua frase.
                 'avvertenza_deliberato_ricostruito' => $r['avvertenze']['deliberato_ricostruito'],
                 'quote_piani' => $q['emesse'],
+                // I contributi addebitati a singole persone registrati nell'esercizio: fra le quote registrate, non fra le quote dei piani.
+                'contributi_addebitati' => (int) ($r['raccordo_quote']['contributi_addebitati'] ?? 0),
+                'contributi_non_versati' => (int) ($r['raccordo_quote']['contributi_non_versati'] ?? 0),
                 'quote_pagate' => $q['pagate'],
                 'quote_non_pagate' => $q['non_pagate'],
+                // Delle quote dei piani, quelle delle rate già scadute e la loro parte non pagata: la base della percentuale della nota sintetica.
+                'quote_scadute' => (int) ($q['emesse_scadute'] ?? 0),
+                'quote_scadute_non_pagate' => (int) ($q['scadute'] ?? 0),
                 'costi' => $costi,
                 'quote_giornale' => $r['risultato']['quote_emesse'],
                 'risultato' => $r['risultato']['risultato'],
@@ -159,14 +167,19 @@ final class SintesiDelRendiconto
         $spese = (int) array_sum(array_map(fn ($b) => (int) ($b['totale_spese']['consuntivo'] ?? 0), $riepilogo['blocchi']));
         // Le entrate da terzi nette, come le conta la riconciliazione: l'incassato meno quello che sulle stesse voci è un costo.
         $entrate = (int) array_sum(array_map(fn ($b) => (int) ($b['totale_entrate']['incassato'] ?? 0) - (int) ($b['totale_entrate']['consuntivo'] ?? 0), $riepilogo['blocchi']));
+        // Gli interessi e le spese versati dai condòmini: non sono entrate da terzi, e riducono anche loro le spese da dividere.
+        $accessori = (int) array_sum(array_map(fn ($b) => (int) ($b['totale_versato_accessori'] ?? 0), $riepilogo['blocchi']));
         $netti = (int) $riepilogo['riconciliazione']['capitoli_netti'];
         $nd = ParoleDelConguaglio::nonDivise(0, array_map(fn ($f) => (int) ($f['consuntivo'] ?? 0), array_intersect_key($riepilogo['fuori_capitoli'], ParoleDelConguaglio::NON_DIVISE)));
         $costi = (int) $riepilogo['risultato']['costi'];
-        if ($spese - $entrate !== $netti || $netti + $nd['importo'] !== $costi || ($entrate === 0 && $nd['importo'] === 0)) {
+        if ($spese - $entrate - $accessori !== $netti || $netti + $nd['importo'] !== $costi || ($entrate === 0 && $accessori === 0 && $nd['importo'] === 0)) {
             return null;
         }
 
-        return 'Spese del riepilogo finanziario '.self::euro($spese).' − entrate da terzi '.self::euro($entrate).' = '.self::euro($netti).' da dividere fra i condòmini'
+        return 'Spese del riepilogo finanziario '.self::euro($spese)
+            .($entrate !== 0 || $accessori === 0 ? ' − entrate da terzi '.self::euro($entrate) : '')
+            .($accessori !== 0 ? ' − interessi e spese versati dai condòmini '.self::euro($accessori) : '')
+            .' = '.self::euro($netti).' da dividere fra i condòmini'
             .($nd['importo'] === 0
                 ? ': sono i costi dell\'esercizio.'
                 : '; con '.self::euro($nd['importo']).' di spese non ancora divise ('.implode(', ', $nd['cosa']).') i costi sono '.self::euro($costi).'.');
@@ -176,9 +189,16 @@ final class SintesiDelRendiconto
      * I controlli detti a chi legge il frontespizio: quanti tornano e quanti no, chi li spiega, che cosa non sono. Senza «ammanco» e senza le righe dei
      * controlli, che sono nella loro pagina.
      *
-     * @param  array{tornano:int, non_tornano:int, da_leggere:int, non_calcolati:int}  $esito
+     * Quelli che l'amministratore ha spiegato nella nota sintetica del fascicolo si dicono lì: la frase rimanda alla nota per quelli, e dice che spiegherà
+     * in assemblea gli altri.
+     *
+     * Ogni «non calcolato» con il suo motivo: i controlli del conguaglio leggono il conguaglio, che il fascicolo può non avere; il saldo della banca si
+     * confronta solo con l'estratto conto scritto.
+     *
+     * @param  array{tornano:int, non_tornano:int, da_leggere:int, non_calcolati:int, non_calcolati_banca?:int}  $esito
+     * @param  int  $spiegatiNellaNota  i controlli che non tornano o da leggere con la spiegazione stampata nella nota del fascicolo
      */
-    public static function controlliPerChiLegge(array $esito): string
+    public static function controlliPerChiLegge(array $esito, int $spiegatiNellaNota = 0): string
     {
         $pezzi = [$esito['tornano'].($esito['tornano'] === 1 ? ' torna' : ' tornano')];
         if ($esito['non_tornano'] > 0) {
@@ -188,13 +208,27 @@ final class SintesiDelRendiconto
             $pezzi[] = $esito['da_leggere'].' da leggere';
         }
         $daSpiegare = $esito['non_tornano'] + $esito['da_leggere'];
-        $frase = 'I controlli: '.implode(', ', $pezzi)
-            .($daSpiegare === 0 ? '' : ' (l\'amministratore '.($daSpiegare === 1 ? 'lo' : 'li').' spiegherà in assemblea)');
-        if ($esito['non_calcolati'] > 0) {
-            $frase .= '; '.$esito['non_calcolati'].($esito['non_calcolati'] === 1 ? ' non è calcolato: legge' : ' non sono calcolati: leggono').' il conguaglio, che non è in questo fascicolo';
+        $nellaNota = min($daSpiegare, max(0, $spiegatiNellaNota));
+        $restano = $daSpiegare - $nellaNota;
+        $chi = match (true) {
+            $daSpiegare === 0 => '',
+            $nellaNota === 0 => ' (l\'amministratore '.($daSpiegare === 1 ? 'lo' : 'li').' spiegherà in assemblea)',
+            $restano === 0 => ' (la spiegazione è nella nota sintetica)',
+            default => ' ('.$nellaNota.' '.($nellaNota === 1 ? 'spiegato' : 'spiegati').' nella nota sintetica; '.($restano === 1 ? 'l\'altro' : 'gli altri '.$restano)
+                .' l\'amministratore '.($restano === 1 ? 'lo' : 'li').' spiegherà in assemblea)',
+        };
+        $frase = 'I controlli: '.implode(', ', $pezzi).$chi;
+        $banca = (int) ($esito['non_calcolati_banca'] ?? 0);
+        $delConguaglio = $esito['non_calcolati'] - $banca;
+        if ($delConguaglio > 0) {
+            $frase .= '; '.$delConguaglio.($delConguaglio === 1 ? ' non è calcolato: legge' : ' non sono calcolati: leggono').' il conguaglio, che non è in questo fascicolo';
+        }
+        if ($banca > 0) {
+            $frase .= '; il saldo della banca non è confrontato, perché l\'amministratore non ha indicato il saldo dell\'estratto conto della banca';
         }
 
-        return $frase.'. Sono quadrature interne dei numeri; non sostituiscono il confronto con l\'estratto conto della banca.';
+        return $frase.'. Sono quadrature interne dei numeri, e del saldo registrato con quello dell\'estratto conto della banca quando l\'amministratore lo indica; non dicono che ogni spesa e ogni '
+            .'entrata è stata registrata.';
     }
 
     /** La percentuale in millesimi interi, arrotondata al più vicino: 4.131,00 su 4.110,00 → 1005 (100,5 %); 2 su 3 → 667. Senza una base, nessuna. */

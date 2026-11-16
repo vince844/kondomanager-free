@@ -89,6 +89,9 @@ class StoreIncassoRateRequest extends FormRequest
             // usa la scelta solo se la distribuzione si discosta: senza, l'incasso si registra lo stesso, «fuori ordine, non dichiarata».
             'imputazione_scelta' => ['nullable', 'string', \Illuminate\Validation\Rule::in(\App\Services\Gestionale\Incassi\OrdineImputazione::SCELTE)],
             'imputazione_nota' => ['nullable', 'string', 'max:255'],
+            // «Versamento dell'accordo»: la persona ha un accordo di rientro in corso e il versamento va alle rate che l'accordo copre, prima gli
+            // interessi e le spese, poi il capitale più vecchio. Senza, un versamento va alle rate correnti: le parti coperte escono dall'ordine.
+            'versamento_accordo' => ['nullable', 'boolean'],
 
             // L'attività della posta in arrivo che l'incasso chiude (arrivo da una segnalazione). Il perimetro del
             // condominio lo applica `IncassoRateController::store()` cercandola fra le attività di questo condominio:

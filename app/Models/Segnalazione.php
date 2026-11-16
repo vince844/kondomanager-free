@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 namespace App\Models;
 
@@ -61,8 +64,16 @@ class Segnalazione extends Model implements Commentable
             app(\App\Services\Allegati\AllegatoService::class)->preparaPuliziaPerElemento($segnalazione);
         });
 
+        // Il compito dell'Inbox: aperto finché la segnalazione è aperta o in lavorazione, chiuso quando si chiude, via quando si cancella. La regola è in
+        // `CompitoDellaSegnalazione`, e solo lì.
+        // Il compito non ferma mai il salvataggio della segnalazione: un errore si registra, e il compito si rimette al salvataggio dopo.
+        static::saved(function (self $segnalazione) {
+            rescue(fn () => app(\App\Services\Gestionale\Inbox\CompitoDellaSegnalazione::class)->sincronizza($segnalazione));
+        });
+
         static::deleted(function (self $segnalazione) {
             app(\App\Services\Allegati\AllegatoService::class)->completaPuliziaPerElemento($segnalazione);
+            rescue(fn () => app(\App\Services\Gestionale\Inbox\CompitoDellaSegnalazione::class)->togli($segnalazione));
         });
     }
 

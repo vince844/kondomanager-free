@@ -40,7 +40,7 @@
 
 @if($conStudioInTesta || $conCartaInTesta)
 @component('pdf._carta.testata_inter', ['carta' => $carta, 'condominio' => $condominio, 'att' => $titoloStampa])
-<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio?->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine?->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+<b class="forte">{{ $esercizio->nome }}</b> · dal <b class="forte">{{ $esercizio->data_inizio?->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine?->format('d/m/Y') }}</b> · Stampato il <b class="forte">{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
 @endcomponent
 @else
 <table class="testata">
@@ -56,7 +56,7 @@
         <td class="doc">
             <b class="forte">{{ $esercizio->nome }}</b><br>
             dal <b class="forte">{{ $esercizio->data_inizio?->format('d/m/Y') }}</b> al <b class="forte">{{ $esercizio->data_fine?->format('d/m/Y') }}</b><br>
-            Stampato il <b class="forte">{{ \App\Helpers\DateHelper::adessoUtente()->format('d/m/Y') }}</b>
+            Stampato il <b class="forte">{{ ($data_emissione_stampe ?? \App\Helpers\DateHelper::adessoUtente())->format('d/m/Y') }}</b>
         </td>
     </tr>
 </table>

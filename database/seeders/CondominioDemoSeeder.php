@@ -67,7 +67,9 @@ use Illuminate\Support\Facades\DB;
  *     non si cancella, si rettifica — ed è il principio su cui è costruito tutto il gestionale;
  * 12. lo **scadenzario F24** già calcolato, con la ritenuta pronta da versare;
  * 13. una **sopravvenienza**: una spesa imprevista che il preventivo non conteneva, che si crea la
- *     propria voce e chiede rate nuove — è la sezione gialla del piano dei conti.
+ *     propria voce e chiede rate nuove — è la sezione gialla del piano dei conti;
+ * 14. il **saldo della banca** nella nota sintetica, uguale al saldo registrato del conto corrente
+ *     (con il fondo dentro): il controllo della banca torna, e il campo mostra come si scrive.
  *
  * Il rendiconto non si semina: è una vista, e con questi movimenti si popola da sé.
  *
@@ -126,7 +128,7 @@ class CondominioDemoSeeder extends Seeder
 
         foreach (['registraIncassi', 'registraFatture', 'registraFatturaInSforo',
                   'registraSopravvenienza', 'registraGiroconto', 'stornaUnPagamento',
-                  'generaScadenzarioF24', 'riempiInbox'] as $passo) {
+                  'generaScadenzarioF24', 'riempiInbox', 'scriviIlSaldoDellaBanca'] as $passo) {
             try {
                 $this->{$passo}();
             } catch (\Throwable $e) {
@@ -355,11 +357,16 @@ class CondominioDemoSeeder extends Seeder
 
         // ⚠️ Un fondo è una **partizione** dello stesso conto corrente, non un secondo conto in
         // banca: è la convenzione del progetto, ed è il motivo per cui i fondi si alimentano con
-        // un giroconto e non con un versamento.
+        // un giroconto e non con un versamento. È vincolato ai lavori: il denaro accantonato per il
+        // lastrico non si usa per altro, e la scheda «Cassa» del rendiconto lo tiene fuori da ciò che
+        // si può usare. Il seeder lo alimenta soltanto (è la destinazione del giroconto, mai l'origine):
+        // il vincolo non ferma nessun passo.
         $this->casse['fondo'] = $crea->execute($this->condominio, [
-            'nome'           => 'Fondo lavori straordinari',
-            'tipo'           => TipoCassa::FONDO->value,
-            'saldo_iniziale' => '0,00',
+            'nome'                => 'Fondo lavori straordinari',
+            'tipo'                => TipoCassa::FONDO->value,
+            'saldo_iniziale'      => '0,00',
+            'sottotipo_fondo'     => 'vincolato_lavori',
+            'vincolo_descrizione' => 'rifacimento del lastrico solare',
         ]);
     }
 
@@ -457,6 +464,8 @@ class CondominioDemoSeeder extends Seeder
         $piano = PianoRate::create([
             'gestione_id'   => $this->gestione->id,
             'condominio_id' => $this->condominio->id,
+            // L'esercizio scritto nel piano: senza, il conguaglio lo deduce dalla data e avvisa.
+            'esercizio_id'  => $this->esercizio->id,
             'nome'          => 'Piano rate '.now()->year,
             'stato'         => 'bozza',
             'tipo'          => 'ordinario',
@@ -955,6 +964,26 @@ class CondominioDemoSeeder extends Seeder
      * L'art. 1130-bis c.c. le tratta a parte proprio per questo, e il programma le raccoglie in un
      * capitolo generato da sé invece di sporcare il preventivo deliberato.
      */
+    /**
+     * Il saldo della banca nella nota sintetica, come lo scriverebbe l'amministratore leggendo l'estratto conto della banca: uguale al saldo registrato
+     * del conto corrente (con il fondo, che è una parte dello stesso conto), al giorno in cui il condominio nasce. Così il controllo della banca dice che
+     * torna a chi prova il programma, e il campo della nota mostra come si scrive. Il saldo registrato è quello del controllo stesso, una fonte sola.
+     */
+    private function scriviIlSaldoDellaBanca(): void
+    {
+        $oggi = \App\Helpers\DateHelper::oggiUtente();
+        $alla = min($oggi, $this->esercizio->data_fine->format('Y-m-d'));
+        $pagina = app(\App\Services\Gestionale\StatoPatrimonialePaginaService::class)->costruisci($this->condominio, $this->esercizio, $alla);
+        $banca = collect(app(\App\Services\Gestionale\SaldiDelleBanche::class)->confronto($this->condominio, [], $pagina))
+            ->firstWhere('cassa_id', (int) $this->casse['banca']->id);
+        if ($banca === null) {
+            return;
+        }
+        $nota = \App\Services\Gestionale\NotaSinteticaDelRendiconto::contenuto($this->esercizio);
+        $nota['banca'][(string) $banca['cassa_id']] = ['data' => $banca['data'], 'saldo' => (int) $banca['contabilita'], 'spiegazione' => ''];
+        \App\Services\Gestionale\NotaSinteticaDelRendiconto::salva($this->esercizio, $nota, null);
+    }
+
     private function registraSopravvenienza(): void
     {
         $fornitore = \App\Models\Fornitore::firstOrCreate(

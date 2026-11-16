@@ -5,11 +5,12 @@
  * grande, non stanno nella memoria del server. Ogni numero arriva dal server (`PosizioniDeiCondomini`): la pagina non somma niente, formatta le date e
  * gli importi. L'elenco è a pagine; i totali e le righe che li legano sono di tutte le righe.
  */
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RendicontoCondominiGuide from '@/components/guides/RendicontoCondominiGuide.vue';
 import RendicontoSchede from '@/components/gestionale/movimenti/rendiconto/RendicontoSchede.vue';
 import { Button } from '@/components/ui/button';
 import { usePermission } from '@/composables/permissions';
@@ -90,6 +91,8 @@ const stampa = (nome: string) => {
     window.open(route(generateRoute(nome), { condominio: props.condominio.id, esercizio: props.esercizio.id }) + (nome.endsWith('crediti.stampa') && c.value && c.value.ordine !== 'scaduto' ? `?ordine=${c.value.ordine}` : ''), '_blank');
 };
 
+// La guida della scheda, che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
+const mostraGuida = ref(false);
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
     { title: 'Movimenti' },
@@ -109,6 +112,9 @@ const pageGuides = [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
                 page-title="Condòmini"
                 :page-subtitle="`${props.esercizio.nome}: posizioni e crediti per anzianità${avvertenze ? `, ${avvertenze.data}` : ''}.`"
                 :guides="pageGuides"
@@ -278,5 +284,6 @@ const pageGuides = [
                 </section>
             </div>
         </div>
+        <RendicontoCondominiGuide v-model:open="mostraGuida" />
     </GestionaleLayout>
 </template>

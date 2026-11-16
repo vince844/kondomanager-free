@@ -1,4 +1,7 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * Il termine per il versamento, il testo di partenza di diffida e messa in mora, le rate dell'accordo dopo «fino al».
@@ -148,11 +151,11 @@ it('dopo «fino al» le rate dell\'accordo tornano nella lettera, e l\'anteprima
 });
 
 it('i testi di partenza: la richiesta di pagare entro il termine detta chiara; per diffida e messa in mora il recupero del credito e niente altro', function () {
-    expect(TestiLettere::DI_SERIE['diffida'])->toBe("Gentile [nome],\ndalla contabilità del condominio [condominio] risultano ancora da versare le rate indicate qui sotto, "
+    expect(TestiLettere::DI_SERIE['diffida'])->toBe("Gentile [nome],\ndalla contabilità del condominio [condominio] risultano ancora da versare le somme indicate qui sotto, "
         . "per un totale di [totale].\nLe chiediamo con fermezza di versare il totale entro [termine].\nSe il versamento non arriva entro quel termine, "
         . "il condominio potrà procedere al recupero del credito.\nSe ha già versato, ci mandi la ricevuta del bonifico.")
         ->and(TestiLettere::DI_SERIE['messa_in_mora'])->toBe("Gentile [nome],\ncon questa lettera il condominio [condominio] le chiede formalmente il pagamento delle "
-            . "rate indicate qui sotto, per un totale di [totale], entro [termine].\nSe il pagamento non arriva entro quel termine, il condominio potrà procedere al recupero del "
+            . "somme indicate qui sotto, per un totale di [totale], entro [termine].\nSe il pagamento non arriva entro quel termine, il condominio potrà procedere al recupero del "
             . "credito.\nSe ha già versato, ci mandi la ricevuta del bonifico.");
     foreach (TestiLettere::DI_SERIE as $tipo => $testo) {
         $minuscolo = mb_strtolower($testo);

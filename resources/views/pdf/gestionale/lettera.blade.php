@@ -1,3 +1,8 @@
+{{--
+SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+--}}
 @extends('pdf.base')
 
 {{--
@@ -115,6 +120,8 @@
                 @php
                     $nomeRata = ((int) ($r['numero_rata'] ?? 0)) === 0 ? 'Rata 0 (pregresso)' : 'Rata ' . $r['numero_rata'];
                     $nomeRata .= filled($r['piano'] ?? null) ? ' — ' . $r['piano'] : '';
+                    // Un addebito a una persona sola si chiama con la sua causale: «Rata 1» si confonderebbe con la rata 1 del preventivo.
+                    $nomeRata = filled($r['addebito'] ?? null) ? \App\Models\Gestionale\PianoRate::nomeDellAddebito($r['addebito']) : $nomeRata;
                 @endphp
                 <tr>
                     <td style="padding: 3px 4px; border-bottom: 1px solid #e3e8ef;">{{ $r['unita'] ?? '' }}</td>
