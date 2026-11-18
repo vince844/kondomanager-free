@@ -139,12 +139,11 @@ class ComunicazioneService
         }
 
         // Chi vede che cosa lo dice `Comunicazione::scopeVisibiliNelPortale()`, la stessa regola
-        // della scheda; l'elenco aggiunge solo «pubblicata e approvata» per tutti (Coda 389). La
-        // regola non si riscrive qui: `is_private` la guarda lo scope (Coda 304).
+        // della scheda: l'elenco mostra ciò che la scheda apre, comprese le proprie in moderazione
+        // o in bozza (Coda 389). La regola non si riscrive qui: `is_private` la guarda lo scope
+        // (Coda 304).
         return Comunicazione::with(['anagrafiche', 'condomini', 'createdBy.anagrafica'])
-            ->visibiliNelPortale($anagrafica->user)
-            ->where('is_published', true)
-            ->where('is_approved', true);
+            ->visibiliNelPortale($anagrafica->user);
     }
 
     /**

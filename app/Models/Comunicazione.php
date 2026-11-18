@@ -5,17 +5,19 @@
 
 namespace App\Models;
 
+use App\Contracts\Commentable;
 use App\Enums\Permission;
 use App\Helpers\SlugHelper;
+use App\Traits\HasComments;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
 
-class Comunicazione extends Model
+class Comunicazione extends Model implements Commentable
 {
-    use HasFactory;
+    use HasFactory, HasComments;
     
     protected $table = 'comunicazioni';
 
@@ -30,6 +32,7 @@ class Comunicazione extends Model
         'is_published',
         'is_approved',
         'can_comment',
+        'commenti_moderati',
         'slug',
         'reference',
         'allegati_accesso',
@@ -37,6 +40,8 @@ class Comunicazione extends Model
     ];
 
     protected $casts = [
+        'can_comment' => 'boolean',
+        'commenti_moderati' => 'boolean',
         'allegati_moderati' => 'boolean',
     ];
 
@@ -50,6 +55,12 @@ class Comunicazione extends Model
             // Generate the slug using the SlugHelper
             $comunicazione->slug = SlugHelper::generateSlug($comunicazione->subject);
 
+            if (! array_key_exists('can_comment', $comunicazione->getAttributes()) || $comunicazione->can_comment === null) {
+                $comunicazione->can_comment = false;
+            }
+            if (! array_key_exists('commenti_moderati', $comunicazione->getAttributes()) || $comunicazione->commenti_moderati === null) {
+                $comunicazione->commenti_moderati = app(\App\Settings\GeneralSettings::class)->commenti_comunicazioni_moderati_di_serie;
+            }
             if (! array_key_exists('allegati_accesso', $comunicazione->getAttributes()) || $comunicazione->allegati_accesso === null) {
                 $comunicazione->allegati_accesso = 'aperti';
             }
@@ -70,6 +81,16 @@ class Comunicazione extends Model
     public function allegati(): MorphMany
     {
         return $this->morphMany(Documento::class, 'documentable')->orderBy('id');
+    }
+
+    public function commentiAbilitati(): bool
+    {
+        return (bool) $this->can_comment;
+    }
+
+    public function condominioId(): ?int
+    {
+        return null;
     }
 
     /**
@@ -122,7 +143,8 @@ class Comunicazione extends Model
      * Come per le segnalazioni, l'autore di una non privata conta finché la sua anagrafica è in uno
      * dei palazzi della comunicazione (o collegata a lei); una privata resta sempre del suo autore.
      *
-     * L'elenco del portale aggiunge «pubblicata e approvata» per tutti, autore compreso (Coda 389).
+     * L'elenco del portale segue la stessa regola della scheda: mostra anche le proprie non ancora
+     * uscite, in moderazione o in bozza (Coda 389).
      *
      * **Il permesso** (decisione 134.4), come per le segnalazioni: la regola qui sopra vale per chi ha
      * «Visualizza comunicazioni»; «Visualizza proprie comunicazioni» apre le proprie e basta
@@ -226,4 +248,11 @@ class Comunicazione extends Model
             ->values();
     }
 
+    /**
+     * Titolo leggibile per l'Admin Inbox.
+     */
+    public function titoloInbox(): string
+    {
+        return $this->subject ?? "Comunicazione #{$this->id}";
+    }
 }

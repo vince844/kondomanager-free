@@ -12,6 +12,7 @@ import { trans } from 'laravel-vue-i18n';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
+import ContatoriElenco from '@/components/commenti/ContatoriElenco.vue';
 import Alert from '@/components/Alert.vue';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
@@ -202,6 +203,27 @@ function canDelete(c: Comunicazione): boolean {
 }
 
 /* Dialog handling */
+function statoNonUscita(isPublished: unknown, isApproved: unknown): { label: string; dotClass: string } | null {
+  const published = Boolean(Number(isPublished));
+  const approved = Boolean(Number(isApproved));
+
+  if (!published) {
+    return {
+      label: trans('comunicazioni.publication.draft'),
+      dotClass: 'bg-amber-500',
+    };
+  }
+
+  if (!approved) {
+    return {
+      label: trans('comunicazioni.publication.pending'),
+      dotClass: 'bg-slate-400',
+    };
+  }
+
+  return null;
+}
+
 function openDeleteDialog(id: number): void {
   ui.comunicazioneID = id;
   ui.isAlertOpen = true;
@@ -287,12 +309,12 @@ async function confirmDelete(): Promise<void> {
             <article
               v-for="comunicazione in comunicazioni"
               :key="comunicazione.id"
-              class="mb-4 border p-4 rounded-lg bg-white hover:shadow-md transition-shadow"
+              class="mb-4 border p-4 rounded-lg bg-white dark:bg-slate-900 dark:border-slate-800 hover:shadow-md transition-shadow"
             >
               <div class="flex items-center justify-between">
                 <Link
                   :href="route(generateRoute('comunicazioni.show'), { id: comunicazione.id })"
-                  class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 hover:text-primary transition-colors"
+                  class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 dark:text-slate-100 hover:text-primary transition-colors"
                 >
                   <component
                     :is="getPriorityMeta(comunicazione.priority).icon"
@@ -303,11 +325,22 @@ async function confirmDelete(): Promise<void> {
                   <!-- Coda 306: «Privata» è un'indicazione a parte, da `is_private`. -->
                   <span
                     v-if="etichettaPrivacy('comunicazioni', comunicazione.is_private)"
-                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500"
+                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500 dark:text-slate-400"
                     :title="trans('comunicazioni.privacy.private_hint')"
                   >
                     <Lock class="w-3.5 h-3.5" />
                     {{ trans(etichettaPrivacy('comunicazioni', comunicazione.is_private) ?? '') }}
+                  </span>
+                  <!-- Coda 389: stato delle proprie non ancora uscite («Bozza» o «Da approvare») -->
+                  <span
+                    v-if="statoNonUscita(comunicazione.is_published, comunicazione.is_approved)"
+                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500 dark:text-slate-400"
+                  >
+                    <span
+                      class="w-1.5 h-1.5 rounded-full shrink-0"
+                      :class="statoNonUscita(comunicazione.is_published, comunicazione.is_approved)?.dotClass"
+                    ></span>
+                    {{ statoNonUscita(comunicazione.is_published, comunicazione.is_approved)?.label }}
                   </span>
                 </Link>
 
@@ -316,7 +349,7 @@ async function confirmDelete(): Promise<void> {
                     v-if="canEdit(comunicazione)"
                     :href="route(generateRoute('comunicazioni.edit'), { id: comunicazione.id })"
                     class="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                    :title="trans('comunicazioni.actions.edit')"
+                    :title="trans('comunicazioni.actions.edit_communication')"
                     aria-label="Edit communication"
                   >
                     <Pencil class="w-4 h-4" />
@@ -326,7 +359,7 @@ async function confirmDelete(): Promise<void> {
                     v-if="canDelete(comunicazione)"
                     @click="openDeleteDialog(comunicazione.id)"
                     class="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                    :title="trans('comunicazioni.actions.delete')"
+                    :title="trans('comunicazioni.actions.delete_communication')"
                     aria-label="Delete communication"
                   >
                     <Trash2 class="w-4 h-4" />
@@ -334,8 +367,8 @@ async function confirmDelete(): Promise<void> {
                 </div>
               </div>
 
-              <div class="flex items-center gap-x-4 text-xs pt-1">
-                <time :datetime="comunicazione.created_at" class="text-gray-500">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs pt-1">
+                <time :datetime="comunicazione.created_at" class="text-gray-500 dark:text-slate-400">
                   {{
                     trans('comunicazioni.visibility.sent_on_by', {
                       date: comunicazione.created_at,
@@ -343,9 +376,10 @@ async function confirmDelete(): Promise<void> {
                     })
                   }}
                 </time>
+                <ContatoriElenco :contatori="comunicazione.contatori" />
               </div>
 
-              <p class="mt-4 line-clamp-3 text-sm/6 text-gray-600">
+              <p class="mt-4 line-clamp-3 text-sm/6 text-gray-600 dark:text-slate-300">
                 {{ comunicazione.description }}
               </p>
             </article>

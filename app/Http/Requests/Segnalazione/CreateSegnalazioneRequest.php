@@ -43,6 +43,7 @@ class CreateSegnalazioneRequest extends FormRequest
             'priority'      => 'required|string',
             'stato'         => 'required|string',
             'can_comment'   => 'required|boolean',
+            'commenti_moderati' => ['sometimes', 'boolean'],
             'is_featured'   => 'required|boolean',
             'is_published'  => 'required|boolean',
             'anagrafiche'   => ['sometimes', 'array', Rule::exists('anagrafiche', 'id'), $this->residentiDiUnaPrivata(...)],

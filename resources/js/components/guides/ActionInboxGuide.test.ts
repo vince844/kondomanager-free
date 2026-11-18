@@ -54,7 +54,7 @@ async function apri() {
 describe('la guida dell\'Action inbox', () => {
     test('aperta mostra le sue parti; chiusa non c\'è', async () => {
         const t = await apri();
-        for (const parte of ['A che cosa serve', 'Le cinque card', 'I due grafici', 'L\'elenco dei compiti', 'La prossima azione', 'Sei mesi per agire', 'Dove si accumulano']) {
+        for (const parte of ['A che cosa serve', 'Le sei card', 'I due grafici', 'L\'elenco dei compiti', 'La prossima azione', 'Sei mesi per agire', 'Dove si accumulano']) {
             expect(t).toContain(parte);
         }
         w!.unmount();

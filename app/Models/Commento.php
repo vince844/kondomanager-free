@@ -22,6 +22,7 @@ class Commento extends Model
         'commentable_id',
         'user_id',
         'condominio_id',
+        'discussione_user_id',
         'corpo',
         'stato',
         'moderato_da',
@@ -68,6 +69,14 @@ class Commento extends Model
     public function condominio(): BelongsTo
     {
         return $this->belongsTo(Condominio::class);
+    }
+
+    /**
+     * L'utente della persona per le discussioni personali nelle comunicazioni.
+     */
+    public function discussioneUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'discussione_user_id');
     }
 
     // -------------------------------------------------------------------------

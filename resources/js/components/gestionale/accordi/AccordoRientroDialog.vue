@@ -10,7 +10,10 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * la decadenza registrata) e il modulo per registrarne uno. Le rate coperte si scelgono fra le scadute della persona il giorno dell'accordo (gli
  * interessi e le spese registrati anche quel giorno), con l'importo riconosciuto proposto dal residuo di quel giorno. Il calendario si propone dal
  * numero delle rate e dal giorno della prima (rate uguali, l'ultima con i centesimi, ogni mese) e si cambia riga per riga; la somma deve fare il debito
- * riconosciuto. La regola di decadenza proposta è quella dell'ultimo accordo del condominio. «Autorizzato dall'assemblea» non ha una risposta già scelta.
+ * riconosciuto. La regola di decadenza proposta è quella dell'ultimo accordo del condominio. Sulla parte della rata fuori dall'accordo gli interessi
+ * continuano, di serie, o restano sospesi finché l'accordo regge (decisione 450): la scelta è nel menu, con la «i» e un esempio, e la scheda dell'accordo
+ * la dice; per un accordo non chiuso si cambia anche dopo, dalla scheda («Cambia la scelta sulla parte fuori»), e il registro dell'accordo dice chi l'ha
+ * cambiata e quando. «Autorizzato dall'assemblea» non ha una risposta già scelta.
  * Un accordo alla volta: è un atto con una persona. Non si cancella: si chiude.
  *
  * Le rate si rileggono quando cambia la data dell'accordo: una risposta arrivata dopo un altro cambio della data si scarta.
@@ -25,12 +28,17 @@ import { Textarea } from '@/components/ui/textarea';
 import CampoFile from '@/components/CampoFile.vue';
 import CalendarioDellAccordo from '@/components/gestionale/accordi/CalendarioDellAccordo.vue';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Info } from 'lucide-vue-next';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
 import { centesimiDaImporto } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import {
-    FRASE_AUTORIZZAZIONE, FRASE_CALENDARIO, FRASE_CALENDARIO_IN_ORDINE, FRASE_DECADENZA, FRASE_IMPORTO, FRASE_NON_SCADUTE, FRASE_REGISTRO, FRASE_REGOLA,
-    FRASE_REGOLA_DI_SERIE, proponiCalendario, sommaCheNonTorna, testoAutorizzazione, testoSegnoAccordo, type AccordoRientro, type RegolaDiDecadenza,
+    ESEMPIO_PARTE_FUORI, FRASE_AUTORIZZAZIONE, FRASE_CALENDARIO, FRASE_CALENDARIO_IN_ORDINE, FRASE_CAMBIA_PARTE_FUORI, FRASE_DECADENZA, FRASE_IMPORTO, FRASE_NON_SCADUTE, FRASE_PARTE_FUORI,
+    FRASE_REGISTRO, FRASE_REGOLA, FRASE_REGOLA_DI_SERIE, SCELTE_PARTE_FUORI, proponiCalendario, sommaCheNonTorna, testoAutorizzazione, testoParteFuori,
+    testoSegnoAccordo, type AccordoRientro, type InteressiParteFuori, type RegolaDiDecadenza,
 } from '@/lib/gestionale/debiti/accordiRientro';
 
 interface RataPossibile { rata_id: number; immobile_id: number | null; numero_rata: number; piano: string; unita: string | null; scadenza: string; residuo: number; causale?: string | null }
@@ -66,6 +74,8 @@ const vuoto = (data: string) => ({
     calendario: [] as Array<{ data: string; importo: string }>,
     decadenza_rate: '',
     decadenza_giorni: '',
+    // Decisione 450: il di serie, gli interessi continuano sulla parte della rata fuori dall'accordo.
+    interessi_parte_fuori: 'continuano' as InteressiParteFuori,
     autorizzato: null as null | '0' | '1',
     data_autorizzazione: '',
     verbale_autorizzazione: '',
@@ -78,6 +88,7 @@ const file = ref<File | null>(null);
 const chiusura = ref<Record<number, { chiuso_il: string; nota_chiusura: string }>>({});
 const decadenza = ref<Record<number, { data: string; nota: string }>>({});
 const autorizzazione = ref<Record<number, { data_autorizzazione: string; verbale_autorizzazione: string }>>({});
+const parteFuori = ref<Record<number, InteressiParteFuori>>({});
 
 async function leggi(data?: string) {
     if (!props.persona) {
@@ -176,6 +187,7 @@ async function registra() {
     if (String(modulo.value.decadenza_giorni).trim() !== '') {
         corpo.append('decadenza_giorni', String(modulo.value.decadenza_giorni).trim());
     }
+    corpo.append('interessi_parte_fuori', modulo.value.interessi_parte_fuori);
     scelte.value.forEach((p, i) => {
         corpo.append(`rate[${i}][rata_id]`, String(p.rata_id));
         if (p.immobile_id !== null) {
@@ -248,6 +260,23 @@ async function registraDecadenza(a: AccordoDellaPersona) {
     }
 }
 
+/** La scelta sulla parte fuori cambiata dopo la registrazione (decisione 450): solo la proposta degli interessi la segue. */
+async function cambiaParteFuori(a: AccordoDellaPersona) {
+    errore.value = null;
+    try {
+        const r = (await axios.post(rotta('parte-fuori', { accordo: a.id }), { interessi_parte_fuori: parteFuori.value[a.id] })).data;
+        esito.value = r.messaggio;
+        const { [a.id]: _tolto, ...altri } = parteFuori.value;
+        parteFuori.value = altri;
+        emit('fatto');
+        await leggi();
+    } catch (e) {
+        errore.value = frasePerErrore(e, 'La scelta non è stata cambiata. Riprova.');
+    }
+}
+
+const valoreDellaScelta = (s: { valore: InteressiParteFuori }) => s.valore;
+const apriParteFuori = (a: AccordoDellaPersona) => { parteFuori.value = { ...parteFuori.value, [a.id]: a.interessi_parte_fuori ?? 'continuano' }; };
 const apriChiusura = (a: AccordoDellaPersona) => { chiusura.value = { ...chiusura.value, [a.id]: { chiuso_il: props.oggi, nota_chiusura: '' } }; };
 const apriDecadenza = (a: AccordoDellaPersona) => { decadenza.value = { ...decadenza.value, [a.id]: { data: props.oggi, nota: '' } }; };
 const apriAutorizzazione = (a: AccordoDellaPersona) => { autorizzazione.value = { ...autorizzazione.value, [a.id]: { data_autorizzazione: '', verbale_autorizzazione: '' } }; };
@@ -274,6 +303,8 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                         <ul class="list-disc pl-4">
                             <li v-for="r in a.rate" :key="`${r.rata_id}-${r.immobile_id}`">{{ nomeRata(r) }}: riconosciuti {{ euroTesto(r.riconosciuto) }}</li>
                         </ul>
+                        <p data-testid="parte-fuori-scelta">{{ testoParteFuori(a.interessi_parte_fuori) }}</p>
+                        <p v-for="(r, i) in a.registro ?? []" :key="`registro-${i}`" class="text-slate-500" data-testid="registro-accordo">{{ r }}</p>
                         <CalendarioDellAccordo :accordo="a" />
                         <p v-if="a.documento">
                             <a :href="rotta('documento', { accordo: a.id })" target="_blank" rel="noopener" class="underline">{{ a.documento }}</a>
@@ -286,6 +317,7 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                         <p v-else-if="a.chiuso_il" data-testid="chiuso">Chiuso il {{ giorno(a.chiuso_il) }}{{ a.nota_chiusura ? `: ${a.nota_chiusura}` : '.' }}</p>
                         <div v-else class="flex flex-wrap gap-2">
                             <Button v-if="!a.autorizzato_assemblea && !autorizzazione[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" @click="apriAutorizzazione(a)">Registra l'autorizzazione dell'assemblea</Button>
+                            <Button v-if="!parteFuori[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-parte-fuori" @click="apriParteFuori(a)">Cambia la scelta sulla parte fuori</Button>
                             <Button v-if="!chiusura[a.id] && !decadenza[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-chiusura" @click="apriChiusura(a)">Chiudi l'accordo</Button>
                             <Button v-if="!decadenza[a.id] && !chiusura[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-decadenza" @click="apriDecadenza(a)">Registra la decadenza</Button>
                         </div>
@@ -305,6 +337,39 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                             <label class="space-y-1"><span class="block text-slate-500">Verbale n.</span>
                                 <Input v-model="autorizzazione[a.id].verbale_autorizzazione" class="h-8 w-[100px] text-xs" /></label>
                             <Button size="sm" variant="outline" class="h-8 text-xs" :disabled="!autorizzazione[a.id].data_autorizzazione" @click="autorizza(a)">Registra</Button>
+                        </div>
+                        <div v-if="parteFuori[a.id] && !a.chiuso_il" class="space-y-1" data-testid="modulo-parte-fuori">
+                            <p class="flex items-center gap-1.5 text-slate-500">
+                                Sulla parte della rata fuori dall'accordo
+                                <TooltipProvider :delay-duration="200">
+                                    <Tooltip>
+                                        <TooltipTrigger as-child>
+                                            <span tabindex="0" role="img" :aria-label="ESEMPIO_PARTE_FUORI" data-testid="info-cambia-parte-fuori"
+                                                class="inline-flex items-center text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 cursor-help rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
+                                                <Info class="w-3.5 h-3.5" />
+                                            </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent class="max-w-80 text-xs leading-snug"><p>{{ ESEMPIO_PARTE_FUORI }}</p></TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </p>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="menu-parte-fuori w-[300px] max-w-full">
+                                    <v-select
+                                        v-model="parteFuori[a.id]"
+                                        :options="SCELTE_PARTE_FUORI"
+                                        label="nome"
+                                        :reduce="valoreDellaScelta"
+                                        :searchable="false"
+                                        :clearable="false"
+                                        :input-id="`parte-fuori-${a.id}`"
+                                        class="w-full"
+                                    />
+                                </div>
+                                <Button size="sm" variant="outline" class="h-8 text-xs" :disabled="parteFuori[a.id] === (a.interessi_parte_fuori ?? 'continuano')"
+                                    data-testid="salva-parte-fuori" @click="cambiaParteFuori(a)">Salva la scelta</Button>
+                            </div>
+                            <p class="text-slate-500">{{ FRASE_CAMBIA_PARTE_FUORI }}</p>
                         </div>
                         <div v-if="chiusura[a.id] && !a.chiuso_il" class="flex flex-wrap items-end gap-2" data-testid="modulo-chiusura">
                             <label class="space-y-1"><span class="block text-slate-500">Chiuso il</span>
@@ -369,6 +434,36 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                         <p v-if="regolaDiSerie" class="text-slate-500" data-testid="regola-di-serie">{{ FRASE_REGOLA_DI_SERIE }}</p>
                     </fieldset>
 
+                    <fieldset class="space-y-1 text-xs" data-testid="parte-fuori">
+                        <legend class="flex items-center gap-1.5 text-slate-500">
+                            Sulla parte della rata fuori dall'accordo
+                            <TooltipProvider :delay-duration="200">
+                                <Tooltip>
+                                    <TooltipTrigger as-child>
+                                        <span tabindex="0" role="img" :aria-label="ESEMPIO_PARTE_FUORI" data-testid="info-parte-fuori"
+                                            class="inline-flex items-center text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 cursor-help rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
+                                            <Info class="w-3.5 h-3.5" />
+                                        </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent class="max-w-80 text-xs leading-snug"><p>{{ ESEMPIO_PARTE_FUORI }}</p></TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </legend>
+                        <div class="menu-parte-fuori w-[300px] max-w-full">
+                            <v-select
+                                v-model="modulo.interessi_parte_fuori"
+                                :options="SCELTE_PARTE_FUORI"
+                                label="nome"
+                                :reduce="(s: { valore: InteressiParteFuori }) => s.valore"
+                                :searchable="false"
+                                :clearable="false"
+                                input-id="parte-fuori"
+                                class="w-full"
+                            />
+                        </div>
+                        <p class="text-slate-500">{{ FRASE_PARTE_FUORI }}</p>
+                    </fieldset>
+
                     <fieldset class="space-y-1 text-xs">
                         <legend class="text-slate-500">Autorizzato dall'assemblea</legend>
                         <div class="flex gap-3">
@@ -398,3 +493,54 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
         </DialogContent>
     </Dialog>
 </template>
+
+<style>
+/* Il menu della parte fuori dall'accordo: alto come i campi della finestra, con il loro testo, leggibile nel tema scuro; come il menu dell'anno del tasso
+   legale e quelli delle ricevute. */
+.menu-parte-fuori .v-select {
+    --vs-font-size: 0.75rem;
+    --vs-line-height: 1.25;
+    --vs-border-radius: 0.375rem;
+    --vs-border-color: var(--input);
+    --vs-controls-color: rgb(100 116 139);
+    background: transparent;
+}
+.menu-parte-fuori .vs__dropdown-toggle {
+    min-height: 2rem;
+    padding: 0;
+    align-items: center;
+}
+.menu-parte-fuori .vs__selected-options {
+    align-items: center;
+    padding-left: 8px;
+}
+.menu-parte-fuori .vs__selected,
+.menu-parte-fuori .vs__search {
+    margin: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+.menu-parte-fuori .vs__actions {
+    padding: 0 8px 0 4px;
+}
+.menu-parte-fuori .vs__open-indicator {
+    transform: scale(0.75);
+}
+.menu-parte-fuori .vs--open .vs__open-indicator {
+    transform: rotate(180deg) scale(0.75);
+}
+.dark .menu-parte-fuori .v-select {
+    --vs-dropdown-bg: rgb(15 23 42);
+    --vs-dropdown-color: rgb(226 232 240);
+    --vs-dropdown-option-color: rgb(226 232 240);
+    --vs-selected-color: rgb(226 232 240);
+    --vs-search-input-color: rgb(226 232 240);
+    --vs-controls-color: rgb(148 163 184);
+}
+.dark .menu-parte-fuori .vs__dropdown-toggle {
+    background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+.dark .menu-parte-fuori .vs__dropdown-option--highlight {
+    background: rgb(30 41 59) !important;
+}
+</style>

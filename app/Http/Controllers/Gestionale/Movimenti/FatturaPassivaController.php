@@ -120,9 +120,9 @@ class FatturaPassivaController extends Controller
                 'noteCollegate', 'fatturaRettificata:id,numero_documento,data_documento'])
             ->when($request->stato_pagamento, fn ($q, $v) => $q->where('stato_pagamento', $v))
             ->when($request->stato_approvazione, fn ($q, $v) => $q->where('stato_approvazione', $v))
-            ->when($request->search, fn ($q, $v) => $q->where('numero_documento', 'like', "%{$v}%")
-                ->orWhereHas('fornitore', fn ($qf) => $qf->where('ragione_sociale', 'like', "%{$v}%"))
-            )
+            // Fra parentesi (Code 190 e 595): senza, l'«oppure» del fornitore usciva dal condominio e dai filtri di stato.
+            ->when($request->search, fn ($q, $v) => $q->where(fn ($w) => $w->where('numero_documento', 'like', "%{$v}%")
+                ->orWhereHas('fornitore', fn ($qf) => $qf->where('ragione_sociale', 'like', "%{$v}%"))))
             ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_documento', '>=', $v))
             ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_documento', '<=', $v))
             // Le fatture con una riga su un'unità: le spese personali (la riga «Spese personali chieste con le rate» del riepilogo porta qui).

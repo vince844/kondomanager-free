@@ -10,7 +10,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Lock, LockOpen, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, MessageSquare, Globe, ChevronDown, ChevronUp } from 'lucide-vue-next';
+import { Lock, LockOpen, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, Globe, ChevronDown, ChevronUp } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { Permission } from '@/enums/Permission';
@@ -197,7 +197,13 @@ const pageGuides = computed(() => [
                             <div class="flex items-start justify-between gap-4">
                                 <div class="space-y-1">
                                     <div class="flex items-center gap-3">
-                                        <AlertTriangle class="w-6 h-6 text-slate-400" />
+                                        <!-- L'icona della priorità, nel suo colore, come nella scheda della comunicazione -->
+                                        <component
+                                            :is="priorityItem?.icon || AlertTriangle"
+                                            data-icona-titolo
+                                            class="w-6 h-6 shrink-0"
+                                            :class="priorityItem?.colorClass || 'text-slate-400'"
+                                        />
                                         <CardTitle class="text-2xl font-bold leading-tight text-slate-900 dark:text-white">
                                             {{ props.segnalazione.subject }}
                                         </CardTitle>
@@ -247,10 +253,11 @@ const pageGuides = computed(() => [
 
                 <div class="lg:col-span-1 flex flex-col">
                     <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20 flex-1 flex flex-col">
-                        <CardContent class="space-y-6 pt-5 p-3 flex-1 flex flex-col justify-between">
+                        <!-- Le righe in alto: senza «Interazioni» non c'è più niente da spingere in fondo (decisione 470) -->
+                        <CardContent data-card-parametri class="space-y-6 pt-5 p-3 flex-1 flex flex-col">
                             <div class="grid grid-cols-2 gap-4 border-b border-dashed pb-4">
                                 <div class="min-w-0">
-                                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                                         {{ trans('segnalazioni.details.current_status') }}
                                     </p>
                                     <div v-if="statusItem" class="flex items-center gap-2">
@@ -265,7 +272,7 @@ const pageGuides = computed(() => [
                                 </div>
                                 
                                 <div class="min-w-0">
-                                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                                         {{ trans('segnalazioni.details.priority_level') }}
                                     </p>
                                     <div v-if="priorityItem" class="flex items-center gap-2">
@@ -280,13 +287,12 @@ const pageGuides = computed(() => [
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4 border-b border-dashed pb-4">
+                            <div class="grid grid-cols-2 gap-4">
                                 <div class="min-w-0">
-                                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                                         {{ trans('segnalazioni.label.building') }}
                                     </p>
-                                    <div class="flex items-center gap-2 group cursor-help">
-                                        <Building2 class="w-4 h-4 text-slate-400 shrink-0" />
+                                    <div data-parametro="condominio" class="flex items-center gap-2 group cursor-help">
                                         <span 
                                             class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate block"
                                             :title="segnalazione.condominio?.full?.nome || segnalazione.condominio?.nome"
@@ -297,7 +303,7 @@ const pageGuides = computed(() => [
                                 </div>
 
                                 <div class="min-w-0">
-                                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                                         {{ trans('segnalazioni.details.visibility_status') }}
                                     </p>
                                     <div class="flex items-start gap-2 min-w-0">
@@ -310,37 +316,14 @@ const pageGuides = computed(() => [
                                         <Lock class="w-3 h-3 shrink-0" />
                                         <span>{{ trans(etichettaPrivata) }}</span>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">
-                                    {{ trans('segnalazioni.details.interactions') }}
-                                </p>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div class="flex items-center gap-2 bg-white dark:bg-slate-950 p-2 rounded border border-dashed shadow-xs">
-                                        <component 
-                                            :is="props.segnalazione.is_locked ? Lock : LockOpen" 
-                                            class="w-3.5 h-3.5 shrink-0"
-                                            :class="props.segnalazione.is_locked ? 'text-amber-500' : 'text-emerald-500'"
-                                        />
-                                        <span class="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">
-                                            {{ props.segnalazione.is_locked ? trans('segnalazioni.details.locked') : trans('segnalazioni.details.unlocked') }}
-                                        </span>
-                                    </div>
-
-                                    <div v-if="props.segnalazione.can_comment !== undefined" 
-                                        class="flex items-center gap-2 bg-white dark:bg-slate-950 p-2 rounded border border-dashed shadow-xs">
-                                        <MessageSquare 
-                                            class="w-3.5 h-3.5 shrink-0"
-                                            :class="props.segnalazione.can_comment ? 'text-emerald-500' : 'text-slate-400'"
-                                        />
-                                        <span class="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">
-                                            {{ props.segnalazione.can_comment ? trans('segnalazioni.details.comments_enabled') : trans('segnalazioni.details.comments_disabled') }}
-                                        </span>
+                                    <!-- «Bloccata» solo quando lo è: aperta non dice niente, per non confondersi con lo stato «Aperta» (decisioni 466 e 470) -->
+                                    <div v-if="props.segnalazione.is_locked" data-bloccata class="flex items-center gap-1.5 mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                                        <Lock class="w-3 h-3 shrink-0" />
+                                        <span>{{ trans('segnalazioni.details.locked') }}</span>
                                     </div>
                                 </div>
                             </div>
+
                         </CardContent>
                     </Card>
                 </div>
@@ -349,14 +332,16 @@ const pageGuides = computed(() => [
             <!-- Seconda riga: due colonne affiancate su tutta la larghezza (prima i Commenti, poi gli Allegati) -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                 <!-- Sezione Commenti -->
-                <Card class="shadow-none">
+                <Card id="commenti" class="shadow-none">
                     <CardContent class="p-6">
                         <ListaCommenti 
                             :segnalazione-id="props.segnalazione.id"
                             :commenti="props.segnalazione.commenti || []"
                             :commenti-in-attesa="props.segnalazione.commentiInAttesa || []"
+                            :commenti-nascosti="props.segnalazione.commentiNascosti || []"
                             :commenti-config="props.commenti_config"
                             :current-user-id="currentUserId"
+                            :ricarica="['segnalazione', 'flash', 'inbox_count']"
                         />
                     </CardContent>
                 </Card>

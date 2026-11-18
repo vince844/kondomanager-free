@@ -8,99 +8,59 @@ namespace App\Policies;
 use App\Contracts\Commentable;
 use App\Enums\Permission;
 use App\Models\Commento;
+use App\Models\Comunicazione;
+use App\Models\Segnalazione;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
-use Illuminate\Support\Facades\Gate;
+use App\Support\Commenti\RegoleCommenti;
 
 class CommentoPolicy
 {
     /**
-     * Bypass totale per gli amministratori con accesso al pannello.
-     * Gli admin possono sempre moderare, approvare, modificare ed eliminare
-     * qualsiasi commento, indipendentemente dagli altri controlli.
+     * Determina se l'utente può creare un commento su un'entità commentabile.
      */
-    public function before(User $user, string $ability): ?bool
+    public function create(User $user, Commentable $commentable, ?string $porta = null): bool
     {
-        if ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
-            return true;
+        if ($commentable instanceof Segnalazione) {
+            return RegoleCommenti::puoScrivereSegnalazione($user, $commentable, $porta);
         }
 
-        return null;
-    }
+        if ($commentable instanceof Comunicazione) {
+            return RegoleCommenti::puoScrivereInAlmenoUnaDiscussione($user, $commentable);
+        }
 
-    /**
-     * Determina se l'utente può creare un commento su un'entità commentabile.
-     *
-     * Quattro condizioni tutte necessarie:
-     * 1. Ha il permesso di commentare segnalazioni
-     * 2. Il thread è aperto (commentiAbilitati() === true)
-     * 3. Appartiene al condominio dell'entità (multi-tenancy)
-     * 4. Può aprire l'entità (Coda 305): chi non vede una segnalazione — la privata di un vicino, una
-     *    in moderazione — non la commenta, e il rifiuto non dice niente di più di quello che dice la
-     *    scheda. La regola è quella di `show` della policy dell'entità, la stessa dell'elenco; vale
-     *    per ogni entità commentabile, quindi anche per le comunicazioni il giorno in cui avranno i
-     *    commenti. Un'entità senza `show` nella sua policy non si commenta.
-     */
-    public function create(User $user, Commentable $commentable): bool
-    {
-        return $user->hasPermissionTo(Permission::COMMENT_SEGNALAZIONI->value)
-            && $commentable->commentiAbilitati()
-            && $this->appartieneAlCondominio($user, $commentable)
-            && Gate::forUser($user)->allows('show', $commentable);
+        return false;
     }
 
     /**
      * Determina se l'utente può modificare il commento.
-     * Solo l'autore può modificare i propri commenti.
      */
     public function update(User $user, Commento $commento): bool
     {
-        return $user->hasPermissionTo(Permission::EDIT_OWN_COMMENTS_SEGNALAZIONI->value)
-            && $commento->user_id === $user->id;
+        return RegoleCommenti::puoModificare($user, $commento);
     }
 
     /**
      * Determina se l'utente può eliminare il commento (soft delete).
-     * Solo l'autore può eliminare i propri commenti.
      */
     public function delete(User $user, Commento $commento): bool
     {
-        return $user->hasPermissionTo(Permission::DELETE_OWN_COMMENTS_SEGNALAZIONI->value)
-            && $commento->user_id === $user->id;
+        return RegoleCommenti::puoEliminare($user, $commento);
     }
 
     /**
      * Determina se l'utente può moderare (nascondere/approvare) un commento.
-     * Richiede il permesso di approvazione commenti segnalazioni.
      */
-    public function moderate(User $user): bool
+    public function moderate(User $user, ?Commento $commento = null): bool
     {
-        return $user->hasPermissionTo(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value);
-    }
-
-    /**
-     * Verifica che l'utente appartenga al condominio dell'entità commentata.
-     *
-     * NOTA MULTI-TENANCY: il permesso COMMENT_SEGNALAZIONI da solo non isola
-     * i condomini. Senza questo check, un condomino con permesso potrebbe
-     * commentare segnalazioni di condomini a cui non appartiene.
-     *
-     * Percorso relazionale reale del progetto: user → anagrafica → condomini
-     */
-    private function appartieneAlCondominio(User $user, Commentable $commentable): bool
-    {
-        $condominioId = $commentable->condominioId();
-
-        if ($condominioId === null) {
-            return false;
+        if ($commento !== null) {
+            $elemento = $commento->commentable;
+            if ($elemento instanceof Segnalazione || $elemento instanceof Comunicazione) {
+                return RegoleCommenti::puoModerare($user, $elemento);
+            }
         }
 
-        $anagrafica = $user->anagrafica;
-
-        if ($anagrafica === null) {
-            return false;
-        }
-
-        return $anagrafica->condomini()->whereKey($condominioId)->exists();
+        return RegoleCommenti::haPannello($user)
+            && (RegoleCommenti::haPermesso($user, Permission::APPROVE_COMMENTS_SEGNALAZIONI->value)
+                || RegoleCommenti::haPermesso($user, Permission::APPROVE_COMMENTS_COMUNICAZIONI->value));
     }
 }

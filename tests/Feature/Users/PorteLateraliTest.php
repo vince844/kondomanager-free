@@ -402,13 +402,15 @@ it('Coda 258 — il collaboratore non corregge il nome di chi ha un ruolo su mis
 });
 
 it('Coda 258 — i permessi sui propri contenuti non contano: il collaboratore corregge email e ruolo di un fornitore', function () {
-    // Il ruolo `fornitore`, come `utente`, ha «Modifica propri commenti segnalazioni» e «Elimina propri
-    // commenti segnalazioni», che il collaboratore non ha (ha quelli sui commenti di tutti). Non danno
-    // potere su nessun altro, e non fanno del fornitore un account fuori portata.
+    // Il ruolo `fornitore`, come `utente`, ha i permessi sui propri commenti («Modifica propri» ed «Elimina
+    // propri», delle segnalazioni e delle comunicazioni). Fino alla 1.12.0-beta.9 il collaboratore non li
+    // aveva (aveva quelli sui commenti di tutti); dalla decisione 268.2 ha gli stessi, e non quelli degli
+    // altri. Non danno potere su nessun altro, e non fanno del fornitore un account fuori portata: oggi il
+    // fornitore non ha nessun permesso che il collaboratore non abbia.
     $fornitore = User::factory()->create(['email_verified_at' => now()]);
     $fornitore->assignRole(RoleEnum::FORNITORE->value);
     expect($fornitore->getAllPermissions()->pluck('name')->diff($this->collaboratore->getAllPermissions()->pluck('name'))->values()->all())
-        ->toBe([PermissionEnum::EDIT_OWN_COMMENTS_SEGNALAZIONI->value, PermissionEnum::DELETE_OWN_COMMENTS_SEGNALAZIONI->value]);
+        ->toBe([]);
 
     $this->actingAs($this->collaboratore)
         ->put(route('utenti.update', ['utenti' => $fornitore->id]), schedaDellaPorta($fornitore, [

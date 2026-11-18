@@ -8,93 +8,247 @@ namespace App\Services;
 use App\Enums\NotificationType;
 use App\Enums\Permission;
 use App\Models\Commento;
+use App\Models\Comunicazione;
 use App\Models\NotificationPreference;
+use App\Models\Segnalazione;
 use App\Models\User;
+use App\Support\Commenti\RegoleCommenti;
 use Illuminate\Support\Collection;
+use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 
 class CommentoNotificationService
 {
     /**
-     * Calcola i destinatari della notifica per un nuovo commento.
+     * Calcola i destinatari della notifica per un commento pubblicato (alla nascita o all'approvazione).
      *
-     * Aggregazione:
-     * 1. Creatore dell'entità commentata (es. chi ha aperto la segnalazione)
-     * 2. Tutti gli utenti con ruolo admin del condominio
-     *    (user → anagrafica → condomini → anagrafiche → users con ACCESS_ADMIN_PANEL)
-     * 3. Gli altri partecipanti alla conversazione (chi ha già commentato)
+     * A chi:
+     * - l'autore dell'elemento commentabile;
+     * - gli utenti con il pannello che hanno un'anagrafica nei palazzi della discussione: quello della segnalazione, quello della
+     *   persona, tutti i palazzi destinatari per la discussione unica di una comunicazione (decisione 458); senza, tutti quelli con il pannello;
+     * - chi ha già commentato nella stessa discussione (nella discussione unica, di qualunque palazzo, con un commento che ci resta:
+     *   decisione 459);
+     * - la persona della discussione (se discussione per persona);
      *
-     * Regole di filtro:
-     * - L'autore del commento appena creato NON riceve notifica
-     * - Nessun duplicato (dedup per user id)
-     * - Utenti senza email o sospesi esclusi
+     * Filtri:
+     * - nessuno, se il commento è scritto da un palazzo che è stato tolto dai destinatari (decisione 459): non si vede;
+     * - solo chi vede quella discussione;
+     * - mai l'autore del commento né chi l'ha approvato;
+     * - preferenza «nuovo commento» del tipo (segnalazione o comunicazione).
+     *
+     * @param  array<int, int>  $escludiUserIds
+     * @return Collection<int, User>
+     */
+    public function destinatariPubblicato(Commento $commento, array $escludiUserIds = []): Collection
+    {
+        $commentable = $commento->commentable;
+        if (! $commentable || ! RegoleCommenti::restaFraIDestinatari($commento, $commentable)) {
+            return collect();
+        }
+
+        $prefTipo = $commentable instanceof Segnalazione
+            ? NotificationType::NEW_COMMENT->value
+            : NotificationType::NEW_COMMUNICATION_COMMENT->value;
+
+        $candidateIds = collect();
+
+        // 1. L'autore dell'elemento
+        if ($commentable->created_by !== null) {
+            $candidateIds->push((int) $commentable->created_by);
+        }
+
+        // 2. Gli utenti con il pannello che hanno un'anagrafica nei palazzi della discussione. La discussione unica di una comunicazione
+        //    è di tutti i palazzi destinatari (decisione 458), non del palazzo di chi scrive, che lo studio senza anagrafica non ha.
+        $palazziIds = match (true) {
+            $commentable instanceof Segnalazione => array_filter([$commentable->condominio_id]),
+            $commento->discussione_user_id !== null => array_filter([$commento->condominio_id]),
+            default => $commentable->condomini()->pluck('condomini.id')->all(),
+        };
+
+        if ($palazziIds !== []) {
+            try {
+                $panelPalazzoUserIds = User::query()
+                    ->whereHas('anagrafica.condomini', fn ($q) => $q->whereIn('condomini.id', $palazziIds))
+                    ->permission(Permission::ACCESS_ADMIN_PANEL->value)
+                    ->pluck('id');
+                $candidateIds = $candidateIds->merge($panelPalazzoUserIds);
+            } catch (PermissionDoesNotExist) {
+            }
+        } else {
+            try {
+                $panelUserIds = User::query()
+                    ->permission(Permission::ACCESS_ADMIN_PANEL->value)
+                    ->pluck('id');
+                $candidateIds = $candidateIds->merge($panelUserIds);
+            } catch (PermissionDoesNotExist) {
+            }
+        }
+
+        // 3. Chi ha già commentato nella stessa discussione
+        $queryCommenti = Commento::query()
+            ->where('commentable_type', $commentable->getMorphClass())
+            ->where('commentable_id', $commentable->getKey())
+            ->where('id', '!=', $commento->id)
+            ->whereNull('deleted_at');
+
+        if ($commentable instanceof Segnalazione) {
+            // Unica discussione per la segnalazione
+        } else {
+            if ($commento->discussione_user_id !== null) {
+                $queryCommenti->where('discussione_user_id', $commento->discussione_user_id);
+            } else {
+                // La discussione unica dei palazzi: chi ha commentato da qualunque palazzo (decisione 458), con un commento che ci resta
+                // (decisione 459): chi aveva scritto solo da un palazzo poi tolto non partecipa più.
+                $queryCommenti->whereNull('discussione_user_id');
+                RegoleCommenti::soloQuelliCheRestanoFraIDestinatari($queryCommenti);
+            }
+        }
+
+        $candidateIds = $candidateIds->merge($queryCommenti->pluck('user_id'));
+
+        // 4. La persona della discussione
+        if ($commento->discussione_user_id !== null) {
+            $candidateIds->push((int) $commento->discussione_user_id);
+        }
+
+        $esclusioni = array_map('intval', array_merge([(int) $commento->user_id], $escludiUserIds));
+
+        $filteredIds = $candidateIds
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->reject(fn (int $id) => in_array($id, $esclusioni, true))
+            ->values();
+
+        if ($filteredIds->isEmpty()) {
+            return collect();
+        }
+
+        $utenti = User::query()
+            ->whereIn('id', $filteredIds)
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->get();
+
+        $chiaveDiscussione = RegoleCommenti::chiaveDelCommento($commento, $commentable);
+
+        return $utenti->filter(function (User $user) use ($commentable, $prefTipo, $chiaveDiscussione) {
+            if (! $this->preferenzaAttiva($user, $prefTipo)) {
+                return false;
+            }
+
+            $porta = RegoleCommenti::haPannello($user) ? 'admin' : 'user';
+            $visibili = RegoleCommenti::discussioniVisibili($user, $commentable, $porta);
+
+            return $visibili->pluck('chiave')->contains($chiaveDiscussione);
+        })->values();
+    }
+
+    /**
+     * Calcola i destinatari della notifica per un commento in attesa di approvazione.
+     *
+     * A chi:
+     * - chi ha il pannello e «Approva commenti» del tipo;
+     * - apre la scheda dal pannello;
+     * - non è l'autore del commento;
+     * - preferenza «commento in attesa» del tipo attiva.
+     *
+     * @return Collection<int, User>
+     */
+    public function destinatariInAttesa(Commento $commento): Collection
+    {
+        $commentable = $commento->commentable;
+        if (! $commentable) {
+            return collect();
+        }
+
+        $permessoApprova = RegoleCommenti::permesso($commentable, 'approva');
+        $prefTipo = $commentable instanceof Segnalazione
+            ? NotificationType::COMMENT_UNDER_MODERATION->value
+            : NotificationType::COMMUNICATION_COMMENT_UNDER_MODERATION->value;
+
+        try {
+            $candidati = User::query()
+                ->whereKeyNot($commento->user_id)
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->permission(Permission::ACCESS_ADMIN_PANEL->value)
+                ->permission($permessoApprova)
+                ->get();
+        } catch (PermissionDoesNotExist) {
+            return collect();
+        }
+
+        return $candidati->filter(function (User $user) use ($commentable, $prefTipo) {
+            if (! $this->preferenzaAttiva($user, $prefTipo)) {
+                return false;
+            }
+
+            return RegoleCommenti::apreSchedaPannello($user, $commentable);
+        })->values();
+    }
+
+    /**
+     * Calcola i destinatari della notifica per un commento modificato che torna in attesa.
+     *
+     * A chi:
+     * - chi ha il pannello e «Approva commenti» del tipo;
+     * - apre la scheda dal pannello;
+     * - non è l'autore del commento;
+     * - preferenza «commento modificato in attesa» del tipo attiva.
+     *
+     * @return Collection<int, User>
+     */
+    public function destinatariModificatoInAttesa(Commento $commento): Collection
+    {
+        $commentable = $commento->commentable;
+        if (! $commentable) {
+            return collect();
+        }
+
+        $permessoApprova = RegoleCommenti::permesso($commentable, 'approva');
+        $prefTipo = $commentable instanceof Segnalazione
+            ? NotificationType::COMMENT_EDITED_UNDER_MODERATION->value
+            : NotificationType::COMMUNICATION_COMMENT_EDITED_UNDER_MODERATION->value;
+
+        try {
+            $candidati = User::query()
+                ->whereKeyNot($commento->user_id)
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->permission(Permission::ACCESS_ADMIN_PANEL->value)
+                ->permission($permessoApprova)
+                ->get();
+        } catch (PermissionDoesNotExist) {
+            return collect();
+        }
+
+        return $candidati->filter(function (User $user) use ($commentable, $prefTipo) {
+            if (! $this->preferenzaAttiva($user, $prefTipo)) {
+                return false;
+            }
+
+            return RegoleCommenti::apreSchedaPannello($user, $commentable);
+        })->values();
+    }
+
+    /**
+     * Metodo di comodo per retrocompatibilità.
+     *
+     * @return Collection<int, User>
      */
     public function destinatari(Commento $commento): Collection
     {
-        $utenti = collect();
+        return $this->destinatariPubblicato($commento, [(int) $commento->user_id]);
+    }
 
-        // 1. Autore dell'entità commentata
-        $commentable = $commento->commentable;
-        if ($commentable && isset($commentable->createdBy)) {
-            $utenti->push($commentable->createdBy);
-        }
-
-        // 2. Amministratori del condominio
-        if ($commento->condominio_id) {
-            $adminDelCondominio = $this->amministratoriDel($commento->condominio_id);
-            $utenti = $utenti->merge($adminDelCondominio);
-        }
-
-        // 3. Altri partecipanti alla conversazione
-        if ($commentable) {
-            $partecipanti = $this->partecipanti($commento);
-            $utenti = $utenti->merge($partecipanti);
-        }
-
-        $userIds = $utenti->pluck('id')->unique()->toArray();
-        $enabledUserIds = NotificationPreference::whereIn('user_id', $userIds)
-            ->where('type', NotificationType::NEW_COMMENT->value)
+    /**
+     * Verifica se un utente ha abilitato la preferenza di notifica indicata.
+     */
+    public function preferenzaAttiva(User $user, string $tipo): bool
+    {
+        return NotificationPreference::query()
+            ->where('user_id', $user->id)
+            ->where('type', $tipo)
             ->where('enabled', true)
-            ->pluck('user_id')
-            ->toArray();
-
-        return $utenti
-            ->filter()                                               // rimuovi null
-            ->unique('id')                                           // dedup
-            ->reject(fn (User $u) => $u->id === $commento->user_id) // non notificare l'autore
-            ->reject(fn (User $u) => ! $u->email)                   // esclude utenti senza email
-            // Filtro permessi: solo chi ha accesso al commento o gli admin
-            ->filter(fn (User $u) => $commentable && $commentable->utenteHaAccessoAiCommenti($u) || $u->can(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value))
-            // Filtro preferenze utente (opt-in GDPR)
-            ->filter(fn (User $u) => in_array($u->id, $enabledUserIds))
-            ->values();
-    }
-
-    /**
-     * Restituisce tutti gli utenti amministratori del condominio dato.
-     * Percorso: condominio → anagrafiche → user (con ACCESS_ADMIN_PANEL)
-     */
-    private function amministratoriDel(int $condominioId): Collection
-    {
-        return User::whereHas('anagrafica', function ($q) use ($condominioId) {
-            $q->whereHas('condomini', fn ($c) => $c->where('condomini.id', $condominioId));
-        })
-        ->permission(Permission::ACCESS_ADMIN_PANEL->value)
-        ->get();
-    }
-
-    /**
-     * Restituisce tutti gli utenti che hanno già commentato la stessa entità
-     * (escluso il commento corrente appena creato).
-     */
-    private function partecipanti(Commento $commento): Collection
-    {
-        return User::whereIn('id',
-            Commento::where('commentable_type', $commento->commentable_type)
-                ->where('commentable_id', $commento->commentable_id)
-                ->where('id', '!=', $commento->id)
-                ->whereNull('deleted_at')
-                ->pluck('user_id')
-                ->unique()
-        )->get();
+            ->exists();
     }
 }

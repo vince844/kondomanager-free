@@ -5,6 +5,7 @@
 import { h } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
+import ContatoriElenco from '@/components/commenti/ContatoriElenco.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
@@ -64,12 +65,16 @@ export const columns: ColumnDef<Comunicazione>[] = [
           ])
         : null;
     
-      return h('div', { class: 'flex items-center space-x-2' }, [
-        shieldIcon,
-        h(Link, {
-          href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
-          class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-        }, () => comunicazione.subject)
+      // Decisione 441: sotto il titolo, in una riga piccola e non in una colonna nuova, quanti commenti e allegati ha.
+      return h('div', { class: 'flex flex-col gap-1' }, [
+        h('div', { class: 'flex items-center space-x-2' }, [
+          shieldIcon,
+          h(Link, {
+            href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
+            class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+          }, () => comunicazione.subject)
+        ]),
+        h(ContatoriElenco, { contatori: comunicazione.contatori, mostraInAttesa: true }),
       ]);
     }
   },

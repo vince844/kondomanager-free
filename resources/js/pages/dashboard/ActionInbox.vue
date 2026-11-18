@@ -7,7 +7,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 /**
  * L'Action inbox: i compiti aperti dello studio, di tutti i condomini o di quello scelto (tutta la pagina segue il condominio scelto).
  *
- * In alto l'intestazione («Guida» con il cassetto, il selettore dei condomini con la ricerca, «Dashboard», alti uguali) e le cinque card filtro. Sotto, a due
+ * In alto l'intestazione («Guida» con il cassetto, il selettore dei condomini con la ricerca, «Dashboard», alti uguali) e le sei card filtro. Sotto, a due
  * terzi, l'elenco dei compiti: le schede «Tutti / Scaduti / In arrivo» con il loro numero, la ricerca e l'ordine; con «Tutti» l'anteprima di ogni gruppo
  * (fino a 8 righe tutte, oltre le prime 5 e «e altri N», che apre la scheda), nelle schede 15 alla volta con «Mostra altri 15» e «Mostrati N di M». A destra,
  * dall'alto: «Da quanto aspettano», «Per tipo», «Sei mesi per agire» (con il cassetto, chiuso di serie), «Dove si accumulano».
@@ -23,7 +23,7 @@ import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import {
-    ArrowLeft, Banknote, Building2, CalendarClock, ChevronsUpDown, Hourglass, Inbox, Loader, Search, TriangleAlert, Wrench, X,
+    ArrowLeft, Banknote, Building2, CalendarClock, ChevronsUpDown, ClipboardCheck, Hourglass, Inbox, Loader, Search, TriangleAlert, Wrench, X,
 } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { Permission } from '@/enums/Permission';
@@ -141,15 +141,15 @@ function cercaDopo() {
     attesa = setTimeout(cercaSubito, 400);
 }
 
-/** «e altri N»: la scheda del gruppo; per le segnalazioni e i bonifici, che non hanno una scheda, il loro tipo. */
+/** «e altri N»: la scheda del gruppo; per le segnalazioni, i bonifici e ciò che è da moderare, che non hanno una scheda, il loro tipo. */
 const apriGruppo = (g: Gruppo) => vai(g === 'scaduti' ? { quando: 'scaduti' } : g === 'avanti' ? { quando: 'in_arrivo' }
-    : { tipo: g === 'segnalazioni' ? 'segnalazione_guasto' : 'verifica_pagamento' });
+    : { tipo: g === 'segnalazioni' ? 'segnalazione_guasto' : g === 'da_moderare' ? 'da_moderare' : 'verifica_pagamento' });
 /** Il pallino del gruppo: rosso gli scaduti, arancio le segnalazioni, azzurro i bonifici, indaco gli altri. */
-const PALLINI: Record<Gruppo, string> = { scaduti: 'bg-red-500', segnalazioni: 'bg-orange-500', bonifici: 'bg-sky-500', avanti: 'bg-indigo-500' };
+const PALLINI: Record<Gruppo, string> = { scaduti: 'bg-red-500', segnalazioni: 'bg-orange-500', bonifici: 'bg-sky-500', da_moderare: 'bg-amber-500', avanti: 'bg-indigo-500' };
 
 const vociDellElenco = computed(() => righeConIGruppi(props.tasks?.data ?? [], props.gruppi));
 const mostrateInAnteprima = computed(() => props.anteprima.reduce((n, g) => n + g.righe.length, 0));
-const totaleElenco = computed(() => props.tasks?.total ?? props.gruppi.scaduti + (props.gruppi.segnalazioni ?? 0) + props.gruppi.bonifici + props.gruppi.avanti);
+const totaleElenco = computed(() => props.tasks?.total ?? props.gruppi.scaduti + (props.gruppi.segnalazioni ?? 0) + props.gruppi.bonifici + (props.gruppi.da_moderare ?? 0) + props.gruppi.avanti);
 const vuoto = computed(() => (props.modo === 'anteprima' ? props.anteprima.length === 0 : (props.tasks?.data ?? []).length === 0));
 const massimoDove = computed(() => Math.max(1, ...props.dove.map((d) => d.valore)));
 
@@ -208,8 +208,8 @@ const PULSANTE = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-
                 </div>
             </div>
 
-            <!-- Le cinque card: un clic filtra l'elenco; «Sei mesi» apre il cassetto. -->
-            <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <!-- Le sei card: un clic filtra l'elenco; «Sei mesi» apre il cassetto. Su una riga sola dai grandi schermi. -->
+            <div class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
                 <CardDellInbox data-testid="card-scaduti" etichetta="Scaduti" :icona="TriangleAlert" :numero="counts.scaduti" :frase="testoScaduti(counts)"
                     piede="Azione richiesta" rossa :scelta="filtri.quando === 'scaduti'" @scegli="alterna('quando', 'scaduti')" />
                 <CardDellInbox data-testid="card-settimana" etichetta="Prossimi 7 giorni" :icona="CalendarClock" :numero="counts.settimana" :frase="testoSettimana(counts)"
@@ -220,6 +220,8 @@ const PULSANTE = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-
                     piede="Dal portale" :scelta="filtri.tipo === 'segnalazione_guasto'" @scegli="alterna('tipo', 'segnalazione_guasto')" />
                 <CardDellInbox data-testid="card-sei-mesi" etichetta="Sei mesi" :icona="Hourglass" :numero="contoDeiSeiMesi.adesso + contoDeiSeiMesi.rendiconti"
                     :frase="testoCardSeiMesi(contoDeiSeiMesi, seiMesi)" :piede="FRASE_NORMA_CARD" rossa @scegli="cassettoAperto = true" />
+                <CardDellInbox data-testid="card-da-moderare" etichetta="Da moderare" :icona="ClipboardCheck" :numero="counts.da_moderare ?? 0" frase="da approvare"
+                    piede="Dal portale e dallo studio" ambra :scelta="filtri.tipo === 'da_moderare'" @scegli="alterna('tipo', 'da_moderare')" />
             </div>
 
             <div class="grid grid-cols-1 items-start gap-3 lg:grid-cols-3">

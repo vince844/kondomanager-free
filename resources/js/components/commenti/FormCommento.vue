@@ -4,22 +4,43 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { usePermission } from '@/composables/permissions';
 import { Permission } from '@/enums/Permission';
 import { MessageSquarePlus, Send, Lock } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 
+// Per una segnalazione basta `segnalazioneId`. Per la discussione di una comunicazione si passano `url` (la rotta
+// che riceve il commento), `dati` (i campi in più, per esempio `{ discussione }`) e `chiave` (che finisce nell'attributo
+// `data-discussione` del modulo); `apertoDiSerie` lo apre già aperto, con il fuoco nel campo.
 const props = defineProps<{
-  segnalazioneId: number;
+  segnalazioneId?: number;
   canComment: boolean;
   canCreate: boolean;
+  url?: string;
+  dati?: Record<string, unknown>;
+  chiave?: string;
+  apertoDiSerie?: boolean;
+  // Le proprietà che il server rimanda dopo l'invio (una visita parziale di Inertia): senza, rimanda la pagina intera.
+  ricarica?: string[];
+}>();
+
+// `inviato` a invio riuscito e `annullato` a «Annulla»: chi mette il modulo in una finestra (la pagina «Commenti») la chiude.
+const emit = defineEmits<{
+  (e: 'inviato'): void;
+  (e: 'annullato'): void;
 }>();
 
 const { generateRoute } = usePermission();
 
-const isExpanded = ref(false);
+const isExpanded = ref(props.apertoDiSerie ?? false);
+const campo = ref<HTMLTextAreaElement | null>(null);
+
+function espandi() {
+  isExpanded.value = true;
+  nextTick(() => campo.value?.focus());
+}
 
 const form = useForm({
   corpo: '',
@@ -32,18 +53,23 @@ const isOverLimit = computed(() => charCount.value > MAX_CHARS);
 function submit() {
   if (!form.corpo.trim() || isOverLimit.value) return;
 
-  form.post(route(generateRoute('segnalazioni.commenti.store'), { segnalazione: props.segnalazioneId }), {
+  const indirizzo = props.url ?? route(generateRoute('segnalazioni.commenti.store'), { segnalazione: props.segnalazioneId });
+
+  form.transform((dati) => ({ ...dati, ...(props.dati ?? {}) })).post(indirizzo, {
     preserveScroll: true,
+    ...(props.ricarica ? { preserveState: true, only: props.ricarica, showProgress: false } : {}),
     onSuccess: () => {
       form.reset('corpo');
       isExpanded.value = false;
+      emit('inviato');
     },
   });
 }
 </script>
 
 <template>
-  <div class="mt-2">
+  <!-- Il margine lo decide chi mette il modulo (la discussione, la scheda della segnalazione): qui nessuno, che si sommerebbe al suo. -->
+  <div :data-discussione="chiave">
     <!-- Thread chiuso -->
     <div
       v-if="!canComment"
@@ -67,7 +93,7 @@ function submit() {
       <!-- Trigger collassato -->
       <button
         v-if="!isExpanded"
-        @click="isExpanded = true"
+        @click="espandi"
         class="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm text-slate-400 dark:text-slate-500 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-600 dark:hover:text-slate-300 transition-all cursor-text"
       >
         <MessageSquarePlus class="w-4 h-4 shrink-0" />
@@ -75,11 +101,14 @@ function submit() {
       </button>
 
       <!-- Form espanso -->
-      <div
+      <form
         v-else
+        @submit.prevent="submit"
         class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 shadow-sm overflow-hidden transition-all focus-within:border-slate-300 dark:focus-within:border-slate-600"
       >
         <textarea
+          ref="campo"
+          name="corpo"
           v-model="form.corpo"
           :placeholder="trans('commenti.placeholder')"
           rows="4"
@@ -101,14 +130,13 @@ function submit() {
           <div class="flex items-center gap-2">
             <button
               type="button"
-              @click="isExpanded = false; form.reset('corpo')"
+              @click="isExpanded = false; form.reset('corpo'); emit('annullato')"
               class="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded transition-colors"
             >
               {{ trans('commenti.cancel') }}
             </button>
             <button
-              type="button"
-              @click="submit"
+              type="submit"
               :disabled="form.processing || !form.corpo.trim() || isOverLimit"
               class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-xs"
             >
@@ -121,7 +149,7 @@ function submit() {
         <p v-if="form.errors.corpo" class="px-4 pb-2 text-xs text-red-500">
           {{ form.errors.corpo }}
         </p>
-      </div>
+      </form>
     </div>
   </div>
 </template>

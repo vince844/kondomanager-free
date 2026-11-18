@@ -121,10 +121,9 @@ class SegnalazioneService
      * Build base query for a regular user based on their anagrafica and condomini.
      *
      * Chi vede che cosa lo dice `Segnalazione::scopeVisibiliNelPortale()`, la stessa regola della
-     * scheda: qui si aggiunge solo che l'elenco mostra le pubblicate e approvate (le proprie in
-     * moderazione l'autore le apre per indirizzo, Coda 389). La regola non si riscrive qui:
-     * `is_private` la guarda lo scope, e una privata senza residenti resta del suo autore
-     * (Coda 304).
+     * scheda: l'elenco mostra ciò che la scheda apre, comprese le proprie in moderazione o in
+     * bozza (Coda 389). La regola non si riscrive qui: `is_private` la guarda lo scope, e una
+     * privata senza residenti resta del suo autore (Coda 304).
      */
     private function buildUserScopedBaseQuery(?Anagrafica $anagrafica, ?Collection $condominioIds): Builder
     {
@@ -134,9 +133,7 @@ class SegnalazioneService
         }
 
         return Segnalazione::with(['anagrafiche.user', 'condominio', 'createdBy.anagrafica'])
-            ->visibiliNelPortale($anagrafica->user)
-            ->where('is_published', true)
-            ->where('is_approved', true);
+            ->visibiliNelPortale($anagrafica->user);
     }
 
     /**

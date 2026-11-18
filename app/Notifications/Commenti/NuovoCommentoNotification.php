@@ -5,27 +5,61 @@
 
 namespace App\Notifications\Commenti;
 
+use App\Helpers\RouteHelper;
 use App\Models\Commento;
+use App\Models\Comunicazione;
+use App\Models\Segnalazione;
+use App\Models\User;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
+use App\Notifications\LocalizedNotification;
+use App\Support\Commenti\RegoleCommenti;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use App\Notifications\Concerns\TestoScrittoDaAltri;
-use App\Notifications\LocalizedNotification;
 use Illuminate\Support\Str;
-use App\Helpers\RouteHelper;
 
 class NuovoCommentoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
     use TestoScrittoDaAltri;
 
-    public function __construct(public Commento $commento) {
+    public function __construct(public Commento $commento)
+    {
         parent::__construct();
     }
 
     public function via(object $notifiable): array
     {
         return ['mail'];
+    }
+
+    public function shouldSend(object $notifiable, string $channel): bool
+    {
+        if (! $notifiable instanceof User) {
+            return false;
+        }
+
+        $commento = Commento::find($this->commento->id);
+        if (! $commento || $commento->stato !== 'pubblicato') {
+            return false;
+        }
+
+        $commentable = $commento->commentable;
+        if (! $commentable) {
+            return false;
+        }
+
+        // Un commento scritto da un palazzo che nel frattempo è stato tolto dai destinatari non si vede, per nessuno (decisione 459).
+        if (! RegoleCommenti::restaFraIDestinatari($commento, $commentable)) {
+            return false;
+        }
+
+        $chiaveDiscussione = RegoleCommenti::chiaveDelCommento($commento, $commentable);
+
+        $porta = RegoleCommenti::haPannello($notifiable) ? 'admin' : 'user';
+        $visibili = RegoleCommenti::discussioniVisibili($notifiable, $commentable, $porta);
+
+        return $visibili->pluck('chiave')->contains($chiaveDiscussione);
     }
 
     public function toMail(mixed $notifiable): MailMessage
@@ -36,10 +70,8 @@ class NuovoCommentoNotification extends LocalizedNotification implements ShouldQ
 
         $commentable = $this->commento->commentable;
         $titoloEntita = $commentable?->subject
-            ?? class_basename($commentable)
-            ?? 'Segnalazione';
+            ?? ($commentable instanceof Comunicazione ? 'Comunicazione' : 'Segnalazione');
 
-        // Construisce l'URL alla segnalazione
         $url = $this->urlCommentabile($notifiable);
         $key = $this->getEntityKey();
 
@@ -61,10 +93,11 @@ class NuovoCommentoNotification extends LocalizedNotification implements ShouldQ
     private function getEntityKey(): string
     {
         $class = class_basename($this->commento->commentable);
-        return match($class) {
-            'Segnalazione' => 'ticket',
-            'Comunicazione' => 'post',
-            default => strtolower($class),
+
+        return match ($class) {
+            'Segnalazione'  => 'ticket',
+            'Comunicazione' => 'communication',
+            default         => strtolower($class),
         };
     }
 
@@ -84,11 +117,14 @@ class NuovoCommentoNotification extends LocalizedNotification implements ShouldQ
     {
         try {
             $commentable = $this->commento->commentable;
-            if ($commentable instanceof \App\Models\Segnalazione) {
-                $prefix = RouteHelper::getRoutePrefixForUser($notifiable);
-                return url("/{$prefix}/segnalazioni/{$commentable->id}#commenti");
+            $prefix = RouteHelper::getRoutePrefixForUser($notifiable);
+            if ($commentable instanceof Comunicazione) {
+                return route("{$prefix}.comunicazioni.show", $commentable) . '#commenti';
             }
-        } catch (\Exception) {
+            if ($commentable instanceof Segnalazione) {
+                return route("{$prefix}.segnalazioni.show", $commentable) . '#commenti';
+            }
+        } catch (\Throwable) {
             // fallback silenzioso
         }
 

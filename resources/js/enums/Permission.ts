@@ -51,7 +51,9 @@ export enum Permission {
   PUBLISH_COMMENTS_COMUNICAZIONI = 'Pubblica commenti comunicazioni',
   APPROVE_COMMENTS_COMUNICAZIONI = 'Approva commenti comunicazioni',
   EDIT_COMMENTS_COMUNICAZIONI = 'Modifica commenti comunicazioni',
+  EDIT_OWN_COMMENTS_COMUNICAZIONI = 'Modifica propri commenti comunicazioni',
   DELETE_COMMENTS_COMUNICAZIONI = 'Elimina commenti comunicazioni',
+  DELETE_OWN_COMMENTS_COMUNICAZIONI = 'Elimina propri commenti comunicazioni',
   VIEW_COMMENTS_COMUNICAZIONI = 'Visualizza commenti comunicazioni',
   // Allegati comunicazioni
   CREATE_ATTACHMENTS_COMUNICAZIONI = 'Carica allegati comunicazioni',

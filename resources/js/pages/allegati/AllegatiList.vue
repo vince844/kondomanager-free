@@ -148,9 +148,21 @@ const statoFiltro = reactive({
     tipo: props.filtri?.tipo || 'tutti',
     condominio_id: props.filtri?.condominio_id ? String(props.filtri.condominio_id) : 'tutti',
     autore: props.filtri?.autore || '',
+    // Un elemento solo (la segnalazione o la comunicazione), da «Modera» dell'Action inbox: si vede come un'etichetta e si toglie da sé.
+    elemento: (props.filtri?.elemento ? Number(props.filtri.elemento) : null) as number | null,
     dal: props.filtri?.dal || '',
     al: props.filtri?.al || '',
 });
+
+// L'elemento è una coppia con il suo tipo (il server lo vuole con il tipo: una segnalazione e una comunicazione possono avere lo
+// stesso numero). Cambiando «Tipo» l'etichetta si toglie; subito, prima che la visita parta.
+watch(
+    () => statoFiltro.tipo,
+    (nuovo, vecchio) => {
+        if (nuovo !== vecchio) statoFiltro.elemento = null;
+    },
+    { flush: 'sync' }
+);
 
 const selezionati = ref<number[]>([]);
 const rigaDaEliminare = ref<AllegatoRigaPagina | null>(null);
@@ -201,6 +213,9 @@ function parametriFiltro(): Record<string, string | number> {
     if (statoFiltro.autore.trim() !== '') {
         params.autore = statoFiltro.autore.trim();
     }
+    if (statoFiltro.elemento !== null) {
+        params.elemento = statoFiltro.elemento;
+    }
     if (statoFiltro.dal !== '') {
         params.dal = statoFiltro.dal;
     }
@@ -240,6 +255,7 @@ const haFiltriAttivi = computed(
         statoFiltro.tipo !== 'tutti' ||
         statoFiltro.condominio_id !== 'tutti' ||
         statoFiltro.autore.trim() !== '' ||
+        statoFiltro.elemento !== null ||
         statoFiltro.dal !== '' ||
         statoFiltro.al !== ''
 );
@@ -315,6 +331,7 @@ function azzeraFiltri() {
     statoFiltro.tipo = 'tutti';
     statoFiltro.condominio_id = 'tutti';
     statoFiltro.autore = '';
+    statoFiltro.elemento = null;
     statoFiltro.dal = '';
     statoFiltro.al = '';
     applicaFiltri();
@@ -619,6 +636,19 @@ function confermaEliminaInBlocco() {
                                     <span>{{ trans('allegati.actions.download_zip') }}</span>
                                 </a>
                             </div>
+                        </div>
+
+                        <!-- L'elemento scelto da «Modera» dell'Action inbox: un'etichetta che si toglie da sé. -->
+                        <div v-if="statoFiltro.elemento !== null" class="flex flex-wrap items-center gap-2" data-testid="filtro-elemento">
+                            <button
+                                type="button"
+                                class="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300"
+                                :aria-label="trans('allegati.filters.element_remove')"
+                                @click="statoFiltro.elemento = null; applicaFiltri()"
+                            >
+                                {{ trans('allegati.filters.element', { nome: props.filtri?.elemento_nome || '#' + statoFiltro.elemento }) }}
+                                <X class="h-3 w-3" />
+                            </button>
                         </div>
 
                         <!-- Barra azioni in blocco -->

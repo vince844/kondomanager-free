@@ -13,13 +13,13 @@ use App\Enums\Permission;
 use function Pest\Laravel\assertDatabaseHas;
 use function Pest\Laravel\assertDatabaseCount;
 
-it('creates an admin inbox event when a new comment is posted', function () {
+it('creates a single admin inbox event for a comment waiting for moderation, with the true numbers', function () {
     $user = User::factory()->create();
     $condominio = Condominio::factory()->create();
-    
+
     $segnalazione = Segnalazione::factory()->create([
         'priority' => 'urgente',
-        'stato' => 'aperta',
+        'stato' => 'chiusa',
         'condominio_id' => $condominio->id
     ]);
 
@@ -28,7 +28,7 @@ it('creates an admin inbox event when a new comment is posted', function () {
         'commentable_type' => $segnalazione->getMorphClass(),
         'user_id' => $user->id,
         'corpo' => 'Questo è un test commento',
-        'stato' => 'pubblicato',
+        'stato' => 'in_attesa',
         'condominio_id' => $condominio->id
     ]);
 
@@ -36,16 +36,33 @@ it('creates an admin inbox event when a new comment is posted', function () {
     $service->sincronizza($commento);
 
     assertDatabaseHas('eventi', [
-        'tipo' => 'commento',
+        'tipo' => 'da_moderare',
         'eventable_type' => $segnalazione->getMorphClass(),
         'eventable_id' => $segnalazione->id,
-        'priorita' => 'alta',
         'is_completed' => false,
     ]);
 
-    $evento = Evento::where('tipo', 'commento')->first();
-    expect($evento->meta['contatore'])->toBe(1);
-    expect($evento->meta['ultima_anteprima'])->toBe('Questo è un test commento');
+    $evento = Evento::where('tipo', 'da_moderare')->first();
+    expect($evento->meta['commenti_in_attesa'])->toBe(1);
+    expect($evento->title)->toBe('1 commento in attesa');
+});
+
+it('a comment published without moderation does not create an admin inbox event', function () {
+    $user = User::factory()->create();
+    $condominio = Condominio::factory()->create();
+    $segnalazione = Segnalazione::factory()->create(['priority' => 'media', 'stato' => 'chiusa', 'condominio_id' => $condominio->id]);
+
+    $commento = Commento::factory()->create([
+        'commentable_id' => $segnalazione->id,
+        'commentable_type' => $segnalazione->getMorphClass(),
+        'user_id' => $user->id,
+        'corpo' => 'Pubblicato subito',
+        'stato' => 'pubblicato',
+        'condominio_id' => $condominio->id
+    ]);
+    (new CommentoEventoService())->sincronizza($commento);
+
+    expect(Evento::whereIn('tipo', ['commento', 'da_moderare'])->count())->toBe(0);
 });
 
 it('aggregates multiple comments into the same admin inbox event', function () {
@@ -54,37 +71,27 @@ it('aggregates multiple comments into the same admin inbox event', function () {
 
     $segnalazione = Segnalazione::factory()->create([
         'priority' => 'media',
-        'stato' => 'aperta',
+        'stato' => 'chiusa',
         'condominio_id' => $condominio->id
     ]);
-    
+
     $service = new CommentoEventoService();
+    foreach (['Primo commento', 'Secondo commento'] as $corpo) {
+        $commento = Commento::factory()->create([
+            'commentable_id' => $segnalazione->id,
+            'commentable_type' => $segnalazione->getMorphClass(),
+            'user_id' => $user->id,
+            'corpo' => $corpo,
+            'stato' => 'in_attesa',
+            'condominio_id' => $condominio->id
+        ]);
+        $service->sincronizza($commento);
+    }
 
-    // Commento 1
-    $commento1 = Commento::factory()->create([
-        'commentable_id' => $segnalazione->id,
-        'commentable_type' => $segnalazione->getMorphClass(),
-        'user_id' => $user->id,
-        'corpo' => 'Primo commento',
-        'condominio_id' => $condominio->id
-    ]);
-    $service->sincronizza($commento1);
+    expect(Evento::where('tipo', 'da_moderare')->count())->toBe(1);
 
-    // Commento 2
-    $commento2 = Commento::factory()->create([
-        'commentable_id' => $segnalazione->id,
-        'commentable_type' => $segnalazione->getMorphClass(),
-        'user_id' => $user->id,
-        'corpo' => 'Secondo commento',
-        'condominio_id' => $condominio->id
-    ]);
-    $service->sincronizza($commento2);
-
-    // Filter by type to exclude other potential events created by factories
-    $eventiCount = Evento::where('tipo', 'commento')->count();
-    expect($eventiCount)->toBe(1);
-
-    $evento = Evento::where('tipo', 'commento')->first();
+    $evento = Evento::where('tipo', 'da_moderare')->first();
+    expect($evento->meta['commenti_in_attesa'])->toBe(2);
     expect($evento->meta['contatore'])->toBe(2);
-    expect($evento->meta['ultima_anteprima'])->toBe('Secondo commento');
+    expect($evento->title)->toBe('2 commenti in attesa');
 });

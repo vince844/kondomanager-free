@@ -38,6 +38,8 @@ import PassaggioProprietaGuide from '@/components/guides/PassaggioProprietaGuide
 import AnteprimaPassaggio from '@/components/gestionale/immobili/AnteprimaPassaggio.vue';
 import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vue';
 import PassaggioPertinenzeCard from '@/components/gestionale/immobili/PassaggioPertinenzeCard.vue';
+import AccessoriSegnalatiDelDefunto from '@/components/gestionale/immobili/AccessoriSegnalatiDelDefunto.vue';
+import AccordoDelDefunto from '@/components/gestionale/immobili/AccordoDelDefunto.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
 import InputError from '@/components/InputError.vue';
@@ -58,7 +60,7 @@ import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Inf
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
-import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
+import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata, SceltaAccordoDelDefunto, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
 import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passaggi/vociDaSpostare';
 import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
 import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
@@ -172,6 +174,10 @@ const form = useForm({
   eredi: [{ anagrafica_id: null, quota: '' }] as { anagrafica_id: number | null; quota: string }[],
   arretrato: null as 'eredi' | 'defunto' | null,
   erede_di_riferimento: null as number | null,
+  // Decisione 448: gli accessori del defunto con un pagamento segnalato che l'amministratore passa comunque agli eredi (le quote); di serie nessuno.
+  accessori_segnalati_agli_eredi: [] as number[],
+  // Decisione 454: l'accordo di rientro del defunto che la successione chiude resta in regola fino al decesso (di serie) o vale come una decadenza.
+  accordo_del_defunto: 'in_regola' as SceltaAccordoDelDefunto,
 });
 
 const ANTICIPI = [30, 60, 90, 180] as const;
@@ -543,6 +549,8 @@ function corpoAnteprima() {
       eredi: form.eredi.map(e => ({ anagrafica_id: e.anagrafica_id, quota: String(e.quota).trim().replace(',', '.') })),
       arretrato: form.arretrato,
       erede_di_riferimento: form.eredi.length > 1 ? form.erede_di_riferimento : null,
+      accessori_segnalati_agli_eredi: form.arretrato === 'eredi' ? form.accessori_segnalati_agli_eredi : [],
+      accordo_del_defunto: form.arretrato === 'eredi' ? form.accordo_del_defunto : null,
     } : {}),
   };
 }
@@ -1099,6 +1107,12 @@ function urlTipo(t: TipoPassaggio) {
                 <p v-if="fraseDellArretrato" class="rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 flex items-start gap-2">
                   <Scale class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /><span>{{ fraseDellArretrato }}</span>
                 </p>
+                <!-- Decisione 448: un interesse o una spesa del defunto con un pagamento segnalato resta a suo nome, salvo la spunta. -->
+                <AccessoriSegnalatiDelDefunto v-if="form.arretrato === 'eredi'" :accessori="anteprima?.rate.arretrato?.accessori_segnalati ?? []"
+                  :defunto="uscente?.anagrafica.nome ?? 'il defunto'" v-model="form.accessori_segnalati_agli_eredi" />
+                <!-- Decisione 454: l'accordo di rientro del defunto, per i suoi interessi; di serie resta in regola fino al decesso. -->
+                <AccordoDelDefunto v-if="form.arretrato === 'eredi'" :accordi="anteprima?.rate.arretrato?.accordi_del_defunto ?? []"
+                  :defunto="uscente?.anagrafica.nome ?? 'il defunto'" :frase="anteprima?.rate.arretrato?.frase_accordo_del_defunto" v-model="form.accordo_del_defunto" />
                 <InputError :message="(form.errors as Record<string, string>).arretrato" />
               </CardContent>
             </Card>

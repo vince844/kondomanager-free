@@ -157,16 +157,25 @@ test('Coda 305 — nella scheda del pannello l\'amministratore trova il campo, c
     $this->actingAs($this->admin)->post(route('admin.segnalazioni.commenti.store', $s), ['corpo' => 'Il fabbro passa domani'])->assertRedirect();
 });
 
-test('Coda 305 — nella scheda del pannello il campo segue la stessa domanda della rotta: chi ha il pannello commenta, anche senza il permesso dei commenti', function () {
-    // La policy fa passare chi ha l'accesso al pannello (`CommentoPolicy::before`), e la policy non
-    // cambia: un ruolo su misura del pannello senza «Commenta segnalazioni» commenta, e il campo c'è.
-    RuoloSpatie::create(['name' => 'Segreteria del pannello', 'guard_name' => 'web'])->givePermissionTo([
-        Permission::ACCESS_ADMIN_PANEL->value, Permission::VIEW_SEGNALAZIONI->value,
-    ]);
+test('Coda 305 — nella scheda del pannello il campo segue la stessa domanda della rotta: il pannello senza il permesso dei commenti non commenta, con il permesso sì (Coda 558)', function () {
+    // `CommentoPolicy::before` non c'è più (Coda 558, decisione 261.5): il pannello e il permesso servono
+    // insieme. Un ruolo su misura del pannello senza «Commenta segnalazioni» non commenta, e il campo non
+    // c'è; con il permesso commenta, anche senza un'anagrafica nel palazzo.
+    $ruolo = RuoloSpatie::create(['name' => 'Segreteria del pannello', 'guard_name' => 'web']);
+    $ruolo->givePermissionTo([Permission::ACCESS_ADMIN_PANEL->value, Permission::VIEW_SEGNALAZIONI->value]);
     $segreteria = User::factory()->create(['email_verified_at' => now()]);
     $segreteria->assignRole('Segreteria del pannello');
     $luigi = commentoUtente([$this->aurora->id], 'Luigi Verdi');
     $s = commentoSegnalazione($this->aurora, $luigi);
+
+    $props = $this->actingAs($segreteria)->get(route('admin.segnalazioni.show', $s))->assertOk()->viewData('page')['props'];
+    expect($props['commenti_config']['can_create'])->toBeFalse();
+    $this->actingAs($segreteria)->post(route('admin.segnalazioni.commenti.store', $s), ['corpo' => 'Avvisato il fabbro'])
+        ->assertForbidden();
+
+    $ruolo->givePermissionTo(Permission::COMMENT_SEGNALAZIONI->value);
+    app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+    $segreteria = $segreteria->fresh();
 
     $props = $this->actingAs($segreteria)->get(route('admin.segnalazioni.show', $s))->assertOk()->viewData('page')['props'];
     expect($props['commenti_config']['can_create'])->toBeTrue();

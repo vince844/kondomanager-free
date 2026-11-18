@@ -82,7 +82,7 @@ it('la mappa delle prossime azioni copre ogni tipo: ogni caso di EventoTipo e og
         'verifica_pagamento' => 'Registra l\'incasso', 'controllo_incassi' => 'Registra gli incassi', 'emissione_rata' => 'Emetti la rata',
         'emissione_rata_sopravvenienza' => 'Crea il piano rate', 'pagamento_fornitore' => 'Paga la fattura', 'scoperto_documentato' => 'Assegna le quote',
         'gia_versato_acconto_dichiarato' => 'Registra la fattura', 'pianifica_ripianamento_deficit' => 'Prepara il piano di ripianamento',
-        'segnalazione_guasto' => 'Apri la segnalazione', 'commento' => 'Rispondi al commento', 'allegato' => 'Approva gli allegati',
+        'segnalazione_guasto' => 'Apri la segnalazione', 'commento' => 'Rispondi al commento', 'allegato' => 'Approva gli allegati', 'da_moderare' => 'Modera i commenti',
         'versamento_ritenuta' => 'Prepara l\'F24', 'f24' => 'Prepara l\'F24', 'scadenza' => 'Segna come fatto',
         'eccedenza_gia_versato_rilevata' => 'Controlla il già versato', 'convocazione_urgenza' => 'Segna come fatto', 'ratifica_sforo' => 'Segna come fatto',
         'agenda' => 'Segna come fatto', 'promemoria' => 'Segna come fatto', 'scadenza_rata_condomino' => 'Segna come fatto',
@@ -128,11 +128,10 @@ it('ogni riga ha la prossima azione del suo tipo: il pulsante porta alla sua pag
     }
 });
 
-it('il commento di una segnalazione, salvato senza indirizzo, porta alla segnalazione', function () {
+it('il compito di un commento di prima (la versione nuova non lo scrive più), salvato senza indirizzo, porta alla segnalazione', function () {
     $segnalazione = \App\Models\Segnalazione::factory()->create(['condominio_id' => $this->condominio->id, 'subject' => 'Ascensore fermo', 'stato' => 'aperta']);
-    $commento = \App\Models\Commento::factory()->create(['commentable_id' => $segnalazione->id, 'commentable_type' => $segnalazione->getMorphClass(),
-        'user_id' => $this->admin->id, 'corpo' => 'Quando viene il tecnico?', 'stato' => 'pubblicato', 'condominio_id' => $this->condominio->id]);
-    app(\App\Services\CommentoEventoService::class)->sincronizza($commento);
+    \App\Services\Gestionale\InboxService::createTask(tipo: \App\Enums\EventoTipo::COMMENTO, title: 'Nuovo commento — Ascensore fermo', description: 'Quando viene il tecnico?',
+        scadenza: now()->addDays(2), createdByUserId: $this->admin->id, condominioId: $this->condominio->id, eventableType: $segnalazione->getMorphClass(), eventableId: $segnalazione->id);
     // La segnalazione può avere anche il suo compito (se è aperta): qui conta la riga del commento.
     $riga = aiaRighe($this)->firstWhere('type', 'commento');
 

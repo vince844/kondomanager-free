@@ -42,6 +42,16 @@ trait HasComments
     }
 
     /**
+     * Commenti nascosti da un moderatore: li vede chi modera, per rimetterli visibili («Mostra di nuovo», decisione 456).
+     */
+    public function commentiNascosti(): MorphMany
+    {
+        return $this->morphMany(Commento::class, 'commentable')
+                    ->where('stato', 'nascosto')
+                    ->oldest();
+    }
+
+    /**
      * Default: priorità normale. Override nei modelli che hanno un campo urgenza.
      */
     public function prioritaCommento(): string

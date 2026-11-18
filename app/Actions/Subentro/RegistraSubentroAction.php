@@ -253,7 +253,7 @@ final class RegistraSubentroAction
 
                 // 6-ter. Decisione 65 (2): l'arretrato del defunto, agli eredi per quota (righe di saldo a somma zero) o a suo nome.
                 if ($tipo === 'successione' && ($anteprima['rate']['arretrato'] ?? null) !== null) {
-                    $this->scriviArretrato($condominio, $subentro, $anteprima['rate']['arretrato'], $uscente, $decorrenza, $rinuncia, $avvisi);
+                    $this->scriviArretrato($condominio, $subentro, $anteprima['rate']['arretrato'], $uscente, $decorrenza, $rinuncia, $avvisi, $utente);
                 }
 
                 // 7. Il PDF del titolo: documento dell'unità, dell'amministratore. Il file si scrive qui, così
@@ -642,7 +642,7 @@ final class RegistraSubentroAction
      *
      * @param array<string,mixed> $arretrato `AnteprimaPassaggio::calcola()['rate']['arretrato']`
      */
-    private function scriviArretrato(Condominio $condominio, Subentro $subentro, array $arretrato, ?TitolaritaImmobile $uscente, CarbonImmutable $decorrenza, bool $rinuncia, array &$avvisi): void
+    private function scriviArretrato(Condominio $condominio, Subentro $subentro, array $arretrato, ?TitolaritaImmobile $uscente, CarbonImmutable $decorrenza, bool $rinuncia, array &$avvisi, User $utente): void
     {
         $ids = [];
         // Le righe della parte che viene dagli addebiti del defunto, e le rate di quegli addebiti: il conguaglio le tiene fuori da B, e l'addebito non
@@ -693,18 +693,25 @@ final class RegistraSubentroAction
         }
         // Gli interessi e le spese senza fattura del defunto: agli eredi come interessi e spese, non con le righe di saldo.
         $accessori = $arretrato['scelta'] === Subentro::ARRETRATO_AGLI_EREDI && $defuntoId > 0 && ($arretrato['accessori'] ?? []) !== []
-            ? app(\App\Services\Subentro\AccessoriAgliEredi::class)->scrivi($subentro, $arretrato['accessori'], $defuntoId, $decorrenza, $avvisi) : [];
+            ? app(\App\Services\Subentro\AccessoriAgliEredi::class)->scrivi($subentro, $arretrato['accessori'], $defuntoId, $decorrenza, $avvisi, $utente) : [];
         // L'accordo di rientro del defunto si chiude per la successione: il debito che copre passa agli eredi con l'arretrato.
         $accordi = $arretrato['scelta'] === Subentro::ARRETRATO_AGLI_EREDI && $defuntoId > 0
             ? app(\App\Services\Subentro\AccordiDellaSuccessione::class)->chiudi((int) $condominio->id, $defuntoId,
                 array_values(array_unique(array_filter([(int) $subentro->immobile_id, ...array_map(fn ($r) => (int) ($r['immobile_id'] ?? 0), $arretrato['righe'] ?? [])]))),
-                $decorrenza, auth()->id())
+                // Decisione 454: per gli interessi del defunto l'accordo resta in regola fino al decesso (di serie) o vale come una decadenza.
+                $decorrenza, auth()->id(), (string) ($arretrato['accordo_del_defunto'] ?? \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA))
+            : [];
+        // Decisione 448: gli accessori con un pagamento segnalato rimasti al defunto, perché fra un anno si sappia perché sono ancora suoi.
+        $restati = $arretrato['scelta'] === Subentro::ARRETRATO_AGLI_EREDI && $defuntoId > 0
+            ? array_values(array_map(fn (array $a) => ['quota_id' => (int) $a['quota_id'], 'causale' => (string) $a['causale'], 'aperto' => (int) $a['aperto']],
+                array_filter((array) ($arretrato['accessori_segnalati'] ?? []), fn (array $a) => ! ($a['passa'] ?? false))))
             : [];
         $registro = $subentro->registro ?? [];
         $resta = $rinuncia && $arretrato['scelta'] === Subentro::ARRETRATO_AL_DEFUNTO ? (int) ($arretrato['resta_senza_conguaglio'] ?? 0) : (int) ($arretrato['resta'] ?? 0);
         $registro['arretrato'] = ['scelta' => $arretrato['scelta'], 'totale' => (int) ($arretrato['totale'] ?? 0), 'resta' => $resta, 'saldi' => $ids]
             + ($idsAddebiti !== [] ? ['addebiti' => ['saldi' => $idsAddebiti, 'rate' => array_values(array_unique($rateAddebiti))]] : [])
             + ($accessori !== [] ? ['accessori' => $accessori] : [])
+            + ($restati !== [] ? ['restati_al_defunto' => $restati] : [])
             + ($accordi !== [] ? ['accordi' => $accordi] : [])
             + ($nonScritto !== 0 ? ['non_scritto' => $nonScritto] : [])
             // Decisione 67 (3): i saldi del defunto da cui l'arretrato è stato calcolato, solo se ne sono nate righe degli eredi.

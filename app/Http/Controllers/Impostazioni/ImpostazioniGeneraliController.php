@@ -44,7 +44,8 @@ class ImpostazioniGeneraliController extends Controller
             'default_condominio_id'    => $user->userPreferences->default_condominio_id,
             'condomini'                => Condominio::select('id','nome')->get(),
             'default_user_role'        => (string) $settings->default_user_role,
-            'force_comment_moderation' => (bool) $settings->force_comment_moderation,
+            'commenti_segnalazioni_moderati_di_serie' => (bool) $settings->commenti_segnalazioni_moderati_di_serie,
+            'commenti_comunicazioni_moderati_di_serie' => (bool) $settings->commenti_comunicazioni_moderati_di_serie,
             'allegati_moderati_di_serie' => (bool) $settings->allegati_moderati_di_serie,
             'allegati_massimo_per_elemento' => (int) $settings->allegati_massimo_per_elemento,
             'default_per_page'         => (int) $settings->default_per_page,
@@ -95,7 +96,12 @@ class ImpostazioniGeneraliController extends Controller
             $settings->language = $validated['language'];
             $settings->app_name = $validated['app_name'];
             $settings->default_user_role = $validated['default_user_role'];
-            $settings->force_comment_moderation = $validated['force_comment_moderation'];
+            if (array_key_exists('commenti_segnalazioni_moderati_di_serie', $validated)) {
+                $settings->commenti_segnalazioni_moderati_di_serie = (bool) $validated['commenti_segnalazioni_moderati_di_serie'];
+            }
+            if (array_key_exists('commenti_comunicazioni_moderati_di_serie', $validated)) {
+                $settings->commenti_comunicazioni_moderati_di_serie = (bool) $validated['commenti_comunicazioni_moderati_di_serie'];
+            }
             if (array_key_exists('allegati_moderati_di_serie', $validated)) {
                 $settings->allegati_moderati_di_serie = (bool) $validated['allegati_moderati_di_serie'];
             }

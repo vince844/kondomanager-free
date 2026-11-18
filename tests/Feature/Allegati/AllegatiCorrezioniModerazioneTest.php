@@ -70,9 +70,10 @@ test('la voce «allegato» dell\'Inbox porta alla scheda dell\'elemento nel pann
     algCarica($this, $this->mario, $s, [algFoto()])->assertSessionHasNoErrors();
     algCarica($this, $this->mario, $s, [algFoto('seconda.jpg')])->assertSessionHasNoErrors();
 
-    $voci = DB::table('eventi')->where('tipo', 'allegato')->where('eventable_id', $s->id)->where('is_completed', false)->get();
+    $voci = DB::table('eventi')->where('tipo', 'da_moderare')->where('eventable_id', $s->id)->where('is_completed', false)->get();
+    // Il compito è unico per elemento, e la prossima azione apre la pagina «Allegati» filtrata su quell'elemento (decisione 445).
     expect($voci)->toHaveCount(1)
-        ->and(json_decode($voci->first()->meta, true)['action_url'] ?? null)->toBe(route('admin.segnalazioni.show', $s, false));
+        ->and(json_decode($voci->first()->meta, true)['action_url'] ?? null)->toBe('/admin/allegati?stato=in_attesa&tipo=segnalazioni&elemento=' . $s->id);
 });
 
 test('l\'email ai vicini non mostra mai l\'indirizzo email di chi ha caricato, nemmeno quando il nome manca', function () {

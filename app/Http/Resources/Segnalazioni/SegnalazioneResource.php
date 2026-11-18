@@ -36,6 +36,7 @@ class SegnalazioneResource extends JsonResource
             'is_published'  => $this->is_published,
             'is_approved'   => $this->is_approved,
             'can_comment'   => $this->can_comment,
+            'commenti_moderati' => (bool) $this->commenti_moderati,
             'created_at'    => $this->created_at->diffForHumans(),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
@@ -55,6 +56,13 @@ class SegnalazioneResource extends JsonResource
             'anagrafiche'       => AnagraficaNomeResource::collection($this->whenLoaded('anagrafiche')),
             'commenti'          => CommentoResource::collection($this->whenLoaded('commenti')),
             'commentiInAttesa'  => CommentoResource::collection($this->whenLoaded('commentiInAttesa')),
+            'commentiNascosti'  => CommentoResource::collection($this->whenLoaded('commentiNascosti')),
+            // Quanti commenti e allegati (decisione 453): li calcola l'elenco, per tutte le righe insieme, e li mette sul
+            // modello. Dove nessuno li ha calcolati il campo non c'è.
+            'contatori'         => $this->when(
+                $this->resource->getAttribute('contatori_elenco') !== null,
+                fn () => $this->resource->getAttribute('contatori_elenco')
+            ),
         ];
     }
 }

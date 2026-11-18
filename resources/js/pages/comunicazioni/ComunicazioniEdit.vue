@@ -37,6 +37,8 @@ const props = defineProps<{
   comunicazione: Comunicazione;
   condomini: Building[];
   anagrafiche: Anagrafica[];
+  // «Commenti in moderazione» la cambia solo chi può approvare i commenti: per gli altri resta com'è, e la casella non c'è.
+  puo_scegliere_moderazione?: boolean;
 }>();  
 
 const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
@@ -80,6 +82,7 @@ const form = useForm({
     stato: '',
     condomini_ids: props.comunicazione?.condomini?.options?.map(c => c.value) ?? [],
     can_comment: !!props.comunicazione?.can_comment,
+    ...(props.comunicazione?.commenti_moderati !== undefined ? { commenti_moderati: Boolean(props.comunicazione.commenti_moderati) } : {}),
     is_featured: !!props.comunicazione?.is_featured,
     is_published: props.comunicazione?.is_published !== undefined ? Boolean(props.comunicazione.is_published) : true,
     anagrafiche: (props.comunicazione?.anagrafiche ?? []).map(anagrafica => anagrafica.id),
@@ -108,6 +111,9 @@ watch(
       form.priority = newComunicazione.priority;
       form.is_published = Boolean(newComunicazione.is_published);
       form.can_comment = !!newComunicazione.can_comment;
+      if (newComunicazione.commenti_moderati !== undefined) {
+        (form as any).commenti_moderati = Boolean(newComunicazione.commenti_moderati);
+      }
       form.is_featured = !!newComunicazione.is_featured;
     }
   },
@@ -403,6 +409,33 @@ const submit = () => {
                                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                                         <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.comments') }}</h4>
                                         <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.comments') }}</p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                        </div>
+
+                        <div v-if="(form as any).commenti_moderati !== undefined && props.puo_scegliere_moderazione !== false" class="sm:col-span-3" data-testid="scelta-moderazione">
+                            <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">
+                                <div class="flex items-center space-x-3">
+                                    <Checkbox 
+                                        id="commenti_moderati" 
+                                        :checked="(form as any).commenti_moderati"
+                                        v-model="(form as any).commenti_moderati" 
+                                        @update:checked="(val: boolean) => (form as any).commenti_moderati = val" 
+                                    />
+                                    <Label for="commenti_moderati" class="cursor-pointer font-medium text-sm text-slate-700 dark:text-slate-300">
+                                        {{ trans('comunicazioni.label.commenti_moderati') }}
+                                    </Label>
+                                </div>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.commenti_moderati') }}</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.commenti_moderati') }}</p>
                                     </HoverCardContent>
                                 </HoverCard>
                             </div>

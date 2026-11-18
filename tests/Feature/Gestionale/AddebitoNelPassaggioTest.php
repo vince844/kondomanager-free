@@ -223,3 +223,280 @@ it('annullata la successione, gli interessi tornano a Neri come erano: via le qu
         ->and(DB::table('scritture_contabili')->count())->toBe($scritture)
         ->and(adbAccessoriDaIncassare($s))->toBe(118);
 });
+
+// ─── Il promemoria del defunto e quelli degli eredi (Coda 652) ─────────────────────────────────────────────────────────────
+//
+// Passati gli interessi e le spese agli eredi, il promemoria del portale segue le quote come nella successione delle rate in bozza
+// (`EventiRataCondomino::seguonoLeQuote`): quello del defunto si riallinea alla sua quota chiusa al versato e dice «pagato»; ogni erede ha il suo, nato
+// come quello di un addebito (emesso, con la causale nel titolo). L'annullamento del passaggio li rimette com'erano: via quelli degli eredi, quello del
+// defunto di nuovo da versare.
+
+/** Il promemoria del portale di ogni persona sulla rata: persona => [stato, pagato, versato, da compensare, titolo, emesso]. */
+function adbPromemoria(int $rataId): array
+{
+    $esito = [];
+    foreach (\App\Models\Evento::where('tipo', \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value)
+        ->where(fn ($q) => $q->where('meta->context->rata_id', $rataId)->orWhere('meta->context->rata_id', (string) $rataId))->with('anagrafiche:id')->orderBy('id')->get() as $e) {
+        foreach ($e->anagrafiche as $a) {
+            $esito[(int) $a->id] = [$e->meta['status'] ?? null, (int) ($e->meta['importo_pagato'] ?? -1), (int) ($e->meta['importo_versato'] ?? -1),
+                (int) ($e->meta['da_compensare'] ?? -1), (string) $e->title, $e->meta['is_emitted'] ?? null];
+        }
+    }
+
+    return $esito;
+}
+
+/** Neri con le spese di sollecito di € 25,00 su U1 (senza fattura), versate per i centesimi dati, e la sua successione dal 01/09 ad Anna e Bruno al 50 %. */
+function adbSollecitoNellaSuccessione($test, int $versati = 0, string $euro = '25,00'): array
+{
+    $s = accViaVerdi($test);
+    $test->travelTo('2026-07-10 10:00:00');
+    $rataId = (int) adbRegistra($test, $s, [['chi' => 'Neri', 'unita' => 'U1', 'euro' => $euro, 'causale' => 'Spese di sollecito', 'scadenza' => '2026-07-10',
+        'natura' => 'accessorio', 'tipo_accessorio' => 'sollecito', 'base' => 'delibera', 'riferimento' => 'del 14/03/2026, verbale n. 1', 'conto_id' => $s['postali']->id]])
+        ->assertCreated()->json('rate.0');
+    if ($versati > 0) {
+        $test->travelTo('2026-07-12 10:00:00');
+        lcdIncassa($test, $s, 'Neri', [adbQuota($rataId)->id => $versati], '2026-07-12');
+    }
+    $anna = adbErede($s, 'Anna');
+    $bruno = adbErede($s, 'Bruno');
+    $test->travelTo('2026-09-10 10:00:00');
+
+    return [$s, $rataId, $anna, $bruno, adbSuccessione($s, $anna, $bruno, 'eredi')];
+}
+
+it('Coda 652 — il sollecito di Neri, € 16,01 non versati, passa ad Anna e Bruno: il promemoria di Neri si chiude, Anna e Bruno hanno il loro con la loro parte', function () {
+    [$s, $rataId, $anna, $bruno, $corpo] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $neri = (int) $s['persone']['Neri']->id;
+    $prima = adbPromemoria($rataId);
+    expect(array_keys($prima))->toBe([$neri])->and($prima[$neri][0])->toBe('pending');
+    $titolo = $prima[$neri][4];
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+
+    // € 16,01 per metà: 800,5 e 800,5; il centesimo che resta va al primo erede (resti uguali): € 8,01 ad Anna, € 8,00 a Bruno.
+    $quote = \App\Models\Gestionale\RataQuote::where('rata_id', $rataId)->orderBy('id')->get()->mapWithKeys(fn ($q) => [(int) $q->anagrafica_id => [(int) $q->importo, (int) $q->importo_pagato]])->all();
+    expect($quote)->toBe([$neri => [0, 0], $anna->id => [801, 0], $bruno->id => [800, 0]]);
+    $dopo = adbPromemoria($rataId);
+    // Neri: niente da versare, pagato e versato zero, chiuso. Gli eredi: da versare, la loro quota, nati come il promemoria di un addebito.
+    expect($dopo[$neri][0])->toBe('paid')->and(array_slice($dopo[$neri], 1, 3))->toBe([0, 0, 0])
+        ->and($dopo[$anna->id])->toBe(['pending', 0, 0, 0, $titolo, true])
+        ->and($dopo[$bruno->id])->toBe(['pending', 0, 0, 0, $titolo, true]);
+    $restante = fn (int $chi) => (int) \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value)->where('meta->context->rata_id', $rataId)
+        ->whereHas('anagrafiche', fn ($q) => $q->where('anagrafica_id', $chi))->first()->meta['importo_restante'];
+    expect([$restante($anna->id), $restante($bruno->id)])->toBe([801, 800]);
+});
+
+it('Coda 652 — Neri aveva versato € 8,99 del sollecito di € 25,00: il suo promemoria passa da «in parte pagato» a «pagato», gli eredi hanno i € 16,01 che restano', function () {
+    [$s, $rataId, $anna, $bruno, $corpo] = adbSollecitoNellaSuccessione($this, 899);
+    $neri = (int) $s['persone']['Neri']->id;
+    expect(adbPromemoria($rataId)[$neri][0])->toBe('partial');
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+
+    // La quota di Neri si chiude al versato, € 8,99; i € 16,01 aperti per metà, € 8,01 ad Anna e € 8,00 a Bruno.
+    $quote = \App\Models\Gestionale\RataQuote::where('rata_id', $rataId)->orderBy('id')->get()->mapWithKeys(fn ($q) => [(int) $q->anagrafica_id => [(int) $q->importo, (int) $q->importo_pagato]])->all();
+    expect($quote)->toBe([$neri => [899, 899], $anna->id => [801, 0], $bruno->id => [800, 0]]);
+    $dopo = adbPromemoria($rataId);
+    // Il versato di Neri resta il suo: € 8,99, pagato e versato.
+    expect(array_slice($dopo[$neri], 0, 4))->toBe(['paid', 899, 899, 0])
+        ->and(array_slice($dopo[$anna->id], 0, 4))->toBe(['pending', 0, 0, 0])
+        ->and(array_slice($dopo[$bruno->id], 0, 4))->toBe(['pending', 0, 0, 0]);
+});
+
+it('Coda 652 — annullata la successione, il promemoria di Neri torna com\'era e quelli degli eredi non ci sono più', function () {
+    [$s, $rataId, $anna, $bruno, $corpo] = adbSollecitoNellaSuccessione($this, 899);
+    $neri = (int) $s['persone']['Neri']->id;
+    $evento = fn () => \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value)->where('meta->context->rata_id', $rataId)
+        ->whereHas('anagrafiche', fn ($q) => $q->where('anagrafica_id', $neri))->first();
+    $prima = [$evento()->meta, $evento()->description, adbPromemoria($rataId)];
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+    expect(count(adbPromemoria($rataId)))->toBe(3);
+    $passaggio = \App\Models\Gestionale\Subentro::where('immobile_id', $s['unita']['U1']->id)->latest('id')->firstOrFail();
+    $this->actingAs($this->user)->deleteJson(route('admin.gestionale.immobili.passaggi.annulla', [$s['c'], $s['unita']['U1'], $passaggio]), ['nota_annullamento' => 'Prova di annullamento'])
+        ->assertRedirect();
+
+    // Lo stato, le cifre, il dettaglio e il testo di Neri come prima del passaggio; nessun promemoria degli eredi, nemmeno nella tabella ponte.
+    expect([$evento()->meta, $evento()->description, adbPromemoria($rataId)])->toBe($prima)
+        ->and(\Illuminate\Support\Facades\DB::table('anagrafica_evento')->whereIn('anagrafica_id', [$anna->id, $bruno->id])->count())->toBe(0);
+});
+
+it('Coda 652 — un pagamento segnalato dal portale da un erede sul sollecito passato con la successione ferma l\'annullamento, e lo dice', function () {
+    [$s, $rataId, $anna, , $corpo] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+    $suo = \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value)->where('meta->context->rata_id', $rataId)
+        ->whereHas('anagrafiche', fn ($q) => $q->where('anagrafica_id', $anna->id))->firstOrFail();
+    $suo->update(['meta' => ['status' => 'reported'] + $suo->meta]);
+
+    $passaggio = \App\Models\Gestionale\Subentro::where('immobile_id', $s['unita']['U1']->id)->latest('id')->firstOrFail();
+    $this->actingAs($this->user)->deleteJson(route('admin.gestionale.immobili.passaggi.annulla', [$s['c'], $s['unita']['U1'], $passaggio]), ['nota_annullamento' => 'Prova di annullamento'])
+        ->assertJsonValidationErrors(['passaggio' => 'Su «Spese di sollecito», passato agli eredi con la successione, c\'è un pagamento segnalato dal portale da Anna, non ancora verificato. Verificalo o rifiutalo, poi torna qui.']);
+    expect($suo->fresh()->meta['status'])->toBe('reported')->and($passaggio->fresh()->annullato())->toBeFalse();
+});
+
+it('Coda 652 — dopo la successione il promemoria di Neri, chiuso, non dice più € 16,01 da versare: il portale legge un restante a zero', function () {
+    [$s, $rataId, , , $corpo] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $neri = (int) $s['persone']['Neri']->id;
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+
+    // Quello che il portale riceve del promemoria di Neri (`EventoPortaleResource`): «pagato», niente da versare. Prima diceva «Totale da versare € 16,01».
+    $evento = adbPromemoriaDi($rataId, $neri);
+    $meta = (new \App\Http\Resources\Portale\EventoPortaleResource($evento))->resolve(request())['meta'];
+    expect([$meta['status'], $meta['importo_restante'], $meta['importo_pagato']])->toBe(['paid', 0, 0]);
+});
+
+it('Coda 652 — con € 8,99 versati su € 25,00, dopo la successione il promemoria di Neri dice pagato € 8,99 e niente da versare', function () {
+    [$s, $rataId, , , $corpo] = adbSollecitoNellaSuccessione($this, 899);
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+
+    $meta = adbPromemoriaDi($rataId, (int) $s['persone']['Neri']->id)->meta;
+    expect([$meta['status'], $meta['importo_restante'], $meta['importo_pagato'], $meta['importo_versato']])->toBe(['paid', 0, 899, 899]);
+});
+
+// ─── Un pagamento segnalato dal portale e non verificato sull'accessorio del defunto (decisione 448) ───────────────────────────────────────────
+//
+// Di serie l'accessorio resta al defunto, come la bozza segnalata (R17, `ConguaglioPassaggio`): l'anteprima lo dice, e la segnalazione e il suo compito
+// restano com'erano. L'amministratore può scegliere, nell'anteprima, di passarlo comunque agli eredi per quota: la frase dice che la segnalazione resta da
+// verificare, e il promemoria del defunto resta «segnalato». Il controllo si rifà sotto lock nella scrittura; l'annullamento rimette tutto com'era.
+
+/** Il promemoria del portale di una persona sulla rata. */
+function adbPromemoriaDi(int $rataId, int $persona): \App\Models\Evento
+{
+    return \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::SCADENZA_RATA_CONDOMINO->value)->where('meta->context->rata_id', $rataId)
+        ->whereHas('anagrafiche', fn ($q) => $q->where('anagrafica_id', $persona))->firstOrFail();
+}
+
+/** Il 20/07 Neri (o chi usa il suo accesso) segnala dal portale il pagamento del sollecito; poi si torna al 10/09. L'utente del portale. */
+function adbSegnalaNeri($test, array $s, int $rataId): \App\Models\User
+{
+    $portale = \App\Models\User::factory()->create(['email_verified_at' => now()]);
+    $portale->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => \App\Enums\Permission::VIEW_EVENTS->value, 'guard_name' => 'web']));
+    $s['persone']['Neri']->update(['user_id' => $portale->id]);
+    $test->travelTo('2026-07-20 10:00:00');
+    $test->actingAs($portale)->post(route('user.eventi.report_payment', adbPromemoriaDi($rataId, (int) $s['persone']['Neri']->id)))->assertSessionHas('success');
+    $test->travelTo('2026-09-10 10:00:00');
+
+    return $portale;
+}
+
+/** I compiti «verifica il pagamento» ancora aperti. */
+function adbCompitiAperti(): int
+{
+    return \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::VERIFICA_PAGAMENTO->value)->where('is_completed', false)->count();
+}
+
+/** Le quote della rata: persona => [importo, pagato]. */
+function adbQuoteDellaRata(int $rataId): array
+{
+    return RataQuote::where('rata_id', $rataId)->orderBy('id')->get()->mapWithKeys(fn ($q) => [(int) $q->anagrafica_id => [(int) $q->importo, (int) $q->importo_pagato]])->all();
+}
+
+it('decisione 448 — di serie il sollecito con un pagamento segnalato resta a Neri: l\'anteprima lo dice e la registrazione non lo passa; la segnalazione resta', function () {
+    [$s, $rataId, , , $corpo] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $neri = (int) $s['persone']['Neri']->id;
+    adbSegnalaNeri($this, $s, $rataId);
+    $quota = (int) adbQuota($rataId)->id;
+
+    $rate = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']['U1']]), $corpo)->assertOk()->json('rate');
+    expect($rate['arretrato']['accessori'])->toBe([])
+        ->and($rate['arretrato']['frase_accessori'])->toBeNull()
+        ->and($rate['arretrato']['accessori_segnalati'])->toBe([['quota_id' => $quota, 'causale' => 'Spese di sollecito', 'aperto' => 1601, 'aperto_formattato' => '€ 16,01', 'passa' => false]])
+        ->and($rate['frasi'])->toContain('«Spese di sollecito» (€ 16,01) ha un pagamento segnalato dal portale e non ancora verificato: resta a nome di Neri e non passa '
+            . 'agli eredi, e la segnalazione resta da verificare. Puoi passarlo comunque agli eredi con la casella in «L\'arretrato del defunto».')
+        ->and(collect($rate['frasi'])->filter(fn ($f) => str_contains($f, 'addebiti aperti'))->values()->all())->toBe([])
+        // Né con le righe dell'arretrato: il sollecito non passa agli eredi nemmeno come saldo.
+        ->and(collect($rate['arretrato']['righe'])->pluck('di_cui_addebiti')->filter()->values()->all())->toBe([]);
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+    expect(adbQuoteDellaRata($rataId))->toBe([$neri => [1601, 0]])
+        ->and(adbPromemoriaDi($rataId, $neri)->meta['status'])->toBe('reported')
+        ->and(adbCompitiAperti())->toBe(1);
+});
+
+it('decisione 448 — con la scelta dell\'amministratore il sollecito segnalato passa agli eredi per quota; la segnalazione resta da verificare', function () {
+    [$s, $rataId, $anna, $bruno, $corpo] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $neri = (int) $s['persone']['Neri']->id;
+    adbSegnalaNeri($this, $s, $rataId);
+    $corpo['accessori_segnalati_agli_eredi'] = [(int) adbQuota($rataId)->id];
+
+    $rate = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']['U1']]), $corpo)->assertOk()->json('rate');
+    expect(array_column($rate['arretrato']['accessori'], 'aperto'))->toBe([1601])
+        ->and($rate['arretrato']['accessori_segnalati'][0]['passa'])->toBeTrue()
+        ->and($rate['frasi'])->toContain('«Spese di sollecito» (€ 16,01) ha un pagamento segnalato dal portale e non ancora verificato: come hai scelto, passa comunque agli '
+            . 'eredi per quota, e la segnalazione resta da verificare. Se il pagamento risulta arrivato, registralo con «Registra l\'incasso» dal compito del bonifico '
+            . 'segnalato, sulla quota di ogni erede con «Versato da» Neri: il primo incasso chiude il compito.');
+
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+    expect(adbQuoteDellaRata($rataId))->toBe([$neri => [0, 0], $anna->id => [801, 0], $bruno->id => [800, 0]])
+        // Il promemoria di Neri resta «segnalato», senza niente da versare; il compito resta aperto.
+        ->and([adbPromemoriaDi($rataId, $neri)->meta['status'], adbPromemoriaDi($rataId, $neri)->meta['importo_restante']])->toBe(['reported', 0])
+        ->and(adbCompitiAperti())->toBe(1)
+        ->and(adbPromemoriaDi($rataId, $anna->id)->meta['status'])->toBe('pending');
+});
+
+it('decisione 448 — passato agli eredi, con «Non serve» sul compito il promemoria di Neri non si può segnalare di nuovo per € 16,01', function () {
+    [$s, $rataId, , , $corpo] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $neri = (int) $s['persone']['Neri']->id;
+    $portale = adbSegnalaNeri($this, $s, $rataId);
+    $corpo['accessori_segnalati_agli_eredi'] = [(int) adbQuota($rataId)->id];
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+
+    $compito = \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::VERIFICA_PAGAMENTO->value)->latest('id')->firstOrFail();
+    app(\App\Services\Gestionale\RispostePromemoria::class)->nonServeDelCompito($compito, 'Bonifico non arrivato', $this->user);
+    expect(adbPromemoriaDi($rataId, $neri)->meta['status'])->toBe('rejected');
+
+    // Il portale rifiuta: su quella rata a Neri non resta niente da versare. Nessun compito nuovo.
+    $compiti = \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::VERIFICA_PAGAMENTO->value)->count();
+    $this->actingAs($portale)->post(route('user.eventi.report_payment', adbPromemoriaDi($rataId, $neri)))
+        ->assertSessionHasErrors(['evento' => 'Su questa rata non resta niente da versare. Non devi fare altro.']);
+    expect(adbPromemoriaDi($rataId, $neri)->meta['status'])->toBe('rejected')
+        ->and(\App\Models\Evento::where('tipo', \App\Enums\EventoTipo::VERIFICA_PAGAMENTO->value)->count())->toBe($compiti);
+});
+
+it('decisione 448 — annullata la successione, il promemoria di Neri torna «segnalato» com\'era, di serie e con la scelta', function (bool $passaComunque) {
+    [$s, $rataId, $anna, $bruno, $corpo] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $neri = (int) $s['persone']['Neri']->id;
+    adbSegnalaNeri($this, $s, $rataId);
+    $prima = adbPromemoriaDi($rataId, $neri)->meta;
+    if ($passaComunque) {
+        $corpo['accessori_segnalati_agli_eredi'] = [(int) adbQuota($rataId)->id];
+    }
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['U1']]), $corpo)->assertSessionHasNoErrors();
+
+    $passaggio = \App\Models\Gestionale\Subentro::where('immobile_id', $s['unita']['U1']->id)->latest('id')->firstOrFail();
+    $this->actingAs($this->user)->deleteJson(route('admin.gestionale.immobili.passaggi.annulla', [$s['c'], $s['unita']['U1'], $passaggio]), ['nota_annullamento' => 'Prova di annullamento'])
+        ->assertRedirect();
+
+    expect($passaggio->fresh()->annullato())->toBeTrue()
+        ->and(adbPromemoriaDi($rataId, $neri)->meta)->toBe($prima)
+        ->and(adbQuoteDellaRata($rataId))->toBe([$neri => [1601, 0]])
+        ->and(DB::table('anagrafica_evento')->whereIn('anagrafica_id', [$anna->id, $bruno->id])->count())->toBe(0)
+        ->and(adbCompitiAperti())->toBe(1);
+})->with(['di serie' => false, 'passato comunque' => true]);
+
+it('decisione 448 — il controllo si rifà nella scrittura, sul promemoria riletto: una segnalazione arrivata dopo l\'anteprima ferma il passaggio dell\'accessorio', function () {
+    [$s, $rataId, $anna, $bruno] = adbSollecitoNellaSuccessione($this, 0, '16,01');
+    $neri = (int) $s['persone']['Neri']->id;
+    // La divisione come l'ha letta l'anteprima, senza segnalazioni.
+    $divisione = \App\Services\Subentro\AccessoriAgliEredi::divisione(\App\Services\Subentro\AccessoriAgliEredi::aperti($neri, [(int) $s['unita']['U1']->id]),
+        [$anna->id => 50.0, $bruno->id => 50.0]);
+    expect(array_column($divisione, 'aperto'))->toBe([1601]);
+    // Fra l'anteprima e la scrittura arriva la segnalazione dal portale.
+    adbSegnalaNeri($this, $s, $rataId);
+    $subentro = (new \App\Models\Gestionale\Subentro())->forceFill(['id' => 0, 'condominio_id' => $s['c']->id]);
+    $avvisi = [];
+
+    expect(fn () => DB::transaction(fn () => app(\App\Services\Subentro\AccessoriAgliEredi::class)->scrivi($subentro, $divisione, $neri,
+        \Carbon\CarbonImmutable::parse('2026-09-01'), $avvisi, $this->user)))
+        ->toThrow(\Illuminate\Validation\ValidationException::class, '«Spese di sollecito» è cambiato mentre registravi (un pagamento segnalato dal portale): ricarica il pannello e riprova.');
+    expect(adbQuoteDellaRata($rataId))->toBe([$neri => [1601, 0]])
+        ->and(adbPromemoriaDi($rataId, $neri)->meta['status'])->toBe('reported');
+
+    // Con la scelta dell'amministratore nella divisione (l'anteprima l'ha vista segnalata), passa.
+    $divisione[0]['segnalato'] = true;
+    DB::transaction(fn () => app(\App\Services\Subentro\AccessoriAgliEredi::class)->scrivi($subentro, $divisione, $neri,
+        \Carbon\CarbonImmutable::parse('2026-09-01'), $avvisi, $this->user));
+    expect(adbQuoteDellaRata($rataId))->toBe([$neri => [0, 0], $anna->id => [801, 0], $bruno->id => [800, 0]])
+        ->and(adbPromemoriaDi($rataId, $neri)->meta['status'])->toBe('reported');
+});

@@ -175,7 +175,7 @@ it('il collaboratore allega ma non elimina — applica la regola già esistente 
     // DocumentoPolicy::delete() controlla anche DELETE_OWN_ARCHIVE_DOCUMENTS come
     // seconda via: la riga deve esistere (Spatie solleva se il permesso non è mai
     // stato creato), ma NON va assegnata — il collaboratore reale non ce l'ha
-    // (app/Enums/Role.php:66-103, verificato: non compare nella sua lista).
+    // (app/Enums/Role.php:66-105, verificato: non compare nella sua lista).
     Permission::firstOrCreate(['name' => 'Elimina propri documenti archivio', 'guard_name' => 'web']);
     $ruoloCollaboratore = Role::firstOrCreate(['name' => 'collaboratore-test', 'guard_name' => 'web']);
     $ruoloCollaboratore->syncPermissions([$permessoAdmin, $permessoCrea]); // niente DELETE_ARCHIVE_DOCUMENTS

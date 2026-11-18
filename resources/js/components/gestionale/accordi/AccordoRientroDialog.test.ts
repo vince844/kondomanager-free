@@ -77,6 +77,8 @@ describe('la finestra dell\'accordo', () => {
         expect(dati.get('fino_al')).toBeNull();
         expect(dati.get('scadenze[0][data]')).toBe('2026-12-15');
         expect(dati.get('scadenze[0][importo]')).toBe('750,00');
+        // Decisione 450: di serie, sulla parte della rata fuori dall'accordo gli interessi continuano.
+        expect(dati.get('interessi_parte_fuori')).toBe('continuano');
         expect(pulito(corpo().textContent ?? '')).toContain('Accordo registrato.');
     });
 
@@ -117,5 +119,106 @@ describe('la finestra dell\'accordo', () => {
         await flushPromises();
         expect(axiosPost.mock.calls[0][1]).toEqual({ chiuso_il: '2026-06-26', nota_chiusura: null });
         expect(pulito(corpo().querySelector('[data-testid="chiuso"]')?.textContent ?? '')).toBe('Chiuso il 26/06/2026: Rate non versate');
+    });
+
+    test('sulla parte della rata fuori dall\'accordo: di serie «gli interessi continuano», con la «i» e un esempio; la scelta parte con l\'accordo e la scheda la dice (decisione 450)', async () => {
+        const accordo = { id: 7, data_accordo: '2026-06-26', fino_al: '2026-12-15', riconosciuti: 150000, oggi: 150000, invariato: true, fino_al_passato: false, versati_oltre: 0,
+            autorizzato_assemblea: false, data_autorizzazione: null, verbale_autorizzazione: null, nota: null, chiuso_il: null, nota_chiusura: null,
+            interessi_parte_fuori: 'sospesi', in_corso: true, documento: null,
+            rate: [{ rata_id: 1, immobile_id: 1, riconosciuto: 75000, unita: 'Interno 7', piano: 'Preventivo 2026', numero_rata: 1, scadenza: '2026-01-31' }] };
+        axiosGet.mockResolvedValue(risposta({ accordi: [accordo] }));
+        monta();
+        await flushPromises();
+        // La scheda dell'accordo registrato dice la sua scelta.
+        expect(pulito(corpo().querySelector('[data-testid="parte-fuori-scelta"]')?.textContent ?? '')).toBe('Sulla parte della rata fuori dall\'accordo gli interessi '
+            + 'restano sospesi finché l\'accordo regge.');
+
+        // Il modulo: il menu con il di serie, la «i» con l'esempio.
+        const menu = corpo().querySelector('[data-testid="parte-fuori"] .v-select') as HTMLElement;
+        expect(pulito(menu.querySelector('.vs__selected')?.textContent ?? '')).toBe('gli interessi continuano');
+        expect(corpo().querySelector('[data-testid="info-parte-fuori"]')?.getAttribute('aria-label')).toContain('Per esempio: la rata ha € 200,00 da versare e l\'accordo ne copre € 150,00.');
+        menu.querySelector('.vs__search')!.dispatchEvent(new FocusEvent('focus'));
+        await flushPromises();
+        const voci = [...menu.querySelectorAll('.vs__dropdown-option')];
+        expect(voci.map((o) => pulito(o.textContent ?? ''))).toEqual(['gli interessi continuano', 'restano sospesi finché l\'accordo regge']);
+        (voci[1] as HTMLElement).click();
+        await flushPromises();
+
+        (corpo().querySelectorAll('[data-testid="rata-possibile"]')[0].querySelector('button[role="checkbox"]') as HTMLElement).click();
+        await flushPromises();
+        const numero = corpo().querySelector<HTMLInputElement>('[data-testid="numero-rate"]')!;
+        numero.value = '1';
+        numero.dispatchEvent(new Event('input'));
+        const prima = corpo().querySelector<HTMLInputElement>('[data-testid="prima-rata"]')!;
+        prima.value = '2026-12-15';
+        prima.dispatchEvent(new Event('input'));
+        (corpo().querySelectorAll<HTMLInputElement>('input[name="autorizzato"]')[1]).click();
+        await flushPromises();
+        axiosPost.mockResolvedValueOnce({ data: { id: 9, messaggio: 'Accordo registrato.' } });
+        corpo().querySelector<HTMLButtonElement>('[data-testid="registra-accordo"]')!.click();
+        await flushPromises();
+        expect((axiosPost.mock.calls[0] as [string, FormData])[1].get('interessi_parte_fuori')).toBe('sospesi');
+    });
+
+    test('dalla scheda di un accordo in corso la scelta sulla parte fuori si cambia: il menu con la «i», «Salva la scelta», e il registro la dice', async () => {
+        const accordo = { id: 7, data_accordo: '2026-06-26', fino_al: '2026-12-15', riconosciuti: 150000, oggi: 150000, invariato: true, fino_al_passato: false, versati_oltre: 0,
+            autorizzato_assemblea: false, data_autorizzazione: null, verbale_autorizzazione: null, nota: null, chiuso_il: null, nota_chiusura: null,
+            interessi_parte_fuori: 'continuano', registro: [], in_corso: true, documento: null,
+            rate: [{ rata_id: 1, immobile_id: 1, riconosciuto: 75000, unita: 'Interno 7', piano: 'Preventivo 2026', numero_rata: 1, scadenza: '2026-01-31' }] };
+        axiosGet.mockResolvedValue(risposta({ accordi: [accordo] }));
+        monta();
+        await flushPromises();
+        corpo().querySelector<HTMLButtonElement>('[data-testid="apri-parte-fuori"]')!.click();
+        await flushPromises();
+        const modulo = corpo().querySelector('[data-testid="modulo-parte-fuori"]') as HTMLElement;
+        expect(modulo.querySelector('[data-testid="info-cambia-parte-fuori"]')?.getAttribute('aria-label')).toContain('Per esempio: la rata ha € 200,00 da versare');
+        const menu = modulo.querySelector('.v-select') as HTMLElement;
+        expect(pulito(menu.querySelector('.vs__selected')?.textContent ?? '')).toBe('gli interessi continuano');
+        const salva = modulo.querySelector<HTMLButtonElement>('[data-testid="salva-parte-fuori"]')!;
+        // La scelta uguale a quella di oggi non si manda.
+        expect(salva.disabled).toBe(true);
+        menu.querySelector('.vs__search')!.dispatchEvent(new FocusEvent('focus'));
+        await flushPromises();
+        (menu.querySelectorAll('.vs__dropdown-option')[1] as HTMLElement).click();
+        await flushPromises();
+        expect(salva.disabled).toBe(false);
+
+        axiosPost.mockResolvedValueOnce({ data: { messaggio: 'Scelta cambiata.' } });
+        axiosGet.mockResolvedValue(risposta({ accordi: [{ ...accordo, interessi_parte_fuori: 'sospesi',
+            registro: ['Il 26/06/2026 alle 10:00 Mario ha cambiato la scelta sulla parte della rata fuori dall\'accordo: da «gli interessi continuano» a «restano sospesi finché l\'accordo regge».'] }] }));
+        salva.click();
+        await flushPromises();
+        expect(axiosPost.mock.calls[0][0]).toContain('gestionale.accordi-rientro.parte-fuori');
+        expect(axiosPost.mock.calls[0][0]).toContain('accordo=7');
+        expect(axiosPost.mock.calls[0][1]).toEqual({ interessi_parte_fuori: 'sospesi' });
+        expect(pulito(corpo().textContent ?? '')).toContain('Scelta cambiata.');
+        expect(pulito(corpo().querySelector('[data-testid="parte-fuori-scelta"]')?.textContent ?? '')).toBe('Sulla parte della rata fuori dall\'accordo gli interessi '
+            + 'restano sospesi finché l\'accordo regge.');
+        expect(pulito(corpo().querySelector('[data-testid="registro-accordo"]')?.textContent ?? '')).toBe('Il 26/06/2026 alle 10:00 Mario ha cambiato la scelta sulla parte '
+            + 'della rata fuori dall\'accordo: da «gli interessi continuano» a «restano sospesi finché l\'accordo regge».');
+    });
+
+    test('un accordo chiuso non offre il cambio della scelta', async () => {
+        const accordo = { id: 7, data_accordo: '2026-06-26', fino_al: '2026-12-15', riconosciuti: 150000, oggi: 150000, invariato: true, fino_al_passato: false, versati_oltre: 0,
+            autorizzato_assemblea: false, data_autorizzazione: null, verbale_autorizzazione: null, nota: null, chiuso_il: '2026-06-26', nota_chiusura: null,
+            interessi_parte_fuori: 'continuano', registro: [], in_corso: false, documento: null,
+            rate: [{ rata_id: 1, immobile_id: 1, riconosciuto: 75000, unita: 'Interno 7', piano: 'Preventivo 2026', numero_rata: 1, scadenza: '2026-01-31' }] };
+        axiosGet.mockResolvedValue(risposta({ accordi: [accordo] }));
+        monta();
+        await flushPromises();
+        expect(corpo().querySelector('[data-testid="apri-parte-fuori"]')).toBeNull();
+    });
+});
+
+// Fase 1-bis della 1.12.0-beta.11 (lezione 7 della 1.11.0-beta.9): il componente che usa `v-select` importa da sé lo stile di vue-select. Senza, il
+// menu ha lo stile solo perché lo importano le pagine vicine che montano la finestra.
+describe('AccordoRientroDialog — lo stile del menu', () => {
+    test('importa lo stile di vue-select da sé', async () => {
+        const { readFileSync } = await import('node:fs');
+        const { resolve } = await import('node:path');
+        const sorgente = readFileSync(resolve(process.cwd(), 'resources/js/components/gestionale/accordi/AccordoRientroDialog.vue'), 'utf8');
+
+        expect(sorgente).toContain("from 'vue-select'");
+        expect(sorgente).toContain("import 'vue-select/dist/vue-select.css';");
     });
 });

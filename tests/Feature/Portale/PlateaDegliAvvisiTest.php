@@ -260,7 +260,7 @@ test('Coda 302 — la platea calcolata segue la privacy e i destinatari, come l\
         ->and($platea(plateaSegnalazione($this->condominio, $this->admin, ['is_published' => false])))->toBe([]);
 });
 
-test('Coda 302 — la platea di ogni segnalazione è esattamente chi la trova nell\'elenco del portale', function () {
+test('Coda 302 — la platea di ogni segnalazione uscita è esattamente chi la trova nell\'elenco del portale; una non ancora uscita non ha platea, e in elenco la trova solo il suo autore (Coda 389)', function () {
     $persone = [$this->mario, $this->luigi, $this->anna];
     $risolutore = app(DestinatariNotifica::class);
 
@@ -280,8 +280,19 @@ test('Coda 302 — la platea di ogni segnalazione è esattamente chi la trova ne
             ->viewData('page')['props']['segnalazioni']['data'])->pluck('id')->all();
 
         foreach ($segnalazioni as $s) {
-            expect($risolutore->perModello($s)->contains($persona->anagrafica->id))
-                ->toBe(in_array($s->id, $elenco, true), "segnalazione {$s->id}, persona {$persona->id}");
+            $inPlatea = $risolutore->perModello($s)->contains($persona->anagrafica->id);
+            $inElenco = in_array($s->id, $elenco, true);
+
+            if ($s->is_published && $s->is_approved) {
+                expect($inPlatea)->toBe($inElenco, "segnalazione {$s->id}, persona {$persona->id}");
+
+                continue;
+            }
+
+            // In moderazione o in bozza: nessun avviso a nessuno. In elenco la ritrova il suo autore, con
+            // il suo stato (Coda 389); gli altri no.
+            expect($inPlatea)->toBeFalse("platea di una non uscita: segnalazione {$s->id}, persona {$persona->id}");
+            expect($inElenco)->toBe($persona->id === $this->mario->id, "elenco di una non uscita: segnalazione {$s->id}, persona {$persona->id}");
         }
     }
 });

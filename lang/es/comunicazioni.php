@@ -113,7 +113,8 @@ return [
         'priority'          => 'Communication priority',
         'buildings'         => 'Buildings',
         'residents'         => 'Residents',
-        'comments'          => 'Allow comments',
+        'comments'          => 'Permitir comentarios',
+        'commenti_moderati' => 'Moderar comentarios',
         'featured'          => 'Featured communication',
         'notify_update'     => 'Avisar por correo a quienes ya recibieron esta comunicación',
         'private'           => 'Create as private communication',
@@ -124,6 +125,14 @@ return [
         'interactions'      => 'Interactions',
         'comments_enabled'  => 'Comments enabled',
         'comments_disabled' => 'Comments disabled',
+        // La scheda: il testo lungo, le interazioni e i destinatari (decisione 467).
+        'read_more'         => 'Leer todo',
+        'read_less'         => 'Leer menos',
+        'in_evidenza'       => 'Destacada',
+        'recipients'        => 'Destinatarios',
+        'destinatari_condomini' => '{1} :count comunidad|[2,*] :count comunidades',
+        'destinatari_persone'   => '{1} :count persona|[2,*] :count personas',
+        'destinatari_privata'   => 'Privada, con la administración',
     ],
 
     /* ------------------------------------------------------------------
@@ -166,6 +175,7 @@ return [
         'edit_communication'        => 'Edit',
         'delete_communication'      => 'Delete',
         'save_communication'        => 'Save',
+        'save'                      => 'Guardar',
         'list_communications'       => 'List',
         'show_more'                 => 'Show more',
         'show_less'                 => 'Show less',
@@ -182,6 +192,7 @@ return [
         'visibility'  => 'Un borrador, o una comunicación pendiente de aprobación, no se muestra a los vecinos; una vez publicada y aprobada, la ven los vecinos a los que va dirigida.',
         'priority'    => 'The priority level may affect the visibility or urgency on the bulletin board.',
         'comments'    => 'When this option is selected, comments will be enabled for this communication.',
+        'commenti_moderati' => 'Los comentarios escritos por los destinatarios esperan la aprobación de un administrador antes de ser visibles.',
         'featured'    => 'Featured communications are highlighted on the bulletin board to draw more attention.',
         'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que la comunicación ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora la recibirá igualmente, porque para él es nueva. Mientras sea un borrador o esté pendiente de aprobación no se envía nada; cuando esté publicada y aprobada, la recibirán todos los destinatarios.",
         'private'     => 'Private communications can only be viewed by administrators and you.',
@@ -240,5 +251,11 @@ return [
         'private'      => 'Privada',
         'private_hint' => 'Solo la ven el autor, las personas vinculadas y el administrador',
         'recipients_required' => 'Una comunicación privada debe seguir dirigida al menos a un destinatario: sin destinatarios solo la vería quien la escribió, además del administrador.',
+    ],
+    'settings' => [
+        'comments_title'              => 'Configuración de comentarios',
+        'comments_dialog_description' => 'Configura los comentarios para este comunicado.',
+        'can_comment'                 => 'Permitir comentarios',
+        'commenti_moderati'           => 'Moderar comentarios',
     ],
 ];

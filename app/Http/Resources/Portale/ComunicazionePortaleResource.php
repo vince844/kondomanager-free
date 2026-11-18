@@ -20,7 +20,7 @@ class ComunicazionePortaleResource extends ComunicazioneResource
 {
     private const CAMPI = [
         'id', 'subject', 'description', 'priority', 'is_featured', 'is_published', 'is_approved', 'is_private',
-        'can_comment', 'created_at',
+        'can_comment', 'commenti_moderati', 'created_at', 'contatori',
     ];
 
     /**

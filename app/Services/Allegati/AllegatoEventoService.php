@@ -5,102 +5,28 @@
 
 namespace App\Services\Allegati;
 
-use App\Enums\EventoTipo;
 use App\Models\Comunicazione;
-use App\Models\Evento;
 use App\Models\Segnalazione;
 use App\Models\User;
-use App\Services\Gestionale\InboxService;
+use App\Services\Gestionale\Inbox\CompitoDaModerare;
 
+/**
+ * Gli allegati nell'Action inbox. Un allegato non ha più un compito suo («Allegati da approvare — …»): gli allegati in attesa confluiscono nel compito unico
+ * dell'elemento ({@see CompitoDaModerare}), con i numeri letti dal database. Questi punti d'ingresso restano per i percorsi che cancellano gli allegati con una
+ * sola query, senza gli eventi dei modelli ({@see \App\Services\Gestionale\Inbox\ModerazioneNellInbox}).
+ */
 final class AllegatoEventoService
 {
     public function sincronizza(Segnalazione|Comunicazione $elemento, ?User $autore = null): void
     {
-        $inAttesa = $elemento->allegati()->where('is_approved', false)->count();
-
-        $evento = Evento::query()
-            ->where('tipo', EventoTipo::ALLEGATO->value)
-            ->where('eventable_type', $elemento->getMorphClass())
-            ->where('eventable_id', $elemento->getKey())
-            ->where('is_completed', false)
-            ->first();
-
-        if ($inAttesa === 0) {
-            if ($evento !== null) {
-                $evento->update([
-                    'is_completed' => true,
-                    'completed_at' => now(),
-                ]);
-            }
-
-            return;
-        }
-
-        $priorita = in_array($elemento->priority ?? null, ['alta', 'urgente'], true) ? 'alta' : 'normale';
-        $titolo = $elemento->subject ?? (class_basename($elemento) . ' #' . $elemento->getKey());
-        $nomeAutore = $autore?->anagrafica?->nome ?: ($autore?->name ?? 'Utente');
-        $condominioId = $elemento instanceof Segnalazione
-            ? $elemento->condominio_id
-            : $elemento->condomini()->value('condomini.id');
-        $description = "Allegati in attesa di approvazione per \"{$titolo}\".";
-        // Il percorso, non l'indirizzo intero: il collegamento non dipende dall'indirizzo del sito.
-        $actionUrl = route(
-            $elemento instanceof Segnalazione ? 'admin.segnalazioni.show' : 'admin.comunicazioni.show',
-            $elemento,
-            false,
-        );
-
-        if ($evento !== null) {
-            $meta = is_array($evento->meta) ? $evento->meta : [];
-            // Il momento dell'ultimo arrivo, solo quando gli allegati in attesa crescono: un'approvazione li fa scendere, e non è una cosa nuova. Lo legge
-            // la regola dei compiti in attesa di «Ricordamelo» (`Evento::scopeCompitiAperti()`).
-            $arrivo = $inAttesa > (int) ($meta['contatore'] ?? 0) ? ['ultimo_arrivo' => now()->utc()->format('Y-m-d H:i:s')] : [];
-            $evento->update([
-                'description' => $description,
-                'priorita'    => $priorita,
-                'meta'        => array_merge($meta, [
-                    'action_url'    => $actionUrl,
-                    'contatore'     => $inAttesa,
-                    'ultimo_autore' => $nomeAutore,
-                ], $arrivo),
-                'updated_at'  => now(),
-            ]);
-
-            return;
-        }
-
-        InboxService::createTask(
-            tipo: EventoTipo::ALLEGATO,
-            title: 'Allegati da approvare — ' . $titolo,
-            description: $description,
-            // Due giorni dal giorno di Roma, scritti come l'agenda scrive le ore.
-            scadenza: \App\Helpers\DateHelper::adessoComeSiLegge()->addDays(2),
-            createdByUserId: $autore?->id,
-            condominioId: $condominioId !== null ? (int) $condominioId : null,
-            context: [],
-            actionUrl: $actionUrl,
-            extraMeta: [
-                'contatore'     => $inAttesa,
-                'ultimo_autore' => $nomeAutore,
-                'ultimo_arrivo' => now()->utc()->format('Y-m-d H:i:s'),
-            ],
-            eventableType: $elemento->getMorphClass(),
-            eventableId: $elemento->getKey(),
-            priorita: $priorita,
-        );
+        app(CompitoDaModerare::class)->sincronizza($elemento, $autore);
     }
 
+    /** L'elemento non ha più allegati in attesa (o non c'è più): il suo compito si porta a com'è. */
     public function chiudiPerElemento(Segnalazione|Comunicazione $elemento): void
     {
-        Evento::query()
-            ->where('tipo', EventoTipo::ALLEGATO->value)
-            ->where('eventable_type', $elemento->getMorphClass())
-            ->where('eventable_id', $elemento->getKey())
-            ->where('is_completed', false)
-            ->update([
-                'is_completed' => true,
-                'completed_at' => now(),
-            ]);
+        $compito = app(CompitoDaModerare::class);
+        // L'elemento tolto con la chiave esterna (l'utente o il condominio eliminati) non ha più una pagina: il suo compito sparisce.
+        $elemento->newQuery()->whereKey($elemento->getKey())->exists() ? $compito->sincronizza($elemento) : $compito->togli($elemento);
     }
 }
-

@@ -597,6 +597,7 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('accordi-rientro', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'index'])->name('accordi-rientro.index');
     Route::post('accordi-rientro', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'store'])->name('accordi-rientro.store');
     Route::post('accordi-rientro/{accordo}/autorizza', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'autorizza'])->name('accordi-rientro.autorizza');
+    Route::post('accordi-rientro/{accordo}/parte-fuori', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'parteFuori'])->name('accordi-rientro.parte-fuori');
     Route::post('accordi-rientro/{accordo}/chiudi', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'chiudi'])->name('accordi-rientro.chiudi');
     // La decadenza, registrata dall'amministratore: chiude l'accordo. La stampa dell'accordo con il calendario, per la persona (un GET: non scrive niente).
     Route::post('accordi-rientro/{accordo}/decadenza', [\App\Http\Controllers\Gestionale\Movimenti\AccordiRientroController::class, 'decadenza'])->name('accordi-rientro.decadenza');

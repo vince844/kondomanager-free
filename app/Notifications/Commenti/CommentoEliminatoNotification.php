@@ -6,18 +6,21 @@
 namespace App\Notifications\Commenti;
 
 use App\Models\Commento;
+use App\Models\Comunicazione;
+use App\Models\User;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use App\Notifications\Concerns\TestoScrittoDaAltri;
-use App\Notifications\LocalizedNotification;
 
 class CommentoEliminatoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
     use TestoScrittoDaAltri;
 
-    public function __construct(public Commento $commento) {
+    public function __construct(public Commento $commento)
+    {
         parent::__construct();
     }
 
@@ -26,11 +29,25 @@ class CommentoEliminatoNotification extends LocalizedNotification implements Sho
         return ['mail'];
     }
 
+    public function shouldSend(object $notifiable, string $channel): bool
+    {
+        if (! $notifiable instanceof User) {
+            return false;
+        }
+
+        $commento = Commento::find($this->commento->id);
+        if (! $commento || $commento->stato !== 'nascosto') {
+            return false;
+        }
+
+        return true;
+    }
+
     public function toMail(object $notifiable): MailMessage
     {
         $commentable = $this->commento->commentable;
-        $entita = class_basename($commentable);
-        
+        $entita = $commentable instanceof Comunicazione ? 'comunicazione' : 'segnalazione';
+
         $titolo = $commentable->subject ?? $commentable->titolo ?? $commentable->title ?? $commentable->nome ?? null;
         $titolo = $titolo === null ? null : self::testoComeTesto($titolo);
         $riferimento = $titolo ? "{$entita} \"{$titolo}\"" : $entita;
@@ -40,19 +57,20 @@ class CommentoEliminatoNotification extends LocalizedNotification implements Sho
         $line1Key = "notifications.deleted_{$key}_comment.line_1";
 
         return (new MailMessage)
-                    ->subject(__($subjectKey))
-                    ->line(__($line1Key, [
-                        'entity' => $riferimento
-                    ]));
+            ->subject(__($subjectKey))
+            ->line(__($line1Key, [
+                'entity' => $riferimento,
+            ]));
     }
 
     private function getEntityKey(): string
     {
         $class = class_basename($this->commento->commentable);
-        return match($class) {
-            'Segnalazione' => 'ticket',
-            'Comunicazione' => 'post',
-            default => strtolower($class),
+
+        return match ($class) {
+            'Segnalazione'  => 'ticket',
+            'Comunicazione' => 'communication',
+            default         => strtolower($class),
         };
     }
 

@@ -26,8 +26,11 @@ class AllegatiIndexRequest extends FormRequest
     {
         return [
             'stato'         => ['sometimes', 'nullable', 'string', 'in:in_attesa,pubblicato'],
-            'tipo'          => ['sometimes', 'nullable', 'string', 'in:segnalazioni,comunicazioni'],
+            // Con «elemento» il tipo è obbligatorio: una segnalazione e una comunicazione possono avere lo stesso numero.
+            'tipo'          => ['nullable', 'required_with:elemento', 'string', 'in:segnalazioni,comunicazioni'],
             'condominio_id' => ['sometimes', 'nullable', 'integer', 'exists:condomini,id'],
+            // Un elemento solo (la segnalazione o la comunicazione, col suo tipo): da lì arriva «Modera gli allegati» dell'Action inbox.
+            'elemento'      => ['sometimes', 'nullable', 'integer', 'min:1'],
             'autore'        => ['sometimes', 'nullable', 'string', 'max:255'],
             'dal'           => ['sometimes', 'nullable', 'date'],
             'al'            => ['sometimes', 'nullable', 'date'],

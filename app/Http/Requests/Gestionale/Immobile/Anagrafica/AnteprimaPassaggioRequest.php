@@ -85,6 +85,13 @@ class AnteprimaPassaggioRequest extends FormRequest
                 Rule::in([Subentro::ARRETRATO_AGLI_EREDI, Subentro::ARRETRATO_AL_DEFUNTO])],
             // Decisione 65 (3): l'erede che riceve le bozze di un piano già fermo; lo chiede il pannello solo quando serve.
             'erede_di_riferimento' => ['nullable', 'integer', Rule::prohibitedIf(fn () => $tipo !== 'successione')],
+            // Decisione 448: gli interessi e le spese del defunto con un pagamento segnalato dal portale e non verificato che l'amministratore passa comunque
+            // agli eredi (le quote, per id); di serie restano al defunto. Il server li legge solo con l'arretrato agli eredi, fra quelli segnalati.
+            'accessori_segnalati_agli_eredi' => ['nullable', 'array', Rule::prohibitedIf(fn () => $tipo !== 'successione')],
+            'accessori_segnalati_agli_eredi.*' => ['integer'],
+            // Decisione 454: l'accordo di rientro del defunto che la successione chiude resta in regola fino al decesso (di serie) o vale come una decadenza.
+            'accordo_del_defunto' => ['nullable', Rule::prohibitedIf(fn () => $tipo !== 'successione'),
+                Rule::in([\App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA, \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_DECADENZA])],
             // Nessun valore predefinito: la data del passaggio la dichiara l'amministratore (decisione 12,
             // «non si tira a indovinare»).
             // La data del decesso non è nel futuro (decisione 65): un atto si registra anche prima del giorno in cui vale, un decesso no.
@@ -645,6 +652,8 @@ class AnteprimaPassaggioRequest extends FormRequest
             ...($this->successione() ? ['decorrenza.date' => 'Il giorno del decesso non è una data valida.'] : []),
             // Rilievo AMM-6 del giro sulle correzioni: il messaggio della regola comincerebbe con l'attributo in minuscolo.
             'conguaglio.in' => 'Scegli «Scrivi il conguaglio» o «Non scriverlo».',
+            'accordo_del_defunto.in' => 'Per l\'accordo di rientro del defunto scegli «resta in regola fino al decesso» o «vale come una decadenza».',
+            'accordo_del_defunto.prohibited' => 'La scelta sull\'accordo di rientro del defunto c\'è solo nella successione.',
             // Decisione 77 (1.11.0-beta.50): la scelta c'è nella successione, nel legato e alla fine di una locazione; il messaggio dice
             // perché non c'è nel passaggio in corso.
             'conguaglio.prohibited' => $this->testo('tipo') === 'inizio_locazione'
@@ -937,6 +946,8 @@ class AnteprimaPassaggioRequest extends FormRequest
             'legato' => $d['tipo'] === 'successione' && ($d['sottotipo'] ?? null) === Subentro::LEGATO,
             'arretrato' => $d['arretrato'] ?? null,
             'erede_di_riferimento' => ! empty($d['erede_di_riferimento']) ? Anagrafica::find((int) $d['erede_di_riferimento']) : null,
+            'accessori_segnalati_agli_eredi' => $d['tipo'] === 'successione' ? array_values(array_unique(array_map('intval', $d['accessori_segnalati_agli_eredi'] ?? []))) : [],
+            'accordo_del_defunto' => $d['tipo'] === 'successione' ? ($d['accordo_del_defunto'] ?? \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA) : null,
         ];
     }
 

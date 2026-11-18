@@ -30,6 +30,8 @@ vi.mock('@/composables/permissions', () => ({
 (globalThis as Record<string, unknown>).route = (nome: string) => `/${nome}`;
 
 const SegnalazioniView = (await import('./SegnalazioniView.vue')).default;
+const ListaCommenti = (await import('@/components/commenti/ListaCommenti.vue')).default;
+const { priorityConstants } = await import('@/lib/segnalazioni/constants');
 
 function guidaChiLaVede(campi: Record<string, unknown>): string {
     const pagina = shallowMount(SegnalazioniView, {
@@ -75,3 +77,70 @@ describe('SegnalazioniView del portale — «Chi la vede» su una segnalazione p
         expect(guidaChiLaVede({ is_private: 0, is_published: 1, is_approved: 1 })).toBe('segnalazioni.privacy.guide_not_private');
     });
 });
+
+function montaPortale(campi: Record<string, unknown> = {}) {
+    return shallowMount(SegnalazioniView, {
+        props: {
+            segnalazione: {
+                id: 9, subject: 'Il cancello', description: 'Non chiude', priority: 'alta',
+                stato: 'aperta', is_private: false, is_published: true, is_approved: true, is_locked: false, created_at: 'ieri',
+                can_comment: true, created_by: { user: { name: 'Mario Rossi' } },
+                condominio: { option: { value: 3, label: 'Condominio Aurora' }, full: { nome: 'Condominio Aurora' } },
+                commenti: [], commentiInAttesa: [],
+                ...campi,
+            },
+            commenti_config: { can_comment: true, can_create: true, can_moderate: false, can_publish: true },
+        } as never,
+        global: { renderStubDefaultSlot: true, mocks: { route: (n: string) => `/${n}` } },
+    });
+}
+
+// La scheda del portale come quella del pannello (decisioni 464 e 470): il condominio senza icona, le etichette a 12 px, l'icona della
+// priorità accanto al titolo; niente riquadro «Interazioni», e «Bloccata» sotto i parametri solo quando lo è.
+describe('SegnalazioniView del portale — i parametri come nel pannello (decisioni 464 e 470)', () => {
+    test('il condominio è il nome, senza icona', () => {
+        const condominio = montaPortale().get('[data-parametro="condominio"]');
+
+        expect(condominio.element.children).toHaveLength(1);
+        expect(condominio.text()).toContain('Condominio Aurora');
+    });
+
+    test('nessuna scritta sotto i 12 px', () => {
+        expect(montaPortale().html()).not.toMatch(/text-\[(?:[0-9]|10|11)px\]/);
+    });
+
+    test('accanto al titolo l\'icona della priorità', () => {
+        const p = priorityConstants.find((x) => x.value === 'alta')!;
+        const icona = montaPortale().findAllComponents(p.icon as never).find((c) => c.attributes('data-icona-titolo') !== undefined);
+
+        expect(icona).toBeDefined();
+    });
+
+    test('niente riquadro «Interazioni»; «Bloccata» solo quando lo è', () => {
+        const aperta = montaPortale({ is_locked: false });
+        expect(aperta.text()).not.toContain('segnalazioni.details.interactions');
+        expect(aperta.text()).not.toContain('segnalazioni.details.unlocked');
+        expect(aperta.find('[data-bloccata]').exists()).toBe(false);
+
+        expect(montaPortale({ is_locked: true }).get('[data-bloccata]').text()).toContain('segnalazioni.details.locked');
+    });
+});
+
+// Standard 16: le azioni sui commenti della scheda chiedono indietro solo la segnalazione, il messaggio e il numero dell'Inbox.
+describe('SegnalazioniView — le azioni sui commenti con una visita parziale', () => {
+    test('passa alla lista dei commenti le proprietà da rimandare', () => {
+        expect(montaPortale().findComponent(ListaCommenti).props('ricarica')).toEqual(['segnalazione', 'flash', 'inbox_count']);
+    });
+});
+
+// Decisione 470 (➕): senza «Interazioni» la card dei parametri non spinge più l'ultima riga in fondo, e l'ultima riga non ha la linea sotto.
+describe('SegnalazioniView — la card dei parametri senza spazio vuoto', () => {
+    test('le righe stanno in alto, e l\'ultima non ha la linea sotto', () => {
+        const card = montaPortale().get('[data-card-parametri]');
+        const righe = Array.from(card.element.children);
+
+        expect(card.classes()).not.toContain('justify-between');
+        expect(righe[righe.length - 1].className).not.toMatch(/\bborder-b\b/);
+    });
+});
+

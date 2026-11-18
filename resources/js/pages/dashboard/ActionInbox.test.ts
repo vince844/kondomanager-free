@@ -90,7 +90,7 @@ const compiti = [
 
 const props = (altro: Record<string, unknown> = {}) => ({
     tasks: { data: compiti, total: 113 },
-    counts: { all: 113, scaduti: 107, settimana: 0, entro_30: 6, bonifici: 0, segnalazioni: 0, segnalazioni_urgenti: 0, piu_vecchio: '2025-12-29' },
+    counts: { all: 113, scaduti: 107, settimana: 0, entro_30: 6, bonifici: 0, segnalazioni: 0, segnalazioni_urgenti: 0, da_moderare: 0, piu_vecchio: '2025-12-29' },
     schede: { tutti: 113, scaduti: 107, in_arrivo: 6 },
     modo: 'anteprima',
     anteprima: [{ gruppo: 'scaduti', numero: 107, righe: compiti.slice(0, 3) }, { gruppo: 'avanti', numero: 6, righe: compiti.slice(3) }],
@@ -103,10 +103,10 @@ const props = (altro: Record<string, unknown> = {}) => ({
             { chiave: 'fra_8_e_30', etichetta: 'fra 8 e 30 giorni', valore: 6, scaduti: false },
         ],
         tipi: [{ tipo: 'controllo_incassi', etichetta: 'Verifica incassi', valore: 51 }, { tipo: 'emissione_rata', etichetta: 'Emissione rate', valore: 33 }],
-        fuori: { segnalazioni: 0, bonifici: 0, oltre_30: 0 },
+        fuori: { segnalazioni: 0, bonifici: 0, da_moderare: 0, oltre_30: 0 },
     },
     dove: [{ condominio_id: null, nome: 'Generale', valore: 24 }, { condominio_id: 1, nome: 'Via dei Tigli 51', valore: 24 }, { condominio_id: 2, nome: 'Prova subentro B3a', valore: 20 }],
-    gruppi: { scaduti: 107, segnalazioni: 0, bonifici: 0, avanti: 6 },
+    gruppi: { scaduti: 107, segnalazioni: 0, bonifici: 0, da_moderare: 0, avanti: 6 },
     filtri: { quando: null, tipo: null, cerca: null, ordine: 'vecchi', condominio_id: null, scheda: 'tutti' },
     condomini: [{ id: 1, nome: 'Via dei Tigli 51' }, { id: 2, nome: 'Prova subentro B3a' }],
     seiMesiCondomini: [{ id: 1, nome: 'Via dei Tigli 51' }, { id: 2, nome: 'Prova subentro B3a' }],
@@ -202,13 +202,13 @@ describe('l\'intestazione', () => {
     });
 });
 
-describe('le cinque card', () => {
+describe('le sei card', () => {
     test('le etichette, i numeri e le frasi; gli zeri grigi, gli scaduti rossi', async () => {
         const p = monta();
         await caricata();
         const card = p.findAll('[data-testid^="card-"]');
 
-        expect(card.map((c) => c.attributes('data-testid'))).toEqual(['card-scaduti', 'card-settimana', 'card-bonifici', 'card-segnalazioni', 'card-sei-mesi']);
+        expect(card.map((c) => c.attributes('data-testid'))).toEqual(['card-scaduti', 'card-settimana', 'card-bonifici', 'card-segnalazioni', 'card-sei-mesi', 'card-da-moderare']);
         expect(testo(card[0])).toContain('Scaduti');
         expect(testo(card[0])).toContain('107');
         expect(testo(card[0])).toContain('il più vecchio del 29/12/2025');
@@ -574,5 +574,92 @@ describe('le scritte della pagina', () => {
             expect(s).not.toMatch(/>[^<]*\b[Pp]ass[oi]\b[^<]*</);
             expect(s).not.toContain('<select');
         }
+    });
+});
+
+describe('la sesta card e il gruppo «Da moderare» (decisioni 445 e 449)', () => {
+    const moderare = [
+        riga(21, { title: '2 commenti in attesa', titolo: '2 commenti in attesa', sotto: 'Comunicazione «Prova commenti»', gruppo: 'da_moderare', fascia: 'da_moderare', type: 'da_moderare',
+            giorno: '2026-11-17', giorni: 0, azione: { testo: 'Modera i commenti', url: '/admin/commenti?stato=in_attesa&tipo=comunicazioni&elemento=5' } }),
+        riga(22, { title: '1 commento e 2 allegati in attesa', titolo: '1 commento e 2 allegati in attesa', sotto: 'Segnalazione «Ascensore fermo»', gruppo: 'da_moderare',
+            fascia: 'da_moderare', type: 'da_moderare', giorno: '2026-11-16', giorni: -1, condominio: 'Condominio test', condominio_id: 3,
+            azione: { testo: 'Modera i commenti', url: '/admin/commenti?stato=in_attesa&tipo=segnalazioni&elemento=9' } }),
+    ];
+    const conModerazione = (altro: Record<string, unknown> = {}) => ({
+        counts: { ...props().counts, da_moderare: 3 },
+        gruppi: { scaduti: 107, segnalazioni: 8, bonifici: 2, da_moderare: 3, avanti: 6 },
+        anteprima: [
+            props().anteprima[0],
+            { gruppo: 'segnalazioni', numero: 8, righe: [] },
+            { gruppo: 'bonifici', numero: 2, righe: [] },
+            { gruppo: 'da_moderare', numero: 3, righe: moderare },
+            props().anteprima[1],
+        ],
+        ...altro,
+    });
+
+    // Fase 1-bis della 1.12.0-beta.11: il numero conta anche le comunicazioni, i documenti e gli eventi da approvare (decisioni 445 e 449), quindi la frase
+    // dice «da approvare» e non più «commenti e allegati in attesa».
+    test('la card è la sesta: «Da moderare», il numero in ambra, «da approvare», «Dal portale e dallo studio» in fondo; lo zero è grigio', async () => {
+        const p = monta(conModerazione());
+        const card = p.get('[data-testid="card-da-moderare"]');
+
+        expect(p.findAll('[data-testid^="card-"]')).toHaveLength(6);
+        expect(testo(card)).toContain('Da moderare');
+        expect(card.get('[data-testid="numero"]').text()).toBe('3');
+        expect(card.get('[data-testid="numero"]').classes()).toContain('text-amber-600');
+        expect(testo(card)).toContain('da approvare');
+        expect(testo(card)).toContain('Dal portale e dallo studio');
+        expect(testo(card)).not.toContain('commenti e allegati');
+        expect(testo(card)).not.toContain('Commenti e allegati');
+        p.unmount();
+
+        const zero = monta();
+        expect(zero.get('[data-testid="card-da-moderare"] [data-testid="numero"]').classes()).toContain('text-slate-300');
+    });
+
+    test('un clic sulla card filtra l\'elenco sul gruppo (il tipo), e sulla card scelta toglie il filtro', async () => {
+        const p = monta(conModerazione());
+        await p.get('[data-testid="card-da-moderare"]').trigger('click');
+        expect(inertia.get).toHaveBeenLastCalledWith('/admin.inbox', { tipo: 'da_moderare' }, expect.objectContaining({ preserveState: true, preserveScroll: true }));
+        p.unmount();
+
+        const scelta = monta(conModerazione({ filtri: { quando: null, tipo: 'da_moderare', cerca: null, ordine: 'vecchi', condominio_id: null, scheda: 'tutti', tipo_nome: 'Da moderare' } }));
+        expect(scelta.get('[data-testid="card-da-moderare"]').attributes('aria-pressed')).toBe('true');
+        await scelta.get('[data-testid="card-da-moderare"]').trigger('click');
+        expect(inertia.get).toHaveBeenLastCalledWith('/admin.inbox', {}, expect.anything());
+    });
+
+    test('nell\'elenco il gruppo sta dopo le segnalazioni e i bonifici, prima degli altri, con il pallino ambra', async () => {
+        const p = monta(conModerazione());
+        const gruppi = p.findAll('[data-testid="gruppo"]');
+
+        expect(gruppi.map((g) => testo(g))).toEqual(['Scaduti 107', 'Segnalazioni aperte 8', 'Bonifici da verificare 2', 'Da moderare 3', 'Più avanti 6']);
+        expect(gruppi[3].get('span').classes()).toContain('bg-amber-500');
+    });
+
+    test('la riga: i numeri veri nel titolo, la riga sotto, la data «dal …» e «da N giorni» in grigio (mai rossa), la prossima azione verso la pagina filtrata', async () => {
+        const p = monta(conModerazione());
+        const righe = p.findAll('[data-testid="riga-compito"]').filter((r) => testo(r).includes('in attesa'));
+        const seconda = righe[1];
+
+        expect(testo(righe[0])).toContain('2 commenti in attesa');
+        expect(testo(seconda)).toContain('1 commento e 2 allegati in attesa');
+        expect(testo(seconda)).toContain('Segnalazione «Ascensore fermo»');
+        expect(testo(seconda)).toContain('Condominio test');
+        expect(seconda.get('[data-testid="data"]').text()).toBe('dal 16/11/2026');
+        expect(seconda.get('[data-testid="data"]').classes()).not.toContain('text-red-700');
+        expect(testo(seconda)).toContain('da ieri');
+        const azione = seconda.get('[data-testid="prossima-azione"]');
+        expect(azione.text()).toBe('Modera i commenti');
+        expect(azione.attributes('href')).toBe('/admin/commenti?stato=in_attesa&tipo=segnalazioni&elemento=9');
+    });
+
+    test('«e altri N» del gruppo apre il suo tipo', async () => {
+        const p = monta(conModerazione({ anteprima: [{ gruppo: 'da_moderare', numero: 12, righe: moderare }] }));
+
+        expect(testo(p.get('[data-testid="e-altri"]'))).toBe('e altri 10 da moderare');
+        await p.get('[data-testid="e-altri"]').trigger('click');
+        expect(inertia.get).toHaveBeenLastCalledWith('/admin.inbox', { tipo: 'da_moderare' }, expect.anything());
     });
 });

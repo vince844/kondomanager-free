@@ -116,7 +116,12 @@ final class RegoleAllegati
         return Gate::forUser($user)->allows('show', $elemento);
     }
 
-    public static function puoVedere(User $user, Documento $allegato, Segnalazione|Comunicazione|null $elemento = null): bool
+    /**
+     * @param bool $schedaGiaVerificata Chi conta gli allegati di un intero elenco (decisione 441) sa già che il portale
+     *                                  apre quelle schede: l'elenco mostra ciò che la scheda apre. Così la regola resta
+     *                                  questa, senza una richiesta al database per ogni allegato.
+     */
+    public static function puoVedere(User $user, Documento $allegato, Segnalazione|Comunicazione|null $elemento = null, bool $schedaGiaVerificata = false): bool
     {
         $elemento ??= self::elementoDellAllegato($allegato);
         if ($elemento === null) {
@@ -142,7 +147,7 @@ final class RegoleAllegati
             return self::haPermesso($user, self::permesso($elemento, 'approva'));
         }
 
-        if (! self::apreSchedaPortale($user, $elemento)) {
+        if (! $schedaGiaVerificata && ! self::apreSchedaPortale($user, $elemento)) {
             return false;
         }
 
@@ -241,6 +246,17 @@ final class RegoleAllegati
         return self::haPannello($user)
             && self::haPermesso($user, self::permesso($elemento, 'approva'))
             && self::apreSchedaPannello($user, $elemento);
+    }
+
+    /**
+     * Chi modera gli allegati di un tipo dalla pagina «Allegati» (decisione 454: il compito «Da moderare» con «Modera gli allegati» lo vede solo lui):
+     * il pannello, «Approva allegati» del tipo, e la pagina che gli mostra gli allegati di quel tipo.
+     */
+    public static function puoModerareDallaPagina(User $user, string $tipo): bool
+    {
+        return self::haPannello($user)
+            && self::haPermesso($user, self::permesso($tipo, 'approva'))
+            && self::haPermesso($user, self::permesso($tipo, 'visualizza'));
     }
 
     public static function puoAprirePagina(User $user): bool

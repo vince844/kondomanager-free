@@ -21,6 +21,8 @@ use App\Services\Allegati\AllegatoService;
 use App\Services\Notifiche\DestinatariNotifica;
 use App\Services\SegnalazioneService;
 use App\Support\Allegati\RegoleAllegati;
+use App\Support\Commenti\RegoleCommenti;
+use App\Support\Segnalazioni\ContatoriElencoSegnalazioni;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
@@ -82,6 +84,9 @@ class SegnalazioneController extends Controller
                 condominioIds: $userData->condominioIds,
                 validated: $validated
             );
+
+            // Decisione 453: quanti commenti e allegati vede il condòmino in ogni riga, lo stesso numero della scheda.
+            ContatoriElencoSegnalazioni::mettiSulleRighe($request->user(), $segnalazioni->getCollection(), 'user');
 
             // Get stats using the same service
             $stats = $this->segnalazioneService->getSegnalazioniStats();
@@ -246,16 +251,7 @@ class SegnalazioneController extends Controller
 
         return Inertia::render('segnalazioni/user/SegnalazioniView', [
             'segnalazione' => new SegnalazionePortaleResource($segnalazioneCaricata),
-            'commenti_config' => [
-                'can_comment'  => (bool) $segnalazione->can_comment,
-                // Coda 305: il campo del commento c'è solo se il commento sarebbe accettato, cioè la
-                // stessa domanda della rotta (`CommentoPolicy::create`: permesso, discussione aperta,
-                // palazzo, scheda). Guardare il solo permesso lo offriva a chi poi se lo vedeva
-                // rifiutare, come l'autore di una privata che non è più nel palazzo.
-                'can_create'   => Gate::forUser($user)->allows('create', [Commento::class, $segnalazione]),
-                'can_moderate' => false,
-                'can_publish'  => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
-            ],
+            'commenti_config' => RegoleCommenti::configSchedaSegnalazione($user, $segnalazioneCaricata, 'user'),
             'allegati' => AllegatoResource::perScheda(
                 RegoleAllegati::visibiliInScheda($user, $segnalazioneCaricata),
                 $user,

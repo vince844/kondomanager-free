@@ -5,9 +5,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 /**
- * Una delle cinque card dell'Action inbox: l'etichetta maiuscola e l'icona, il numero, la frase sotto, il piede con la freccia. È un pulsante: un clic filtra
+ * Una delle sei card dell'Action inbox: l'etichetta maiuscola e l'icona, il numero, la frase sotto, il piede con la freccia. È un pulsante: un clic filtra
  * l'elenco (o, per «Sei mesi», apre il cassetto); la card scelta come filtro ha il bordo e `aria-pressed`. Uno zero è grigio; con `rossa` il numero, l'etichetta e
- * il piede sono rossi (gli scaduti, i sei mesi da seguire).
+ * il piede sono rossi (gli scaduti, i sei mesi da seguire); con `ambra` il numero è ambra (ciò che aspetta una moderazione).
  */
 import { numero as cifra } from '@/lib/inbox/actionInbox';
 import type { Component } from 'vue';
@@ -21,6 +21,8 @@ defineProps<{
     piede: string;
     /** Il numero e il piede rossi, quando il numero non è zero. */
     rossa?: boolean;
+    /** Il numero ambra, quando non è zero: ciò che aspetta, senza scadenza e senza allarme. */
+    ambra?: boolean;
     scelta?: boolean;
 }>();
 defineEmits<{ (e: 'scegli'): void }>();
@@ -32,7 +34,9 @@ defineEmits<{ (e: 'scegli'): void }>();
         :aria-pressed="scelta ? 'true' : 'false'"
         class="group relative flex h-full flex-col overflow-hidden rounded-xl border bg-white text-left shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:bg-slate-900"
         :class="scelta
-            ? (rossa && numero > 0 ? 'border-red-300 ring-2 ring-red-100 dark:border-red-800 dark:ring-red-950' : 'border-indigo-300 ring-2 ring-indigo-100 dark:border-indigo-700 dark:ring-indigo-950')
+            ? (rossa && numero > 0 ? 'border-red-300 ring-2 ring-red-100 dark:border-red-800 dark:ring-red-950'
+                : ambra && numero > 0 ? 'border-amber-300 ring-2 ring-amber-100 dark:border-amber-800 dark:ring-amber-950'
+                    : 'border-indigo-300 ring-2 ring-indigo-100 dark:border-indigo-700 dark:ring-indigo-950')
             : 'border-slate-200 dark:border-slate-800'"
         @click="$emit('scegli')"
     >
@@ -42,7 +46,7 @@ defineEmits<{ (e: 'scegli'): void }>();
                 <component :is="icona" class="h-4 w-4 shrink-0" :class="rossa && numero > 0 ? 'text-red-400' : 'text-slate-300 dark:text-slate-600'" />
             </div>
             <p data-testid="numero" class="mt-1.5 text-3xl font-bold tabular-nums"
-                :class="numero === 0 ? 'text-slate-300 dark:text-slate-600' : rossa ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white'">
+                :class="numero === 0 ? 'text-slate-300 dark:text-slate-600' : rossa ? 'text-red-600 dark:text-red-400' : ambra ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'">
                 {{ cifra(numero) }}
             </p>
             <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{ frase }}</p>

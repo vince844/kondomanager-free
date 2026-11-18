@@ -114,6 +114,7 @@ return [
         'buildings'         => 'Buildings',
         'residents'         => 'Residents',
         'comments'          => 'Allow comments',
+        'commenti_moderati' => 'Moderate comments',
         'featured'          => 'Featured communication',
         'notify_update'     => 'Email the people who already received this communication',
         'private'           => 'Create as private communication',
@@ -124,6 +125,14 @@ return [
         'interactions'      => 'Interactions',
         'comments_enabled'  => 'Comments enabled',
         'comments_disabled' => 'Comments disabled',
+        // La scheda: il testo lungo, le interazioni e i destinatari (decisione 467).
+        'read_more'         => 'Read more',
+        'read_less'         => 'Read less',
+        'in_evidenza'       => 'Featured',
+        'recipients'        => 'Recipients',
+        'destinatari_condomini' => '{1} :count condominium|[2,*] :count condominiums',
+        'destinatari_persone'   => '{1} :count person|[2,*] :count people',
+        'destinatari_privata'   => 'Private, with the office',
     ],
 
     /* ------------------------------------------------------------------
@@ -166,6 +175,7 @@ return [
         'edit_communication'        => 'Edit',
         'delete_communication'      => 'Delete',
         'save_communication'        => 'Save',
+        'save'                      => 'Save',
         'list_communications'       => 'List',
         'show_more'                 => 'Show more',
         'show_less'                 => 'Show less',
@@ -182,6 +192,7 @@ return [
         'visibility'  => 'A draft, or a communication awaiting approval, is not shown to residents; once published and approved, the residents it is addressed to can see it.',
         'priority'    => 'The priority level may affect the visibility or urgency on the bulletin board.',
         'comments'    => 'When this option is selected, comments will be enabled for this communication.',
+        'commenti_moderati' => 'Comments written by recipients await administrator approval before becoming visible.',
         'featured'    => 'Featured communications are highlighted on the bulletin board to draw more attention.',
         'notify_update' => "Sends an email to those who were already recipients, telling them the communication has changed. Leave it off if you are fixing a typo: anyone added to the audience now receives it anyway, because for them it is new. While it is a draft or awaiting approval nothing is sent; once it is published and approved, all recipients receive it.",
         'private'     => 'Private communications can only be viewed by administrators and you.',
@@ -240,5 +251,11 @@ return [
         'private'      => 'Private',
         'private_hint' => 'Visible only to the author, the linked people and the administrator',
         'recipients_required' => 'A private communication must stay addressed to at least one recipient: without recipients only the person who wrote it, and the administrator, could see it.',
+    ],
+    'settings' => [
+        'comments_title'              => 'Comment settings',
+        'comments_dialog_description' => 'Configure comments for this communication.',
+        'can_comment'                 => 'Allow comments',
+        'commenti_moderati'           => 'Moderate comments',
     ],
 ];

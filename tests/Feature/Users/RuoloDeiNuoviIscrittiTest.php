@@ -76,7 +76,6 @@ function rniImpostazioni($test, User $chi, array $modifiche = []): array
         'open_condominio_on_login'   => (bool) $props['open_condominio_on_login'],
         'default_condominio_id'      => $props['default_condominio_id'] ? (string) $props['default_condominio_id'] : '',
         'default_user_role'          => $props['default_user_role'],
-        'force_comment_moderation'   => (bool) $props['force_comment_moderation'],
         'default_per_page'           => (int) $props['default_per_page'],
     ], $modifiche);
 }

@@ -6,16 +6,18 @@
 namespace App\Notifications\Commenti;
 
 use App\Enums\Permission;
+use App\Helpers\RouteHelper;
 use App\Models\Commento;
 use App\Models\Comunicazione;
+use App\Models\Segnalazione;
+use App\Models\User;
 use App\Notifications\Concerns\PulsanteSoloSeLaApre;
+use App\Notifications\Concerns\TestoScrittoDaAltri;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use App\Notifications\Concerns\TestoScrittoDaAltri;
-use App\Notifications\LocalizedNotification;
 use Illuminate\Support\Str;
-use App\Helpers\RouteHelper;
 
 class CommentoApprovatoNotification extends LocalizedNotification implements ShouldQueue
 {
@@ -23,13 +25,28 @@ class CommentoApprovatoNotification extends LocalizedNotification implements Sho
     use Queueable;
     use TestoScrittoDaAltri;
 
-    public function __construct(public Commento $commento) {
+    public function __construct(public Commento $commento)
+    {
         parent::__construct();
     }
 
     public function via(object $notifiable): array
     {
         return ['mail'];
+    }
+
+    public function shouldSend(object $notifiable, string $channel): bool
+    {
+        if (! $notifiable instanceof User) {
+            return false;
+        }
+
+        $commento = Commento::find($this->commento->id);
+        if (! $commento || $commento->stato !== 'pubblicato') {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -41,33 +58,36 @@ class CommentoApprovatoNotification extends LocalizedNotification implements Sho
     public function toMail(object $notifiable): MailMessage
     {
         $commentable = $this->commento->commentable;
-        $entita = class_basename($commentable);
-        
+        $comunicazione = $commentable instanceof Comunicazione;
+        $entita = $comunicazione ? 'comunicazione' : 'segnalazione';
+
         $titolo = $commentable->subject ?? $commentable->titolo ?? $commentable->title ?? $commentable->nome ?? null;
         $titolo = $titolo === null ? null : self::testoComeTesto($titolo);
         $riferimento = $titolo ? "{$entita} \"{$titolo}\"" : $entita;
 
         $prefix = RouteHelper::getRoutePrefixForUser($notifiable);
         $key = $this->getEntityKey();
-        
+
         $subjectKey = "notifications.approved_{$key}_comment.subject";
         $line1Key   = "notifications.approved_{$key}_comment.line_1";
         $actionKey  = "notifications.approved_{$key}_comment.action";
-        
-        $mail = (new MailMessage)
-                    ->subject(__($subjectKey))
-                    ->line(__($line1Key, [
-                        'entity' => $riferimento
-                    ]));
 
-        $comunicazione = $commentable instanceof Comunicazione;
+        $mail = (new MailMessage)
+            ->subject(__($subjectKey))
+            ->line(__($line1Key, [
+                'entity' => $riferimento,
+            ]));
+
+        $url = $comunicazione
+            ? route("{$prefix}.comunicazioni.show", $commentable) . '#commenti'
+            : route("{$prefix}.segnalazioni.show", $commentable) . '#commenti';
 
         return $this->pulsanteOMotivo(
             $mail,
             $notifiable,
             $commentable,
             __($actionKey),
-            url("/{$prefix}/segnalazioni/{$this->commento->commentable_id}#commenti"),
+            $url,
             $comunicazione ? Permission::VIEW_COMUNICAZIONI->value : Permission::VIEW_SEGNALAZIONI->value,
             $comunicazione
                 ? $commentable->condomini()->orderBy('nome')->pluck('nome')->implode(', ')
@@ -78,10 +98,11 @@ class CommentoApprovatoNotification extends LocalizedNotification implements Sho
     private function getEntityKey(): string
     {
         $class = class_basename($this->commento->commentable);
-        return match($class) {
-            'Segnalazione' => 'ticket',
-            'Comunicazione' => 'post',
-            default => strtolower($class),
+
+        return match ($class) {
+            'Segnalazione'  => 'ticket',
+            'Comunicazione' => 'communication',
+            default         => strtolower($class),
         };
     }
 

@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
  *
  * - **In corso a una data** è un accordo con la data non dopo quella e non chiuso prima o quel giorno. Solo gli accordi in corso contano.
  * - **Quello che è andato all'accordo** lo dicono i versamenti, con la regola dell'incasso ({@see allocati()}): gli incassi e le loro compensazioni
- *   dal giorno dell'accordo, non stornati. Su una rata coperta in parte un versamento senza la scelta va prima alla parte fuori dall'accordo, uno con
+ *   dal giorno dell'accordo (di quel giorno, solo quelli registrati dopo l'accordo: gli altri sono già nel residuo da cui parte), non stornati. Su una rata coperta in parte un versamento senza la scelta va prima alla parte fuori dall'accordo, uno con
  *   «Versamento dell'accordo» prima alla parte nell'accordo. Un passaggio, un'emissione annullata, gli interessi passati agli eredi abbassano il
  *   residuo ma non sono un versamento all'accordo.
  * - **Il segno** di un accordo dice due cifre: i riconosciuti (la somma degli importi riconosciuti delle rate coperte) e quanto resta oggi, cioè per
@@ -31,7 +31,7 @@ use Illuminate\Support\Facades\DB;
  * - **Le lettere** lasciano fuori la parte in accordo di ogni rata finché l'accordo è in corso e «fino al» non è passato; dopo quella data le
  *   rate tornano nelle lettere proposte, e il segno lo dice. Il programma non scrive mai che un accordo è decaduto.
  * - **Versati oltre il capitale riconosciuto**: la parte in più rimasta a credito, come la conta la ricevuta ({@see RicevutaIncasso}), degli
- *   incassi della persona registrati dalla data dell'accordo che hanno coperto rate dell'accordo (gli interessi e le spese versati con le rate prima
+ *   incassi della persona dal giorno dell'accordo che hanno coperto rate dell'accordo (gli interessi e le spese versati con le rate prima
  *   che il programma li registrasse come addebiti). Il programma non la sposta: usarla, restituirla o lasciarla è dell'amministratore.
  * - **Il calendario** ({@see CalendarioAccordo}): quello che è andato all'accordo copre le rate del calendario in ordine, la più vecchia prima; una
  *   rata con un centesimo scoperto non è versata. Un accordo chiuso si legge al giorno prima della chiusura.
@@ -216,24 +216,42 @@ final class AccordiRientro
     }
 
     /**
-     * Il debito che la proposta degli interessi lascia fuori (decisioni 389 (2) e 433): persona => «rata|unità» => la parte in accordo. Sono le parti di
-     * {@see partiInCorso()}, più le rate coperte di ogni accordo che {@see tieneFuoriGliInteressi()} tiene fuori con la parte a zero: la rata coperta già
-     * versata tutta, e le rate di un accordo finito e rispettato. La parte a zero non cambia la frase «€ … sono in un accordo».
+     * Il debito che la proposta degli interessi lascia fuori (decisioni 389 (2), 433, 438 e 450): persona => «rata|unità» => la parte in accordo (`parte`),
+     * il primo giorno che resta fuori (`dal`, il giorno dell'accordo) e, per una rata coperta in parte con gli interessi che continuano sulla parte fuori,
+     * la parte nell'accordo giorno per giorno (`protetto`); null quando dal giorno dell'accordo resta fuori tutta la rata. Sono le rate coperte di ogni
+     * accordo che {@see tieneFuoriGliInteressi()} tiene fuori; la parte è quella di {@see partiInCorso()}, a zero per la rata coperta già versata tutta e
+     * per le rate di un accordo finito e rispettato: la parte a zero non cambia la frase «€ … sono in un accordo». Una rata in due accordi che la tengono
+     * fuori (non dovrebbe succedere) resta fuori dal giorno del primo. Per un accordo chiuso da una successione in regola, `fine` è il giorno prima del
+     * decesso: l'ultimo in cui la parte fuori, se c'è, prende ancora interessi (decisione 454).
      *
      * @param list<int> $persone
-     * @return array<int, array<string, int>>
+     * @return array<int, array<string, array{parte: int, dal: string, protetto: ?list<array{dal: string, importo: int}>, fine?: string}>>
      */
     public function senzaInteressi(int $condominioId, array $persone, string $alla): array
     {
-        $esito = $this->partiInCorso($condominioId, $persone, $alla);
+        $parti = $this->partiInCorso($condominioId, $persone, $alla);
+        $esito = [];
         $accordi = AccordoRientro::with(['rate', 'scadenze'])->where('condominio_id', $condominioId)
-            ->whereIn('anagrafica_id', $persone === [] ? [0] : $persone)->whereDate('data_accordo', '<=', $alla)->get();
+            ->whereIn('anagrafica_id', $persone === [] ? [0] : $persone)->whereDate('data_accordo', '<=', $alla)->orderBy('data_accordo')->orderBy('id')->get();
         foreach ($accordi as $a) {
             if (! $this->tieneFuoriGliInteressi($a, $alla)) {
                 continue;
             }
+            $persona = (int) $a->anagrafica_id;
+            $versamenti = null;
+            // Chiuso dalla successione in regola: dal decesso il defunto non matura interessi neanche sulla parte fuori (decisione 454).
+            $fine = $this->chiusoInRegolaPerLaSuccessione($a, $alla) ? ['fine' => CarbonImmutable::parse($a->chiuso_il->format('Y-m-d'), 'UTC')->subDay()->format('Y-m-d')] : [];
             foreach ($a->rate as $coperta) {
-                $esito[(int) $a->anagrafica_id][self::chiave($coperta->rata_id, $coperta->immobile_id)] ??= 0;
+                $k = self::chiave($coperta->rata_id, $coperta->immobile_id);
+                if (isset($esito[$persona][$k])) {
+                    continue;
+                }
+                $protetto = null;
+                if (self::interessiSullaParteFuori($a, $coperta)) {
+                    $versamenti ??= $this->versamenti($a);
+                    $protetto = self::protetto($a, $coperta, $versamenti, $alla);
+                }
+                $esito[$persona][$k] = ['parte' => (int) ($parti[$persona][$k] ?? 0), 'dal' => self::primoGiornoFuori($a), 'protetto' => $protetto] + $fine;
             }
         }
 
@@ -241,9 +259,61 @@ final class AccordiRientro
     }
 
     /**
-     * La regola, in un punto solo (decisione 433): le rate coperte da un accordo restano fuori dalla proposta degli interessi se l'accordo non è decaduto
-     * alla data e il suo calendario non è finito (in corso, «fino al» non passato), oppure è tutto versato. Dopo «fino al», o chiuso senza decadenza, con
-     * qualcosa ancora da versare le rate tornano, come nelle lettere e nell'incasso; con la decadenza registrata tornano sempre.
+     * La regola della decisione 450, in un punto solo: di una rata coperta da un accordo solo in parte (il riconosciuto meno del residuo del giorno
+     * dell'accordo), sulla parte fuori dall'accordo gli interessi continuano, salvo che l'amministratore abbia scelto nell'accordo che restino sospesi finché
+     * l'accordo regge. Una rata coperta per intero, o registrata prima che si tenesse il residuo del giorno dell'accordo, esce tutta.
+     */
+    public static function interessiSullaParteFuori(AccordoRientro $a, AccordoRientroRata $coperta): bool
+    {
+        return ($a->interessi_parte_fuori ?? AccordoRientro::INTERESSI_CONTINUANO) === AccordoRientro::INTERESSI_CONTINUANO
+            && $coperta->residuo_iniziale !== null && (int) $coperta->importo_riconosciuto < (int) $coperta->residuo_iniziale;
+    }
+
+    /**
+     * La parte di una rata coperta che resta nell'accordo, giorno per giorno dal giorno dell'accordo alla data: il riconosciuto meno quello che i versamenti
+     * le hanno dato con la regola dell'incasso ({@see allocati()}), come la parte in accordo delle lettere ({@see inAccordo()}). Un versamento conta dal
+     * giorno dopo, come negli interessi; uno stornato smette dal giorno dopo la sua rettifica. Un passo per ogni giorno in cui cambia.
+     *
+     * @return list<array{dal: string, importo: int}>
+     */
+    private static function protetto(AccordoRientro $a, AccordoRientroRata $coperta, array $versamenti, string $alla): array
+    {
+        $k = self::chiave($coperta->rata_id, $coperta->immobile_id);
+        $riconosciuto = (int) $coperta->importo_riconosciuto;
+        $passi = [['dal' => self::primoGiornoFuori($a), 'importo' => $riconosciuto]];
+        $giorni = [];
+        foreach ($versamenti as $v) {
+            if (isset($v['importi'][$k])) {
+                $giorni[] = $v['dal'];
+                if ($v['al'] !== null) {
+                    $giorni[] = $v['al'];
+                }
+            }
+        }
+        $giorni = array_values(array_unique($giorni));
+        sort($giorni);
+        foreach ($giorni as $g) {
+            if ($g < self::primoGiornoFuori($a) || $g >= $alla) {
+                continue;
+            }
+            $importo = max(0, $riconosciuto - (int) (self::allocati($a, $versamenti, $g)[$k] ?? 0));
+            if ($importo !== $passi[count($passi) - 1]['importo']) {
+                $passi[] = ['dal' => CarbonImmutable::parse($g, 'UTC')->addDay()->format('Y-m-d'), 'importo' => $importo];
+            }
+        }
+
+        return $passi;
+    }
+
+    /**
+     * La regola, in un punto solo (decisioni 433 e 438): le rate coperte da un accordo restano fuori dalla proposta degli interessi, dal giorno dell'accordo
+     * in poi ({@see primoGiornoFuori()}), se l'accordo non è decaduto alla data e il suo calendario non è finito (in corso, «fino al» non passato), oppure è
+     * tutto versato. I giorni prima dell'accordo restano nella proposta. Dopo «fino al», o chiuso senza decadenza, con qualcosa ancora da versare le rate
+     * tornano con tutti i giorni, come nelle lettere e nell'incasso; con la decadenza registrata tornano sempre.
+     *
+     * Chiuso da una successione (decisione 454): di serie l'accordo si legge al giorno prima della chiusura, il giorno prima del decesso, e se quel giorno
+     * reggeva resta fuori anche dopo ({@see chiusoInRegolaPerLaSuccessione()}); con la scelta «vale come una decadenza» tornano i giorni, come con la
+     * decadenza registrata.
      */
     public function tieneFuoriGliInteressi(AccordoRientro $a, string $alla): bool
     {
@@ -253,8 +323,49 @@ final class AccordiRientro
         if ($a->inCorsoIl($alla) && $alla <= $a->fino_al->format('Y-m-d')) {
             return true;
         }
+        if (self::chiusoPerLaSuccessione($a, $alla)) {
+            return $a->chiusura_per_successione === AccordoRientro::SUCCESSIONE_IN_REGOLA && $this->reggevaIl($a, self::giornoDiLettura($a, $alla));
+        }
 
         return $this->tuttoVersato($a, $alla);
+    }
+
+    /**
+     * L'accordo che una successione ha chiuso alla data, con la scelta di serie, «resta in regola fino al decesso», e che il giorno prima della chiusura
+     * reggeva: da quel giorno il defunto non matura più interessi sulle sue rate coperte (decisione 454).
+     */
+    public function chiusoInRegolaPerLaSuccessione(AccordoRientro $a, string $alla): bool
+    {
+        return self::chiusoPerLaSuccessione($a, $alla) && $a->chiusura_per_successione === AccordoRientro::SUCCESSIONE_IN_REGOLA
+            && $this->reggevaIl($a, self::giornoDiLettura($a, $alla));
+    }
+
+    /**
+     * L'accordo reggeva quel giorno, con la regola di {@see tieneFuoriGliInteressi()} per un accordo in corso: il calendario non era finito, oppure era tutto
+     * versato. La lettura della successione: un accordo il cui calendario era già finito con rate non versate non era in regola al decesso.
+     */
+    public function reggevaIl(AccordoRientro $a, string $giorno): bool
+    {
+        if ($a->decadenza_registrata_il !== null && $a->decadenza_registrata_il->format('Y-m-d') <= $giorno) {
+            return false;
+        }
+
+        return ($a->data_accordo->format('Y-m-d') <= $giorno && $giorno <= $a->fino_al->format('Y-m-d')) || $this->tuttoVersato($a, $giorno);
+    }
+
+    /** Chiuso da una successione il giorno della data o prima. */
+    private static function chiusoPerLaSuccessione(AccordoRientro $a, string $alla): bool
+    {
+        return $a->chiusura_per_successione !== null && $a->chiuso_il !== null && $a->chiuso_il->format('Y-m-d') <= $alla;
+    }
+
+    /**
+     * Il primo giorno che un accordo tiene fuori dalla proposta degli interessi quando la regola lo tiene fuori ({@see tieneFuoriGliInteressi()}): il giorno
+     * dell'accordo. Il giorno prima è l'ultimo che resta nella proposta (decisione 438).
+     */
+    public static function primoGiornoFuori(AccordoRientro $a): string
+    {
+        return $a->data_accordo->format('Y-m-d');
     }
 
     /** Il calendario dell'accordo tutto versato alla data (un accordo chiuso si legge al giorno prima della chiusura); senza calendario, tutto il riconosciuto. */
@@ -405,11 +516,35 @@ final class AccordiRientro
             'nota_chiusura'          => $a->nota_chiusura,
             'regola'                 => ['rate' => $a->decadenza_rate, 'giorni' => $a->decadenza_giorni],
             'decadenza_registrata_il' => $a->decadenza_registrata_il?->format('Y-m-d'),
+            // Sulla parte della rata fuori dall'accordo gli interessi continuano o restano sospesi (decisione 450).
+            'interessi_parte_fuori'  => (string) ($a->interessi_parte_fuori ?? AccordoRientro::INTERESSI_CONTINUANO),
+            // Il registro dell'accordo: le scelte cambiate dopo la registrazione, una frase per cambio.
+            'registro'               => array_map(fn (array $r) => self::fraseDelRegistro($r), is_array($a->registro) ? $a->registro : []),
+            'chiusura_per_successione' => $a->chiusura_per_successione,
         ];
     }
 
+    /** I nomi delle due scelte sulla parte fuori, come li dice il menu (`SCELTE_PARTE_FUORI` in `accordiRientro.ts`). */
+    public const NOMI_PARTE_FUORI = [
+        AccordoRientro::INTERESSI_CONTINUANO => 'gli interessi continuano',
+        AccordoRientro::INTERESSI_SOSPESI => 'restano sospesi finché l\'accordo regge',
+    ];
+
+    /** Una riga del registro dell'accordo: «Il 20/07/2026 alle 12:00 Mario Rossi ha cambiato la scelta sulla parte della rata fuori dall'accordo: da «…» a «…».» */
+    public static function fraseDelRegistro(array $r): string
+    {
+        $il = DateHelper::comeSiLegge(CarbonImmutable::parse((string) ($r['il'] ?? 'now')));
+        $chi = trim((string) ($r['utente'] ?? '')) !== '' ? ' ' . $r['utente'] : '';
+        if (($r['cosa'] ?? null) === 'interessi_parte_fuori') {
+            return sprintf('Il %s alle %s%s ha cambiato la scelta sulla parte della rata fuori dall\'accordo: da «%s» a «%s».', $il->format('d/m/Y'), $il->format('H:i'), $chi,
+                self::NOMI_PARTE_FUORI[$r['da'] ?? ''] ?? (string) ($r['da'] ?? ''), self::NOMI_PARTE_FUORI[$r['a'] ?? ''] ?? (string) ($r['a'] ?? ''));
+        }
+
+        return sprintf('Il %s alle %s%s ha cambiato l\'accordo.', $il->format('d/m/Y'), $il->format('H:i'), $chi);
+    }
+
     /**
-     * La parte in più rimasta a credito degli incassi della persona registrati dalla data dell'accordo fino alla data (per un accordo chiuso, fino
+     * La parte in più rimasta a credito degli incassi della persona dal giorno dell'accordo ({@see dalGiornoDellAccordo()}) fino alla data (per un accordo chiuso, fino
      * al giorno prima della chiusura), che hanno coperto rate dell'accordo: la somma, per ogni incasso, di quello che la ricevuta chiama «parte in
      * più» lasciata a credito.
      */
@@ -431,7 +566,7 @@ final class AccordiRientro
             ->where('sc.tipo_movimento', TipoMovimentoContabile::INCASSO_RATA->value)
             ->where('sc.stato', '!=', 'annullata')
             ->whereNull('sc.deleted_at')
-            ->where('sc.data_competenza', '>=', $a->data_accordo->format('Y-m-d'))
+            ->where(fn ($q) => self::dalGiornoDellAccordo($q, $a))
             ->where('sc.data_competenza', '<', $dopo)
             ->where('rs.anagrafica_id', $a->anagrafica_id)
             ->whereIn('rs.rata_id', $rate)
@@ -576,9 +711,9 @@ final class AccordiRientro
     }
 
     /**
-     * I versamenti sulle rate coperte, dal giorno dell'accordo: gli incassi e le loro compensazioni con il credito (le scritture che l'ordine
-     * dell'incasso imputa), ognuno con la sua dichiarazione (`accordo_rientro` o no), il giorno da cui vale e, se è stornato, il giorno della sua
-     * rettifica, da cui non vale più. Per ogni rata coperta (rata e unità) l'avere meno il dare della persona. Non sono versamenti un passaggio di
+     * I versamenti sulle rate coperte, dal giorno dell'accordo ({@see dalGiornoDellAccordo()}): gli incassi e le loro compensazioni con il credito (le
+     * scritture che l'ordine dell'incasso imputa), ognuno con la sua dichiarazione (`accordo_rientro` o no), il giorno da cui vale e, se è stornato, il
+     * giorno della sua rettifica, da cui non vale più. Per ogni rata coperta (rata e unità) l'avere meno il dare della persona. Non sono versamenti un passaggio di
      * proprietà, un'emissione annullata, gli interessi passati agli eredi: abbassano il residuo, ma non sono denaro dato all'accordo.
      *
      * @return list<array{id:int, dal:string, al:?string, accordo:bool, importi:array<string,int>}> in ordine di giorno e di registrazione
@@ -598,7 +733,7 @@ final class AccordiRientro
             ->whereNull('sc.deleted_at')
             ->where('sc.condominio_id', $a->condominio_id)
             ->whereIn('sc.tipo_movimento', [TipoMovimentoContabile::INCASSO_RATA->value, TipoMovimentoContabile::STORNO_CREDITO->value])
-            ->where('sc.data_competenza', '>=', $a->data_accordo->format('Y-m-d'))
+            ->where(fn ($q) => self::dalGiornoDellAccordo($q, $a))
             ->where('cc.ruolo', 'crediti_condomini')
             ->where('rs.anagrafica_id', $a->anagrafica_id)
             ->whereIn('rs.rata_id', $a->rate->pluck('rata_id')->unique()->values()->all())
@@ -631,6 +766,25 @@ final class AccordiRientro
         usort($versamenti, fn ($x, $y) => [$x['dal'], $x['id']] <=> [$y['dal'], $y['id']]);
 
         return $versamenti;
+    }
+
+    /**
+     * I movimenti che sono dell'accordo per il giorno: quelli dei giorni dopo l'accordo e, del giorno dell'accordo, solo quelli registrati dopo
+     * l'accordo. Un versamento dello stesso giorno registrato prima è già nel residuo del giorno da cui l'accordo è partito (la lettura comune legge fino
+     * alla fine del giorno, e il residuo del giorno dell'accordo lo conserva): contarlo anche fra quelli dati all'accordo lo conterebbe due volte. Il
+     * confronto è sul giorno (`whereDate`), non sulla stringa: una data scritta con l'ora è maggiore, come stringa, del solo giorno.
+     */
+    private static function dalGiornoDellAccordo(\Illuminate\Database\Query\Builder $q, AccordoRientro $a): void
+    {
+        $giorno = $a->data_accordo->format('Y-m-d');
+        if ($a->created_at === null) {
+            // Un accordo senza l'ora della registrazione (scritto a mano): tutto il giorno, come prima.
+            $q->whereDate('sc.data_competenza', '>=', $giorno);
+
+            return;
+        }
+        $q->whereDate('sc.data_competenza', '>', $giorno)
+            ->orWhere(fn ($w) => $w->whereDate('sc.data_competenza', $giorno)->where('sc.created_at', '>=', $a->created_at));
     }
 
     /**

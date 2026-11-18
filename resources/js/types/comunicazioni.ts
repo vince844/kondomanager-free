@@ -58,6 +58,8 @@ export interface Comunicazione {
   is_approved: boolean;
   can_comment: boolean;
   anagrafiche: Anagrafica[];
+  // Quanti commenti e allegati (decisione 441), calcolati dal server; solo nelle righe degli elenchi.
+  contatori?: { commenti: number; allegati: number; in_attesa: number };
 }
 
 // Priority options

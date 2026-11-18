@@ -178,3 +178,30 @@ describe('SegnalazioniEdit — un destinatario che non è più nel palazzo', () 
         });
     });
 });
+
+// Fase 2 della 1.12.0-beta.11 (lo scettico del changelog, C1): «Commenti in moderazione» lo cambia solo chi può moderare. Il server ignora il campo
+// di chi non modera; il modulo non mostra la casella, come quello delle comunicazioni. Senza la prop la casella non c'è: Vue legge un booleano
+// mancante come falso, come nei moduli delle comunicazioni; il server la manda sempre (`ModerazioneSoloAChiModeraTest`).
+describe('SegnalazioniEdit — «Commenti in moderazione» solo per chi può moderare', () => {
+    function montaCon(puo?: boolean) {
+        return shallowMount(SegnalazioniEdit, {
+            props: {
+                condomini: [], anagrafiche: [], segnalazione: segnalazione({ commenti_moderati: true }),
+                ...(puo === undefined ? {} : { puo_scegliere_moderazione: puo }),
+            },
+            global: { renderStubDefaultSlot: true, mocks: { route: (n: string) => `/${n}` } },
+        });
+    }
+
+    test('chi non può moderare non vede la casella', () => {
+        expect(montaCon(false).find('#commenti_moderati').exists()).toBe(false);
+    });
+
+    test('chi può moderare la vede', () => {
+        expect(montaCon(true).find('#commenti_moderati').exists()).toBe(true);
+    });
+
+    test('senza la prop non la vede: un booleano mancante vale falso', () => {
+        expect(montaCon().find('#commenti_moderati').exists()).toBe(false);
+    });
+});

@@ -17,7 +17,8 @@ class GeneralSettings extends Settings
     public bool $external_cron_enabled = false;
     public ?string $external_cron_token = null;
     public string $default_user_role = Role::UTENTE->value;
-    public bool $force_comment_moderation = false;
+    public bool $commenti_segnalazioni_moderati_di_serie = false;
+    public bool $commenti_comunicazioni_moderati_di_serie = true;
     public bool $allegati_moderati_di_serie = true;
     public int $allegati_massimo_per_elemento = 5;
 

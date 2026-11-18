@@ -33,16 +33,15 @@ function irmRisposta(Evento $e): ?RispostaPromemoria
     return RispostaPromemoria::where('evento_id', $e->id)->where('argomento', 'compito')->first();
 }
 
-/** I commenti di una segnalazione del condominio, con il servizio vero che scrive il compito dell'Inbox. */
+/** I commenti in attesa di una segnalazione del condominio: il compito «da moderare» lo scrive il programma, da sé. */
 function irmCommenti($test): \Closure
 {
     // Chiusa: il compito della segnalazione stessa (che ha le sue prove, `ActionInboxSegnalazioniTest.php`) non entra nella casella; qui conta quello del commento.
     $segnalazione = \App\Models\Segnalazione::factory()->create(['condominio_id' => $test->condominio->id, 'subject' => 'Ascensore', 'stato' => 'chiusa']);
 
     return function (string $corpo) use ($test, $segnalazione) {
-        $c = \App\Models\Commento::factory()->create(['commentable_id' => $segnalazione->id, 'commentable_type' => $segnalazione->getMorphClass(), 'user_id' => $test->admin->id,
-            'corpo' => $corpo, 'stato' => 'pubblicato', 'condominio_id' => $test->condominio->id]);
-        app(\App\Services\CommentoEventoService::class)->sincronizza($c);
+        \App\Models\Commento::factory()->create(['commentable_id' => $segnalazione->id, 'commentable_type' => $segnalazione->getMorphClass(), 'user_id' => $test->admin->id,
+            'corpo' => $corpo, 'stato' => 'in_attesa', 'condominio_id' => $test->condominio->id]);
     };
 }
 
@@ -130,7 +129,7 @@ it('spostato nell\'agenda, il compito torna il giorno nuovo', function () {
 it('un commento nuovo dopo «Ricordamelo» fa tornare il compito, e la riga lo dice; per gli altri tipi un aggiornamento dell\'evento non conta', function () {
     $commenta = irmCommenti($this);
     $commenta('Il primo commento');
-    $commento = Evento::where('tipo', 'commento')->firstOrFail();
+    $commento = Evento::where('tipo', 'da_moderare')->firstOrFail();
     $fattura = icsCompito($this, 'pagamento_fornitore', [], 'Pagare la ditta');
     icsRispondi($this, $commento, ['tipo' => 'ricordamelo', 'giorno' => '2026-06-15'])->assertSessionHasNoErrors();
     icsRispondi($this, $fattura, ['tipo' => 'ricordamelo', 'giorno' => '2026-06-15'])->assertSessionHasNoErrors();
@@ -144,8 +143,8 @@ it('un commento nuovo dopo «Ricordamelo» fa tornare il compito, e la riga lo d
     $commenta('Il secondo commento');
 
     $props = $this->actingAs($this->admin)->get(route('admin.inbox'))->viewData('page')['props'];
-    expect(collect($props['tasks']['data'])->pluck('title')->all())->toBe([$commento->title])
-        ->and(collect($props['tasks']['data'])->first()['risposta']['tornato'])->toBe('È arrivato un commento nuovo dopo il tuo «Ricordamelo»: il compito è tornato.');
+    expect(collect($props['tasks']['data'])->pluck('title')->all())->toBe([$commento->fresh()->title])
+        ->and(collect($props['tasks']['data'])->first()['risposta']['tornato'])->toBe('È arrivato qualcosa di nuovo da moderare dopo il tuo «Ricordamelo»: il compito è tornato.');
 });
 
 it('il giorno è nel calendario dell\'amministratore: alle 00:30 di Roma «domani» è il giorno di Roma', function () {
@@ -174,7 +173,7 @@ it('per gli allegati, con il servizio vero: le approvazioni non fanno tornare il
     $servizio = app(\App\Services\Allegati\AllegatoEventoService::class);
     $allegati = [$nuovo(), $nuovo(), $nuovo()];
     $servizio->sincronizza($segnalazione, $this->admin);
-    $e = Evento::where('tipo', 'allegato')->firstOrFail();
+    $e = Evento::where('tipo', 'da_moderare')->firstOrFail();
     icsRispondi($this, $e, ['tipo' => 'ricordamelo', 'giorno' => '2026-06-15'])->assertSessionHasNoErrors();
 
     // Un minuto dopo l'amministratore ne approva due: ne resta uno in attesa.
@@ -189,23 +188,24 @@ it('per gli allegati, con il servizio vero: le approvazioni non fanno tornare il
     $servizio->sincronizza($segnalazione, $this->admin);
     $props = $this->actingAs($this->admin)->get(route('admin.inbox'))->viewData('page')['props'];
 
-    expect(collect($props['tasks']['data'])->pluck('title')->all())->toBe([$e->title])
-        ->and($props['tasks']['data'][0]['risposta']['tornato'])->toBe('È arrivato un allegato nuovo dopo il tuo «Ricordamelo»: il compito è tornato.')
-        ->and(icsInboxDelCondominio($this))->toBe([$e->title]);
+    expect(collect($props['tasks']['data'])->pluck('title')->all())->toBe([$e->fresh()->title])
+        ->and($props['tasks']['data'][0]['risposta']['tornato'])->toBe('È arrivato qualcosa di nuovo da moderare dopo il tuo «Ricordamelo»: il compito è tornato.')
+        ->and(icsInboxDelCondominio($this))->toBe([$e->fresh()->title]);
 });
 
-it('un commento tornato prima conta nella barra e fra gli urgenti: il compito tiene il suo giorno', function () {
+it('un commento tornato prima conta nella barra e nel gruppo «Da moderare», non fra gli scaduti: il compito tiene il giorno del primo commento', function () {
     $commenta = irmCommenti($this);
     $commenta('Il primo commento');
-    $commento = Evento::where('tipo', 'commento')->firstOrFail();
+    $commento = Evento::where('tipo', 'da_moderare')->firstOrFail();
     icsRispondi($this, $commento, ['tipo' => 'ricordamelo', 'giorno' => '2026-06-15'])->assertSessionHasNoErrors();
-    // Tre giorni dopo il compito è al suo giorno (nato con due giorni davanti); arriva un commento nuovo.
+    // Tre giorni dopo arriva un commento nuovo: il compito torna, con il giorno del primo commento ancora in attesa, e non è scaduto (il gruppo non scade).
     $this->travel(3)->days();
     $commenta('Il secondo commento');
     $props = $this->actingAs($this->admin)->get(route('admin.inbox'))->viewData('page')['props'];
 
-    expect(collect($props['tasks']['data'])->pluck('title')->all())->toBe([$commento->title])
-        ->and($props['counts']['scaduti'])->toBe(1)
+    expect(collect($props['tasks']['data'])->pluck('title')->all())->toBe(['2 commenti in attesa'])
+        ->and($props['tasks']['data'][0]['giorno'])->toBe('2026-05-20')->and($props['tasks']['data'][0]['gruppo'])->toBe('da_moderare')
+        ->and($props['counts']['scaduti'])->toBe(0)
         ->and(icsBarra($this))->toBe(1);
 });
 

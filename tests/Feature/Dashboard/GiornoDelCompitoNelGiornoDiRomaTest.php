@@ -56,28 +56,26 @@ it('la segnalazione è «aperta il» giorno di Roma in cui è stata scritta', fu
         ->and($compito->start_time->format('Y-m-d H:i'))->toBe(substr($adesso, 0, 16));
 })->with(GDR_NOTTI);
 
-it('il compito di un commento aspetta due giorni da oggi, nel giorno di Roma', function (string $adesso, string $oggi) {
+it('il compito del commento in attesa ha il giorno del commento, nel giorno di Roma, e sta nel gruppo «Da moderare»', function (string $adesso, string $oggi) {
     $segnalazione = Segnalazione::factory()->create(['condominio_id' => $this->condominio->id, 'subject' => 'Ascensore', 'stato' => 'chiusa']);
     $this->travelTo(Carbon::parse($adesso, 'Europe/Rome')->utc());
-    $c = Commento::factory()->create(['commentable_id' => $segnalazione->id, 'commentable_type' => $segnalazione->getMorphClass(), 'user_id' => $this->admin->id,
-        'corpo' => 'Quando arriva il tecnico?', 'stato' => 'pubblicato', 'condominio_id' => $this->condominio->id]);
-    app(\App\Services\CommentoEventoService::class)->sincronizza($c);
-    $compito = Evento::where('tipo', EventoTipo::COMMENTO->value)->sole();
+    Commento::factory()->create(['commentable_id' => $segnalazione->id, 'commentable_type' => $segnalazione->getMorphClass(), 'user_id' => $this->admin->id,
+        'corpo' => 'Quando arriva il tecnico?', 'stato' => 'in_attesa', 'condominio_id' => $this->condominio->id]);
+    $compito = Evento::where('tipo', EventoTipo::DA_MODERARE->value)->sole();
 
     $riga = gdrRiga($this, $compito);
-    expect($riga['giorno'])->toBe(Carbon::parse($oggi)->addDays(2)->format('Y-m-d'))->and($riga['giorni'])->toBe(2)->and($riga['gruppo'])->toBe('avanti');
+    expect($riga['giorno'])->toBe($oggi)->and($riga['giorni'])->toBe(0)->and($riga['gruppo'])->toBe('da_moderare');
 })->with(GDR_NOTTI);
 
-it('il compito degli allegati da approvare aspetta due giorni da oggi, nel giorno di Roma', function (string $adesso, string $oggi) {
+it('il compito degli allegati da approvare ha il giorno dell\'allegato, nel giorno di Roma, e sta nel gruppo «Da moderare»', function (string $adesso, string $oggi) {
     $segnalazione = Segnalazione::factory()->create(['condominio_id' => $this->condominio->id, 'subject' => 'Ascensore', 'stato' => 'chiusa']);
     $this->travelTo(Carbon::parse($adesso, 'Europe/Rome')->utc());
     $segnalazione->allegati()->create(['name' => 'foto.jpg', 'path' => 'documenti/allegati/foto.jpg', 'mime_type' => 'image/jpeg', 'file_size' => 4096,
         'is_published' => false, 'is_approved' => false, 'created_by' => $this->admin->id]);
-    app(\App\Services\Allegati\AllegatoEventoService::class)->sincronizza($segnalazione, $this->admin);
-    $compito = Evento::where('tipo', EventoTipo::ALLEGATO->value)->sole();
+    $compito = Evento::where('tipo', EventoTipo::DA_MODERARE->value)->sole();
 
     $riga = gdrRiga($this, $compito);
-    expect($riga['giorno'])->toBe(Carbon::parse($oggi)->addDays(2)->format('Y-m-d'))->and($riga['giorni'])->toBe(2)->and($riga['gruppo'])->toBe('avanti');
+    expect($riga['giorno'])->toBe($oggi)->and($riga['giorni'])->toBe(0)->and($riga['gruppo'])->toBe('da_moderare');
 })->with(GDR_NOTTI);
 
 it('il bonifico è «segnalato il» giorno di Roma in cui il condòmino l\'ha segnalato dal portale', function (string $adesso, string $oggi) {

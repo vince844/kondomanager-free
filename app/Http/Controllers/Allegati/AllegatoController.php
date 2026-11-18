@@ -182,6 +182,9 @@ class AllegatoController extends Controller
                 'stato'         => (string) ($filtri['stato'] ?? ''),
                 'tipo'          => (string) ($filtri['tipo'] ?? ''),
                 'condominio_id' => isset($filtri['condominio_id']) && $filtri['condominio_id'] !== '' ? (int) $filtri['condominio_id'] : null,
+                // L'elemento scelto (da «Modera» dell'Action inbox) e il suo nome, letto dalle righe che chi guarda può vedere.
+                'elemento'      => isset($filtri['elemento']) && $filtri['elemento'] !== '' ? (int) $filtri['elemento'] : null,
+                'elemento_nome' => isset($filtri['elemento']) && $filtri['elemento'] !== '' ? (collect($allegati->items())->first()['elemento'] ?? null) : null,
                 'autore'        => (string) ($filtri['autore'] ?? ''),
                 'dal'           => (string) ($filtri['dal'] ?? ''),
                 'al'            => (string) ($filtri['al'] ?? ''),

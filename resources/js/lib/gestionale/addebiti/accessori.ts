@@ -16,10 +16,16 @@ export interface RigaInteressi {
     scadenza: string; dal: string | null; gia_registrati_al: string | null; tratti: Tratto[]; interessi: number; fermo: string | null;
     /** Gli interessi registrati che il giornale di oggi darebbe diversi: la frase, o niente. */
     riallineo?: string | null;
+    /** L'ultimo giorno della riga: la data della proposta, o il giorno prima di un accordo di rientro (`accordo_dal`). */
+    al?: string;
+    /** Il giorno dell'accordo di rientro che copre la rata e tiene fuori i giorni da lì in poi (decisione 438); null senza. */
+    accordo_dal?: string | null;
+    /** La rata è coperta solo in parte e gli interessi continuano sulla parte fuori dall'accordo (decisione 450): la riga arriva alla data. */
+    accordo_in_parte?: boolean;
 }
 export interface PersonaInteressi {
     anagrafica_id: number; nome: string; righe: RigaInteressi[]; totale: number; crediti_sulle_rate: number; anticipi: number; quote_di_inquilino: number;
-    /** Il debito coperto da un accordo di rientro in corso: la proposta lo lascia fuori. */
+    /** Il debito coperto da un accordo di rientro in corso: la proposta ne lascia fuori i giorni dalla data dell'accordo. */
     in_accordo?: number;
 }
 
@@ -43,6 +49,7 @@ export function testoCausa(causa: string): string {
         anno: 'anno nuovo, tasso dell\'anno',
         regola: 'regola nuova del condominio',
         emissione: 'rata emessa',
+        accordo: 'dal giorno dell\'accordo, solo la parte fuori dall\'accordo',
     } as Record<string, string>)[causa] ?? causa;
 }
 
@@ -79,13 +86,32 @@ export function testoAccanto(p: PersonaInteressi): string[] {
         frasi.push(`Alla data ha ${euroTesto(p.crediti_sulle_rate + p.anticipi)} di crediti e anticipi: coprono prima le rate più vecchie, e lì gli interessi non ci sono.`);
     }
     if ((p.in_accordo ?? 0) > 0) {
-        frasi.push(`${euroTesto(p.in_accordo ?? 0)} sono in un accordo di rientro in corso: niente interessi su quelle rate finché l'accordo è in corso.`);
+        frasi.push(`${euroTesto(p.in_accordo ?? 0)} sono in un accordo di rientro in corso: la proposta lascia fuori i giorni dalla data dell'accordo; i giorni prima dell'accordo restano nella proposta.`);
     }
     if (p.quote_di_inquilino > 0) {
         frasi.push(`Quote di inquilini scadute: ${euroTesto(p.quote_di_inquilino)}. Gli interessi non si propongono: se vuoi, addebitali al proprietario con «Spese del ritardo».`);
     }
 
     return frasi;
+}
+
+/** Fin quando l'accordo tiene fuori i suoi giorni: la forma della guida (decisioni 433 e 438). */
+const FINCHE_REGGE = 'finché l\'accordo non è decaduto e il calendario non è finito, o è versato tutto.';
+
+/**
+ * Sotto la riga di una rata coperta da un accordo di rientro che tiene fuori i suoi giorni (decisione 438): «Fino al 14/07/2026: dal 15/07/2026 la rata è in
+ * un accordo di rientro, e i giorni dell'accordo restano fuori finché l'accordo non è decaduto e il calendario non è finito, o è versato tutto.» Una rata
+ * coperta solo in parte, con gli interessi che continuano sulla parte fuori (decisione 450), arriva alla data: «Dal 15/07/2026 una parte della rata è in un
+ * accordo di rientro: …». Null senza accordo.
+ */
+export function testoFinoAllAccordo(r: Pick<RigaInteressi, 'al' | 'accordo_dal' | 'accordo_in_parte'>): string | null {
+    if (!r.accordo_dal || !r.al) {
+        return null;
+    }
+
+    return r.accordo_in_parte
+        ? `Dal ${giorno(r.accordo_dal)} una parte della rata è in un accordo di rientro: sulla parte fuori dall'accordo gli interessi continuano, e la parte nell'accordo resta fuori ${FINCHE_REGGE}`
+        : `Fino al ${giorno(r.al)}: dal ${giorno(r.accordo_dal)} la rata è in un accordo di rientro, e i giorni dell'accordo restano fuori ${FINCHE_REGGE}`;
 }
 
 /** «Interessi già registrati fino al 29/06/2026: riparte dal giorno dopo.» */

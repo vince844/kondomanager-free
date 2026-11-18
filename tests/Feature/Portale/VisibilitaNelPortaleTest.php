@@ -354,7 +354,7 @@ test('Coda 198 — un utente con il permesso di vedere le comunicazioni ma senza
 
 // ─── La griglia: elenco e scheda dicono la stessa cosa ──────────────────────────────────────
 
-test('Coda 304 — per ogni stato, la segnalazione è nell\'elenco del condòmino se e solo se lui la apre (e non è in moderazione)', function () {
+test('Coda 304 — per ogni stato, la segnalazione è nell\'elenco del condòmino se e solo se lui la apre, anche la sua in moderazione (Coda 389)', function () {
     $persone = ['mario' => $this->mario, 'luigi' => $this->luigi, 'anna' => $this->anna];
     $altroPalazzo = Condominio::factory()->create();
     $persone['estraneo'] = visibilitaResidente($altroPalazzo);
@@ -384,12 +384,13 @@ test('Coda 304 — per ogni stato, la segnalazione è nell\'elenco del condòmin
             $atteso = ($visibileATutti || $nome === 'mario') && $indirizzata;
 
             expect($apre)->toBe($atteso, "scheda: {$nome}, privata=".(int) $privata.", visibile=".(int) $visibileATutti.", collegate={$etichetta}");
-            expect(in_array($s->id, $inElenco, true))->toBe($atteso && $visibileATutti, "elenco: {$nome}, privata=".(int) $privata.", visibile=".(int) $visibileATutti.", collegate={$etichetta}");
+            // Coda 389: l'elenco mostra ciò che la scheda apre, comprese le proprie non ancora uscite.
+            expect(in_array($s->id, $inElenco, true))->toBe($atteso, "elenco: {$nome}, privata=".(int) $privata.", visibile=".(int) $visibileATutti.", collegate={$etichetta}");
         }
     }
 });
 
-test('Coda 198 — per ogni stato, la comunicazione è nell\'elenco del condòmino se e solo se lui la apre (e non è in moderazione)', function () {
+test('Coda 198 — per ogni stato, la comunicazione è nell\'elenco del condòmino se e solo se lui la apre, anche la sua in moderazione (Coda 389)', function () {
     $autore = visibilitaResidente($this->condominio);
     $persone = ['autore' => $autore, 'luigi' => $this->luigi, 'anna' => $this->anna];
 
@@ -417,7 +418,8 @@ test('Coda 198 — per ogni stato, la comunicazione è nell\'elenco del condòmi
             $atteso = ($visibileATutti || $nome === 'autore') && $indirizzata;
 
             expect($apre)->toBe($atteso, "scheda: {$nome}, privata=".(int) $privata.", visibile=".(int) $visibileATutti.", collegate={$etichetta}");
-            expect(in_array($c->id, $inElenco, true))->toBe($atteso && $visibileATutti, "elenco: {$nome}, privata=".(int) $privata.", visibile=".(int) $visibileATutti.", collegate={$etichetta}");
+            // Coda 389: l'elenco mostra ciò che la scheda apre, comprese le proprie non ancora uscite.
+            expect(in_array($c->id, $inElenco, true))->toBe($atteso, "elenco: {$nome}, privata=".(int) $privata.", visibile=".(int) $visibileATutti.", collegate={$etichetta}");
         }
     }
 });

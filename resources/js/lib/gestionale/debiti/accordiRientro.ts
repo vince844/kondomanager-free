@@ -41,6 +41,39 @@ export interface AccordoRientro {
     segnali?: { rate: Segnale | null; giorni: Segnale | null };
     regola?: RegolaDiDecadenza;
     decadenza_registrata_il?: string | null;
+    /** Sulla parte della rata fuori dall'accordo gli interessi continuano (di serie) o restano sospesi finché l'accordo regge (decisione 450). */
+    interessi_parte_fuori?: InteressiParteFuori;
+    /** Il registro dell'accordo: le scelte cambiate dopo la registrazione, una frase per cambio, scritta dal server. */
+    registro?: string[];
+}
+
+/** La scelta dell'accordo sulla parte della rata che l'accordo non copre (decisione 450). */
+export type InteressiParteFuori = 'continuano' | 'sospesi';
+
+/** Le due voci del menu, la prima è il di serie. */
+export const SCELTE_PARTE_FUORI: Array<{ valore: InteressiParteFuori; nome: string }> = [
+    { valore: 'continuano', nome: 'gli interessi continuano' },
+    { valore: 'sospesi', nome: 'restano sospesi finché l\'accordo regge' },
+];
+
+/** Sotto la scelta: quando conta, e il di serie. */
+export const FRASE_PARTE_FUORI = 'Conta solo per una rata che l\'accordo copre in parte. Di serie gli interessi continuano: l\'accordo protegge il debito che copre. '
+    + 'La proposta degli interessi resta una proposta: diventa un addebito solo se la registri.';
+
+/** Sotto il menu della scheda, quando la scelta si cambia dopo la registrazione. */
+export const FRASE_CAMBIA_PARTE_FUORI = 'Cambia solo la proposta degli interessi, da adesso: gli interessi già registrati restano come sono. Il registro dell\'accordo '
+    + 'dice chi ha cambiato la scelta e quando.';
+
+/** La «i» della scelta: un esempio concreto. */
+export const ESEMPIO_PARTE_FUORI = 'Per esempio: la rata ha € 200,00 da versare e l\'accordo ne copre € 150,00. Con «gli interessi continuano» la proposta degli '
+    + 'interessi conta, dal giorno dell\'accordo, i giorni sui € 50,00 fuori dall\'accordo; con «restano sospesi finché l\'accordo regge» non li conta finché '
+    + 'l\'accordo regge.';
+
+/** Nella scheda dell'accordo: la scelta registrata. */
+export function testoParteFuori(scelta: InteressiParteFuori | undefined): string {
+    return scelta === 'sospesi'
+        ? 'Sulla parte della rata fuori dall\'accordo gli interessi restano sospesi finché l\'accordo regge.'
+        : 'Sulla parte della rata fuori dall\'accordo gli interessi continuano.';
 }
 
 export interface ParteInAccordo { riconosciuto: number; in_accordo: number; data_accordo: string; fuori_dalle_lettere: boolean; in_parte?: boolean }

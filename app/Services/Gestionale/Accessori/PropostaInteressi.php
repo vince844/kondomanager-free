@@ -30,7 +30,9 @@ use Illuminate\Validation\ValidationException;
  * della persona su «Crediti verso condomini» con la rata e l'unità, e sugli «Anticipi», fino alla data; lo storno alla data della sua rettifica). Dentro:
  * le rate dei piani e i contributi addebitati. Fuori: gli interessi e le spese addebitati (art. 1283 c.c.), e le quote di un inquilino, che si contano a
  * parte e non si propongono. I crediti e gli anticipi della persona coprono le rate più vecchie dal giorno dopo quello in cui sono entrati. Una rata con
- * interessi già registrati riparte dal giorno dopo l'ultima data registrata: gli stessi giorni non si chiedono due volte.
+ * interessi già registrati riparte dal giorno dopo l'ultima data registrata: gli stessi giorni non si chiedono due volte. Una rata coperta da un accordo di
+ * rientro in regola resta nella proposta fino al giorno prima dell'accordo (decisione 438, {@see \App\Services\Gestionale\Debiti\AccordiRientro::senzaInteressi()});
+ * coperta solo in parte, sulla parte fuori dall'accordo gli interessi continuano, salvo la scelta dell'accordo di sospenderli (decisione 450).
  *
  * Il calcolo è {@see InteressiDiMora}; il tasso e i giorni sono le regole del recupero del condominio ({@see RegoleDelRecupero}). Il tasso legale di un
  * anno scritto a mano dallo studio ({@see TassoLegaleAMano}) la proposta lo dice, con chi l'ha scritto, quando e la fonte.
@@ -213,7 +215,8 @@ final class PropostaInteressi
                             'alla' => $alla,
                             'fonti' => $fonti->all(),
                             'fonte_delibera' => $regola?->fonte === 'delibera',
-                            'righe' => array_map(fn ($r) => array_intersect_key($r, array_flip(['rata_id', 'immobile_id', 'rata', 'scadenza', 'dal', 'regola_inizio', 'tratti', 'interessi'])), $lista),
+                            // `al`: l'ultimo giorno della riga, il giorno prima di un accordo di rientro che la tiene fuori (decisione 438) o la data.
+                            'righe' => array_map(fn ($r) => array_intersect_key($r, array_flip(['rata_id', 'immobile_id', 'rata', 'scadenza', 'dal', 'al', 'regola_inizio', 'tratti', 'interessi'])), $lista),
                         ],
                     ];
                 }
@@ -311,9 +314,10 @@ final class PropostaInteressi
         $nomi = DB::table('anagrafiche')->whereIn('id', $persone)->pluck('nome', 'id');
         $unita = \App\Models\Immobile::whereIn('id', $righe->pluck('immobile_id')->filter()->unique()->values()->all() ?: [0])->get()
             ->mapWithKeys(fn (\App\Models\Immobile $i) => [(int) $i->id => (string) $i->etichetta]);
-        // Il debito coperto da un accordo di rientro non decaduto, finché il calendario non è finito o se è tutto versato: niente interessi su quello,
-        // anche sulla rata coperta già versata (decisioni 389 (2) e 433). Con la decadenza, o finito il calendario con qualcosa da versare, la proposta
-        // torna. Per persona, «rata|unità» => la parte coperta.
+        // Il debito coperto da un accordo di rientro non decaduto, finché il calendario non è finito o se è tutto versato: niente interessi su quello dal
+        // giorno dell'accordo, anche sulla rata coperta già versata (decisioni 389 (2) e 433); i giorni prima dell'accordo restano (decisione 438). Con la
+        // decadenza, o finito il calendario con qualcosa da versare, tornano anche i giorni dell'accordo. Per persona, «rata|unità» => la parte coperta e
+        // il primo giorno fuori.
         $coperteDa = app(\App\Services\Gestionale\Debiti\AccordiRientro::class)->senzaInteressi($condominioId, $persone, $alla);
         $tassoAl = RegoleDelRecupero::tassoAl($regole);
         $cambi = RegoleDelRecupero::cambi($regole);
@@ -370,19 +374,30 @@ final class PropostaInteressi
             if ($chiavi === []) {
                 continue;
             }
-            // Le rate coperte dall'accordo escono dalla base, tutte: anche la parte fuori di una rata coperta in parte.
+            // Le rate coperte dall'accordo: fino al giorno prima dell'accordo restano nella base, con i loro giorni e i crediti che le coprono (decisione
+            // 438). Dal giorno dell'accordo esce tutta la rata (`fine`); di una rata coperta in parte, con gli interessi che continuano sulla parte fuori
+            // (decisione 450, di serie), esce solo la parte nell'accordo (`protetto`), e la riga arriva alla data. La regola è in `AccordiRientro`.
             $nellAccordo = 0;
-            foreach ($coperteDa[$persona] ?? [] as $chiaveAccordo => $parte) {
+            foreach ($coperteDa[$persona] ?? [] as $chiaveAccordo => $fuori) {
                 [$rataCoperta, $unitaCoperta] = explode('|', $chiaveAccordo);
                 $k = $persona . '|' . (int) $rataCoperta . '|' . (int) $unitaCoperta;
                 if (isset($chiavi[$k]) && $chiavi[$k]['base']) {
-                    $chiavi[$k]['base'] = false;
-                    $chiavi[$k]['inizio'] = null;
+                    if (($fuori['protetto'] ?? null) !== null) {
+                        $chiavi[$k]['protetto'] = $fuori['protetto'];
+                        $chiavi[$k]['in_parte'] = true;
+                        // L'accordo chiuso dalla successione in regola: dal decesso niente interessi neanche sulla parte fuori (decisione 454).
+                        if (($fuori['fine'] ?? null) !== null) {
+                            $chiavi[$k]['fine'] = $fuori['fine'];
+                        }
+                    } else {
+                        $chiavi[$k]['fine'] = CarbonImmutable::parse($fuori['dal'], 'UTC')->subDay()->format('Y-m-d');
+                    }
+                    $chiavi[$k]['accordo_dal'] = $fuori['dal'];
                     $chiavi[$k]['tipo'] = 'accordo';
-                    $nellAccordo += (int) $parte;
+                    $nellAccordo += (int) $fuori['parte'];
                 }
             }
-            $calcolo = InteressiDiMora::calcola(array_map(fn ($c) => array_intersect_key($c, array_flip(['inizio', 'base', 'ordine'])), $chiavi), $movimenti, $tassoAl, $cambi, $alla);
+            $calcolo = InteressiDiMora::calcola(array_map(fn ($c) => array_intersect_key($c, array_flip(['inizio', 'base', 'ordine', 'fine', 'protetto'])), $chiavi), $movimenti, $tassoAl, $cambi, $alla);
             $riallineo = $this->riallineo($chiavi, $movimenti, $registrazioni, $tassoAl, $cambi);
 
             // Il saldo di ogni chiave alla data: i crediti e gli anticipi accanto alla persona, e le quote di inquilini scadute.
@@ -403,7 +418,10 @@ final class PropostaInteressi
 
             $righePersona = [];
             foreach ($calcolo as $k => $c) {
-                if ($c['interessi'] <= 0 && $c['fermo'] === null) {
+                // Una riga senza interessi da proporre resta se gli interessi già registrati di quei giorni, con il giornale di oggi, darebbero un'altra cifra:
+                // la frase del riallineo si legge anche quando non ci sono giorni nuovi (un accordo in regola, i giorni prima già registrati). La
+                // registrazione la lascia fuori: si registrano solo le righe con interessi.
+                if ($c['interessi'] <= 0 && $c['fermo'] === null && ! isset($riallineo[$k])) {
                     continue;
                 }
                 $meta = $chiavi[$k];
@@ -419,6 +437,11 @@ final class PropostaInteressi
                     'gestione' => (string) $rata->gestione,
                     'scadenza' => $meta['scadenza'],
                     'dal' => $meta['inizio'],
+                    // L'ultimo giorno della riga: la data, o il giorno prima di un accordo di rientro che tiene fuori i giorni dopo (`accordo_dal`).
+                    'al' => min($alla, $meta['fine'] ?? $alla),
+                    'accordo_dal' => $meta['accordo_dal'] ?? null,
+                    // La rata è coperta solo in parte e gli interessi continuano sulla parte fuori dall'accordo (decisione 450): la riga arriva alla data.
+                    'accordo_in_parte' => $meta['in_parte'] ?? false,
                     'gia_registrati_al' => $meta['gia_al'],
                     'riallineo' => $riallineo[$k] ?? null,
                     'regola_inizio' => $meta['regola_inizio'],
@@ -451,11 +474,13 @@ final class PropostaInteressi
     /**
      * Gli interessi registrati che il giornale di oggi darebbe diversi: un versamento o uno storno registrato dopo con una data di prima cambia i giorni
      * già chiesti. Per ogni registrazione il calcolo si rifà con il giornale di oggi, dal suo primo giorno al suo ultimo; se la somma non è quella
-     * registrata, la riga lo dice. Gli interessi registrati restano come sono: li cambia l'amministratore, annullando l'addebito.
+     * registrata, la riga lo dice. Gli interessi registrati restano come sono: li cambia l'amministratore, annullando l'addebito. La frase dice il giorno
+     * dell'addebito, «Interessi di mora al …», anche quando la riga registrata si fermava prima, al giorno prima di un accordo di rientro: è il nome
+     * dell'addebito da annullare.
      *
      * @param array<string, array<string, mixed>> $chiavi
      * @param list<array<string, mixed>> $movimenti
-     * @param array<string, list<array{alla: string, dal: ?string, interessi: int}>> $registrazioni
+     * @param array<string, list<array{alla: string, registrata: string, dal: ?string, interessi: int}>> $registrazioni
      * @return array<string, string> la frase, per chiave
      */
     private function riallineo(array $chiavi, array $movimenti, array $registrazioni, \Closure $tassoAl, array $cambi): array
@@ -476,7 +501,7 @@ final class PropostaInteressi
             $chiaviDelGiorno = [];
             foreach ($chiavi as $k => $c) {
                 $chiaviDelGiorno[$k] = ['inizio' => isset($registrate[$k]) ? ($registrate[$k]['dal'] ?? $c['inizio_pieno'] ?? null) : ($c['inizio_pieno'] ?? null),
-                    'base' => $c['base'], 'ordine' => $c['ordine']];
+                    'base' => $c['base'], 'ordine' => $c['ordine'], 'fine' => $c['fine'] ?? null, 'protetto' => $c['protetto'] ?? []];
             }
             $esito = InteressiDiMora::calcola($chiaviDelGiorno, array_values(array_filter($movimenti, fn ($m) => $m['giorno'] <= $giorno)), $tassoAl, $cambi, $giorno);
             foreach (array_keys($registrate) as $k) {
@@ -493,7 +518,7 @@ final class PropostaInteressi
                 continue;
             }
             $frasi[$k] = sprintf('Gli interessi registrati al %s erano %s; con il giornale di oggi quei giorni darebbero %s: per cambiarli, annulla l\'addebito e rifai '
-                . 'la proposta.', self::giorno((string) max(array_column($lista, 'alla'))), MoneyHelper::format($erano), MoneyHelper::format($darebbero[$k]));
+                . 'la proposta.', self::giorno((string) max(array_column($lista, 'registrata'))), MoneyHelper::format($erano), MoneyHelper::format($darebbero[$k]));
         }
 
         return $frasi;
@@ -501,10 +526,12 @@ final class PropostaInteressi
 
     /**
      * L'ultima data fino a cui gli interessi di ogni riga (persona, rata, unità) sono già registrati, e ogni registrazione con il suo primo giorno e la
-     * sua cifra: dalle quote degli interessi non annullate.
+     * sua cifra: dalle quote degli interessi non annullate. L'ultimo giorno è quello della riga (`al`), quando la riga si fermava prima della data: il
+     * giorno prima di un accordo di rientro (decisione 438); i giorni dell'accordo non sono registrati, e tornano se l'accordo decade. Le righe registrate
+     * prima che ci fosse `al` arrivano alla data.
      *
      * @param list<int> $persone
-     * @return array{al: array<string, string>, registrazioni: array<string, list<array{alla: string, dal: ?string, interessi: int}>>}
+     * @return array{al: array<string, string>, registrazioni: array<string, list<array{alla: string, registrata: string, dal: ?string, interessi: int}>>}
      */
     private function giaRegistrati(int $condominioId, array $persone): array
     {
@@ -520,8 +547,10 @@ final class PropostaInteressi
             }
             foreach ($d['interessi']['righe'] ?? [] as $r) {
                 $k = (int) $q->anagrafica_id . '|' . (int) $r['rata_id'] . '|' . (int) ($r['immobile_id'] ?? 0);
-                $esito[$k] = max($esito[$k] ?? '', (string) $d['interessi']['alla']);
-                $registrazioni[$k][] = ['alla' => (string) $d['interessi']['alla'], 'dal' => $r['dal'] ?? null, 'interessi' => (int) ($r['interessi'] ?? 0)];
+                $al = (string) ($r['al'] ?? $d['interessi']['alla']);
+                $esito[$k] = max($esito[$k] ?? '', $al);
+                // `alla` è l'ultimo giorno che la riga conta, fin dove il riallineo rifà il calcolo; `registrata` la data dell'addebito, che ne porta il nome.
+                $registrazioni[$k][] = ['alla' => $al, 'registrata' => (string) $d['interessi']['alla'], 'dal' => $r['dal'] ?? null, 'interessi' => (int) ($r['interessi'] ?? 0)];
             }
         }
 

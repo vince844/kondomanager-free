@@ -5,6 +5,7 @@
 
 namespace App\Http\Resources\Commenti;
 
+use App\Support\Commenti\RegoleCommenti;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -12,12 +13,15 @@ class CommentoResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $user = $request->user();
+
         return [
             'id'           => $this->id,
             'corpo'        => $this->corpo,
             'stato'        => $this->stato,
             'user_id'      => $this->user_id,
             'created_at'   => $this->created_at?->toISOString(),
+            'modificato'   => $this->modificato_at !== null,
             'modificato_at' => $this->modificato_at?->toISOString(),
             'moderato_at'  => $this->moderato_at?->toISOString(),
             'deleted_at'   => $this->deleted_at?->toISOString(),
@@ -30,6 +34,13 @@ class CommentoResource extends JsonResource
                         : null,
                 ];
             }),
+            'azioni'       => [
+                'modifica' => $user ? RegoleCommenti::puoModificare($user, $this->resource) : false,
+                'elimina'  => $user ? RegoleCommenti::puoEliminare($user, $this->resource) : false,
+                'approva'  => $user ? RegoleCommenti::puoApprovare($user, $this->resource) : false,
+                'nascondi' => $user ? RegoleCommenti::puoNascondere($user, $this->resource) : false,
+                'mostra'   => $user ? RegoleCommenti::puoMostrareDiNuovo($user, $this->resource) : false,
+            ],
         ];
     }
 }

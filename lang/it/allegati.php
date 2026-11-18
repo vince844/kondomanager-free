@@ -32,6 +32,8 @@ return [
     'upload' => [
         'label' => 'Aggiungi allegati',
         'hint' => '{0} Formati ammessi: :formati, al massimo :limite per file. Non si possono aggiungere altri file.|{1} Formati ammessi: :formati, al massimo :limite per file. Si può aggiungere ancora un file (al massimo :massimo).|[2,*] Formati ammessi: :formati, al massimo :limite per file. Si possono aggiungere ancora :rimasti file (al massimo :massimo).',
+        // Nel riquadro della scheda, sotto la zona «Aggiungi allegati» (decisione 464).
+        'hint_zona' => '{0} :formati, fino a :limite l\'uno. Non si possono aggiungere altri file.|{1} :formati, fino a :limite l\'uno. Si può aggiungere ancora un file (al massimo :massimo).|[2,*] :formati, fino a :limite l\'uno. Si possono aggiungere ancora :rimasti file (al massimo :massimo).',
         'no_slots' => 'È stato raggiunto il limite di :massimo allegati per questo elemento.',
         'button' => 'Carica allegati',
         'uploading' => 'Caricamento…',
@@ -91,6 +93,8 @@ return [
         'date_from' => 'Dal',
         'date_to' => 'Al',
         'reset' => 'Azzera filtri',
+        'element' => 'Elemento: :nome',
+        'element_remove' => 'Togli il filtro per elemento',
     ],
 
     'table' => [

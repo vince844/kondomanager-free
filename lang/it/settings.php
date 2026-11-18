@@ -155,24 +155,48 @@ return [
             'description' => 'Ricevi una notifica quando un documento che hai già ricevuto viene modificato',
         ],
         'new_comment' => [
-            'label' => 'Nuovo commento',
+            'label' => 'Nuovo commento (segnalazioni)',
             'description' => 'Ricevi una notifica quando viene aggiunto un commento a una segnalazione a cui partecipi',
         ],
         'comment_approved' => [
-            'label' => 'Commento approvato',
-            'description' => 'Ricevi una notifica quando un tuo commento in attesa viene approvato',
+            'label' => 'Commento approvato (segnalazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene approvato',
         ],
         'comment_deleted' => [
-            'label' => 'Commento eliminato o nascosto',
-            'description' => 'Ricevi una notifica quando un tuo commento viene eliminato o nascosto',
+            'label' => 'Commento eliminato o nascosto (segnalazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene eliminato o nascosto',
+        ],
+        'new_communication_comment' => [
+            'label' => 'Nuovo commento (comunicazioni)',
+            'description' => 'Ricevi una notifica quando viene aggiunto un commento a una comunicazione che ricevi',
+        ],
+        'communication_comment_approved' => [
+            'label' => 'Commento approvato (comunicazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene approvato',
+        ],
+        'communication_comment_deleted' => [
+            'label' => 'Commento eliminato o nascosto (comunicazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene eliminato o nascosto',
         ],
         'new_user' => [
             'label' => 'Nuovo utente registrato',
             'description' => 'Ricevi una notifica quando un nuovo utente si registra',
         ],
         'comment_under_moderation' => [
-            'label' => 'Commento da moderare',
-            'description' => 'Ricevi una notifica quando un nuovo commento richiede la tua approvazione',
+            'label' => 'Commento da moderare (segnalazioni)',
+            'description' => 'Ricevi una notifica quando un nuovo commento a una segnalazione richiede la tua approvazione',
+        ],
+        'comment_edited_under_moderation' => [
+            'label' => 'Commento modificato da moderare (segnalazioni)',
+            'description' => 'Ricevi una notifica quando un commento modificato a una segnalazione richiede la tua approvazione',
+        ],
+        'communication_comment_under_moderation' => [
+            'label' => 'Commento da moderare (comunicazioni)',
+            'description' => 'Ricevi una notifica quando un nuovo commento a una comunicazione richiede la tua approvazione',
+        ],
+        'communication_comment_edited_under_moderation' => [
+            'label' => 'Commento modificato da moderare (comunicazioni)',
+            'description' => 'Ricevi una notifica quando un commento modificato a una comunicazione richiede la tua approvazione',
         ],
         'new_attachment' => [
             'label' => 'Nuovo allegato',

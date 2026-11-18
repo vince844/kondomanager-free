@@ -48,7 +48,6 @@ function moduloImpostazioni(array $modifiche = []): array
 {
     return array_merge([
         'user_frontend_registration' => false,
-        'force_comment_moderation'   => false,
         'language'                   => 'it',
         'app_name'                   => 'Kondomanager',
         'open_condominio_on_login'   => false,

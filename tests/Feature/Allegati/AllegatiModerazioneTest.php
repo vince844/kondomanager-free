@@ -181,7 +181,7 @@ test('un caricamento in attesa apre una voce nell\'Inbox per l\'elemento, una so
     algCarica($this, $this->mario, $this->s, [algFoto('uno.jpg')])->assertSessionHasNoErrors();
     algCarica($this, $this->luigi, $this->s, [algFoto('due.jpg')])->assertSessionHasNoErrors();
 
-    $voci = fn () => Evento::query()->where('tipo', 'allegato')
+    $voci = fn () => Evento::query()->where('tipo', 'da_moderare')
         ->where('eventable_type', $this->s->getMorphClass())->where('eventable_id', $this->s->id);
     expect($voci()->count())->toBe(1)
         ->and((bool) $voci()->first()->is_completed)->toBeFalse();

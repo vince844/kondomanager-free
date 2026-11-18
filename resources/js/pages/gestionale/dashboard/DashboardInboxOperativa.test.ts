@@ -236,7 +236,7 @@ describe('le schede «Tutte», «Scadute», «In arrivo»', () => {
         await monta({ inboxScheda: 'scaduti', compitiSeiMesi: [seiMesi('a', -14), seiMesi('b', 20)], inboxTasks: { total: 1, data: [compiti.data[0]] } });
         expect(document.body.querySelectorAll('[data-testid="compiti-sei-mesi"] > *').length).toBe(1);
         expect(pulito(document.body.querySelector('[data-testid="fuori-dalle-schede"]')?.textContent))
-            .toBe('Le segnalazioni e i bonifici segnalati non hanno una scadenza: 2 sono in «Tutte».');
+            .toBe('Le segnalazioni, i bonifici segnalati e ciò che è da moderare non hanno una scadenza: 2 sono in «Tutte».');
     });
 
     test('con «Tutte» la riga non c\'è; una scheda vuota lo dice', async () => {

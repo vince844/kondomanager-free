@@ -6,86 +6,24 @@
 namespace App\Services;
 
 use App\Models\Commento;
-use App\Models\Evento;
-use App\Enums\EventoTipo;
-use App\Services\Gestionale\InboxService;
-use Illuminate\Support\Str;
+use App\Models\Comunicazione;
+use App\Models\Segnalazione;
+use App\Services\Gestionale\Inbox\CompitoDaModerare;
 
+/**
+ * I commenti nell'Action inbox. Un commento non ha più un compito suo («Nuovo commento — …»): ciò che aspetta una moderazione confluisce nel compito unico
+ * dell'elemento ({@see CompitoDaModerare}), e un commento pubblicato senza moderazione non crea niente (decisione 445, punto 2: restano le notifiche e la
+ * pagina «Commenti»). Il compito segue anche i modelli da solo ({@see \App\Services\Gestionale\Inbox\ModerazioneNellInbox}); questo punto d'ingresso resta per
+ * chi lo chiama dopo aver creato o riportato in attesa un commento.
+ */
 class CommentoEventoService
 {
-    /**
-     * Sincronizza l'Admin Inbox per il commento appena creato.
-     * Crea un nuovo evento o aggiorna quello esistente se aperto.
-     *
-     * @param Commento $commento
-     * @return void
-     */
+    /** Porta il compito dell'elemento commentato a com'è adesso: i commenti in attesa, letti dal database. */
     public function sincronizza(Commento $commento): void
     {
-        $commentable = $commento->commentable;
-        if (!$commentable) return;
-
-        // Usa i metodi di default forniti dal contratto Commentable / trait HasComments
-        $priorita    = method_exists($commentable, 'prioritaCommento') ? $commentable->prioritaCommento() : 'normale';
-        $titolo      = method_exists($commentable, 'titoloInbox') ? $commentable->titoloInbox() : class_basename($commentable) . ' #' . $commentable->getKey();
-        $anteprima   = Str::limit($commento->corpo, 100);
-        $autore      = $commento->autore->name ?? 'Utente sconosciuto';
-
-        $stato = $commento->stato ?? 'pubblicato';
-        if ($stato === 'in_attesa') {
-            $description = "L'utente {$autore} ha inviato un commento nella segnalazione \"{$titolo}\" che richiede di essere moderato o approvato.";
-        } else {
-            $description = "L'utente {$autore} ha inviato un nuovo commento nella segnalazione \"{$titolo}\".";
-        }
-
-        // Cerca un Evento aperto per questo thread
-        $evento = Evento::query()
-            ->where('tipo',             'commento')
-            ->where('eventable_type',   $commento->commentable_type)
-            ->where('eventable_id',     $commento->commentable_id)
-            ->where('visibility',       'hidden')
-            ->where('is_completed',     false)
-            ->first();
-
-        if ($evento) {
-            // Aggiorna l'evento esistente
-            $meta = is_array($evento->meta) ? $evento->meta : [];
-            $evento->update([
-                'description' => $description, // Aggiorniamo la descrizione
-                'priorita'   => $priorita, // scala la priorità se l'entità è diventata urgente
-                'meta'       => array_merge($meta, [
-                    'contatore'        => ($meta['contatore'] ?? 0) + 1,
-                    'ultima_anteprima' => $anteprima,
-                    'ultimo_autore'    => $autore,
-                    // Il momento del commento nuovo: lo legge la regola dei compiti in attesa di «Ricordamelo» (`Evento::scopeCompitiAperti()`).
-                    'ultimo_arrivo'    => now()->utc()->format('Y-m-d H:i:s'),
-                ]),
-                'updated_at' => now(),
-            ]);
-        } else {
-            // Crea un nuovo evento tramite Builder Inbox
-            InboxService::createTask(
-                tipo: EventoTipo::COMMENTO,
-                title: 'Nuovo commento — ' . $titolo,
-                description: $description,
-                // Due giorni dal giorno di Roma, scritti come l'agenda scrive le ore.
-                scadenza: \App\Helpers\DateHelper::adessoComeSiLegge()->addDays(2),
-                createdByUserId: $commento->user_id,
-                condominioId: $commento->condominio_id,
-                context: [
-                    'commento_id' => $commento->id,
-                ],
-                actionUrl: null, // l'admin cliccherà sul dettaglio dalla UI, se presente
-                extraMeta: [
-                    'contatore'        => 1,
-                    'ultimo_arrivo'    => now()->utc()->format('Y-m-d H:i:s'),
-                    'ultima_anteprima' => $anteprima,
-                    'ultimo_autore'    => $autore,
-                ],
-                eventableType: $commento->commentable_type,
-                eventableId: $commento->commentable_id,
-                priorita: $priorita
-            );
+        $elemento = $commento->commentable;
+        if ($elemento instanceof Segnalazione || $elemento instanceof Comunicazione) {
+            app(CompitoDaModerare::class)->sincronizza($elemento, $commento->autore);
         }
     }
 }

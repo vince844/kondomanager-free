@@ -101,6 +101,25 @@ final class EventiRataCondomino
     }
 
     /**
+     * Crea il promemoria di `$persona` per la rata di un addebito a una persona sola (un contributo, un interesse, una spesa per il ritardo): come
+     * {@see crea()}, ma già emesso e pubblicato, con la causale dell'addebito nel titolo. Il piano degli addebiti non passa da un'approvazione: il
+     * promemoria nasce con l'addebito (`AddebitiIndividuali`), e con il passaggio che ne dà una parte a un erede (Coda 652, {@see seguonoLeQuote()}).
+     *
+     * @param Collection<int, \App\Models\Gestionale\RataQuote> $quote le quote di quella persona su quella rata
+     */
+    public function creaDellAddebito(PianoRate $piano, Rata $rata, Anagrafica $persona, Collection $quote, Condominio $condominio, int $creatoDa, int $categoriaId): Evento
+    {
+        $evento = $this->crea($piano, $rata, $persona, $quote, $condominio, $creatoDa, (string) ($piano->gestione?->nome ?? ''), $categoriaId);
+        $meta = $evento->meta;
+        $meta['is_emitted'] = true;
+        $meta['is_published'] = true;
+        // Il titolo sta in 255 caratteri: una causale lunga (gli interessi con il riferimento del tasso) e il nome del piano possono passarli.
+        $evento->update(['title' => mb_substr($rata->descrizione . ' - ' . $piano->nome, 0, 255), 'meta' => $meta, 'visibility' => VisibilityStatus::PRIVATE->value]);
+
+        return $evento;
+    }
+
+    /**
      * Lo stato del promemoria dalle quote **attive** della persona sulla rata (quelle non annullate): il calcolo che tutti
      * gli scrittori condividono.
      *
@@ -110,7 +129,11 @@ final class EventiRataCondomino
      * - `versato`: il contante che la persona ha dato sulle sue quote da pagare, e solo quello ({@see versato()}): il pagato senza
      *   il credito usato su un'altra rata o restituito. Lo dicono la frase «hai versato» e la riga «Già versato» del portale;
      *   `pagato` resta il numero dei conti;
-     * - `restante`: ciò che resta da versare. Con il netto positivo non scende sotto zero. Con il netto a credito (zero o negativo)
+     * - `restante`: ciò che resta da versare. Con il netto positivo non scende sotto zero e non supera quello che le quote hanno
+     *   ancora da pagare: le regole congelate di una quota chiusa da un passaggio (gli interessi e le spese del defunto passati
+     *   agli eredi, Coda 652) dicono ancora l'importo di prima, e senza questo limite il portale direbbe «da versare» un debito
+     *   che non è più suo, tutto (la quota chiusa) o in parte (lo storno, dopo il passaggio, di un versamento di prima). Sulle
+     *   quote coerenti il limite non cambia niente: il netto meno il pagato non supera la parte da pagare. Con il netto a credito (zero o negativo)
      *   resta zero o negativo, come alla creazione, finché il credito che la persona ha ancora sulla rata copre la parte da
      *   pagare; se non la copre più (il credito è stato rimborsato o usato altrove) il restante è la parte da pagare meno il
      *   credito, e la persona deve versarlo;
@@ -135,7 +158,7 @@ final class EventiRataCondomino
         $versato = $this->versato($attive);
 
         if ($originale > 0) {
-            $restante = max(0, $originale - $pagato);
+            $restante = min(max(0, $originale - $pagato), $daPagare);
         } elseif ($daPagare > $credito) {
             // il netto è a credito ma il credito non copre più la parte da pagare: ciò che manca lo deve versare la persona
             $restante = $daPagare - $credito;
@@ -367,7 +390,8 @@ final class EventiRataCondomino
      * - chi non ha più quote su quella rata perde il promemoria;
      * - chi le ha e aveva già un promemoria lo ritrova con i nuovi importi (il pagato è quello delle sue quote);
      * - chi le ha e non lo aveva lo riceve, **solo se la rata ha già promemoria nel portale** — cioè il piano è stato
-     *   approvato con il listener. Altrimenti li creerà l'approvazione, come per tutti.
+     *   approvato con il listener. Altrimenti li creerà l'approvazione, come per tutti. Sulla rata di un addebito (gli interessi e le spese che una
+     *   successione passa agli eredi, Coda 652) nasce come quello dell'addebito ({@see creaDellAddebito()}): emesso, con la causale nel titolo.
      *
      * @param list<int> $rataIds
      * @param list<int> $anagraficaIds
@@ -411,7 +435,9 @@ final class EventiRataCondomino
                     continue;
                 }
                 $categoria ??= CategoriaEvento::firstOrCreate(['name' => CategoriaEventoEnum::SCADENZE_RATE_CONDOMINIALI->value], ['description' => 'Auto']);
-                $this->crea($piano, $rata, $anagrafica, $quote, $piano->condominio, $utente->id, $piano->gestione->nome ?? 'Gestione', $categoria->id);
+                $piano->eDegliAddebiti()
+                    ? $this->creaDellAddebito($piano, $rata, $anagrafica, $quote, $piano->condominio, $utente->id, $categoria->id)
+                    : $this->crea($piano, $rata, $anagrafica, $quote, $piano->condominio, $utente->id, $piano->gestione->nome ?? 'Gestione', $categoria->id);
             }
         }
 

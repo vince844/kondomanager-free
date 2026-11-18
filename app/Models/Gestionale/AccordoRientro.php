@@ -20,6 +20,10 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  * dall'amministratore, «autorizzato dall'assemblea» (sì o no, con la data e il verbale se sì), una nota, la scansione firmata (un `Documento`
  * dell'accordo, che non entra nell'archivio né nel portale); poi la chiusura, che può essere la decadenza registrata. Non si cancella: si chiude.
  *
+ * Sulla parte di una rata che l'accordo non copre gli interessi continuano, o restano sospesi finché l'accordo regge: lo sceglie l'amministratore,
+ * accordo per accordo (`interessi_parte_fuori`, decisione 450), alla registrazione o dopo, dalla scheda; il registro dell'accordo (`registro`) tiene ogni
+ * cambio. Chiuso da una successione, l'accordo dice che cosa vale per gli interessi del defunto (`chiusura_per_successione`).
+ *
  * Non sposta denaro: le rate coperte restano scadute (il debito originario resta a giornale), e le lettere proposte lasciano fuori la parte
  * riconosciuta. Il programma segnala quando la regola di decadenza si verifica e conserva il giorno; la decadenza la registra l'amministratore.
  * Non è la dispensa dei sei mesi: sono due delibere diverse. Gli accordi registrati senza calendario restano senza.
@@ -30,8 +34,24 @@ class AccordoRientro extends Model
 
     protected $fillable = [
         'condominio_id', 'anagrafica_id', 'data_accordo', 'fino_al', 'autorizzato_assemblea', 'data_autorizzazione', 'verbale_autorizzazione', 'nota',
-        'decadenza_rate', 'decadenza_giorni', 'chiuso_il', 'decadenza_registrata_il', 'nota_chiusura', 'registrato_da', 'chiuso_da',
+        'decadenza_rate', 'decadenza_giorni', 'chiuso_il', 'decadenza_registrata_il', 'nota_chiusura', 'registrato_da', 'chiuso_da', 'interessi_parte_fuori',
+        'registro', 'chiusura_per_successione',
     ];
+
+    /** Sulla parte della rata fuori dall'accordo gli interessi continuano: il di serie (decisione 450). */
+    public const INTERESSI_CONTINUANO = 'continuano';
+
+    /** Sulla parte della rata fuori dall'accordo gli interessi restano sospesi finché l'accordo regge: la scelta dell'amministratore (decisione 450). */
+    public const INTERESSI_SOSPESI = 'sospesi';
+
+    /**
+     * Chiuso da una successione con l'arretrato agli eredi, l'accordo di un defunto che era in regola resta in regola fino al decesso: nella proposta degli
+     * interessi del defunto i giorni dell'accordo restano fuori, e dal decesso non ne maturano altri. Il di serie.
+     */
+    public const SUCCESSIONE_IN_REGOLA = 'in_regola';
+
+    /** Chiuso da una successione, l'accordo vale come una decadenza quel giorno: tornano i giorni dell'accordo. La scelta dell'amministratore nell'anteprima. */
+    public const SUCCESSIONE_DECADENZA = 'decadenza';
 
     protected $casts = [
         'condominio_id' => 'integer',
@@ -45,6 +65,7 @@ class AccordoRientro extends Model
         'decadenza_giorni' => 'integer',
         'segnali' => 'array',
         'decadenza_registrata_il' => 'date',
+        'registro' => 'array',
     ];
 
     public function condominio(): BelongsTo

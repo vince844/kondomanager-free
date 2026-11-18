@@ -49,9 +49,15 @@ function creaSegnalazione(Condominio $condominio, User $creatore, array $attrs =
 }
 
 // ---------------------------------------------------------------------------
-// Setup permessi minimi (evita crash Spatie in tutti i test)
+// Setup permessi: tutti quelli dell'installazione, come li mette il seeder.
+//
+// Coda 558: `CommentoPolicy::before()` non c'è più, e chi usa il pannello commenta, modifica e approva
+// solo se apre la scheda della segnalazione (`SegnalazionePolicy::view`). Per questo gli utenti del
+// pannello di questi test hanno anche «Visualizza segnalazioni».
 // ---------------------------------------------------------------------------
 beforeEach(function () {
+    $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
+
     $permessiCommenti = [
         Permission::COMMENT_SEGNALAZIONI->value,
         Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value,
@@ -78,6 +84,7 @@ test('condomino senza publish crea commento in_attesa', function () {
     $utente     = creaUtenteCondomino($condominio, [
         Permission::COMMENT_SEGNALAZIONI->value,
         Permission::ACCESS_ADMIN_PANEL->value,
+        Permission::VIEW_SEGNALAZIONI->value,
     ]);
     $creatore   = creaUtenteCondomino($condominio, [
         Permission::COMMENT_SEGNALAZIONI->value,
@@ -114,6 +121,7 @@ test('condomino con PUBLISH_COMMENTS crea commento subito pubblicato', function 
         Permission::COMMENT_SEGNALAZIONI->value,
         Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value,
         Permission::ACCESS_ADMIN_PANEL->value,
+        Permission::VIEW_SEGNALAZIONI->value,
     ]);
     $segnalazione = creaSegnalazione($condominio, $creatore);
 
@@ -196,9 +204,10 @@ test('solo l\'autore può modificare il proprio commento', function () {
         Permission::COMMENT_SEGNALAZIONI->value,
         Permission::EDIT_OWN_COMMENTS_SEGNALAZIONI->value,
         Permission::ACCESS_ADMIN_PANEL->value,
+        Permission::VIEW_SEGNALAZIONI->value,
     ]);
-    // $altro NON ha ACCESS_ADMIN_PANEL (altrimenti bypassa la policy via before())
-    // Usiamo withoutMiddleware solo per questo utente passando direttamente al controller
+    // $altro non ha il pannello: la rotta del pannello lo fermerebbe prima della regola.
+    // Usiamo withoutMiddleware solo per lui, per provare la regola del commento da sola.
     $altro      = creaUtenteCondomino($condominio, [
         Permission::COMMENT_SEGNALAZIONI->value,
         Permission::EDIT_OWN_COMMENTS_SEGNALAZIONI->value,
@@ -213,13 +222,12 @@ test('solo l\'autore può modificare il proprio commento', function () {
         'stato'            => 'pubblicato',
     ]);
 
-    // Autore con ACCESS_ADMIN_PANEL → policy bypassa via before() ma consente
+    // L'autore ha «Modifica propri commenti segnalazioni» e apre la scheda: modifica il suo.
     $this->actingAs($autore)
         ->patch(route('admin.commenti.update', $commento), ['corpo' => 'Testo modificato.'])
         ->assertRedirect();
 
-    // Altro utente senza ACCESS_ADMIN_PANEL → deve passare il middleware admin ma
-    // non ha il ruolo. Testiamo direttamente via withoutMiddleware per isolare la policy
+    // Un altro utente non modifica un commento non suo: né il pannello né «Modifica commenti».
     $this->actingAs($altro)
         ->withoutMiddleware()
         ->patch(route('admin.commenti.update', $commento), ['corpo' => 'Tentativo altrui.'])
@@ -234,6 +242,7 @@ test('admin approva commento in_attesa — diventa pubblicato', function () {
     $admin      = creaUtenteCondomino($condominio, [
         Permission::APPROVE_COMMENTS_SEGNALAZIONI->value,
         Permission::ACCESS_ADMIN_PANEL->value,
+        Permission::VIEW_SEGNALAZIONI->value,
     ]);
     $utente     = creaUtenteCondomino($condominio, [
         Permission::COMMENT_SEGNALAZIONI->value,

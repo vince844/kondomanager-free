@@ -176,3 +176,33 @@ it('il resto a metà centesimo va su: l\'arrotondamento è al centesimo più vic
 
     expect($uno['A']['interessi'])->toBe(1)->and($uno['A']['tratti'][0]['esatti'])->toBe(50);
 });
+
+it('una rata con l\'ultimo giorno (decisione 438, il giorno prima di un accordo di rientro): i giorni dopo non contano, e il credito passa alla rata dopo', function () {
+    // A: € 300,00 scaduti il 31/03, € 100,00 versati il 30/04, ultimo giorno il 14/07. B: € 300,00 scaduti il 30/06. Un anticipo di € 100,00 il 10/07, dal 11/07.
+    // A: 300,00 × 1,60 % × 30/365 = 0,394521 (dal 01/04 al 30/04) + 200,00 × 1,60 % × 71/365 = 0,622466 (dal 01/05 al 10/07)
+    //    + 100,00 × 1,60 % × 4/365 = 0,017534 (dal 11/07 al 14/07, l'anticipo copre la rata più vecchia) = 1,034521 → € 1,03; niente dal 15/07.
+    // B: 300,00 × 1,60 % × 14/365 = 0,184110 (dal 01/07 al 14/07) + 200,00 × 1,60 % × 6/365 = 0,052603 (dal 15/07 al 20/07: A è fuori, l'anticipo
+    //    copre B) = 0,236713 → € 0,24. Se A tenesse l'anticipo anche dopo il suo ultimo giorno, B sarebbe 300,00 × 1,60 % × 20/365 = € 0,26.
+    $chiavi = ['A' => imChiave('2026-04-01', '2026-03-31') + ['fine' => '2026-07-14'], 'B' => imChiave('2026-07-01', '2026-06-30', true, 2),
+        'X' => ['inizio' => null, 'base' => false, 'ordine' => ['9999-12-31', 9, 0]]];
+    $esito = InteressiDiMora::calcola($chiavi, [
+        ['giorno' => '2026-01-15', 'chiave' => 'A', 'importo' => 30000, 'causa' => 'emissione'],
+        ['giorno' => '2026-04-30', 'chiave' => 'A', 'importo' => -10000, 'causa' => 'versamento'],
+        ['giorno' => '2026-06-15', 'chiave' => 'B', 'importo' => 30000, 'causa' => 'emissione'],
+        ['giorno' => '2026-07-10', 'chiave' => 'X', 'importo' => -10000, 'causa' => 'versamento'],
+    ], imTassoLegale(), [], '2026-07-20');
+
+    $tratti = fn (string $k) => array_map(fn ($t) => [$t['dal'], $t['al'], $t['giorni'], $t['capitale']], $esito[$k]['tratti']);
+    expect($tratti('A'))->toBe([['2026-04-01', '2026-04-30', 30, 30000], ['2026-05-01', '2026-07-10', 71, 20000], ['2026-07-11', '2026-07-14', 4, 10000]])
+        ->and($esito['A']['interessi'])->toBe(103)
+        ->and($tratti('B'))->toBe([['2026-07-01', '2026-07-14', 14, 30000], ['2026-07-15', '2026-07-20', 6, 20000]])
+        ->and($esito['B']['interessi'])->toBe(24);
+});
+
+it('una rata con l\'ultimo giorno prima del primo: nessun giorno, nessun interesse', function () {
+    // Un accordo del 01/04 su una rata scaduta il 31/03: il primo giorno degli interessi sarebbe il 01/04, l'ultimo il 31/03.
+    $esito = InteressiDiMora::calcola(['A' => imChiave('2026-04-01', '2026-03-31') + ['fine' => '2026-03-31']],
+        [['giorno' => '2026-01-15', 'chiave' => 'A', 'importo' => 30000, 'causa' => 'emissione']], imTassoLegale(), [], '2026-06-29');
+
+    expect($esito['A'])->toBe(['tratti' => [], 'interessi' => 0, 'fermo' => null]);
+});

@@ -7,7 +7,8 @@
  */
 import { describe, expect, test } from 'vitest';
 import {
-    FRASE_CALCOLO, avvisiDi, causaleDiSerie, euroEsatti, testoAccanto, testoCausa, testoDellaRegola, testoGiaRegistrati, testoTratto, totaleTenuto, type PersonaInteressi,
+    FRASE_CALCOLO, avvisiDi, causaleDiSerie, euroEsatti, testoAccanto, testoCausa, testoDellaRegola, testoFinoAllAccordo, testoGiaRegistrati, testoTratto, totaleTenuto,
+    type PersonaInteressi,
 } from './accessori';
 
 const tratto = { dal: '2026-04-01', al: '2026-04-30', giorni: 30, capitale: 30000, tasso: '1,60 %', fonte: 'tasso legale', divisore: 365, esatti: 3945, causa: 'scadenza' };
@@ -40,6 +41,23 @@ describe('la proposta', () => {
         expect(testoAccanto({ ...neri, quote_di_inquilino: 9000 })[0]).toBe('Quote di inquilini scadute: € 90,00. Gli interessi non si propongono: se vuoi, addebitali al proprietario con «Spese del ritardo».');
         expect(testoGiaRegistrati('2026-06-29')).toBe('Interessi già registrati fino al 29/06/2026: la proposta riparte dal giorno dopo.');
         expect(testoGiaRegistrati(null)).toBeNull();
+    });
+
+    test('l\'accordo di rientro: la proposta lascia fuori i giorni dalla data dell\'accordo, quelli prima restano (decisione 438)', () => {
+        expect(testoAccanto({ ...neri, in_accordo: 20000 })).toEqual(['€ 200,00 sono in un accordo di rientro in corso: la proposta lascia fuori i giorni dalla data '
+            + 'dell\'accordo; i giorni prima dell\'accordo restano nella proposta.']);
+        // La riga della rata coperta dice fin dove arriva: il giorno prima dell'accordo.
+        expect(testoFinoAllAccordo({ al: '2026-07-14', accordo_dal: '2026-07-15' })).toBe('Fino al 14/07/2026: dal 15/07/2026 la rata è in un accordo di rientro, e i giorni '
+            + 'dell\'accordo restano fuori finché l\'accordo non è decaduto e il calendario non è finito, o è versato tutto.');
+        expect(testoFinoAllAccordo({ al: '2026-07-20', accordo_dal: null })).toBeNull();
+        expect(testoFinoAllAccordo({})).toBeNull();
+    });
+
+    test('una rata coperta in parte, con gli interessi che continuano sulla parte fuori dall\'accordo (decisione 450): la riga arriva alla data, e lo dice', () => {
+        expect(testoFinoAllAccordo({ al: '2026-07-20', accordo_dal: '2026-07-15', accordo_in_parte: true })).toBe('Dal 15/07/2026 una parte della rata è in un accordo '
+            + 'di rientro: sulla parte fuori dall\'accordo gli interessi continuano, e la parte nell\'accordo resta fuori finché l\'accordo non è decaduto e il calendario '
+            + 'non è finito, o è versato tutto.');
+        expect(testoCausa('accordo')).toBe('dal giorno dell\'accordo, solo la parte fuori dall\'accordo');
     });
 });
 

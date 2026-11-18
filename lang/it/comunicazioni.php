@@ -114,6 +114,7 @@ return [
         'buildings'         => 'Condomini',
         'residents'         => 'Anagrafiche',
         'comments'          => 'Consenti commenti',
+        'commenti_moderati' => 'Commenti in moderazione',
         'featured'          => 'Comunicazione in evidenza',
         'notify_update'     => 'Avvisa via mail chi ha già ricevuto questa comunicazione',
         'private'           => 'Crea comunicazione come privata',
@@ -124,6 +125,14 @@ return [
         'interactions'      => 'Interazioni',
         'comments_enabled'  => 'Commenti abilitati',
         'comments_disabled' => 'Commenti disabilitati',
+        // La scheda: il testo lungo, le interazioni e i destinatari (decisione 467).
+        'read_more'         => 'Leggi tutto',
+        'read_less'         => 'Leggi meno',
+        'in_evidenza'       => 'In evidenza',
+        'recipients'        => 'Destinatari',
+        'destinatari_condomini' => '{1} :count condominio|[2,*] :count condomìni',
+        'destinatari_persone'   => '{1} :count persona|[2,*] :count persone',
+        'destinatari_privata'   => 'Privata, con lo studio',
     ],
 
     /* ------------------------------------------------------------------
@@ -166,6 +175,7 @@ return [
         'edit_communication'      => 'Modifica',
         'delete_communication'    => 'Elimina',
         'save_communication'      => 'Salva',
+        'save'                    => 'Salva',
         'list_communications'     => 'Elenco',
         'show_more'               => 'Mostra tutto',
         'show_less'               => 'Mostra meno',
@@ -182,6 +192,7 @@ return [
         'visibility'  => 'Una bozza, o una comunicazione in attesa di approvazione, non compare ai condòmini; pubblicata e approvata, la vedono i condòmini a cui è indirizzata.',
         'priority'    => 'Seleziona il livello di priorità con cui questa comunicazione deve essere trattata. Le priorità possono influenzare la visibilità o l\'urgenza nella bacheca.',
         'comments'    => 'Quando viene selezionata questa opzione verranno abilitati i commenti per questa comunicazione',
+        'commenti_moderati' => 'I commenti scritti dai destinatari attendono l\'approvazione di un amministratore prima di diventare visibili.',
         'featured'    => 'Le comunicazioni in evidenza sono evidenziate nella bacheca per attirare maggiore attenzione.',
         'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che la comunicazione è cambiata. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso alla platea la riceve comunque, perché per lui è nuova. Finché è una bozza o è in attesa di approvazione non parte niente; quando è pubblicata e approvata, la ricevono tutti i destinatari.",
         'private'     => 'Le comunicazioni private possono essere visualizzate solo dagli amministratori e da te.',
@@ -240,5 +251,11 @@ return [
         'private'      => 'Privata',
         'private_hint' => 'La vedono solo l\'autore, le persone collegate e l\'amministratore',
         'recipients_required' => 'Una comunicazione privata resta indirizzata ad almeno un destinatario: senza destinatari la vedrebbe solo chi l\'ha scritta, oltre all\'amministratore.',
+    ],
+    'settings' => [
+        'comments_title'              => 'Impostazioni commenti',
+        'comments_dialog_description' => 'Configura i commenti per questa comunicazione.',
+        'can_comment'                 => 'Consenti commenti',
+        'commenti_moderati'           => 'Commenti in moderazione',
     ],
 ];

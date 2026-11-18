@@ -272,12 +272,14 @@ it('una regola di decadenza senza il calendario non si registra, e lo dice', fun
     expect(AccordoRientro::count())->toBe(0);
 });
 
-it('finché l\'accordo è in corso la proposta non mette interessi sul debito che copre; registrata la decadenza, la proposta torna: € 0,82 dal 30/06', function () {
+it('finché l\'accordo è in corso la proposta non mette interessi sui giorni dell\'accordo, solo su quelli prima (€ 0,13); registrata la decadenza, la proposta torna: € 0,82 dal 30/06', function () {
     [$s, , , $a] = aclAccordo($this);
     $this->travelTo('2026-09-30 10:00:00');
     $neri = accDi(accProposta($this, $s, ['Neri'])->json(), $s, 'Neri');
-    // La rata 1 (€ 200,00) è nell'accordo: nessuna riga; la proposta lo dice accanto alla persona.
-    expect($neri['righe'])->toBe([])->and($neri['totale'])->toBe(0)->and($neri['in_accordo'])->toBe(20000);
+    // La rata 1 (€ 200,00) è nell'accordo dal 15/07: la riga tiene i giorni prima, dal 30/06 (il giorno dopo gli interessi registrati) al 14/07, e la
+    // proposta dice l'accordo accanto alla persona. € 200,00 × 1,60 % × 15/365 = 0,131507 → € 0,13 (decisione 438; con la 433 la riga non c'era).
+    expect(array_map(fn ($r) => [$r['dal'], $r['al'], $r['accordo_dal'], $r['interessi']], $neri['righe']))->toBe([['2026-06-30', '2026-07-14', '2026-07-15', 13]])
+        ->and($neri['totale'])->toBe(13)->and($neri['in_accordo'])->toBe(20000);
 
     $this->actingAs($this->user)->postJson(route('admin.gestionale.accordi-rientro.decadenza', ['condominio' => $s['c']->id, 'accordo' => $a->id]), ['data' => '2026-09-30'])->assertOk();
     // Gli interessi registrati arrivano al 29/06: dal 30/06 al 30/09, 93 giorni: € 200,00 × 1,60 % × 93/365 = 0,815342 → € 0,82.

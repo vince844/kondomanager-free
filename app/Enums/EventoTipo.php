@@ -47,4 +47,10 @@ enum EventoTipo: string
      * un compito (`meta.requires_action` falso), riporta al compito o alla riga da cui è nato.
      */
     case PROMEMORIA = 'promemoria';
+
+    /**
+     * Ciò che aspetta un'approvazione (decisioni 445 e 449): per ogni elemento un compito solo, con i commenti e gli allegati in attesa di una segnalazione o
+     * di una comunicazione, o l'elemento stesso (la comunicazione, il documento dell'archivio, l'evento dell'agenda). Lo scrive `CompitoDaModerare`.
+     */
+    case DA_MODERARE = 'da_moderare';
 }

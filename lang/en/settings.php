@@ -155,24 +155,48 @@ return [
             'description' => 'Get a notification when a document you already received is changed',
         ],
         'new_comment' => [
-            'label' => 'New comment',
+            'label' => 'New comment (tickets)',
             'description' => 'Receive a notification when a comment is added to a report you are participating in',
         ],
         'comment_approved' => [
-            'label' => 'Comment approved',
-            'description' => 'Receive a notification when your pending comment is approved',
+            'label' => 'Comment approved (tickets)',
+            'description' => 'Receive a notification when your comment on a report is approved',
         ],
         'comment_deleted' => [
-            'label' => 'Comment deleted or hidden',
-            'description' => 'Receive a notification when your comment is deleted or hidden',
+            'label' => 'Comment deleted or hidden (tickets)',
+            'description' => 'Receive a notification when your comment on a report is deleted or hidden',
+        ],
+        'new_communication_comment' => [
+            'label' => 'New comment (communications)',
+            'description' => 'Receive a notification when a comment is added to an announcement you receive',
+        ],
+        'communication_comment_approved' => [
+            'label' => 'Comment approved (communications)',
+            'description' => 'Receive a notification when your comment on an announcement is approved',
+        ],
+        'communication_comment_deleted' => [
+            'label' => 'Comment deleted or hidden (communications)',
+            'description' => 'Receive a notification when your comment on an announcement is deleted or hidden',
         ],
         'new_user' => [
             'label' => 'New registered user',
             'description' => 'Receive a notification when a new user registers',
         ],
         'comment_under_moderation' => [
-            'label' => 'Comment to be moderated',
-            'description' => 'Receive a notification when a new comment requires your approval',
+            'label' => 'Comment to be moderated (tickets)',
+            'description' => 'Receive a notification when a new comment on a report requires your approval',
+        ],
+        'comment_edited_under_moderation' => [
+            'label' => 'Edited comment to be moderated (tickets)',
+            'description' => 'Receive a notification when an edited comment on a ticket requires your approval',
+        ],
+        'communication_comment_under_moderation' => [
+            'label' => 'Comment to be moderated (communications)',
+            'description' => 'Receive a notification when a new comment on an announcement requires your approval',
+        ],
+        'communication_comment_edited_under_moderation' => [
+            'label' => 'Edited comment to be moderated (communications)',
+            'description' => 'Receive a notification when an edited comment on a communication requires your approval',
         ],
         'new_attachment' => [
             'label' => 'New attachment',

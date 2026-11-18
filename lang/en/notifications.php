@@ -196,8 +196,49 @@ return [
         'action'  => 'View the report',
     ],
 
+    'edited_pending_ticket_comment' => [
+        'subject' => 'Edited comment pending approval',
+        'line_1'  => ':user has edited a comment on the report ":title":',
+        'line_2'  => 'Log in to approve or reject the comment.',
+        'action'  => 'View the report',
+    ],
+
     // Deleted comment
     'deleted_ticket_comment' => [
+        'subject' => 'Your comment has been removed',
+        'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
+    ],
+
+    // Communication comments
+    'new_communication_comment' => [
+        'subject'  => 'New comment on: :entity',
+        'greeting' => 'Hello!',
+        'line_1'   => ':user has left a new comment:',
+        'action'   => 'View the communication',
+        'line_2'   => 'You are receiving this email because you are involved in this communication.',
+    ],
+
+    'approved_communication_comment' => [
+        'subject' => 'Your comment has been approved',
+        'line_1'  => 'Your comment on the :entity has been approved and published.',
+        'action'  => 'View communication',
+    ],
+
+    'pending_communication_comment' => [
+        'subject' => 'New comment pending approval on :entity',
+        'line_1'  => ':user wrote a comment on ":title" that requires approval.',
+        'line_2'  => 'Log in to approve or reject the comment.',
+        'action'  => 'View communication',
+    ],
+
+    'edited_pending_communication_comment' => [
+        'subject' => 'Edited comment pending approval',
+        'line_1'  => ':user has edited a comment on the communication ":title":',
+        'line_2'  => 'Log in to approve or reject the comment.',
+        'action'  => 'View communication',
+    ],
+
+    'deleted_communication_comment' => [
         'subject' => 'Your comment has been removed',
         'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
     ],

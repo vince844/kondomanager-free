@@ -12,8 +12,8 @@
  * rispondeva 403: chi apriva una segnalazione dal portale veniva rimandato all'elenco, e lì rifiutato.
  *
  * Ora l'elenco si apre a chi ha uno dei due permessi, e mostra ciò che la regola del portale gli
- * concede (`scopeVisibiliNelPortale()`): a «solo le proprie», le sue pubblicate e approvate. Chi non ha
- * nessuno dei due riceve ancora 403.
+ * concede (`scopeVisibiliNelPortale()`): a «solo le proprie», le sue, anche quelle in attesa (Coda 389). Chi
+ * non ha nessuno dei due riceve ancora 403.
  */
 
 use App\Enums\Permission;
@@ -90,9 +90,9 @@ test('decisione 134 — chi vede solo le proprie segnalazioni apre una segnalazi
         'condominio_id' => $this->aurora->id, 'is_private' => false,
     ])->assertSessionHasNoErrors()->assertRedirect(route('user.segnalazioni.index'));
 
-    // Le sue pubblicate e approvate; non quella del vicino, e non la sua in moderazione (Coda 389).
+    // Le sue, anche quella in moderazione (Coda 389); non quella del vicino.
     expect(elencoProprieOggetti($mario, 'user.segnalazioni.index', 'segnalazioni'))
-        ->toBe(["Cancello dell'ingresso rotto", "Perdita nel box «2»"]);
+        ->toBe(["Cancello dell'ingresso rotto", 'La mia in moderazione', "Perdita nel box «2»"]);
 });
 
 test('decisione 134 — chi vede solo le proprie comunicazioni apre l\'elenco del portale e ci trova le sue', function () {

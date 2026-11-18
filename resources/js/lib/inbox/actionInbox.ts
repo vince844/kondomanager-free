@@ -11,17 +11,17 @@
  */
 import type { CompitoConRisposte } from '@/lib/inbox/risposteDelCompito';
 
-export type Fascia = 'oltre_90' | 'da_31_a_90' | 'ultimi_30' | 'prossimi_7' | 'fra_8_e_30' | 'oltre_30' | 'segnalazioni' | 'bonifici';
-export type Gruppo = 'scaduti' | 'segnalazioni' | 'bonifici' | 'avanti';
+export type Fascia = 'oltre_90' | 'da_31_a_90' | 'ultimi_30' | 'prossimi_7' | 'fra_8_e_30' | 'oltre_30' | 'segnalazioni' | 'bonifici' | 'da_moderare';
+export type Gruppo = 'scaduti' | 'segnalazioni' | 'bonifici' | 'da_moderare' | 'avanti';
 export type Scheda = 'tutti' | 'scaduti' | 'in_arrivo';
 
-export interface Conteggi { all: number; scaduti: number; settimana: number; entro_30: number; bonifici: number; segnalazioni: number; piu_vecchio: string | null }
+export interface Conteggi { all: number; scaduti: number; settimana: number; entro_30: number; bonifici: number; segnalazioni: number; da_moderare?: number; piu_vecchio: string | null }
 export interface BarraEta { chiave: Fascia; etichetta: string; valore: number; scaduti: boolean }
 export interface BarraTipo { tipo: string; etichetta: string; valore: number }
-export interface Grafici { eta: BarraEta[]; tipi: BarraTipo[]; fuori: { segnalazioni?: number; bonifici: number; oltre_30: number } }
+export interface Grafici { eta: BarraEta[]; tipi: BarraTipo[]; fuori: { segnalazioni?: number; bonifici: number; da_moderare?: number; oltre_30: number } }
 export interface Dove { condominio_id: number | null; nome: string; valore: number }
 export interface Schede { tutti: number; scaduti: number; in_arrivo: number }
-export interface Gruppi { scaduti: number; segnalazioni?: number; bonifici: number; avanti: number }
+export interface Gruppi { scaduti: number; segnalazioni?: number; bonifici: number; da_moderare?: number; avanti: number }
 export interface Filtri { quando: string | null; tipo: string | null; tipo_nome?: string | null; cerca: string | null; ordine: string; condominio_id: number | null; scheda?: Scheda }
 
 export interface RigaCompito extends CompitoConRisposte {
@@ -136,12 +136,13 @@ const ASPETTI: Record<string, { icona: string; colore: string }> = {
     ratifica_sforo: { icona: 'assemblea', colore: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
     segnalazione_guasto: { icona: 'segnalazione', colore: 'bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-300' },
     commento: { icona: 'commento', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
+    da_moderare: { icona: 'commento', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
     allegato: { icona: 'allegato', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
 };
 const ASPETTO_DI_SERIE = { icona: 'scadenza', colore: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' };
 export const aspettoDelTipo = (tipo: string): { icona: string; colore: string } => ASPETTI[tipo] ?? ASPETTO_DI_SERIE;
 
-const TITOLI_DEI_GRUPPI: Record<Gruppo, string> = { scaduti: 'Scaduti', segnalazioni: 'Segnalazioni aperte', bonifici: 'Bonifici da verificare', avanti: 'Più avanti' };
+const TITOLI_DEI_GRUPPI: Record<Gruppo, string> = { scaduti: 'Scaduti', segnalazioni: 'Segnalazioni aperte', bonifici: 'Bonifici da verificare', da_moderare: 'Da moderare', avanti: 'Più avanti' };
 export const titoloDelGruppo = (g: Gruppo): string => TITOLI_DEI_GRUPPI[g];
 
 export type VoceDellElenco = { tipo: 'gruppo'; gruppo: Gruppo; titolo: string; numero: number } | { tipo: 'riga'; riga: RigaCompito };
@@ -165,6 +166,7 @@ const UNO_E_TANTI: Record<Gruppo, [string, string]> = {
     scaduti: ['e un altro scaduto', 'e altri N scaduti'],
     segnalazioni: ['e un\'altra segnalazione aperta', 'e altre N segnalazioni aperte'],
     bonifici: ['e un altro bonifico da verificare', 'e altri N bonifici da verificare'],
+    da_moderare: ['e un altro da moderare', 'e altri N da moderare'],
     avanti: ['e un altro più avanti', 'e altri N più avanti'],
 };
 
@@ -177,9 +179,10 @@ export function testoEAltri(gruppo: Gruppo, quanti: number): string {
 
 /**
  * La data della riga: il giorno del compito, e per una segnalazione il giorno in cui è stata aperta («aperta il 22/02/2026»), perché una segnalazione non
- * ha una scadenza.
+ * ha una scadenza; per ciò che è da moderare il giorno da cui aspetta («dal 16/11/2026»), grigio come i giorni.
  */
-export const testoDellaData = (r: Pick<RigaCompito, 'gruppo' | 'giorno'>): string => (r.gruppo === 'segnalazioni' ? `aperta il ${giornoItaliano(r.giorno)}` : giornoItaliano(r.giorno));
+export const testoDellaData = (r: Pick<RigaCompito, 'gruppo' | 'giorno'>): string => (r.gruppo === 'segnalazioni' ? `aperta il ${giornoItaliano(r.giorno)}`
+    : r.gruppo === 'da_moderare' ? `dal ${giornoItaliano(r.giorno)}` : giornoItaliano(r.giorno));
 
 /** In fondo all'elenco: «Mostrati 9 di 113». */
 /**
@@ -379,17 +382,20 @@ export function descrizioneTipi(g: Grafici): string {
 }
 
 /**
- * Sotto il grafico per età, ciò che non c'è: le segnalazioni aperte e i bonifici da verificare (non hanno una scadenza) e i compiti fra più di 30 giorni.
+ * Sotto il grafico per età, ciò che non c'è: le segnalazioni aperte, i bonifici da verificare e ciò che è da moderare (non hanno una scadenza) e i compiti fra più
+ * di 30 giorni.
  * Vuota se non manca niente.
  */
 export function testoFuoriDalGrafico(fuori: Grafici['fuori']): string {
     const segnalazioni = fuori.segnalazioni ?? 0;
+    const daModerare = fuori.da_moderare ?? 0;
     const parti: string[] = [];
     if (segnalazioni > 0) parti.push(`${numero(segnalazioni)} ${segnalazioni === 1 ? 'segnalazione aperta' : 'segnalazioni aperte'}`);
     if (fuori.bonifici > 0) parti.push(`${numero(fuori.bonifici)} ${fuori.bonifici === 1 ? 'bonifico da verificare' : 'bonifici da verificare'}`);
+    if (daModerare > 0) parti.push(`${piuCompiti(daModerare)} da moderare`);
     if (fuori.oltre_30 > 0) parti.push(`${piuCompiti(fuori.oltre_30)} fra più di 30 giorni`);
     if (!parti.length) return '';
-    const verbo = segnalazioni + fuori.bonifici + fuori.oltre_30 === 1 ? 'Non è' : 'Non sono';
+    const verbo = segnalazioni + fuori.bonifici + daModerare + fuori.oltre_30 === 1 ? 'Non è' : 'Non sono';
     const elenco = parti.length === 1 ? parti[0] : `${parti.slice(0, -1).join(', ')} e ${parti[parti.length - 1]}`;
 
     return `${verbo} nel grafico: ${elenco}.`;

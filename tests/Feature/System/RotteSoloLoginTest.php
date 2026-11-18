@@ -154,6 +154,8 @@ function elencoRotteSoloLogin(): array
         'user.comunicazioni.update'        => $policy,
         'user.comunicazioni.destroy'       => $policy,
         'user.comunicazioni.allegati.store' => $policy,
+        // I commenti alle comunicazioni (Coda 559): la regola in `RegoleCommenti`, chiamata dal controller con un Gate.
+        'user.comunicazioni.commenti.store' => $policy,
         'user.documenti.create'            => $policy,
         'user.documenti.store'             => $policy,
         'user.documenti.edit'              => $policy,

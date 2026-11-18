@@ -60,19 +60,34 @@ return [
                 'permission'  => Permission::VIEW_ARCHIVE_DOCUMENTS,
             ],
             NotificationType::NEW_COMMENT->value => [
-                'label'       => 'Nuovo commento',
+                'label'       => 'Nuovo commento (segnalazioni)',
                 'description' => 'Ricevi una notifica quando viene aggiunto un commento a una segnalazione a cui partecipi',
                 'permission'  => Permission::COMMENT_SEGNALAZIONI
             ],
             NotificationType::COMMENT_APPROVED->value => [
-                'label'       => 'Commento approvato',
-                'description' => 'Ricevi una notifica quando un tuo commento in attesa viene approvato',
+                'label'       => 'Commento approvato (segnalazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene approvato',
                 'permission'  => Permission::COMMENT_SEGNALAZIONI
             ],
             NotificationType::COMMENT_DELETED->value => [
-                'label'       => 'Commento eliminato o nascosto',
-                'description' => 'Ricevi una notifica quando un tuo commento viene eliminato o nascosto',
+                'label'       => 'Commento eliminato o nascosto (segnalazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene eliminato o nascosto',
                 'permission'  => Permission::COMMENT_SEGNALAZIONI
+            ],
+            NotificationType::NEW_COMMUNICATION_COMMENT->value => [
+                'label'       => 'Nuovo commento (comunicazioni)',
+                'description' => 'Ricevi una notifica quando viene aggiunto un commento a una comunicazione che ricevi',
+                'permission'  => Permission::COMMENT_COMUNICAZIONI,
+            ],
+            NotificationType::COMMUNICATION_COMMENT_APPROVED->value => [
+                'label'       => 'Commento approvato (comunicazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene approvato',
+                'permission'  => Permission::COMMENT_COMUNICAZIONI,
+            ],
+            NotificationType::COMMUNICATION_COMMENT_DELETED->value => [
+                'label'       => 'Commento eliminato o nascosto (comunicazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene eliminato o nascosto',
+                'permission'  => Permission::COMMENT_COMUNICAZIONI,
             ],
             NotificationType::NEW_ATTACHMENT->value => [
                 'label'       => 'Nuovo allegato',
@@ -97,9 +112,24 @@ return [
                 'permission'  => Permission::VIEW_USERS,
             ],
             NotificationType::COMMENT_UNDER_MODERATION->value => [
-                'label'       => 'Commento da moderare',
-                'description' => 'Ricevi una notifica quando un nuovo commento richiede la tua approvazione',
+                'label'       => 'Commento da moderare (segnalazioni)',
+                'description' => 'Ricevi una notifica quando un nuovo commento a una segnalazione richiede la tua approvazione',
                 'permission'  => Permission::APPROVE_COMMENTS_SEGNALAZIONI,
+            ],
+            NotificationType::COMMENT_EDITED_UNDER_MODERATION->value => [
+                'label'       => 'Commento modificato da moderare (segnalazioni)',
+                'description' => 'Ricevi una notifica quando un commento modificato a una segnalazione richiede la tua approvazione',
+                'permission'  => Permission::APPROVE_COMMENTS_SEGNALAZIONI,
+            ],
+            NotificationType::COMMUNICATION_COMMENT_UNDER_MODERATION->value => [
+                'label'       => 'Commento da moderare (comunicazioni)',
+                'description' => 'Ricevi una notifica quando un nuovo commento a una comunicazione richiede la tua approvazione',
+                'permission'  => Permission::APPROVE_COMMENTS_COMUNICAZIONI,
+            ],
+            NotificationType::COMMUNICATION_COMMENT_EDITED_UNDER_MODERATION->value => [
+                'label'       => 'Commento modificato da moderare (comunicazioni)',
+                'description' => 'Ricevi una notifica quando un commento modificato a una comunicazione richiede la tua approvazione',
+                'permission'  => Permission::APPROVE_COMMENTS_COMUNICAZIONI,
             ],
             NotificationType::ATTACHMENT_UNDER_MODERATION->value => [
                 'label'       => 'Allegato da moderare',

@@ -31,9 +31,10 @@ final class RiepilogoDellInbox
 
     /**
      * @param  bool|int  $segnalazioni  le segnalazioni che chi legge vede ({@see CompitoDellaSegnalazione::chiVede()})
+     * @param  array<string, mixed>|null  $moderare  gli altri elementi da moderare che chi legge vede, e le prossime azioni che sa fare ({@see CompitoDaModerare::chiVede()}); senza, nessuno
      * @return array{counts: array<string, int|string|null>, grafici: array<string, mixed>, dove: list<array{condominio_id: ?int, nome: string, valore: int}>}
      */
-    public function leggi(?int $condominioId, bool|int $segnalazioni, ?FasceDeiCompiti $fasce = null): array
+    public function leggi(?int $condominioId, bool|int $segnalazioni, ?FasceDeiCompiti $fasce = null, ?array $moderare = null): array
     {
         $fasce ??= FasceDeiCompiti::oggi();
         $tipoSql = FasceDeiCompiti::sqlTipo();
@@ -46,7 +47,7 @@ final class RiepilogoDellInbox
         $righe = Evento::query()
             ->compitiAperti()
             ->when($condominioId !== null, fn ($q) => $q->whereHas('condomini', fn ($c) => $c->where('condomini.id', $condominioId)))
-            ->where(fn ($q) => CompitoDellaSegnalazione::soloQuelliCheVede($q, $segnalazioni))
+            ->where(fn ($q) => CompitoDellaSegnalazione::soloQuelliCheVede($q, $segnalazioni, $moderare))
             ->toBase()
             ->selectRaw("{$fasciaSql} as fascia_compito, {$tipoSql} as tipo_compito, {$condominioSql} as condominio_compito, COUNT(*) as quanti, MIN(eventi.start_time) as primo, "
                 . 'SUM(CASE WHEN ' . FasceDeiCompiti::sqlPriorita() . " = 'urgente' THEN 1 ELSE 0 END) as urgenti", $valori)
@@ -57,9 +58,9 @@ final class RiepilogoDellInbox
                 'urgenti' => (int) $r->urgenti])
             ->all();
 
-        $counts = ['all' => 0, 'scaduti' => 0, 'settimana' => 0, 'entro_30' => 0, 'bonifici' => 0, 'segnalazioni' => 0, 'segnalazioni_urgenti' => 0, 'piu_vecchio' => null];
+        $counts = ['all' => 0, 'scaduti' => 0, 'settimana' => 0, 'entro_30' => 0, 'bonifici' => 0, 'segnalazioni' => 0, 'segnalazioni_urgenti' => 0, 'da_moderare' => 0, 'piu_vecchio' => null];
         $eta = array_fill_keys(FasceDeiCompiti::DEL_GRAFICO, 0);
-        $fuori = ['segnalazioni' => 0, 'bonifici' => 0, 'oltre_30' => 0];
+        $fuori = ['segnalazioni' => 0, 'bonifici' => 0, 'da_moderare' => 0, 'oltre_30' => 0];
         $tipi = [];
         $perCondominio = [];
         foreach ($righe as $r) {
@@ -73,6 +74,7 @@ final class RiepilogoDellInbox
             $counts['settimana'] += $r['fascia'] === 'prossimi_7' ? $n : 0;
             $counts['entro_30'] += $r['fascia'] === 'fra_8_e_30' ? $n : 0;
             $counts['bonifici'] += $r['fascia'] === FasceDeiCompiti::BONIFICI ? $n : 0;
+            $counts['da_moderare'] += $r['fascia'] === FasceDeiCompiti::DA_MODERARE ? $n : 0;
             $counts['segnalazioni'] += $r['tipo'] === FasceDeiCompiti::SEGNALAZIONE ? $n : 0;
             $counts['segnalazioni_urgenti'] += $r['tipo'] === FasceDeiCompiti::SEGNALAZIONE ? $r['urgenti'] : 0;
             if (isset($eta[$r['fascia']])) {

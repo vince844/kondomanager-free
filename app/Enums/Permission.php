@@ -78,7 +78,9 @@ enum Permission: string
     case PUBLISH_COMMENTS_COMUNICAZIONI = 'Pubblica commenti comunicazioni';
     case APPROVE_COMMENTS_COMUNICAZIONI = 'Approva commenti comunicazioni';
     case EDIT_COMMENTS_COMUNICAZIONI = 'Modifica commenti comunicazioni';
+    case EDIT_OWN_COMMENTS_COMUNICAZIONI = 'Modifica propri commenti comunicazioni';
     case DELETE_COMMENTS_COMUNICAZIONI = 'Elimina commenti comunicazioni';
+    case DELETE_OWN_COMMENTS_COMUNICAZIONI = 'Elimina propri commenti comunicazioni';
     case VIEW_COMMENTS_COMUNICAZIONI = 'Visualizza commenti comunicazioni';
 
     // Allegati comunicazioni
@@ -193,7 +195,9 @@ enum Permission: string
             self::PUBLISH_COMMENTS_COMUNICAZIONI => 'Permette di pubblicare commenti lasciati in comunicazione in bacheca',
             self::APPROVE_COMMENTS_COMUNICAZIONI => 'Permette di approvare commenti lasciati in comunicazione in bacheca',
             self::EDIT_COMMENTS_COMUNICAZIONI => 'Permette di modificare commenti lasciati in comunicazione in bacheca',
+            self::EDIT_OWN_COMMENTS_COMUNICAZIONI => 'Permette di modificare solo i propri commenti lasciati in comunicazione in bacheca',
             self::DELETE_COMMENTS_COMUNICAZIONI => 'Permette di eliminare un commento lasciato in comunicazione in bacheca',
+            self::DELETE_OWN_COMMENTS_COMUNICAZIONI => 'Permette di eliminare solo i propri commenti lasciati in comunicazione in bacheca',
             self::VIEW_COMMENTS_COMUNICAZIONI => 'Permette di visualizzare i commenti delle comunicazioni in bacheca',
 
             // Allegati comunicazioni

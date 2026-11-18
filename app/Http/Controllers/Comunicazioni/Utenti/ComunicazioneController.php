@@ -18,6 +18,8 @@ use App\Models\Comunicazione;
 use App\Services\Allegati\AllegatoService;
 use App\Services\ComunicazioneService;
 use App\Support\Allegati\RegoleAllegati;
+use App\Support\Commenti\RegoleCommenti;
+use App\Support\Comunicazioni\ContatoriElenco;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\PaginaElenco;
@@ -79,6 +81,9 @@ class ComunicazioneController extends Controller
                 condominioIds: $userData->condominioIds,
                 validated: $validated
             );
+
+            // Decisione 441: quanti commenti e allegati vede il condòmino in ogni riga, lo stesso numero della scheda.
+            ContatoriElenco::mettiSulleRighe(request()->user(), $comunicazioni->getCollection(), 'user');
 
             // Get stats using the same service
             $stats = $this->comunicazioneService->getComunicazioniStats();
@@ -259,6 +264,8 @@ class ComunicazioneController extends Controller
                 'user'
             ),
             'allegati_config' => RegoleAllegati::configScheda($user, $comunicazione),
+            'commenti_config' => RegoleCommenti::configSchedaComunicazione($user, $comunicazione),
+            'discussioni'     => RegoleCommenti::discussioniInScheda($user, $comunicazione, 'user'),
         ]);
     }
 
@@ -336,6 +343,9 @@ class ComunicazioneController extends Controller
                 // Detach anagrafica if it was previously attached
                 $comunicazione->anagrafiche()->detach($anagrafica->id);
             }
+
+            // I destinatari decidono le discussioni: il compito «Da moderare» si porta a com'è (le tabelle ponte non hanno eventi).
+            app(\App\Services\Gestionale\Inbox\CompitoDaModerare::class)->sincronizza($comunicazione->fresh() ?? $comunicazione);
 
             DB::commit();
 

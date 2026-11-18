@@ -196,8 +196,50 @@ return [
         'action'  => 'Visualizza Segnalazione',
     ],
 
+    // Commento modificato in attesa di approvazione
+    'edited_pending_ticket_comment' => [
+        'subject' => 'Commento modificato in attesa di approvazione',
+        'line_1'  => ':user ha modificato un commento per la segnalazione ":title":',
+        'line_2'  => 'Accedi per approvare o rifiutare il commento.',
+        'action'  => 'Visualizza segnalazione',
+    ],
+
     // Commento eliminato
     'deleted_ticket_comment' => [
+        'subject' => 'Un tuo commento è stato rimosso',
+        'line_1'  => 'Il tuo commento sulla :entity è stato rimosso o nascosto da un amministratore.',
+    ],
+
+    // Commenti alle comunicazioni
+    'new_communication_comment' => [
+        'subject'  => 'Nuovo commento su: :entity',
+        'greeting' => 'Salve!',
+        'line_1'   => ':user ha lasciato un nuovo commento:',
+        'action'   => 'Visualizza la comunicazione',
+        'line_2'   => 'Ricevi questa email perché sei coinvolto in questa comunicazione.',
+    ],
+
+    'approved_communication_comment' => [
+        'subject' => 'Il tuo commento è stato approvato',
+        'line_1'  => 'Il tuo commento sulla :entity è stato approvato e pubblicato.',
+        'action'  => 'Visualizza comunicazione',
+    ],
+
+    'pending_communication_comment' => [
+        'subject' => 'Nuovo commento da moderare su :entity',
+        'line_1'  => ':user ha scritto un commento in ":title" che richiede approvazione.',
+        'line_2'  => 'Accedi per approvare o rifiutare il commento.',
+        'action'  => 'Visualizza comunicazione',
+    ],
+
+    'edited_pending_communication_comment' => [
+        'subject' => 'Commento modificato in attesa di approvazione',
+        'line_1'  => ':user ha modificato un commento per la comunicazione ":title":',
+        'line_2'  => 'Accedi per approvare o rifiutare il commento.',
+        'action'  => 'Visualizza comunicazione',
+    ],
+
+    'deleted_communication_comment' => [
         'subject' => 'Un tuo commento è stato rimosso',
         'line_1'  => 'Il tuo commento sulla :entity è stato rimosso o nascosto da un amministratore.',
     ],

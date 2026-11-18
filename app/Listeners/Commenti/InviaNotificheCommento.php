@@ -8,10 +8,6 @@ namespace App\Listeners\Commenti;
 use App\Events\Commenti\CommentoCreato;
 use App\Notifications\Commenti\NuovoCommentoNotification;
 use App\Notifications\Commenti\CommentoInAttesaNotification;
-use App\Models\User;
-use App\Models\NotificationPreference;
-use App\Enums\NotificationType;
-use App\Enums\Permission;
 use App\Services\CommentoNotificationService;
 use App\Services\CommentoEventoService;
 use Illuminate\Support\Facades\Notification;
@@ -32,23 +28,13 @@ class InviaNotificheCommento
         $commento = $evento->commento;
 
         if ($commento->eInAttesa()) {
-            // Notifica gli amministratori se il commento richiede moderazione
-            $admins = User::permission(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value)->get();
-            
-            $enabledAdmins = NotificationPreference::whereIn('user_id', $admins->pluck('id'))
-                ->where('type', NotificationType::COMMENT_UNDER_MODERATION->value)
-                ->where('enabled', true)
-                ->pluck('user_id')
-                ->toArray();
-            
-            $adminsDaNotificare = $admins->filter(fn ($u) => in_array($u->id, $enabledAdmins) && $u->email);
-            
-            if ($adminsDaNotificare->isNotEmpty()) {
-                Notification::send($adminsDaNotificare, new CommentoInAttesaNotification($commento));
+            $destinatari = $this->service->destinatariInAttesa($commento);
+
+            if ($destinatari->isNotEmpty()) {
+                Notification::send($destinatari, new CommentoInAttesaNotification($commento));
             }
         } else {
-            // Flusso normale: notifica i partecipanti
-            $destinatari = $this->service->destinatari($commento);
+            $destinatari = $this->service->destinatariPubblicato($commento, [(int) $commento->user_id]);
 
             if ($destinatari->isNotEmpty()) {
                 Notification::send($destinatari, new NuovoCommentoNotification($commento));

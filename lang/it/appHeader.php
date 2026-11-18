@@ -15,6 +15,7 @@ return [
     'segnalazioni'  => "Segnalazioni",
     'documenti'     => "Documenti",
     'allegati'      => "Allegati",
+    'commenti'      => "Commenti",
     'agenda'        => "Agenda",
     'repository'    => "Repository",
     'documentation' => "Documentazione",

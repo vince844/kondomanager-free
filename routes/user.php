@@ -5,6 +5,7 @@
 
 use App\Http\Controllers\Allegati\AllegatoController;
 use App\Http\Controllers\Anagrafiche\Utenti\AnagraficaController;
+use App\Http\Controllers\Comunicazioni\ComunicazioneCommentoController;
 use App\Http\Controllers\Comunicazioni\Utenti\ComunicazioneController;
 use App\Http\Controllers\Documenti\Utenti\CategoriaDocumentoController;
 use App\Http\Controllers\Documenti\Utenti\DocumentoController;
@@ -59,6 +60,9 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
         ->parameters([
             'comunicazioni' => 'comunicazione'
         ]);
+
+    Route::post('comunicazioni/{comunicazione}/commenti', [ComunicazioneCommentoController::class, 'store'])
+        ->name('comunicazioni.commenti.store');
 
     /*
     |--------------------------------------------------------------------------

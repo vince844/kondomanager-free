@@ -7,6 +7,23 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.11] - I commenti alle comunicazioni
+
+**Tocca il database.** L'aggiornamento esegue da solo dieci migrazioni nuove e tre delle impostazioni: la moderazione dei commenti per ogni comunicazione e segnalazione, la discussione di ogni commento, e sull'accordo di rientro la scelta sulla parte della rata fuori dall'accordo, il registro delle modifiche e la scelta fatta nella successione. Cinque migrazioni scrivono dati: spengono i commenti delle comunicazioni che ci sono già, creano le preferenze nuove delle email dei commenti, creano i compiti «Da moderare» dell'Action inbox e riallineano le successioni registrate con la versione precedente. «Forza moderazione commenti» lascia il posto a due impostazioni, una per le comunicazioni e una per le segnalazioni. Due permessi nuovi; l'aggiornamento riallinea da solo i ruoli di serie. I requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.
+
+**Che cosa fa la beta.**
+- **I commenti alle comunicazioni**, nel pannello e nel portale: una discussione sola per tutti i palazzi a cui va la comunicazione, o una per persona se va a persone o è privata, la moderazione per ogni comunicazione, le email; togliendo un palazzo dai destinatari spariscono anche i commenti scritti da lì, e tornano se lo si rimette. Le comunicazioni che ci sono già hanno i commenti spenti: li accendi tu dove vuoi la discussione.
+- **Chi modera i commenti**: approvare, nascondere, modificare ed eliminare i commenti degli altri vuole l'accesso al pannello e il permesso insieme; il collaboratore di serie modifica ed elimina solo i propri, e per farlo moderare serve un ruolo creato da te. Ogni segnalazione ha la sua moderazione dei commenti.
+- **Quanti commenti e allegati** negli elenchi delle comunicazioni e delle segnalazioni, nel pannello e nel portale, e nel pannello «N commenti da approvare» e «N allegati da approvare»; nel portale il condòmino ritrova anche le sue segnalazioni e comunicazioni in attesa.
+- **Le schede delle segnalazioni e delle comunicazioni**: i commenti a nuvoletta, il commento in attesa in ambra, «Approva» e «Mostra di nuovo» come icone, le azioni sui commenti e sugli allegati senza ricaricare la pagina; nella card a destra «Bloccata» e «In evidenza» solo quando valgono, e nella comunicazione «Leggi tutto» e i destinatari.
+- **La pagina «Commenti»**: tutti i commenti in un posto, con i filtri, le risposte e la moderazione anche in blocco; un commento nascosto torna visibile con «Mostra di nuovo».
+- **«Da moderare» nell'Action inbox**: commenti, allegati, comunicazioni, documenti ed eventi in attesa, un compito per elemento, per chi può moderare.
+- **Gli interessi con l'accordo di rientro**: i giorni prima dell'accordo restano nella proposta; sulla parte della rata fuori dall'accordo gli interessi continuano, oppure restano sospesi se lo scegli; con la successione l'accordo del defunto resta in regola fino al decesso, se non scegli altrimenti.
+- **La licenza** in ogni file sorgente.
+- **Corretto**: la ricerca delle fatture passive non esce più dal condominio; il promemoria del defunto dopo la successione; un versamento del giorno dell'accordo che contava due volte.
+
+---
+
 ## [1.12.0-beta.10] - La nota sintetica e il recupero dei crediti
 
 **Tocca il database.** L'aggiornamento esegue da solo dieci migrazioni nuove e due delle impostazioni: la nota sintetica del rendiconto e le sue versioni, le regole del recupero dei crediti, il calendario e la decadenza dell'accordo di rientro, le risposte ai compiti dell'Inbox, le impostazioni di ogni condominio, un'etichetta sui piani rate. L'autore di un documento può ora restare vuoto: eliminare un utente non cancella più i suoi documenti. Due migrazioni scrivono dati: creano il compito nell'Inbox per ogni segnalazione già aperta e riallineano le rate segnalate dal portale rimaste «in verifica» con il compito chiuso. Nessun permesso nuovo; i requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.

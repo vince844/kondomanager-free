@@ -11,6 +11,7 @@ use App\Enums\RuoloAnagraficaImmobile;
 use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
+use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
 use App\Models\TitolaritaImmobile;
@@ -388,10 +389,17 @@ class AnteprimaPassaggio
         if (($fraseAccessori = $anteprima['rate']['arretrato']['frase_accessori'] ?? null) !== null) {
             $anteprima['rate']['frasi'][] = $fraseAccessori;
         }
+        foreach ($anteprima['rate']['arretrato']['frasi_segnalati'] ?? [] as $frase) {
+            $anteprima['rate']['frasi'][] = $frase;
+        }
         // Un accordo di rientro in corso di chi esce, con rate coperte sulle unità del passaggio: l'accordo è suo e il passaggio non lo tocca.
         if ($uscente !== null && ($accordo = $this->accordoAperto($condominio, (int) $uscente->anagrafica_id, $immobileIds,
             $tipo === 'successione' && $this->arretratoAgliEredi($dati), $decorrenza)) !== null) {
             $anteprima['rate']['frasi'][] = $accordo;
+        }
+        // Decisione 454: con l'arretrato agli eredi, l'accordo del defunto che la successione chiude, per gli interessi: la scelta e la sua frase.
+        if ($uscente !== null && $tipo === 'successione' && $this->arretratoAgliEredi($dati) && is_array($anteprima['rate']['arretrato'] ?? null)) {
+            $anteprima['rate']['arretrato'] += $this->accordiDelDefunto($condominio, (int) $uscente->anagrafica_id, $immobileIds, CarbonImmutable::instance($decorrenza), $dati);
         }
 
         if ($sceltaDelConguaglio) {
@@ -2506,19 +2514,40 @@ class AnteprimaPassaggio
         // risultato con il conguaglio, che per ogni erede è la sua quota della posizione del defunto con le bozze passate: i due segni
         // divergono quando il defunto ha lasciato aperto meno dei giorni degli eredi (le rate mensili pagate fino al decesso).
         $lasciato = (int) array_sum(array_map(fn ($g) => (int) $g['posizione'] + (int) $g['bozze'], $gruppi));
+
+        // Decisione 448: un accessorio con un pagamento segnalato dal portale e non verificato resta al defunto, come la bozza segnalata (R17), salvo che
+        // l'amministratore lo passi comunque agli eredi; resta fuori anche dalle righe dell'arretrato, sopra, come tutti gli accessori.
+        $segnalate = AccessoriAgliEredi::segnalate($accessori, $defunto);
+        $scelte = array_map('intval', (array) ($dati['accessori_segnalati_agli_eredi'] ?? []));
+        $passano = fn (RataQuote $q) => ! isset($segnalate[(int) $q->id]) || in_array((int) $q->id, $scelte, true);
+        // Quelli che restano al defunto: la frase dell'arretrato non dice che la sua posizione si chiude senza nominarli.
+        $restano = $accessori->filter(fn (RataQuote $q) => ! $passano($q))->values();
+        $salvo = $restano->isEmpty() ? '' : sprintf(', salvo %s, che %s a suo nome finché %s non %s verificat%s',
+            $this->elenco($restano->map(fn (RataQuote $q) => sprintf('«%s» (%s)', trim((string) ($q->rata?->descrizione ?? 'Addebito')),
+                MoneyHelper::format((int) $q->importo - (int) $q->importo_pagato)))->all()),
+            $restano->count() === 1 ? 'resta' : 'restano', $restano->count() === 1 ? 'la segnalazione' : 'le segnalazioni',
+            $restano->count() === 1 ? 'è' : 'sono', $restano->count() === 1 ? 'a' : 'e');
         $conIlConguaglio = match (true) {
             // Ultima revisione (UE1): l'art. 754 c.c. sta sul debito dell'eredità (la cifra netta, qui sotto), non su ciò che resta aperto,
             // che comprende i giorni degli eredi.
-            $lasciato > 0 => sprintf('Con il conguaglio, ogni erede paga la sua quota di ciò che %s ha lasciato aperto, %s, e la posizione di %s si chiude.', $nome, MoneyHelper::format($lasciato), $nome),
-            $lasciato < 0 => sprintf('Con il conguaglio, ogni erede riceve la sua quota di ciò che %s aveva versato in più, %s, e la posizione di %s si chiude.', $nome, MoneyHelper::format(abs($lasciato)), $nome),
+            $lasciato > 0 => sprintf('Con il conguaglio, ogni erede paga la sua quota di ciò che %s ha lasciato aperto, %s, e la posizione di %s si chiude%s.', $nome, MoneyHelper::format($lasciato), $nome, $salvo),
+            $lasciato < 0 => sprintf('Con il conguaglio, ogni erede riceve la sua quota di ciò che %s aveva versato in più, %s, e la posizione di %s si chiude%s.', $nome, MoneyHelper::format(abs($lasciato)), $nome, $salvo),
             // Ultima revisione (UE2): la parte dei giorni dal decesso e la quota del credito si compensano, su tutto il piano.
-            default => sprintf('Con il conguaglio la posizione di %s si chiude: per ogni erede la parte dei giorni dal decesso e la quota del credito si compensano, e su questi piani nessun erede ha niente da pagare o da ricevere.', $nome),
+            default => sprintf('Con il conguaglio la posizione di %s si chiude%s: per ogni erede la parte dei giorni dal decesso e la quota del credito si compensano, e su questi piani nessun erede ha niente da pagare o da ricevere.', $nome, $salvo),
         };
-
-        $divisione = AccessoriAgliEredi::divisione($accessori, $pesi);
+        $divisione = AccessoriAgliEredi::divisione($accessori->filter($passano)->values(), $pesi, $segnalate);
+        $segnalati = $accessori->filter(fn (RataQuote $q) => isset($segnalate[(int) $q->id]))->map(fn (RataQuote $q) => [
+            'quota_id' => (int) $q->id,
+            'causale' => trim((string) ($q->rata?->descrizione ?? 'Addebito')),
+            'aperto' => (int) $q->importo - (int) $q->importo_pagato,
+            'aperto_formattato' => MoneyHelper::format((int) $q->importo - (int) $q->importo_pagato),
+            'passa' => $passano($q),
+        ])->values()->all();
 
         return ['scelta' => Subentro::ARRETRATO_AGLI_EREDI, 'legato' => false, 'resta' => 0, 'resta_formattato' => MoneyHelper::format(0), 'eredi' => $eredi, 'righe' => $righe, 'totale' => $totale, 'fonti' => $fonti,
             'accessori' => $divisione, 'frase_accessori' => AccessoriAgliEredi::frase($divisione, $nome, $nomi),
+            'accessori_segnalati' => $segnalati,
+            'frasi_segnalati' => array_map(fn (array $a) => AccessoriAgliEredi::fraseSegnalato($a['causale'], $a['aperto'], $nome, $a['passa']), $segnalati),
             'frase' => match (true) {
                 $totale === 0 => null,
                 // Rilievo L1: un credito del defunto non è un debito dell'eredità (l'art. 754 c.c. parla dei debiti).
@@ -3213,6 +3242,46 @@ class AnteprimaPassaggio
                 ? sprintf('con l\'arretrato agli eredi %s per la successione, dal %s, e il debito che resta passa agli eredi con l\'arretrato, per quota; con ognuno puoi registrare un accordo nuovo.',
                     $uno ? 'l\'accordo si chiude' : 'gli accordi si chiudono', CarbonImmutable::parse($decorrenza)->format('d/m/Y'))
                 : 'le rate che copre restano a suo nome.');
+    }
+
+    /**
+     * Decisione 454: gli accordi di rientro del defunto che la successione con l'arretrato agli eredi chiude, per gli interessi del defunto. Di serie
+     * l'accordo che reggeva il giorno prima del decesso resta in regola fino al decesso; l'amministratore può scegliere che valga come una decadenza. La
+     * scelta conta solo per un accordo che reggeva: per gli altri la frase dice che i giorni tornano comunque. Senza accordi, niente.
+     *
+     * @param list<int> $immobileIds
+     * @return array{accordi_del_defunto?: list<array{id:int, data_accordo:string, in_regola:bool}>, accordo_del_defunto?: string, frase_accordo_del_defunto?: string}
+     */
+    private function accordiDelDefunto(Condominio $condominio, int $defuntoId, array $immobileIds, CarbonImmutable $decorrenza, array $dati): array
+    {
+        $accordi = AccordiDellaSuccessione::perLAnteprima((int) $condominio->id, $defuntoId, $immobileIds, $decorrenza);
+        if ($accordi === []) {
+            return [];
+        }
+        $scelta = ($dati['accordo_del_defunto'] ?? null) === \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_DECADENZA
+            ? \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_DECADENZA : \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA;
+        $nome = (string) (Anagrafica::find($defuntoId)?->nome ?? 'il defunto');
+        $giorno = fn (array $a) => CarbonImmutable::parse($a['data_accordo'])->format('d/m/Y');
+        $inRegola = array_values(array_filter($accordi, fn ($a) => $a['in_regola']));
+        $fuori = array_values(array_filter($accordi, fn ($a) => ! $a['in_regola']));
+        $frasi = [];
+        if ($inRegola !== []) {
+            $chi = sprintf('%s di %s del %s', count($inRegola) === 1 ? 'l\'accordo di rientro' : 'gli accordi di rientro', $nome, $this->elenco(array_map($giorno, $inRegola)));
+            $uno = count($inRegola) === 1;
+            $frasi[] = $scelta === \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA
+                ? sprintf('Per gli interessi %s %s in regola fino al decesso: nella proposta degli interessi di %s i giorni dell\'accordo restano fuori, e dal %s non ne maturano altri.',
+                    $chi, $uno ? 'resta' : 'restano', $nome, $decorrenza->format('d/m/Y'))
+                : sprintf('Per gli interessi %s %s come una decadenza dal %s: nella proposta degli interessi di %s tornano anche i giorni dell\'accordo.',
+                    $chi, $uno ? 'vale' : 'valgono', $decorrenza->format('d/m/Y'), $nome);
+        }
+        if ($fuori !== []) {
+            $uno = count($fuori) === 1;
+            $frasi[] = sprintf('%s di %s del %s non %s in regola al decesso (il calendario è finito con rate non versate): nella proposta degli interessi di %s i giorni '
+                . 'dell\'accordo tornano comunque.', $uno ? 'L\'accordo di rientro' : 'Gli accordi di rientro', $nome, $this->elenco(array_map($giorno, $fuori)),
+                $uno ? 'era' : 'erano', $nome);
+        }
+
+        return ['accordi_del_defunto' => $accordi, 'accordo_del_defunto' => $scelta, 'frase_accordo_del_defunto' => implode(' ', $frasi)];
     }
 
     /** @return Collection<int, array{rata: int, scadenza: string, importo: int, importo_formattato: string, intestatario: string, piano: string}> */

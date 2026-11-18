@@ -11,6 +11,7 @@ use App\Http\Requests\Commento\UpdateCommentoRequest;
 use App\Models\Commento;
 use App\Models\Segnalazione;
 use App\Services\CommentoService;
+use App\Support\Commenti\RegoleCommenti;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -29,7 +30,8 @@ class CommentoController extends Controller
      */
     public function store(StoreCommentoRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
-        Gate::authorize('create', [Commento::class, $segnalazione]);
+        $porta = $request->routeIs('admin.*') ? 'admin' : 'user';
+        Gate::authorize('create', [Commento::class, $segnalazione, $porta]);
 
         try {
             $commento = $this->commentoService->crea(
@@ -60,8 +62,12 @@ class CommentoController extends Controller
         Gate::authorize('update', $commento);
 
         try {
-            $this->commentoService->aggiorna($commento, $request->validated('corpo'));
-            return back()->with($this->flashSuccess('Commento modificato.'));
+            $tornaInAttesa = $this->commentoService->aggiorna($commento, $request->validated('corpo'), $request->user());
+            $messaggio = $tornaInAttesa
+                ? 'Commento modificato. Tornerà visibile dopo l\'approvazione.'
+                : 'Commento modificato.';
+
+            return back()->with($this->flashSuccess($messaggio));
 
         } catch (\Throwable $e) {
             Log::error('Errore modifica commento ID ' . $commento->id . ': ' . $e->getMessage());
@@ -95,7 +101,7 @@ class CommentoController extends Controller
      */
     public function approva(Commento $commento): RedirectResponse
     {
-        Gate::authorize('moderate', $commento);
+        Gate::allowIf(RegoleCommenti::puoApprovare(request()->user(), $commento));
 
         try {
             $this->commentoService->approva($commento, request()->user());
@@ -114,7 +120,7 @@ class CommentoController extends Controller
      */
     public function modera(Commento $commento): RedirectResponse
     {
-        Gate::authorize('moderate', $commento);
+        Gate::allowIf(RegoleCommenti::puoNascondere(request()->user(), $commento));
 
         try {
             $this->commentoService->modera($commento, request()->user());
@@ -123,6 +129,25 @@ class CommentoController extends Controller
         } catch (\Throwable $e) {
             Log::error('Errore moderazione commento ID ' . $commento->id . ': ' . $e->getMessage());
             return back()->with($this->flashError('Impossibile nascondere il commento. Riprova.'));
+        }
+    }
+
+    /**
+     * Rimette visibile un commento nascosto (decisione 456).
+     *
+     * POST commenti/{commento}/mostra
+     */
+    public function mostra(Commento $commento): RedirectResponse
+    {
+        Gate::allowIf(RegoleCommenti::puoMostrareDiNuovo(request()->user(), $commento));
+
+        try {
+            $this->commentoService->mostraDiNuovo($commento, request()->user());
+            return back()->with($this->flashSuccess('Commento di nuovo visibile.'));
+
+        } catch (\Throwable $e) {
+            Log::error('Errore nel mostrare di nuovo il commento ID ' . $commento->id . ': ' . $e->getMessage());
+            return back()->with($this->flashError('Impossibile mostrare di nuovo il commento. Riprova.'));
         }
     }
 
@@ -148,5 +173,26 @@ class CommentoController extends Controller
             Log::error('Errore toggle commenti segnalazione ID ' . $segnalazione->id . ': ' . $e->getMessage());
             return back()->with($this->flashError('Impossibile modificare le impostazioni dei commenti.'));
         }
+    }
+
+    public function impostazioni(\Illuminate\Http\Request $request, Segnalazione $segnalazione): RedirectResponse
+    {
+        Gate::authorize('update', $segnalazione);
+
+        $validated = $request->validate([
+            'can_comment'       => 'required|boolean',
+            'commenti_moderati' => 'required|boolean',
+        ]);
+
+        // «Commenti in moderazione» la cambia solo chi modera (`RegoleCommenti::puoImpostareModerazione`): per gli altri il campo
+        // si ignora, e «Consenti commenti» si salva lo stesso.
+        $segnalazione->update(array_merge(
+            ['can_comment' => (bool) $validated['can_comment']],
+            RegoleCommenti::puoImpostareModerazione($request->user(), $segnalazione)
+                ? ['commenti_moderati' => (bool) $validated['commenti_moderati']]
+                : [],
+        ));
+
+        return back()->with($this->flashSuccess('Impostazioni commenti aggiornate.'));
     }
 }

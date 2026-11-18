@@ -196,10 +196,51 @@ return [
         'action'  => 'View the report',
     ],
 
+    'edited_pending_ticket_comment' => [
+        'subject' => 'Comentario modificado pendiente de aprobación',
+        'line_1'  => ':user ha modificado un comentario en la incidencia ":title":',
+        'line_2'  => 'Inicia sesión para aprobar o rechazar el comentario.',
+        'action'  => 'Ver incidencia',
+    ],
+
     // Deleted comment
     'deleted_ticket_comment' => [
         'subject' => 'Your comment has been removed',
         'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
+    ],
+
+    // Communication comments
+    'new_communication_comment' => [
+        'subject'  => 'Nuevo comentario en: :entity',
+        'greeting' => '¡Hola!',
+        'line_1'   => ':user ha dejado un nuevo comentario:',
+        'action'   => 'Ver la comunicación',
+        'line_2'   => 'Recibes este correo porque estás involucrado en esta comunicación.',
+    ],
+
+    'approved_communication_comment' => [
+        'subject' => 'Tu comentario ha sido aprobado',
+        'line_1'  => 'Tu comentario sobre :entity ha sido aprobado y publicado.',
+        'action'  => 'Ver la comunicación',
+    ],
+
+    'pending_communication_comment' => [
+        'subject' => 'Nuevo comentario para moderar en :entity',
+        'line_1'  => ':user ha escrito un comentario en ":title" que requiere aprobación.',
+        'line_2'  => 'Inicia sesión para aprobar o rechazar el comentario.',
+        'action'  => 'Ver la comunicación',
+    ],
+
+    'edited_pending_communication_comment' => [
+        'subject' => 'Comentario modificado pendiente de aprobación',
+        'line_1'  => ':user ha modificado un comentario en el comunicado ":title":',
+        'line_2'  => 'Inicia sesión para aprobar o rechazar el comentario.',
+        'action'  => 'Ver comunicado',
+    ],
+
+    'deleted_communication_comment' => [
+        'subject' => 'Tu comentario ha sido eliminado',
+        'line_1'  => 'Tu comentario sobre :entity ha sido eliminado u ocultado por un administrador.',
     ],
 
     // Common strings for all notifications

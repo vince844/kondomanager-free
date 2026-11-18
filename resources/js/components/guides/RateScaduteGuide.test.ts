@@ -74,7 +74,13 @@ describe('la guida di «Rate scadute»', () => {
         expect(testo).toContain('(art. 1194 c.c.)');
         expect(testo).toContain('La decadenza la registri tu, con «Registra la decadenza»');
         expect(testo).toContain('l\'accordo si chiude per la successione');
-        expect(testo).toContain('la proposta degli interessi di mora lascia fuori le rate che copre');
+        // Decisione 438: dell'accordo restano fuori i giorni dalla sua data, quelli prima restano nella proposta.
+        expect(testo).toContain('la proposta degli interessi di mora lascia fuori, dalla data dell\'accordo in poi, le rate che copre');
+        // Decisione 450: la scelta sulla parte della rata fuori dall'accordo.
+        expect(testo).toContain('Su una rata coperta solo in parte, sulla parte fuori dall\'accordo gli interessi continuano; se nell\'accordo scegli «restano sospesi '
+            + 'finché l\'accordo regge», dalla data dell\'accordo resta fuori tutta la rata. La scheda dell\'accordo dice la scelta.');
+        expect(testo).toContain('i giorni prima dell\'accordo restano nella proposta');
+        expect(testo).toContain('Con la decadenza registrata tornano nella proposta anche i giorni dell\'accordo.');
         // Una rata emessa dopo la scadenza conta dal giorno dopo l'emissione: prima di essere chiesta non è in ritardo.
         expect(testo).toContain('I giorni vanno dal giorno dopo la scadenza, più quelli che le regole del condominio concedono (o dal giorno dopo l\'emissione, se la rata è emessa più tardi), alla data della proposta compresa.');
         // Il denaro sulle rate dell'accordo conta per l'accordo con la scelta o senza; la scelta dice dove va prima.

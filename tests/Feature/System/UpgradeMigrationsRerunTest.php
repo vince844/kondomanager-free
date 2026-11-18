@@ -300,6 +300,28 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // I compiti dell'Inbox delle segnalazioni già aperte o in lavorazione: solo dati, nessuna struttura; rieseguita non fa doppioni. Il suo effetto lo prova
     // `tests/Feature/Dashboard/ActionInboxSegnalazioniTest.php`.
     '2026_11_15_230000_crea_i_compiti_delle_segnalazioni_aperte',
+    // 1.12.0-beta.11 (Coda 559, i commenti alle comunicazioni): la colonna «commenti_moderati» su `comunicazioni` e quella su `segnalazioni`, una guardia per
+    // colonna; la colonna «discussione_user_id» su `commenti` e la sua chiave esterna, due statement con due guardie; i commenti spenti sulle comunicazioni
+    // che ci sono già (solo dati, rieseguita non trova niente da cambiare); le preferenze di notifica nuove, scritte solo per chi non le ha già. Gli stati a
+    // metà li prova `tests/Feature/CommentiComunicazioni/CommentiMigrazioniTest.php`, che prova anche le tre migrazioni delle impostazioni.
+    '2026_11_10_100000_add_commenti_moderati_to_comunicazioni',
+    '2026_11_10_100100_add_discussione_user_id_to_commenti',
+    '2026_11_10_100200_spegni_commenti_comunicazioni_esistenti',
+    '2026_11_10_100400_seed_preferenze_notifica_commenti_comunicazioni',
+    '2026_11_11_110000_add_commenti_moderati_to_segnalazioni',
+    '2026_11_11_130000_seed_preferenze_notifica_commento_modificato',
+    // 1.12.0-beta.11 (decisione 450): sull'accordo di rientro la scelta degli interessi sulla parte della rata fuori dall'accordo, una colonna con la sua
+    // guardia; gli accordi che ci sono prendono il di serie dal valore della colonna.
+    '2026_11_17_100000_add_interessi_parte_fuori_to_accordi_rientro',
+    // 1.12.0-beta.11 (decisioni 445 e 449): i compiti «da moderare» dell'Action inbox — chiude i compiti generici di prima e scrive quello unico di ogni elemento
+    // con qualcosa in attesa: solo dati, nessuna struttura; rieseguita non cambia niente. Il suo effetto lo prova `tests/Feature/Dashboard/ModerazioneMigrazioneTest.php`.
+    '2026_11_17_120000_crea_i_compiti_da_moderare',
+    // 1.12.0-beta.11 (decisioni 450 e 454): sull'accordo di rientro il registro delle scelte cambiate dopo la registrazione e la chiusura per la successione,
+    // due colonne con due guardie; poi, solo dati, le successioni con l'arretrato agli eredi registrate prima (i promemoria degli accessori passati agli eredi
+    // seguono le quote, l'accordo del defunto prende il di serie): rieseguita non cambia niente. Il suo effetto lo prova
+    // `tests/Feature/Gestionale/SuccessioniRegistratePrimaMigrazioneTest.php`.
+    '2026_11_17_140000_add_registro_e_successione_to_accordi_rientro',
+    '2026_11_17_150000_riallinea_le_successioni_registrate_prima',
     // La riga «passo_proposto» delle impostazioni generali si toglie (la scelta è del condominio): `deleteIfExists`, rieseguita non trova niente. Il suo
     // effetto lo prova `tests/Feature/Impostazioni/ImpostazioniPassoPropostoTest.php`.
     'settings/2026_11_15_200100_remove_passo_proposto_from_general_settings',

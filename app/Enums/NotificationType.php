@@ -28,8 +28,16 @@ enum NotificationType: string
     // Commenti
     case NEW_COMMENT = 'new_comment';
     case COMMENT_UNDER_MODERATION = 'comment_under_moderation';
+    case COMMENT_EDITED_UNDER_MODERATION = 'comment_edited_under_moderation';
     case COMMENT_APPROVED = 'comment_approved';
     case COMMENT_DELETED = 'comment_deleted';
+
+    // Commenti comunicazioni
+    case NEW_COMMUNICATION_COMMENT = 'new_communication_comment';
+    case COMMUNICATION_COMMENT_UNDER_MODERATION = 'communication_comment_under_moderation';
+    case COMMUNICATION_COMMENT_EDITED_UNDER_MODERATION = 'communication_comment_edited_under_moderation';
+    case COMMUNICATION_COMMENT_APPROVED = 'communication_comment_approved';
+    case COMMUNICATION_COMMENT_DELETED = 'communication_comment_deleted';
 
     // Allegati
     case NEW_ATTACHMENT = 'new_attachment';
@@ -57,10 +65,18 @@ enum NotificationType: string
             self::UPDATED_ARCHIVE_DOCUMENT => 'Documento in archivio aggiornato',
             
             // Commenti
-            self::NEW_COMMENT => 'Nuovo commento',
-            self::COMMENT_UNDER_MODERATION => 'Commento in attesa di moderazione',
-            self::COMMENT_APPROVED => 'Commento approvato',
-            self::COMMENT_DELETED => 'Commento eliminato',
+            self::NEW_COMMENT => 'Nuovo commento (segnalazioni)',
+            self::COMMENT_UNDER_MODERATION => 'Commento da moderare (segnalazioni)',
+            self::COMMENT_EDITED_UNDER_MODERATION => 'Commento modificato da moderare (segnalazioni)',
+            self::COMMENT_APPROVED => 'Commento approvato (segnalazioni)',
+            self::COMMENT_DELETED => 'Commento eliminato o nascosto (segnalazioni)',
+
+            // Commenti comunicazioni
+            self::NEW_COMMUNICATION_COMMENT => 'Nuovo commento (comunicazioni)',
+            self::COMMUNICATION_COMMENT_UNDER_MODERATION => 'Commento da moderare (comunicazioni)',
+            self::COMMUNICATION_COMMENT_EDITED_UNDER_MODERATION => 'Commento modificato da moderare (comunicazioni)',
+            self::COMMUNICATION_COMMENT_APPROVED => 'Commento approvato (comunicazioni)',
+            self::COMMUNICATION_COMMENT_DELETED => 'Commento eliminato o nascosto (comunicazioni)',
 
             // Allegati
             self::NEW_ATTACHMENT => 'Nuovo allegato',

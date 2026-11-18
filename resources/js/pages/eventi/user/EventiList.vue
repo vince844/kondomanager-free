@@ -3,13 +3,6 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
-In questo file dell'**Agenda/Eventi**, la situazione è più complessa perché gestisci eventi ricorrenti, ma i problemi di base rimangono gli stessi: la sincronizzazione delle props e la struttura della paginazione.
-
-Inoltre, ho aggiunto i parametri `date_from`, `date_to` e `category_id` nei vari passaggi di navigazione, altrimenti se l'utente filtrasse per data e poi cambiasse pagina, perderebbe i filtri temporali.
-
-Ecco il file completo e corretto:
-
-```vue
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
@@ -418,5 +411,3 @@ async function editEvento() {
     </AlertDialog>
   </AppLayout>
 </template>
-
-```

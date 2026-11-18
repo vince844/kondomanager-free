@@ -99,7 +99,7 @@ class HandleInertiaRequests extends Middleware
 
                 // I compiti aperti con il giorno arrivato (oggi compreso, nel giorno dell'amministratore), i bonifici segnalati e le segnalazioni che questo
                 // utente può aprire: la regola dell'Action inbox, scritta in un posto (`FasceDeiCompiti`, `CompitoDellaSegnalazione::chiVede`).
-                return InboxService::numeroPerIlMenu(\App\Services\Gestionale\Inbox\CompitoDellaSegnalazione::chiVede($request->user()));
+                return InboxService::numeroPerIlMenu(\App\Services\Gestionale\Inbox\CompitoDellaSegnalazione::chiVede($request->user()), \App\Services\Gestionale\Inbox\CompitoDaModerare::chiVede($request->user()));
             }) : 0,
 
             'allegati_in_attesa' => fn () => Schema::hasTable('documenti')

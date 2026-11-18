@@ -46,6 +46,9 @@ final class TipiDeiCompiti
         'segnalazione_guasto' => ['nome' => 'Segnalazioni', 'azione' => 'Apri la segnalazione', 'pagina' => true],
         'commento' => ['nome' => 'Commenti', 'azione' => 'Rispondi al commento', 'pagina' => true],
         'allegato' => ['nome' => 'Allegati da approvare', 'azione' => 'Approva gli allegati', 'pagina' => true],
+        // Ciò che aspetta un'approvazione (decisioni 445 e 449): un compito per elemento; il testo della prossima azione lo dice il compito (`meta.azione`) e il
+        // collegamento è la pagina filtrata sull'elemento (`meta.action_url`).
+        'da_moderare' => ['nome' => 'Da moderare', 'azione' => 'Modera i commenti', 'pagina' => true],
         // La ritenuta d'acconto da versare con l'F24: la scrivono il pagamento di una fattura con la ritenuta (`versamento_ritenuta`) e il condominio di
         // prova (`f24`). È la stessa cosa: un nome solo, e la pagina «Ritenute e F24» del condominio, dove si prepara la delega e si registra il versamento.
         'versamento_ritenuta' => ['nome' => 'Ritenute da versare', 'azione' => 'Prepara l\'F24', 'pagina' => true, 'rotta' => 'admin.gestionale.f24.index'],
@@ -120,6 +123,10 @@ final class TipiDeiCompiti
         }
         // La segnalazione dal portale aspetta l'approvazione: la prossima azione è approvarla o rifiutarla, nella sua pagina.
         $testo = $tipo === CompitoDellaSegnalazione::TIPO && ($compito->meta['is_approved'] ?? true) === false ? self::AZIONE_DA_APPROVARE : $voce['azione'];
+        // Ciò che è da moderare dice dove va: i commenti, gli allegati, o l'elemento stesso da approvare.
+        if ($tipo === CompitoDaModerare::TIPO) {
+            $testo = CompitoDaModerare::testoDellAzione(is_array($compito->meta) ? $compito->meta : []) ?? $voce['azione'];
+        }
 
         return ['testo' => $testo, 'url' => $url];
     }
@@ -235,6 +242,7 @@ final class TipiDeiCompiti
             'gia_versato_acconto_dichiarato' => $insieme($c['conto_nome'] ?? null, $euro($c['importo_cents'] ?? null)),
             'pianifica_ripianamento_deficit' => isset($m['importo_buco']) ? 'Scoperto di ' . $euro($m['importo_buco']) : '',
             'emissione_rata_sopravvenienza' => $insieme('Sopravvenienza', $m['fornitore'] ?? null),
+            'da_moderare' => CompitoDaModerare::sotto($m),
             'commento' => isset($m['contatore']) ? $insieme(((int) $m['contatore'] === 1 ? '1 commento nuovo' : (int) $m['contatore'] . ' commenti nuovi'), $m['ultimo_autore'] ?? null) : '',
             'allegato' => isset($m['contatore']) ? $insieme(((int) $m['contatore'] === 1 ? '1 allegato da approvare' : (int) $m['contatore'] . ' allegati da approvare'), $m['ultimo_autore'] ?? null) : '',
             default => '',

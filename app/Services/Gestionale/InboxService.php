@@ -12,6 +12,7 @@ use App\Models\Evento;
 use App\Enums\Role;
 use App\Enums\VisibilityStatus;
 use App\Models\CategoriaEvento;
+use App\Services\Gestionale\Inbox\CompitoDaModerare;
 use App\Services\Gestionale\Inbox\CompitoDellaSegnalazione;
 use App\Services\Gestionale\Inbox\FasceDeiCompiti;
 use App\Services\Gestionale\Inbox\IndirizzoDelCompito;
@@ -149,14 +150,14 @@ class InboxService
     }
 
     /**
-     * Il numero dell'Action inbox nel menu: i compiti aperti con il giorno arrivato (oggi compreso), i bonifici segnalati e le segnalazioni che chi guarda può
-     * aprire ({@see CompitoDellaSegnalazione::chiVede()}), con la regola di {@see FasceDeiCompiti}. Lo tiene in memoria `HandleInertiaRequests` per dieci
+     * Il numero dell'Action inbox nel menu: i compiti aperti con il giorno arrivato (oggi compreso), i bonifici segnalati, ciò che è da moderare e le
+     * segnalazioni che chi guarda può aprire ({@see CompitoDellaSegnalazione::chiVede()}, {@see CompitoDaModerare::chiVede()}), con la regola di {@see FasceDeiCompiti}. Lo tiene in memoria `HandleInertiaRequests` per dieci
      * minuti, per utente, e `clearAdminCache()` lo azzera.
      */
-    public static function numeroPerIlMenu(bool|int $segnalazioni): int
+    public static function numeroPerIlMenu(bool|int $segnalazioni, ?array $moderare = null): int
     {
         $query = Evento::query()->compitiAperti();
-        CompitoDellaSegnalazione::soloQuelliCheVede($query, $segnalazioni);
+        CompitoDellaSegnalazione::soloQuelliCheVede($query, $segnalazioni, $moderare);
         FasceDeiCompiti::oggi()->filtraPerIlMenu($query, FasceDeiCompiti::sqlTipo());
 
         return $query->count();

@@ -15,6 +15,7 @@ return [
     'segnalazioni'  => "Tickets",
     'documenti'     => "Documents",
     'allegati'      => "Adjuntos",
+    'commenti'      => "Comentarios",
     'agenda'        => "Calendar",
     'repository'    => "Repository",
     'documentation' => "Documentation",

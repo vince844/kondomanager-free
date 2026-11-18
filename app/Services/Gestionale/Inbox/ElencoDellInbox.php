@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\DB;
  * il tipo, la ricerca («Cerca un compito, un condominio, una persona»: il titolo, la descrizione, il nome del condominio, il nome della persona) e la data (una
  * scheda o una barra del grafico, con la regola di {@see FasceDeiCompiti}).
  *
- * L'ordine: prima gli scaduti, poi le segnalazioni aperte, i bonifici da verificare, gli altri; dentro ogni gruppo i più vecchi prima (di serie), i più
+ * L'ordine: prima gli scaduti, poi le segnalazioni aperte, i bonifici da verificare, ciò che è da moderare, gli altri; dentro ogni gruppo i più vecchi prima (di serie), i più
  * recenti prima, o per condominio.
  *
  * I compiti delle segnalazioni sono solo quelli che chi legge può aprire, con la regola della pagina delle segnalazioni
@@ -50,7 +50,7 @@ final class ElencoDellInbox
     /**
      * I filtri dell'indirizzo, letti: un valore che non c'è non filtra. Le segnalazioni che si vedono vengono da chi legge ({@see CompitoDellaSegnalazione::chiVede()}).
      *
-     * @return array{quando: ?string, tipo: ?string, cerca: ?string, ordine: string, condominio_id: ?int, segnalazioni: bool|int}
+     * @return array{quando: ?string, tipo: ?string, cerca: ?string, ordine: string, condominio_id: ?int, segnalazioni: bool|int, moderare: array<string, bool>}
      */
     public static function filtri(array $dati, ?User $chiLegge): array
     {
@@ -61,7 +61,7 @@ final class ElencoDellInbox
         $condominioId = filter_var($dati['condominio_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 
         return ['quando' => $quando, 'tipo' => $tipo, 'cerca' => $cerca === '' ? null : $cerca, 'ordine' => $ordine, 'condominio_id' => $condominioId,
-            'segnalazioni' => CompitoDellaSegnalazione::chiVede($chiLegge)];
+            'segnalazioni' => CompitoDellaSegnalazione::chiVede($chiLegge), 'moderare' => CompitoDaModerare::chiVede($chiLegge)];
     }
 
     /** I compiti aperti con il condominio, il tipo e la ricerca; con `$conLaData` anche la data. */
@@ -77,7 +77,7 @@ final class ElencoDellInbox
                 $q->whereRaw("{$tipoSql} IN (" . implode(', ', array_fill(0, count($famiglia), '?')) . ')', $famiglia);
             });
         // Le segnalazioni che chi legge non apre non ci sono, e nemmeno quelle che non ci sono più; senza la regola nei filtri, nessuna.
-        CompitoDellaSegnalazione::soloQuelliCheVede($query, $filtri['segnalazioni'] ?? CompitoDellaSegnalazione::NESSUNA);
+        CompitoDellaSegnalazione::soloQuelliCheVede($query, $filtri['segnalazioni'] ?? CompitoDellaSegnalazione::NESSUNA, $filtri['moderare'] ?? null);
         if ($filtri['cerca'] !== null) {
             $this->cerca($query, $filtri['cerca']);
         }
@@ -120,7 +120,7 @@ final class ElencoDellInbox
     /**
      * Il numero di ogni gruppo con tutti i filtri, data compresa.
      *
-     * @return array{scaduti: int, segnalazioni: int, bonifici: int, avanti: int}
+     * @return array{scaduti: int, segnalazioni: int, bonifici: int, da_moderare: int, avanti: int}
      */
     public static function gruppi(array $perFascia, ?string $quando): array
     {
@@ -168,6 +168,7 @@ final class ElencoDellInbox
             match ($gruppo) {
                 'bonifici' => $query->whereRaw("{$tipoSql} = ?", [FasceDeiCompiti::BONIFICO]),
                 'segnalazioni' => $query->whereRaw("{$tipoSql} = ?", [FasceDeiCompiti::SEGNALAZIONE]),
+                'da_moderare' => $query->whereRaw("{$tipoSql} = ?", [FasceDeiCompiti::MODERARE]),
                 'scaduti' => $this->fasce->filtraQuando($query, $tipoSql, 'scaduti'),
                 default => $this->fasce->filtraQuando($query, $tipoSql, 'in_arrivo'),
             };
@@ -234,12 +235,14 @@ final class ElencoDellInbox
             $giorno = $task->start_time->format('Y-m-d');
             $fascia = $this->fasce->fascia($giorno, $tipo);
             $daiDati = TipiDeiCompiti::sottoDaiDati($tipo, $task, $persona);
+            // Ciò che è da moderare dice i numeri nella lingua di chi legge, letti dal compito: il titolo salvato è in italiano.
+            $titolo = $tipo === CompitoDaModerare::TIPO && is_array($task->meta) ? CompitoDaModerare::titolo($task->meta) : null;
             $sotto = $daiDati !== '' ? $daiDati : TipiDeiCompiti::primaRigaDellaDescrizione($task->description);
 
             return [
                 'id' => $task->id,
                 'title' => $task->title,
-                'titolo' => TipiDeiCompiti::titolo((string) $task->title, [$condominio?->nome, $task->meta['condominio_nome'] ?? null]),
+                'titolo' => $titolo ?: TipiDeiCompiti::titolo((string) $task->title, [$condominio?->nome, $task->meta['condominio_nome'] ?? null]),
                 'sotto' => $sotto,
                 // La riga sotto è la prima riga della descrizione (il tipo non ha dati da dire): chi mostra anche la descrizione non la scrive due volte.
                 'sotto_dalla_descrizione' => $sotto !== '' && $daiDati === '',

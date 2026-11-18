@@ -14,6 +14,10 @@ use Carbon\CarbonImmutable;
  * quota: l'accordo del defunto si chiude «per la successione», il giorno del passaggio (non prima del giorno dell'accordo), e con ogni erede si può
  * registrare un accordo nuovo. Si chiudono gli accordi non chiusi del defunto con una rata coperta su un'unità del passaggio. Il registro del passaggio
  * li tiene, e l'annullamento del passaggio li riapre, se nessuno li ha toccati dopo.
+ *
+ * Per gli interessi del defunto (decisione 454) l'accordo che reggeva resta in regola fino al decesso, di serie: i giorni dell'accordo restano fuori dalla
+ * sua proposta, e dal decesso non ne maturano altri. L'amministratore può scegliere nell'anteprima che la chiusura valga come una decadenza: tornano i giorni
+ * dell'accordo. La scelta sta sull'accordo (`chiusura_per_successione`) e nel registro del passaggio.
  */
 final class AccordiDellaSuccessione
 {
@@ -38,19 +42,39 @@ final class AccordiDellaSuccessione
     }
 
     /**
-     * Chiude gli accordi del defunto e restituisce quello che il registro del passaggio tiene: per ognuno l'id e il giorno della chiusura.
+     * Gli accordi del defunto che la successione chiude, per l'anteprima: per ognuno il giorno e se reggeva il giorno prima del decesso, quando la scelta
+     * conta. Un accordo che non reggeva più (il calendario finito con rate non versate) non tiene fuori niente comunque.
      *
      * @param list<int> $immobileIds
-     * @return list<array{id:int, chiuso_il:string}>
+     * @return list<array{id:int, data_accordo:string, in_regola:bool}>
      */
-    public function chiudi(int $condominioId, int $defuntoId, array $immobileIds, CarbonImmutable $decorrenza, ?int $utenteId): array
+    public static function perLAnteprima(int $condominioId, int $defuntoId, array $immobileIds, CarbonImmutable $decorrenza): array
     {
+        $regola = app(\App\Services\Gestionale\Debiti\AccordiRientro::class);
+
+        return self::daChiudere($condominioId, $defuntoId, $immobileIds)->load(['rate', 'scadenze'])->map(fn (AccordoRientro $a) => [
+            'id' => (int) $a->id,
+            'data_accordo' => $a->data_accordo->format('Y-m-d'),
+            'in_regola' => $regola->reggevaIl($a, max($a->data_accordo->format('Y-m-d'), $decorrenza->subDay()->format('Y-m-d'))),
+        ])->values()->all();
+    }
+
+    /**
+     * Chiude gli accordi del defunto e restituisce quello che il registro del passaggio tiene: per ognuno l'id, il giorno della chiusura e la scelta per gli
+     * interessi (`in_regola`, di serie, o `decadenza`).
+     *
+     * @param list<int> $immobileIds
+     * @return list<array{id:int, chiuso_il:string, scelta:string}>
+     */
+    public function chiudi(int $condominioId, int $defuntoId, array $immobileIds, CarbonImmutable $decorrenza, ?int $utenteId, string $scelta = AccordoRientro::SUCCESSIONE_IN_REGOLA): array
+    {
+        $scelta = $scelta === AccordoRientro::SUCCESSIONE_DECADENZA ? AccordoRientro::SUCCESSIONE_DECADENZA : AccordoRientro::SUCCESSIONE_IN_REGOLA;
         $nome = (string) (Anagrafica::find($defuntoId)?->nome ?? '');
         $chiusi = [];
         foreach (self::daChiudere($condominioId, $defuntoId, $immobileIds) as $a) {
             $giorno = max($decorrenza->format('Y-m-d'), $a->data_accordo->format('Y-m-d'));
-            $a->update(['chiuso_il' => $giorno, 'nota_chiusura' => self::nota($nome, $decorrenza), 'chiuso_da' => $utenteId]);
-            $chiusi[] = ['id' => (int) $a->id, 'chiuso_il' => $giorno];
+            $a->update(['chiuso_il' => $giorno, 'nota_chiusura' => self::nota($nome, $decorrenza), 'chiuso_da' => $utenteId, 'chiusura_per_successione' => $scelta]);
+            $chiusi[] = ['id' => (int) $a->id, 'chiuso_il' => $giorno, 'scelta' => $scelta];
         }
 
         return $chiusi;
@@ -68,7 +92,7 @@ final class AccordiDellaSuccessione
             if ($a === null || $a->decadenza_registrata_il !== null || $a->chiuso_il?->format('Y-m-d') !== $c['chiuso_il']) {
                 continue;
             }
-            $a->update(['chiuso_il' => null, 'nota_chiusura' => null, 'chiuso_da' => null]);
+            $a->update(['chiuso_il' => null, 'nota_chiusura' => null, 'chiuso_da' => null, 'chiusura_per_successione' => null]);
         }
     }
 }

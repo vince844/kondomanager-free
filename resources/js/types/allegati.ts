@@ -54,6 +54,9 @@ export interface AllegatiFiltri {
     tipo: string;
     condominio_id: number | null;
     autore: string;
+    // Un elemento solo (la segnalazione o la comunicazione) e il suo nome, da «Modera» dell'Action inbox.
+    elemento?: number | null;
+    elemento_nome?: string | null;
     dal: string;
     al: string;
 }

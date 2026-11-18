@@ -211,7 +211,8 @@ test('evento nuovo: un elemento-array non aggancia il condominio altrui', functi
         ->post(route('user.eventi.store'), datiEvento([$suo->id], $categoria->id))
         ->assertSessionHasNoErrors();
 
-    expect(condominiDi(Evento::sole()))->toBe([$suo->id]);
+    // L'evento in attesa crea anche il suo compito «Da moderare» nell'Action inbox (decisione 449), che è un evento anch'esso: si guarda l'evento scritto dal condòmino.
+    expect(condominiDi(Evento::where(fn ($q) => $q->whereNull('tipo')->orWhere('tipo', '!=', \App\Enums\EventoTipo::DA_MODERARE))->sole()))->toBe([$suo->id]);
 });
 
 test('evento in modifica: un elemento-array non lo sposta nel condominio altrui', function () {

@@ -68,24 +68,35 @@ final class CompitoDellaSegnalazione
 
     /**
      * Una lettura dei compiti con solo i compiti delle segnalazioni che l'utente vede ({@see chiVede()}) e che ci sono ancora; gli altri compiti restano tutti.
-     * Il compito è di una segnalazione per il tipo (`meta.type` o la colonna `tipo`), e la segnalazione è il suo `eventable`.
+     * Il compito è di una segnalazione per il tipo (`meta.type` o la colonna `tipo`), e la segnalazione è il suo `eventable`. I compiti da moderare
+     * ({@see CompitoDaModerare}) hanno la regola dell'elemento che moderano: quelli delle segnalazioni la stessa di qui, gli altri da `$moderare`
+     * ({@see CompitoDaModerare::chiVede()}; senza, nessuno); e tutti solo se chi legge sa fare la loro prossima azione (`$moderare['azioni']`,
+     * la 454 del registro delle decisioni).
+     *
+     * @param  array{comunicazioni?: bool, documenti?: bool, eventi?: bool, azioni?: array<string, list<string>>}|null  $moderare
      */
-    public static function soloQuelliCheVede(Builder $query, bool|int $vede): Builder
+    public static function soloQuelliCheVede(Builder $query, bool|int $vede, ?array $moderare = null): Builder
     {
         $tipoSql = FasceDeiCompiti::sqlTipo();
         $segnalazione = (new Segnalazione())->getMorphClass();
+        $speciali = [self::TIPO, CompitoDaModerare::TIPO];
 
-        return $query->where(function (Builder $q) use ($tipoSql, $vede, $segnalazione) {
-            // Non è il compito di una segnalazione.
-            $q->where(fn (Builder $altro) => $altro->whereRaw("COALESCE({$tipoSql}, '') <> ?", [self::TIPO])
-                ->where(fn (Builder $colonna) => $colonna->whereNull('eventi.tipo')->orWhere('eventi.tipo', '<>', self::TIPO)));
-            if ($vede === self::NESSUNA) {
-                return;
+        return $query->where(function (Builder $q) use ($tipoSql, $vede, $segnalazione, $moderare, $speciali) {
+            // Non è il compito di una segnalazione, né uno da moderare (che ha la sua regola, per tipo di elemento).
+            $q->where(fn (Builder $altro) => $altro->whereRaw("COALESCE({$tipoSql}, '') NOT IN (?, ?)", $speciali)
+                ->where(fn (Builder $colonna) => $colonna->whereNull('eventi.tipo')->orWhereNotIn('eventi.tipo', $speciali)));
+            if ($vede !== self::NESSUNA) {
+                // O lo è, e la segnalazione c'è e si apre (il compito da moderare di una segnalazione segue la stessa regola, e in più chi legge sa
+                // fare la sua prossima azione: la 454 del registro delle decisioni).
+                $azioni = $moderare['azioni']['segnalazioni'] ?? [];
+                $q->orWhere(fn (Builder $suo) => $suo->where('eventi.eventable_type', $segnalazione)
+                    ->whereIn('eventi.eventable_id', fn (Builder $s) => $s->select('segnalazioni.id')->from('segnalazioni')
+                        ->when(is_int($vede), fn (Builder $proprie) => $proprie->where('segnalazioni.created_by', $vede)))
+                    ->where(fn (Builder $quale) => $quale->whereRaw("COALESCE({$tipoSql}, '') != ?", [CompitoDaModerare::TIPO])
+                        ->orWhere(fn (Builder $daModerare) => CompitoDaModerare::soloLeAzioni($daModerare, $azioni))));
             }
-            // O lo è, e la segnalazione c'è e si apre.
-            $q->orWhere(fn (Builder $suo) => $suo->where('eventi.eventable_type', $segnalazione)
-                ->whereIn('eventi.eventable_id', fn (Builder $s) => $s->select('segnalazioni.id')->from('segnalazioni')
-                    ->when(is_int($vede), fn (Builder $proprie) => $proprie->where('segnalazioni.created_by', $vede))));
+            // I compiti da moderare delle comunicazioni, dei documenti e degli eventi che chi legge apre.
+            CompitoDaModerare::aggiungiLaRegola($q, $moderare);
         });
     }
 

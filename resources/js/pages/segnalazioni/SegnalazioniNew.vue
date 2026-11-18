@@ -33,6 +33,9 @@ const props = defineProps<{
   condomini: Building[];
   anagrafiche: Anagrafica[];
   allegati_massimo?: number;
+  commenti_segnalazioni_moderati_di_serie?: boolean;
+  // «Commenti in moderazione» solo per chi può moderare: per gli altri il server ignora il campo.
+  puo_scegliere_moderazione?: boolean;
 }>();  
 
 const { generateRoute, hasPermission } = usePermission();
@@ -77,6 +80,7 @@ const form = useForm({
     stato: '',
     condominio_id: '',
     can_comment: true as boolean,
+    commenti_moderati: Boolean(props.commenti_segnalazioni_moderati_di_serie),
     is_featured: false as boolean,
     is_published: true,
     anagrafiche: [],
@@ -362,6 +366,33 @@ const submit = () => {
                                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                                         <h4 class="text-sm font-bold mb-2">{{ trans('segnalazioni.label.comments') }}</h4>
                                         <p class="text-xs text-slate-500 leading-relaxed">{{ trans('segnalazioni.tooltip.comments') }}</p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                        </div>
+
+                        <div v-if="props.puo_scegliere_moderazione !== false" class="sm:col-span-3" data-testid="scelta-moderazione">
+                            <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">
+                                <div class="flex items-center space-x-3">
+                                    <Checkbox 
+                                        id="commenti_moderati" 
+                                        :checked="form.commenti_moderati"
+                                        v-model="form.commenti_moderati" 
+                                        @update:checked="(val: boolean) => form.commenti_moderati = val" 
+                                    />
+                                    <Label for="commenti_moderati" class="cursor-pointer font-medium text-sm text-slate-700 dark:text-slate-300">
+                                        {{ trans('segnalazioni.label.commenti_moderati') }}
+                                    </Label>
+                                </div>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">{{ trans('segnalazioni.label.commenti_moderati') }}</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">{{ trans('segnalazioni.tooltip.commenti_moderati') }}</p>
                                     </HoverCardContent>
                                 </HoverCard>
                             </div>

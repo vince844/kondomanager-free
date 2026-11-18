@@ -155,24 +155,48 @@ return [
             'description' => 'Recibe una notificación cuando se modifica un documento que ya has recibido',
         ],
         'new_comment' => [
-            'label' => 'New comment',
-            'description' => 'Receive a notification when a comment is added to a report you are participating in',
+            'label' => 'Nuevo comentario (incidencias)',
+            'description' => 'Recibe una notificación cuando se añade un comentario a una incidencia en la que participas',
         ],
         'comment_approved' => [
-            'label' => 'Comment approved',
-            'description' => 'Receive a notification when your pending comment is approved',
+            'label' => 'Comentario aprobado (incidencias)',
+            'description' => 'Recibe una notificación cuando tu comentario en una incidencia es aprobado',
         ],
         'comment_deleted' => [
-            'label' => 'Comment deleted or hidden',
-            'description' => 'Receive a notification when your comment is deleted or hidden',
+            'label' => 'Comentario eliminado u oculto (incidencias)',
+            'description' => 'Recibe una notificación cuando tu comentario en una incidencia es eliminado u oculto',
+        ],
+        'new_communication_comment' => [
+            'label' => 'Nuevo comentario (comunicados)',
+            'description' => 'Recibe una notificación cuando se añade un comentario a un comunicado que recibes',
+        ],
+        'communication_comment_approved' => [
+            'label' => 'Comentario aprobado (comunicados)',
+            'description' => 'Recibe una notificación cuando tu comentario en un comunicado es aprobado',
+        ],
+        'communication_comment_deleted' => [
+            'label' => 'Comentario eliminado u oculto (comunicados)',
+            'description' => 'Recibe una notificación cuando tu comentario en un comunicado es eliminado u oculto',
         ],
         'new_user' => [
             'label' => 'New registered user',
             'description' => 'Receive a notification when a new user registers',
         ],
         'comment_under_moderation' => [
-            'label' => 'Comment to be moderated',
-            'description' => 'Receive a notification when a new comment requires your approval',
+            'label' => 'Comentario por moderar (incidencias)',
+            'description' => 'Recibe una notificación quando un nuevo comentario en una incidencia requiere tu aprobación',
+        ],
+        'comment_edited_under_moderation' => [
+            'label' => 'Comentario modificado por moderar (incidencias)',
+            'description' => 'Recibe una notificación cuando un comentario modificado en una incidencia requiere tu aprobación',
+        ],
+        'communication_comment_under_moderation' => [
+            'label' => 'Comentario por moderar (comunicados)',
+            'description' => 'Recibe una notificación cuando un nuovo comentario en un comunicado requiere tu aprobación',
+        ],
+        'communication_comment_edited_under_moderation' => [
+            'label' => 'Comentario modificado por moderar (comunicados)',
+            'description' => 'Recibe una notificación cuando un comentario modificado en un comunicado requiere tu aprobación',
         ],
         'new_attachment' => [
             'label' => 'Nuevo adjunto',

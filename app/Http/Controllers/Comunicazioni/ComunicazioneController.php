@@ -21,9 +21,12 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use App\Models\Condominio;
+use App\Models\Evento;
 use App\Services\Allegati\AllegatoService;
 use App\Services\ComunicazioneService;
 use App\Support\Allegati\RegoleAllegati;
+use App\Support\Commenti\RegoleCommenti;
+use App\Support\Comunicazioni\ContatoriElenco;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -79,7 +82,10 @@ class ComunicazioneController extends Controller
         ); 
 
         $stats = $this->comunicazioneService->getComunicazioniStats();
-    
+
+        // Decisione 441: quanti commenti e allegati ha ogni riga, e quanti da approvare.
+        ContatoriElenco::mettiSulleRighe(request()->user(), $comunicazioni->getCollection(), 'admin');
+
         return Inertia::render('comunicazioni/ComunicazioniList', [
             'comunicazioni' => ComunicazioneResource::collection($comunicazioni)->resolve(), 
             'stats' => $stats,
@@ -116,6 +122,9 @@ class ComunicazioneController extends Controller
             'condomini'        => CondominioResource::collection(Condominio::all()),
             'anagrafiche'      => [],
             'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
+            'commenti_moderati_di_serie' => (bool) app(\App\Settings\GeneralSettings::class)->commenti_comunicazioni_moderati_di_serie,
+            // «Commenti in moderazione» la sceglie solo chi modera: per gli altri vale il di serie.
+            'puo_scegliere_moderazione' => RegoleCommenti::puoScegliereModerazione(request()->user(), 'comunicazioni'),
         ]);  
     }
 
@@ -137,6 +146,11 @@ class ComunicazioneController extends Controller
         Gate::authorize('create', $comunicazione);
 
         $validated = $request->validated();
+
+        // «Commenti in moderazione» la sceglie solo chi modera: per gli altri il campo si ignora e vale il di serie (`Comunicazione::creating`).
+        if (! RegoleCommenti::puoScegliereModerazione($request->user(), 'comunicazioni')) {
+            unset($validated['commenti_moderati']);
+        }
 
         if ($request->hasFile('allegati')) {
             abort_unless($request->user()->hasPermissionTo(RegoleAllegati::permesso('comunicazioni', 'carica')), 403);
@@ -223,6 +237,17 @@ class ComunicazioneController extends Controller
         $user = request()->user();
         $comunicazioneCaricata = Comunicazione::with('createdBy.anagrafica')->findOrFail($comunicazione->id);
 
+        if (RegoleCommenti::puoModerare($user, $comunicazioneCaricata)) {
+            Evento::where('tipo', 'commento')
+                ->where('eventable_type', $comunicazioneCaricata->getMorphClass())
+                ->where('eventable_id', $comunicazioneCaricata->id)
+                ->where('is_completed', false)
+                ->update([
+                    'is_completed' => true,
+                    'completed_at' => now(),
+                ]);
+        }
+
         return Inertia::render('comunicazioni/ComunicazioniView', [
             'comunicazione' => new ComunicazioneResource($comunicazioneCaricata),
             'allegati' => AllegatoResource::perScheda(
@@ -232,7 +257,33 @@ class ComunicazioneController extends Controller
                 'admin'
             ),
             'allegati_config' => RegoleAllegati::configScheda($user, $comunicazioneCaricata),
+            'commenti_config' => RegoleCommenti::configSchedaComunicazione($user, $comunicazioneCaricata),
+            'discussioni'     => RegoleCommenti::discussioniInScheda($user, $comunicazioneCaricata, 'admin'),
+            // Decisione 467: i destinatari nella card dei parametri, solo nel pannello (il portale non li riceve: Coda 668).
+            'destinatari'     => $this->destinatariPerScheda($comunicazioneCaricata),
         ]);
+    }
+
+    /**
+     * I destinatari della comunicazione per la card della scheda del pannello (decisione 467): le persone per nome, se ce ne sono; altrimenti,
+     * per una privata, nessun nome («Privata, con lo studio»); altrimenti i condomìni per nome.
+     *
+     * @return array{tipo: 'persone'|'privata'|'condomini', totale: int, nomi: list<string>}
+     */
+    private function destinatariPerScheda(Comunicazione $comunicazione): array
+    {
+        $persone = $comunicazione->anagrafiche()->orderBy('anagrafiche.nome')->pluck('anagrafiche.nome')->map(fn ($n) => (string) $n)->values()->all();
+        if ($persone !== []) {
+            return ['tipo' => 'persone', 'totale' => count($persone), 'nomi' => $persone];
+        }
+
+        if ($comunicazione->is_private) {
+            return ['tipo' => 'privata', 'totale' => 0, 'nomi' => []];
+        }
+
+        $condomini = $comunicazione->condomini()->orderBy('condomini.nome')->pluck('condomini.nome')->map(fn ($n) => (string) $n)->values()->all();
+
+        return ['tipo' => 'condomini', 'totale' => count($condomini), 'nomi' => $condomini];
     }
 
     /**
@@ -258,7 +309,9 @@ class ComunicazioneController extends Controller
         return Inertia::render('comunicazioni/ComunicazioniEdit', [
          'comunicazione' => new ComunicazioneResource($comunicazione),
          'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
-         'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome']))
+         'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
+         // «Commenti in moderazione» la cambia solo chi modera: per gli altri resta com'è.
+         'puo_scegliere_moderazione' => RegoleCommenti::puoImpostareModerazione(request()->user(), $comunicazione),
         ]);
     }
 
@@ -280,6 +333,11 @@ class ComunicazioneController extends Controller
         Gate::authorize('update', $comunicazione);
 
         $validated = $request->validated(); 
+
+        // «Commenti in moderazione» la cambia solo chi modera: per gli altri il campo si ignora e resta com'era.
+        if (! RegoleCommenti::puoImpostareModerazione($request->user(), $comunicazione)) {
+            unset($validated['commenti_moderati']);
+        }
 
         /*
          * ⚠️ **I destinatari si leggono PRIMA di toccare le pivot**, ed è tutto il senso della
@@ -308,6 +366,11 @@ class ComunicazioneController extends Controller
             if (array_key_exists('anagrafiche', $validated)) {
                 $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
             }
+
+            // I destinatari decidono le discussioni: una persona tolta porta via i commenti della sua dal compito «Da moderare», un
+            // palazzo tolto quelli scritti da lì (decisione 459), e così il passaggio fra palazzi e persone. Le tabelle
+            // ponte non hanno gli eventi dei modelli, quindi il compito si porta a com'è da qui.
+            app(\App\Services\Gestionale\Inbox\CompitoDaModerare::class)->sincronizza($comunicazione->fresh() ?? $comunicazione);
 
             DB::commit();
 

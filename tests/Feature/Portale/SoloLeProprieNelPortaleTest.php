@@ -146,18 +146,19 @@ test('decisione 134 — i conteggi e la dashboard del portale mostrano ciò che 
     // nell'Aurora, la propria nella Borea da cui l'utente è uscito, la propria privata nella Borea,
     // la propria in moderazione nell'Aurora. L'utente resta solo nell'Aurora.
     //
-    // Gli insiemi attesi sono scritti a mano dalla regola, non chiesti al programma: l'elenco mostra le
-    // pubblicate e approvate (le proprie in moderazione si aprono per indirizzo e non compaiono in
-    // elenco: Coda 389) che la scheda apre.
-    // - di serie: quella del vicino nell'Aurora, la propria nell'Aurora, la propria privata (una privata
-    //   resta del suo autore); non la propria non privata della Borea, da cui è uscito;
-    // - solo le proprie: le sue tre pubblicate e approvate, dovunque siano;
+    // Gli insiemi attesi sono scritti a mano dalla regola, non chiesti al programma: l'elenco, i conteggi e
+    // la dashboard mostrano ciò che la scheda apre, comprese le proprie in moderazione (Coda 389: prima
+    // l'elenco le toglieva, e il condòmino pensava che l'invio fosse andato perso).
+    // - di serie: quella del vicino nell'Aurora, la propria nell'Aurora, la propria in moderazione, la
+    //   propria privata (una privata resta del suo autore); non la propria non privata della Borea, da
+    //   cui è uscito;
+    // - solo le proprie: le sue quattro, dovunque siano;
     // - tutte e proprie: l'unione delle due;
     // - nessuna: niente.
     $attesiPerCaso = [
-        'utente di serie' => ['Del vicino, Aurora', 'Propria, Aurora', 'Propria privata, Borea'],
-        'solo le proprie' => ['Propria, Aurora', 'Propria, Borea', 'Propria privata, Borea'],
-        'tutte e proprie' => ['Del vicino, Aurora', 'Propria, Aurora', 'Propria, Borea', 'Propria privata, Borea'],
+        'utente di serie' => ['Del vicino, Aurora', 'Propria, Aurora', 'Propria in moderazione', 'Propria privata, Borea'],
+        'solo le proprie' => ['Propria, Aurora', 'Propria, Borea', 'Propria in moderazione', 'Propria privata, Borea'],
+        'tutte e proprie' => ['Del vicino, Aurora', 'Propria, Aurora', 'Propria, Borea', 'Propria in moderazione', 'Propria privata, Borea'],
         'nessuna'         => [],
     ];
     $utenti = [

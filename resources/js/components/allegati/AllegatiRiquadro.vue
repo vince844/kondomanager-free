@@ -77,6 +77,17 @@ const props = withDefaults(defineProps<Props>(), {
     }),
 });
 
+// Standard 16, la potenza di Inertia: ogni azione chiede indietro solo gli allegati, le loro impostazioni, il messaggio e i numeri del menu,
+// e la pagina tiene il suo stato (le tre schede che usano il riquadro chiamano così queste proprietà).
+const VISITA_PARZIALE = {
+    preserveScroll: true,
+    preserveState: true,
+    only: ['allegati', 'allegati_config', 'flash', 'allegati_in_attesa', 'inbox_count'],
+};
+// Le azioni brevi senza la barra in cima alla pagina: i pulsanti hanno già il loro stato. Il caricamento dei file la tiene, perché con un
+// file grande dice che sta caricando.
+const VISITA_BREVE = { ...VISITA_PARZIALE, showProgress: false };
+
 const uploadForm = useForm<{ allegati: File[] }>({
     allegati: [],
 });
@@ -180,7 +191,7 @@ function inviaCaricamento() {
     const url = route(`${props.porta}.${props.tipo}.allegati.store`, props.elementoId);
     uploadForm.post(url, {
         forceFormData: true,
-        preserveScroll: true,
+        ...VISITA_PARZIALE,
         onSuccess: () => {
             uploadForm.reset('allegati');
         },
@@ -190,7 +201,7 @@ function inviaCaricamento() {
 function salvaImpostazioni() {
     const url = route(`admin.${props.tipo}.allegati.impostazioni`, props.elementoId);
     settingsForm.patch(url, {
-        preserveScroll: true,
+        ...VISITA_BREVE,
         onSuccess: () => {
             mostraModaleImpostazioni.value = false;
         },
@@ -218,7 +229,7 @@ function salvaRinomina(allegato: AllegatoItem) {
         route(`${props.porta}.allegati.update`, allegato.id),
         { nome: pulito },
         {
-            preserveScroll: true,
+            ...VISITA_BREVE,
             onSuccess: () => {
                 idInModifica.value = null;
                 nomeInModifica.value = '';
@@ -240,7 +251,7 @@ function approvaAllegato(allegato: AllegatoItem) {
         route('admin.allegati.approva', allegato.id),
         {},
         {
-            preserveScroll: true,
+            ...VISITA_BREVE,
             onFinish: () => {
                 invioAzioneInCorso.value = false;
             },
@@ -258,7 +269,7 @@ function confermaElimina() {
     const id = allegatoDaEliminare.value.id;
     invioAzioneInCorso.value = true;
     router.delete(route(`${props.porta}.allegati.destroy`, id), {
-        preserveScroll: true,
+        ...VISITA_BREVE,
         onFinish: () => {
             invioAzioneInCorso.value = false;
             mostraConfermaElimina.value = false;
@@ -270,7 +281,8 @@ function confermaElimina() {
 
 <template>
     <Card class="shadow-none">
-        <CardHeader class="pb-3">
+        <!-- Una linea sottile sotto l'intestazione, come la card del testo, e 16 px sotto (decisione 469) -->
+        <CardHeader data-intestazione-allegati class="pb-4 border-b border-slate-100 dark:border-slate-800">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle class="text-base font-semibold flex items-center gap-2">
                     <Files class="h-4 w-4 text-muted-foreground" />
@@ -313,7 +325,7 @@ function confermaElimina() {
             </div>
         </CardHeader>
 
-        <CardContent class="space-y-4">
+        <CardContent class="space-y-4 pt-4">
             <!-- Elenco allegati (nessuna miniatura, nome sempre come testo) -->
             <Empty v-if="allegati.length === 0" class="border border-dashed py-8">
                 <EmptyHeader>
@@ -457,7 +469,8 @@ function confermaElimina() {
             </ul>
 
             <!-- Modulo di caricamento (solo se puo_caricare) -->
-            <div v-if="config.puo_caricare" class="border-t pt-4">
+            <!-- Senza la linea sopra, come il fondo del riquadro dei commenti (decisione 464) -->
+            <div v-if="config.puo_caricare" data-caricamento>
                 <p v-if="config.rimasti <= 0" class="text-xs text-muted-foreground tabular-nums">
                     {{ trans('allegati.upload.no_slots', { massimo: String(config.massimo) }) }}
                 </p>
@@ -470,6 +483,7 @@ function confermaElimina() {
                         :limite-file="config.limite_file"
                         :formati="config.formati"
                         :error="erroreCaricamento"
+                        aspetto="zona"
                     />
 
                     <div v-if="uploadForm.allegati.length > 0" class="flex justify-end">

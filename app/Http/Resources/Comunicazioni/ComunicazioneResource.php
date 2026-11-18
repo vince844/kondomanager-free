@@ -32,6 +32,7 @@ class ComunicazioneResource extends JsonResource
             'is_approved'   => $this->is_approved,
             'is_private'    => $this->is_private,
             'can_comment'   => $this->can_comment,
+            'commenti_moderati' => (bool) $this->commenti_moderati,
             'created_at'    => $this->created_at->diffForHumans(),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
@@ -48,6 +49,12 @@ class ComunicazioneResource extends JsonResource
             ],
             // I destinatari: gli elenchi, la scheda, la modifica e la dashboard ne leggono id e nome (Coda 408).
             'anagrafiche' => AnagraficaNomeResource::collection($this->whenLoaded('anagrafiche')),
+            // Quanti commenti e allegati (decisione 441): li calcola l'elenco, per tutte le righe insieme, e li mette sul
+            // modello. Dove nessuno li ha calcolati il campo non c'è.
+            'contatori' => $this->when(
+                $this->resource->getAttribute('contatori_elenco') !== null,
+                fn () => $this->resource->getAttribute('contatori_elenco')
+            ),
         ];
     }
 }

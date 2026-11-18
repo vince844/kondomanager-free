@@ -41,17 +41,23 @@ class Segnalazione extends Model implements Commentable
         'is_published',
         'is_approved',
         'can_comment',
+        'commenti_moderati',
         'allegati_accesso',
         'allegati_moderati',
     ];
 
     protected $casts = [
+        'can_comment' => 'boolean',
+        'commenti_moderati' => 'boolean',
         'allegati_moderati' => 'boolean',
     ];
 
     protected static function booted(): void
     {
         static::creating(function (self $segnalazione) {
+            if (! array_key_exists('commenti_moderati', $segnalazione->getAttributes()) || $segnalazione->commenti_moderati === null) {
+                $segnalazione->commenti_moderati = app(\App\Settings\GeneralSettings::class)->commenti_segnalazioni_moderati_di_serie;
+            }
             if (! array_key_exists('allegati_accesso', $segnalazione->getAttributes()) || $segnalazione->allegati_accesso === null) {
                 $segnalazione->allegati_accesso = 'aperti';
             }
@@ -171,8 +177,8 @@ class Segnalazione extends Model implements Commentable
      * fa più parte, e da lì la discussione che continua (commenti, avvisi) è di chi nel palazzo c'è.
      * Una privata resta sempre del suo autore: è indirizzata a lui, e nessun altro la vedrebbe.
      *
-     * L'elenco del portale aggiunge «pubblicata e approvata» per tutti, autore compreso: le proprie
-     * in moderazione l'autore le apre per indirizzo ma non le ritrova in elenco (Coda 389).
+     * L'elenco del portale segue la stessa regola della scheda: mostra anche le proprie non ancora
+     * uscite, in moderazione o in bozza (Coda 389).
      *
      * **Il permesso** (decisione 134.4): la regola qui sopra vale per chi ha «Visualizza segnalazioni».
      * «Visualizza proprie segnalazioni», che dà solo un ruolo su misura, apre le proprie e basta

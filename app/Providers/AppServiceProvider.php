@@ -52,6 +52,9 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->suppressReadonlyTouchWarning();
 
+        // Il compito «da moderare» dell'Action inbox segue i modelli, da qualunque pagina cambino (decisioni 445 e 449).
+        \App\Services\Gestionale\Inbox\ModerazioneNellInbox::registra();
+
         // ====================================================================
         // LA LUNGHEZZA MINIMA DELLE PASSWORD (Coda 262, decisione 127.1)
         // ====================================================================

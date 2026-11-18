@@ -34,6 +34,8 @@ vi.mock('@/composables/permissions', () => ({
 (globalThis as Record<string, unknown>).route = (nome: string) => `/${nome}`;
 
 const SegnalazioniView = (await import('./SegnalazioniView.vue')).default;
+const ListaCommenti = (await import('@/components/commenti/ListaCommenti.vue')).default;
+const { priorityConstants } = await import('@/lib/segnalazioni/constants');
 
 function monta(campi: Record<string, unknown>, altreProps: Record<string, unknown> = {}) {
     return shallowMount(SegnalazioniView, {
@@ -154,3 +156,69 @@ describe('SegnalazioniView — «Rendi pubblica» chiede conferma prima del coma
         expect(pulsante(montaConAzioni({}))).toBeUndefined();
     });
 });
+
+// Fase 2 della 1.12.0-beta.11 (Vincenzo, 17/11/2026 sera: «qui possiamo togliere l'icona»): il nome del condominio fra i parametri senza
+// l'icona del palazzo; le etichette dei parametri a 12 px come nella scheda della comunicazione (standard 8: niente scritte sotto i 12 px).
+describe('SegnalazioniView — i parametri', () => {
+    test('il condominio è il nome, senza icona', () => {
+        const condominio = monta({}).get('[data-parametro="condominio"]');
+
+        expect(condominio.text()).toContain('Condominio Aurora');
+        // Un figlio solo, il nome: con l'icona erano due.
+        expect(condominio.element.children).toHaveLength(1);
+        expect(condominio.element.children[0].tagName).toBe('SPAN');
+    });
+
+    test('nessuna etichetta dei parametri sotto i 12 px', () => {
+        expect(monta({}).html()).not.toMatch(/text-\[(?:[0-9]|10|11)px\]/);
+    });
+});
+
+// Accanto al titolo l'icona della priorità, con il suo colore, come nella scheda della comunicazione (Vincenzo, 17/11/2026 sera: «metterei
+// l'icona del livello di priorità a seconda della priorità sia per le segnalazioni che per le comunicazioni»).
+describe('SegnalazioniView — l\'icona accanto al titolo', () => {
+    for (const p of priorityConstants) {
+        test(`con la priorità «${p.value}» è l'icona di quella priorità, nel suo colore`, () => {
+            // L'icona della priorità c'è anche fra i parametri: si cerca quella del titolo.
+            const icona = monta({ priority: p.value }).findAllComponents(p.icon as never).find((c) => c.attributes('data-icona-titolo') !== undefined);
+
+            expect(icona).toBeDefined();
+            for (const c of String(p.colorClass).split(' ').filter(Boolean)) expect(icona!.classes()).toContain(c);
+        });
+    }
+});
+
+// Decisione 470: niente riquadro «Interazioni» (i commenti li dice la loro card), e «Bloccata» sotto la visibilità solo quando lo è.
+describe('SegnalazioniView — niente «Interazioni», «Bloccata» solo quando lo è (decisione 470)', () => {
+    test('aperta: né il riquadro, né la parola del lucchetto', () => {
+        const w = monta({ is_locked: false });
+
+        expect(w.text()).not.toContain('segnalazioni.details.interactions');
+        expect(w.text()).not.toContain('segnalazioni.details.unlocked');
+        expect(w.text()).not.toContain('segnalazioni.details.comments_enabled');
+        expect(w.find('[data-bloccata]').exists()).toBe(false);
+    });
+
+    test('bloccata: la riga «Bloccata» con il lucchetto', () => {
+        expect(monta({ is_locked: true }).get('[data-bloccata]').text()).toContain('segnalazioni.details.locked');
+    });
+});
+
+// Standard 16: le azioni sui commenti della scheda chiedono indietro solo la segnalazione, il messaggio e il numero dell'Inbox.
+describe('SegnalazioniView — le azioni sui commenti con una visita parziale', () => {
+    test('passa alla lista dei commenti le proprietà da rimandare', () => {
+        expect(monta({}).findComponent(ListaCommenti).props('ricarica')).toEqual(['segnalazione', 'flash', 'inbox_count']);
+    });
+});
+
+// Decisione 470 (➕): senza «Interazioni» la card dei parametri non spinge più l'ultima riga in fondo, e l'ultima riga non ha la linea sotto.
+describe('SegnalazioniView — la card dei parametri senza spazio vuoto', () => {
+    test('le righe stanno in alto, e l\'ultima non ha la linea sotto', () => {
+        const card = monta({}).get('[data-card-parametri]');
+        const righe = Array.from(card.element.children);
+
+        expect(card.classes()).not.toContain('justify-between');
+        expect(righe[righe.length - 1].className).not.toMatch(/\bborder-b\b/);
+    });
+});
+

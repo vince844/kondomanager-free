@@ -25,6 +25,8 @@ use App\Models\Segnalazione;
 use App\Services\Allegati\AllegatoService;
 use App\Services\SegnalazioneService;
 use App\Support\Allegati\RegoleAllegati;
+use App\Support\Commenti\RegoleCommenti;
+use App\Support\Segnalazioni\ContatoriElencoSegnalazioni;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
@@ -78,7 +80,10 @@ class SegnalazioneController extends Controller
 
         // Get stats using the same service
         $stats = $this->segnalazioneService->getSegnalazioniStats();
-    
+
+        // Decisione 453: quanti commenti e allegati ha ogni riga, e quanti da approvare.
+        ContatoriElencoSegnalazioni::mettiSulleRighe($request->user(), $segnalazioni->getCollection(), 'admin');
+
         return Inertia::render('segnalazioni/SegnalazioniList', [
             'segnalazioni' => SegnalazioneResource::collection($segnalazioni)->resolve(),
             'stats' => $stats, 
@@ -115,6 +120,9 @@ class SegnalazioneController extends Controller
             'condomini'        => CondominioResource::collection(Condominio::all()),
             'anagrafiche'      => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
             'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
+            'commenti_segnalazioni_moderati_di_serie' => (bool) app(\App\Settings\GeneralSettings::class)->commenti_segnalazioni_moderati_di_serie,
+            // «Commenti in moderazione» la sceglie solo chi modera: per gli altri vale il di serie.
+            'puo_scegliere_moderazione' => RegoleCommenti::puoScegliereModerazione(request()->user(), 'segnalazioni'),
         ]); 
     }
 
@@ -137,6 +145,11 @@ class SegnalazioneController extends Controller
         Gate::authorize('create', $segnalazione);
         
         $validated = $request->validated(); 
+
+        // «Commenti in moderazione» la sceglie solo chi modera: per gli altri il campo si ignora e vale il di serie (`Segnalazione::creating`).
+        if (! RegoleCommenti::puoScegliereModerazione($request->user(), 'segnalazioni')) {
+            unset($validated['commenti_moderati']);
+        }
 
         if ($request->hasFile('allegati')) {
             abort_unless($request->user()->hasPermissionTo(RegoleAllegati::permesso('segnalazioni', 'carica')), 403);
@@ -202,8 +215,7 @@ class SegnalazioneController extends Controller
         Gate::authorize('view', $segnalazione);
 
         $user = request()->user();
-        $canModerate = $user->hasPermissionTo(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value)
-                    || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
+        $canModerate = RegoleCommenti::puoModerare($user, $segnalazione);
 
         // Chiudi l'evento di moderazione/commento nell'Admin Inbox se aperto
         if ($canModerate) {
@@ -227,18 +239,12 @@ class SegnalazioneController extends Controller
 
         // Per i moderatori, carica anche i commenti in attesa e nascosti
         if ($canModerate) {
-            $segnalazioneCaricata->load('commentiInAttesa.autore.anagrafica');
+            $segnalazioneCaricata->load(['commentiInAttesa.autore.anagrafica', 'commentiNascosti.autore.anagrafica']);
         }
 
         return Inertia::render('segnalazioni/SegnalazioniView', [
             'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
-            'commenti_config' => [
-                'can_comment'     => (bool) $segnalazione->can_comment,
-                // Coda 305: la stessa domanda della rotta del commento, come nella scheda del portale.
-                'can_create'      => Gate::forUser($user)->allows('create', [Commento::class, $segnalazione]),
-                'can_moderate'    => $canModerate,
-                'can_publish'     => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
-            ],
+            'commenti_config' => RegoleCommenti::configSchedaSegnalazione($user, $segnalazioneCaricata, 'admin'),
             // Coda 304: la conferma di «Rendi pubblica» dice, prima del comando, se l'autore non la
             // vedrà più dal portale (non è più nel palazzo); la mail che riceve lo dice anche a lui.
             'rendi_pubblica' => [
@@ -271,7 +277,9 @@ class SegnalazioneController extends Controller
         return Inertia::render('segnalazioni/SegnalazioniEdit', [
             'segnalazione'  => new SegnalazioneResource($segnalazione),
             'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
-            'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome']))
+            'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
+            // «Commenti in moderazione» la cambia solo chi modera: per gli altri la pagina non mostra la casella e il server ignora il campo.
+            'puo_scegliere_moderazione' => RegoleCommenti::puoImpostareModerazione(request()->user(), $segnalazione),
         ]);
     }
 
@@ -288,6 +296,11 @@ class SegnalazioneController extends Controller
         Gate::authorize('update', $segnalazione);
 
         $validated = $request->validated(); 
+
+        // «Commenti in moderazione» la cambia solo chi modera: per gli altri il campo si ignora e resta com'era.
+        if (! RegoleCommenti::puoImpostareModerazione($request->user(), $segnalazione)) {
+            unset($validated['commenti_moderati']);
+        }
 
         /*
          * ⚠️ **I destinatari si leggono PRIMA di toccare le pivot** — vedi la nota gemella in

@@ -52,8 +52,8 @@ describe('le schede dell\'Inbox operativa', () => {
     });
 
     test('la riga sotto le schede: le segnalazioni e i bonifici, che non scadono, stanno in «Tutte»', () => {
-        expect(testoFuoriDalleSchede('scaduti', 2)).toBe('Le segnalazioni e i bonifici segnalati non hanno una scadenza: 2 sono in «Tutte».');
-        expect(testoFuoriDalleSchede('in_arrivo', 1)).toBe('Le segnalazioni e i bonifici segnalati non hanno una scadenza: 1 è in «Tutte».');
+        expect(testoFuoriDalleSchede('scaduti', 2)).toBe('Le segnalazioni, i bonifici segnalati e ciò che è da moderare non hanno una scadenza: 2 sono in «Tutte».');
+        expect(testoFuoriDalleSchede('in_arrivo', 1)).toBe('Le segnalazioni, i bonifici segnalati e ciò che è da moderare non hanno una scadenza: 1 è in «Tutte».');
         expect(testoFuoriDalleSchede('tutti', 2)).toBeNull();
         expect(testoFuoriDalleSchede('scaduti', 0)).toBeNull();
     });

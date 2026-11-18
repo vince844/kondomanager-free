@@ -26,7 +26,8 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * L'accordo di rientro di una persona, dalla riga dell'elenco «Rate scadute» e dal suo estratto conto: gli accordi che ha e le rate che un accordo
- * può coprire a una data; la registrazione con il calendario e la regola di decadenza; l'autorizzazione dell'assemblea arrivata dopo; la chiusura;
+ * può coprire a una data; la registrazione con il calendario e la regola di decadenza; l'autorizzazione dell'assemblea arrivata dopo; la scelta sulla
+ * parte della rata fuori dall'accordo, cambiata dopo; la chiusura;
  * la decadenza registrata dall'amministratore; la scansione firmata. Un accordo alla volta: è un atto con una persona. Non si cancella: si chiude.
  *
  * Il calendario: le rate dell'accordo, con il giorno (in ordine, non prima dell'accordo) e l'importo; la somma è il debito riconosciuto, e un
@@ -94,6 +95,8 @@ class AccordiRientroController extends Controller
             'scadenze.*.importo' => ['required'],
             'decadenza_rate' => ['nullable', 'integer', 'min:1'],
             'decadenza_giorni' => ['nullable', 'integer', 'min:0', 'max:365'],
+            // Decisione 450: sulla parte della rata fuori dall'accordo gli interessi continuano (di serie) o restano sospesi finché l'accordo regge.
+            'interessi_parte_fuori' => ['nullable', Rule::in([AccordoRientro::INTERESSI_CONTINUANO, AccordoRientro::INTERESSI_SOSPESI])],
             'rate' => ['required', 'array', 'min:1'],
             'rate.*.rata_id' => ['required', 'integer'],
             'rate.*.immobile_id' => ['nullable', 'integer'],
@@ -113,6 +116,7 @@ class AccordiRientroController extends Controller
             'scadenze.*.data.date_format' => self::CALENDARIO_IN_ORDINE,
             'decadenza_rate.min' => 'La regola di decadenza conta almeno una rata non versata.',
             'decadenza_giorni.max' => 'I giorni della regola di decadenza sono al più 365.',
+            'interessi_parte_fuori.in' => 'Sulla parte della rata fuori dall\'accordo scegli se gli interessi continuano o restano sospesi finché l\'accordo regge.',
             'fino_al.after_or_equal' => '«Fino al» non può essere prima della data dell\'accordo.',
             'rate.required' => 'Scegli le rate che l\'accordo copre.',
             'autorizzato_assemblea.required' => self::SENZA_AUTORIZZAZIONE,
@@ -184,6 +188,7 @@ class AccordiRientroController extends Controller
                     'data_autorizzazione' => $autorizzato ? $dati['data_autorizzazione'] : null,
                     'verbale_autorizzazione' => $autorizzato ? ($dati['verbale_autorizzazione'] ?? null) : null,
                     'nota' => $dati['nota'] ?? null,
+                    'interessi_parte_fuori' => $dati['interessi_parte_fuori'] ?? AccordoRientro::INTERESSI_CONTINUANO,
                     'registrato_da' => $request->user()?->id,
                 ]);
                 $accordo->rate()->createMany(array_values($coperte));
@@ -235,6 +240,38 @@ class AccordiRientroController extends Controller
         $a->update(['autorizzato_assemblea' => true, 'data_autorizzazione' => $dati['data_autorizzazione'], 'verbale_autorizzazione' => $dati['verbale_autorizzazione'] ?? null]);
 
         return response()->json(['messaggio' => 'Autorizzazione dell\'assemblea registrata.']);
+    }
+
+    /**
+     * La scelta sulla parte della rata fuori dall'accordo (decisione 450), cambiata dalla scheda dopo la registrazione: gli accordi registrati prima della
+     * scelta hanno il di serie senza che l'amministratore l'abbia vista, e una scelta sbagliata nella finestra si corregge senza chiudere e rifare l'accordo.
+     * Tocca solo la proposta degli interessi: niente si scrive a giornale. Il registro dell'accordo tiene chi l'ha cambiata, quando, da che cosa a che cosa.
+     * Un accordo chiuso non si cambia.
+     */
+    public function parteFuori(Request $request, Condominio $condominio, string|int $accordo): JsonResponse
+    {
+        $a = $this->assicuraAccordo($condominio, $accordo);
+        $dati = $request->validate([
+            'interessi_parte_fuori' => ['required', Rule::in([AccordoRientro::INTERESSI_CONTINUANO, AccordoRientro::INTERESSI_SOSPESI])],
+        ], [
+            'interessi_parte_fuori.required' => 'Sulla parte della rata fuori dall\'accordo scegli se gli interessi continuano o restano sospesi finché l\'accordo regge.',
+            'interessi_parte_fuori.in' => 'Sulla parte della rata fuori dall\'accordo scegli se gli interessi continuano o restano sospesi finché l\'accordo regge.',
+        ]);
+        if ($a->chiuso_il !== null) {
+            throw ValidationException::withMessages(['interessi_parte_fuori' => 'Questo accordo è chiuso: la scelta resta quella che aveva.']);
+        }
+        $prima = (string) ($a->interessi_parte_fuori ?? AccordoRientro::INTERESSI_CONTINUANO);
+        if ($prima === $dati['interessi_parte_fuori']) {
+            throw ValidationException::withMessages(['interessi_parte_fuori' => 'La scelta è già questa.']);
+        }
+        $registro = is_array($a->registro) ? $a->registro : [];
+        $registro[] = ['cosa' => 'interessi_parte_fuori', 'da' => $prima, 'a' => $dati['interessi_parte_fuori'], 'il' => now()->toIso8601String(),
+            'utente_id' => $request->user()?->id, 'utente' => (string) ($request->user()?->name ?? '')];
+        $a->update(['interessi_parte_fuori' => $dati['interessi_parte_fuori'], 'registro' => $registro]);
+
+        return response()->json(['messaggio' => 'Scelta cambiata: sulla parte della rata fuori dall\'accordo '
+            . ($dati['interessi_parte_fuori'] === AccordoRientro::INTERESSI_SOSPESI ? 'gli interessi restano sospesi finché l\'accordo regge' : 'gli interessi continuano')
+            . '. La proposta degli interessi la segue da adesso; gli interessi già registrati restano come sono.']);
     }
 
     /** La chiusura: una data (non prima dell'accordo, non dopo oggi) e una nota. L'accordo resta, chiuso. */

@@ -9,6 +9,7 @@ use App\Helpers\DateHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Evento;
+use App\Services\Gestionale\Inbox\CompitoDaModerare;
 use App\Services\Gestionale\Inbox\CompitoDellaSegnalazione;
 use App\Services\Gestionale\Inbox\ElencoDellInbox;
 use App\Services\Gestionale\Inbox\FasceDeiCompiti;
@@ -71,7 +72,7 @@ class ActionInboxController extends Controller
         // Le letture contate, una volta per la pagina: «Mostra altri 15» chiede solo l'elenco, e non le rifà.
         $letto = null;
         $leggi = function () use (&$letto, $riepilogo, $filtri, $fasce) {
-            return $letto ??= $riepilogo->leggi($filtri['condominio_id'], $filtri['segnalazioni'], $fasce);
+            return $letto ??= $riepilogo->leggi($filtri['condominio_id'], $filtri['segnalazioni'], $fasce, $filtri['moderare']);
         };
         $perFascia = null;
         $contati = function () use (&$perFascia, $elenco, $filtri) {
@@ -210,8 +211,13 @@ class ActionInboxController extends Controller
      */
     private function loVede(Request $request, Evento $task): bool
     {
-        return ! $this->eUnaSegnalazione($task)
-            || CompitoDellaSegnalazione::soloQuelliCheVede(Evento::query()->whereKey($task->getKey()), CompitoDellaSegnalazione::chiVede($request->user()))->exists();
+        $tipo = $task->meta['type'] ?? $task->tipo?->value;
+        if ($tipo !== CompitoDellaSegnalazione::TIPO && $tipo !== CompitoDaModerare::TIPO) {
+            return true;
+        }
+
+        return CompitoDellaSegnalazione::soloQuelliCheVede(Evento::query()->whereKey($task->getKey()), CompitoDellaSegnalazione::chiVede($request->user()),
+            CompitoDaModerare::chiVede($request->user()))->exists();
     }
 
     /**

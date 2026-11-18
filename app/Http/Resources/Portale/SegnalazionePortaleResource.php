@@ -23,7 +23,7 @@ class SegnalazionePortaleResource extends SegnalazioneResource
 {
     private const CAMPI = [
         'id', 'subject', 'description', 'priority', 'stato', 'is_resolved', 'is_locked', 'is_featured',
-        'is_private', 'is_published', 'is_approved', 'can_comment', 'created_at', 'commenti', 'commentiInAttesa',
+        'is_private', 'is_published', 'is_approved', 'can_comment', 'commenti_moderati', 'created_at', 'commenti', 'commentiInAttesa', 'contatori',
     ];
 
     /**

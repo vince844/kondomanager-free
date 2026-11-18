@@ -67,7 +67,8 @@ function accDi(array $proposta, array $s, string $chi): ?array
 /** Registra tutte le righe della proposta data, con la voce data per ogni gestione. */
 function accRegistra($test, array $s, array $proposta, ?int $voce = null)
 {
-    $righe = collect($proposta['persone'])->flatMap(fn ($p) => array_column(array_filter($p['righe'], fn ($r) => $r['fermo'] === null), 'chiave'))->values()->all();
+    // Le righe che la finestra tiene: senza fermo e con gli interessi (una riga a zero porta solo la frase del riallineo).
+    $righe = collect($proposta['persone'])->flatMap(fn ($p) => array_column(array_filter($p['righe'], fn ($r) => $r['fermo'] === null && $r['interessi'] > 0), 'chiave'))->values()->all();
 
     return $test->actingAs($test->user)->postJson(route('admin.gestionale.addebiti.interessi.store', [$s['c']]), [
         'alla' => $proposta['alla'], 'righe' => $righe, 'atteso' => $proposta['totale'],

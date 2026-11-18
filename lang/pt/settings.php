@@ -155,24 +155,48 @@ return [
             'description' => 'Receba uma notificação quando um documento que já recebeu for alterado',
         ],
         'new_comment' => [
-            'label' => 'Novo comentário',
-            'description' => 'Receba uma notificação quando for adicionado um comentário a um relato em que participa',
+            'label' => 'Novo comentário (sinalizações)',
+            'description' => 'Receba uma notificação quando for adicionado um comentário a uma sinalização em que participa',
         ],
         'comment_approved' => [
-            'label' => 'Comentário aprovado',
-            'description' => 'Receba uma notificação quando o seu comentário pendente for aprovado',
+            'label' => 'Comentário aprovado (sinalizações)',
+            'description' => 'Receba uma notificação quando o seu comentário numa sinalização for aprovado',
         ],
         'comment_deleted' => [
-            'label' => 'Comentário apagado ou oculto',
-            'description' => 'Receba uma notificação quando o seu comentário for apagado ou oculto',
+            'label' => 'Comentário apagado ou oculto (sinalizações)',
+            'description' => 'Receba uma notificação quando o seu comentário numa sinalização for apagado ou oculto',
+        ],
+        'new_communication_comment' => [
+            'label' => 'Novo comentário (comunicados)',
+            'description' => 'Receba uma notificação quando for adicionado um comentário a um comunicado que recebe',
+        ],
+        'communication_comment_approved' => [
+            'label' => 'Comentário aprovado (comunicados)',
+            'description' => 'Receba uma notificação quando o seu comentário num comunicado for aprovado',
+        ],
+        'communication_comment_deleted' => [
+            'label' => 'Comentário apagado ou oculto (comunicados)',
+            'description' => 'Receba uma notificação quando o seu comentário num comunicado for apagado ou oculto',
         ],
         'new_user' => [
             'label' => 'Novo utilizador registado',
             'description' => 'Receba uma notificação quando um novo utilizador se registar',
         ],
         'comment_under_moderation' => [
-            'label' => 'Comentário a aguardar moderação',
-            'description' => 'Receba uma notificação quando um novo comentário exigir a sua aprovação',
+            'label' => 'Comentário a aguardar moderação (sinalizações)',
+            'description' => 'Receba uma notificação quando um novo comentário numa sinalização exigir a sua aprovação',
+        ],
+        'comment_edited_under_moderation' => [
+            'label' => 'Comentário modificado para moderar (sinalizações)',
+            'description' => 'Receba uma notificação quando um comentário modificado numa sinalização exigir a sua aprovação',
+        ],
+        'communication_comment_under_moderation' => [
+            'label' => 'Comentário a aguardar moderação (comunicados)',
+            'description' => 'Receba uma notificação quando um novo comentário num comunicado exigir a sua aprovação',
+        ],
+        'communication_comment_edited_under_moderation' => [
+            'label' => 'Comentário modificado para moderar (comunicados)',
+            'description' => 'Receba uma notificação quando um comentário modificado num comunicado exigir a sua aprovação',
         ],
         'new_attachment' => [
             'label' => 'Novo anexo',

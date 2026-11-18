@@ -351,6 +351,58 @@ class StoricoTitolarita
 
     private function arretrato(Subentro $s, \Illuminate\Support\Collection $righe): array
     {
+        $esito = $this->arretratoDeiSaldi($s, $righe);
+        $altre = $this->scelteDellArretrato($s);
+        if ($altre !== []) {
+            $esito['frase'] = trim(($esito['frase'] ?? '') . ' ' . implode(' ', $altre));
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Le scelte dell'arretrato che il registro del passaggio tiene oltre ai saldi: l'accordo di rientro del defunto chiuso dalla successione, in regola
+     * fino al decesso o come una decadenza (decisione 454); l'accessorio con un pagamento segnalato rimasto al defunto, o passato comunque agli eredi
+     * (decisione 448). Una frase per ognuno; nessuna per i passaggi registrati prima che il registro le tenesse.
+     *
+     * @return list<string>
+     */
+    private function scelteDellArretrato(Subentro $s): array
+    {
+        $arretrato = (array) ($s->registro['arretrato'] ?? []);
+        if (($arretrato['scelta'] ?? null) !== Subentro::ARRETRATO_AGLI_EREDI) {
+            return [];
+        }
+        $defunto = $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'questa persona');
+        $frasi = [];
+        foreach ((array) ($arretrato['restati_al_defunto'] ?? []) as $r) {
+            $frasi[] = sprintf('«%s» (%s) è rimasto a nome di %s: aveva un pagamento segnalato dal portale, da verificare.', (string) ($r['causale'] ?? 'Addebito'),
+                \App\Helpers\MoneyHelper::format((int) ($r['aperto'] ?? 0)), $defunto);
+        }
+        // Decisione 454: l'accordo di rientro del defunto chiuso dalla successione, e che cosa vale per i suoi interessi.
+        $accordi = array_values(array_filter((array) ($arretrato['accordi'] ?? []), fn ($r) => isset($r['scelta'])));
+        if ($accordi !== []) {
+            $date = \App\Models\Gestionale\AccordoRientro::whereIn('id', array_map(fn ($r) => (int) $r['id'], $accordi))->pluck('data_accordo', 'id');
+            foreach ($accordi as $r) {
+                $frasi[] = sprintf('L\'accordo di rientro di %s%s si è chiuso per la successione: per gli interessi %s.', $defunto,
+                    isset($date[(int) $r['id']]) ? ' del ' . CarbonImmutable::parse($date[(int) $r['id']])->format('d/m/Y') : '',
+                    $r['scelta'] === \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_DECADENZA ? 'vale come una decadenza' : 'resta in regola fino al decesso');
+            }
+        }
+        $segnalati = array_values(array_filter((array) ($arretrato['accessori'] ?? []), fn ($r) => (bool) ($r['segnalato'] ?? false)));
+        if ($segnalati !== []) {
+            $rate = \App\Models\Gestionale\RataQuote::with('rata:id,descrizione')->whereIn('id', array_map(fn ($r) => (int) $r['quota_id'], $segnalati))->get()->keyBy('id');
+            foreach ($segnalati as $r) {
+                $frasi[] = sprintf('«%s» (%s) è passato agli eredi con un pagamento segnalato dal portale ancora da verificare: l\'ha scelto chi ha registrato il passaggio.',
+                    trim((string) ($rate[(int) $r['quota_id']]?->rata?->descrizione ?? 'Addebito')), \App\Helpers\MoneyHelper::format((int) ($r['aperto'] ?? 0)));
+            }
+        }
+
+        return $frasi;
+    }
+
+    private function arretratoDeiSaldi(Subentro $s, \Illuminate\Support\Collection $righe): array
+    {
         $scelta = $s->registro['arretrato']['scelta'] ?? null;
         $defunto = $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'questa persona');
         if ($scelta === Subentro::ARRETRATO_AGLI_EREDI) {

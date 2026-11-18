@@ -9,7 +9,6 @@ use App\Enums\CategoriaEventoEnum;
 use App\Enums\EventoTipo;
 use App\Enums\NaturaGestione;
 use App\Enums\StatoPianoRate;
-use App\Enums\VisibilityStatus;
 use App\Helpers\DateHelper;
 use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
@@ -731,12 +730,7 @@ final class AddebitiIndividuali
         // Il promemoria nel portale nasce con l'addebito, già emesso: il piano non passa da un'approvazione che lo crei.
         $persona = Anagrafica::find($v['anagrafica_id']);
         $quota->setRelation('immobile', Immobile::find($v['immobile_id']));
-        $evento = $this->eventi->crea($piano, $rata, $persona, collect([$quota]), $condominio, $utenteId ?? 1, (string) ($piano->gestione?->nome ?? ''), $categoria);
-        $meta = $evento->meta;
-        $meta['is_emitted'] = true;
-        $meta['is_published'] = true;
-        // Il titolo sta in 255 caratteri: una causale lunga (gli interessi con il riferimento del tasso) e il nome del piano possono passarli.
-        $evento->update(['title' => mb_substr($v['causale'] . ' - ' . $piano->nome, 0, 255), 'meta' => $meta, 'visibility' => VisibilityStatus::PRIVATE->value]);
+        $this->eventi->creaDellAddebito($piano, $rata, $persona, collect([$quota]), $condominio, $utenteId ?? 1, $categoria);
 
         return $rata->fresh('rateQuote');
     }

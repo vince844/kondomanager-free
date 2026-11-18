@@ -4,6 +4,7 @@
 
 import { h } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
+import ContatoriElenco from '@/components/commenti/ContatoriElenco.vue';
 import DropdownAction from '@/components/segnalazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/segnalazioni/DataTableColumnHeader.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
@@ -61,12 +62,16 @@ export const columns: ColumnDef<Segnalazione>[] = [
           ])
         : null;
 
-        return h('div', { class: 'flex items-center space-x-2' }, [
-          shieldIcon,
-          h(Link, {
-            href: route(generateRoute('segnalazioni.show'), { id: segnalazione.id }),
-            class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-          }, () => segnalazione.subject)
+        // Decisione 453: sotto il titolo, in una riga piccola e non in una colonna nuova, quanti commenti e allegati ha.
+        return h('div', { class: 'flex flex-col gap-1' }, [
+          h('div', { class: 'flex items-center space-x-2' }, [
+            shieldIcon,
+            h(Link, {
+              href: route(generateRoute('segnalazioni.show'), { id: segnalazione.id }),
+              class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+            }, () => segnalazione.subject)
+          ]),
+          h(ContatoriElenco, { contatori: segnalazione.contatori, mostraInAttesa: true }),
         ]);
     }
   },

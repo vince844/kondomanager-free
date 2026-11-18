@@ -173,3 +173,20 @@ describe('AllegatiList — pagina allegati del pannello (Coda 460)', () => {
     });
 });
 
+
+describe('AllegatiList — il filtro «elemento» va con il tipo (Fase 1-bis della 1.12.0-beta.11)', () => {
+    test('cambiando «Tipo» l\'etichetta dell\'elemento si toglie, e la visita non manda più l\'elemento', async () => {
+        const w = montaPagina({ stato: 'in_attesa', tipo: 'comunicazioni', elemento: 7, elemento_nome: 'Avviso di giugno' });
+        const vm = w.vm as unknown as { statoFiltro: Record<string, unknown>; applicaFiltri: () => void };
+        expect(w.find('[data-testid="filtro-elemento"]').exists()).toBe(true);
+
+        vm.statoFiltro.tipo = 'segnalazioni';
+        vm.applicaFiltri();
+        await w.vm.$nextTick();
+
+        const parametri = vi.mocked(router.get).mock.lastCall?.[1] as Record<string, unknown>;
+        expect(parametri).toMatchObject({ stato: 'in_attesa', tipo: 'segnalazioni' });
+        expect(parametri).not.toHaveProperty('elemento');
+        expect(w.find('[data-testid="filtro-elemento"]').exists()).toBe(false);
+    });
+});

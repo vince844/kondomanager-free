@@ -72,7 +72,7 @@ final class RispostePromemoria
      * parte. Per gli altri il giorno dell'evento è solo un promemoria, e si sposta.
      */
     public const COMPITI_CON_IL_PROMEMORIA_A_PARTE = ['pagamento_fornitore', 'versamento_ritenuta', 'convocazione_urgenza', 'ratifica_sforo',
-        'emissione_rata_sopravvenienza', 'pianifica_ripianamento_deficit', 'commento', 'allegato', 'segnalazione_guasto', 'verifica_pagamento'];
+        'emissione_rata_sopravvenienza', 'pianifica_ripianamento_deficit', 'commento', 'allegato', 'segnalazione_guasto', 'verifica_pagamento', 'da_moderare'];
 
     /** I tipi con la scadenza: se il programma la anticipa, il compito torna quel giorno. */
     public const COMPITI_CON_LA_SCADENZA = ['pagamento_fornitore', 'versamento_ritenuta', 'convocazione_urgenza', 'ratifica_sforo',
@@ -84,7 +84,7 @@ final class RispostePromemoria
     public const FRASE_PRIMA_L_INCASSO = 'Prima registra l\'incasso con «Registra l\'incasso», o rifiuta la segnalazione con «Non serve».';
 
     /** I compiti che tornano prima del giorno quando arriva una cosa nuova, con le parole della riga. */
-    public const COMPITI_CHE_TORNANO_PRIMA = ['commento' => 'un commento nuovo', 'allegato' => 'un allegato nuovo'];
+    public const COMPITI_CHE_TORNANO_PRIMA = ['commento' => 'un commento nuovo', 'allegato' => 'un allegato nuovo', 'da_moderare' => 'qualcosa di nuovo da moderare'];
 
     /** Il bonifico segnalato dal portale: «Non serve» è il rifiuto della segnalazione, che il condòmino legge. */
     public const BONIFICO_SEGNALATO = 'verifica_pagamento';

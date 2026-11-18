@@ -38,6 +38,7 @@ class CreateComunicazioneRequest extends FormRequest
             'description'     => 'required|string',
             'priority'        => 'required|string',
             'can_comment'     => 'required|boolean',
+            'commenti_moderati' => ['nullable', 'boolean'],
             'is_featured'     => 'required|boolean',
             'is_published'    => 'required|boolean',
             'anagrafiche'     => ['nullable', 'array'],

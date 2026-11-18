@@ -185,3 +185,30 @@ describe('la card «Sei mesi»', () => {
         expect(testoCardSeiMesi({ adesso: 0, rendiconti: 0 }, { inCorso: false, fatti: 40, totale: 40 })).toBe('niente entro 60 giorni');
     });
 });
+
+describe('il gruppo «Da moderare»', () => {
+    test('il titolo del gruppo, «e altri N», la data «dal …»', () => {
+        expect(titoloDelGruppo('da_moderare')).toBe('Da moderare');
+        expect(testoEAltri('da_moderare', 1)).toBe('e un altro da moderare');
+        expect(testoEAltri('da_moderare', 4)).toBe('e altri 4 da moderare');
+        expect(testoDellaData({ gruppo: 'da_moderare', giorno: '2026-11-16' })).toBe('dal 16/11/2026');
+    });
+
+    test('le righe con le testate: il gruppo nuovo ha la sua, con il numero del server', () => {
+        const r = (id: number, gruppo: string) => ({ id, gruppo }) as unknown as RigaCompito;
+        const voci = righeConIGruppi([r(1, 'bonifici'), r(2, 'da_moderare'), r(3, 'da_moderare'), r(4, 'avanti')],
+            { scaduti: 0, segnalazioni: 0, bonifici: 2, da_moderare: 5, avanti: 1 });
+
+        expect(voci.filter((v) => v.tipo === 'gruppo').map((v) => (v as { titolo: string; numero: number }).titolo + ' ' + (v as { numero: number }).numero))
+            .toEqual(['Bonifici da verificare 2', 'Da moderare 5', 'Più avanti 1']);
+    });
+
+    test('sotto il grafico dice anche i compiti da moderare, che non ci sono', () => {
+        expect(testoFuoriDalGrafico({ segnalazioni: 8, bonifici: 0, da_moderare: 3, oltre_30: 0 })).toBe('Non sono nel grafico: 8 segnalazioni aperte e 3 compiti da moderare.');
+        expect(testoFuoriDalGrafico({ bonifici: 0, da_moderare: 1, oltre_30: 0 })).toBe('Non è nel grafico: 1 compito da moderare.');
+    });
+
+    test('il tipo ha la sua icona', () => {
+        expect(aspettoDelTipo('da_moderare').icona).toBe('commento');
+    });
+});

@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound, List, DownloadCloud, Files } from 'lucide-vue-next';
+import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound, List, DownloadCloud, Files, MessageSquare } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -43,6 +43,15 @@ const puoAprireAllegati = computed(() =>
     hasPermission([
         Permission.VIEW_ATTACHMENTS_SEGNALAZIONI,
         Permission.VIEW_ATTACHMENTS_COMUNICAZIONI,
+    ])
+)
+
+// La pagina «Commenti» (Coda 657): lo stesso permesso con cui la apre `RegoleCommenti::puoAprirePagina`.
+const puoAprireCommenti = computed(() =>
+    hasPermission([Permission.ACCESS_ADMIN_PANEL]) &&
+    hasPermission([
+        Permission.VIEW_COMMENTS_SEGNALAZIONI,
+        Permission.VIEW_COMMENTS_COMUNICAZIONI,
     ])
 )
 
@@ -98,6 +107,14 @@ const mainNavItems = computed<NavItem[]>(() => [
             title: trans('appHeader.allegati'),
             href: '/admin/allegati',
             icon: Files,
+        }]
+        : []),
+    ...(puoAprireCommenti.value
+        ? [{
+            type: 'link' as const,
+            title: trans('appHeader.commenti'),
+            href: '/admin/commenti',
+            icon: MessageSquare,
         }]
         : []),
     { type: 'link', title: trans('appHeader.agenda'), href: generatePath('eventi'), icon: CalendarClock, permissions: [Permission.VIEW_EVENTS] },

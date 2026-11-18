@@ -13,6 +13,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import ContatoriElenco from '@/components/commenti/ContatoriElenco.vue';
 import { Button } from '@/components/ui/button';
 import Alert from '@/components/Alert.vue';
 import { Pencil, Trash2, Loader2, SearchX, Plus, Tags, Lock } from 'lucide-vue-next';
@@ -204,6 +205,27 @@ function canDelete(s: Segnalazione): boolean {
 /* -------------------------------------------------
    Dialog handling
 ------------------------------------------------- */
+function statoNonUscita(isPublished: unknown, isApproved: unknown): { label: string; dotClass: string } | null {
+  const published = Boolean(Number(isPublished));
+  const approved = Boolean(Number(isApproved));
+
+  if (!published) {
+    return {
+      label: trans('segnalazioni.publication.draft'),
+      dotClass: 'bg-amber-500',
+    };
+  }
+
+  if (!approved) {
+    return {
+      label: trans('segnalazioni.publication.pending'),
+      dotClass: 'bg-slate-400',
+    };
+  }
+
+  return null;
+}
+
 function openDeleteDialog(id: number): void {
   ui.segnalazioneID = id;
   ui.isAlertOpen = true;
@@ -289,12 +311,12 @@ async function confirmDelete(): Promise<void> {
             <article
               v-for="segnalazione in segnalazioni"
               :key="segnalazione.id"
-              class="mb-4 border p-4 rounded-lg bg-white hover:shadow-md transition-shadow"
+              class="mb-4 border p-4 rounded-lg bg-white dark:bg-slate-900 dark:border-slate-800 hover:shadow-md transition-shadow"
             >
               <div class="flex justify-between items-start">
                 <Link
                   :href="route(generateRoute('segnalazioni.show'), { id: segnalazione.id })"
-                  class="flex items-center gap-3 font-semibold text-lg hover:text-primary transition-colors"
+                  class="flex items-center gap-3 font-semibold text-lg text-gray-900 dark:text-slate-100 hover:text-primary transition-colors"
                 >
                   <component
                     :is="getPriorityMeta(segnalazione.priority).icon"
@@ -305,11 +327,22 @@ async function confirmDelete(): Promise<void> {
                   <!-- Coda 306: «Privata» è un'indicazione a parte, da `is_private`. -->
                   <span
                     v-if="etichettaPrivacy('segnalazioni', segnalazione.is_private)"
-                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500"
+                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500 dark:text-slate-400"
                     :title="trans('segnalazioni.privacy.private_hint')"
                   >
                     <Lock class="w-3.5 h-3.5" />
                     {{ trans(etichettaPrivacy('segnalazioni', segnalazione.is_private) ?? '') }}
+                  </span>
+                  <!-- Coda 389: stato delle proprie non ancora uscite («Bozza» o «Da approvare») -->
+                  <span
+                    v-if="statoNonUscita(segnalazione.is_published, segnalazione.is_approved)"
+                    class="inline-flex items-center gap-1 text-xs font-normal text-gray-500 dark:text-slate-400"
+                  >
+                    <span
+                      class="w-1.5 h-1.5 rounded-full shrink-0"
+                      :class="statoNonUscita(segnalazione.is_published, segnalazione.is_approved)?.dotClass"
+                    ></span>
+                    {{ statoNonUscita(segnalazione.is_published, segnalazione.is_approved)?.label }}
                   </span>
                 </Link>
 
@@ -318,7 +351,7 @@ async function confirmDelete(): Promise<void> {
                     v-if="canEdit(segnalazione)"
                     :href="route(generateRoute('segnalazioni.edit'), { id: segnalazione.id })"
                     class="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                    :title="trans('segnalazioni.actions.edit')"
+                    :title="trans('segnalazioni.actions.edit_ticket')"
                     aria-label="Edit ticket"
                   >
                     <Pencil class="w-4 h-4" />
@@ -328,7 +361,7 @@ async function confirmDelete(): Promise<void> {
                     v-if="canDelete(segnalazione)"
                     @click="openDeleteDialog(segnalazione.id)"
                     class="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                    :title="trans('segnalazioni.actions.delete')"
+                    :title="trans('segnalazioni.actions.delete_ticket')"
                     aria-label="Delete ticket"
                   >
                     <Trash2 class="w-4 h-4" />
@@ -336,17 +369,21 @@ async function confirmDelete(): Promise<void> {
                 </div>
               </div>
 
-              <p class="text-sm text-gray-600 mt-2 line-clamp-2 leading-relaxed">
+              <p class="text-sm text-gray-600 dark:text-slate-300 mt-2 line-clamp-2 leading-relaxed">
                 {{ segnalazione.description }}
               </p>
 
-              <div class="mt-4 text-xs text-gray-400">
-                {{
-                  trans('segnalazioni.visibility.sent_on_by', {
-                    date: segnalazione.created_at,
-                    name: segnalazione.created_by.user.name,
-                  })
-                }}
+              <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 dark:text-slate-400">
+                <span data-riga-inviata>
+                  {{
+                    trans('segnalazioni.visibility.sent_on_by', {
+                      date: segnalazione.created_at,
+                      name: segnalazione.created_by.user.name,
+                    })
+                  }}
+                </span>
+                <!-- Decisione 453: quanti commenti e allegati vede il condòmino, gli stessi della scheda. -->
+                <ContatoriElenco :contatori="segnalazione.contatori" />
               </div>
             </article>
 

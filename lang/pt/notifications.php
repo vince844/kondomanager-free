@@ -196,8 +196,49 @@ return [
         'action'  => 'Ver a notificação',
     ],
 
+    'edited_pending_ticket_comment' => [
+        'subject' => 'Comentário modificado para aprovação',
+        'line_1'  => ':user modificou um comentário na sinalização ":title":',
+        'line_2'  => 'Inicie sessão para aprovar ou rejeitar o comentário.',
+        'action'  => 'Ver sinalização',
+    ],
+
     // Comentário eliminado
     'deleted_ticket_comment' => [
+        'subject' => 'O seu comentário foi removido',
+        'line_1'  => 'O seu comentário sobre :entity foi removido ou ocultado por um administrador.',
+    ],
+
+    // Comentários em comunicações
+    'new_communication_comment' => [
+        'subject'  => 'Novo comentário em: :entity',
+        'greeting' => 'Olá!',
+        'line_1'   => ':user deixou um novo comentário:',
+        'action'   => 'Ver a comunicação',
+        'line_2'   => 'Está a receber este email porque está envolvido nesta comunicação.',
+    ],
+
+    'approved_communication_comment' => [
+        'subject' => 'O seu comentário foi aprovado',
+        'line_1'  => 'O seu comentário sobre :entity foi aprovado e publicado.',
+        'action'  => 'Ver a comunicação',
+    ],
+
+    'pending_communication_comment' => [
+        'subject' => 'Novo comentário para aprovação em :entity',
+        'line_1'  => ':user escreveu um comentário em ":title" que requer aprovação.',
+        'line_2'  => 'Inicie sessão para aprovar ou rejeitar o comentário.',
+        'action'  => 'Ver a comunicação',
+    ],
+
+    'edited_pending_communication_comment' => [
+        'subject' => 'Comentário modificado para aprovação',
+        'line_1'  => ':user modificou um comentário no comunicado ":title":',
+        'line_2'  => 'Inicie sessão para aprovar ou rejeitar o comentário.',
+        'action'  => 'Ver comunicado',
+    ],
+
+    'deleted_communication_comment' => [
         'subject' => 'O seu comentário foi removido',
         'line_1'  => 'O seu comentário sobre :entity foi removido ou ocultado por um administrador.',
     ],

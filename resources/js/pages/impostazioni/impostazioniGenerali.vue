@@ -107,7 +107,12 @@ const form = useForm({
   open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
-  force_comment_moderation: Boolean(page.props.force_comment_moderation),
+  commenti_segnalazioni_moderati_di_serie: page.props.commenti_segnalazioni_moderati_di_serie !== undefined
+    ? Boolean(page.props.commenti_segnalazioni_moderati_di_serie)
+    : false,
+  commenti_comunicazioni_moderati_di_serie: page.props.commenti_comunicazioni_moderati_di_serie !== undefined
+    ? Boolean(page.props.commenti_comunicazioni_moderati_di_serie)
+    : true,
   allegati_moderati_di_serie: page.props.allegati_moderati_di_serie !== undefined
     ? Boolean(page.props.allegati_moderati_di_serie)
     : true,
@@ -344,17 +349,30 @@ const submit = () => {
               </div>
             </div>
 
-            <!-- MODERAZIONE COMMENTI -->
+            <!-- MODERAZIONE COMMENTI SEGNALAZIONI DI SERIE -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
                 <label class="block text-sm font-medium leading-none mb-1">
-                  {{ trans('impostazioni.dialogs.force_comment_moderation_title') }}
+                  {{ trans('impostazioni.dialogs.commenti_segnalazioni_moderati_di_serie_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
-                  {{ trans('impostazioni.dialogs.force_comment_moderation_description') }}
+                  {{ trans('impostazioni.dialogs.commenti_segnalazioni_moderati_di_serie_description') }}
                 </p>
               </div>
-              <Switch v-model="form.force_comment_moderation" />
+              <Switch v-model="form.commenti_segnalazioni_moderati_di_serie" />
+            </div>
+
+            <!-- MODERAZIONE COMMENTI COMUNICAZIONI DI SERIE -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.commenti_comunicazioni_moderati_di_serie_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.commenti_comunicazioni_moderati_di_serie_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.commenti_comunicazioni_moderati_di_serie" />
             </div>
 
             <!-- MODERAZIONE ALLEGATI DI SERIE -->
@@ -387,7 +405,7 @@ const submit = () => {
                   type="number"
                   min="1"
                   max="50"
-                  class="w-full text-sm tabular-nums"
+                  class="w-full text-sm tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
                 <InputError :message="form.errors.allegati_massimo_per_elemento" />
               </div>

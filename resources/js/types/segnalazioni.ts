@@ -63,4 +63,6 @@ export interface Segnalazione {
     is_approved: boolean;
     can_comment: boolean; 
     anagrafiche: Anagrafica[];
+    // Quanti commenti e allegati (decisione 453), calcolati dal server; solo nelle righe degli elenchi.
+    contatori?: { commenti: number; allegati: number; in_attesa: number };
   }

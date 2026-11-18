@@ -30,6 +30,34 @@ export interface ArretratoDelDefunto {
   eredi: { anagrafica_id: number; nome: string; quota: number; importo: number; importo_formattato: string }[];
   totale: number;
   frase: string | null;
+  /** Decisione 448: gli interessi e le spese del defunto con un pagamento segnalato dal portale e non verificato; `passa` se l'amministratore li dà agli eredi. */
+  accessori_segnalati?: AccessorioSegnalato[];
+  /**
+   * Decisione 454: gli accordi di rientro del defunto che la successione chiude, con `in_regola` se reggevano il giorno prima del decesso; la scelta per
+   * gli interessi del defunto (di serie `in_regola`) e la sua frase. Senza accordi le chiavi non ci sono.
+   */
+  accordi_del_defunto?: AccordoDelDefunto[];
+  accordo_del_defunto?: SceltaAccordoDelDefunto;
+  frase_accordo_del_defunto?: string;
+}
+
+/** L'accordo di rientro del defunto che la successione chiude (decisione 454). */
+export interface AccordoDelDefunto {
+  id: number;
+  data_accordo: string;
+  in_regola: boolean;
+}
+
+/** Per gli interessi del defunto: l'accordo resta in regola fino al decesso (di serie) o vale come una decadenza. */
+export type SceltaAccordoDelDefunto = 'in_regola' | 'decadenza';
+
+/** Un interesse o una spesa del defunto con un pagamento segnalato dal portale e non ancora verificato (decisione 448). */
+export interface AccessorioSegnalato {
+  quota_id: number;
+  causale: string;
+  aperto: number;
+  aperto_formattato: string;
+  passa: boolean;
 }
 export type SottotipoUsufrutto = 'costituzione' | 'estinzione';
 

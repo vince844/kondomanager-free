@@ -98,7 +98,7 @@ test('eliminare una segnalazione con file in attesa chiude la sua voce nell\'Inb
     algCarica($this, $this->mario, $s, [algFoto()])->assertSessionHasNoErrors();
 
     $aperte = fn () => DB::table('eventi')
-        ->where('tipo', 'allegato')
+        ->where('tipo', 'da_moderare')
         ->where('eventable_type', $s->getMorphClass())
         ->where('eventable_id', $s->id)
         ->where('is_completed', false)

@@ -29,7 +29,8 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
     {
         return [
             'user_frontend_registration' => 'required|boolean',
-            'force_comment_moderation'   => 'required|boolean',
+            'commenti_segnalazioni_moderati_di_serie' => 'sometimes|boolean',
+            'commenti_comunicazioni_moderati_di_serie' => 'sometimes|boolean',
             'allegati_moderati_di_serie' => 'sometimes|boolean',
             'allegati_massimo_per_elemento' => 'sometimes|integer|min:1|max:50',
             'language'                   => 'required|in:it,en,pt,es',

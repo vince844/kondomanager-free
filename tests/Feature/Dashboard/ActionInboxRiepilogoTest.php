@@ -85,9 +85,9 @@ it('la regola di «scaduto» è una: le card, il grafico per età, i gruppi dell
     // Il grafico: oltre 90 giorni fa, da 31 a 90, ultimi 30, prossimi 7, fra 8 e 30; fuori la segnalazione, il bonifico e il compito fra 31 giorni.
     expect(collect($p['grafici']['eta'])->map(fn ($b) => [$b['chiave'], $b['valore'], $b['scaduti']])->all())->toBe([
         ['oltre_90', 1, true], ['da_31_a_90', 2, true], ['ultimi_30', 2, true], ['prossimi_7', 2, false], ['fra_8_e_30', 2, false],
-    ])->and($p['grafici']['fuori'])->toBe(['segnalazioni' => 1, 'bonifici' => 1, 'oltre_30' => 1]);
+    ])->and($p['grafici']['fuori'])->toBe(['segnalazioni' => 1, 'bonifici' => 1, 'da_moderare' => 0, 'oltre_30' => 1]);
     // I gruppi dell'elenco, dal server, nel loro ordine; e le schede, che non contano la segnalazione e il bonifico fra gli scaduti né fra quelli in arrivo.
-    expect($p['gruppi'])->toBe(['scaduti' => 5, 'segnalazioni' => 1, 'bonifici' => 1, 'avanti' => 5])
+    expect($p['gruppi'])->toBe(['scaduti' => 5, 'segnalazioni' => 1, 'bonifici' => 1, 'da_moderare' => 0, 'avanti' => 5])
         ->and($p['schede'])->toBe(['tutti' => 12, 'scaduti' => 5, 'in_arrivo' => 5]);
 
     // Ogni riga dice la sua fascia e il suo gruppo, con la stessa regola; i giorni dal giorno dell'amministratore.
@@ -114,7 +114,7 @@ it('la regola di «scaduto» è una: le card, il grafico per età, i gruppi dell
         ->and($titoli(['quando' => 'da_31_a_90']))->toBe(['controllo_incassi -31', 'controllo_incassi -90'])
         ->and($titoli(['quando' => 'ultimi_30']))->toBe(['controllo_incassi -1', 'controllo_incassi -30']);
     // Con un filtro i gruppi contano le righe filtrate.
-    expect(airPagina($this, ['quando' => 'prossimi_7'])['gruppi'])->toBe(['scaduti' => 0, 'segnalazioni' => 0, 'bonifici' => 0, 'avanti' => 2]);
+    expect(airPagina($this, ['quando' => 'prossimi_7'])['gruppi'])->toBe(['scaduti' => 0, 'segnalazioni' => 0, 'bonifici' => 0, 'da_moderare' => 0, 'avanti' => 2]);
 });
 
 it('il giorno è quello dell\'amministratore: alle 00:30 di Roma il compito di ieri è scaduto, anche se sul server è ancora ieri', function () {
@@ -195,7 +195,7 @@ it('i filtri si sommano: per età, per tipo e per condominio; un valore che non 
     $p = airPagina($this, ['tipo' => 'emissione_rata', 'quando' => 'scaduti']);
     expect($p['filtri'])->toBe(['quando' => 'scaduti', 'tipo' => 'emissione_rata', 'cerca' => null, 'ordine' => 'vecchi', 'condominio_id' => null, 'scheda' => 'scaduti',
         'tipo_nome' => 'Emissione rate'])
-        ->and($p['gruppi'])->toBe(['scaduti' => 3, 'segnalazioni' => 0, 'bonifici' => 0, 'avanti' => 0])
+        ->and($p['gruppi'])->toBe(['scaduti' => 3, 'segnalazioni' => 0, 'bonifici' => 0, 'da_moderare' => 0, 'avanti' => 0])
         // Le card e i grafici restano quelli di tutti i compiti (del condominio scelto): un filtro cambia l'elenco, non il quadro.
         ->and($p['counts']['all'])->toBe(5);
 });

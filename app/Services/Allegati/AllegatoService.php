@@ -489,6 +489,10 @@ final class AllegatoService
             }
         }
 
+        if (! empty($filtri['elemento'])) {
+            $query->where('documentable_id', (int) $filtri['elemento']);
+        }
+
         if (! empty($filtri['condominio_id'])) {
             $condominioId = (int) $filtri['condominio_id'];
             $query->whereHasMorph('documentable', [Segnalazione::class, Comunicazione::class], function (Builder $q, string $type) use ($condominioId) {

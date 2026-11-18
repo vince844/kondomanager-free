@@ -5,7 +5,7 @@
  * Le parole della riga dell'Inbox operativa della dashboard del condominio. Il gruppo della riga lo manda il server con la regola di `FasceDeiCompiti`, la
  * stessa dell'Action inbox: un compito di oggi non è scaduto; le segnalazioni aperte e i bonifici segnalati dai condòmini non hanno una scadenza e non scadono.
  * Qui come si dice la data: lo scaduto in rosso con i giorni, la segnalazione «aperta il … · da N giorni» e il bonifico «segnalato il … · da N giorni» in
- * grigio, gli altri «scade il … · fra N giorni». E le schede «Tutte», «Scadute», «In arrivo» nella testata (come nell'Action inbox: il filtro lo applica il
+ * grigio, ciò che è da moderare «dal … · da N giorni» in grigio, gli altri «scade il … · fra N giorni». E le schede «Tutte», «Scadute», «In arrivo» nella testata (come nell'Action inbox: il filtro lo applica il
  * server, con la stessa regola) e le loro frasi.
  */
 import { giornoItaliano, testoQuando, type Gruppo } from '@/lib/inbox/actionInbox';
@@ -20,6 +20,8 @@ export function dataDellaRiga(r: { gruppo: Gruppo; giorno: string; giorni: numbe
             return `aperta il ${data} · ${testoQuando(r.giorni)}`;
         case 'bonifici':
             return `segnalato il ${data} · ${testoQuando(r.giorni)}`;
+        case 'da_moderare':
+            return `dal ${data} · ${testoQuando(r.giorni)}`;
         default:
             if (r.giorni === 0) return 'scade oggi';
             if (r.giorni === 1) return 'scade domani';
@@ -51,11 +53,11 @@ export function compitiDellaScheda<T extends { giorni: number }>(compiti: readon
     return [...compiti];
 }
 
-/** La riga sotto le schede «Scadute» e «In arrivo» quando ci sono segnalazioni o bonifici segnalati: non scadono, e stanno in «Tutte». */
+/** La riga sotto le schede «Scadute» e «In arrivo» quando ci sono segnalazioni, bonifici segnalati o compiti da moderare: non scadono, e stanno in «Tutte». */
 export function testoFuoriDalleSchede(scheda: SchedaDellaInbox, quanti: number): string | null {
     if (scheda === 'tutti' || quanti <= 0) return null;
 
-    return `Le segnalazioni e i bonifici segnalati non hanno una scadenza: ${quanti === 1 ? '1 è' : `${numero(quanti)} sono`} in «Tutte».`;
+    return `Le segnalazioni, i bonifici segnalati e ciò che è da moderare non hanno una scadenza: ${quanti === 1 ? '1 è' : `${numero(quanti)} sono`} in «Tutte».`;
 }
 
 /** La scheda «Scadute» o «In arrivo» senza compiti. */

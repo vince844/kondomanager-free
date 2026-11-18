@@ -325,7 +325,9 @@ final class AnnullaPassaggioAction
             // I promemoria delle rate di chi esce e di chi entra, che `seguonoLeQuote` riscrive e che il controllo delle
             // segnalazioni legge: una segnalazione dal portale in volo aspetta, e poi rilegge (C-R5). Dalla tabella ponte
             // e per chiave, con letture bloccanti: una lettura semplice qui fisserebbe l'istantanea troppo presto.
-            $persone = array_values(array_filter([(int) $padre->anagrafica_uscente_id, (int) $padre->anagrafica_entrante_id]));
+            // Nella successione anche gli eredi: i promemoria degli interessi e delle spese passati a loro si riscrivono (Coda 652).
+            $persone = array_values(array_unique(array_filter([(int) $padre->anagrafica_uscente_id, (int) $padre->anagrafica_entrante_id,
+                ...array_map(fn ($e) => (int) ($e['anagrafica_id'] ?? 0), (array) ($padre->registro['eredi'] ?? []))])));
             // Solo le chiavi dall'indice della persona, poi per chiave primaria: chiedere `evento_id` all'indice della
             // persona fa scegliere a MySQL la scansione dell'indice unico, che sotto lock bloccherebbe tutta la tabella
             // (verificato con EXPLAIN su MySQL 8.4, giro di verifica C-R6).
@@ -359,7 +361,13 @@ final class AnnullaPassaggioAction
             if (($motivo = AccessoriAgliEredi::motivo($accessori)) !== null) {
                 throw ValidationException::withMessages(['passaggio' => $motivo]);
             }
+            //    I loro promemoria tornano con le quote (Coda 652): letti prima, finché le quote degli eredi ci sono. Quello del defunto con un pagamento
+            //    segnalato e non verificato resta «segnalato» (decisione 448).
+            $promemoriaDegliAccessori = AccessoriAgliEredi::promemoriaDaRiscrivere($accessori);
             AccessoriAgliEredi::annulla($accessori);
+            if ($promemoriaDegliAccessori['rate'] !== []) {
+                AccessoriAgliEredi::riallineaPromemoria($promemoriaDegliAccessori['rate'], $promemoriaDegliAccessori['persone'], (int) $padre->anagrafica_uscente_id, $utente);
+            }
             //    Gli accordi di rientro del defunto chiusi per la successione si riaprono.
             \App\Services\Subentro\AccordiDellaSuccessione::riapri((array) ($padre->registro['arretrato']['accordi'] ?? []));
 

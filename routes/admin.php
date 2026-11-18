@@ -7,7 +7,9 @@ use App\Http\Controllers\Allegati\AllegatoController;
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Api\TestContabilitaController;
+use App\Http\Controllers\Commenti\CommentiPaginaController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneApprovalController;
+use App\Http\Controllers\Comunicazioni\ComunicazioneCommentoController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Dashboard\ActionInboxController;
 use App\Http\Controllers\Dashboard\DashboardController;
@@ -191,6 +193,9 @@ Route::prefix('admin')->as('admin.')
     Route::patch('segnalazioni/{segnalazione}/commenti/toggle', [CommentoController::class, 'toggle'])
         ->name('segnalazioni.commenti.toggle');
 
+    Route::patch('segnalazioni/{segnalazione}/commenti/impostazioni', [CommentoController::class, 'impostazioni'])
+        ->name('segnalazioni.commenti.impostazioni');
+
     Route::patch('commenti/{commento}', [CommentoController::class, 'update'])
         ->name('commenti.update');
 
@@ -203,10 +208,40 @@ Route::prefix('admin')->as('admin.')
     Route::post('commenti/{commento}/modera', [CommentoController::class, 'modera'])
         ->name('commenti.modera');
 
+    Route::post('commenti/{commento}/mostra', [CommentoController::class, 'mostra'])
+        ->name('commenti.mostra');
+
+    /*
+    |--------------------------------------------------------------------------
+    | La pagina «Commenti» del pannello (Coda 657, decisione 442)
+    |--------------------------------------------------------------------------
+    | Le azioni sulla riga usano le rotte di sopra, quelle della scheda; qui solo l'elenco e le azioni in blocco.
+    */
+    Route::get('commenti', [CommentiPaginaController::class, 'index'])
+        ->name('commenti.index');
+
+    Route::post('commenti/approva-in-blocco', [CommentiPaginaController::class, 'approvaInBlocco'])
+        ->name('commenti.approva-in-blocco');
+
+    Route::post('commenti/nascondi-in-blocco', [CommentiPaginaController::class, 'nascondiInBlocco'])
+        ->name('commenti.nascondi-in-blocco');
+
+    Route::post('commenti/mostra-in-blocco', [CommentiPaginaController::class, 'mostraInBlocco'])
+        ->name('commenti.mostra-in-blocco');
+
+    Route::post('commenti/elimina-in-blocco', [CommentiPaginaController::class, 'eliminaInBlocco'])
+        ->name('commenti.elimina-in-blocco');
+
     Route::resource('comunicazioni', ComunicazioneController::class)
         ->parameters([
             'comunicazioni' => 'comunicazione'
         ]);
+
+    Route::post('comunicazioni/{comunicazione}/commenti', [ComunicazioneCommentoController::class, 'store'])
+        ->name('comunicazioni.commenti.store');
+
+    Route::patch('comunicazioni/{comunicazione}/commenti/impostazioni', [ComunicazioneCommentoController::class, 'impostazioni'])
+        ->name('comunicazioni.commenti.impostazioni');
 
     /*
     |--------------------------------------------------------------------------

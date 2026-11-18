@@ -23,11 +23,13 @@ beforeEach(function () {
 });
 
 it('sends moderation notification to admins with enabled preferences', function () {
-    // Ensure permission exists in DB because Pest refresh database
-    SpatiePermission::firstOrCreate(['name' => Permission::APPROVE_COMMENTS_SEGNALAZIONI->value]);
+    // Coda 558 e decisione 282.1: l'avviso «in attesa» va a chi può approvare, cioè a chi ha il pannello,
+    // «Approva commenti segnalazioni» e apre la scheda. Non serve un'anagrafica nel palazzo: chi amministra
+    // di norma non ne ha una, ed è il caso di questo test. Il solo permesso, senza il pannello, non basta.
+    $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
 
     $adminNotificato = User::factory()->create();
-    $adminNotificato->givePermissionTo(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value);
+    $adminNotificato->assignRole(\App\Enums\Role::AMMINISTRATORE->value);
     
     NotificationPreference::create([
         'user_id' => $adminNotificato->id,
@@ -36,8 +38,17 @@ it('sends moderation notification to admins with enabled preferences', function 
     ]);
 
     $adminIgnorato = User::factory()->create();
-    $adminIgnorato->givePermissionTo(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value);
+    $adminIgnorato->assignRole(\App\Enums\Role::AMMINISTRATORE->value);
     // No preference -> non deve ricevere la mail
+
+    // Il permesso di approvare senza il pannello: non approva, e non riceve l'avviso.
+    $soloPermesso = User::factory()->create();
+    $soloPermesso->givePermissionTo(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value);
+    NotificationPreference::create([
+        'user_id' => $soloPermesso->id,
+        'type' => NotificationType::COMMENT_UNDER_MODERATION->value,
+        'enabled' => true,
+    ]);
 
     $condominio = Condominio::factory()->create();
     $segnalazione = Segnalazione::factory()->create(['condominio_id' => $condominio->id]);
@@ -55,4 +66,5 @@ it('sends moderation notification to admins with enabled preferences', function 
 
     Notification::assertSentTo($adminNotificato, CommentoInAttesaNotification::class);
     Notification::assertNotSentTo($adminIgnorato, CommentoInAttesaNotification::class);
+    Notification::assertNotSentTo($soloPermesso, CommentoInAttesaNotification::class);
 });

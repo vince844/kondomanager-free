@@ -127,4 +127,41 @@ describe('la proposta degli interessi', () => {
         expect(pulito(corpo().querySelector('[data-testid="riallineo"]')?.textContent)).toBe(frase);
         expect(corpo().querySelectorAll('[data-testid="riallineo"]')).toHaveLength(1);
     });
+
+    test('una riga a zero con la frase del riallineo (nessun giorno nuovo, i giorni già registrati darebbero un\'altra cifra): si legge, senza casella, e non si manda', async () => {
+        const frase = 'Gli interessi registrati al 20/07/2026 erano € 1,05; con il giornale di oggi quei giorni darebbero € 1,02: per cambiarli, annulla l\'addebito e rifai la proposta.';
+        const aZero = JSON.parse(JSON.stringify(proposta));
+        aZero.persone[0].totale = 0;
+        aZero.persone[0].righe[0] = { ...aZero.persone[0].righe[0], interessi: 0, tratti: [], gia_registrati_al: '2026-07-14', riallineo: frase };
+        aZero.totale = 71;
+        axiosGet.mockResolvedValue({ data: aZero });
+        monta([1, 2]);
+        await flushPromises();
+        const righe = corpo().querySelectorAll('[data-testid="riga-interessi"]');
+        expect(pulito(righe[0].querySelector('[data-testid="riallineo"]')?.textContent)).toBe(frase);
+        expect(righe[0].querySelector('button[role="checkbox"]')).toBeNull();
+        expect(righe[1].querySelector('button[role="checkbox"]')).not.toBeNull();
+        expect(corpo().querySelector('[data-testid="togli-persona"]')).not.toBeNull();
+        await scegliVoce(2, 'Interessi di mora');
+        axiosPost.mockResolvedValueOnce({ data: { messaggio: 'Registrati.' } });
+        registra().click();
+        await flushPromises();
+        expect(axiosPost.mock.calls[0][1]).toMatchObject({ righe: ['2|10|6'], atteso: 71 });
+    });
+
+    test('una rata coperta da un accordo di rientro in regola: la riga dice che arriva al giorno prima dell\'accordo, e accanto la regola (decisione 438)', async () => {
+        const conAccordo = JSON.parse(JSON.stringify(proposta));
+        conAccordo.persone[0].in_accordo = 20000;
+        conAccordo.persone[0].righe[0].al = '2026-06-14';
+        conAccordo.persone[0].righe[0].accordo_dal = '2026-06-15';
+        axiosGet.mockResolvedValue({ data: conAccordo });
+        monta([1, 2]);
+        await flushPromises();
+        expect(pulito(corpo().querySelector('[data-testid="fino-all-accordo"]')?.textContent)).toBe('Fino al 14/06/2026: dal 15/06/2026 la rata è in un accordo di '
+            + 'rientro, e i giorni dell\'accordo restano fuori finché l\'accordo non è decaduto e il calendario non è finito, o è versato tutto.');
+        // Solo la riga con l'accordo.
+        expect(corpo().querySelectorAll('[data-testid="fino-all-accordo"]')).toHaveLength(1);
+        expect([...corpo().querySelectorAll('[data-testid="accanto"]')].map((p) => pulito(p.textContent))).toContain('€ 200,00 sono in un accordo di rientro in corso: '
+            + 'la proposta lascia fuori i giorni dalla data dell\'accordo; i giorni prima dell\'accordo restano nella proposta.');
+    });
 });

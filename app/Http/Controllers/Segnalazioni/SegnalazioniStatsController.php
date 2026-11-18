@@ -64,19 +64,16 @@ class SegnalazioniStatsController extends Controller
     /**
      * Le segnalazioni che l'utente trova nell'elenco del portale, per contarle.
      *
-     * La regola è `Segnalazione::scopeVisibiliNelPortale()`, la stessa della scheda e dell'elenco,
-     * più «pubblicata e approvata» come l'elenco: i conteggi contano quello che l'elenco mostra, e
-     * nient'altro: nessuna copia della regola qui. Una privata la contano solo l'autore e le persone
-     * collegate, anche senza residenti (Coda 304), e per un utente senza anagrafica i conteggi non
-     * vanno in errore.
+     * La regola è `Segnalazione::scopeVisibiliNelPortale()`, la stessa della scheda e dell'elenco:
+     * i conteggi contano quello che l'elenco mostra, e nient'altro (Coda 389). Una privata la contano
+     * solo l'autore e le persone collegate, anche senza residenti (Coda 304), e per un utente senza
+     * anagrafica i conteggi non vanno in errore.
      *
      * @return \Illuminate\Database\Eloquent\Builder  The scoped query for segnalazioni
      */
     private function getUserScopedQuery(User $user)
     {
         return Segnalazione::query()
-            ->visibiliNelPortale($user)
-            ->where('is_published', true)
-            ->where('is_approved', true);
+            ->visibiliNelPortale($user);
     }
 }

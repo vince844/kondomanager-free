@@ -218,7 +218,7 @@ it('una segnalazione non scade: aperta 267 giorni fa è nel gruppo delle segnala
         ->and($p['schede'])->toBe(['tutti' => 1, 'scaduti' => 0, 'in_arrivo' => 0])
         ->and(collect($p['grafici']['eta'])->sum('valore'))->toBe(0)
         ->and($p['grafici']['fuori']['segnalazioni'])->toBe(1)
-        ->and($p['gruppi'])->toBe(['scaduti' => 0, 'segnalazioni' => 1, 'bonifici' => 0, 'avanti' => 0]);
+        ->and($p['gruppi'])->toBe(['scaduti' => 0, 'segnalazioni' => 1, 'bonifici' => 0, 'da_moderare' => 0, 'avanti' => 0]);
     // Il filtro «Scaduti» non la trova; la card «Segnalazioni» (il tipo) sì.
     expect(aisRiga($this, 'Ascensore fermo', ['quando' => 'scaduti']))->toBeNull()
         ->and(aisRiga($this, 'Ascensore fermo', ['tipo' => 'segnalazione_guasto']))->not->toBeNull();

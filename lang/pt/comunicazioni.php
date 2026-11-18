@@ -114,6 +114,7 @@ return [
         'buildings'         => 'Condomínios',
         'residents'         => 'Registos',
         'comments'          => 'Permitir comentários',
+        'commenti_moderati' => 'Comentários em moderação',
         'featured'          => 'Comunicação em destaque',
         'notify_update'     => 'Avisar por email quem já recebeu esta comunicação',
         'private'           => 'Criar comunicação como privada',
@@ -124,6 +125,14 @@ return [
         'interactions'      => 'Interações',
         'comments_enabled'  => 'Comentários ativados',
         'comments_disabled' => 'Comentários desativados',
+        // La scheda: il testo lungo, le interazioni e i destinatari (decisione 467).
+        'read_more'         => 'Ler tudo',
+        'read_less'         => 'Ler menos',
+        'in_evidenza'       => 'Em destaque',
+        'recipients'        => 'Destinatários',
+        'destinatari_condomini' => '{1} :count condomínio|[2,*] :count condomínios',
+        'destinatari_persone'   => '{1} :count pessoa|[2,*] :count pessoas',
+        'destinatari_privata'   => 'Privada, com o escritório',
     ],
 
     /* ------------------------------------------------------------------
@@ -166,6 +175,7 @@ return [
         'edit_communication'        => 'Editar',
         'delete_communication'      => 'Eliminar',
         'save_communication'        => 'Guardar',
+        'save'                      => 'Guardar',
         'list_communications'       => 'Lista',
         'show_more'                 => 'Mostrar tudo',
         'show_less'                 => 'Mostrar menos',
@@ -182,6 +192,7 @@ return [
         'visibility'    => 'Um rascunho, ou uma comunicação a aguardar aprovação, não aparece aos condóminos; depois de publicada e aprovada, veem-na os condóminos a quem se dirige.',
         'priority'      => 'Selecione o nível de prioridade com que esta comunicação deve ser tratada. As prioridades podem influenciar a visibilidade ou a urgência no quadro.',
         'comments'      => 'Quando esta opção é selecionada, os comentários serão ativados para esta comunicação.',
+        'commenti_moderati' => 'Os comentários escritos pelos destinatários aguardam a aprovação de um administrador antes de ficarem visíveis.',
         'featured'      => 'As comunicações em destaque são realçadas no quadro para atrair maior atenção.',
         'notify_update' => "Envia um email a quem já era destinatário, a dizer que a comunicação mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-a de qualquer forma, porque para ele é nova. Enquanto for um rascunho ou estiver a aguardar aprovação não é enviado nada; quando estiver publicada e aprovada, recebem-na todos os destinatários.",
         'private'       => 'As comunicações privadas podem ser visualizadas apenas pelos administradores e por si.',
@@ -236,5 +247,11 @@ return [
         'private'      => 'Privada',
         'private_hint' => 'Visível apenas para o autor, as pessoas associadas e o administrador',
         'recipients_required' => 'Uma comunicação privada tem de continuar dirigida a pelo menos um destinatário: sem destinatários só a veria quem a escreveu, além do administrador.',
+    ],
+    'settings' => [
+        'comments_title'              => 'Definições dos comentários',
+        'comments_dialog_description' => 'Configure os comentários para esta comunicação.',
+        'can_comment'                 => 'Permitir comentários',
+        'commenti_moderati'           => 'Comentários em moderação',
     ],
 ];

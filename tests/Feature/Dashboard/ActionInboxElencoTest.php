@@ -67,7 +67,7 @@ it('le schede «Tutti / Scaduti / In arrivo» con il loro numero; la scheda segu
     // La barra «da 31 a 90 giorni» restringe l'elenco e il gruppo; il numero delle schede resta quello di tutta la scheda.
     $barra = aiePagina($this, ['quando' => 'da_31_a_90']);
     expect($barra['schede'])->toBe(['tutti' => 9, 'scaduti' => 3, 'in_arrivo' => 4])
-        ->and($barra['gruppi'])->toBe(['scaduti' => 1, 'segnalazioni' => 0, 'bonifici' => 0, 'avanti' => 0])
+        ->and($barra['gruppi'])->toBe(['scaduti' => 1, 'segnalazioni' => 0, 'bonifici' => 0, 'da_moderare' => 0, 'avanti' => 0])
         ->and(collect($barra['tasks']['data'])->pluck('title')->all())->toBe(['Scaduto -40']);
     // Il tipo cambia i numeri delle schede.
     expect(aiePagina($this, ['tipo' => 'emissione_rata'])['schede'])->toBe(['tutti' => 3, 'scaduti' => 3, 'in_arrivo' => 0]);
@@ -150,7 +150,7 @@ it('la ricerca: il titolo, la descrizione, il condominio, la persona; senza maiu
     $p = aiePagina($this, ['cerca' => 'rossi']);
     expect($p['filtri']['cerca'])->toBe('rossi')
         ->and($p['schede'])->toBe(['tutti' => 2, 'scaduti' => 1, 'in_arrivo' => 0])
-        ->and($p['gruppi'])->toBe(['scaduti' => 1, 'segnalazioni' => 0, 'bonifici' => 1, 'avanti' => 0])
+        ->and($p['gruppi'])->toBe(['scaduti' => 1, 'segnalazioni' => 0, 'bonifici' => 1, 'da_moderare' => 0, 'avanti' => 0])
         ->and($p['counts']['all'])->toBe(7);
     // La ricerca si somma agli altri filtri.
     expect(aieTitoli($this, ['cerca' => 'rossi', 'quando' => 'scaduti']))->toBe(['Pagare Idraulica Rossi']);

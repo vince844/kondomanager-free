@@ -6,45 +6,45 @@
 namespace App\Services;
 
 use App\Contracts\Commentable;
-use App\Enums\Permission;
+use App\Enums\NotificationType;
 use App\Events\Commenti\CommentoCreato;
 use App\Models\Commento;
+use App\Models\Segnalazione;
 use App\Models\User;
 use App\Notifications\Commenti\CommentoApprovatoNotification;
 use App\Notifications\Commenti\CommentoEliminatoNotification;
-use App\Enums\NotificationType;
-use App\Models\NotificationPreference;
+use App\Notifications\Commenti\CommentoInAttesaNotification;
+use App\Notifications\Commenti\CommentoModificatoInAttesaNotification;
+use App\Notifications\Commenti\NuovoCommentoNotification;
+use App\Support\Commenti\RegoleCommenti;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 
 class CommentoService
 {
     /**
      * Crea un nuovo commento su un'entità commentabile.
      *
-     * Il workflow di approvazione è basato sui permessi (stile CMS):
-     * - Con PUBLISH_COMMENTS_SEGNALAZIONI → stato 'pubblicato' (visibile subito)
-     * - Senza quel permesso → stato 'in_attesa' (richiede approvazione admin)
-     *
      * @throws \Throwable
      */
-    public function crea(Commentable $commentable, User $autore, string $corpo): Commento
-    {
-        return DB::transaction(function () use ($commentable, $autore, $corpo) {
-            $forceModeration = app(\App\Settings\GeneralSettings::class)->force_comment_moderation;
+    public function crea(
+        Commentable $commentable,
+        User $autore,
+        string $corpo,
+        ?int $condominioId = null,
+        ?int $discussioneUserId = null
+    ): Commento {
+        return DB::transaction(function () use ($commentable, $autore, $corpo, $condominioId, $discussioneUserId) {
+            $stato = RegoleCommenti::statoAllaNascita($autore, $commentable);
 
-            if ($forceModeration && !$autore->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
-                $stato = 'in_attesa';
-            } else {
-                $stato = $autore->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value)
-                    ? 'pubblicato'
-                    : 'in_attesa';
-            }
+            $effettivoCondominioId = $condominioId ?? $commentable->condominioId();
 
             $commento = $commentable->tuttiICommenti()->create([
-                'user_id'       => $autore->id,
-                'condominio_id' => $commentable->condominioId(),
-                'corpo'         => $this->sanitizza($corpo),
-                'stato'         => $stato,
+                'user_id'             => $autore->id,
+                'condominio_id'       => $effettivoCondominioId,
+                'discussione_user_id' => $discussioneUserId,
+                'corpo'               => $this->sanitizza($corpo),
+                'stato'               => $stato,
             ]);
 
             event(new CommentoCreato($commento));
@@ -55,17 +55,46 @@ class CommentoService
 
     /**
      * Aggiorna il corpo di un commento e imposta modificato_at.
+     * Se il commento era pubblicato e per chi modifica lo stato alla nascita sarebbe in_attesa,
+     * torna in_attesa, notifica chi può approvare e sincronizza l'Inbox.
      *
      * @throws \Throwable
      */
-    public function aggiorna(Commento $commento, string $nuovoCorpo): void
+    public function aggiorna(Commento $commento, string $nuovoCorpo, ?User $modificatore = null): bool
     {
-        DB::transaction(function () use ($commento, $nuovoCorpo) {
-            $commento->update([
+        $modificatore = $modificatore ?? auth()->user();
+        $eraPubblicato = ($commento->stato === 'pubblicato');
+        $elemento = $commento->commentable;
+
+        $tornaInAttesa = false;
+        if ($eraPubblicato && $modificatore && $elemento) {
+            $tornaInAttesa = (RegoleCommenti::statoAllaNascita($modificatore, $elemento) === 'in_attesa');
+        }
+
+        DB::transaction(function () use ($commento, $nuovoCorpo, $tornaInAttesa) {
+            $data = [
                 'corpo'         => $this->sanitizza($nuovoCorpo),
                 'modificato_at' => now(),
-            ]);
+            ];
+
+            if ($tornaInAttesa) {
+                $data['stato'] = 'in_attesa';
+                $data['moderato_da'] = null;
+                $data['moderato_at'] = null;
+            }
+
+            $commento->update($data);
         });
+
+        if ($tornaInAttesa) {
+            $destinatari = app(CommentoNotificationService::class)->destinatariModificatoInAttesa($commento);
+            if ($destinatari->isNotEmpty()) {
+                Notification::send($destinatari, new CommentoModificatoInAttesaNotification($commento));
+            }
+            app(CommentoEventoService::class)->sincronizza($commento);
+        }
+
+        return $tornaInAttesa;
     }
 
     /**
@@ -80,14 +109,27 @@ class CommentoService
             'moderato_at' => now(),
         ]);
 
-        if ($commento->autore && $commento->autore->email) {
-            $wantsNotification = NotificationPreference::where('user_id', $commento->autore->id)
-                ->where('type', NotificationType::COMMENT_APPROVED->value)
-                ->value('enabled') ?? false;
+        $commentable = $commento->commentable;
 
-            if ($wantsNotification) {
+        // 1. Notifica autore del commento (se diverso dal moderatore)
+        if ($commento->autore && $commento->autore->email && (int) $commento->autore->id !== (int) $moderatore->id) {
+            $prefTipo = $commentable instanceof Segnalazione
+                ? NotificationType::COMMENT_APPROVED->value
+                : NotificationType::COMMUNICATION_COMMENT_APPROVED->value;
+
+            if (app(CommentoNotificationService::class)->preferenzaAttiva($commento->autore, $prefTipo)) {
                 $commento->autore->notify(new CommentoApprovatoNotification($commento));
             }
+        }
+
+        // 2. Notifica i partecipanti alla discussione (esclusi moderatore e autore del commento)
+        $altriDestinatari = app(CommentoNotificationService::class)->destinatariPubblicato(
+            $commento,
+            [(int) $moderatore->id, (int) $commento->user_id]
+        );
+
+        if ($altriDestinatari->isNotEmpty()) {
+            Notification::send($altriDestinatari, new NuovoCommentoNotification($commento));
         }
     }
 
@@ -104,15 +146,29 @@ class CommentoService
             'moderato_at' => now(),
         ]);
 
-        if ($commento->autore && $commento->autore->email) {
-            $wantsNotification = NotificationPreference::where('user_id', $commento->autore->id)
-                ->where('type', NotificationType::COMMENT_DELETED->value)
-                ->value('enabled') ?? false;
+        $commentable = $commento->commentable;
 
-            if ($wantsNotification) {
+        if ($commento->autore && $commento->autore->email && (int) $commento->autore->id !== (int) $moderatore->id) {
+            $prefTipo = $commentable instanceof Segnalazione
+                ? NotificationType::COMMENT_DELETED->value
+                : NotificationType::COMMUNICATION_COMMENT_DELETED->value;
+
+            if (app(CommentoNotificationService::class)->preferenzaAttiva($commento->autore, $prefTipo)) {
                 $commento->autore->notify(new CommentoEliminatoNotification($commento));
             }
         }
+    }
+
+    /**
+     * Rimette visibile un commento nascosto (decisione 456). Nessuna email all'autore; la data del commento non cambia.
+     */
+    public function mostraDiNuovo(Commento $commento, User $moderatore): void
+    {
+        $commento->update([
+            'stato'       => 'pubblicato',
+            'moderato_da' => $moderatore->id,
+            'moderato_at' => now(),
+        ]);
     }
 
     /**

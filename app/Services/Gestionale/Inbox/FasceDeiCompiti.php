@@ -21,20 +21,23 @@ use Illuminate\Support\Facades\DB;
  * Le fasce, in giorni da oggi: oltre 90 giorni fa (prima di 90 giorni fa), da 31 a 90 giorni, gli ultimi 30 giorni (da 30 giorni fa a ieri), i prossimi 7
  * giorni (da oggi a fra 7), fra 8 e 30 giorni, oltre (fra 31 giorni o più).
  *
- * **Due tipi non hanno una scadenza** e stanno a parte, ognuno nel suo gruppo: le segnalazioni di guasto aperte (il giorno è quello in cui sono state aperte)
- * e i bonifici segnalati dai condòmini (il giorno della segnalazione del pagamento). Non sono né scaduti né in arrivo: non contano nelle card «Scaduti» e
- * «Prossimi 7 giorni», nelle schede «Scaduti» e «In arrivo», nel grafico «Da quanto aspettano»; hanno le loro card. Nell'elenco i gruppi vanno in quest'ordine:
- * gli scaduti, le segnalazioni aperte, i bonifici da verificare, gli altri.
+ * **Tre tipi non hanno una scadenza** e stanno a parte, ognuno nel suo gruppo: le segnalazioni di guasto aperte (il giorno è quello in cui sono state aperte),
+ * i bonifici segnalati dai condòmini (il giorno della segnalazione del pagamento) e ciò che aspetta un'approvazione (il giorno del primo commento o allegato
+ * ancora in attesa; decisioni 445 e 449). Non sono né scaduti né in arrivo: non contano nelle card «Scaduti» e «Prossimi 7 giorni», nelle schede «Scaduti» e
+ * «In arrivo», nel grafico «Da quanto aspettano»; hanno le loro card. Nell'elenco i gruppi vanno in quest'ordine: gli scaduti, le segnalazioni aperte, i
+ * bonifici da verificare, ciò che è da moderare, gli altri.
  */
 final class FasceDeiCompiti
 {
     public const BONIFICO = 'verifica_pagamento';
     public const SEGNALAZIONE = 'segnalazione_guasto';
+    public const MODERARE = 'da_moderare';
     public const BONIFICI = 'bonifici';
     public const SEGNALAZIONI = 'segnalazioni';
+    public const DA_MODERARE = 'da_moderare';
 
     /** I tipi senza una scadenza, e la fascia (che è anche il gruppo) in cui stanno a parte. */
-    public const A_PARTE = [self::SEGNALAZIONE => self::SEGNALAZIONI, self::BONIFICO => self::BONIFICI];
+    public const A_PARTE = [self::SEGNALAZIONE => self::SEGNALAZIONI, self::BONIFICO => self::BONIFICI, self::MODERARE => self::DA_MODERARE];
 
     /** Le fasce in ordine, con i giorni da oggi: da (compreso) e a (escluso); null è senza limite. */
     public const FASCE = [
@@ -79,7 +82,7 @@ final class FasceDeiCompiti
     ];
 
     /** I gruppi dell'elenco, nell'ordine in cui si vedono. */
-    public const GRUPPI = ['scaduti', 'segnalazioni', 'bonifici', 'avanti'];
+    public const GRUPPI = ['scaduti', 'segnalazioni', 'bonifici', 'da_moderare', 'avanti'];
 
     /** Le schede dell'elenco: «Tutti», «Scaduti», «In arrivo». */
     public const SCHEDE = ['tutti', 'scaduti', 'in_arrivo'];
@@ -182,14 +185,14 @@ final class FasceDeiCompiti
     }
 
     /**
-     * L'ordine dei gruppi in SQL: gli scaduti, le segnalazioni aperte, i bonifici da verificare, gli altri.
+     * L'ordine dei gruppi in SQL: gli scaduti, le segnalazioni aperte, i bonifici da verificare, ciò che è da moderare, gli altri.
      *
      * @return array{0: string, 1: list<string>}
      */
     public function sqlOrdineDeiGruppi(string $tipoSql): array
     {
-        return ["(CASE WHEN {$tipoSql} = ? THEN 1 WHEN {$tipoSql} = ? THEN 2 WHEN eventi.start_time < ? THEN 0 ELSE 3 END)",
-            [self::SEGNALAZIONE, self::BONIFICO, $this->inizioDelGiorno(0)]];
+        return ["(CASE WHEN {$tipoSql} = ? THEN 1 WHEN {$tipoSql} = ? THEN 2 WHEN {$tipoSql} = ? THEN 3 WHEN eventi.start_time < ? THEN 0 ELSE 4 END)",
+            [self::SEGNALAZIONE, self::BONIFICO, self::MODERARE, $this->inizioDelGiorno(0)]];
     }
 
     /** L'elenco filtrato per data (una delle chiavi di `QUANDO`): le fasce sono contigue, e la segnalazione e il bonifico segnalato non sono in nessuna. */
@@ -207,16 +210,16 @@ final class FasceDeiCompiti
         if ($a !== null) {
             $query->where('eventi.start_time', '<', $this->inizioDelGiorno($a));
         }
-        $query->whereRaw("COALESCE({$tipoSql}, '') NOT IN (?, ?)", array_keys(self::A_PARTE));
+        $query->whereRaw("COALESCE({$tipoSql}, '') NOT IN (" . implode(', ', array_fill(0, count(self::A_PARTE), '?')) . ')', array_keys(self::A_PARTE));
     }
 
     /**
-     * I compiti del numero nel menu: quelli con il giorno arrivato (oggi compreso, con la stessa soglia delle fasce), i bonifici segnalati e le segnalazioni,
-     * qualunque sia il loro giorno.
+     * I compiti del numero nel menu: quelli con il giorno arrivato (oggi compreso, con la stessa soglia delle fasce), i bonifici segnalati, le segnalazioni e ciò
+     * che è da moderare, qualunque sia il loro giorno.
      */
     public function filtraPerIlMenu(Builder $query, string $tipoSql): void
     {
         $query->where(fn (Builder $q) => $q->where('eventi.start_time', '<', $this->inizioDelGiorno(1))
-            ->orWhereRaw("{$tipoSql} IN (?, ?)", [self::BONIFICO, self::SEGNALAZIONE]));
+            ->orWhereRaw("{$tipoSql} IN (?, ?, ?)", [self::BONIFICO, self::SEGNALAZIONE, self::MODERARE]));
     }
 }

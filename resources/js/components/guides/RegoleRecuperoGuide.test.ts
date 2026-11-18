@@ -65,6 +65,12 @@ describe('la guida del recupero dei crediti', () => {
         expect(testo).toContain('se la rata è emessa più tardi, il giorno dopo l\'emissione: prima di essere chiesta, la rata non è in ritardo.');
         expect(testo).toContain('con 0 gli interessi contano dal giorno dopo la scadenza (o dopo l\'emissione, se la rata è emessa più tardi)');
         expect(testo).toContain('Gli interessi già registrati non cambiano.');
+        // Decisione 438: con un accordo di rientro in regola restano fuori i giorni dalla data dell'accordo, quelli prima restano nella proposta.
+        expect(testo).toContain('la proposta lascia fuori i giorni dalla data dell\'accordo in poi: i giorni prima dell\'accordo restano nella proposta');
+        expect(testo).toContain('Se registri la decadenza, o il calendario finisce con rate non versate, tornano anche i giorni dell\'accordo.');
+        // Decisione 450: su una rata coperta in parte gli interessi continuano sulla parte fuori dall'accordo, salvo la scelta dell'accordo.
+        expect(testo).toContain('Su una rata coperta solo in parte, sulla parte fuori dall\'accordo gli interessi continuano; se nell\'accordo hai scelto che restino '
+            + 'sospesi finché l\'accordo regge, dalla data dell\'accordo resta fuori tutta la rata.');
         expect(testo).toContain('con un tasso scritto è obbligatorio, al più 150 caratteri');
         expect(testo).toContain('Si stampa per intero accanto al tasso, nelle lettere e negli interessi registrati.');
         expect(testo).toContain('una delibera a maggioranza può non bastare');

@@ -192,11 +192,13 @@ class EventoPolicy
      */
     private static function compitoCheVede(User $user, Evento $evento): bool
     {
-        if (($evento->tipo?->value ?? data_get($evento->meta, 'type')) !== CompitoDellaSegnalazione::TIPO) {
+        $tipo = $evento->tipo?->value ?? data_get($evento->meta, 'type');
+        if ($tipo !== CompitoDellaSegnalazione::TIPO && $tipo !== \App\Services\Gestionale\Inbox\CompitoDaModerare::TIPO) {
             return true;
         }
 
-        return CompitoDellaSegnalazione::soloQuelliCheVede(Evento::query()->whereKey($evento->getKey()), CompitoDellaSegnalazione::chiVede($user))->exists();
+        return CompitoDellaSegnalazione::soloQuelliCheVede(Evento::query()->whereKey($evento->getKey()), CompitoDellaSegnalazione::chiVede($user),
+            \App\Services\Gestionale\Inbox\CompitoDaModerare::chiVede($user))->exists();
     }
 
     /**

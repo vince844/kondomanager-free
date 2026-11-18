@@ -22,7 +22,7 @@ import vSelect from 'vue-select';
 import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
 import {
-    FRASE_CALCOLO, FRASE_PROPOSTA_INTERESSI, euroEsatti, testoAccanto, testoCausa, testoGiaRegistrati, testoTratto, totaleTenuto, type PersonaInteressi,
+    FRASE_CALCOLO, FRASE_PROPOSTA_INTERESSI, euroEsatti, testoAccanto, testoCausa, testoFinoAllAccordo, testoGiaRegistrati, testoTratto, totaleTenuto, type PersonaInteressi,
 } from '@/lib/gestionale/addebiti/accessori';
 
 interface GestioneDellaProposta {
@@ -166,13 +166,16 @@ async function registra() {
                         <p v-for="f in testoAccanto(p)" :key="f" class="text-slate-500" data-testid="accanto">{{ f }}</p>
                         <div v-for="r in p.righe" :key="r.chiave" class="pl-2 border-l space-y-0.5" data-testid="riga-interessi">
                             <div class="flex flex-wrap items-center gap-2">
-                                <Checkbox :model-value="tenute.has(r.chiave)" :disabled="r.fermo !== null" @update:model-value="alterna(r.chiave)" />
+                                <!-- Una riga a zero porta solo la frase del riallineo: si legge, non si registra. -->
+                                <Checkbox v-if="r.interessi > 0 || r.fermo !== null" :model-value="tenute.has(r.chiave)" :disabled="r.fermo !== null" @update:model-value="alterna(r.chiave)" />
+                                <span v-else class="w-4 shrink-0" aria-hidden="true" />
                                 <span class="flex-1">{{ r.rata }}<template v-if="r.unita"> · {{ r.unita }}</template> · scaduta il {{ giorno(r.scadenza) }}</span>
                                 <span class="tabular-nums font-medium">{{ r.fermo ? '—' : euroTesto(r.interessi) }}</span>
                                 <button v-if="r.tratti.length" type="button" class="underline text-slate-500" data-testid="apri-tratti" @click="apriChiudi(r.chiave)">{{ aperte.has(r.chiave) ? 'Nascondi i tratti' : 'I tratti' }}</button>
                             </div>
                             <p v-if="r.fermo" class="text-amber-800 dark:text-amber-300" data-testid="fermo">{{ r.fermo }}</p>
                             <p v-if="testoGiaRegistrati(r.gia_registrati_al)" class="text-slate-500">{{ testoGiaRegistrati(r.gia_registrati_al) }}</p>
+                            <p v-if="testoFinoAllAccordo(r)" class="text-slate-500" data-testid="fino-all-accordo">{{ testoFinoAllAccordo(r) }}</p>
                             <p v-if="r.riallineo" class="text-amber-800 dark:text-amber-300" data-testid="riallineo">{{ r.riallineo }}</p>
                             <ul v-if="aperte.has(r.chiave)" class="pl-6 list-disc text-slate-600 dark:text-slate-300" data-testid="tratti">
                                 <li v-for="(t, i) in r.tratti" :key="i">{{ testoTratto(t) }}: {{ euroEsatti(t.esatti) }} <span class="text-slate-500">({{ testoCausa(t.causa) }})</span></li>
