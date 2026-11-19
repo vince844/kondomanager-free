@@ -9,6 +9,7 @@ use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\User\UserResource;
+use App\Support\Comunicazioni\PubblicazioneProgrammata;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -33,6 +34,8 @@ class ComunicazioneResource extends JsonResource
             'is_private'    => $this->is_private,
             'can_comment'   => $this->can_comment,
             'commenti_moderati' => (bool) $this->commenti_moderati,
+            'data_programmata' => PubblicazioneProgrammata::perModulo($this->programmata_per),
+            'pubblicata_il' => $this->pubblicata_il?->diffForHumans(),
             'created_at'    => $this->created_at->diffForHumans(),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [

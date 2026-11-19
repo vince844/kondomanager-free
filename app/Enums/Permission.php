@@ -103,6 +103,7 @@ enum Permission: string
     case DELETE_OWN_SEGNALAZIONI = 'Elimina proprie segnalazioni';
     case VIEW_SEGNALAZIONI = 'Visualizza segnalazioni';
     case VIEW_OWN_SEGNALAZIONI = 'Visualizza proprie segnalazioni';
+    case ASSIGN_SEGNALAZIONI = 'Assegna segnalazioni';
 
     // Commenti segnalazioni
     case COMMENT_SEGNALAZIONI = 'Commenta segnalazioni';
@@ -220,6 +221,7 @@ enum Permission: string
             self::DELETE_OWN_SEGNALAZIONI => 'Permette di eliminare solo le proprie segnalazioni di guasto',
             self::VIEW_SEGNALAZIONI => 'Permette di visualizzare una segnalazione di guasto',
             self::VIEW_OWN_SEGNALAZIONI => 'Permette di visualizzare solo le proprie segnalazioni di guasto',
+            self::ASSIGN_SEGNALAZIONI => 'Permette di assegnare le segnalazioni a un collaboratore',
 
             // Commenti segnalazioni
             self::COMMENT_SEGNALAZIONI => 'Permette di commentare le segnalazioni guasto',

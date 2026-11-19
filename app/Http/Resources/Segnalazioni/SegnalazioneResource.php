@@ -10,6 +10,7 @@ use App\Http\Resources\Commenti\CommentoResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\User\UserResource;
+use App\Support\Segnalazioni\AssegnazioneSegnalazioni;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -23,6 +24,21 @@ class SegnalazioneResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $assegnataA = null;
+        if ($this->resource->relationLoaded('assignedTo') && $this->assignedTo) {
+            $assegnataA = [
+                'id'     => (int) $this->assignedTo->id,
+                'name'   => (string) $this->assignedTo->name,
+                'attivo' => (bool) AssegnazioneSegnalazioni::puoRicevere($this->assignedTo),
+            ];
+
+            if ($this->resource->relationLoaded('assegnataDa')) {
+                $assegnataA['da'] = $this->assegnataDa?->name;
+                $assegnataA['il'] = $this->assegnata_il?->timezone((string) config('app.user_timezone', 'Europe/Rome'))->format('d/m/Y');
+                $assegnataA['alle'] = $this->assegnata_il?->timezone((string) config('app.user_timezone', 'Europe/Rome'))->format('H:i');
+            }
+        }
+
         return [
             'id'            => $this->id,
             'subject'       => Str::ucfirst($this->subject),
@@ -38,6 +54,7 @@ class SegnalazioneResource extends JsonResource
             'can_comment'   => $this->can_comment,
             'commenti_moderati' => (bool) $this->commenti_moderati,
             'created_at'    => $this->created_at->diffForHumans(),
+            'creata_il'     => $this->created_at?->timezone((string) config('app.user_timezone', 'Europe/Rome'))->format('d/m/Y H:i'),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
                     'user'       => new UserResource($this->createdBy),
@@ -47,7 +64,7 @@ class SegnalazioneResource extends JsonResource
                         : null,
                 ];
             }),
-            'assigned_to'   => new UserResource($this->whenLoaded('assignedTo')),
+            'assegnata_a' => $assegnataA,
             'condominio' => [
                 'option' => new CondominioOptionsResource($this->whenLoaded('condominio')),
                 'full'   => new CondominioResource($this->whenLoaded('condominio')),

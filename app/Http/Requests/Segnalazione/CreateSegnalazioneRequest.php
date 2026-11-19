@@ -7,7 +7,9 @@ namespace App\Http\Requests\Segnalazione;
 
 use App\Enums\Permission;
 use App\Models\Segnalazione;
+use App\Models\User;
 use App\Support\Allegati\RegoleAllegati;
+use App\Support\Segnalazioni\AssegnazioneSegnalazioni;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -50,12 +52,22 @@ class CreateSegnalazioneRequest extends FormRequest
             'condominio_id' => ['required', 'integer', Rule::exists('condomini', 'id')],
         ];
 
-        // Coda 303: l'autore e l'approvazione si scrivono solo alla creazione. In modifica le due
-        // chiavi non hanno regola, quindi non entrano in `validated()` neanche se il corpo le porta:
-        // l'autore resta chi ha aperto la segnalazione (chi modifica sta in `updated_by`, che mette
-        // il controller), e l'approvazione cambia solo dall'interruttore, che avvisa il creatore
-        // (decisione 127.2).
-        if (! $this->inModifica()) {
+        if ($this->user() && AssegnazioneSegnalazioni::puoAssegnare($this->user())) {
+            $regole['assigned_to'] = ['sometimes', 'nullable', 'integer', Rule::exists('users', 'id')];
+        }
+
+        // Coda 303: l'autore si scrive solo alla creazione. In modifica `created_by` non ha regola, quindi non entra in
+        // `validated()` neanche se il corpo lo porta: l'autore resta chi ha aperto la segnalazione (chi modifica sta in
+        // `updated_by`, che mette il controller).
+        // L'approvazione: alla creazione la decide il permesso di pubblicare (`prepareForValidation()`); in modifica la
+        // cambia solo chi approva le segnalazioni, dalla tendina del modulo (decisione 303), e senza il campo resta
+        // com'è (decisione 127.2). `checkPermissionTo()`, non `hasPermissionTo()`: dove la riga del permesso non è nel
+        // database risponde «no» invece di lanciare un'eccezione.
+        if ($this->inModifica()) {
+            if ($this->user() && $this->user()->checkPermissionTo(Permission::APPROVE_SEGNALAZIONI->value)) {
+                $regole['is_approved'] = ['sometimes', 'boolean'];
+            }
+        } else {
             $regole['created_by'] = 'required|exists:users,id';
             $regole['is_approved'] = 'required|boolean';
             $regole += RegoleAllegati::regoleValidazioneFile(obbligatorio: false);
@@ -69,15 +81,38 @@ class CreateSegnalazioneRequest extends FormRequest
      */
     public function after(): array
     {
-        return [function (Validator $validator): void {
-            if ($this->inModifica() || $validator->errors()->isNotEmpty() || ! $this->hasFile('allegati')) {
-                return;
-            }
+        return [
+            function (Validator $validator): void {
+                if ($this->inModifica() || $validator->errors()->isNotEmpty() || ! $this->hasFile('allegati')) {
+                    return;
+                }
 
-            if ($errore = RegoleAllegati::erroreSpazio((array) $this->file('allegati', []))) {
-                $validator->errors()->add('allegati', $errore);
-            }
-        }];
+                if ($errore = RegoleAllegati::erroreSpazio((array) $this->file('allegati', []))) {
+                    $validator->errors()->add('allegati', $errore);
+                }
+            },
+            function (Validator $validator): void {
+                if (! $this->has('assigned_to') || ! $this->user() || ! AssegnazioneSegnalazioni::puoAssegnare($this->user())) {
+                    return;
+                }
+
+                $assignedTo = $this->input('assigned_to');
+                if (empty($assignedTo) || $validator->errors()->has('assigned_to')) {
+                    return;
+                }
+
+                $segnalazione = $this->route('segnalazione');
+                $eGiaAssegnata = ($segnalazione instanceof Segnalazione) && (int) $segnalazione->assigned_to === (int) $assignedTo;
+                if ($eGiaAssegnata) {
+                    return;
+                }
+
+                $destinatario = User::find($assignedTo);
+                if (! $destinatario || ! AssegnazioneSegnalazioni::puoRicevere($destinatario)) {
+                    $validator->errors()->add('assigned_to', __('segnalazioni.assignment.not_assignable'));
+                }
+            },
+        ];
     }
 
     /**
@@ -123,8 +158,18 @@ class CreateSegnalazioneRequest extends FormRequest
      */
     public function prepareForValidation(): void
     {
+        if ($this->user() && ! AssegnazioneSegnalazioni::puoAssegnare($this->user())) {
+            $this->offsetUnset('assigned_to');
+            $this->request->remove('assigned_to');
+            $this->query->remove('assigned_to');
+        }
 
         if ($this->inModifica()) {
+            if ($this->user() && ! $this->user()->checkPermissionTo(Permission::APPROVE_SEGNALAZIONI->value)) {
+                $this->offsetUnset('is_approved');
+                $this->request->remove('is_approved');
+                $this->query->remove('is_approved');
+            }
             return;
         }
 

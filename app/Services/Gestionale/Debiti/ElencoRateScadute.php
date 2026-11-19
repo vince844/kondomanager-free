@@ -10,6 +10,7 @@ use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Immobile;
+use App\Services\Gestionale\Accessori\DebitoEreditato;
 use App\Services\Gestionale\Lettere\RegistroLettere;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -60,6 +61,19 @@ final class ElencoRateScadute
 
     public function __construct(private readonly LetturaDebiti $lettura, private readonly SeiMesi $seiMesi, private readonly RegistroLettere $lettere,
         private readonly AccordiRientro $accordi) {}
+
+    /**
+     * P1 della lente P della beta.12: la lettura del debito ereditato è una sola per l'elenco ({@see DebitoEreditato::perLaLettura()} tiene il risultato per
+     * la data e la gestione): le righe, la riga dei saldi non ancora in un piano e i suggerimenti della pagina la leggono una volta. Non un'istanza del
+     * contenitore che duri oltre l'elenco: si rifà a ogni elenco ({@see righeABlocchi()}), così una scrittura fra due elenchi non lascia cifre vecchie.
+     */
+    private ?DebitoEreditato $ereditato = null;
+
+    /** La lettura del debito ereditato dell'elenco: quella dell'ultimo elenco costruito, o una nuova. */
+    public function debitoEreditato(): DebitoEreditato
+    {
+        return $this->ereditato ??= new DebitoEreditato();
+    }
 
     /**
      * I filtri come li usa l'elenco: ogni valore fuori posto torna al suo valore di serie, mai un errore su una GET. L'importo minimo arriva in
@@ -148,10 +162,19 @@ final class ElencoRateScadute
      */
     public function righeABlocchi(Condominio $condominio, array $filtri, ?array $solo = null, bool $conVersatiOltre = true, ?int $persone = null, bool $letterePerTipo = false): \Generator
     {
-        $letture = $persone === null
-            ? [$this->lettura->perCondominio((int) $condominio->id, $filtri['alla'], $filtri['gestione_id'])]
-            : $this->lettura->perCondominioABlocchi((int) $condominio->id, $filtri['alla'], $persone, $filtri['gestione_id'], $solo);
-        foreach ($letture as $lettura) {
+        // Decisione 493 (12): il debito ereditato non ancora in una rata sugli eredi, e non più sul defunto ({@see DebitoEreditato::sullaLettura()}). Una
+        // lettura nuova per ogni elenco, tenuta per la riga dei saldi e i suggerimenti della stessa pagina (P1).
+        $ereditato = $this->ereditato = new DebitoEreditato();
+        $cid = (int) $condominio->id;
+        if ($persone === null) {
+            $lettura = $ereditato->sullaLettura($cid, $filtri['alla'], $filtri['gestione_id'], $this->lettura->perCondominio($cid, $filtri['alla'], $filtri['gestione_id']), $solo);
+            yield $this->costruisci($condominio, $filtri, $lettura, $solo, $conVersatiOltre, $letterePerTipo);
+
+            return;
+        }
+        // Gli eredi con il solo debito ereditato non sono in nessun blocco della lettura del giornale: l'ultimo blocco è il loro.
+        foreach ($ereditato->aBlocchi($this->lettura->perCondominioABlocchi($cid, $filtri['alla'], $persone, $filtri['gestione_id'], $solo), $cid, $filtri['alla'],
+            $filtri['gestione_id'], $solo) as $lettura) {
             yield $this->costruisci($condominio, $filtri, $lettura, $solo, $conVersatiOltre, $letterePerTipo);
         }
     }
@@ -228,6 +251,8 @@ final class ElencoRateScadute
                     'sei_mesi' => $seiMesi,
                     // La parte della rata in un accordo di rientro in corso: il segno, e quanto le lettere lasciano fuori.
                     'accordo' => $segni['parti'][AccordiRientro::chiave($r['rata_id'], $r['immobile_id'])] ?? null,
+                    // Decisione 494 (3): il debito ereditato non ancora in una rata dell'erede, con da chi e la successione; la rata è quella del defunto.
+                    'ereditato' => $r['ereditato'] ?? null,
                 ];
             }, $x['rate']);
             $importo = (int) array_sum(array_column($x['rate'], 'residuo'));
@@ -375,10 +400,18 @@ final class ElencoRateScadute
         // I saldi a debito non ancora in un piano approvato: quelli liberi, e quelli fermi in un piano ancora in bozza. Un piano nasce in
         // bozza (dopo un'importazione, per esempio) e le sue rate ordinarie non contano finché non è approvato; il pregresso che ha preso
         // dai saldi invece è un debito degli anni prima, e senza questa riga non sarebbe in nessuna cifra della pagina.
-        $saldi = (int) DB::table('saldi as s')->leftJoin('piani_rate as ps', 'ps.id', '=', 's.piano_rate_id')
-            ->where('s.condominio_id', $condominio->id)->whereNull('s.fornitore_id')->where('s.saldo_iniziale', '>', 0)
+        // Per persona, gestione e unità, come li assorbirà il piano (rischio 4 della strada della decisione 529, la domanda lasciata aperta dalla lente P della
+        // beta.12): una coppia di righe che si annulla (il conguaglio, l'arretrato agli eredi, il versamento di un erede sul debito ereditato) non conta la sua
+        // metà positiva. Riga per riga si contava, per esempio, il + del defunto di ogni coppia.
+        $perChi = DB::table('saldi as s')->leftJoin('piani_rate as ps', 'ps.id', '=', 's.piano_rate_id')
+            ->where('s.condominio_id', $condominio->id)->whereNull('s.fornitore_id')
             ->where(fn ($w) => $w->where('s.is_applicato', false)->orWhere('ps.stato', 'bozza'))
-            ->when($gestioneId !== null, fn ($q) => $q->where('s.gestione_id', $gestioneId))->sum('s.saldo_iniziale');
+            ->when($gestioneId !== null, fn ($q) => $q->where('s.gestione_id', $gestioneId))
+            ->groupBy('s.anagrafica_id', 's.gestione_id', 's.immobile_id')->select(['s.anagrafica_id', 's.gestione_id', 's.immobile_id'])
+            ->selectRaw('SUM(s.saldo_iniziale) as netto')->get();
+        // Decisione 493 (12): la parte dei saldi degli eredi che l'elenco mostra già come «ereditato», sullo scaduto: contata una volta sola, nel suo gruppo.
+        $mostrati = $this->debitoEreditato()->perLaLettura((int) $condominio->id, $alla, $gestioneId)['saldi_mostrati_per'] ?? [];
+        $saldi = (int) $perChi->sum(fn ($r) => max(0, (int) $r->netto - (int) ($mostrati[(int) $r->anagrafica_id . '|' . (int) $r->gestione_id . '|' . (int) $r->immobile_id] ?? 0)));
 
         return [
             'persone' => $quote->pluck('anagrafica_id')->unique()->count(),

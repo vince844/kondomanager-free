@@ -142,7 +142,28 @@ watch(() => modulo.value.data_accordo, (data, prima) => {
     }
 });
 
-const scelte = computed(() => possibili.value.filter((p) => modulo.value.scelte[chiave(p)]));
+/**
+ * Le rate che sono già in un accordo di rientro in corso (Coda 678, 1): chiave della rata => la ragione, detta con il giorno dell'accordo. La regola è quella
+ * del server («Una rata in un accordo solo»): conta ogni accordo della persona non chiuso, o chiuso dopo il giorno del nuovo. Il server la ricontrolla
+ * all'invio; qui la finestra non offre una rata che poi rifiuterebbe.
+ */
+const giaInUnAccordo = computed(() => {
+    const ragioni: Record<string, string> = {};
+    for (const a of accordi.value) {
+        if (a.chiuso_il !== null && a.chiuso_il <= modulo.value.data_accordo) {
+            continue;
+        }
+        for (const r of a.rate) {
+            ragioni[chiave(r)] ??= a.chiuso_il === null
+                ? `È già nell'accordo del ${giorno(a.data_accordo)}, ancora in corso: chiudilo prima.`
+                : `È già nell'accordo del ${giorno(a.data_accordo)}, chiuso il ${giorno(a.chiuso_il)}: scegli una data da quel giorno in poi.`;
+        }
+    }
+
+    return ragioni;
+});
+
+const scelte = computed(() => possibili.value.filter((p) => modulo.value.scelte[chiave(p)] && !giaInUnAccordo.value[chiave(p)]));
 
 /** Il debito riconosciuto: la somma degli importi delle rate scelte, in centesimi. */
 const riconosciuto = computed(() => scelte.value.reduce((s, p) => s + centesimiDaImporto(modulo.value.importi[chiave(p)]), 0));
@@ -393,10 +414,12 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                         <p class="text-slate-500">Le rate che può coprire: quelle già scadute al {{ giorno(modulo.data_accordo) }}, e gli interessi e le spese registrati fino a quel giorno, con il residuo di quel giorno. {{ FRASE_IMPORTO }}</p>
                         <p class="text-slate-500" data-testid="frase-non-scadute">{{ FRASE_NON_SCADUTE }}</p>
                         <p v-if="!possibili.length" data-testid="nessuna-rata">Il {{ giorno(modulo.data_accordo) }} {{ persona?.nome }} non ha rate scadute da coprire.</p>
-                        <div v-for="p in possibili" :key="chiave(p)" class="flex flex-wrap items-center gap-2" data-testid="rata-possibile">
-                            <Checkbox :model-value="!!modulo.scelte[chiave(p)]" @update:model-value="(v: any) => (modulo.scelte = { ...modulo.scelte, [chiave(p)]: !!v })" />
+                        <div v-for="p in possibili" :key="chiave(p)" class="flex flex-wrap items-center gap-2" :class="{ 'opacity-60': giaInUnAccordo[chiave(p)] }" data-testid="rata-possibile">
+                            <Checkbox :model-value="!!modulo.scelte[chiave(p)] && !giaInUnAccordo[chiave(p)]" :disabled="!!giaInUnAccordo[chiave(p)]"
+                                @update:model-value="(v: any) => (modulo.scelte = { ...modulo.scelte, [chiave(p)]: !!v })" />
                             <span class="w-64">{{ nomeRata(p) }}, scaduta il {{ giorno(p.scadenza) }}: residuo {{ euroTesto(p.residuo) }}</span>
-                            <Input v-model="modulo.importi[chiave(p)]" inputmode="decimal" :disabled="!modulo.scelte[chiave(p)]" class="h-7 w-[110px] text-xs" aria-label="Importo riconosciuto" />
+                            <Input v-model="modulo.importi[chiave(p)]" inputmode="decimal" :disabled="!modulo.scelte[chiave(p)] || !!giaInUnAccordo[chiave(p)]" class="h-7 w-[110px] text-xs" aria-label="Importo riconosciuto" />
+                            <span v-if="giaInUnAccordo[chiave(p)]" class="basis-full pl-6 text-slate-600 dark:text-slate-300" data-testid="rata-gia-in-accordo">{{ giaInUnAccordo[chiave(p)] }}</span>
                         </div>
                     </div>
 

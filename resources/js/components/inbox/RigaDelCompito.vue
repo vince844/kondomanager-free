@@ -8,7 +8,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * Una riga dell'elenco dell'Action inbox. Da `xl` le colonne fisse «Compito», «Condominio», «Scadenza», «Prossima azione» e il menu «⋯» (la griglia
  * `COLONNE_DELLA_RIGA`, la stessa dell'intestazione); sotto, una riga sotto l'altra: il titolo, la data, la prossima azione con il menu accanto.
  *
- * Il titolo è quello salvato senza il nome del condominio ripetuto, e sotto la riga con la rata, la cifra o la fattura (dal server); la priorità di una
+ * Il titolo è quello salvato senza il nome del condominio ripetuto, e sotto la riga con la rata, la cifra o la fattura (dal server), e per una segnalazione
+ * chi la segue (la 487 del registro delle decisioni: «assegnata a te», il nome, o in grigio «non assegnata»); la priorità di una
  * segnalazione in un cartellino, in minuscolo. Il condominio su due righe al più. La data è rossa per gli scaduti, con «da N giorni»; per una segnalazione
  * «aperta il …», con i giorni in grigio: non ha una scadenza. La prossima azione è quella del tipo (dal server, `TipiDeiCompiti`): un collegamento alla sua pagina, o «Segna come fatto», che apre
  * la risposta «Fatto» del menu. Il menu «⋯» è quello di sempre (`MenuDelCompito`); senza «Modifica scadenza in agenda» non c'è, e «Segna come fatto» è spento.
@@ -20,7 +21,7 @@ import {
     Users, Wrench,
 } from 'lucide-vue-next';
 import MenuDelCompito from '@/components/inbox/MenuDelCompito.vue';
-import { aspettoDelTipo, eDelSito, testoDellaData, testoQuando, type RigaCompito } from '@/lib/inbox/actionInbox';
+import { FRASE_NON_ATTIVO, aspettoDelTipo, eDelSito, testoAssegnata, testoDellaData, testoQuando, type RigaCompito } from '@/lib/inbox/actionInbox';
 import type { VoceDelCompito } from '@/lib/inbox/risposteDelCompito';
 
 const props = defineProps<{ riga: RigaCompito; puoChiudere: boolean }>();
@@ -58,7 +59,11 @@ const PULSANTE = 'inline-flex h-8 min-w-0 flex-1 items-center justify-center gap
                 </span>
             </div>
             <p class="truncate text-xs text-slate-500 dark:text-slate-400">
-                {{ riga.sotto }}<span class="xl:hidden">{{ riga.sotto ? ' · ' : '' }}{{ riga.condominio }}</span>
+                <!-- Chi segue la segnalazione (la 487 del registro delle decisioni): «assegnata a te», il nome, o in grigio «non assegnata»; chi non può più riceverla lo dice. -->
+                <template v-if="riga.assegnata"><span data-testid="assegnata" :class="riga.assegnata.nome === null ? 'text-slate-400 dark:text-slate-500'
+                    : riga.assegnata.te ? 'font-semibold text-indigo-700 dark:text-indigo-300' : 'font-medium text-slate-700 dark:text-slate-200'">{{ testoAssegnata(riga.assegnata) }}</span><span
+                    v-if="!riga.assegnata.attivo" data-testid="assegnata-non-attiva" class="text-amber-700 dark:text-amber-400"> ({{ FRASE_NON_ATTIVO }})</span>{{ riga.sotto ? ' · ' : '' }}</template>{{ riga.sotto }}<span
+                    class="xl:hidden">{{ riga.sotto || riga.assegnata ? ' · ' : '' }}{{ riga.condominio }}</span>
             </p>
             <p v-if="riga.risposta?.tornato" class="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{{ riga.risposta.tornato }}</p>
         </div>

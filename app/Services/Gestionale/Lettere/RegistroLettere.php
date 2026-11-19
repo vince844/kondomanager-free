@@ -194,7 +194,9 @@ final class RegistroLettere
             return [];
         }
 
-        $lettura = $this->lettura->perPersona((int) $condominio->id, (int) $persona->id)['rate'];
+        // Decisione 493 (12): con il debito ereditato al suo posto, come la lettera l'ha letto da «Rate scadute».
+        $lettura = app(\App\Services\Gestionale\Accessori\DebitoEreditato::class)->rateConIlDebitoEreditato((int) $condominio->id, (int) $persona->id,
+            $this->lettura->perPersona((int) $condominio->id, (int) $persona->id)['rate']);
         $oggi = collect($lettura)->mapWithKeys(fn ($r) => [$r['rata_id'] . '|' . ($r['immobile_id'] ?? '') => (int) $r['residuo']]);
         // La parte di ogni rata che oggi un accordo di rientro in corso lascia fuori dalle lettere.
         $inAccordoOggi = $this->accordi->fuoriDalleLettere((int) $condominio->id, (int) $persona->id, $lettura, DateHelper::oggiUtente());

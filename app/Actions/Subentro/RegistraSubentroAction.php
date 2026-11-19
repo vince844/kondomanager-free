@@ -207,6 +207,10 @@ final class RegistraSubentroAction
                     'nota_cancello'          => $anteprima['cancello']['richiesto'] ? trim((string) $dati['nota_cancello']) : null,
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
                     'utente_id'              => $utente->id,
+                    // Decisione 483: nella successione, gli interessi del defunto dopo il decesso, come li dice l'anteprima (di serie quelli della strada).
+                    'interessi_del_defunto'  => $tipo === 'successione' ? ($anteprima['rate']['arretrato']['interessi_del_defunto'] ?? null) : null,
+                    // Decisioni 493 (14) e 494 (2): le scelte sugli interessi degli eredi cambiate per questa successione; null: le regole del condominio.
+                    'interessi_eredi'        => $tipo === 'successione' ? ($anteprima['rate']['arretrato']['interessi_eredi_propri'] ?? null) : null,
                     'registro'               => $this->registro($tipo, $uscente, $entrante, $sottotipo, (int) $immobile->id) + $registroOrdinaria
                         // Decisione 72: la scelta della successione e del legato; dalla .50 anche della locazione (decisione 77), con i
                         // periodi della coppia della fine senza un nuovo inquilino.
@@ -713,6 +717,10 @@ final class RegistraSubentroAction
             + ($accessori !== [] ? ['accessori' => $accessori] : [])
             + ($restati !== [] ? ['restati_al_defunto' => $restati] : [])
             + ($accordi !== [] ? ['accordi' => $accordi] : [])
+            // Decisione 483: gli interessi del defunto dopo il decesso, la scelta che sta anche nella colonna del passaggio.
+            + (isset($arretrato['interessi_del_defunto']) ? ['interessi_del_defunto' => (string) $arretrato['interessi_del_defunto']] : [])
+            // Decisioni 493 (14) e 494 (2): le scelte sugli interessi degli eredi cambiate per questa successione, che stanno anche nella colonna.
+            + (is_array($arretrato['interessi_eredi_propri'] ?? null) ? ['interessi_eredi' => $arretrato['interessi_eredi_propri']] : [])
             + ($nonScritto !== 0 ? ['non_scritto' => $nonScritto] : [])
             // Decisione 67 (3): i saldi del defunto da cui l'arretrato è stato calcolato, solo se ne sono nate righe degli eredi.
             + ($ids !== [] ? ['fonti' => array_values(array_map('intval', $arretrato['fonti'] ?? []))] : []);
@@ -862,6 +870,8 @@ final class RegistraSubentroAction
             'nota'                   => $padre->nota,
             'nota_cancello'          => $padre->nota_cancello,
             'utente_id'              => $utente->id,
+            // Decisione 483: la scelta sugli interessi del defunto vale anche sulle rate della pertinenza.
+            'interessi_del_defunto'  => $padre->interessi_del_defunto,
             // Rilievo D7 della Fase 1-bis della beta.41: la scelta sull'ordinaria vale anche per la pertinenza, come il
             // sottotipo della riserva. I passaggi dopo (`ConguaglioPassaggio`) la leggono unità per unità. Non le voci
             // spostate: lo spostamento è uno per tutta la tabella, e l'annullamento lo legge dal padre.

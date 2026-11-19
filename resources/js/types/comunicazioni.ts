@@ -43,6 +43,8 @@ export interface Comunicazione {
   subject: string;
   description: string;
   created_at: string;
+  pubblicata_il?: string | null;
+  data_programmata?: string | null;
   created_by: {
     user: User;
     anagrafica: Anagrafica;

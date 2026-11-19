@@ -67,6 +67,8 @@ const props = defineProps<{
    * con un capitolo padre di primo livello (`VoceDiSpesaNegativa::alTerzoLivello`).
    */
   speseNegative?: Array<{ id: number, nome: string, importo: number, piani: Array<{ id: number, nome: string, avviso: boolean }>, bloccano?: Array<{ id: number, nome: string, capitolo: string | null, movimenti?: Array<'incasso' | 'credito' | 'passaggio' | 'passaggio_senza_registro'> }>, terzo_livello?: boolean }>
+  /** Coda 680 (decisione 493 (15)): le voci di entrata di questo piano con un mastro di costo, con la frase e le scritture che le hanno usate. */
+  vociDiEntrataNeiCosti?: Array<{ id: number, nome: string, mastro: string, frase: string, totale: number, scritture: Array<{ id: number, data: string, causale: string, importo: number, verso: string }> }>
 }>()
 
 const { generatePath } = usePermission()
@@ -101,6 +103,12 @@ const textGuidesList = [
   { id: 'usufrutto', title: 'Guida: ruoli e usufrutto' },
   { id: 'giaversato', title: 'Guida: Già versato' },
 ]
+
+// Coda 680: il comando dell'amministratore, solo il mastro delle voci di entrata, per le scritture che verranno; le righe già scritte restano.
+const correggiVociDiEntrata = () => {
+  router.post(route('admin.gestionale.esercizi.piani-conti.voci-di-entrata', { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoConto: props.pianoConti.id }),
+    { voci: (props.vociDiEntrataNeiCosti ?? []).map((v) => v.id) }, { preserveScroll: true, preserveState: true, only: ['vociDiEntrataNeiCosti', 'conti', 'flash'] })
+}
 
 const openGuide = (id: string) => {
   if (id === 'operazioni') showGuideOperazioni.value = true;
@@ -522,6 +530,16 @@ const printRiparto = () => {
         <section class="w-full">
           <div v-if="flashMessage" class="py-3">
             <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
+
+          <!-- Coda 680: le voci di entrata nel mastro dei costi, in sola lettura, con il comando che sposta solo il loro mastro per il futuro. -->
+          <div v-if="(props.vociDiEntrataNeiCosti ?? []).length > 0" class="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200" data-testid="voci-di-entrata-nei-costi">
+            <p class="text-sm font-semibold">Voci di entrata nel mastro dei costi</p>
+            <p class="mt-1">Il piano dei conti, per un difetto ora corretto, metteva le voci di entrata nel mastro «Costi per Servizi»: quello che arriva su queste voci, per esempio gli interessi di mora versati, finisce fra i costi. Spostarle cambia il mastro della voce per le scritture che verranno; le scritture già fatte restano dove sono.</p>
+            <ul class="mt-2 list-disc pl-4 space-y-1">
+              <li v-for="v in props.vociDiEntrataNeiCosti" :key="v.id" data-testid="voce-di-entrata">{{ v.frase }}</li>
+            </ul>
+            <Button size="sm" variant="outline" class="mt-3" data-testid="sposta-nel-mastro-delle-entrate" @click="correggiVociDiEntrata">Sposta nel mastro delle entrate</Button>
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">

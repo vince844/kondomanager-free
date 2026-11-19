@@ -11,6 +11,9 @@
  * approva. Su una approvata la riga non c'è. Aperta e mandata senza toccare niente, la pagina manda i
  * dati ricevuti.
  *
+ * Dalla pubblicazione programmata (Coda 589) la pagina manda sempre anche `data_programmata`: vuota, se la
+ * comunicazione non è programmata.
+ *
  * Le traduzioni non sono caricate: `trans()` restituisce la chiave.
  */
 
@@ -86,7 +89,7 @@ describe('ComunicazioniEdit — la riga sotto la tendina «Pubblicata» (decisio
         expect(chiamata[1]).toEqual({
             subject: "Lavori sull'impianto — «urgenti»", description: "Prima riga\nseconda riga", priority: 'urgente',
             stato: '', condomini_ids: [3], can_comment: false, is_featured: true, is_published: true,
-            anagrafiche: [41, 42], avvisa_destinatari: false,
+            anagrafiche: [41, 42], avvisa_destinatari: false, data_programmata: null,
         });
     });
 });
@@ -152,7 +155,7 @@ describe('ComunicazioniEdit — i destinatari che non sono più nel palazzo', ()
         expect(vi.mocked(router.put).mock.calls.at(-1)![1]).toEqual({
             subject: "Lavori sull'impianto — «urgenti»", description: "Prima riga\nseconda riga", priority: 'urgente',
             stato: '', condomini_ids: [3, 4], can_comment: false, is_featured: true, is_published: false,
-            anagrafiche: [41, 42, 43], avvisa_destinatari: false,
+            anagrafiche: [41, 42, 43], avvisa_destinatari: false, data_programmata: null,
         });
     });
 
@@ -247,7 +250,7 @@ describe('ComunicazioniEdit — dopo un salvataggio rifiutato a palazzi cambiati
         expect(corpo()).toEqual({
             subject: "Lavori sull'impianto — «urgenti»", description: "Prima riga\nseconda riga", priority: 'urgente',
             stato: '', condomini_ids: [3, 4], can_comment: false, is_featured: true, is_published: false,
-            anagrafiche: [41, 42, 43], avvisa_destinatari: false,
+            anagrafiche: [41, 42, 43], avvisa_destinatari: false, data_programmata: null,
         });
     });
 

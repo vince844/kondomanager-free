@@ -39,16 +39,27 @@ export interface PublishedType {
   colorClass: string;
 }
 
+export interface AssegnataA {
+  id: number;
+  name: string;
+  attivo: boolean;
+  da?: string | null;
+  il?: string | null;
+  alle?: string | null;
+}
+
 export interface Segnalazione {
     id: number;
     subject: string;
     description: string;
     created_at: string;
+    creata_il?: string;
     created_by: {
       user: User
       anagrafica: Anagrafica;
     };
-    assigned_to: Anagrafica;
+    assegnata_a: AssegnataA | null;
+    seguita_da?: string | null;
     condominio: {
       option: any;             
       full: Building;           

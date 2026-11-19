@@ -16,6 +16,7 @@ return [
     'hidden_badge' => 'Hidden',
     'per_page' => 'Rows per page',
     'edited' => 'Edited',
+    'discussione_con' => 'discussion with :nome',
     'header' => [
         'list_head' => 'Comments list',
         'list_title' => 'Comments list',
@@ -87,9 +88,9 @@ return [
     ],
     'confirm_delete' => [
         'title' => 'Delete comment',
-        'description' => 'Do you want to delete :autore\'s comment? This cannot be undone.',
+        'description' => 'Do you want to delete :autore\'s comment? The author receives an email saying the comment was deleted, unless they turned off the «Comment deleted» notice. This cannot be undone.',
         'bulk_title' => 'Delete selected comments',
-        'bulk_description' => 'Do you want to delete the selected comments? Those the page does not allow you to delete stay where they are. This cannot be undone.',
+        'bulk_description' => 'Do you want to delete the selected comments? Those the page does not allow you to delete stay where they are. Their authors receive an email for each deleted comment, except those who turned off the «Comment deleted» notice. This cannot be undone.',
     ],
     'confirm_hide' => [
         'title' => 'Hide comment',

@@ -31,6 +31,7 @@ use App\Http\Controllers\Newsletter\NewsletterController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\CommentoController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
+use App\Http\Controllers\Segnalazioni\SegnalazioneAssegnazioneController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneRendiPubblicaController;
 use App\Http\Middleware\CheckForPendingUpdates;
@@ -322,6 +323,13 @@ Route::prefix('admin')->as('admin.')
     // (Coda 304, decisione 127.4). Il contrario non esiste.
     Route::put('segnalazioni/{segnalazione}/rendi-pubblica', SegnalazioneRendiPubblicaController::class)
         ->name('segnalazioni.rendi-pubblica');
+
+    Route::patch('segnalazioni/{segnalazione}/assegnazione', SegnalazioneAssegnazioneController::class)
+        ->name('segnalazioni.assegna');
+
+    // Le azioni veloci della scheda (Coda 671): lo stato lavorazione o la priorità, con lo stesso permesso di «Modifica».
+    Route::patch('segnalazioni/{segnalazione}/parametro', [SegnalazioneController::class, 'aggiornaParametro'])
+        ->name('segnalazioni.parametro');
 
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])
         ->name('segnalazioni.toggleResolve');

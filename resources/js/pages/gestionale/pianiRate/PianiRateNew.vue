@@ -24,7 +24,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Empty, EmptyHeader, EmptyMedia, EmptyDescription } from '@/components/ui/empty';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft, ReceiptText, CalendarRange, Search } from 'lucide-vue-next';
@@ -35,6 +34,7 @@ import type { Gestione } from '@/types/gestionale/gestioni';
 import { partenzaCalendario } from '@/lib/gestionale/pianiRate/calendario';
 import { centesimiDaImporto, fraseDaRipartire, totaliDaImportiInEuro } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import { avvisoFatturaNelCarrello, notaCollegataNelCarrello, senzaCompetenzaScelte } from '@/lib/gestionale/pianiRate/avvisoCarrello';
+import { motivoPianoAZero } from '@/lib/gestionale/pianiRate/pianoAZero';
 import Alert from '@/components/Alert.vue';
 import type { Flash } from '@/types/flash';
 import {
@@ -271,9 +271,25 @@ const avvisoDi = (fat: any) => avvisoFatturaNelCarrello(fat, contestoCarrello.va
 // accanto al pulsante, dove è chi ha appena premuto. Anche gli errori dell'importo di una voce nella configurazione (`capitoli_config…`):
 // il campo non permette il segno, ma una richiesta costruita non deve restare muta.
 const flashMessage = computed(() => usePage<{ flash: { message?: Flash } }>().props.flash?.message ?? null);
+// Coda 686 (b): anche gli errori dei campi che la pagina non mostra accanto al campo (il giorno del mese, la ricorrenza, i saldi, …) e quelli di un campo
+// oggi nascosto (lo scudo legale a carrello vuoto, la data con «Urgenza») stanno qui: «Salva» non resta mai muto. I messaggi sono in parole semplici
+// (`ParoleDelPiano`), quindi si leggono così come arrivano.
+const scudoVisibile = computed(() => form.tipo === 'straordinario' && fattureStraordinarie.value.length > 0);
+const dataDeliberaVisibile = computed(() => mostraDataDelibera.value && !(form.tipo_autorizzazione === 'urgenza' && gestioneStraordinaria.value));
+const haUnPostoAccanto = (campo: string): boolean => {
+  if (['nome', 'gestione_id', 'numero_rate', 'data_prima_scadenza'].includes(campo)) return true;
+  if (campo === 'metodo_distribuzione') return mostraDistribuzioneSaldo.value;
+  if (campo === 'data_delibera_assemblea') return dataDeliberaVisibile.value;
+  if (campo === 'tipo_autorizzazione' || campo === 'motivazione_autorizzazione') return scudoVisibile.value;
+  // La competenza di una voce ha il suo errore sotto la riga della voce; i suoi tratti no.
+  if (/^competenze_capitoli\.\d+$/.test(campo)) return form.tipo === 'ordinario';
+  // La presa d'atto ha la sua finestra.
+  return ['accetta_scoperti', 'nota_scoperti', 'accetta_destinatari', 'nota_destinatari'].includes(campo);
+};
 const erroriCarrello = computed(() => Object.entries(form.errors as Record<string, string>)
-  .filter(([campo]) => campo.startsWith('fatture_config') || campo.startsWith('capitoli_config'))
-  .map(([, messaggio]) => messaggio));
+  .filter(([campo]) => campo.startsWith('fatture_config') || campo.startsWith('capitoli_config') || !haUnPostoAccanto(campo))
+  .map(([, messaggio]) => messaggio)
+  .filter((messaggio, i, tutti) => tutti.indexOf(messaggio) === i));
 
 // Con «Urgenza» il campo della delibera sparisce: il valore battuto prima non deve restare nel form e viaggiare
 // nascosto (verifica S6, R2). Il server non lo scriverebbe comunque; qui si dice la verità a video.
@@ -326,6 +342,34 @@ onMounted(() => {
 const isLoadingFatture = ref(false)
 const fattureStraordinarie = ref<any[]>([])
 
+/**
+ * Coda 686 (a), decisioni 506 e 510: a carrello vuoto la pagina dice che cosa la scheda mostra e che cosa non si vede, con l'azione giusta — la fattura
+ * su una voce del piano dei conti (si mette a rate con «Dalle voci del preventivo», con la voce già scelta se si può), quelle «Fuori preventivo» di un
+ * altro esercizio, quelle già per intero in un altro piano. Il server lo dice in una lettura (`FetchFuoriDalCarrelloController`), chiesta solo a carrello vuoto.
+ */
+interface FuoriDalCarrello {
+  gestione: string;
+  sulle_voci: { totale: number; fatture: { id: number; fornitore: string; numero_documento: string; importo: number; voce: string; altre_voci: number; conto_id: number }[] };
+  altri_esercizi: { esercizio_id: number; esercizio: string; quante: number }[];
+  gia_nei_piani: { totale: number; fatture: { id: number; fornitore: string; numero_documento: string; piani: string[] }[] };
+}
+const fuoriDalCarrello = ref<FuoriDalCarrello | null>(null);
+const qualcosaFuoriDalCarrello = computed(() => !!fuoriDalCarrello.value && (fuoriDalCarrello.value.sulle_voci.totale > 0
+  || fuoriDalCarrello.value.altri_esercizi.length > 0 || fuoriDalCarrello.value.gia_nei_piani.totale > 0));
+const nomeGestioneScelta = computed(() => fuoriDalCarrello.value?.gestione ?? gestioneScelta.value?.nome ?? '');
+
+/** Dalla fattura sulla voce all'altra scheda, con la voce già scelta se il menu la offre (accesa: ha ancora qualcosa da mettere a rate). */
+const mettiARateDalleVoci = (contoId: number | null) => {
+  form.tipo = 'ordinario';
+  const voce = contoId === null ? null : capitoliDisponibili.value.find(c => c.id === contoId);
+  if (voce && !voce.disabled && !form.capitoli_ids.includes(voce.id)) {
+    form.capitoli_ids = [...form.capitoli_ids, voce.id];
+  }
+};
+
+/** Coda 686 (b): senza fatture scelte il piano «Spese fuori preventivo» non si manda; il pulsante dice perché. */
+const senzaFattureScelte = computed(() => form.tipo === 'straordinario' && !fattureStraordinarie.value.some(f => f.selezionata));
+
 // Quando si arriva da un CTA della Dashboard, il tipo di piano non è una
 // scelta dell'utente: la Dashboard lo ha già determinato in base alla voce
 // da finanziare (sforo su capitolo esistente vs sopravvenienza/ad personam).
@@ -342,17 +386,29 @@ const isDashboardContextValid = computed(() =>
 const isOrdinarioDisabled = computed(() => isDashboardContextValid.value && form.tipo !== 'ordinario')
 const isStraordinarioDisabled = computed(() => isDashboardContextValid.value && form.tipo !== 'straordinario')
 
-// Rietichetta la card "Piano rate ordinario" come "Piano Rata Integrativa"
-// quando è chiaro che non si tratta della prima emissione dell'anno:
-// - arrivo dalla Dashboard per uno sforo "orfano" sulla gestione ancora
-//   selezionata (segnale certo)
-// - oppure la gestione selezionata ha già un piano rate "preventivo
-//   iniziale" ordinario (segnale euristico dal backend, utile per chi crea
+// La scheda «Dalle voci del preventivo» dice «Rata integrativa» quando è chiaro che non si tratta della prima emissione dell'anno:
+// - arrivo dalla Dashboard per uno sforo "orfano" sulla gestione ancora selezionata (segnale certo)
+// - oppure la gestione selezionata ha già un piano rate "preventivo iniziale" ordinario (segnale euristico dal backend, utile per chi crea
 //   il piano manualmente senza passare dalla Dashboard)
+// Decisione 510: il nome della scheda resta quello che dice che cosa si mette a rate; l'integrativa è un'etichetta accanto, non un altro nome (fino alla
+// 1.12.0-beta.11 la scheda diventava «Piano Rata Integrativa»).
 const isPianoIntegrativo = computed(() =>
   form.tipo === 'ordinario' && (isDashboardContextValid.value || !!props.hasPianoEsistente)
 )
-const ordinarioCardTitle = computed(() => isPianoIntegrativo.value ? 'Piano Rata Integrativa' : 'Piano rate ordinario')
+/** Decisione 510: le due schede dicono che cosa mettono a rate, non la natura della gestione (decisione 11). */
+const SCHEDA_DALLE_VOCI = 'Dalle voci del preventivo';
+const SCHEDA_FUORI_PREVENTIVO = 'Spese fuori preventivo';
+
+/** Coda 686 (e): il piano che verrebbe a € 0,00, detto prima di salvare. */
+const pianoAZero = computed(() => motivoPianoAZero({
+  tipo: form.tipo,
+  gestione: form.gestione_id ? (gestioneScelta.value?.nome ?? '') : null,
+  caricamento: isLoadingCapitoli.value || isLoadingFatture.value || isLoadingSaldi.value,
+  conSaldi: mostraDistribuzioneSaldo.value && saldoGestioneCorrente.value.hasSaldi,
+  vociDisponibili: capitoliDisponibili.value,
+  vociScelte: form.capitoli_ids.length > 0 ? capitoliDettaglio.value : [],
+  fattureScelte: fattureStraordinarie.value.filter(f => f.selezionata),
+}));
 
 // Nuovi campi form necessari per lo straordinario (aggiungili anche all'interfaccia nel backend)
 const autorizzazioneStraordinaria = ref({
@@ -482,6 +538,7 @@ const vociFuoriBase = computed(() => vociPerCompetenza.value.filter(v => compete
 const competenzeConErrori = computed(() => vociFuoriBase.value.some(v => erroreDiVoce(v.id) !== null));
 
 const PRESET_ORDINE: PresetCompetenza[] = ['gestione', 'esercizio', 'stagione', 'manuale'];
+const OPZIONI_PRESET = PRESET_ORDINE.map(p => ({ label: ETICHETTE_PRESET[p], value: p }));
 
 // Il totale delle voci scelte, con le entrate che si sottraggono. I campi sono in euro: la conversione in centesimi avviene una
 // volta sola, in `totaliDaImportiInEuro`, e qui si formatta dichiarando i centesimi (l'`euro` di questa pagina legge euro).
@@ -513,10 +570,13 @@ const saldoGestioneCorrente = computed(() => {
 // --- WATCHERS ---
 watch(() => form.gestione_id, async (newId) => {
   saldiDettaglio.value = [];
+  fuoriDalCarrello.value = null;
   if (!newId) return;
 
   isLoadingCapitoli.value = true;
   isLoadingSaldi.value = true;
+  // D198 (b): il carrello è «in caricamento» da subito, non solo dopo le voci: prima mostrava per un attimo «nessuna fattura».
+  isLoadingFatture.value = true;
 
   try {
     router.get(
@@ -535,6 +595,7 @@ watch(() => form.gestione_id, async (newId) => {
         onError: () => {
            isLoadingCapitoli.value = false;
            isLoadingSaldi.value = false;
+           isLoadingFatture.value = false;
         }
       }
     );
@@ -542,6 +603,7 @@ watch(() => form.gestione_id, async (newId) => {
     console.error("Errore ricaricamento saldoInfo", e);
     isLoadingCapitoli.value = false;
     isLoadingSaldi.value = false;
+    isLoadingFatture.value = false;
   }
 });
 
@@ -597,6 +659,19 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
       preselectedFattureIds.value = [];
     }
 
+    // Coda 686 (a): a carrello vuoto, che cosa non si vede e dove andare. Un errore qui non ferma la pagina: resta la frase di sempre.
+    fuoriDalCarrello.value = null;
+    if (fattureStraordinarie.value.length === 0) {
+      try {
+        const resFuori = await axios.get(route('admin.gestionale.fetch-fatture-fuori-dal-carrello', {
+          condominio: props.condominio.id
+        }), { params: { gestione_id: idGestione, esercizio_id: props.esercizio.id } });
+        fuoriDalCarrello.value = resFuori.data && Array.isArray(resFuori.data.altri_esercizi) ? resFuori.data : null;
+      } catch (e) {
+        console.error("Errore nel caricamento di ciò che il carrello non mostra", e);
+      }
+    }
+
     isLoadingFatture.value = false;
 
     // 2. CARICHIAMO I SALDI SOLO SE SERVONO
@@ -621,6 +696,7 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
   } finally {
     isLoadingCapitoli.value = false;
     isLoadingSaldi.value = false;
+    isLoadingFatture.value = false;
   }
 }
 
@@ -714,6 +790,9 @@ const handleProcediDestinatari = (nota: string) => {
 }
 
 const submit = () => {
+  // Coda 686 (b): senza una fattura scelta la richiesta sarebbe rifiutata; il pulsante lo dice già, e qui non parte.
+  if (senzaFattureScelte.value) return;
+
   // 1. Prepariamo i capitoli solo se siamo in ordinario
   form.capitoli_config = form.tipo === 'ordinario' 
     ? capitoliDettaglio.value.map(c => ({ id: c.id, importo: c.importo_da_usare, note: c.note })) 
@@ -724,12 +803,13 @@ const submit = () => {
     ? vociFuoriBase.value.map(v => ({ conto_id: v.id, tratti: trattiDiVoce(v.id) }))
     : [];
 
-  // 2. Prepariamo le fatture solo se siamo in straordinario
-  if (form.tipo === 'straordinario') {
-    form.fatture_config = fattureStraordinarie.value
+  // 2. Prepariamo le fatture solo se siamo in straordinario. Tornati a «Dalle voci del preventivo» il carrello di prima non viaggia: le sue fatture
+  // (magari di un'altra gestione) si rifiuterebbero su un piano che non le usa.
+  form.fatture_config = form.tipo === 'straordinario'
+    ? fattureStraordinarie.value
       .filter(f => f.selezionata)
-      .map(f => ({ id: f.id, importo: f.importo_suggerito }));
-  }
+      .map(f => ({ id: f.id, importo: f.importo_suggerito }))
+    : [];
 
   // 3. Saldi config (comune a entrambi)
   form.saldi_config = saldiDettaglio.value
@@ -801,41 +881,69 @@ const submit = () => {
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="mb-6 space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="flex flex-col p-5 rounded-xl border transition-all relative"
               :class="[
-                form.tipo === 'ordinario' ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-400' : 'border-slate-200 hover:bg-slate-50 bg-white',
-                isOrdinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer'
+                form.tipo === 'ordinario' ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-400 dark:bg-blue-950/40 dark:border-blue-700' : 'border-slate-200 hover:bg-slate-50 bg-white dark:bg-slate-950 dark:border-slate-800 dark:hover:bg-slate-900',
+                isOrdinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white dark:hover:bg-slate-950' : 'cursor-pointer'
               ]"
               :aria-disabled="isOrdinarioDisabled ? 'true' : undefined">
               <div class="flex items-start justify-between w-full mb-3">
-                  <div class="font-black text-sm" :class="form.tipo === 'ordinario' ? 'text-blue-800' : 'text-slate-700'">{{ ordinarioCardTitle }}</div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="font-black text-sm" data-scheda="dalle-voci" :class="form.tipo === 'ordinario' ? 'text-blue-800 dark:text-blue-200' : 'text-slate-700 dark:text-slate-200'">{{ SCHEDA_DALLE_VOCI }}</div>
+                    <span v-if="isPianoIntegrativo" class="text-[11px] font-semibold rounded-md px-1.5 py-0.5 bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-900/40 dark:text-blue-200 dark:border-blue-800">Rata integrativa</span>
+                  </div>
                   <input type="radio" v-model="form.tipo" value="ordinario" :disabled="isOrdinarioDisabled"
                       :aria-describedby="isOrdinarioDisabled ? 'tipo-ordinario-non-disponibile' : undefined"
                       class="w-4 h-4 mt-0.5 text-blue-600 border-slate-300 focus:ring-blue-600 disabled:cursor-not-allowed" />
               </div>
-              <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'ordinario' ? 'text-blue-700/80' : 'text-slate-500'">Finanzia le spese di preventivo approvate a inizio anno (o i loro sforamenti).</p>
+              <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'ordinario' ? 'text-blue-700/80 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'">
+                Le voci del piano dei conti della gestione: il preventivo di inizio anno, i suoi sforamenti, le voci di una gestione straordinaria.
+                <template v-if="isPianoIntegrativo"> Si aggiunge al piano già creato per questa gestione.</template>
+              </p>
               <p v-if="isOrdinarioDisabled" id="tipo-ordinario-non-disponibile" class="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
                   <Info class="w-3 h-3 shrink-0" /> Non disponibile: il tipo è già stato determinato in base alla voce da finanziare.
               </p>
           </label>
           <label class="flex flex-col p-5 rounded-xl border transition-all relative"
               :class="[
-                form.tipo === 'straordinario' ? 'bg-amber-50 border-amber-400 shadow-md ring-1 ring-amber-400' : 'border-slate-200 hover:bg-slate-50 bg-white',
-                isStraordinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer'
+                form.tipo === 'straordinario' ? 'bg-amber-50 border-amber-400 shadow-md ring-1 ring-amber-400 dark:bg-amber-950/40 dark:border-amber-700' : 'border-slate-200 hover:bg-slate-50 bg-white dark:bg-slate-950 dark:border-slate-800 dark:hover:bg-slate-900',
+                isStraordinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white dark:hover:bg-slate-950' : 'cursor-pointer'
               ]"
               :aria-disabled="isStraordinarioDisabled ? 'true' : undefined">
               <div class="flex items-start justify-between w-full mb-3">
-                  <div class="font-black text-sm" :class="form.tipo === 'straordinario' ? 'text-amber-800' : 'text-slate-700'">Piano rate straordinario (Art. 1135 c.c.)</div>
+                  <div class="font-black text-sm" data-scheda="fuori-preventivo" :class="form.tipo === 'straordinario' ? 'text-amber-800 dark:text-amber-200' : 'text-slate-700 dark:text-slate-200'">{{ SCHEDA_FUORI_PREVENTIVO }}</div>
                   <input type="radio" v-model="form.tipo" value="straordinario" :disabled="isStraordinarioDisabled"
                       :aria-describedby="isStraordinarioDisabled ? 'tipo-straordinario-non-disponibile' : undefined"
                       class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600 disabled:cursor-not-allowed" />
               </div>
-              <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'straordinario' ? 'text-amber-700/80' : 'text-slate-500'">Finanzia fatture per spese impreviste o lavori ad personam non presenti a bilancio.</p>
+              <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'straordinario' ? 'text-amber-700/80 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'">Le fatture con una riga «Fuori preventivo» o addebitata a una sola unità, con la delibera o l'urgenza (art. 1135 c.c.).</p>
               <p v-if="isStraordinarioDisabled" id="tipo-straordinario-non-disponibile" class="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
                   <Info class="w-3 h-3 shrink-0" /> Non disponibile: il tipo è già stato determinato in base alla voce da finanziare.
               </p>
           </label>
+        </div>
+        <!-- Decisione 510: la riga sotto le schede. Sul forum un amministratore aveva scelto lo straordinario per una spesa registrata sulla voce di una gestione straordinaria:
+             il criterio non è la natura della spesa, è come è registrata la fattura. La «i» lo dice con i due casi. -->
+        <div class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed" data-testo="riga-sotto-le-schede">
+          <span>Le spese registrate su una voce del piano dei conti, anche di una gestione straordinaria, si mettono a rate con «{{ SCHEDA_DALLE_VOCI }}».</span>
+          <HoverCard>
+            <HoverCardTrigger as-child>
+              <button type="button" class="cursor-pointer shrink-0" aria-label="Un esempio delle due schede">
+                <Info class="w-4 h-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors" />
+              </button>
+            </HoverCardTrigger>
+            <HoverCardContent class="w-80 z-50 p-4 shadow-xl">
+              <div class="space-y-2 text-xs text-slate-600 dark:text-slate-300">
+                <p><strong class="text-slate-800 dark:text-slate-100">«{{ SCHEDA_DALLE_VOCI }}»</strong>: la gestione «Facciata 2026» ha la voce «Rifacimento facciata» da
+                  € 24.000,00, e la fattura dell'impresa è registrata su quella voce. Scegli la gestione e la voce.</p>
+                <p><strong class="text-slate-800 dark:text-slate-100">«{{ SCHEDA_FUORI_PREVENTIVO }}»</strong>: la fattura dell'idraulico per una perdita improvvisa è registrata
+                  con la riga «Fuori preventivo», o addebitata al solo interno 3. Scegli la fattura nel carrello.</p>
+              </div>
+            </HoverCardContent>
+          </HoverCard>
+        </div>
         </div>
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
@@ -1249,13 +1357,18 @@ const submit = () => {
                       </div>
                     </div>
                     <div class="shrink-0 w-full sm:w-72">
-                      <select
-                        :value="competenzaDi(voce.id).preset"
-                        @change="cambiaPreset(voce.id, ($event.target as HTMLSelectElement).value as PresetCompetenza)"
-                        class="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30 dark:bg-slate-950 dark:border-slate-700"
-                        :class="{ 'text-slate-400': competenzaDi(voce.id).preset === 'gestione' }">
-                        <option v-for="p in PRESET_ORDINE" :key="p" :value="p">{{ ETICHETTE_PRESET[p] }}</option>
-                      </select>
+                      <!-- Decisione 392: il menu con v-select, come gli altri della pagina (era il <select> del browser). -->
+                      <v-select
+                        :options="OPZIONI_PRESET"
+                        :model-value="competenzaDi(voce.id).preset"
+                        :reduce="(o: { value: PresetCompetenza }) => o.value"
+                        :clearable="false"
+                        :searchable="false"
+                        :aria-label="`Competenza della voce ${voce.nome}`"
+                        class="bg-white dark:bg-slate-950 text-xs"
+                        :class="{ 'text-slate-400': competenzaDi(voce.id).preset === 'gestione' }"
+                        @update:modelValue="(p: PresetCompetenza) => cambiaPreset(voce.id, p)"
+                      />
                     </div>
                   </div>
 
@@ -1336,17 +1449,50 @@ const submit = () => {
               <span>Scegli la gestione di riferimento qui sopra: le fatture fuori preventivo da ripartire compariranno qui.</span>
             </p>
 
-            <Empty v-else-if="fattureStraordinarie.length === 0" class="px-6 py-6 md:py-8">
-              <EmptyHeader class="max-w-md gap-3">
-                <EmptyMedia variant="icon" class="bg-amber-100/60 text-amber-600">
-                  <ReceiptText class="w-6 h-6" />
-                </EmptyMedia>
-                <EmptyDescription class="text-amber-800">
-                  Questa gestione non ha fatture fuori preventivo da ripartire.
-                  <span class="block mt-1 text-amber-700/70">Registrane una fra le fatture passive, oppure scegli un'altra gestione.</span>
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+            <!-- Coda 686 (a), decisione 510: il carrello vuoto dice che cosa la scheda mostra e che cosa non si vede, con l'azione giusta. -->
+            <div v-else-if="fattureStraordinarie.length === 0" data-blocco="carrello-vuoto" class="flex items-start gap-4 px-2 py-2 md:px-4 md:py-4">
+              <div class="w-11 h-11 rounded-lg bg-amber-100/60 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
+                <ReceiptText class="w-6 h-6" />
+              </div>
+              <div class="min-w-0 flex-1 space-y-2 text-sm text-amber-900 dark:text-amber-100">
+                <p class="font-semibold" data-testo="titolo">Nessuna fattura da mettere a rate qui</p>
+                <p class="text-amber-800 dark:text-amber-200" data-testo="che-cosa-mostra">
+                  Qui ci sono le fatture di «{{ nomeGestioneScelta }}» con una riga «Fuori preventivo» o addebitata a una sola unità.
+                </p>
+                <template v-if="qualcosaFuoriDalCarrello && fuoriDalCarrello">
+                  <p class="font-medium text-amber-900 dark:text-amber-100">Non si vedono qui:</p>
+                  <ul class="space-y-1.5 text-amber-800 dark:text-amber-200" data-elenco="fuori-dal-carrello">
+                    <li v-for="f in fuoriDalCarrello.sulle_voci.fatture" :key="`voce-${f.id}`" data-riga="sulla-voce" class="leading-relaxed">
+                      {{ f.fornitore }}, {{ euro(f.importo) }}, sulla voce «{{ f.voce }}»<template v-if="f.altre_voci > 0"> e su {{ f.altre_voci === 1 ? 'un\'altra' : `altre ${f.altre_voci}` }}</template>:
+                      <button v-if="!isOrdinarioDisabled" type="button" class="font-semibold underline underline-offset-2 hover:text-amber-950 dark:hover:text-white"
+                        @click="mettiARateDalleVoci(f.conto_id)">mettila a rate con «{{ SCHEDA_DALLE_VOCI }}» →</button>
+                      <span v-else>si mette a rate con «{{ SCHEDA_DALLE_VOCI }}».</span>
+                    </li>
+                    <li v-if="fuoriDalCarrello.sulle_voci.totale > fuoriDalCarrello.sulle_voci.fatture.length" data-riga="sulle-voci-altre" class="leading-relaxed">
+                      {{ fuoriDalCarrello.sulle_voci.totale - fuoriDalCarrello.sulle_voci.fatture.length === 1 ? 'Un\'altra fattura' : `Altre ${fuoriDalCarrello.sulle_voci.totale - fuoriDalCarrello.sulle_voci.fatture.length} fatture` }}
+                      sulle voci di «{{ nomeGestioneScelta }}»:
+                      <button v-if="!isOrdinarioDisabled" type="button" class="font-semibold underline underline-offset-2 hover:text-amber-950 dark:hover:text-white"
+                        @click="mettiARateDalleVoci(null)">«{{ SCHEDA_DALLE_VOCI }}» →</button>
+                      <span v-else>si mettono a rate con «{{ SCHEDA_DALLE_VOCI }}».</span>
+                    </li>
+                    <li v-for="e in fuoriDalCarrello.altri_esercizi" :key="`esercizio-${e.esercizio_id}`" data-riga="altro-esercizio" class="leading-relaxed">
+                      {{ e.quante === 1 ? 'Una fattura «Fuori preventivo» di questa gestione è registrata' : `${e.quante} fatture «Fuori preventivo» di questa gestione sono registrate` }}
+                      nell'esercizio «{{ e.esercizio }}»: {{ e.quante === 1 ? 'si mette a rate' : 'si mettono a rate' }} con un piano di quell'esercizio.
+                    </li>
+                    <li v-for="f in fuoriDalCarrello.gia_nei_piani.fatture" :key="`piano-${f.id}`" data-riga="gia-in-un-piano" class="leading-relaxed">
+                      {{ f.fornitore }}, n. {{ f.numero_documento }}: è già per intero {{ f.piani.length === 1 ? 'nel piano' : 'nei piani' }} «{{ f.piani.join('», «') }}».
+                    </li>
+                    <li v-if="fuoriDalCarrello.gia_nei_piani.totale > fuoriDalCarrello.gia_nei_piani.fatture.length" data-riga="gia-in-un-piano-altre" class="leading-relaxed">
+                      {{ fuoriDalCarrello.gia_nei_piani.totale - fuoriDalCarrello.gia_nei_piani.fatture.length === 1 ? 'Un\'altra fattura è già per intero' : `Altre ${fuoriDalCarrello.gia_nei_piani.totale - fuoriDalCarrello.gia_nei_piani.fatture.length} fatture sono già per intero` }}
+                      in un altro piano.
+                    </li>
+                  </ul>
+                </template>
+                <p v-else class="text-amber-700/80 dark:text-amber-300/80" data-testo="nessuna-altra">
+                  Registrane una fra le fatture passive con la riga «Fuori preventivo», oppure scegli un'altra gestione.
+                </p>
+              </div>
+            </div>
 
             <div v-else class="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-sm">
               <div class="bg-amber-50 px-4 py-3 border-b border-amber-200 flex flex-wrap justify-between items-center gap-2">
@@ -1394,11 +1540,11 @@ const submit = () => {
 
             <!--
               ⚠️ **Lo scudo legale compare solo quando c'è qualcosa da autorizzare.**
-              È `required_if:tipo,straordinario` in `CreatePianoRateRequest:36-37`, quindi il
+              È `required_if:tipo,straordinario` in `CreatePianoRateRequest`, quindi il
               modulo lo pretendeva anche a carrello vuoto — ma lo stesso request rifiuta il
-              piano con «Devi selezionare almeno una fattura per creare un piano
-              straordinario» (:26-30). A carrello vuoto chiedeva dunque di giustificare una
-              spesa che non esiste, per un piano che non può nascere.
+              piano con «Scegli almeno una fattura da mettere a rate» (Coda 686 (b)). A carrello
+              vuoto chiedeva dunque di giustificare una spesa che non esiste, per un piano che
+              non può nascere; e il pulsante, senza fatture scelte, non manda più la richiesta.
 
               ⚠️ **La card, invece, resta.** Nasconderla toglierebbe l'unica cosa a schermo
               che spiega perché il salvataggio fallirà: si compilerebbe tutto il modulo per
@@ -1407,24 +1553,30 @@ const submit = () => {
               I valori già scritti non vengono azzerati: cambiando di nuovo gestione il
               riquadro riappare con dentro quello che l'amministratore aveva battuto.
             -->
-            <div v-if="fattureStraordinarie.length > 0" class="bg-white border border-amber-200 rounded-xl p-5 space-y-4">
-              <h4 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <div v-if="fattureStraordinarie.length > 0" class="bg-white dark:bg-slate-950 border border-amber-200 dark:border-amber-800 rounded-xl p-5 space-y-4">
+              <h4 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Info class="w-4 h-4 text-amber-500" /> Scudo Legale (Obbligatorio)
               </h4>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- D194: gli errori di questi due campi la pagina non li mostrava, e «Salva» restava muto. Ora stanno sotto il campo. -->
                 <div class="space-y-2">
-                  <Label>Tipo Autorizzazione</Label>
+                  <Label for="tipo_autorizzazione">Tipo Autorizzazione</Label>
                   <v-select 
+                    input-id="tipo_autorizzazione"
                     v-model="form.tipo_autorizzazione"
                     :options="[{label: 'Delibera Assembleare', value: 'delibera'}, {label: 'Urgenza (Art. 1135 c.c.)', value: 'urgenza'}]"
                     :reduce="o => o.value"
-                    class="bg-white text-sm"
+                    class="bg-white dark:bg-slate-950 text-sm"
                     placeholder="Seleziona..."
+                    @update:modelValue="form.clearErrors('tipo_autorizzazione')"
                   />
+                  <InputError :message="form.errors.tipo_autorizzazione" />
                 </div>
                 <div class="space-y-2">
-                  <Label>Motivazione / Estremi Verbale</Label>
-                  <Input v-model="form.motivazione_autorizzazione" placeholder="Es. Verbale del 12/03/2026..." class="bg-white" />
+                  <Label for="motivazione_autorizzazione">Motivazione / Estremi Verbale</Label>
+                  <Input id="motivazione_autorizzazione" v-model="form.motivazione_autorizzazione" placeholder="Es. Verbale del 12/03/2026..." class="bg-white dark:bg-slate-950"
+                    v-on:focus="form.clearErrors('motivazione_autorizzazione')" />
+                  <InputError :message="form.errors.motivazione_autorizzazione" />
                 </div>
               </div>
             </div>
@@ -1602,6 +1754,13 @@ const submit = () => {
           <Alert v-for="errore in erroriCarrello" :key="errore" :message="errore" type="error" />
         </div>
 
+        <!-- Coda 686 (e): il piano che verrebbe a € 0,00 lo dice prima di salvare (la frase dice perché e dove guardare). -->
+        <div v-if="pianoAZero" data-avviso="piano-a-zero" role="status"
+             class="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+          <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+          <span>{{ pianoAZero }}</span>
+        </div>
+
         <div class="flex items-center justify-end gap-3 pt-2">
           <Link
             :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
@@ -1610,10 +1769,18 @@ const submit = () => {
             Annulla
           </Link>
 
-          <Button type="submit" :disabled="form.processing || competenzeConErrori" class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2">
+          <!-- Coda 686 (b): senza una fattura scelta il pulsante non manda una richiesta destinata al rifiuto, e la scritta dice perché (non è un pulsante
+               spento muto: resta raggiungibile da tastiera, e chi lo legge sa che cosa manca). P9 della Fase 1-bis della beta.12: la frase a dimensione
+               normale e con la maiuscola solo all'inizio; «Salva piano rate» resta nella forma dei pulsanti di salvataggio del gestionale. -->
+          <Button type="submit" :disabled="form.processing || competenzeConErrori"
+                  :aria-disabled="senzaFattureScelte ? 'true' : undefined" data-pulsante="salva"
+                  class="h-9 px-8 shadow-md gap-2"
+                  :class="senzaFattureScelte
+                    ? 'text-sm font-semibold opacity-60 cursor-not-allowed'
+                    : 'text-[10px] font-bold uppercase tracking-widest'">
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            <Plus v-else class="h-4 w-4" />
-            Salva piano rate
+            <Plus v-else-if="!senzaFattureScelte" class="h-4 w-4" />
+            {{ senzaFattureScelte ? 'Scegli almeno una fattura per salvare' : 'Salva piano rate' }}
           </Button>
         </div>
 

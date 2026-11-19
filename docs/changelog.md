@@ -7,6 +7,26 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.12] - Gli eredi, le comunicazioni programmate e l'assegnazione
+
+**Tocca il database.** L'aggiornamento esegue da solo undici migrazioni nuove e due delle impostazioni: la data di uscita e chi ha programmato ogni comunicazione, chi ha assegnato ogni segnalazione, la scelta sugli interessi del defunto e degli eredi nella successione e nelle impostazioni di ogni condominio, la gestione di ogni fattura passiva. Sette migrazioni scrivono dati: riempiono la data di uscita delle comunicazioni già pubblicate, creano le preferenze nuove delle email, svuotano le assegnazioni delle segnalazioni che c'erano prima (nessuna pagina le faceva scegliere), danno alle successioni già registrate la scelta di serie sugli interessi del defunto e riempiono la gestione delle fatture già registrate. Delle impostazioni, una cambia «Kondomanager» in «KondoManager» nel nome dell'applicazione e nel nome del mittente delle email, se erano scritti così. Un permesso nuovo, «Assegna segnalazioni»; i ruoli di serie si riallineano da soli.
+
+**Che cosa fa la beta.**
+- **Gli interessi agli eredi**: dal giorno del decesso la proposta degli interessi li calcola agli eredi, per quota, sul debito che hanno ereditato; le scelte (otto) le decidi tu in «Recupero dei crediti», con quelle consigliate già impostate, e per una singola successione dalla sua scheda. Le successioni già registrate hanno da subito le righe degli eredi e, con l'arretrato agli eredi, gli interessi del defunto si fermano al decesso. In «Cambia» scegli la cifra o il tasso di una riga, sempre solo in meno, e accanto alla cifra c'è la percentuale.
+- **Il debito ereditato passa agli eredi** in «Rate scadute», nei solleciti e nelle lettere, nei sei mesi, nella tesoreria e nel fascicolo per il legale, con l'etichetta «ereditato»; la catena delle successioni funziona.
+- **Il versamento di un erede** si registra a nome suo e copre il suo debito ereditato; con «Resta a …» e «Versato da» un erede il versamento resta al defunto, nelle pagine come a giornale. Il dettaglio dell'incasso dice l'erede che ha pagato, e la ricevuta è intestata di serie a lui (quando paga dalla riga «Debito ereditato da …» di un solo defunto la puoi intestare agli eredi o al defunto).
+- **La pubblicazione programmata delle comunicazioni**: scegli il giorno e l'ora, la comunicazione esce da sola e partono gli avvisi. Serve che il pianificatore del server giri ogni minuto; se è fermo esce appena riparte, in ritardo, e il modulo ti avvisa quando il pianificatore non risulta attivo.
+- **L'assegnazione delle segnalazioni** a un collaboratore, con l'email, il filtro «Assegnata a», le impostazioni per il condòmino; nell'Action inbox «Le mie» e «assegnata a te», e dalla scheda priorità e stato con un clic.
+- **La foto dal telefono**: il tasto «Foto» accanto agli allegati. La posizione si toglie da ogni foto JPG, PNG o WebP caricata, anche dal computer (le foto già caricate restano com'erano); una «foto in movimento» perde il video in coda.
+- **Gli avvisi dei commenti**: l'email all'autore anche quando elimini il suo commento, con la preferenza «Commento eliminato»; le email portano il nome dello studio e, in fondo, «Inviata con KondoManager».
+- **Le fatture ricordano la loro gestione**: «Modifica» non sposta più una fattura fuori preventivo sulla gestione ordinaria, e «Finanzia spesa» apre il piano sulla sua gestione. Un controllo mostra le fatture che una vecchia modifica ha spostato.
+- **Il piano rate di una spesa fuori preventivo**: le schede «Dalle voci del preventivo» e «Spese fuori preventivo», il carrello vuoto che dice che cosa non mostra e perché, i messaggi in parole semplici; la finestra «Configura nuova voce di spesa» corretta in sei punti.
+- **Gli interessi di mora** nel mastro delle entrate, con il controllo delle voci create prima.
+- **Le icone dei commenti e i cestini al telefono**, il numero accanto a «Commenti» e la colonna «Condominio» della pagina «Commenti», gli allegati con il limite vero e «Ne vedi 2 su 3», il tema scuro nel portale.
+- **Corretto**: gli interessi che con due registrazioni dello stesso credito coprivano due volte gli stessi giorni.
+
+---
+
 ## [1.12.0-beta.11] - I commenti alle comunicazioni
 
 **Tocca il database.** L'aggiornamento esegue da solo dieci migrazioni nuove e tre delle impostazioni: la moderazione dei commenti per ogni comunicazione e segnalazione, la discussione di ogni commento, e sull'accordo di rientro la scelta sulla parte della rata fuori dall'accordo, il registro delle modifiche e la scelta fatta nella successione. Cinque migrazioni scrivono dati: spengono i commenti delle comunicazioni che ci sono già, creano le preferenze nuove delle email dei commenti, creano i compiti «Da moderare» dell'Action inbox e riallineano le successioni registrate con la versione precedente. «Forza moderazione commenti» lascia il posto a due impostazioni, una per le comunicazioni e una per le segnalazioni. Due permessi nuovi; l'aggiornamento riallinea da solo i ruoli di serie. I requisiti non cambiano. Dopo l'aggiornamento ricarica le pagine già aperte.

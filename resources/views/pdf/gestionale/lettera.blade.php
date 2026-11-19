@@ -125,7 +125,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                 @endphp
                 <tr>
                     <td style="padding: 3px 4px; border-bottom: 1px solid #e3e8ef;">{{ $r['unita'] ?? '' }}</td>
-                    <td style="padding: 3px 4px; border-bottom: 1px solid #e3e8ef;">{{ $nomeRata }}</td>
+                    <td style="padding: 3px 4px; border-bottom: 1px solid #e3e8ef;">{{ $nomeRata }}@if(filled($r['ereditato'] ?? null))<br><span style="font-size: 8pt; color: #555;">{{ $r['ereditato'] }}</span>@endif</td>
                     <td style="padding: 3px 4px; border-bottom: 1px solid #e3e8ef;">{{ $giorno($r['scadenza'] ?? null) }}</td>
                     <td style="padding: 3px 4px; border-bottom: 1px solid #e3e8ef; text-align: right; white-space: nowrap;">{{ $euro((int) ($r['da_versare'] ?? $r['residuo'] ?? 0)) }}</td>
                     @if(!$promemoria)

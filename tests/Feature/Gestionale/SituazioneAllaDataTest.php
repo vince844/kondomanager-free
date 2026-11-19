@@ -299,8 +299,13 @@ it('due blocchi, ordinaria e straordinaria, che sommano al totale; la straordina
     $sc = DB::table('fattura_scrittura')->where('fattura_passiva_id', $f2025->id)->where('tipo', 'competenza')->value('scrittura_contabile_id');
     DB::table('scritture_contabili')->where('id', $sc)->update(['esercizio_id' => $e2025->id, 'data_competenza' => '2025-11-10']);
     vrmFattura($this, $s, $s['fornitore'], 'FF-2026', [[$ponteggio->id, 1000.00]], '2026-03-10', ['gestione_id' => $facciata->id]);
-    // La voce della facciata con la testata dell'ordinaria: il costo segue la voce, il debito la testata.
-    vrmFattura($this, $s, $s['fornitore'], 'FX', [[$ponteggio->id, 200.00]], '2026-03-10');
+    // La voce della facciata con la testata dell'ordinaria: il costo segue la voce, il debito la testata. Dalla 1.12.0-beta.12 (Coda 687) la registrazione
+    // e la modifica rifiutano una voce di un'altra gestione: la fattura nasce sulla facciata e la testata passa all'ordinaria come la lasciavano le versioni
+    // di prima (la modifica che ripartiva dall'ordinaria, o il modulo che offriva le voci di tutte le gestioni).
+    $fx = vrmFattura($this, $s, $s['fornitore'], 'FX', [[$ponteggio->id, 200.00]], '2026-03-10', ['gestione_id' => $facciata->id]);
+    DB::table('scritture_contabili')->whereIn('id', DB::table('fattura_scrittura')->where('fattura_passiva_id', $fx->id)->pluck('scrittura_contabile_id'))
+        ->update(['gestione_id' => $s['g']->id]);
+    DB::table('fatture_passive')->where('id', $fx->id)->update(['gestione_id' => $s['g']->id]);
     vrmGiorno($this, '2027-01-15');
     $p = sadPagina($s);
     $g = $p['per_gestione'];

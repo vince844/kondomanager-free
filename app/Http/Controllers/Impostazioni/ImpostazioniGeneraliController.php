@@ -48,6 +48,8 @@ class ImpostazioniGeneraliController extends Controller
             'commenti_comunicazioni_moderati_di_serie' => (bool) $settings->commenti_comunicazioni_moderati_di_serie,
             'allegati_moderati_di_serie' => (bool) $settings->allegati_moderati_di_serie,
             'allegati_massimo_per_elemento' => (int) $settings->allegati_massimo_per_elemento,
+            'segnalazioni_assegnazione_visibile_nel_portale' => (bool) $settings->segnalazioni_assegnazione_visibile_nel_portale,
+            'segnalazioni_assegnazione_porta_in_lavorazione' => (bool) $settings->segnalazioni_assegnazione_porta_in_lavorazione,
             'default_per_page'         => (int) $settings->default_per_page,
             // Il 100 resta fuori: il portale condòmino non ha un selettore per le righe, quindi un
             // valore globale così alto gli darebbe cento schede da scorrere e nessun comando per
@@ -107,6 +109,12 @@ class ImpostazioniGeneraliController extends Controller
             }
             if (array_key_exists('allegati_massimo_per_elemento', $validated)) {
                 $settings->allegati_massimo_per_elemento = (int) $validated['allegati_massimo_per_elemento'];
+            }
+            if (array_key_exists('segnalazioni_assegnazione_visibile_nel_portale', $validated)) {
+                $settings->segnalazioni_assegnazione_visibile_nel_portale = (bool) $validated['segnalazioni_assegnazione_visibile_nel_portale'];
+            }
+            if (array_key_exists('segnalazioni_assegnazione_porta_in_lavorazione', $validated)) {
+                $settings->segnalazioni_assegnazione_porta_in_lavorazione = (bool) $validated['segnalazioni_assegnazione_porta_in_lavorazione'];
             }
             $settings->default_per_page = $validated['default_per_page'];
             $settings->save();

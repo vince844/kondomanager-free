@@ -65,7 +65,7 @@ class ActionInboxController extends Controller
         Gate::authorize('viewAny', Evento::class);
 
         // I filtri dell'indirizzo; le segnalazioni che si vedono vengono da chi legge, non dall'indirizzo.
-        $filtri = ElencoDellInbox::filtri($request->only(['quando', 'tipo', 'cerca', 'ordine', 'condominio_id']), $request->user());
+        $filtri = ElencoDellInbox::filtri($request->only(['quando', 'tipo', 'cerca', 'ordine', 'condominio_id', 'mie']), $request->user());
         $fasce = FasceDeiCompiti::oggi();
         $elenco = new ElencoDellInbox($fasce);
 
@@ -86,12 +86,16 @@ class ActionInboxController extends Controller
             'grafici' => fn () => $leggi()['grafici'],
             'dove' => fn () => $leggi()['dove'],
             'schede' => fn () => ElencoDellInbox::schede($contati()),
+            // «Le mie» (la 487 del registro delle decisioni): il numero dei compiti delle segnalazioni assegnate a chi guarda; come le card, segue solo il condominio.
+            'le_mie' => fn () => $elenco->leMie($filtri),
             'gruppi' => $gruppi,
             'modo' => fn () => ElencoDellInbox::modo($filtri['quando'], $gruppi()),
             'anteprima' => fn () => ElencoDellInbox::modo($filtri['quando'], $gruppi()) === 'anteprima' ? $elenco->anteprima($filtri, $gruppi()) : [],
             'filtri' => ['quando' => $filtri['quando'], 'tipo' => $filtri['tipo'], 'cerca' => $filtri['cerca'], 'ordine' => $filtri['ordine'],
                 'condominio_id' => $filtri['condominio_id'], 'scheda' => FasceDeiCompiti::scheda($filtri['quando']),
-                'tipo_nome' => $filtri['tipo'] === null ? null : TipiDeiCompiti::nome($filtri['tipo'])],
+                'tipo_nome' => $filtri['tipo'] === null ? null : TipiDeiCompiti::nome($filtri['tipo'])]
+                // «Le mie» (la 487 del registro delle decisioni) c'è solo quando è acceso.
+                + ($filtri['mie'] !== null ? ['mie' => true] : []),
             'condomini' => $this->getCondomini(),
             // I condomini dei sei mesi per agire, in ordine di nome: la colonna li chiede uno alla volta dopo che la pagina si è aperta. Nessuna cifra qui.
             'seiMesiCondomini' => fn () => Condominio::query()->when($filtri['condominio_id'] !== null, fn ($q) => $q->whereKey($filtri['condominio_id']))

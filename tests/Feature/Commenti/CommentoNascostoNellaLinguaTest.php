@@ -4,11 +4,11 @@
 // Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
- * # La mail «il tuo commento è stato rimosso» esce nella lingua dell'installazione
+ * # La mail «il tuo commento è stato nascosto» esce nella lingua dell'installazione
  *
  * Quando l'amministratore nasconde un commento (`admin.commenti.modera`), l'autore che ha acceso
- * l'avviso «commento eliminato» riceve `CommentoEliminatoNotification`, che compone oggetto e riga
- * con le chiavi `notifications.deleted_ticket_comment.*` nella lingua dell'installazione
+ * l'avviso «commento nascosto» riceve `CommentoNascostoNotification`, che compone oggetto e riga
+ * con le chiavi `notifications.hidden_ticket_comment.*` nella lingua dell'installazione
  * (`LocalizedNotification`). Una chiave scritta in modo diverso in un file di lingua non si trova, e
  * il traduttore ripiega sulla lingua di riserva (`en`): la mail esce in inglese a chi usa l'italiano.
  */
@@ -21,13 +21,13 @@ use App\Models\Commento;
 use App\Models\Condominio;
 use App\Models\Segnalazione;
 use App\Models\User;
-use App\Notifications\Commenti\CommentoEliminatoNotification;
+use App\Notifications\Commenti\CommentoNascostoNotification;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\Notification;
 
-test('la mail «il tuo commento è stato rimosso» esce in italiano su un\'installazione in italiano', function () {
+test('la mail «il tuo commento è stato nascosto» esce in italiano su un\'installazione in italiano', function () {
     $this->seed(RolesAndPermissionsSeeder::class);
     Notification::fake();
 
@@ -39,7 +39,7 @@ test('la mail «il tuo commento è stato rimosso» esce in italiano su un\'insta
     $mario->givePermissionTo(Permission::COMMENT_SEGNALAZIONI->value);
     Anagrafica::factory()->create(['user_id' => $mario->id, 'nome' => 'Mario Rossi'])->condomini()->attach($condominio->id);
     DB::table('notification_preferences')->insert([
-        'user_id' => $mario->id, 'type' => NotificationType::COMMENT_DELETED->value, 'enabled' => true,
+        'user_id' => $mario->id, 'type' => NotificationType::COMMENT_HIDDEN->value, 'enabled' => true,
         'created_at' => now(), 'updated_at' => now(),
     ]);
     $segnalazione = Segnalazione::create([
@@ -55,7 +55,7 @@ test('la mail «il tuo commento è stato rimosso» esce in italiano su un\'insta
     $this->actingAs($admin)->post(route('admin.commenti.modera', $commento))->assertSessionHasNoErrors();
 
     expect($commento->fresh()->stato)->toBe('nascosto');
-    Notification::assertSentTo($mario, CommentoEliminatoNotification::class, function (CommentoEliminatoNotification $notifica) use ($mario) {
+    Notification::assertSentTo($mario, CommentoNascostoNotification::class, function (CommentoNascostoNotification $notifica) use ($mario) {
         // La mail si compone nella lingua che la notifica porta con sé, come fa l'invio vero.
         expect($notifica->locale($mario))->toBe('it');
         $prima = app()->getLocale();
@@ -70,8 +70,10 @@ test('la mail «il tuo commento è stato rimosso» esce in italiano su un\'insta
         // italiano, il confronto fallisce invece di passare con il testo inglese. Il nome con cui la
         // frase chiama la segnalazione (`:entity`) non si fissa qui: si legge dalla riga, e deve
         // contenere l'oggetto della segnalazione.
-        $oggetto = Lang::get('notifications.deleted_ticket_comment.subject', [], 'it', false);
-        [$primaDiEntity, $dopoEntity] = explode(':entity', Lang::get('notifications.deleted_ticket_comment.line_1', [], 'it', false), 2);
+        $oggetto = Lang::get('notifications.hidden_ticket_comment.subject', [], 'it', false);
+        [$primaDiEntity, $dopoEntity] = explode(':entity', Lang::get('notifications.hidden_ticket_comment.line_1', [], 'it', false), 2);
+        // La frase porta anche la data del commento (`:data`), nel fuso dell'installazione.
+        $primaDiEntity = str_replace(':data', now()->setTimezone(config('app.user_timezone'))->format('d/m/Y'), $primaDiEntity);
         expect($mail->subject)->toBe($oggetto)
             ->and($mail->introLines)->toHaveCount(1);
         $riga = $mail->introLines[0];
@@ -83,9 +85,9 @@ test('la mail «il tuo commento è stato rimosso» esce in italiano su un\'insta
     });
 });
 
-test('la chiave della mail «il tuo commento è stato rimosso» c\'è nel file di ogni lingua', function (string $lingua) {
+test('la chiave della mail «il tuo commento è stato nascosto» c\'è nel file di ogni lingua', function (string $lingua) {
     // Una chiave che manca in una lingua ripiega in silenzio sulla lingua di riserva.
-    foreach (['subject', 'line_1'] as $campo) {
-        expect(Lang::hasForLocale("notifications.deleted_ticket_comment.{$campo}", $lingua))->toBeTrue("manca in {$lingua}: {$campo}");
+    foreach (['subject', 'line_1', 'action'] as $campo) {
+        expect(Lang::hasForLocale("notifications.hidden_ticket_comment.{$campo}", $lingua))->toBeTrue("manca in {$lingua}: {$campo}");
     }
 })->with(['it', 'en', 'es', 'pt']);

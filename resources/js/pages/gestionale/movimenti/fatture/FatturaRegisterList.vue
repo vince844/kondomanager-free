@@ -31,6 +31,24 @@ interface RegolazioneSuVoceDiEntrata {
     voce_id: number;
 }
 
+/**
+ * Coda 687 (decisione 507): una fattura che una modifica, fino alla 1.12.0-beta.11, ha spostato su un'altra gestione o spogliato di «Fuori preventivo».
+ * Il controllo è in sola lettura (`FattureToccateDallaModifica`): la correzione proposta la fa l'amministratore, fattura per fattura.
+ */
+interface FatturaToccata {
+    id: number;
+    numero_documento: string | null;
+    data_documento: string | null;
+    fornitore: string;
+    totale_testo: string;
+    voci: string[];
+    gestione_attuale?: string;
+    gestione_delle_voci?: string | null;
+    proposta: string | null;
+    correggibile: boolean;
+    motivo: string | null;
+}
+
 const props = defineProps<{
     condominio: Building;
     condomini:  Building[];
@@ -39,6 +57,7 @@ const props = defineProps<{
     filters:    { stato_pagamento?: string; stato_approvazione?: string; search?: string; con_unita?: string };
     regolazioniImmediate?: number;
     regolazioniSuVoceDiEntrata?: RegolazioneSuVoceDiEntrata[];
+    fattureToccateDallaModifica?: { spostate: FatturaToccata[]; spogliate: FatturaToccata[] };
     esercizio?: { id: number } | null;
 }>();
 
@@ -89,6 +108,23 @@ const regolazioniSuEntrata = computed(() => props.regolazioniSuVoceDiEntrata ?? 
 const unaSola = computed(() => regolazioniSuEntrata.value.length === 1);
 // Le regolazioni stanno su una voce sola (anche più d'una) o su più voci: le voci si contano per id, non per nome.
 const suUnaVoce = computed(() => new Set(regolazioniSuEntrata.value.map((r) => r.voce_id)).size === 1);
+
+// Coda 687: le fatture toccate da una modifica, con la correzione proposta. Una fattura sola per volta, su comando: mai una correzione automatica.
+const fattureToccate = computed(() => [
+    ...(props.fattureToccateDallaModifica?.spostate ?? []).map((f) => ({ ...f, caso: 'spostata' as const })),
+    ...(props.fattureToccateDallaModifica?.spogliate ?? []).map((f) => ({ ...f, caso: 'spogliata' as const })),
+]);
+const inCorrezione = ref<number | null>(null);
+const riportaComeEra = (id: number) => {
+    inCorrezione.value = id;
+    router.post(route(generateRoute('gestionale.fatture.riporta-come-era'), { condominio: props.condominio.id, fattura: id }), {}, {
+        preserveScroll: true,
+        preserveState: true,
+        only: ['fattureToccateDallaModifica', 'fatture', 'flash'],
+        onFinish: () => { inCorrezione.value = null; },
+    });
+};
+const linkFattura = (id: number) => route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: id });
 
 const linkScrittura = (id: number) =>
     route(generateRoute('gestionale.scritture.show'), { condominio: props.condominio.id, scrittura: id });
@@ -280,6 +316,57 @@ const filterSfori = () => {
                                                 Apri
                                                 <ArrowRight class="w-3.5 h-3.5" />
                                             </Link>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Coda 687 (decisione 507): le fatture che una modifica ha già toccato. Restano finché non sono corrette: sono dati da correggere. -->
+                        <div
+                            v-if="fattureToccate.length > 0"
+                            data-blocco="fatture-toccate"
+                            class="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950/40"
+                        >
+                            <div class="flex items-start gap-3">
+                                <AlertTriangle class="w-4 h-4 mt-0.5 text-amber-600 dark:text-amber-300 shrink-0" />
+                                <div class="flex-1 min-w-0 space-y-1.5 text-sm text-amber-900 dark:text-amber-100">
+                                    <p class="font-semibold" data-testo="titolo">
+                                        {{ fattureToccate.length === 1 ? 'Una fattura è stata cambiata da una modifica' : `${fattureToccate.length} fatture sono state cambiate da una modifica` }}
+                                    </p>
+                                    <p data-testo="fatto">
+                                        Fino alla versione di prima, «Modifica» di una fattura non pagata la portava sulla gestione ordinaria, o toglieva il segno «Fuori preventivo»
+                                        dalle sue righe, anche se si cambiava solo la scadenza. Per ognuna c'è la correzione proposta: la fai tu, con «Riporta com'era».
+                                    </p>
+                                    <ul class="divide-y divide-amber-200 dark:divide-amber-800 rounded-lg border border-amber-200 dark:border-amber-800 bg-white/70 dark:bg-slate-950/40">
+                                        <li v-for="f in fattureToccate" :key="`${f.caso}-${f.id}`" data-riga="fattura-toccata" class="flex flex-col gap-1.5 px-3 py-2 sm:flex-row sm:items-start sm:gap-3">
+                                            <div class="min-w-0 flex-1 space-y-0.5">
+                                                <p class="font-medium">
+                                                    {{ f.fornitore }}, n. {{ f.numero_documento ?? '—' }}<template v-if="f.data_documento"> del {{ f.data_documento }}</template>, {{ f.totale_testo }}
+                                                </p>
+                                                <p v-if="f.caso === 'spostata'" class="text-[12px]">
+                                                    È sulla gestione «{{ f.gestione_attuale }}», con le righe sulla voce «{{ f.voci.join('», «') }}»<template v-if="f.gestione_delle_voci"> di «{{ f.gestione_delle_voci }}»</template>.
+                                                </p>
+                                                <p v-else class="text-[12px]">
+                                                    La riga sulla voce «{{ f.voci.join('», «') }}» ha perso il segno «Fuori preventivo», e la fattura non si mette più a rate.
+                                                </p>
+                                                <p class="text-[12px] text-amber-800 dark:text-amber-200">{{ f.correggibile ? f.proposta : f.motivo }}</p>
+                                            </div>
+                                            <div class="flex shrink-0 items-center gap-2">
+                                                <Link :href="linkFattura(f.id)" class="flex h-8 items-center gap-1.5 rounded-lg px-3 font-medium text-amber-800 dark:text-amber-200 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                                                    Apri <ArrowRight class="w-3.5 h-3.5" />
+                                                </Link>
+                                                <button
+                                                    v-if="f.correggibile"
+                                                    type="button"
+                                                    data-azione="riporta-come-era"
+                                                    class="flex h-8 items-center rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-950 px-3 text-[12px] font-semibold text-amber-900 dark:text-amber-100 transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-60"
+                                                    :disabled="inCorrezione !== null"
+                                                    @click="riportaComeEra(f.id)"
+                                                >
+                                                    Riporta com'era
+                                                </button>
+                                            </div>
                                         </li>
                                     </ul>
                                 </div>

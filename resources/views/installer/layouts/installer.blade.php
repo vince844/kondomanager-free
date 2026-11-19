@@ -10,7 +10,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>{{ config('app.name', 'Kondomanager') }} — {{ __('installer.wizard.title') }}</title>
+    <title>{{ config('app.name', 'KondoManager') }} — {{ __('installer.wizard.title') }}</title>
     @vite(['resources/css/installer.css'])
     @livewireStyles
 </head>

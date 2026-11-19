@@ -27,6 +27,7 @@ use App\Services\ComunicazioneService;
 use App\Support\Allegati\RegoleAllegati;
 use App\Support\Commenti\RegoleCommenti;
 use App\Support\Comunicazioni\ContatoriElenco;
+use App\Support\Comunicazioni\PubblicazioneProgrammata;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -122,9 +123,18 @@ class ComunicazioneController extends Controller
             'condomini'        => CondominioResource::collection(Condominio::all()),
             'anagrafiche'      => [],
             'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
+            // Coda 683 (1): il limite vero di un file e i formati, come il riquadro della scheda: il modulo non scrive più «10 MB» fisso.
+            'allegati_limite_file' => \App\Support\LimiteCaricamento::etichetta(),
+            'allegati_formati' => RegoleAllegati::FORMATI,
             'commenti_moderati_di_serie' => (bool) app(\App\Settings\GeneralSettings::class)->commenti_comunicazioni_moderati_di_serie,
             // «Commenti in moderazione» la sceglie solo chi modera: per gli altri vale il di serie.
             'puo_scegliere_moderazione' => RegoleCommenti::puoScegliereModerazione(request()->user(), 'comunicazioni'),
+            'programmazione'   => [
+                'puo_programmare'      => PubblicazioneProgrammata::puoProgrammare(Auth::user()),
+                'fuso'                 => PubblicazioneProgrammata::fuso(),
+                'pianificatore_attivo' => PubblicazioneProgrammata::pianificatoreAttivo(),
+                'adesso'               => now()->setTimezone(PubblicazioneProgrammata::fuso())->format('Y-m-d\TH:i'),
+            ],
         ]);  
     }
 
@@ -156,11 +166,23 @@ class ComunicazioneController extends Controller
             abort_unless($request->user()->hasPermissionTo(RegoleAllegati::permesso('comunicazioni', 'carica')), 403);
         }
 
+        $dataProgrammata = $validated['data_programmata'] ?? null;
+        $eProgrammata = ! empty($dataProgrammata);
+        if ($eProgrammata) {
+            $validated['is_published'] = false;
+        }
+
         try {
 
             DB::beginTransaction();
         
             $comunicazione = Comunicazione::create($validated);
+            if ($eProgrammata) {
+                $comunicazione->programmata_per = PubblicazioneProgrammata::daModulo($dataProgrammata);
+                $comunicazione->programmata_da = Auth::id();
+                $comunicazione->save();
+            }
+
             $comunicazione->condomini()->attach($validated['condomini_ids'] ?? []);
         
             if (!empty($validated['anagrafiche'])) {
@@ -197,20 +219,33 @@ class ComunicazioneController extends Controller
 
         }
         
-        try {
+        if (! $eProgrammata) {
+            try {
 
-            NotifyUserOfCreatedComunicazione::dispatch($validated, $comunicazione);
+                NotifyUserOfCreatedComunicazione::dispatch($validated, $comunicazione);
 
-        } catch (\Exception $emailException) {
+            } catch (\Exception $emailException) {
 
-            Log::error('Error sending email for comunicazione ID ' . $comunicazione->id . ': ' . $emailException->getMessage());
-        
-            return to_route('admin.comunicazioni.index')->with(
-                $this->flashWarning(__('comunicazioni.error_notify_new_communication'))
-            );
+                Log::error('Error sending email for comunicazione ID ' . $comunicazione->id . ': ' . $emailException->getMessage());
+            
+                return to_route('admin.comunicazioni.index')->with(
+                    $this->flashWarning(__('comunicazioni.error_notify_new_communication'))
+                );
 
+            }
         }
         
+        if ($eProgrammata) {
+            $locale = $comunicazione->programmata_per->copy()->setTimezone(PubblicazioneProgrammata::fuso());
+
+            return to_route('admin.comunicazioni.index')->with(
+                $this->flashSuccess(__('comunicazioni.success_schedule_communication', [
+                    'date' => $locale->format('d/m/Y'),
+                    'time' => $locale->format('H:i'),
+                ]))
+            );
+        }
+
         return to_route('admin.comunicazioni.index')->with(
             $this->flashSuccess(__('comunicazioni.success_create_communication'))
         );
@@ -312,6 +347,12 @@ class ComunicazioneController extends Controller
          'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
          // «Commenti in moderazione» la cambia solo chi modera: per gli altri resta com'è.
          'puo_scegliere_moderazione' => RegoleCommenti::puoImpostareModerazione(request()->user(), $comunicazione),
+         'programmazione' => [
+             'puo_programmare'      => PubblicazioneProgrammata::puoProgrammare(Auth::user(), $comunicazione),
+             'fuso'                 => PubblicazioneProgrammata::fuso(),
+             'pianificatore_attivo' => PubblicazioneProgrammata::pianificatoreAttivo(),
+             'adesso'               => now()->setTimezone(PubblicazioneProgrammata::fuso())->format('Y-m-d\TH:i'),
+         ],
         ]);
     }
 
@@ -339,6 +380,11 @@ class ComunicazioneController extends Controller
             unset($validated['commenti_moderati']);
         }
 
+        $haCampoProgrammata = array_key_exists('data_programmata', $request->all());
+        if ($haCampoProgrammata && ! empty($request->input('data_programmata'))) {
+            $validated['is_published'] = false;
+        }
+
         /*
          * ⚠️ **I destinatari si leggono PRIMA di toccare le pivot**, ed è tutto il senso della
          * correzione della beta.64. Fino a qui la platea si fissava alla creazione: chi veniva
@@ -356,6 +402,25 @@ class ComunicazioneController extends Controller
             // ⚠️ `updated_by` non arriva dal modulo: lo mette il server. Un campo che decide
             // «chi ha fatto questo» non si accetta mai da chi manda la richiesta.
             $comunicazione->update($validated + ['updated_by' => Auth::id()]);
+
+            if ($haCampoProgrammata) {
+                $dataProgrammata = $request->input('data_programmata');
+                if (empty($dataProgrammata)) {
+                    $comunicazione->programmata_per = null;
+                    $comunicazione->programmata_da = null;
+                    $comunicazione->save();
+                } else {
+                    $nuovaOraUtc = PubblicazioneProgrammata::daModulo($dataProgrammata);
+                    $oraPrecedenteUtc = $comunicazione->programmata_per?->format('Y-m-d H:i:s');
+                    $nuovaOraUtcFormatted = $nuovaOraUtc?->format('Y-m-d H:i:s');
+
+                    $comunicazione->programmata_per = $nuovaOraUtc;
+                    if ($oraPrecedenteUtc !== $nuovaOraUtcFormatted) {
+                        $comunicazione->programmata_da = Auth::id();
+                    }
+                    $comunicazione->save();
+                }
+            }
 
             $comunicazione->condomini()->sync($validated['condomini_ids'] ?? []);
 
@@ -402,6 +467,19 @@ class ComunicazioneController extends Controller
                 $this->flashWarning(__('comunicazioni.error_notify_updated_communication'))
             );
 
+        }
+
+        $comunicazione->refresh();
+
+        if ($comunicazione->programmata_per !== null) {
+            $locale = $comunicazione->programmata_per->copy()->setTimezone(PubblicazioneProgrammata::fuso());
+
+            return to_route('admin.comunicazioni.index')->with(
+                $this->flashSuccess(__('comunicazioni.success_schedule_communication', [
+                    'date' => $locale->format('d/m/Y'),
+                    'time' => $locale->format('H:i'),
+                ]))
+            );
         }
 
         return to_route('admin.comunicazioni.index')->with(

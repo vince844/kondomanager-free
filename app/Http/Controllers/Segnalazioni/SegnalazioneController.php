@@ -6,6 +6,7 @@
 namespace App\Http\Controllers\Segnalazioni;
 
 use App\Events\Notifiche\DestinatariDaAvvisare;
+use App\Events\Segnalazioni\NotifyUserOfApprovedSegnalazione;
 use App\Events\Segnalazioni\NotifyUserOfCreatedSegnalazione;
 use App\Services\Notifiche\DestinatariNotifica;
 use App\Enums\Permission;
@@ -22,11 +23,13 @@ use App\Models\Commento;
 use App\Models\Condominio;
 use App\Models\Evento;
 use App\Models\Segnalazione;
+use App\Models\User;
 use App\Services\Allegati\AllegatoService;
 use App\Services\SegnalazioneService;
 use App\Support\Allegati\RegoleAllegati;
 use App\Support\Commenti\RegoleCommenti;
 use App\Support\Segnalazioni\ContatoriElencoSegnalazioni;
+use App\Support\Segnalazioni\AssegnazioneSegnalazioni;
 use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
@@ -94,9 +97,10 @@ class SegnalazioneController extends Controller
                 'total'        => $segnalazioni->total(),
             ],
             // Filtri per ripristinare lo stato nel frontend
-            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id', 'visibility']),
+            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id', 'visibility', 'assegnazione']),
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
+            'assegnatari' => AssegnazioneSegnalazioni::assegnatari(),
         ]);
     }
   
@@ -120,9 +124,13 @@ class SegnalazioneController extends Controller
             'condomini'        => CondominioResource::collection(Condominio::all()),
             'anagrafiche'      => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
             'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
+            // Coda 683 (1): il limite vero di un file e i formati, come il riquadro della scheda: il modulo non scrive più «10 MB» fisso.
+            'allegati_limite_file' => \App\Support\LimiteCaricamento::etichetta(),
+            'allegati_formati' => RegoleAllegati::FORMATI,
             'commenti_segnalazioni_moderati_di_serie' => (bool) app(\App\Settings\GeneralSettings::class)->commenti_segnalazioni_moderati_di_serie,
             // «Commenti in moderazione» la sceglie solo chi modera: per gli altri vale il di serie.
             'puo_scegliere_moderazione' => RegoleCommenti::puoScegliereModerazione(request()->user(), 'segnalazioni'),
+            'assegnazione'     => AssegnazioneSegnalazioni::perLaPagina(Auth::user()),
         ]); 
     }
 
@@ -159,7 +167,7 @@ class SegnalazioneController extends Controller
 
             DB::beginTransaction();
 
-            $segnalazione = Segnalazione::create($validated);
+            $segnalazione = Segnalazione::create(Arr::except($validated, ['assigned_to']));
 
             if (!empty($validated['anagrafiche'])) {
                 $segnalazione->anagrafiche()->attach($validated['anagrafiche']);
@@ -176,6 +184,11 @@ class SegnalazioneController extends Controller
             }
 
             DB::commit();
+
+            if (! empty($validated['assigned_to'])) {
+                $nuovoAssegnatario = User::find($validated['assigned_to']);
+                AssegnazioneSegnalazioni::assegna($segnalazione, $nuovoAssegnatario, $request->user());
+            }
 
             NotifyUserOfCreatedSegnalazione::dispatch($segnalazione);
 
@@ -232,6 +245,7 @@ class SegnalazioneController extends Controller
         $segnalazioneCaricata = Segnalazione::with([
             'createdBy.anagrafica',
             'assignedTo',
+            'assegnataDa',
             'condominio',
             'anagrafiche',
             'commenti.autore.anagrafica',
@@ -244,6 +258,9 @@ class SegnalazioneController extends Controller
 
         return Inertia::render('segnalazioni/SegnalazioniView', [
             'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
+            'assegnazione' => AssegnazioneSegnalazioni::perLaPagina($user),
+            // Coda 671: lo stato e la priorità si cambiano dalla scheda con lo stesso permesso di «Modifica».
+            'puo_modificare' => Gate::forUser($user)->allows('update', $segnalazioneCaricata),
             'commenti_config' => RegoleCommenti::configSchedaSegnalazione($user, $segnalazioneCaricata, 'admin'),
             // Coda 304: la conferma di «Rendi pubblica» dice, prima del comando, se l'autore non la
             // vedrà più dal portale (non è più nel palazzo); la mail che riceve lo dice anche a lui.
@@ -271,11 +288,13 @@ class SegnalazioneController extends Controller
     {
         Gate::authorize('update', $segnalazione);
         
-        $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+        $user = Auth::user();
+        $segnalazione->loadMissing(['createdBy', 'assignedTo', 'assegnataDa', 'condominio', 'anagrafiche']);
 
         // Della rubrica la tendina e i destinatari già scelti leggono l'id e il nome (Coda 408).
         return Inertia::render('segnalazioni/SegnalazioniEdit', [
             'segnalazione'  => new SegnalazioneResource($segnalazione),
+            'assegnazione'  => AssegnazioneSegnalazioni::perLaPagina($user),
             'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
             'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
             // «Commenti in moderazione» la cambia solo chi modera: per gli altri la pagina non mostra la casella e il server ignora il campo.
@@ -296,6 +315,8 @@ class SegnalazioneController extends Controller
         Gate::authorize('update', $segnalazione);
 
         $validated = $request->validated(); 
+        $eraApprovata = (bool) $segnalazione->is_approved;
+        $haApprovatoAdesso = ! $eraApprovata && array_key_exists('is_approved', $validated) && (bool) $validated['is_approved'];
 
         // «Commenti in moderazione» la cambia solo chi modera: per gli altri il campo si ignora e resta com'era.
         if (! RegoleCommenti::puoImpostareModerazione($request->user(), $segnalazione)) {
@@ -315,7 +336,8 @@ class SegnalazioneController extends Controller
 
             // ⚠️ `updated_by` non arriva dal modulo: lo mette il server. Un campo che decide
             // «chi ha fatto questo» non si accetta mai da chi manda la richiesta.
-            $segnalazione->update($validated + ['updated_by' => Auth::id()]);
+            $datiAggiornamento = Arr::except($validated, ['assigned_to']);
+            $segnalazione->update($datiAggiornamento + ['updated_by' => Auth::id()]);
 
             // Coda 307: i destinatari si toccano solo se il modulo li manda («senza campo = non
             // toccare», la stessa regola delle categorie dei documenti). La chiave presente e vuota
@@ -338,9 +360,18 @@ class SegnalazioneController extends Controller
             
         }
 
+        if (array_key_exists('assigned_to', $validated)) {
+            $nuovoAssegnatario = ! empty($validated['assigned_to']) ? User::find($validated['assigned_to']) : null;
+            AssegnazioneSegnalazioni::assegna($segnalazione, $nuovoAssegnatario, $request->user());
+        }
+
         try {
 
-            $this->avvisaDopoLaModifica($segnalazione, $destinatariPrima, $validated);
+            if ($haApprovatoAdesso) {
+                NotifyUserOfApprovedSegnalazione::dispatch($segnalazione, Auth::user());
+            } else {
+                $this->avvisaDopoLaModifica($segnalazione, $destinatariPrima, $validated);
+            }
 
         } catch (\Exception $emailException) {
 
@@ -392,6 +423,43 @@ class SegnalazioneController extends Controller
         if ($giaDestinatari !== []) {
             DestinatariDaAvvisare::dispatch($oggetto, $giaDestinatari, 'aggiornato');
         }
+    }
+
+    /** Gli stati lavorazione e le priorità che una segnalazione può avere: le colonne di `segnalazioni` (Coda 671). */
+    public const STATI = ['aperta', 'in lavorazione', 'chiusa'];
+
+    public const PRIORITA = ['bassa', 'media', 'alta', 'urgente'];
+
+    /**
+     * Le azioni veloci della scheda (Coda 671, decisioni 466 (2) e 487): lo stato lavorazione o la priorità, uno alla volta, si salvano subito per la
+     * stessa strada di «Modifica»: lo stesso permesso (`SegnalazionePolicy::update`), chi ha cambiato in `updated_by`, il salvataggio del modello
+     * (che chiude il compito dell'Action inbox con «Chiusa» e lo riapre riaprendo, `CompitoDellaSegnalazione`), e gli stessi avvisi dopo la
+     * modifica senza la casella «Avvisa i destinatari»: i destinatari non cambiano, quindi non parte nessuna email, come da «Modifica».
+     * Torna alla scheda; la pagina rilegge solo la segnalazione.
+     */
+    public function aggiornaParametro(\Illuminate\Http\Request $request, Segnalazione $segnalazione): RedirectResponse
+    {
+        Gate::authorize('update', $segnalazione);
+
+        // P6 (Fase 1-bis della beta.12): ogni rifiuto dice che cosa scegliere, con le parole della pagina (si legge sotto il valore, `ParametroVeloce.vue`).
+        $dati = $request->validate([
+            'stato' => ['required_without:priority', 'prohibits:priority', 'string', \Illuminate\Validation\Rule::in(self::STATI)],
+            'priority' => ['required_without:stato', 'string', \Illuminate\Validation\Rule::in(self::PRIORITA)],
+        ], [
+            'stato.required_without' => __('segnalazioni.quick.nothing_chosen'),
+            'priority.required_without' => __('segnalazioni.quick.nothing_chosen'),
+            'stato.prohibits' => __('segnalazioni.quick.one_at_a_time'),
+            'stato.string' => __('segnalazioni.quick.invalid_status'),
+            'stato.in' => __('segnalazioni.quick.invalid_status'),
+            'priority.string' => __('segnalazioni.quick.invalid_priority'),
+            'priority.in' => __('segnalazioni.quick.invalid_priority'),
+        ]);
+
+        $destinatariPrima = app(DestinatariNotifica::class)->perModello($segnalazione);
+        $segnalazione->update($dati + ['updated_by' => Auth::id()]);
+        $this->avvisaDopoLaModifica($segnalazione, $destinatariPrima, $dati);
+
+        return back();
     }
 
     /**

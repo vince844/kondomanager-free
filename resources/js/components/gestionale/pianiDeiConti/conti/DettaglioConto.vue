@@ -195,7 +195,7 @@ const statusColorClass = computed(() => {
           <h4 class="font-bold text-amber-900 text-sm">Voce tecnica — Sopravvenienza passiva</h4>
           <p class="text-xs text-amber-700/80 mt-1 leading-relaxed">
             Generata automaticamente dalla registrazione di una fattura fuori preventivo.
-            Non modificabile direttamente. Non finanziabile tramite piano ordinario.
+            Non modificabile direttamente. Si mette a rate dalla scheda «Spese fuori preventivo» del nuovo piano rate, non da «Dalle voci del preventivo».
           </p>
         </div>
       </div>

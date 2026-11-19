@@ -822,6 +822,10 @@ function confermaEliminaInBlocco() {
                                                             : trans('commenti_pagina.filters.type_comunicazioni')
                                                     }}
                                                 </span>
+                                                <!-- Decisione 479 (2): la persona della discussione di una comunicazione a persone. -->
+                                                <span v-if="riga.discussione_con" data-discussione-con class="text-xs text-muted-foreground">
+                                                    {{ trans('commenti_pagina.discussione_con', { nome: riga.discussione_con }) }}
+                                                </span>
                                             </div>
                                         </TableCell>
                                         <TableCell class="text-xs text-muted-foreground whitespace-nowrap">

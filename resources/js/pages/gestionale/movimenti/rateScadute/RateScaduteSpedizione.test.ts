@@ -10,6 +10,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import vSelect from 'vue-select';
 
 const routerGet = vi.fn();
 const axiosPost = vi.fn();
@@ -71,7 +72,12 @@ describe('la spedizione in blocco dall\'elenco', () => {
         const pannello = w!.get('[data-testid="pannello-spedizione"]');
         expect(pulito(pannello.text())).toContain('Ugo');
         expect(pulito(pannello.text())).not.toContain('Bice');
-        await pannello.get('select').setValue('raccomandata');
+        // Decisione 392: il canale si sceglie dal vSelect, non dal menu del browser.
+        expect(pannello.find('select').exists()).toBe(false);
+        const canale = pannello.findComponent(vSelect);
+        expect((canale.props('options') as { nome: string }[]).map((c) => c.nome)).toContain('Raccomandata A/R');
+        canale.vm.$emit('update:modelValue', 'raccomandata');
+        await flushPromises();
         await pannello.get('[data-testid="numero-101"]').setValue('RA1');
         axiosPost.mockResolvedValueOnce({ data: { spedite: 1 } });
         await pannello.get('[data-testid="registra-spedizione-blocco"]').trigger('click');

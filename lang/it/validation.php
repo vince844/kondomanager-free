@@ -299,6 +299,7 @@ return [
             'priority' => 'priorità',
             'stato' => 'stato comunicazioni',
             'condomini_ids' => 'condomini',
+            'data_programmata' => 'data di pubblicazione',
         ],
         'segnalazioni' => [
             'subject' => 'oggetto segnalazione',

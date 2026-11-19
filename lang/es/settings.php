@@ -130,6 +130,10 @@ return [
             'label' => 'Comunicación del tablón actualizada',
             'description' => 'Recibe una notificación cuando se modifica una comunicación que ya has recibido',
         ],
+        'scheduled_communication_published' => [
+            'label' => 'Comunicación programada publicada',
+            'description' => 'Recibe una confirmación cuando se publica una comunicación que programaste',
+        ],
         'new_ticket' => [
             'label' => 'New fault report',
             'description' => 'Receive a notification when a new fault report is created',
@@ -141,6 +145,10 @@ return [
         'updated_ticket' => [
             'label' => 'Incidencia actualizada',
             'description' => 'Recibe una notificación cuando se modifica una incidencia que sigues',
+        ],
+        'ticket_assigned' => [
+            'label' => 'Aviso de avería asignado',
+            'description' => 'Recibe una notificación cuando se te asigna un aviso de avería, o deja de estar asignado a ti',
         ],
         'new_archive_document' => [
             'label' => 'New document in archive',
@@ -163,8 +171,12 @@ return [
             'description' => 'Recibe una notificación cuando tu comentario en una incidencia es aprobado',
         ],
         'comment_deleted' => [
-            'label' => 'Comentario eliminado u oculto (incidencias)',
-            'description' => 'Recibe una notificación cuando tu comentario en una incidencia es eliminado u oculto',
+            'label' => 'Comentario oculto (incidencias)',
+            'description' => 'Recibe una notificación cuando tu comentario en una incidencia es ocultado',
+        ],
+        'comment_removed' => [
+            'label' => 'Comentario eliminado (incidencias)',
+            'description' => 'Recibe una notificación cuando otra persona elimina tu comentario en una incidencia',
         ],
         'new_communication_comment' => [
             'label' => 'Nuevo comentario (comunicados)',
@@ -175,8 +187,12 @@ return [
             'description' => 'Recibe una notificación cuando tu comentario en un comunicado es aprobado',
         ],
         'communication_comment_deleted' => [
-            'label' => 'Comentario eliminado u oculto (comunicados)',
-            'description' => 'Recibe una notificación cuando tu comentario en un comunicado es eliminado u oculto',
+            'label' => 'Comentario oculto (comunicados)',
+            'description' => 'Recibe una notificación cuando tu comentario en un comunicado es ocultado',
+        ],
+        'communication_comment_removed' => [
+            'label' => 'Comentario eliminado (comunicados)',
+            'description' => 'Recibe una notificación cuando otra persona elimina tu comentario en un comunicado',
         ],
         'new_user' => [
             'label' => 'New registered user',

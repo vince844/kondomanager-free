@@ -92,6 +92,18 @@ class AnteprimaPassaggioRequest extends FormRequest
             // Decisione 454: l'accordo di rientro del defunto che la successione chiude resta in regola fino al decesso (di serie) o vale come una decadenza.
             'accordo_del_defunto' => ['nullable', Rule::prohibitedIf(fn () => $tipo !== 'successione'),
                 Rule::in([\App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA, \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_DECADENZA])],
+            // Decisione 483: gli interessi del defunto dopo il decesso, «si fermano al decesso» o «continuano a suo nome»; senza, il di serie della strada
+            // dell'arretrato (`Subentro::interessiDiSerie`), che l'anteprima mette.
+            'interessi_del_defunto' => ['nullable', Rule::prohibitedIf(fn () => $tipo !== 'successione'),
+                Rule::in([Subentro::INTERESSI_AL_DECESSO, Subentro::INTERESSI_CONTINUANO])],
+            // Decisioni 493 (14) e 494 (2): le scelte sugli interessi degli eredi cambiate per questa successione («Cambia per questa successione»);
+            // senza, le regole del condominio. Solo quelle cambiate, da una a otto, vere o false: le altre seguono il condominio (seconda prova della beta.12).
+            'interessi_eredi' => ['nullable', 'array', Rule::prohibitedIf(fn () => $tipo !== 'successione'),
+                function (string $attributo, mixed $valore, \Closure $fail) {
+                    if ($valore !== null && \App\Services\Gestionale\Accessori\RegoleDegliEredi::normalizzaCambiate($valore) === null) {
+                        $fail('Per gli interessi degli eredi cambia una o più delle otto voci, ognuna accesa o spenta.');
+                    }
+                }],
             // Nessun valore predefinito: la data del passaggio la dichiara l'amministratore (decisione 12,
             // «non si tira a indovinare»).
             // La data del decesso non è nel futuro (decisione 65): un atto si registra anche prima del giorno in cui vale, un decesso no.
@@ -654,6 +666,10 @@ class AnteprimaPassaggioRequest extends FormRequest
             'conguaglio.in' => 'Scegli «Scrivi il conguaglio» o «Non scriverlo».',
             'accordo_del_defunto.in' => 'Per l\'accordo di rientro del defunto scegli «resta in regola fino al decesso» o «vale come una decadenza».',
             'accordo_del_defunto.prohibited' => 'La scelta sull\'accordo di rientro del defunto c\'è solo nella successione.',
+            'interessi_del_defunto.in' => 'Per gli interessi del defunto dopo il decesso scegli «si fermano al decesso» o «continuano a suo nome».',
+            'interessi_del_defunto.prohibited' => 'La scelta sugli interessi del defunto dopo il decesso c\'è solo nella successione.',
+            'interessi_eredi.prohibited' => 'Le scelte sugli interessi degli eredi ci sono solo nella successione.',
+            'interessi_eredi.array' => 'Per gli interessi degli eredi cambia una o più delle otto voci, ognuna accesa o spenta.',
             // Decisione 77 (1.11.0-beta.50): la scelta c'è nella successione, nel legato e alla fine di una locazione; il messaggio dice
             // perché non c'è nel passaggio in corso.
             'conguaglio.prohibited' => $this->testo('tipo') === 'inizio_locazione'
@@ -948,6 +964,10 @@ class AnteprimaPassaggioRequest extends FormRequest
             'erede_di_riferimento' => ! empty($d['erede_di_riferimento']) ? Anagrafica::find((int) $d['erede_di_riferimento']) : null,
             'accessori_segnalati_agli_eredi' => $d['tipo'] === 'successione' ? array_values(array_unique(array_map('intval', $d['accessori_segnalati_agli_eredi'] ?? []))) : [],
             'accordo_del_defunto' => $d['tipo'] === 'successione' ? ($d['accordo_del_defunto'] ?? \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA) : null,
+            // Decisione 483: senza la scelta, null; il di serie lo mette l'anteprima, che conosce la strada dell'arretrato (anche con il legato).
+            'interessi_del_defunto' => $d['tipo'] === 'successione' ? ($d['interessi_del_defunto'] ?? null) : null,
+            // Decisioni 493 (14) e 494 (2): null quando valgono le regole del condominio.
+            'interessi_eredi' => $d['tipo'] === 'successione' ? \App\Services\Gestionale\Accessori\RegoleDegliEredi::normalizzaCambiate($d['interessi_eredi'] ?? null) : null,
         ];
     }
 

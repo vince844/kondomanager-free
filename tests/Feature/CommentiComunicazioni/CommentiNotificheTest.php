@@ -19,8 +19,8 @@
 use App\Enums\Role;
 use App\Models\Commento;
 use App\Notifications\Commenti\CommentoApprovatoNotification;
-use App\Notifications\Commenti\CommentoEliminatoNotification;
 use App\Notifications\Commenti\CommentoInAttesaNotification;
+use App\Notifications\Commenti\CommentoNascostoNotification;
 use App\Notifications\Commenti\NuovoCommentoNotification;
 use Illuminate\Support\Facades\Notification;
 
@@ -115,7 +115,7 @@ test('un commento nascosto dallo studio avvisa il suo autore', function () {
     $this->actingAs($this->admin)->post(route('admin.commenti.modera', $id));
 
     expect(Commento::find($id)->stato)->toBe('nascosto')
-        ->and(ccmDestinatari(CommentoEliminatoNotification::class))->toBe(ccmIds($this->mario));
+        ->and(ccmDestinatari(CommentoNascostoNotification::class))->toBe(ccmIds($this->mario));
 });
 
 function ccmPreferenza(\App\Models\User $user, string $tipo, bool $acceso): void
@@ -151,7 +151,7 @@ test('lo studio che spegne l\'avviso dei commenti in attesa delle comunicazioni 
     expect(ccmDestinatari(CommentoInAttesaNotification::class))->toBe(ccmIds($this->admin));
 });
 
-test('le quattro preferenze delle comunicazioni hanno la loro voce, mostrata a chi ha il permesso', function () {
+test('le cinque preferenze delle comunicazioni hanno la loro voce, mostrata a chi ha il permesso', function () {
     // Le voci stanno in `notifications.types`, divise per gruppo: si cerca il tipo in tutti i gruppi.
     $trova = fn (string $tipo) => collect(config('notifications.types'))->map(fn ($gruppo) => $gruppo[$tipo] ?? null)->filter()->first();
     $attesi = [
@@ -159,6 +159,7 @@ test('le quattro preferenze delle comunicazioni hanno la loro voce, mostrata a c
         'communication_comment_under_moderation' => 'Approva commenti comunicazioni',
         'communication_comment_approved' => 'Commenta comunicazioni',
         'communication_comment_deleted' => 'Commenta comunicazioni',
+        'communication_comment_removed' => 'Commenta comunicazioni',
     ];
     foreach ($attesi as $tipo => $permesso) {
         $voce = $trova($tipo);

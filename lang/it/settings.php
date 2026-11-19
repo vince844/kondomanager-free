@@ -130,6 +130,10 @@ return [
             'label' => 'Comunicazione bacheca aggiornata',
             'description' => 'Ricevi una notifica quando una comunicazione che hai già ricevuto viene modificata',
         ],
+        'scheduled_communication_published' => [
+            'label' => 'Comunicazione programmata pubblicata',
+            'description' => 'Ricevi una conferma quando una comunicazione che hai programmato viene pubblicata',
+        ],
         'new_ticket' => [
             'label' => 'Nuova segnalazione guasto',
             'description' => 'Ricevi una notifica quando viene creata una nuova segnalazione guasto',
@@ -141,6 +145,10 @@ return [
         'updated_ticket' => [
             'label' => 'Segnalazione guasto aggiornata',
             'description' => 'Ricevi una notifica quando una segnalazione guasto che segui viene modificata',
+        ],
+        'ticket_assigned' => [
+            'label' => 'Segnalazione guasto assegnata',
+            'description' => 'Ricevi una notifica quando una segnalazione guasto ti viene assegnata, o non è più assegnata a te',
         ],
         'new_archive_document' => [
             'label' => 'Nuovo documento in archivio',
@@ -163,8 +171,12 @@ return [
             'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene approvato',
         ],
         'comment_deleted' => [
-            'label' => 'Commento eliminato o nascosto (segnalazioni)',
-            'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene eliminato o nascosto',
+            'label' => 'Commento nascosto (segnalazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene nascosto',
+        ],
+        'comment_removed' => [
+            'label' => 'Commento eliminato (segnalazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene eliminato da un altro',
         ],
         'new_communication_comment' => [
             'label' => 'Nuovo commento (comunicazioni)',
@@ -175,8 +187,12 @@ return [
             'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene approvato',
         ],
         'communication_comment_deleted' => [
-            'label' => 'Commento eliminato o nascosto (comunicazioni)',
-            'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene eliminato o nascosto',
+            'label' => 'Commento nascosto (comunicazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene nascosto',
+        ],
+        'communication_comment_removed' => [
+            'label' => 'Commento eliminato (comunicazioni)',
+            'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene eliminato da un altro',
         ],
         'new_user' => [
             'label' => 'Nuovo utente registrato',

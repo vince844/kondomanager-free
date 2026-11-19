@@ -12,7 +12,7 @@ use App\Livewire\Installer\Welcome;
 
 $impostazioni = [
 
-    'app_name' => 'Kondomanager',
+    'app_name' => 'KondoManager',
     'run_installer' => false,
 
     /*

@@ -65,6 +65,8 @@ export interface RigaTotali {
      */
     natura?: string | null;
     is_sopravvenienza?: boolean;
+    /** L'unità a cui la riga è addebitata, se c'è: una riga «Fuori preventivo» di un'unità non è nella parte comune (Coda 693 (e)). */
+    immobile_id?: unknown;
     /** Contributo cassa, rimborsi art. 15, posa accessoria: fuori dalla base ritenuta. */
     concorre_base_ritenuta?: boolean;
 }
@@ -112,6 +114,13 @@ export interface TotaliFattura {
     iva_ordinaria_cents: number;
     imponibile_sopravvenienza_cents: number;
     iva_sopravvenienza_cents: number;
+    /**
+     * Coda 693 (e), decisione 532: la parte comune della spesa fuori preventivo, senza le righe «Fuori preventivo» addebitate a un'unità. È il «Valore della
+     * parte comune da ripartire» della finestra «Configura nuova voce di spesa» e lo sforo che la pagina registra con l'urgenza: il servizio mette sulla voce
+     * tecnica che crea solo le righe senza unità («smistamento intelligente imprevisti» in `FatturaPassivaService::registraFattura`).
+     */
+    imponibile_sopravvenienza_comune_cents: number;
+    iva_sopravvenienza_comune_cents: number;
     base_ritenuta_cents: number;
     ritenuta_cents: number;
     totale_documento_cents: number;
@@ -277,6 +286,8 @@ export const calcolaTotali = (input: InputTotali): TotaliFattura => {
     let ivaOrdinaria = 0;
     let imponibileSopravvenienza = 0;
     let ivaSopravvenienza = 0;
+    let imponibileSopravvenienzaComune = 0;
+    let ivaSopravvenienzaComune = 0;
     let baseRitenuta = 0;
     const ivaRighe: number[] = [];
 
@@ -305,6 +316,11 @@ export const calcolaTotali = (input: InputTotali): TotaliFattura => {
             if (r.is_sopravvenienza) {
                 imponibileSopravvenienza += impRiga;
                 ivaSopravvenienza += ivaRiga;
+                // Il servizio porta sull'unità, senza voce, la riga «Fuori preventivo» di un'unità: la parte comune è il resto (Coda 693 (e)).
+                if (!r.immobile_id) {
+                    imponibileSopravvenienzaComune += impRiga;
+                    ivaSopravvenienzaComune += ivaRiga;
+                }
             } else {
                 imponibileOrdinario += impRiga;
                 ivaOrdinaria += ivaRiga;
@@ -333,6 +349,8 @@ export const calcolaTotali = (input: InputTotali): TotaliFattura => {
         iva_ordinaria_cents: ivaOrdinaria,
         imponibile_sopravvenienza_cents: imponibileSopravvenienza,
         iva_sopravvenienza_cents: ivaSopravvenienza,
+        imponibile_sopravvenienza_comune_cents: imponibileSopravvenienzaComune,
+        iva_sopravvenienza_comune_cents: ivaSopravvenienzaComune,
         base_ritenuta_cents: baseCalcolo,
         ritenuta_cents: ritenuta,
         totale_documento_cents: totaleDocumento,

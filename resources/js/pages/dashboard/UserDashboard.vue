@@ -49,7 +49,8 @@ const props = defineProps<{
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
 
-            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+            <!-- Coda 592 (4): una colonna dichiarata sotto i 768 px, perché le schede non si allarghino oltre lo schermo con i titoli che non vanno a capo -->
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
                 <Card class="w-full">
                     <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
@@ -119,7 +120,8 @@ const props = defineProps<{
 
             </div>
 
-            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+            <!-- Coda 592 (4): una colonna dichiarata sotto i 768 px, perché le schede non si allarghino oltre lo schermo con i titoli che non vanno a capo -->
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2">
                 <Card class="w-full">
                     <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">

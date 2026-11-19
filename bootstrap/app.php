@@ -18,6 +18,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\IntestazioniDiSicurezza;
 use App\Http\Middleware\SetAppNameMiddleware;
 use App\Http\Middleware\SetLocaleMiddleware;
+use App\Http\Middleware\TogliIDatiDelleFoto;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -62,7 +63,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // solo dalla manutenzione; spostata in `then:` (beta.32), l'eccezione si è persa. Da allora,
         // in manutenzione, rispondeva come le altre pagine: il rimando (302), che un controllo di
         // salute con `curl -f` (Coolify) dà per sano anche con migrazioni da applicare; e con la
-        // manutenzione nel database (`APP_MAINTENANCE_STORE=database`, come su KondoCloud) e il
+        // manutenzione nel database (`APP_MAINTENANCE_STORE=database`, come in un hosting gestito) e il
         // database giù, 500. Laravel esegue questa closure anche all'avvio della console: è da lì
         // che `artisan down` prende l'elenco e lo scrive nel file `framework/down` (driver `file`),
         // che `public/index.php` legge prima di avviare l'applicazione (1.11.0-beta.46, Coda 224).
@@ -91,6 +92,8 @@ return Application::configure(basePath: dirname(__DIR__))
             SetAppNameMiddleware::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+            // Decisione 535: ogni foto caricata (JPG, PNG, WebP) perde la posizione e gli altri dati della foto prima di arrivare a chi la salva.
+            TogliIDatiDelleFoto::class,
         ]);
 
         // La lingua dell'installazione prima dei limiti di rotta (Coda 261). Il router riordina i middleware con la

@@ -27,6 +27,8 @@ export interface AddebitoDellaPersona {
     perche_resta?: string | null;
     /** Di un interesse o di una spesa: il tipo, la base dichiarata con il riferimento, gli avvisi. */
     tipo?: string | null; base?: string | null; avvisi?: string[];
+    /** Decisione 493 (10): gli interessi registrati con una cifra più bassa della proposta, «Proposti € 0,37, registrati € 0,30 il …: «…».». */
+    cifre_cambiate?: string | null;
 }
 
 const props = defineProps<{ condominioId: number; persona: { id: number; nome: string }; addebiti: AddebitoDellaPersona[] }>();
@@ -79,7 +81,8 @@ async function annulla() {
         <div v-for="a in addebiti" :key="a.rata_id" class="grid grid-cols-1 gap-x-4 gap-y-1 rounded-lg border dark:border-slate-800 p-2 text-xs sm:items-center" :class="COLONNE" data-testid="addebito">
             <span class="min-w-0"><strong>{{ a.causale }}</strong><span class="block text-slate-500 dark:text-slate-400">{{ nomeNatura(a.natura, a.spesa_fatturata, a.tipo ?? null) }}<template v-if="a.unita"> · {{ a.unita }}</template> · {{ a.piano }}</span>
                 <span v-if="a.base" class="block text-slate-500 dark:text-slate-400" data-testid="base">Base: {{ a.base }}</span>
-                <span v-for="av in a.avvisi ?? []" :key="av" class="block text-amber-800 dark:text-amber-300" data-testid="avviso">{{ av }}</span></span>
+                <span v-for="av in a.avvisi ?? []" :key="av" class="block text-amber-800 dark:text-amber-300" data-testid="avviso">{{ av }}</span>
+                <span v-if="a.cifre_cambiate" class="block text-slate-600 dark:text-slate-300" data-testid="cifre-cambiate">{{ a.cifre_cambiate }}</span></span>
             <span class="tabular-nums sm:text-right" data-testid="importo-addebito">{{ euroTesto(a.importo) }}<span v-if="a.versato" class="block text-slate-500 dark:text-slate-400">versati {{ euroTesto(a.versato) }}</span></span>
             <span class="tabular-nums text-slate-500 dark:text-slate-400">{{ a.scadenza ? `scade il ${giorno(a.scadenza)}` : '' }}</span>
             <span v-if="a.annullabile" class="sm:text-right">

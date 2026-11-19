@@ -126,6 +126,11 @@ final class AnnullaPassaggioAction
     /** Le ultime regole di `motivoBlocco`, dopo i passaggi registrati dopo e i piani: le quote toccate dopo il passaggio, le righe corrette a mano. */
     private function motivoDelleQuoteEDelleRighe(Subentro $padre, Collection $famiglia): ?string
     {
+        // Decisione 493 (7): un erede con interessi sul debito ereditato registrati con questa successione: prima si annulla l'addebito. Prima della regola
+        // delle quote nate dopo il passaggio, che fermerebbe con la frase delle rate emesse («annulla l'emissione»), che per un addebito non è la strada.
+        if ($motivo = self::interessiEreditatiRegistrati($padre)) {
+            return $motivo;
+        }
         if ($motivo = $this->quoteNonIntatte($padre, $famiglia)) {
             return $motivo;
         }
@@ -181,6 +186,10 @@ final class AnnullaPassaggioAction
             }
         }
 
+        // D3 della prova della Coda 663: gli interessi del defunto registrati con la scelta «si fermano al decesso» restano come sono, e quelli passati agli
+        // eredi tornano a suo nome.
+        array_push($avvisi, ...self::avvisiDegliInteressi($padre));
+
         // Decisione 31.7 (1.11.0-beta.41): le voci che il passaggio ha spostato all'«Usufruttuario» restano dove sono. Valgono
         // per tutta la tabella e l'amministratore può averle toccate dopo: si nominano, non si disfano.
         $voci = $padre->registro['voci_spostate'] ?? [];
@@ -226,7 +235,7 @@ final class AnnullaPassaggioAction
 
         return self::frasiEffetti(
             ['rate' => $rate, 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(), 'arretrato' => count($padre->saldiDellArretrato()),
-                'legate' => self::legateInParole(Saldo::where('passaggio_id', $padre->id)->orderBy('id')->get())],
+                'legate' => self::legateInParole(Saldo::where('passaggio_id', $padre->id)->orderBy('id')->get()), 'interessi' => self::interessiInParole($padre)],
             $this->nome($padre, 'uscente'), $this->nome($padre, 'entrante'), false, $padre->successione(),
         );
     }
@@ -235,7 +244,7 @@ final class AnnullaPassaggioAction
      * Le frasi dell'esito, prima (`$fatto` falso, nel modulo) o dopo (nel messaggio di conferma): la stessa lettura. `$successione` non cambia la
      * preposizione, che è la stessa in ogni passaggio.
      *
-     * @param array{rate: int, saldi: int, arretrato?: int, legate?: array{testo: string, plurale: bool}|null} $conti
+     * @param array{rate: int, saldi: int, arretrato?: int, legate?: array{testo: string, plurale: bool}|null, interessi?: array{defunto: string, dal: string, eredi: ?string}|null} $conti
      * @return list<string>
      */
     public static function frasiEffetti(array $conti, ?string $uscente, ?string $entrante, bool $fatto, bool $successione = false): array
@@ -268,8 +277,174 @@ final class AnnullaPassaggioAction
             $frasi[] = sprintf('%s %s: %s.', $piu ? 'I saldi del Wallet legati a questo passaggio' : 'Il saldo del Wallet legato a questo passaggio',
                 $fatto ? ($piu ? 'sono stati tolti' : 'è stato tolto') : ($piu ? 'si tolgono' : 'si toglie'), $conti['legate']['testo']);
         }
+        // D3 della prova della Coda 663: con «si fermano al decesso» la proposta del defunto torna a contare i giorni dopo il decesso, e quella degli eredi non
+        // conta più il debito ereditato.
+        if (! empty($conti['interessi'])) {
+            $i = $conti['interessi'];
+            $eredi = $i['eredi'] === null ? '' : sprintf(', e quella di %s non conta più il debito ereditato', $i['eredi']);
+            $accordo = $i['accordo'] ?? null;
+            // E7 della seconda prova della beta.12: l'accordo di rientro del defunto, in regola, si riapre con l'annullamento e tiene fuori i giorni dopo il
+            // decesso delle rate che copre: la frase non promette giorni che la proposta non conterà.
+            $frasi[] = match ($accordo['coperte'] ?? null) {
+                'tutte' => sprintf('La proposta degli interessi di %s non conta i giorni dopo il decesso: l\'accordo di rientro del %s, che %s, li tiene fuori finché regge%s.',
+                    $i['defunto'], self::giornoItaliano($accordo['del']), $fatto ? 'si è riaperto' : 'si riapre', $eredi),
+                'in_parte' => sprintf('La proposta degli interessi di %s %s i giorni dopo il decesso, dal %s, sul debito fuori dall\'accordo di rientro del %s, che %s e tiene fuori il '
+                    . 'resto finché regge%s.', $i['defunto'], $fatto ? 'conta di nuovo' : 'torna a contare', self::giornoItaliano($i['dal']), self::giornoItaliano($accordo['del']),
+                    $fatto ? 'si è riaperto' : 'si riapre', $eredi),
+                default => sprintf('La proposta degli interessi di %s %s i giorni dopo il decesso, dal %s%s.', $i['defunto'], $fatto ? 'conta di nuovo' : 'torna a contare',
+                    self::giornoItaliano($i['dal']), $eredi),
+            };
+        }
 
         return $frasi;
+    }
+
+    /** Il giorno all'italiana, «17/11/2026». */
+    private static function giornoItaliano(string $data): string
+    {
+        return substr($data, 8, 2) . '/' . substr($data, 5, 2) . '/' . substr($data, 0, 4);
+    }
+
+    /**
+     * D3 della prova della Coda 663: con «si fermano al decesso», chi e da quando per la frase dell'annullamento; null con «continuano a suo nome» o per un
+     * passaggio che non è una successione.
+     *
+     * E7 della seconda prova della beta.12: con l'accordo di rientro del defunto chiuso «in regola» dalla successione, l'annullamento lo riapre, e
+     * l'accordo tiene fuori i giorni delle rate che copre. `accordo` dice se copre tutto il debito del defunto sulle unità del passaggio (`tutte`), una parte
+     * (`in_parte`) o niente (null), e il giorno dell'accordo.
+     *
+     * @return array{defunto: string, dal: string, eredi: ?string, accordo: ?array{coperte: string, del: string}}|null
+     */
+    private static function interessiInParole(Subentro $padre): ?array
+    {
+        if (! $padre->successione() || $padre->interessi_del_defunto !== Subentro::INTERESSI_AL_DECESSO || $padre->decorrenza === null) {
+            return null;
+        }
+        $eredi = array_values(array_map('strval', (array) ($padre->registro['nomi']['eredi'] ?? [])));
+
+        return ['defunto' => (string) ($padre->registro['nomi']['uscente'] ?? $padre->uscente?->nome ?? 'il defunto'), 'dal' => $padre->decorrenza->format('Y-m-d'),
+            'eredi' => $padre->arretratoAgliEredi() && $eredi !== [] ? \App\Services\Gestionale\Accessori\RegoleDegliEredi::elenco($eredi) : null,
+            'accordo' => self::accordoCheSiRiapre($padre)];
+    }
+
+    /**
+     * E7 della seconda prova della beta.12: gli accordi di rientro del defunto che la successione ha chiuso «in regola» (decisione 454) e che l'annullamento
+     * riapre: quanto del debito del defunto sulle unità del passaggio coprono. `tutte` se coprono per intero ogni sua rata aperta lì, `in_parte` se ne coprono
+     * solo una parte; null se non ce ne sono. Il giorno è quello del primo accordo.
+     *
+     * @return array{coperte: string, del: string}|null
+     */
+    private static function accordoCheSiRiapre(Subentro $padre): ?array
+    {
+        $ids = collect((array) ($padre->registro['arretrato']['accordi'] ?? []))
+            ->filter(fn ($a) => ($a['scelta'] ?? \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA) === \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_IN_REGOLA)
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($ids === []) {
+            return null;
+        }
+        // Riaperto, un accordo tiene fuori i giorni finché regge: oggi dentro il suo periodo, o tutto versato, e senza una decadenza registrata.
+        $regola = app(\App\Services\Gestionale\Debiti\AccordiRientro::class);
+        $oggi = \App\Helpers\DateHelper::oggiUtente();
+        $accordi = \App\Models\Gestionale\AccordoRientro::with(['rate', 'scadenze'])->whereIn('id', $ids)->orderBy('data_accordo')->get()
+            ->filter(fn (\App\Models\Gestionale\AccordoRientro $a) => $regola->reggevaIl($a, $oggi))->values();
+        if ($accordi->isEmpty()) {
+            return null;
+        }
+        $unita = Subentro::conAnnullati()->where(fn ($q) => $q->whereKey($padre->id)->orWhere('subentro_padre_id', $padre->id))->pluck('immobile_id')->map(fn ($id) => (int) $id)->all();
+        $coperto = [];
+        foreach ($accordi as $a) {
+            foreach ($a->rate as $r) {
+                $k = \App\Services\Gestionale\Debiti\AccordiRientro::chiave($r->rata_id, $r->immobile_id);
+                $coperto[$k] = ($coperto[$k] ?? 0) + (int) $r->importo_riconosciuto;
+            }
+        }
+        $aperte = collect(app(\App\Services\Gestionale\Debiti\LetturaDebiti::class)->perPersona((int) $padre->condominio_id, (int) $padre->anagrafica_uscente_id)['rate'])
+            ->filter(fn ($r) => (int) $r['residuo'] > 0 && in_array((int) ($r['immobile_id'] ?? 0), $unita, true));
+        if ($aperte->isEmpty()) {
+            return null;
+        }
+        $tutte = $aperte->every(fn ($r) => ($coperto[\App\Services\Gestionale\Debiti\AccordiRientro::chiave($r['rata_id'], $r['immobile_id'])] ?? 0) >= (int) $r['residuo']);
+        $qualcuna = $aperte->contains(fn ($r) => isset($coperto[\App\Services\Gestionale\Debiti\AccordiRientro::chiave($r['rata_id'], $r['immobile_id'])]));
+        if (! $qualcuna) {
+            return null;
+        }
+
+        return ['coperte' => $tutte ? 'tutte' : 'in_parte', 'del' => $accordi->first()->data_accordo->format('Y-m-d')];
+    }
+
+    /**
+     * Decisione 493 (7): un erede ha interessi sul debito ereditato con questa successione registrati e non annullati: la successione non si annulla, e la
+     * frase dice quale addebito annullare prima. Null se non ce ne sono.
+     */
+    private static function interessiEreditatiRegistrati(Subentro $padre): ?string
+    {
+        $eredi = array_values(array_filter(array_map(fn ($e) => (int) ($e['anagrafica_id'] ?? 0), (array) ($padre->registro['eredi'] ?? []))));
+        if (! $padre->successione() || $eredi === []) {
+            return null;
+        }
+        $quote = \App\Models\Gestionale\RataQuote::with(['rata', 'anagrafica:id,nome'])->whereIn('anagrafica_id', $eredi)->where('tipo', \App\Models\Gestionale\RataQuote::TIPO_ACCESSORIO)
+            ->whereIn('rata_id', DB::table('rate')->whereIn('piano_rate_id', PianoRate::degliAddebiti()->where('condominio_id', $padre->condominio_id)->select('id'))->select('id'))
+            ->orderBy('id')->get();
+        foreach ($quote as $q) {
+            $d = \App\Services\Gestionale\Addebiti\AddebitiIndividuali::dati($q);
+            $diQuesta = collect($d['interessi']['righe'] ?? [])->contains(fn ($r) => (int) ($r['ereditata']['subentro_id'] ?? 0) === (int) $padre->id);
+            if (($d['tipo'] ?? null) === 'interessi' && $diQuesta) {
+                return sprintf('%s ha interessi sul debito ereditato con questa successione già registrati: «%s» (%s). Annulla prima quell\'addebito dal suo estratto '
+                    . 'conto, poi torna qui.', $q->anagrafica?->nome ?? 'Un erede', trim((string) ($q->rata?->descrizione ?? 'Interessi di mora')),
+                    \App\Helpers\MoneyHelper::format((int) $q->importo));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * D3 della prova della Coda 663: gli avvisi degli interessi del defunto, prima di annullare una successione con «si fermano al decesso». Gli interessi
+     * registrati con quella scelta restano come sono (la proposta dopo l'annullamento offre i giorni dal decesso); quelli passati agli eredi con la
+     * registrazione dopo la successione (decisione 493 (13)) tornano a suo nome.
+     *
+     * @return list<string>
+     */
+    private static function avvisiDegliInteressi(Subentro $padre): array
+    {
+        if (! $padre->successione() || $padre->interessi_del_defunto !== Subentro::INTERESSI_AL_DECESSO || $padre->decorrenza === null) {
+            return [];
+        }
+        $defunto = (int) $padre->anagrafica_uscente_id;
+        $nome = (string) ($padre->registro['nomi']['uscente'] ?? $padre->uscente?->nome ?? 'il defunto');
+        $decesso = $padre->decorrenza->format('Y-m-d');
+        $ultimo = CarbonImmutable::parse($decesso, 'UTC')->subDay()->format('Y-m-d');
+        $unita = Subentro::conAnnullati()->where(fn ($q) => $q->whereKey($padre->id)->orWhere('subentro_padre_id', $padre->id))->pluck('immobile_id')->map(fn ($id) => (int) $id)->all();
+        $passati = collect((array) ($padre->registro['arretrato']['accessori'] ?? []))->filter(fn ($a) => isset($a['dopo_la_successione']));
+        $quotePassate = $passati->pluck('quota_id')->map(fn ($id) => (int) $id)->all();
+        $avvisi = [];
+        $registrati = [];
+        $quote = \App\Models\Gestionale\RataQuote::with('rata')->where('anagrafica_id', $defunto)->where('tipo', \App\Models\Gestionale\RataQuote::TIPO_ACCESSORIO)
+            ->whereIn('rata_id', DB::table('rate')->whereIn('piano_rate_id', PianoRate::degliAddebiti()->where('condominio_id', $padre->condominio_id)->select('id'))->select('id'))
+            ->orderBy('id')->get();
+        foreach ($quote as $q) {
+            $d = \App\Services\Gestionale\Addebiti\AddebitiIndividuali::dati($q);
+            if (($d['tipo'] ?? null) !== 'interessi' || in_array((int) $q->id, $quotePassate, true)) {
+                continue;
+            }
+            $ferme = collect($d['interessi']['righe'] ?? [])->filter(fn ($r) => in_array((int) ($r['immobile_id'] ?? 0), $unita, true) && ($r['al'] ?? null) === $ultimo
+                && (string) ($d['interessi']['alla'] ?? '') > $ultimo);
+            if ($ferme->isNotEmpty()) {
+                // E6 della seconda prova della beta.12: la cifra dell'addebito, quella che l'amministratore trova nell'estratto conto, non la somma delle sole
+                // righe ferme al decesso (una riga ferma prima per un accordo di rientro è nello stesso addebito).
+                $registrati[] = sprintf('«%s», %s', trim((string) ($q->rata?->descrizione ?? 'Interessi di mora')), \App\Helpers\MoneyHelper::format((int) $q->importo));
+            }
+        }
+        if ($registrati !== []) {
+            $avvisi[] = sprintf('Gli interessi di %s registrati con la scelta «si fermano al decesso» (%s, fino al %s) restano come sono: dopo l\'annullamento la proposta '
+                . 'offre i giorni dal %s.', $nome, implode('; ', $registrati), self::giornoItaliano($ultimo), self::giornoItaliano($decesso));
+        }
+        if ($passati->isNotEmpty()) {
+            $avvisi[] = sprintf('Gli interessi di %s fino al decesso registrati dopo la successione e passati agli eredi (%s) tornano a suo nome.', $nome,
+                \App\Helpers\MoneyHelper::format((int) $passati->sum(fn ($a) => (int) ($a['importo'] ?? 0))));
+        }
+
+        return $avvisi;
     }
 
     /**
@@ -343,6 +518,8 @@ final class AnnullaPassaggioAction
                 throw ValidationException::withMessages(['passaggio' => $motivo]);
             }
             $avvisi = $this->avvisi($padre);
+            // D3: la frase della proposta del defunto, letta prima che l'annullamento tolga la scelta.
+            $interessi = self::interessiInParole($padre);
 
             // 1. Il conguaglio: via tutte le righe del passaggio e delle pertinenze (la FK `saldi.subentro_id` è restrict).
             //    Riletto sulle righe bloccate, come `AnnullaConguaglioAction`.
@@ -447,11 +624,14 @@ final class AnnullaPassaggioAction
                 $registro['nomi']['annullato_da'] = $utente->name;
                 // I saldi legati tolti, sul passaggio padre: una cancellazione si lascia ispezionare.
                 $registro['annullamento'] = ['quota_max_id' => $quotaMax] + ((int) $s->id === $padreId && $legateTolte !== [] ? ['saldi_legati_tolti' => $legateTolte] : []);
-                $s->forceFill(['annullato_il' => now(), 'annullato_da' => $utente->id, 'nota_annullamento' => $nota, 'registro' => $registro])->save();
+                // Decisione 483: la scelta sugli interessi del defunto dopo il decesso si toglie con il passaggio (il registro la ricorda).
+                // Decisione 494 (2): anche le scelte sugli interessi degli eredi cambiate per questa successione.
+                $s->forceFill(['annullato_il' => now(), 'annullato_da' => $utente->id, 'nota_annullamento' => $nota, 'registro' => $registro, 'interessi_del_defunto' => null,
+                    'interessi_eredi' => null])->save();
             }
 
             return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante,
-                'successione' => $padre->successione(), 'legate' => $legateInParole];
+                'successione' => $padre->successione(), 'legate' => $legateInParole, 'interessi' => $interessi];
         }, 3);
 
         // Il contatore dei promemoria dello staff è in cache per dieci minuti: il promemoria tolto non deve contare ancora.

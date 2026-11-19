@@ -250,7 +250,7 @@ async function editEvento() {
           />
 
           <div class="flex items-center gap-4">
-            <div class="hidden sm:flex items-center gap-4 text-xs border rounded-md px-3 py-1.5 bg-white shadow-sm">
+            <div class="hidden sm:flex items-center gap-4 text-xs border rounded-md px-3 py-1.5 bg-white dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 shadow-sm">
               <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> ≤ 7gg</div>
               <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-yellow-500"></span> ≤ 14gg</div>
               <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500"></span> oltre</div>
@@ -268,7 +268,7 @@ async function editEvento() {
 
         <div class="relative min-h-[400px]">
           <Transition name="fade">
-            <div v-if="showDelayedLoading && isLoading" class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2">
+            <div v-if="showDelayedLoading && isLoading" class="absolute inset-0 bg-white/60 dark:bg-slate-950/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2">
               <Loader2 class="w-8 h-8 animate-spin text-primary" />
               <span class="text-sm font-medium text-gray-500">Aggiornamento agenda...</span>
             </div>
@@ -287,16 +287,16 @@ async function editEvento() {
             <article
               v-for="evento in filteredResults"
               :key="`${evento.id}-${evento.occurrence_index ?? 0}`"
-              class="mb-3 border p-4 rounded-lg bg-white hover:shadow-md transition-shadow flex gap-4"
+              class="mb-3 border p-4 rounded-lg bg-white dark:bg-slate-900 dark:border-slate-800 hover:shadow-md transition-shadow flex gap-4"
             >
-                <div :class="['flex flex-col items-center justify-center w-14 p-1 rounded bg-gray-50', getEventColor(evento.occurs)]">
+                <div :class="['flex flex-col items-center justify-center w-14 p-1 rounded bg-gray-50 dark:bg-slate-800', getEventColor(evento.occurs)]">
                   <span class="text-2xl font-bold leading-none">{{ formatEventDate(evento.occurs).day }}</span>
-                  <span class="text-[10px] font-bold uppercase tracking-tighter">{{ formatEventDate(evento.occurs).month }}</span>
+                  <span class="text-[11px] font-bold uppercase tracking-tighter">{{ formatEventDate(evento.occurs).month }}</span>
                 </div>
 
                 <div class="flex-1 flex flex-col">
                   <div class="flex items-center justify-between">
-                    <h3 class="font-semibold text-gray-900">{{ evento.title }}</h3>
+                    <h3 class="font-semibold text-gray-900 dark:text-slate-100">{{ evento.title }}</h3>
                     <div class="flex items-center gap-1">
                       <button v-if="hasPermission([Permission.EDIT_EVENTS])" @click="handleEdit(evento)" class="p-1.5 text-gray-400 hover:text-blue-600 transition-colors">
                         <Pencil class="w-4 h-4" />
@@ -306,11 +306,11 @@ async function editEvento() {
                       </button>
                     </div> 
                   </div>
-                  <p class="text-sm text-gray-600 line-clamp-2 mt-1">{{ evento.description }}</p>
+                  <p class="text-sm text-gray-600 dark:text-slate-300 line-clamp-2 mt-1">{{ evento.description }}</p>
                 </div>
             </article>
 
-            <Empty v-if="showNoResults || showNoEvents" key="empty" class="border border-dashed bg-gray-50/50">
+            <Empty v-if="showNoResults || showNoEvents" key="empty" class="border border-dashed bg-gray-50/50 dark:bg-slate-900/40">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <SearchX v-if="showNoResults" class="text-muted-foreground" />

@@ -74,6 +74,7 @@ export enum Permission {
   DELETE_OWN_SEGNALAZIONI = 'Elimina proprie segnalazioni',
   VIEW_SEGNALAZIONI = 'Visualizza segnalazioni',
   VIEW_OWN_SEGNALAZIONI = 'Visualizza proprie segnalazioni',
+  ASSIGN_SEGNALAZIONI = 'Assegna segnalazioni',
   // Commenti segnalazioni
   COMMENT_SEGNALAZIONI = 'Commenta segnalazioni',
   EDIT_COMMENTS_SEGNALAZIONI = 'Modifica commenti segnalazioni',

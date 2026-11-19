@@ -54,41 +54,46 @@ defineEmits(['update:open']);
                         <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Il criterio non è l'importanza della spesa</h3>
                             <p>
-                                È l'errore più comune: si sceglie «straordinario» perché la spesa è grossa.
-                                Il criterio vero è un altro — <strong>come è registrata la fattura</strong>.
+                                È l'errore più comune: si sceglie «Spese fuori preventivo» perché la spesa è grossa, o
+                                perché la gestione è straordinaria. Il criterio vero è un altro — <strong>come è
+                                registrata la fattura</strong>.
                             </p>
                         </section>
 
+                        <!-- Decisione 510: le due schede dicono che cosa mettono a rate, non la natura della gestione (decisione 11). -->
                         <section class="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Piano rate ordinario</h3>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">«Dalle voci del preventivo»</h3>
                             <p>
-                                Finanzia le <strong>voci di preventivo</strong>: spese già approvate a bilancio,
-                                compresi i loro sforamenti. Il rifacimento della facciata deliberato in assemblea e
-                                messo a preventivo è ordinario, per quanto costi.
+                                Mette a rate le <strong>voci del piano dei conti</strong> della gestione: le spese
+                                approvate a bilancio, compresi i loro sforamenti, e le voci di una gestione
+                                straordinaria. Il rifacimento della facciata deliberato in assemblea, con la sua
+                                gestione e la sua voce, si mette a rate da qui, per quanto costi.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
-                                Se per questa gestione hai già emesso il preventivo iniziale, la pagina rietichetta
-                                il tipo come <strong>«Piano Rata Integrativa»</strong>: stai aggiungendo, non
-                                rifacendo.
+                                Se per questa gestione hai già emesso il preventivo iniziale, accanto al nome della
+                                scheda compare <strong>«Rata integrativa»</strong>: stai aggiungendo, non rifacendo.
                             </p>
                         </section>
 
                         <section class="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Piano rate straordinario (art. 1135 c.c.)</h3>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">«Spese fuori preventivo» (art. 1135 c.c.)</h3>
                             <p>
-                                Finanzia <strong>fatture che a bilancio non ci sono</strong>: l'imprevisto, il guasto,
-                                il lavoro ad personam. Non scegli capitoli — scegli le <strong>fatture</strong>, una
-                                per una, e dichiari con quale <strong>autorizzazione</strong> le stai finanziando,
-                                citando gli estremi del verbale.
+                                Mette a rate le <strong>fatture che a bilancio non ci sono</strong>: quelle con una
+                                riga «Fuori preventivo» (l'imprevisto, il guasto) o addebitata a una sola unità (il
+                                lavoro ad personam). Non scegli le voci — scegli le <strong>fatture</strong>, una per
+                                una, e dichiari con quale <strong>autorizzazione</strong> le stai finanziando, citando
+                                gli estremi del verbale. Il carrello mostra le fatture della gestione scelta; se è
+                                vuoto, dice che cosa non vede e dove andare.
                             </p>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
                             <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                             <p class="text-xs text-amber-900 dark:text-amber-200">
-                                Una spesa imprevista <em>registrata su un capitolo esistente</em> non è
-                                straordinaria: è uno sforamento, e si finanzia con un piano ordinario integrativo. Il
-                                tipo segue la registrazione contabile, non la sorpresa.
+                                Una spesa imprevista <em>registrata su una voce del piano dei conti</em>, anche di una
+                                gestione straordinaria, si mette a rate con «Dalle voci del preventivo»: è uno
+                                sforamento, o la spesa della voce. La scheda segue la registrazione contabile, non la
+                                sorpresa.
                             </p>
                         </div>
                     </TabsContent>

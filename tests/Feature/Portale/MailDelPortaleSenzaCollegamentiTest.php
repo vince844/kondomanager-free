@@ -162,6 +162,8 @@ test('decisione 136 — le mail delle segnalazioni e dei commenti non portano co
     // Il commento di Luigi nascosto dall'amministratore: «commento rimosso» a Luigi.
     $diLuigi = Commento::query()->where('user_id', $this->luigi->id)->firstOrFail();
     $this->actingAs($this->admin)->post(route('admin.commenti.modera', $diLuigi))->assertRedirect();
+    // E poi eliminato: «commento eliminato» a Luigi (decisione 483 (4)).
+    $this->actingAs($this->admin)->delete(route('admin.commenti.destroy', $diLuigi))->assertRedirect();
 
     // La modifica con l'avviso a chi la vede già: «aggiornata».
     $s = $s->fresh();
@@ -182,7 +184,7 @@ test('decisione 136 — le mail delle segnalazioni e dei commenti non portano co
     mailPortaleSoloIndirizziDelGestionale([
         'ApproveSegnalazioneNotification', 'ApprovedSegnalazioneNotification', 'NewSegnalazioneNotification',
         'UpdatedSegnalazioneNotification', 'SegnalazioneResaPubblicaNotification', 'NuovoCommentoNotification',
-        'CommentoInAttesaNotification', 'CommentoApprovatoNotification', 'CommentoEliminatoNotification',
+        'CommentoInAttesaNotification', 'CommentoApprovatoNotification', 'CommentoNascostoNotification', 'CommentoEliminatoNotification',
     ]);
 });
 

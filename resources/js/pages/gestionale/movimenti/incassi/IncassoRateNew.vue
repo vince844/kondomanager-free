@@ -29,6 +29,8 @@ import type { Rata } from '@/types/gestionale/rata';
 import { pianificaCoperture } from '@/lib/gestionale/incassi/pianoCreditoIncasso';
 import { FRASE_VERSAMENTO_ACCORDO, firmaOrdine, fraseFuoriOrdine, imputazioneMancante, SCELTE_IMPUTAZIONE, testoAccordoIncasso, type RispostaOrdine, type SceltaImputazione } from '@/lib/gestionale/incassi/imputazione';
 import { oggiLocale } from '@/lib/giorno';
+import { centesimiAlDebitoEreditato, chiaveEreditato, debitoEreditatoDaMandare, fraseDelDebitoPassato, intestatariDellaRicevuta, perchéNonVaIlDebitoEreditato, scelteAgliEredi,
+    spaccatoDellAllocato, tuttoNellaRiga, type DebitoEreditatoDellIncasso, type IntestatarioDellaRicevuta, type SuccessioneDelDefunto } from '@/lib/gestionale/addebiti/debitoEreditatoNellIncasso';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 
 const props = defineProps<{
@@ -39,6 +41,10 @@ const props = defineProps<{
     persone?: Array<{ id: number; nome: string; indirizzo: string | null; codice_fiscale: string | null; ha_rate: boolean }>;
     immobili: any[];
     gestioni: any[];
+    /** Decisione 529: il debito ereditato di ogni erede non ancora in un piano, per persona: l'erede pagante lo copre da qui, anche senza altre rate. */
+    debiti_ereditati?: Record<number, DebitoEreditatoDellIncasso[]>;
+    /** Decisione 529: le successioni in cui una persona è il defunto, con l'arretrato agli eredi: sulla sua rata il versamento chiede a chi va. */
+    successioni_dei_defunti?: Record<number, SuccessioneDelDefunto[]>;
 }>();
 
 const { euro } = useCurrencyFormatter({ fromCents: false });
@@ -161,7 +167,38 @@ const form = useForm({
      * poi il capitale più vecchio); senza, alle rate fuori dall'accordo. Non è già scelto.
      */
     versamento_accordo: false,
+    /**
+     * Decisione 529: sulla rata del defunto, dopo la successione, il versamento copre il debito degli eredi (`true`) o resta al defunto (`false`). `null`
+     * finché l'amministratore non sceglie: niente è già scelto.
+     */
+    agli_eredi: null as boolean | null,
+    /**
+     * Decisione 539: a chi è intestata la ricevuta del versamento dell'erede sul debito ereditato. Di serie l'erede che ha pagato; «Eredi di …» o il defunto
+     * li sceglie l'amministratore. Parte al server solo quando il menu c'è (`intestatarioDaMandare`).
+     */
+    intestatario_ricevuta: 'erede' as IntestatarioDellaRicevuta,
 });
+
+/**
+ * Decisione 529: il debito ereditato dell'erede pagante, «Debito ereditato da Ettore Fabbri». L'amministratore scrive quanto del versamento va lì (in euro,
+ * come nel campo dell'importo); il resto va alle sue rate, come sempre. Solo cercando per persona: cercando per unità la riga è dell'unità, non di un erede.
+ */
+const ereditatoScritto = ref<Record<string, string>>({});
+const debitiEreditatiDelPagante = computed<DebitoEreditatoDellIncasso[]>(() =>
+    searchMode.value === 'persona' && form.pagante_id ? (props.debiti_ereditati?.[form.pagante_id] ?? []) : []);
+const centesimiEreditato = computed(() => centesimiAlDebitoEreditato(debitiEreditatiDelPagante.value, ereditatoScritto.value));
+/** L'importo versato, in centesimi, come lo scrive l'amministratore. */
+const versatoInCentesimi = computed(() => Math.round(parseResiduoQuota(form.importo_totale) * 100));
+const erroreEreditato = computed(() => debitiEreditatiDelPagante.value.length === 0 ? null
+    : perchéNonVaIlDebitoEreditato(debitiEreditatiDelPagante.value, ereditatoScritto.value, versatoInCentesimi.value));
+const riempiEreditato = (d: DebitoEreditatoDellIncasso) => {
+    ereditatoScritto.value = { ...ereditatoScritto.value, [chiaveEreditato(d)]: tuttoNellaRiga(d, debitiEreditatiDelPagante.value, ereditatoScritto.value, versatoInCentesimi.value) };
+    // Senza un importo scritto, la riga lo porta: il versamento è il debito ereditato.
+    if (versatoInCentesimi.value === 0) form.importo_totale = (centesimiEreditato.value / 100).toFixed(2).replace('.', ',');
+};
+
+/** Decisione 529: il pagante è il defunto di una successione con l'arretrato agli eredi, e il versamento va sulle sue rate. */
+const successioneDelPagante = computed<SuccessioneDelDefunto | null>(() => form.pagante_id ? (props.successioni_dei_defunti?.[form.pagante_id]?.[0] ?? null) : null);
 
 const rateList = ref<Rata[]>([]);
 
@@ -194,7 +231,18 @@ watch(() => form.pagante_id, (v) => {
     form.imputazione_scelta = sceltaDalPortale ? 'indicata_dal_versante' : null;
     form.imputazione_nota = '';
     form.versamento_accordo = false;
+    // Decisione 529: il debito ereditato scritto e la scelta sulla rata del defunto sono di quella persona; la ricevuta torna all'erede (539).
+    ereditatoScritto.value = {};
+    form.agli_eredi = null;
+    form.intestatario_ricevuta = 'erede';
 });
+
+/**
+ * Decisione 539: «Intestatario della ricevuta» per il versamento dell'erede sul debito ereditato: già sull'erede, con gli eredi del defunto e il defunto.
+ * Solo con una cifra sul debito ereditato di un defunto solo, senza la catena (`intestatariDellaRicevuta`).
+ */
+const opzioniIntestatario = computed(() => intestatariDellaRicevuta(nomePosizione.value, debitiEreditatiDelPagante.value, ereditatoScritto.value));
+const intestatarioDaMandare = computed<IntestatarioDellaRicevuta | null>(() => opzioniIntestatario.value ? form.intestatario_ricevuta : null);
 
 /**
  * «Indicata da chi ha versato», già scelta arrivando dal portale, vale finché la rata segnalata riceve denaro: spostato il versamento su
@@ -288,7 +336,13 @@ const creditoRiga = (r: any): number => {
     return 0;
 };
 
-const importoNumerico = computed(() => parseResiduoQuota(form.importo_totale));
+// Decisione 529: la parte del versamento sul debito ereditato non va alle rate: la distribuzione lavora su quello che resta.
+const importoNumerico = computed(() => Math.max(0, parseResiduoQuota(form.importo_totale) - centesimiEreditato.value / 100));
+/** Decisione 529: la domanda sulla rata del defunto, quando il versamento in denaro va alle sue rate. */
+const mostraSceltaAgliEredi = computed(() => successioneDelPagante.value !== null && importoNumerico.value > 0
+    && form.dettaglio_pagamenti.some((p: any) => Number(p.importo) > 0));
+const opzioniAgliEredi = computed(() => successioneDelPagante.value === null ? []
+    : scelteAgliEredi(nomePosizione.value, successioneDelPagante.value, versatoDa.value ? { id: versatoDa.value.id, nome: versatoDa.value.nome } : null));
 
 /**
  * Coda 167, decisioni 30.7 e 30.8: le due scelte che con «Versato da» toccano all'amministratore, perché dipendono da
@@ -411,6 +465,12 @@ const opzioniParteInPiu = computed(() => rateDiChiHaVersato.value.map(q => ({
  * rifiuterebbe comunque: qui si evita il giro, e si dice cosa fare.
  */
 const sceltaMancante = computed<string | null>(() => {
+    if (erroreEreditato.value) {
+        return erroreEreditato.value;
+    }
+    if (mostraSceltaAgliEredi.value && form.agli_eredi === null) {
+        return fraseDelDebitoPassato(nomePosizione.value, successioneDelPagante.value!);
+    }
     if (domandaFraGestioni.value && form.credito_fra_gestioni === null) {
         return 'Scegli se il credito resta sulla sua gestione o passa anche alle altre.';
     }
@@ -493,6 +553,8 @@ onBeforeUnmount(() => { if (attesaOrdine) clearTimeout(attesaOrdine); });
 const totalAllocato = computed(() => {
     return form.dettaglio_pagamenti.reduce((sum, p) => sum + p.importo, 0);
 });
+/** Decisione 538: con una parte sul debito ereditato, lo spaccato e il totale che li somma (in centesimi); null senza, e resta il totale delle rate. */
+const spaccatoAllocato = computed(() => spaccatoDellAllocato(totalAllocato.value, centesimiEreditato.value));
 
 const totaleDebito = computed(() => getTotaleDebito(rateList.value));
 const bilancioFinale = computed(() => getBilancioFinale(totaleDebito.value, importoNumerico.value));
@@ -1064,7 +1126,11 @@ const submit = async () => {
 
     const payload = form.transform((data) => ({
         ...data,
-        importo_totale: cleanTotal,
+        // Decisione 529: l'importo versato è intero; il debito ereditato ne è una parte, e parte a parte.
+        importo_totale: parseFloat((cleanTotal + centesimiEreditato.value / 100).toFixed(2)),
+        debito_ereditato: debitoEreditatoDaMandare(debitiEreditatiDelPagante.value, ereditatoScritto.value),
+        agli_eredi: mostraSceltaAgliEredi.value ? data.agli_eredi : null,
+        intestatario_ricevuta: intestatarioDaMandare.value,
         // Decisione 30.12: la gestione scelta dall'amministratore, quando il filtro è vuoto e le rate sono di più gestioni.
         gestione_id: gestioneDaMandare.value,
         imputazione_scelta: dichiarare ? data.imputazione_scelta : null,
@@ -1077,6 +1143,7 @@ const submit = async () => {
             // `svuotaRicerca()` anche qui: i crediti rifiutati del condòmino appena incassato
             // restavano validi per il successivo, se gli id delle righe coincidevano.
             svuotaRicerca();
+            ereditatoScritto.value = {};
             form.reset();
             mode.value = 'auto';
             searchMode.value = 'persona';
@@ -1610,7 +1677,84 @@ onMounted(async () => {
                         </div>
                     </div>
 
-                    <div class="p-3 bg-slate-50 border-t border-slate-200 shrink-0">
+                    <!-- Decisione 529: il debito ereditato dell'erede pagante. Si registra sulla rata del defunto, a nome dell'erede, e il prossimo piano non
+                         glielo chiede di nuovo. -->
+                    <div v-if="debitiEreditatiDelPagante.length" data-testid="debito-ereditato" class="mx-3 mb-3 rounded-lg border border-sky-200 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/30">
+                        <div class="flex items-center gap-1.5">
+                            <p class="text-xs font-semibold text-sky-900 dark:text-sky-100">Debito ereditato</p>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger as-child>
+                                        <button type="button" class="text-sky-700 dark:text-sky-300" aria-label="Che cos'è il debito ereditato"><Info class="h-3.5 w-3.5" /></button>
+                                    </TooltipTrigger>
+                                    <TooltipContent class="max-w-xs text-xs">
+                                        Per esempio: Elena ha ereditato da Ettore € 150,00 della rata di aprile e versa € 150,00. Scrivi qui € 150,00: il versamento chiude la
+                                        sua parte della rata di Ettore, e il prossimo piano non glieli chiede di nuovo. Il resto dell'importo va alle sue rate.
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
+                        <div v-for="d in debitiEreditatiDelPagante" :key="`${d.subentro_id}|${d.gestione_id}`" class="mt-2">
+                            <p class="text-xs leading-snug text-slate-700 dark:text-slate-200">
+                                Ereditato da {{ d.da }}, successione del {{ d.successione_del }}<span v-if="d.gestione"> · {{ d.gestione }}</span>: {{ d.aperto_formattato }} da versare
+                            </p>
+                            <div class="mt-1 flex items-center gap-2">
+                                <Input
+                                    :model-value="ereditatoScritto[`${d.subentro_id}|${d.gestione_id}`] ?? ''"
+                                    @update:model-value="(v: string | number) => { ereditatoScritto = { ...ereditatoScritto, [`${d.subentro_id}|${d.gestione_id}`]: String(v) }; form.clearErrors('debito_ereditato'); }"
+                                    inputmode="decimal"
+                                    placeholder="0,00"
+                                    class="h-8 w-28 bg-white text-sm dark:bg-slate-900"
+                                    :aria-label="`Quanto del versamento va al debito ereditato da ${d.da}`"
+                                />
+                                <Button type="button" variant="outline" size="sm" class="h-8 text-xs" @click="riempiEreditato(d)">Tutto</Button>
+                            </div>
+                        </div>
+                        <p class="mt-2 text-xs leading-snug text-slate-600 dark:text-slate-300">Il resto dell'importo va alle rate qui a destra, come sempre.</p>
+                        <InputError :message="form.errors.debito_ereditato" class="mt-1" />
+
+                        <!-- Decisione 539: a chi è intestata la ricevuta. Di serie l'erede che ha pagato; la scelta resta con l'incasso. -->
+                        <div v-if="opzioniIntestatario" data-testid="intestatario-ricevuta" class="mt-3 border-t border-sky-200 pt-3 dark:border-sky-800">
+                            <div class="mb-1 flex items-center gap-1.5">
+                                <Label class="text-xs font-semibold text-sky-900 dark:text-sky-100">Intestatario della ricevuta</Label>
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger as-child>
+                                            <button type="button" class="text-sky-700 dark:text-sky-300" aria-label="A chi va intestata la ricevuta"><Info class="h-3.5 w-3.5" /></button>
+                                        </TooltipTrigger>
+                                        <TooltipContent class="max-w-xs text-xs">
+                                            Per esempio: {{ nomePosizione }} versa la sua parte del debito ereditato da {{ opzioniIntestatario.defunto }}. Di serie la ricevuta è intestata a
+                                            chi ha pagato e dice da chi viene il debito: serve a dimostrare che la sua parte è chiusa. «Eredi di {{ opzioniIntestatario.defunto }}» fa una
+                                            ricevuta unica per gli eredi; il defunto si sceglie per un bonifico arrivato dal suo conto.
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                            <v-select
+                                :options="opzioniIntestatario.voci"
+                                v-model="form.intestatario_ricevuta"
+                                label="etichetta"
+                                :reduce="(o: any) => o.valore"
+                                :clearable="false"
+                                class="w-full bg-white text-sm dark:bg-slate-900"
+                                @update:modelValue="form.clearErrors('intestatario_ricevuta')"
+                            />
+                            <InputError :message="form.errors.intestatario_ricevuta" class="mt-1" />
+                        </div>
+                    </div>
+
+                    <!-- Decisione 529: il versamento sulla rata del defunto dopo la successione. Decide l'amministratore, con le conseguenze di ogni scelta. -->
+                    <div v-if="mostraSceltaAgliEredi" data-testid="scelta-agli-eredi" class="mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                        <p class="text-xs leading-snug text-amber-900 dark:text-amber-100">{{ fraseDelDebitoPassato(nomePosizione, successioneDelPagante!) }}</p>
+                        <div class="mt-2 space-y-1.5" role="radiogroup" aria-label="Che cosa copre il versamento">
+                            <label v-for="o in opzioniAgliEredi" :key="String(o.valore)" class="flex cursor-pointer items-start gap-2 text-xs text-slate-800 dark:text-slate-100">
+                                <input v-model="form.agli_eredi" type="radio" name="agli_eredi" :value="o.valore" class="mt-0.5" @change="form.clearErrors('agli_eredi')" />
+                                <span><span class="font-semibold">{{ o.titolo }}</span>: {{ o.conseguenza }}</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="p-3 bg-slate-50 border-t border-slate-200 shrink-0 dark:bg-slate-900 dark:border-slate-800">
                         <div v-if="erroriIncasso.length" class="mb-2 rounded-lg border border-red-200 bg-red-50 p-3">
                             <div class="flex items-center gap-2 mb-1.5">
                                 <AlertCircle class="w-4 h-4 text-red-600 shrink-0" />
@@ -1647,13 +1791,24 @@ onMounted(async () => {
                             Non è stato possibile verificare l'ordine delle scadenze: l'incasso si registra lo stesso. Se non lo segue e non rispondi alla domanda qui sopra, resta segnato «fuori ordine, non dichiarata».
                         </p>
                         <p v-if="sceltaMancante" class="mb-2 px-1 text-[11px] leading-snug text-sky-800 dark:text-sky-200">{{ sceltaMancante }}</p>
-                        <div class="flex justify-between items-center text-xs mb-2 px-1">
-                            <span class="text-slate-500 uppercase tracking-wider font-semibold">Totale allocato:</span>
-                            <span class="font-bold text-slate-800 text-sm">{{ euro(totalAllocato) }}</span>
+                        <!-- Decisione 538: la parte sul debito ereditato non è una rata del pagante, ma è allocata: lo spaccato, e il totale che li somma. -->
+                        <dl v-if="spaccatoAllocato" data-testid="spaccato-allocato" class="mb-1 space-y-0.5 px-1 text-xs">
+                            <div class="flex items-center justify-between gap-2">
+                                <dt class="text-slate-600 dark:text-slate-300">Sul debito ereditato</dt>
+                                <dd class="font-semibold text-slate-800 dark:text-slate-100">{{ euroDaCentesimi(spaccatoAllocato.ereditato) }}</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-2">
+                                <dt class="text-slate-600 dark:text-slate-300">Sulle sue rate</dt>
+                                <dd class="font-semibold text-slate-800 dark:text-slate-100">{{ euroDaCentesimi(spaccatoAllocato.rate) }}</dd>
+                            </div>
+                        </dl>
+                        <div data-testid="totale-allocato" class="flex justify-between items-center text-xs mb-2 px-1">
+                            <span class="text-slate-600 dark:text-slate-300 font-semibold">Totale allocato</span>
+                            <span class="font-bold text-slate-800 dark:text-slate-100 text-sm">{{ spaccatoAllocato ? euroDaCentesimi(spaccatoAllocato.totale) : euro(totalAllocato) }}</span>
                         </div>
                         <Button
                             @click="submit"
-                            :disabled="form.processing || verificandoOrdine || !previewContabile.hasData || !form.pagante_id || !!sceltaMancante"
+                            :disabled="form.processing || verificandoOrdine || !(previewContabile.hasData || centesimiEreditato > 0) || !form.pagante_id || !!sceltaMancante"
                             class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md transition-all text-sm"
                         >
                             <CheckCircle2 class="w-4 h-4 mr-2" /> Conferma incasso
@@ -2079,7 +2234,7 @@ onMounted(async () => {
                             <div class="flex gap-4 text-xs">
                                 <div class="flex items-center gap-1.5">
                                     <span class="text-slate-400">Allocato:</span>
-                                    <span class="font-bold text-emerald-400">{{ euro(totalAllocato) }}</span>
+                                    <span class="font-bold text-emerald-400">{{ spaccatoAllocato ? euroDaCentesimi(spaccatoAllocato.totale) : euro(totalAllocato) }}</span>
                                 </div>
                                 <div v-if="form.eccedenza > 0" class="flex items-center gap-1.5">
                                     <span class="text-slate-400">Eccedenza:</span>

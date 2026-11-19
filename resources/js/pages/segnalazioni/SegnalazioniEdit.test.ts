@@ -6,10 +6,10 @@
 /**
  * La pagina di modifica di una segnalazione (pannello): la riga sotto la tendina «Pubblicata».
  *
- * La modifica non approva (decisione 127.2: l'approvazione cambia solo dall'interruttore, che avvisa il
- * creatore). Su una segnalazione in moderazione — come nasce quella aperta dal portale da un condòmino
- * di serie — scegliere «Pubblicata» e salvare non la mostra a nessuno e non fa partire avvisi: la riga
- * sotto la tendina lo dice, e dice dove si approva. Su una approvata la riga non c'è.
+ * Scegliere «Pubblicata» e salvare non approva (decisione 127.2). Su una segnalazione in moderazione — come nasce
+ * quella aperta dal portale da un condòmino di serie — chi approva le segnalazioni ha accanto la tendina
+ * «Approvazione», che si salva con «Salva» (decisione 303: le prove sono in `SegnalazioniEditAssegnazione.test.ts`);
+ * a chi non le approva la riga sotto la tendina dice chi lo fa. Su una approvata la riga non c'è.
  *
  * Aperta e mandata senza toccare niente, la pagina manda i dati ricevuti (una privata senza residenti
  * compresa: il server la salva com'è, `tests/Feature/Portale/ResidentiDiUnaPrivataTest.php`).
@@ -63,10 +63,12 @@ beforeEach(() => {
     vi.mocked(router.put).mockClear();
 });
 
-describe('SegnalazioniEdit — la riga sotto la tendina «Pubblicata» (decisione 127.2)', () => {
-    test('su una segnalazione in moderazione la riga dice che serve l\'approvazione', () => {
-        expect(monta({ is_approved: false, is_published: false }).text()).toContain('segnalazioni.publication.needs_approval');
-        expect(monta({ is_approved: 0, is_published: 1 }).text()).toContain('segnalazioni.publication.needs_approval');
+describe('SegnalazioniEdit — la riga sotto la tendina «Pubblicata» (decisioni 127.2 e 303)', () => {
+    test('su una segnalazione in moderazione chi approva ha la tendina «Approvazione», non la riga che manda allo scudo', () => {
+        for (const pagina of [monta({ is_approved: false, is_published: false }), monta({ is_approved: 0, is_published: 1 })]) {
+            expect(pagina.find('[data-campo="approvazione"]').exists()).toBe(true);
+            expect(pagina.text()).not.toContain('segnalazioni.publication.needs_approval');
+        }
     });
 
     test('su una segnalazione approvata la riga non c\'è, in bozza o pubblicata', () => {
@@ -84,28 +86,30 @@ describe('SegnalazioniEdit — la riga sotto la tendina «Pubblicata» (decision
         expect(chiamata[1]).toEqual({
             subject: "Muffa nell'angolo della camera «nord»", description: "Prima riga\nseconda riga",
             priority: 'urgente', stato: 'in lavorazione', condominio_id: 3, can_comment: false, is_featured: true,
-            is_published: false, anagrafiche: [], avvisa_destinatari: false,
+            is_published: false, anagrafiche: [], is_approved: false, avvisa_destinatari: false,
         });
     });
 });
 
-describe('SegnalazioniEdit — la riga sotto la tendina dice dove si approva solo a chi può approvare', () => {
-    // Lo scudo dell'elenco lo vede solo chi ha «Approva segnalazioni» (`components/segnalazioni/columns.ts`): a chi
-    // non ce l'ha — il collaboratore di serie, per segnalazioni e comunicazioni — la riga dice chi
-    // approva, come la frase dei residenti di una privata.
-    test('chi approva legge lo scudo', () => {
+describe('SegnalazioniEdit — la riga sotto la tendina dice chi approva solo a chi non può approvare', () => {
+    // Chi ha «Approva segnalazioni» approva dalla tendina accanto: non gli serve una frase. A chi non ce l'ha — il
+    // collaboratore di serie, per segnalazioni e comunicazioni — la riga dice chi approva, come la frase dei
+    // residenti di una privata.
+    test('chi approva non legge nessuna delle due frasi: ha la tendina', () => {
         permessi.concessi = ['Approva segnalazioni'];
-        const testo = monta({ is_approved: false, is_published: false }).text();
-        expect(testo).toContain('segnalazioni.publication.needs_approval');
-        expect(testo).not.toContain('segnalazioni.publication.waiting_approver');
+        const pagina = monta({ is_approved: false, is_published: false });
+        expect(pagina.text()).not.toContain('segnalazioni.publication.needs_approval');
+        expect(pagina.text()).not.toContain('segnalazioni.publication.waiting_approver');
+        expect(pagina.find('[data-campo="approvazione"]').exists()).toBe(true);
     });
 
-    test('chi non approva legge chi approva, non lo scudo', () => {
+    test('chi non approva legge chi approva, non lo scudo, e non ha la tendina', () => {
         permessi.concessi = [];
         for (const pagina of [monta({ is_approved: false, is_published: false }), monta({ is_approved: false, is_published: true })]) {
             const testo = pagina.text();
             expect(testo).toContain('segnalazioni.publication.waiting_approver');
             expect(testo).not.toContain('segnalazioni.publication.needs_approval');
+            expect(pagina.find('[data-campo="approvazione"]').exists()).toBe(false);
         }
     });
 
@@ -144,7 +148,7 @@ describe('SegnalazioniEdit — un destinatario che non è più nel palazzo', () 
         expect(vi.mocked(router.put).mock.calls.at(-1)![1]).toEqual({
             subject: "Muffa nell'angolo della camera «nord»", description: "Prima riga\nseconda riga",
             priority: 'urgente', stato: 'in lavorazione', condominio_id: 3, can_comment: false, is_featured: true,
-            is_published: true, anagrafiche: [41, 42], avvisa_destinatari: false,
+            is_published: true, anagrafiche: [41, 42], is_approved: true, avvisa_destinatari: false,
         });
 
         await pagina.setProps({ segnalazione: segnalazione(dati) });
@@ -174,7 +178,7 @@ describe('SegnalazioniEdit — un destinatario che non è più nel palazzo', () 
         expect(vi.mocked(router.put).mock.calls.at(-1)![1]).toEqual({
             subject: "Muffa nell'angolo della camera «nord»", description: "Prima riga\nseconda riga",
             priority: 'urgente', stato: 'in lavorazione', condominio_id: 3, can_comment: false, is_featured: true,
-            is_published: true, anagrafiche: [41, 42], avvisa_destinatari: false,
+            is_published: true, anagrafiche: [41, 42], is_approved: true, avvisa_destinatari: false,
         });
     });
 });

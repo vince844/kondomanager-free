@@ -29,6 +29,10 @@ return [
         'export_desc' => 'Transfira os anexos filtrados num arquivo organizado por condomínio, tipo e elemento, completo com o resumo elenco.csv.',
     ],
 
+    // Coda 683 (4): la riga sotto l'elenco quando chi guarda vede meno file di quanti ne ha l'elemento.
+    'counter' => [
+        'hidden' => '{0} Não vê nenhum dos :totale ficheiros: não são visíveis para si.|{1} Vê um de :totale: os outros não são visíveis para si.|[2,*] Vê :visibili de :totale: os outros não são visíveis para si.',
+    ],
     'upload' => [
         'label' => 'Adicionar anexos',
         'hint' => '{0} Formatos permitidos: :formati, no máximo :limite por ficheiro. Não é possível adicionar mais ficheiros.|{1} Formatos permitidos: :formati, no máximo :limite por ficheiro. Pode adicionar mais um ficheiro (no máximo :massimo).|[2,*] Formatos permitidos: :formati, no máximo :limite por ficheiro. Pode adicionar mais :rimasti ficheiros (no máximo :massimo).',
@@ -37,6 +41,10 @@ return [
         'no_slots' => 'Foi atingido o limite de :massimo anexos para este elemento.',
         'button' => 'Carregar anexos',
         'uploading' => 'A carregar…',
+        'take_photo' => 'Tirar uma foto',
+        'preparing' => 'A preparar as fotos…',
+        'photo_hint' => 'As fotos são reduzidas e limpas dos dados de localização.',
+        'photo_short' => 'Foto',
         'selected_files' => 'Ficheiros selecionados',
         'remove_file' => 'Remover',
     ],

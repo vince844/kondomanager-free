@@ -130,6 +130,10 @@ return [
             'label' => 'Comunicação do placard atualizada',
             'description' => 'Receba uma notificação quando uma comunicação que já recebeu for alterada',
         ],
+        'scheduled_communication_published' => [
+            'label' => 'Comunicação agendada publicada',
+            'description' => 'Receba uma confirmação quando uma comunicação que agendou for publicada',
+        ],
         'new_ticket' => [
             'label' => 'Novo relato de avaria',
             'description' => 'Receba uma notificação quando for criado um novo relato de avaria',
@@ -141,6 +145,10 @@ return [
         'updated_ticket' => [
             'label' => 'Ocorrência atualizada',
             'description' => 'Receba uma notificação quando uma ocorrência que acompanha for alterada',
+        ],
+        'ticket_assigned' => [
+            'label' => 'Ticket de avaria atribuído',
+            'description' => 'Receba uma notificação quando um ticket de avaria lhe for atribuído, ou deixar de estar atribuído a si',
         ],
         'new_archive_document' => [
             'label' => 'Novo documento no arquivo',
@@ -163,8 +171,12 @@ return [
             'description' => 'Receba uma notificação quando o seu comentário numa sinalização for aprovado',
         ],
         'comment_deleted' => [
-            'label' => 'Comentário apagado ou oculto (sinalizações)',
-            'description' => 'Receba uma notificação quando o seu comentário numa sinalização for apagado ou oculto',
+            'label' => 'Comentário oculto (sinalizações)',
+            'description' => 'Receba uma notificação quando o seu comentário numa sinalização for ocultado',
+        ],
+        'comment_removed' => [
+            'label' => 'Comentário apagado (sinalizações)',
+            'description' => 'Receba uma notificação quando o seu comentário numa sinalização for apagado por outra pessoa',
         ],
         'new_communication_comment' => [
             'label' => 'Novo comentário (comunicados)',
@@ -175,8 +187,12 @@ return [
             'description' => 'Receba uma notificação quando o seu comentário num comunicado for aprovado',
         ],
         'communication_comment_deleted' => [
-            'label' => 'Comentário apagado ou oculto (comunicados)',
-            'description' => 'Receba uma notificação quando o seu comentário num comunicado for apagado ou oculto',
+            'label' => 'Comentário oculto (comunicados)',
+            'description' => 'Receba uma notificação quando o seu comentário num comunicado for ocultado',
+        ],
+        'communication_comment_removed' => [
+            'label' => 'Comentário apagado (comunicados)',
+            'description' => 'Receba uma notificação quando o seu comentário num comunicado for apagado por outra pessoa',
         ],
         'new_user' => [
             'label' => 'Novo utilizador registado',

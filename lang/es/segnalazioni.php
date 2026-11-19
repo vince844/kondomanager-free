@@ -49,12 +49,12 @@ return [
      | Form Sections (Cards)
      | ------------------------------------------------------------------ */
     'section' => [
-        'content_title'  => "Ticket details",
-        'content_desc'   => "Enter the information regarding the problem to be reported.",
-        'location_title' => "Recipients",
-        'location_desc'  => "Indicate the building and the residents linked to this ticket.",
-        'settings_title' => "Operational management",
-        'settings_desc'  => "Set the processing status, priority, and visibility of the ticket.",
+        'content_title'    => "Ticket details",
+        'content_desc'     => "Enter the information regarding the problem to be reported.",
+        'location_title'   => "Recipients",
+        'location_desc'    => "Indicate the building and the residents linked to this ticket.",
+        'settings_title'   => "Operational management",
+        'settings_desc'    => "Set the processing status, priority, and visibility of the ticket.",
     ],
 
     /* ------------------------------------------------------------------
@@ -170,6 +170,7 @@ return [
         'show_more'        => 'Show more',
         'show_less'        => 'Show less',
         'cancel'           => 'Cancel',
+        'approve'          => 'Aprobar',
         'back'             => 'Back',
         'back_to_list'     => "Back to list",
     ],
@@ -178,6 +179,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'approval'           => 'Aprobación',
         'notify_update' => "Avisar por correo a quienes siguen esta incidencia",
         'object'             => 'Ticket subject',
         'description'        => 'Ticket description',
@@ -214,6 +216,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'assigned_to' => 'Quién en el despacho gestiona la incidencia. Recibe un correo electrónico cuando se la asignas.',
+        'approval'    => 'Una incidencia se ve en el portal cuando está publicada y aprobada. Cuando la apruebas, quien la escribió recibe un aviso.',
         'notify_update' => "Envía un correo a quienes ya eran destinatarios para decirles que la incidencia ha cambiado. Déjala desactivada si estás corrigiendo una errata: quien se añada ahora la recibirá igualmente, porque para él es nueva. Mientras sea un borrador o esté pendiente de aprobación no se envía nada; cuando esté publicada y aprobada, la recibirán todos los destinatarios.",
         'visibility' => 'Un borrador, o una incidencia pendiente de aprobación, no se muestra a los vecinos; una vez publicada y aprobada, la ven los vecinos a los que va dirigida.',
         'priority'   => 'Set the priority level for this ticket to help administrators manage it accordingly.',
@@ -258,6 +262,11 @@ return [
         'settings_desc'    => 'Define the level of urgency, update the processing status of the file, and adjust the visibility permissions on the bulletin board.',
     ],
 
+    'approval' => [
+        'approved' => 'Aprobada',
+        'pending'  => 'Por aprobar',
+    ],
+
     /* ------------------------------------------------------------------
      | Pubblicazione e privacy (Code 304 e 306)
      | ------------------------------------------------------------------ */
@@ -265,8 +274,8 @@ return [
         'pending'   => 'Pendiente de aprobación',
         'draft'     => 'Borrador',
         'published' => 'Publicada',
-        'needs_approval' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando esté aprobada, con el escudo junto al título en la lista de incidencias.',
-        'waiting_approver' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando la apruebe quien aprueba las incidencias.',
+        'needs_approval' => 'Aún no está aprobada: los vecinos no la ven.',
+        'waiting_approver' => 'Aún no está aprobada: los vecinos no la ven. Debe aprobarla quien aprueba las incidencias.',
     ],
 
     'privacy' => [
@@ -298,5 +307,37 @@ return [
         'comments_dialog_description' => 'Configura los comentarios para esta incidencia.',
         'can_comment'                 => 'Permitir comentarios',
         'commenti_moderati'           => 'Comentarios en moderación',
+    ],
+
+    'assignment' => [
+        'label' => 'Asignada a',
+        'none' => 'Nadie',
+        'placeholder' => 'Elige a quién asignarla',
+        'assign_to_me' => 'Asignar a mí',
+        'assigned' => 'Aviso asignado a :name.',
+        'unassigned' => 'Asignación quitada.',
+        'not_assignable' => 'Esta persona no puede recibir avisos: no tiene acceso al panel, o está suspendida.',
+        // P6 della Fase 1-bis della beta.12: la persona scelta cancellata mentre la scheda era aperta.
+        'not_found' => 'La persona elegida ya no existe: recarga la página y elige de nuevo a quién asignar el aviso.',
+        'assigned_by' => 'Asignada por :user el :date a las :time',
+        'assigned_on' => 'Asignada el :date a las :time',
+        'inactive' => ':name ya no tiene acceso al panel: asigna el aviso a otra persona.',
+        'inactive_short' => 'Ya no está activo',
+        'followed_by' => 'Seguida por :name',
+        'filter_mine' => 'A mí',
+        'filter_nobody' => 'A nadie',
+    ],
+    // Coda 671: acciones rápidas de la ficha (decisiones 466 y 487).
+    'quick' => [
+        'change_status' => 'Cambiar el estado de trabajo',
+        'change_priority' => 'Cambiar el nivel de prioridad',
+        'close_title' => '¿Cerrar la incidencia?',
+        'close_description' => 'La incidencia pasa a «Cerrada» y su tarea sale del Action inbox; si la reabres, vuelve. No se envía ningún correo.',
+        'close_confirm' => 'Cerrar la incidencia',
+        // P6 della Fase 1-bis della beta.12: i rifiuti del valore veloce, con le parole della pagina.
+        'invalid_status' => 'Elige un estado de la lista: abierto, en curso o cerrado.',
+        'invalid_priority' => 'Elige una prioridad de la lista: baja, media, alta o urgente.',
+        'one_at_a_time' => 'Cambia una cosa cada vez: el estado o la prioridad.',
+        'nothing_chosen' => 'Elige el estado o la prioridad.',
     ],
 ];

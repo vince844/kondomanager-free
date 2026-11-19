@@ -5,7 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, nextTick } from 'vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle, Plus, Info, Megaphone, Users, BellRing } from 'lucide-vue-next';
+import { LoaderCircle, Plus, Info, Megaphone, Users, BellRing, Clock } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
@@ -34,13 +34,24 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 const { generatePath, generateRoute, hasPermission } = usePermission();
 const puoCaricareAllegati = computed(() => hasPermission([Permission.CREATE_ATTACHMENTS_COMUNICAZIONI]));
 
+interface ProgrammazioneProp {
+  puo_programmare: boolean;
+  fuso: string;
+  pianificatore_attivo: boolean;
+  adesso: string;
+}
+
 const props = defineProps<{
   condomini: Building[];
   anagrafiche: Anagrafica[];
   allegati_massimo?: number;
+  // Coda 683 (1): il limite vero di un file e i formati, dal server.
+  allegati_limite_file?: string;
+  allegati_formati?: string[];
   commenti_moderati_di_serie?: boolean;
   // «Commenti in moderazione» la sceglie solo chi può approvare i commenti: per gli altri vale il di serie, e la casella non c'è.
   puo_scegliere_moderazione?: boolean;
+  programmazione?: ProgrammazioneProp | null;
 }>();  
 
 const anagraficheOptions = ref<Anagrafica[]>([]);
@@ -87,9 +98,54 @@ const form = useForm({
     commenti_moderati: (props.commenti_moderati_di_serie ?? true) as boolean,
     is_featured: false as boolean,
     is_published: true,
+    data_programmata: null as string | null,
     anagrafiche: [],
     allegati: [] as File[],
 });
+
+const statoSelezionato = ref<boolean | 'scheduled'>(true);
+
+const optionsStato = computed(() => {
+    const options = [...publishedConstants];
+    if (props.programmazione?.puo_programmare) {
+        options.push({
+            value: 'scheduled' as unknown as boolean,
+            label: 'comunicazioni.publication.scheduled',
+            icon: Clock,
+            colorClass: 'text-sky-500 bg-transparent',
+        });
+    }
+    return options;
+});
+
+/**
+ * 1.12.0-beta.12 (H2, decisione 504): la tendina della visibilità si chiude da sé dopo la scelta. `vue-select` la chiude con un interruttore
+ * (`open = !open`): se un secondo evento di scelta arriva mentre il campo dell'ora compare sotto e la pagina si ridisegna, l'interruttore la riapre
+ * sopra il campo. Qui `close-on-select` è spento e la tendina si chiude sempre, a ogni scelta e dopo il ridisegno: una chiusura, non un interruttore.
+ */
+const menuVisibilita = ref<{ open: boolean; searchEl?: HTMLInputElement } | null>(null);
+const chiudiMenuVisibilita = () => {
+    const chiudi = () => {
+        const menu = menuVisibilita.value;
+        if (menu) {
+            menu.open = false;
+            menu.searchEl?.blur();
+        }
+    };
+    chiudi();
+    nextTick(chiudi);
+};
+
+const onStatoChange = (val: boolean | 'scheduled') => {
+    form.clearErrors('is_published');
+    form.clearErrors('data_programmata');
+    if (val === 'scheduled') {
+        form.is_published = false;
+    } else {
+        form.is_published = val === true;
+        form.data_programmata = null;
+    }
+};
 
 const erroreAllegati = computed(() => {
     const errs = form.errors as Record<string, string>;
@@ -118,11 +174,23 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
 watch(() => form.condomini_ids, fetchAnagrafiche);
 
 const submit = () => {
+    if (statoSelezionato.value === 'scheduled') {
+        if (!form.data_programmata) {
+            form.setError('data_programmata', trans('comunicazioni.scheduling.date_required'));
+            return;
+        }
+        form.clearErrors('data_programmata');
+        form.is_published = false;
+    } else {
+        form.is_published = statoSelezionato.value === true;
+        form.data_programmata = null;
+    }
     form.post(route(generateRoute('comunicazioni.store')), {
         forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
-            form.reset()
+            form.reset();
+            statoSelezionato.value = true;
         }
     });
 };
@@ -184,6 +252,8 @@ const submit = () => {
                                 v-model="form.allegati"
                                 :massimo="props.allegati_massimo ?? 5"
                                 :rimasti="props.allegati_massimo ?? 5"
+                                :limite-file="props.allegati_limite_file"
+                                :formati="props.allegati_formati"
                                 :error="erroreAllegati"
                             />
                         </div>
@@ -261,12 +331,16 @@ const submit = () => {
                             <v-select 
                                 id="stato" 
                                 class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
-                                :options="publishedConstants" 
+                                :options="optionsStato" 
                                 label="label" 
-                                v-model="form.is_published"
+                                v-model="statoSelezionato"
+                                ref="menuVisibilita"
+                                :close-on-select="false"
                                 :placeholder="trans('comunicazioni.placeholder.visibility')" 
-                                @update:modelValue="form.clearErrors('is_published')" 
-                                :reduce="(is_published: PublishedType) => is_published.value"
+                                @update:modelValue="onStatoChange" 
+                                @option:selected="chiudiMenuVisibilita"
+                                @option:selecting="chiudiMenuVisibilita"
+                                :reduce="(opt: any) => opt.value"
                             >
                                 <template #option="{ label, icon }">
                                     <div class="flex items-center gap-2">
@@ -282,6 +356,27 @@ const submit = () => {
                                 </template>
                             </v-select>
                             <InputError :message="form.errors.is_published" />
+
+                            <div v-if="statoSelezionato === 'scheduled'" class="mt-4 space-y-2">
+                                <Label for="data_programmata">{{ trans('comunicazioni.scheduling.field_label') }}</Label>
+                                <input 
+                                    id="data_programmata"
+                                    type="datetime-local" 
+                                    data-campo="data-programmata" 
+                                    v-model="form.data_programmata" 
+                                    :min="props.programmazione?.adesso"
+                                    @input="form.clearErrors('data_programmata')"
+                                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                />
+                                <!-- Decisione 504: la riga sotto la data c'è solo con un fuso diverso da quello italiano, e dice solo il fuso. -->
+                                <p v-if="props.programmazione?.fuso && props.programmazione.fuso !== 'Europe/Rome'" data-nota="fuso" class="text-xs text-muted-foreground">
+                                    {{ trans('comunicazioni.scheduling.timezone_hint', { timezone: props.programmazione?.fuso }) }}
+                                </p>
+                                <p v-if="props.programmazione && !props.programmazione.pianificatore_attivo" data-avviso="pianificatore-fermo" class="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                                    {{ trans('comunicazioni.scheduling.scheduler_down') }}
+                                </p>
+                                <InputError :message="form.errors.data_programmata" />
+                            </div>
                         </div>
 
                         <div class="sm:col-span-3">

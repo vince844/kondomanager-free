@@ -176,6 +176,18 @@ describe('CommentiList — la disposizione, quella della pagina degli allegati',
         expect(html).not.toMatch(/border-l-/);
     });
 
+    test('una discussione a persone ha il condominio nella colonna e «discussione con …» sotto il titolo (decisione 479)', () => {
+        const w = montaPagina([
+            riga(20, { tipo: 'comunicazioni', elemento: 'Verifica dei contatori', condominio: 'Condominio Borea', discussione_con: 'Lucia Verdi' }),
+            riga(21, { discussione_con: null }),
+        ]);
+        const [persone, segnalazione] = w.findAll('tbody tr');
+
+        expect(persone.get('[data-discussione-con]').text()).toBe('commenti_pagina.discussione_con');
+        expect(persone.text()).toContain('Condominio Borea');
+        expect(segnalazione.find('[data-discussione-con]').exists()).toBe(false);
+    });
+
     test('un commento nascosto ha il suo badge, senza bordi tondi a pillola', () => {
         const w = montaPagina([riga(12, { stato: 'nascosto', puo_approvare: false })]);
 

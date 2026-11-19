@@ -50,7 +50,9 @@ class CreateContoRequest extends FormRequest
         ];
 
         if (!$this->boolean('isCapitolo')) {
-            $rules['importo'] = 'required|string';
+            // Seconda prova a video della beta.12: una voce di entrata (gli interessi di mora, un contributo) può avere il preventivo a zero, anche lasciato
+            // vuoto; una voce di spesa no.
+            $rules['importo'] = $this->input('tipo') === 'entrata' ? 'nullable|string' : 'required|string';
             $rules['tabella_millesimale_id'] = 'required|exists:tabelle,id';
             $rules['percentuale_proprietario'] = 'required|numeric|min:0|max:100';
             $rules['percentuale_inquilino'] = 'required|numeric|min:0|max:100';

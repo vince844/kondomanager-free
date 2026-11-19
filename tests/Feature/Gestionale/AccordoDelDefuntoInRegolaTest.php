@@ -9,6 +9,12 @@
  * interessi (il debito passa agli eredi). Nell'anteprima della successione l'amministratore può scegliere che la chiusura valga come una decadenza: allora
  * tornano i giorni dell'accordo, come quando un accordo decade. La scelta si salva con il passaggio, nel suo registro, e l'annullamento la toglie.
  *
+ * Con la decisione 483 (Coda 663) la successione ha anche la scelta sugli interessi del defunto dopo il decesso: con l'arretrato agli eredi, di serie, «si
+ * fermano al decesso» (l'ultimo giorno contato, su tutte le rate del defunto sulle unità del passaggio, è il giorno prima del decesso). Le prove della
+ * decadenza e dell'accordo che non era in regola al decesso ne cambiano l'attesa; con «continuano a suo nome» tornano le cifre di prima. Le altre prove
+ * della scelta, senza accordo, sono in `InteressiDelDefuntoDopoIlDecessoTest.php`. Cosa NON copre, della 483: l'accordo con l'arretrato a nome del defunto
+ * (lì l'accordo non si chiude, e vale solo la scelta sugli interessi); la rata coperta in parte con «continuano a suo nome».
+ *
  * Tasso legale 2026 1,60 %; in centesimi capitale × 16.000 × giorni / 365.000.000; un versamento conta dal giorno dopo. Il caso: Neri, rata 1 di € 300,00
  * scaduta il 31/03/2026, € 100,00 versati il 30/04 (`AccessoriScenario.php`); l'accordo del 15/07; la successione di U1 dal 20/08/2026 (il decesso) ad Anna
  * e Bruno al 50 %, con l'arretrato agli eredi, registrata il 25/08.
@@ -53,8 +59,8 @@ function adrErede(array $s, string $nome): \App\Models\Anagrafica
     return $p;
 }
 
-/** I dati della successione di U1 dal 20/08 con l'arretrato agli eredi; con la scelta sull'accordo del defunto, se data. */
-function adrSuccessione(array $s, ?string $accordo = null): array
+/** I dati della successione di U1 dal 20/08 con l'arretrato agli eredi; con la scelta sull'accordo del defunto e quella sugli interessi (decisione 483), se date. */
+function adrSuccessione(array $s, ?string $accordo = null, ?string $interessi = null): array
 {
     $anna = adrErede($s, 'Anna');
     $bruno = adrErede($s, 'Bruno');
@@ -62,7 +68,8 @@ function adrSuccessione(array $s, ?string $accordo = null): array
     return ['tipo' => 'successione', 'riga_uscente_id' => $s['righe']['Neri'], 'decorrenza' => '2026-08-20', 'quota' => 100, 'tipologia' => 'proprietario',
         'eredi' => [['anagrafica_id' => $anna->id, 'quota' => 50], ['anagrafica_id' => $bruno->id, 'quota' => 50]], 'arretrato' => 'eredi', 'erede_di_riferimento' => $anna->id,
         'copia_autentica' => false, 'estremi_titolo' => 'dichiarazione di successione n. 1', 'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Dichiarazione di successione letta']
-        + ($accordo !== null ? ['accordo_del_defunto' => $accordo] : []);
+        + ($accordo !== null ? ['accordo_del_defunto' => $accordo] : [])
+        + ($interessi !== null ? ['interessi_del_defunto' => $interessi] : []);
 }
 
 /** Il caso: € 100,00 il 30/04, l'accordo del 15/07 per l'importo dato. */
@@ -110,15 +117,58 @@ it('di serie l\'accordo in regola resta in regola fino al decesso: nella propost
     expect(adrRiga($this, $s, '2026-12-31'))->toBe([105, '2026-07-14']);
 });
 
-it('scelto «vale come una decadenza», tornano i giorni dell\'accordo, come la decadenza: € 1,31 al 25/08', function () {
+it('scelto «vale come una decadenza», tornano i giorni dell\'accordo, come la decadenza, ma di serie si fermano al giorno prima del decesso: € 1,28 al 19/08', function () {
     [$s, $a] = adrCaso($this);
     aclVersa($this, $s, [lcdQuota($s, 'Neri', 1) => 10000], '2026-07-31');
 
     $passaggio = adrRegistra($this, $s, adrSuccessione($s, 'decadenza'));
     expect($a->fresh()->chiusura_per_successione)->toBe(AccordoRientro::SUCCESSIONE_DECADENZA)
-        ->and($passaggio->registro['arretrato']['accordi'][0]['scelta'])->toBe('decadenza');
+        ->and($passaggio->registro['arretrato']['accordi'][0]['scelta'])->toBe('decadenza')
+        ->and($passaggio->interessi_del_defunto)->toBe(Subentro::INTERESSI_AL_DECESSO);
+    // Decisione 483 (f): 39,452055 + 20.000 × 92 giorni (01/05–31/07) 80,657534 + 10.000 × 19 giorni (01/08–19/08) 8,328767 = 128,438356 → € 1,28.
+    // Prima della decisione 483: [131, '2026-08-25'], i giorni fino alla data.
+    expect(adrRiga($this, $s, '2026-08-25'))->toBe([128, '2026-08-19']);
+});
+
+it('scelti «vale come una decadenza» e «continuano a suo nome», tornano i giorni dell\'accordo fino alla data: € 1,31 al 25/08, come prima della decisione 483', function () {
+    [$s] = adrCaso($this);
+    aclVersa($this, $s, [lcdQuota($s, 'Neri', 1) => 10000], '2026-07-31');
+
+    adrRegistra($this, $s, adrSuccessione($s, 'decadenza', Subentro::INTERESSI_CONTINUANO));
     // 39,452055 + 20.000 × 92 giorni (01/05–31/07) 80,657534 + 10.000 × 25 giorni (01/08–25/08) 10,958904 = 131,068493 → € 1,31.
     expect(adrRiga($this, $s, '2026-08-25'))->toBe([131, '2026-08-25']);
+});
+
+it('(e) con l\'accordo in regola e «continuano a suo nome»: la rata coperta resta ferma come con la decisione 454, quella fuori dall\'accordo continua dopo il decesso', function () {
+    // La rata 2 di Neri (€ 300,00, scaduta il 30/06) è emessa il 15/01 come la rata 1 e l'accordo non la copre. Al 25/08: la rata 1 € 1,05 fino al 14/07,
+    // come nella prima prova; la rata 2 30.000 × 16.000 × 56 giorni (01/07–25/08) / 365.000.000 = 73,643836 → € 0,74. Con la scelta di serie, «si fermano al
+    // decesso», la rata 2 si fermerebbe al 19/08: 30.000 × 16.000 × 50 giorni / 365.000.000 = 65,753425 → € 0,66.
+    $s = accViaVerdi($this);
+    lcdEmetti($this, $s, [2], '2026-01-15');
+    $this->travelTo('2026-04-30 10:00:00');
+    lcdIncassa($this, $s, 'Neri', [lcdQuota($s, 'Neri', 1) => 10000], '2026-04-30');
+    adrAccordo($this, $s, '200,00', ['100,00', '100,00']);
+    aclVersa($this, $s, [lcdQuota($s, 'Neri', 1) => 10000], '2026-07-31');
+    $rata2 = fn () => collect(accDi(accProposta($this, $s, ['Neri'], '2026-08-25')->assertOk()->json(), $s, 'Neri')['righe'])->firstWhere('rata_id', lcdRata($s, 2));
+
+    adrRegistra($this, $s, adrSuccessione($s, null, Subentro::INTERESSI_CONTINUANO));
+    expect(adrRiga($this, $s, '2026-08-25'))->toBe([105, '2026-07-14'])
+        ->and([$rata2()['interessi'], $rata2()['al']])->toBe([74, '2026-08-25']);
+});
+
+it('(e) con l\'accordo in regola e la scelta di serie, «si fermano al decesso»: anche la rata fuori dall\'accordo si ferma al giorno prima del decesso', function () {
+    $s = accViaVerdi($this);
+    lcdEmetti($this, $s, [2], '2026-01-15');
+    $this->travelTo('2026-04-30 10:00:00');
+    lcdIncassa($this, $s, 'Neri', [lcdQuota($s, 'Neri', 1) => 10000], '2026-04-30');
+    adrAccordo($this, $s, '200,00', ['100,00', '100,00']);
+    aclVersa($this, $s, [lcdQuota($s, 'Neri', 1) => 10000], '2026-07-31');
+
+    adrRegistra($this, $s, adrSuccessione($s));
+    $rata2 = collect(accDi(accProposta($this, $s, ['Neri'], '2026-08-25')->assertOk()->json(), $s, 'Neri')['righe'])->firstWhere('rata_id', lcdRata($s, 2));
+    // Con il codice di prima: [74, '2026-08-25'].
+    expect(adrRiga($this, $s, '2026-08-25'))->toBe([105, '2026-07-14'])
+        ->and([$rata2['interessi'], $rata2['al']])->toBe([66, '2026-08-19']);
 });
 
 it('con la parte fuori che continua, di serie la riga di Neri arriva al giorno prima del decesso: € 1,13', function () {
@@ -129,9 +179,10 @@ it('con la parte fuori che continua, di serie la riga di Neri arriva al giorno p
     expect(adrRiga($this, $s, '2026-08-25'))->toBe([113, '2026-08-19']);
 });
 
-it('un accordo che al decesso non era in regola (il calendario finito con rate non versate) non tiene fuori niente: tornano tutti i giorni', function () {
-    // Il calendario finisce il 10/08 e nessuna rata è versata: al decesso l'accordo non reggeva più. 39,452055 + 20.000 × 117 giorni (01/05–25/08)
-    // 102,575342 = 142,027397 → € 1,42.
+it('un accordo che al decesso non era in regola (il calendario finito con rate non versate) non tiene fuori niente: tornano tutti i giorni, fino al giorno prima del decesso', function () {
+    // Il calendario finisce il 10/08 e nessuna rata è versata: al decesso l'accordo non reggeva più. Con la scelta di serie della decisione 483, «si
+    // fermano al decesso»: 39,452055 + 20.000 × 111 giorni (01/05–19/08) 97,315068 = 136,767123 → € 1,37. Prima della decisione 483 i giorni arrivavano
+    // alla data: 39,452055 + 20.000 × 117 giorni (01/05–25/08) 102,575342 = 142,027397 → € 1,42, [142, '2026-08-25'].
     [$s] = adrCaso($this, '200,00', ['100,00', '100,00'], ['2026-07-31', '2026-08-10']);
     $this->travelTo('2026-08-25 09:00:00');
     $anteprima = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']['U1']]), adrSuccessione($s))
@@ -140,7 +191,7 @@ it('un accordo che al decesso non era in regola (il calendario finito con rate n
         ->and($anteprima['frase_accordo_del_defunto'])->toBe('L\'accordo di rientro di Neri del 15/07/2026 non era in regola al decesso (il calendario è finito con rate non versate): '
             . 'nella proposta degli interessi di Neri i giorni dell\'accordo tornano comunque.');
     adrRegistra($this, $s, adrSuccessione($s));
-    expect(adrRiga($this, $s, '2026-08-25'))->toBe([142, '2026-08-25']);
+    expect(adrRiga($this, $s, '2026-08-25'))->toBe([137, '2026-08-19']);
 });
 
 it('l\'anteprima dice la scelta, di serie «resta in regola fino al decesso»; un valore che non c\'è si ferma; l\'annullamento toglie la scelta', function () {

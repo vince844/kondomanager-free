@@ -35,11 +35,9 @@ class StornoFatturaController extends Controller
             return back()->withErrors(['storno_vietato' => $motivo]);
         }
 
-        $gestioneId = null;
-        $primaScrittura = $fattura->scritture->first();
-        if ($primaScrittura) {
-            $gestioneId = $primaScrittura->gestione_id;
-        } else {
+        // Coda 687 (decisione 507): la nota dello storno va sulla gestione della fattura, che la fattura ricorda (la colonna, o la sua scrittura).
+        $gestioneId = $fattura->gestioneDellaFattura();
+        if ($gestioneId === null) {
             $gestioneId = DB::table('gestioni')
                 ->where('condominio_id', $condominio->id)
                 ->where('attiva', true)

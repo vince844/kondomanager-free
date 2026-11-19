@@ -99,12 +99,25 @@ class StoreIncassoRateAction
                 ->unique()
                 ->implode(', ');
 
+            // Decisione 529: il pagante è un erede dell'intestatario, con la successione e l'arretrato agli eredi: il suo versamento si registra a nome suo,
+            // sul debito ereditato, non sulla rata del defunto.
+            $ereditatoDa = null;
+            $defunti = RataQuote::where('rata_id', $quotaFaro->rata_id)->where('importo', '>', 0)->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all();
+            foreach ((new \App\Services\Gestionale\Accessori\DebitoEreditato())->successioni((int) ($quotaFaro->rata?->pianoRate?->condominio_id ?? 0)) as $s) {
+                if (in_array((int) $s->anagrafica_uscente_id, $defunti, true)
+                    && collect($s->registro['eredi'] ?? [])->contains(fn ($e) => (int) ($e['anagrafica_id'] ?? 0) === $paganteId)) {
+                    $ereditatoDa = (string) ($s->registro['nomi']['uscente'] ?? '');
+                    break;
+                }
+            }
+
             // Eccezione dedicata e non `RuntimeException`: il controller cattura per tipo, e un
             // tipo generico uscirebbe come pagina 500 buttando via la distribuzione fatta a mano.
             // Vedi la classe per il resto della storia.
             throw new DebitoNonDelPaganteException(
                 $quotaFaro->rata->numero_rata ?? '?',
-                $intestatari
+                $intestatari,
+                $ereditatoDa
             );
         }
     }
@@ -205,6 +218,9 @@ class StoreIncassoRateAction
 
     public function execute(array $validated, Condominio $condominio, Esercizio $esercizio): ScritturaContabile
     {
+        // Decisione 529: un incasso dell'erede può avere solo il debito ereditato, senza righe sulle sue quote.
+        $validated['dettaglio_pagamenti'] = $validated['dettaglio_pagamenti'] ?? [];
+
         $pagamentiOrdinari = array_filter(
             $validated['dettaglio_pagamenti'],
             fn($item) => $item['importo'] > 0
@@ -224,13 +240,20 @@ class StoreIncassoRateAction
         $eccedenzaInizialeCents = MoneyHelper::toCents($validated['eccedenza'] ?? 0);
         $importoTotaleCents     = MoneyHelper::toCents($validated['importo_totale']);
 
-        if ($importoTotaleCents !== ($sommaAlgebricaCents + $eccedenzaInizialeCents)) {
+        // Decisione 529: il versamento dell'erede sul suo debito ereditato (`debito_ereditato`, per successione), fuori da `dettaglio_pagamenti`: la guardia del
+        // pagante e il motore delle quote non lo vedono. Euro → centesimi qui, una volta sola, come il resto della richiesta.
+        $ereditato = collect($validated['debito_ereditato'] ?? [])
+            ->map(fn ($d) => ['subentro_id' => (int) $d['subentro_id'], 'gestione_id' => isset($d['gestione_id']) ? (int) $d['gestione_id'] : null, 'importo' => MoneyHelper::toCents($d['importo'])])
+            ->filter(fn ($d) => $d['importo'] > 0)->values();
+        $ereditatoCents = (int) $ereditato->sum('importo');
+
+        if ($importoTotaleCents !== ($sommaAlgebricaCents + $eccedenzaInizialeCents + $ereditatoCents)) {
             // Eccezione dedicata dalla beta.43: prima era un `RuntimeException` generico che
             // il controller non catturava, e una guardia di dominio finiva addosso
             // all'amministratore come pagina 500. Vedi la classe per il resto della storia.
             throw new TotaleIncassoNonCorrispondenteException(
                 $importoTotaleCents,
-                $sommaAlgebricaCents,
+                $sommaAlgebricaCents + $ereditatoCents,
                 $eccedenzaInizialeCents
             );
         }
@@ -276,7 +299,35 @@ class StoreIncassoRateAction
         // del denaro intesterebbe la compensazione in silenzio (reperto T4 del terzo giro). Prima si prendeva la gestione
         // della quota con l'id più basso — un criterio casuale, diverso da quello che il modulo mostrava (reperto S2 del
         // rigiro della Fase 1-bis).
-        $gestioniRighe = collect($pagamentiOrdinari)->map($gestioneDi)->filter()->unique()->values();
+        // Decisione 529: il debito ereditato che l'erede versa, letto prima della transazione: per ogni successione chiesta, le righe ancora aperte e non in un
+        // piano (`VersamentoDegliEredi::apertiDi`), al più la sua parte. Le sue gestioni contano come quelle delle rate pagate.
+        $versamentoDegliEredi = app(\App\Services\Gestionale\Accessori\VersamentoDegliEredi::class);
+        $ereditatoDaScrivere = [];
+        if ($ereditato->isNotEmpty()) {
+            $aperti = collect($versamentoDegliEredi->apertiDi($condominio->id, $paganteId));
+            $nomeErede = (string) (Anagrafica::find($paganteId)?->nome ?? '');
+            foreach ($ereditato as $d) {
+                $voci = $aperti->where('subentro_id', $d['subentro_id'])->when($d['gestione_id'] !== null, fn ($c) => $c->where('gestione_id', $d['gestione_id']))->values();
+                if ($voci->isEmpty()) {
+                    throw new \App\Exceptions\Gestionale\DebitoEreditatoNonIncassabileException("{$nomeErede} non ha un debito ereditato da incassare con questa successione: se è già nella sua rata nuova, incassalo da lì.");
+                }
+                $aperto = (int) $voci->sum('aperto');
+                if ($d['importo'] > $aperto) {
+                    throw new \App\Exceptions\Gestionale\DebitoEreditatoNonIncassabileException(sprintf('Il debito ereditato di %s da %s è %s: più di così non si registra qui. '
+                        . 'Il resto mettilo sulle sue rate, o come parte in più.', $nomeErede, $voci->first()['da'], MoneyHelper::format($aperto)));
+                }
+                $resta = $d['importo'];
+                foreach ($voci as $voce) {
+                    $y = min($resta, (int) $voce['aperto']);
+                    if ($y > 0) {
+                        $ereditatoDaScrivere[] = [$voce, $y];
+                        $resta -= $y;
+                    }
+                }
+            }
+        }
+
+        $gestioniRighe = collect($pagamentiOrdinari)->map($gestioneDi)->merge(array_map(fn ($x) => (int) $x[0]['gestione_id'], $ereditatoDaScrivere))->filter()->unique()->values();
         $gestioneId = ! empty($validated['gestione_id']) ? (int) $validated['gestione_id'] : null;
         if ($gestioneId === null && $gestioniRighe->count() > 1) {
             throw new GestioneIncassoDaScegliereException($nomiGestioni($gestioniRighe));
@@ -285,6 +336,40 @@ class StoreIncassoRateAction
             throw new GestioneIncassoDaScegliereException($nomiGestioni($gestioniRighe), sceltaFuori: true);
         }
         $gestioneId ??= $gestioniRighe->first();
+
+        // Decisione 529: un versamento in denaro sulle rate del defunto, sulle unità di una successione con l'arretrato agli eredi non ancora in un piano. Il
+        // debito non è più suo: il programma chiede se copre quello degli eredi (`agli_eredi`), e decide l'amministratore.
+        $agliEredi = array_key_exists('agli_eredi', $validated) && $validated['agli_eredi'] !== null ? filter_var($validated['agli_eredi'], FILTER_VALIDATE_BOOLEAN) : null;
+        $rateDelDenaro = $quoteRighe->only(collect($pagamentiOrdinari)->pluck('rata_id')->map(fn ($id) => (int) $id)->all())->pluck('rata_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $successioniDelDefunto = $importoTotaleCents - $ereditatoCents > 0 ? $versamentoDegliEredi->delDefunto($condominio->id, (int) $validated['pagante_id'], $rateDelDenaro) : [];
+        // Dopo il piano (seconda passata del giro A): il debito è già nella rata nuova degli eredi. Il programma dice dov'è e che si incassa da lì; registrarlo
+        // comunque al defunto («Resta a …», `agli_eredi` falso) lo decide l'amministratore, con le conseguenze. «Per il debito degli eredi» qui non c'è più.
+        $nelPiano = $importoTotaleCents - $ereditatoCents > 0 ? $versamentoDegliEredi->nelPianoDegliEredi($condominio->id, (int) $validated['pagante_id'], $rateDelDenaro) : [];
+        if ($nelPiano !== [] && $agliEredi !== false) {
+            $x = $nelPiano[0];
+            throw new \App\Exceptions\Gestionale\VersamentoDelDefuntoNelPianoException($x['defunto'], $x['nomi'], $x['decesso'], $x['dove'], $x['emessa']);
+        }
+        // Q5 della quarta prova (decisione 530): «Versato da» l'erede di un erede morto a sua volta, sulla rata del primo defunto. Il suo debito è nella sua riga
+        // «Debito ereditato da …», con la seconda successione: lì si registra, a nome suo.
+        if ($versatoDaId !== null && $agliEredi !== false) {
+            foreach ($successioniDelDefunto as $x) {
+                if (isset($x['catena'][$versatoDaId])) {
+                    throw new \App\Exceptions\Gestionale\VersamentoDellaCatenaException((string) (Anagrafica::find($versatoDaId)?->nome ?? ''), $x['catena'][$versatoDaId]['da'], $x['defunto']);
+                }
+            }
+        }
+        if ($successioniDelDefunto !== [] && $agliEredi === null) {
+            $x = $successioniDelDefunto[0];
+            $versante = ! empty($validated['versato_da_id']) && isset($x['eredi'][(int) $validated['versato_da_id']]) ? Anagrafica::find((int) $validated['versato_da_id'])?->nome : null;
+            throw new \App\Exceptions\Gestionale\VersamentoDelDefuntoDaScegliereException($x['defunto'], $x['nomi'], $x['decesso'], $versante);
+        }
+        // Le parti aperte degli eredi, lette prima che l'incasso le cambi.
+        $aperteAgliEredi = [];
+        if ($agliEredi === true) {
+            foreach ($successioniDelDefunto as $x) {
+                $aperteAgliEredi[(int) $x['successione']->id] = $versamentoDegliEredi->partiAperte($condominio->id, $x['successione']);
+            }
+        }
 
         // Decisioni 30.7 e 30.11: quanto credito va su quale riga, e quanto della riga paga il denaro. Il credito di una
         // gestione copre da sé solo le righe della sua gestione; su un'altra solo con la scelta dell'amministratore, che
@@ -312,6 +397,12 @@ class StoreIncassoRateAction
         );
 
         return DB::transaction(function () use (
+            $versamentoDegliEredi,
+            $ereditatoDaScrivere,
+            $ereditatoCents,
+            $agliEredi,
+            $successioniDelDefunto,
+            $aperteAgliEredi,
             $imputazione,
             $imputazioneNota,
             $validated,
@@ -356,8 +447,8 @@ class StoreIncassoRateAction
                 $gestioneId = $esercizio->gestioni()->first()->id;
             }
 
-            // VARIABILI DI CONTROLLO CASSA
-            $budgetCashCents      = $importoTotaleCents;
+            // VARIABILI DI CONTROLLO CASSA. Il denaro per il debito ereditato (decisione 529) ha la sua strada, più sotto: le quote del pagante non lo vedono.
+            $budgetCashCents      = $importoTotaleCents - $ereditatoCents;
             $eccedenzaFinaleCents = $eccedenzaInizialeCents;
 
             // ---------------------------------------------------------
@@ -388,7 +479,7 @@ class StoreIncassoRateAction
                     // Il denaro è entrato da chi ha versato: la riga di cassa lo nomina, e dice per conto di chi.
                     'note'               => $versatoDaId !== null
                         ? "Versamento rate {$nomeVersatoDa} per conto di {$nomePagante}"
-                        : 'Versamento rate ' . $nomePagante,
+                        : ($pagamentiOrdinari === [] && $ereditatoCents > 0 ? "Versamento di {$nomePagante} sul debito ereditato" : 'Versamento rate ' . $nomePagante),
                 ]);
             }
 
@@ -564,6 +655,20 @@ class StoreIncassoRateAction
                         'importo'            => $eccedenzaCassaCents,
                         'note'               => 'Anticipo / Eccedenza',
                     ]);
+                }
+            }
+
+            // Decisione 529: l'erede pagante, sul suo debito ereditato: la rata del defunto con il legame all'erede, e la coppia nel Wallet. Decisione 539: con
+            // il versamento resta a chi è intestata la ricevuta, se l'amministratore non l'ha lasciata all'erede.
+            foreach ($ereditatoDaScrivere as [$voce, $centesimi]) {
+                $versamentoDegliEredi->registraDellErede($scritturaIncasso, $paganteId, $voce, $centesimi, (string) $validated['data_pagamento'], (int) $contoCrediti->id,
+                    $validated['intestatario_ricevuta'] ?? null);
+            }
+            // Decisione 529: il defunto pagante, con la scelta «per il debito degli eredi».
+            if ($agliEredi === true) {
+                foreach ($successioniDelDefunto as $x) {
+                    $versamentoDegliEredi->registraAgliEredi($scritturaIncasso, $x['successione'], $aperteAgliEredi[(int) $x['successione']->id] ?? [], $versatoDaId,
+                        (string) $validated['data_pagamento']);
                 }
             }
 

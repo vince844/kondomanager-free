@@ -32,11 +32,12 @@ final class InteressiDiMora
     private const COMUNE = 1_000_000 * 365 * 366;
 
     /**
-     * @param array<string, array{inizio: ?string, base: bool, ordine: array, fine?: ?string, protetto?: list<array{dal: string, importo: int}>}> $chiavi ogni
+     * @param array<string, array{inizio: ?string, base: bool, ordine: array, fine?: ?string, protetto?: list<array{dal: string, importo: int}>, inizio_pieno?: ?string}> $chiavi ogni
      *     chiave del giornale della persona: `inizio` il primo giorno degli interessi (le chiavi fuori dalla base non ne hanno), `base` se la chiave prende
      *     interessi, `ordine` la chiave dell'ordine delle scadenze, `fine` (se c'è) l'ultimo giorno in cui la chiave è nella base, `protetto` (se c'è) la
      *     parte che un accordo di rientro copre, a passi in ordine di giorno: dal giorno di un passo il capitale della chiave è il debito meno quella parte
-     *     (decisione 450), e il primo passo comincia il tratto «accordo»
+     *     (decisione 450), e il primo passo comincia il tratto «accordo»; `inizio_pieno` (se c'è) il primo giorno senza gli interessi già registrati: una
+     *     chiave registrata fino alla data o oltre resta nella base per i suoi crediti (E5 della seconda prova della beta.12)
      * @param list<array{giorno: string, chiave: string, importo: int, causa: string}> $movimenti il debito della chiave sale (più) o scende (meno) alla
      *     fine del giorno; la causa è una di `emissione`, `versamento`, `storno`, `credito`
      * @param \Closure(string): (array{tasso_e4: int, etichetta: string, fonte: string, regola_id?: ?int}|string) $tassoAl il tasso di un giorno, o la frase
@@ -53,12 +54,18 @@ final class InteressiDiMora
         // ultimo giorno tiene i crediti che la coprivano, come una rata registrata senza accordo. Fuori dalla base quei crediti coprirebbero un'altra rata
         // negli stessi giorni, e la riga registrata li ha già contati (revisione della 1.12.0-beta.11, R7). I giorni dopo l'ultimo li salta il
         // ciclo.
-        $base = array_filter($chiavi, fn (array $c) => $c['base'] && $c['inizio'] !== null && self::numero($c['inizio']) <= $fine);
+        // E5 della seconda prova della beta.12: lo stesso per la chiave registrata fino alla data o oltre (`inizio` dopo la data, `inizio_pieno` entro la
+        // data): niente interessi, ma tiene i crediti che la registrazione le ha contato. Prima restava fuori, e registrando in due volte lo stesso credito
+        // copriva due volte gli stessi giorni.
+        $registrataOltre = fn (array $c) => ($c['inizio_pieno'] ?? null) !== null && self::numero((string) $c['inizio_pieno']) <= $fine;
+        $base = array_filter($chiavi, fn (array $c) => $c['base'] && $c['inizio'] !== null && (self::numero($c['inizio']) <= $fine || $registrataOltre($c)));
+        // Le chiavi che contano interessi in questo calcolo: le altre della base tengono solo i crediti, e non spostano né il primo giorno né i punti.
+        $conGiorni = array_filter($base, fn (array $c) => self::numero($c['inizio']) <= $fine);
         $esito = [];
         foreach (array_keys(array_filter($chiavi, fn (array $c) => $c['base'])) as $k) {
             $esito[$k] = ['tratti' => [], 'interessi' => 0, 'fermo' => null];
         }
-        if ($base === []) {
+        if ($conGiorni === []) {
             return $esito;
         }
         // L'ordine di copertura dei crediti: le scadenze più vecchie prima.
@@ -71,7 +78,7 @@ final class InteressiDiMora
             $perGiorno[self::numero($m['giorno'])][] = $m;
         }
         ksort($perGiorno);
-        $inizio = min(array_map(fn (array $c) => self::numero($c['inizio']), $base));
+        $inizio = min(array_map(fn (array $c) => self::numero($c['inizio']), $conGiorni));
         $punti = [$inizio => true];
         foreach (array_keys($perGiorno) as $g) {
             if ($g + 1 > $inizio && $g + 1 <= $fine) {
@@ -79,7 +86,9 @@ final class InteressiDiMora
             }
         }
         foreach ($base as $k => $c) {
-            $punti[self::numero($c['inizio'])] = true;
+            if (self::numero($c['inizio']) <= $fine) {
+                $punti[self::numero($c['inizio'])] = true;
+            }
             // Il giorno dopo l'ultimo di una chiave: da lì il credito che teneva passa alle altre.
             if ($ultimo[$k] < $fine) {
                 $punti[$ultimo[$k] + 1] = true;
@@ -150,11 +159,15 @@ final class InteressiDiMora
 
                     continue;
                 }
+                // N3 della terza prova della beta.12: un movimento di un'altra chiave che non cambia il capitale di questa (l'addebito degli interessi registrati
+                // fino al 31/12, per esempio) non fa «credito» del suo tratto: al 01/01 resta «anno», a una regola nuova «regola».
+                $prima = $pezzi[$k] === [] ? null : $pezzi[$k][count($pezzi[$k]) - 1];
+                $stessoCapitale = $prima !== null && $prima['al'] === $daQui - 1 && $prima['capitale'] === $capitale;
                 $causa = match (true) {
                     $daQui === $primo => 'scadenza',
                     isset($chiavi[$k]['protetto'][0]) && $daQui === self::numero((string) $chiavi[$k]['protetto'][0]['dal']) => 'accordo',
                     isset($cause[$k]) => $cause[$k] === 'storno' ? 'storno' : ($cause[$k] === 'emissione' ? 'emissione' : 'versamento'),
-                    $cause !== [] => 'credito',
+                    $cause !== [] && ! $stessoCapitale => 'credito',
                     in_array(self::data($daQui), $cambi, true) => 'regola',
                     substr(self::data($daQui), 5) === '01-01' => 'anno',
                     default => 'credito',
@@ -179,6 +192,50 @@ final class InteressiDiMora
         }
 
         return $esito;
+    }
+
+    /**
+     * Il capitale di ogni chiave della base nel giorno dato, come lo conta {@see calcola()} quel giorno: il saldo alla fine del giorno prima, meno la parte
+     * protetta da un accordo, meno i crediti della persona che la coprono (le scadenze più vecchie prima). Una chiave dopo il suo ultimo giorno (`fine`) non
+     * è nella base e non prende crediti; con `$alla`, neanche una chiave che comincia dopo (come nel calcolo a quella data). Pura, senza database.
+     *
+     * Serve alla base del debito ereditato (decisione 489: il capitale del defunto alla fine del giorno prima del decesso) e a tenere dov'era il credito del
+     * defunto che copriva le rate passate agli eredi (D1 della prova della Coda 663).
+     *
+     * @param array<string, array{inizio: ?string, base: bool, ordine: array, fine?: ?string, protetto?: list<array{dal: string, importo: int}>}> $chiavi
+     * @param list<array{giorno: string, chiave: string, importo: int}> $movimenti
+     * @return array{saldi: array<string, int>, capitali: array<string, int>, coperti: array<string, int>, protetti: array<string, int>}
+     */
+    public static function capitaliAl(array $chiavi, array $movimenti, string $giorno, ?string $alla = null): array
+    {
+        $g = self::numero($giorno);
+        $saldi = array_fill_keys(array_keys($chiavi), 0);
+        foreach ($movimenti as $m) {
+            if (self::numero($m['giorno']) <= $g - 1) {
+                $saldi[$m['chiave']] = ($saldi[$m['chiave']] ?? 0) + (int) $m['importo'];
+            }
+        }
+        $credito = 0;
+        foreach ($saldi as $s) {
+            $credito += max(0, -$s);
+        }
+        // Come nel calcolo alla data: anche la chiave registrata fino alla data o oltre tiene i suoi crediti (E5 della seconda prova della beta.12).
+        $base = array_filter($chiavi, fn (array $c) => $c['base'] && (($c['fine'] ?? null) === null || self::numero((string) $c['fine']) >= $g)
+            && ($alla === null || ($c['inizio'] !== null && (self::numero((string) $c['inizio']) <= self::numero($alla)
+                || (($c['inizio_pieno'] ?? null) !== null && self::numero((string) $c['inizio_pieno']) <= self::numero($alla))))));
+        uksort($base, fn ($a, $b) => [$chiavi[$a]['ordine'], $a] <=> [$chiavi[$b]['ordine'], $b]);
+        $capitali = [];
+        $coperti = [];
+        $protetti = [];
+        foreach (array_keys($base) as $k) {
+            $protetti[$k] = min(max(0, $saldi[$k]), self::protetto($chiavi[$k]['protetto'] ?? [], $g));
+            $debito = max(0, $saldi[$k] - self::protetto($chiavi[$k]['protetto'] ?? [], $g));
+            $coperti[$k] = min($credito, $debito);
+            $credito -= $coperti[$k];
+            $capitali[$k] = $debito - $coperti[$k];
+        }
+
+        return ['saldi' => $saldi, 'capitali' => $capitali, 'coperti' => $coperti, 'protetti' => $protetti];
     }
 
     /** La parte protetta da un accordo il giorno dato: l'importo dell'ultimo passo cominciato quel giorno o prima; zero prima del primo. */

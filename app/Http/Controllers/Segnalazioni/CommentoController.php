@@ -85,7 +85,7 @@ class CommentoController extends Controller
         Gate::authorize('delete', $commento);
 
         try {
-            $commento->delete();
+            $this->commentoService->elimina($commento, request()->user());
             return back()->with($this->flashSuccess('Commento eliminato.'));
 
         } catch (\Throwable $e) {

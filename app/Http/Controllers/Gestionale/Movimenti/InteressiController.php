@@ -47,27 +47,63 @@ class InteressiController extends Controller
         $dati = $request->validate([
             'alla' => ['required', 'date_format:Y-m-d', 'before_or_equal:' . DateHelper::oggiUtente()],
             'righe' => ['required', 'array', 'min:1', 'max:20000'],
-            'righe.*' => ['string', 'regex:/^\d+\|\d+\|\d+$/'],
+            // Decisione 489: la riga del debito ereditato porta il passaggio, «persona|rata|unità|s<passaggio>».
+            'righe.*' => ['string', 'regex:/^\d+\|\d+\|\d+(\|s\d+)?$/'],
             'atteso' => ['required', 'integer', 'min:1'],
             'voci' => ['required', 'array'],
             'voci.*' => ['integer'],
+            // Decisione 493 (10): le cifre cambiate, solo per le righe cambiate, in euro come le scrive l'amministratore; il perché.
+            'importi' => ['nullable', 'array'],
+            'importi.*' => ['nullable', 'string', 'max:20', 'regex:/^\s*€?\s*\d{1,7}([.,]\d{1,2})?\s*$/u'],
+            'motivo' => ['nullable', 'string', 'max:' . PropostaInteressi::MOTIVO_MASSIMO],
+            // Decisione 512: o il tasso, in percento come lo scrive l'amministratore («1,00», «1,5 %»), solo per le righe cambiate con il tasso.
+            'tassi' => ['nullable', 'array'],
+            'tassi.*' => ['nullable', 'string', 'max:20', 'regex:/^\s*\d{1,3}([.,]\d{1,4})?\s*%?\s*$/u'],
         ], [
             'righe.required' => 'Tieni almeno una riga della proposta.',
             'alla.before_or_equal' => 'Gli interessi si propongono fino a oggi, non dopo.',
             'voci.required' => 'Scegli la voce di entrata che riceve gli interessi quando sono versati.',
+            'importi.*.regex' => 'Scrivi la cifra in euro, per esempio 0,30.',
+            'tassi.*.regex' => 'Scrivi il tasso in percento, per esempio 1,00.',
+            'motivo.max' => 'Il perché sta in ' . PropostaInteressi::MOTIVO_MASSIMO . ' caratteri.',
         ]);
         $persone = array_values(array_unique(array_map(fn (string $k) => (int) explode('|', $k)[0], $dati['righe'])));
         $this->assicuraPersone($condominio, $persone);
+        // Euro → centesimi una volta sola, qui al confine.
+        $importi = [];
+        foreach ((array) ($dati['importi'] ?? []) as $chiave => $euro) {
+            if ($euro !== null && trim((string) $euro) !== '') {
+                $importi[(string) $chiave] = MoneyHelper::toCents(trim(str_replace('€', '', (string) $euro)));
+            }
+        }
+
+        // Il tasso in decimillesimi di punto (1,00 % = 10.000), una volta sola, qui al confine.
+        $tassi = [];
+        foreach ((array) ($dati['tassi'] ?? []) as $chiave => $percento) {
+            if ($percento !== null && trim((string) $percento) !== '') {
+                $tassi[(string) $chiave] = self::tassoE4((string) $percento);
+            }
+        }
 
         $rate = $this->interessi->registra($condominio, $dati['alla'], array_values($dati['righe']), (int) $dati['atteso'],
-            array_map('intval', $dati['voci']), $request->user()?->id);
+            array_map('intval', $dati['voci']), $request->user()?->id, $importi, $dati['motivo'] ?? null, $tassi);
         $totale = array_sum(array_map(fn (Rata $r) => (int) $r->importo_totale, $rate));
 
         return response()->json([
             'rate' => array_map(fn (Rata $r) => (int) $r->id, $rate),
-            'messaggio' => (count($rate) === 1 ? 'Interessi registrati: 1 addebito' : 'Interessi registrati: ' . count($rate) . ' addebiti') . ', ' . MoneyHelper::format($totale)
-                . '. Ognuno è una scadenza della persona, nel suo estratto conto; diventano del condominio quando sono versati.',
+            'messaggio' => trim((count($rate) === 1 ? 'Interessi registrati: 1 addebito' : 'Interessi registrati: ' . count($rate) . ' addebiti') . ', ' . MoneyHelper::format($totale)
+                . '. Ognuno è una scadenza della persona, nel suo estratto conto; diventano del condominio quando sono versati. '
+                . implode(' ', $this->interessi->frasiDellaRegistrazione)),
         ], 201);
+    }
+
+    /** «1,00», «1,5 %», «0,25»: il tasso in decimillesimi di punto (1,00 % = 10.000), senza numeri con la virgola. */
+    public static function tassoE4(string $percento): int
+    {
+        $pulito = str_replace([' ', '%', "\u{00A0}"], '', trim($percento));
+        [$interi, $decimali] = array_pad(preg_split('/[.,]/', $pulito, 2), 2, '');
+
+        return (int) $interi * 10000 + (int) str_pad(substr($decimali, 0, 4), 4, '0');
     }
 
     /** Le spese per il ritardo in blocco: per ogni persona scelta l'unità proposta, e dove si scrivono, con le voci. */

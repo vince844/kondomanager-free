@@ -287,6 +287,10 @@ return [
         'allegati_moderati_di_serie_description' => 'Vale para as sinalizações e os avisos novos: os ficheiros carregados aguardam aprovação, exceto os de quem os pode aprovar. Cada elemento altera-se na sua ficha.',
         'allegati_massimo_per_elemento_title' => 'Número máximo de anexos por elemento',
         'allegati_massimo_per_elemento_description' => 'Quantos ficheiros podem ser anexados no máximo a cada sinalização ou aviso (por padrão 5).',
+        'segnalazioni_assegnazione_visibile_nel_portale_title' => 'Mostrar aos condóminos quem acompanha o ticket',
+        'segnalazioni_assegnazione_visibile_nel_portale_description' => 'Ativado, na ficha do portal o condómino vê o nome de quem no escritório acompanha o seu ticket. Desativado, a atribuição permanece interna ao escritório.',
+        'segnalazioni_assegnazione_porta_in_lavorazione_title' => 'Ao atribuir um ticket aberto, passa para «em processamento»',
+        'segnalazioni_assegnazione_porta_in_lavorazione_description' => 'Ativado, um ticket aberto que seja atribuído passa automaticamente para «em processamento». Desativado, o estado é alterado por quem o trata.',
 
         'mail_settings_title' => 'Configuração de email',
         'mail_settings_description' => 'Escolha o método de envio, configure as credenciais e teste a ligação.',
@@ -316,7 +320,7 @@ return [
         'test_unsaved_warning' => 'Tem alterações não guardadas. O teste usa os valores que vê no formulário mas não os guarda: para os manter, guarde a configuração.',
 
         'cron_guide_1_title' => 'O Motor Invisível',
-        'cron_guide_1_desc' => 'O daemon executa em segundo plano, sem intervenção manual, a manutenção do sistema: remove eventos encerrados há mais de um ano e o cache expirado, verifica se há uma nova versão disponível e, onde a opção para hospedagens compartilhadas está ativada, também processa a fila de tarefas.',
+        'cron_guide_1_desc' => 'O daemon executa em segundo plano, sem intervenção manual, a manutenção do sistema: remove eventos encerrados há mais de um ano e o cache expirado, publica as comunicações agendadas, verifica se há uma nova versão disponível e, onde a opção para hospedagens compartilhadas está ativada, também processa a fila de tarefas.',
         'cron_guide_2_title' => 'Webhook (Externo)',
         'cron_guide_2_desc' => 'Identificado pelo ponto laranja. Permite acionar o agendador por meio de uma URL criptografada chamada por serviços externos (por exemplo, cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Nativo)',

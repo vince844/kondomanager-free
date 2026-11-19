@@ -16,6 +16,7 @@ return [
     'hidden_badge' => 'Oculto',
     'per_page' => 'Linhas por página',
     'edited' => 'Editado',
+    'discussione_con' => 'discussão com :nome',
     'header' => [
         'list_head' => 'Lista de comentários',
         'list_title' => 'Lista de comentários',
@@ -87,9 +88,9 @@ return [
     ],
     'confirm_delete' => [
         'title' => 'Eliminar comentário',
-        'description' => 'Quer eliminar o comentário de :autore? A operação não pode ser anulada.',
+        'description' => 'Quer eliminar o comentário de :autore? O autor recebe um email a dizer que o seu comentário foi eliminado, salvo se tiver desligado o aviso «Comentário eliminado». A operação não pode ser anulada.',
         'bulk_title' => 'Eliminar os comentários selecionados',
-        'bulk_description' => 'Quer eliminar os comentários selecionados? Os que a ficha não lhe permite eliminar ficam onde estão. A operação não pode ser anulada.',
+        'bulk_description' => 'Quer eliminar os comentários selecionados? Os que a ficha não lhe permite eliminar ficam onde estão. Os autores recebem um email por cada comentário eliminado, salvo quem tiver desligado o aviso «Comentário eliminado». A operação não pode ser anulada.',
     ],
     'confirm_hide' => [
         'title' => 'Ocultar comentário',

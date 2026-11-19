@@ -25,7 +25,9 @@ use Illuminate\Support\Facades\DB;
  * oggi se è aperto. Un array ciascuno, per la pagina e per la stampa: nessuna somma nella vista.
  *
  * LA FONTE. La lettura comune dei debiti ({@see LetturaDebiti}) alla data, la stessa di «Rate scadute» con la data dell'elenco: per gruppi di persone
- * (`perCondominioABlocchi`), così si tiene in memoria solo ciò che si mostra. Lo scaduto del § 10 è lo scaduto di «Rate scadute» alla stessa data.
+ * (`perCondominioABlocchi`), così si tiene in memoria solo ciò che si mostra. Lo scaduto del § 10 è lo scaduto di «Rate scadute» alla stessa data, tranne per le
+ * persone di una successione con l'arretrato agli eredi: qui il debito del defunto resta a suo nome, come nel giornale; «Rate scadute» lo mostra sugli eredi,
+ * con «ereditato» (decisioni 493 (12) e 516). La guida della scheda lo dice.
  *
  * IL § 9. Una riga per persona e unità con una posizione diversa da zero: il residuo delle rate emesse per l'esercizio della rata (quello del suo piano,
  * {@see CompetenzaDelPiano::esercizioDelPiano()}, con il dedotto) e per la natura della gestione (`gestioni.tipo`): le quote dell'esercizio, ordinarie e

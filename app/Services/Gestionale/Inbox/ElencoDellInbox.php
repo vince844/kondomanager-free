@@ -50,10 +50,13 @@ final class ElencoDellInbox
     /**
      * I filtri dell'indirizzo, letti: un valore che non c'è non filtra. Le segnalazioni che si vedono vengono da chi legge ({@see CompitoDellaSegnalazione::chiVede()}).
      *
-     * @return array{quando: ?string, tipo: ?string, cerca: ?string, ordine: string, condominio_id: ?int, segnalazioni: bool|int, moderare: array<string, bool>}
+     * «Le mie» (`mie`, la 487 del registro delle decisioni) è l'id di chi legge, o null: lascia solo i compiti delle segnalazioni assegnate a lui.
+     *
+     * @return array{quando: ?string, tipo: ?string, cerca: ?string, ordine: string, condominio_id: ?int, segnalazioni: bool|int, moderare: array<string, bool>, mie: ?int, chi_legge: ?int}
      */
     public static function filtri(array $dati, ?User $chiLegge): array
     {
+        $mie = in_array($dati['mie'] ?? null, [1, '1', true, 'true'], true) && $chiLegge !== null ? (int) $chiLegge->id : null;
         $quando = is_string($dati['quando'] ?? null) && array_key_exists($dati['quando'], FasceDeiCompiti::QUANDO) ? $dati['quando'] : null;
         $tipo = is_string($dati['tipo'] ?? null) && array_key_exists($dati['tipo'], TipiDeiCompiti::TIPI) ? TipiDeiCompiti::canonico($dati['tipo']) : null;
         $cerca = is_string($dati['cerca'] ?? null) ? mb_substr(trim($dati['cerca']), 0, self::CERCA_FINO_A) : '';
@@ -61,7 +64,8 @@ final class ElencoDellInbox
         $condominioId = filter_var($dati['condominio_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 
         return ['quando' => $quando, 'tipo' => $tipo, 'cerca' => $cerca === '' ? null : $cerca, 'ordine' => $ordine, 'condominio_id' => $condominioId,
-            'segnalazioni' => CompitoDellaSegnalazione::chiVede($chiLegge), 'moderare' => CompitoDaModerare::chiVede($chiLegge)];
+            'segnalazioni' => CompitoDellaSegnalazione::chiVede($chiLegge), 'moderare' => CompitoDaModerare::chiVede($chiLegge),
+            'mie' => $mie, 'chi_legge' => $chiLegge !== null ? (int) $chiLegge->id : null];
     }
 
     /** I compiti aperti con il condominio, il tipo e la ricerca; con `$conLaData` anche la data. */
@@ -78,6 +82,9 @@ final class ElencoDellInbox
             });
         // Le segnalazioni che chi legge non apre non ci sono, e nemmeno quelle che non ci sono più; senza la regola nei filtri, nessuna.
         CompitoDellaSegnalazione::soloQuelliCheVede($query, $filtri['segnalazioni'] ?? CompitoDellaSegnalazione::NESSUNA, $filtri['moderare'] ?? null);
+        if (($filtri['mie'] ?? null) !== null) {
+            $this->soloLeMie($query, $tipoSql, (int) $filtri['mie']);
+        }
         if ($filtri['cerca'] !== null) {
             $this->cerca($query, $filtri['cerca']);
         }
@@ -86,6 +93,25 @@ final class ElencoDellInbox
         }
 
         return $query;
+    }
+
+    /**
+     * Il numero di «Le mie» (la 487 del registro delle decisioni): i compiti aperti delle segnalazioni assegnate a chi legge, con la regola di chi vede; come le card,
+     * segue solo il condominio (non la data, il tipo, la ricerca). Senza chi legge, 0.
+     */
+    public function leMie(array $filtri): int
+    {
+        $chi = $filtri['chi_legge'] ?? null;
+
+        return $chi === null ? 0 : $this->query(['mie' => (int) $chi, 'tipo' => null, 'cerca' => null, 'quando' => null] + $filtri, false)->count();
+    }
+
+    /** Solo i compiti delle segnalazioni assegnate a quell'utente: la segnalazione c'è e lo ha in `assigned_to`. */
+    private function soloLeMie($query, string $tipoSql, int $utente): void
+    {
+        $query->whereRaw("{$tipoSql} = ?", [CompitoDellaSegnalazione::TIPO])
+            ->where('eventi.eventable_type', (new \App\Models\Segnalazione())->getMorphClass())
+            ->whereIn('eventi.eventable_id', fn (Builder $s) => $s->select('segnalazioni.id')->from('segnalazioni')->where('segnalazioni.assigned_to', $utente));
     }
 
     /**
@@ -145,7 +171,7 @@ final class ElencoDellInbox
     public function pagina(array $filtri): LengthAwarePaginator
     {
         $pagina = $this->nellOrdineScelto($this->query($filtri), $filtri['ordine'])->paginate(self::PER_PAGINA)->withQueryString();
-        $righe = $this->righe($pagina->getCollection());
+        $righe = $this->righe($pagina->getCollection(), $filtri['chi_legge'] ?? null);
 
         return $pagina->setCollection($righe);
     }
@@ -173,7 +199,7 @@ final class ElencoDellInbox
                 default => $this->fasce->filtraQuando($query, $tipoSql, 'in_arrivo'),
             };
             $quante = $numero <= self::TUTTE_FINO_A ? $numero : self::MOSTRATE_OLTRE;
-            $esito[] = ['gruppo' => $gruppo, 'numero' => $numero, 'righe' => $this->righe($this->nellOrdineScelto($query, $filtri['ordine'])->limit($quante)->get())->all()];
+            $esito[] = ['gruppo' => $gruppo, 'numero' => $numero, 'righe' => $this->righe($this->nellOrdineScelto($query, $filtri['ordine'])->limit($quante)->get(), $filtri['chi_legge'] ?? null)->all()];
         }
 
         return $esito;
@@ -220,15 +246,20 @@ final class ElencoDellInbox
      * @param  CollezioneDiEventi<int, Evento>  $compiti
      * @return Collection<int, array<string, mixed>>
      */
-    public function righe(CollezioneDiEventi $compiti): Collection
+    public function righe(CollezioneDiEventi $compiti, ?int $chiLegge = null): Collection
     {
         $compiti->loadMissing(['condomini:id,nome', 'anagrafiche:id,nome']);
+        // Chi segue le segnalazioni dei compiti della pagina, letto dalle segnalazioni con una lettura sola (decisioni 486 e 487).
+        $morphSegnalazione = (new \App\Models\Segnalazione())->getMorphClass();
+        $dellaSegnalazione = fn (Evento $t) => ($t->meta['type'] ?? $t->tipo?->value) === CompitoDellaSegnalazione::TIPO
+            && $t->eventable_type === $morphSegnalazione && $t->eventable_id !== null;
+        $seguite = CompitoDellaSegnalazione::chiLeSegue($compiti->filter($dellaSegnalazione)->pluck('eventable_id'), $chiLegge);
         $risposte = RispostePromemoria::perLeRighe($compiti);
         $daCercare = $compiti->filter(fn ($t) => $t->anagrafiche->isEmpty() && ! empty($t->meta['context']['anagrafica_id']))
             ->map(fn ($t) => (int) $t->meta['context']['anagrafica_id'])->unique()->values()->all();
         $persone = $daCercare === [] ? collect() : Anagrafica::whereIn('id', $daCercare)->pluck('nome', 'id');
 
-        return $compiti->map(function (Evento $task) use ($risposte, $persone) {
+        return $compiti->map(function (Evento $task) use ($risposte, $persone, $dellaSegnalazione, $seguite) {
             $condominio = $task->condomini->sortBy('id')->first();
             $persona = $task->anagrafiche->first()?->nome ?? $persone[(int) ($task->meta['context']['anagrafica_id'] ?? 0)] ?? null;
             $tipo = $task->meta['type'] ?? $task->tipo?->value;
@@ -258,6 +289,8 @@ final class ElencoDellInbox
                 'azione' => TipiDeiCompiti::azione($tipo, $task),
                 // La priorità della segnalazione, per il badge della riga: solo «urgente» e «alta».
                 'priorita' => in_array($task->meta['priority'] ?? null, ['urgente', 'alta'], true) ? $task->meta['priority'] : null,
+                // Chi segue la segnalazione (la 487 del registro delle decisioni): «te», un nome o nessuno; null per gli altri compiti.
+                'assegnata' => $dellaSegnalazione($task) ? ($seguite[(int) $task->eventable_id] ?? ['nome' => null, 'te' => false, 'attivo' => true]) : null,
                 'context' => [
                     'anagrafica_nome' => $persona,
                     'action_url' => IndirizzoDelCompito::perIlLink($task->meta['action_url'] ?? null),

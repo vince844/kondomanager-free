@@ -52,9 +52,10 @@ use Illuminate\Support\Str;
  *   Un verbale racconta il codice com'era quel giorno, e un `file:riga` che oggi non risolve dice
  *   che il codice è andato avanti, non che il documento mente; l'età di un verbale della 1.11 è
  *   per definizione quella della 1.11.
- * - **`kondocloud/`** — intestazione, età e link, ma non i riferimenti `file:riga`. Citano il codice
- *   di un repository a parte, e cercati in questo progetto sarebbero centinaia di «file assente», tutti
- *   falsi. Cercati anche in quel repository non migliora: molti non stanno in nessuno dei due, e altri
+ * - **una cartella che documenta un repository a parte**, riconosciuta dal file `.altro-repository`
+ *   che contiene (`SEGNO_ALTRO_REPOSITORY`), non dal nome — intestazione, età e link, ma non i
+ *   riferimenti `file:riga`. Citano il codice di quel repository, e cercati in questo progetto
+ *   sarebbero centinaia di «file assente», tutti falsi. Cercati anche in quel repository non migliora: molti non stanno in nessuno dei due, e altri
  *   stanno in un file omonimo troppo corto. Quei documenti citano anche il codice di Coolify
  *   (`ApplicationDeploymentJob.php:4168`) e delle librerie (`FilesystemAdapter.php:333`), e un
  *   `file:riga` non dice di quale repository parla: un `routes/api.php:311` «troppo corto» può essere
@@ -130,9 +131,17 @@ class VerificaDocumentazioneCommand extends Command
     private const REGOLE_PER_CARTELLA = [
         'verbali' => ['intestazione' => true, 'eta' => false, 'riferimenti' => self::NON_SI_CONTROLLANO, 'link' => true],
         'archivio' => ['intestazione' => true, 'eta' => false, 'riferimenti' => self::NON_SI_CONTROLLANO, 'link' => true],
-        'kondocloud' => ['intestazione' => true, 'eta' => true, 'riferimenti' => self::NON_SI_CONTROLLANO, 'link' => true],
         'riferimenti' => ['intestazione' => false, 'eta' => false, 'riferimenti' => self::NON_SI_CONTROLLANO, 'link' => true],
     ];
+
+    /**
+     * Il file che segna una cartella di `docs/` che documenta il codice di un repository a parte. La
+     * cartella si riconosce da lui e non dal nome, perché il nome di quel repository non è pubblico.
+     */
+    private const SEGNO_ALTRO_REPOSITORY = '.altro-repository';
+
+    /** Quello che si chiede a una cartella con il segno: tutto, tranne i riferimenti `file:riga`. */
+    private const REGOLE_ALTRO_REPOSITORY = ['intestazione' => true, 'eta' => true, 'riferimenti' => self::NON_SI_CONTROLLANO, 'link' => true];
 
     /**
      * Le cartelle di codice dove si cercano i file citati per nome. `lang` c'è perché i documenti
@@ -312,7 +321,26 @@ class VerificaDocumentazioneCommand extends Command
      */
     private function regole(string $relativo): array
     {
-        return self::REGOLE_PER_CARTELLA[$this->cartellaDi($relativo)] ?? self::REGOLE_PREDEFINITE;
+        return $this->regoleDellaCartella($this->cartellaDi($relativo));
+    }
+
+    /**
+     * Le regole di una prima cartella sotto `docs/`: quelle nominate, poi quelle del segno
+     * `SEGNO_ALTRO_REPOSITORY`, poi le predefinite.
+     *
+     * @return array{intestazione: bool, eta: bool, riferimenti: string, link: bool}
+     */
+    private function regoleDellaCartella(string $cartella): array
+    {
+        if (isset(self::REGOLE_PER_CARTELLA[$cartella])) {
+            return self::REGOLE_PER_CARTELLA[$cartella];
+        }
+
+        if ($cartella !== '' && is_file(base_path('docs/'.$cartella.'/'.self::SEGNO_ALTRO_REPOSITORY))) {
+            return self::REGOLE_ALTRO_REPOSITORY;
+        }
+
+        return self::REGOLE_PREDEFINITE;
     }
 
     /**
@@ -346,7 +374,7 @@ class VerificaDocumentazioneCommand extends Command
         $this->line('  <options=bold>Che cosa si guarda, per cartella</>');
 
         foreach ($perCartella as $cartella => $quanti) {
-            $regole = self::REGOLE_PER_CARTELLA[$cartella] ?? self::REGOLE_PREDEFINITE;
+            $regole = $this->regoleDellaCartella($cartella);
 
             $controlli = array_filter([
                 $regole['intestazione'] ? 'intestazione' : null,

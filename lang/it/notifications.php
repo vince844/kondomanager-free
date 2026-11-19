@@ -76,6 +76,13 @@ return [
         'action'    => 'Visualizza comunicazione',
     ],
 
+    'scheduled_communication_published' => [
+        'subject'   => 'Comunicazione pubblicata: :title',
+        'line_1'    => 'La comunicazione ":title", programmata per il :date alle :time, è stata pubblicata.',
+        'line_late' => 'È uscita in ritardo, il :date alle :time: all\'ora scelta il pianificatore non era attivo.',
+        'action'    => 'Visualizza comunicazione',
+    ],
+
     // Nuova comunicazione pubblicata (NewComunicazioneNotification)
     'new_communication' => [
         'subject'   => 'Nuova comunicazione in bacheca',
@@ -205,9 +212,25 @@ return [
     ],
 
     // Commento eliminato
+    // La parola con cui i due avvisi del commento nascosto o eliminato chiamano l'elemento (con l'articolo, dove la lingua lo chiede).
+    'comment_entity' => [
+        'ticket'        => 'segnalazione',
+        'communication' => 'comunicazione',
+    ],
+
+    'hidden_ticket_comment' => [
+        'subject' => 'Un tuo commento è stato nascosto',
+        'line_1'  => 'Il tuo commento del :data sulla :entity è stato nascosto dall\'amministratore del condominio: gli altri non lo vedono più.',
+        'action'  => 'Visualizza segnalazione',
+    ],
+
     'deleted_ticket_comment' => [
-        'subject' => 'Un tuo commento è stato rimosso',
-        'line_1'  => 'Il tuo commento sulla :entity è stato rimosso o nascosto da un amministratore.',
+        'subject'        => 'Un tuo commento è stato eliminato',
+        'subject_pending' => 'Un tuo commento non è stato pubblicato',
+        'line_1'         => 'Il tuo commento del :data sulla :entity è stato eliminato dall\'amministratore del condominio.',
+        'line_1_pending' => 'Il tuo commento del :data sulla :entity non è stato approvato ed è stato eliminato dall\'amministratore del condominio.',
+        'started'        => 'Il commento cominciava così: «:inizio»',
+        'action'         => 'Visualizza segnalazione',
     ],
 
     // Commenti alle comunicazioni
@@ -239,9 +262,19 @@ return [
         'action'  => 'Visualizza comunicazione',
     ],
 
+    'hidden_communication_comment' => [
+        'subject' => 'Un tuo commento è stato nascosto',
+        'line_1'  => 'Il tuo commento del :data sulla :entity è stato nascosto dall\'amministratore del condominio: gli altri non lo vedono più.',
+        'action'  => 'Visualizza comunicazione',
+    ],
+
     'deleted_communication_comment' => [
-        'subject' => 'Un tuo commento è stato rimosso',
-        'line_1'  => 'Il tuo commento sulla :entity è stato rimosso o nascosto da un amministratore.',
+        'subject'        => 'Un tuo commento è stato eliminato',
+        'subject_pending' => 'Un tuo commento non è stato pubblicato',
+        'line_1'         => 'Il tuo commento del :data sulla :entity è stato eliminato dall\'amministratore del condominio.',
+        'line_1_pending' => 'Il tuo commento del :data sulla :entity non è stato approvato ed è stato eliminato dall\'amministratore del condominio.',
+        'started'        => 'Il commento cominciava così: «:inizio»',
+        'action'         => 'Visualizza comunicazione',
     ],
 
     // Stringhe comuni a tutte le notifiche
@@ -322,5 +355,19 @@ return [
             'line_1'    => "Il :data alle :ora sono stati generati nuovi codici di recupero per l'autenticazione a due fattori del tuo account su :appName: quelli di prima non valgono più.",
             'consiglio' => "Se la modifica non l'hai fatta tu, cambia subito la password e avvisa l'amministratore.",
         ],
+    ],
+
+    // Assegnazione segnalazioni (decisione 294)
+    'assigned_ticket' => [
+        'subject' => 'Segnalazione assegnata a te: :title',
+        'line_1' => ':user ti ha assegnato la segnalazione ":title" (:building).',
+        'action' => 'Visualizza segnalazione',
+    ],
+    'unassigned_ticket' => [
+        'subject' => 'Segnalazione non più assegnata a te: :title',
+        'line_1' => ':user ha assegnato a :name la segnalazione ":title", che seguivi tu.',
+        'line_1_nobody' => ':user ha tolto l\'assegnazione della segnalazione ":title", che seguivi tu.',
+        'line_1_self' => ':user ha preso per sé la segnalazione ":title", che seguivi tu.',
+        'action' => 'Visualizza segnalazione',
     ],
 ];

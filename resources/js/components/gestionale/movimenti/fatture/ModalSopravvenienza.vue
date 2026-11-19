@@ -106,11 +106,11 @@ const handleConfirm = () => {
                         <p class="font-bold mb-1 text-blue-900 dark:text-blue-100">Cosa succede ora?</p>
                         <p v-if="mode === 'corrente'">
                             Il sistema creerà una voce "Sopravvenienza" per isolare questa spesa dal preventivo ordinario. 
-                            <strong>Nota:</strong> il salvataggio non genera rate. Dovrai emettere un <strong>Piano rate straordinario</strong> in seguito per riscuotere l'importo.
+                            <strong>Nota:</strong> il salvataggio non genera rate. Per riscuotere l'importo crea in seguito un piano rate dalla scheda <strong>«Spese fuori preventivo»</strong>, sulla gestione di questa fattura.
                         </p>
                         <p v-else>
                             Stai creando il capitolo di spesa necessario per ricaricare un debito degli anni passati. 
-                            Potrai chiedere le quote ai condòmini creando un <strong>Piano rate straordinario</strong> dedicato a questa voce.
+                            Potrai chiedere le quote ai condòmini con un piano rate dalla scheda <strong>«Spese fuori preventivo»</strong>, sulla gestione di questa fattura.
                         </p>
                     </div>
                 </div>

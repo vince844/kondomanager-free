@@ -157,12 +157,25 @@ class UpdateFatturaRequest extends FormRequest
                 );
             }
 
+            // Coda 687 (decisione 507): una riga «Fuori preventivo» resta tale nella modifica (la pagina la rimanda con il segno, e il servizio lo tiene sulla
+            // stessa voce tecnica o sulla stessa unità). Il segno acceso su una riga che non lo aveva non si accetta: «Fuori preventivo» nasce con la
+            // registrazione, che crea la voce tecnica e il riparto della spesa.
+            $segnate = [];
+            foreach ($this->route('fattura')?->righe ?? [] as $rigaPrima) {
+                if ($rigaPrima->is_sopravvenienza) {
+                    $segnate[\App\Services\Gestionale\FatturaPassivaService::chiaveRigaFuoriPreventivo($rigaPrima->conto_id, $rigaPrima->immobile_id)] = true;
+                }
+            }
+
             foreach ($righe as $idx => $riga) {
                 $isSopravvenienza = filter_var($riga['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                if ($isSopravvenienza) {
+                $chiave = \App\Services\Gestionale\FatturaPassivaService::chiaveRigaFuoriPreventivo(
+                    empty($riga['immobile_id']) ? ($riga['conto_id'] ?? null) : null, $riga['immobile_id'] ?? null);
+                if ($isSopravvenienza && ! isset($segnate[$chiave])) {
                     $validator->errors()->add(
                         "righe.{$idx}.is_sopravvenienza",
-                        'Le righe di sopravvenienza non sono modificabili: usa lo storno.'
+                        'Una riga «Fuori preventivo» non si aggiunge modificando la fattura: nasce con la registrazione, che crea la sua voce e il suo riparto. '
+                        . 'Togli il segno da questa riga, oppure storna la fattura e registrala di nuovo con la riga «Fuori preventivo».'
                     );
                 }
 
@@ -193,6 +206,9 @@ class UpdateFatturaRequest extends FormRequest
                     $fattura->righe()->whereNotNull('conto_id')->pluck('conto_id')->map(fn ($id) => (int) $id)->all(),
                 );
             }
+
+            // Coda 687 (decisione 507): le voci delle righe sono della gestione scelta.
+            PerimetroFattura::rifiutaVociDiUnAltraGestione($validator, $righe, $this->input('gestione_id'), (int) $this->route('condominio')->id);
 
             $this->guardiaNaturaPercipienteMancante($validator);
             $this->guardiaNumeroDocumentoCollidente($validator);

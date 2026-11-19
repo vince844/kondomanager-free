@@ -879,7 +879,12 @@ it('una fattura con voci di un\'altra gestione è da leggere nei controlli, con 
     $pcF = \App\Models\Gestionale\PianoConto::create(['condominio_id' => $s['c']->id, 'gestione_id' => $facciata->id, 'nome' => 'Piano facciata']);
     $ponteggio = be52Voce($this, $s, $pcF, 'Ponteggio', 'spesa', '5.000,00');
     vrmGiorno($this, '2026-12-20');
-    vrmFattura($this, $s, $s['fornitore'], 'FF-ALTRA', [[$ponteggio->id, 100.00]], '2026-12-20');
+    // Dalla 1.12.0-beta.12 (Coda 687) la registrazione rifiuta una voce di un'altra gestione: la fattura nasce sulla facciata e la testata passa
+    // all'ordinaria come la lasciavano le versioni di prima. Il controllo resta per quei dati.
+    $altra = vrmFattura($this, $s, $s['fornitore'], 'FF-ALTRA', [[$ponteggio->id, 100.00]], '2026-12-20', ['gestione_id' => $facciata->id]);
+    DB::table('scritture_contabili')->whereIn('id', DB::table('fattura_scrittura')->where('fattura_passiva_id', $altra->id)->pluck('scrittura_contabile_id'))
+        ->update(['gestione_id' => $s['g']->id]);
+    DB::table('fatture_passive')->where('id', $altra->id)->update(['gestione_id' => $s['g']->id]);
     vrmGiorno($this, '2027-01-15');
     $ge = rctControllo(rctControlli($s), 'GE');
 

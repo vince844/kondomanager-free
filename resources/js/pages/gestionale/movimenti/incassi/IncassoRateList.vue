@@ -89,6 +89,26 @@ const testoConferma = computed(() => {
     + 'la registrazione è di oggi, ed è la data che il libro giornale mostra. Le scritture esistenti non si modificano.'
     + (compensazioni > 0 ? ' La rettifica di una compensazione segue la compensazione: se l\'incasso si storna, si storna con lei.' : '');
 });
+/**
+ * Decisione 538 (1): le due righe sotto il titolo, al posto del testo lungo (che sta nel dettaglio): che cosa c'è da fare, in parole dell'amministratore.
+ */
+const sintesiRiallineamento = computed(() => {
+  const n = scrittureDaFare.value;
+  const daEmettere = riallineamento.value?.da_emettere.length ?? 0;
+  const frasi: string[] = [];
+  if (n > 0) {
+    frasi.push(`${n === 1 ? 'Una scrittura da aggiungere' : `${n} scritture da aggiungere`} nel libro giornale: crediti riportati dagli esercizi precedenti presi dal conto sbagliato o rimasti fuori dall'emissione della loro rata.`);
+  }
+  if (daEmettere > 0) {
+    frasi.push(daEmettere === 1 ? 'Una rata è segnata «emessa» ma non ha scritture.' : `${daEmettere} rate sono segnate «emessa» ma non hanno scritture.`);
+  }
+  if (n > 0) {
+    frasi.push('Le scritture già registrate non si toccano.');
+  } else if (daEmettere === 0) {
+    frasi.push('Niente da scrivere: nel dettaglio, per ogni voce, il perché e, dove c\'è, la strada.');
+  }
+  return frasi.join(' ');
+});
 // In sola lettura le voci sono tutto ciò che la card ha da dire: l'elenco parte aperto.
 const isRiallineamentoListOpen = ref(soloLettura.value);
 const isRiallineaModalOpen = ref(false);
@@ -209,108 +229,117 @@ const pageGuides = [
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
             </div>
 
-            <!-- Card «Crediti da riallineare» (1.11.0-beta.49) -->
-            <div v-if="riallineamento" class="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <!-- Su mobile il pulsante va a capo sotto il testo: accanto lo schiacciava in una colonna di poche parole. -->
-              <div class="flex flex-wrap sm:flex-nowrap items-start gap-3">
-                <div class="bg-amber-100 p-2 rounded-lg border border-amber-200 shrink-0">
-                  <AlertTriangle class="w-5 h-5 text-amber-600" />
+            <!-- Il riquadro «Crediti da riallineare» (1.11.0-beta.49), come nella bozza della decisione 538: l'icona piccola senza scatola, il titolo e due
+                 righe; «Mostra il dettaglio» e «Scrivi le correzioni» insieme a destra; il testo lungo dentro il dettaglio. -->
+            <Collapsible v-if="riallineamento" v-model:open="isRiallineamentoListOpen" data-testid="riquadro-riallineamento"
+              class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/60 dark:bg-amber-950/30">
+              <!-- Su un telefono i pulsanti vanno sotto il testo, insieme: accanto lo schiacciavano in una colonna di poche parole. -->
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="flex min-w-0 items-start gap-2">
+                  <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div class="min-w-0">
+                    <h3 class="text-sm font-semibold text-amber-900 dark:text-amber-100">Crediti da riallineare</h3>
+                    <p data-testid="riallineamento-sintesi" class="mt-0.5 text-sm leading-snug text-amber-800 dark:text-amber-200">{{ sintesiRiallineamento }}</p>
+                  </div>
                 </div>
-                <div class="flex-1 min-w-0">
-                  <h3 class="text-sm font-bold text-amber-900">Crediti da riallineare</h3>
-                  <p v-if="!soloLettura" class="text-xs text-amber-700 mt-1 leading-relaxed">
+                <div class="flex shrink-0 flex-wrap items-center gap-2">
+                  <CollapsibleTrigger as-child>
+                    <Button type="button" variant="outline" size="sm"
+                      class="h-8 border-amber-300 bg-white text-xs text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-transparent dark:text-amber-100 dark:hover:bg-amber-900/40">
+                      <ChevronDown class="mr-1 h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': isRiallineamentoListOpen }" />
+                      {{ isRiallineamentoListOpen ? 'Nascondi il dettaglio' : 'Mostra il dettaglio' }}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <Button
+                    v-if="scrittureDaFare > 0"
+                    type="button"
+                    size="sm"
+                    @click="isRiallineaModalOpen = true"
+                    class="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    Scrivi le correzioni
+                  </Button>
+                </div>
+              </div>
+
+              <CollapsibleContent>
+                <div class="mt-3 space-y-2 border-t border-amber-200 pt-3 dark:border-amber-800/60">
+                  <p v-if="!soloLettura" class="text-xs text-amber-800 leading-relaxed dark:text-amber-200">
                     Alcuni crediti riportati da esercizi precedenti sono stati prelevati da «Crediti verso condomini» invece che da
                     «Passate gestioni», o sono rimasti fuori dall'emissione della loro rata (lo facevano le versioni fino alla 1.10).
                     Il riallineamento aggiunge le scritture che mancano: quelle già registrate non si toccano.
                   </p>
-                  <p v-else-if="restanoDiPrima" class="text-xs text-amber-700 mt-1 leading-relaxed">
+                  <p v-else-if="restanoDiPrima" class="text-xs text-amber-800 leading-relaxed dark:text-amber-200">
                     Niente da scrivere: il riallineamento lascia queste voci come sono. Qui sotto, per ognuna, il perché e,
                     dove c'è, la strada.
                   </p>
                   <!-- Coda 313: le emissioni con la spesa ad personam addebitata due volte. Solo elencate: la conferma non le scrive. La frase
                        del doppio solo dove c'è una cifra: per i piani da controllare a mano il programma il doppio non l'ha misurato. -->
-                  <p v-if="adPersonam.length > 0" data-testid="riallineamento-ad-personam" class="text-xs text-amber-700 mt-1 leading-relaxed">
+                  <p v-if="adPersonam.length > 0" data-testid="riallineamento-ad-personam" class="text-xs text-amber-800 leading-relaxed dark:text-amber-200">
                     Spesa ad personam addebitata due volte: la fattura l'ha già scritta su «Crediti verso condomini» con l'unità, e
                     l'emissione della rata l'ha scritta di nuovo, contandola anche fra le entrate di «Gestione rate». Le rate dei
                     condòmini sono giuste: nessuno deve pagare di più. Sono più alti, della stessa cifra, i crediti verso condomini e il
                     risultato di gestione dell'esercizio dell'emissione. Il riallineamento non la corregge: qui è solo elencata.
                   </p>
-                  <p v-else-if="adPersonamNonCalcolabili.length > 0" data-testid="riallineamento-ad-personam-da-controllare" class="text-xs text-amber-700 mt-1 leading-relaxed">
+                  <p v-else-if="adPersonamNonCalcolabili.length > 0" data-testid="riallineamento-ad-personam-da-controllare" class="text-xs text-amber-800 leading-relaxed dark:text-amber-200">
                     Spesa ad personam da controllare: per i piani elencati nel dettaglio il programma non sa calcolare se le emissioni
                     delle rate l'hanno addebitata due volte. Il riallineamento non li tocca: qui sono solo elencati, con il perché.
                   </p>
 
-                  <Collapsible v-model:open="isRiallineamentoListOpen" class="mt-3">
-                    <CollapsibleTrigger as-child>
-                      <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 hover:text-amber-900">
-                        <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': isRiallineamentoListOpen }" />
-                        {{ isRiallineamentoListOpen ? 'Nascondi il dettaglio' : 'Mostra il dettaglio' }}
-                      </button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <ul class="mt-2 space-y-1">
-                        <li
-                          v-for="c in riallineamento.compensazioni"
-                          :key="`c-${c.scrittura_id}-${c.quota_id}`"
-                          class="bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-800"
-                        >
-                          Compensazione prot. {{ c.protocollo ?? '—' }} del {{ c.data ?? '—' }}, {{ c.persona }}, rata {{ c.numero_rata }}:
-                          <strong>{{ euro(c.importo) }}</strong> si spostano da «Crediti verso condomini» a «Passate gestioni».
-                        </li>
-                        <li
-                          v-for="r in rateDaScrivere"
-                          :key="`r-${r.rata_id}`"
-                          class="bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-800"
-                        >
-                          Rata {{ r.numero_rata }} ({{ r.piano }}), quota a credito rimasta fuori dall'emissione:
-                          <span v-for="(p, i) in r.persone" :key="i">
-                            {{ i > 0 ? '; ' : '' }}{{ p.nome }}, {{ partiDellaQuota(p) }}
-                          </span>.
-                        </li>
-                        <li
-                          v-for="r in riallineamento.da_emettere"
-                          :key="`e-${r.rata_id}`"
-                          class="bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-800"
-                        >
-                          Rata {{ r.numero_rata }} ({{ r.piano }}): è segnata «emessa» ma non ha scritture. Si emette dalla pagina del piano,
-                          con la data e l'avviso che scegli tu:
-                          <a :href="r.url" class="inline-flex items-center gap-1 font-semibold underline underline-offset-2">apri il piano <ExternalLink class="w-3 h-3" /></a>
-                        </li>
-                        <li
-                          v-for="(r, i) in riallineamento.restano"
-                          :key="`x-${i}`"
-                          class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700"
-                        >
-                          Resta com'è: {{ r.motivo }}.
-                        </li>
-                        <li
-                          v-for="v in adPersonam"
-                          :key="`p-${v.rata_id}-${v.immobile_id}`"
-                          class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700"
-                        >
-                          Rata {{ v.numero_rata }} ({{ v.piano }}), {{ v.unita }}, emessa il {{ v.data ?? '—' }}:
-                          <strong>{{ euro(v.importo) }}</strong> di spesa ad personam addebitati due volte<template v-if="!v.esercizio_aperto"> (esercizio «{{ v.esercizio }}», chiuso)</template>.
-                        </li>
-                        <li
-                          v-for="p in adPersonamNonCalcolabili"
-                          :key="`n-${p.piano_id}`"
-                          class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700"
-                        >
-                          Da controllare a mano: {{ p.motivo }}.
-                        </li>
-                      </ul>
-                    </CollapsibleContent>
-                  </Collapsible>
+                  <ul class="space-y-1">
+                    <li
+                      v-for="c in riallineamento.compensazioni"
+                      :key="`c-${c.scrittura_id}-${c.quota_id}`"
+                      class="bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-800 dark:bg-slate-900/40 dark:border-amber-900/40 dark:text-amber-200"
+                    >
+                      Compensazione prot. {{ c.protocollo ?? '—' }} del {{ c.data ?? '—' }}, {{ c.persona }}, rata {{ c.numero_rata }}:
+                      <strong>{{ euro(c.importo) }}</strong> si spostano da «Crediti verso condomini» a «Passate gestioni».
+                    </li>
+                    <li
+                      v-for="r in rateDaScrivere"
+                      :key="`r-${r.rata_id}`"
+                      class="bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-800 dark:bg-slate-900/40 dark:border-amber-900/40 dark:text-amber-200"
+                    >
+                      Rata {{ r.numero_rata }} ({{ r.piano }}), quota a credito rimasta fuori dall'emissione:
+                      <span v-for="(p, i) in r.persone" :key="i">
+                        {{ i > 0 ? '; ' : '' }}{{ p.nome }}, {{ partiDellaQuota(p) }}
+                      </span>.
+                    </li>
+                    <li
+                      v-for="r in riallineamento.da_emettere"
+                      :key="`e-${r.rata_id}`"
+                      class="bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-800 dark:bg-slate-900/40 dark:border-amber-900/40 dark:text-amber-200"
+                    >
+                      Rata {{ r.numero_rata }} ({{ r.piano }}): è segnata «emessa» ma non ha scritture. Si emette dalla pagina del piano,
+                      con la data e l'avviso che scegli tu:
+                      <a :href="r.url" class="inline-flex items-center gap-1 font-semibold underline underline-offset-2">apri il piano <ExternalLink class="w-3 h-3" /></a>
+                    </li>
+                    <li
+                      v-for="(r, i) in riallineamento.restano"
+                      :key="`x-${i}`"
+                      class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700 dark:bg-slate-900/40 dark:border-amber-900/40 dark:text-amber-200"
+                    >
+                      Resta com'è: {{ r.motivo }}.
+                    </li>
+                    <li
+                      v-for="v in adPersonam"
+                      :key="`p-${v.rata_id}-${v.immobile_id}`"
+                      class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700 dark:bg-slate-900/40 dark:border-amber-900/40 dark:text-amber-200"
+                    >
+                      Rata {{ v.numero_rata }} ({{ v.piano }}), {{ v.unita }}, emessa il {{ v.data ?? '—' }}:
+                      <strong>{{ euro(v.importo) }}</strong> di spesa ad personam addebitati due volte<template v-if="!v.esercizio_aperto"> (esercizio «{{ v.esercizio }}», chiuso)</template>.
+                    </li>
+                    <li
+                      v-for="p in adPersonamNonCalcolabili"
+                      :key="`n-${p.piano_id}`"
+                      class="bg-white/40 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-700 dark:bg-slate-900/40 dark:border-amber-900/40 dark:text-amber-200"
+                    >
+                      Da controllare a mano: {{ p.motivo }}.
+                    </li>
+                  </ul>
                 </div>
-                <Button
-                  v-if="scrittureDaFare > 0"
-                  @click="isRiallineaModalOpen = true"
-                  class="shrink-0 basis-full sm:basis-auto h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white"
-                >
-                  Scrivi le correzioni
-                </Button>
-              </div>
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
 
             <div>
               <DataTable

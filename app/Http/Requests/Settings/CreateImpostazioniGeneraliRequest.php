@@ -33,6 +33,8 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
             'commenti_comunicazioni_moderati_di_serie' => 'sometimes|boolean',
             'allegati_moderati_di_serie' => 'sometimes|boolean',
             'allegati_massimo_per_elemento' => 'sometimes|integer|min:1|max:50',
+            'segnalazioni_assegnazione_visibile_nel_portale' => 'sometimes|boolean',
+            'segnalazioni_assegnazione_porta_in_lavorazione' => 'sometimes|boolean',
             'language'                   => 'required|in:it,en,pt,es',
             'app_name'                   => 'required|string|max:255',
             'open_condominio_on_login'   => 'required|boolean',

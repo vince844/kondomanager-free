@@ -456,6 +456,10 @@ final class EmissioneLettere
                     'numero_rata'  => (int) $d['numero_rata'],
                     // La causale di un addebito a una persona sola: la lettera la scrive al posto di «Rata N».
                     'addebito'     => $d['addebito'] ?? null,
+                    // Decisione 493 (12): il debito ereditato, con da chi e la successione; la rata è quella del defunto. Decisione 516: anche dopo
+                    // l'emissione della rata nuova che lo porta, finché i suoi interessi corrono, con la rata nuova e la sua scadenza (la frase di «Rate scadute»).
+                    'ereditato'    => isset($d['ereditato']) ? 'Ereditato ' . ($d['ereditato']['frase'] ?? sprintf('da %s, successione del %s', $d['ereditato']['da'],
+                        \Carbon\CarbonImmutable::parse($d['ereditato']['successione_del'])->format('d/m/Y'))) : null,
                     'scadenza'     => $d['scadenza'],
                     // Il residuo della rata, come la lettura: la guardia alla partenza lo rilegge. Nella lettera c'è quello che resta fuori
                     // dall'accordo (`da_versare`), con la parte in accordo a parte.

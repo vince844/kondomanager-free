@@ -125,7 +125,7 @@ describe('la finestra dell\'accordo', () => {
         const accordo = { id: 7, data_accordo: '2026-06-26', fino_al: '2026-12-15', riconosciuti: 150000, oggi: 150000, invariato: true, fino_al_passato: false, versati_oltre: 0,
             autorizzato_assemblea: false, data_autorizzazione: null, verbale_autorizzazione: null, nota: null, chiuso_il: null, nota_chiusura: null,
             interessi_parte_fuori: 'sospesi', in_corso: true, documento: null,
-            rate: [{ rata_id: 1, immobile_id: 1, riconosciuto: 75000, unita: 'Interno 7', piano: 'Preventivo 2026', numero_rata: 1, scadenza: '2026-01-31' }] };
+            rate: [{ rata_id: 5, immobile_id: 1, riconosciuto: 75000, unita: 'Interno 7', piano: 'Preventivo 2026', numero_rata: 1, scadenza: '2026-01-31' }] };
         axiosGet.mockResolvedValue(risposta({ accordi: [accordo] }));
         monta();
         await flushPromises();
@@ -207,6 +207,49 @@ describe('la finestra dell\'accordo', () => {
         monta();
         await flushPromises();
         expect(corpo().querySelector('[data-testid="apri-parte-fuori"]')).toBeNull();
+    });
+});
+
+// Coda 678 (decisione 485), 1: sotto un accordo in corso la finestra non offre la stessa rata, e dice perché. Non copre: il rifiuto del server all'invio (lo prova
+// la suite dell'accordo), né una rata coperta da due accordi.
+describe('AccordoRientroDialog — una rata già in un accordo in corso', () => {
+    const accordoSulla1 = (extra: Record<string, unknown> = {}) => ({ id: 7, data_accordo: '2026-06-15', fino_al: '2026-12-15', riconosciuti: 75000, oggi: 75000, invariato: true, fino_al_passato: false,
+        versati_oltre: 0, autorizzato_assemblea: false, data_autorizzazione: null, verbale_autorizzazione: null, nota: null, chiuso_il: null, nota_chiusura: null,
+        interessi_parte_fuori: 'continuano', registro: [], in_corso: true, documento: null,
+        rate: [{ rata_id: 1, immobile_id: 1, riconosciuto: 75000, unita: 'Interno 7', piano: 'Preventivo 2026', numero_rata: 1, scadenza: '2026-01-31' }], ...extra });
+
+    test('la rata dell\'accordo in corso non si sceglie e dice «È già nell\'accordo del 15/06/2026»; l\'altra sì', async () => {
+        axiosGet.mockResolvedValue(risposta({ accordi: [accordoSulla1()] }));
+        monta();
+        await flushPromises();
+        const righe = corpo().querySelectorAll('[data-testid="rata-possibile"]');
+        expect(righe).toHaveLength(2);
+        expect(pulito(righe[0].querySelector('[data-testid="rata-gia-in-accordo"]')?.textContent ?? '')).toBe('È già nell\'accordo del 15/06/2026, ancora in corso: chiudilo prima.');
+        expect(righe[0].querySelector<HTMLButtonElement>('button[role="checkbox"]')!.disabled).toBe(true);
+        expect(righe[0].querySelector<HTMLInputElement>('input')!.disabled).toBe(true);
+        expect(righe[1].querySelector('[data-testid="rata-gia-in-accordo"]')).toBeNull();
+        expect(righe[1].querySelector<HTMLButtonElement>('button[role="checkbox"]')!.disabled).toBe(false);
+
+        // Un clic sulla rata bloccata non la sceglie: il debito riconosciuto resta a zero.
+        righe[0].querySelector<HTMLButtonElement>('button[role="checkbox"]')!.click();
+        await flushPromises();
+        expect(pulito(corpo().querySelector('[data-testid="calendario"]')?.textContent ?? '')).toContain('Il debito riconosciuto: € 0,00');
+    });
+
+    test('un accordo chiuso prima della data del nuovo non blocca la rata; chiuso dopo, la blocca e dice il giorno', async () => {
+        axiosGet.mockResolvedValue(risposta({ accordi: [accordoSulla1({ chiuso_il: '2026-06-20', in_corso: false })] }));
+        monta();
+        await flushPromises();
+        // Il nuovo accordo è di oggi, 26/06: l'altro è chiuso il 20/06, la rata è libera.
+        expect(corpo().querySelector('[data-testid="rata-gia-in-accordo"]')).toBeNull();
+
+        // Con la data del nuovo al 18/06 l'altro è ancora in corso: la rata è bloccata, con il giorno di chiusura.
+        const data = corpo().querySelector<HTMLInputElement>('[data-testid="data-accordo"]')!;
+        axiosGet.mockResolvedValue(risposta({ accordi: [accordoSulla1({ chiuso_il: '2026-06-20', in_corso: false })] }));
+        data.value = '2026-06-18';
+        data.dispatchEvent(new Event('input'));
+        await flushPromises();
+        expect(pulito(corpo().querySelector('[data-testid="rata-gia-in-accordo"]')?.textContent ?? '')).toBe('È già nell\'accordo del 15/06/2026, chiuso il 20/06/2026: scegli una data da quel giorno in poi.');
     });
 });
 

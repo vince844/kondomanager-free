@@ -10,7 +10,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Lock, LockOpen, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, Globe, ChevronDown, ChevronUp } from 'lucide-vue-next';
+import { Lock, LockOpen, ShieldCheck, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, Globe, ChevronDown, ChevronUp } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { Permission } from '@/enums/Permission';
@@ -20,6 +20,8 @@ import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 import ListaCommenti from '@/components/commenti/ListaCommenti.vue';
 import AllegatiRiquadro from '@/components/allegati/AllegatiRiquadro.vue';
+import AssegnazioneSegnalazione from '@/components/segnalazioni/AssegnazioneSegnalazione.vue';
+import ParametroVeloce from '@/components/segnalazioni/ParametroVeloce.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
 import { argomentiConfermaRendiPubblica, chiaveAutorePerdeLaScheda, chiaveConfermaRendiPubblica, offreRendiPubblica } from '@/lib/segnalazioni/privacy';
@@ -27,6 +29,11 @@ import type { AllegatiConfig, AllegatoItem } from '@/types/allegati';
 
 const props = defineProps<{
   segnalazione: Segnalazione | any;
+  assegnazione?: {
+    puo_assegnare: boolean;
+    io: number;
+    assegnabili: Array<{ id: number; name: string }>;
+  } | any;
   commenti_config: {
     can_comment: boolean;
     can_create: boolean;
@@ -35,6 +42,8 @@ const props = defineProps<{
   };
   allegati?: AllegatoItem[];
   allegati_config?: AllegatiConfig;
+  /** Coda 671: chi può cambiare lo stato e la priorità dalla scheda, con lo stesso permesso di «Modifica» (lo calcola il server). */
+  puo_modificare?: boolean;
   /** Coda 304: se con «Rendi pubblica» l'autore non la vedrà più dal portale (lo calcola il server). */
   rendi_pubblica?: {
     autore_perde_la_scheda: boolean;
@@ -51,15 +60,65 @@ const priorityItem = computed(() => {
   return priorityConstants.find(p => p.value === props.segnalazione.priority);
 });
 
-const statusItem = computed(() => {
-  return statoConstants.find(p => p.value === props.segnalazione.stato);
-});
-
 // Coda 306: lo stato di pubblicazione e la privacy sono due indicazioni distinte.
 const statoPubblicazioneCorrente = computed(() =>
   statoPubblicazione(props.segnalazione.is_published, props.segnalazione.is_approved)
 );
 const etichettaPrivata = computed(() => etichettaPrivacy('segnalazioni', props.segnalazione.is_private));
+
+// Coda 671 (decisioni 466 (2) e 487): lo stato lavorazione e la priorità si cambiano dalla card dei parametri e si salvano subito, per la stessa
+// strada di «Modifica» (la rotta `segnalazioni.parametro`), con una visita parziale. «Chiusa» chiede prima una conferma: il compito esce
+// dall'Action inbox. Un rifiuto del server si legge sotto il valore.
+const confermaChiusura = ref(false);
+const invioParametro = ref(false);
+const erroreParametro = ref<{ campo: 'stato' | 'priority'; testo: string } | null>(null);
+
+function inviaParametro(campo: 'stato' | 'priority', valore: string) {
+  erroreParametro.value = null;
+  router.patch(route(generateRoute('segnalazioni.parametro'), { segnalazione: props.segnalazione.id }), { [campo]: valore }, {
+    only: ['segnalazione', 'puo_modificare', 'inbox_count'],
+    preserveState: true,
+    preserveScroll: true,
+    onStart: () => { invioParametro.value = true; },
+    onError: (errori: Record<string, string>) => {
+      erroreParametro.value = { campo, testo: errori[campo] ?? Object.values(errori)[0] ?? '' };
+    },
+    onFinish: () => {
+      invioParametro.value = false;
+      confermaChiusura.value = false;
+    },
+  });
+}
+
+function scegliParametro(campo: 'stato' | 'priority', valore: string) {
+  if (props.segnalazione[campo] === valore) {
+    return;
+  }
+  if (campo === 'stato' && valore === 'chiusa') {
+    confermaChiusura.value = true;
+    return;
+  }
+  inviaParametro(campo, valore);
+}
+
+// Coda 591 (giro 2): «Approva» chiama lo stesso comando dello scudo dell'elenco con lo stato voluto
+// (`is_approved: true`). C'è solo se non è approvata e per chi approva le segnalazioni.
+const mostraApprova = computed(() =>
+  !props.segnalazione.is_approved && hasPermission([Permission.APPROVE_SEGNALAZIONI])
+);
+
+const approva = () => {
+  router.put(
+    route(generateRoute('segnalazioni.toggle-approval'), { id: props.segnalazione.id }),
+    { is_approved: true },
+    // P7 della lente P (Fase 1-bis della beta.12): una visita parziale (standard 16), con quello che l'approvazione può cambiare nella scheda.
+    {
+      only: ['segnalazione', 'commenti_config', 'allegati', 'allegati_config', 'rendi_pubblica', 'inbox_count', 'flash'],
+      preserveState: true,
+      preserveScroll: true,
+    }
+  );
+};
 
 // Coda 304: «Rendi pubblica», con la conferma che dice chi la vedrà e con quale nome (decisione
 // 129.2). Il pulsante c'è solo su una privata e per chi approva le segnalazioni, come il server. Su
@@ -167,6 +226,17 @@ const pageGuides = computed(() => [
                 </Link>
 
                 <button
+                    v-if="mostraApprova"
+                    type="button"
+                    data-azione="approva"
+                    @click="approva"
+                    class="inline-flex items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-sm font-medium text-slate-700 dark:text-slate-300 px-3 py-1.5 h-8 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                    <ShieldCheck class="w-4 h-4 text-emerald-500" />
+                    <span>{{ trans('segnalazioni.actions.approve') }}</span>
+                </button>
+
+                <button
                     v-if="mostraRendiPubblica"
                     type="button"
                     @click="confermaRendiPubblica = true"
@@ -186,6 +256,17 @@ const pageGuides = computed(() => [
             :loading="invioRendiPubblica"
             variant="warning"
             @confirm="rendiPubblica"
+        />
+
+        <!-- Coda 671 (decisione 487): prima di «Chiusa» una conferma, che dice solo ciò che succede davvero. -->
+        <ConfirmDialog
+            v-model="confermaChiusura"
+            :title="trans('segnalazioni.quick.close_title')"
+            :description="trans('segnalazioni.quick.close_description')"
+            :confirm-text="trans('segnalazioni.quick.close_confirm')"
+            :loading="invioParametro"
+            variant="warning"
+            @confirm="inviaParametro('stato', 'chiusa')"
         />
 
         <div class="space-y-6">
@@ -260,30 +341,34 @@ const pageGuides = computed(() => [
                                     <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                                         {{ trans('segnalazioni.details.current_status') }}
                                     </p>
-                                    <div v-if="statusItem" class="flex items-center gap-2">
-                                        <component :is="statusItem.icon" class="w-4 h-4 shrink-0" :class="statusItem.colorClass" />
-                                        <span class="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize truncate" :title="trans(statusItem.label)">
-                                            {{ trans(statusItem.label) }}
-                                        </span>
-                                    </div>
-                                    <div v-else class="text-sm font-semibold text-slate-400">
-                                        {{ trans('segnalazioni.label.no_status') }}
-                                    </div>
+                                    <ParametroVeloce
+                                        campo="stato"
+                                        :opzioni="statoConstants"
+                                        :valore="props.segnalazione.stato"
+                                        :comando="trans('segnalazioni.quick.change_status')"
+                                        :vuoto="trans('segnalazioni.label.no_status')"
+                                        :puo-modificare="props.puo_modificare === true"
+                                        :in-corso="invioParametro"
+                                        @scegli="(v: string) => scegliParametro('stato', v)"
+                                    />
+                                    <p v-if="erroreParametro?.campo === 'stato'" data-errore="stato" class="mt-1 text-xs font-medium text-red-600 dark:text-red-400">{{ erroreParametro.testo }}</p>
                                 </div>
                                 
                                 <div class="min-w-0">
                                     <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                                         {{ trans('segnalazioni.details.priority_level') }}
                                     </p>
-                                    <div v-if="priorityItem" class="flex items-center gap-2">
-                                        <component :is="priorityItem.icon" class="w-4 h-4 shrink-0" :class="priorityItem.colorClass" />
-                                        <span class="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize truncate" :title="trans(priorityItem.label)">
-                                            {{ trans(priorityItem.label) }}
-                                        </span>
-                                    </div>
-                                    <div v-else class="text-sm font-semibold text-slate-400">
-                                        {{ trans('segnalazioni.label.no_priority') }}
-                                    </div>
+                                    <ParametroVeloce
+                                        campo="priority"
+                                        :opzioni="priorityConstants"
+                                        :valore="props.segnalazione.priority"
+                                        :comando="trans('segnalazioni.quick.change_priority')"
+                                        :vuoto="trans('segnalazioni.label.no_priority')"
+                                        :puo-modificare="props.puo_modificare === true"
+                                        :in-corso="invioParametro"
+                                        @scegli="(v: string) => scegliParametro('priority', v)"
+                                    />
+                                    <p v-if="erroreParametro?.campo === 'priority'" data-errore="priority" class="mt-1 text-xs font-medium text-red-600 dark:text-red-400">{{ erroreParametro.testo }}</p>
                                 </div>
                             </div>
 
@@ -322,6 +407,15 @@ const pageGuides = computed(() => [
                                         <span>{{ trans('segnalazioni.details.locked') }}</span>
                                     </div>
                                 </div>
+                            </div>
+
+                            <!-- Chi segue la segnalazione (Coda 591), sotto la visibilità: il riquadro «Interazioni» non c'è più (decisione 470) -->
+                            <div class="border-t border-dashed pt-4">
+                                <AssegnazioneSegnalazione
+                                    :segnalazione-id="props.segnalazione.id"
+                                    :assegnata-a="props.segnalazione.assegnata_a ?? null"
+                                    :assegnazione="props.assegnazione"
+                                />
                             </div>
 
                         </CardContent>

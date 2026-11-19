@@ -30,13 +30,10 @@ const ANCORA_CON_SELECT = [
     'components/gestionale/movimenti/fatture/DataTableRowActions.vue',
     'components/gestionale/movimenti/incassi/CompensazioniSenzaAvviso.vue',
     'components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue',
-    'components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue',
     'components/gestionale/rendiconto/InvioDeiFogli.vue',
     'components/gestionale/saldi/SaldiDetailPanel.vue',
     'pages/gestionale/contributi/ContributiEdit.vue',
-    'pages/gestionale/movimenti/rateScadute/RateScadute.vue',
     'pages/gestionale/movimenti/rendiconto/Controlli.vue',
-    'pages/gestionale/pianiRate/PianiRateNew.vue',
     'pages/impostazioni/ModelliLettere.vue',
     'pages/impostazioni/impostazioniMail.vue',
 ];

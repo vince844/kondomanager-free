@@ -145,6 +145,54 @@ class IncassoRateService
     }
 
     /**
+     * Decisione 538, e per l'elenco degli incassi la 539 (5): chi ha pagato davvero, con la lettura del versamento degli eredi
+     * ({@see \App\Services\Gestionale\Accessori\VersamentoDegliEredi::deiVersamenti()}, anche dopo lo storno). Il versamento di un erede sul debito ereditato
+     * sta a giornale sulla rata del defunto con il legame all'erede (decisione 529): si legge come suo («Cecilia Angeli», sotto «erede, sul debito di Massimo
+     * Bagnara»). Il versamento del defunto «per il debito degli eredi» resta del defunto, con sotto di chi è il debito che copre; il legame di ogni riga a un
+     * erede non è un «Versato da». Senza lettura (nessuna coppia) la posizione, il ruolo e «Versato da», come sempre. Le righe dell'incasso con
+     * `riferimento` caricate.
+     *
+     * @param array<string, mixed> $formattato {@see formatMovimentoForFrontend()}
+     * @param array<string, mixed>|null $lettura
+     * @return array{nome: string, sotto: ?string, versato_da: ?string}
+     */
+    public static function haPagato(ScritturaContabile $movimento, array $formattato, ?array $lettura): array
+    {
+        $pagante = (array) ($formattato['pagante'] ?? []);
+        $posizione = (string) (($pagante['lista_completa'] ?? '') ?: 'Sconosciuto');
+        if ($lettura === null) {
+            return ['nome' => $posizione, 'sotto' => $pagante['ruolo'] ?? null, 'versato_da' => $pagante['versato_da'] ?? null];
+        }
+        if ($lettura['erede'] !== null) {
+            return ['nome' => (string) $lettura['nome_erede'], 'sotto' => 'erede, sul debito di ' . $lettura['di'], 'versato_da' => null];
+        }
+        // Il defunto, «per il debito degli eredi»: chi ha versato è solo una persona legata che non è uno degli eredi coperti.
+        $versatoDa = $movimento->righe
+            ->first(fn ($r) => $r->riferimento_type === \App\Models\Anagrafica::class && $r->riferimento_id && ! in_array((int) $r->riferimento_id, $lettura['eredi'], true));
+
+        return ['nome' => $posizione, 'sotto' => 'per il debito ereditato di ' . $lettura['nomi_eredi'], 'versato_da' => $versatoDa?->riferimento?->nome];
+    }
+
+    /**
+     * Decisione 539 (4): a chi è intestata la ricevuta del versamento di un erede, quando non è l'erede che ha pagato (la scelta di serie): «Eredi di Massimo
+     * Bagnara» o «Massimo Bagnara (il defunto)». Null di serie e per gli altri incassi.
+     *
+     * @param array<string, mixed>|null $lettura {@see \App\Services\Gestionale\Accessori\VersamentoDegliEredi::deiVersamenti()}
+     */
+    public static function ricevutaIntestataA(?array $lettura): ?string
+    {
+        if ($lettura === null || $lettura['erede'] === null) {
+            return null;
+        }
+
+        return match ($lettura['intestatario']) {
+            \App\Services\Gestionale\Accessori\VersamentoDegliEredi::RICEVUTA_AGLI_EREDI => 'Eredi di ' . $lettura['defunto'],
+            \App\Services\Gestionale\Accessori\VersamentoDegliEredi::RICEVUTA_AL_DEFUNTO => $lettura['defunto'] . ' (il defunto)',
+            default => null,
+        };
+    }
+
+    /**
      * Recupera i dettagli delle rate (Zero Query, usa le relazioni caricate)
      */
     private function getDettagliRate(ScritturaContabile $movimento, ?int $versatoDaId = null, ?string $versatoDa = null): array

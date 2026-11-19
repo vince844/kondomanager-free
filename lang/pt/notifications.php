@@ -76,6 +76,13 @@ return [
         'action'    => 'Ver comunicação',
     ],
 
+    'scheduled_communication_published' => [
+        'subject'   => 'Comunicação publicada: :title',
+        'line_1'    => 'A comunicação ":title", agendada para :date às :time, foi publicada.',
+        'line_late' => 'Foi publicada com atraso, a :date às :time: à hora escolhida o agendador não estava ativo.',
+        'action'    => 'Ver comunicação',
+    ],
+
     // Documento aprovado (ApprovedDocumentoNotification)
     'approved_document' => [
         'subject'     => 'Documento aprovado',
@@ -204,9 +211,25 @@ return [
     ],
 
     // Comentário eliminado
+    // La parola con cui i due avvisi del commento nascosto o eliminato chiamano l'elemento (con l'articolo, dove la lingua lo chiede).
+    'comment_entity' => [
+        'ticket'        => 'a sinalização',
+        'communication' => 'o comunicado',
+    ],
+
+    'hidden_ticket_comment' => [
+        'subject' => 'Um dos seus comentários foi ocultado',
+        'line_1'  => 'O seu comentário de :data sobre :entity foi ocultado pelo administrador do condomínio: os outros já não o veem.',
+        'action'  => 'Ver sinalização',
+    ],
+
     'deleted_ticket_comment' => [
-        'subject' => 'O seu comentário foi removido',
-        'line_1'  => 'O seu comentário sobre :entity foi removido ou ocultado por um administrador.',
+        'subject'        => 'Um dos seus comentários foi apagado',
+        'subject_pending' => 'Um dos seus comentários não foi publicado',
+        'line_1'         => 'O seu comentário de :data sobre :entity foi apagado pelo administrador do condomínio.',
+        'line_1_pending' => 'O seu comentário de :data sobre :entity não foi aprovado e foi apagado pelo administrador do condomínio.',
+        'started'        => 'O comentário começava assim: «:inizio»',
+        'action'         => 'Ver sinalização',
     ],
 
     // Comentários em comunicações
@@ -238,9 +261,19 @@ return [
         'action'  => 'Ver comunicado',
     ],
 
+    'hidden_communication_comment' => [
+        'subject' => 'Um dos seus comentários foi ocultado',
+        'line_1'  => 'O seu comentário de :data sobre :entity foi ocultado pelo administrador do condomínio: os outros já não o veem.',
+        'action'  => 'Ver comunicado',
+    ],
+
     'deleted_communication_comment' => [
-        'subject' => 'O seu comentário foi removido',
-        'line_1'  => 'O seu comentário sobre :entity foi removido ou ocultado por um administrador.',
+        'subject'        => 'Um dos seus comentários foi apagado',
+        'subject_pending' => 'Um dos seus comentários não foi publicado',
+        'line_1'         => 'O seu comentário de :data sobre :entity foi apagado pelo administrador do condomínio.',
+        'line_1_pending' => 'O seu comentário de :data sobre :entity não foi aprovado e foi apagado pelo administrador do condomínio.',
+        'started'        => 'O comentário começava assim: «:inizio»',
+        'action'         => 'Ver comunicado',
     ],
 
     // Stringhe comuni a tutte le notifiche
@@ -315,5 +348,18 @@ return [
             'line_1'    => 'Em :data às :ora foram gerados novos códigos de recuperação da autenticação de dois fatores da sua conta em :appName: os anteriores deixaram de valer.',
             'consiglio' => 'Se não foi você a fazer esta alteração, altere já a palavra-passe e avise o administrador.',
         ],
+    ],
+
+    'assigned_ticket' => [
+        'subject' => 'Ticket atribuído a si: :title',
+        'line_1' => ':user atribuiu-lhe o ticket ":title" (:building).',
+        'action' => 'Ver ticket',
+    ],
+    'unassigned_ticket' => [
+        'subject' => 'Ticket já não atribuído a si: :title',
+        'line_1' => ':user atribuiu a :name o ticket ":title", que estava ao seu encargo.',
+        'line_1_nobody' => ':user removeu a atribuição do ticket ":title", que estava ao seu encargo.',
+        'line_1_self' => ':user assumiu o ticket ":title", que estava ao seu encargo.',
+        'action' => 'Ver ticket',
     ],
 ];

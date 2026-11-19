@@ -12,7 +12,7 @@ class GeneralSettings extends Settings
 {
     public bool $user_frontend_registration = false;
     public string $language = 'it';
-    public string $app_name = 'Kondomanager';
+    public string $app_name = 'KondoManager';
     public string $version = '1.7.0';
     public bool $external_cron_enabled = false;
     public ?string $external_cron_token = null;
@@ -21,6 +21,8 @@ class GeneralSettings extends Settings
     public bool $commenti_comunicazioni_moderati_di_serie = true;
     public bool $allegati_moderati_di_serie = true;
     public int $allegati_massimo_per_elemento = 5;
+    public bool $segnalazioni_assegnazione_visibile_nel_portale = false;
+    public bool $segnalazioni_assegnazione_porta_in_lavorazione = false;
 
     /**
      * Quante righe mostrano gli elenchi a chi non ha ancora scelto.

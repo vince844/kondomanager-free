@@ -10,23 +10,23 @@ import DataTableColumnHeader from '@/components/segnalazioni/DataTableColumnHead
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
 import { usePermission } from "@/composables/permissions";
-import { Lock, ShieldCheck } from 'lucide-vue-next';
+import { Lock, ShieldCheck, UserX } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
 
 const { hasPermission, generateRoute } = usePermission();
 
+export const colonneNascoste = { assegnata_a: false };
+
 export const columns: ColumnDef<Segnalazione>[] = [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('segnalazioni.table.title') }), 
     cell: ({ row, table }) => {
-
       const segnalazione = row.original
 
       const toggleApproval = () => {
-
           router.put(route(generateRoute('segnalazioni.toggle-approval'), { id: segnalazione.id }), {}, {
             preserveScroll: true,
             only: ['stats', 'segnalazioni', 'flash'],
@@ -43,16 +43,15 @@ export const columns: ColumnDef<Segnalazione>[] = [
 
             }
           });
-
       };
       
       const tooltip = segnalazione.is_approved
         ? trans('segnalazioni.table.approved_tooltip')
         : trans('segnalazioni.table.unapproved_tooltip');
       
-        const shieldIcon = hasPermission(['Approva segnalazioni'])
+      const shieldIcon = hasPermission(['Approva segnalazioni'])
         ? h('div', {
-            class: 'cursor-pointer',
+            class: 'cursor-pointer mt-0.5',
             title: tooltip,
             onClick: toggleApproval,
           }, [
@@ -62,17 +61,58 @@ export const columns: ColumnDef<Segnalazione>[] = [
           ])
         : null;
 
-        // Decisione 453: sotto il titolo, in una riga piccola e non in una colonna nuova, quanti commenti e allegati ha.
-        return h('div', { class: 'flex flex-col gap-1' }, [
-          h('div', { class: 'flex items-center space-x-2' }, [
-            shieldIcon,
+      const nonAttivo = segnalazione.assegnata_a?.attivo === false
+        ? h('span', {
+            'data-non-attivo': '',
+            title: trans('segnalazioni.assignment.inactive_short'),
+            class: 'inline-flex items-center text-amber-600 dark:text-amber-400 ml-1',
+          }, [
+            h(UserX, { class: 'w-3 h-3 shrink-0' }),
+          ])
+        : null;
+
+      const sottoTitoloChildren: any[] = [
+        h('span', {
+          'data-inviata': '',
+          title: segnalazione.creata_il,
+        }, segnalazione.created_at),
+      ];
+
+      if (segnalazione.assegnata_a) {
+        sottoTitoloChildren.push(
+          h('span', { class: 'text-muted-foreground/60' }, '•'),
+          h('span', {
+            'data-assegnata-a': '',
+            class: 'inline-flex items-center gap-1',
+          }, [
+            h('span', `${trans('segnalazioni.assignment.label').toLowerCase()} ${segnalazione.assegnata_a.name}`),
+            nonAttivo,
+          ])
+        );
+      }
+
+      // Decisione 453: sotto il titolo, in una riga piccola e non in una colonna nuova, quanti commenti e allegati ha; sopra, il titolo con la data
+      // e chi la segue (decisione 304).
+      return h('div', {
+        'data-cella-titolo': '',
+        class: 'min-w-[11rem] flex flex-col gap-1',
+      }, [
+        h('div', { class: 'flex items-start gap-2' }, [
+          shieldIcon,
+          h('div', { class: 'flex-1 min-w-0' }, [
             h(Link, {
               href: route(generateRoute('segnalazioni.show'), { id: segnalazione.id }),
-              class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-            }, () => segnalazione.subject)
+              title: segnalazione.subject,
+              class: 'line-clamp-3 hover:text-zinc-500 font-bold transition-colors duration-150',
+            }, () => segnalazione.subject),
+            h('div', {
+              'data-sotto-titolo': '',
+              class: 'text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5',
+            }, sottoTitoloChildren),
           ]),
-          h(ContatoriElenco, { contatori: segnalazione.contatori, mostraInAttesa: true }),
-        ]);
+        ]),
+        h(ContatoriElenco, { contatori: segnalazione.contatori, mostraInAttesa: true }),
+      ]);
     }
   },
   {
@@ -270,6 +310,13 @@ export const columns: ColumnDef<Segnalazione>[] = [
       const isPrivate = Boolean(segnalazione.is_private);
       return value.includes(stato) || (isPrivate && value.includes('private'));
     },
+  },
+  {
+    accessorKey: 'assegnata_a',
+    header: () => trans('segnalazioni.assignment.label'),
+    cell: () => null,
+    enableSorting: false,
+    filterFn: () => true,
   },
   {
     id: 'actions',

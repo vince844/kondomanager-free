@@ -25,7 +25,7 @@ import { trans, transChoice } from 'laravel-vue-i18n';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePermission } from "@/composables/permissions";
 import { priorityConstants } from '@/lib/comunicazioni/constants';
-import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
+import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, giornoEOraProgrammati, statoPubblicazione } from '@/lib/pubblicazione';
 import AllegatiRiquadro from '@/components/allegati/AllegatiRiquadro.vue';
 import DiscussioniComunicazione, { type DiscussioneItem, type CommentiConfig } from '@/components/commenti/DiscussioniComunicazione.vue';
 import type { BreadcrumbItem } from '@/types';
@@ -54,8 +54,17 @@ const currentPriority = computed(() => {
 // un'indicazione a parte, da `is_private`: le due etichette vengono da `@/lib/pubblicazione`, come
 // nelle tabelle. La pagina è la stessa per il pannello e per il portale.
 const statoCorrente = computed(() =>
-    statoPubblicazione(props.comunicazione.is_published, props.comunicazione.is_approved)
+    statoPubblicazione(props.comunicazione.is_published, props.comunicazione.is_approved, props.comunicazione.data_programmata)
 );
+
+const infoProgrammata = computed(() => {
+    if (statoCorrente.value === 'scheduled' && props.comunicazione.data_programmata) {
+        return giornoEOraProgrammati(props.comunicazione.data_programmata);
+    }
+    return null;
+});
+
+const dataInvio = computed(() => props.comunicazione.pubblicata_il || props.comunicazione.created_at);
 const etichettaPrivata = computed(() => etichettaPrivacy('comunicazioni', props.comunicazione.is_private));
 
 // Decisione 467: come nella scheda della segnalazione, un testo lungo si chiude a quattro righe e si riapre con «Leggi tutto».
@@ -179,10 +188,18 @@ const commentiInAttesa = computed(() => {
                                     
                                     <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 pt-3">
                                         <CalendarDays class="w-4 h-4 text-slate-400" />
-                                        <span>
+                                        <span v-if="infoProgrammata">
+                                            {{ 
+                                                trans('comunicazioni.scheduling.scheduled_for', { 
+                                                    date: infoProgrammata.date, 
+                                                    time: infoProgrammata.time 
+                                                }) 
+                                            }}
+                                        </span>
+                                        <span v-else>
                                             {{ 
                                                 trans('comunicazioni.visibility.sent_on_by', { 
-                                                    date: comunicazione.created_at, 
+                                                    date: dataInvio, 
                                                     name: comunicazione.created_by?.user?.name || trans('comunicazioni.label.administrator') 
                                                 }) 
                                             }}
@@ -245,7 +262,7 @@ const commentiInAttesa = computed(() => {
                                 <div class="flex items-center gap-2">
                                     <div class="w-2 h-2 rounded-full shrink-0" :class="colorePubblicazione(statoCorrente)"></div>
                                     <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                                        {{ trans(etichettaStatoPubblicazione('comunicazioni', comunicazione.is_published, comunicazione.is_approved)) }}
+                                        {{ trans(etichettaStatoPubblicazione('comunicazioni', comunicazione.is_published, comunicazione.is_approved, comunicazione.data_programmata)) }}
                                     </span>
                                 </div>
                                 <div v-if="etichettaPrivata" class="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500" :title="trans('comunicazioni.privacy.private_hint')">

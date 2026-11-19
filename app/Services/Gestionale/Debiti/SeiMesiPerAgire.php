@@ -157,7 +157,9 @@ final class SeiMesiPerAgire
         $alla = $this->elenco->filtriNormalizzati(['alla' => $oggi])['alla'];
         $calcolo = $this->seiMesi->perCondominio($cid, $alla);
         $righe = [];
-        foreach ($this->lettura->perCondominioABlocchi($cid, $alla, $blocco) as $letture) {
+        // 493 (12) del registro: come «Rate scadute», il debito ereditato non ancora in una rata sugli eredi e non più sul defunto.
+        // Una lettura del debito ereditato con l'elenco della stessa richiesta (P1 della lente P della beta.12).
+        foreach ($this->elenco->debitoEreditato()->aBlocchi($this->lettura->perCondominioABlocchi($cid, $alla, $blocco), $cid, $alla, null) as $letture) {
             foreach ($letture as $pid => $l) {
                 $perRiga = [];
                 foreach ($l['rate'] as $r) {

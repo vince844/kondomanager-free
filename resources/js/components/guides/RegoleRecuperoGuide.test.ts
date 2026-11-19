@@ -55,7 +55,8 @@ describe('la guida del recupero dei crediti', () => {
         const guida = document.body.querySelector('[data-testid="guida-recupero-crediti"]');
         expect(guida).not.toBeNull();
         expect([...guida!.querySelectorAll('h3')].map((h) => (h.textContent ?? '').trim())).toEqual([
-            'Come si usano le regole', 'Dove entrano', 'I campi della regola', 'Le fonti di un tasso scritto', 'Il tasso legale',
+            // Decisione 494 (1): la parte degli interessi degli eredi.
+            'Come si usano le regole', 'Dove entrano', 'I campi della regola', 'Le fonti di un tasso scritto', 'Gli interessi degli eredi', 'Il tasso legale',
         ]);
         const testo = (guida!.textContent ?? '').replace(/\s+/g, ' ');
         expect(testo).toContain('Non c\'è una regola da scegliere. In un giorno vale una regola sola, per tutto il condominio: la stessa per tutte le persone.');

@@ -398,7 +398,7 @@ const inviaProva = async (corpo: Record<string, unknown>) => {
                             <div>
                                 <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_from_name') }}</Label>
                                 <Input v-model="form.mail_from_name" type="text"
-                                    placeholder="Kondomanager" class="w-full text-sm" />
+                                    placeholder="KondoManager" class="w-full text-sm" />
                             </div>
 
                         </div>

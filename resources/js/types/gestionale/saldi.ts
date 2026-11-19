@@ -46,6 +46,8 @@ export interface Saldo {
   passaggio_id?: number | null;
   e_legata?: boolean;
   passaggio_in_parole?: string | null;
+  /** Decisione 529: una riga della coppia del versamento di un erede sul debito ereditato, che si toglie solo stornando l'incasso. */
+  e_versamento_erede?: boolean;
   origine: string;
   gestione_id: number;
   anagrafica_id: number | null;

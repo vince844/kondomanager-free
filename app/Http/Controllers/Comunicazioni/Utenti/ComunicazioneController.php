@@ -131,6 +131,9 @@ class ComunicazioneController extends Controller
         return Inertia::render('comunicazioni/user/ComunicazioniNew',[
             'condomini'        => CondominioOptionsResource::collection($condomini)->resolve(),
             'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
+            // Coda 683 (1): il limite vero di un file e i formati, come il riquadro della scheda: il modulo non scrive più «10 MB» fisso.
+            'allegati_limite_file' => \App\Support\LimiteCaricamento::etichetta(),
+            'allegati_formati' => RegoleAllegati::FORMATI,
         ]);  
     }
 

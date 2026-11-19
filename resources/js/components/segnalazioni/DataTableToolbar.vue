@@ -6,12 +6,13 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router, Link } from '@inertiajs/vue3';
+import { router, Link, usePage } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus, X } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFilter.vue';
 import { priorityConstants, statoConstants, visibilityConstants } from '@/lib/segnalazioni/constants';
+import { opzioniFiltroAssegnazione } from '@/lib/segnalazioni/assegnazione';
 import { usePermission } from "@/composables/permissions";
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Permission }  from "@/enums/Permission";
@@ -36,6 +37,7 @@ const priorityColumn = table.getColumn('priority');
 const statoColumn = table.getColumn('stato');
 const condominioColumn = table.getColumn('condominio'); // Assicurati che accessorKey sia 'condominio' in columns.ts
 const visibilityColumn = table.getColumn('is_published');
+const assegnataAColumn = table.getColumn('assegnata_a');
 
 // LOGICA DROPDOWN CONDOMINI
 const { condomini, isLoading: isLoadingCondomini, loadCondomini } = useCondomini();
@@ -44,6 +46,11 @@ const handleOpenCondomini = () => {
 };
 
 const subjectFilter = ref('');
+
+const page = usePage<any>();
+const opzioniAssegnazione = computed(() =>
+  opzioniFiltroAssegnazione(page.props.assegnatari, page.props.auth?.user?.id)
+);
 
 const priorityFilter = computed(() => {
   const val = priorityColumn?.getFilterValue();
@@ -65,10 +72,15 @@ const visibilityFilter = computed(() => {
   return Array.isArray(val) ? val : [];
 });
 
-// Watcher combinato per tutti i filtri (Testo, Priorità, Stato, Condominio, Visibilità)
+const assegnataAFilter = computed(() => {
+  const val = assegnataAColumn?.getFilterValue();
+  return Array.isArray(val) ? val : [];
+});
+
+// Watcher combinato per tutti i filtri (Testo, Priorità, Stato, Condominio, Visibilità, Assegnazione)
 watchDebounced(
-  [subjectFilter, priorityFilter, statoFilter, condominioFilter, visibilityFilter],
-  ([subject, priority, stato, condominio_id, visibility]) => {
+  [subjectFilter, priorityFilter, statoFilter, condominioFilter, visibilityFilter, assegnataAFilter],
+  ([subject, priority, stato, condominio_id, visibility, assegnazione]) => {
     // Ogni filtro va passato anche quando è vuoto: `null` significa **togli**. La richiesta riparte
     // da ciò che c'è nell'URL, quindi un filtro omesso resterebbe quello di prima e non si potrebbe
     // più svuotare. Per i filtri a scelta multipla il vuoto è l'array senza elementi.
@@ -79,9 +91,10 @@ watchDebounced(
         stato: stato.length > 0 ? stato : null,
         condominio_id: condominio_id.length > 0 ? condominio_id : null,
         visibility: visibility.length > 0 ? visibility : null,
+        assegnazione: assegnazione.length > 0 ? assegnazione : null,
       },
       () => {
-        if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0 && visibility.length === 0) {
+        if (!subject && priority.length === 0 && stato.length === 0 && condominio_id.length === 0 && visibility.length === 0 && assegnazione.length === 0) {
           table.reset();
         }
       },
@@ -96,6 +109,7 @@ const clearAllFilters = () => {
   priorityColumn?.setFilterValue(undefined);
   condominioColumn?.setFilterValue(undefined);
   visibilityColumn?.setFilterValue(undefined);
+  assegnataAColumn?.setFilterValue(undefined);
 
   router.get(route(generateRoute('segnalazioni.index')), { page: 1 }, {
     preserveState: true,
@@ -158,8 +172,18 @@ const clearAllFilters = () => {
           class="w-full lg:w-auto"
         />
 
+        <DataTableFacetedFilter
+          v-if="assegnataAColumn"
+          :column="assegnataAColumn"
+          :title="trans('segnalazioni.assignment.label')"
+          :options="opzioniAssegnazione"
+          :isLoading="false"
+          @update:filter="() => {}"
+          class="w-full lg:w-auto"
+        />
+
         <Button
-          v-if="subjectFilter || priorityFilter.length || statoFilter.length || condominioFilter.length || visibilityFilter.length"
+          v-if="subjectFilter || priorityFilter.length || statoFilter.length || condominioFilter.length || visibilityFilter.length || assegnataAFilter.length"
           variant="ghost"
           size="sm"
           @click="clearAllFilters"

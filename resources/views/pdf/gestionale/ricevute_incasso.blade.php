@@ -180,6 +180,17 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                     @if(!empty($r['posizione']['codice_fiscale']))<br>C.F. {{ $r['posizione']['codice_fiscale'] }}@endif
                 </td>
             </tr>
+            {{-- Decisione 539: il versamento di un erede, con la ricevuta intestata a lui: da chi viene il debito che ha pagato, al posto di «Per conto di». --}}
+            @if(!empty($r['debito_ereditato']))
+                @php $de = $r['debito_ereditato']; @endphp
+                <tr>
+                    {{-- Su due righe scelte: nella colonna di 38 mm «da» andava a capo da solo. --}}
+                    <td style="width: 38mm; padding: 3px 0; vertical-align: top; color: #555;">Per il debito<br>ereditato da</td>
+                    <td style="padding: 3px 0; vertical-align: top;">
+                        <strong>{{ $de['di'] }}</strong>{{ filled($de['successione_del'] ?? null) ? ' · successione del ' . $giorno($de['successione_del']) : '' }}{{ filled($de['quota'] ?? null) ? ', quota ' . $de['quota'] . ' %' : '' }}
+                    </td>
+                </tr>
+            @endif
         @endif
         <tr>
             <td style="width: 38mm; padding: 3px 0; vertical-align: top; color: #555;">Importo versato</td>
@@ -244,6 +255,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                 <tr>
                     <td style="padding: 4px; border-bottom: {{ $bordoRiga }}; vertical-align: top;">
                         <strong>{{ \App\Services\Gestionale\Ricevute\RicevutaIncasso::nomeBreve((string) $q['rata'], $q['piano'] ?? null) }}</strong>
+                        {{-- Decisione 539: sulla rata del defunto, di chi è la parte che il versamento dell'erede chiude. --}}
+                        @if(filled($q['nota'] ?? null))<br><span style="color: #555;">{{ $q['nota'] }}</span>@endif
                     </td>
                     <td style="padding: 4px; border-bottom: {{ $bordoRiga }}; vertical-align: top;">{{ $q['unita'] ?? '—' }}</td>
                     <td style="padding: 4px; border-bottom: {{ $bordoRiga }}; vertical-align: top;">{{ $giorno($q['scadenza']) }}</td>

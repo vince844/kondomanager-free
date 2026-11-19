@@ -10,6 +10,8 @@ import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
 
 export interface Tratto {
     dal: string; al: string; giorni: number; capitale: number; tasso: string; fonte: string; divisore: number; esatti: number; causa: string;
+    /** Il tasso del tratto in decimillesimi di punto (1,60 % = 16.000): per rifare la riga con un altro tasso (decisione 512). */
+    tasso_e4?: number;
 }
 export interface RigaInteressi {
     chiave: string; rata_id: number; immobile_id: number | null; unita: string | null; rata: string; piano: string; gestione_id: number; gestione: string;
@@ -22,11 +24,26 @@ export interface RigaInteressi {
     accordo_dal?: string | null;
     /** La rata è coperta solo in parte e gli interessi continuano sulla parte fuori dall'accordo (decisione 450): la riga arriva alla data. */
     accordo_in_parte?: boolean;
+    /** Decisione 489: la riga del debito ereditato da un defunto, con la frase sotto la riga; null per le altre. */
+    ereditata?: import('@/lib/gestionale/addebiti/interessiDegliEredi').Ereditata | null;
+    frase_ereditata?: string | null;
+    /** D4 della prova della Coda 663: perché la riga del defunto si ferma al giorno prima del decesso. */
+    fino_al_decesso?: string | null;
+    /** Decisione 511: i tassi della riga in ordine di giorno, senza ripetere quello del tratto prima. */
+    tassi?: string[];
 }
 export interface PersonaInteressi {
     anagrafica_id: number; nome: string; righe: RigaInteressi[]; totale: number; crediti_sulle_rate: number; anticipi: number; quote_di_inquilino: number;
     /** Il debito coperto da un accordo di rientro in corso: la proposta ne lascia fuori i giorni dalla data dell'accordo. */
     in_accordo?: number;
+    /**
+     * Le rate che l'accordo copre solo in parte e che con «restano sospesi finché l'accordo regge» escono per intero dal giorno dell'accordo (decisione 450, Coda 678):
+     * la rata intera, e quanto ne copre l'accordo. Zero se non c'è il caso.
+     */
+    fuori_per_intero?: number;
+    di_cui_nell_accordo?: number;
+    /** Decisione 493 (13): accanto al defunto con righe ferme al decesso, che cosa fa la registrazione (agli eredi per quota, o a suo nome). */
+    dopo_il_decesso?: string | null;
 }
 
 /** Che cosa dice la proposta sotto il titolo. */
@@ -50,6 +67,12 @@ export function testoCausa(causa: string): string {
         regola: 'regola nuova del condominio',
         emissione: 'rata emessa',
         accordo: 'dal giorno dell\'accordo, solo la parte fuori dall\'accordo',
+        // Decisione 489: le cause della riga del debito ereditato.
+        decesso: 'dal giorno del decesso, il debito è passato a te',
+        // E8 della seconda prova della beta.12: il tratto che comincia il giorno dopo.
+        dopo_il_decesso: 'dal giorno dopo il decesso, il debito è passato a te',
+        nel_piano: 'una parte del debito è entrata in una tua rata',
+        dopo_l_emissione: 'dall\'emissione della tua rata nuova',
     } as Record<string, string>)[causa] ?? causa;
 }
 
@@ -85,8 +108,16 @@ export function testoAccanto(p: PersonaInteressi): string[] {
     if (p.crediti_sulle_rate > 0 || p.anticipi > 0) {
         frasi.push(`Alla data ha ${euroTesto(p.crediti_sulle_rate + p.anticipi)} di crediti e anticipi: coprono prima le rate più vecchie, e lì gli interessi non ci sono.`);
     }
-    if ((p.in_accordo ?? 0) > 0) {
-        frasi.push(`${euroTesto(p.in_accordo ?? 0)} sono in un accordo di rientro in corso: la proposta lascia fuori i giorni dalla data dell'accordo; i giorni prima dell'accordo restano nella proposta.`);
+    // Con gli interessi sospesi sulla parte fuori, l'accordo copre solo una parte della rata ma resta fuori tutta (Coda 678): la frase non dice «sono in un accordo»
+    // di una cifra che non è quella che esce dalla proposta.
+    const fuoriPerIntero = p.fuori_per_intero ?? 0;
+    const inAccordoComune = (p.in_accordo ?? 0) - (fuoriPerIntero > 0 ? (p.di_cui_nell_accordo ?? 0) : 0);
+    if (inAccordoComune > 0) {
+        frasi.push(`${euroTesto(inAccordoComune)} sono in un accordo di rientro in corso: la proposta lascia fuori i giorni dalla data dell'accordo; i giorni prima dell'accordo restano nella proposta.`);
+    }
+    if (fuoriPerIntero > 0) {
+        frasi.push(`Dal giorno dell'accordo di rientro restano fuori ${euroTesto(fuoriPerIntero)}: l'accordo ne copre ${euroTesto(p.di_cui_nell_accordo ?? 0)}, ma hai scelto che gli interessi `
+            + 'restino sospesi finché l\'accordo regge, e così resta fuori tutta la rata. I giorni prima dell\'accordo restano nella proposta.');
     }
     if (p.quote_di_inquilino > 0) {
         frasi.push(`Quote di inquilini scadute: ${euroTesto(p.quote_di_inquilino)}. Gli interessi non si propongono: se vuoi, addebitali al proprietario con «Spese del ritardo».`);
@@ -201,3 +232,14 @@ export function cheCosaMancaAlTassoLegale(t: { anno: number | null; tasso: strin
 export function testoScrittoAMano(t: { scritto_da: string | null; scritto_il: string }): string {
     return `scritto a mano${t.scritto_da ? ` da ${t.scritto_da}` : ''} il ${giorno(t.scritto_il)}`;
 }
+
+/**
+ * Decisione 511: il tasso accanto alla cifra della riga, «1,60 %», o i tassi dei tratti se nel periodo cambia, «1,60 % → 2,00 %». Senza la lista del server,
+ * dai tratti.
+ */
+export function testoTassi(r: Pick<RigaInteressi, 'tassi' | 'tratti'>): string {
+    const tassi = r.tassi ?? r.tratti.map((t) => t.tasso).filter((t, i, tutti) => t !== '' && t !== tutti[i - 1]);
+
+    return tassi.join(' → ');
+}
+

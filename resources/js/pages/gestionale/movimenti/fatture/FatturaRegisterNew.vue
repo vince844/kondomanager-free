@@ -39,6 +39,7 @@ import MoneyInput from '@/components/MoneyInput.vue';
 import { descriviMargine, lordoRigaCents, sforaBudget } from '@/lib/gestionale/fatture/budget';
 import { erroreDelPeriodoPregressa } from '@/lib/gestionale/fatture/periodoPregressa';
 import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@/lib/gestionale/fatture/totali';
+import { giustificazioneDelloSforo, imprevistoUrgente, type StrategiaDelloSforo } from '@/lib/gestionale/fatture/sforoDellaFattura';
 import { confrontaRitenuta } from '@/lib/gestionale/fatture/confrontoRitenuta';
 import { proponiPosizioneRitenuta } from '@/lib/gestionale/fatture/posizioneRitenuta';
 import { euroToCents } from '@/lib/gestionale/fatture/money';
@@ -143,6 +144,8 @@ interface Conto {
     }[]
     /** La competenza già dichiarata sulla voce in un piano rate della gestione (decisione 20), se c'è. */
     competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[] } | null
+    /** Coda 687: la gestione del piano dei conti della voce; il menu delle righe offre quelle della gestione scelta. */
+    gestione_id?: number | null
 }
 
 interface Banca {
@@ -728,7 +731,7 @@ function precompilaDaXml(esito: EsitoImportazioneXml) {
 
         form.righe = esito.righe.map((r) => ({
             descrizione: r.descrizione,
-            conto_id: fornitoreAgganciato?.ultimo_conto_id ?? null,
+            conto_id: vocePropostaNellaGestione(fornitoreAgganciato?.ultimo_conto_id),
             immobile_id: null,
             importo_imponibile: r.importo_imponibile,
             aliquota_iva: r.aliquota_iva,
@@ -1377,6 +1380,10 @@ const budgetImpacts = computed(() => {
 
     form.righe.forEach((r, idx) => {
         if (!r.conto_id) return;
+        // Coda 693 (e), decisione 532: una riga addebitata a un'unità non sta sul capitolo che porta, perché il servizio la registra sull'unità e toglie la
+        // voce («smistamento intelligente imprevisti» in `FatturaPassivaService::registraFattura`). Contata qui accendeva uno sforo che la contabilità non
+        // ha, e con «Autorizza e Registra» una fattura da ratificare prima di pagarla.
+        if (r.immobile_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
 
@@ -1460,7 +1467,7 @@ const lordoRigaRegistratoCents = (idx: number, riga: { importo_imponibile: unkno
         : euroToCents(riga.importo_imponibile) + iva;
 };
 
-const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+const rigaInSforo = (idx: number, riga: { conto_id: number | null; immobile_id?: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
     // ⚠️ **Coda 122.** Una nota di credito non può mai sforare: libera budget, non lo
     // consuma. Senza questa guardia, una nota su un capitolo già speso veniva scambiata per
     // uno sforamento — falso allarme che chiedeva una motivazione, e se compilata marcava il
@@ -1469,6 +1476,8 @@ const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_impon
     if (isNotaCredito.value) return false;
 
     if (!riga.conto_id) return false;
+    // Coda 693 (e): la riga di un'unità non va sul capitolo (vedi `budgetImpacts`), quindi non lo sfora.
+    if (riga.immobile_id) return false;
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
 
@@ -1666,6 +1675,23 @@ watch(() => form.esercizio_id, (v) => {
     form.gestione_id = props.gestioni.find(g => g.tipo === 'ordinaria')?.id ?? props.gestioni[0].id;
 }, { immediate: true });
 
+/**
+ * Coda 687 (decisione 507): le voci offerte nelle righe sono della gestione scelta, che la fattura ricorda con la sua scrittura (prima erano quelle di
+ * tutto il condominio, e una fattura dell'ordinaria poteva finire sulla voce della straordinaria). Restano nel menu le voci che le righe hanno già: il
+ * server dice di sceglierne una della gestione.
+ */
+const contiDellaGestione = computed(() => {
+    const giaNelleRighe = new Set(form.righe.map((r: any) => r.conto_id).filter((id: unknown) => id !== null && id !== undefined));
+    return props.conti.filter(c => c.gestione_id === undefined || c.gestione_id === null || c.gestione_id === form.gestione_id || giaNelleRighe.has(c.id));
+});
+
+/** La voce proposta per il fornitore (l'ultima che ha usato) solo se è della gestione scelta: una voce di un'altra gestione non si propone. */
+const vocePropostaNellaGestione = (contoId: number | null | undefined): number | null => {
+    if (!contoId) return null;
+    const c = props.conti.find(x => x.id === contoId);
+    return c && (c.gestione_id === undefined || c.gestione_id === null || c.gestione_id === form.gestione_id) ? contoId : null;
+};
+
 // Tornando alla vista corrente, il saldo pregresso selezionato non deve
 // restare nel form come passeggero fantasma del prossimo submit.
 watch(() => form.is_pregresso, (attivo) => {
@@ -1684,7 +1710,7 @@ const addRiga = () => form.righe.push({
     // Stessa forma di aliquota_iva qui sotto: prefill col capitolo dell'ultima
     // fattura di questo fornitore (calcolato dal backend), non una scelta da zero.
     // `null` per un fornitore senza storico — non si inventa un capitolo qualsiasi.
-    conto_id:           selectedFornitore.value?.ultimo_conto_id ?? null,
+    conto_id:           vocePropostaNellaGestione(selectedFornitore.value?.ultimo_conto_id),
     immobile_id:        null,
     importo_imponibile: 0,
     // Prefill con l'ultima aliquota usata per questo fornitore (calcolata dal
@@ -1746,6 +1772,36 @@ const removeRiga = (idx: number) => {
 const showSpesaImprevistaModal = ref(false);
 
 const spesaImprevistaMode = ref<'corrente' | 'pregressa'>('corrente');
+
+/**
+ * Coda 693 (a): dopo un rifiuto del server sui dati della finestra «Fuori preventivo» (o sulla giustificazione dello sforo) la finestra va riaperta, con i
+ * dati di prima. Fino alla 1.12.0-beta.11 i dati legali risultavano già scritti, «Registra» rimandava gli stessi dati, e il server li rifiutava di nuovo.
+ */
+const fuoriPreventivoDaRivedere = ref(false);
+
+/**
+ * Coda 693 (d): la giustificazione dello sforo che la pagina ha composto dal solo imprevisto urgente. Si ricompone a ogni «Registra», così un'altra riga
+ * che sfora una voce apre la finestra dello sforo anche dopo un primo invio (una giustificazione che viene dalla finestra dello sforo resta quella).
+ */
+const sforoDalSoloImprevisto = ref(false);
+
+/** La parte comune della spesa fuori preventivo, in centesimi: senza le righe «Fuori preventivo» di un'unità (Coda 693 (e)). */
+const imprevistoComuneCents = computed(() => totali.value.imponibile_sopravvenienza_comune_cents + totali.value.iva_sopravvenienza_comune_cents);
+
+/**
+ * Coda 693 (d): l'imprevisto urgente da giustificare come sforo, con la sua parte comune; nessuno se la fattura non ha più una riga «Fuori preventivo»
+ * comune (i dati della finestra restano, ma non c'è più niente da giustificare). Sulla pregressa com'era: la sua eccedenza ha la sua finestra.
+ */
+const imprevistoDaGiustificare = () => (form.is_pregresso || imprevistoComuneCents.value > 0)
+    ? imprevistoUrgente(form.dati_extra.log_legale_sopravvenienza, imprevistoComuneCents.value)
+    : null;
+
+/** Coda 693 (c): la gestione della fattura, per la frase in fondo alla finestra «Fuori preventivo». */
+const gestioneDellaFattura = computed(() => {
+    const g = props.gestioni.find(x => x.id === form.gestione_id);
+
+    return g ? { nome: g.nome, tipo: g.tipo } : null;
+});
 
 const totaleCopertoPregressoCents = computed(() => {
     if (!form.is_pregresso) return 0;
@@ -1835,6 +1891,12 @@ const handleSubmit = () => {
         }
     }
 
+    // Coda 693 (d): la giustificazione composta dal solo imprevisto si ricompone qui sotto, dopo il controllo dello sforo delle voci.
+    if (sforoDalSoloImprevisto.value) {
+        form.dati_extra.override_budget = null;
+        sforoDalSoloImprevisto.value = false;
+    }
+
     // 1. Spesa imprevista CORRENTE
     //
     // ⚠️ **Una nota di credito non sfora mai un budget: lo libera.** Il pulsante che accende
@@ -1844,7 +1906,8 @@ const handleSubmit = () => {
     // della Coda 122, che aveva già escluso le note dal calcolo dello sforo: quella correzione non
     // era arrivata fino a questo cancello. Coda 130.
     const hasSpesaImprevistaCorrente = form.righe.some(r => r.is_sopravvenienza && !r.immobile_id);
-    if (!isNotaCredito.value && !form.is_pregresso && hasSpesaImprevistaCorrente && !form.dati_extra.log_legale_sopravvenienza) {
+    // Coda 693 (a): anche quando il server ha rifiutato i dati della finestra, che si riapre con quelli di prima.
+    if (!isNotaCredito.value && !form.is_pregresso && hasSpesaImprevistaCorrente && (!form.dati_extra.log_legale_sopravvenienza || fuoriPreventivoDaRivedere.value)) {
         spesaImprevistaMode.value = 'corrente';
         showSpesaImprevistaModal.value = true;
         return;
@@ -1853,7 +1916,7 @@ const handleSubmit = () => {
     // 2. Eccedenza PREGRESSA (Scenario C — fattura > coperture dichiarate)
     // La guardia sta anche qui, non solo nel computed: la beta.20 ha già pagato due volte il
     // prezzo di chiudere una porta e lasciarne aperta un'altra sullo stesso stato.
-    if (!isNotaCredito.value && form.is_pregresso && eccedenzaPregressaCents.value > 0 && !form.dati_extra.log_legale_sopravvenienza) {
+    if (!isNotaCredito.value && form.is_pregresso && eccedenzaPregressaCents.value > 0 && (!form.dati_extra.log_legale_sopravvenienza || fuoriPreventivoDaRivedere.value)) {
         spesaImprevistaMode.value = 'pregressa';
         showSpesaImprevistaModal.value = true;
         return;
@@ -1874,10 +1937,20 @@ const handleSubmit = () => {
         return;
     }
 
-    // 3. Sforo budget CORRENTE
+    // 3. Sforo budget CORRENTE. Coda 693 (d): anche con l'urgenza, quando un'altra riga sfora una voce; la finestra chiede lo sforo delle sole voci.
     if (!form.is_pregresso && transactionStatus.value === 'CRITICAL_BUDGET' && !form.dati_extra.override_budget) {
         showOverrideModal.value = true;
         return;
+    }
+
+    // 4. L'imprevisto urgente senza altri sfori: la giustificazione è la sua (Coda 693 (d); prima la scriveva la conferma della finestra, e chiudeva il
+    // passo 3).
+    if (!form.dati_extra.override_budget) {
+        const giustificazione = giustificazioneDelloSforo(null, imprevistoDaGiustificare());
+        if (giustificazione) {
+            form.dati_extra.override_budget = giustificazione;
+            sforoDalSoloImprevisto.value = true;
+        }
     }
 
     doSubmit();
@@ -1887,14 +1960,16 @@ const handleSubmit = () => {
  * Chiamato da ModalSpesaImprevista al confirm.
  *
  * Salva i dati legali, poi rilancia handleSubmit() invece di chiamare
- * doSubmit() direttamente. In questo modo:
- * - Se is_ordinario === true  → override_budget viene settato e handleSubmit passa al punto 3
- * - Se is_ordinario === false → override_budget rimane null; se lo sforo esiste ancora,
- *   handleSubmit lo intercetta al punto 2 e apre ModalOverrideBudget
+ * doSubmit() direttamente. In questo modo, con l'urgenza come con la delibera, se un'altra
+ * riga sfora una voce handleSubmit apre ModalOverrideBudget al punto 3; la giustificazione
+ * dello sforo dell'imprevisto urgente la compone il punto 4, o la conferma dello sforo
+ * insieme a quella delle voci (Coda 693 (d)). Prima la scriveva questa funzione, e la
+ * finestra dello sforo non si apriva più.
  */
 const handleSpesaImprevistaConfirm = (payload: any) => {
     // La modale ora emette già i campi corretti, non serve più il remap manuale!
     form.dati_extra.log_legale_sopravvenienza = payload;
+    fuoriPreventivoDaRivedere.value = false;
 
     // Un fatto, una domanda (B2, S6): la «Data assemblea» del modale è la stessa data che la competenza
     // chiama «spesa deliberata il». Se la testata è ancora vuota la si precompila; se l'amministratore
@@ -1906,14 +1981,10 @@ const handleSpesaImprevistaConfirm = (payload: any) => {
         form.competenza_al = payload.data_assemblea;
     }
 
-    if (payload.is_ordinario) {
-        form.dati_extra.override_budget = {
-            motivazione:           payload.motivazione_sforo,
-            importo_sforo:         totali.value.imponibile_sopravvenienza_cents + totali.value.iva_sopravvenienza_cents,
-            strategia_rientro:     payload.strategia_rientro,
-            fondo_patrimoniale_id: payload.fondo_patrimoniale_id,
-        };
-    }
+    // La giustificazione dell'imprevisto urgente non si scrive qui (Coda 693 (d)): la compone `handleSubmit`, dopo lo sforo delle voci. Una giustificazione
+    // di prima, rimasta da un invio rifiutato, si ricompone.
+    form.dati_extra.override_budget = null;
+    sforoDalSoloImprevisto.value = false;
 
     showSpesaImprevistaModal.value = false;
     handleSubmit();
@@ -1923,14 +1994,18 @@ const handleSpesaImprevistaConfirm = (payload: any) => {
  * Chiamato da ModalOverrideBudget al confirm.
  */
 const handleOverrideConfirm = (payload: { strategia: string; fondoId: number | null; motivazione: string }) => {
-    form.dati_extra.override_budget = {
-        motivazione:                payload.motivazione,
-        importo_sforo:              sforoBudgetTotaleCents.value,
-        budget_residuo_al_momento:  -sforoBudgetTotaleCents.value,
-        timestamp:                  new Date().toISOString(),
-        strategia_rientro:          payload.strategia,
-        fondo_patrimoniale_id:      payload.fondoId,
-    };
+    // Coda 693 (d): con l'urgenza lo sforo è di tutta la fattura, l'imprevisto e le voci; la strategia scelta qui è quella delle voci.
+    form.dati_extra.override_budget = giustificazioneDelloSforo(
+        {
+            motivazione:  payload.motivazione,
+            importoCents: sforoBudgetTotaleCents.value,
+            strategia:    payload.strategia as StrategiaDelloSforo,
+            fondoId:      payload.fondoId,
+            timestamp:    new Date().toISOString(),
+        },
+        form.is_pregresso ? null : imprevistoDaGiustificare(),
+    );
+    sforoDalSoloImprevisto.value = false;
 
     showOverrideModal.value = false;
     doSubmit();
@@ -2127,7 +2202,17 @@ const doSubmit = () => {
         // colonna sinistra: senza questo salto un rifiuto resta fuori schermo, e per
         // l'amministratore «ho premuto e non è successo niente» — lo stesso difetto,
         // solo un po' più in là. Stessa soluzione di FornitoriNew.vue.
-        onError: portaInVistaIlRiepilogo,
+        onError: (errori: Record<string, string>) => {
+            // Coda 693 (a): un rifiuto sui dati della finestra «Fuori preventivo» o sulla giustificazione dello sforo li fa rivedere. «Registra» riapre la
+            // finestra con i dati di prima (e, se un'altra riga sfora, quella dello sforo), invece di rimandare gli stessi dati.
+            const chiavi = Object.keys(errori ?? form.errors ?? {});
+            if (chiavi.some(k => k.startsWith('dati_extra.log_legale_sopravvenienza') || k.startsWith('dati_extra.override_budget'))) {
+                fuoriPreventivoDaRivedere.value = form.dati_extra.log_legale_sopravvenienza !== null;
+                form.dati_extra.override_budget = null;
+                sforoDalSoloImprevisto.value = false;
+            }
+            portaInVistaIlRiepilogo();
+        },
     });
 };
 
@@ -3025,7 +3110,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
 
                                             <v-select
                                                 v-model="riga.conto_id"
-                                                :options="conti"
+                                                :options="contiDellaGestione"
                                                 :disabled="riga.is_sopravvenienza"
                                                 label="nome"
                                                 :reduce="(c: Conto) => c.id"
@@ -3137,7 +3222,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                             </div>
                                             <Button variant="ghost" size="icon" type="button" @click="removeRiga(idx)"
                                                 :aria-label="`Togli la riga ${idx + 1}`"
-                                                class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
+                                                class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
                                                 <Trash2 class="w-4 h-4" />
                                             </Button>
                                         </div>
@@ -3337,9 +3422,10 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
             :condominio-id="props.condominio.id"
             :fornitore-nome="selectedFornitore?.ragione_sociale || 'Fornitore'"
             :fondi-riserva="fondi_riserva"
-            :importo-imprevisto="spesaImprevistaMode === 'corrente'
-                ? totali.imponibile_sopravvenienza_cents + totali.iva_sopravvenienza_cents
-                : eccedenzaPregressaCents"
+            :importo-imprevisto="spesaImprevistaMode === 'corrente' ? imprevistoComuneCents : eccedenzaPregressaCents"
+            :gestione="gestioneDellaFattura"
+            :precedente="fuoriPreventivoDaRivedere ? form.dati_extra.log_legale_sopravvenienza : null"
+            :has-spese-private="hasSpesePrivate"
             @confirm="handleSpesaImprevistaConfirm"
         />
 

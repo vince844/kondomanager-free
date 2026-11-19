@@ -20,6 +20,7 @@ return [
     'create_ticket'             => "Non hai permessi sufficienti per creare una segnalazione guasto!",
     'edit_tickets'              => 'Non hai permessi sufficienti per modificare le segnalazioni!',
     'delete_tickets'            => 'Non hai permessi sufficienti per eliminare le segnalazioni!',
+    'assign_ticket'             => 'Non hai permessi sufficienti per assegnare questa segnalazione guasto!',
     // Buildings
     'view_buildings'            => "Non hai permessi sufficienti per visualizzare i condomini!",
     'create_building'           => "Non hai permessi sufficienti per creare un nuovo condominio!",

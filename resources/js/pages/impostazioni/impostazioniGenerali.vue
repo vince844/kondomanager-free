@@ -103,7 +103,7 @@ const ruoloRegistrazioneBloccato = ruolo_registrazione_modificabile !== true
 const form = useForm({
   user_frontend_registration: Boolean(can_register),
   language: (language || 'it') as SupportedLanguage,
-  app_name: app_name || 'Kondomanager',
+  app_name: app_name || 'KondoManager',
   open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
@@ -119,6 +119,12 @@ const form = useForm({
   allegati_massimo_per_elemento: (page.props as Record<string, unknown>).allegati_massimo_per_elemento !== undefined
     ? Number((page.props as Record<string, unknown>).allegati_massimo_per_elemento)
     : 5,
+  segnalazioni_assegnazione_visibile_nel_portale: (page.props as Record<string, unknown>).segnalazioni_assegnazione_visibile_nel_portale !== undefined
+    ? Boolean(Number((page.props as Record<string, unknown>).segnalazioni_assegnazione_visibile_nel_portale))
+    : false,
+  segnalazioni_assegnazione_porta_in_lavorazione: (page.props as Record<string, unknown>).segnalazioni_assegnazione_porta_in_lavorazione !== undefined
+    ? Boolean(Number((page.props as Record<string, unknown>).segnalazioni_assegnazione_porta_in_lavorazione))
+    : false,
   default_per_page: Number(default_per_page) || 10,
 })
 
@@ -409,6 +415,32 @@ const submit = () => {
                 />
                 <InputError :message="form.errors.allegati_massimo_per_elemento" />
               </div>
+            </div>
+
+            <!-- VISIBILITA ASSEGNAZIONE SEGNALAZIONI NEL PORTALE -->
+            <div data-impostazione="segnalazioni_assegnazione_visibile_nel_portale" class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.segnalazioni_assegnazione_visibile_nel_portale_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.segnalazioni_assegnazione_visibile_nel_portale_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.segnalazioni_assegnazione_visibile_nel_portale" />
+            </div>
+
+            <!-- ASSEGNAZIONE SEGNALAZIONE PORTA IN LAVORAZIONE -->
+            <div data-impostazione="segnalazioni_assegnazione_porta_in_lavorazione" class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.segnalazioni_assegnazione_porta_in_lavorazione_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.segnalazioni_assegnazione_porta_in_lavorazione_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.segnalazioni_assegnazione_porta_in_lavorazione" />
             </div>
 
           </CardContent>

@@ -15,8 +15,11 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * tabella del tasso legale dice l'anno che manca, il tasso scritto a mano dallo studio con chi, quando e la fonte, e la cifra del programma che vince su
  * quella scritta a mano; il tasso di un anno che manca lo scrive, lo corregge e lo toglie chi gestisce le impostazioni generali
  * (`TassoLegaleAManoDialog.vue`). Il pulsante «Guida» dell'intestazione apre la guida della pagina nel cassetto laterale.
+ *
+ * Decisioni 493 e 494 (1): la sezione «Gli interessi degli eredi», le otto scelte del condominio per il debito ereditato con la successione, ognuna con la
+ * riga «Adesso: …» e la «i» con il caso; le salva chi modifica il condominio, gli altri le leggono. Valgono per ogni successione, salvo quella che le cambia.
  */
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
@@ -34,6 +37,8 @@ import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import { giorno } from '@/lib/gestionale/debiti/rateScadute';
 import { SUGGERIMENTO_RIFERIMENTO, cheCosaMancaAllaRegola, testoDellaRegola, testoScrittoAMano, type TassoLegaleAMano } from '@/lib/gestionale/addebiti/accessori';
+import InteressiDegliEredi from '@/components/gestionale/addebiti/InteressiDegliEredi.vue';
+import { scelteDalleVoci, scelteDiverse, type SceltaDegliEredi, type VoceInteressiEredi } from '@/lib/gestionale/addebiti/interessiDegliEredi';
 import type { Building } from '@/types/buildings';
 import type { Flash } from '@/types/flash';
 
@@ -55,7 +60,19 @@ const props = defineProps<{
     fonti: Array<{ valore: string; nome: string }>; frase_senza_regole: string; avvisi_fonti: Record<string, string>; oggi: string;
     /** I caratteri del riferimento di un tasso scritto che il server accetta. */
     riferimento_massimo?: number;
+    /** Decisione 494 (1): le otto scelte sugli interessi degli eredi del condominio, e chi le può cambiare. */
+    interessi_eredi?: { descrizione: string; voci: VoceInteressiEredi[] };
+    puo_modificare_eredi?: boolean;
 }>();
+
+// Le scelte degli eredi nel modulo: quelle del condominio finché l'amministratore non le cambia; «Salva» si accende solo con una scelta diversa.
+const scelteEredi = ref<Record<SceltaDegliEredi, boolean>>(scelteDalleVoci(props.interessi_eredi?.voci ?? []));
+watch(() => props.interessi_eredi?.voci, (v) => { scelteEredi.value = scelteDalleVoci(v ?? []); });
+const erediCambiate = computed(() => scelteDiverse(scelteEredi.value, scelteDalleVoci(props.interessi_eredi?.voci ?? [])));
+function salvaEredi() {
+    router.post(route(generateRoute('gestionale.recupero-crediti.interessi-eredi'), { condominio: props.condominio.id }), { scelte: scelteEredi.value },
+        { preserveScroll: true, preserveState: true, only: ['interessi_eredi', 'flash', 'errors'] });
+}
 
 const { generateRoute, generatePath } = usePermission();
 const page = usePage<{ flash?: { message?: Flash }; errors?: Record<string, unknown> }>();
@@ -273,6 +290,20 @@ const breadcrumbs = computed(() => [
                                     <Button :disabled="manca !== null" data-testid="registra-regola" @click="registra">Registra la regola</Button>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Decisione 494 (1): gli interessi degli eredi -->
+                        <div v-if="interessi_eredi" class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm p-6 lg:p-8" data-testid="sezione-eredi">
+                            <h3 class="text-base font-bold text-slate-900 dark:text-white">Gli interessi degli eredi</h3>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">{{ interessi_eredi.descrizione }}</p>
+                            <div class="mt-3">
+                                <InteressiDegliEredi v-model="scelteEredi" :voci="interessi_eredi.voci" :modificabile="puo_modificare_eredi" prefisso="condominio-eredi" />
+                            </div>
+                            <div v-if="puo_modificare_eredi" class="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800 pt-4">
+                                <span v-if="!erediCambiate" class="text-xs text-slate-500 dark:text-slate-400" data-testid="eredi-niente-da-salvare">Cambia una scelta per salvarla.</span>
+                                <Button :disabled="!erediCambiate" data-testid="salva-eredi" @click="salvaEredi">Salva le scelte degli eredi</Button>
+                            </div>
+                            <p v-else class="mt-3 text-xs text-slate-500 dark:text-slate-400" data-testid="eredi-sola-lettura">Le cambia chi può modificare il condominio.</p>
                         </div>
 
                         <!-- Il tasso legale -->

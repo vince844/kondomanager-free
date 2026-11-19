@@ -13,6 +13,7 @@ use App\Models\NotificationPreference;
 use App\Models\Segnalazione;
 use App\Models\User;
 use App\Support\Commenti\RegoleCommenti;
+use App\Support\Segnalazioni\AssegnazioneSegnalazioni;
 use Illuminate\Support\Collection;
 use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 
@@ -54,6 +55,14 @@ class CommentoNotificationService
         // 1. L'autore dell'elemento
         if ($commentable->created_by !== null) {
             $candidateIds->push((int) $commentable->created_by);
+        }
+
+        // 1b. Chi segue la segnalazione (purché possa ricevere)
+        if ($commentable instanceof Segnalazione && $commentable->assigned_to !== null) {
+            $assignedUser = $commentable->assignedTo;
+            if ($assignedUser && AssegnazioneSegnalazioni::puoRicevere($assignedUser)) {
+                $candidateIds->push((int) $assignedUser->id);
+            }
         }
 
         // 2. Gli utenti con il pannello che hanno un'anagrafica nei palazzi della discussione. La discussione unica di una comunicazione

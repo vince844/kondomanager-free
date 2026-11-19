@@ -30,7 +30,6 @@ class Segnalazione extends Model implements Commentable
         'subject',
         'description',
         'created_by',
-        'assigned_to',
         'condominio_id',
         'priority',
         'stato',
@@ -50,6 +49,7 @@ class Segnalazione extends Model implements Commentable
         'can_comment' => 'boolean',
         'commenti_moderati' => 'boolean',
         'allegati_moderati' => 'boolean',
+        'assegnata_il' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -343,6 +343,11 @@ class Segnalazione extends Model implements Commentable
     public function assignedTo()
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function assegnataDa()
+    {
+        return $this->belongsTo(User::class, 'assegnata_da');
     }
 
     public function condominio()

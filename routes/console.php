@@ -72,6 +72,13 @@ if (config('app.scheduler_queue_worker')) {
 }
 
 // ============================================================================
+// 4-bis. PUBBLICAZIONE COMUNICAZIONI PROGRAMMATE (Coda 589)
+// ============================================================================
+Schedule::call(function () {
+    Artisan::call('comunicazioni:pubblica-programmate');
+})->name('pubblica-comunicazioni-programmate')->everyMinute();
+
+// ============================================================================
 // 5. NIENTE DURANTE UN RIPRISTINO
 // ============================================================================
 // Mentre un ripristino è in corso il database è a metà import. La modalità ripristino ferma le

@@ -125,6 +125,10 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('fetch-fatture-straordinarie', FetchFattureStraordinarieController::class)
         ->name('fetch-fatture-straordinarie');
     // --- FINE FIX ---
+
+    // Coda 686 (a): ciò che il carrello vuoto dello straordinario non mostra, e dove andare. Sola lettura.
+    Route::get('fetch-fatture-fuori-dal-carrello', \App\Http\Controllers\Gestionale\PianiRate\FetchFuoriDalCarrelloController::class)
+        ->name('fetch-fatture-fuori-dal-carrello');
     
     /*
      * ⛔ **`show` escluso: il metodo non è mai stato scritto.**
@@ -284,6 +288,10 @@ Route::prefix('/gestionale/{condominio}')
             'piani-conti' => 'pianoConto'
         ]);
         
+    // Coda 680 (decisione 493 (15)): le voci di entrata con un mastro di costo passano al mastro delle entrate, su comando dell'amministratore.
+    Route::post('esercizi/{esercizio}/piani-conti/{pianoConto}/voci-di-entrata', [PianoContiController::class, 'correggiVociDiEntrata'])
+        ->name('esercizi.piani-conti.voci-di-entrata');
+
     Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/print-distinta', [PianoContiPrintController::class, 'distinta'])
         ->name('esercizi.piani-conti.print-distinta');
 
@@ -623,6 +631,8 @@ Route::prefix('/gestionale/{condominio}')
     Route::post('recupero-crediti', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'store'])->name('recupero-crediti.store');
     // Il tasso legale di un anno che il programma non ha ancora, scritto a mano per tutti i condomini: lo scrive e lo toglie chi gestisce le impostazioni
     // generali (il controller, 403). L'anno arriva nel corpo; queste due stanno prima di `{regola}`, che altrimenti prenderebbe «tasso-legale».
+    // Decisioni 493 e 494 (1): le otto scelte sugli interessi degli eredi del condominio (chi modifica il condominio, il controller: 403).
+    Route::post('recupero-crediti/interessi-eredi', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'salvaInteressiEredi'])->name('recupero-crediti.interessi-eredi');
     Route::post('recupero-crediti/tasso-legale', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'scriviTassoLegale'])->name('recupero-crediti.tasso-legale.store');
     Route::delete('recupero-crediti/tasso-legale', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'togliTassoLegale'])->name('recupero-crediti.tasso-legale.destroy');
     Route::delete('recupero-crediti/{regola}', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'destroy'])->name('recupero-crediti.destroy');
@@ -746,6 +756,11 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/fatture/{fattura}/storno', StornoFatturaController::class)
         ->name('fatture.storno');
+
+    // Coda 687 (decisione 507): la correzione proposta per una fattura che una modifica ha spostato su un'altra gestione o spogliato di «Fuori
+    // preventivo», su comando dell'amministratore dall'elenco delle fatture. Mai automatica.
+    Route::post('/fatture/{fattura}/riporta-come-era', [FatturaPassivaController::class, 'riportaComeEra'])
+        ->name('fatture.riporta-come-era');
 
     // Coda 165: il collegamento fra la nota di credito del fornitore e la fattura che rettifica,
     // per le note già registrate. {fattura} qui è la NOTA.

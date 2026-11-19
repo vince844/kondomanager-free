@@ -29,6 +29,10 @@ return [
         'export_desc' => 'Scarica gli allegati filtrati in un archivio ordinato per condominio, tipo ed elemento, completo del riepilogo elenco.csv.',
     ],
 
+    // Coda 683 (4): la riga sotto l'elenco quando chi guarda vede meno file di quanti ne ha l'elemento.
+    'counter' => [
+        'hidden' => '{0} Non vedi nessuno dei :totale file: non sono visibili a te.|{1} Ne vedi uno su :totale: gli altri non sono visibili a te.|[2,*] Ne vedi :visibili su :totale: gli altri non sono visibili a te.',
+    ],
     'upload' => [
         'label' => 'Aggiungi allegati',
         'hint' => '{0} Formati ammessi: :formati, al massimo :limite per file. Non si possono aggiungere altri file.|{1} Formati ammessi: :formati, al massimo :limite per file. Si può aggiungere ancora un file (al massimo :massimo).|[2,*] Formati ammessi: :formati, al massimo :limite per file. Si possono aggiungere ancora :rimasti file (al massimo :massimo).',
@@ -37,6 +41,10 @@ return [
         'no_slots' => 'È stato raggiunto il limite di :massimo allegati per questo elemento.',
         'button' => 'Carica allegati',
         'uploading' => 'Caricamento…',
+        'take_photo' => 'Scatta una foto',
+        'preparing' => 'Preparo le foto…',
+        'photo_hint' => 'Le foto vengono rimpicciolite e ripulite dei dati di posizione.',
+        'photo_short' => 'Foto',
         'selected_files' => 'File selezionati',
         'remove_file' => 'Rimuovi',
     ],

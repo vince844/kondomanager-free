@@ -16,6 +16,8 @@ import money from 'v-money3';
 import { i18nVue, loadLanguageAsync } from 'laravel-vue-i18n';
 import FinestraConfermaPassword from './components/FinestraConfermaPassword.vue';
 import { conConferma } from './lib/clientHttpConConferma';
+// Beta.12: i menu `v-select` si chiudono dopo la scelta, anche dentro una finestra (prima di ogni pagina).
+import './lib/vSelectChiusoDopoLaScelta';
 
 createInertiaApp({
     // Una richiesta che riceve 423 «serve la password» apre la finestra della conferma e si rifà da sola, con gli stessi

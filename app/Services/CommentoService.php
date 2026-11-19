@@ -9,12 +9,14 @@ use App\Contracts\Commentable;
 use App\Enums\NotificationType;
 use App\Events\Commenti\CommentoCreato;
 use App\Models\Commento;
+use App\Models\Comunicazione;
 use App\Models\Segnalazione;
 use App\Models\User;
 use App\Notifications\Commenti\CommentoApprovatoNotification;
 use App\Notifications\Commenti\CommentoEliminatoNotification;
 use App\Notifications\Commenti\CommentoInAttesaNotification;
 use App\Notifications\Commenti\CommentoModificatoInAttesaNotification;
+use App\Notifications\Commenti\CommentoNascostoNotification;
 use App\Notifications\Commenti\NuovoCommentoNotification;
 use App\Support\Commenti\RegoleCommenti;
 use Illuminate\Support\Facades\DB;
@@ -150,12 +152,49 @@ class CommentoService
 
         if ($commento->autore && $commento->autore->email && (int) $commento->autore->id !== (int) $moderatore->id) {
             $prefTipo = $commentable instanceof Segnalazione
-                ? NotificationType::COMMENT_DELETED->value
-                : NotificationType::COMMUNICATION_COMMENT_DELETED->value;
+                ? NotificationType::COMMENT_HIDDEN->value
+                : NotificationType::COMMUNICATION_COMMENT_HIDDEN->value;
 
             if (app(CommentoNotificationService::class)->preferenzaAttiva($commento->autore, $prefTipo)) {
-                $commento->autore->notify(new CommentoEliminatoNotification($commento));
+                $commento->autore->notify(new CommentoNascostoNotification($commento));
             }
+        }
+    }
+
+    /**
+     * Elimina un commento (soft delete) e avvisa l'autore se a eliminarlo è un altro (decisioni 478 (2) e 483 (3)).
+     *
+     * L'avviso non parte se l'autore elimina il suo commento, se non ha l'email, se ha spento «Commento eliminato» o se non ha più il
+     * permesso di commentare quel tipo; parte anche per un commento già nascosto, e per uno in attesa dice che non è stato
+     * pubblicato. La notifica si compone prima dell'eliminazione, con il testo che serve, e va in coda.
+     */
+    public function elimina(Commento $commento, User $chi): void
+    {
+        $autore = $commento->autore;
+        $elemento = $commento->commentable;
+        $notifica = null;
+
+        if (
+            $autore && $autore->email
+            && (int) $autore->id !== (int) $chi->id
+            && ($elemento instanceof Segnalazione || $elemento instanceof Comunicazione)
+        ) {
+            $prefTipo = $elemento instanceof Segnalazione
+                ? NotificationType::COMMENT_REMOVED->value
+                : NotificationType::COMMUNICATION_COMMENT_REMOVED->value;
+
+            if (
+                RegoleCommenti::haPermesso($autore, RegoleCommenti::permesso($elemento, 'commenta'))
+                && app(CommentoNotificationService::class)->preferenzaAttiva($autore, $prefTipo)
+            ) {
+                $notifica = new CommentoEliminatoNotification($commento);
+            }
+        }
+
+        $commento->delete();
+
+        if ($notifica !== null) {
+            $autore->notify($notifica);
         }
     }
 

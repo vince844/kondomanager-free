@@ -208,7 +208,7 @@ const deleteDebito = (id: number) => {
                         {{ euro(debito.importo) }}
                       </td>
                       <td v-if="puoModificare" class="px-6 py-4 text-center">
-                        <Button variant="ghost" size="icon" @click="deleteDebito(debito.id)" class="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-rose-600">
+                        <Button variant="ghost" size="icon" @click="deleteDebito(debito.id)" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-opacity text-slate-400 hover:text-rose-600">
                           <Trash2 class="w-4 h-4" />
                         </Button>
                       </td>

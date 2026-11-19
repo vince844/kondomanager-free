@@ -62,12 +62,16 @@ class ComunicazioneService
         $query = $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
         $query = $this->applyFilters($query, $validated);
 
-        $query->orderBy('created_at', 'desc');
-
         // --- LOGICA OTTIMIZZAZIONE ---
         if ($limit) {
-            return $query->take($limit)->get();
+            return $query
+                ->reorder()
+                ->orderByRaw('COALESCE(pubblicata_il, created_at) DESC')
+                ->take($limit)
+                ->get();
         }
+
+        $query->orderBy('created_at', 'desc');
 
         return $query
             ->tap(fn ($q) => $this->ordina($q, $validated, ComunicazioneIndexRequest::colonneOrdinabili(), predefinita: 'subject', versoPredefinito: 'asc'))
@@ -179,7 +183,9 @@ class ComunicazioneService
                         if ($vis === 'published') {
                             $subQuery->orWhere(fn ($sq) => $sq->where('is_approved', true)->where('is_published', true));
                         } elseif ($vis === 'draft') {
-                            $subQuery->orWhere(fn ($sq) => $sq->where('is_approved', true)->where('is_published', false));
+                            $subQuery->orWhere(fn ($sq) => $sq->where('is_approved', true)->where('is_published', false)->whereNull('programmata_per'));
+                        } elseif ($vis === 'scheduled') {
+                            $subQuery->orWhere(fn ($sq) => $sq->whereNotNull('programmata_per'));
                         } elseif ($vis === 'pending') {
                             $subQuery->orWhere('is_approved', false);
                         } elseif ($vis === 'private') {

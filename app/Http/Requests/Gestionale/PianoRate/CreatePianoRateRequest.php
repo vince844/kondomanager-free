@@ -27,13 +27,47 @@ class CreatePianoRateRequest extends FormRequest
 
     public function messages(): array
     {
-        return [
+        // Coda 686 (b): ogni messaggio in parole semplici, senza il nome tecnico di un campo (`ParoleDelPiano`); qui quelli che dipendono dalla richiesta.
+        return array_merge(ParoleDelPiano::messaggi(), [
             // La coda su «Urgenza» solo dove quella scelta esiste a video: il carrello del piano straordinario (verifica S6, R4).
             'data_delibera_assemblea.required' => 'Indica la data della delibera dell\'assemblea: su una gestione straordinaria è il giorno che decide chi paga (art. 63 disp. att. c.c.).'
                 . ($this->input('tipo') === 'straordinario' ? ' Con un intervento d\'urgenza scegli «Urgenza» e dichiara la competenza sulla fattura.' : ''),
             'competenze_capitoli.*.tratti.*.dal.required' => 'Ogni tratto di competenza vuole la data di inizio.',
             'competenze_capitoli.*.tratti.*.al.required' => 'Ogni tratto di competenza vuole la data di fine.',
-        ];
+        ]);
+    }
+
+    /**
+     * N4: la frase per una fattura che «Spese fuori preventivo» non mette a rate, con le regole del suo carrello (`CarrelloDelloStraordinario::righe()`, 1a e
+     * 1b); null se la mette a rate, o se la fattura non dice niente di sé (né righe su una voce né coperture: decide il motore, come prima).
+     * - una fattura corrente con le righe sulle voci del preventivo e nessuna riga «Fuori preventivo» o addebitata a una sola unità: l'altra scheda;
+     * - una pregressa coperta in un altro modo (il fondo di riserva, la rata 0) e senza una copertura per sopravvenienza.
+     */
+    private function fuoriDalloStraordinario(\App\Models\Gestionale\FatturaPassiva $f): ?string
+    {
+        $db = \Illuminate\Support\Facades\DB::connection();
+        if ($f->is_pregresso) {
+            $coperture = $db->table('fattura_coperture')->where('fattura_passiva_id', $f->id)->pluck('tipo_copertura')->unique()->all();
+
+            return $coperture === [] || in_array('sopravvenienza', $coperture, true) ? null
+                : "La fattura n. {$f->numero_documento} è una pregressa già coperta in un altro modo (il fondo di riserva o la rata 0), senza una copertura per "
+                    . 'sopravvenienza: non si mette a rate con «Spese fuori preventivo». Toglila dal carrello.';
+        }
+        $righe = $db->table('righe_fattura')->leftJoin('conti', 'conti.id', '=', 'righe_fattura.conto_id')->where('righe_fattura.fattura_passiva_id', $f->id)
+            ->orderBy('righe_fattura.id')->get(['righe_fattura.is_sopravvenienza', 'righe_fattura.immobile_id', 'conti.nome as voce']);
+        $voce = $righe->whereNotNull('voce')->first()?->voce;
+        if ($voce === null || $righe->contains(fn ($r) => (bool) $r->is_sopravvenienza || $r->immobile_id !== null)) {
+            return null;
+        }
+
+        return "La fattura n. {$f->numero_documento} è sulla voce «{$voce}», senza righe «Fuori preventivo»: si mette a rate con «Dalle voci del preventivo», "
+            . 'non con «Spese fuori preventivo». Toglila dal carrello.';
+    }
+
+    /** Coda 686 (b): il nome a video di ogni campo, per le frasi delle regole generiche. */
+    public function attributes(): array
+    {
+        return ParoleDelPiano::ATTRIBUTI;
     }
 
     /**
@@ -56,8 +90,14 @@ class CreatePianoRateRequest extends FormRequest
                 $validator->errors()->add('competenze_capitoli', 'Su una gestione straordinaria la competenza è il giorno della delibera dell\'assemblea, o quella dichiarata sulla fattura: le voci di spesa non hanno un periodo proprio.');
             }
 
-            foreach ($this->input('competenze_capitoli', []) as $i => $voce) {
+            // Una lista che non è una lista (una richiesta costruita a mano) la rifiutano le regole del campo, con il loro messaggio: qui non si legge.
+            $competenze = $this->input('competenze_capitoli', []);
+            foreach (is_array($competenze) ? $competenze : [] as $i => $voce) {
+                if (! is_array($voce) || ! is_array($voce['tratti'] ?? [])) {
+                    continue;
+                }
                 $tratti = collect($voce['tratti'] ?? [])
+                    ->filter(fn ($t) => is_array($t))
                     ->map(fn ($t) => ['dal' => substr((string) ($t['dal'] ?? ''), 0, 10), 'al' => substr((string) ($t['al'] ?? ''), 0, 10)])
                     ->filter(fn ($t) => $t['dal'] !== '' && $t['al'] !== '')
                     ->sortBy('dal')->values();
@@ -146,8 +186,9 @@ class CreatePianoRateRequest extends FormRequest
      */
     private function guardiaFattureRettificate($validator): void
     {
-        foreach ($this->input('fatture_config', []) as $i => $conf) {
-            if ($validator->errors()->has("fatture_config.{$i}.id") || empty($conf['id'])) {
+        $fatture = $this->input('fatture_config', []);
+        foreach (is_array($fatture) ? $fatture : [] as $i => $conf) {
+            if (! is_array($conf) || $validator->errors()->has("fatture_config.{$i}.id") || empty($conf['id'])) {
                 continue;
             }
             $f = \App\Models\Gestionale\FatturaPassiva::with(['pianiRate', 'noteCollegate', 'righe', 'coperture'])->find($conf['id']);
@@ -199,8 +240,9 @@ class CreatePianoRateRequest extends FormRequest
                 'required_if:tipo,straordinario', 
                 'array',
                 function ($attribute, $value, $fail) {
-                    if ($this->tipo === 'straordinario' && (empty($value) || count($value) === 0)) {
-                        $fail('Devi selezionare almeno una fattura per creare un piano straordinario.');
+                    // A lista vuota questa regola non gira (non è implicita): il messaggio di quel caso è quello di `required_if` (Coda 686 (b)).
+                    if ($this->tipo === 'straordinario' && (empty($value) || ! is_array($value) || count($value) === 0)) {
+                        $fail('Scegli almeno una fattura da mettere a rate.');
                     }
                 },
             ],
@@ -230,6 +272,26 @@ class CreatePianoRateRequest extends FormRequest
                     if ($f && ($netto = $f->nettoNoteCollegate()) !== null && $netto['netto'] <= 0) {
                         $fail("La fattura n. {$f->numero_documento} è annullata per intero {$f->elencoNoteCollegate('da', true)}: "
                             . 'non resta niente da finanziare. Toglila dal carrello.');
+
+                        return;
+                    }
+                    // Coda 686 (d), D198 (c): il carrello offre le fatture della gestione scelta, e il piano mette a rate solo quelle. Una fattura della
+                    // straordinaria in un piano dell'ordinaria si ripartirebbe per giorni invece che alla delibera (decisione 11). Una fattura che non sa
+                    // la sua gestione (né colonna, né scrittura, né voci) passa: non si indovina.
+                    $gestioneFattura = $f?->gestioneDellaFattura();
+                    if ($f && $gestioneFattura !== null && $this->filled('gestione_id') && $gestioneFattura !== (int) $this->input('gestione_id')) {
+                        $nome = \App\Models\Gestione::whereKey($gestioneFattura)->value('nome');
+                        $fail("La fattura n. {$f->numero_documento} è della gestione «{$nome}»: si mette a rate in un piano di quella gestione. "
+                            . "Scegli «{$nome}» come gestione di riferimento.");
+
+                        return;
+                    }
+                    // N4 della terza prova (Fase 1-bis della beta.12): «Spese fuori preventivo» mette a rate quello che il suo carrello offre
+                    // (`CarrelloDelloStraordinario::righe()`): le righe «Fuori preventivo» o di una sola unità, e le pregresse con una copertura per
+                    // sopravvenienza. Una fattura della gestione giusta ma sulle voci del preventivo (una pagina rimasta aperta, una richiesta fatta a mano)
+                    // arrivava al motore, che si fermava con un messaggio tecnico: qui si dice l'altra scheda.
+                    if ($f && $this->input('tipo') === 'straordinario' && ($rifiuto = $this->fuoriDalloStraordinario($f)) !== null) {
+                        $fail($rifiuto);
                     }
                 },
             ],

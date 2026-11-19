@@ -31,7 +31,7 @@ class GenerateQrCodeAndSecretKey
         $secret_key = $google2fa->generateSecretKey();
         
         // Set company name from config
-        $this->companyName = config('app.name', 'Kondomanager');
+        $this->companyName = config('app.name', 'KondoManager');
         
         // Generate the QR code URL
         $g2faUrl = $google2fa->getQRCodeUrl(

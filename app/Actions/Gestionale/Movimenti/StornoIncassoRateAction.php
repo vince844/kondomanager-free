@@ -181,6 +181,13 @@ class StornoIncassoRateAction
                 ? max((string) $emissione, self::valeDal($condominio->id, $natura, max((string) $emissione, $valeLaRettifica), $oggi)['vale_dal'])
                 : max((string) $emissione, $oggi);
             $this->riportaFraICrediti($stornate, $condominio, $dataFiglia);
+
+            // Decisione 529: il versamento di un erede sul debito ereditato aveva portato una coppia nel Wallet (l'erede − y, il defunto + y). Senza il denaro
+            // la coppia non vale più: si toglie se nessun piano l'ha presa, altrimenti si scrive quella rovescia, che il piano dopo compensa. Le letture del
+            // giornale non contano più il versamento da sé: l'incasso è annullato, e la sua rettifica non porta il legame all'erede.
+            if ($stornate->contains(fn (ScritturaContabile $x) => (int) $x->id === (int) $scrittura->id)) {
+                app(\App\Services\Gestionale\Accessori\VersamentoDegliEredi::class)->storna($scrittura, $oggi);
+            }
         });
     }
 

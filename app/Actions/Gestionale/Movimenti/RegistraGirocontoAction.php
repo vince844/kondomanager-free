@@ -103,10 +103,11 @@ class RegistraGirocontoAction
         // Il vincolo di destinazione prevale: da un fondo vincolato si esce solo
         // con deroga assembleare. Nessun vincolo sul fondo in INGRESSO.
         if ($origine->tipo === 'fondo' && ! $origine->is_utilizzabile_per_imprevisti) {
+            // Coda 693, il rilievo basso della quarta prova della 1.12.0-beta.12: con il tipo vuoto (un fondo di prima) la frase diceva «vincolato ()».
             throw new GirocontoNonAmmessoException(
-                "Il fondo «{$origine->nome}» è vincolato ({$origine->sottotipo_fondo}): "
-                .'per utilizzarlo fuori dalla sua destinazione serve la deroga assembleare '
-                .'(attivabile dalla scheda della cassa, con motivazione).'
+                "Il fondo «{$origine->nome}» non si può usare fuori dalla sua destinazione: "
+                .\App\Http\Requests\Gestionale\Movimenti\PerimetroFattura::perCheNonSiUsa($origine->sottotipo_fondo, $origine->vincolo_descrizione)
+                .'. Per usarlo serve la deroga assembleare (attivabile dalla scheda della cassa, con motivazione).'
             );
         }
 

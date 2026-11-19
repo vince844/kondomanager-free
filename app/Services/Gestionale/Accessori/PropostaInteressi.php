@@ -32,7 +32,8 @@ use Illuminate\Validation\ValidationException;
  * parte e non si propongono. I crediti e gli anticipi della persona coprono le rate più vecchie dal giorno dopo quello in cui sono entrati. Una rata con
  * interessi già registrati riparte dal giorno dopo l'ultima data registrata: gli stessi giorni non si chiedono due volte. Una rata coperta da un accordo di
  * rientro in regola resta nella proposta fino al giorno prima dell'accordo (decisione 438, {@see \App\Services\Gestionale\Debiti\AccordiRientro::senzaInteressi()});
- * coperta solo in parte, sulla parte fuori dall'accordo gli interessi continuano, salvo la scelta dell'accordo di sospenderli (decisione 450).
+ * coperta solo in parte, sulla parte fuori dall'accordo gli interessi continuano, salvo la scelta dell'accordo di sospenderli (decisione 450). Con la
+ * successione e la scelta «si fermano al decesso» (decisione 483), le rate del defunto sulle unità del passaggio si fermano al giorno prima del decesso.
  *
  * Il calcolo è {@see InteressiDiMora}; il tasso e i giorni sono le regole del recupero del condominio ({@see RegoleDelRecupero}). Il tasso legale di un
  * anno scritto a mano dallo studio ({@see TassoLegaleAMano}) la proposta lo dice, con chi l'ha scritto, quando e la fonte.
@@ -48,6 +49,13 @@ final class PropostaInteressi
     public function __construct(private readonly AddebitiIndividuali $addebiti) {}
 
     /**
+     * La lettura del debito ereditato di questa proposta: una per chiamata (P1 della lente P della beta.12), o quella di chi chiama nella stessa pagina
+     * («Rate scadute», {@see \App\Services\Gestionale\Debiti\ElencoRateScadute::debitoEreditato()}). Mai tenuta fra due chiamate: la registrazione rifà la
+     * proposta dopo i blocchi, e una lettura di prima darebbe cifre vecchie.
+     */
+    private ?DebitoEreditato $ereditato = null;
+
+    /**
      * La proposta alla data per le persone date (tutte del condominio, già controllate da chi chiama).
      *
      * @param list<int> $persone
@@ -56,10 +64,15 @@ final class PropostaInteressi
     public function proponi(Condominio $condominio, string $alla, array $persone): array
     {
         $regole = (new RegoleDelRecupero())->delCondominio((int) $condominio->id);
+        $this->ereditato = new DebitoEreditato();
+        // Decisione 489: gli eredi entrano nella proposta quando entra il defunto; un erede porta il defunto, per i suoi interessi fino al decesso.
+        ['persone' => $persone, 'solo_unita' => $soloUnita] = $this->ereditato->perLaProposta((int) $condominio->id, array_values(array_unique(array_map('intval', $persone))));
         $esito = [];
         foreach (array_chunk(array_values(array_unique($persone)), self::BLOCCO) as $blocco) {
             foreach ($this->perBlocco((int) $condominio->id, $alla, $blocco, $regole) as $p) {
-                $esito[] = $p;
+                if (($p = self::soloSulleUnita($p, $soloUnita)) !== null) {
+                    $esito[] = $p;
+                }
             }
         }
         usort($esito, fn ($a, $b) => [-$a['totale'], $a['nome'], $a['anagrafica_id']] <=> [-$b['totale'], $b['nome'], $b['anagrafica_id']]);
@@ -125,14 +138,21 @@ final class PropostaInteressi
      * prima frase del perché.
      *
      * @param list<int> $persone
+     * @param DebitoEreditato|null $ereditato la lettura del debito ereditato della pagina che chiede, se c'è (P1)
      * @return array{con: list<int>, fermi: list<int>, perche: ?string}
      */
-    public function perSuggerimenti(Condominio $condominio, string $alla, array $persone): array
+    public function perSuggerimenti(Condominio $condominio, string $alla, array $persone, ?DebitoEreditato $ereditato = null): array
     {
         $regole = (new RegoleDelRecupero())->delCondominio((int) $condominio->id);
         $esito = ['con' => [], 'fermi' => [], 'perche' => null];
+        $this->ereditato = $ereditato ?? new DebitoEreditato();
+        // Decisione 489: come la proposta, con il defunto e i suoi eredi.
+        ['persone' => $persone, 'solo_unita' => $soloUnita] = $this->ereditato->perLaProposta((int) $condominio->id, array_values(array_unique(array_map('intval', $persone))));
         foreach (array_chunk(array_values(array_unique($persone)), self::BLOCCO) as $blocco) {
             foreach ($this->perBlocco((int) $condominio->id, $alla, $blocco, $regole) as $p) {
+                if (($p = self::soloSulleUnita($p, $soloUnita)) === null) {
+                    continue;
+                }
                 if ($p['totale'] > 0) {
                     $esito['con'][] = (int) $p['anagrafica_id'];
                 } elseif (($fermo = collect($p['righe'])->pluck('fermo')->filter()->first()) !== null) {
@@ -146,16 +166,62 @@ final class PropostaInteressi
     }
 
     /**
+     * Il defunto portato nella proposta da un suo erede ({@see DebitoEreditato::perLaProposta()}): solo le righe sulle unità della successione, i suoi
+     * interessi fino al decesso; senza, non c'è. Le altre persone come sono.
+     *
+     * @param array<string, mixed> $p
+     * @param array<int, list<int>> $soloUnita
+     * @return array<string, mixed>|null
+     */
+    private static function soloSulleUnita(array $p, array $soloUnita): ?array
+    {
+        $unita = $soloUnita[(int) $p['anagrafica_id']] ?? null;
+        if ($unita === null) {
+            return $p;
+        }
+        $p['righe'] = array_values(array_filter($p['righe'], fn ($r) => in_array((int) ($r['immobile_id'] ?? 0), $unita, true)));
+        if ($p['righe'] === []) {
+            return null;
+        }
+        $p['totale'] = (int) array_sum(array_column(array_filter($p['righe'], fn ($r) => $r['fermo'] === null), 'interessi'));
+
+        return $p;
+    }
+
+    /** Il perché delle cifre cambiate: da cinque a 255 caratteri (decisione 493 (10)). */
+    public const MOTIVO_MINIMO = 5;
+
+    public const MOTIVO_MASSIMO = 255;
+
+    /** Le frasi dell'ultima registrazione oltre al conto degli addebiti: gli interessi del defunto passati agli eredi (decisione 493 (13)). */
+    public array $frasiDellaRegistrazione = [];
+
+    /**
      * Registra le righe tenute della proposta: la proposta si rifà sul server alla stessa data, e se le cifre delle righe tenute non sono quelle che
      * l'amministratore ha visto, niente si scrive. Una rata per persona, unità e gestione, nel piano degli addebiti della gestione dove si scrive, sulla
      * voce scelta per quella gestione.
      *
-     * @param list<string> $righe le chiavi delle righe tenute («persona|rata|unità»)
+     * Decisione 493 (10)–(11): l'amministratore può registrare una riga con una cifra più bassa di quella proposta, da 1 centesimo alla proposta, con il
+     * perché scritto; la riga tiene la cifra registrata (`interessi`) e quella proposta (`proposti`), l'addebito il perché, chi e quando (`cambiati`). I
+     * giorni della riga restano registrati: la differenza non si chiede più.
+     *
+     * Decisione 493 (13): gli interessi del defunto fermi al decesso, con l'arretrato agli eredi e la scelta «vanno agli eredi», si registrano al defunto e
+     * nello stesso passo passano agli eredi per quota, come gli interessi già addebitati alla successione ({@see \App\Services\Subentro\AccessoriAgliEredi}):
+     * il registro del passaggio li tiene, e l'annullamento della successione li rimette al defunto.
+     *
+     * @param list<string> $righe le chiavi delle righe tenute («persona|rata|unità», con «|s…» per il debito ereditato)
      * @param array<int, int> $voci gestione dove si scrive => voce che riceve il denaro
+     * Decisione 512: al posto della cifra, il tasso (in decimillesimi di punto, 1,00 % = 10.000): la riga si rifà sugli stessi giorni e tratti con quel tasso,
+     * mai più alto di quello delle regole in nessun tratto; la riga tiene anche il tasso usato (`tasso`).
+     *
+     * @param array<string, int> $importi chiave => la cifra da registrare, in centesimi, per le sole righe cambiate
+     * @param array<string, int> $tassi chiave => il tasso da usare, in decimillesimi di punto, per le sole righe cambiate con il tasso
      * @return list<\App\Models\Gestionale\Rata>
      */
-    public function registra(Condominio $condominio, string $alla, array $righe, int $atteso, array $voci, ?int $utenteId): array
+    public function registra(Condominio $condominio, string $alla, array $righe, int $atteso, array $voci, ?int $utenteId, array $importi = [], ?string $motivo = null,
+        array $tassi = []): array
     {
+        $this->frasiDellaRegistrazione = [];
         $persone = array_values(array_unique(array_map(fn (string $k) => (int) explode('|', $k)[0], $righe)));
         // La proposta rifatta, e le righe tenute con le cifre che l'amministratore ha visto; altrimenti niente si scrive.
         $rifai = function () use ($condominio, $alla, $persone, $righe, $atteso): array {
@@ -175,6 +241,9 @@ final class PropostaInteressi
             return [$proposta, $tenute];
         };
         [$proposta, $tenute] = $rifai();
+        $tenute = self::cifreCambiate($tenute, $importi, $motivo, $tassi);
+        $cambiati = collect($tenute)->contains(fn ($r) => isset($r['proposti']));
+        $chi = $cambiati ? (string) (\App\Models\User::find($utenteId)?->name ?? '') : '';
         $dove = collect($proposta['gestioni'])->keyBy('gestione_id');
         $gruppi = [];
         foreach ($tenute as $r) {
@@ -186,9 +255,10 @@ final class PropostaInteressi
             $gruppi[$g['gestione_id'] . '|' . $g['esercizio_id']][$r['anagrafica_id'] . '|' . $r['immobile_id']][] = $r;
         }
         $causali = $this->causali($condominio, $alla, $gruppi, $proposta['persone']);
+        $oggi = \App\Helpers\DateHelper::oggiUtente();
 
         $rate = [];
-        DB::transaction(function () use ($condominio, $alla, $gruppi, $causali, $voci, $utenteId, $rifai, &$rate) {
+        DB::transaction(function () use ($condominio, $alla, $gruppi, $causali, $voci, $utenteId, $rifai, $motivo, $chi, $oggi, &$rate) {
             // Due registrazioni insieme degli stessi giorni: la seconda aspetta i piani degli addebiti della prima, poi rifà la proposta e trova gli
             // interessi già registrati.
             PianoRate::degliAddebiti()->where('condominio_id', $condominio->id)->lockForUpdate()->get(['id']);
@@ -205,6 +275,7 @@ final class PropostaInteressi
                     [$persona, $unita] = array_map('intval', explode('|', $personaUnita));
                     $fonti = collect($lista)->flatMap(fn ($r) => array_column($r['tratti'], 'fonte'))->unique()->values();
                     $regola = $this->regolaScritta($condominio, $lista);
+                    $cambiate = collect($lista)->contains(fn ($r) => isset($r['proposti']));
                     $daScrivere[] = [
                         'anagrafica_id' => $persona, 'immobile_id' => $unita, 'importo' => (int) array_sum(array_column($lista, 'interessi')),
                         'causale' => $causali[$chiave][$personaUnita], 'scadenza' => $alla, 'natura' => AddebitiIndividuali::NATURA_ACCESSORIO,
@@ -216,17 +287,139 @@ final class PropostaInteressi
                             'fonti' => $fonti->all(),
                             'fonte_delibera' => $regola?->fonte === 'delibera',
                             // `al`: l'ultimo giorno della riga, il giorno prima di un accordo di rientro che la tiene fuori (decisione 438) o la data.
-                            'righe' => array_map(fn ($r) => array_intersect_key($r, array_flip(['rata_id', 'immobile_id', 'rata', 'scadenza', 'dal', 'al', 'regola_inizio', 'tratti', 'interessi'])), $lista),
-                        ],
+                            // `ereditata`: la riga del debito ereditato (decisione 489); `proposti`: la cifra proposta, se l'amministratore l'ha cambiata.
+                            // `tasso`: il tasso scelto al posto di quello delle regole (decisione 512), con la sua etichetta.
+                            'righe' => array_map(fn ($r) => array_filter(array_intersect_key($r, array_flip(['rata_id', 'immobile_id', 'rata', 'scadenza', 'dal', 'al',
+                                'regola_inizio', 'tratti', 'interessi', 'proposti', 'ereditata', 'tasso'])), fn ($v, $k) => ! in_array($k, ['proposti', 'ereditata', 'tasso'], true) || $v !== null,
+                                ARRAY_FILTER_USE_BOTH), $lista),
+                        ] + ($cambiate ? ['cambiati' => ['motivo' => trim((string) $motivo), 'da' => $chi, 'il' => $oggi]] : []),
                     ];
                 }
                 foreach ($this->addebiti->registra($condominio, $gestione, $esercizio, $daScrivere, $utenteId, $alla) as $r) {
                     $rate[] = $r;
                 }
             }
+            $this->interessiDelDefuntoAgliEredi($condominio, $alla, $rate, $utenteId);
         });
 
         return $rate;
+    }
+
+    /**
+     * Le cifre cambiate prima di registrare (decisione 493 (10)): solo in meno, da 1 centesimo alla cifra proposta, e con il perché. Una cifra uguale alla
+     * proposta non è cambiata. Le righe cambiate tengono la cifra proposta in `proposti`.
+     *
+     * Decisione 512: o il tasso, solo in meno: non più alto di quello delle regole in nessun tratto della riga. La cifra è la riga rifatta sugli stessi giorni
+     * e tratti con quel tasso ({@see InteressiDiMora::arrotonda()}); la riga tiene il tasso usato (`tasso`).
+     *
+     * @param array<string, array<string, mixed>> $tenute
+     * @param array<string, int> $importi
+     * @param array<string, int> $tassi
+     * @return array<string, array<string, mixed>>
+     */
+    private static function cifreCambiate(array $tenute, array $importi, ?string $motivo, array $tassi = []): array
+    {
+        $cambiate = 0;
+        foreach ($tassi as $chiave => $e4) {
+            if (isset($importi[$chiave])) {
+                throw ValidationException::withMessages(['tassi' => 'Per una riga cambia la cifra o il tasso, non tutti e due.']);
+            }
+            if (! isset($tenute[$chiave])) {
+                throw ValidationException::withMessages(['tassi' => 'Hai cambiato il tasso di una riga che non registri: tienila, o lascia il suo tasso.']);
+            }
+            $r = $tenute[$chiave];
+            if ((int) $e4 <= 0) {
+                throw ValidationException::withMessages(['tassi' => 'Per non chiedere niente, togli la riga.']);
+            }
+            $massimo = (int) min(array_map(fn ($t) => (int) $t['tasso_e4'], $r['tratti']));
+            if ((int) $e4 > $massimo) {
+                throw ValidationException::withMessages(['tassi' => 'Più del tasso delle regole no: per questa riga è ' . RegoleDelRecupero::percentuale($massimo)
+                    . '. Per un tasso diverso su tutte le righe cambia la regola in «Recupero dei crediti».']);
+            }
+            $cifra = InteressiDiMora::arrotonda(array_map(fn ($t) => ['tasso_e4' => (int) $e4] + $t, $r['tratti']));
+            if ($cifra <= 0) {
+                throw ValidationException::withMessages(['tassi' => 'Con questo tasso la riga dà € 0,00: per non chiedere niente, togli la riga.']);
+            }
+            // D5 della lente del denaro della 1-bis della beta.12: un tasso più basso resta scritto anche quando dà la stessa cifra (1,99 % invece del 2,00 %, € 0,37
+            // tutti e due): la causale e l'estratto conto dicono il tasso scelto, e serve il perché. Il tasso uguale a quello delle regole non è un cambio.
+            if ((int) $e4 < $massimo) {
+                $tenute[$chiave]['proposti'] = (int) $r['interessi'];
+                $tenute[$chiave]['interessi'] = $cifra;
+                $tenute[$chiave]['tasso'] = ['e4' => (int) $e4, 'etichetta' => RegoleDelRecupero::percentuale((int) $e4)];
+                $cambiate++;
+            }
+        }
+        foreach ($importi as $chiave => $cifra) {
+            if (! isset($tenute[$chiave])) {
+                throw ValidationException::withMessages(['importi' => 'Hai cambiato la cifra di una riga che non registri: tienila, o lascia la sua cifra.']);
+            }
+            $proposti = (int) $tenute[$chiave]['interessi'];
+            if ((int) $cifra <= 0) {
+                throw ValidationException::withMessages(['importi' => 'Per non chiedere niente, togli la riga.']);
+            }
+            if ((int) $cifra > $proposti) {
+                throw ValidationException::withMessages(['importi' => 'Più della proposta no: è il massimo che le regole del condominio danno. Per un tasso diverso cambia la regola in «Recupero dei crediti».']);
+            }
+            if ((int) $cifra < $proposti) {
+                $tenute[$chiave]['proposti'] = $proposti;
+                $tenute[$chiave]['interessi'] = (int) $cifra;
+                $cambiate++;
+            }
+        }
+        $motivo = trim((string) $motivo);
+        if ($cambiate > 0 && mb_strlen($motivo) < self::MOTIVO_MINIMO) {
+            throw ValidationException::withMessages(['motivo' => 'Scrivi perché cambi le cifre, in almeno ' . self::MOTIVO_MINIMO . ' caratteri: resta scritto nell\'addebito.']);
+        }
+        if (mb_strlen($motivo) > self::MOTIVO_MASSIMO) {
+            throw ValidationException::withMessages(['motivo' => 'Il perché sta in ' . self::MOTIVO_MASSIMO . ' caratteri.']);
+        }
+
+        return $tenute;
+    }
+
+    /**
+     * Decisione 493 (13): gli addebiti appena scritti di un defunto, sulle unità di una successione con l'arretrato agli eredi, «si fermano al decesso» e la
+     * scelta «gli interessi del defunto registrati dopo vanno agli eredi», passano agli eredi per quota con la strada degli interessi già addebitati alla
+     * successione: una scrittura sulla rata, AVERE «Crediti verso condomini» a nome del defunto, DARE a nome di ogni erede, e una quota per erede. Il registro
+     * del passaggio li aggiunge a quelli dell'arretrato (l'annullamento della successione li rimette al defunto, e l'addebito non si annulla finché il passaggio
+     * c'è).
+     *
+     * @param list<\App\Models\Gestionale\Rata> $rate
+     */
+    private function interessiDelDefuntoAgliEredi(Condominio $condominio, string $alla, array $rate, ?int $utenteId): void
+    {
+        $quote = RataQuote::with('rata.pianoRate')->whereIn('rata_id', array_map(fn ($r) => (int) $r->id, $rate) ?: [0])->get();
+        $fermi = self::fermiAlDecesso((int) $condominio->id, $quote->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->unique()->values()->all());
+        foreach ($quote as $q) {
+            $f = $fermi[(int) $q->anagrafica_id][(int) $q->immobile_id] ?? null;
+            if ($f === null || ! $f['agli_eredi'] || ! $f['agli_eredi_dopo']) {
+                continue;
+            }
+            $padre = \App\Models\Gestionale\Subentro::query()->lockForUpdate()->find($f['padre_id']);
+            if ($padre === null) {
+                continue;
+            }
+            $pesi = [];
+            foreach ((array) ($padre->registro['eredi'] ?? []) as $e) {
+                $pesi[(int) $e['anagrafica_id']] = (float) $e['quota'];
+            }
+            $utente = \App\Models\User::find($utenteId) ?? auth()->user();
+            if ($pesi === [] || $utente === null) {
+                continue;
+            }
+            $avvisi = [];
+            $divisione = \App\Services\Subentro\AccessoriAgliEredi::divisione(collect([$q]), $pesi);
+            $scritti = app(\App\Services\Subentro\AccessoriAgliEredi::class)->scrivi($padre, $divisione, (int) $q->anagrafica_id, CarbonImmutable::parse($alla, 'UTC'), $avvisi, $utente);
+            if ($scritti === []) {
+                continue;
+            }
+            $registro = $padre->registro ?? [];
+            $registro['arretrato']['accessori'] = [...(array) ($registro['arretrato']['accessori'] ?? []),
+                ...array_map(fn (array $r) => $r + ['dopo_la_successione' => $alla], $scritti)];
+            $padre->forceFill(['registro' => $registro])->save();
+            $this->frasiDellaRegistrazione[] = sprintf('Gli interessi di %s fino al decesso, %s, sono passati a %s per quota, come quelli addebitati prima della successione.',
+                (string) ($padre->registro['nomi']['uscente'] ?? 'il defunto'), MoneyHelper::format((int) $divisione[0]['aperto']), $f['eredi'] !== '' ? $f['eredi'] : 'gli eredi');
+        }
     }
 
     /**
@@ -246,7 +439,35 @@ final class PropostaInteressi
             foreach ($perUnita as $personaUnita => $lista) {
                 $tratti = array_merge(...array_map(fn ($r) => $r['tratti'], $lista));
                 $tassi = RegoleDelRecupero::tassiNellaCausale($tratti, $regole);
+                // Decisione 512: con il tasso cambiato su una riga, la causale dice i tassi usati davvero, non quello delle regole. Decisione 526: e da quale tasso è
+                // ridotto, come lo direbbe la causale senza «Cambia» («1,00 % annuo, scelto dall'amministratore, ridotto dal 2,00 % annuo, art. 12 del
+                // regolamento»); oltre la lunghezza massima, con il solo tasso («ridotto dal 2,00 %»). N2 della terza prova: le righe sono rate diverse, non un
+                // tasso che cambia nel tempo, e non si uniscono con «poi».
+                $breve = null;
+                if (collect($lista)->contains(fn ($r) => isset($r['tasso']))) {
+                    $usati = [];
+                    $usatiBrevi = [];
+                    foreach (collect($lista)->sortBy('dal')->values() as $r) {
+                        $delleRegole = RegoleDelRecupero::tassiNellaCausale($r['tratti'], $regole) ?? 'tasso legale';
+                        if (isset($r['tasso'])) {
+                            $scelto = $r['tasso']['etichetta'] . ' annuo, scelto dall\'amministratore';
+                            $pezzo = $scelto . ', ridotto dal ' . $delleRegole;
+                            $pezzoBreve = $scelto . ', ridotto dal ' . implode(' e dal ', PropostaInteressi::tassiDeiTratti($r['tratti']));
+                        } else {
+                            $pezzo = $pezzoBreve = $delleRegole;
+                        }
+                        if (! in_array($pezzo, $usati, true)) {
+                            $usati[] = $pezzo;
+                            $usatiBrevi[] = $pezzoBreve;
+                        }
+                    }
+                    $tassi = implode('; ', $usati);
+                    $breve = implode('; ', array_values(array_unique($usatiBrevi)));
+                }
                 $causale = 'Interessi di mora al ' . self::giorno($alla) . ($tassi === null ? '' : ' (' . $tassi . ')');
+                if (mb_strlen($causale) > self::CAUSALE_MASSIMA && $breve !== null) {
+                    $causale = 'Interessi di mora al ' . self::giorno($alla) . ' (' . $breve . ')';
+                }
                 if (mb_strlen($causale) > self::CAUSALE_MASSIMA) {
                     $nome = (string) (collect($persone)->firstWhere('anagrafica_id', (int) explode('|', $personaUnita)[0])['nome'] ?? '');
                     $scritte = $regole->whereIn('id', array_column($tratti, 'regola_id'))->where('tasso_tipo', RegolaRecupero::TASSO_SCRITTO);
@@ -280,22 +501,21 @@ final class PropostaInteressi
     }
 
     /**
-     * La proposta di un gruppo di persone: il loro giornale fino alla data, le chiavi della base, il calcolo.
+     * Il giornale di un gruppo di persone fino alla data, letto una volta: le righe sui due mastri, le rate, le quote, gli interessi già registrati, i
+     * titolari e i ruoli del riparto, i nomi e le unità. Lo usano la proposta e, per il defunto di una successione, la base del debito ereditato
+     * ({@see DebitoEreditato}).
      *
      * @param list<int> $persone
-     * @return list<array<string, mixed>>
+     * @return array<string, mixed>
      */
-    private function perBlocco(int $condominioId, string $alla, array $persone, Collection $regole): array
+    private function leggiGiornale(int $condominioId, string $alla, array $persone): array
     {
-        if ($persone === []) {
-            return [];
-        }
         $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
         $righe = DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
             ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
             ->whereNull('sc.deleted_at')->where('sc.condominio_id', $condominioId)->where('sc.data_competenza', '<', $dopo)
-            ->whereIn('cc.ruolo', ['crediti_condomini', 'anticipi_condomini'])->whereIn('rs.anagrafica_id', $persone)
+            ->whereIn('cc.ruolo', ['crediti_condomini', 'anticipi_condomini'])->whereIn('rs.anagrafica_id', $persone ?: [0])
             ->groupBy('rs.anagrafica_id', 'rs.rata_id', 'rs.immobile_id', 'cc.ruolo', 'sc.data_competenza', 'sc.tipo_movimento')
             ->select(['rs.anagrafica_id', 'rs.rata_id', 'rs.immobile_id', 'cc.ruolo', 'sc.data_competenza', 'sc.tipo_movimento'])
             ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END) as netto")
@@ -309,67 +529,166 @@ final class PropostaInteressi
         $accessori = $quote->filter(fn (RataQuote $q) => $q->tipo === RataQuote::TIPO_ACCESSORIO)
             ->mapWithKeys(fn (RataQuote $q) => [$q->anagrafica_id . '|' . $q->rata_id . '|' . $q->immobile_id => true]);
         ['al' => $giaRegistrati, 'registrazioni' => $registrazioni] = $this->giaRegistrati($condominioId, $persone);
-        $titolari = $this->titolari($righe->pluck('immobile_id')->filter()->unique()->values()->all());
-        $ruoli = $this->ruoliDelRiparto($quote, $rate);
-        $nomi = DB::table('anagrafiche')->whereIn('id', $persone)->pluck('nome', 'id');
-        $unita = \App\Models\Immobile::whereIn('id', $righe->pluck('immobile_id')->filter()->unique()->values()->all() ?: [0])->get()
-            ->mapWithKeys(fn (\App\Models\Immobile $i) => [(int) $i->id => (string) $i->etichetta]);
+
+        return [
+            'righe' => $righe->groupBy('anagrafica_id'),
+            'rate' => $rate,
+            'quote' => $quote,
+            'accessori' => $accessori,
+            'gia' => $giaRegistrati,
+            'registrazioni' => $registrazioni,
+            'titolari' => $this->titolari($righe->pluck('immobile_id')->filter()->unique()->values()->all()),
+            'ruoli' => $this->ruoliDelRiparto($quote, $rate),
+        ];
+    }
+
+    /**
+     * Le chiavi del giornale di una persona e i suoi movimenti: una chiave per rata e unità (la base, gli accessori, le quote di inquilino), gli anticipi e
+     * le righe senza rata; il primo giorno degli interessi di ogni rata della base. Senza le regole degli accordi e delle successioni, che chi chiama
+     * aggiunge.
+     *
+     * @param array<string, mixed> $letto {@see leggiGiornale()}
+     * @return array{chiavi: array<string, array<string, mixed>>, movimenti: list<array{giorno: string, chiave: string, importo: int, causa: string}>}
+     */
+    private function chiaviDellaPersona(int $persona, array $letto, Collection $regole): array
+    {
+        $rate = $letto['rate'];
+        $chiavi = [];
+        $movimenti = [];
+        foreach ($letto['righe'][$persona] ?? [] as $r) {
+            $giorno = substr((string) $r->data_competenza, 0, 10);
+            $netto = (int) $r->netto;
+            if ($netto === 0) {
+                continue;
+            }
+            if ($r->ruolo === 'anticipi_condomini') {
+                $k = 'anticipi';
+                $chiavi[$k] ??= ['inizio' => null, 'base' => false, 'ordine' => ['9999-12-31', 9, 0], 'tipo' => 'anticipi', 'immobile_id' => null];
+            } elseif ($r->rata_id === null || ! isset($rate[$r->rata_id])) {
+                $k = 'senza_rata|' . (int) $r->immobile_id;
+                $chiavi[$k] ??= ['inizio' => null, 'base' => false, 'ordine' => ['9999-12-31', 9, 0], 'tipo' => 'senza_rata', 'immobile_id' => $r->immobile_id === null ? null : (int) $r->immobile_id];
+            } else {
+                $rata = $rate[$r->rata_id];
+                $k = $persona . '|' . (int) $r->rata_id . '|' . (int) $r->immobile_id;
+                if (! isset($chiavi[$k])) {
+                    $scadenza = Scadenza::giorno((string) $rata->data_scadenza);
+                    $accessorio = isset($letto['accessori'][$k]);
+                    // Il ruolo della quota nel riparto del suo piano; senza riparto (la rata 0, un contributo), chi non ha mai avuto un diritto reale.
+                    $diInquilino = $r->immobile_id !== null && (isset($letto['ruoli'][$k]) ? $letto['ruoli'][$k] === 'inquilino'
+                        : ! in_array($persona, $letto['titolari'][(int) $r->immobile_id] ?? [], true));
+                    $inizio = $inizioPieno = RegoleDelRecupero::primoGiorno($regole, $scadenza);
+                    // La regola che ha spostato il primo giorno con i suoi giorni di decorrenza: anche lei è usata da questi interessi.
+                    $regolaInizio = RegoleDelRecupero::alGiorno($regole, CarbonImmutable::parse($scadenza, 'UTC')->addDay()->format('Y-m-d'));
+                    $regolaInizio = $regolaInizio !== null && (int) $regolaInizio->giorni_decorrenza > 0 ? (int) $regolaInizio->id : null;
+                    if (isset($letto['gia'][$k]) && $letto['gia'][$k] >= $inizio) {
+                        $inizio = CarbonImmutable::parse($letto['gia'][$k], 'UTC')->addDay()->format('Y-m-d');
+                        $regolaInizio = null;
+                    }
+                    $chiavi[$k] = ['inizio' => $accessorio || $diInquilino ? null : $inizio, 'base' => ! $accessorio && ! $diInquilino,
+                        'ordine' => OrdineImputazione::chiave($scadenza, (int) $rata->numero_rata, true, (int) $r->rata_id),
+                        'tipo' => $accessorio ? 'accessorio' : ($diInquilino ? 'inquilino' : 'base'), 'scadenza' => $scadenza, 'rata' => $rata,
+                        'immobile_id' => $r->immobile_id === null ? null : (int) $r->immobile_id, 'gia_al' => $letto['gia'][$k] ?? null,
+                        'regola_inizio' => $regolaInizio, 'inizio_pieno' => $accessorio || $diInquilino ? null : $inizioPieno];
+                }
+            }
+            $causa = match (true) {
+                $netto < 0 => 'versamento',
+                $r->tipo_movimento === 'emissione_rata' => 'emissione',
+                default => 'storno',
+            };
+            $movimenti[] = ['giorno' => $giorno, 'chiave' => $k, 'importo' => $netto, 'causa' => $causa];
+        }
+
+        return ['chiavi' => $chiavi, 'movimenti' => $movimenti];
+    }
+
+    /**
+     * Il giornale delle persone date per la base del debito ereditato: le chiavi, i movimenti e il debito che un accordo di rientro tiene fuori, per persona.
+     * {@see DebitoEreditato} lo chiede per il defunto di ogni successione.
+     *
+     * @param list<int> $persone
+     * @return array<int, array{chiavi: array<string, array<string, mixed>>, movimenti: list<array<string, mixed>>, accordi: array<string, array<string, mixed>>, gia: array<string, string>}>
+     */
+    public function giornaleDelDefunto(int $condominioId, string $alla, array $persone, Collection $regole): array
+    {
+        $letto = $this->leggiGiornale($condominioId, $alla, $persone);
+        $coperteDa = app(\App\Services\Gestionale\Debiti\AccordiRientro::class)->senzaInteressi($condominioId, $persone, $alla);
+        $esito = [];
+        foreach ($persone as $persona) {
+            $esito[$persona] = $this->chiaviDellaPersona($persona, $letto, $regole) + ['accordi' => $coperteDa[$persona] ?? [], 'gia' => $letto['gia']];
+        }
+
+        return $esito;
+    }
+
+    /**
+     * La proposta di un gruppo di persone: il loro giornale fino alla data, le chiavi della base, il calcolo.
+     *
+     * Con la successione (decisioni 483 e 489): le rate del defunto sulle unità del passaggio si fermano al giorno prima del decesso con «si fermano al decesso»;
+     * con l'arretrato agli eredi il credito che le copriva quel giorno resta dov'era (D1 della prova della Coda 663) e i movimenti di quelle unità dopo il
+     * decesso non toccano più le sue altre rate; agli eredi il debito ereditato è una chiave in più ({@see DebitoEreditato}), anche senza righe nel giornale.
+     *
+     * @param list<int> $persone
+     * @return list<array<string, mixed>>
+     */
+    private function perBlocco(int $condominioId, string $alla, array $persone, Collection $regole): array
+    {
+        if ($persone === []) {
+            return [];
+        }
+        $letto = $this->leggiGiornale($condominioId, $alla, $persone);
+        ['registrazioni' => $registrazioni, 'rate' => $rate] = $letto;
         // Il debito coperto da un accordo di rientro non decaduto, finché il calendario non è finito o se è tutto versato: niente interessi su quello dal
         // giorno dell'accordo, anche sulla rata coperta già versata (decisioni 389 (2) e 433); i giorni prima dell'accordo restano (decisione 438). Con la
         // decadenza, o finito il calendario con qualcosa da versare, tornano anche i giorni dell'accordo. Per persona, «rata|unità» => la parte coperta e
         // il primo giorno fuori.
         $coperteDa = app(\App\Services\Gestionale\Debiti\AccordiRientro::class)->senzaInteressi($condominioId, $persone, $alla);
+        // Decisione 483: le successioni con la scelta «si fermano al decesso». Per persona, unità => l'ultimo giorno contato, il giorno prima del decesso.
+        $alDecesso = self::fermiAlDecesso($condominioId, $persone);
+        // Decisione 489: il debito ereditato, per erede: le chiavi in più, i loro movimenti, e i movimenti che spostano una parte nella rata nuova.
+        $ereditati = ($this->ereditato ?? new DebitoEreditato())->perEredi($condominioId, $alla, $persone, $regole, $coperteDa,
+            fn (array $defunti) => $this->giornaleDelDefunto($condominioId, $alla, $defunti, $regole));
         $tassoAl = RegoleDelRecupero::tassoAl($regole);
         $cambi = RegoleDelRecupero::cambi($regole);
+        $chi = array_values(array_unique([...array_map('intval', $letto['righe']->keys()->all()), ...array_keys($ereditati)]));
+        $nomi = DB::table('anagrafiche')->whereIn('id', $persone)->pluck('nome', 'id');
+        $unitaIds = $letto['righe']->flatten(1)->pluck('immobile_id')->merge(collect($ereditati)->flatMap(fn ($e) => array_column($e['chiavi'], 'immobile_id')))
+            ->filter()->unique()->values()->all();
+        $unita = \App\Models\Immobile::whereIn('id', $unitaIds ?: [0])->get()->mapWithKeys(fn (\App\Models\Immobile $i) => [(int) $i->id => (string) $i->etichetta]);
 
         $esito = [];
-        foreach ($righe->groupBy('anagrafica_id') as $persona => $sue) {
-            $persona = (int) $persona;
-            $chiavi = [];
-            $movimenti = [];
+        foreach ($chi as $persona) {
+            ['chiavi' => $chiavi, 'movimenti' => $movimenti] = $this->chiaviDellaPersona($persona, $letto, $regole);
             $inquilino = [];
-            foreach ($sue as $r) {
-                $giorno = substr((string) $r->data_competenza, 0, 10);
-                $netto = (int) $r->netto;
-                if ($netto === 0) {
-                    continue;
+            // Decisione 489: le chiavi del debito ereditato e i loro movimenti; la rata nuova che lo porta lo prende dal suo giorno (`aggiusta`). Gli interessi
+            // già registrati su una chiave ereditata (con il suffisso del passaggio) la fanno ripartire dal giorno dopo.
+            foreach ($ereditati[$persona]['chiavi'] ?? [] as $k => $c) {
+                if (isset($letto['gia'][$k]) && $letto['gia'][$k] >= $c['inizio']) {
+                    $c['inizio'] = CarbonImmutable::parse($letto['gia'][$k], 'UTC')->addDay()->format('Y-m-d');
                 }
-                if ($r->ruolo === 'anticipi_condomini') {
-                    $k = 'anticipi';
-                    $chiavi[$k] ??= ['inizio' => null, 'base' => false, 'ordine' => ['9999-12-31', 9, 0], 'tipo' => 'anticipi'];
-                } elseif ($r->rata_id === null || ! isset($rate[$r->rata_id])) {
-                    $k = 'senza_rata|' . (int) $r->immobile_id;
-                    $chiavi[$k] ??= ['inizio' => null, 'base' => false, 'ordine' => ['9999-12-31', 9, 0], 'tipo' => 'senza_rata'];
-                } else {
-                    $rata = $rate[$r->rata_id];
-                    $k = $persona . '|' . (int) $r->rata_id . '|' . (int) $r->immobile_id;
-                    if (! isset($chiavi[$k])) {
-                        $scadenza = Scadenza::giorno((string) $rata->data_scadenza);
-                        $accessorio = isset($accessori[$k]);
-                        // Il ruolo della quota nel riparto del suo piano; senza riparto (la rata 0, un contributo), chi non ha mai avuto un diritto reale.
-                        $diInquilino = $r->immobile_id !== null && (isset($ruoli[$k]) ? $ruoli[$k] === 'inquilino'
-                            : ! in_array($persona, $titolari[(int) $r->immobile_id] ?? [], true));
-                        $inizio = $inizioPieno = RegoleDelRecupero::primoGiorno($regole, $scadenza);
-                        // La regola che ha spostato il primo giorno con i suoi giorni di decorrenza: anche lei è usata da questi interessi.
-                        $regolaInizio = RegoleDelRecupero::alGiorno($regole, CarbonImmutable::parse($scadenza, 'UTC')->addDay()->format('Y-m-d'));
-                        $regolaInizio = $regolaInizio !== null && (int) $regolaInizio->giorni_decorrenza > 0 ? (int) $regolaInizio->id : null;
-                        if (isset($giaRegistrati[$k]) && $giaRegistrati[$k] >= $inizio) {
-                            $inizio = CarbonImmutable::parse($giaRegistrati[$k], 'UTC')->addDay()->format('Y-m-d');
-                            $regolaInizio = null;
-                        }
-                        $chiavi[$k] = ['inizio' => $accessorio || $diInquilino ? null : $inizio, 'base' => ! $accessorio && ! $diInquilino,
-                            'ordine' => OrdineImputazione::chiave($scadenza, (int) $rata->numero_rata, true, (int) $r->rata_id),
-                            'tipo' => $accessorio ? 'accessorio' : ($diInquilino ? 'inquilino' : 'base'), 'scadenza' => $scadenza, 'rata' => $rata,
-                            'immobile_id' => $r->immobile_id === null ? null : (int) $r->immobile_id, 'gia_al' => $giaRegistrati[$k] ?? null,
-                            'regola_inizio' => $regolaInizio, 'inizio_pieno' => $accessorio || $diInquilino ? null : $inizioPieno];
-                    }
+                $chiavi[$k] = $c + ['gia_al' => $letto['gia'][$k] ?? null];
+            }
+            foreach ($ereditati[$persona]['movimenti'] ?? [] as $m) {
+                $movimenti[] = $m;
+            }
+            // La rata nuova prende la parte ereditata solo se è nel giornale dell'erede: una quota a zero (il debito ereditato pareggiato dagli altri suoi saldi
+            // nello stesso piano) non si scrive, e la parte esce dalla riga ereditata e basta.
+            foreach ($ereditati[$persona]['aggiusta'] ?? [] as $m) {
+                if (isset($chiavi[$m['chiave']])) {
+                    $movimenti[] = $m;
                 }
-                $causa = match (true) {
-                    $netto < 0 => 'versamento',
-                    $r->tipo_movimento === 'emissione_rata' => 'emissione',
-                    default => 'storno',
-                };
-                $movimenti[] = ['giorno' => $giorno, 'chiave' => $k, 'importo' => $netto, 'causa' => $causa];
+            }
+            // Decisione 493 (1): con «interessi anche sugli interessi», gli interessi e le spese del defunto passati all'erede con la successione entrano
+            // nella sua base dal giorno del decesso.
+            foreach ($ereditati[$persona]['accessori'] ?? [] as $k => $info) {
+                if (isset($chiavi[$k]) && $chiavi[$k]['tipo'] === 'accessorio') {
+                    // E8 della seconda prova della beta.12: l'addebito passato all'erede è nel suo giornale dal giorno del passaggio, e un movimento conta dal
+                    // giorno dopo: la riga comincia lì, e la frase non dice un giorno in cui il capitale era zero.
+                    $entrato = collect($movimenti)->filter(fn ($m) => $m['chiave'] === $k && $m['importo'] > 0)->min('giorno');
+                    $primo = $entrato === null ? $info['inizio'] : max($info['inizio'], CarbonImmutable::parse($entrato, 'UTC')->addDay()->format('Y-m-d'));
+                    $inizio = isset($letto['gia'][$k]) && $letto['gia'][$k] >= $primo ? CarbonImmutable::parse($letto['gia'][$k], 'UTC')->addDay()->format('Y-m-d') : $primo;
+                    $chiavi[$k] = ['inizio' => $inizio, 'base' => true, 'tipo' => 'ereditata_accessorio', 'inizio_pieno' => $primo, 'ereditata' => $info['ereditata']] + $chiavi[$k];
+                }
             }
             if ($chiavi === []) {
                 continue;
@@ -391,13 +710,31 @@ final class PropostaInteressi
                         }
                     } else {
                         $chiavi[$k]['fine'] = CarbonImmutable::parse($fuori['dal'], 'UTC')->subDay()->format('Y-m-d');
+                        // Coda 678 (decisione 485): con gli interessi sospesi resta fuori tutta la rata, non solo la parte nell'accordo: la frase in testa alla persona lo dice.
+                        $chiavi[$k]['fuori_tutta'] = (int) $fuori['parte'];
                     }
                     $chiavi[$k]['accordo_dal'] = $fuori['dal'];
                     $chiavi[$k]['tipo'] = 'accordo';
                     $nellAccordo += (int) $fuori['parte'];
                 }
             }
-            $calcolo = InteressiDiMora::calcola(array_map(fn ($c) => array_intersect_key($c, array_flip(['inizio', 'base', 'ordine', 'fine', 'protetto'])), $chiavi), $movimenti, $tassoAl, $cambi, $alla);
+            // Decisione 483: con la successione e «si fermano al decesso», sulle rate delle unità del passaggio l'ultimo giorno contato è il giorno prima del
+            // decesso, coperte o no da un accordo: un `fine` già più vicino (il giorno prima di un accordo in regola, decisione 454) resta com'è.
+            $fermi = $alDecesso[$persona] ?? [];
+            if ($fermi !== []) {
+                [$chiavi, $movimenti] = self::tieniIlCreditoDovEra($chiavi, $movimenti, $fermi, $alla);
+            }
+            // Decisione 530: anche la chiave ereditata di un erede che muore a sua volta si ferma al suo decesso, sulle unità della sua successione; da lì la conta
+            // il suo erede ({@see DebitoEreditato::baseEreditataDelDefunto()}). Con «continuano a suo nome» nella seconda successione la chiave continua, come le
+            // sue rate (non è fra i fermi).
+            foreach ($chiavi as $k => $c) {
+                $info = $c['base'] && ($c['immobile_id'] ?? null) !== null ? ($fermi[$c['immobile_id']] ?? null) : null;
+                if ($info !== null) {
+                    $chiavi[$k]['fine'] = min($c['fine'] ?? $info['ultimo'], $info['ultimo']);
+                    $chiavi[$k]['decesso'] = $info;
+                }
+            }
+            $calcolo = InteressiDiMora::calcola(array_map(fn ($c) => array_intersect_key($c, array_flip(['inizio', 'base', 'ordine', 'fine', 'protetto', 'inizio_pieno'])), $chiavi), $movimenti, $tassoAl, $cambi, $alla);
             $riallineo = $this->riallineo($chiavi, $movimenti, $registrazioni, $tassoAl, $cambi);
 
             // Il saldo di ogni chiave alla data: i crediti e gli anticipi accanto alla persona, e le quote di inquilini scadute.
@@ -408,6 +745,9 @@ final class PropostaInteressi
             $crediti = 0;
             $anticipi = 0;
             foreach ($saldi as $k => $s) {
+                if (in_array($chiavi[$k]['tipo'] ?? null, ['tenuto', 'ereditata'], true)) {
+                    continue;
+                }
                 if ($s < 0) {
                     $chiavi[$k]['tipo'] === 'anticipi' ? $anticipi += -$s : $crediti += -$s;
                 }
@@ -416,8 +756,27 @@ final class PropostaInteressi
                 }
             }
 
+            // Coda 678 (decisione 485): le rate fuori per intero dal giorno dell'accordo (gli interessi sospesi) con il loro saldo alla data, e la parte che l'accordo
+            // ne copre. Sono cifre già calcolate: servono solo alla frase, che le dice quando l'accordo ne copre meno della rata.
+            $fuoriPerIntero = 0;
+            $diCuiNellAccordo = 0;
+            foreach ($chiavi as $k => $c) {
+                if (isset($c['fuori_tutta'])) {
+                    $fuoriPerIntero += max(0, (int) ($saldi[$k] ?? 0));
+                    $diCuiNellAccordo += (int) $c['fuori_tutta'];
+                }
+            }
+            if ($fuoriPerIntero <= $diCuiNellAccordo) {
+                $fuoriPerIntero = $diCuiNellAccordo = 0;
+            }
+
             $righePersona = [];
+            $fermiAlDecesso = [];
             foreach ($calcolo as $k => $c) {
+                // La chiave che tiene il credito dov'era al decesso non è una riga: lavora solo nel calcolo.
+                if (($chiavi[$k]['tipo'] ?? null) === 'tenuto') {
+                    continue;
+                }
                 // Una riga senza interessi da proporre resta se gli interessi già registrati di quei giorni, con il giornale di oggi, darebbero un'altra cifra:
                 // la frase del riallineo si legge anche quando non ci sono giorni nuovi (un accordo in regola, i giorni prima già registrati). La
                 // registrazione la lascia fuori: si registrano solo le righe con interessi.
@@ -426,6 +785,15 @@ final class PropostaInteressi
                 }
                 $meta = $chiavi[$k];
                 $rata = $meta['rata'];
+                $al = min($alla, $meta['fine'] ?? $alla);
+                $tratti = isset($meta['ereditata']) ? DebitoEreditato::causeDeiTratti($c['tratti'], $meta['ereditata']) : $c['tratti'];
+                // D4 della prova della Coda 663: la riga ferma al decesso dice perché.
+                $decesso = isset($meta['decesso']) && ($meta['fine'] ?? null) === $meta['decesso']['ultimo'] && $al < $alla ? $meta['decesso'] : null;
+                // E2 della seconda prova della beta.12: la registrazione passa agli eredi gli interessi del defunto su ogni rata delle unità del passaggio, anche
+                // di una riga che si ferma prima del decesso per un accordo di rientro: l'avviso accanto al defunto vale anche per lei.
+                if (isset($meta['decesso']) && $c['interessi'] > 0 && $c['fermo'] === null) {
+                    $fermiAlDecesso[] = $meta['decesso'];
+                }
                 $righePersona[] = [
                     'chiave' => $k,
                     'rata_id' => (int) $rata->id,
@@ -438,19 +806,25 @@ final class PropostaInteressi
                     'scadenza' => $meta['scadenza'],
                     'dal' => $meta['inizio'],
                     // L'ultimo giorno della riga: la data, o il giorno prima di un accordo di rientro che tiene fuori i giorni dopo (`accordo_dal`).
-                    'al' => min($alla, $meta['fine'] ?? $alla),
+                    'al' => $al,
                     'accordo_dal' => $meta['accordo_dal'] ?? null,
                     // La rata è coperta solo in parte e gli interessi continuano sulla parte fuori dall'accordo (decisione 450): la riga arriva alla data.
                     'accordo_in_parte' => $meta['in_parte'] ?? false,
                     'gia_registrati_al' => $meta['gia_al'],
                     'riallineo' => $riallineo[$k] ?? null,
-                    'regola_inizio' => $meta['regola_inizio'],
-                    'tratti' => $c['tratti'],
+                    'regola_inizio' => $meta['regola_inizio'] ?? null,
+                    // Decisione 489: la riga del debito ereditato, con da chi, per quale quota, dal decesso; e la frase sotto la riga.
+                    'ereditata' => isset($meta['ereditata']) ? DebitoEreditato::perLaRiga($meta['ereditata']) : null,
+                    'frase_ereditata' => isset($meta['ereditata']) ? DebitoEreditato::frase($meta['ereditata'], $meta['inizio'], $al, $alla) : null,
+                    'fino_al_decesso' => $decesso === null ? null : self::fraseFinoAlDecesso($decesso),
+                    'tratti' => $tratti,
+                    // Decisione 511: il tasso accanto alla cifra, e i tassi dei tratti se nel periodo cambia («1,60 % → 2,00 %»).
+                    'tassi' => self::tassiDeiTratti($tratti),
                     'interessi' => $c['interessi'],
                     'fermo' => $c['fermo'],
                 ];
             }
-            usort($righePersona, fn ($a, $b) => [$a['scadenza'], $a['rata_id'], $a['immobile_id']] <=> [$b['scadenza'], $b['rata_id'], $b['immobile_id']]);
+            usort($righePersona, fn ($a, $b) => [$a['scadenza'], $a['rata_id'], $a['immobile_id'], $a['chiave']] <=> [$b['scadenza'], $b['rata_id'], $b['immobile_id'], $b['chiave']]);
             $diInquilini = (int) array_sum($inquilino);
             if ($righePersona === [] && $diInquilini === 0 && $nellAccordo === 0) {
                 continue;
@@ -465,7 +839,129 @@ final class PropostaInteressi
                 'quote_di_inquilino' => $diInquilini,
                 // Il debito coperto da un accordo di rientro in corso, che la proposta lascia fuori.
                 'in_accordo' => $nellAccordo,
+                // Di quel debito, la parte delle rate che l'accordo copre solo in parte ma che con gli interessi sospesi escono per intero (`fuori_per_intero` è la rata
+                // intera, `di_cui_nell_accordo` quanto ne copre l'accordo); zero se non c'è il caso.
+                'fuori_per_intero' => $fuoriPerIntero,
+                'di_cui_nell_accordo' => $diCuiNellAccordo,
+                // Decisione 493 (13), D5 della prova: che cosa succede registrando gli interessi del defunto fermi al decesso, con l'arretrato agli eredi.
+                'dopo_il_decesso' => self::fraseDopoIlDecesso($fermiAlDecesso, (string) ($nomi[$persona] ?? '')),
             ];
+        }
+
+        return $esito;
+    }
+
+    /**
+     * D1 della prova della Coda 663: con «si fermano al decesso» e l'arretrato agli eredi, dal decesso le unità del passaggio escono dal calcolo del defunto
+     * insieme al credito che quel giorno copriva le loro rate: l'arretrato, calcolato al netto, l'ha già usato. Il credito resta dov'era, e non riduce gli
+     * interessi delle altre sue unità. Una chiave in più (`tenuto`), la più vecchia nell'ordine, porta dal decesso la parte di credito che le rate del passaggio
+     * avevano il giorno prima: la prende per prima, e non è una riga (i suoi interessi non si contano). I movimenti delle unità del passaggio dal decesso in poi
+     * (la quota a credito del defunto nel piano che assorbe l'arretrato, per esempio) non toccano più le altre rate.
+     *
+     * @param array<int, array{ultimo: string, decesso: string, agli_eredi: bool}> $fermi unità => la successione
+     * @return array{0: array<string, array<string, mixed>>, 1: list<array<string, mixed>>}
+     */
+    private static function tieniIlCreditoDovEra(array $chiavi, array $movimenti, array $fermi, string $alla): array
+    {
+        $agliEredi = array_filter($fermi, fn (array $f) => $f['agli_eredi']);
+        if ($agliEredi === []) {
+            return [$chiavi, $movimenti];
+        }
+        $perDecesso = [];
+        foreach ($agliEredi as $unita => $f) {
+            $perDecesso[$f['decesso']][] = (int) $unita;
+        }
+        ksort($perDecesso);
+        foreach ($perDecesso as $decesso => $unitaIds) {
+            if ($decesso > $alla) {
+                continue;
+            }
+            // Decisione 530: con le chiavi ereditate dell'erede che muore a sua volta: il credito che le copriva resta con loro, e i loro movimenti dopo il decesso
+            // (l'uscita nella rata nuova, un versamento) sono della successione dopo.
+            $delPassaggio = fn (array $c) => in_array((int) ($c['immobile_id'] ?? 0), $unitaIds, true);
+            // Il credito che le rate del passaggio avevano il giorno del decesso, se fossero rimaste: il capitale si legge senza il loro ultimo giorno.
+            $prima = array_map(fn (array $c) => $delPassaggio($c) && ($c['fine'] ?? null) !== null && $c['fine'] >= CarbonImmutable::parse($decesso, 'UTC')->subDay()->format('Y-m-d')
+                ? array_merge($c, ['fine' => null]) : $c, $chiavi);
+            $letto = InteressiDiMora::capitaliAl(array_map(fn ($c) => array_intersect_key($c, array_flip(['inizio', 'base', 'ordine', 'fine', 'protetto', 'inizio_pieno'])), $prima), $movimenti, $decesso, $alla);
+            $tenuto = 0;
+            foreach ($letto['coperti'] as $k => $coperto) {
+                if ($delPassaggio($chiavi[$k])) {
+                    $tenuto += $coperto;
+                }
+            }
+            // Dal decesso i movimenti delle unità del passaggio restano fuori: sono dell'arretrato, che è passato agli eredi.
+            $movimenti = array_values(array_filter($movimenti, fn (array $m) => $m['giorno'] < $decesso || ! isset($chiavi[$m['chiave']]) || ! $delPassaggio($chiavi[$m['chiave']])));
+            if ($tenuto > 0) {
+                $k = 'tenuto|' . $decesso;
+                $chiavi[$k] = ['inizio' => $decesso, 'inizio_pieno' => $decesso, 'base' => true, 'ordine' => [-1, '0000-00-00', 0, 0], 'tipo' => 'tenuto', 'immobile_id' => null];
+                $movimenti[] = ['giorno' => CarbonImmutable::parse($decesso, 'UTC')->subDay()->format('Y-m-d'), 'chiave' => $k, 'importo' => $tenuto, 'causa' => 'credito'];
+            }
+        }
+
+        return [$chiavi, $movimenti];
+    }
+
+    /** D4 della prova della Coda 663: perché la riga del defunto si ferma al giorno prima del decesso. */
+    private static function fraseFinoAlDecesso(array $decesso): string
+    {
+        $fino = self::giorno($decesso['ultimo']);
+        $dal = self::giorno($decesso['decesso']);
+
+        return $decesso['agli_eredi']
+            ? sprintf('Fino al %s: dal %s il debito è passato a %s.', $fino, $dal, $decesso['eredi'] !== '' ? $decesso['eredi'] : 'gli eredi')
+            : sprintf('Fino al %s: dal %s l\'arretrato resta a suo nome, senza interessi dopo il decesso.', $fino, $dal);
+    }
+
+    /**
+     * Decisione 493 (13): accanto al defunto con righe sulle unità di una successione con «si fermano al decesso» e l'arretrato agli eredi (ferme al decesso,
+     * o prima per un accordo di rientro: E2 della seconda prova della beta.12), che cosa fa la registrazione: con «gli interessi del defunto registrati dopo
+     * vanno agli eredi» passano agli eredi per quota; altrimenti restano a suo nome. Null senza.
+     *
+     * @param list<array<string, mixed>> $fermi
+     */
+    private static function fraseDopoIlDecesso(array $fermi, string $nome): ?string
+    {
+        $agliEredi = array_values(array_filter($fermi, fn (array $f) => $f['agli_eredi']));
+        if ($agliEredi === []) {
+            return null;
+        }
+        $f = $agliEredi[0];
+
+        return $f['agli_eredi_dopo']
+            ? sprintf('Registrati, gli interessi di %s fino al decesso passano a %s per quota, come quelli già addebitati prima della successione.', $nome, $f['eredi'] !== '' ? $f['eredi'] : 'gli eredi')
+            : sprintf('Registrati, gli interessi di %s fino al decesso restano a suo nome («eredi di %s»): la sua posizione, chiusa con la successione, si riapre.', $nome, $nome);
+    }
+
+    /**
+     * Decisione 483: le successioni registrate (non annullate) delle persone date con la scelta «si fermano al decesso»: per il defunto, sulle rate delle
+     * unità del passaggio (l'unità e le pertinenze spuntate, un passaggio ciascuna), l'ultimo giorno che la proposta conta è il giorno prima del decesso.
+     * Con il giorno del decesso, se l'arretrato è passato agli eredi (con i loro nomi) e se gli interessi del defunto registrati dopo vanno a loro (decisione
+     * 493 (13)).
+     *
+     * @param list<int> $persone
+     * @return array<int, array<int, array{ultimo: string, decesso: string, agli_eredi: bool, eredi: string, padre_id: int, agli_eredi_dopo: bool}>> persona => unità => la successione
+     */
+    public static function fermiAlDecesso(int $condominioId, array $persone): array
+    {
+        $esito = [];
+        $successioni = \App\Models\Gestionale\Subentro::query()->where('condominio_id', $condominioId)->where('tipo_passaggio', 'successione')
+            ->where('interessi_del_defunto', \App\Models\Gestionale\Subentro::INTERESSI_AL_DECESSO)->whereIn('anagrafica_uscente_id', $persone ?: [0])
+            ->get(['id', 'condominio_id', 'tipo_passaggio', 'subentro_padre_id', 'anagrafica_uscente_id', 'immobile_id', 'decorrenza', 'registro', 'interessi_eredi']);
+        $padri = \App\Models\Gestionale\Subentro::query()->whereIn('id', $successioni->pluck('subentro_padre_id')->filter()->unique()->values()->all() ?: [0])->get()->keyBy('id');
+        $delCondominio = null;
+        foreach ($successioni as $s) {
+            $padre = $s->subentro_padre_id === null ? $s : ($padri[(int) $s->subentro_padre_id] ?? $s);
+            $decesso = $s->decorrenza->format('Y-m-d');
+            $ultimo = CarbonImmutable::parse($decesso, 'UTC')->subDay()->format('Y-m-d');
+            $agliEredi = $padre->arretratoAgliEredi();
+            $delCondominio ??= RegoleDegliEredi::delCondominio($condominioId);
+            $voce = ['ultimo' => $ultimo, 'decesso' => $decesso, 'agli_eredi' => $agliEredi, 'padre_id' => (int) $padre->id,
+                'eredi' => $agliEredi ? RegoleDegliEredi::elenco(array_values(array_map('strval', (array) ($padre->registro['nomi']['eredi'] ?? [])))) : '',
+                'agli_eredi_dopo' => $agliEredi && RegoleDegliEredi::perSuccessione($padre, $delCondominio)['interessi_defunto_agli_eredi']];
+            $gia = $esito[(int) $s->anagrafica_uscente_id][(int) $s->immobile_id] ?? null;
+            if ($gia === null || $ultimo < $gia['ultimo']) {
+                $esito[(int) $s->anagrafica_uscente_id][(int) $s->immobile_id] = $voce;
+            }
         }
 
         return $esito;
@@ -474,13 +970,18 @@ final class PropostaInteressi
     /**
      * Gli interessi registrati che il giornale di oggi darebbe diversi: un versamento o uno storno registrato dopo con una data di prima cambia i giorni
      * già chiesti. Per ogni registrazione il calcolo si rifà con il giornale di oggi, dal suo primo giorno al suo ultimo; se la somma non è quella
-     * registrata, la riga lo dice. Gli interessi registrati restano come sono: li cambia l'amministratore, annullando l'addebito. La frase dice il giorno
+     * proposta allora, la riga lo dice. Gli interessi registrati restano come sono: li cambia l'amministratore, annullando l'addebito. La frase dice il giorno
      * dell'addebito, «Interessi di mora al …», anche quando la riga registrata si fermava prima, al giorno prima di un accordo di rientro: è il nome
      * dell'addebito da annullare.
      *
+     * La frase dice la ragione vera (D2 della prova della Coda 663): rifatto senza l'ultimo giorno e senza la parte protetta della chiave, il calcolo torna
+     * con la cifra di allora? Allora la cifra cambia per la successione («si fermano al decesso») o per un accordo di rientro in regola (anche riaperto da un
+     * annullamento), non per il giornale. Con la cifra cambiata prima di registrare (decisione 493 (10)), il confronto è con la cifra proposta, e la frase lo
+     * dice.
+     *
      * @param array<string, array<string, mixed>> $chiavi
      * @param list<array<string, mixed>> $movimenti
-     * @param array<string, list<array{alla: string, registrata: string, dal: ?string, interessi: int}>> $registrazioni
+     * @param array<string, list<array{alla: string, registrata: string, dal: ?string, interessi: int, proposti: int}>> $registrazioni
      * @return array<string, string> la frase, per chiave
      */
     private function riallineo(array $chiavi, array $movimenti, array $registrazioni, \Closure $tassoAl, array $cambi): array
@@ -496,6 +997,7 @@ final class PropostaInteressi
             }
         }
         $darebbero = [];
+        $puri = [];
         $fermi = [];
         foreach ($perGiorno as $giorno => $registrate) {
             $chiaviDelGiorno = [];
@@ -503,22 +1005,43 @@ final class PropostaInteressi
                 $chiaviDelGiorno[$k] = ['inizio' => isset($registrate[$k]) ? ($registrate[$k]['dal'] ?? $c['inizio_pieno'] ?? null) : ($c['inizio_pieno'] ?? null),
                     'base' => $c['base'], 'ordine' => $c['ordine'], 'fine' => $c['fine'] ?? null, 'protetto' => $c['protetto'] ?? []];
             }
-            $esito = InteressiDiMora::calcola($chiaviDelGiorno, array_values(array_filter($movimenti, fn ($m) => $m['giorno'] <= $giorno)), $tassoAl, $cambi, $giorno);
+            $delGiorno = array_values(array_filter($movimenti, fn ($m) => $m['giorno'] <= $giorno));
+            $esito = InteressiDiMora::calcola($chiaviDelGiorno, $delGiorno, $tassoAl, $cambi, $giorno);
+            // Lo stesso calcolo senza l'ultimo giorno e senza la parte protetta delle chiavi registrate: il solo giornale.
+            $senza = $chiaviDelGiorno;
+            foreach (array_keys($registrate) as $k) {
+                $senza[$k]['fine'] = null;
+                $senza[$k]['protetto'] = [];
+            }
+            $puro = InteressiDiMora::calcola($senza, $delGiorno, $tassoAl, $cambi, $giorno);
             foreach (array_keys($registrate) as $k) {
                 if (($esito[$k]['fermo'] ?? null) !== null) {
                     $fermi[$k] = true;
                 }
                 $darebbero[$k] = ($darebbero[$k] ?? 0) + (int) ($esito[$k]['interessi'] ?? 0);
+                $puri[$k] = ($puri[$k] ?? 0) + (int) ($puro[$k]['interessi'] ?? 0);
             }
         }
         $frasi = [];
         foreach ($diQui as $k => $lista) {
-            $erano = (int) array_sum(array_column($lista, 'interessi'));
-            if (isset($fermi[$k]) || $darebbero[$k] === $erano) {
+            $proposti = (int) array_sum(array_column($lista, 'proposti'));
+            $registrati = (int) array_sum(array_column($lista, 'interessi'));
+            if (isset($fermi[$k]) || $darebbero[$k] === $proposti) {
                 continue;
             }
-            $frasi[$k] = sprintf('Gli interessi registrati al %s erano %s; con il giornale di oggi quei giorni darebbero %s: per cambiarli, annulla l\'addebito e rifai '
-                . 'la proposta.', self::giorno((string) max(array_column($lista, 'registrata'))), MoneyHelper::format($erano), MoneyHelper::format($darebbero[$k]));
+            $quando = self::giorno((string) max(array_column($lista, 'registrata')));
+            $erano = $proposti === $registrati
+                ? sprintf('Gli interessi registrati al %s erano %s', $quando, MoneyHelper::format($registrati))
+                : sprintf('Gli interessi proposti al %s erano %s (registrati %s, per tua scelta)', $quando, MoneyHelper::format($proposti), MoneyHelper::format($registrati));
+            $c = $chiavi[$k];
+            $perche = match (true) {
+                $puri[$k] === $proposti && isset($c['decesso']) && ($c['fine'] ?? null) === $c['decesso']['ultimo'] => sprintf('con la successione del %s, che ferma la '
+                    . 'proposta al %s, quei giorni darebbero', self::giorno($c['decesso']['decesso']), self::giorno($c['decesso']['ultimo'])),
+                $puri[$k] === $proposti && ($c['accordo_dal'] ?? null) !== null => sprintf('con l\'accordo di rientro in regola dal %s, che tiene fuori i giorni da lì in '
+                    . 'poi, quei giorni darebbero', self::giorno((string) $c['accordo_dal'])),
+                default => 'con il giornale di oggi quei giorni darebbero',
+            };
+            $frasi[$k] = sprintf('%s; %s %s: per cambiarli, annulla l\'addebito e rifai la proposta.', $erano, $perche, MoneyHelper::format($darebbero[$k]));
         }
 
         return $frasi;
@@ -528,10 +1051,11 @@ final class PropostaInteressi
      * L'ultima data fino a cui gli interessi di ogni riga (persona, rata, unità) sono già registrati, e ogni registrazione con il suo primo giorno e la
      * sua cifra: dalle quote degli interessi non annullate. L'ultimo giorno è quello della riga (`al`), quando la riga si fermava prima della data: il
      * giorno prima di un accordo di rientro (decisione 438); i giorni dell'accordo non sono registrati, e tornano se l'accordo decade. Le righe registrate
-     * prima che ci fosse `al` arrivano alla data.
+     * prima che ci fosse `al` arrivano alla data. La riga del debito ereditato (decisione 489) ha la chiave con il suffisso del passaggio, «|s…». Con la
+     * cifra cambiata prima di registrare (decisione 493 (10)), `proposti` è quella proposta, `interessi` quella registrata.
      *
      * @param list<int> $persone
-     * @return array{al: array<string, string>, registrazioni: array<string, list<array{alla: string, registrata: string, dal: ?string, interessi: int}>>}
+     * @return array{al: array<string, string>, registrazioni: array<string, list<array{alla: string, registrata: string, dal: ?string, interessi: int, proposti: int}>>}
      */
     private function giaRegistrati(int $condominioId, array $persone): array
     {
@@ -545,12 +1069,20 @@ final class PropostaInteressi
             if (($d['tipo'] ?? null) !== 'interessi' || ! isset($d['interessi']['alla'])) {
                 continue;
             }
+            // Gli interessi del defunto passati agli eredi (decisione 493 (13)) restano registrati per i giorni del defunto: le quote degli eredi ne sono la
+            // copia per quota, e non registrano i loro giorni.
+            $regole = is_string($q->regole_calcolo) ? (json_decode($q->regole_calcolo, true) ?: []) : (array) $q->regole_calcolo;
+            if (isset($regole['dagli_eredi'])) {
+                continue;
+            }
             foreach ($d['interessi']['righe'] ?? [] as $r) {
-                $k = (int) $q->anagrafica_id . '|' . (int) $r['rata_id'] . '|' . (int) ($r['immobile_id'] ?? 0);
+                $k = (int) $q->anagrafica_id . '|' . (int) $r['rata_id'] . '|' . (int) ($r['immobile_id'] ?? 0)
+                    . (isset($r['ereditata']['subentro_id']) ? '|s' . (int) $r['ereditata']['subentro_id'] : '');
                 $al = (string) ($r['al'] ?? $d['interessi']['alla']);
                 $esito[$k] = max($esito[$k] ?? '', $al);
                 // `alla` è l'ultimo giorno che la riga conta, fin dove il riallineo rifà il calcolo; `registrata` la data dell'addebito, che ne porta il nome.
-                $registrazioni[$k][] = ['alla' => $al, 'registrata' => (string) $d['interessi']['alla'], 'dal' => $r['dal'] ?? null, 'interessi' => (int) ($r['interessi'] ?? 0)];
+                $registrazioni[$k][] = ['alla' => $al, 'registrata' => (string) $d['interessi']['alla'], 'dal' => $r['dal'] ?? null, 'interessi' => (int) ($r['interessi'] ?? 0),
+                    'proposti' => (int) ($r['proposti'] ?? $r['interessi'] ?? 0)];
             }
         }
 
@@ -633,8 +1165,10 @@ final class PropostaInteressi
         $esito = [];
         foreach (Gestione::whereIn('id', $gestioni)->get() as $g) {
             $scelta = $aperti->first(fn ($a) => (int) $a->gestione_id === (int) $g->id) ?? $aperti->first(fn ($a) => $a->tipo === $g->tipo);
+            // `piano_conto_id`: il piano dei conti della gestione, dove la finestra manda a creare la voce che manca (H6 della beta.12, Coda 678).
             $scrive = $scelta === null ? null : ['gestione_id' => (int) $scelta->gestione_id, 'esercizio_id' => (int) $scelta->esercizio_id,
-                'nome' => $scelta->gestione . ' (' . $scelta->esercizio . ')'];
+                'nome' => $scelta->gestione . ' (' . $scelta->esercizio . ')',
+                'piano_conto_id' => ($pc = DB::table('piani_conti')->where('condominio_id', $condominio->id)->where('gestione_id', $scelta->gestione_id)->orderBy('id')->value('id')) === null ? null : (int) $pc];
             $voci = $scrive === null ? [] : Conto::query()->join('piani_conti as pc', 'pc.id', '=', 'conti.piano_conto_id')
                 ->where('pc.gestione_id', $scrive['gestione_id'])->where('pc.condominio_id', $condominio->id)
                 ->whereNotIn('conti.tipo', Conto::TIPI_DI_SPESA)->whereNotNull('conti.conto_contabile_id')->whereDoesntHave('sottoconti')->whereHas('tabelleMillesimali')
@@ -666,6 +1200,25 @@ final class PropostaInteressi
         }
 
         return null;
+    }
+
+    /**
+     * Decisione 511: i tassi di una riga, in ordine di giorno, senza ripetere quello del tratto prima: «1,60 %», o «1,60 %» e «2,00 %» se nel periodo cambia.
+     *
+     * @param list<array<string, mixed>> $tratti
+     * @return list<string>
+     */
+    public static function tassiDeiTratti(array $tratti): array
+    {
+        $tassi = [];
+        foreach ($tratti as $t) {
+            $etichetta = (string) ($t['tasso'] ?? '');
+            if ($etichetta !== '' && end($tassi) !== $etichetta) {
+                $tassi[] = $etichetta;
+            }
+        }
+
+        return $tassi;
     }
 
     /** «Rata 2 — Preventivo 2026»; un addebito con la sua causale; la rata 0 «Rata 0 (pregresso)». */

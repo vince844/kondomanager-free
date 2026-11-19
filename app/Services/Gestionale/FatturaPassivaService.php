@@ -228,6 +228,8 @@ class FatturaPassivaService
                 'condominio_id' => $condominioId,
                 'fornitore_id' => $fornitore->id,
                 'esercizio_id' => $data['esercizio_id'],
+                // Coda 687 (decisione 507): la fattura ricorda la sua gestione, la stessa della scrittura che si scrive qui sotto.
+                'gestione_id' => $data['gestione_id'] ?? null,
                 'conto_corrente_id' => $data['conto_corrente_id'] ?? null,
                 'tipo_documento' => $data['tipo_documento'],
                 // Coda 165 (1.11.0-beta.36): solo sulla nota. Una chiave che manca da questo elenco si perde in silenzio
@@ -286,6 +288,10 @@ class FatturaPassivaService
                     // `competenza` non sta più qui dalla 1.11.0-beta.31: è nelle colonne
                     // `competenza_dal/al` (la migrazione `2026_09_18_200000` ha travasato le vecchie).
                     'override_budget' => $data['dati_extra']['override_budget'] ?? null,
+                    // Coda 693 (b), decisione 532: i dati della finestra «Fuori preventivo» (l'origine, la strategia, il fondo, il giustificativo dell'urgenza).
+                    // Non c'erano: la Dashboard li cercava qui (`DashboardController`) e con la delibera non trovava la strategia scelta (prova E5). Non sulla
+                    // pregressa, la cui eccedenza ha la sua copertura (qui sotto): la Dashboard la legge com'era.
+                    'log_legale_sopravvenienza' => $isNotaCredito || $isPregresso ? null : ($data['dati_extra']['log_legale_sopravvenienza'] ?? null),
                     // ⚠️ **Coda 124, 04/09/2026.** Questo array sostituisce interamente
                     // `dati_extra`: qualunque chiave che il chiamante avesse messo lì e che non
                     // sia elencata qui viene persa in silenzio. `StornoFatturaController` passa
@@ -323,8 +329,40 @@ class FatturaPassivaService
             // esercizio invece che sulla rata integrativa.
             // =====================================================================
             $overrideData = $data['dati_extra']['override_budget'] ?? null;
-            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])) {
-                $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
+
+            // Coda 693 (b) e (d), decisione 532: la copertura dal fondo della spesa fuori preventivo nasce dai dati della sua finestra, con la delibera come con
+            // l'urgenza, per la parte comune (le righe «Fuori preventivo» senza unità, quelle che vanno sulla voce tecnica creata sopra). È la stessa copertura
+            // dello sforo, qui sotto: pianificata, e il fondo si muove solo con il giroconto che la conferma (`RegistraGirocontoAction`: DARE banca, AVERE
+            // fondo). Fino alla 1.12.0-beta.11 la copertura nasceva solo dalla giustificazione dello sforo, che con la delibera non c'è (prova E5).
+            $parteComuneImprevisto = 0;
+            foreach ($righeProcessate as $rigaProcessata) {
+                if ($rigaProcessata['is_sopravvenienza'] && empty($rigaProcessata['immobile_id'])) {
+                    $parteComuneImprevisto += abs((int) $rigaProcessata['importo_imponibile'] + (int) $rigaProcessata['importo_iva']);
+                }
+            }
+            $strategiaImprevisto = $logLegale['strategia_rientro'] ?? null;
+            if (! $isPregresso && ! $isNotaCredito && $strategiaImprevisto === 'fondo_riserva' && ! empty($logLegale['fondo_patrimoniale_id']) && $parteComuneImprevisto > 0) {
+                $fattura->coperture()->create([
+                    'tipo_copertura' => 'fondo_riserva',
+                    'importo' => $parteComuneImprevisto,
+                    'stato' => 'pianificata',
+                    'fondo_id' => $logLegale['fondo_patrimoniale_id'],
+                    'nota_amministratore' => 'Copertura spesa fuori preventivo «'.($logLegale['nome_voce'] ?? '').'»'
+                        .(($logLegale['origine_decisionale'] ?? null) === 'gestione_corrente'
+                            ? ' (art. 1135 c.c.): '.($logLegale['motivazione_urgenza'] ?? $logLegale['motivazione_sforo'] ?? '')
+                            : ' (delibera assembleare'.(! empty($logLegale['data_assemblea']) ? ' del '.Carbon::parse($logLegale['data_assemblea'])->format('d/m/Y') : '').')'),
+                ]);
+            }
+            // Con l'urgenza la giustificazione dello sforo comprende la spesa fuori preventivo (la pagina la compone così, `sforoDellaFattura.ts`): la sua
+            // copertura dal fondo è delle sole voci, perché la spesa fuori preventivo ha la sua strategia, qui sopra. Senza la strategia nei dati della
+            // finestra (un chiamante di prima) la giustificazione copre tutto, com'era.
+            $parteImprevistoNelloSforo = (! $isPregresso && $strategiaImprevisto !== null && ($logLegale['origine_decisionale'] ?? null) === 'gestione_corrente')
+                ? $parteComuneImprevisto
+                : 0;
+
+            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])
+                && ($parteImprevistoNelloSforo === 0 || (int) ($overrideData['importo_sforo'] ?? 0) > $parteImprevistoNelloSforo)) {
+                $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0) - $parteImprevistoNelloSforo;
                 $fattura->coperture()->create([
                     'tipo_copertura' => 'fondo_riserva',
                     // FIX: Moltiplicatore per azzerare i report in caso di storno
@@ -870,6 +908,15 @@ class FatturaPassivaService
      * giorno dell'esercizio anche se in UTC è ancora il 31/12 (verifica delle correzioni). Una data che non si legge non si
      * giudica: la segnala già la regola `date`.
      */
+    /**
+     * Coda 687 (decisione 507): come si riconosce una riga «Fuori preventivo» fra prima e dopo una modifica, che cancella e riscrive le righe. La riga comune
+     * sta sulla voce tecnica creata alla registrazione (sotto «Integrazioni Straordinarie (Scudo Legale)»), quella di un'unità sull'unità, senza voce.
+     */
+    public static function chiaveRigaFuoriPreventivo(mixed $contoId, mixed $immobileId): string
+    {
+        return ! empty($immobileId) ? 'u:' . (int) $immobileId : 'c:' . (int) $contoId;
+    }
+
     public static function periodoChiusoPrimaDellEsercizio(mixed $al, mixed $inizioEsercizio): ?bool
     {
         if (blank($al) || blank($inizioEsercizio) || ! is_string($al) && ! $al instanceof \DateTimeInterface) {
@@ -1003,6 +1050,17 @@ class FatturaPassivaService
                 : [];
             $scritture = $fattura->scritture;
 
+            // Coda 687 (decisione 507): la gestione e il segno «Fuori preventivo» si leggono prima di cancellare scritture e righe. Fino alla 1.12.0-beta.11
+            // la gestione arrivava solo dal modulo, che partiva dall'ordinaria (prova B4), e il segno si scriveva sempre spento (prova B1): una fattura della
+            // straordinaria modificata anche solo nella scadenza finiva sull'ordinaria, e una «Fuori preventivo» non si metteva più a rate.
+            $gestionePrima = $fattura->gestioneDellaFattura();
+            $segnatePrima = [];
+            foreach ($fattura->righe as $rigaPrima) {
+                if ($rigaPrima->is_sopravvenienza) {
+                    $segnatePrima[self::chiaveRigaFuoriPreventivo($rigaPrima->conto_id, $rigaPrima->immobile_id)] = true;
+                }
+            }
+
             $fattura->scritture()->detach();
 
             foreach ($scritture as $scrittura) {
@@ -1065,6 +1123,11 @@ class FatturaPassivaService
                     $contoIdRiga = null;
                 }
 
+                // Coda 687 (decisione 507): la riga che era «Fuori preventivo» resta tale, sulla stessa voce tecnica o sulla stessa unità. Una riga nuova
+                // non lo diventa da qui: la richiesta lo rifiuta (`UpdateFatturaRequest`), e il segno acceso arriva solo su una riga che lo aveva.
+                $chiaveRiga = self::chiaveRigaFuoriPreventivo($contoIdRiga, $rigaInput['immobile_id'] ?? null);
+                $restaFuoriPreventivo = isset($segnatePrima[$chiaveRiga]);
+
                 $righeProcessate[] = [
                     'descrizione' => $rigaInput['descrizione'],
                     'importo_imponibile' => $impRiga * $moltiplicatore,
@@ -1072,7 +1135,7 @@ class FatturaPassivaService
                     'importo_iva' => $ivaRiga * $moltiplicatore,
                     'conto_id' => $contoIdRiga,
                     'immobile_id' => $rigaInput['immobile_id'] ?? null,
-                    'is_sopravvenienza' => false, // bloccato a monte
+                    'is_sopravvenienza' => $restaFuoriPreventivo,
                     'concorre_base_ritenuta' => filter_var($rigaInput['concorre_base_ritenuta'] ?? true, FILTER_VALIDATE_BOOLEAN),
                     'natura_riga_ritenuta' => $rigaInput['natura_riga_ritenuta'] ?? null,
                 ];
@@ -1250,10 +1313,17 @@ class FatturaPassivaService
                 ->where('ruolo', 'crediti_condomini')
                 ->firstOrFail();
 
+            // Coda 687 (decisione 507): la gestione che il modulo manda (la pagina parte da quella della fattura), o quella della fattura. Il ripiego di prima
+            // leggeva le scritture dopo averle staccate, e non trovava niente. La fattura la ricorda, con la scrittura.
+            $gestioneId = $data['gestione_id'] ?? $gestionePrima;
+            if ((int) $fattura->gestione_id !== (int) $gestioneId) {
+                $fattura->update(['gestione_id' => $gestioneId]);
+            }
+
             $scrittura = ScritturaContabile::create([
                 'condominio_id' => $fattura->condominio_id,
                 'esercizio_id' => $fattura->esercizio_id,
-                'gestione_id' => $data['gestione_id'] ?? $fattura->scritture()->withTrashed()->first()?->gestione_id,
+                'gestione_id' => $gestioneId,
                 'data_registrazione' => now(),
                 'data_competenza' => $fattura->data_documento,
                 'numero_protocollo' => $fattura->numero_protocollo, // immutabile

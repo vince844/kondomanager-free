@@ -17,7 +17,7 @@ class MailSettings extends Settings
     public ?string $mail_password = null;
     public ?string $mail_encryption = 'tls';
     public ?string $mail_from_address = null;
-    public string $mail_from_name = 'Kondomanager';
+    public string $mail_from_name = 'KondoManager';
     public string $mail_driver = 'smtp';       // 'smtp' | 'sendmail'
 
     public static function group(): string

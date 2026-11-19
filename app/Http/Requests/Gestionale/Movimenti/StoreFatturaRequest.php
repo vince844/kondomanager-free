@@ -140,6 +140,12 @@ class StoreFatturaRequest extends FormRequest
             'dati_extra.log_legale_sopravvenienza.percentuale_proprietario'  => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
             'dati_extra.log_legale_sopravvenienza.percentuale_inquilino'     => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
             'dati_extra.log_legale_sopravvenienza.percentuale_usufruttuario' => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
+            // Coda 693 (b), decisione 532: la strategia scelta nella finestra «Fuori preventivo», il fondo e il giustificativo dell'urgenza. Senza le regole
+            // `validated()` li toglieva: con la delibera la strategia si perdeva, e il fondo scelto non si usava.
+            'dati_extra.log_legale_sopravvenienza.strategia_rientro'         => 'nullable|in:conguaglio_fine_anno,rata_integrativa,fondo_riserva',
+            'dati_extra.log_legale_sopravvenienza.fondo_patrimoniale_id'     => array_merge(PerimetroFattura::regolaFondo($condominioId),
+                ['required_if:dati_extra.log_legale_sopravvenienza.strategia_rientro,fondo_riserva']),
+            'dati_extra.log_legale_sopravvenienza.motivazione_urgenza'       => 'nullable|string|max:2000',
         ];
 
         // ── LOGICA BIVIO CONDIZIONALE ──
@@ -219,6 +225,10 @@ class StoreFatturaRequest extends FormRequest
             'dati_extra.override_budget.motivazione.min' => 'La motivazione dello sforamento deve essere di almeno 10 caratteri.',
             'dati_extra.override_budget.motivazione.required_with' => 'La motivazione è obbligatoria quando si supera il budget.',
             'dati_extra.override_budget.strategia_rientro.required_with' => 'Devi selezionare una strategia di rientro per lo sforo.',
+            'dati_extra.log_legale_sopravvenienza.strategia_rientro.in' => 'Scegli come coprire la spesa fuori preventivo: attesa conguaglio, rata integrativa o fondo di riserva.',
+            'dati_extra.log_legale_sopravvenienza.fondo_patrimoniale_id.required_if' => 'Scegli il fondo di riserva che copre la spesa fuori preventivo.',
+            'dati_extra.log_legale_sopravvenienza.fondo_patrimoniale_id.integer' => 'Il fondo di riserva scelto non è valido.',
+            'dati_extra.log_legale_sopravvenienza.fondo_patrimoniale_id.exists' => 'Il fondo di riserva scelto non appartiene a questo condominio.',
             'data_competenza_originaria.required_if' => 'La data di origine è obbligatoria per i debiti pregressi (verifica prescrizione).',
             'coperture.required_if' => 'Devi specificare come coprire questo debito pregresso.',
             'imponibile_pregresso.required_if' => 'L\'importo della fattura pregressa è obbligatorio.',
@@ -253,6 +263,9 @@ class StoreFatturaRequest extends FormRequest
                 if ($this->input('tipo_documento') === 'fattura') {
                     PerimetroFattura::rifiutaLeEntrate($validator, $righe, $condominioId);
                 }
+
+                // Coda 687 (decisione 507): le voci delle righe sono della gestione scelta, che la fattura ricorda con la sua scrittura.
+                PerimetroFattura::rifiutaVociDiUnAltraGestione($validator, $righe, $this->input('gestione_id'), $condominioId, true);
 
                 // ⚠️ **Una nota di credito deve restare un credito — il vincolo è sul documento.**
                 // Ha sostituito il `min:0` per riga: le singole righe di una nota possono essere
@@ -319,6 +332,17 @@ class StoreFatturaRequest extends FormRequest
                     $validator->errors()->add(
                         'dati_extra.override_budget.strategia_rientro',
                         'SCUDO PATRIMONIALE: Non puoi utilizzare il Fondo Riserva condominiale per coprire spese private.'
+                    );
+                }
+
+                // Coda 693 (b): con la delibera il fondo scelto nella finestra «Fuori preventivo» ora si usa davvero (la copertura nasce dai dati della
+                // finestra), e vale la stessa regola dell'urgenza, che la giustificazione dello sforo porta già qui sopra.
+                $fondoDellaFinestra = $this->input('dati_extra.log_legale_sopravvenienza.strategia_rientro') === 'fondo_riserva';
+                if ($fondoDellaFinestra && $haLavoriPrivati && ! $usaFondo) {
+                    $validator->errors()->add(
+                        'dati_extra.log_legale_sopravvenienza.strategia_rientro',
+                        'Il fondo di riserva copre solo spese comuni, e questa fattura ha una riga addebitata a un\'unità: scegli un\'altra copertura '
+                        .'per la spesa fuori preventivo, oppure registra a parte la spesa dell\'unità.'
                     );
                 }
             }

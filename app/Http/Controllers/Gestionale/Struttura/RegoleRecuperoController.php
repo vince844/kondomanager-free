@@ -13,6 +13,7 @@ use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\RegolaRecupero;
+use App\Services\Gestionale\Accessori\RegoleDegliEredi;
 use App\Services\Gestionale\Accessori\RegoleDelRecupero;
 use App\Services\Gestionale\Accessori\TassoLegaleAMano;
 use App\Services\Gestionale\Addebiti\AddebitiIndividuali;
@@ -82,7 +83,32 @@ class RegoleRecuperoController extends Controller
             'avvisi_fonti' => collect(array_keys(RegolaRecupero::FONTI))->mapWithKeys(fn ($f) => [$f => RegoleDelRecupero::avvisoDellaFonte($f)])->filter()->all(),
             'riferimento_massimo' => self::RIFERIMENTO_MASSIMO,
             'oggi' => $oggi,
+            // Decisioni 493 e 494 (1): la sezione «Gli interessi degli eredi», le otto scelte del condominio; le cambia chi modifica il condominio.
+            'interessi_eredi' => ['descrizione' => RegoleDegliEredi::DESCRIZIONE, 'voci' => RegoleDegliEredi::perLaPagina(RegoleDegliEredi::delCondominio((int) $condominio->id))],
+            // Senza il permesso nel database (un'installazione a metà, le prove) la pagina si apre lo stesso, in sola lettura.
+            'puo_modificare_eredi' => rescue(fn () => \Illuminate\Support\Facades\Gate::allows('update', $condominio), false, false),
         ]);
+    }
+
+    /**
+     * Decisioni 493 e 494 (1): le otto scelte sugli interessi degli eredi del condominio. Valgono per ogni successione, già registrata o nuova, salvo quella
+     * che le ha cambiate per sé. Le salva chi modifica il condominio (`CondominioPolicy::update`); gli altri 403.
+     */
+    public function salvaInteressiEredi(Request $request, Condominio $condominio): RedirectResponse
+    {
+        \Illuminate\Support\Facades\Gate::authorize('update', $condominio);
+        $scelte = RegoleDegliEredi::normalizza($request->input('scelte'));
+        if ($scelte === null) {
+            throw ValidationException::withMessages(['scelte' => 'Scegli le otto voci degli interessi degli eredi, ognuna accesa o spenta.']);
+        }
+        $colonne = [];
+        foreach (RegoleDegliEredi::SCELTE as $chiave => [$colonna]) {
+            $colonne[$colonna] = $scelte[$chiave];
+        }
+        \App\Models\ImpostazioniCondominio::updateOrCreate(['condominio_id' => $condominio->id], $colonne + ['aggiornate_da' => $request->user()?->id]);
+
+        return back()->with($this->flashSuccess('Gli interessi degli eredi sono salvati: valgono per ogni successione di ' . $condominio->nome
+            . ', salvo quelle che li hanno cambiati per sé.'));
     }
 
     public function store(Request $request, Condominio $condominio): RedirectResponse

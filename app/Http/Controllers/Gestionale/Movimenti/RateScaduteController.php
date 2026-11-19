@@ -112,7 +112,7 @@ class RateScaduteController extends Controller
             // I suggerimenti che chiedono le regole del recupero (chi è oltre la tolleranza senza una lettera, gli interessi da proporre): sulle persone
             // dei filtri, oggi. Suggerimenti, mai azioni.
             'suggerimenti' => $filtri['vista'] === ElencoRateScadute::VISTA_SCADUTE && $filtri['alla'] === $oggi
-                ? app(\App\Services\Gestionale\Accessori\SuggerimentiDelRecupero::class)->perElenco($condominio, $righe, $oggi) : [],
+                ? app(\App\Services\Gestionale\Accessori\SuggerimentiDelRecupero::class)->perElenco($condominio, $righe, $oggi, $this->elenco->debitoEreditato()) : [],
             'regole_del_recupero' => \App\Services\Gestionale\Accessori\RegoleDelRecupero::tassoPerLaLettera(
                 (new \App\Services\Gestionale\Accessori\RegoleDelRecupero())->delCondominio((int) $condominio->id), $oggi),
             'gestioni' => $condominio->gestioni()->orderBy('nome')->get(['id', 'nome']),

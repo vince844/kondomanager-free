@@ -59,7 +59,7 @@ class ContoController extends Controller
                 // con decine di voci. Un capitolo non versa nulla direttamente
                 // (beta.22): non ha senso per lui, resta sempre false.
                 'richiede_gia_versato'  => $isCapitolo ? false : $richiedeGiaVersato,
-                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
+                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard', (string) $data['tipo']),
                 'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
@@ -236,7 +236,7 @@ class ContoController extends Controller
                 // Un capitolo non versa nulla direttamente (beta.22): non ha senso
                 // per lui, resta sempre false a prescindere da cosa arriva dal form.
                 'richiede_gia_versato'  => $isCapitolo ? false : $richiedeGiaVersato,
-                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
+                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard', (string) $data['tipo'], $conto),
                 'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
@@ -503,8 +503,20 @@ class ContoController extends Controller
         return null;
     }
 
-    private function resolveContoContabileId(int $condominioId, string $tipoSpesa): ?int
+    /**
+     * Il mastro della voce. Coda 680 (decisione 493 (15)): una voce di entrata nel mastro delle entrate ({@see VociDiEntrataNelMastro::mastro()}), che nasce
+     * alla prima richiesta; fino alla 1.12.0-beta.11 finiva in «Costi per Servizi». Una voce di entrata che c'era già, modificata, tiene il suo mastro: lo
+     * corregge l'amministratore dal controllo del piano dei conti, mai il salvataggio della voce. Una voce di spesa come prima, dal tipo di spesa.
+     */
+    private function resolveContoContabileId(int $condominioId, string $tipoSpesa, ?string $tipo = null, ?Conto $esistente = null): ?int
     {
+        if (\App\Services\Gestionale\VociDiEntrataNelMastro::diEntrata($tipo)) {
+            if ($esistente !== null && \App\Services\Gestionale\VociDiEntrataNelMastro::diEntrata((string) $esistente->getOriginal('tipo')) && $esistente->conto_contabile_id !== null) {
+                return (int) $esistente->conto_contabile_id;
+            }
+
+            return (int) \App\Services\Gestionale\VociDiEntrataNelMastro::mastro($condominioId)->id;
+        }
         $ruolo = match($tipoSpesa) {
             'professionista' => 'compensi_professionisti',
             default          => 'costi_servizi',

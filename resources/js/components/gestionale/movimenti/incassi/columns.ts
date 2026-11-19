@@ -46,13 +46,16 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
     size: 180,
     cell: ({ row }) => {
       const pagante      = row.original.pagante || { principale: 'Sconosciuto', altri_count: 0, lista_completa: '', ruolo: '' }
-      const anagraficaId = row.original.anagrafica_id_principale
+      // Decisione 539 (5), come il dettaglio (538): chi ha pagato davvero, quando il versamento ha scritto le coppie degli eredi. Per il versamento di un
+      // erede il suo nome, con sotto «erede, sul debito di …», e il collegamento al suo estratto conto; senza, la posizione come sempre.
+      const haPagato     = row.original.ha_pagato ?? null
+      const anagraficaId = haPagato ? haPagato.anagrafica_id : row.original.anagrafica_id_principale
 
       const nameSpan = h('span', {
         class: 'font-bold text-sm text-blue-600 truncate hover:underline cursor-pointer',
-      }, pagante.principale)
+      }, haPagato ? haPagato.nome : pagante.principale)
 
-      const altriBadge = pagante.altri_count > 0
+      const altriBadge = !haPagato && pagante.altri_count > 0
         ? h('span', {
             class: 'inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-100 rounded-full cursor-help ml-1.5 shrink-0',
             title: pagante.lista_completa,
@@ -66,13 +69,17 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
           }, [nameSpan, altriBadge].filter(Boolean))
         : h('div', { class: 'flex items-center min-w-0' }, [nameSpan, altriBadge].filter(Boolean))
 
+      const sotto     = haPagato ? haPagato.sotto : (pagante.ruolo || 'Condòmino')
+      const versatoDa = haPagato ? haPagato.versato_da : pagante.versato_da
+
       return h('div', { class: 'flex flex-col gap-0.5 overflow-hidden' }, [
         nameRow,
-        h('span', { class: 'text-xs text-slate-400' }, pagante.ruolo || 'Condòmino'),
+        // La riga sotto il nome: il ruolo, o di chi era il debito (una frase, a capo e non troncata).
+        sotto ? h('span', { class: haPagato ? 'text-xs text-slate-500 dark:text-slate-400 leading-tight break-words' : 'text-xs text-slate-400' }, sotto) : null,
         // Coda 167: il versamento l'ha fatto un'altra persona per conto di questa posizione. A capo e non troncato (R18):
         // un nome lungo coi puntini non dice più chi ha versato.
-        pagante.versato_da
-          ? h('span', { class: 'text-xs text-sky-700 leading-tight break-words' }, `Versato da ${pagante.versato_da}`)
+        versatoDa
+          ? h('span', { class: 'text-xs text-sky-700 dark:text-sky-300 leading-tight break-words' }, `Versato da ${versatoDa}`)
           : null,
       ].filter(Boolean))
     },

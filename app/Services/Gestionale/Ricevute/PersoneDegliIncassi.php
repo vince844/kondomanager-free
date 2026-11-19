@@ -7,6 +7,7 @@ namespace App\Services\Gestionale\Ricevute;
 
 use App\Enums\TipoMovimentoContabile;
 use App\Models\Anagrafica;
+use App\Services\Gestionale\Accessori\VersamentoDegliEredi;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -20,17 +21,22 @@ use Illuminate\Support\Facades\DB;
  * - **Più persone**: se le quote su cui l'incasso ha messo denaro sono di più persone, fuori da chi ha versato, la ricevuta non può dire per
  *   conto di chi: l'incasso non ha una posizione sola e `piu_persone` le elenca (decisione 204). Con «Versato da» le quote di chi ha versato
  *   sono la sua parte in più, non una seconda posizione.
+ * - **Il versamento di un erede sul debito ereditato** (decisione 539): a giornale sta sulla rata del defunto con il legame all'erede (decisione 529), e
+ *   la regola di sopra direbbe «il defunto, versato dall'erede». Di serie la ricevuta è intestata all'erede che ha pagato: la posizione è lui, senza
+ *   «Versato da» e senza più persone. Con la scelta «Eredi di …» o «il defunto» resta la regola di sopra (la ricevuta scrive «Eredi di …» al posto del
+ *   nome). Chi ha pagato davvero si legge come nel dettaglio dell'incasso ({@see VersamentoDegliEredi::deiVersamenti()}), e `eredita` lo porta.
  */
 class PersoneDegliIncassi
 {
     /**
      * @param array<int, int> $ids gli incassi
-     * @return array<int, array{posizione: ?int, versato_da: ?int, piu_persone: array<int, int>}>
+     * @return array<int, array{posizione: ?int, versato_da: ?int, piu_persone: array<int, int>, eredita: ?array<string, mixed>}> `eredita`: la lettura
+     *         del versamento di un erede ({@see VersamentoDegliEredi::deiVersamenti()}), null per gli altri incassi
      */
     public function di(array $ids): array
     {
         $ids = array_values(array_unique(array_map('intval', $ids)));
-        $esito = array_fill_keys($ids, ['posizione' => null, 'versato_da' => null, 'piu_persone' => []]);
+        $esito = array_fill_keys($ids, ['posizione' => null, 'versato_da' => null, 'piu_persone' => [], 'eredita' => null]);
 
         foreach (array_chunk($ids, 500) as $blocco) {
             $versati = DB::table('righe_scritture')
@@ -83,7 +89,19 @@ class PersoneDegliIncassi
                     'posizione'   => $posizione,
                     'versato_da'  => $versatoDa !== null && $versatoDa !== $posizione ? $versatoDa : null,
                     'piu_persone' => count($proprieFuori) > 1 ? $proprieFuori : [],
+                    'eredita'     => null,
                 ];
+            }
+        }
+
+        // Decisione 539: il versamento di un erede sul debito ereditato, con la ricevuta all'erede (di serie): la posizione è lui.
+        foreach (app(VersamentoDegliEredi::class)->deiVersamenti($ids) as $id => $lettura) {
+            if (! isset($esito[$id]) || $lettura['erede'] === null) {
+                continue;
+            }
+            $esito[$id]['eredita'] = $lettura;
+            if ($lettura['intestatario'] === VersamentoDegliEredi::RICEVUTA_ALL_EREDE) {
+                $esito[$id] = ['posizione' => (int) $lettura['erede'], 'versato_da' => null, 'piu_persone' => [], 'eredita' => $lettura];
             }
         }
 

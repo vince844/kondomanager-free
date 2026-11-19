@@ -1712,8 +1712,9 @@ const printRipartoCapitoli = () => {
                               <TooltipProvider v-if="switchState && col.is_emessa" :delayDuration="150">
                                   <Tooltip>
                                       <TooltipTrigger as-child>
+                                          <!-- P5 della Fase 1-bis della beta.12 (Coda 656): dove lo schermo si tocca, e dalla tastiera, il pulsante si vede. -->
                                           <button 
-                                            class="absolute top-1 right-1 opacity-0 group-hover/header:opacity-100 text-gray-400 hover:text-red-500 transition-colors z-40 outline-none"
+                                            class="absolute top-1 right-1 opacity-0 group-hover/header:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 text-gray-400 hover:text-red-500 transition-colors z-40 outline-none"
                                             @click.stop="confirmAnnullamento(col.id)"
                                           >
                                             <RotateCcw class="w-3 h-3" />

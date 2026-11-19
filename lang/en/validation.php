@@ -284,6 +284,7 @@ return [
             'priority' => 'priority',
             'stato' => 'communication status',
             'condomini_ids' => 'buildings',
+            'data_programmata' => 'publication date',
         ],
         'segnalazioni' => [
             'subject' => 'report subject',

@@ -366,7 +366,7 @@ final class LetturaDebiti
             }
             usort($l['rate'], fn ($a, $b) => [$a['scadenza'], $a['numero_rata'], $a['immobile_id'] ?? 0] <=> [$b['scadenza'], $b['numero_rata'], $b['immobile_id'] ?? 0]);
             $l['anticipi'] = $anticipi[$persona] ?? 0;
-            $l['totali'] = $this->totali($l);
+            $l['totali'] = self::totaliDi($l);
             $esito[$persona] = $l;
         }
 
@@ -629,8 +629,13 @@ final class LetturaDebiti
         return ['origini' => $origini, 'nella_rata' => $nellaRata];
     }
 
-    /** @return array<string,mixed> */
-    private function totali(array $l): array
+    /**
+     * I totali di una persona dalle sue righe. Pubblica per chi cambia le righe dopo la lettura: «Rate scadute» con il debito ereditato (decisione 493 (12),
+     * {@see \App\Services\Gestionale\Accessori\DebitoEreditato::sullaLettura()}).
+     *
+     * @return array<string,mixed>
+     */
+    public static function totaliDi(array $l): array
     {
         $fasce = Scadenza::FASCE;
         $scaduto = 0;
@@ -670,7 +675,7 @@ final class LetturaDebiti
     private function vuota(int $anagraficaId, string $alla, ?array $credito): array
     {
         $l = ['anagrafica_id' => $anagraficaId, 'alla' => $alla, 'rate' => [], 'non_emesse' => [], 'anticipi' => 0, 'credito_disponibile' => $credito];
-        $l['totali'] = $this->totali($l);
+        $l['totali'] = self::totaliDi($l);
 
         return $l;
     }

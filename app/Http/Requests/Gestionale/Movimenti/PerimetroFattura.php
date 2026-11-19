@@ -60,10 +60,36 @@ final class PerimetroFattura
         return ['bail', 'nullable', 'integer', Rule::exists('conti_contabili', 'id')->where('condominio_id', $condominioId)];
     }
 
-    /** Il fondo di riserva è il mastro di una cassa di tipo fondo del condominio, la stessa selezione che il modulo offre. @return list<mixed> */
+    /**
+     * Il fondo di riserva è il mastro di una cassa di tipo fondo del condominio, e un fondo che si può usare: la stessa selezione che il modulo offre
+     * (`fondiUtilizzabili`). Coda 693, il rilievo basso della quarta prova della 1.12.0-beta.12: il server accettava ogni fondo del condominio, anche uno
+     * vincolato o senza tipo che la finestra non offre; la fattura si registrava con la copertura pianificata, e il giroconto che la conferma poi la rifiutava.
+     * La regola è {@see \App\Services\Gestionale\TipoDelFondo::siPuoUsare()}: un fondo generico, o sbloccato dall'assemblea.
+     *
+     * @return list<mixed>
+     */
     public static function regolaFondo(int $condominioId): array
     {
-        return ['bail', 'nullable', 'integer', Rule::exists('casse', 'conto_contabile_id')->where('condominio_id', $condominioId)->where('tipo', 'fondo')];
+        return ['bail', 'nullable', 'integer', Rule::exists('casse', 'conto_contabile_id')->where('condominio_id', $condominioId)->where('tipo', 'fondo'),
+            function (string $campo, mixed $valore, \Closure $rifiuta) use ($condominioId): void {
+                $id = self::comeUnId($valore);
+                $fondo = $id === null ? null : Cassa::query()->where('condominio_id', $condominioId)->where('tipo', 'fondo')->where('conto_contabile_id', $id)->first();
+                if ($fondo !== null && ! $fondo->is_utilizzabile_per_imprevisti) {
+                    $rifiuta(sprintf('Il fondo «%s» non si può usare per questa spesa: %s. Scegli un fondo generico, o sbloccalo con la deroga assembleare '
+                        . 'dalla scheda della cassa, con la motivazione.', $fondo->nome, self::perCheNonSiUsa($fondo->sottotipo_fondo, $fondo->vincolo_descrizione)));
+                }
+            }];
+    }
+
+    /** Perché un fondo non si può usare, in parole: «è vincolato ai lavori («Tetto»)», «non ha un tipo, e un fondo senza tipo conta come vincolato». */
+    public static function perCheNonSiUsa(?string $sottotipo, ?string $vincolo): string
+    {
+        return match ($sottotipo) {
+            'vincolato_lavori' => 'è vincolato ai lavori' . (trim((string) $vincolo) !== '' ? ' («' . trim((string) $vincolo) . '»)' : ''),
+            'tfr' => 'è il fondo del TFR',
+            'morosita' => 'è il fondo per la morosità',
+            default => 'non ha un tipo, e un fondo senza tipo conta come vincolato',
+        };
     }
 
     /** @return list<mixed> */
@@ -141,6 +167,52 @@ final class PerimetroFattura
             $validator->errors()->add("righe.{$idx}.conto_id", in_array($contoId, $vociGiaNelleRighe, true)
                 ? "Questa riga è sulla voce di entrata «{$nome}»: il capitolo di una fattura è una voce di spesa. Scegli una voce di spesa per salvare la modifica."
                 : "«{$nome}» è una voce di entrata: il capitolo di una fattura è una voce di spesa. Scegli un'altra voce.");
+        }
+    }
+
+    /**
+     * Coda 687 (decisione 507): le voci delle righe sono della gestione scelta. La scrittura della fattura va sulla gestione del modulo e la riga sulla voce:
+     * con una voce di un'altra gestione la spesa stava a giornale su una gestione e a preventivo su un'altra (la prova B4: la modifica la portava
+     * sull'ordinaria e la voce restava della straordinaria). Restano fuori le righe di un'unità (il capitolo si scarta), quelle a € 0,00, quelle già in errore
+     * e le voci di un altro condominio, che prendono il rifiuto del perimetro.
+     *
+     * @param  mixed  $righe  le righe della richiesta
+     * @param  bool  $saltaFuoriPreventivo  alla registrazione la riga «Fuori preventivo» non ha ancora la sua voce (la crea il servizio, nella gestione scelta)
+     */
+    public static function rifiutaVociDiUnAltraGestione(Validator $validator, mixed $righe, mixed $gestioneId, int $condominioId, bool $saltaFuoriPreventivo = false): void
+    {
+        $gestione = self::comeUnId($gestioneId);
+        if (! is_array($righe) || $gestione === null || $validator->errors()->has('gestione_id')) {
+            return;
+        }
+
+        $candidate = [];
+        foreach ($righe as $idx => $riga) {
+            if (! is_array($riga) || ! empty($riga['immobile_id']) || (float) ($riga['importo_imponibile'] ?? 0) === 0.0 || $validator->errors()->has("righe.{$idx}.conto_id")
+                || ($saltaFuoriPreventivo && filter_var($riga['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN))) {
+                continue;
+            }
+            $id = self::comeUnId($riga['conto_id'] ?? null);
+            if ($id !== null) {
+                $candidate[$idx] = $id;
+            }
+        }
+        if ($candidate === []) {
+            return;
+        }
+
+        $voci = \Illuminate\Support\Facades\DB::table('conti as c')->join('piani_conti as pc', 'pc.id', '=', 'c.piano_conto_id')->leftJoin('gestioni as g', 'g.id', '=', 'pc.gestione_id')
+            ->whereIn('c.id', array_unique($candidate))->where('pc.condominio_id', $condominioId)
+            ->get(['c.id', 'c.nome', 'pc.gestione_id', 'g.nome as gestione'])->keyBy('id');
+        $nomeScelta = \App\Models\Gestione::whereKey($gestione)->value('nome');
+
+        foreach ($candidate as $idx => $contoId) {
+            $voce = $voci->get($contoId);
+            if ($voce === null || (int) $voce->gestione_id === $gestione) {
+                continue;
+            }
+            $validator->errors()->add("righe.{$idx}.conto_id", "La voce «{$voce->nome}» è della gestione «{$voce->gestione}», e la fattura è su «{$nomeScelta}»: "
+                . "scegli una voce di «{$nomeScelta}», oppure la gestione «{$voce->gestione}».");
         }
     }
 

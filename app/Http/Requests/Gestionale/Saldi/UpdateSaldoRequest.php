@@ -52,6 +52,12 @@ class UpdateSaldoRequest extends FormRequest
                     return;
                 }
 
+                // Decisione 529 (1.12.0-beta.12): la coppia del versamento di un erede sul debito ereditato si toglie solo stornando l'incasso.
+                if (\App\Services\Gestionale\Accessori\VersamentoDegliEredi::rigaDellaCoppia($saldo)) {
+                    $validator->errors()->add('saldo', \App\Services\Gestionale\Accessori\VersamentoDegliEredi::FRASE_COPPIA_NEL_WALLET);
+                    return;
+                }
+
                 // B2 (inv. 19): la coppia di conguaglio di un passaggio somma zero per costruzione, e non si
                 // tocca a metà. Si corregge dal passaggio, o con un saldo manuale a parte, legato a quel passaggio.
                 if ($saldo->dellArretrato()) {

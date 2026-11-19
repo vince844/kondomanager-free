@@ -95,7 +95,7 @@ const truncate = (text: string, length: number = 120) => {
                         <!-- Meta -->
                         <p class="text-[10px] font-medium text-slate-400 mt-0.5">
                             {{ trans('comunicazioni.visibility.sent_on_by', {
-                                date: comunicazione.created_at,
+                                date: comunicazione.pubblicata_il || comunicazione.created_at,
                                 name: comunicazione.created_by.user.name
                             }) }}
                         </p>

@@ -47,3 +47,32 @@ describe('ListaCommenti — il primo riquadro alla stessa altezza degli allegati
         expect(intestazione).not.toContain('-mb-1');
     });
 });
+
+// Decisione 479 (1): il numero accanto a «Commenti» conta i pubblicati e quelli in attesa che chi guarda riceve, mai i nascosti, come l'elenco.
+describe('ListaCommenti — il numero accanto a «Commenti» (decisione 479)', () => {
+    const commento = (id: number, stato: string) => ({ id, corpo: `Commento ${id}`, stato, autore: { nome: 'Mario Rossi' }, created_at: '2026-11-10T09:00:00.000Z', azioni: {} });
+
+    function numero(props: Record<string, unknown>) {
+        const w = mount(ListaCommenti, {
+            props: {
+                segnalazioneId: 9, currentUserId: 1,
+                commentiConfig: { can_comment: true, can_create: true, can_moderate: true, can_publish: true },
+                ...props,
+            } as never,
+            global: { mocks: { route: (n: string) => `/${n}` } },
+        });
+        return w.get('[data-intestazione-commenti] .tabular-nums').text();
+    }
+
+    test('1 pubblicato e 1 in attesa: «Commenti 2»', () => {
+        expect(numero({ commenti: [commento(1, 'pubblicato')], commentiInAttesa: [commento(2, 'in_attesa')] })).toBe('2');
+    });
+
+    test('il nascosto non si conta: 1 pubblicato, 1 in attesa e 1 nascosto fanno 2', () => {
+        expect(numero({ commenti: [commento(1, 'pubblicato')], commentiInAttesa: [commento(2, 'in_attesa')], commentiNascosti: [commento(3, 'nascosto')] })).toBe('2');
+    });
+
+    test('senza commenti in attesa il numero è quello dei pubblicati', () => {
+        expect(numero({ commenti: [commento(1, 'pubblicato'), commento(4, 'pubblicato')], commentiInAttesa: [] })).toBe('2');
+    });
+});

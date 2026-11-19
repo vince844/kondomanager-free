@@ -259,14 +259,15 @@ it('Coda 458 — un link fra documenti si risolve rispetto al file che lo contie
         ->and($uscita)->not->toContain('verbali/1.12/v.md → verbali');
 });
 
-it('Coda 458 — i riferimenti file:riga dei documenti di kondocloud/ non si giudicano: citano anche Coolify e le librerie', function () {
-    // Un documento di kondocloud/ cita il codice di un repository a parte, ma anche quello di Coolify
-    // (`ApplicationDeploymentJob.php:4168`) e delle librerie: un `file:riga` non dice di quale
-    // repository parla, e «file assente» sarebbe un falso certo. L'intestazione e i link, invece,
-    // si controllano come altrove.
+it('Coda 458 — i riferimenti file:riga dei documenti di un altro repository non si giudicano: citano anche Coolify e le librerie', function () {
+    // Una cartella con il file `.altro-repository` documenta il codice di un repository a parte, ma
+    // anche quello di Coolify (`ApplicationDeploymentJob.php:4168`) e delle librerie: un `file:riga`
+    // non dice di quale repository parla, e «file assente» sarebbe un falso certo. L'intestazione e i
+    // link, invece, si controllano come altrove.
     progettoDiProvaPerLaDocumentazione($this, [
-        'docs/kondocloud/piano.md' => INTESTAZIONE_DI_PROVA."\nIl lavoro è in `ApplicationDeploymentJob.php:4168`, e [la guida](che_non_c_e.md) lo racconta.\n",
-        'docs/kondocloud/senza.md' => "# Senza intestazione\n",
+        'docs/servizio/.altro-repository' => "Documenta un repository a parte.\n",
+        'docs/servizio/piano.md' => INTESTAZIONE_DI_PROVA."\nIl lavoro è in `ApplicationDeploymentJob.php:4168`, e [la guida](che_non_c_e.md) lo racconta.\n",
+        'docs/servizio/senza.md' => "# Senza intestazione\n",
     ]);
 
     Artisan::call('kondomanager:verifica-documentazione');
@@ -274,8 +275,22 @@ it('Coda 458 — i riferimenti file:riga dei documenti di kondocloud/ non si giu
 
     expect($uscita)->toContain('Riferimenti file:riga che non risolvono: nessuno')
         ->and($uscita)->not->toContain('file assente')
-        ->and($uscita)->toContain('· kondocloud/senza.md')
-        ->and($uscita)->toContain('· kondocloud/piano.md → che_non_c_e.md');
+        ->and($uscita)->toContain('· servizio/senza.md')
+        ->and($uscita)->toContain('· servizio/piano.md → che_non_c_e.md');
+});
+
+it('Coda 458 — senza il file `.altro-repository` una cartella è giudicata come il primo livello, riferimenti compresi', function () {
+    // Il segno, non il nome, decide: la stessa cartella senza il segno chiede che i `file:riga`
+    // risolvano in questo progetto.
+    progettoDiProvaPerLaDocumentazione($this, [
+        'docs/servizio/piano.md' => INTESTAZIONE_DI_PROVA."\nIl lavoro è in `ApplicationDeploymentJob.php:4168`.\n",
+    ]);
+
+    Artisan::call('kondomanager:verifica-documentazione');
+    $uscita = Artisan::output();
+
+    expect($uscita)->toContain('file assente')
+        ->and($uscita)->toMatch('#servizio/\s+1\s+intestazione, età, riferimenti, link#');
 });
 
 it('Coda 458 — due corse nello stesso processo: la seconda vede un file aggiunto dopo la prima, e il nome diventa ambiguo', function () {
@@ -395,7 +410,8 @@ it('Coda 458 — dichiara per cartella che cosa guarda, così chi legge sa che c
     progettoDiProvaPerLaDocumentazione($this, [
         'docs/vivo.md' => INTESTAZIONE_DI_PROVA,
         'docs/verbali/1.12/v.md' => INTESTAZIONE_DI_PROVA,
-        'docs/kondocloud/piano.md' => INTESTAZIONE_DI_PROVA,
+        'docs/servizio/.altro-repository' => "Documenta un repository a parte.\n",
+        'docs/servizio/piano.md' => INTESTAZIONE_DI_PROVA,
         'docs/riferimenti/forum/post.md' => "Un messaggio.\n",
     ]);
 
@@ -405,7 +421,7 @@ it('Coda 458 — dichiara per cartella che cosa guarda, così chi legge sa che c
     expect($uscita)->toContain('Che cosa si guarda, per cartella')
         ->and($uscita)->toMatch('#primo livello\s+1\s+intestazione, età, riferimenti, link#')
         ->and($uscita)->toMatch('#verbali/\s+1\s+intestazione, link#')
-        ->and($uscita)->toMatch('#kondocloud/\s+1\s+intestazione, età, link#')
+        ->and($uscita)->toMatch('#servizio/\s+1\s+intestazione, età, link#')
         ->and($uscita)->toMatch('#riferimenti/\s+1\s+link#');
 });
 

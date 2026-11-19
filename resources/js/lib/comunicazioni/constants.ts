@@ -69,6 +69,12 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
       colorClass: 'text-slate-400 bg-transparent'
     },
     { 
+      value: 'scheduled', 
+      label: 'comunicazioni.publication.scheduled',
+      icon: Clock, 
+      colorClass: 'text-sky-500 bg-transparent'
+    },
+    { 
       value: 'private', 
       label: 'comunicazioni.privacy.private',
       icon: Lock, 

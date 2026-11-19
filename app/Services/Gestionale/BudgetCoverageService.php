@@ -83,6 +83,8 @@ class BudgetCoverageService
                 'segno'              => Conto::segnoDelTipo((string) $conto->tipo),
                 // Una voce di spesa scritta con il meno: la copertura la conta in positivo, come il motore, ma un piano nuovo non la finanzia.
                 'spesa_negativa'     => Conto::eSpesaNegativa((string) $conto->tipo, (int) $conto->importo),
+                // Coda 693 (f): la voce generata dal programma (la voce nata da «Fuori preventivo» e il suo capitolo), con il segno della voce e non con il nome.
+                'is_tecnico'         => (bool) $conto->is_tecnico,
                 'budget'             => $fabbisognoReale,
                 'budget_teorico'     => $budgetTeorico,
                 'pianificato'        => $pianificato,

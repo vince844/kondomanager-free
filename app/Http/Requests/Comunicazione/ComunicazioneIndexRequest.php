@@ -47,7 +47,7 @@ class ComunicazioneIndexRequest extends FormRequest
             'condominio_id'     => ['nullable', 'array'],
             'condominio_id.*'   => ['integer'],
             'visibility'        => ['nullable', 'array'],
-            'visibility.*'      => ['string', 'in:published,draft,pending,private'],
+            'visibility.*'      => ['string', 'in:published,draft,pending,private,scheduled'],
             'search'            => ['nullable', 'string'],
         ], self::regoleOrdinamento(array_keys(self::colonneOrdinabili())));
     }

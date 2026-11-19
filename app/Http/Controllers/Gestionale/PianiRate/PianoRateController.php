@@ -222,7 +222,7 @@ class PianoRateController extends Controller
             'nota_scoperti' => 'required_if_accepted:accetta_scoperti|nullable|string|min:10',
             // B2, cancello (2) della decisione 14.
             'nota_destinatari' => 'required_if_accepted:accetta_destinatari|nullable|string|min:10',
-        ]);
+        ], \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::messaggi(), \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::ATTRIBUTI);
         $validated = $request->validated();
         $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
         $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
@@ -793,7 +793,10 @@ class PianoRateController extends Controller
             'data_delibera_assemblea' => ['nullable', 'date', Rule::requiredIf(fn () => $request->boolean('approvato') && ! $urgenza)],
             'numero_verbale'          => 'nullable|string|max:50',
             'nota_approvazione'       => 'nullable|string|max:500',
-        ]);
+        ], array_merge(\App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::messaggi(), [
+            // Coda 686 (b): la frase dell'approvazione, che non è quella della creazione.
+            'data_delibera_assemblea.required' => 'Indica la data della delibera dell\'assemblea che approva il piano.',
+        ]), \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::ATTRIBUTI);
         
         $vecchioStato = $pianoRate->stato; // È già un oggetto Enum
         $nuovoStato = $validated['approvato'] ? StatoPianoRate::APPROVATO : StatoPianoRate::BOZZA;
@@ -1101,7 +1104,7 @@ class PianoRateController extends Controller
         $request->validate([
             'accetta_destinatari' => 'nullable|boolean',
             'nota_destinatari' => 'required_if_accepted:accetta_destinatari|nullable|string|min:10',
-        ]);
+        ], \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::messaggi(), \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::ATTRIBUTI);
         $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
         $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
 

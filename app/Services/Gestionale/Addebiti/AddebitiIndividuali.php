@@ -407,8 +407,44 @@ final class AddebitiIndividuali
                     'piano' => (string) ($q->rata?->pianoRate?->nome ?? ''),
                     'annullabile' => ! isset($perche[(int) $q->rata_id]),
                     'perche_resta' => $perche[(int) $q->rata_id] ?? null,
+                    // Decisione 493 (10): gli interessi registrati con una cifra più bassa della proposta: le due cifre, il giorno e il perché.
+                    'cifre_cambiate' => self::cifreCambiate($d),
                 ];
             })->values()->all();
+    }
+
+    /**
+     * «Proposti € 0,37, registrati € 0,30 il 05/01/2027: «…».»: gli interessi registrati con una cifra cambiata prima di registrare (decisione 493 (10));
+     * null altrimenti. Con il tasso cambiato (decisione 512) anche i tassi: «Proposti € 0,37 al 2,00 %, registrati € 0,18 all'1,00 % il 05/01/2027: «…».».
+     */
+    public static function cifreCambiate(array $dati): ?string
+    {
+        $cambiati = $dati['interessi']['cambiati'] ?? null;
+        if (! is_array($cambiati)) {
+            return null;
+        }
+        $righe = (array) ($dati['interessi']['righe'] ?? []);
+        $proposti = (int) array_sum(array_map(fn ($r) => (int) ($r['proposti'] ?? $r['interessi'] ?? 0), $righe));
+        $registrati = (int) array_sum(array_map(fn ($r) => (int) ($r['interessi'] ?? 0), $righe));
+        $il = (string) ($cambiati['il'] ?? '');
+        $alProposto = '';
+        $alRegistrato = '';
+        if (collect($righe)->contains(fn ($r) => isset($r['tasso']['etichetta']))) {
+            // «al 2,00 %», «all'1,00 %»: l'articolo davanti al primo tasso, poi «e» fra i tassi.
+            $tassi = function (array $lista): string {
+                $lista = array_values(array_unique($lista));
+                $intero = (int) preg_replace('/\D.*$/u', '', (string) ($lista[0] ?? ''));
+                $elide = in_array($intero, [1, 8, 11], true) || ($intero >= 80 && $intero <= 89);
+
+                return ($elide ? ' all\'' : ' al ') . implode(' e ', $lista);
+            };
+            $alProposto = $tassi(collect($righe)->flatMap(fn ($r) => \App\Services\Gestionale\Accessori\PropostaInteressi::tassiDeiTratti((array) ($r['tratti'] ?? [])))->all());
+            $alRegistrato = $tassi(collect($righe)->flatMap(fn ($r) => isset($r['tasso']['etichetta']) ? [(string) $r['tasso']['etichetta']]
+                : \App\Services\Gestionale\Accessori\PropostaInteressi::tassiDeiTratti((array) ($r['tratti'] ?? [])))->all());
+        }
+
+        return sprintf('Proposti %s%s, registrati %s%s%s: «%s».', MoneyHelper::format($proposti), $alProposto, MoneyHelper::format($registrati), $alRegistrato,
+            $il !== '' ? ' il ' . self::giorno($il) : '', (string) ($cambiati['motivo'] ?? ''));
     }
 
     /** I dati dell'addebito nelle regole della quota. */

@@ -20,8 +20,21 @@ class NotificationPreferenceService
                     return true; 
                 }
 
-                return $user->hasPermissionTo($meta['permission']->value);
+                // Coda 683 (3): un tipo può valere per più permessi (gli allegati di segnalazioni e comunicazioni): basta averne uno. Un permesso
+                // che a database non c'è vale «no», non un errore.
+                return collect(self::permessi($meta['permission']))
+                    ->contains(fn (string $permesso) => $user->checkPermissionTo($permesso));
             })
             ->toArray();
+    }
+
+    /**
+     * I nomi dei permessi di un tipo di notifica: uno solo o un elenco, di cui basta averne uno.
+     *
+     * @return list<string>
+     */
+    public static function permessi(mixed $permesso): array
+    {
+        return array_values(array_map(fn ($p) => $p instanceof \BackedEnum ? (string) $p->value : (string) $p, is_array($permesso) ? $permesso : [$permesso]));
     }
 }

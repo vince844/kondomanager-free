@@ -164,4 +164,82 @@ describe('la proposta degli interessi', () => {
         expect([...corpo().querySelectorAll('[data-testid="accanto"]')].map((p) => pulito(p.textContent))).toContain('€ 200,00 sono in un accordo di rientro in corso: '
             + 'la proposta lascia fuori i giorni dalla data dell\'accordo; i giorni prima dell\'accordo restano nella proposta.');
     });
+
+    // Coda 678 (decisione 485), 2: con «restano sospesi» l'accordo copre solo una parte della rata ma resta fuori tutta. Non copre: il calcolo (lo prova la suite PHP).
+    test('con «restano sospesi finché l\'accordo regge» la frase in testa alla persona dice che resta fuori tutta la rata, non «€ 150,00 sono in un accordo»', async () => {
+        const conSospesi = JSON.parse(JSON.stringify(proposta));
+        Object.assign(conSospesi.persone[0], { in_accordo: 15000, fuori_per_intero: 20000, di_cui_nell_accordo: 15000 });
+        conSospesi.persone[0].righe[0].al = '2026-06-14';
+        conSospesi.persone[0].righe[0].accordo_dal = '2026-06-15';
+        axiosGet.mockResolvedValue({ data: conSospesi });
+        monta([1, 2]);
+        await flushPromises();
+        const frasi = [...corpo().querySelectorAll('[data-testid="persona-interessi"]')[0].querySelectorAll('[data-testid="accanto"]')].map((p) => pulito(p.textContent));
+        expect(frasi).toEqual(['Dal giorno dell\'accordo di rientro restano fuori € 200,00: l\'accordo ne copre € 150,00, ma hai scelto che gli interessi restino sospesi finché '
+            + 'l\'accordo regge, e così resta fuori tutta la rata. I giorni prima dell\'accordo restano nella proposta.']);
+        expect(frasi.join(' ')).not.toContain('sono in un accordo di rientro in corso');
+    });
+
+    // Coda 678, 3: senza una voce di entrata lo si dice in testa alla proposta, con il posto dove crearla, e accanto al pulsante spento.
+    test('in una gestione senza voce di entrata la proposta lo dice in testa, con il collegamento al piano dei conti, e il pulsante spento dice perché', async () => {
+        const senzaVoce = JSON.parse(JSON.stringify(proposta));
+        senzaVoce.gestioni[0].voci = [];
+        axiosGet.mockResolvedValue({ data: senzaVoce });
+        const rottaPrima = (globalThis as unknown as { route: unknown }).route;
+        (globalThis as unknown as { route: unknown }).route = (nome: string, p: Record<string, unknown> = {}) => `/${nome}?${new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v)]))}`;
+        try {
+            monta([1, 2]);
+            await flushPromises();
+            const avviso = corpo().querySelector('[data-testid="manca-la-voce"]')!;
+            expect(pulito(avviso.textContent)).toContain('Per «Ordinaria 2026 (Esercizio 2026)» non c\'è una voce di entrata che riceva gli interessi');
+            expect(avviso.querySelector('a')?.getAttribute('href')).toBe('/gestionale.esercizi.piani-conti.index?condominio=3&esercizio=1');
+            expect(registra().disabled).toBe(true);
+            expect(pulito(corpo().querySelector('[data-testid="perche-spento"]')?.textContent)).toBe('Il pulsante è spento: manca una voce di entrata per «Ordinaria 2026 (Esercizio 2026)». Creala nel piano dei conti.');
+        } finally {
+            (globalThis as unknown as { route: unknown }).route = rottaPrima;
+        }
+    });
+
+    test('con una voce di entrata non c\'è nessun avviso sulla voce', async () => {
+        axiosGet.mockResolvedValue({ data: proposta });
+        monta([1, 2]);
+        await flushPromises();
+        expect(corpo().querySelector('[data-testid="manca-la-voce"]')).toBeNull();
+        expect(corpo().querySelector('[data-testid="perche-spento"]')).toBeNull();
+    });
+
+    // Coda 678, 4: «Togli la persona» la lascia nell'elenco ma la mostra spenta, con la scritta e il comando per rimetterla. Non copre: l'aspetto (spenta = trasparenza).
+    test('«Togli la persona» la mostra esclusa dalla registrazione, con «Rimetti la persona»; rimessa, torna com\'era e il totale la riconta', async () => {
+        axiosGet.mockResolvedValue({ data: proposta });
+        monta([1, 2]);
+        await flushPromises();
+        expect(corpo().querySelector('[data-testid="persona-esclusa"]')).toBeNull();
+        corpo().querySelectorAll<HTMLButtonElement>('[data-testid="togli-persona"]')[1].click();
+        await flushPromises();
+        const persone = corpo().querySelectorAll('[data-testid="persona-interessi"]');
+        expect(persone).toHaveLength(2);
+        expect(corpo().querySelectorAll('[data-testid="persona-esclusa"]')).toHaveLength(1);
+        expect(pulito(persone[1].querySelector('[data-testid="persona-esclusa"]')?.textContent)).toBe('Esclusa dalla registrazione');
+        expect(persone[1].querySelector('[data-testid="togli-persona"]')).toBeNull();
+        expect(persone[1].querySelector('[data-testid="riga-interessi"]')?.className).toContain('opacity-60');
+        expect(pulito(registra().textContent)).toBe('Registra € 0,92');
+
+        persone[1].querySelector<HTMLButtonElement>('[data-testid="rimetti-persona"]')!.click();
+        await flushPromises();
+        expect(corpo().querySelector('[data-testid="persona-esclusa"]')).toBeNull();
+        expect(corpo().querySelectorAll('[data-testid="togli-persona"]')).toHaveLength(2);
+        // La riga ferma di Bianchi (il tasso che manca) non torna fra quelle tenute: il totale è 0,92 + 0,71.
+        expect(pulito(registra().textContent)).toBe('Registra € 1,63');
+    });
+
+    test('una persona senza righe da registrare non risulta esclusa', async () => {
+        const aZero = JSON.parse(JSON.stringify(proposta));
+        aZero.persone[0].totale = 0;
+        aZero.persone[0].righe[0] = { ...aZero.persone[0].righe[0], interessi: 0, tratti: [] };
+        axiosGet.mockResolvedValue({ data: aZero });
+        monta([1, 2]);
+        await flushPromises();
+        expect(corpo().querySelector('[data-testid="persona-esclusa"]')).toBeNull();
+        expect(corpo().querySelector('[data-testid="rimetti-persona"]')).toBeNull();
+    });
 });

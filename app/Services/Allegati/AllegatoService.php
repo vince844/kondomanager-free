@@ -12,6 +12,7 @@ use App\Models\Documento;
 use App\Models\Segnalazione;
 use App\Models\User;
 use App\Services\Documenti\ArchivioDocumenti;
+use App\Support\Allegati\FotoSenzaDati;
 use App\Support\Allegati\RegoleAllegati;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
@@ -67,14 +68,29 @@ final class AllegatoService
                 $creati = collect();
 
                 foreach ($files as $file) {
-                    $path = $this->archivio->salvaConLEstensioneDelNome($file, $cartella);
+                    $tipo = (string) $file->getMimeType();
+                    // Decisione 531: da ogni foto (il tipo letto dal contenuto, non dal nome) il server toglie i dati della foto, la posizione per
+                    // prima, senza decodificarla; il peso è quello del file salvato. Una foto che non si sa pulire non si salva. Da una richiesta la
+                    // foto arriva già pulita (decisione 535, `TogliIDatiDelleFoto`): qui resta per chi carica senza una richiesta.
+                    if (FotoSenzaDati::eUnaFoto($tipo)) {
+                        $pulita = FotoSenzaDati::pulisci((string) $file->get(), $tipo);
+                        if ($pulita === null) {
+                            throw ValidationException::withMessages(['allegati' => FotoSenzaDati::frase($file->getClientOriginalName())]);
+                        }
+                        $path = $this->archivio->salvaContenuto($pulita, strtolower($file->getClientOriginalExtension()), $cartella);
+                        $peso = strlen($pulita);
+                        unset($pulita);
+                    } else {
+                        $path = $this->archivio->salvaConLEstensioneDelNome($file, $cartella);
+                        $peso = (int) $file->getSize();
+                    }
                     $percorsiSalvati[] = $path;
 
                     $creati->push($bloccato->allegati()->create([
                         'name'         => RegoleAllegati::accorciaNomeFile($file->getClientOriginalName()),
                         'path'         => $path,
-                        'mime_type'    => (string) $file->getMimeType(),
-                        'file_size'    => (int) $file->getSize(),
+                        'mime_type'    => $tipo,
+                        'file_size'    => $peso,
                         'created_by'   => $user->id,
                         'is_published' => true,
                         'is_approved'  => $approvato,

@@ -24,6 +24,14 @@ import SuggerimentoEntrataUsufrutto from './SuggerimentoEntrataUsufrutto.vue'
 import { trans } from 'laravel-vue-i18n'
 import type { TabellaDropdown } from '@/types/gestionale/tabelle'
 
+// La natura fiscale della spesa, nel menu «Natura spesa» (decisione 392: v-select, non il <select> del browser): le stesse quattro voci di prima.
+const NATURE_SPESA = [
+  { value: 'standard', label: 'Standard (Beni/Servizi)' },
+  { value: 'professionista', label: 'Professionista (Rit. Acconto)' },
+  { value: 'lavori', label: 'Lavori Edili (Bonus/Ristr.)' },
+  { value: 'utenza', label: 'Utenza (Luce/Gas/Acqua)' },
+]
+
 interface Emits {
   (e: 'update:show', value: boolean): void
   (e: 'success'): void
@@ -249,31 +257,31 @@ const submit = () => {
             <div v-if="!isCapitolo" class="bg-slate-50 p-4 rounded-md border border-slate-200 grid grid-cols-2 gap-4">
                 <div>
                    <Label for="fornitore" class="text-xs font-semibold uppercase text-slate-500">Fornitore Suggerito</Label>
-                   <select 
-                      id="fornitore"
+                   <!-- Decisione 392 (Coda 634): i menu con v-select, non con il <select> del browser. Vuoto è «nessun fornitore». -->
+                   <v-select
+                      input-id="fornitore"
+                      :options="props.fornitori ?? []"
+                      label="ragione_sociale"
                       v-model="form.default_fornitore_id"
-                      class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1 focus:ring-2 focus:ring-ring"
-                   >
-                      <option :value="null">-- Nessuno --</option>
-                      <option v-for="f in props.fornitori" :key="f.id" :value="f.id">
-                        {{ f.ragione_sociale }}
-                      </option>
-                   </select>
+                      :reduce="(f: { id: number }) => f.id"
+                      :clearable="true"
+                      placeholder="Nessuno"
+                      class="mt-1"
+                   />
                    <p class="text-[10px] text-slate-500 mt-1">Verrà precompilato nelle fatture.</p>
                 </div>
 
                 <div>
                    <Label for="tipo_spesa" class="text-xs font-semibold uppercase text-slate-500">Natura Spesa (Fiscale)</Label>
-                   <select 
-                      id="tipo_spesa"
+                   <v-select
+                      input-id="tipo_spesa"
+                      :options="NATURE_SPESA"
+                      label="label"
                       v-model="form.tipo_spesa"
-                      class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1 focus:ring-2 focus:ring-ring"
-                   >
-                      <option value="standard">Standard (Beni/Servizi)</option>
-                      <option value="professionista">Professionista (Rit. Acconto)</option>
-                      <option value="lavori">Lavori Edili (Bonus/Ristr.)</option>
-                      <option value="utenza">Utenza (Luce/Gas/Acqua)</option>
-                   </select>
+                      :reduce="(n: { value: string }) => n.value"
+                      :clearable="false"
+                      class="mt-1"
+                   />
                 </div>
             </div>
 
@@ -289,6 +297,8 @@ const submit = () => {
                 @focus="form.clearErrors('importo')"
               />
               <p class="mt-1 text-xs text-muted-foreground">Si scrive senza il segno: lo decide il tipo della voce.</p>
+              <!-- Seconda prova a video della beta.12: una voce di entrata si crea anche con il preventivo a zero (gli interessi di mora, per esempio). -->
+              <p v-if="form.tipo === 'entrata'" class="mt-1 text-xs text-muted-foreground" data-testid="entrata-a-zero">Per una voce di entrata puoi lasciarlo a zero: per esempio gli interessi di mora, che non si prevedono.</p>
               <InputError :message="form.errors.importo" />
             </div>
 

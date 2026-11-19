@@ -165,12 +165,14 @@ test('le preferenze dei commenti hanno etichette diverse per le segnalazioni e p
         'comment_under_moderation' => 'Commento da moderare (segnalazioni)',
         'comment_edited_under_moderation' => 'Commento modificato da moderare (segnalazioni)',
         'comment_approved' => 'Commento approvato (segnalazioni)',
-        'comment_deleted' => 'Commento eliminato o nascosto (segnalazioni)',
+        'comment_deleted' => 'Commento nascosto (segnalazioni)',
+        'comment_removed' => 'Commento eliminato (segnalazioni)',
         'new_communication_comment' => 'Nuovo commento (comunicazioni)',
         'communication_comment_under_moderation' => 'Commento da moderare (comunicazioni)',
         'communication_comment_edited_under_moderation' => 'Commento modificato da moderare (comunicazioni)',
         'communication_comment_approved' => 'Commento approvato (comunicazioni)',
-        'communication_comment_deleted' => 'Commento eliminato o nascosto (comunicazioni)',
+        'communication_comment_deleted' => 'Commento nascosto (comunicazioni)',
+        'communication_comment_removed' => 'Commento eliminato (comunicazioni)',
     ];
     $etichette = function (string $lingua) use ($attese) {
         $voci = (include base_path("lang/{$lingua}/settings.php"))['notification_types'] ?? [];

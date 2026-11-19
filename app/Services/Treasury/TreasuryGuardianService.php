@@ -333,7 +333,9 @@ final class TreasuryGuardianService
 
         $accordiInCorso = $gestioneId === null ? $this->accordi->inCorso($condominioId, $oggi->toDateString()) : [];
 
-        foreach ($this->lettura->perCondominioABlocchi($condominioId, $oggi->toDateString(), self::BLOCCO, $gestioneId) as $blocco) {
+        // Decisione 493 (12): come «Rate scadute», il debito ereditato non ancora in una rata sugli eredi e non più sul defunto; le cifre attese sono le stesse.
+        foreach (app(\App\Services\Gestionale\Accessori\DebitoEreditato::class)->aBlocchi($this->lettura->perCondominioABlocchi($condominioId, $oggi->toDateString(), self::BLOCCO,
+            $gestioneId), $condominioId, $oggi->toDateString(), $gestioneId) as $blocco) {
             foreach ($blocco as $persona => $l) {
                 $perGestione = [];
                 $creditoPerGestione = [];

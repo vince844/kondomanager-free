@@ -68,6 +68,8 @@ const props = defineProps<{
         gestione_id?: number;
         /** Una voce di spesa scritta con il meno: la creazione non la propone, e `nota` dice la strada. */
         spesa_negativa?: boolean;
+        /** Coda 693 (f): la voce nata dal pulsante «Fuori preventivo» (il segno tecnico della voce, non il nome): sta già fra le «Fatture in sospeso». */
+        fuori_preventivo?: boolean;
         nota?: string | null;
     }>;
     scoperto_count: number;
@@ -247,6 +249,13 @@ const pianificatoCondiviso = computed(() => {
 const deltaReale = computed(() => {
     return props.copertura ? props.copertura.delta : 0;
 });
+
+/**
+ * Coda 693 (f): gli «Sfori del preventivo» della finestra delle voci non coperte, senza le voci nate dal pulsante «Fuori preventivo», che
+ * stanno già fra le «Fatture in sospeso». Il segno è quello tecnico della voce (`fuori_preventivo`, dal server): fino alla 1.12.0-beta.11 era il nome
+ * «Imprevisto -», e una voce rinominata compariva due volte, con «Gestisci sforo»; una voce del preventivo chiamata «Imprevisto - …» spariva.
+ */
+const sforiDelPreventivo = computed(() => (props.copertura?.orfani ?? []).filter(o => !o.fuori_preventivo));
 
 // NUOVO: Calcoliamo lo "Scoperto Operativo" (la somma esatta dei buchi reali da finanziare, ignorando i surplus)
 const totaleScopertoOperativo = computed(() => {
@@ -858,7 +867,7 @@ onUnmounted(() => {
                     <div class="p-6 flex-1 overflow-y-auto custom-scrollbar bg-slate-50/30 dark:bg-slate-900/50">
                         <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-5 text-xs text-blue-700">
                             <strong class="font-bold block mb-1">Cosa fare?</strong>
-                            Queste spese non sono coperte dalle rate attualmente emesse. Clicca su "Finanzia Spesa" per creare automaticamente un piano rate straordinario (oppure integrativo per i conguagli) che includa queste voci.
+                            Queste spese non sono coperte dalle rate attualmente emesse. Clicca su «Finanzia spesa» per creare il piano rate dalla scheda «Spese fuori preventivo», sulla gestione della fattura, con la fattura già scelta.
                         </div>
 
                         <div v-if="fattureScoperte && fattureScoperte.length > 0" class="mb-8">
@@ -929,13 +938,15 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <div v-if="copertura?.orfani && copertura.orfani.filter(o => !o.nome.includes('Imprevisto -')).length > 0">
+                        <!-- Coda 693 (f): le voci nate da «Fuori preventivo» si riconoscono dal segno che manda il server, non dal nome «Imprevisto -»: una voce
+                             rinominata compariva due volte, con «Gestisci sforo». -->
+                        <div v-if="sforiDelPreventivo.length > 0">
                             <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                 <TrendingDown class="w-3.5 h-3.5 text-rose-500" /> Sfori del preventivo
                             </h4>
                             
                             <div class="space-y-3">
-                                <div v-for="orfano in copertura.orfani.filter(o => !o.nome.includes('Imprevisto -'))" :key="orfano.id"
+                                <div v-for="orfano in sforiDelPreventivo" :key="orfano.id"
                                     class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm border"
                                     :class="{
                                         'border-indigo-200/60': orfano.strategia === 'conguaglio',

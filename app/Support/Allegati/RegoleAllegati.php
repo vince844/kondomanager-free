@@ -297,6 +297,9 @@ final class RegoleAllegati
             'puo_caricare'  => self::puoCaricare($user, $elemento),
             'puo_impostare' => self::puoImpostare($user, $elemento),
             'massimo'       => $massimo,
+            // Coda 683 (4): quanti file ha l'elemento in tutto, anche quelli che chi guarda non vede. «N / massimo» del riquadro e i posti rimasti
+            // contano gli stessi file; arriva il numero, non i file.
+            'totale'        => $totale,
             'rimasti'       => max(0, $massimo - $totale),
             'limite_file'   => LimiteCaricamento::etichetta(),
             'formati'       => self::FORMATI,

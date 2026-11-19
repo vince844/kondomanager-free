@@ -192,7 +192,7 @@ watchDebounced(searchQuery, async (newQuery) => {
 
         <div class="relative min-h-[400px]">
           <Transition name="fade">
-            <div v-if="showDelayedLoading && isLoading" class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2">
+            <div v-if="showDelayedLoading && isLoading" class="absolute inset-0 bg-white/60 dark:bg-slate-950/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2">
               <Loader2 class="w-8 h-8 animate-spin text-primary" />
               <span class="text-sm font-medium text-gray-500">Aggiornamento...</span>
             </div>
@@ -216,7 +216,7 @@ watchDebounced(searchQuery, async (newQuery) => {
             leave-to-class="opacity-0 -translate-y-4"
             move-class="transition duration-300 ease-in-out"
           >
-            <div v-if="documenti.length > 0" key="grid" class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div v-if="documenti.length > 0" key="grid" class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               <DocumentiListCards
                 v-for="documento in documenti"
                 :key="documento.id"
@@ -224,7 +224,7 @@ watchDebounced(searchQuery, async (newQuery) => {
               />
             </div>
 
-            <Empty v-else-if="showNoResults || showNoDocuments" key="empty" class="border border-dashed bg-gray-50/50">
+            <Empty v-else-if="showNoResults || showNoDocuments" key="empty" class="border border-dashed bg-gray-50/50 dark:bg-slate-900/40">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <SearchX v-if="showNoResults" class="text-muted-foreground" />

@@ -322,9 +322,44 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // `tests/Feature/Gestionale/SuccessioniRegistratePrimaMigrazioneTest.php`.
     '2026_11_17_140000_add_registro_e_successione_to_accordi_rientro',
     '2026_11_17_150000_riallinea_le_successioni_registrate_prima',
+    // 1.12.0-beta.12 (decisione 483, Coda 663): sul passaggio la scelta della successione per gli interessi del defunto dopo il decesso, una colonna con la
+    // sua guardia; poi, solo dati, le successioni già registrate prendono il di serie della loro strada dell'arretrato (solo i passaggi senza la scelta):
+    // rieseguita non cambia niente. Il suo effetto lo prova `tests/Feature/Gestionale/InteressiDelDefuntoDopoIlDecessoTest.php`.
+    '2026_11_18_170000_add_interessi_del_defunto_to_subentri',
+    '2026_11_18_170100_riallinea_gli_interessi_delle_successioni_registrate',
+    // 1.12.0-beta.12 (decisione 483 (3)): le preferenze di notifica nuove «Commento eliminato» (segnalazioni e comunicazioni) nascono come «Commento nascosto»,
+    // solo dati, scritte solo per chi non le ha già: rieseguita non cambia niente. Il suo effetto lo prova `tests/Feature/Commenti/AvvisoCommentoEliminatoTest.php`.
+    '2026_11_18_180000_seed_preferenze_notifica_commento_eliminato',
+    // 1.12.0-beta.12 (decisioni 489, 493 e 494, gli interessi sul debito ereditato): le otto scelte degli eredi su `impostazioni_condominio` e la scelta per
+    // una sola successione `subentri.interessi_eredi`, una guardia per colonna. Il loro effetto lo prova `tests/Feature/Gestionale/InteressiSulDebitoEreditatoTest.php`.
+    '2026_11_18_200000_add_interessi_degli_eredi',
+    // 1.12.0-beta.12 (Coda 687, decisione 507, la fattura ricorda la sua gestione): la colonna `gestione_id` su `fatture_passive` e la sua chiave esterna, due
+    // statement con due guardie; poi, solo dati, la colonna riempita dalla scrittura di competenza (o dalle voci) solo dove è vuota: rieseguita non trova
+    // niente. Il loro effetto, e gli stati a metà, li prova `tests/Feature/Gestionale/FatturaRicordaLaGestioneTest.php`.
+    '2026_11_18_210000_add_gestione_id_to_fatture_passive',
+    '2026_11_18_210100_riempi_gestione_delle_fatture_passive',
+    // 1.12.0-beta.12 (Coda 589, decisioni 290–292, la pubblicazione programmata delle comunicazioni): le tre colonne `programmata_per`, `programmata_da` e
+    // `pubblicata_il` su `comunicazioni`, una guardia per colonna; poi, solo dati, `pubblicata_il` riempita con `created_at` per le comunicazioni già
+    // pubblicate e approvate e ancora vuote (rieseguita non trova niente); poi la preferenza «Comunicazione programmata pubblicata», scritta solo per chi
+    // non l'ha già, con lo stato di «Comunicazione approvata». Il loro effetto lo prova `tests/Feature/ComunicazioniProgrammate/ProgrammateDatabaseTest.php`.
+    '2026_11_12_100000_add_pubblicazione_programmata_to_comunicazioni',
+    '2026_11_12_100100_riempi_pubblicata_il_delle_comunicazioni',
+    '2026_11_12_100200_seed_preferenza_notifica_comunicazione_programmata',
+    // 1.12.0-beta.12 (Coda 591, decisioni 294, 295, 301–305, l'assegnazione delle segnalazioni): `assigned_to` svuotato la prima volta (solo finché manca
+    // `assegnata_il`: rieseguita non tocca le assegnazioni nuove) e le due colonne `assegnata_da` e `assegnata_il` su `segnalazioni`, una guardia per colonna;
+    // poi la preferenza «Segnalazione assegnata», scritta solo per chi non l'ha già, con lo stato di «Nuova segnalazione». Il loro effetto lo prova
+    // `tests/Feature/AssegnazioneSegnalazioni/AssegnazioneDatabaseTest.php`.
+    '2026_11_12_110000_add_assegnazione_to_segnalazioni',
+    '2026_11_12_110200_seed_preferenza_notifica_segnalazione_assegnata',
     // La riga «passo_proposto» delle impostazioni generali si toglie (la scelta è del condominio): `deleteIfExists`, rieseguita non trova niente. Il suo
     // effetto lo prova `tests/Feature/Impostazioni/ImpostazioniPassoPropostoTest.php`.
     'settings/2026_11_15_200100_remove_passo_proposto_from_general_settings',
+    // 1.12.0-beta.12 (Coda 591): i due interruttori dell'assegnazione nelle impostazioni generali, spenti di serie, ognuno scritto solo se non c'è;
+    // rieseguita non riscrive una scelta già fatta. Il loro effetto lo prova `tests/Feature/AssegnazioneSegnalazioni/AssegnazioneDatabaseTest.php`.
+    'settings/2026_11_12_110100_add_assegnazione_segnalazioni_to_general_settings',
+    // 1.12.0-beta.12 (decisione 490): «Kondomanager» di serie diventa «KondoManager» nelle impostazioni, solo dove vale esattamente quello; rieseguita non cambia
+    // niente. Il suo effetto lo prova `tests/Feature/Mail/NomeNelleEmailTest.php`.
+    'settings/2026_11_18_190000_scrivi_kondomanager_con_la_emme_maiuscola',
 ]);
 
 it('la migrazione dei modelli delle lettere interrotta dopo la tabella e prima dell\'indice e delle chiavi si riprende e li mette, uno per nome', function () {

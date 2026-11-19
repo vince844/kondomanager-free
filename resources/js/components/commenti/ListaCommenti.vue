@@ -88,7 +88,9 @@ const commentiDaMostrare = computed(() => {
   return pubblicatiENascosti;
 });
 
-const totaleCommenti = computed(() => props.commenti.length);
+// Decisione 479 (1): il numero accanto a «Commenti» conta i pubblicati e quelli in attesa che chi guarda riceve (chi modera tutti, il condòmino
+// i suoi), mai i nascosti: la stessa regola dell'elenco e della scheda della comunicazione.
+const totaleCommenti = computed(() => props.commenti.length + (props.commentiInAttesa?.length ?? 0));
 const inAttesa = computed(() => props.commentiInAttesa?.length ?? 0);
 </script>
 

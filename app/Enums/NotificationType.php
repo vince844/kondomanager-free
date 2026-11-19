@@ -14,12 +14,22 @@ namespace App\Enums;
  */
 enum NotificationType: string
 {
+    /**
+     * I nomi di prima delle due preferenze «nascosto» (decisione 478 (2)): le migrazioni già rilasciate li usano ancora. Sono la stessa
+     * preferenza, con lo stesso valore.
+     */
+    public const COMMENT_DELETED = self::COMMENT_HIDDEN;
+
+    public const COMMUNICATION_COMMENT_DELETED = self::COMMUNICATION_COMMENT_HIDDEN;
+
     case NEW_COMMUNICATION = 'new_communication';
     case APPROVED_COMMUNICATION = 'approved_communication';
     case UPDATED_COMMUNICATION = 'updated_communication';
+    case SCHEDULED_COMMUNICATION_PUBLISHED = 'scheduled_communication_published';
     case NEW_TICKET = 'new_ticket';
     case APPROVED_TICKET = 'approved_ticket';
     case UPDATED_TICKET = 'updated_ticket';
+    case TICKET_ASSIGNED = 'ticket_assigned';
     case NEW_USER = 'new_user';
     case NEW_ARCHIVE_DOCUMENT = 'new_archive_document';
     case APPROVED_ARCHIVE_DOCUMENT = 'approved_archive_document';
@@ -30,14 +40,18 @@ enum NotificationType: string
     case COMMENT_UNDER_MODERATION = 'comment_under_moderation';
     case COMMENT_EDITED_UNDER_MODERATION = 'comment_edited_under_moderation';
     case COMMENT_APPROVED = 'comment_approved';
-    case COMMENT_DELETED = 'comment_deleted';
+    // Decisione 478 (2): il valore storico `comment_deleted` è la preferenza «Commento nascosto» (stessa riga nel database, cambia solo il nome);
+    // quella di «Commento eliminato» è nuova.
+    case COMMENT_HIDDEN = 'comment_deleted';
+    case COMMENT_REMOVED = 'comment_removed';
 
     // Commenti comunicazioni
     case NEW_COMMUNICATION_COMMENT = 'new_communication_comment';
     case COMMUNICATION_COMMENT_UNDER_MODERATION = 'communication_comment_under_moderation';
     case COMMUNICATION_COMMENT_EDITED_UNDER_MODERATION = 'communication_comment_edited_under_moderation';
     case COMMUNICATION_COMMENT_APPROVED = 'communication_comment_approved';
-    case COMMUNICATION_COMMENT_DELETED = 'communication_comment_deleted';
+    case COMMUNICATION_COMMENT_HIDDEN = 'communication_comment_deleted';
+    case COMMUNICATION_COMMENT_REMOVED = 'communication_comment_removed';
 
     // Allegati
     case NEW_ATTACHMENT = 'new_attachment';
@@ -56,9 +70,11 @@ enum NotificationType: string
             self::NEW_COMMUNICATION => 'Nuova comunicazione',
             self::APPROVED_COMMUNICATION => 'Comunicazione approvata',
             self::UPDATED_COMMUNICATION => 'Comunicazione aggiornata',
+            self::SCHEDULED_COMMUNICATION_PUBLISHED => 'Comunicazione programmata pubblicata',
             self::NEW_TICKET => 'Nuova segnalazione',
             self::APPROVED_TICKET => 'Segnalazione approvata',
             self::UPDATED_TICKET => 'Segnalazione aggiornata',
+            self::TICKET_ASSIGNED => 'Segnalazione assegnata',
             self::NEW_USER => 'Nuovo utente registrato',
             self::NEW_ARCHIVE_DOCUMENT => 'Nuovo documento in archivio',
             self::APPROVED_ARCHIVE_DOCUMENT => 'Nuovo documento in archivio approvato',
@@ -69,14 +85,16 @@ enum NotificationType: string
             self::COMMENT_UNDER_MODERATION => 'Commento da moderare (segnalazioni)',
             self::COMMENT_EDITED_UNDER_MODERATION => 'Commento modificato da moderare (segnalazioni)',
             self::COMMENT_APPROVED => 'Commento approvato (segnalazioni)',
-            self::COMMENT_DELETED => 'Commento eliminato o nascosto (segnalazioni)',
+            self::COMMENT_HIDDEN => 'Commento nascosto (segnalazioni)',
+            self::COMMENT_REMOVED => 'Commento eliminato (segnalazioni)',
 
             // Commenti comunicazioni
             self::NEW_COMMUNICATION_COMMENT => 'Nuovo commento (comunicazioni)',
             self::COMMUNICATION_COMMENT_UNDER_MODERATION => 'Commento da moderare (comunicazioni)',
             self::COMMUNICATION_COMMENT_EDITED_UNDER_MODERATION => 'Commento modificato da moderare (comunicazioni)',
             self::COMMUNICATION_COMMENT_APPROVED => 'Commento approvato (comunicazioni)',
-            self::COMMUNICATION_COMMENT_DELETED => 'Commento eliminato o nascosto (comunicazioni)',
+            self::COMMUNICATION_COMMENT_HIDDEN => 'Commento nascosto (comunicazioni)',
+            self::COMMUNICATION_COMMENT_REMOVED => 'Commento eliminato (comunicazioni)',
 
             // Allegati
             self::NEW_ATTACHMENT => 'Nuovo allegato',

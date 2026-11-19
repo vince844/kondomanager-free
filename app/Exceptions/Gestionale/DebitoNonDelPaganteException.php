@@ -40,6 +40,7 @@ class DebitoNonDelPaganteException extends IncassoNonRegistrabileException
     public function __construct(
         protected int|string $numeroRata,
         protected string $intestatari = '',
+        protected ?string $ereditatoDa = null,
     ) {
         // Il messaggio nomina chi ha il debito e dice cosa fare. Senza il nome, un rifiuto su
         // una riga che a schermo sembra la propria sposta il vicolo cieco di un passo invece di
@@ -48,12 +49,27 @@ class DebitoNonDelPaganteException extends IncassoNonRegistrabileException
         // Dalla 1.11.0-beta.40 (Coda 167) c'è anche la via di chi paga il debito di un altro: la posizione resta
         // l'intestatario, e chi ha versato si indica a parte. Il messaggio la nomina, perché questo rifiuto è proprio
         // il punto in cui chi registra il bonifico del compratore per il venditore si ferma.
+        // Decisione 529 (1.12.0-beta.12): l'erede che paga il debito ereditato non passa più da «Versato da» sulla rata del defunto. Con quella strada il
+        // sollecito divideva il versamento fra gli eredi e il piano dopo chiedeva di nuovo la sua parte: si registra a nome suo, sul debito ereditato.
+        if ($this->ereditatoDa !== null) {
+            parent::__construct(sprintf(
+                'Non puoi incassare la rata n.%s a nome di chi hai scelto come pagante: quel debito è intestato %s, ed è passato agli eredi con la '
+                . 'successione. Per il versamento di un erede lascia lui come pagante e scrivi la cifra nella riga «Debito ereditato da %s»: copre la sua '
+                . 'parte, e il prossimo piano non gliela chiede di nuovo.',
+                $this->numeroRata,
+                $this->intestatari !== '' ? "a {$this->intestatari}" : 'a un altro soggetto',
+                $this->ereditatoDa !== '' ? $this->ereditatoDa : 'chi è morto',
+            ));
+
+            return;
+        }
         parent::__construct(sprintf(
             'Non puoi incassare la rata n.%s a nome di chi hai scelto come pagante: quel debito '
             . 'è intestato %s. Cercando per unità immobiliare la riga raccoglie le quote di tutti '
             . 'i comproprietari: scegli come pagante l\'intestatario del debito, oppure registra '
             . 'l\'incasso separatamente per ciascuno. Se il versamento l\'ha fatto un\'altra persona, '
-            . 'scegli come pagante l\'intestatario e indica chi ha versato in «Versato da».',
+            . 'scegli come pagante l\'intestatario e indica chi ha versato in «Versato da»; se è un erede '
+            . 'che paga il debito ereditato, lascia lui come pagante e usa la riga «Debito ereditato».',
             $this->numeroRata,
             $this->intestatari !== '' ? "a {$this->intestatari}" : 'a un altro soggetto',
         ));

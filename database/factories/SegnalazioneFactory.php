@@ -26,7 +26,7 @@ class SegnalazioneFactory extends Factory
             'subject' => $this->faker->sentence(6),
             'description' => $this->faker->paragraph,
             'created_by' => User::inRandomOrder()->value('id'),
-            'assigned_to' => $this->faker->boolean(70) ? User::inRandomOrder()->value('id') : null,
+            'assigned_to' => null,
             'condominio_id' => Condominio::inRandomOrder()->value('id'),
             'priority' => $this->faker->randomElement($priorities),
             'stato' => $this->faker->randomElement($statuses),

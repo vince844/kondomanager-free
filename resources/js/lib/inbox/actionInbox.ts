@@ -22,7 +22,8 @@ export interface Grafici { eta: BarraEta[]; tipi: BarraTipo[]; fuori: { segnalaz
 export interface Dove { condominio_id: number | null; nome: string; valore: number }
 export interface Schede { tutti: number; scaduti: number; in_arrivo: number }
 export interface Gruppi { scaduti: number; segnalazioni?: number; bonifici: number; da_moderare?: number; avanti: number }
-export interface Filtri { quando: string | null; tipo: string | null; tipo_nome?: string | null; cerca: string | null; ordine: string; condominio_id: number | null; scheda?: Scheda }
+/** I filtri dell'indirizzo; `mie` è «Le mie» (la 487 del registro delle decisioni): solo i compiti delle segnalazioni assegnate a chi guarda. */
+export interface Filtri { quando: string | null; tipo: string | null; tipo_nome?: string | null; cerca: string | null; ordine: string; condominio_id: number | null; mie?: boolean; scheda?: Scheda }
 
 export interface RigaCompito extends CompitoConRisposte {
     titolo: string;
@@ -38,8 +39,11 @@ export interface RigaCompito extends CompitoConRisposte {
     azione: { testo: string; url: string | null };
     /** La priorità di una segnalazione, per il badge: solo «urgente» e «alta». */
     priorita?: 'urgente' | 'alta' | null;
+    /** Chi segue la segnalazione del compito (la 487 del registro delle decisioni); null per gli altri compiti. `attivo` falso: non ha più il pannello, o è sospeso. */
+    assegnata?: Assegnata | null;
     context?: { anagrafica_nome: string | null; action_url: string | null; related_id: number | null };
 }
+export interface Assegnata { nome: string | null; te: boolean; attivo: boolean }
 export interface GruppoInAnteprima { gruppo: Gruppo; numero: number; righe: RigaCompito[] }
 
 export const SOPRATITOLO = 'Centro operativo';
@@ -200,8 +204,9 @@ export const testoAltriTipi = (n: number): string => (n === 1 ? 'e un altro tipo
 export const testoMostrati = (mostrati: number, di: number): string => `${mostrati === 1 ? 'Mostrato' : 'Mostrati'} ${numero(mostrati)} di ${numero(di)}`;
 
 /** I parametri dell'indirizzo: senza i vuoti e senza l'ordine di serie. */
-export function parametri(f: Pick<Filtri, 'quando' | 'tipo' | 'cerca' | 'ordine' | 'condominio_id'>): Record<string, string | number> {
+export function parametri(f: Pick<Filtri, 'quando' | 'tipo' | 'cerca' | 'ordine' | 'condominio_id'> & Pick<Partial<Filtri>, 'mie'>): Record<string, string | number> {
     const p: Record<string, string | number> = {};
+    if (f.mie) p.mie = 1;
     if (f.quando) p.quando = f.quando;
     if (f.tipo) p.tipo = f.tipo;
     if (f.cerca) p.cerca = f.cerca;
@@ -215,13 +220,30 @@ export function parametri(f: Pick<Filtri, 'quando' | 'tipo' | 'cerca' | 'ordine'
  * I filtri attivi sopra l'elenco, oltre la scheda e la ricerca (che si vedono da sé): la barra del grafico scelta dentro la sua scheda, e il tipo. Il nome del
  * tipo arriva dal server, come quello del grafico.
  */
-export function filtriAttivi(f: Pick<Filtri, 'quando' | 'tipo' | 'cerca' | 'tipo_nome'>, grafici?: Grafici): Array<{ chiave: 'quando' | 'tipo'; testo: string }> {
-    const attivi: Array<{ chiave: 'quando' | 'tipo'; testo: string }> = [];
+export type FiltroAttivo = 'quando' | 'tipo' | 'mie';
+export function filtriAttivi(f: Pick<Filtri, 'quando' | 'tipo' | 'cerca' | 'tipo_nome'> & Pick<Partial<Filtri>, 'mie'>, grafici?: Grafici): Array<{ chiave: FiltroAttivo; testo: string }> {
+    const attivi: Array<{ chiave: FiltroAttivo; testo: string }> = [];
+    // «Le mie» si toglie da sé, come gli altri (la 487 del registro delle decisioni).
+    if (f.mie) attivi.push({ chiave: 'mie', testo: LE_MIE });
     if (f.quando && NOMI_DELLE_FASCE[f.quando]) attivi.push({ chiave: 'quando', testo: NOMI_DELLE_FASCE[f.quando] });
     if (f.tipo) attivi.push({ chiave: 'tipo', testo: f.tipo_nome ?? grafici?.tipi.find((t) => t.tipo === f.tipo)?.etichetta ?? f.tipo });
 
     return attivi;
 }
+
+/** Il nome del filtro «Le mie» (la 487 del registro delle decisioni). */
+export const LE_MIE = 'Le mie';
+
+/**
+ * Chi segue la segnalazione di un compito, sotto il titolo (la 487 del registro delle decisioni): «assegnata a te», «assegnata a Anna Neri», «non assegnata». Chi non può
+ * più riceverla lo dice come la scheda della segnalazione.
+ */
+export function testoAssegnata(a: Assegnata): string {
+    if (a.nome === null) return 'non assegnata';
+    if (a.te) return 'assegnata a te';
+    return `assegnata a ${a.nome}`;
+}
+export const FRASE_NON_ATTIVO = 'non ha più accesso al pannello';
 
 /** La scheda di una barra del grafico: togliere la barra lascia la sua scheda. */
 export const schedaDellaFascia = (fascia: string): string | null =>

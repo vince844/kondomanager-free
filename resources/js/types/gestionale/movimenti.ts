@@ -38,4 +38,10 @@ export interface Incasso {
     }>;
     
     anagrafica_id_principale: number | null; // Meglio number se l'ID è int
+
+    /**
+     * Decisione 539 (5), come il dettaglio (538): chi ha pagato davvero, composto dal server per i versamenti che hanno scritto le coppie degli eredi
+     * (l'erede, con sotto «erede, sul debito di …»; il defunto «per il debito degli eredi»); null per gli altri incassi. `anagrafica_id` per l'estratto conto.
+     */
+    ha_pagato?: { nome: string; sotto: string | null; versato_da: string | null; anagrafica_id: number | null } | null;
 }

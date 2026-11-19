@@ -93,6 +93,7 @@ enum Role: string
                 PermissionEnum::PUBLISH_SEGNALAZIONI,
                 PermissionEnum::EDIT_SEGNALAZIONI,
                 PermissionEnum::VIEW_SEGNALAZIONI,
+                PermissionEnum::ASSIGN_SEGNALAZIONI,
                 PermissionEnum::COMMENT_SEGNALAZIONI,
                 PermissionEnum::PUBLISH_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::EDIT_OWN_COMMENTS_SEGNALAZIONI,

@@ -19,22 +19,30 @@
  * «Pubblicato».
  */
 
-export type StatoPubblicazione = 'pending' | 'draft' | 'published';
+export type StatoPubblicazione = 'pending' | 'draft' | 'published' | 'scheduled';
 
 export type EntitaConPrivacy = 'segnalazioni' | 'comunicazioni';
 
-/** Lo stato di pubblicazione dai due flag del server (che arrivano come booleani o come 0/1). */
-export function statoPubblicazione(isPublished: unknown, isApproved: unknown): StatoPubblicazione {
+/** Lo stato di pubblicazione dai due flag del server (che arrivano come booleani o come 0/1) e l'eventuale data programmata. */
+export function statoPubblicazione(isPublished: unknown, isApproved: unknown, dataProgrammata?: unknown): StatoPubblicazione {
     if (!isApproved) {
         return 'pending';
     }
 
-    return isPublished ? 'published' : 'draft';
+    if (isPublished) {
+        return 'published';
+    }
+
+    if (typeof dataProgrammata === 'string' && dataProgrammata.trim() !== '') {
+        return 'scheduled';
+    }
+
+    return 'draft';
 }
 
 /** La chiave di traduzione dello stato di pubblicazione. */
-export function etichettaStatoPubblicazione(entita: EntitaConPrivacy, isPublished: unknown, isApproved: unknown): string {
-    return `${entita}.publication.${statoPubblicazione(isPublished, isApproved)}`;
+export function etichettaStatoPubblicazione(entita: EntitaConPrivacy, isPublished: unknown, isApproved: unknown, dataProgrammata?: unknown): string {
+    return `${entita}.publication.${statoPubblicazione(isPublished, isApproved, dataProgrammata)}`;
 }
 
 /** La chiave dell'indicazione «Privata», o `null` se l'oggetto non è privato. */
@@ -42,9 +50,30 @@ export function etichettaPrivacy(entita: EntitaConPrivacy, isPrivate: unknown): 
     return isPrivate ? `${entita}.privacy.private` : null;
 }
 
-/** I colori del pallino dello stato: verde pubblicata, ambra bozza, grigio in attesa. */
+/** I colori del pallino dello stato: verde pubblicata, ambra bozza, grigio in attesa, azzurro programmata. */
 export function colorePubblicazione(stato: StatoPubblicazione): string {
-    return { published: 'bg-emerald-500', draft: 'bg-amber-500', pending: 'bg-slate-400' }[stato];
+    return { published: 'bg-emerald-500', draft: 'bg-amber-500', pending: 'bg-slate-400', scheduled: 'bg-sky-500' }[stato];
+}
+
+/**
+ * Il giorno e l'ora da mostrare per una comunicazione programmata, tagliando la stringa ricevuta.
+ * L'ora è già nel fuso dell'installazione e la funzione non fa conti con i fusi.
+ */
+export function giornoEOraProgrammati(valore: unknown): { date: string; time: string } | null {
+    if (typeof valore !== 'string') {
+        return null;
+    }
+
+    const match = valore.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})$/);
+    if (!match) {
+        return null;
+    }
+
+    const [, anno, mese, giorno, ora] = match;
+    return {
+        date: `${giorno}/${mese}/${anno}`,
+        time: ora,
+    };
 }
 
 export type EntitaPubblicabile = EntitaConPrivacy | 'documenti';

@@ -130,6 +130,10 @@ return [
             'label' => 'Notice board communication updated',
             'description' => 'Get a notification when a communication you already received is changed',
         ],
+        'scheduled_communication_published' => [
+            'label' => 'Scheduled communication published',
+            'description' => 'Receive a confirmation when a communication you scheduled is published',
+        ],
         'new_ticket' => [
             'label' => 'New fault report',
             'description' => 'Receive a notification when a new fault report is created',
@@ -141,6 +145,10 @@ return [
         'updated_ticket' => [
             'label' => 'Maintenance ticket updated',
             'description' => 'Get a notification when a ticket you follow is changed',
+        ],
+        'ticket_assigned' => [
+            'label' => 'Ticket assigned',
+            'description' => 'Receive a notification when a ticket is assigned to you, or is no longer assigned to you',
         ],
         'new_archive_document' => [
             'label' => 'New document in archive',
@@ -163,8 +171,12 @@ return [
             'description' => 'Receive a notification when your comment on a report is approved',
         ],
         'comment_deleted' => [
-            'label' => 'Comment deleted or hidden (tickets)',
-            'description' => 'Receive a notification when your comment on a report is deleted or hidden',
+            'label' => 'Comment hidden (tickets)',
+            'description' => 'Receive a notification when your comment on a report is hidden',
+        ],
+        'comment_removed' => [
+            'label' => 'Comment deleted (tickets)',
+            'description' => 'Receive a notification when your comment on a report is deleted by someone else',
         ],
         'new_communication_comment' => [
             'label' => 'New comment (communications)',
@@ -175,8 +187,12 @@ return [
             'description' => 'Receive a notification when your comment on an announcement is approved',
         ],
         'communication_comment_deleted' => [
-            'label' => 'Comment deleted or hidden (communications)',
-            'description' => 'Receive a notification when your comment on an announcement is deleted or hidden',
+            'label' => 'Comment hidden (communications)',
+            'description' => 'Receive a notification when your comment on an announcement is hidden',
+        ],
+        'communication_comment_removed' => [
+            'label' => 'Comment deleted (communications)',
+            'description' => 'Receive a notification when your comment on an announcement is deleted by someone else',
         ],
         'new_user' => [
             'label' => 'New registered user',

@@ -8,7 +8,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * L'Action inbox: i compiti aperti dello studio, di tutti i condomini o di quello scelto (tutta la pagina segue il condominio scelto).
  *
  * In alto l'intestazione («Guida» con il cassetto, il selettore dei condomini con la ricerca, «Dashboard», alti uguali) e le sei card filtro. Sotto, a due
- * terzi, l'elenco dei compiti: le schede «Tutti / Scaduti / In arrivo» con il loro numero, la ricerca e l'ordine; con «Tutti» l'anteprima di ogni gruppo
+ * terzi, l'elenco dei compiti: le schede «Tutti / Scaduti / In arrivo» con il loro numero, «Le mie» (le segnalazioni assegnate a chi guarda,
+ * la 487 del registro delle decisioni), la ricerca e l'ordine; con «Tutti» l'anteprima di ogni gruppo
  * (fino a 8 righe tutte, oltre le prime 5 e «e altri N», che apre la scheda), nelle schede 15 alla volta con «Mostra altri 15» e «Mostrati N di M». A destra,
  * dall'alto: «Da quanto aspettano», «Per tipo», «Sei mesi per agire» (con il cassetto, chiuso di serie), «Dove si accumulano».
  *
@@ -23,7 +24,7 @@ import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import {
-    ArrowLeft, Banknote, Building2, CalendarClock, ChevronsUpDown, ClipboardCheck, Hourglass, Inbox, Loader, Search, TriangleAlert, Wrench, X,
+    ArrowLeft, Banknote, Building2, CalendarClock, ChevronsUpDown, ClipboardCheck, Hourglass, Inbox, Loader, Search, TriangleAlert, UserCheck, Wrench, X,
 } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { Permission } from '@/enums/Permission';
@@ -41,9 +42,9 @@ import SeiMesiCassetto from '@/components/gestionale/seiMesi/SeiMesiCassetto.vue
 import SeiMesiColonna from '@/components/gestionale/seiMesi/SeiMesiColonna.vue';
 import type { VoceDelCompito } from '@/lib/inbox/risposteDelCompito';
 import {
-    DESCRIZIONE_ETA, ETICHETTA_RICERCA, ORDINI, SCHEDE, SEGNAPOSTO_RICERCA, SOPRATITOLO, TITOLO, descrizioneDellaPagina, descrizioneEta, descrizioneTipi, filtriAttivi, parametri, righeConIGruppi,
+    DESCRIZIONE_ETA, ETICHETTA_RICERCA, LE_MIE, ORDINI, SCHEDE, SEGNAPOSTO_RICERCA, SOPRATITOLO, TITOLO, descrizioneDellaPagina, descrizioneEta, descrizioneTipi, filtriAttivi, parametri, righeConIGruppi,
     numero, schedaDellaFascia, testoAltriTipi, testoCardSeiMesi, testoEAltri, testoFuoriDalGrafico, testoMostraAltri, testoMostrati, testoScaduti, testoSettimana, titoloDelGruppo,
-    type Conteggi, type Dove, type Filtri, type Grafici, type Gruppi, type Gruppo, type GruppoInAnteprima, type RigaCompito, type Schede,
+    type Conteggi, type Dove, type Filtri, type FiltroAttivo, type Grafici, type Gruppi, type Gruppo, type GruppoInAnteprima, type RigaCompito, type Schede,
 } from '@/lib/inbox/actionInbox';
 import { FRASE_NORMA_CARD, contoSeiMesi, type CondominioBreve } from '@/lib/gestionale/debiti/seiMesiDelloStudio';
 import type { Flash } from '@/types/flash';
@@ -63,6 +64,8 @@ const props = defineProps<{
     filtri: Filtri;
     condomini: CondominioBreve[];
     seiMesiCondomini: CondominioBreve[];
+    /** Il numero di «Le mie» (la 487 del registro delle decisioni), dal server: come le card, segue solo il condominio. */
+    le_mie?: number;
     /** Il giorno dell'amministratore, per «Ricordamelo» (da domani). */
     oggi?: string;
 }>();
@@ -125,7 +128,9 @@ function vai(cambia: Partial<Filtri>) {
 const alterna = <K extends 'quando' | 'tipo'>(chiave: K, valore: string) => vai({ [chiave]: props.filtri[chiave] === valore ? null : valore } as Partial<Filtri>);
 /** Una barra del grafico per età: scelta, restringe la sua scheda; scelta di nuovo, torna alla scheda. */
 const scegliFascia = (fascia: string) => vai({ quando: props.filtri.quando === fascia ? schedaDellaFascia(fascia) : fascia });
-const togliFiltro = (chiave: 'quando' | 'tipo') => vai(chiave === 'quando' ? { quando: schedaDellaFascia(props.filtri.quando ?? '') } : { tipo: null });
+const togliFiltro = (chiave: FiltroAttivo) => vai(chiave === 'quando' ? { quando: schedaDellaFascia(props.filtri.quando ?? '') } : chiave === 'mie' ? { mie: false } : { tipo: null });
+/** «Le mie» (la 487 del registro delle decisioni): un clic lascia solo i compiti delle segnalazioni assegnate a chi guarda, un altro lo toglie. Rilegge solo l'elenco. */
+const alternaLeMie = () => vai({ mie: !props.filtri.mie });
 
 // La ricerca: si manda dopo una pausa nella scrittura, o subito con Invio.
 const cerca = ref(props.filtri.cerca ?? '');
@@ -247,6 +252,15 @@ const PULSANTE = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-
                                 </span>
                             </button>
                         </div>
+                        <!-- «Le mie» (la 487 del registro delle decisioni): solo i compiti delle segnalazioni assegnate a chi guarda; il numero dal server, anche 0. -->
+                        <button type="button" data-testid="filtro-le-mie" :aria-pressed="filtri.mie ? 'true' : 'false'" @click="alternaLeMie"
+                            class="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-xs"
+                            :class="filtri.mie ? 'border-indigo-300 bg-indigo-50 font-bold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300'
+                                : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-white'">
+                            <UserCheck class="h-3.5 w-3.5" aria-hidden="true" />
+                            {{ LE_MIE }}
+                            <span class="tabular-nums" :class="filtri.mie ? '' : 'text-slate-500 dark:text-slate-400'">{{ numero(le_mie ?? 0) }}</span>
+                        </button>
                         <label class="flex h-9 min-w-[12rem] flex-1 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900">
                             <Search class="h-4 w-4 shrink-0 text-slate-400" />
                             <input v-model="cerca" type="search" data-testid="cerca" :placeholder="SEGNAPOSTO_RICERCA" :aria-label="ETICHETTA_RICERCA"
@@ -268,7 +282,7 @@ const PULSANTE = 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-
                             {{ f.testo }} <X class="h-3 w-3" />
                         </button>
                         <button type="button" data-testid="togli-filtri" class="text-xs font-bold text-slate-500 hover:underline dark:text-slate-400"
-                            @click="vai({ quando: null, tipo: null, cerca: null })">Togli i filtri</button>
+                            @click="vai({ quando: null, tipo: null, cerca: null, mie: false })">Togli i filtri</button>
                     </div>
 
                     <div data-testid="intestazione-elenco"

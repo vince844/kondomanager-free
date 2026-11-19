@@ -16,6 +16,7 @@ import { usePermission } from "@/composables/permissions";
 import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
+import { colonneNascoste } from '@/components/segnalazioni/columns';
 
 const props = defineProps<{
   columns: ColumnDef<Segnalazione, any>[],
@@ -40,6 +41,9 @@ const table = useVueTable({
     return props.columns ?? []
   },
   pageCount: props.meta.last_page,
+  initialState: {
+    columnVisibility: colonneNascoste,
+  },
   state: {
     pagination: {
       pageIndex: props.meta.current_page - 1,

@@ -353,11 +353,51 @@ class StoricoTitolarita
     {
         $esito = $this->arretratoDeiSaldi($s, $righe);
         $altre = $this->scelteDellArretrato($s);
+        if (($interessi = $this->interessiDelDefunto($s)) !== null) {
+            $altre[] = $interessi;
+        }
         if ($altre !== []) {
             $esito['frase'] = trim(($esito['frase'] ?? '') . ' ' . implode(' ', $altre));
         }
 
         return $esito;
+    }
+
+    /**
+     * Decisione 483: gli interessi del defunto dopo il decesso, con tutte e due le strade dell'arretrato. Dalla colonna del passaggio: niente per un passaggio
+     * annullato, che l'ha tolta, né per una successione senza la scelta.
+     */
+    private function interessiDelDefunto(Subentro $s): ?string
+    {
+        if ($s->interessi_del_defunto === null || $s->decorrenza === null) {
+            return null;
+        }
+        $defunto = $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'questa persona');
+        $decesso = CarbonImmutable::parse($s->decorrenza->format('Y-m-d'));
+
+        $frase = $s->interessi_del_defunto === Subentro::INTERESSI_AL_DECESSO
+            ? sprintf('Gli interessi di %s si fermano al decesso: la sua proposta degli interessi conta i giorni fino al %s.', $defunto, $decesso->subDay()->format('d/m/Y'))
+            : sprintf('Gli interessi di %s continuano a suo nome dopo il decesso: la sua proposta degli interessi conta i giorni anche dopo il %s.', $defunto, $decesso->format('d/m/Y'));
+        // D6 della lente del denaro della 1-bis della beta.12: la successione registrata prima della scelta non la ha nel suo registro (la scrive la registrazione,
+        // `RegistraSubentroAction`); il valore della colonna l'ha messo la migrazione 170100, e lo storico lo dice.
+        if (! array_key_exists('interessi_del_defunto', (array) ($s->capo()->registro['arretrato'] ?? []))) {
+            $frase .= ' Non è una scelta fatta registrando la successione: è il valore di serie che l\'aggiornamento del programma ha dato alle successioni registrate prima.';
+        }
+        // Decisione 494 (2): con l'arretrato agli eredi, le scelte sugli interessi degli eredi: quelle del condominio, o cambiate per questa successione. Dalla
+        // seconda prova della beta.12 la successione tiene solo le scelte cambiate, e lo storico dice quali; le altre seguono il condominio.
+        if ($s->subentro_padre_id === null && $s->arretratoAgliEredi()) {
+            $dette = is_array($s->interessi_eredi) ? \App\Services\Gestionale\Accessori\RegoleDegliEredi::dette($s->interessi_eredi) : [];
+            $tutte = count($dette) === count(\App\Services\Gestionale\Accessori\RegoleDegliEredi::SCELTE);
+            $frase .= match (true) {
+                $dette === [] => ' Gli interessi degli eredi seguono le regole del condominio, in «Recupero dei crediti».',
+                // Una successione registrata prima, con le otto scelte fissate tutte.
+                $tutte => ' Gli interessi degli eredi hanno le scelte di questa successione, tutte e otto: ' . implode(', ', $dette) . '.',
+                default => ' Gli interessi degli eredi hanno le scelte cambiate per questa successione: ' . implode(', ', $dette)
+                    . '. Le altre seguono le regole del condominio, in «Recupero dei crediti».',
+            };
+        }
+
+        return $frase;
     }
 
     /**

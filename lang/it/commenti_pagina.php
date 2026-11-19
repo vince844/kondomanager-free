@@ -16,6 +16,7 @@ return [
     'hidden_badge' => 'Nascosto',
     'per_page' => 'Righe per pagina',
     'edited' => 'Modificato',
+    'discussione_con' => 'discussione con :nome',
     'header' => [
         'list_head' => 'Elenco commenti',
         'list_title' => 'Elenco commenti',
@@ -87,9 +88,9 @@ return [
     ],
     'confirm_delete' => [
         'title' => 'Elimina commento',
-        'description' => 'Vuoi eliminare il commento di :autore? L\'operazione non si può annullare.',
+        'description' => 'Vuoi eliminare il commento di :autore? Chi lo ha scritto riceve un\'email che il suo commento è stato eliminato, salvo che abbia spento l\'avviso «Commento eliminato». L\'operazione non si può annullare.',
         'bulk_title' => 'Elimina commenti selezionati',
-        'bulk_description' => 'Vuoi eliminare i commenti selezionati? Quelli che la scheda non ti consente di eliminare restano dove sono. L\'operazione non si può annullare.',
+        'bulk_description' => 'Vuoi eliminare i commenti selezionati? Quelli che la scheda non ti consente di eliminare restano dove sono. Chi li ha scritti riceve un\'email per ogni commento eliminato, salvo chi ha spento l\'avviso «Commento eliminato». L\'operazione non si può annullare.',
     ],
     'confirm_hide' => [
         'title' => 'Nascondi commento',

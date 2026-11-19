@@ -8,6 +8,7 @@ namespace App\Http\Requests\Comunicazione;
 use App\Enums\Permission;
 use App\Models\Comunicazione;
 use App\Support\Allegati\RegoleAllegati;
+use App\Support\Comunicazioni\PubblicazioneProgrammata;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -45,6 +46,7 @@ class CreateComunicazioneRequest extends FormRequest
             'anagrafiche.*'   => ['integer', Rule::exists('anagrafiche', 'id')],
             'condomini_ids'   => ['required', 'array'],
             'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
+            'data_programmata' => ['nullable', 'date_format:Y-m-d\TH:i'],
             // Solo in modifica: la casella «avvisa i destinatari». In creazione l'avviso parte
             // sempre, quindi il campo non arriva e `nullable` lo lascia passare.
             'avvisa_destinatari' => ['nullable', 'boolean'],
@@ -82,6 +84,36 @@ class CreateComunicazioneRequest extends FormRequest
             if (! $this->inModifica() && $validator->errors()->isEmpty() && $this->hasFile('allegati')) {
                 if ($errore = RegoleAllegati::erroreSpazio((array) $this->file('allegati', []))) {
                     $validator->errors()->add('allegati', $errore);
+                }
+            }
+
+            $dataProgrammata = $this->input('data_programmata');
+            if ($dataProgrammata !== null && $dataProgrammata !== '') {
+                if ($this->boolean('is_published')) {
+                    $validator->errors()->add('data_programmata', __('comunicazioni.scheduling.not_with_published'));
+                    return;
+                }
+
+                $user = $this->user();
+                if (! $user || ! $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value) || ! $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value)) {
+                    $validator->errors()->add('data_programmata', __('comunicazioni.scheduling.not_allowed'));
+                    return;
+                }
+
+                if ($this->inModifica()) {
+                    $comunicazione = $this->route('comunicazione');
+                    if ($comunicazione instanceof Comunicazione && ! (bool) $comunicazione->is_approved) {
+                        $validator->errors()->add('data_programmata', __('comunicazioni.scheduling.needs_approval'));
+                        return;
+                    }
+                }
+
+                if (! $validator->errors()->has('data_programmata')) {
+                    $dataUtc = PubblicazioneProgrammata::daModulo($dataProgrammata);
+                    if ($dataUtc === null || $dataUtc->lessThanOrEqualTo(now())) {
+                        $validator->errors()->add('data_programmata', __('comunicazioni.scheduling.must_be_future'));
+                        return;
+                    }
                 }
             }
 
@@ -141,6 +173,7 @@ class CreateComunicazioneRequest extends FormRequest
             'priority'      => __('validation.attributes.comunicazioni.priority'),
             'stato'         => __('validation.attributes.comunicazioni.stato'),
             'condomini_ids' => __('validation.attributes.comunicazioni.condomini_ids'),
+            'data_programmata' => __('validation.attributes.comunicazioni.data_programmata'),
         ];
     }
 }

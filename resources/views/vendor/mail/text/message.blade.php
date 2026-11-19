@@ -7,7 +7,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     {{-- Header --}}
     <x-slot:header>
         <x-mail::header :url="config('app.url')">
-            {{ config('app.name') }}
+            {{ \App\Support\Email\NomeNelleEmail::nome() }}
         </x-mail::header>
     </x-slot:header>
 
@@ -26,7 +26,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     {{-- Footer --}}
     <x-slot:footer>
         <x-mail::footer>
-            © {{ date('Y') }} {{ config('app.name') }}. @lang('All rights reserved.')
+            {{ __('mail.footer_sent_with') }}
         </x-mail::footer>
     </x-slot:footer>
 </x-mail::layout>

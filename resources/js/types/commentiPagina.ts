@@ -14,9 +14,11 @@ export interface CommentoRigaPagina {
     elemento: string;
     url_elemento: string;
     url_commenti: string;
-    // Il palazzo; nella discussione unica di una comunicazione ai palazzi, quello di chi scrive (decisione 458); per una comunicazione
-    // a persone, la persona della discussione.
+    // Sempre un condominio (decisione 479 (2)): il palazzo; nella discussione unica di una comunicazione ai palazzi, quello di chi scrive
+    // (decisione 458); in una discussione a persone, quello di chi scrive o i condomìni della persona.
     condominio: string;
+    // La persona della discussione di una comunicazione a persone, sotto il titolo; altrimenti null.
+    discussione_con: string | null;
     autore: string;
     // Il giorno e l'ora di Roma, scritti dal server: `aaaa-mm-gg hh:mm`.
     creato_il: string | null;

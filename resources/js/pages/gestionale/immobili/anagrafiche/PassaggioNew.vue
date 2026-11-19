@@ -40,6 +40,8 @@ import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vu
 import PassaggioPertinenzeCard from '@/components/gestionale/immobili/PassaggioPertinenzeCard.vue';
 import AccessoriSegnalatiDelDefunto from '@/components/gestionale/immobili/AccessoriSegnalatiDelDefunto.vue';
 import AccordoDelDefunto from '@/components/gestionale/immobili/AccordoDelDefunto.vue';
+import InteressiDelDefunto from '@/components/gestionale/immobili/InteressiDelDefunto.vue';
+import InteressiDegliEredi from '@/components/gestionale/immobili/InteressiDegliEredi.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
 import InputError from '@/components/InputError.vue';
@@ -60,7 +62,8 @@ import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Inf
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
-import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata, SceltaAccordoDelDefunto, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
+import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata, SceltaAccordoDelDefunto, SceltaInteressiDelDefunto, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
+import { interessiCheValgono } from '@/lib/gestionale/passaggi/interessiDelDefunto';
 import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passaggi/vociDaSpostare';
 import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
 import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
@@ -178,6 +181,11 @@ const form = useForm({
   accessori_segnalati_agli_eredi: [] as number[],
   // Decisione 454: l'accordo di rientro del defunto che la successione chiude resta in regola fino al decesso (di serie) o vale come una decadenza.
   accordo_del_defunto: 'in_regola' as SceltaAccordoDelDefunto,
+  // Decisione 483: gli interessi del defunto dopo il decesso. Null finché l'amministratore non tocca il menu: vale il di serie della strada dell'arretrato
+  // («si fermano al decesso» agli eredi, «continuano a suo nome» a nome del defunto), e lo segue se la strada cambia; toccata, la scelta resta.
+  interessi_del_defunto: null as SceltaInteressiDelDefunto | null,
+  // Decisione 494 (2): le otto scelte sugli interessi degli eredi cambiate per questa successione; null: le regole del condominio.
+  interessi_eredi: null as Record<string, boolean> | null,
 });
 
 const ANTICIPI = [30, 60, 90, 180] as const;
@@ -216,6 +224,8 @@ const ETICHETTE_ERRORI: Record<string, string> = {
   tipologia: 'il ruolo', pertinenze: 'le pertinenze', nota_cancello: 'la nota del cancello', nota_conguaglio: 'la nota sul conguaglio', conguaglio: 'la scelta sul conguaglio',
   allegato_titolo: "l'allegato", promemoria_giorni: "l'anticipo del promemoria", copia_autentica_il: 'la data della copia autentica', nudi_che_tornano: 'chi torna proprietario pieno', nudi_per_quota: 'chi torna proprietario pieno', estinzione: 'chi torna proprietario pieno',
   eredi: 'gli eredi', arretrato: "l'arretrato del defunto", erede_di_riferimento: "l'erede di riferimento", accrescimento: "l'accrescimento", rinuncia_conguaglio: 'la rinuncia al conguaglio',
+  interessi_del_defunto: 'gli interessi del defunto dopo il decesso',
+  interessi_eredi: 'gli interessi degli eredi',
 };
 // `ordinaria_impronta` ha il suo riquadro nella scheda dell'ordinaria, che sopravvive al ricalcolo del pannello.
 const erroriSenzaRiquadro = computed(() => Object.fromEntries(Object.entries(form.errors as Record<string, string>).filter(([k]) => k !== 'passaggio' && k !== 'ordinaria_impronta')));
@@ -551,6 +561,10 @@ function corpoAnteprima() {
       erede_di_riferimento: form.eredi.length > 1 ? form.erede_di_riferimento : null,
       accessori_segnalati_agli_eredi: form.arretrato === 'eredi' ? form.accessori_segnalati_agli_eredi : [],
       accordo_del_defunto: form.arretrato === 'eredi' ? form.accordo_del_defunto : null,
+      // Decisione 483: la scelta che vale, quella toccata o il di serie della strada; senza la strada, niente.
+      interessi_del_defunto: form.arretrato ? interessiCheValgono(form.interessi_del_defunto, form.arretrato) : null,
+      // Decisione 494 (2): solo con l'arretrato agli eredi, e solo se l'amministratore le ha cambiate.
+      interessi_eredi: form.arretrato === 'eredi' ? form.interessi_eredi : null,
     } : {}),
   };
 }
@@ -1113,6 +1127,16 @@ function urlTipo(t: TipoPassaggio) {
                 <!-- Decisione 454: l'accordo di rientro del defunto, per i suoi interessi; di serie resta in regola fino al decesso. -->
                 <AccordoDelDefunto v-if="form.arretrato === 'eredi'" :accordi="anteprima?.rate.arretrato?.accordi_del_defunto ?? []"
                   :defunto="uscente?.anagrafica.nome ?? 'il defunto'" :frase="anteprima?.rate.arretrato?.frase_accordo_del_defunto" v-model="form.accordo_del_defunto" />
+                <!-- Decisione 483: gli interessi del defunto dopo il decesso, con tutte e due le strade; di serie quella della strada. -->
+                <InteressiDelDefunto v-if="form.arretrato" :strada="form.arretrato" :frase="anteprima?.rate.arretrato?.frase_interessi_del_defunto"
+                  v-model="form.interessi_del_defunto" />
+                <InputError :message="(form.errors as Record<string, string>).interessi_del_defunto" />
+                <!-- Decisione 494 (2): gli interessi degli eredi, con l'arretrato agli eredi: il riassunto, le regole del condominio, e il cambio per questa successione. -->
+                <InteressiDegliEredi v-if="form.arretrato === 'eredi' && anteprima?.rate.arretrato?.interessi_eredi_voci"
+                  :condominio-id="props.condominio.id" :frase="anteprima?.rate.arretrato?.frase_interessi_eredi" :voci="anteprima.rate.arretrato.interessi_eredi_voci"
+                  :del-condominio="anteprima.rate.arretrato.interessi_eredi_condominio ?? null"
+                  v-model="form.interessi_eredi" />
+                <InputError :message="(form.errors as Record<string, string>).interessi_eredi" />
                 <InputError :message="(form.errors as Record<string, string>).arretrato" />
               </CardContent>
             </Card>

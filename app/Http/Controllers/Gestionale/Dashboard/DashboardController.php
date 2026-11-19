@@ -129,8 +129,11 @@ class DashboardController extends Controller
                         ? json_decode($fattura->dati_extra, true) 
                         : (array) $fattura->dati_extra;
                     
-                    $strategia = $datiExtra['override_budget']['strategia_rientro'] ?? 
-                                $datiExtra['log_legale_sopravvenienza']['strategia_rientro'] ?? 
+                    // Coda 693 (b): la strategia della spesa fuori preventivo, scelta nella sua finestra, poi quella dello sforo. Con la delibera la fattura non
+                    // conservava i dati della finestra, e la scheda proponeva «Finanzia spesa» qualunque cosa si fosse scelta; con l'urgenza e lo sforo di
+                    // un'altra riga la giustificazione dello sforo ha la strategia delle voci (difetto (d)), e le righe in sospeso sono quelle dell'imprevisto.
+                    $strategia = $datiExtra['log_legale_sopravvenienza']['strategia_rientro'] ??
+                                $datiExtra['override_budget']['strategia_rientro'] ??
                                 'nessuna';
 
                     $totaleFatturaCents = 0;
@@ -190,7 +193,10 @@ class DashboardController extends Controller
                             'numero'         => $fattura->numero_documento,
                             'fornitore'      => $fattura->fornitore->ragione_sociale ?? 'Sconosciuto',
                             'totale_scoperto' => $totaleFatturaCents,
-                            'gestione_id'    => $gestionePrincipaleId,
+                            // Coda 687 (decisione 507): «Finanzia spesa» apre il piano sulla gestione della fattura, non sulla prima attiva
+                            // dell'esercizio: un piano della straordinaria nato sull'ordinaria ripartiva per giorni invece che per la delibera
+                            // (decisione 11). La prima attiva resta solo per una fattura che non sa la sua gestione.
+                            'gestione_id'    => $fattura->gestioneDellaFattura() ?? $gestionePrincipaleId,
                             'strategia'      => $strategia,
                             'righe'          => $righeMappate,
                         ];
@@ -206,6 +212,7 @@ class DashboardController extends Controller
                     ->whereNull('righe_fattura.immobile_id') // Esclude le spese ad personam
                     ->select(
                         'righe_fattura.conto_id', 
+                        'righe_fattura.is_sopravvenienza',
                         'fatture_passive.dati_extra', 
                         'righe_fattura.importo_imponibile', 
                         'righe_fattura.importo_iva'
@@ -218,6 +225,11 @@ class DashboardController extends Controller
                 foreach ($fattureSforo as $row) {
                     $datiExtra = is_string($row->dati_extra) ? json_decode($row->dati_extra, true) : (array) $row->dati_extra;
                     $strat = $datiExtra['override_budget']['strategia_rientro'] ?? 'conguaglio_fine_anno'; 
+                    // Coda 693 (d): la riga «Fuori preventivo» ha la strategia della sua finestra; con l'urgenza e lo sforo di un'altra riga quella dello sforo
+                    // è delle voci.
+                    if ($row->is_sopravvenienza && ! empty($datiExtra['log_legale_sopravvenienza']['strategia_rientro'])) {
+                        $strat = $datiExtra['log_legale_sopravvenienza']['strategia_rientro'];
+                    }
                     $importoRiga = abs((int)$row->importo_imponibile + (int)$row->importo_iva);
 
                     if (in_array($strat, ['conguaglio_fine_anno', 'fondo_riserva'])) {
@@ -302,6 +314,9 @@ class DashboardController extends Controller
                                 'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget_teorico'],
                                 'strategia'   => $tipoStrategia,
                                 'spesa_negativa' => $spesaNegativa,
+                                // Coda 693 (f): la voce nata da «Fuori preventivo» (generata dal programma) sta già fra le fatture in sospeso: la pagina la riconosce
+                                // da qui, non dal nome «Imprevisto -», che l'amministratore può cambiare.
+                                'fuori_preventivo' => (bool) ($item['is_tecnico'] ?? false),
                                 // L'importo scritto della voce è il suo valore assoluto col meno: `budget_teorico` lo conta in positivo.
                                 'nota'        => $spesaNegativa
                                     ? VoceDiSpesaNegativa::nota((string) $item['nome'], -(int) $item['budget_teorico'], $pianiDelleNegative[(int) $item['id']] ?? [], $bloccoDelleNegative[(int) $item['id']] ?? [], in_array((int) $item['id'], $negativeAlTerzoLivello, true))

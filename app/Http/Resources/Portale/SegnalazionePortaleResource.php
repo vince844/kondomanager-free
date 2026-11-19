@@ -7,6 +7,8 @@ namespace App\Http\Resources\Portale;
 
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
+use App\Settings\GeneralSettings;
+use App\Support\Segnalazioni\AssegnazioneSegnalazioni;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
@@ -31,12 +33,21 @@ class SegnalazionePortaleResource extends SegnalazioneResource
      */
     public function toArray(Request $request): array
     {
+        $seguitaDa = null;
+        if (app(GeneralSettings::class)->segnalazioni_assegnazione_visibile_nel_portale
+            && $this->relationLoaded('assignedTo')
+            && $this->assignedTo !== null
+            && AssegnazioneSegnalazioni::puoRicevere($this->assignedTo)) {
+            $seguitaDa = (string) $this->assignedTo->name;
+        }
+
         return Arr::only(parent::toArray($request), self::CAMPI) + [
             'created_by' => $this->whenLoaded('createdBy', fn () => AutorePortale::di($this->createdBy)),
             'condominio' => [
                 'option' => new CondominioOptionsResource($this->whenLoaded('condominio')),
                 'full'   => new CondominioPortaleResource($this->whenLoaded('condominio')),
             ],
+            'seguita_da' => $seguitaDa,
         ];
     }
 }

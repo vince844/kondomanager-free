@@ -10,4 +10,6 @@ return [
     'subcopy'           => "If you're having trouble clicking the \":actionText\" button, copy and paste the URL below\ninto your web browser:",
     'team_salutation'   => 'The :appName Team',
     'full_salutation'   => 'Regards,<br>The :appName Team',
+    // Il piede di ogni email (decisione 490): fisso, anche con il nome dello studio in alto.
+    'footer_sent_with'  => 'Enviado con KondoManager, software de código abierto para la comunidad de propietarios',
 ];

@@ -172,7 +172,7 @@ it('nel container con i documenti su S3 l\'installazione è sana', function () {
 /*
  * Coda 268 — la versione nel dettaglio. Il dettaglio di `/up` dice anche quale versione gira, perché
  * chi orchestra le istanze la legge da lì, dalla rete interna, anche da una risposta 503
- * (`kondocloud_avviso_saas_versione_e_novita.md` §1). Il dettaglio va solo a chi chiama direttamente:
+ * (il documento dell'avviso della versione, §1). Il dettaglio va solo a chi chiama direttamente:
  * una richiesta che porta intestazioni di inoltro è passata da un proxy, e dietro un proxy sulla
  * stessa macchina senza `TRUSTED_PROXIES` l'indirizzo è 127.0.0.1 per chiunque arrivi da internet.
  */

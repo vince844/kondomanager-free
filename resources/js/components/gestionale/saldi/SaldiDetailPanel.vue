@@ -508,6 +508,12 @@ function submitAddModal() {
                               :title="item.saldo.e_arretrato ? `Arretrato della successione del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: si toglie annullando il passaggio` : `Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le sue righe si tolgono insieme`">
                         <Lock class="w-3 h-3" />
                       </button>
+                      <!-- Decisione 529: la coppia del versamento di un erede sul debito ereditato si toglie stornando l'incasso, non da qui. -->
+                      <span v-else-if="item.saldo.e_versamento_erede"
+                            class="text-slate-400 shrink-0" data-testid="lucchetto-versamento-erede"
+                            title="Versamento di un erede sul debito ereditato, scritto con l'incasso: si toglie stornando l'incasso">
+                        <Lock class="w-3 h-3" />
+                      </span>
                       <button v-else-if="item.saldo.e_bloccato" 
                               @click.prevent="apriModaleLucchetto(item.saldo)" 
                               class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 
@@ -590,6 +596,12 @@ function submitAddModal() {
                               :title="item.saldo.e_arretrato ? `Arretrato della successione del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: si toglie annullando il passaggio` : `Conguaglio del passaggio del ${dataPassaggio(item.saldo.subentro?.decorrenza)}: le sue righe si tolgono insieme`">
                         <Lock class="w-3 h-3" />
                       </button>
+                      <!-- Decisione 529: la coppia del versamento di un erede sul debito ereditato si toglie stornando l'incasso, non da qui. -->
+                      <span v-else-if="item.saldo.e_versamento_erede"
+                            class="text-slate-400 shrink-0" data-testid="lucchetto-versamento-erede"
+                            title="Versamento di un erede sul debito ereditato, scritto con l'incasso: si toglie stornando l'incasso">
+                        <Lock class="w-3 h-3" />
+                      </span>
                       <button v-else-if="item.saldo.e_bloccato" 
                               @click.prevent="apriModaleLucchetto(item.saldo)" 
                               class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 

@@ -21,6 +21,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * tutte.
  */
 import { ref, watch } from 'vue';
+import { GUIDA_INTERESSI_EREDI } from '@/lib/gestionale/addebiti/interessiDegliEredi';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -1055,6 +1056,34 @@ function vaiA(s: Scheda, p?: Parte) {
               </div>
               <p>
                 Con l'arretrato agli eredi la scelta non c'è: conguaglio e arretrato fanno un conto solo. Vale anche per il legato.
+              </p>
+              <!-- Decisione 483: la scelta sugli interessi del defunto dopo il decesso, con le parole della card. -->
+              <p>
+                <strong>Gli interessi del defunto dopo il decesso.</strong> Sotto la scelta dell'arretrato, con tutte e due le strade: «si fermano al decesso» (di serie con l'arretrato agli eredi) o «continuano a suo nome» (di serie con l'arretrato a nome del defunto). Con «si fermano al decesso» la proposta degli interessi del defunto, sulle rate delle unità della successione, conta i giorni fino al giorno prima del decesso; con «continuano a suo nome» continua a contarli anche dopo. Lo storico del passaggio lo dice; per cambiarla si annulla il passaggio e si registra di nuovo.
+              </p>
+              <!-- Decisione 494 (2): la card degli interessi degli eredi, con le otto scelte e il caso. -->
+              <p data-testid="guida-interessi-eredi-successione">
+                <strong>Gli interessi degli eredi.</strong> Con l'arretrato agli eredi, sotto la card degli interessi del defunto: il riassunto dice da quando gli eredi
+                pagano gli interessi sul debito ereditato e fino a quando, come le regole del condominio in «Recupero dei crediti». Con «Cambia per questa successione»
+                le scelte che cambi valgono solo per questa successione, e le altre seguono le regole del condominio anche se cambiano dopo: si salvano con il passaggio
+                e lo storico dice quali sono; l'annullamento le toglie. Il caso è quello di
+                Ettore, che muore il 17/11/2026 senza aver pagato la rata di aprile, € 300,00, con Elena e Marco al 50 %:
+              </p>
+              <ul class="list-disc pl-5 space-y-1">
+                <li v-for="g in GUIDA_INTERESSI_EREDI" :key="g.chiave"><strong>{{ g.titolo }}.</strong> {{ g.esempio }}</li>
+              </ul>
+              <!-- Decisioni 529 e 530: il versamento dell'erede, e l'erede che muore a sua volta. -->
+              <p data-testid="guida-versamento-erede">
+                <strong>Quando un erede paga.</strong> Il versamento di Elena per il debito di Ettore si registra a nome di Elena, nella pagina dell'incasso, nella riga
+                «Debito ereditato da Ettore Fabbri»: chiude la sua parte della rata di Ettore, e nel Wallet una riga legata alla successione fa sì che il prossimo piano
+                non gliela chieda di nuovo. Un bonifico che arriva dal conto di Ettore, registrato sulla sua rata, fa chiedere se copre il debito degli eredi (per quota)
+                o resta a Ettore. Finché un piano non ha preso l'arretrato; dopo, il debito è nella rata nuova di Elena, si incassa lì, e un versamento sulla rata di
+                Ettore fa dire dov'è e chiede se resta comunque a lui.
+              </p>
+              <p data-testid="guida-catena">
+                <strong>Se un erede muore a sua volta.</strong> Marco, erede di Ettore, muore il 01/12/2026 e lascia a Luca: con la successione di Marco, il debito che
+                Marco aveva ereditato smette di contare per lui al giorno prima e da lì lo conta Luca, con le scelte di quella successione; in «Rate scadute» la riga è di
+                Luca, «da Marco, che l'aveva ereditato da Ettore Fabbri».
               </p>
             </section>
             <div>

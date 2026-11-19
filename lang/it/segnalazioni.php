@@ -49,12 +49,12 @@ return [
      | Form Sections (Cards)
      | ------------------------------------------------------------------ */
     'section' => [
-        'content_title'  => "Dettagli segnalazione",
-        'content_desc'   => "Inserisci le informazioni relative al problema da segnalare.",
-        'location_title' => "Destinatari",
-        'location_desc'  => "Indica il condominio e le anagrafiche legate a questa segnalazione.",
-        'settings_title' => "Gestione operativa",
-        'settings_desc'  => "Imposta lo stato di lavorazione, la priorità e la visibilità della segnalazione.",
+        'content_title'    => "Dettagli segnalazione",
+        'content_desc'     => "Inserisci le informazioni relative al problema da segnalare.",
+        'location_title'   => "Destinatari",
+        'location_desc'    => "Indica il condominio e le anagrafiche legate a questa segnalazione.",
+        'settings_title'   => "Gestione operativa",
+        'settings_desc'    => "Imposta lo stato di lavorazione, la priorità e la visibilità della segnalazione.",
     ],
 
     /* ------------------------------------------------------------------
@@ -171,6 +171,7 @@ return [
         'show_more'        => 'Mostra tutto',
         'show_less'        => 'Mostra meno',
         'cancel'           => 'Annulla',
+        'approve'          => 'Approva',
         'back'             => 'Indietro',
         'back_to_list'     => "Torna all'elenco",
     ],
@@ -179,6 +180,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'approval'           => 'Approvazione',
         'notify_update' => "Avvisa via mail chi segue questa segnalazione",
         'object'             => 'Oggetto segnalazione',
         'description'        => 'Descrizione segnalazione',
@@ -216,6 +218,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'assigned_to' => 'Chi nello studio segue la segnalazione. Riceve un\'email quando gliela assegni.',
+        'approval'    => 'Una segnalazione si vede nel portale quando è pubblicata e approvata. Quando la approvi, chi l\'ha scritta riceve un avviso.',
         'notify_update' => "Manda una mail a chi era già destinatario, per dirgli che la segnalazione è cambiata. Lasciala spenta se stai correggendo un refuso: chi viene aggiunto adesso la riceve comunque, perché per lui è nuova. Finché è una bozza o è in attesa di approvazione non parte niente; quando è pubblicata e approvata, la ricevono tutti i destinatari.",
         'visibility' => 'Una bozza, o una segnalazione in attesa di approvazione, non compare ai condòmini; pubblicata e approvata, la vedono i condòmini a cui è indirizzata.',
         'priority'   => 'Imposta il livello di priorità per questa segnalazione in modo da aiutare gli amministratori a gestirla di conseguenza.',
@@ -260,6 +264,11 @@ return [
         'settings_desc'    => 'Definisci il livello di urgenza, aggiorna lo stato di lavorazione della pratica e regola i permessi di visibilità sulla bacheca.',
     ],
 
+    'approval' => [
+        'approved' => 'Approvata',
+        'pending'  => 'Da approvare',
+    ],
+
     /* ------------------------------------------------------------------
      | Pubblicazione e privacy (Code 304 e 306)
      | ------------------------------------------------------------------ */
@@ -267,8 +276,8 @@ return [
         'pending'   => 'Da approvare',
         'draft'     => 'Bozza',
         'published' => 'Pubblicata',
-        'needs_approval' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata, con lo scudo accanto al titolo nell\'elenco delle segnalazioni.',
-        'waiting_approver' => 'È in attesa di approvazione: scegliere «Pubblicata» non basta a mostrarla ai condòmini. La vedranno quando sarà approvata da chi approva le segnalazioni.',
+        'needs_approval' => 'Non è ancora approvata: i condòmini non la vedono.',
+        'waiting_approver' => 'Non è ancora approvata: i condòmini non la vedono. Deve approvarla chi approva le segnalazioni.',
     ],
 
     'privacy' => [
@@ -300,5 +309,37 @@ return [
         'comments_dialog_description' => 'Configura i commenti per questa segnalazione.',
         'can_comment'                 => 'Consenti commenti',
         'commenti_moderati'           => 'Commenti in moderazione',
+    ],
+
+    'assignment' => [
+        'label' => 'Assegnata a',
+        'none' => 'Nessuno',
+        'placeholder' => 'Scegli a chi assegnarla',
+        'assign_to_me' => 'Assegna a me',
+        'assigned' => 'Segnalazione assegnata a :name.',
+        'unassigned' => 'Assegnazione tolta.',
+        'not_assignable' => 'Questa persona non può ricevere segnalazioni: non ha accesso al pannello, o è sospesa.',
+        // P6 della Fase 1-bis della beta.12: la persona scelta cancellata mentre la scheda era aperta.
+        'not_found' => 'La persona scelta non c\'è più: ricarica la pagina e scegli di nuovo a chi assegnare la segnalazione.',
+        'assigned_by' => 'Assegnata da :user il :date alle :time',
+        'assigned_on' => 'Assegnata il :date alle :time',
+        'inactive' => ':name non ha più accesso al pannello: assegna la segnalazione a un\'altra persona.',
+        'inactive_short' => 'Non più attivo',
+        'followed_by' => 'Seguita da :name',
+        'filter_mine' => 'A me',
+        'filter_nobody' => 'A nessuno',
+    ],
+    // Coda 671: le azioni veloci della scheda (decisioni 466 e 487).
+    'quick' => [
+        'change_status' => 'Cambia lo stato lavorazione',
+        'change_priority' => 'Cambia il livello di priorità',
+        'close_title' => 'Chiudere la segnalazione?',
+        'close_description' => 'La segnalazione passa a «Chiusa» e il suo compito esce dall\'Action inbox; se la riapri, torna. Non parte nessuna email.',
+        'close_confirm' => 'Chiudi la segnalazione',
+        // P6 della Fase 1-bis della beta.12: i rifiuti del valore veloce, con le parole della pagina.
+        'invalid_status' => 'Scegli uno stato dell\'elenco: aperta, in lavorazione o chiusa.',
+        'invalid_priority' => 'Scegli una priorità dell\'elenco: bassa, media, alta o urgente.',
+        'one_at_a_time' => 'Cambia una cosa per volta: lo stato o la priorità.',
+        'nothing_chosen' => 'Scegli lo stato o la priorità.',
     ],
 ];

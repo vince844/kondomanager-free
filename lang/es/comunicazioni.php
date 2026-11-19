@@ -8,6 +8,7 @@ return [
      | Backend notifications
      | ------------------------------------------------------------------ */
     'success_create_communication'                => "The new communication has been created successfully.",
+    'success_schedule_communication'              => "Comunicación programada para el :date a las :time.",
     'success_create_communication_in_moderation'  => "The new communication has been created successfully, but it requires to be approved by administrator.",
     'error_create_communication'                  => "An error occurred while creating the new communication.",
     'success_update_communication'                => "The communication has been updated successfully.",
@@ -73,6 +74,16 @@ return [
     /* ------------------------------------------------------------------
      | Table 
      | ------------------------------------------------------------------ */
+    // P8 della Fase 1-bis della beta.12: lo scudo dell'approvazione nell'elenco chiede conferma dove il clic ha conseguenze.
+    'shield' => [
+        'unschedule_title' => '¿Quitar la aprobación?',
+        'unschedule_description' => 'La comunicación está programada para el :date a las :time. Al quitar la aprobación se quita también la fecha: no saldrá, y quedará pendiente de aprobación. Si la apruebas de nuevo, sale enseguida.',
+        'unschedule_confirm' => 'Quitar la aprobación',
+        'publish_title' => '¿Aprobar y publicar ahora?',
+        'publish_description' => 'La comunicación sale enseguida: los destinatarios la ven en el portal.',
+        'publish_emails' => 'Salen los correos del aviso a los destinatarios que lo reciben.',
+        'publish_confirm' => 'Aprobar y publicar',
+    ],
     'table' => [
         'priority'           => 'Priority',
         'status'             => 'Status',
@@ -243,8 +254,21 @@ return [
         'pending'   => 'Pendiente de aprobación',
         'draft'     => 'Borrador',
         'published' => 'Publicada',
+        'scheduled' => 'Programada',
         'needs_approval' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando esté aprobada, con el escudo junto al título en la lista de comunicaciones.',
         'waiting_approver' => 'Está pendiente de aprobación: elegir «Publicada» no basta para mostrarla a los vecinos. La verán cuando la apruebe quien aprueba las comunicaciones.',
+    ],
+
+    'scheduling' => [
+        'field_label'        => 'Fecha y hora de publicación',
+        'timezone_hint'      => 'Hora de :timezone.',
+        'scheduler_down'     => 'El planificador no parece estar activo: la comunicación se publicará cuando se reinicie. Verifica la configuración de cron.',
+        'scheduled_for'      => 'Programada para el :date a las :time',
+        'date_required'      => 'Elige la fecha y la hora de publicación.',
+        'must_be_future'     => 'La fecha de publicación debe ser en el futuro.',
+        'not_with_published' => 'Una comunicación publicada de inmediato no tiene una fecha de publicación programada.',
+        'not_allowed'        => 'No tienes permiso para programar la publicación.',
+        'needs_approval'     => 'Una comunicación pendiente de aprobación no se puede programar: primero debe ser aprobada.',
     ],
 
     'privacy' => [

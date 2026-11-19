@@ -108,6 +108,9 @@ const casi: Caso[] = [
             'Il credito di una persona non si toglie dalle sue rate',
             'una lettera solo stampata, senza la spedizione registrata, non c\'è',
             'Non vanno esposti in bacheca né girati ad altri, nemmeno in una chat.',
+            // Il giro delle correzioni della beta.12: per le persone di una successione i due scaduti non sono lo stesso, e la guida dice perché.
+            'qui e nelle posizioni resta a nome del defunto, come nel giornale e nella situazione patrimoniale',
+            'Lo scaduto di questa pagina segue il giornale; quello di «Rate scadute», chi deve pagare.',
         ],
         sorgenti: [`${PAGINE}/Condomini.vue`, SCHEDE, `${SERVIZI}/PosizioniDeiCondomini.php`, `${SERVIZI}/ControlliDelRendiconto.php`, `${PAGINE}/Sintesi.vue`],
     },

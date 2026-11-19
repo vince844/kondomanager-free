@@ -98,6 +98,21 @@ class SegnalazioneService
                     }
                 });
             })
+            ->when($isAdmin && !empty($validated['assegnazione']), function ($q) use ($validated) {
+                $scelte = (array) $validated['assegnazione'];
+                $currentUser = Auth::user();
+                $q->where(function ($subQuery) use ($scelte, $currentUser) {
+                    foreach ($scelte as $scelta) {
+                        if ($scelta === 'mie') {
+                            $subQuery->orWhere('assigned_to', $currentUser?->id);
+                        } elseif ($scelta === 'nessuno') {
+                            $subQuery->orWhereNull('assigned_to');
+                        } elseif (is_numeric($scelta)) {
+                            $subQuery->orWhere('assigned_to', (int) $scelta);
+                        }
+                    }
+                });
+            })
             ->orderBy('created_at', 'desc');
 
         // --- LOGICA DI OTTIMIZZAZIONE ---
@@ -106,9 +121,22 @@ class SegnalazioneService
             return $query->take($limit)->get();
         }
 
+        $colonne = SegnalazioneIndexRequest::colonneOrdinabili();
+        if (!$isAdmin) {
+            unset($colonne['assegnata_a']);
+        }
+
+        $haOrdineScelto = isset($validated['sort']) && array_key_exists($validated['sort'], $colonne);
+
         // Altrimenti restituiamo il Paginator standard
         return $query
-            ->tap(fn ($q) => $this->ordina($q, $validated, SegnalazioneIndexRequest::colonneOrdinabili(), predefinita: 'subject', versoPredefinito: 'asc'))
+            ->tap(function ($q) use ($haOrdineScelto, $validated, $colonne) {
+                if ($haOrdineScelto) {
+                    $this->ordina($q, $validated, $colonne);
+                } else {
+                    $q->reorder()->orderByDesc('created_at')->orderByDesc('id');
+                }
+            })
             // ⚠️ Il ripiego non è più la catena: `per_page` arriva **già risolto** dal controller
             // (`App\Traits\PaginaElenco`), che tiene conto della scelta salvata dall'utente e delle
             // impostazioni generali. Resta qui come rete per un chiamante futuro che se ne dimenticasse,
@@ -141,7 +169,13 @@ class SegnalazioneService
      */
     private function buildAdminBaseQuery(): Builder
     {
-        return Segnalazione::with(['anagrafiche.user', 'createdBy', 'assignedTo', 'condominio']);
+        return Segnalazione::with([
+            'anagrafiche.user',
+            'createdBy',
+            'assignedTo.roles.permissions',
+            'assignedTo.permissions',
+            'condominio',
+        ]);
     }
 
     /**

@@ -180,7 +180,7 @@ class MailSettingsController extends Controller
             }
 
             Config::set('mail.from.address', $request->mail_from_address);
-            Config::set('mail.from.name',    $request->mail_from_name ?? 'Kondomanager');
+            Config::set('mail.from.name',    $request->mail_from_name ?? 'KondoManager');
 
             // Forza la ricreazione del mailer con i nuovi parametri
             if (app()->resolved('mail.manager')) {

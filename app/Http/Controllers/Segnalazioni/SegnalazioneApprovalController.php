@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Segnalazione;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
@@ -25,18 +26,29 @@ class SegnalazioneApprovalController extends Controller
      * If approved, it dispatches a notification to the user. Exceptions during status update
      * or email notification are logged and handled with appropriate flash messages.
      *
+     * @param \Illuminate\Http\Request $request
      * @param \App\Models\Segnalazione $segnalazione The segnalazione entity to be approved or unapproved.
      *
      * @return \Illuminate\Http\RedirectResponse Redirect response with a success or error message.
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to approve the segnalazione.
      */
-    public function __invoke(Segnalazione $segnalazione): RedirectResponse
+    public function __invoke(Request $request, Segnalazione $segnalazione): RedirectResponse
     {
         Gate::authorize('approve', $segnalazione);
 
-        // Determine intended approval state before applying it
-        $willBeApproved = !$segnalazione->is_approved;
+        $validated = $request->validate([
+            'is_approved' => ['sometimes', 'boolean'],
+        ]);
+
+        if (array_key_exists('is_approved', $validated)) {
+            $willBeApproved = (bool) $validated['is_approved'];
+            if ((bool) $segnalazione->is_approved === $willBeApproved) {
+                return back();
+            }
+        } else {
+            $willBeApproved = ! $segnalazione->is_approved;
+        }
 
         try {
             // Update approval and publication state

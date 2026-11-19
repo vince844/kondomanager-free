@@ -11,7 +11,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * server fanno oggi.
  */
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { CalendarClock, ChevronRight, History, Lightbulb, ListChecks, Percent, Scale } from 'lucide-vue-next';
+import { CalendarClock, ChevronRight, History, Lightbulb, ListChecks, Percent, Scale, Users } from 'lucide-vue-next';
+import { GUIDA_INTERESSI_EREDI } from '@/lib/gestionale/addebiti/interessiDegliEredi';
 
 defineProps<{ open: boolean }>();
 defineEmits(['update:open']);
@@ -100,6 +101,23 @@ defineEmits(['update:open']);
                             </ul>
                         </div>
                         <p class="mt-3">L'avviso non blocca niente: la regola si registra, e la scelta resta tua.</p>
+                    </section>
+
+                    <!-- Decisioni 493 e 494 (1): gli interessi degli eredi, scelta per scelta, con il caso di Ettore. -->
+                    <section data-testid="guida-interessi-eredi">
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Users class="w-4 h-4" /> Gli interessi degli eredi</h3>
+                        <p class="mb-3">
+                            Quando un condòmino muore e il suo debito passa agli eredi con la successione, la proposta degli interessi degli eredi conta gli interessi su quel
+                            debito dal decesso, ciascuno per la sua parte, finché il debito non entra in una loro rata. Resta una proposta: diventa un addebito solo se la
+                            registri, e prima puoi abbassare le cifre, con il perché. Le otto scelte valgono per ogni successione del condominio, anche per quelle registrate
+                            prima; nella pagina della successione le puoi cambiare per quella sola. Il caso: Ettore muore il 17/11/2026 senza aver
+                            pagato la rata di aprile, € 300,00, e il debito passa a Elena e Marco al 50 %, al 2 % l'anno.
+                        </p>
+                        <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <ul class="space-y-2">
+                                <li v-for="g in GUIDA_INTERESSI_EREDI" :key="g.chiave" class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>{{ g.titolo }}.</strong> {{ g.esempio }}</span></li>
+                            </ul>
+                        </div>
                     </section>
 
                     <section>

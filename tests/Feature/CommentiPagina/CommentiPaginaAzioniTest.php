@@ -176,21 +176,38 @@ test('nascondere in blocco manda le stesse notifiche che nascondere uno alla vol
 
     expect($dallaScheda)->not->toBe([])
         ->and($inBlocco)->toBe($dallaScheda)
-        ->and($inBlocco[$this->mario->id . '|CommentoEliminatoNotification'])->toBe(1)
-        ->and($inBlocco[$this->paolo->id . '|CommentoEliminatoNotification'])->toBe(1);
+        ->and($inBlocco[$this->mario->id . '|CommentoNascostoNotification'])->toBe(1)
+        ->and($inBlocco[$this->paolo->id . '|CommentoNascostoNotification'])->toBe(1);
 });
 
-test('eliminare in blocco non manda notifiche, come eliminare dalla scheda', function () {
-    $sc = cpScenario($this);
+test('eliminare in blocco manda le stesse notifiche che eliminare uno alla volta dalla scheda, una per commento (decisione 483 (3))', function () {
+    $prepara = function (string $oggetto) {
+        $c = ccmComunicazione([$this->aurora], $this->admin, ['subject' => $oggetto]);
+
+        return [
+            ccmCommentoSalvato($c, $this->mario, "Di Mario in {$oggetto}", $this->aurora),
+            ccmCommentoSalvato($c, $this->mario, "Ancora di Mario in {$oggetto}", $this->aurora),
+            ccmCommentoSalvato($c, $this->paolo, "Di Paolo in {$oggetto}", $this->aurora),
+        ];
+    };
+    [$a1, $a2, $a3] = $prepara('Avviso A');
+    [$b1, $b2, $b3] = $prepara('Avviso B');
 
     Notification::fake();
-    $this->actingAs($this->admin)->delete(route('admin.commenti.destroy', $sc['id']['c_bor']))->assertRedirect();
+    foreach ([$a1, $a2, $a3] as $id) {
+        $this->actingAs($this->admin)->delete(route('admin.commenti.destroy', $id))->assertRedirect();
+    }
     $dallaScheda = cpNotifiche();
 
     Notification::fake();
-    $this->actingAs($this->admin)->post(route('admin.commenti.elimina-in-blocco'), ['ids' => [$sc['id']['c_aur'], $sc['id']['s_pub']]])->assertRedirect();
+    $this->actingAs($this->admin)->post(route('admin.commenti.elimina-in-blocco'), ['ids' => [$b1, $b2, $b3]])->assertRedirect();
+    $inBlocco = cpNotifiche();
 
-    expect(cpNotifiche())->toBe($dallaScheda);
+    // Non copre: l'ordine di partenza delle email (le notifiche sono simulate).
+    expect($dallaScheda)->not->toBe([])
+        ->and($inBlocco)->toBe($dallaScheda)
+        ->and($inBlocco[$this->mario->id . '|CommentoEliminatoNotification'])->toBe(2)
+        ->and($inBlocco[$this->paolo->id . '|CommentoEliminatoNotification'])->toBe(1);
 });
 
 test('«Rispondi» dalla pagina manda le stesse notifiche che scrivere nella discussione dalla scheda', function () {

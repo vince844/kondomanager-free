@@ -256,9 +256,10 @@ test('Coda 305 — chi non può aprire la segnalazione non riceve l\'avviso dei 
         ->and($inModerazione->utenteHaAccessoAiCommenti($this->mario))->toBeTrue();
 });
 
-test('Coda 305 — nessuna pagina assegna una segnalazione: il campo assigned_to non entra né in creazione né in modifica', function () {
-    // È la prova, dalla rotta, che il vecchio ramo «assegnata» degli avvisi dei commenti non era
-    // raggiungibile: la regola sola non lo ripete.
+test('Coda 305 — a un condòmino una segnalazione non si assegna da nessuna pagina', function () {
+    // Il ramo «assegnata» degli avvisi dei commenti vale per chi lavora nello studio: dal pannello una segnalazione
+    // si assegna solo a chi ha il pannello (le regole sono in `tests/Feature/AssegnazioneSegnalazioni`), e dal
+    // portale non si assegna a nessuno.
     $this->actingAs($this->admin)->post(route('admin.segnalazioni.store'), [
         'subject'       => 'Ascensore',
         'description'   => 'Fermo',
@@ -269,10 +270,10 @@ test('Coda 305 — nessuna pagina assegna una segnalazione: il campo assigned_to
         'is_featured'   => false,
         'is_published'  => true,
         'assigned_to'   => $this->luigi->id,
-    ])->assertRedirect();
-    $s = Segnalazione::latest('id')->firstOrFail();
-    expect($s->assigned_to)->toBeNull();
+    ])->assertSessionHasErrors('assigned_to');
+    expect(Segnalazione::count())->toBe(0);
 
+    $s = visibilitaSegnalazione($this->condominio, $this->mario);
     $this->actingAs($this->admin)->put(route('admin.segnalazioni.update', $s), [
         'subject'       => 'Ascensore',
         'description'   => 'Fermo',
@@ -284,8 +285,9 @@ test('Coda 305 — nessuna pagina assegna una segnalazione: il campo assigned_to
         'is_published'  => true,
         'anagrafiche'   => [],
         'assigned_to'   => $this->luigi->id,
-    ])->assertRedirect();
-    expect($s->fresh()->assigned_to)->toBeNull();
+    ])->assertSessionHasErrors('assigned_to');
+    expect($s->fresh()->assigned_to)->toBeNull()
+        ->and($s->fresh()->subject)->toBe('Infiltrazione dal tetto');
 
     $this->actingAs($this->mario)->post(route('user.segnalazioni.store'), [
         'subject'       => 'Portone',

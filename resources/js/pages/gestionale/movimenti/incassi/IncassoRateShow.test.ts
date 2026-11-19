@@ -10,6 +10,9 @@
  * S3: la riga «Parte in più, sulla rata di …» era finita fra il `v-if` del contante e il suo `v-else`, e il `v-else` si
  * agganciava a lei: ogni rata pagata in contanti, in qualunque incasso, mostrava anche «Credito pregresso». Una
  * regressione su tutti gli incassi, nata da una riga aggiunta per la Coda 167.
+ *
+ * Con la decisione 538 le due etichette sono «Denaro versato» (era «Cash / Bonifico») e «Credito pregresso» (era «Credito Pregresso»): maiuscola solo a
+ * inizio frase, niente parole inglesi. Le prove sono le stesse.
  */
 
 import { describe, expect, test, vi } from 'vitest';
@@ -67,22 +70,22 @@ describe('la colonna del tipo, nel dettaglio di un incasso', () => {
     test('una rata pagata in contanti non dice «Credito pregresso» (S3)', () => {
         const testo = cellaTipo(apri(rate), 3);
 
-        expect(testo).toContain('Cash / Bonifico');
-        expect(testo).not.toContain('Credito Pregresso');
+        expect(testo).toContain('Denaro versato');
+        expect(testo).not.toContain('Credito pregresso');
     });
 
     test('la rata della parte in più dice su quale rata va, e non che è un credito pregresso (S3, S16)', () => {
         const testo = cellaTipo(apri(rate), 5);
 
-        expect(testo).toContain('Cash / Bonifico');
+        expect(testo).toContain('Denaro versato');
         expect(testo).toContain('Parte in più, sulla rata di Elsa Acquirente');
-        expect(testo).not.toContain('Credito Pregresso');
+        expect(testo).not.toContain('Credito pregresso');
     });
 
     test('una rata coperta col credito resta «Credito pregresso»', () => {
         const testo = cellaTipo(apri(rate), 1);
 
-        expect(testo).toContain('Credito Pregresso');
-        expect(testo).not.toContain('Cash / Bonifico');
+        expect(testo).toContain('Credito pregresso');
+        expect(testo).not.toContain('Denaro versato');
     });
 });

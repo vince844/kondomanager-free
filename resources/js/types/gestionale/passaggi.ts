@@ -39,6 +39,19 @@ export interface ArretratoDelDefunto {
   accordi_del_defunto?: AccordoDelDefunto[];
   accordo_del_defunto?: SceltaAccordoDelDefunto;
   frase_accordo_del_defunto?: string;
+  /**
+   * Decisione 483: gli interessi del defunto dopo il decesso, con tutte e due le strade: la scelta che vale (di serie quella della strada) e la sua frase,
+   * scritta dal server.
+   */
+  interessi_del_defunto?: SceltaInteressiDelDefunto;
+  frase_interessi_del_defunto?: string;
+  // Decisione 494 (2): con l'arretrato agli eredi, gli interessi degli eredi: le scelte che valgono, le otto voci e il riassunto.
+  interessi_eredi?: Record<string, boolean>;
+  interessi_eredi_propri?: Record<string, boolean> | null;
+  /** Le regole del condominio: la successione tiene solo le scelte diverse da queste (seconda prova della beta.12). */
+  interessi_eredi_condominio?: Record<import('@/lib/gestionale/addebiti/interessiDegliEredi').SceltaDegliEredi, boolean>;
+  interessi_eredi_voci?: import('@/lib/gestionale/addebiti/interessiDegliEredi').VoceInteressiEredi[];
+  frase_interessi_eredi?: string;
 }
 
 /** L'accordo di rientro del defunto che la successione chiude (decisione 454). */
@@ -50,6 +63,9 @@ export interface AccordoDelDefunto {
 
 /** Per gli interessi del defunto: l'accordo resta in regola fino al decesso (di serie) o vale come una decadenza. */
 export type SceltaAccordoDelDefunto = 'in_regola' | 'decadenza';
+
+/** Decisione 483: gli interessi del defunto dopo il decesso «si fermano al decesso» o «continuano a suo nome». */
+export type SceltaInteressiDelDefunto = 'al_decesso' | 'continuano';
 
 /** Un interesse o una spesa del defunto con un pagamento segnalato dal portale e non ancora verificato (decisione 448). */
 export interface AccessorioSegnalato {

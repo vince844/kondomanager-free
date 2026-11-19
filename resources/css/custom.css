@@ -113,3 +113,47 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     background: rgb(30 41 59) !important;
     color: rgb(241 245 249) !important;
 }
+
+/* Coda 592 (2), decisione 298: le tendine `v-select` nel tema scuro, in tutto il programma (pannello e portale). Il foglio di `vue-select` ha solo i
+   colori chiari: il menu restava bianco con le voci in chiaro, e il valore scelto scuro su scuro. Le variabili stanno sulla radice, perché valgano
+   anche per un menu aperto fuori dal suo campo; `html.dark` pesa più del `:root` del foglio di `vue-select`, che si carica dopo. I menu con la loro
+   regola (`menu-campo`, `menu-inbox`) restano con la loro. */
+html.dark {
+    --vs-dropdown-bg: rgb(15 23 42);
+    --vs-dropdown-color: rgb(226 232 240);
+    --vs-dropdown-option-color: rgb(226 232 240);
+    --vs-dropdown-option--active-bg: rgb(51 65 85);
+    --vs-dropdown-option--active-color: rgb(241 245 249);
+    --vs-selected-bg: rgb(30 41 59);
+    --vs-selected-color: rgb(226 232 240);
+    --vs-search-input-color: rgb(226 232 240);
+    --vs-search-input-placeholder-color: rgb(148 163 184);
+    --vs-controls-color: rgb(148 163 184);
+    --vs-border-color: rgb(51 65 85);
+    --vs-state-disabled-bg: rgb(30 41 59);
+    --vs-state-disabled-color: rgb(148 163 184);
+}
+html.dark .vs__search,
+html.dark .vs__search::placeholder {
+    color: rgb(148 163 184) !important;
+}
+html.dark .vs__dropdown-option--highlight {
+    background: rgb(30 41 59) !important;
+    color: rgb(241 245 249) !important;
+}
+
+/* Coda 592 (3), decisione 298: dove il puntatore è un dito il testo delle tendine e dei campi della data è a 16 px. Sotto i 16 px Safari su iPhone
+   ingrandisce la pagina quando il campo prende il fuoco, e la pagina resta tagliata a destra. Al computer restano a 14 px. */
+@media (pointer: coarse) {
+    :root .v-select {
+        --vs-font-size: 16px;
+    }
+    :root .v-select .vs__search,
+    :root .v-select .vs__search::placeholder,
+    :root .dp__input,
+    :root input[type='date'],
+    :root input[type='datetime-local'],
+    :root input[type='time'] {
+        font-size: 16px !important;
+    }
+}

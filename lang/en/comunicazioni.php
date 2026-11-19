@@ -8,6 +8,7 @@ return [
      | Backend notifications
      | ------------------------------------------------------------------ */
     'success_create_communication'                => "The new communication has been created successfully.",
+    'success_schedule_communication'              => "Communication scheduled for :date at :time.",
     'success_create_communication_in_moderation'  => "The new communication has been created successfully, but it requires to be approved by administrator.",
     'error_create_communication'                  => "An error occurred while creating the new communication.",
     'success_update_communication'                => "The communication has been updated successfully.",
@@ -73,6 +74,16 @@ return [
     /* ------------------------------------------------------------------
      | Table 
      | ------------------------------------------------------------------ */
+    // P8 della Fase 1-bis della beta.12: lo scudo dell'approvazione nell'elenco chiede conferma dove il clic ha conseguenze.
+    'shield' => [
+        'unschedule_title' => 'Remove the approval?',
+        'unschedule_description' => 'The communication is scheduled for :date at :time. Removing the approval also removes the date: it will not go out, and it will wait for approval. If you approve it again, it goes out at once.',
+        'unschedule_confirm' => 'Remove the approval',
+        'publish_title' => 'Approve and publish now?',
+        'publish_description' => 'The communication goes out at once: the recipients see it in the portal.',
+        'publish_emails' => 'The notice emails go to the recipients who receive them.',
+        'publish_confirm' => 'Approve and publish',
+    ],
     'table' => [
         'priority'           => 'Priority',
         'status'             => 'Status',
@@ -243,8 +254,21 @@ return [
         'pending'   => 'Awaiting approval',
         'draft'     => 'Draft',
         'published' => 'Published',
+        'scheduled' => 'Scheduled',
         'needs_approval' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved, with the shield next to the title in the list of communications.',
         'waiting_approver' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved by whoever approves communications.',
+    ],
+
+    'scheduling' => [
+        'field_label'        => 'Publication date and time',
+        'timezone_hint'      => ':timezone time.',
+        'scheduler_down'     => 'The scheduler does not appear to be active: the communication will be published when it restarts. Check cron settings.',
+        'scheduled_for'      => 'Scheduled for :date at :time',
+        'date_required'      => 'Choose the publication date and time.',
+        'must_be_future'     => 'The publication date must be in the future.',
+        'not_with_published' => 'A communication published immediately does not have a scheduled publication date.',
+        'not_allowed'        => 'You do not have permission to schedule the publication.',
+        'needs_approval'     => 'A communication pending approval cannot be scheduled: it must be approved first.',
     ],
 
     'privacy' => [

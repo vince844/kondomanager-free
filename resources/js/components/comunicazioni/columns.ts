@@ -3,15 +3,16 @@
 // Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 import { h } from 'vue';
-import { Link, router } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
+import ScudoApprovazione from '@/components/comunicazioni/ScudoApprovazione.vue';
 import ContatoriElenco from '@/components/commenti/ContatoriElenco.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
-import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, statoPubblicazione } from '@/lib/pubblicazione';
+import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, giornoEOraProgrammati, statoPubblicazione } from '@/lib/pubblicazione';
 import { usePermission } from "@/composables/permissions";
 import { trans } from 'laravel-vue-i18n';
-import { Lock, ShieldCheck } from 'lucide-vue-next';
+import { Lock } from 'lucide-vue-next';
 import { Permission }  from "@/enums/Permission";
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -28,43 +29,18 @@ export const columns: ColumnDef<Comunicazione>[] = [
 
       const comunicazione = row.original;
 
-      const toggleApproval = () => {
-
-          router.put(route(generateRoute('comunicazioni.toggle-approval'), { id: comunicazione.id }), {}, {
-            preserveScroll: true,
-            only: ['stats', 'comunicazioni', 'flash'],
-            onSuccess: () => {
-              // Manually update the specific item
-              comunicazione.is_approved = !comunicazione.is_approved;
-              comunicazione.is_published = comunicazione.is_approved;
-
-              // Update the row data in the table
-              table.options.meta?.updateData(row.index, {
-                ...comunicazione,
-                is_published: comunicazione.is_approved
-              });
-
-            }
-          });
-
-      };
-    
-      const tooltip = comunicazione.is_approved
-        ? trans('comunicazioni.table.approved_tooltip')
-        : trans('comunicazioni.table.unapproved_tooltip');
-    
+      // P8 della lente P (Fase 1-bis della beta.12): lo scudo chiede conferma dove il clic ha conseguenze (una programmata perde la data, una non
+      // approvata esce subito con le email): `ScudoApprovazione.vue`. La riga si aggiorna senza ricaricare l'elenco, come prima.
       const shieldIcon = hasPermission([Permission.APPROVE_COMUNICAZIONI])
-        ? h('div', {
-            class: 'cursor-pointer',
-            title: tooltip,
-            onClick: toggleApproval,
-          }, [
-            h(ShieldCheck, {
-              class: comunicazione.is_approved ? 'w-4 h-4 text-green-500' : 'w-4 h-4 text-red-500',
-            }),
-          ])
+        ? h(ScudoApprovazione, {
+            comunicazione,
+            aggiorna: (campi: Partial<Comunicazione>) => {
+              Object.assign(comunicazione, campi);
+              table.options.meta?.updateData(row.index, { ...comunicazione });
+            },
+          })
         : null;
-    
+
       // Decisione 441: sotto il titolo, in una riga piccola e non in una colonna nuova, quanti commenti e allegati ha.
       return h('div', { class: 'flex flex-col gap-1' }, [
         h('div', { class: 'flex items-center space-x-2' }, [
@@ -265,12 +241,19 @@ export const columns: ColumnDef<Comunicazione>[] = [
     // Le due etichette vengono da `@/lib/pubblicazione`, come nella scheda.
     cell: ({ row }) => {
       const comunicazione = row.original as unknown as Record<string, unknown>;
-      const stato = statoPubblicazione(row.getValue('is_published'), comunicazione.is_approved);
+      const stato = statoPubblicazione(row.getValue('is_published'), comunicazione.is_approved, comunicazione.data_programmata);
       const privata = etichettaPrivacy('comunicazioni', comunicazione.is_private);
+      const programmata = stato === 'scheduled' ? giornoEOraProgrammati(comunicazione.data_programmata) : null;
 
       return h('div', { class: 'flex items-center gap-2 whitespace-nowrap' }, [
         h('span', { class: `h-2 w-2 shrink-0 rounded-full ${colorePubblicazione(stato)}` }),
-        h('span', { class: 'whitespace-nowrap' }, trans(etichettaStatoPubblicazione('comunicazioni', row.getValue('is_published'), comunicazione.is_approved))),
+        h('span', { class: 'whitespace-nowrap' }, trans(etichettaStatoPubblicazione('comunicazioni', row.getValue('is_published'), comunicazione.is_approved, comunicazione.data_programmata))),
+        programmata
+          ? h('span', {
+              'data-programmata-per': '',
+              class: 'text-xs text-muted-foreground whitespace-nowrap',
+            }, `${programmata.date} ${programmata.time}`)
+          : null,
         privata
           ? h('span', { class: 'inline-flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap', title: trans('comunicazioni.privacy.private_hint') }, [
               h(Lock, { class: 'h-3 w-3 shrink-0' }),
@@ -282,7 +265,7 @@ export const columns: ColumnDef<Comunicazione>[] = [
     filterFn: (row, _id, value) => {
       if (!Array.isArray(value) || value.length === 0) return true;
       const comunicazione = row.original as unknown as Record<string, unknown>;
-      const stato = statoPubblicazione(row.getValue('is_published'), comunicazione.is_approved);
+      const stato = statoPubblicazione(row.getValue('is_published'), comunicazione.is_approved, comunicazione.data_programmata);
       const isPrivate = Boolean(comunicazione.is_private);
       return value.includes(stato) || (isPrivate && value.includes('private'));
     },

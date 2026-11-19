@@ -76,6 +76,13 @@ return [
         'action'    => 'View communication',
     ],
 
+    'scheduled_communication_published' => [
+        'subject'   => 'Communication published: :title',
+        'line_1'    => 'The communication ":title", scheduled for :date at :time, has been published.',
+        'line_late' => 'It was published late, on :date at :time: at the chosen time the scheduler was not active.',
+        'action'    => 'View communication',
+    ],
+
     // New communication published (NewComunicazioneNotification)
     'new_communication' => [
         'subject'   => 'New communication on the notice board',
@@ -204,9 +211,25 @@ return [
     ],
 
     // Deleted comment
+    // La parola con cui i due avvisi del commento nascosto o eliminato chiamano l'elemento (con l'articolo, dove la lingua lo chiede).
+    'comment_entity' => [
+        'ticket'        => 'report',
+        'communication' => 'announcement',
+    ],
+
+    'hidden_ticket_comment' => [
+        'subject' => 'One of your comments has been hidden',
+        'line_1'  => 'Your comment of :data on the :entity has been hidden by the administrator of the condominium: others can no longer see it.',
+        'action'  => 'View report',
+    ],
+
     'deleted_ticket_comment' => [
-        'subject' => 'Your comment has been removed',
-        'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
+        'subject'        => 'One of your comments has been deleted',
+        'subject_pending' => 'One of your comments has not been published',
+        'line_1'         => 'Your comment of :data on the :entity has been deleted by the administrator of the condominium.',
+        'line_1_pending' => 'Your comment of :data on the :entity was not approved and has been deleted by the administrator of the condominium.',
+        'started'        => 'The comment began like this: «:inizio»',
+        'action'         => 'View report',
     ],
 
     // Communication comments
@@ -238,9 +261,19 @@ return [
         'action'  => 'View communication',
     ],
 
+    'hidden_communication_comment' => [
+        'subject' => 'One of your comments has been hidden',
+        'line_1'  => 'Your comment of :data on the :entity has been hidden by the administrator of the condominium: others can no longer see it.',
+        'action'  => 'View announcement',
+    ],
+
     'deleted_communication_comment' => [
-        'subject' => 'Your comment has been removed',
-        'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
+        'subject'        => 'One of your comments has been deleted',
+        'subject_pending' => 'One of your comments has not been published',
+        'line_1'         => 'Your comment of :data on the :entity has been deleted by the administrator of the condominium.',
+        'line_1_pending' => 'Your comment of :data on the :entity was not approved and has been deleted by the administrator of the condominium.',
+        'started'        => 'The comment began like this: «:inizio»',
+        'action'         => 'View announcement',
     ],
 
     // Common strings for all notifications
@@ -315,5 +348,18 @@ return [
             'line_1'    => 'On :data at :ora new two-factor recovery codes were generated for your :appName account: the previous ones no longer work.',
             'consiglio' => 'If you did not make this change, change your password right away and tell the administrator.',
         ],
+    ],
+
+    'assigned_ticket' => [
+        'subject' => 'Ticket assigned to you: :title',
+        'line_1' => ':user assigned you the ticket ":title" (:building).',
+        'action' => 'View ticket',
+    ],
+    'unassigned_ticket' => [
+        'subject' => 'Ticket no longer assigned to you: :title',
+        'line_1' => ':user assigned the ticket ":title", which you were following, to :name.',
+        'line_1_nobody' => ':user unassigned the ticket ":title", which you were following.',
+        'line_1_self' => ':user took over the ticket ":title", which you were following.',
+        'action' => 'View ticket',
     ],
 ];

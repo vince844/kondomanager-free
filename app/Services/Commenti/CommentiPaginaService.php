@@ -155,37 +155,56 @@ class CommentiPaginaService
     public function righe(User $user, Collection $commenti): array
     {
         $persone = $commenti->pluck('discussione_user_id')->filter()->unique()->values()->all();
-        $nomiPersone = $persone === [] ? [] : User::query()->whereIn('id', $persone)->pluck('name', 'id')->all();
+        $utenti = $persone === []
+            ? collect()
+            : User::query()->whereIn('id', $persone)->with('anagrafica.condomini:id,nome')->get(['id', 'name']);
+        $nomiPersone = $utenti->pluck('name', 'id')->all();
+        // I condomìni di ogni persona, per la colonna «Condominio» delle discussioni a persone (decisione 479 (2)).
+        $condominiPersone = $utenti->mapWithKeys(fn (User $u) => [
+            $u->id => $u->anagrafica?->condomini?->pluck('nome', 'id')->all() ?? [],
+        ])->all();
         $autoriConPannello = [];
 
-        return $commenti->map(fn (Commento $commento) => $this->riga($user, $commento, $nomiPersone, $autoriConPannello))->values()->all();
+        return $commenti->map(fn (Commento $commento) => $this->riga($user, $commento, $nomiPersone, $condominiPersone, $autoriConPannello))->values()->all();
     }
 
     /**
      * @param  array<int, string>  $nomiPersone
+     * @param  array<int, array<int, string>>  $condominiPersone
      * @param  array<int, bool>  $autoriConPannello
      * @return array<string, mixed>
      */
-    private function riga(User $user, Commento $commento, array $nomiPersone, array &$autoriConPannello): array
+    private function riga(User $user, Commento $commento, array $nomiPersone, array $condominiPersone, array &$autoriConPannello): array
     {
         /** @var Segnalazione|Comunicazione $elemento */
         $elemento = $commento->commentable;
         $tipo = RegoleCommenti::tipo($elemento);
         $chiave = RegoleCommenti::chiaveDelCommento($commento, $elemento);
 
+        $discussioneCon = null;
         if ($elemento instanceof Segnalazione) {
             $urlElemento = route('admin.segnalazioni.show', $elemento);
             $condominio = (string) ($elemento->condominio?->nome ?? '');
         } else {
             $urlElemento = route('admin.comunicazioni.show', $elemento);
-            // Con una persona, il suo nome; nella discussione unica, il condominio di chi scrive (decisione 458), che lo studio
-            // senza un'anagrafica fra i destinatari non ha: con un palazzo solo è quello, con più nessuno.
-            $condominio = match (true) {
-                $commento->discussione_user_id !== null => (string) ($nomiPersone[$commento->discussione_user_id] ?? ''),
-                $commento->condominio !== null => (string) $commento->condominio->nome,
-                $elemento->condomini->count() === 1 => (string) $elemento->condomini->first()->nome,
-                default => '',
-            };
+            // La colonna dice sempre un condominio (decisione 479 (2)): quello di chi scrive (decisione 458), che lo studio senza
+            // un'anagrafica fra i destinatari non ha; in una discussione a persone, se il commento non lo porta, i condomìni della persona
+            // fra quelli della comunicazione (o tutti i suoi, se la comunicazione non ne ha); nella discussione unica, il palazzo se è uno.
+            // La persona della discussione va sotto il titolo, «discussione con …».
+            if ($commento->discussione_user_id !== null) {
+                $discussioneCon = (string) ($nomiPersone[$commento->discussione_user_id] ?? '');
+                $suoi = $condominiPersone[$commento->discussione_user_id] ?? [];
+                $fraIDestinatari = array_intersect_key($suoi, $elemento->condomini->pluck('nome', 'id')->all());
+                $condominio = $commento->condominio !== null
+                    ? (string) $commento->condominio->nome
+                    : implode(', ', $fraIDestinatari !== [] ? $fraIDestinatari : $suoi);
+            } else {
+                $condominio = match (true) {
+                    $commento->condominio !== null => (string) $commento->condominio->nome,
+                    $elemento->condomini->count() === 1 => (string) $elemento->condomini->first()->nome,
+                    default => '',
+                };
+            }
         }
 
         $puoRispondere = $this->puoRispondere($user, $elemento, $chiave, $autoriConPannello);
@@ -198,6 +217,7 @@ class CommentiPaginaService
             'url_elemento'   => $urlElemento,
             'url_commenti'   => $urlElemento . '#commenti',
             'condominio'     => $condominio,
+            'discussione_con' => $discussioneCon,
             'autore'         => (string) ($commento->autore?->anagrafica?->nome ?? $commento->autore?->name ?? __('commenti.autore_sconosciuto')),
             // Il giorno e l'ora di Roma, scritti dal server (`Y-m-d H:i`): il browser li mette all'italiana senza ricalcolarli nel suo fuso.
             'creato_il'      => $commento->created_at?->copy()->setTimezone((string) config('app.user_timezone', 'Europe/Rome'))->format('Y-m-d H:i'),
@@ -281,7 +301,7 @@ class CommentiPaginaService
                     'approva' => $this->commentoService->approva($commento, $user),
                     'nascondi' => $this->commentoService->modera($commento, $user),
                     'mostra' => $this->commentoService->mostraDiNuovo($commento, $user),
-                    'elimina' => $commento->delete(),
+                    'elimina' => $this->commentoService->elimina($commento, $user),
                 };
                 $fatti++;
             } catch (\Throwable $e) {

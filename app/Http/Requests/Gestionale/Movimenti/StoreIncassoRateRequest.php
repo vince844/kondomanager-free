@@ -131,7 +131,25 @@ class StoreIncassoRateRequest extends FormRequest
             
             'descrizione' => 'nullable|string|max:255',
             'eccedenza' => 'nullable|numeric|min:0',
-            'dettaglio_pagamenti' => 'required|array',
+            // Decisione 529: un incasso dell'erede può avere solo il debito ereditato (`debito_ereditato`), senza righe sulle sue quote.
+            'dettaglio_pagamenti' => ['array', 'required_without:debito_ereditato'],
+
+            // Decisione 529: il versamento dell'erede sul suo debito ereditato, per successione (e gestione), in euro come gli altri importi: l'azione lo
+            // porta in centesimi una volta sola (`MoneyHelper::toCents`). Fuori da `dettaglio_pagamenti`, perché il debito ereditato non è una quota dell'erede.
+            // Che la successione sia sua e che l'importo stia nella sua parte lo controlla l'azione, sulla lettura del debito ereditato.
+            'debito_ereditato' => ['nullable', 'array'],
+            'debito_ereditato.*.subentro_id' => [
+                'required', 'integer',
+                \Illuminate\Validation\Rule::exists('subentri', 'id')->where('condominio_id', $this->route('condominio')?->id)->where('tipo_passaggio', 'successione'),
+            ],
+            'debito_ereditato.*.gestione_id' => ['nullable', 'integer'],
+            'debito_ereditato.*.importo' => ['required', 'numeric', 'gt:0'],
+            // Decisione 529: un versamento sulla rata del defunto dopo la successione copre il debito degli eredi (sì) o resta al defunto (no). Decide
+            // l'amministratore: l'azione la chiede quando serve.
+            'agli_eredi' => ['nullable', 'boolean'],
+            // Decisione 539: a chi è intestata la ricevuta del versamento dell'erede sul debito ereditato: l'erede (di serie), gli eredi del defunto o il
+            // defunto. Vale solo con `debito_ereditato`: l'azione la scrive con il versamento.
+            'intestatario_ricevuta' => ['nullable', 'string', \Illuminate\Validation\Rule::in(\App\Services\Gestionale\Accessori\VersamentoDegliEredi::INTESTATARI_DELLA_RICEVUTA)],
             // La quota risale al condominio attraverso rate → piani_rate.
             // StoreIncassoRateAction fa RataQuote::findOrFail senza alcun filtro:
             // una quota altrui sarebbe stata incassata sulla cassa di questo condominio.
@@ -158,6 +176,10 @@ class StoreIncassoRateRequest extends FormRequest
             'credito_prima.required' => 'Il pagante ha un credito e il versamento è di un\'altra persona: scegli se il credito si usa adesso o resta suo.',
             'quota_parte_in_piu_id.exists' => 'La rata scelta per la parte in più deve essere di chi ha versato, emessa e di questo condominio.',
             'imputazione_nota.max' => 'La nota sull\'imputazione sta in 255 caratteri.',
+            'dettaglio_pagamenti.required_without' => 'Scegli almeno una rata da pagare, o il debito ereditato da coprire.',
+            'debito_ereditato.*.importo.gt' => 'Per il debito ereditato scrivi una cifra più grande di zero.',
+            'debito_ereditato.*.subentro_id.exists' => 'La successione del debito ereditato non è di questo condominio.',
+            'intestatario_ricevuta.in' => 'Scegli a chi è intestata la ricevuta: chi ha pagato, gli eredi o il defunto.',
         ];
     }
 

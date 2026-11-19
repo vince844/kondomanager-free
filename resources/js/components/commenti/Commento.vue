@@ -249,7 +249,7 @@ function formatDate(dateStr: string): string {
         </div>
         <!-- «Mostra di nuovo» è un'icona come le altre azioni, senza finestra di conferma (decisione 462) -->
         <TooltipProvider>
-          <div data-azioni-commento class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex shrink-0 items-center gap-1 ml-auto">
+          <div data-azioni-commento class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity flex shrink-0 items-center gap-1 ml-auto">
             <Tooltip :delay-duration="300">
               <TooltipTrigger as-child>
                 <button
@@ -341,7 +341,7 @@ function formatDate(dateStr: string): string {
         </div>
         <!-- Menu azioni (su hover) -->
         <TooltipProvider v-if="(canEdit || canDelete) && !isEditing">
-          <div data-azioni-commento class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex shrink-0 items-center gap-1 ml-auto">
+          <div data-azioni-commento class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity flex shrink-0 items-center gap-1 ml-auto">
             <!-- Modifica (autore) -->
             <Tooltip v-if="canEdit" :delay-duration="300">
               <TooltipTrigger as-child>
@@ -477,7 +477,7 @@ function formatDate(dateStr: string): string {
         </div>
         <!-- Menu azioni (su hover) -->
         <TooltipProvider v-if="(canEdit || canDelete || mostraApprova || mostraNascondi) && !isEditing">
-          <div data-azioni-commento class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex shrink-0 items-center gap-1 ml-auto">
+          <div data-azioni-commento class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 transition-opacity flex shrink-0 items-center gap-1 ml-auto">
             <!-- Approva, la prima delle icone, senza finestra di conferma (decisione 462) -->
             <Tooltip v-if="mostraApprova" :delay-duration="300">
               <TooltipTrigger as-child>

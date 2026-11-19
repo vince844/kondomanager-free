@@ -54,7 +54,7 @@ class PianoRateGenerationController extends Controller
             'nota_scoperti' => 'required_if_accepted:accetta_scoperti|nullable|string|min:10',
             // B2, cancello (2) della decisione 14: stessa forma del cancello degli scoperti.
             'nota_destinatari' => 'required_if_accepted:accetta_destinatari|nullable|string|min:10',
-        ]);
+        ], \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::messaggi(), \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::ATTRIBUTI);
 
         $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
         $notaScoperti    = $request->string('nota_scoperti')->trim()->value();

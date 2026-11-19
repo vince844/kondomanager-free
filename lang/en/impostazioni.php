@@ -287,6 +287,10 @@ return [
         'allegati_moderati_di_serie_description' => 'Applies to new tickets and communications: uploaded files await approval, except those from users who can approve them. Each item can be changed from its page.',
         'allegati_massimo_per_elemento_title' => 'Maximum attachments per item',
         'allegati_massimo_per_elemento_description' => 'Maximum number of files that can be attached to each ticket or communication (default 5).',
+        'segnalazioni_assegnazione_visibile_nel_portale_title' => 'Show residents who is handling the ticket',
+        'segnalazioni_assegnazione_visibile_nel_portale_description' => 'When enabled, the resident sees the name of the staff member handling the ticket in the portal. When disabled, assignment stays internal to the office.',
+        'segnalazioni_assegnazione_porta_in_lavorazione_title' => 'Assigning an open ticket changes its status to "in progress"',
+        'segnalazioni_assegnazione_porta_in_lavorazione_description' => 'When enabled, an open ticket that gets assigned automatically changes to "in progress". When disabled, whoever works on it changes the status.',
 
         'mail_settings_title' => 'Email configuration',
         'mail_settings_description' => 'Choose the sending method, configure credentials and test the connection.',
@@ -316,7 +320,7 @@ return [
         'test_unsaved_warning' => 'You have unsaved changes. The test uses the values you see in the form but does not save them: to keep them, save the configuration.',
 
         'cron_guide_1_title' => 'The Invisible Engine',
-        'cron_guide_1_desc' => 'The daemon runs system maintenance in the background, with no manual intervention: it removes events that ended more than a year ago and expired cache, checks whether a new version is available and, where the shared-hosting option is turned on, also processes the job queue.',
+        'cron_guide_1_desc' => 'The daemon runs system maintenance in the background, with no manual intervention: it removes events that ended more than a year ago and expired cache, publishes scheduled communications, checks whether a new version is available and, where the shared-hosting option is turned on, also processes the job queue.',
         'cron_guide_2_title' => 'Webhook (External)',
         'cron_guide_2_desc' => 'Identified by the orange dot. It allows you to trigger the scheduler via an encrypted URL called by external services (e.g., cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Native)',

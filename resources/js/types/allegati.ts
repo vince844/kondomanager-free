@@ -27,6 +27,8 @@ export interface AllegatiConfig {
     puo_caricare: boolean;
     puo_impostare: boolean;
     massimo: number;
+    // Coda 683 (4): quanti file ha l'elemento in tutto, anche quelli che chi guarda non vede.
+    totale?: number;
     rimasti: number;
     limite_file: string;
     formati: string[];

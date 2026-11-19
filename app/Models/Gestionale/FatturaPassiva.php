@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Services\Gestionale\NettoNoteCollegate;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class FatturaPassiva extends Model
 {
@@ -78,6 +79,62 @@ class FatturaPassiva extends Model
     public function condominio()
     {
         return $this->belongsTo(Condominio::class);
+    }
+
+    /** Coda 687 (decisione 507): la gestione della fattura, la stessa della sua scrittura di competenza. */
+    public function gestione(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Gestione::class);
+    }
+
+    /**
+     * Coda 687 (decisione 507): la gestione della fattura. La colonna, scritta alla registrazione e tenuta dalla modifica; per una fattura in cui è vuota (una
+     * fattura senza scrittura, che la migrazione non ha potuto riempire), la scrittura di competenza, poi le voci delle righe se sono di una gestione sola.
+     * Null se nessuna delle tre risponde: chi legge decide che cosa farne, e non indovina l'ordinaria.
+     */
+    public function gestioneDellaFattura(): ?int
+    {
+        if ($this->gestione_id !== null) {
+            return (int) $this->gestione_id;
+        }
+
+        $daScrittura = DB::table('fattura_scrittura as fs')->join('scritture_contabili as sc', 'sc.id', '=', 'fs.scrittura_contabile_id')
+            ->where('fs.fattura_passiva_id', $this->id)->whereNotNull('sc.gestione_id')->whereNull('sc.deleted_at')
+            ->orderByRaw("CASE WHEN fs.tipo = 'competenza' THEN 0 ELSE 1 END")->orderBy('sc.id')->value('sc.gestione_id');
+        if ($daScrittura !== null) {
+            return (int) $daScrittura;
+        }
+
+        $dalleVoci = DB::table('righe_fattura as r')->join('conti as c', 'c.id', '=', 'r.conto_id')->join('piani_conti as pc', 'pc.id', '=', 'c.piano_conto_id')
+            ->where('r.fattura_passiva_id', $this->id)->distinct()->pluck('pc.gestione_id');
+
+        return $dalleVoci->count() === 1 ? (int) $dalleVoci->first() : null;
+    }
+
+    /**
+     * Coda 686 (d) e 687: le fatture di una gestione, in una query su `fatture_passive` (anche con un alias). La colonna; dove è vuota, la scrittura di competenza
+     * o una voce delle righe o delle coperture di quella gestione — le stesse fonti della migrazione che la riempie, lette al momento.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    public static function dellaGestione($query, int $gestioneId, string $tabella = 'fatture_passive'): void
+    {
+        $query->where(function ($w) use ($gestioneId, $tabella) {
+            $w->where("{$tabella}.gestione_id", $gestioneId)
+                ->orWhere(function ($vuota) use ($gestioneId, $tabella) {
+                    $vuota->whereNull("{$tabella}.gestione_id")->where(function ($fonti) use ($gestioneId, $tabella) {
+                        $fonti->whereExists(fn ($q) => $q->select(DB::raw(1))->from('fattura_scrittura as fs_g')
+                            ->join('scritture_contabili as sc_g', 'sc_g.id', '=', 'fs_g.scrittura_contabile_id')
+                            ->whereColumn('fs_g.fattura_passiva_id', "{$tabella}.id")->where('sc_g.gestione_id', $gestioneId)->whereNull('sc_g.deleted_at'))
+                            ->orWhereExists(fn ($q) => $q->select(DB::raw(1))->from('righe_fattura as r_g')
+                                ->join('conti as c_g', 'c_g.id', '=', 'r_g.conto_id')->join('piani_conti as pc_g', 'pc_g.id', '=', 'c_g.piano_conto_id')
+                                ->whereColumn('r_g.fattura_passiva_id', "{$tabella}.id")->where('pc_g.gestione_id', $gestioneId))
+                            ->orWhereExists(fn ($q) => $q->select(DB::raw(1))->from('fattura_coperture as fc_g')
+                                ->join('conti as cc_g', 'cc_g.id', '=', 'fc_g.conto_id')->join('piani_conti as pcc_g', 'pcc_g.id', '=', 'cc_g.piano_conto_id')
+                                ->whereColumn('fc_g.fattura_passiva_id', "{$tabella}.id")->where('pcc_g.gestione_id', $gestioneId));
+                    });
+                });
+        });
     }
 
     /**

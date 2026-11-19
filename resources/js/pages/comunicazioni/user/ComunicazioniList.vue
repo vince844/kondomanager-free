@@ -286,7 +286,7 @@ async function confirmDelete(): Promise<void> {
           <Transition name="fade">
             <div
               v-if="ui.showDelayedLoading && isLoading"
-              class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2 text-center"
+              class="absolute inset-0 bg-white/60 dark:bg-slate-950/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2 text-center"
             >
               <Loader2 class="w-8 h-8 animate-spin text-primary" />
               <span class="text-sm font-medium text-gray-500">{{
@@ -368,10 +368,10 @@ async function confirmDelete(): Promise<void> {
               </div>
 
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs pt-1">
-                <time :datetime="comunicazione.created_at" class="text-gray-500 dark:text-slate-400">
+                <time :datetime="comunicazione.pubblicata_il || comunicazione.created_at" class="text-gray-500 dark:text-slate-400">
                   {{
                     trans('comunicazioni.visibility.sent_on_by', {
-                      date: comunicazione.created_at,
+                      date: comunicazione.pubblicata_il || comunicazione.created_at,
                       name: comunicazione.created_by.user.name,
                     })
                   }}
@@ -388,7 +388,7 @@ async function confirmDelete(): Promise<void> {
             <Empty
               v-if="showNoResults || showNoCommunications"
               key="empty"
-              class="border border-dashed bg-gray-50/50"
+              class="border border-dashed bg-gray-50/50 dark:bg-slate-900/40"
             >
               <EmptyHeader>
                 <EmptyMedia variant="icon">

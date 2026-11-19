@@ -15,7 +15,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
             <x-installer.field-label for="app-name" :tooltip="__('installer.fields.app_name.tooltip')">
                 {{ __('installer.fields.app_name.label') }}
             </x-installer.field-label>
-            <input type="text" name="app-name" id="app-name" placeholder="Kondomanager" wire:model.live.blur="appName" wire:key="field-appName">
+            <input type="text" name="app-name" id="app-name" placeholder="KondoManager" wire:model.live.blur="appName" wire:key="field-appName">
             @error('appName')
                 <span class="error">{{ $message }}</span>
             @enderror

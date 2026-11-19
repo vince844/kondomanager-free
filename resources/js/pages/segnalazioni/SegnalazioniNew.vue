@@ -33,9 +33,17 @@ const props = defineProps<{
   condomini: Building[];
   anagrafiche: Anagrafica[];
   allegati_massimo?: number;
+  // Coda 683 (1): il limite vero di un file e i formati, dal server.
+  allegati_limite_file?: string;
+  allegati_formati?: string[];
   commenti_segnalazioni_moderati_di_serie?: boolean;
   // «Commenti in moderazione» solo per chi può moderare: per gli altri il server ignora il campo.
   puo_scegliere_moderazione?: boolean;
+  assegnazione?: {
+    puo_assegnare: boolean;
+    io: number;
+    assegnabili: { id: number; name: string }[];
+  };
 }>();  
 
 const { generateRoute, hasPermission } = usePermission();
@@ -78,6 +86,7 @@ const form = useForm({
     description: '',
     priority: '',
     stato: '',
+    assigned_to: null as number | null,
     condominio_id: '',
     can_comment: true as boolean,
     commenti_moderati: Boolean(props.commenti_segnalazioni_moderati_di_serie),
@@ -96,7 +105,13 @@ const erroreAllegati = computed(() => {
 });
 
 const submit = () => {
-    form.post(route(generateRoute('segnalazioni.store')), {
+    form.transform((data) => {
+        const payload = { ...data };
+        if (!props.assegnazione?.puo_assegnare || payload.assigned_to === null || payload.assigned_to === undefined) {
+            delete payload.assigned_to;
+        }
+        return payload;
+    }).post(route(generateRoute('segnalazioni.store')), {
         forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
@@ -161,6 +176,8 @@ const submit = () => {
                                 v-model="form.allegati"
                                 :massimo="props.allegati_massimo ?? 5"
                                 :rimasti="props.allegati_massimo ?? 5"
+                                :limite-file="props.allegati_limite_file"
+                                :formati="props.allegati_formati"
                                 :error="erroreAllegati"
                             />
                         </div>
@@ -299,6 +316,38 @@ const submit = () => {
                                 </template>
                             </v-select>
                             <InputError :message="form.errors.priority" />
+                        </div>
+
+                        <div
+                            v-if="props.assegnazione?.puo_assegnare"
+                            class="sm:col-span-2"
+                            data-campo="assegnata-a"
+                        >
+                            <div class="flex items-center gap-2 min-h-[24px]">
+                                <Label for="assigned_to">{{ trans('segnalazioni.assignment.label') }}</Label>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">{{ trans('segnalazioni.assignment.label') }}</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">{{ trans('segnalazioni.tooltip.assigned_to') }}</p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                            <v-select
+                                id="assigned_to"
+                                class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
+                                :options="props.assegnazione.assegnabili"
+                                label="name"
+                                :reduce="(item: any) => item.id"
+                                :placeholder="trans('segnalazioni.assignment.placeholder')"
+                                v-model="form.assigned_to"
+                                @update:modelValue="form.clearErrors('assigned_to')"
+                            />
+                            <InputError :message="form.errors.assigned_to" />
                         </div>
 
                         <div class="sm:col-span-2">

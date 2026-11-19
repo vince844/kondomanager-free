@@ -28,7 +28,7 @@ final class SuggerimentiDelRecupero
      * @param Collection<int, array<string, mixed>> $righe
      * @return list<array{chiave: string, frase: string, persone: list<int>, porta: string}>
      */
-    public function perElenco(Condominio $condominio, Collection $righe, string $oggi): array
+    public function perElenco(Condominio $condominio, Collection $righe, string $oggi, ?DebitoEreditato $ereditato = null): array
     {
         if ($righe->isEmpty()) {
             return [];
@@ -57,7 +57,8 @@ final class SuggerimentiDelRecupero
             }
         }
 
-        $interessi = $this->interessi->perSuggerimenti($condominio, $oggi, $righe->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all());
+        // `$ereditato`: la lettura del debito ereditato dell'elenco, che la pagina fa una volta (P1 della lente P della beta.12).
+        $interessi = $this->interessi->perSuggerimenti($condominio, $oggi, $righe->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all(), $ereditato);
         if ($interessi['con'] !== []) {
             $n = count($interessi['con']);
             $esito[] = ['chiave' => 'interessi_da_proporre', 'frase' => 'Interessi di mora da proporre per ' . ($n === 1 ? '1 persona' : $n . ' persone') . '.',

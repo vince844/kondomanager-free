@@ -147,6 +147,32 @@ defineEmits(['update:open']);
                                 incassi.
                             </p>
                         </section>
+
+                        <!-- Decisione 529: il pagamento di un erede si registra a nome suo e copre il suo debito ereditato. -->
+                        <section data-testid="guida-debito-ereditato">
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Il debito ereditato</h3>
+                            <p>
+                                Dopo una successione con l'arretrato agli eredi, il debito del defunto è degli eredi, ognuno per la sua parte, finché un piano
+                                non lo mette nelle loro rate. Quando paga un erede, scegli lui come pagante: il modulo mostra la riga
+                                <strong>«Debito ereditato da …»</strong> con quanto resta, anche se non ha altre rate. Scrivi lì la parte del versamento che va al
+                                debito ereditato (con «Tutto» la propone il modulo); il resto va alle sue rate, come sempre.
+                            </p>
+                            <p class="mt-2">
+                                Per esempio: Elena ha ereditato da Ettore € 150,00 della rata di aprile e versa € 150,00. Il versamento chiude la sua parte della rata
+                                di Ettore, con il suo nome; nel Wallet una riga legata alla successione toglie i € 150,00 dal suo arretrato, così il prossimo piano non
+                                glieli chiede di nuovo. In «Rate scadute» e nella proposta degli interessi Elena non deve più niente, Marco la sua parte.
+                            </p>
+                            <p class="mt-2">
+                                Se registri un versamento sulla rata del defunto dopo la successione (un bonifico dal suo conto, o con «Versato da» un erede), il modulo
+                                chiede che cosa copre: <strong>«Per il debito degli eredi»</strong> (di chi ha versato, o di tutti per quota) o
+                                <strong>«Resta a …»</strong>, e in quel caso il prossimo piano chiederà agli eredi l'arretrato intero e al defunto resterà un credito.
+                            </p>
+                            <p class="mt-2 text-xs text-slate-500">
+                                Lo storno dell'incasso toglie anche la riga del Wallet, o ne scrive una rovescia se un piano l'ha già presa; la riga non si
+                                cambia a mano dal Wallet. Dopo che un piano ha messo l'arretrato nelle rate degli eredi, il debito si incassa da quelle rate: un
+                                versamento sulla rata del defunto lo fa dire al modulo, che chiede se resta comunque al defunto.
+                            </p>
+                        </section>
                     </TabsContent>
 
                     <!-- ── DISTRIBUIRE ─────────────────────────────────────────── -->

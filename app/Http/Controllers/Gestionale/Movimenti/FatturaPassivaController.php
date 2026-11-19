@@ -196,6 +196,9 @@ class FatturaPassivaController extends Controller
             // Coda 287: le regolazioni immediate non stornate scritte su una voce che oggi non è di spesa, di tutto il condominio della rotta
             // (anche degli esercizi chiusi: lo storno passa e si registra nell'esercizio aperto). La pagina le mostra in un blocco a sé finché ce n'è una.
             'regolazioniSuVoceDiEntrata' => app(RegolazioniSuVoceDiEntrata::class)->delCondominio($condominio->id),
+            // Coda 687 (decisione 507): le fatture che una modifica ha già spostato su un'altra gestione o spogliato di «Fuori preventivo», in sola lettura,
+            // con la correzione proposta; la fa l'amministratore, fattura per fattura (`riportaComeEra`).
+            'fattureToccateDallaModifica' => app(\App\Services\Gestionale\FattureToccateDallaModifica::class)->perCondominio((int) $condominio->id),
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
             'statiPagamento' => collect(StatoPagamentoFattura::cases())->map(fn ($c) => [
@@ -374,7 +377,9 @@ class FatturaPassivaController extends Controller
 
             // Beta.19: la copertura dal fondo nasce pianificata — il fondo non è
             // ancora stato toccato. Il flash indica subito il passo successivo.
-            $strategiaFondo = data_get($request->input('dati_extra'), 'override_budget.strategia_rientro') === 'fondo_riserva';
+            // Coda 693 (b): anche il fondo scelto nella finestra «Fuori preventivo», con la delibera come con l'urgenza.
+            $strategiaFondo = data_get($request->input('dati_extra'), 'override_budget.strategia_rientro') === 'fondo_riserva'
+                || data_get($request->input('dati_extra'), 'log_legale_sopravvenienza.strategia_rientro') === 'fondo_riserva';
             if ($strategiaFondo) {
                 return back()->with($this->flashSuccess(
                     'Fattura registrata. La copertura dal fondo è pianificata: '
@@ -583,6 +588,11 @@ class FatturaPassivaController extends Controller
 
         // `fatturaRettificata` (Coda 165): la modifica di una nota collegata dice quale fattura rettifica.
         $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture', 'fatturaRettificata:id,numero_documento,data_documento']);
+        // Coda 687 (decisione 507): la pagina parte dalla gestione della fattura. Dove la colonna è vuota (una fattura che la migrazione non ha potuto
+        // riempire) la si legge dalla scrittura o dalle voci, solo per la pagina: niente si scrive aprendo il modulo.
+        if ($fattura->gestione_id === null) {
+            $fattura->setAttribute('gestione_id', $fattura->gestioneDellaFattura());
+        }
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -913,7 +923,7 @@ class FatturaPassivaController extends Controller
         $vociDelleRighe = $escludiFattura?->righe()->whereNotNull('conto_id')->pluck('conto_id')->all() ?? [];
         $conti = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
             ->where(fn ($q) => $q->whereIn('tipo', Conto::TIPI_DI_SPESA)->orWhereIn('id', $vociDelleRighe))
-            ->with('parent')
+            ->with(['parent', 'pianoConto:id,gestione_id'])
             ->whereDoesntHave('sottoconti')
             ->get();
         // La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella,
@@ -945,6 +955,8 @@ class FatturaPassivaController extends Controller
                     'id' => $conto->id,
                     'nome' => $conto->nome,
                     'tipo' => $conto->tipo,
+                    // Coda 687 (decisione 507): le voci offerte nelle righe sono della gestione scelta; la pagina le filtra con questa.
+                    'gestione_id' => $conto->pianoConto?->gestione_id !== null ? (int) $conto->pianoConto->gestione_id : null,
                     'parent_nome' => $conto->parent ? $conto->parent->nome : null,
                     '_sort_key' => $conto->parent ? $conto->parent->nome.' '.$conto->nome : $conto->nome,
                     'codice' => null,
@@ -1019,6 +1031,49 @@ class FatturaPassivaController extends Controller
             'incassato_rata_zero' => (int) $totaleRataZeroIncassataCents,
             'conti' => $conti,
         ];
+    }
+
+    /**
+     * Coda 687 (decisione 507): la correzione proposta per una fattura che una modifica ha toccato, su comando dell'amministratore. Solo la fattura
+     * dell'indirizzo, e solo se il controllo la elenca e la dice correggibile: altrimenti il messaggio dice il perché, e niente cambia.
+     */
+    public function riportaComeEra(Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        $controllo = app(\App\Services\Gestionale\FattureToccateDallaModifica::class);
+        // D4: anche una nota di credito spostata da sola si riporta da qui, e il messaggio la chiama col suo nome.
+        $documento = $fattura->tipo_documento === 'nota_credito' ? 'La nota di credito' : 'La fattura';
+        $elenco = $controllo->perCondominio((int) $condominio->id, [(int) $fattura->id]);
+        $voci = array_merge($elenco['spostate'], $elenco['spogliate']);
+        if ($voci === []) {
+            return back()->with($this->flashInfo("{$documento} n. {$fattura->numero_documento} non ha niente da correggere."));
+        }
+        // Una nota che si corregge con la sua fattura (una richiesta fatta a mano: la pagina manda la fattura): il messaggio parla della fattura.
+        $numero = $fattura->numero_documento;
+        if (($elenco['spostate'][0]['id'] ?? (int) $fattura->id) !== (int) $fattura->id) {
+            [$documento, $numero] = ['La fattura', $elenco['spostate'][0]['numero_documento']];
+        }
+        $aMano = array_values(array_filter($voci, fn ($v) => ! $v['correggibile']));
+        if (count($aMano) === count($voci)) {
+            return back()->with($this->flashError("{$documento} n. {$numero} non si corregge da qui. {$aMano[0]['motivo']}"));
+        }
+
+        $fatto = $controllo->correggi((int) $condominio->id, [(int) $fattura->id]);
+        // D4 (Fase 1-bis della beta.12): la fattura si riporta con le sue note di credito, e il messaggio le nomina.
+        $note = array_column($elenco['spostate'][0]['note'] ?? [], 'numero_documento');
+        $conLeNote = match (count($note)) {
+            0 => '',
+            1 => ", insieme alla nota di credito n. {$note[0]}",
+            default => ', insieme alle note di credito n. ' . implode(', ', array_slice($note, 0, -1)) . ' e ' . end($note),
+        };
+        $frasi = array_filter([
+            $fatto['spostate'] > 0 ? "riportata sulla gestione «{$elenco['spostate'][0]['gestione_delle_voci']}»{$conLeNote}" : null,
+            $fatto['spogliate'] > 0 ? 'con il segno «Fuori preventivo» rimesso' : null,
+        ]);
+        $resta = $aMano !== [] ? " Resta da correggere a mano: {$aMano[0]['motivo']}" : '';
+
+        return back()->with($this->flashSuccess("{$documento} n. {$numero} è " . implode(' e ', $frasi) . '.' . $resta));
     }
 
     /**

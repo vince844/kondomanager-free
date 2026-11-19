@@ -32,7 +32,7 @@ Ti chiediamo di non rendere pubblici i dettagli prima dell'avviso, e comunque no
 
 ### Che cosa non fare
 
-- Non provare su installazioni che non sono tue: né la demo pubblica oltre il normale uso, né le istanze di KondoCloud o di altri amministratori.
+- Non provare su installazioni che non sono tue: né la demo pubblica oltre il normale uso, né le installazioni ospitate o di altri amministratori.
 - Niente attacchi che degradano il servizio, ingegneria sociale o accesso a dati di altri utenti oltre il minimo necessario a dimostrare il problema.
 
 ### Contribuire con la correzione
@@ -69,7 +69,7 @@ Please do not disclose details before the advisory is published, and in any case
 
 ### What not to do
 
-- Testing installations that are not yours: neither the public demo beyond normal use, nor KondoCloud instances or other administrators' installations.
+- Testing installations that are not yours: neither the public demo beyond normal use, nor hosted instances or other administrators' installations.
 - Denial of service, social engineering, or accessing other users' data beyond the minimum needed to demonstrate the issue.
 
 ### Contributing a fix

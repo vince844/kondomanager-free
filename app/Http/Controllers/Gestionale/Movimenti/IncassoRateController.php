@@ -92,11 +92,20 @@ class IncassoRateController extends Controller
             $request->input('data_a')
         );
 
-        $movimenti = $query
+        $pagina = $query
             ->tap(fn ($q) => $this->ordina($q, $ordinamento, self::colonneOrdinabili(), predefinita: 'data_registrazione', versoPredefinito: 'desc'))
             ->paginate($ordinamento['per_page'])
-            ->withQueryString()
-            ->through(fn($mov) => $this->incassoService->formatMovimentoForFrontend($mov));
+            ->withQueryString();
+        // Decisione 539 (5): chi ha pagato davvero, con le stesse regole del dettaglio (538), letto in blocco per la pagina. Solo per i versamenti che hanno
+        // scritto le coppie degli eredi (`ha_pagato`, con la persona per il collegamento all'estratto conto); gli altri come sempre (null).
+        $letture = app(\App\Services\Gestionale\Accessori\VersamentoDegliEredi::class)->deiVersamenti($pagina->getCollection()->pluck('id')->all());
+        $movimenti = $pagina->through(function ($mov) use ($letture) {
+            $formattato = $this->incassoService->formatMovimentoForFrontend($mov);
+            $lettura = $letture[(int) $mov->id] ?? null;
+
+            return $formattato + ['ha_pagato' => $lettura === null ? null : IncassoRateService::haPagato($mov, $formattato, $lettura)
+                + ['anagrafica_id' => $lettura['erede'] ?? $formattato['anagrafica_id_principale']]];
+        });
 
         $listaPalazzi = CondominioResource::collection($this->getCondomini())->resolve();
 
@@ -218,7 +227,52 @@ class IncassoRateController extends Controller
             'persone'    => $persone,
             'immobili'   => $immobili,
             'gestioni'   => $gestioni,
-        ]);
+        ] + $this->debitoEreditato($condominio));
+    }
+
+    /**
+     * Decisione 529: per la pagina dell'incasso, il debito ereditato di ogni erede non ancora in un piano (la riga «Debito ereditato da Ettore Fabbri …» che
+     * l'erede pagante può coprire, anche senza altre rate), e le successioni con l'arretrato agli eredi, per l'avviso sulla rata del defunto. Una lettura
+     * del debito ereditato per la pagina.
+     *
+     * @return array{debiti_ereditati: array<int, list<array<string, mixed>>>, successioni_dei_defunti: array<int, list<array<string, mixed>>>}
+     */
+    private function debitoEreditato(Condominio $condominio): array
+    {
+        $versamento = app(\App\Services\Gestionale\Accessori\VersamentoDegliEredi::class);
+        $de = new \App\Services\Gestionale\Accessori\DebitoEreditato();
+        $lettura = $de->perLaLettura((int) $condominio->id, \App\Helpers\DateHelper::oggiUtente());
+        $eredi = array_keys($lettura['eredi']);
+        $nomiGestioni = \App\Models\Gestione::where('condominio_id', $condominio->id)->pluck('nome', 'id');
+        $debiti = [];
+        foreach ($eredi as $erede) {
+            foreach ($versamento->apertiDi((int) $condominio->id, (int) $erede, null, $lettura) as $a) {
+                $debiti[(int) $erede][] = [
+                    'subentro_id' => $a['subentro_id'], 'gestione_id' => $a['gestione_id'], 'gestione' => (string) ($nomiGestioni[$a['gestione_id']] ?? ''),
+                    'da' => $a['da'], 'successione_del' => \Carbon\CarbonImmutable::parse($a['successione_del'])->format('d/m/Y'), 'aperto' => $a['aperto'],
+                    'aperto_formattato' => \App\Helpers\MoneyHelper::format($a['aperto']),
+                    // Decisione 539: per «Intestatario della ricevuta», il defunto senza la catena, e se c'è la catena (allora la ricevuta va all'erede).
+                    'defunto' => $a['defunto'], 'catena' => $a['catena'],
+                ];
+            }
+        }
+        $successioni = [];
+        foreach ($de->successioni((int) $condominio->id) as $s) {
+            // Dopo che un piano ha preso le righe dell'arretrato degli eredi il debito è nella loro rata nuova: la pagina lo dice (`nel_piano`), e la scelta è
+            // solo se registrare comunque il versamento al defunto.
+            $nelPiano = $versamento->doveNelPiano($s);
+            // Q5 della quarta prova (decisione 530): gli eredi di oggi, senza chi è morto a sua volta; «Versato da» uno dei suoi eredi si registra dalla sua
+            // riga, e la domanda non lo conta fra quelli di cui copre la parte.
+            $oggi = $versamento->erediDiOggi($de, $s);
+            $successioni[(int) $s->anagrafica_uscente_id][] = [
+                'subentro_id' => (int) $s->id, 'decesso' => $s->decorrenza?->format('d/m/Y'),
+                'nel_piano' => $nelPiano['dove'] ?? null, 'emessa' => (bool) ($nelPiano['emessa'] ?? false),
+                'eredi' => $oggi['nomi'],
+                'eredi_ids' => array_values(array_map('intval', array_keys(array_diff_key($oggi['pesi'], $oggi['catena'])))),
+            ];
+        }
+
+        return ['debiti_ereditati' => $debiti, 'successioni_dei_defunti' => $successioni];
     }
 
     /**
@@ -375,6 +429,8 @@ class IncassoRateController extends Controller
 
         $listaPalazzi = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
+        $lettura = app(\App\Services\Gestionale\Accessori\VersamentoDegliEredi::class)->nelDettaglio($scrittura);
+        [$haPagato, $spaccato] = $this->chiHaPagato($scrittura, $formattato, $lettura);
 
         return Inertia::render('gestionale/movimenti/incassi/IncassoRateShow', [
             'condominio'       => new CondominioResource($condominio),
@@ -385,6 +441,11 @@ class IncassoRateController extends Controller
             // Il resto lo legge da `incassoFormatted`.
             'incasso'          => $scrittura->only(['id', 'numero_protocollo', 'stato', 'causale', 'data_competenza', 'updated_at']),
             'incassoFormatted' => $formattato,
+            // Decisione 538: «Ha pagato» è chi ha pagato davvero, e il totale si divide fra il debito ereditato e le sue rate quando c'è una parte ereditata.
+            'ha_pagato'        => $haPagato,
+            'spaccato'         => $spaccato,
+            // Decisione 539 (4): a chi è intestata la ricevuta del versamento di un erede, se non è lui (la scelta di serie); null altrimenti.
+            'ricevuta_intestata_a' => IncassoRateService::ricevutaIntestataA($lettura),
             'utenteCreatore'   => $utenteCreatore,
             'utenteStornatore' => $utenteStornatore,
             // A che cosa va il versamento e chi l'ha dichiarato (decisioni 217 e 218). Si corregge stornando e registrando di nuovo.
@@ -406,5 +467,24 @@ class IncassoRateController extends Controller
             // Gli invii della ricevuta che «Riprova» può ancora rimandare: senza, il pulsante non c'è.
             'da_riprovare'     => app(\App\Services\Gestionale\Ricevute\EmissioneRicevute::class)->daRiprovare($condominio, [(int) $scrittura->id])->count(),
         ]);
+    }
+
+    /**
+     * Decisione 538: chi ha pagato davvero, per «Ha pagato» del dettaglio, e lo spaccato del totale. La regola di «Ha pagato» è una sola, qui e nell'elenco
+     * degli incassi ({@see IncassoRateService::haPagato()}); lo spaccato «Sul debito ereditato» / «Sulle sue rate» solo per il versamento di un erede.
+     *
+     * @param array<string, mixed> $formattato {@see IncassoRateService::formatMovimentoForFrontend()}
+     * @param array<string, mixed>|null $lettura {@see \App\Services\Gestionale\Accessori\VersamentoDegliEredi::nelDettaglio()}
+     * @return array{0: array{nome: string, sotto: ?string, versato_da: ?string}, 1: array{sul_debito_ereditato: int, sulle_sue_rate: int}|null}
+     */
+    private function chiHaPagato(ScritturaContabile $scrittura, array $formattato, ?array $lettura): array
+    {
+        $haPagato = IncassoRateService::haPagato($scrittura, $formattato, $lettura);
+        if ($lettura === null || $lettura['erede'] === null) {
+            return [$haPagato, null];
+        }
+        $ereditato = $lettura['sul_debito_ereditato'];
+
+        return [$haPagato, ['sul_debito_ereditato' => $ereditato, 'sulle_sue_rate' => max(0, (int) ($formattato['importo_totale_cents'] ?? 0) - $ereditato)]];
     }
 }

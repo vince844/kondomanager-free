@@ -228,7 +228,7 @@ defineEmits(['update:open']);
                 <li><strong>Attesa conguaglio</strong> — registri lo sforo senza una rata: la differenza entra nel
                     conguaglio per persona, calcolato nel rendiconto come proposta per l'assemblea. Il programma non la chiede da solo.</li>
                 <li><strong>Rata Integrativa</strong> — resta un avviso in Dashboard: emetterai in seguito un piano
-                    rate ordinario integrativo per coprire l'eccesso.</li>
+                    rate «Dalle voci del preventivo» (la rata integrativa) per coprire l'eccesso.</li>
                 <li><strong>Fondo di riserva</strong> — pianifichi la copertura dal fondo. Attenzione alla
                     parola: <em>pianifichi</em>. Il fondo non viene toccato alla registrazione.</li>
               </ol>

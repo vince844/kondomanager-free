@@ -17,6 +17,7 @@ import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { GUIDE_RATE_SCADUTE } from '@/lib/gestionale/debiti/guideRateScadute';
 import Alert from '@/components/Alert.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ import axios from 'axios';
 import LettereDialog from '@/components/gestionale/lettere/LettereDialog.vue';
 import AccordoRientroDialog from '@/components/gestionale/accordi/AccordoRientroDialog.vue';
 import ProponiInteressiDialog from '@/components/gestionale/addebiti/ProponiInteressiDialog.vue';
+import { ereditatiDellaPersona, testoEreditatoInElenco, type EreditatoInElenco } from '@/lib/gestionale/addebiti/interessiDegliEredi';
 import AddebitaSpesaDialog from '@/components/gestionale/addebiti/AddebitaSpesaDialog.vue';
 import { testoParteInAccordo, testoSegnaleBreve, testoSegnoAccordo, type AccordoRientro, type ParteInAccordo } from '@/lib/gestionale/debiti/accordiRientro';
 import { CANALI_SPEDIZIONE, testoRiprova, testoUltimaLettera, type UltimaLettera } from '@/lib/gestionale/lettere/lettere';
@@ -50,6 +52,8 @@ interface Rata {
     accordo?: ParteInAccordo | null;
     /** Con il filtro «I sei mesi del …»: la rata è di quella data. */
     del_sei_mesi?: boolean;
+    /** Decisioni 494 (3) e 516: il debito ereditato finché i suoi interessi corrono; la rata è quella del defunto. */
+    ereditato?: EreditatoInElenco | null;
 }
 interface Riga {
     anagrafica_id: number; nome: string; unita: string[]; importo: number; credito: number | null; rate: Rata[];
@@ -270,6 +274,8 @@ async function riprovaLettere() {
 // stessa data e il numero di ognuna (la rotta è quella del registro). Le persone delle altre pagine si vedono con più righe per pagina.
 const pannelloSpedizione = ref(false);
 const spedizione = ref({ canale: '', data: props.oggi, nota: '', numeri: {} as Record<number, string> });
+/** I canali della spedizione per il menu (decisione 392): il valore e il nome. */
+const canaliDiSpedizione = Object.entries(CANALI_SPEDIZIONE).map(([valore, nome]) => ({ valore, nome }));
 const esitoSpedizione = ref<string | null>(null);
 const daSpedire = computed(() => props.righe.data.filter((r) => spuntata(r.anagrafica_id))
     .flatMap((r) => ((r.ultima_lettera as (UltimaLettera & { invii?: number[] }) | null | undefined)?.invii ?? []).map((invio) => ({ invio, nome: r.nome }))));
@@ -531,10 +537,19 @@ const breadcrumbs = computed(() => [
                         <p class="font-medium">Registra la spedizione {{ daSpedire.length === 1 ? 'della lettera' : `delle ${daSpedire.length} lettere` }}: lo stesso canale e la stessa data, il numero di ognuna</p>
                         <p v-if="altrePagine > 0">Sono {{ persone_totali }} persone: in questa pagina ne vedi {{ righe.data.length }}. Per registrarle tutte insieme scegli più righe per pagina; o registra queste, e poi le altre.</p>
                         <div class="flex flex-wrap gap-2">
-                            <select v-model="spedizione.canale" class="h-8 rounded-md border px-2 bg-transparent">
-                                <option value="" disabled>Come</option>
-                                <option v-for="(nome, c) in CANALI_SPEDIZIONE" :key="c" :value="c">{{ nome }}</option>
-                            </select>
+                            <!-- Decisione 392: i menu con vSelect, mai il menu del browser. -->
+                            <v-select
+                                :model-value="spedizione.canale || null"
+                                :options="canaliDiSpedizione"
+                                label="nome"
+                                :reduce="(c: { valore: string }) => c.valore"
+                                :clearable="false"
+                                :searchable="false"
+                                placeholder="Come"
+                                class="w-full sm:w-[220px] text-xs"
+                                data-testid="canale-spedizione"
+                                @update:model-value="(v: string | null) => (spedizione.canale = v ?? '')"
+                            />
                             <Input v-model="spedizione.data" type="date" :max="oggi" class="h-8 w-[150px] text-xs" />
                             <Input v-model="spedizione.nota" placeholder="Nota" class="h-8 w-[200px] text-xs" />
                         </div>
@@ -584,6 +599,11 @@ const breadcrumbs = computed(() => [
                                             <span v-if="r.origine_non_dichiarata" class="block text-[11px] text-amber-700 dark:text-amber-400">
                                                 pregresso con origine non dichiarata — <Link :href="indirizzoSaldi(r.anagrafica_id)" class="underline">dichiarala dai saldi</Link>
                                             </span>
+                                            <!-- La prova a video della beta.12: il debito ereditato si vede anche con la riga chiusa, non solo aprendo le rate. -->
+                                            <span v-for="e in ereditatiDellaPersona(r.rate)" :key="`ered-${e.subentro_id}`" class="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300" data-testid="ereditato-in-testa">
+                                                <Badge variant="outline" class="h-5 border-violet-200 bg-violet-50 px-1.5 text-[11px] font-medium text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200">ereditato</Badge>
+                                                {{ e.testo }}
+                                            </span>
                                             <span v-for="a in r.accordi ?? []" :key="a.id" class="block text-[11px] text-sky-800 dark:text-sky-300" data-testid="segno-accordo">
                                                 {{ testoSegnoAccordo(a) }}
                                                 <span v-if="testoSegnaleBreve(a)" class="block text-amber-800 dark:text-amber-300" data-testid="segnale-accordo">{{ testoSegnaleBreve(a) }}</span>
@@ -627,13 +647,17 @@ const breadcrumbs = computed(() => [
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <tr v-for="rata in r.rate" :key="`${rata.rata_id}-${rata.unita}`" class="border-t align-top"
+                                                    <tr v-for="rata in r.rate" :key="`${rata.rata_id}-${rata.unita}-${rata.ereditato?.subentro_id ?? ''}`" class="border-t align-top"
                                                         :class="{ 'bg-amber-50/70 dark:bg-amber-900/20': rata.del_sei_mesi }" :data-sei-mesi="rata.del_sei_mesi ? 'si' : undefined">
                                                         <td class="p-1">{{ rata.unita }}</td>
                                                         <td class="p-1">{{ rata.piano }}</td>
                                                         <td class="p-1">
+                                                            <Badge v-if="rata.ereditato" variant="outline" class="mr-1 h-5 border-violet-200 bg-violet-50 px-1.5 text-[11px] font-medium text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200" data-testid="badge-ereditato">ereditato</Badge>
                                                             {{ rata.numero_rata === 0 ? 'Rata 0 (pregresso)' : `Rata ${rata.numero_rata}` }}
                                                             <span v-if="rata.pregresso_nella_rata" class="block text-slate-500">{{ NOTA_PREGRESSO_NELLA_RATA }}</span>
+                                                            <!-- Decisione 494 (3): da chi e con quale successione; dal debito ereditato si apre la proposta degli interessi dell'erede. -->
+                                                            <span v-if="rata.ereditato" class="block text-slate-600 dark:text-slate-300" data-testid="ereditato-da">{{ testoEreditatoInElenco(rata.ereditato) }}
+                                                                <button type="button" class="ml-1 underline" data-testid="interessi-dell-erede" @click="proponiInteressi([r.anagrafica_id])">Proponi gli interessi</button></span>
                                                         </td>
                                                         <td class="p-1">{{ giorno(rata.scadenza) }}</td>
                                                         <td class="p-1 text-right whitespace-nowrap">

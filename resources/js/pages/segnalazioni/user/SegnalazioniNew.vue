@@ -31,6 +31,9 @@ import '@vuepic/vue-datepicker/dist/main.css';
 const props = defineProps<{
   condomini: Building[];
   allegati_massimo?: number;
+  // Coda 683 (1): il limite vero di un file e i formati, dal server.
+  allegati_limite_file?: string;
+  allegati_formati?: string[];
 }>();  
 
 const { generateRoute, hasPermission } = usePermission();
@@ -152,6 +155,8 @@ const submit = () => {
                                 v-model="form.allegati"
                                 :massimo="props.allegati_massimo ?? 5"
                                 :rimasti="props.allegati_massimo ?? 5"
+                                :limite-file="props.allegati_limite_file"
+                                :formati="props.allegati_formati"
                                 :error="erroreAllegati"
                             />
                         </div>

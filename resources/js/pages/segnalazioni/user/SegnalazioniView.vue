@@ -181,7 +181,7 @@ const etichettaPrivata = computed(() => etichettaPrivacy('segnalazioni', props.s
                     </p>
                     <div v-if="statusItem" class="flex items-center gap-2">
                       <component :is="statusItem.icon" class="w-4 h-4 shrink-0" :class="statusItem.colorClass" />
-                      <span class="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize truncate">
+                      <span class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                         {{ trans(statusItem.label) }}
                       </span>
                     </div>
@@ -197,7 +197,7 @@ const etichettaPrivata = computed(() => etichettaPrivacy('segnalazioni', props.s
                     </p>
                     <div v-if="priorityItem" class="flex items-center gap-2">
                       <component :is="priorityItem.icon" class="w-4 h-4 shrink-0" :class="priorityItem.colorClass" />
-                      <span class="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize truncate">
+                      <span class="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
                         {{ trans(priorityItem.label) }}
                       </span>
                     </div>
@@ -226,6 +226,13 @@ const etichettaPrivata = computed(() => etichettaPrivacy('segnalazioni', props.s
                     <Lock class="w-3 h-3 shrink-0" />
                     <span>{{ trans('segnalazioni.details.locked') }}</span>
                   </div>
+                </div>
+
+                <!-- Seguita da, solo se lo studio lo mostra (Coda 591); il riquadro «Interazioni» non c'è più (decisione 470) -->
+                <div v-if="props.segnalazione.seguita_da" class="border-t border-dashed pt-4" data-campo="seguita-da">
+                  <p class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {{ trans('segnalazioni.assignment.followed_by', { name: props.segnalazione.seguita_da }) }}
+                  </p>
                 </div>
 
               </CardContent>

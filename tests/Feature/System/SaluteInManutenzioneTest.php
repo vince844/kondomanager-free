@@ -6,7 +6,7 @@
 /**
  * # In manutenzione `/up` dice lo stato vero (1.11.0-beta.46, Coda 224)
  *
- * KondoCloud chiude un'istanza in attesa di pagamento con `php artisan down --redirect=…`, con la
+ * Un hosting gestito chiude un'istanza in attesa di pagamento con `php artisan down --redirect=…`, con la
  * manutenzione nel database dell'istanza (`APP_MAINTENANCE_DRIVER=cache`,
  * `APP_MAINTENANCE_STORE=database`) perché un riavvio non la tolga. Dalla 1.11.0-beta.32 alla .45 `/up`
  * stava dietro il middleware della manutenzione come ogni altra pagina (fino alla .31 era la rotta
@@ -54,7 +54,7 @@ beforeEach(function () {
     File::ensureDirectoryExists($this->storage.'/framework');
     $this->app->useStoragePath($this->storage);
 
-    // Come KondoCloud: la manutenzione nel database dell'istanza.
+    // Come in un hosting gestito: la manutenzione nel database dell'istanza.
     config(['app.maintenance.driver' => 'cache', 'app.maintenance.store' => 'database']);
     $this->app->forgetInstance(MaintenanceModeManager::class);
 });

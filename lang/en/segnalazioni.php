@@ -49,12 +49,12 @@ return [
      | Form Sections (Cards)
      | ------------------------------------------------------------------ */
     'section' => [
-        'content_title'  => "Ticket details",
-        'content_desc'   => "Enter the information regarding the problem to be reported.",
-        'location_title' => "Recipients",
-        'location_desc'  => "Indicate the building and the residents linked to this ticket.",
-        'settings_title' => "Operational management",
-        'settings_desc'  => "Set the processing status, priority, and visibility of the ticket.",
+        'content_title'    => "Ticket details",
+        'content_desc'     => "Enter the information regarding the problem to be reported.",
+        'location_title'   => "Recipients",
+        'location_desc'    => "Indicate the building and the residents linked to this ticket.",
+        'settings_title'   => "Operational management",
+        'settings_desc'    => "Set the processing status, priority, and visibility of the ticket.",
     ],
 
     /* ------------------------------------------------------------------
@@ -170,6 +170,7 @@ return [
         'show_more'        => 'Show more',
         'show_less'        => 'Show less',
         'cancel'           => 'Cancel',
+        'approve'          => 'Approve',
         'back'             => 'Back',
         'back_to_list'     => "Back to list",
     ],
@@ -178,6 +179,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'approval'           => 'Approval',
         'notify_update' => "Email the people following this ticket",
         'object'             => 'Ticket subject',
         'description'        => 'Ticket description',
@@ -214,6 +216,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'assigned_to' => 'Who in the office follows the ticket. They receive an email when you assign it to them.',
+        'approval'    => 'A ticket is visible on the portal when it is published and approved. When you approve it, who submitted it receives a notification.',
         'notify_update' => "Sends an email to those who were already recipients, telling them the ticket has changed. Leave it off if you are fixing a typo: anyone added now receives it anyway, because for them it is new. While it is a draft or awaiting approval nothing is sent; once it is published and approved, all recipients receive it.",
         'visibility' => 'A draft, or a ticket awaiting approval, is not shown to residents; once published and approved, the residents it is addressed to can see it.',
         'priority'   => 'Set the priority level for this ticket to help administrators manage it accordingly.',
@@ -258,6 +262,11 @@ return [
         'settings_desc'    => 'Define the level of urgency, update the processing status of the file, and adjust the visibility permissions on the bulletin board.',
     ],
 
+    'approval' => [
+        'approved' => 'Approved',
+        'pending'  => 'Pending approval',
+    ],
+
     /* ------------------------------------------------------------------
      | Pubblicazione e privacy (Code 304 e 306)
      | ------------------------------------------------------------------ */
@@ -265,8 +274,8 @@ return [
         'pending'   => 'Awaiting approval',
         'draft'     => 'Draft',
         'published' => 'Published',
-        'needs_approval' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved, with the shield next to the title in the list of tickets.',
-        'waiting_approver' => 'It is awaiting approval: choosing «Published» is not enough to show it to residents. They will see it once it is approved by whoever approves tickets.',
+        'needs_approval' => 'Not yet approved: residents cannot see it.',
+        'waiting_approver' => 'Not yet approved: residents cannot see it. It must be approved by whoever approves tickets.',
     ],
 
     'privacy' => [
@@ -298,5 +307,37 @@ return [
         'comments_dialog_description' => 'Configure comments for this ticket.',
         'can_comment'                 => 'Allow comments',
         'commenti_moderati'           => 'Moderate comments',
+    ],
+
+    'assignment' => [
+        'label' => 'Assigned to',
+        'none' => 'None',
+        'placeholder' => 'Choose who to assign it to',
+        'assign_to_me' => 'Assign to me',
+        'assigned' => 'Ticket assigned to :name.',
+        'unassigned' => 'Assignment removed.',
+        'not_assignable' => 'This person cannot receive tickets: they do not have panel access, or are suspended.',
+        // P6 della Fase 1-bis della beta.12: la persona scelta cancellata mentre la scheda era aperta.
+        'not_found' => 'The chosen person no longer exists: reload the page and choose again who to assign the ticket to.',
+        'assigned_by' => 'Assigned by :user on :date at :time',
+        'assigned_on' => 'Assigned on :date at :time',
+        'inactive' => ':name no longer has access to the panel: assign the ticket to another person.',
+        'inactive_short' => 'No longer active',
+        'followed_by' => 'Followed by :name',
+        'filter_mine' => 'To me',
+        'filter_nobody' => 'Unassigned',
+    ],
+    // Coda 671: quick actions on the report page (decisions 466 and 487).
+    'quick' => [
+        'change_status' => 'Change the work status',
+        'change_priority' => 'Change the priority level',
+        'close_title' => 'Close the report?',
+        'close_description' => 'The report becomes «Closed» and its task leaves the Action inbox; if you reopen it, it comes back. No email is sent.',
+        'close_confirm' => 'Close the report',
+        // P6 della Fase 1-bis della beta.12: i rifiuti del valore veloce, con le parole della pagina.
+        'invalid_status' => 'Choose a status from the list: open, in progress or closed.',
+        'invalid_priority' => 'Choose a priority from the list: low, medium, high or urgent.',
+        'one_at_a_time' => 'Change one thing at a time: the status or the priority.',
+        'nothing_chosen' => 'Choose the status or the priority.',
     ],
 ];

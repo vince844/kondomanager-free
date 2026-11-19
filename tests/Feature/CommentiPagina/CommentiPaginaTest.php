@@ -129,9 +129,18 @@ test('ogni riga dice il testo, l\'elemento, il condominio o la persona, l\'autor
         'url_commenti' => route('admin.segnalazioni.show', $sc['s']) . '#commenti',
     ]);
 
-    // Una comunicazione a palazzi: il palazzo della discussione; a persone: la persona della discussione.
-    expect($righe[$sc['id']['c_bor']])->toMatchArray(['tipo' => 'comunicazioni', 'condominio' => 'Condominio Borea', 'url_commenti' => route('admin.comunicazioni.show', $sc['c']) . '#commenti'])
-        ->and($righe[$sc['id']['p_lucia']])->toMatchArray(['condominio' => 'Lucia Verdi', 'stato' => 'in_attesa']);
+    // Una comunicazione a palazzi: il palazzo della discussione; a persone: sempre un condominio, e la persona sotto il titolo (decisione 479 (2)).
+    expect($righe[$sc['id']['c_bor']])->toMatchArray(['tipo' => 'comunicazioni', 'condominio' => 'Condominio Borea', 'discussione_con' => null, 'url_commenti' => route('admin.comunicazioni.show', $sc['c']) . '#commenti'])
+        ->and($righe[$sc['id']['p_lucia']])->toMatchArray(['condominio' => 'Condominio Borea', 'discussione_con' => 'Lucia Verdi', 'stato' => 'in_attesa'])
+        ->and($righe[$sc['id']['s_pub']]['discussione_con'])->toBeNull();
+});
+
+test('in una discussione a persone, se il commento non porta un condominio, la colonna dice quello della persona fra i destinatari (decisione 479 (2))', function () {
+    $sc = cpScenario($this);
+    $id = ccmCommentoSalvato($sc['p'], $this->admin, 'Lo studio risponde a Lucia', null, $this->lucia);
+    $riga = collect(cpRighe($this, $this->admin))->keyBy('id')[$id];
+
+    expect($riga)->toMatchArray(['condominio' => 'Condominio Borea', 'discussione_con' => 'Lucia Verdi', 'autore' => $riga['autore']]);
 });
 
 /** Chi vede quali commenti: la regola della scheda, commento per commento. */

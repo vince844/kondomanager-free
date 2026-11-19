@@ -29,6 +29,10 @@ return [
         'export_desc' => 'Download filtered attachments in an archive organized by building, type, and item, complete with an elenco.csv summary.',
     ],
 
+    // Coda 683 (4): la riga sotto l'elenco quando chi guarda vede meno file di quanti ne ha l'elemento.
+    'counter' => [
+        'hidden' => '{0} You cannot see any of the :totale files: they are not visible to you.|{1} You can see one of :totale: the others are not visible to you.|[2,*] You can see :visibili of :totale: the others are not visible to you.',
+    ],
     'upload' => [
         'label' => 'Add attachments',
         'hint' => '{0} Allowed formats: :formati, max :limite per file. No more files can be added.|{1} Allowed formats: :formati, max :limite per file. You can add 1 more file (max :massimo).|[2,*] Allowed formats: :formati, max :limite per file. You can add :rimasti more files (max :massimo).',
@@ -37,6 +41,10 @@ return [
         'no_slots' => 'The limit of :massimo attachments has been reached.',
         'button' => 'Upload attachments',
         'uploading' => 'Uploading…',
+        'take_photo' => 'Take a photo',
+        'preparing' => 'Preparing photos…',
+        'photo_hint' => 'Photos are resized and stripped of location data.',
+        'photo_short' => 'Photo',
         'selected_files' => 'Selected files',
         'remove_file' => 'Remove',
     ],

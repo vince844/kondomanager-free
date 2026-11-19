@@ -138,6 +138,9 @@ class SegnalazioneController extends Controller
         return Inertia::render('segnalazioni/user/SegnalazioniNew',[
             'condomini'        => CondominioOptionsResource::collection($condomini),
             'allegati_massimo' => RegoleAllegati::massimoPerElemento(),
+            // Coda 683 (1): il limite vero di un file e i formati, come il riquadro della scheda: il modulo non scrive più «10 MB» fisso.
+            'allegati_limite_file' => \App\Support\LimiteCaricamento::etichetta(),
+            'allegati_formati' => RegoleAllegati::FORMATI,
         ]); 
     }
 
@@ -240,14 +243,20 @@ class SegnalazioneController extends Controller
         $user = request()->user();
 
         // Coda 260: niente assegnatario né persone collegate, che la pagina non mostra.
-        $segnalazioneCaricata = Segnalazione::with([
+        $relazioni = [
             'createdBy.anagrafica',
             'condominio',
             'commenti.autore.anagrafica',
             'commentiInAttesa' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)->with('autore.anagrafica');
-            }
-        ])->findOrFail($segnalazione->id);
+            },
+        ];
+
+        if (app(\App\Settings\GeneralSettings::class)->segnalazioni_assegnazione_visibile_nel_portale) {
+            $relazioni[] = 'assignedTo';
+        }
+
+        $segnalazioneCaricata = Segnalazione::with($relazioni)->findOrFail($segnalazione->id);
 
         return Inertia::render('segnalazioni/user/SegnalazioniView', [
             'segnalazione' => new SegnalazionePortaleResource($segnalazioneCaricata),

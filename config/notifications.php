@@ -29,6 +29,11 @@ return [
                 'description' => 'Ricevi una notifica quando una comunicazione che hai già ricevuto viene modificata',
                 'permission'  => Permission::VIEW_COMUNICAZIONI,
             ],
+            NotificationType::SCHEDULED_COMMUNICATION_PUBLISHED->value => [
+                'label'       => 'Comunicazione programmata pubblicata',
+                'description' => 'Ricevi una conferma quando una comunicazione che hai programmato viene pubblicata',
+                'permission'  => Permission::PUBLISH_COMUNICAZIONI,
+            ],
             NotificationType::NEW_TICKET->value => [
                 'label'       => 'Nuova segnalazione guasto',
                 'description' => 'Ricevi una notifica quando viene creata una nuova segnalazione guasto',
@@ -43,6 +48,11 @@ return [
                 'label'       => 'Segnalazione guasto aggiornata',
                 'description' => 'Ricevi una notifica quando una segnalazione guasto che segui viene modificata',
                 'permission'  => Permission::VIEW_SEGNALAZIONI,
+            ],
+            NotificationType::TICKET_ASSIGNED->value => [
+                'label'       => 'Segnalazione guasto assegnata',
+                'description' => 'Ricevi una notifica quando una segnalazione guasto ti viene assegnata, o non è più assegnata a te',
+                'permission'  => Permission::ACCESS_ADMIN_PANEL,
             ],
             NotificationType::NEW_ARCHIVE_DOCUMENT->value => [
                 'label'       => 'Nuovo documento in archivio',
@@ -69,9 +79,14 @@ return [
                 'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene approvato',
                 'permission'  => Permission::COMMENT_SEGNALAZIONI
             ],
-            NotificationType::COMMENT_DELETED->value => [
-                'label'       => 'Commento eliminato o nascosto (segnalazioni)',
-                'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene eliminato o nascosto',
+            NotificationType::COMMENT_HIDDEN->value => [
+                'label'       => 'Commento nascosto (segnalazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene nascosto',
+                'permission'  => Permission::COMMENT_SEGNALAZIONI
+            ],
+            NotificationType::COMMENT_REMOVED->value => [
+                'label'       => 'Commento eliminato (segnalazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una segnalazione viene eliminato da un altro',
                 'permission'  => Permission::COMMENT_SEGNALAZIONI
             ],
             NotificationType::NEW_COMMUNICATION_COMMENT->value => [
@@ -84,9 +99,14 @@ return [
                 'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene approvato',
                 'permission'  => Permission::COMMENT_COMUNICAZIONI,
             ],
-            NotificationType::COMMUNICATION_COMMENT_DELETED->value => [
-                'label'       => 'Commento eliminato o nascosto (comunicazioni)',
-                'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene eliminato o nascosto',
+            NotificationType::COMMUNICATION_COMMENT_HIDDEN->value => [
+                'label'       => 'Commento nascosto (comunicazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene nascosto',
+                'permission'  => Permission::COMMENT_COMUNICAZIONI,
+            ],
+            NotificationType::COMMUNICATION_COMMENT_REMOVED->value => [
+                'label'       => 'Commento eliminato (comunicazioni)',
+                'description' => 'Ricevi una notifica quando un tuo commento a una comunicazione viene eliminato da un altro',
                 'permission'  => Permission::COMMENT_COMUNICAZIONI,
             ],
             NotificationType::NEW_ATTACHMENT->value => [
@@ -97,12 +117,13 @@ return [
             NotificationType::ATTACHMENT_APPROVED->value => [
                 'label'       => 'Allegato approvato',
                 'description' => 'Ricevi una notifica quando un tuo allegato in attesa viene approvato',
-                'permission'  => Permission::CREATE_ATTACHMENTS_SEGNALAZIONI,
+                // Coda 683 (3): l'allegato può essere di una segnalazione o di una comunicazione; basta uno dei due permessi.
+                'permission'  => [Permission::CREATE_ATTACHMENTS_SEGNALAZIONI, Permission::CREATE_ATTACHMENTS_COMUNICAZIONI],
             ],
             NotificationType::ATTACHMENT_DELETED->value => [
                 'label'       => 'Allegato eliminato',
                 'description' => 'Ricevi una notifica quando un tuo allegato viene eliminato',
-                'permission'  => Permission::CREATE_ATTACHMENTS_SEGNALAZIONI,
+                'permission'  => [Permission::CREATE_ATTACHMENTS_SEGNALAZIONI, Permission::CREATE_ATTACHMENTS_COMUNICAZIONI],
             ],
         ],
         'admin' => [
@@ -134,7 +155,8 @@ return [
             NotificationType::ATTACHMENT_UNDER_MODERATION->value => [
                 'label'       => 'Allegato da moderare',
                 'description' => 'Ricevi una notifica quando un nuovo allegato richiede la tua approvazione',
-                'permission'  => Permission::APPROVE_ATTACHMENTS_SEGNALAZIONI,
+                // Coda 683 (3): chi approva gli allegati delle segnalazioni o quelli delle comunicazioni (l'email parte solo per il tipo che approva).
+                'permission'  => [Permission::APPROVE_ATTACHMENTS_SEGNALAZIONI, Permission::APPROVE_ATTACHMENTS_COMUNICAZIONI],
             ],
         ],
     ],

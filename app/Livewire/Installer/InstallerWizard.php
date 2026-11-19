@@ -279,7 +279,7 @@ class InstallerWizard extends Component
         $quoteIfNeeded = fn ($value) => preg_match('/\s/', $value ?? '') ? '"'.addslashes($value).'"' : $value;
 
         $pairs = [
-            'APP_NAME' => $quoteIfNeeded($data['app_name'] ?? config('installer.app_name', 'Kondomanager')),
+            'APP_NAME' => $quoteIfNeeded($data['app_name'] ?? config('installer.app_name', 'KondoManager')),
             'APP_ENV' => config('installer.requirements.environment.production') ? 'production' : 'local',
             'APP_DEBUG' => config('installer.requirements.environment.debug') ? 'true' : 'false',
             'APP_URL' => $data['app_url'] ?? '',

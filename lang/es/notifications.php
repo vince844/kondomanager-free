@@ -76,6 +76,13 @@ return [
         'action'    => 'View communication',
     ],
 
+    'scheduled_communication_published' => [
+        'subject'   => 'Comunicación publicada: :title',
+        'line_1'    => 'La comunicación ":title", programada para el :date a las :time, ha sido publicada.',
+        'line_late' => 'Se publicó con retraso, el :date a las :time: a la hora elegida el planificador no estaba activo.',
+        'action'    => 'Ver comunicación',
+    ],
+
     // New communication published (NewComunicazioneNotification)
     'new_communication' => [
         'subject'   => 'New communication on the notice board',
@@ -204,9 +211,25 @@ return [
     ],
 
     // Deleted comment
+    // La parola con cui i due avvisi del commento nascosto o eliminato chiamano l'elemento (con l'articolo, dove la lingua lo chiede).
+    'comment_entity' => [
+        'ticket'        => 'la incidencia',
+        'communication' => 'el comunicado',
+    ],
+
+    'hidden_ticket_comment' => [
+        'subject' => 'Uno de tus comentarios ha sido ocultado',
+        'line_1'  => 'Tu comentario del :data sobre :entity ha sido ocultado por el administrador del condominio: los demás ya no lo ven.',
+        'action'  => 'Ver incidencia',
+    ],
+
     'deleted_ticket_comment' => [
-        'subject' => 'Your comment has been removed',
-        'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
+        'subject'        => 'Uno de tus comentarios ha sido eliminado',
+        'subject_pending' => 'Uno de tus comentarios no ha sido publicado',
+        'line_1'         => 'Tu comentario del :data sobre :entity ha sido eliminado por el administrador del condominio.',
+        'line_1_pending' => 'Tu comentario del :data sobre :entity no ha sido aprobado y ha sido eliminado por el administrador del condominio.',
+        'started'        => 'El comentario empezaba así: «:inizio»',
+        'action'         => 'Ver incidencia',
     ],
 
     // Communication comments
@@ -238,9 +261,19 @@ return [
         'action'  => 'Ver comunicado',
     ],
 
+    'hidden_communication_comment' => [
+        'subject' => 'Uno de tus comentarios ha sido ocultado',
+        'line_1'  => 'Tu comentario del :data sobre :entity ha sido ocultado por el administrador del condominio: los demás ya no lo ven.',
+        'action'  => 'Ver comunicado',
+    ],
+
     'deleted_communication_comment' => [
-        'subject' => 'Tu comentario ha sido eliminado',
-        'line_1'  => 'Tu comentario sobre :entity ha sido eliminado u ocultado por un administrador.',
+        'subject'        => 'Uno de tus comentarios ha sido eliminado',
+        'subject_pending' => 'Uno de tus comentarios no ha sido publicado',
+        'line_1'         => 'Tu comentario del :data sobre :entity ha sido eliminado por el administrador del condominio.',
+        'line_1_pending' => 'Tu comentario del :data sobre :entity no ha sido aprobado y ha sido eliminado por el administrador del condominio.',
+        'started'        => 'El comentario empezaba así: «:inizio»',
+        'action'         => 'Ver comunicado',
     ],
 
     // Common strings for all notifications
@@ -315,5 +348,18 @@ return [
             'line_1'    => 'El :data a las :ora se generaron nuevos códigos de recuperación de la autenticación de dos factores de tu cuenta en :appName: los anteriores ya no valen.',
             'consiglio' => 'Si no has hecho tú este cambio, cambia ya la contraseña y avisa al administrador.',
         ],
+    ],
+
+    'assigned_ticket' => [
+        'subject' => 'Aviso asignado a ti: :title',
+        'line_1' => ':user te ha asignado el aviso ":title" (:building).',
+        'action' => 'Ver aviso',
+    ],
+    'unassigned_ticket' => [
+        'subject' => 'Aviso ya no asignado a ti: :title',
+        'line_1' => ':user ha asignado a :name el aviso ":title", del que te encargabas tú.',
+        'line_1_nobody' => ':user ha quitado la asignación del aviso ":title", del que te encargabas tú.',
+        'line_1_self' => ':user ha tomado para sí el aviso ":title", del que te encargabas tú.',
+        'action' => 'Ver aviso',
     ],
 ];

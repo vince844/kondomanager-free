@@ -467,6 +467,9 @@ class CondominioService
             ]
         );
 
+        // M. Entrate e proventi (Conto Economico > Ricavi): il mastro delle voci di entrata (Coda 680, decisione 493 (15)).
+        \App\Services\Gestionale\VociDiEntrataNelMastro::mastro((int) $condominio->id);
+
         Log::info("Piano Conti creato correttamente per '{$condominio->nome}'");
     }
 }

@@ -577,7 +577,24 @@ class PianoContiController extends Controller
             'totaleConsuntivo'      => $totaleConsuntivo,
             'totaleIncassato'       => $totaleIncassato,
             'speseNegative'         => $speseNegative,
+            // Coda 680 (decisione 493 (15)): le voci di entrata di questo piano con un mastro di costo, con le scritture che le hanno usate.
+            'vociDiEntrataNeiCosti' => app(\App\Services\Gestionale\VociDiEntrataNelMastro::class)->perCondominio((int) $condominio->id, (int) $pianoConto->id),
         ]);
+    }
+
+    /**
+     * Coda 680 (decisione 493 (15)): su comando dell'amministratore, le voci di entrata di questo piano con un mastro di costo passano al mastro delle entrate,
+     * per le scritture che verranno; le righe già scritte restano dove sono, e il messaggio lo dice.
+     */
+    public function correggiVociDiEntrata(\Illuminate\Http\Request $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): RedirectResponse
+    {
+        abort_unless((int) $pianoConto->condominio_id === (int) $condominio->id, 404);
+        $voci = array_values(array_filter(array_map('intval', (array) $request->input('voci', [])))) ?: null;
+        $spostate = app(\App\Services\Gestionale\VociDiEntrataNelMastro::class)->correggi((int) $condominio->id, $voci, (int) $pianoConto->id);
+
+        return back()->with($this->flashSuccess($spostate === 0 ? 'Nessuna voce da spostare.'
+            : ($spostate === 1 ? 'Una voce di entrata è passata' : $spostate . ' voci di entrata sono passate') . ' al mastro «'
+                . \App\Services\Gestionale\VociDiEntrataNelMastro::NOME . '», per le scritture che verranno. Le scritture già fatte restano sul mastro di prima.'));
     }
 
     public function edit(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): Response

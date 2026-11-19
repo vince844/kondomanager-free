@@ -110,7 +110,7 @@ const submit = () => {
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
           
           <!-- Main Form -->
-          <div class="lg:col-span-3 space-y-4 bg-white p-4 border rounded">
+          <div class="lg:col-span-3 space-y-4 bg-white dark:bg-slate-900 dark:border-slate-800 p-4 border rounded">
 
             <div>
               <Label for="title">Oggetto</Label>
@@ -211,7 +211,7 @@ const submit = () => {
           </div>
 
           <!-- Side Form -->
-          <div class="space-y-4 bg-white p-4 border rounded">
+          <div class="space-y-4 bg-white dark:bg-slate-900 dark:border-slate-800 p-4 border rounded">
 
             <div>
               <Label>Categorie</Label>

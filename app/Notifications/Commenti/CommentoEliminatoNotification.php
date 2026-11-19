@@ -6,22 +6,30 @@
 namespace App\Notifications\Commenti;
 
 use App\Models\Commento;
-use App\Models\Comunicazione;
 use App\Models\User;
-use App\Notifications\Concerns\TestoScrittoDaAltri;
+use App\Notifications\Concerns\AvvisoSulCommentoDiUnAltro;
 use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 
+/**
+ * L'avviso all'autore di un commento che un altro ha eliminato (decisioni 478 (2) e 483 (3)).
+ *
+ * Parte dopo l'eliminazione, in coda: il commento è già eliminato (soft delete) e l'elemento può non esserci più, quindi la
+ * notifica non dipende dal model e non ha uno stato da riverificare: porta con sé il testo (data, titolo, inizio del commento,
+ * se era in attesa). Per un commento in attesa dice «non è stato pubblicato».
+ */
 class CommentoEliminatoNotification extends LocalizedNotification implements ShouldQueue
 {
+    use AvvisoSulCommentoDiUnAltro;
     use Queueable;
-    use TestoScrittoDaAltri;
 
-    public function __construct(public Commento $commento)
+    public function __construct(Commento $commento)
     {
         parent::__construct();
+
+        $this->ricordaIlCommento($commento);
     }
 
     public function via(object $notifiable): array
@@ -31,55 +39,27 @@ class CommentoEliminatoNotification extends LocalizedNotification implements Sho
 
     public function shouldSend(object $notifiable, string $channel): bool
     {
-        if (! $notifiable instanceof User) {
-            return false;
-        }
-
-        $commento = Commento::find($this->commento->id);
-        if (! $commento || $commento->stato !== 'nascosto') {
-            return false;
-        }
-
-        return true;
+        return $notifiable instanceof User;
     }
 
     public function toMail(object $notifiable): MailMessage
     {
-        $commentable = $this->commento->commentable;
-        $entita = $commentable instanceof Comunicazione ? 'comunicazione' : 'segnalazione';
+        $chiave = $this->chiaveAvviso();
+        $sufisso = $this->eraInAttesa ? '_pending' : '';
 
-        $titolo = $commentable->subject ?? $commentable->titolo ?? $commentable->title ?? $commentable->nome ?? null;
-        $titolo = $titolo === null ? null : self::testoComeTesto($titolo);
-        $riferimento = $titolo ? "{$entita} \"{$titolo}\"" : $entita;
-        $key = $this->getEntityKey();
+        $mail = (new MailMessage)
+            ->subject(__("{$chiave}.subject{$sufisso}"))
+            ->line(__("{$chiave}.line_1{$sufisso}", ['data' => $this->data, 'entity' => $this->riferimento()]));
 
-        $subjectKey = "notifications.deleted_{$key}_comment.subject";
-        $line1Key = "notifications.deleted_{$key}_comment.line_1";
+        if ($this->inizio !== '') {
+            $mail->line(__("{$chiave}.started", ['inizio' => $this->inizio]));
+        }
 
-        return (new MailMessage)
-            ->subject(__($subjectKey))
-            ->line(__($line1Key, [
-                'entity' => $riferimento,
-            ]));
+        return $this->conIlPulsante($mail, $notifiable);
     }
 
-    private function getEntityKey(): string
+    protected function chiaveAvviso(): string
     {
-        $class = class_basename($this->commento->commentable);
-
-        return match ($class) {
-            'Segnalazione'  => 'ticket',
-            'Comunicazione' => 'communication',
-            default         => strtolower($class),
-        };
-    }
-
-    public function toArray(object $notifiable): array
-    {
-        return [
-            'commento_id'      => $this->commento->id,
-            'commentable_type' => $this->commento->commentable_type,
-            'commentable_id'   => $this->commento->commentable_id,
-        ];
+        return "notifications.deleted_{$this->tipo}_comment";
     }
 }

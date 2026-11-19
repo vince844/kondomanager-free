@@ -34,6 +34,11 @@ use Illuminate\Support\Facades\DB;
  * - **Chi ha versato e per conto di chi** (decisione 30): la regola di `PersoneDegliIncassi`. Una compensazione che copre solo le rate di
  *   un'altra persona (il credito della posizione «si usa adesso» e il denaro va tutto sulla rata di chi l'ha versato) non è un versamento di
  *   questa ricevuta: non entra nelle quote né nel credito usato, e la ricevuta la nomina solo in `compensazioni_escluse`.
+ * - **Il versamento di un erede sul debito ereditato** (decisione 539): di serie la ricevuta è intestata all'erede che ha pagato (la posizione di
+ *   `PersoneDegliIncassi`), con `debito_ereditato` (di chi era il debito, il giorno della successione, la sua quota) al posto di «Per conto di», e
+ *   sulla riga della rata del defunto la `nota` «la parte di Cecilia Angeli del debito ereditato da Massimo Bagnara». Con la scelta «Eredi di …» la
+ *   posizione resta il defunto, con il suo indirizzo e il suo codice fiscale, e il nome «Eredi di Massimo Bagnara»; con «il defunto» come prima. Una
+ *   ricevuta già emessa non cambia: la copia legge il contenuto dell'originale ({@see daIstantanea()}).
  *
  * Non c'è il metodo di pagamento (bonifico, contanti, assegno): l'incasso non lo registra.
  */
@@ -67,7 +72,11 @@ class RicevutaIncasso
             'figlie.quotePagate.anagrafica',
         ]);
 
-        [$posizione, $versatoDa, $piuPersone] = $this->persone($incasso);
+        [$posizione, $versatoDa, $piuPersone, $eredita] = $this->persone($incasso);
+        // Decisione 539: la ricevuta del versamento di un erede, intestata a lui (di serie) o agli eredi del defunto.
+        $allErede = $eredita !== null && $eredita['intestatario'] === \App\Services\Gestionale\Accessori\VersamentoDegliEredi::RICEVUTA_ALL_EREDE && $posizione !== null;
+        $agliEredi = $eredita !== null && $eredita['intestatario'] === \App\Services\Gestionale\Accessori\VersamentoDegliEredi::RICEVUTA_AGLI_EREDI;
+        $notaDellErede = $allErede ? sprintf('la parte di %s del debito ereditato da %s', $eredita['nome_erede'], $eredita['di']) : null;
         $compensazioni = $incasso->figlie->filter(fn (ScritturaContabile $f) => $f->tipo_movimento === TipoMovimentoContabile::STORNO_CREDITO)->values();
 
         // Quanto l'incasso ha messo su ogni quota con il denaro, e quanto le sue compensazioni con il credito.
@@ -135,7 +144,7 @@ class RicevutaIncasso
                 continue;
             }
             if ($imputato > 0) {
-                $righeQuote[] = [
+                $righeQuote[] = ($notaDellErede !== null && (int) $q->anagrafica_id !== (int) $posizione->id ? ['nota' => $notaDellErede] : []) + [
                     'quota_id'    => $q->id,
                     'rata'        => $this->nomeRata($q),
                     'piano'       => $q->rata?->pianoRate?->nome,
@@ -191,11 +200,13 @@ class RicevutaIncasso
             ],
             'posizione'       => $posizione ? [
                 'id'             => $posizione->id,
-                'nome'           => $posizione->nome,
+                'nome'           => $agliEredi ? 'Eredi di ' . $eredita['defunto'] : $posizione->nome,
                 'indirizzo'      => $posizione->indirizzo,
                 'codice_fiscale' => $posizione->codice_fiscale,
             ] : null,
             'versato_da'      => $versatoDa ? ['id' => $versatoDa->id, 'nome' => $versatoDa->nome] : null,
+            // Decisione 539: «Per il debito ereditato da» sotto «Ricevuto da», al posto di «Per conto di», con la ricevuta all'erede.
+            'debito_ereditato' => $allErede ? ['di' => $eredita['di'], 'successione_del' => $eredita['successione_del'], 'quota' => $eredita['quota']] : null,
             'importo_versato' => $importoVersato,
             'cassa'           => $rigaCassa?->cassa ? [
                 'nome' => $rigaCassa->cassa->nome,
@@ -337,9 +348,10 @@ class RicevutaIncasso
     }
 
     /**
-     * La posizione e chi ha versato, con la regola di `PersoneDegliIncassi`: la stessa dell'elenco delle ricevute e dell'invio.
+     * La posizione e chi ha versato, con la regola di `PersoneDegliIncassi`: la stessa dell'elenco delle ricevute e dell'invio; con il versamento di un
+     * erede anche la sua lettura (decisione 539).
      *
-     * @return array{0: ?Anagrafica, 1: ?Anagrafica, 2: array<int, array{id: int, nome: string}>}
+     * @return array{0: ?Anagrafica, 1: ?Anagrafica, 2: array<int, array{id: int, nome: string}>, 3: ?array<string, mixed>}
      */
     private function persone(ScritturaContabile $incasso): array
     {
@@ -350,6 +362,7 @@ class RicevutaIncasso
             $persone['posizione'] ? $trovate->get($persone['posizione']) : null,
             $persone['versato_da'] ? $trovate->get($persone['versato_da']) : null,
             collect($persone['piu_persone'])->map(fn (int $id) => $trovate->get($id))->filter()->map(fn (Anagrafica $a) => ['id' => $a->id, 'nome' => $a->nome])->values()->all(),
+            $persone['eredita'] ?? null,
         ];
     }
 

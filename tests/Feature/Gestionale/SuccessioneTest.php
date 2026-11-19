@@ -529,7 +529,11 @@ it('rilievo L1: un credito del defunto passato agli eredi si dice credito, senza
         ->and(array_column($a['rate']['arretrato']['eredi'], 'importo_formattato'))->toBe(['€ 483,29 a credito', '€ 322,19 a credito']);
     $sub = ruRegistra($this, $s, $corpo);
     $storico = app(\App\Services\Subentro\StoricoTitolarita::class)->perImmobile($s['unita']->fresh());
-    expect($storico['subentri'][0]['arretrato']['frase'])->toBe('Credito di Venditore Ugo passato agli eredi per quota, con righe nei saldi della gestione: € 483,29 a credito di Anna Erede, € 322,19 a credito di Bruno Erede.');
+    // Decisione 483: dopo l'arretrato lo storico dice la scelta sugli interessi del defunto, di serie «si fermano al decesso» con l'arretrato agli eredi.
+    expect($storico['subentri'][0]['arretrato']['frase'])->toBe('Credito di Venditore Ugo passato agli eredi per quota, con righe nei saldi della gestione: € 483,29 a credito di Anna Erede, € 322,19 a credito di Bruno Erede. '
+        . 'Gli interessi di Venditore Ugo si fermano al decesso: la sua proposta degli interessi conta i giorni fino al 30/04/2026. '
+        // Decisione 494 (2): e le scelte sugli interessi degli eredi, di serie quelle del condominio.
+        . 'Gli interessi degli eredi seguono le regole del condominio, in «Recupero dei crediti».');
 
     // Una gamba della coppia: il Wallet non rimanda all'annullamento del solo conguaglio, che con l'arretrato agli eredi si rifiuta.
     $coppia = \App\Models\Saldo::where('subentro_id', $sub->id)->whereNotIn('id', $sub->fresh()->saldiDellArretrato())->where('anagrafica_id', $anna->id)->firstOrFail();
@@ -814,7 +818,11 @@ it('i testi della successione: il pannello, il messaggio e lo storico dicono gli
         // La somma delle due coppie (− € 316,71 + € 322,19), senza l'arretrato.
         ->and($p['conguaglio']['importo'])->toBe(548)
         ->and($p['conguaglio']['annullabile'])->toBeFalse()
-        ->and($p['arretrato']['frase'])->toBe('Arretrato di Venditore Ugo passato agli eredi per quota (art. 754 c.c.), con righe nei saldi della gestione: € 236,71 ad Anna Erede, € 157,81 a Bruno Erede.')
+        // Decisione 483: dopo l'arretrato, la scelta di serie sugli interessi del defunto.
+        ->and($p['arretrato']['frase'])->toBe('Arretrato di Venditore Ugo passato agli eredi per quota (art. 754 c.c.), con righe nei saldi della gestione: € 236,71 ad Anna Erede, € 157,81 a Bruno Erede. '
+            . 'Gli interessi di Venditore Ugo si fermano al decesso: la sua proposta degli interessi conta i giorni fino al 30/04/2026. '
+            // Decisione 494 (2): e le scelte sugli interessi degli eredi, di serie quelle del condominio.
+            . 'Gli interessi degli eredi seguono le regole del condominio, in «Recupero dei crediti».')
         ->and($p['obbligati'][1])->toBe('Il programma ha intestato a ogni erede, con righe nei saldi della gestione, la sua parte della posizione di Venditore Ugo al netto del conguaglio.');
     $rigaBruno = collect($storico['righe'])->firstWhere('anagrafica.nome', 'Bruno Erede');
     expect($rigaBruno['subentro']['ruolo_nel_passaggio'])->toBe('entrante');

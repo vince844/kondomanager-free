@@ -49,12 +49,12 @@ return [
      | Form Sections (Cards)
      | ------------------------------------------------------------------ */
     'section' => [
-        'content_title'  => "Detalhes da sinalização",
-        'content_desc'   => "Insira as informações relativas ao problema a assinalar.",
-        'location_title' => "Destinatários",
-        'location_desc'  => "Indique o condomínio e os registos ligados a esta sinalização.",
-        'settings_title' => "Gestão operativa",
-        'settings_desc'  => "Defina o estado de processamento, a prioridade e a visibilidade da sinalização.",
+        'content_title'    => "Detalhes da sinalização",
+        'content_desc'     => "Insira as informações relativas ao problema a assinalar.",
+        'location_title'   => "Destinatários",
+        'location_desc'    => "Indique o condomínio e os registos ligados a esta sinalização.",
+        'settings_title'   => "Gestão operativa",
+        'settings_desc'    => "Defina o estado de processamento, a prioridade e a visibilidade da sinalização.",
     ],
 
     /* ------------------------------------------------------------------
@@ -170,6 +170,7 @@ return [
         'show_more'        => 'Mostrar tudo',
         'show_less'        => 'Mostrar menos',
         'cancel'           => 'Cancelar',
+        'approve'          => 'Aprovar',
         'back'             => 'Voltar',
         'back_to_list'     => "Voltar à lista",
     ],
@@ -178,6 +179,7 @@ return [
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
+        'approval'           => 'Aprovação',
         'notify_update' => "Avisar por email quem acompanha esta ocorrência",
         'object'             => 'Assunto da sinalização',
         'description'        => 'Descrição da sinalização',
@@ -214,6 +216,8 @@ return [
      | Tooltips
      | ------------------------------------------------------------------ */
     'tooltip' => [
+        'assigned_to' => 'Quem no escritório acompanha o chamado. Recebe um e-mail quando você o atribui.',
+        'approval'    => 'Um chamado fica visível no portal quando está publicado e aprovado. Ao aprovar, quem o abriu recebe um aviso.',
         'notify_update' => "Envia um email a quem já era destinatário, a dizer que a ocorrência mudou. Deixe-a desligada se estiver a corrigir uma gralha: quem for adicionado agora recebe-a de qualquer forma, porque para ele é nova. Enquanto for um rascunho ou estiver a aguardar aprovação não é enviado nada; quando estiver publicada e aprovada, recebem-na todos os destinatários.",
         'visibility' => 'Um rascunho, ou uma sinalização a aguardar aprovação, não aparece aos condóminos; depois de publicada e aprovada, veem-na os condóminos a quem se dirige.',
         'priority'   => 'Defina o nível de prioridade desta sinalização para ajudar os administradores a gerirem-na adequadamente.',
@@ -258,6 +262,11 @@ return [
         'settings_desc'    => 'Defina o nível de urgência, atualize o estado de processamento da ocorrência e ajuste as permissões de visibilidade no quadro.',
     ],
 
+    'approval' => [
+        'approved' => 'Aprovada',
+        'pending'  => 'Por aprovar',
+    ],
+
     /* ------------------------------------------------------------------
      | Pubblicazione e privacy (Code 304 e 306)
      | ------------------------------------------------------------------ */
@@ -265,8 +274,8 @@ return [
         'pending'   => 'A aguardar aprovação',
         'draft'     => 'Rascunho',
         'published' => 'Publicada',
-        'needs_approval' => 'Está a aguardar aprovação: escolher «Publicada» não basta para a mostrar aos condóminos. Vão vê-la quando estiver aprovada, com o escudo ao lado do título na lista de sinalizações.',
-        'waiting_approver' => 'Está a aguardar aprovação: escolher «Publicada» não basta para a mostrar aos condóminos. Vão vê-la quando for aprovada por quem aprova as sinalizações.',
+        'needs_approval' => 'Ainda não está aprovada: os condóminos não a veem.',
+        'waiting_approver' => 'Ainda não está aprovada: os condóminos não a veem. Deve aprová-la quem aprova as sinalizações.',
     ],
 
     'privacy' => [
@@ -298,5 +307,37 @@ return [
         'comments_dialog_description' => 'Configure os comentários para esta ocorrência.',
         'can_comment'                 => 'Permitir comentários',
         'commenti_moderati'           => 'Comentários em moderação',
+    ],
+
+    'assignment' => [
+        'label' => 'Atribuída a',
+        'none' => 'Ninguém',
+        'placeholder' => 'Escolha a quem atribuir',
+        'assign_to_me' => 'Atribuir a mim',
+        'assigned' => 'Ticket atribuído a :name.',
+        'unassigned' => 'Atribuição removida.',
+        'not_assignable' => 'Esta pessoa não pode receber tickets: não tem acesso ao painel ou está suspensa.',
+        // P6 della Fase 1-bis della beta.12: la persona scelta cancellata mentre la scheda era aperta.
+        'not_found' => 'A pessoa escolhida já não existe: recarregue a página e escolha de novo a quem atribuir o ticket.',
+        'assigned_by' => 'Atribuída por :user em :date às :time',
+        'assigned_on' => 'Atribuída em :date às :time',
+        'inactive' => ':name já não tem acesso ao painel: atribua o ticket a outra pessoa.',
+        'inactive_short' => 'Não está ativo',
+        'followed_by' => 'Seguida por :name',
+        'filter_mine' => 'A mim',
+        'filter_nobody' => 'A ninguém',
+    ],
+    // Coda 671: ações rápidas da ficha (decisões 466 e 487).
+    'quick' => [
+        'change_status' => 'Alterar o estado do trabalho',
+        'change_priority' => 'Alterar o nível de prioridade',
+        'close_title' => 'Fechar a ocorrência?',
+        'close_description' => 'A ocorrência passa a «Fechada» e a sua tarefa sai do Action inbox; se a reabrir, volta. Não é enviado nenhum email.',
+        'close_confirm' => 'Fechar a ocorrência',
+        // P6 della Fase 1-bis della beta.12: i rifiuti del valore veloce, con le parole della pagina.
+        'invalid_status' => 'Escolha um estado da lista: aberto, em andamento ou fechado.',
+        'invalid_priority' => 'Escolha uma prioridade da lista: baixa, média, alta ou urgente.',
+        'one_at_a_time' => 'Mude uma coisa de cada vez: o estado ou a prioridade.',
+        'nothing_chosen' => 'Escolha o estado ou a prioridade.',
     ],
 ];

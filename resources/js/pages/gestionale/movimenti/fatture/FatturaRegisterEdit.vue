@@ -117,6 +117,8 @@ interface Conto {
     }[]
     /** La competenza già dichiarata sulla voce in un piano rate della gestione (decisione 20), se c'è. */
     competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[] } | null
+    /** Coda 687: la gestione del piano dei conti della voce; il menu delle righe offre quelle della gestione scelta. */
+    gestione_id?: number | null
 }
 
 interface Banca {
@@ -249,7 +251,9 @@ const form = useForm({
         // Trovato dalla Fase 1-bis della beta.19 (lenti «segno» e «persistenza»).
         importo_imponibile: centsToEuro(r.importo_imponibile) * (props.fattura.tipo_documento === 'nota_credito' ? -1 : 1),
         aliquota_iva: r.aliquota_iva,
-        is_sopravvenienza: false, // Edit non supporta sopravvenienze per fatture esistenti
+        // Coda 687 (decisione 507): il segno «Fuori preventivo» come è salvato. Fino alla 1.12.0-beta.11 si ricaricava spento, e il salvataggio lo
+        // toglieva: la fattura non si metteva più a rate da nessuna delle due schede (prova B1). La riga resta sulla sua voce tecnica, che non si cambia.
+        is_sopravvenienza: Boolean(r.is_sopravvenienza),
         concorre_base_ritenuta: r.concorre_base_ritenuta ?? true,
     })) : [{
         descrizione: '',
@@ -470,7 +474,8 @@ const budgetImpacts = computed(() => {
     }>();
 
     form.righe.forEach((r: any, idx: number) => {
-        if (!r.conto_id) return;
+        // Coda 687: una riga «Fuori preventivo» non consuma il budget di una voce: sta sulla sua voce tecnica, che vale € 0,00 per costruzione.
+        if (!r.conto_id || r.is_sopravvenienza) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
 
@@ -530,9 +535,11 @@ const lordoRigaRegistratoCents = (idx: number, riga: { importo_imponibile: unkno
         : euroToCents(riga.importo_imponibile) + iva;
 };
 
-const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown; is_sopravvenienza?: boolean }): boolean => {
     // ⚠️ Coda 122: una nota di credito non può mai sforare un budget che sta liberando.
     if (isNotaCredito.value) return false;
+    // Coda 687: la riga «Fuori preventivo» è fuori dal budget per definizione.
+    if (riga.is_sopravvenienza) return false;
 
     if (!riga.conto_id) return false;
     const c = props.conti.find(c => c.id === riga.conto_id);
@@ -672,11 +679,29 @@ watch(
     { immediate: true }
 );
 
+// Coda 687 (decisione 507): la pagina parte dalla gestione della fattura (la colonna `gestione_id`, che il server legge dalla scrittura se è vuota). Fino
+// alla 1.12.0-beta.11 questo controllo, all'apertura, metteva l'ordinaria: una fattura della straordinaria modificata anche solo nella scadenza finiva
+// sull'ordinaria (prova B4). L'ordinaria resta la proposta solo quando l'esercizio cambia e la gestione di prima non vale per quello nuovo.
+const gestioneValePerEsercizio = (gestioneId: number | null, esercizioId: number | null) => {
+    const g = props.gestioni.find(x => x.id === gestioneId);
+    if (!g || !esercizioId) return false;
+    return !g.esercizio_ids || g.esercizio_ids.length === 0 || g.esercizio_ids.includes(esercizioId);
+};
 watch(() => form.esercizio_id, (v) => {
+    if (gestioneValePerEsercizio(form.gestione_id, v)) return;
     form.gestione_id = null;
     if (!v || !props.gestioni.length) return;
     form.gestione_id = props.gestioni.find(g => g.tipo === 'ordinaria')?.id ?? props.gestioni[0].id;
 }, { immediate: true });
+
+/**
+ * Coda 687 (decisione 507): le voci offerte nelle righe sono della gestione scelta (prima erano quelle di tutto il condominio). Restano nel menu le voci
+ * che le righe hanno già, anche di un'altra gestione: la riga si vede com'è, e il server dice di sceglierne una della gestione.
+ */
+const contiDellaGestione = computed(() => {
+    const giaNelleRighe = new Set(form.righe.map((r: any) => r.conto_id).filter((id: unknown) => id !== null && id !== undefined));
+    return props.conti.filter(c => c.gestione_id === undefined || c.gestione_id === null || c.gestione_id === form.gestione_id || giaNelleRighe.has(c.id));
+});
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -1279,16 +1304,20 @@ const pageGuides = [
 
                                         <!-- Capitolo di spesa -->
                                         <div class="col-span-12 md:col-span-8 relative">
-                                            <!-- Nessun toggle "Fuori Preventivo" qui: in modifica le sopravvenienze non sono
-                                                 accettate dal server (UpdateFatturaRequest le respinge con un 422 che questo
-                                                 form non mostra). Il flusso corretto è storno + nuova registrazione. -->
+                                            <!-- Nessun toggle «Fuori preventivo» qui: una riga nuova non lo diventa in modifica (UpdateFatturaRequest lo
+                                                 rifiuta; il flusso è storno + nuova registrazione). Una riga che lo è già lo resta (Coda 687): si vede con
+                                                 il suo segno, e la voce tecnica non si cambia. -->
                                             <div class="flex items-center justify-between mb-1.5 min-h-[28px]">
                                                 <Label class="text-[10px] font-bold uppercase text-slate-400">Capitolo di spesa</Label>
+                                                <span v-if="riga.is_sopravvenienza" data-segno="fuori-preventivo"
+                                                    class="text-[11px] font-semibold rounded-md px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:border-amber-800">
+                                                    Fuori preventivo
+                                                </span>
                                             </div>
 
                                             <v-select
                                                 v-model="riga.conto_id"
-                                                :options="conti"
+                                                :options="contiDellaGestione"
                                                 :disabled="riga.is_sopravvenienza"
                                                 label="nome"
                                                 :reduce="(c: Conto) => c.id"
@@ -1337,6 +1366,7 @@ const pageGuides = [
                                             <v-select
                                                 v-model="riga.immobile_id"
                                                 :options="immobili"
+                                                :disabled="riga.is_sopravvenienza"
                                                 label="label"
                                                 :reduce="(i: Immobile) => i.id"
                                                 placeholder="Tutti (Spesa Comune)"
@@ -1409,7 +1439,7 @@ const pageGuides = [
                                                 </span>
                                             </div>
                                             <Button variant="ghost" size="icon" type="button" @click="removeRiga(Number(idx))"
-                                                class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
+                                                class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
                                                 <Trash2 class="w-4 h-4" />
                                             </Button>
                                         </div>

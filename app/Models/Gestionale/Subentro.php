@@ -46,6 +46,15 @@ class Subentro extends Model
     public const ARRETRATO_AL_DEFUNTO = 'defunto';
 
     /**
+     * Decisione 483: nella successione, gli interessi del defunto dopo il decesso. «Si fermano al decesso»: nella proposta degli interessi del defunto, sulle
+     * rate delle unità del passaggio, l'ultimo giorno contato è il giorno prima del decesso; «continuano a suo nome»: la proposta continua a contare i giorni.
+     * Di serie la prima con l'arretrato agli eredi, la seconda con l'arretrato a nome del defunto ({@see interessiDiSerie()}). La scelta sta nella colonna
+     * `interessi_del_defunto`, sul passaggio e su quelli delle pertinenze, e nel registro (`arretrato.interessi_del_defunto`); l'annullamento la toglie.
+     */
+    public const INTERESSI_AL_DECESSO = 'al_decesso';
+    public const INTERESSI_CONTINUANO = 'continuano';
+
+    /**
      * Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si
      * sceglie, senza preselezione. Nella richiesta i valori sono `scrivi` e `non_scrivere`; nel registro, `scritto` e `non_scritto`.
      * Decisione 77 (1.11.0-beta.50): le stesse due voci alla fine di una locazione, con un nuovo inquilino o senza.
@@ -68,7 +77,7 @@ class Subentro extends Model
         'riga_uscente_id', 'riga_entrante_id', 'tipologia', 'tipo_passaggio', 'decorrenza',
         'data_fine_locazione', 'regime_contratto', 'estremi_titolo', 'copia_autentica_il', 'documento_id',
         'nota', 'nota_cancello', 'nota_conguaglio', 'conguaglio_annullato_il', 'nota_annullamento_conguaglio', 'utente_id',
-        'annullato_il', 'annullato_da', 'nota_annullamento', 'registro',
+        'annullato_il', 'annullato_da', 'nota_annullamento', 'registro', 'interessi_del_defunto', 'interessi_eredi',
     ];
 
     protected $casts = [
@@ -78,6 +87,8 @@ class Subentro extends Model
         'conguaglio_annullato_il' => 'datetime',
         'annullato_il' => 'datetime',
         'registro' => 'array',
+        // Decisioni 493 (14) e 494 (2): le otto scelte sugli interessi degli eredi cambiate per questa sola successione; null: le regole del condominio.
+        'interessi_eredi' => 'array',
     ];
 
     /**
@@ -103,6 +114,12 @@ class Subentro extends Model
     public function annullato(): bool
     {
         return $this->annullato_il !== null;
+    }
+
+    /** Decisione 483: la scelta di serie per gli interessi del defunto dopo il decesso, dalla strada dell'arretrato. */
+    public static function interessiDiSerie(?string $arretrato): string
+    {
+        return $arretrato === self::ARRETRATO_AGLI_EREDI ? self::INTERESSI_AL_DECESSO : self::INTERESSI_CONTINUANO;
     }
 
     /**

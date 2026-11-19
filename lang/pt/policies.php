@@ -20,6 +20,7 @@ return [
     'create_ticket'             => "You don't have sufficient permissions to create a new ticket.",
     'edit_tickets'              => "You don't have sufficient permissions to edit tickets.",
     'delete_tickets'            => "You don't have sufficient permissions to delete tickets.",
+    'assign_ticket'             => 'Não tem permissões suficientes para atribuir este ticket de avaria!',
     // Buildings
     'view_buildings'            => "You don't have sufficient permissions to view buildings.",
     'create_building'           => "You don't have sufficient permissions to create a new building.",

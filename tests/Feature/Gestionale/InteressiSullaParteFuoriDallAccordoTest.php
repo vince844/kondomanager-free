@@ -111,3 +111,16 @@ it('la scelta sulla parte fuori dall\'accordo si salva con l\'accordo e la fines
         'scadenze' => aclCalendario(['10,00'], ['2026-07-31']), 'interessi_parte_fuori' => 'forse',
     ])->assertStatus(422)->assertJsonValidationErrors(['interessi_parte_fuori']);
 });
+
+it('Coda 678 (decisione 485): con «restano sospesi» la proposta dice quanto resta fuori per intero (€ 200,00, dei quali € 150,00 nell\'accordo); di serie, o con l\'accordo che copre tutta la rata, niente', function () {
+    // Non copre: le cifre degli interessi (provate sopra, invariate) né la frase a video (la prova vitest della proposta).
+    [$s] = ipfNeri($this, 'sospesi');
+    $this->travelTo('2026-07-20 10:00:00');
+    $neri = accDi(accProposta($this, $s, ['Neri'], '2026-07-20')->assertOk()->json(), $s, 'Neri');
+    expect([$neri['in_accordo'], $neri['fuori_per_intero'], $neri['di_cui_nell_accordo']])->toBe([15000, 20000, 15000]);
+
+    [$s2] = ipfNeri($this, null);
+    $this->travelTo('2026-07-20 10:00:00');
+    $neri2 = accDi(accProposta($this, $s2, ['Neri'], '2026-07-20')->assertOk()->json(), $s2, 'Neri');
+    expect([$neri2['in_accordo'], $neri2['fuori_per_intero'], $neri2['di_cui_nell_accordo']])->toBe([15000, 0, 0]);
+});

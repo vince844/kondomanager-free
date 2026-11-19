@@ -288,7 +288,7 @@ async function confirmDelete(): Promise<void> {
           <Transition name="fade">
             <div
               v-if="ui.showDelayedLoading && isLoading"
-              class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2"
+              class="absolute inset-0 bg-white/60 dark:bg-slate-950/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2"
             >
               <Loader2 class="w-8 h-8 animate-spin text-primary" />
               <span class="text-sm font-medium text-gray-500">{{
@@ -391,7 +391,7 @@ async function confirmDelete(): Promise<void> {
             <Empty
               v-if="showNoResults || showNoTickets"
               key="empty"
-              class="border border-dashed bg-gray-50/50"
+              class="border border-dashed bg-gray-50/50 dark:bg-slate-900/40"
             >
               <EmptyHeader>
                 <EmptyMedia variant="icon">

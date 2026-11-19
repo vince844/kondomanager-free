@@ -241,4 +241,14 @@ class SegnalazionePolicy
 
         return CondominioDellUtente::appartiene($user, $segnalazione->condominio_id);
     }
+
+    /**
+     * Chi può assegnare le segnalazioni (decisione 294).
+     */
+    public function assegna(User $user, Segnalazione $segnalazione): Response
+    {
+        return \App\Support\Segnalazioni\AssegnazioneSegnalazioni::puoAssegnare($user)
+            ? Response::allow()
+            : Response::deny(__('policies.assign_ticket'));
+    }
 }

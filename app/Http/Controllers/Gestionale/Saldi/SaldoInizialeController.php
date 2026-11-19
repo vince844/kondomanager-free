@@ -180,6 +180,8 @@ class SaldoInizialeController extends Controller
                 ->values()->all();
             foreach ($immobile->saldi as $saldo) {
                 $saldo->e_legata = $saldo->passaggio_id !== null;
+                // Decisione 529: la coppia del versamento di un erede, che il Wallet non cambia (niente matita né cestino, la frase nel titolo).
+                $saldo->e_versamento_erede = \App\Services\Gestionale\Accessori\VersamentoDegliEredi::rigaDellaCoppia($saldo);
                 $saldo->passaggio_in_parole = $saldo->passaggio_id !== null ? ($legati[(int) $saldo->passaggio_id] ?? null) : null;
             }
         }
@@ -324,6 +326,10 @@ class SaldoInizialeController extends Controller
     {
         abort_unless($saldo->condominio_id === $condominio->id, 403);
 
+        // Decisione 529 (1.12.0-beta.12): la coppia del versamento di un erede sul debito ereditato si toglie solo stornando l'incasso.
+        if (\App\Services\Gestionale\Accessori\VersamentoDegliEredi::rigaDellaCoppia($saldo)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['saldo' => \App\Services\Gestionale\Accessori\VersamentoDegliEredi::FRASE_COPPIA_NEL_WALLET]);
+        }
         // B2 (inv. 19): una gamba sola della coppia di conguaglio non si cancella — la somma non farebbe
         // più zero. 422 e non 403: è un errore di campo che il pannello sa mostrare, come per «Modifica».
         if ($saldo->dellArretrato()) {

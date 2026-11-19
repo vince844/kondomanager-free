@@ -108,7 +108,9 @@ class LetteraNotification extends LocalizedNotification implements ShouldQueue
         if ($riga->anagrafica_id === null) {
             return true;
         }
-        $lettura = app(LetturaDebiti::class)->perPersona((int) $riga->condominio_id, (int) $riga->anagrafica_id)['rate'];
+        // Decisione 493 (12): con il debito ereditato al suo posto, come la lettera l'ha letto da «Rate scadute».
+        $lettura = app(\App\Services\Gestionale\Accessori\DebitoEreditato::class)->rateConIlDebitoEreditato((int) $riga->condominio_id, (int) $riga->anagrafica_id,
+            app(LetturaDebiti::class)->perPersona((int) $riga->condominio_id, (int) $riga->anagrafica_id)['rate']);
         $oggi = collect($lettura)->mapWithKeys(fn ($r) => [$r['rata_id'] . '|' . ($r['immobile_id'] ?? '') => (int) $r['residuo']]);
         $inAccordo = ! empty($riga->dati['anche_in_accordo']) ? []
             : app(AccordiRientro::class)->fuoriDalleLettere((int) $riga->condominio_id, (int) $riga->anagrafica_id, $lettura, DateHelper::oggiUtente());

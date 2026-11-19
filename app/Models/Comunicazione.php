@@ -43,12 +43,31 @@ class Comunicazione extends Model implements Commentable
         'can_comment' => 'boolean',
         'commenti_moderati' => 'boolean',
         'allegati_moderati' => 'boolean',
+        'programmata_per' => 'datetime',
+        'pubblicata_il' => 'datetime',
     ];
 
     // Add this method to the model
     protected static function boot()
     {
         parent::boot();
+
+        static::saving(function (self $comunicazione) {
+            $visibile = (bool) $comunicazione->is_published && (bool) $comunicazione->is_approved;
+            if ($visibile) {
+                if ($comunicazione->pubblicata_il === null) {
+                    $comunicazione->pubblicata_il = now();
+                }
+            } else {
+                $comunicazione->pubblicata_il = null;
+            }
+
+            $puoEssereProgrammata = (bool) $comunicazione->is_approved && ! (bool) $comunicazione->is_published;
+            if (! $puoEssereProgrammata) {
+                $comunicazione->programmata_per = null;
+                $comunicazione->programmata_da = null;
+            }
+        });
 
         // Listen to the 'creating' event to generate the slug before saving
         static::creating(function (self $comunicazione) {

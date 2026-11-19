@@ -11,6 +11,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
 use App\Models\Saldo;
+use App\Services\Gestionale\Accessori\VersamentoDegliEredi;
 use Carbon\CarbonImmutable;
 
 /**
@@ -593,7 +594,9 @@ final class DefuntoNelPiano
      */
     private static function righeLegate(array $persone, PianoRate $piano, int $immobileId, array $passaggiIds): \Illuminate\Support\Collection
     {
-        return Saldo::whereIn('anagrafica_id', $persone ?: [0])->whereIn('passaggio_id', $passaggiIds ?: [0])->where('gestione_id', $piano->gestione_id)
+        // Decisione 538: senza le coppie dei versamenti degli eredi (decisione 529), legate alla successione ma non la sua parte. Lette come saldi della
+        // successione, l'avviso diceva «il saldo legato alla successione è di € 32,79 a debito invece di € 1,74 a credito: correggilo dal Wallet».
+        return VersamentoDegliEredi::senzaLeCoppie(Saldo::whereIn('anagrafica_id', $persone ?: [0])->whereIn('passaggio_id', $passaggiIds ?: [0]))->where('gestione_id', $piano->gestione_id)
             ->where('immobile_id', $immobileId)->where('saldo_iniziale', '!=', 0)
             ->where(fn ($q) => $q->where('is_applicato', false)->orWhere('piano_rate_id', $piano->id))
             ->get();
@@ -725,7 +728,8 @@ final class DefuntoNelPiano
      */
     private static function saldiLegatiAltrove(array $persone, PianoRate $piano, int $immobileId, array $passaggiIds): array
     {
-        $righe = Saldo::with('pianoRate')->whereIn('anagrafica_id', $persone ?: [0])->whereIn('passaggio_id', $passaggiIds ?: [0])->where('gestione_id', $piano->gestione_id)
+        // Decisione 538: senza le coppie dei versamenti degli eredi, come `righeLegate`.
+        $righe = VersamentoDegliEredi::senzaLeCoppie(Saldo::with('pianoRate')->whereIn('anagrafica_id', $persone ?: [0])->whereIn('passaggio_id', $passaggiIds ?: [0]))->where('gestione_id', $piano->gestione_id)
             ->where('immobile_id', $immobileId)->where('saldo_iniziale', '!=', 0)->where('is_applicato', true)->whereNotNull('piano_rate_id')->where('piano_rate_id', '!=', $piano->id)
             ->orderBy('id')->get()->filter(fn (Saldo $x) => $x->pianoRate !== null && ! $x->pianoRate->eImmutabile())->values();
         $fuori = FermataDopoScrivi::fuoriDalWallet($righe)->pluck('id')->all();

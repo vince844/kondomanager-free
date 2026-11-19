@@ -23,25 +23,25 @@ trait FilterByNotificationPreference
     public function filterByNotificationPreference(Builder $query, string $type): Builder
     {
         $model = $query->getModel();
-        $permissionName = $this->getRequiredPermissionForNotification($type);
+        $permissionNames = $this->getRequiredPermissionsForNotification($type);
 
         if (method_exists($model, 'user')) {
             return $query
                 ->with(['user.notificationPreferences', 'user.roles.permissions', 'user.permissions'])
-                ->whereHas('user', function ($userQuery) use ($type, $permissionName) {
+                ->whereHas('user', function ($userQuery) use ($type, $permissionNames) {
                     // User has enabled the notification type
                     $userQuery->whereHas('notificationPreferences', function ($prefQuery) use ($type) {
                         $prefQuery->where('type', $type)->where('enabled', true);
                     });
 
                     // User has the required permission (direct or via roles)
-                    if ($permissionName) {
-                        $userQuery->where(function ($query) use ($permissionName) {
-                            $query->whereHas('permissions', function ($permQuery) use ($permissionName) {
-                                $permQuery->where('name', $permissionName);
+                    if ($permissionNames !== []) {
+                        $userQuery->where(function ($query) use ($permissionNames) {
+                            $query->whereHas('permissions', function ($permQuery) use ($permissionNames) {
+                                $permQuery->whereIn('name', $permissionNames);
                             })
-                            ->orWhereHas('roles.permissions', function ($permQuery) use ($permissionName) {
-                                $permQuery->where('name', $permissionName);
+                            ->orWhereHas('roles.permissions', function ($permQuery) use ($permissionNames) {
+                                $permQuery->whereIn('name', $permissionNames);
                             });
                         });
                     }
@@ -54,30 +54,31 @@ trait FilterByNotificationPreference
             ->whereHas('notificationPreferences', function ($prefQuery) use ($type) {
                 $prefQuery->where('type', $type)->where('enabled', true);
             })
-            ->when($permissionName, function ($query) use ($permissionName) {
-                $query->where(function ($query) use ($permissionName) {
-                    $query->whereHas('permissions', function ($permQuery) use ($permissionName) {
-                        $permQuery->where('name', $permissionName);
+            ->when($permissionNames !== [], function ($query) use ($permissionNames) {
+                $query->where(function ($query) use ($permissionNames) {
+                    $query->whereHas('permissions', function ($permQuery) use ($permissionNames) {
+                        $permQuery->whereIn('name', $permissionNames);
                     })
-                    ->orWhereHas('roles.permissions', function ($permQuery) use ($permissionName) {
-                        $permQuery->where('name', $permissionName);
+                    ->orWhereHas('roles.permissions', function ($permQuery) use ($permissionNames) {
+                        $permQuery->whereIn('name', $permissionNames);
                     });
                 });
             });
     }
 
     /**
-     * Get the permission name required for the given notification type from config.
+     * The permission names required for the given notification type from config: one, or a list of which any is enough (Coda 683 (3)).
      *
      * @param string $type
-     * @return string|null
+     * @return list<string>
      */
-    protected function getRequiredPermissionForNotification(string $type): ?string
+    protected function getRequiredPermissionsForNotification(string $type): array
     {
         $types = collect(Config::get('notifications.types.common', []))
             ->merge(Config::get('notifications.types.admin', []));
 
-        return $types[$type]['permission']->value ?? null; // Assuming permission is an Enum
+        $permesso = $types[$type]['permission'] ?? null;
+
+        return $permesso === null ? [] : \App\Services\NotificationPreferenceService::permessi($permesso);
     }
 }
-

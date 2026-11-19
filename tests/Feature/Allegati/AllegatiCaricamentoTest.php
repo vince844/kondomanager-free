@@ -11,7 +11,8 @@
  * sul disco dei documenti con un nome casuale, nella cartella dell'elemento (`documenti/allegati/<tipo>/<id>/`),
  * con un percorso relativo che è lo stesso sul disco locale e su un disco S3: database e file passano insieme
  * da un'installazione all'altra. Il nome originale, il tipo letto dal contenuto, il peso e l'autore stanno nella
- * riga. Dove c'è un limite di spazio (`LIMITE_SPAZIO_MB`) e lo spazio è finito, gli allegati nuovi si rifiutano.
+ * riga; il peso è quello del file salvato, che per una foto è il file senza i dati della foto (decisione 531, le prove in
+ * `tests/Feature/FotoAllegati/FotoAllegatiSenzaDatiTest.php`). Dove c'è un limite di spazio (`LIMITE_SPAZIO_MB`) e lo spazio è finito, gli allegati nuovi si rifiutano.
  *
  * Lo stato: pubblicato subito per chi può approvare; per chi ha «Pubblica» solo se l'elemento non chiede la
  * moderazione; in attesa in ogni altro caso. Il valore di partenza della moderazione di un elemento nuovo viene
@@ -57,6 +58,7 @@ test('il condòmino carica una foto JPG, un PNG, un WebP e un PDF sulla segnalaz
             ->and(basename($riga->path))->not->toContain(pathinfo($riga->name, PATHINFO_FILENAME))
             ->and(pathinfo($riga->path, PATHINFO_EXTENSION))->toBe(pathinfo($riga->name, PATHINFO_EXTENSION))
             ->and((int) $riga->created_by)->toBe($this->mario->id)
+            // Decisione 531: il peso del file salvato, non di quello caricato (il JPG di GD perde il suo commento «CREATOR: gd-jpeg»).
             ->and((int) $riga->file_size)->toBe(strlen($disco->get($riga->path)))
             ->and((bool) $riga->is_published)->toBeTrue();
         $disco->assertExists($riga->path);

@@ -52,7 +52,7 @@ import {
     Trash2,
     X,
 } from 'lucide-vue-next';
-import { trans, wTrans } from 'laravel-vue-i18n';
+import { trans, transChoice, wTrans } from 'laravel-vue-i18n';
 import type { AllegatiConfig, AllegatoAccesso, AllegatoItem, AllegatoTipoElemento } from '@/types/allegati';
 
 interface Props {
@@ -76,6 +76,11 @@ const props = withDefaults(defineProps<Props>(), {
         formati: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
     }),
 });
+
+// Coda 683 (4): «N / massimo» conta tutti i file dell'elemento, come i posti rimasti (un server di prima non manda `totale`: allora i file che
+// si vedono). Chi ne vede meno legge una riga che lo dice; il numero arriva dal server, i file che non vede no.
+const totaleAllegati = computed(() => Math.max(props.config.totale ?? props.allegati.length, props.allegati.length));
+const nonVisibili = computed(() => totaleAllegati.value - props.allegati.length);
 
 // Standard 16, la potenza di Inertia: ogni azione chiede indietro solo gli allegati, le loro impostazioni, il messaggio e i numeri del menu,
 // e la pagina tiene il suo stato (le tre schede che usano il riquadro chiamano così queste proprietà).
@@ -288,7 +293,7 @@ function confermaElimina() {
                     <Files class="h-4 w-4 text-muted-foreground" />
                     <span>{{ trans('allegati.title') }}</span>
                     <Badge variant="secondary" class="tabular-nums">
-                        {{ allegati.length }} / {{ config.massimo }}
+                        {{ totaleAllegati }} / {{ config.massimo }}
                     </Badge>
                 </CardTitle>
 
@@ -467,6 +472,10 @@ function confermaElimina() {
                     </div>
                 </li>
             </ul>
+
+            <p v-if="nonVisibili > 0" data-allegati-non-visibili class="text-xs text-muted-foreground">
+                {{ transChoice('allegati.counter.hidden', allegati.length, { visibili: String(allegati.length), totale: String(totaleAllegati) }) }}
+            </p>
 
             <!-- Modulo di caricamento (solo se puo_caricare) -->
             <!-- Senza la linea sopra, come il fondo del riquadro dei commenti (decisione 464) -->

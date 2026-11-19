@@ -45,7 +45,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 {{ $salutation }}
 @else
 @lang('mail.salutation')<br>
-{{ config('app.name') }}
+{{ \App\Support\Email\NomeNelleEmail::nome() }}
 @endif
 
 {{-- Subcopy --}}

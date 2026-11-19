@@ -12,9 +12,12 @@ use App\Models\Evento;
 use App\Models\Segnalazione;
 use App\Models\User;
 use App\Services\Gestionale\InboxService;
+use App\Support\Segnalazioni\AssegnazioneSegnalazioni;
 use Carbon\Carbon;
 use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 
 /**
  * Il compito dell'Inbox di una segnalazione di guasto: la regola in un posto solo. Ogni segnalazione aperta o in lavorazione ha il suo compito
@@ -98,6 +101,46 @@ final class CompitoDellaSegnalazione
             // I compiti da moderare delle comunicazioni, dei documenti e degli eventi che chi legge apre.
             CompitoDaModerare::aggiungiLaRegola($q, $moderare);
         });
+    }
+
+    /**
+     * Chi segue le segnalazioni dei compiti di una pagina (decisioni 486 e 487): per ogni id di segnalazione il nome di chi la segue (null se nessuno),
+     * se è chi guarda, e se può ancora riceverla (ha il pannello e non è sospeso: la regola di {@see AssegnazioneSegnalazioni::puoRicevere()}).
+     * Si legge dalla segnalazione, non da una copia nel compito, con due letture per tutta la pagina: le segnalazioni con il nome, e chi fra
+     * loro ha il pannello. Un permesso che a database non c'è vale «non attivo», come nella scheda.
+     *
+     * @param  iterable<int>  $idSegnalazioni
+     * @return array<int, array{nome: ?string, te: bool, attivo: bool}>
+     */
+    public static function chiLeSegue(iterable $idSegnalazioni, ?int $chiGuarda): array
+    {
+        $ids = collect($idSegnalazioni)->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
+        if ($ids === []) {
+            return [];
+        }
+        $righe = DB::table('segnalazioni')->leftJoin('users', 'users.id', '=', 'segnalazioni.assigned_to')
+            ->whereIn('segnalazioni.id', $ids)
+            ->get(['segnalazioni.id', 'segnalazioni.assigned_to', 'users.name', 'users.suspended_at']);
+        $assegnatari = $righe->pluck('assigned_to')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $conIlPannello = [];
+        if ($assegnatari !== []) {
+            try {
+                $conIlPannello = User::permission(Permission::ACCESS_ADMIN_PANEL->value)->whereIn('users.id', $assegnatari)
+                    ->pluck('users.id')->map(fn ($id) => (int) $id)->all();
+            } catch (PermissionDoesNotExist) {
+                $conIlPannello = [];
+            }
+        }
+
+        return $righe->mapWithKeys(function ($r) use ($chiGuarda, $conIlPannello) {
+            $assegnata = $r->assigned_to !== null ? (int) $r->assigned_to : null;
+
+            return [(int) $r->id => [
+                'nome' => $assegnata !== null ? (string) $r->name : null,
+                'te' => $assegnata !== null && $assegnata === $chiGuarda,
+                'attivo' => $assegnata === null || (in_array($assegnata, $conIlPannello, true) && $r->suspended_at === null),
+            ]];
+        })->all();
     }
 
     /**

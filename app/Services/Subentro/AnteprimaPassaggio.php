@@ -401,6 +401,12 @@ class AnteprimaPassaggio
         if ($uscente !== null && $tipo === 'successione' && $this->arretratoAgliEredi($dati) && is_array($anteprima['rate']['arretrato'] ?? null)) {
             $anteprima['rate']['arretrato'] += $this->accordiDelDefunto($condominio, (int) $uscente->anagrafica_id, $immobileIds, CarbonImmutable::instance($decorrenza), $dati);
         }
+        // Decisione 483: gli interessi del defunto dopo il decesso, con tutte e due le strade dell'arretrato: la scelta (di serie quella della strada) e la
+        // sua frase. La registrazione la legge da qui.
+        if ($uscente !== null && $tipo === 'successione' && is_array($anteprima['rate']['arretrato'] ?? null)) {
+            $anteprima['rate']['arretrato'] += $this->interessiDelDefunto($condominio, (int) $uscente->anagrafica_id, $anteprima['rate']['arretrato'], $immobileIds,
+                CarbonImmutable::instance($decorrenza), $dati);
+        }
 
         if ($sceltaDelConguaglio) {
             // Rilievo R2: le quote che restano a chi esce sono «comprese nel conguaglio» solo se il conguaglio si scrive.
@@ -3282,6 +3288,66 @@ class AnteprimaPassaggio
         }
 
         return ['accordi_del_defunto' => $accordi, 'accordo_del_defunto' => $scelta, 'frase_accordo_del_defunto' => implode(' ', $frasi)];
+    }
+
+    /**
+     * Decisione 483: gli interessi del defunto dopo il decesso, sulle rate delle unità del passaggio. «Si fermano al decesso»: nella sua proposta degli
+     * interessi l'ultimo giorno contato è il giorno prima del decesso, coperte o no da un accordo; «continuano a suo nome»: la proposta continua a contare i
+     * giorni. Di serie la prima con l'arretrato agli eredi, la seconda con l'arretrato a nome del defunto, anche con il legato ({@see Subentro::interessiDiSerie()}).
+     * La frase dice la scelta con i nomi; le unità solo se il defunto ne ha altre nel condominio, dove la scelta non vale.
+     *
+     * @param array<string, mixed> $arretrato l'arretrato dell'anteprima, con la sua strada (`scelta`) e il totale
+     * @param list<int> $immobileIds
+     * @return array{interessi_del_defunto: string, frase_interessi_del_defunto: string}
+     */
+    private function interessiDelDefunto(Condominio $condominio, int $defuntoId, array $arretrato, array $immobileIds, CarbonImmutable $decorrenza, array $dati): array
+    {
+        $agliEredi = ($arretrato['scelta'] ?? null) === Subentro::ARRETRATO_AGLI_EREDI;
+        $scelta = in_array($dati['interessi_del_defunto'] ?? null, [Subentro::INTERESSI_AL_DECESSO, Subentro::INTERESSI_CONTINUANO], true)
+            ? (string) $dati['interessi_del_defunto'] : Subentro::interessiDiSerie($arretrato['scelta'] ?? null);
+        $nome = (string) (Anagrafica::find($defuntoId)?->nome ?? 'il defunto');
+        $giorno = $decorrenza->format('d/m/Y');
+        // Le unità del passaggio, solo se il defunto ha (o ha avuto) altre unità nel condominio: lì la sua proposta non cambia.
+        $altre = DB::table('anagrafica_immobile')->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')
+            ->where('immobili.condominio_id', $condominio->id)->where('anagrafica_immobile.anagrafica_id', $defuntoId)
+            ->whereNotIn('anagrafica_immobile.immobile_id', $immobileIds ?: [0])->exists();
+        $unita = $altre ? $this->elenco(Immobile::whereIn('id', $immobileIds ?: [0])->orderBy('id')->get()
+            ->map(fn (Immobile $i) => trim((string) $i->nome) !== '' ? (string) $i->nome : (string) $i->etichetta)->all()) : null;
+        $eredi = array_values(array_map(fn ($e) => (string) $e['anagrafica']->nome, $this->eredi));
+        $aChi = $eredi === [] ? 'agli eredi' : FrasiObbligati::a($this->elenco($eredi));
+        $passato = (int) ($arretrato['totale'] ?? 0) > 0 ? 'il debito è passato' : 'l\'arretrato è passato';
+        $uno = count($eredi) === 1;
+
+        $frase = match (true) {
+            $scelta === Subentro::INTERESSI_AL_DECESSO && $agliEredi => sprintf('Dal %s la proposta degli interessi di %s non conta altri giorni%s: %s %s, e gli interessi li '
+                . 'propone la %s posizione, sulle %s rate.', $giorno, $nome, $unita === null ? '' : ' sulle rate di ' . $unita, $passato, $aChi,
+                $uno ? 'sua' : 'loro', $uno ? 'sue' : 'loro'),
+            $scelta === Subentro::INTERESSI_AL_DECESSO => sprintf('Dal %s la proposta degli interessi di %s non conta altri giorni%s: l\'arretrato resta a suo nome '
+                . '(«eredi di %s»), senza interessi dopo il decesso.', $giorno, $nome, $unita === null ? '' : ' sulle rate di ' . $unita, $nome),
+            $agliEredi => sprintf('La proposta degli interessi di %s continua a contare i giorni anche dopo il decesso, il %s, sulle sue rate non pagate%s: gli '
+                . 'interessi restano a suo nome, anche se %s %s.', $nome, $giorno, $unita === null ? '' : ' di ' . $unita, $passato, $aChi),
+            default => sprintf('La proposta degli interessi di %s continua a contare i giorni anche dopo il decesso, il %s, sulle sue rate non pagate%s: l\'arretrato '
+                . 'e i suoi interessi restano a suo nome («eredi di %s»).', $nome, $giorno, $unita === null ? '' : ' di ' . $unita, $nome),
+        };
+
+        $esito = ['interessi_del_defunto' => $scelta, 'frase_interessi_del_defunto' => $frase];
+        // Decisioni 493 e 494 (2): con l'arretrato agli eredi, la card «Gli interessi degli eredi»: le scelte che valgono (quelle cambiate per questa
+        // successione, altrimenti le regole del condominio), il riassunto in due righe e le otto voci per «Cambia per questa successione».
+        if ($agliEredi && $eredi !== []) {
+            $delCondominio = \App\Services\Gestionale\Accessori\RegoleDegliEredi::delCondominio((int) $condominio->id);
+            // Seconda prova della beta.12: la successione tiene solo le scelte cambiate; le altre seguono il condominio, anche se cambia dopo.
+            $proprie = is_array($dati['interessi_eredi'] ?? null) ? \App\Services\Gestionale\Accessori\RegoleDegliEredi::soloCambiate($dati['interessi_eredi'], $delCondominio) : null;
+            $valgono = \App\Services\Gestionale\Accessori\RegoleDegliEredi::unite($proprie ?? [], $delCondominio);
+            $esito += [
+                'interessi_eredi' => $valgono,
+                'interessi_eredi_propri' => $proprie,
+                'interessi_eredi_condominio' => $delCondominio,
+                'interessi_eredi_voci' => \App\Services\Gestionale\Accessori\RegoleDegliEredi::perLaPagina($valgono),
+                'frase_interessi_eredi' => \App\Services\Gestionale\Accessori\RegoleDegliEredi::riassunto($valgono, $nome, $eredi, $decorrenza->format('Y-m-d'), $scelta),
+            ];
+        }
+
+        return $esito;
     }
 
     /** @return Collection<int, array{rata: int, scadenza: string, importo: int, importo_formattato: string, intestatario: string, piano: string}> */
