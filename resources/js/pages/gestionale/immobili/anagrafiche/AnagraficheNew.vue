@@ -6,11 +6,12 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 <script setup lang="ts">
 
 import { computed, ref } from 'vue';
-import { Link, Head, useForm } from '@inertiajs/vue3';
+import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
+import Alert from '@/components/Alert.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import RipartoUsufruttoGuide from '@/components/guides/RipartoUsufruttoGuide.vue';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,7 @@ import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
+import type { Flash } from '@/types/flash';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { DropdownType } from '@/types/dropdown';
@@ -39,6 +41,9 @@ const props = defineProps<{
 }>();
 
 const { generatePath, generateRoute, hasPermission } = usePermission();
+
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
 
 // «Vai in gestione anagrafiche per crearlo» porta all'elenco del pannello, che chiede «Visualizza anagrafiche», e da lì
 // «Crea anagrafica» chiede «Crea anagrafiche» (`AnagraficaPolicy`); questa pagina si apre con il solo accesso al pannello.
@@ -127,6 +132,10 @@ const submit = () => {
         text-guide-title="Guida"
         @open-text-guide="showGuide = true"
       />
+
+      <div v-if="flashMessage">
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
 
       <ImmobileLayout>
         <div class="space-y-6">

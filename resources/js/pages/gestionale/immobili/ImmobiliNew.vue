@@ -5,13 +5,13 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle, Home, Hash, MapPin, Info } from 'lucide-vue-next';
+import { List, Plus, Users, LoaderCircle, Home, Hash, MapPin, Info } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
@@ -105,13 +105,18 @@ const comuneScelto = (c: { nome: string; codice_catasto: string }) => {
   form.codice_catasto = c.codice_catasto;
 };
 
-const submit = () => {
-    form.post(route(...generateRoute('gestionale.immobili.store', { condominio: props.condominio.id })), {
-        preserveScroll: true,
-        onSuccess: () => {
-            form.reset()
-        }
-    });
+const associaAnagrafiche = ref(false);
+
+const submit = (associa: boolean = false) => {
+    associaAnagrafiche.value = associa;
+
+    form.transform((data) => ({ ...data, associa_anagrafica: associa }))
+        .post(route(...generateRoute('gestionale.immobili.store', { condominio: props.condominio.id })), {
+            preserveScroll: true,
+            onSuccess: () => {
+                form.reset()
+            }
+        });
 };
 </script>
 
@@ -131,7 +136,7 @@ const submit = () => {
       >
       </PageHeaderGuide>
 
-      <form id="immobileForm" @submit.prevent="submit" class="space-y-6">
+      <form id="immobileForm" @submit.prevent="submit(false)" class="space-y-6">
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
           <CardHeader class="pb-3 border-b border-dashed mb-4">
@@ -362,9 +367,21 @@ const submit = () => {
               :disabled="form.processing" 
               class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
             >
-              <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+              <LoaderCircle v-if="form.processing && !associaAnagrafiche" class="h-4 w-4 animate-spin" />
               <Plus v-else class="h-3.5 w-3.5" />
               Salva Immobile
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              :disabled="form.processing"
+              @click="submit(true)"
+              class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
+            >
+              <LoaderCircle v-if="form.processing && associaAnagrafiche" class="h-4 w-4 animate-spin" />
+              <Users v-else class="h-3.5 w-3.5" />
+              Salva e associa le anagrafiche
             </Button>
         </div>
 

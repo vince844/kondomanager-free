@@ -70,6 +70,7 @@ class CreateImmobileRequest extends FormRequest
             'palazzina_id'        => ['sometimes', 'nullable', 'integer', Rule::exists('palazzine', 'id')],
             'scala_id'            => ['sometimes', 'nullable', 'integer', Rule::exists('scale', 'id')],
             'tipologia_id'        => ['required', 'integer', Rule::exists('tipologie_immobili', 'id')],
+            'associa_anagrafica'  => ['sometimes', 'boolean'],
 
             /*
              * Il legame «Pertinenza di». Tre regole che lo schema **non** presidia di proposito:
