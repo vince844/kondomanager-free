@@ -26,6 +26,7 @@ use App\Traits\HasEsercizio;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -247,10 +248,16 @@ class ImmobileController extends Controller
             
             $data = $request->validated();
             
-            Immobile::create($data);
+            // True solo con il bottone "Salva e associa le anagrafiche"; non è un campo dell'immobile.
+            $associaAnagrafiche = (bool) Arr::pull($data, 'associa_anagrafica', false);
 
-            return to_route('admin.gestionale.immobili.index', $condominio)
-                ->with($this->flashSuccess(__('gestionale.success_create_immobile')));
+            $immobile = Immobile::create($data);
+
+            $redirect = $associaAnagrafiche
+                ? to_route('admin.gestionale.immobili.anagrafiche.create', [$condominio, $immobile])
+                : to_route('admin.gestionale.immobili.index', $condominio);
+
+            return $redirect->with($this->flashSuccess(__('gestionale.success_create_immobile')));
 
         } catch (\Throwable $e) {
             
