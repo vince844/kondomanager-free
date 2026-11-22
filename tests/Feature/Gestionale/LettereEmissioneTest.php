@@ -51,7 +51,8 @@ it('l\'anteprima: chi riceve che cosa, il canale proposto per persona dalla sua 
     expect($persone['Ugo'])->toMatchArray(['totale' => 18000, 'righe' => 3, 'canale' => 'email', 'credito' => 0])
         ->and($persone['Bice'])->toMatchArray(['totale' => 8000, 'righe' => 2, 'canale' => 'email', 'credito' => 2000])
         ->and($a['credito'])->toBe([['nome' => 'Bice', 'credito' => 2000]])
-        ->and($a['conteggi'])->toBe(['email' => 2, 'stampa' => 0, 'zip' => 0])
+        // Dalla 1.12.0-beta.13 i conteggi hanno anche la PEC dalla casella dello studio e «PEC e carta».
+        ->and($a['conteggi'])->toBe(['email' => 2, 'pec' => 0, 'pec_e_carta' => 0, 'stampa' => 0, 'zip' => 0])
         ->and($a['studio_compilato'])->toBeFalse()
         ->and($a['carta_intestata'])->toBeFalse();
 

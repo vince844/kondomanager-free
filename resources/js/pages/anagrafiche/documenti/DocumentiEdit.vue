@@ -35,6 +35,8 @@ import vSelect from 'vue-select';
 import { publishedConstants } from '@/lib/documenti/constants';
 import type { PublishedType } from '@/types/documenti';
 import type { BreadcrumbItem } from '@/types';
+import VersioniDiPrima from '@/components/documenti/VersioniDiPrima.vue';
+import type { VersioneDiPrima } from '@/lib/documenti/versioniDiPrima';
 
 const props = defineProps<{
   /** Limite di caricamento già scritto per l'utente («20 MB»), calcolato dal server: non è un numero nostro. */
@@ -48,6 +50,8 @@ const props = defineProps<{
     is_approved: boolean;
     mime_type: string | null;
   };
+  /** Le versioni di prima del file (1.12.0-beta.13, decisione 559): in sola lettura. */
+  versioni?: VersioneDiPrima[];
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -166,6 +170,7 @@ function salva(): void {
         :page-subtitle="`Documento archiviato sulla scheda di ${anagrafica.nome}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
+        :storia="{ tipo: 'documento', id: props.documento.id }"
         :video-url="null"
         :back-url="generatePath('anagrafiche/:anagrafica/documenti', { anagrafica: props.anagrafica.id })"
         back-text="Torna ai documenti"
@@ -324,6 +329,10 @@ function salva(): void {
           </Button>
         </div>
       </form>
+
+      <!-- Le versioni di prima del file (decisione 559): sola lettura, con lo scaricamento dalla scheda della persona. -->
+      <VersioniDiPrima :versioni="props.versioni ?? []" :documento-id="props.documento.id" rotta="anagrafiche.documenti.versioni.download"
+        :parametri="{ anagrafica: props.anagrafica.id }" />
     </div>
   </AppLayout>
 </template>

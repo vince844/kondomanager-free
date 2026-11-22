@@ -136,6 +136,14 @@ describe('la finestra', () => {
         expect(testo()).toContain('Salvato il modello «Breve», per tutti i condomini.');
     });
 
+    test('chi resta senza un indirizzo fra quelli scelti sta in un riquadro con i nomi, fuori dalla riga dei conteggi', async () => {
+        await conAnteprima();
+        expect(el('conteggi')!.textContent).not.toContain('Senza un indirizzo');
+        const riquadro = el('senza-indirizzo-riquadro')!;
+        expect(riquadro.textContent).toContain('Senza un indirizzo fra quelli scelti: Verdi.');
+        expect(riquadro.textContent).toContain('Il suo foglio si scarica dalla sua riga, qui sotto.');
+    });
+
     test('l\'anteprima porta le scelte del riquadro e il modello; mostra il messaggio della prima persona, chi non ha un indirizzo, chi ha un foglio «non disponibile»', async () => {
         await conAnteprima();
         expect(ultimaChiamata()).toEqual(['/gestionale.esercizi.rendiconto.conguaglio.invio.anteprima',

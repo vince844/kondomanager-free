@@ -16,8 +16,12 @@
  * R2 della Fase 1-bis: una pregressa registrata prima della beta.35 può avere come periodo la data dell'assemblea di
  * quest'anno, che la finestra della motivazione precompilava. Il server la segnala (`periodo_nell_esercizio`), e il
  * carrello lo dice accanto alla competenza.
+ *
+ * Coda 688: con «Urgenza» e il giorno dei lavori del piano (`giornoDeiLavori`) la fattura senza periodo non ferma più il
+ * riparto: prende quel giorno, e il carrello lo dice.
  */
 import { euro } from '@/lib/gestionale/fatture/fatturaRettificata';
+import { giornoItaliano } from '@/lib/giorno';
 
 export interface VoceCarrello {
     ha_competenza: boolean;
@@ -30,6 +34,8 @@ export interface VoceCarrello {
 export interface ContestoCarrello {
     gestioneStraordinaria: boolean;
     urgenza: boolean;
+    /** Coda 688: «Lavori ordinati il …» del piano, `aaaa-mm-gg`, con «Urgenza» su una gestione straordinaria. */
+    giornoDeiLavori?: string | null;
 }
 
 export interface AvvisoCarrello {
@@ -52,7 +58,12 @@ export function avvisoFatturaNelCarrello(f: VoceCarrello, c: ContestoCarrello): 
         return { tono: 'nota', testo: `Competenza dichiarata: ${f.competenza}` };
     }
 
+    const giorno = c.gestioneStraordinaria && c.urgenza && c.giornoDeiLavori ? giornoItaliano(c.giornoDeiLavori) : '';
+
     if (f.senza_periodo) {
+        if (giorno) {
+            return { tono: 'avviso', testo: `Pregressa senza periodo dichiarato: la paga per intero chi era titolare il ${giorno}, il giorno dei lavori del piano, non chi lo era quando il costo è maturato.` };
+        }
         if (c.gestioneStraordinaria && c.urgenza) {
             return { tono: 'avviso', testo: `Pregressa senza periodo dichiarato: con «Urgenza» il riparto si fermerà su questa fattura. ${STORNA}` };
         }
@@ -63,6 +74,9 @@ export function avvisoFatturaNelCarrello(f: VoceCarrello, c: ContestoCarrello): 
         return { tono: 'avviso', testo: 'Pregressa senza periodo dichiarato: si ripartirà sui giorni di quest\'anno, non su quelli in cui il costo è maturato.' };
     }
 
+    if (giorno && f.selezionata) {
+        return { tono: 'nota', testo: `Senza competenza dichiarata: prende il giorno dei lavori del piano, il ${giorno}.` };
+    }
     if (c.gestioneStraordinaria && c.urgenza && f.selezionata) {
         return { tono: 'avviso', testo: 'Senza competenza dichiarata: il riparto si fermerà su questa fattura.' };
     }

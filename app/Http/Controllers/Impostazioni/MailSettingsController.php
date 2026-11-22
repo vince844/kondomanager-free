@@ -7,7 +7,13 @@ namespace App\Http\Controllers\Impostazioni;
 
 use App\Http\Controllers\Controller;
 use App\Models\MailLog;
+use App\Services\Posta\CaselleDelloStudio;
+use App\Services\Posta\ErroreDellaPec;
+use App\Services\Posta\ImprontaDellaCasella;
+use App\Services\Posta\MotivoDellaProva;
+use App\Services\Posta\ProveDelleCaselle;
 use App\Settings\MailSettings;
+use App\Support\FunzioniInstallazione;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -31,6 +37,11 @@ use Inertia\Inertia;
  * cifratura. Con il campo della password vuoto, la prova e il salvataggio verso un'altra destinazione
  * chiedono di riscriverla: la password salvata non parte mai verso un server diverso da quello per cui
  * è stata scritta, e non resta accanto a un server nuovo (Coda 311).
+ *
+ * Dalla 1.12.0-beta.13 la pagina è l'elenco delle caselle dello studio (decisione 572): la posta, qui, e
+ * la casella PEC ({@see CasellaPecController}). Il programma ricorda l'ultima prova di ogni casella con
+ * l'impronta della casella provata ({@see ProveDelleCaselle}); dove la posta la prepara chi gestisce
+ * l'installazione, salvarla e provarla rispondono 403.
  */
 class MailSettingsController extends Controller
 {
@@ -43,13 +54,49 @@ class MailSettingsController extends Controller
      * la password è già salvata (per gestire il placeholder dinamico).
      * La password non esce, nemmeno cifrata: la pagina sa solo se c'è (Coda 311).
      */
-    public function edit(MailSettings $settings)
+    public function edit(Request $request, MailSettings $settings, CaselleDelloStudio $caselle)
     {
         return Inertia::render('impostazioni/impostazioniMail', [
-            'settings'      => Arr::except($settings->toArray(), ['mail_password']),
+            // L'ultima prova (con l'impronta) e il giorno dell'impostazione sono del programma: la pagina li legge già scritti in `caselle`.
+            'settings'      => Arr::except($settings->toArray(), ['mail_password', 'mail_impostata_il', 'mail_ultima_prova', 'promemoria_convocazioni']),
             'mail_host_env' => config('mail.mailers.smtp.host'),
             'password_set'  => !empty($settings->mail_password),
+            'caselle'       => ['posta' => $caselle->posta(), 'pec' => $caselle->pec()],
+            'invii'         => $caselle->invii(),
+            // «Prima imposta la casella PEC dello studio» porta qui con la PEC aperta (proposta 11).
+            'apri'          => in_array($request->query('apri'), ['posta', 'pec'], true) ? $request->query('apri') : null,
+            'promemoria'    => self::promemoriaPerLaPagina($settings),
         ]);
+    }
+
+    /**
+     * «Promemoria per email delle convocazioni da spedire»: si cambia da solo, senza salvare la casella. È dello studio, non della casella: si cambia anche
+     * dove la posta la prepara chi gestisce l'installazione, e non chiede la password ridigitata, perché non manda la posta altrove. Il cambio è una riga
+     * della «Storia» della pagina ({@see \App\Services\RegistroModifiche\ImpostazioniNelRegistro}).
+     */
+    public function promemoria(Request $request, MailSettings $settings)
+    {
+        $request->validate(['acceso' => ['required', 'boolean']]);
+        $settings->promemoria_convocazioni = $request->boolean('acceso');
+        $settings->save();
+
+        return back();
+    }
+
+    /** L'interruttore e la sua riga «Adesso»: acceso di serie; senza un server di posta il promemoria non parte, e la riga lo dice. @return array{acceso: bool, adesso: string} */
+    private static function promemoriaPerLaPagina(MailSettings $settings): array
+    {
+        $acceso = (bool) $settings->promemoria_convocazioni;
+
+        return [
+            'acceso' => $acceso,
+            'adesso' => match (true) {
+                ! $acceso => 'Adesso: spento. Il compito resta nell\'Action inbox, senza email.',
+                \App\Services\Gestionale\Ricevute\EmissioneRicevute::senzaServerPosta() => 'Adesso: acceso, ma senza un server di posta il promemoria non parte.',
+                default => 'Adesso: acceso. A chi ha preparato l\'assemblea, due giorni lavorativi prima del giorno limite per spedire la convocazione e la mattina '
+                    . 'di quel giorno, se restano avvisi da spedire.',
+            },
+        ];
     }
 
     /**
@@ -66,6 +113,8 @@ class MailSettingsController extends Controller
      */
     public function update(Request $request, MailSettings $settings)
     {
+        $this->nonDellInstallazione();
+
         $driver = $request->mail_driver ?? 'smtp';
 
         $rules = [
@@ -96,6 +145,8 @@ class MailSettingsController extends Controller
         }
 
         try {
+            $improntaDiPrima = ProveDelleCaselle::improntaDellaPosta($settings);
+
             $settings->mail_enabled      = $request->boolean('mail_enabled');
             $settings->mail_driver       = $driver;
             $settings->mail_from_address = $request->mail_from_address;
@@ -117,6 +168,13 @@ class MailSettingsController extends Controller
                 $settings->mail_username   = null;
                 $settings->mail_password   = null;
                 $settings->mail_encryption = null;
+            }
+
+            // Il modo, il server, la porta, la cifratura, l'utente o la password cambiati: la casella torna «Da provare» (l'ultima prova ha
+            // un'altra impronta) e la riga «Adesso» dice da quando è impostata così.
+            $improntaDopo = ProveDelleCaselle::improntaDellaPosta($settings);
+            if ($improntaDopo !== null && ($improntaDopo !== $improntaDiPrima || $settings->mail_impostata_il === null)) {
+                $settings->mail_impostata_il = now()->toIso8601String();
             }
 
             $settings->save();
@@ -145,6 +203,8 @@ class MailSettingsController extends Controller
      */
     public function testConnection(Request $request, MailSettings $settings)
     {
+        $this->nonDellInstallazione();
+
         $driver = $request->mail_driver ?? 'smtp';
 
         $request->validate(['test_email' => ['required', 'email']]);
@@ -158,12 +218,15 @@ class MailSettingsController extends Controller
             ], 422);
         }
 
+        // La casella provata, per ricordare la prova (decisione 572): vale per la casella salvata solo se è la stessa.
+        $password = $passwordSalvata ? $this->decryptOrRaw($settings->mail_password) : $request->mail_password;
+        $impronta = $driver === 'smtp'
+            ? ImprontaDellaCasella::di('smtp', $request->mail_host, $request->mail_port, $request->mail_encryption, $request->mail_username, $password)
+            : ImprontaDellaCasella::sendmail();
+
         try {
             if ($driver === 'smtp') {
-                // Priorità alla password del form; quella salvata solo verso il server salvato
-                $password = $passwordSalvata
-                    ? $this->decryptOrRaw($settings->mail_password)
-                    : $request->mail_password;
+                // Priorità alla password del form; quella salvata solo verso il server salvato (calcolata sopra)
 
                 Config::set('mail.default', 'smtp');
                 Config::set('mail.mailers.smtp.host',       $request->mail_host);
@@ -191,6 +254,9 @@ class MailSettingsController extends Controller
                 $m->to($request->test_email)->subject('Test Connessione');
             });
 
+            ProveDelleCaselle::ricordaPosta(true, null, (string) $request->test_email, $impronta);
+
+            // Solo «success», come prima: il giorno e l'ora della prova la pagina li scrive da sé (Coda 121, controprova).
             return response()->json(['success' => true]);
 
         } catch (\Exception $e) {
@@ -213,8 +279,26 @@ class MailSettingsController extends Controller
                 'sent_at'       => now(),
             ]);
 
+            ProveDelleCaselle::ricordaPosta(false, $e->getMessage(), (string) $request->test_email, $impronta);
+
             // Il suggerimento è una chiave a parte: il motivo della libreria resta quello che il registro delle email e quello del programma hanno scritto.
-            $risposta = ['success' => false, 'message' => $e->getMessage()];
+            // Il motivo in parole semplici e l'azione giusta (decisione 572, proposta 7) sono un'altra chiave ancora.
+            $risposta = [
+                'success' => false,
+                'message' => $e->getMessage(),
+                'motivo' => MotivoDellaProva::per(ErroreDellaPec::motivo($e->getMessage()), 'posta'),
+            ];
+
+            // Con Sendmail su un hosting condiviso PHP ha spenta proc_open: il programma sendmail non si può lanciare (Coda 720).
+            if ($driver === 'sendmail' && stripos($e->getMessage(), 'proc_open') !== false) {
+                $risposta['motivo'] = [
+                    'chiave' => MotivoDellaProva::ALTRO,
+                    'titolo' => 'Questo hosting non permette di lanciare il programma sendmail.',
+                    'fai' => 'Scegli un server di posta (SMTP), oppure scarica i PDF e mandali dal tuo programma di posta.',
+                    'breve' => 'questo hosting non permette di lanciare il programma sendmail',
+                    'azione' => null,
+                ];
+            }
 
             if (($suggerimento = $this->suggerimentoDelRifiuto($e->getMessage(), (int) $request->mail_port)) !== null) {
                 $risposta['suggerimento'] = $suggerimento;
@@ -245,6 +329,12 @@ class MailSettingsController extends Controller
         return $eUnRifiutoDellaConnessione
             ? __('impostazioni.error_test_mail_connection_refused', ['porta' => $porta])
             : null;
+    }
+
+    /** Dove la posta la prepara chi gestisce l'installazione, lo studio non la cambia né la prova (decisione 572). */
+    private function nonDellInstallazione(): void
+    {
+        abort_if(FunzioniInstallazione::postaDellInstallazione(), 403, 'La posta la prepara chi gestisce questa installazione: qui non si cambia.');
     }
 
     /**

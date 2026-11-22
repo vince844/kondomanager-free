@@ -102,6 +102,11 @@ class EventoResource extends JsonResource
             'meta'            => $this->metaAggiornato(),
 
             'created_by'      => $this->whenLoaded('createdBy', function () {
+                                    // Un promemoria del programma non ha un autore (§7 del registro delle modifiche).
+                                    if ($this->createdBy === null) {
+                                        return ['user' => null, 'anagrafica' => null];
+                                    }
+
                                     return [
                                         'user'       => new UserResource($this->createdBy),
                                         'anagrafica' => $this->createdBy->relationLoaded('anagrafica')

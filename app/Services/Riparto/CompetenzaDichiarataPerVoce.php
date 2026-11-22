@@ -28,7 +28,7 @@ class CompetenzaDichiarataPerVoce
     /**
      * @param list<int> $contoIds
      * @param array<int, ?int> $padreDi conto → parent_id, per ereditare dal capitolo
-     * @return array<int, array{piano_rate_id: int, piano: string, tratti: list<array{dal: string, al: string}>}>
+     * @return array<int, array{piano_rate_id: int, piano: string, tratti: list<array{dal: string, al: string}>, urgenza: bool}>
      */
     public function perConti(array $contoIds, array $padreDi = [], ?int $gestioneId = null, ?int $esercizioId = null): array
     {
@@ -45,7 +45,7 @@ class CompetenzaDichiarataPerVoce
             ->when($gestioneId !== null, fn ($q) => $q->where('pr.gestione_id', $gestioneId))
             ->when($esercizioId !== null, fn ($q) => $q->where(fn ($w) => $w->where('pr.esercizio_id', $esercizioId)->orWhereNull('pr.esercizio_id')))
             ->orderByDesc('pr.id')->orderBy('cc.dal')
-            ->get(['prc.conto_id', 'pr.id as piano_rate_id', 'pr.nome as piano', 'cc.dal', 'cc.al']);
+            ->get(['prc.conto_id', 'pr.id as piano_rate_id', 'pr.nome as piano', 'pr.tipo_autorizzazione', 'cc.dal', 'cc.al']);
 
         $dichiarate = [];
         foreach ($righe->groupBy('conto_id') as $contoId => $g) {
@@ -55,6 +55,8 @@ class CompetenzaDichiarataPerVoce
                 'piano' => (string) $ultimo->piano,
                 'tratti' => $g->where('piano_rate_id', $ultimo->piano_rate_id)
                     ->map(fn ($t) => ['dal' => substr((string) $t->dal, 0, 10), 'al' => substr((string) $t->al, 0, 10)])->values()->all(),
+                // Coda 688: il giorno dei lavori di un piano d'urgenza, che la fattura registrata dopo sulla voce propone.
+                'urgenza' => $ultimo->tipo_autorizzazione === 'urgenza',
             ];
         }
 
@@ -63,6 +65,28 @@ class CompetenzaDichiarataPerVoce
             $trovata = $dichiarate[$id] ?? (isset($padreDi[$id]) && $padreDi[$id] !== null ? ($dichiarate[$padreDi[$id]] ?? null) : null);
             if ($trovata !== null) {
                 $esito[$id] = $trovata;
+            }
+        }
+
+        return $esito;
+    }
+
+    /**
+     * La pagina della fattura: le competenze di {@see perConti()}, più il giorno dei piani d'urgenza fatti **dalle fatture** (decisione 636 (1)), che sulle
+     * voci non scrivono la competenza. Per ogni voce vale il piano più recente fra i due: quello delle fatture dà il giorno come un tratto solo, dall'inizio
+     * alla fine, con `urgenza`, come quello delle voci.
+     *
+     * @param list<int> $contoIds
+     * @param array<int, ?int> $padreDi conto → parent_id, per ereditare dal capitolo
+     * @return array<int, array{piano_rate_id: int, piano: string, tratti: list<array{dal: string, al: string}>, urgenza: bool}>
+     */
+    public function perContiConLeFatture(array $contoIds, array $padreDi = []): array
+    {
+        $esito = $this->perConti($contoIds, $padreDi);
+        foreach (GiornoDellUrgenza::perVociDaiPianiDelleFatture($contoIds) as $conto => $u) {
+            if (! isset($esito[$conto]) || $esito[$conto]['piano_rate_id'] < $u['piano_rate_id']) {
+                $esito[$conto] = ['piano_rate_id' => $u['piano_rate_id'], 'piano' => $u['piano'], 'tratti' => [['dal' => $u['giorno'], 'al' => $u['giorno']]],
+                    'urgenza' => true];
             }
         }
 

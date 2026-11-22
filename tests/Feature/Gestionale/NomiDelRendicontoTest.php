@@ -44,15 +44,25 @@ function ndrCerca(string $regex): array
     return $trovate;
 }
 
+/** Il testo di una riga data come «file:riga». */
+function ndrRiga(string $dove): string
+{
+    [$nome, $numero] = explode(':', $dove);
+
+    return explode("\n", ndrFile()[$nome])[(int) $numero - 1];
+}
+
 it('«Prima nota» non è più il nome del registro di contabilità: resta solo la «Prima nota diretta» della scrittura senza fattura', function () {
     expect(ndrCerca('/Prima nota(?! diretta)/'))->toBe([]);
 });
 
 it('nessuna frase attribuisce all\'art. 1130-bis la separazione delle gestioni, l\'esercizio delle scritture, le sopravvenienze o le parole del prospetto per cassa', function () {
     // Restano le citazioni che dicono che cosa è il documento (la situazione patrimoniale e il riepilogo finanziario sono nell'articolo); nessuna
-    // lo cita per una regola che l'articolo non ha.
+    // lo cita per una regola che l'articolo non ha. Non si contano quelle della conservazione delle scritture e dei documenti giustificativi per
+    // dieci anni, che l'articolo ha davvero (la durata di serie del registro delle modifiche, 1.12.0-beta.13): il tetto resta per tutte le altre.
+    $altre = array_filter(ndrCerca('/1130-bis/i'), fn (string $dove) => ! preg_match('/documenti giustificativi/i', ndrRiga($dove)));
     expect(ndrCerca('/1130-bis.*(richiest|separa|esercizio corretto|sopravvenien|disponibilit|fuori preventivo|cassetto)|(richiest|separa|esercizio corretto|sopravvenien|fuori preventivo|cassetto).*1130-bis/i'))->toBe([])
-        ->and(count(ndrCerca('/1130-bis/i')))->toBeLessThanOrEqual(4);
+        ->and(count($altre))->toBeLessThanOrEqual(4);
 });
 
 it('la distinta delle spese dice «preventivo» e non «rendiconto condominiale»', function () {

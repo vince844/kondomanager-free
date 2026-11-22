@@ -4,11 +4,12 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PagamentiGuide from '@/components/guides/PagamentiGuide.vue';
 import DataTable from '@/components/gestionale/movimenti/pagamenti/Datatable.vue'
 import { createColumns } from '@/components/gestionale/movimenti/pagamenti/columns';
 import { usePermission } from '@/composables/permissions';
@@ -39,6 +40,9 @@ const headerBreadcrumbs = computed(() => [
     { title: 'Registro Pagamenti Fornitori' },
 ]);
 
+/** «Guida» con il suo cassetto e una guida sua, come l'elenco delle fatture. */
+const mostraGuida = ref(false);
+
 const pageGuides = [
     { title: 'Registro Uscite', description: 'Tutte le disposizioni di pagamento eseguite verso i fornitori.', icon: CreditCard, colorVariant: 'blue' as const },
     { title: 'Antifrode & Fisco', description: 'Monitoraggio IBAN, ritenute e bonifici parlanti per le detrazioni.', icon: AlertTriangle, colorVariant: 'amber' as const },
@@ -58,7 +62,11 @@ const pageGuides = [
                 :breadcrumbs="(headerBreadcrumbs as any)"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="mostraGuida = true"
             />
+            <PagamentiGuide v-model:open="mostraGuida" />
 
             <div class="w-full">
                 <section class="w-full space-y-4">

@@ -12,8 +12,18 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * in euro: il server li porta in centesimi.
  *
  * Una risposta arrivata dopo un'altra lettura (cambiata l'unità, riaperta la finestra) si scarta.
+ *
+ * Quando il server non propone nessuno (`nessuna_proposta`: nello stesso esercizio due delibere dell'opera con date diverse, decisione 322 con P17 del
+ * progetto della 1.12.0-beta.13) la finestra lo dice con il perché, non sceglie nessuna persona e non scrive «(la proposta)»: i titolari restano fra cui
+ * scegliere, e decide l'amministratore.
+ *
+ * Una spesa per il ritardo che si fonda su una delibera dell'assemblea, con «Gestisce le assemblee»: la delibera si sceglie con «Scegli la delibera», il
+ * riferimento è la sua frase e la quota si lega alla delibera (§1.4 del progetto della tappa 2).
  */
 import { computed, ref, watch } from 'vue';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 import axios from 'axios';
 import { usePermission } from '@/composables/permissions';
 import { Button } from '@/components/ui/button';
@@ -40,13 +50,20 @@ interface Proposta {
     persone?: Persona[]; unita?: Unita | Unita[]; persona?: { id: number; nome: string }; voci?: VoceDelPiano[]; spese?: Spesa[]; immobile_id?: number | null;
     causale?: string; origine?: { gestione_id: number; esercizio_id: number }; dove: { proposta: Dove | null; scelte: Dove[] }; scadenza: string; oggi: string;
     tipi?: Scelta[]; basi?: Scelta[]; avvisi?: Record<string, Record<string, string[]>>;
+    /** Il nome del condominio, per le frasi di «Scegli la delibera». */
+    condominio?: string;
+    /** Il perché, quando il programma non propone nessuno (due delibere diverse dell'opera): la scelta è dell'amministratore. */
+    nessuna_proposta?: string | null;
 }
 
 const props = defineProps<{ open: boolean; condominioId: number; origine: OrigineAddebito | null }>();
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'fatto'): void }>();
 
-const { generateRoute } = usePermission();
+const permessi = usePermission();
+const { generateRoute } = permessi;
 const rotta = (nome: string) => route(generateRoute(`gestionale.addebiti.${nome}`), { condominio: props.condominioId });
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+const delibera = ref<DeliberaDelMenu | null>(null);
 
 const proposta = ref<Proposta | null>(null);
 const errore = ref<string | null>(null);
@@ -90,7 +107,7 @@ async function leggi(immobileId: number | null = null) {
             return;
         }
         proposta.value = r;
-        modulo.value.persona = o.tipo === 'persona' ? (r.persona?.id ?? null) : (r.persone?.[0]?.anagrafica_id ?? null);
+        modulo.value.persona = o.tipo === 'persona' ? (r.persona?.id ?? null) : r.nessuna_proposta ? null : (r.persone?.[0]?.anagrafica_id ?? null);
         if (immobileId === null) {
             modulo.value.dove = r.dove.proposta ? chiaveDove(r.dove.proposta) : '';
             modulo.value.data = dataDiSerie(r.oggi, r.dove.proposta?.inizio, r.dove.proposta?.fine);
@@ -118,6 +135,7 @@ watch(() => props.open, (aperta) => {
     esito.value = null;
     modulo.value = { persona: null, unita: null, dove: '', data: '', scadenza: '', voci: [], modo: 'contributo', importo: '', causale: '', spesa: null, natura: 'contributo',
         tipo: '', base: '', riferimento: '' };
+    delibera.value = null;
     leggi();
 }, { immediate: true });
 
@@ -148,6 +166,10 @@ watch(() => modulo.value.dove, (chiave, prima) => {
         modulo.value.data = dataDiSerie(proposta.value.oggi, d.inizio, d.fine);
     }
 });
+
+/** La base «delibera» con il permesso: la delibera si sceglie, e il riferimento è la sua frase. */
+const baseDallaDelibera = computed(() => conLaDelibera.value && modulo.value.modo === 'spesa' && modulo.value.natura === 'accessorio' && modulo.value.base === 'delibera');
+watch(delibera, (d) => { modulo.value.riferimento = d ? d.frase : ''; });
 
 /** La spesa già fatturata scelta: il posto è quello della fattura, e non si cambia. */
 const spesaScelta = computed<Spesa | null>(() => (props.origine?.tipo === 'persona' && modulo.value.modo === 'spesa'
@@ -194,6 +216,9 @@ const pronto = computed(() => {
     if (props.origine?.tipo === 'persona' && m.modo === 'spesa' && m.spesa === null) {
         return false;
     }
+    if (baseDallaDelibera.value && delibera.value === null) {
+        return false;
+    }
 
     return m.importo.trim() !== '' && m.causale.trim() !== '';
 });
@@ -207,7 +232,8 @@ async function registra() {
     esito.value = null;
     inCorso.value = true;
     try {
-        const r = (await axios.post(rotta('store'), { ...dove, data: modulo.value.data, voci: vociDaMandare() })).data;
+        const r = (await axios.post(rotta('store'), { ...dove, data: modulo.value.data, voci: vociDaMandare(),
+            ...(baseDallaDelibera.value && delibera.value ? { delibera_id: delibera.value.id } : {}) })).data;
         esito.value = r.messaggio;
         emit('fatto');
         if (props.origine?.tipo === 'persona') {
@@ -275,7 +301,11 @@ async function registra() {
                                 <span class="text-slate-500">Su che cosa si fonda</span>
                                 <label v-for="b in proposta.basi ?? []" :key="b.valore" class="flex items-center gap-1"><input v-model="modulo.base" type="radio" :value="b.valore" /> {{ b.nome }}</label>
                             </div>
-                            <Input v-model="modulo.riferimento" placeholder="Il riferimento: l'articolo, la data e il verbale, il provvedimento" class="h-7 text-xs" data-testid="riferimento" />
+                            <div v-if="baseDallaDelibera" class="space-y-1" data-testid="base-dalla-delibera">
+                                <ScegliLaDelibera v-model="delibera" :condominio-id="condominioId" :condominio-nome="proposta.condominio ?? ''" ruolo="base" per-questo="questa spesa" />
+                                <p class="text-slate-500">Il riferimento è la frase della delibera.</p>
+                            </div>
+                            <Input v-else v-model="modulo.riferimento" placeholder="Il riferimento: l'articolo, la data e il verbale, il provvedimento" class="h-7 text-xs" data-testid="riferimento" />
                             <p class="text-slate-500">{{ FRASE_BASE }}</p>
                             <p v-for="a in avvisiDi(proposta.avvisi, modulo.tipo, modulo.base)" :key="a" class="text-amber-800 dark:text-amber-300" data-testid="avviso">{{ a }}</p>
                         </div>
@@ -299,9 +329,12 @@ async function registra() {
                 <fieldset v-if="origine?.tipo !== 'persona'" class="space-y-1 text-xs" data-testid="persone">
                     <legend class="text-slate-500">Chi lo paga</legend>
                     <p v-if="!(proposta.persone ?? []).length" data-testid="nessuna-persona">L'unità non ha e non ha avuto un proprietario, un nudo proprietario o un usufruttuario: aggiungi il titolare all'unità.</p>
+                    <p v-else-if="proposta.nessuna_proposta" class="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" data-testid="nessuna-proposta">
+                        <strong>Nessuna persona proposta.</strong> {{ proposta.nessuna_proposta }}
+                    </p>
                     <label v-for="(p, i) in proposta.persone" :key="p.anagrafica_id" class="flex items-start gap-2" data-testid="persona">
                         <input v-model="modulo.persona" type="radio" :value="p.anagrafica_id" class="mt-0.5" />
-                        <span><strong>{{ p.nome }}</strong> — {{ p.perche }}<template v-if="i === 0"> (la proposta)</template></span>
+                        <span><strong>{{ p.nome }}</strong> — {{ p.perche }}<template v-if="i === 0 && !proposta.nessuna_proposta"> (la proposta)</template></span>
                     </label>
                     <p class="text-slate-500">{{ FRASE_CHI }}</p>
                 </fieldset>

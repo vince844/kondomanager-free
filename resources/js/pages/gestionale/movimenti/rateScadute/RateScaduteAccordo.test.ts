@@ -9,7 +9,7 @@
  * € 1.744,10 scaduti, € 994,10 in accordo dei € 1.500,00 riconosciuti il 26/06.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 
 const routerGet = vi.fn();
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
@@ -84,7 +84,10 @@ describe('l\'accordo di rientro nell\'elenco', () => {
     test('la finestra dell\'accordo si apre dalla riga, per quella persona', async () => {
         monta();
         expect(w!.get('[data-testid="finestra-accordo"]').attributes('data-aperta')).toBe('false');
-        await w!.get('[data-testid="accordo-1"]').trigger('click');
+        await w!.get('[data-testid="menu-1"]').trigger('keydown', { key: 'Enter' });
+        await flushPromises();
+        (document.body.querySelector('[data-testid="accordo-1"]') as HTMLElement).click();
+        await flushPromises();
         expect(w!.get('[data-testid="finestra-accordo"]').attributes('data-aperta')).toBe('true');
         expect(w!.get('[data-testid="finestra-accordo"]').text()).toBe('Giulia');
     });

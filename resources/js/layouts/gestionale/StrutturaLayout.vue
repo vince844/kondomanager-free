@@ -9,7 +9,8 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
-import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins, HandCoins, Percent, Settings2 } from 'lucide-vue-next';
+import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins, HandCoins, Percent, Settings2, History } from 'lucide-vue-next';
+import { Permission } from '@/enums/Permission';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import NavSezione from '@/components/NavSezione.vue';
@@ -20,9 +21,9 @@ const page = usePage<{
 
 const condominio = computed(() => page.props.condominio);
 
-const { generatePath } = usePermission();
+const { generatePath, hasPermission, hasRole } = usePermission();
 
-const topbarNavItems: LinkItem[] = [
+const topbarNavItems: (LinkItem & { breve?: string })[] = [
   { 
     type: 'link',
     icon: TextSearch,
@@ -70,7 +71,16 @@ const topbarNavItems: LinkItem[] = [
     icon: Settings2,
     title: 'Impostazioni',
     href: generatePath('gestionale/:condominio/impostazioni', { condominio: condominio.value.id }),
-  }
+  },
+  // Il registro delle modifiche del condominio (1.12.0-beta.13, §14): in fondo, solo per chi ha «Vede il registro delle modifiche» (mai i ruoli del portale).
+  // Nella riga si chiama «Registro», perché le nove voci stiano su una riga (decisione 570); il nome intero resta al passaggio del mouse e nella tendina.
+  ...(hasPermission([Permission.VIEW_REGISTRO_MODIFICHE]) && !hasRole(['utente', 'fornitore']) ? [{
+    type: 'link' as const,
+    icon: History,
+    title: 'Registro delle modifiche',
+    breve: 'Registro',
+    href: generatePath('gestionale/:condominio/registro-modifiche', { condominio: condominio.value.id }),
+  }] : []),
 ];
 
 const currentPath = window.location.pathname;
@@ -79,7 +89,8 @@ const currentPath = window.location.pathname;
 
 <template>
   <div>
-    <NavSezione :items="topbarNavItems" class="mb-4" />
+    <!-- Su una riga, come i Movimenti: con la nona voce la barra andava a capo (decisione 570). -->
+    <NavSezione :items="topbarNavItems" una-riga class="mb-4" />
 
     <!-- Main content -->
     <div class="w-full">

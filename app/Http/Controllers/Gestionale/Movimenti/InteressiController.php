@@ -145,6 +145,8 @@ class InteressiController extends Controller
             'basi' => collect(BaseDegliAccessori::BASI)->map(fn ($nome, $k) => ['valore' => $k, 'nome' => $nome])->values()->all(),
             'avvisi' => self::avvisiPerCoppia(),
             'oggi' => DateHelper::oggiUtente(),
+            // Il nome del condominio, per le frasi di «Scegli la delibera» quando la base è una delibera dell'assemblea.
+            'condominio' => (string) $condominio->nome,
         ]);
     }
 

@@ -148,7 +148,11 @@ final class AddebitiIndividuali
             }
         }
 
-        $rate = DB::transaction(function () use ($condominio, $gestione, $esercizio, $pronte, $conti, $data, $utenteId) {
+        // Il registro delle modifiche: gli addebiti registrati insieme sono un gesto solo (le rate, le quote e le scritture nel lotto).
+        $gesto = \App\Services\RegistroModifiche\Gesto::su('piani_rate', 'addebiti', null, 'Addebiti individuali')->nelCondominio($condominio)
+            ->riepilogo(fn ($lotto, $rate) => 'Addebiti individuali registrati: ' . count($pronte) . (count($pronte) === 1 ? ' addebito' : ' addebiti') . ', '
+                . \App\Helpers\MoneyHelper::format((int) collect($pronte)->sum('importo')));
+        $rate = \App\Services\RegistroModifiche\RegistroModifiche::durante($gesto, function () use ($condominio, $gestione, $esercizio, $pronte, $conti, $data, $utenteId) {
             $piano = $this->pianoPer($condominio, $gestione, $esercizio, $utenteId);
             $this->ricontrollaIlTetto($pronte);
             $categoria = CategoriaEvento::firstOrCreate(['name' => CategoriaEventoEnum::SCADENZE_RATE_CONDOMINIALI->value], ['description' => 'Auto'])->id;
@@ -252,7 +256,12 @@ final class AddebitiIndividuali
         }
 
         $origine = null;
-        DB::transaction(function () use ($rata, $quote, &$origine) {
+        // Il registro delle modifiche: l'annullamento è un gesto solo; le scritture tolte per sempre sono nel lotto (rischio 6 del contesto).
+        $gesto = \App\Services\RegistroModifiche\Gesto::su('piani_rate', 'addebiti', (int) $rata->id, 'Addebito individuale')
+            ->nelCondominio((int) $rata->pianoRate->condominio_id)
+            ->riepilogo('Addebito annullato: rata n. ' . $rata->numero_rata . ' del piano «' . $rata->pianoRate->nome . '»')
+            ->rimando('piano_rate', (int) $rata->piano_rate_id, 'Piano rate «' . $rata->pianoRate->nome . '»');
+        \App\Services\RegistroModifiche\RegistroModifiche::durante($gesto, function () use ($rata, $quote, &$origine) {
             $scritture = $quote->pluck('scrittura_contabile_id')->filter()->unique()->values();
             if ($scritture->isNotEmpty()) {
                 $scritture = $scritture->merge(ScritturaContabile::whereIn('scrittura_padre_id', $scritture)->where('tipo_movimento', 'emissione_rata')->pluck('id'))->unique()->values();

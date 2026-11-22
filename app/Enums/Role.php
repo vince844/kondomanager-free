@@ -114,6 +114,12 @@ enum Role: string
                 PermissionEnum::EDIT_EVENTS,
                 PermissionEnum::PUBLISH_EVENTS,
                 PermissionEnum::APPROVE_EVENTS,
+                // Decisione 518 (3): il collaboratore apre la «Storia» delle schede dei condomini, non il registro intero né la stampa.
+                PermissionEnum::VIEW_STORIA_SCHEDE,
+                // Decisione 562: vede e gestisce le assemblee, così continua ad approvare piani e ratificare scegliendo una delibera o registrando a mano
+                // una riunione di carta; «Registra il verbale sottoscritto» lo dà l'amministratore, se vuole.
+                PermissionEnum::VIEW_ASSEMBLEE,
+                PermissionEnum::MANAGE_ASSEMBLEE,
             ],
 
             self::FORNITORE => [

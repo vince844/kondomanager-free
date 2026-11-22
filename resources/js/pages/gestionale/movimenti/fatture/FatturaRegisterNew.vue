@@ -46,7 +46,9 @@ import { euroToCents } from '@/lib/gestionale/fatture/money';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 import { oggiLocale, piuGiorni } from '@/lib/giorno';
+import { lavoriUrgentiDelleVoci } from '@/lib/gestionale/pianiRate/urgenza';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -143,7 +145,7 @@ interface Conto {
         is_pregresso?: boolean
     }[]
     /** La competenza già dichiarata sulla voce in un piano rate della gestione (decisione 20), se c'è. */
-    competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[] } | null
+    competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[]; urgenza?: boolean } | null
     /** Coda 687: la gestione del piano dei conti della voce; il menu delle righe offre quelle della gestione scelta. */
     gestione_id?: number | null
 }
@@ -851,6 +853,8 @@ const form = useForm({
     // data nei due campi. Non sta più in `dati_extra`: il service scrive le colonne.
     competenza_dal:     '',
     competenza_al:      '',
+    // 1.12.0-beta.13 (§1.4): la delibera di «Spesa deliberata il …», scelta con «Scegli la delibera»; il server ne scrive il giorno nelle due date.
+    delibera_competenza_id: null as number | null,
     conto_corrente_id:  null as number | null,
     modalita_pagamento: 'bonifico',
     iban_fornitore:     '',
@@ -877,6 +881,19 @@ const form = useForm({
     coperture: [] as any[],
     file: null as File | null,
 });
+
+// Coda 688: la fattura registrata dopo sulla voce di un piano d'urgenza propone il giorno dei lavori del piano come competenza, se la fattura non ne dice
+// una; si cambia se la fattura dice altro. Tolto a mano non torna: vuoto, il conguaglio dell'opera usa comunque il giorno del piano. Il pannello della
+// competenza lo chiama «Lavori ordinati il …», con le parole del piano, e dice da quale piano viene.
+const urgenzaDelleVoci = computed(() => lavoriUrgentiDelleVoci((form.righe as { conto_id?: number | null }[]).map((r) => competenzaPianoDi(r.conto_id ?? null))));
+const giornoProposto = ref<string | null>(null);
+watch(urgenzaDelleVoci, (u) => {
+    if (u && !form.competenza_dal && !form.competenza_al && giornoProposto.value === null) {
+        form.competenza_dal = u.giorno;
+        form.competenza_al = u.giorno;
+        giornoProposto.value = u.giorno;
+    }
+}, { immediate: true });
 
 // ⚠️ Copia locale e mutabile di `props.fornitori`, aperta con questa riprogettazione
 // (02/09/2026): il fornitore creato in linea dal modale di importazione XML non può
@@ -1966,6 +1983,10 @@ const handleSubmit = () => {
  * insieme a quella delle voci (Coda 693 (d)). Prima la scriveva questa funzione, e la
  * finestra dello sforo non si apriva più.
  */
+// 1.12.0-beta.13 (§1.4): la delibera della competenza, scelta nel pannello; nel modulo ne va l'id.
+const deliberaCompetenza = ref<DeliberaDelMenu | null>(null);
+watch(deliberaCompetenza, (d) => { form.delibera_competenza_id = d?.id ?? null; });
+
 const handleSpesaImprevistaConfirm = (payload: any) => {
     // La modale ora emette già i campi corretti, non serve più il remap manuale!
     form.dati_extra.log_legale_sopravvenienza = payload;
@@ -2060,6 +2081,7 @@ function resettaFormPerNuovoDocumento() {
     form.data_scadenza = '';
     form.competenza_dal = '';
     form.competenza_al = '';
+    deliberaCompetenza.value = null;
     form.conto_corrente_id = null;
     form.modalita_pagamento = 'bonifico';
     form.iban_fornitore = '';
@@ -2619,10 +2641,14 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                         <CompetenzaFattura
                             v-model:dal="form.competenza_dal"
                             v-model:al="form.competenza_al"
+                            v-model:delibera="deliberaCompetenza"
+                            :condominio-id="props.condominio.id"
+                            :condominio-nome="props.condominio.nome"
                             :gestione-straordinaria="gestioneSceltaStraordinaria"
                             :pregressa="form.is_pregresso"
                             :periodo-obbligatorio="periodoPregressaObbligatorio"
                             :inizio-esercizio="inizioEsercizioFattura"
+                            :lavori-urgenti="urgenzaDelleVoci"
                             :errori="{ dal: form.errors.competenza_dal, al: form.errors.competenza_al }" />
 
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
@@ -3420,6 +3446,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
             v-model:show="showSpesaImprevistaModal"
             :mode="spesaImprevistaMode"
             :condominio-id="props.condominio.id"
+            :condominio-nome="props.condominio.nome"
             :fornitore-nome="selectedFornitore?.ragione_sociale || 'Fornitore'"
             :fondi-riserva="fondi_riserva"
             :importo-imprevisto="spesaImprevistaMode === 'corrente' ? imprevistoComuneCents : eccedenzaPregressaCents"

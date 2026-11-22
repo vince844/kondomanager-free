@@ -79,6 +79,34 @@ Schedule::call(function () {
 })->name('pubblica-comunicazioni-programmate')->everyMinute();
 
 // ============================================================================
+// 4-ter. SIGILLO DEL REGISTRO DELLE MODIFICHE (Coda 679)
+// ============================================================================
+// Le righe si sigillano dopo il commit che le scrive; una riga rimasta senza posto (un processo interrotto fra il commit e il sigillo) la prende questo
+// lavoro. Prima del blocco 5: durante un ripristino non gira.
+Schedule::call(function () {
+    Artisan::call('kondomanager:sigilla-registro');
+})->name('sigilla-registro-modifiche')->everyFiveMinutes()->withoutOverlapping();
+
+// ============================================================================
+// 4-quater. CONSERVAZIONE DEL REGISTRO DELLE MODIFICHE (Coda 679, §11)
+// ============================================================================
+// Una volta al giorno si tolgono le righe più vecchie della durata scelta (di serie 10 anni): un prefisso della catena, mai un buco, saltando i condomini
+// con la cancellazione sospesa. Prima del blocco 5: durante un ripristino non gira.
+Schedule::call(function () {
+    Artisan::call('kondomanager:conserva-registro');
+})->name('conserva-registro-modifiche')->dailyAt('03:15')->withoutOverlapping();
+
+// ============================================================================
+// 4-quinquies. PROMEMORIA DELLE CONVOCAZIONI DA SPEDIRE (Coda 679)
+// ============================================================================
+// Ogni mattina alle 8:15 di Roma: a chi ha preparato l'assemblea, due giorni lavorativi prima del giorno limite del compito «Spedire la convocazione entro
+// il …» e la mattina di quel giorno, se restano avvisi da spedire. Manda ciò che è dovuto e non è ancora partito: un giorno che il pianificatore non gira,
+// parte il giorno dopo. Prima del blocco 5: durante un ripristino non gira.
+Schedule::call(function () {
+    Artisan::call('assemblee:promemoria-convocazioni');
+})->name('promemoria-convocazioni')->dailyAt('08:15')->timezone('Europe/Rome')->withoutOverlapping();
+
+// ============================================================================
 // 5. NIENTE DURANTE UN RIPRISTINO
 // ============================================================================
 // Mentre un ripristino è in corso il database è a metà import. La modalità ripristino ferma le

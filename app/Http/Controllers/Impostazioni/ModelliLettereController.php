@@ -59,6 +59,9 @@ class ModelliLettereController extends Controller
             'esempio'             => ['nome' => 'Maria Bianchi', 'totale' => TestiLettere::euro(18000), 'termine' => TestiLettere::termine(15), 'condominio' => 'Le Rose',
                 'esercizio' => 'Esercizio 2026', 'interessi' => TestiLettere::euro(118), 'spese' => TestiLettere::euro(2500), 'tasso' => '1,60 % annuo, tasso legale'],
             'puo_modificare'      => self::puoModificare($request),
+            // La sezione «Il verbale dell'assemblea»: il testo del programma (non si modifica, si duplica), i modelli dello studio con i due testi, i campi.
+            'verbale'             => ['testo_del_programma' => \App\Services\Assemblee\Verbale\ModelliDelVerbale::diSerie(),
+                'modelli' => \App\Services\Assemblee\Verbale\ModelliDelVerbale::perLaPagina(), 'campi' => \App\Services\Assemblee\Verbale\ModelliDelVerbale::CAMPI],
         ]);
     }
 

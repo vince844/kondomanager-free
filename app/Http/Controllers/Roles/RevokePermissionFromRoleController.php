@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Roles;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Http\Controllers\Controller;
 use App\Traits\HasProtectedRoles;
 use Illuminate\Http\RedirectResponse;
@@ -44,7 +45,11 @@ class RevokePermissionFromRoleController extends Controller
             abort(403, __('validation.custom.permissions.not_allowed'));
         }
 
-        $role->revokePermissionTo($permission);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($role, $permission) {
+            $permessiPrima = AttiSulleUtenze::permessiDelRuolo($role);
+            $role->revokePermissionTo($permission);
+            AttiSulleUtenze::ruolo($role, 'modificata', $permessiPrima);
+        });
 
         return back();
     }

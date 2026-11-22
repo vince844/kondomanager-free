@@ -9,7 +9,9 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart, Server } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart, Server, History, Gavel } from 'lucide-vue-next'
+import { usePermission } from '@/composables/permissions'
+import { Permission } from '@/enums/Permission'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -46,6 +48,11 @@ const newVersion = computed(() => {
   return updateInfo?.new_version || '';
 })
 
+const { hasPermission, hasRole } = usePermission()
+
+// Il registro delle modifiche dello studio (1.12.0-beta.13, §14): la card c'è solo per chi ha «Vede il registro delle modifiche».
+const vedeIlRegistro = computed(() => hasPermission([Permission.VIEW_REGISTRO_MODIFICHE]) && !hasRole(['utente', 'fornitore']))
+
 const searchTerm = ref("")
 
 const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -68,12 +75,25 @@ const apps = computed(() => [
     desc: 'impostazioni.dialogs.general_settings_description',
     href: "/impostazioni/generali", 
   },
+  ...(vedeIlRegistro.value ? [{
+    name: 'impostazioni.dialogs.registro_modifiche_title',
+    logo: History,
+    desc: 'impostazioni.dialogs.registro_modifiche_description',
+    href: "/impostazioni/registro-modifiche",
+  }] : []),
   {
     name: 'impostazioni.dialogs.print_settings_title',
     logo: Printer,
     desc: 'impostazioni.dialogs.print_settings_description',
     href: "/impostazioni/stampe",
   },
+  // Le assemblee (1.12.0-beta.13): i giorni di posta, la delega oltre il quinto, il voto discorde. Solo l'amministratore, come la rotta.
+  ...(hasRole(['amministratore']) ? [{
+    name: 'impostazioni.dialogs.assemblee_title',
+    logo: Gavel,
+    desc: 'impostazioni.dialogs.assemblee_description',
+    href: "/impostazioni/assemblee",
+  }] : []),
   {
     name: 'impostazioni.dialogs.users_settings_title',
     logo: Users,

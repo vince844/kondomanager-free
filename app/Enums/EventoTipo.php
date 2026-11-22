@@ -53,4 +53,33 @@ enum EventoTipo: string
      * di una comunicazione, o l'elemento stesso (la comunicazione, il documento dell'archivio, l'evento dell'agenda). Lo scrive `CompitoDaModerare`.
      */
     case DA_MODERARE = 'da_moderare';
+
+    /**
+     * Le assemblee (Coda 679, §4.6 e R10 del progetto della tappa 2). Il memo «Da portare in assemblea» con «Ricordamelo dal …»: un compito solo, con il memo
+     * come `eventable`, e le risposte passano dal memo. La convocazione da spedire entro il giorno, le ricevute mancanti, il nuovo titolare che non ha
+     * ricevuto la convocazione: li scrive la convocazione.
+     */
+    case MEMO_ASSEMBLEA = 'memo_assemblea';
+    case SPEDIRE_CONVOCAZIONE = 'spedire_convocazione';
+    case RICEVUTE_MANCANTI = 'ricevute_mancanti';
+    case NUOVO_TITOLARE_NON_CONVOCATO = 'nuovo_titolare_non_convocato';
+
+    /**
+     * Il verbale e la sala (la tappa del verbale; decisioni 595 (1) e 604 (3)): il verbale da registrare dalla chiusura della riunione, da trasmettere dalla
+     * registrazione; la sala da riaprire nel giorno della prosecuzione, l'assemblea rimasta in corso il giorno dopo, le due versioni da scegliere, la delega o
+     * l'apertura da decidere. Li scrive e li chiude `CompitiDelVerbale`.
+     */
+    case REGISTRARE_VERBALE = 'registrare_verbale';
+    case TRASMETTERE_VERBALE = 'trasmettere_verbale';
+    case RIAPRIRE_SALA = 'riaprire_sala';
+    case SALA_IN_CORSO = 'sala_in_corso';
+    case DUE_VERSIONI = 'due_versioni';
+    case DA_DECIDERE_IN_SALA = 'da_decidere_in_sala';
+
+    /**
+     * Il seguito delle delibere (decisioni 522 e 523): la cosa da fare dopo una delibera, con la sua data («Crea il piano straordinario entro il 15/01»), e la
+     * delibera respinta che chiede una risposta («Riproponi in assemblea» o «Chiudi con il motivo»). Le scrive e le chiude `CoseDaFare`.
+     */
+    case DELIBERA_DA_ESEGUIRE = 'delibera_da_eseguire';
+    case DELIBERA_RESPINTA = 'delibera_respinta';
 }

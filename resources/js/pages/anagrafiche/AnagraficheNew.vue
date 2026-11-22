@@ -14,6 +14,8 @@ import { Plus, LoaderCircle, Info, User, MapPin, ShieldCheck, FileText } from 'l
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import ComeSiConvoca from '@/components/assemblee/convocazione/ComeSiConvoca.vue';
+import type { MezzoConvocazione } from '@/types/assemblee';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -68,7 +70,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 const pageGuides = computed(() => [
   {
     title: trans('anagrafiche.guides.centralized_book_title'),
-    description: trans('anagrafiche.guides.centralized_book_desc'),
+    // Il mezzo delle convocazioni (art. 66 disp. att.): il campo «Come si convoca» del modulo.
+    description: `${trans('anagrafiche.guides.centralized_book_desc')} ${trans('anagrafiche.guides.come_si_convoca_desc')}`,
     icon: User,
     colorVariant: 'blue' as const
   },
@@ -103,6 +106,8 @@ const form = useForm({
   email: '',
   email_secondaria: '',
   pec: '',
+  mezzo_convocazione: null as MezzoConvocazione | null,
+  pec_comunicata_il: null as string | null,
   codice_fiscale: '',
   tipologia_documento: '',
   numero_documento: '',
@@ -381,6 +386,13 @@ const submit = () => {
                       />
                       <InputError :message="form.errors.pec" />
                   </div>
+
+                  <ComeSiConvoca
+                      v-model:mezzo="form.mezzo_convocazione"
+                      v-model:pec-comunicata-il="form.pec_comunicata_il"
+                      :errore-mezzo="form.errors.mezzo_convocazione"
+                      :errore-pec="form.errors.pec_comunicata_il"
+                  />
 
               </div>
           </CardContent>

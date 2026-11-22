@@ -5,8 +5,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 /**
- * La guida della pagina «Dispense dei sei mesi», nella finestra che si apre di lato: che cosa dice la legge, quando si registra una dispensa, come si
- * compila, che cosa cambia nelle rate scadute, la revoca e che cosa la dispensa non è. Il testo della norma arriva dalla pagina, che lo riceve dal server.
+ * La guida della pagina «Dispense dei sei mesi», nella finestra che si apre di lato: che cosa dice la legge, come la dispensa arriva in assemblea e quando
+ * si registra, come si compila, che cosa cambia nelle rate scadute, la revoca e che cosa la dispensa non è. Il testo della norma arriva dalla pagina,
+ * che lo riceve dal server.
  */
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { CalendarClock, ChevronRight, FileText, Scale, Undo2, Users } from 'lucide-vue-next';
@@ -52,8 +53,11 @@ defineEmits(['update:open']);
                         </p>
                         <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                             <ul class="space-y-2">
+                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>Quando mancano 60 giorni ai sei mesi e restano crediti da riscuotere, il programma propone il punto «Dispensa dall'agire entro sei mesi» fra quelli della prossima assemblea, senza nomi. Prima lo scrivi tu, con «Da portare in assemblea» nel riquadro dei sei mesi o nelle rate scadute.</span></li>
+                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>Approvata la dispensa, «Registra la dispensa» nel seguito della delibera apre questa pagina con la delibera e l'esercizio già scelti.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>Una delibera si registra una volta sola, anche se copre più esercizi.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>Se l'assemblea delibera di nuovo, per altri esercizi o altre persone, si registra un'altra dispensa.</span></li>
+                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>Se un'assemblea ha respinto, rinviato, revocato o annullato una delibera che riguarda la dispensa (la sua revoca, per esempio), la scheda lo dice in testa con la frase della delibera e il collegamento all'assemblea. Sono frasi: nessun conto cambia da solo.</span></li>
                             </ul>
                         </div>
                     </section>

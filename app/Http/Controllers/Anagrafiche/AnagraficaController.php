@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Anagrafiche;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Traits\OrdinaElenco;
 
 use App\Http\Controllers\Controller;
@@ -148,7 +149,7 @@ class AnagraficaController extends Controller
             DB::beginTransaction();
 
             $anagrafica = Anagrafica::create($validated);
-            $anagrafica->condomini()->attach($validated['condomini']);
+            RegistroModifiche::legame($anagrafica, 'condomini', 'Condomini', fn () => $anagrafica->condomini()->attach($validated['condomini']));
 
             DB::commit();
 
@@ -235,6 +236,9 @@ class AnagraficaController extends Controller
         return Inertia::render('anagrafiche/AnagraficheView', [
             'anagrafica' => new AnagraficaResource($anagrafica),
 
+            // «Le sue assemblee» sono nella linguetta «Assemblee» (decisione 651); qui una riga e il numero della linguetta. Null senza «Vede le assemblee».
+            'assemblee_riepilogo' => \App\Services\Assemblee\AssembleeDellaPersona::riepilogo($anagrafica, request()->user()),
+
             // ⚠️ Le unità non passano da `AnagraficaResource`: quella è condivisa da mezzo
             // programma e non carica la pivot. Si adattano qui, dove si sa cosa serve a questa
             // schermata, invece di allargare una risorsa che altri usano per altro.
@@ -298,23 +302,49 @@ class AnagraficaController extends Controller
      * @param  \App\Models\Anagrafica  $anagrafiche
      * @return \Illuminate\Http\RedirectResponse
      */
+    /** La PEC cambiata nella scheda: il giorno in cui la persona aveva comunicato quella di prima non vale per la nuova. */
+    public const PEC_CAMBIATA = 'La PEC è cambiata: il giorno «PEC comunicata dalla persona il» era della PEC di prima, ed è stato tolto. Se la persona ti ha '
+        . 'comunicato questa, scrivi il giorno.';
+
+    /**
+     * La PEC cambia e il giorno mandato è quello di prima: il giorno va tolto. Un giorno nuovo scritto insieme alla PEC nuova resta.
+     *
+     * @param array<string, mixed> $validated
+     */
+    private static function giornoDellaPecDiPrima(Anagrafica $anagrafica, array $validated): bool
+    {
+        $prima = $anagrafica->pec_comunicata_il === null ? null : substr((string) $anagrafica->pec_comunicata_il, 0, 10);
+        if ($prima === null || ! filled($anagrafica->pec) || ! array_key_exists('pec', $validated)) {
+            return false;
+        }
+        $cambiata = mb_strtolower(trim((string) $validated['pec'])) !== mb_strtolower(trim((string) $anagrafica->pec));
+        $giorno = $validated['pec_comunicata_il'] ?? null;
+
+        return $cambiata && filled($giorno) && substr((string) $giorno, 0, 10) === $prima;
+    }
+
     public function update(UpdateAnagraficaRequest $request, Anagrafica $anagrafica): RedirectResponse
     {
         Gate::authorize('update', $anagrafica);
 
         $validated = $request->validated(); 
+        // La PEC cambiata con il giorno di prima: quel giorno era della PEC di prima (la persona non ha comunicato questa), e si toglie. Il messaggio lo dice.
+        $giornoTolto = self::giornoDellaPecDiPrima($anagrafica, $validated);
+        if ($giornoTolto) {
+            $validated['pec_comunicata_il'] = null;
+        }
 
         try {
 
             DB::beginTransaction();
 
             $anagrafica->update($validated);
-            $anagrafica->condomini()->sync($validated['condomini']);
+            RegistroModifiche::legame($anagrafica, 'condomini', 'Condomini', fn () => $anagrafica->condomini()->sync($validated['condomini']));
 
             DB::commit();
 
             return $this->dopoIlSalvataggio($anagrafica)->with(
-                $this->flashSuccess(__('anagrafiche.success_update_anagrafica'))
+                $this->flashSuccess(__('anagrafiche.success_update_anagrafica') . ($giornoTolto ? ' ' . self::PEC_CAMBIATA : ''))
             );
 
         } catch (\Exception $e) {

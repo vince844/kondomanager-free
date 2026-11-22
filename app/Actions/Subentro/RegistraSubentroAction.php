@@ -5,6 +5,8 @@
 
 namespace App\Actions\Subentro;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\EventoTipo;
 use App\Services\Documenti\ArchivioDocumenti;
 use App\Enums\RuoloAnagraficaImmobile;
@@ -84,7 +86,9 @@ final class RegistraSubentroAction
         $avvisi = [];
 
         try {
-            $esito = DB::transaction(function () use ($condominio, $immobile, $dati, $utente, &$path, &$avvisi) {
+            // Gesto 4 del registro delle modifiche: il passaggio è una riga sola, con il rimando; le titolarità, le rate e i saldi toccati si contano nel
+            // lotto (il «prima e dopo» resta in `subentri.registro`).
+            $esito = RegistroModifiche::durante(GestiDelRegistro::passaggioRegistrato($condominio, $immobile), function () use ($condominio, $immobile, $dati, $utente, &$path, &$avvisi) {
                 $decorrenza = $dati['decorrenza'];
                 $giornoPrima = $decorrenza->subDay();
                 $tipo = (string) $dati['tipo'];

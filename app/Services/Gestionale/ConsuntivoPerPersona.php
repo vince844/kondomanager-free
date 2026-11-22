@@ -206,6 +206,8 @@ class ConsuntivoPerPersona
                     }
                 }
                 $opzioni['delibere'] = array_values(array_unique(array_merge(...array_values($delibereDi ?: [[]]))));
+                // Coda 688 (decisione 623 (4)): quando il giorno dell'opera è quello dei lavori urgenti, il conguaglio lo scrive.
+                $giornoDellUrgenza = (new DeliberaDellOpera($competenza))->fraseDellUrgenza($pianiDellEsercizio, $primaDelibera);
                 $spesoQui = (int) array_sum(array_column($cifre, 'importo')) - $spesoPrima;
             } else {
                 $cifre = array_filter(array_intersect_key($speso, array_flip($voci)), fn (int $c) => $c !== 0);
@@ -260,6 +262,7 @@ class ConsuntivoPerPersona
                 'non_attribuite' => $esito['non_attribuite'],
                 'motivi' => $esito['motivi'],
                 'non_calcolabile' => $esito['non_calcolabile'],
+                'giorno_dell_urgenza' => $straordinaria ? ($giornoDellUrgenza ?? null) : null,
                 // Lo speso dell'esercizio (di un'opera finita, quello di questo esercizio): la 8.3 lo conta per la gestione che non si calcola.
                 'speso' => $spesoQui,
                 'competenze_scritte' => $esito['competenze_scritte'],
@@ -329,20 +332,8 @@ class ConsuntivoPerPersona
      */
     private function delibereDellOpera($piani, CompetenzaDelPiano $competenza): array
     {
-        $perEsercizio = [];
-        $ordine = [];
-        foreach ($piani as $p) {
-            if (! (bool) $p->attivo || $p->data_delibera_assemblea === null) {
-                continue;
-            }
-            $e = $competenza->esercizioDelPiano($p);
-            $d = substr((string) $p->data_delibera_assemblea, 0, 10);
-            $perEsercizio[(int) ($e?->id ?? 0)][$d] = $d;
-            $ordine[] = [$d, (int) $p->id, (int) ($e?->id ?? 0)];
-        }
-        sort($ordine);
-
-        return [array_map('array_values', $perEsercizio), $ordine === [] ? null : $ordine[0][0], $ordine === [] ? null : $ordine[0][2]];
+        // La regola sta in un posto solo (§16 del progetto della 1.12.0-beta.13): la chiamano anche gli addebiti.
+        return (new DeliberaDellOpera($competenza))->delibere($piani);
     }
 
     /**

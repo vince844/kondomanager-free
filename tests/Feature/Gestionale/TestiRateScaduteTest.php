@@ -49,7 +49,7 @@ it('la chiave della guida dei pagamenti parziali che nessuno usava non c\'è pi�
         expect(\Illuminate\Support\Arr::has(require lang_path("{$lingua}/gestionale.php"), 'incassi.guide.partial_payments_description'))->toBeFalse()
             ->and((string) file_get_contents(lang_path("{$lingua}/gestionale.php")))->not->toContain('partial_payments_description');
     }
-    expect(__('impostazioni.header.mail_settings_description', [], 'it'))->toBe('Configura il metodo di invio per rate, solleciti e comunicazioni ai condòmini.');
+    expect(__('impostazioni.header.mail_settings_description', [], 'it'))->toBe('Le caselle da cui il programma manda la posta dello studio. Ognuna serve a una cosa: le email ai condòmini partono dalla posta, le convocazioni per PEC dalla casella PEC.');
     foreach (['en', 'es', 'pt'] as $lingua) {
         expect(mb_strtolower(__('impostazioni.header.mail_settings_description', [], $lingua)))->not->toMatch('/official|oficia/');
     }

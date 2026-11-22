@@ -111,7 +111,8 @@ it('«Vedi il PDF» mostra tutte le lettere dell\'anteprima, qualunque sia il ca
         ->and(RegistroInvio::count())->toBe(0);
 });
 
-it('chi ha solo la PEC, con la PEC spuntata, è proposto per l\'email; senza la PEC spuntata resta la stampa, con la frase', function () {
+it('chi ha solo la PEC: la PEC non è un indirizzo dell\'email (anche spuntata), e senza la casella dello studio resta la stampa, con la frase', function () {
+    // Dalla 1.12.0-beta.13 (decisione 588, L2) la PEC smette di essere un'email semplice: parte dalla casella PEC dello studio, o si stampa.
     $s = lttScenario($this);
     $s['persone']['bice']->update(['email' => null, 'pec' => 'bice@pec.it']);
 
@@ -119,7 +120,8 @@ it('chi ha solo la PEC, con la PEC spuntata, è proposto per l\'email; senza la 
         ->assertOk()->json('persone'))->firstWhere('nome', 'Bice');
     $senzaPec = collect($this->actingAs($this->user)->postJson(lttRotta($s, 'anteprima'), lttScelte($s))->assertOk()->json('persone'))->firstWhere('nome', 'Bice');
 
-    expect($conPec)->toMatchArray(['canale' => 'email', 'solo_pec' => false, 'indirizzi' => [['tipo' => 'pec', 'indirizzo' => 'bice@pec.it']]])
+    // Chi prepara le lettere qui non apre le impostazioni: la frase gli dice di chiedere la casella a chi le gestisce.
+    expect($conPec)->toMatchArray(['canale' => 'stampa', 'solo_pec' => true, 'indirizzi' => [], 'frase_solo_pec' => EmissioneLettere::SOLO_PEC_CHIEDI_LA_CASELLA])
         ->and($senzaPec)->toMatchArray(['canale' => 'stampa', 'solo_pec' => true]);
 });
 

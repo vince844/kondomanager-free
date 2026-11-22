@@ -6,9 +6,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\ContaNelGesto;
 
 class QuotaTabella extends Model
 {
+    use ContaNelGesto;
+
     protected $table = 'quote_tabella';
 
     protected $fillable = [

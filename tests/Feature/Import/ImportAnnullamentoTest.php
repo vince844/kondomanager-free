@@ -250,6 +250,11 @@ it('chi ha il permesso disfa davvero, e il lotto resta come traccia', function (
     // rifiuto non pronunciato* — applicata al verso opposto, il successo.
     $risposta->assertSessionHas('message', fn ($m) => str_contains($m['message'] ?? '', 'annullata'));
 
+    // 1.12.0-beta.13 (gesto 3 del registro delle modifiche): una riga sola, con ciò che è sparito letto prima e il rimando all'elenco del lotto.
+    $riga = \App\Models\RegistroModifica::query()->where('oggetto_tipo', 'condominio')->where('azione', 'eliminata')->sole();
+    expect($riga->riepilogo)->toStartWith('Importazione annullata, condominio eliminato:')
+        ->and($riga->rimando)->toMatchArray(['tipo' => 'importazione', 'id' => $lotto->id]);
+
     expect(Condominio::whereKey($condominio->id)->exists())->toBeFalse()
         ->and($lotto->fresh()->stato)->toBe(ImportBatch::STATO_ANNULLATO)
         // ⚠️ **Le due date insieme sono ciò che distingue un annullamento da uno scarto**, senza
@@ -366,7 +371,9 @@ it('il verdetto costa lo stesso su un lotto grande e su uno piccolo', function (
     $verdetto = app(AnnullamentoImportazione::class)->verdetto($lotto->fresh());
 
     expect($verdetto->conteggi['soggetti'])->toBe(60)
-        ->and($query)->toBeLessThan(25,
+        // Una query per ogni segno di lavoro: con le tre tabelle del verbale (1.12.0-beta.13) sono 27, e la soglia sale a 30. Sessanta righe una alla volta
+        // non ci starebbero comunque.
+        ->and($query)->toBeLessThan(30,
             "Il verdetto è costato {$query} query su 61 item: sta risolvendo una riga alla volta."
         );
 });

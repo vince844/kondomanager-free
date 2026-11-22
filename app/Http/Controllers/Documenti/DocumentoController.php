@@ -5,8 +5,10 @@
 
 namespace App\Http\Controllers\Documenti;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Events\Documenti\NotifyUserOfCreatedDocumento;
 use App\Services\Documenti\ArchivioDocumenti;
+use App\Services\Documenti\VersioniDeiDocumenti;
 use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Services\Notifiche\DestinatariNotifica;
 use App\Http\Controllers\Controller;
@@ -144,7 +146,7 @@ class DocumentoController extends Controller
             // Il limite lo decide il server, non noi: la schermata scriveva un numero fisso
             // (o non ne scriveva nessuno) mentre la regola ne accettava un altro.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
-        ]); 
+        ]);
     }
 
     /**
@@ -195,12 +197,12 @@ class DocumentoController extends Controller
             ]);
 
             // Le categorie sono un legame, non più una colonna: si attaccano dopo la creazione.
-            $documento->categorie()->attach($validated['categorie']);
+            RegistroModifiche::legame($documento, 'categorie', 'Categorie', fn () => $documento->categorie()->attach($validated['categorie']), 'name');
 
-            $documento->condomini()->attach($validated['condomini_ids']);
+            RegistroModifiche::legame($documento, 'condomini', 'Condomini', fn () => $documento->condomini()->attach($validated['condomini_ids']));
 
             if (!empty($validated['anagrafiche'])) {
-                $documento->anagrafiche()->attach($validated['anagrafiche']);
+                RegistroModifiche::legame($documento, 'anagrafiche', 'Destinatari', fn () => $documento->anagrafiche()->attach($validated['anagrafiche']));
             }
 
             DB::commit();
@@ -263,13 +265,15 @@ class DocumentoController extends Controller
             // Il limite lo decide il server, non noi: la schermata scriveva un numero fisso
             // (o non ne scriveva nessuno) mentre la regola ne accettava un altro.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
+            // Le versioni di prima del file (§9 del registro delle modifiche): in sola lettura, senza il percorso.
+            'versioni' => VersioniDeiDocumenti::perLaPagina($documento),
         ]); 
     }
 
     /**
      * Update the specified document in storage.
      *
-     * If a new file is uploaded, the old file is deleted from disk and replaced.
+     * If a new file is uploaded, the old one is kept as a version of before (`VersioniDeiDocumenti::sostituisci()`), not deleted.
      * Pivot relations for condomini and anagrafiche are synced on every update.
      * Wraps all persistence in a DB transaction; rolls back on failure.
      *
@@ -298,16 +302,9 @@ class DocumentoController extends Controller
 
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
-                // Delete old file if exists
-                app(ArchivioDocumenti::class)->elimina($documento->path);
-
-                $uploadedFile = $request->file('file');
-                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
-
-                // Update file related fields
-                $documento->path = $path;
-                $documento->mime_type = $uploadedFile->getClientMimeType();
-                $documento->file_size = $uploadedFile->getSize();
+                // 1.12.0-beta.13 (§9 del registro delle modifiche): il file nuovo si salva prima, il vecchio si sposta fra le versioni di prima (non si
+                // cancella più prima di salvare il nuovo), con la riga «File» del registro; se la transazione cade, i file tornano com'erano.
+                app(VersioniDeiDocumenti::class)->sostituisci($documento, $request->file('file'));
             }
 
             $documento->update([
@@ -328,11 +325,11 @@ class DocumentoController extends Controller
             // le porta cancellerebbe tutte le categorie del documento senza che nessuno l'abbia
             // chiesto. La regola di validazione è `sometimes`, quindi l'assenza è legittima.
             if (isset($validated['categorie'])) {
-                $documento->categorie()->sync($validated['categorie']);
+                RegistroModifiche::legame($documento, 'categorie', 'Categorie', fn () => $documento->categorie()->sync($validated['categorie']), 'name');
             }
 
             if (isset($validated['condomini_ids'])) {
-                $documento->condomini()->sync($validated['condomini_ids']);
+                RegistroModifiche::legame($documento, 'condomini', 'Condomini', fn () => $documento->condomini()->sync($validated['condomini_ids']));
             }
 
             // Coda 307: come le categorie qui sopra, i destinatari si toccano solo se il modulo li
@@ -346,7 +343,7 @@ class DocumentoController extends Controller
             // quindi qui la chiave c'è e vale «nessuno», come l'elenco vuoto in JSON. Senza il segno
             // (una richiesta che non viene dalla pagina) resta «non toccare».
             if (array_key_exists('anagrafiche', $validated)) {
-                $documento->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+                RegistroModifiche::legame($documento, 'anagrafiche', 'Destinatari', fn () => $documento->anagrafiche()->sync($validated['anagrafiche'] ?? []));
             }
 
             DB::commit();
@@ -419,8 +416,8 @@ class DocumentoController extends Controller
     /**
      * Delete a document record and its associated file from storage.
      *
-     * - Deletes the physical file from disk if it exists.
-     * - Deletes the Documento record; pivot relations are cleaned up via ON DELETE CASCADE.
+     * - Deletes the Documento record with its versions (`VersioniDeiDocumenti::elimina()`); pivot relations are cleaned up via ON DELETE CASCADE.
+     * - The files (its own and the versions') are deleted after the commit.
      * - Wraps all operations in a DB transaction; rolls back on failure.
      *
      * @param  \App\Models\Documento $documento
@@ -436,11 +433,9 @@ class DocumentoController extends Controller
             // Start a transaction in case you need to roll back
             DB::beginTransaction();
 
-            // Delete the file from storage
-            app(ArchivioDocumenti::class)->elimina($documento->path);
-
-            // Delete the database record
-            $documento->delete();
+            // 1.12.0-beta.13 (§9, P21): il documento se ne va con le sue versioni di prima, in una riga del registro con nome, grandezza e impronta di
+            // ogni file; i file si cancellano dopo il commit (prima si cancellavano qui, e una transazione caduta li perdeva).
+            app(VersioniDeiDocumenti::class)->elimina($documento);
 
             DB::commit();
 

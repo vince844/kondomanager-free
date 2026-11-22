@@ -10,9 +10,12 @@ use App\Models\Gestionale\PianoRate;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\ContaNelGesto;
 
 class BudgetMovement extends Model
 {
+    use ContaNelGesto;
+
     use HasFactory;
 
     protected $guarded = [];

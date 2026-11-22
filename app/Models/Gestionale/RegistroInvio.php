@@ -87,6 +87,46 @@ class RegistroInvio extends Model
      */
     public const STATI_LETTERA_ARRIVATA = [self::STATO_INVIATA, self::STATO_SPEDITA];
 
+    /**
+     * L'avviso di convocazione di un'assemblea (Coda 679, §4 del progetto della tappa 2): una riga per persona e per invio, con l'assemblea come
+     * «documentabile». Le letture di oggi filtrano il tipo e non lo vedono; lo vede di proposito la «Corrispondenza» della persona. La prova di una
+     * convocazione non si toglie mai.
+     */
+    public const TIPO_CONVOCAZIONE = 'convocazione';
+
+    /**
+     * Il verbale di un'assemblea trasmesso a una persona (il tipo del verbale): agli assenti, o a tutti in videoconferenza, con il mezzo e la prova della
+     * convocazione. Il documento è l'assemblea, `dati.verbale_id` il verbale.
+     */
+    public const TIPO_VERBALE = 'verbale';
+
+    /** I tipi dell'assemblea che usano la spedizione, la consegna e la ricevuta della convocazione. */
+    public const TIPI_DELL_ASSEMBLEA = [self::TIPO_CONVOCAZIONE, self::TIPO_VERBALE];
+
+    /**
+     * Il promemoria per email a chi ha preparato l'assemblea: la convocazione è da spedire entro il giorno limite del compito. Una riga per promemoria, con
+     * l'assemblea come «documentabile» e senza la persona (va all'utente dello studio, in `dati.utente`); `dati.promemoria` e `dati.limite` sono il segno
+     * che lo fa partire una volta sola ({@see \App\Services\Assemblee\Convocazione\PromemoriaDellaConvocazione}).
+     */
+    public const TIPO_PROMEMORIA_CONVOCAZIONE = 'promemoria_convocazione';
+
+    /** La PEC mandata dal programma dalla casella PEC dello studio (decisione 564): `inviata` vuol dire solo «accettata dal gestore». */
+    public const CANALE_PEC = 'pec';
+
+    /**
+     * L'esito di un invio (§1.2 del progetto della tappa 2), oggi solo per la convocazione: le righe di prima restano con l'esito vuoto. `ricevuta_il` è il
+     * giorno che conta per i cinque giorni: il primo fra la consegna e l'avviso di giacenza (Cass. 23396/2017); per «rifiutata» resta vuoto.
+     */
+    public const ESITO_CONSEGNATA = 'consegnata';
+    public const ESITO_IN_GIACENZA = 'in_giacenza';
+    public const ESITO_RIFIUTATA = 'rifiutata';
+    public const ESITO_NON_CONSEGNATA = 'non_consegnata';
+
+    public const ESITI = [self::ESITO_CONSEGNATA, self::ESITO_IN_GIACENZA, self::ESITO_RIFIUTATA, self::ESITO_NON_CONSEGNATA];
+
+    /** Gli esiti che danno il giorno di ricezione: la consegna e l'avviso di giacenza. */
+    public const ESITI_CHE_DANNO_LA_RICEZIONE = [self::ESITO_CONSEGNATA, self::ESITO_IN_GIACENZA];
+
     protected $fillable = [
         'condominio_id',
         'anagrafica_id',
@@ -103,6 +143,9 @@ class RegistroInvio extends Model
         'mail_log_id',
         'emesso_da',
         'emesso_il',
+        'esito',
+        'esito_il',
+        'ricevuta_il',
     ];
 
     protected $casts = [
@@ -113,6 +156,8 @@ class RegistroInvio extends Model
         'emesso_da'        => 'integer',
         'dati'             => 'array',
         'emesso_il'        => 'datetime',
+        'esito_il'         => 'datetime',
+        'ricevuta_il'      => 'date:Y-m-d',
     ];
 
     public function condominio(): BelongsTo

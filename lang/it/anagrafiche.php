@@ -145,5 +145,6 @@ return [
         'building_link_desc'     => 'Collega le anagrafiche ai rispettivi condomini per semplificare i subentri e le assegnazioni delle unità.',
         'fiscal_data_title'      => 'Dati Fiscali e Documenti',
         'fiscal_data_desc'       => 'Mantieni aggiornati codici fiscali e documenti d\'identità per garantire la conformità delle pratiche e delle fatture.',
+        'come_si_convoca_desc'   => 'In «Come si convoca» scegli il mezzo delle convocazioni delle assemblee (PEC, raccomandata, a mano, fax): vuoto, lo propone il programma dai dati. L\'email semplice non vale.',
     ],
 ];

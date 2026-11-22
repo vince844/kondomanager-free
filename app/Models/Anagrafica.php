@@ -11,9 +11,12 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
 use App\Models\Gestionale\RigaScrittura;
+use App\Traits\RegistraLeModifiche;
 
 class Anagrafica extends Model
 {
+    use RegistraLeModifiche;
+
     use HasFactory, Notifiable;
 
     protected $table = 'anagrafiche';
@@ -33,7 +36,10 @@ class Anagrafica extends Model
         'data_nascita',
         'telefono',
         'cellulare',
-        'note'
+        'note',
+        // Come si convoca e il giorno in cui ha comunicato la sua PEC (§1.2 del progetto della tappa 2): vuoto, il programma propone il mezzo dai dati.
+        'mezzo_convocazione',
+        'pec_comunicata_il',
     ];
 
     /**

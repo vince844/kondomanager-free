@@ -189,10 +189,18 @@ class TabellaController extends Controller
         // Get the current active and open esercizio this is important to navigate gestioni menu
         $esercizio = $this->getEsercizioCorrente($condominio);
 
+        // La tabella di proprietà generale del condominio (1.12.0-beta.13, R14): l'interruttore della pagina, per chi gestisce le assemblee.
+        $diProprieta = \App\Services\Assemblee\TabellaDiProprieta::di($condominio);
+
         return Inertia::render('gestionale/tabelle/TabelleEdit', [
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'tabella'    => new TabellaResource($tabella),
+            'proprieta'  => [
+                'questa' => $diProprieta !== null && (int) $diProprieta->id === (int) $tabella->id,
+                'attuale' => $diProprieta?->nome,
+                'si_sceglie' => \App\Services\Assemblee\AccessoAlleAssemblee::gestisce(request()->user()),
+            ],
         ]);
     }
 
@@ -245,6 +253,12 @@ class TabellaController extends Controller
                 return back()->with(
                     $this->flashError("Impossibile eliminare: la tabella è associata ad una o più voci di spesa.")
                 );
+            }
+
+            // R15 del progetto della tappa 2: la tabella del valore di un'assemblea o di un punto non si elimina.
+            $usata = \App\Services\Assemblee\GuardieDiCancellazione::perLaTabella($tabella);
+            if ($usata !== null) {
+                return back()->with($this->flashError($usata));
             }
 
             $tabella->delete();

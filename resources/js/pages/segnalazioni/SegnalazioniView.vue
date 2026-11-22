@@ -9,6 +9,7 @@ import { computed, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Lock, LockOpen, ShieldCheck, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, Globe, ChevronDown, ChevronUp } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
@@ -198,6 +199,7 @@ const pageGuides = computed(() => [
     <div class="px-6 py-8 space-y-6">
         
         <PageHeaderGuide
+            :storia="{ tipo: 'segnalazione', id: props.segnalazione.id }"
             :page-title="trans('segnalazioni.header.view_ticket_title')"
             :page-subtitle="trans('segnalazioni.header.view_ticket_description')"
             :guides="pageGuides"
@@ -207,6 +209,9 @@ const pageGuides = computed(() => [
             :back-text="trans('segnalazioni.actions.back_to_list')"
         >
             <template #actions>
+                <!-- «Da portare in assemblea» per i lavori da decidere (1.12.0-beta.13, P8): la frase proposta dice solo il giorno della segnalazione. -->
+                <PulsanteDaPortareInAssemblea v-if="props.segnalazione.condominio?.id" :condominio-id="props.segnalazione.condominio.id" origine-tipo="segnalazione"
+                    :origine-id="props.segnalazione.id" forma="riga" />
                 <Link 
                     as="button"
                     method="post"

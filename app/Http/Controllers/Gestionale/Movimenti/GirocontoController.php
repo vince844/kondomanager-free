@@ -11,6 +11,7 @@ use App\Actions\Gestionale\Movimenti\RegistraGirocontoAction;
 use App\Actions\Gestionale\Movimenti\StornaGirocontoAction;
 use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Gestionale\GirocontoNonAmmessoException;
+use App\Http\Controllers\Assemblee\DeliberaNelleSchede;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StoreGirocontoRequest;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -27,6 +28,7 @@ use App\Traits\PaginaElenco;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -303,8 +305,17 @@ class GirocontoController extends Controller
         $esercizio = Esercizio::where('condominio_id', $condominio->id)
             ->findOrFail($validated['esercizio_id']);
 
+        // La delibera accanto alla causale, facoltativa (§1.4 del progetto della tappa 2, ruolo «causale»): del condominio della rotta.
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        unset($validated['delibera_id']);
+
         try {
-            $scrittura = $action->execute($validated, $condominio, $esercizio);
+            $scrittura = DB::transaction(function () use ($action, $validated, $condominio, $esercizio, $delibera, $request) {
+                $scrittura = $action->execute($validated, $condominio, $esercizio);
+                DeliberaNelleSchede::collega($scrittura, 'causale', $delibera, $request->user());
+
+                return $scrittura;
+            });
 
             Log::info(
                 "Giroconto {$scrittura->numero_protocollo} registrato da utente #".Auth::id()

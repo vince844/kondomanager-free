@@ -1,0 +1,1086 @@
+{
+  "_nota": "I casi della struttura del testo del verbale, letti da tests/Feature/Assemblee/Verbale/StrutturaDelVerbaleTest.php e da resources/js/lib/assemblee/verbale/struttura.test.ts. I casi «ostile» li legge anche la prova della stampa: il testo esce sempre come testo.",
+  "limiti": {
+    "byte": 1048576,
+    "profondita": 12,
+    "nodi": 20000
+  },
+  "validi": [
+    {
+      "nome": "il documento vuoto",
+      "ostile": false,
+      "documento": {
+        "type": "doc"
+      },
+      "canonico": "{\"type\":\"doc\"}",
+      "testo": "",
+      "caratteri": 0,
+      "impronta": "a2cacbda46e7e7abefcbbefb37b99e6fdf137fc738e6bc58b4f259069f36dfb9"
+    },
+    {
+      "nome": "il documento vuoto come lo dà l'editor",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph"
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}",
+      "testo": "",
+      "caratteri": 0,
+      "impronta": "925349f76e707d50c17e6ce368d14aa56c35b196bf975fc0dc26bd29ac969bcb"
+    },
+    {
+      "nome": "il contenuto vuoto non si scrive",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          },
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "uno"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"},{\"type\":\"bulletList\",\"content\":[{\"type\":\"listItem\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"uno\"}]}]}]}]}",
+      "testo": "\nuno",
+      "caratteri": 4,
+      "impronta": "e454b281a80d45e8e800ecd138b6f8e9977cebfe116a3e1ef2cd58ef408637b1"
+    },
+    {
+      "nome": "i segni in disordine e ripetuti si mettono in ordine una volta",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Importante",
+                "marks": [
+                  {
+                    "type": "underline"
+                  },
+                  {
+                    "type": "bold"
+                  },
+                  {
+                    "type": "underline"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " e normale"
+              },
+              {
+                "type": "text",
+                "text": " corsivo",
+                "marks": [
+                  {
+                    "type": "italic"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Importante\",\"marks\":[{\"type\":\"bold\"},{\"type\":\"underline\"}]},{\"type\":\"text\",\"text\":\" e normale\"},{\"type\":\"text\",\"text\":\" corsivo\",\"marks\":[{\"type\":\"italic\"}]}]}]}",
+      "testo": "Importante e normale corsivo",
+      "caratteri": 28,
+      "impronta": "48ad998baf5f8fbf5ab9c6b81dea6ebcfe70dedd84202dc245c8bd542181efb9"
+    },
+    {
+      "nome": "il titolo a un livello e l'a capo dentro il paragrafo",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 2
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "4. Sostituzione del portone d'ingresso"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Prima riga"
+              },
+              {
+                "type": "hardBreak"
+              },
+              {
+                "type": "text",
+                "text": "seconda riga"
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"heading\",\"attrs\":{\"level\":2},\"content\":[{\"type\":\"text\",\"text\":\"4. Sostituzione del portone d'ingresso\"}]},{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Prima riga\"},{\"type\":\"hardBreak\"},{\"type\":\"text\",\"text\":\"seconda riga\"}]}]}",
+      "testo": "4. Sostituzione del portone d'ingresso\nPrima riga\nseconda riga",
+      "caratteri": 62,
+      "impronta": "a1fbe2aaed91c4bd00ee6cb5b99c5d077241352c766e331bffeb0dc4c90b3615"
+    },
+    {
+      "nome": "gli elenchi annidati, numerati da 1 e da 3",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Serramenti Marino, € 14.500,00"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "orderedList",
+                    "attrs": {
+                      "start": 1,
+                      "type": null
+                    },
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "consegna in 30 giorni"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Porte Sicure, € 16.200,00"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "orderedList",
+            "attrs": {
+              "start": 3
+            },
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "terzo"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"bulletList\",\"content\":[{\"type\":\"listItem\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Serramenti Marino, € 14.500,00\"}]},{\"type\":\"orderedList\",\"content\":[{\"type\":\"listItem\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"consegna in 30 giorni\"}]}]}]}]},{\"type\":\"listItem\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Porte Sicure, € 16.200,00\"}]}]}]},{\"type\":\"orderedList\",\"attrs\":{\"start\":3},\"content\":[{\"type\":\"listItem\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"terzo\"}]}]}]}]}",
+      "testo": "Serramenti Marino, € 14.500,00\nconsegna in 30 giorni\nPorte Sicure, € 16.200,00\nterzo",
+      "caratteri": 84,
+      "impronta": "c69140ac2404a15751d91ad164d912e4b47bb53ce244bb05a0f0696ec17b1545"
+    },
+    {
+      "nome": "una parte «Dati della sala» con la sua chiave",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Prima."
+              }
+            ]
+          },
+          {
+            "type": "datiDellaSala",
+            "attrs": {
+              "originale": "Sono presenti, di persona o per delega, 11 condòmini su 26, per 484,60 millesimi su 1.000, come dall'elenco in calce.",
+              "chiave": "costituzione:12"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Sono presenti, di persona o per delega, 11 condòmini su 26, per 484,60 millesimi su 1.000, come dall'elenco in calce."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Dopo."
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Prima.\"}]},{\"type\":\"datiDellaSala\",\"attrs\":{\"chiave\":\"costituzione:12\",\"originale\":\"Sono presenti, di persona o per delega, 11 condòmini su 26, per 484,60 millesimi su 1.000, come dall'elenco in calce.\"},\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Sono presenti, di persona o per delega, 11 condòmini su 26, per 484,60 millesimi su 1.000, come dall'elenco in calce.\"}]}]},{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Dopo.\"}]}]}",
+      "testo": "Prima.\nSono presenti, di persona o per delega, 11 condòmini su 26, per 484,60 millesimi su 1.000, come dall'elenco in calce.\nDopo.",
+      "caratteri": 130,
+      "impronta": "303164842e132b24aed4b8a02aa15cc5e505b17519a433651c8f073400189cbf"
+    },
+    {
+      "nome": "ostile: <script> nel testo resta testo",
+      "ostile": true,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "<script>alert(\"x\")</script> & <b>non grassetto</b>"
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"<script>alert(\\\"x\\\")</script> & <b>non grassetto</b>\"}]}]}",
+      "testo": "<script>alert(\"x\")</script> & <b>non grassetto</b>",
+      "caratteri": 50,
+      "impronta": "b943cb59670f1025c1aa9386d533a9e9f38791b45e0d9c0376b34fa0e77d2dae"
+    },
+    {
+      "nome": "le lettere e i segni dell'italiano, l'euro e le virgolette",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Città, perché, € 1.800,00 — «Il sig. Marino» dichiara: “sì”. 😀 / \\ \t fine"
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Città, perché, € 1.800,00 — «Il sig. Marino» dichiara: “sì”. 😀 / \\\\ \\t fine\"}]}]}",
+      "testo": "Città, perché, € 1.800,00 — «Il sig. Marino» dichiara: “sì”. 😀 / \\ \t fine",
+      "caratteri": 73,
+      "impronta": "23fb18a2b9c5d8e73f47e5c4f77bab6c0749a36284fea6593d886eba558eccd5"
+    },
+    {
+      "nome": "attrs vuoti si tolgono",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "attrs": {},
+            "content": [
+              {
+                "type": "text",
+                "text": "ciao",
+                "marks": [
+                  {
+                    "type": "bold"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "canonico": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"ciao\",\"marks\":[{\"type\":\"bold\"}]}]}]}",
+      "testo": "ciao",
+      "caratteri": 4,
+      "impronta": "b140174bd254c5619df03187542dee46e65b1c4e03146280d6262b065e7cf4f5"
+    }
+  ],
+  "rifiutati": [
+    {
+      "nome": "ostile: un'immagine",
+      "ostile": true,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "ciao"
+              }
+            ]
+          },
+          {
+            "type": "image",
+            "attrs": {
+              "src": "https://example.com/x.png"
+            }
+          }
+        ]
+      },
+      "errore": "Il testo del verbale ha una parte che il programma non conosce: «image»."
+    },
+    {
+      "nome": "ostile: un attributo onclick",
+      "ostile": true,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "attrs": {
+              "onclick": "alert(1)"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "clic"
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Nel testo del verbale «paragraph» ha un attributo che il programma non conosce: «onclick»."
+    },
+    {
+      "nome": "ostile: un collegamento",
+      "ostile": true,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "qui",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "javascript:alert(1)"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il testo del verbale ha un formato che il programma non conosce: «link»."
+    },
+    {
+      "nome": "ostile: l'HTML al posto della struttura",
+      "ostile": true,
+      "documento": "<p onclick=\"x\">ciao</p>",
+      "errore": "Il testo del verbale non è nella forma dell'editor."
+    },
+    {
+      "nome": "il titolo di primo livello",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 1
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Titolo"
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il titolo ha un livello solo: il 2."
+    },
+    {
+      "nome": "il titolo senza livello",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "heading",
+            "content": [
+              {
+                "type": "text",
+                "text": "Titolo"
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il titolo ha un livello solo: il 2."
+    },
+    {
+      "nome": "un pezzo di testo vuoto",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Nel testo del verbale c'è un pezzo di testo vuoto."
+    },
+    {
+      "nome": "il testo con il contenuto",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a",
+                "content": []
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Nel testo del verbale «text» ha un campo che il programma non conosce: «content»."
+    },
+    {
+      "nome": "la radice non è il documento",
+      "ostile": false,
+      "documento": {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "ciao"
+          }
+        ]
+      },
+      "errore": "Il testo del verbale deve cominciare con il documento."
+    },
+    {
+      "nome": "una voce fuori da un elenco",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "listItem",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "voce"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Nel testo del verbale «listItem» non può stare dentro «doc»."
+    },
+    {
+      "nome": "un elenco vuoto",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "bulletList",
+            "content": []
+          }
+        ]
+      },
+      "errore": "Nel testo del verbale c'è un elenco vuoto."
+    },
+    {
+      "nome": "una voce che non comincia con un paragrafo",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "bulletList",
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "x"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Ogni voce di un elenco comincia con un paragrafo."
+    },
+    {
+      "nome": "«Dati della sala» dentro «Dati della sala»",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "datiDellaSala",
+            "attrs": {
+              "chiave": "voto:1",
+              "originale": ""
+            },
+            "content": [
+              {
+                "type": "datiDellaSala",
+                "attrs": {
+                  "chiave": "voto:2",
+                  "originale": ""
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "x"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Nel testo del verbale «datiDellaSala» non può stare dentro «datiDellaSala»."
+    },
+    {
+      "nome": "«Dati della sala» senza chiave",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "datiDellaSala",
+            "attrs": {
+              "originale": ""
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "x"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Una parte «Dati della sala» deve avere la sua chiave."
+    },
+    {
+      "nome": "«Dati della sala» con una chiave sbagliata",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "datiDellaSala",
+            "attrs": {
+              "chiave": "voto:<b>",
+              "originale": ""
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "x"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "La chiave di una parte «Dati della sala» non è nella forma giusta."
+    },
+    {
+      "nome": "«Dati della sala» vuota",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "datiDellaSala",
+            "attrs": {
+              "chiave": "voto:3",
+              "originale": ""
+            }
+          }
+        ]
+      },
+      "errore": "Una parte «Dati della sala» non può essere vuota."
+    },
+    {
+      "nome": "un segno con un attributo",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a",
+                "marks": [
+                  {
+                    "type": "bold",
+                    "attrs": {
+                      "color": "red"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il formato «bold» ha un campo che il programma non conosce: «attrs»."
+    },
+    {
+      "nome": "il colore del testo",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a",
+                "marks": [
+                  {
+                    "type": "textStyle",
+                    "attrs": {
+                      "color": "red"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il testo del verbale ha un formato che il programma non conosce: «textStyle»."
+    },
+    {
+      "nome": "un elenco numerato a lettere",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": {
+              "start": 1,
+              "type": "a"
+            },
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "x"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Un elenco numerato ha solo il numero da cui parte."
+    },
+    {
+      "nome": "un elenco numerato da zero",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": {
+              "start": 0
+            },
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "x"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Un elenco numerato ha solo il numero da cui parte."
+    },
+    {
+      "nome": "un campo che il programma non conosce sul nodo",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "style": "color:red",
+            "content": [
+              {
+                "type": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Nel testo del verbale «paragraph» ha un campo che il programma non conosce: «style»."
+    },
+    {
+      "nome": "il testo che non è una stringa",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": 42
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il testo del verbale non è nella forma dell'editor."
+    },
+    {
+      "nome": "il carattere nullo",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a\u0000b"
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il testo del verbale ha un carattere che non si può salvare."
+    },
+    {
+      "nome": "troppi livelli uno dentro l'altro",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "livello 7"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "bulletList",
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "livello 6"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "bulletList",
+                            "content": [
+                              {
+                                "type": "listItem",
+                                "content": [
+                                  {
+                                    "type": "paragraph",
+                                    "content": [
+                                      {
+                                        "type": "text",
+                                        "text": "livello 5"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "bulletList",
+                                    "content": [
+                                      {
+                                        "type": "listItem",
+                                        "content": [
+                                          {
+                                            "type": "paragraph",
+                                            "content": [
+                                              {
+                                                "type": "text",
+                                                "text": "livello 4"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "bulletList",
+                                            "content": [
+                                              {
+                                                "type": "listItem",
+                                                "content": [
+                                                  {
+                                                    "type": "paragraph",
+                                                    "content": [
+                                                      {
+                                                        "type": "text",
+                                                        "text": "livello 3"
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "type": "bulletList",
+                                                    "content": [
+                                                      {
+                                                        "type": "listItem",
+                                                        "content": [
+                                                          {
+                                                            "type": "paragraph",
+                                                            "content": [
+                                                              {
+                                                                "type": "text",
+                                                                "text": "livello 2"
+                                                              }
+                                                            ]
+                                                          },
+                                                          {
+                                                            "type": "bulletList",
+                                                            "content": [
+                                                              {
+                                                                "type": "listItem",
+                                                                "content": [
+                                                                  {
+                                                                    "type": "paragraph",
+                                                                    "content": [
+                                                                      {
+                                                                        "type": "text",
+                                                                        "text": "livello 1"
+                                                                      }
+                                                                    ]
+                                                                  },
+                                                                  {
+                                                                    "type": "bulletList",
+                                                                    "content": [
+                                                                      {
+                                                                        "type": "listItem",
+                                                                        "content": [
+                                                                          {
+                                                                            "type": "paragraph",
+                                                                            "content": [
+                                                                              {
+                                                                                "type": "text",
+                                                                                "text": "fondo"
+                                                                              }
+                                                                            ]
+                                                                          }
+                                                                        ]
+                                                                      }
+                                                                    ]
+                                                                  }
+                                                                ]
+                                                              }
+                                                            ]
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "errore": "Il testo del verbale ha troppi livelli uno dentro l'altro."
+    },
+    {
+      "nome": "il tipo che non è una stringa",
+      "ostile": false,
+      "documento": {
+        "type": "doc",
+        "content": [
+          {
+            "type": 7
+          }
+        ]
+      },
+      "errore": "Il testo del verbale non è nella forma dell'editor."
+    }
+  ]
+}

@@ -129,16 +129,55 @@ it('le ritenute da versare: alla scadenza della legge prima della delega, poi da
         return app(DatiDelleAzioni::class)->perCondominio($condominio, null, $o, $o->addDays(30), ['righe' => [], 'esercizio_id' => null])['ritenute']['scadenze'];
     };
 
-    // € 20.000,00 al 4 %: € 800,00, sopra la soglia di € 500,00 a marzo: si versano entro il 16/04.
-    expect($leggi('2026-03-20'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000]])
+    // € 20.000,00 al 4 %: € 800,00, sopra la soglia di € 500,00 a marzo: si versano entro il 16/04. Fuori da una delega: nessuna da aprire.
+    expect($leggi('2026-03-20'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => null]])
         ->and($leggi('2026-03-01'))->toBe([]);
     app(GeneraDelegheF24Action::class)->esegui($condominio, $esercizio->id);
+    $delega = (int) DelegaF24::where('condominio_id', $condominio->id)->value('id');
     expect(DelegaF24::where('condominio_id', $condominio->id)->count())->toBe(1)
-        ->and($leggi('2026-03-20'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000]])
+        ->and($leggi('2026-03-20'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => $delega]])
         // Già scaduta: c'è ancora, al suo giorno.
-        ->and($leggi('2026-04-20'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000]]);
+        ->and($leggi('2026-04-20'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => $delega]]);
     DelegaF24::where('condominio_id', $condominio->id)->update(['stato' => StatoDelegaF24::VERSATA->value]);
     expect($leggi('2026-04-20'))->toBe([]);
+});
+
+it('per ogni scadenza la delega da aprire: una sola delega aperta per quel giorno e nessuna ritenuta fuori; con una ritenuta fuori o due deleghe, nessuna', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, $esercizio] = $ctx;
+    $ctx[3]->update(['soggetto_ritenuta' => true, 'perc_ritenuta' => 4, 'perc_imponibile_ritenuta' => 100, 'natura_percipiente' => 'persona_fisica_irpef']);
+    $ctx[3]->refresh();
+    // Due pagamenti di marzo da € 20.000,00 di imponibile al 4 %: € 800,00 di ritenuta ognuno, sopra la soglia; si versano entro il 16/04.
+    $paga = function (string $giorno) use ($ctx) {
+        $this->travelTo($giorno.' 10:00:00');
+        $f = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true, 'numero_documento' => 'R-'.$giorno,
+            'righe' => [['descrizione' => 'Servizio', 'importo_imponibile' => 20000, 'aliquota_iva' => 22, 'conto_id' => $ctx[5]->id, 'is_sopravvenienza' => false]]]);
+        (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $f, ['data_pagamento' => $giorno]));
+    };
+    $leggi = function () use ($condominio) {
+        $o = CarbonImmutable::parse('2026-03-20');
+
+        return app(DatiDelleAzioni::class)->perCondominio($condominio, null, $o, $o->addDays(30), ['righe' => [], 'esercizio_id' => null])['ritenute']['scadenze'];
+    };
+
+    // La ritenuta non è ancora in una delega: nessuna da aprire.
+    $paga('2026-03-10');
+    expect($leggi())->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => null]]);
+    // Generata la delega, è la sola del 16/04 e copre tutto: si apre quella.
+    app(GeneraDelegheF24Action::class)->esegui($condominio, $esercizio->id);
+    $prima = DelegaF24::where('condominio_id', $condominio->id)->sole();
+    expect($leggi())->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => (int) $prima->id]]);
+    // Un secondo pagamento di marzo, non ancora in una delega: lo stesso giorno ha una ritenuta fuori, e la delega sola non basta più.
+    $paga('2026-03-12');
+    expect($leggi())->toBe([['giorno' => '2026-04-16', 'cifra' => 160000, 'delega' => null]]);
+    // La prima confermata, la seconda generata in bozza: due deleghe aperte per il 16/04, nessuna da aprire.
+    $prima->update(['stato' => StatoDelegaF24::CONFERMATA->value]);
+    app(GeneraDelegheF24Action::class)->esegui($condominio, $esercizio->id);
+    expect(DelegaF24::where('condominio_id', $condominio->id)->aperte()->count())->toBe(2)
+        ->and($leggi())->toBe([['giorno' => '2026-04-16', 'cifra' => 160000, 'delega' => null]]);
+    // Versata la seconda, resta la prima: di nuovo la sola del giorno.
+    DelegaF24::where('condominio_id', $condominio->id)->where('id', '!=', $prima->id)->update(['stato' => StatoDelegaF24::VERSATA->value]);
+    expect($leggi())->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => (int) $prima->id]]);
 });
 
 it('le banche e i contanti con il saldo di oggi; i fondi che non si possono usare con il tipo e il vincolo; l\'esercizio aperto di oggi', function () {

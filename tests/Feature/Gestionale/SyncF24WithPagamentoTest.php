@@ -135,6 +135,24 @@ it('crea il task F24 al pagamento di una fattura con ritenuta, con importo e sca
     expect(Carbon::parse($task->start_time)->format('Y-m-d H:i'))->toEqual('2026-02-16 09:00');
 });
 
+it('1.12.0-beta.13 (§7 del registro delle modifiche) — il promemoria di un pagamento senza una persona non ha autore: mai il primo utente', function () {
+    // Il primo utente c'è (lo crea il `beforeEach`), ed era lui che il promemoria firmava come autore quando il pagamento non ne aveva uno.
+    $ctx     = setupPagamentiService();
+    $service = new PagamentoFornitoreService();
+    $fattura = registraFatturaConRitenuta($ctx);
+    $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
+        'data_pagamento' => '2026-01-10',
+        'allocazioni'    => [['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => 100000]],
+    ]))->fresh();
+    $pagamento->forceFill(['user_id' => null])->save();
+
+    (new SyncF24WithPagamento())->handle(new PagamentoRegistrato($pagamento));
+
+    $task = Evento::where('meta->context->pagamento_id', $pagamento->id)->where('meta->type', 'versamento_ritenuta')->firstOrFail();
+    expect(User::query()->whereKey(1)->exists())->toBeTrue()
+        ->and($task->created_by)->toBeNull();
+});
+
 it('sposta la scadenza F24 al lunedì se il 16 cade nel weekend', function () {
     $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();

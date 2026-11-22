@@ -5,21 +5,44 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { router } from "@inertiajs/vue3"
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
+import { router, usePage } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
-import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit, Ban, Link2, Unlink } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit, Ban, Link2, Unlink, Zap, CalendarPlus } from 'lucide-vue-next'
+import PagaPerLUrgenza from '@/components/assemblee/PagaPerLUrgenza.vue'
+import RatificaDellaSpesa from '@/components/assemblee/RatificaDellaSpesa.vue'
+import FinestraDelMemo from '@/components/assemblee/FinestraDelMemo.vue'
+import { useToast } from '@/components/ui/toast'
+import { Permission } from '@/enums/Permission'
+import { fatturaDellaRatifica } from '@/lib/assemblee/ratifica'
 import { useFattureRettificabili } from '@/composables/useFattureRettificabili'
 import { etichettaCandidata, statoScelta } from '@/lib/gestionale/fatture/fatturaRettificata'
+import { siMetteARateDallElenco } from '@/lib/gestionale/fatture/mettiARate'
 
 const props = defineProps<{
   fattura: any,
   condominioId: number
 }>()
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+
+// 1.12.0-beta.13 (R12, decisione 561): la spesa urgente oltre il preventivo si paga subito («Paga per l'urgenza», lo sblocco di oggi con il motivo) e si
+// ratifica con la delibera dell'assemblea («Ratifica», `fatture.ratifica`). «Ratifica» c'è anche per la fattura già sbloccata e senza la delibera.
+const gestisceLeAssemblee = computed(() => hasPermission([Permission.MANAGE_ASSEMBLEE]));
+const pagina = usePage<{ condominio?: { nome?: string } }>();
+const nomeDelCondominio = computed(() => String(pagina.props?.condominio?.nome ?? ''));
+const inSforo = computed(() => props.fattura.stato_approvazione === 'sforo_motivato');
+const siRatifica = computed(() => inSforo.value || !!props.fattura.aspetta_la_ratifica);
+const perLeFinestre = computed(() => fatturaDellaRatifica(props.fattura));
+const finestraUrgenza = ref(false);
+const finestraRatifica = ref(false);
+const finestraMemo = ref(false);
+const { toast } = useToast();
+const memoSalvato = (frase: string) => toast({ title: 'Da portare in assemblea', description: frase });
 
 const isModificabile = computed(() =>
   props.fattura.stato_pagamento === 'aperta' &&
@@ -33,7 +56,7 @@ const isModificabile = computed(() =>
 // Non riguarda quindi solo lo sforo da ratificare — vale anche per "da approvare" e
 // "contestata". Senza questo filtro l'azione portava a un vicolo cieco: il form si
 // apriva ma la fattura vi risultava non selezionabile, e l'utente non capiva perché.
-// Il menu offre già l'azione giusta per lo sforo ("Ratifica assembleare"), quindi
+// Il menu offre già le azioni giuste per lo sforo («Paga per l'urgenza» e «Ratifica»), quindi
 // nascondere quella sbagliata non lascia l'utente senza strada.
 //
 // Il gate è una scelta di flusso deliberata, non un blocco da aggirare:
@@ -191,17 +214,11 @@ const executeScollega = () => {
 // Stato dei Modali
 const isDeleteModalOpen = ref(false);
 const isStornoModalOpen = ref(false);
-const isApprovaSforoModalOpen = ref(false);
 const isApprovaBaseModalOpen = ref(false);
-const noteApprovazioneRatifica = ref('');
 
 const confirmDeleteFattura = () => isDeleteModalOpen.value = true;
 const confirmStornoFattura = () => isStornoModalOpen.value = true;
 const confirmApprovaBase = () => isApprovaBaseModalOpen.value = true;
-const apriModaleApprovazione = () => {
-    noteApprovazioneRatifica.value = '';
-    isApprovaSforoModalOpen.value = true;
-};
 
 // Esecuzione Eliminazione Fisica (Errore Immediato)
 const executeDelete = () => {
@@ -234,19 +251,6 @@ const executeStorno = () => {
                 ?? Object.values(errors)[0]
                 ?? 'Operazione non consentita.';
         },
-    });
-};
-
-// Esecuzione Ratifica Assembleare (sforo_motivato → approvata)
-const executeApprovaSforo = () => {
-    router.post(route(generateRoute('gestionale.fatture.approva-sforo'), {
-        condominio: props.condominioId,
-        fattura: props.fattura.id
-    }), {
-        note: noteApprovazioneRatifica.value || null,
-    }, {
-        preserveScroll: true,
-        onSuccess: () => isApprovaSforoModalOpen.value = false
     });
 };
 
@@ -349,13 +353,39 @@ const vaiAgliAllegati = () => {
       >
         <CreditCard class="w-4 h-4 mr-2" /> Registra pagamento
       </DropdownMenuItem>
-      <!-- Ratifica Assembleare: visibile solo per fatture in sforo_motivato -->
+      <!-- Coda 689: il nuovo piano sulla scheda giusta, con tutto già scelto; se la spesa è già tutta nei piani, la pagina della fattura lo dice. -->
       <DropdownMenuItem
-        v-if="fattura.stato_approvazione === 'sforo_motivato'"
-        @click="apriModaleApprovazione"
-        class="text-orange-600 focus:text-orange-700 focus:bg-orange-50 font-medium cursor-pointer"
+        v-if="siMetteARateDallElenco(fattura)"
+        @click="router.visit(route(generateRoute('gestionale.fatture.metti-a-rate'), { condominio: condominioId, fattura: fattura.id }))"
+        class="cursor-pointer"
+        data-testid="voce-metti-a-rate"
       >
-        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica assembleare
+        <CalendarPlus class="w-4 h-4 mr-2" /> Metti a rate questa spesa
+      </DropdownMenuItem>
+      <!-- La spesa oltre il preventivo (decisione 561): si paga subito per l'urgenza, e si ratifica con la delibera dell'assemblea. -->
+      <DropdownMenuItem
+        v-if="inSforo"
+        @click="finestraUrgenza = true"
+        class="text-orange-600 focus:text-orange-700 focus:bg-orange-50 font-medium cursor-pointer"
+        data-testid="voce-paga-per-urgenza"
+      >
+        <Zap class="w-4 h-4 mr-2" /> Paga per l'urgenza
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        v-if="siRatifica && gestisceLeAssemblee"
+        @click="finestraRatifica = true"
+        class="text-orange-600 focus:text-orange-700 focus:bg-orange-50 font-medium cursor-pointer"
+        data-testid="voce-ratifica"
+      >
+        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        v-if="gestisceLeAssemblee && fattura.tipo_documento !== 'nota_credito'"
+        @click="finestraMemo = true"
+        class="cursor-pointer"
+        data-testid="voce-da-portare-in-assemblea"
+      >
+        <CalendarPlus class="w-4 h-4 mr-2" /> Da portare in assemblea
       </DropdownMenuItem>
 
       <!-- Approvazione Base: visibile solo per fatture in da_approvare -->
@@ -498,50 +528,12 @@ const vaiAgliAllegati = () => {
           </div>
       </ConfirmDialog>
 
-      <!-- Modale Ratifica Assembleare sforo_motivato → approvata -->
-      <ConfirmDialog
-          v-model="isApprovaSforoModalOpen"
-          title="Ratifica assembleare — sforo motivato"
-          confirm-text="Conferma ratifica"
-          variant="default"
-          :disabled="noteApprovazioneRatifica.trim().length < 10"
-          @confirm="executeApprovaSforo"
-      >
-          <div class="space-y-4 text-sm text-slate-600">
-
-              <!-- Contesto legale -->
-              <div class="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-lg flex gap-3 items-start">
-                  <ShieldCheck class="w-5 h-5 shrink-0 mt-0.5 text-orange-600" />
-                  <div>
-                      <p class="font-bold text-orange-900">Ratifica assembleare obbligatoria (Art. 1135 c.c.)</p>
-                      <p class="text-xs mt-1 leading-relaxed">
-                          Questa fattura è stata registrata con sforo motivato: la spesa supera il budget approvato dall'assemblea.
-                          La ratifica è obbligatoria per legge prima del pagamento.
-                          Confermando dichiari che l'assemblea ha deliberato l'approvazione di questa spesa.
-                      </p>
-                  </div>
-              </div>
-
-              <!-- Campo note -->
-              <div class="space-y-1.5">
-                  <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex justify-between">
-                      <span>Riferimento verbale / Note <span class="text-rose-500">*</span></span>
-                      <span class="font-normal text-slate-400 normal-case tracking-normal ml-1" :class="{'text-rose-500 font-bold': noteApprovazioneRatifica.trim().length < 10}">
-                          {{ noteApprovazioneRatifica.trim().length < 10 ? `(minimo 10 caratteri, attuali: ${noteApprovazioneRatifica.trim().length})` : '(obbligatorio)' }}
-                      </span>
-                  </label>
-                  <textarea
-                      v-model="noteApprovazioneRatifica"
-                      rows="3"
-                      placeholder="Es: Delibera assembleare del 15/05/2025 – Verbale n. 3/2025 – Ratifica spesa urgente manutenzione ascensore..."
-                      class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 resize-none"
-                  />
-                  <p class="text-[10px] text-slate-400 leading-relaxed">
-                      Il sistema registrerà automaticamente data e autore dell'approvazione nell'audit trail della fattura.
-                  </p>
-              </div>
-          </div>
-      </ConfirmDialog>
+      <!-- La spesa oltre il preventivo: «Paga per l'urgenza» e «Ratifica» (R12, decisione 561) -->
+      <PagaPerLUrgenza v-if="inSforo" v-model:open="finestraUrgenza" :condominio-id="condominioId" :condominio-nome="nomeDelCondominio" :fattura="perLeFinestre" />
+      <RatificaDellaSpesa v-if="siRatifica && gestisceLeAssemblee && finestraRatifica" v-model:open="finestraRatifica" :condominio-id="condominioId"
+        :condominio-nome="nomeDelCondominio" :fattura="perLeFinestre" />
+      <FinestraDelMemo v-if="gestisceLeAssemblee && finestraMemo" v-model:open="finestraMemo" :condominio-id="condominioId" origine-tipo="fattura_passiva"
+        :origine-id="fattura.id" @salvato="memoSalvato" />
 
       <!-- Modale Approvazione Base da_approvare → approvata -->
       <ConfirmDialog
@@ -581,15 +573,26 @@ const vaiAgliAllegati = () => {
               <p v-else-if="rettificabili.candidate.value.length === 0" class="text-xs text-slate-500">
                   Questo fornitore non ha fatture registrate in questo condominio che la nota possa rettificare.
               </p>
-              <select
+              <!-- Un menu `v-select` come gli altri del programma, non il menu del browser (prova a video, 19/11). Dentro la finestra si apre sopra
+                   tutto (`append-to-body`). -->
+              <v-select
                   v-else
                   v-model="fatturaScelta"
+                  :options="rettificabili.candidate.value"
+                  :get-option-label="etichettaCandidata"
+                  :reduce="(c: { id: number }) => c.id"
+                  :clearable="false"
+                  :searchable="rettificabili.candidate.value.length > 8"
+                  placeholder="Scegli la fattura"
                   aria-label="Fattura che la nota rettifica"
-                  class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  append-to-body
+                  class="w-full"
+                  data-testid="scegli-fattura-rettificata"
               >
-                  <option :value="null" disabled>Scegli la fattura</option>
-                  <option v-for="c in rettificabili.candidate.value" :key="c.id" :value="c.id">{{ etichettaCandidata(c) }}</option>
-              </select>
+                  <!-- Le voci vanno a capo: di serie il menu le taglia («Esercizio anno 202…»). -->
+                  <template #option="c"><span class="block whitespace-normal py-0.5 text-sm leading-snug">{{ etichettaCandidata(c) }}</span></template>
+                  <template #selected-option="c"><span class="whitespace-normal text-sm leading-snug">{{ etichettaCandidata(c) }}</span></template>
+              </v-select>
               <div v-if="scelta.motivo" class="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded flex gap-3 items-start">
                   <Ban class="w-5 h-5 shrink-0 mt-0.5" />
                   <p class="text-xs">{{ scelta.motivo }}</p>

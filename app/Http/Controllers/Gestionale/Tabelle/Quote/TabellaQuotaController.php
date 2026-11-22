@@ -5,6 +5,9 @@
 
 namespace App\Http\Controllers\Gestionale\Tabelle\Quote;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Tabella\Quota\UpdateQuoteRequest;
 use App\Models\Condominio;
@@ -147,7 +150,15 @@ class TabellaQuotaController extends Controller
         $createdBy = $validated['created_by'];
         $updatedBy = $validated['updated_by'];
 
-        DB::transaction(function () use ($quotes, $tabella, $createdBy, $updatedBy) {
+        // Gesto 1 del registro delle modifiche: i millesimi si salvano tutti insieme; la riga dice, unità per unità, com'erano e come sono (anche le
+        // righe tolte, che passano da una cancellazione su query).
+        $prima = GestiDelRegistro::millesimi($tabella);
+        $gesto = Gesto::sulModello($tabella)->soloSeCambia()->allaFine(function (Gesto $g) use ($prima, $tabella) {
+            $campi = GestiDelRegistro::campiDeiMillesimi($prima, GestiDelRegistro::millesimi($tabella), (int) ($tabella->numero_decimali ?? 2));
+            $g->campi($campi)->riepilogo('Millesimi della tabella «' . $tabella->nome . '» salvati: ' . count($campi)
+                . (count($campi) === 1 ? ' unità cambiata' : ' unità cambiate'));
+        });
+        RegistroModifiche::durante($gesto, function () use ($quotes, $tabella, $createdBy, $updatedBy) {
 
             // Cancella le righe che non sono più presenti nel form
             $idsPresenti = collect($quotes)

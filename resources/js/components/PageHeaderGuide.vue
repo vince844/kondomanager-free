@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { usePermission } from "@/composables/permissions";
 import SceltaCondominio from '@/components/SceltaCondominio.vue';
 import PulsanteGuida from '@/components/PulsanteGuida.vue';
+import StoriaDellaScheda from '@/components/registroModifiche/StoriaDellaScheda.vue';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -53,6 +54,28 @@ const props = defineProps<{
    * in una riga sola. Senza, la fila va a capo quando non ci sta, come prima.
    */
   unaFila?: boolean;
+
+  /**
+   * Con `unaFila`, la fila non va a capo già da `md` e il nome del condominio si accorcia di più sotto `xl` (decisione 574): la dashboard del condominio,
+   * dove il nome lungo e i pulsanti stanno su un portatile di 1.000 pixel. Le altre pagine non lo chiedono e restano come sono.
+   */
+  unaFilaSempre?: boolean;
+
+  /** «Esercizio anno 2026» si legge «Esercizio 2026» (decisione 574, la dashboard). Il nome dell'esercizio nei dati non cambia. */
+  esercizioBreve?: boolean;
+
+  /**
+   * La «Storia» della scheda (1.12.0-beta.13, §8 del progetto della tappa 1): con il tipo e l'id, accanto a «Guida» compare «Storia», alto come «Guida»,
+   * che apre il cassetto con le modifiche della scheda. La pagina non deve fare altro. Il tipo è uno dell'elenco chiuso del server
+   * (`SchedeDellaStoria::tipi()`); senza id per le «Storie» dello studio («impostazioni_stampe», «documenti»).
+   */
+  storia?: { tipo: string; id?: number | null } | null;
+
+  /**
+   * Il condominio non si cambia da qui (decisione 660): la pagina è di una scheda sola (un'assemblea, la sua sala, il suo verbale) e l'indirizzo con un altro
+   * condominio darebbe 404. Il condominio si mostra come con uno solo: il riquadro con l'icona e il nome, senza menu.
+   */
+  condominioFisso?: boolean;
 }>();
 
 defineEmits(['open-text-guide']);
@@ -64,7 +87,15 @@ const colorStyles = {
   slate: 'bg-slate-100/50 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400 border-slate-200/50 dark:border-slate-800/50',
 };
 
-const showCondominioDropdown = computed(() => (props.condomini?.length ?? 0) > 1);
+const showCondominioDropdown = computed(() => !props.condominioFisso && (props.condomini?.length ?? 0) > 1);
+/** Il nome del condominio: con `unaFila` si tronca con i puntini (il nome intero nel `title`); con `unaFilaSempre` più corto sotto `xl`. */
+const classiDelNome = computed(() => !props.unaFila ? '' : props.unaFilaSempre ? 'max-w-[11rem] xl:max-w-[16rem] truncate' : 'max-w-[16rem] truncate');
+/** Il nome dell'esercizio come si legge nell'intestazione: con `esercizioBreve` senza «anno». */
+const nomeDellEsercizio = (nome: string | null | undefined, comeOggi: string): string => {
+  if (!props.esercizioBreve || !nome) return comeOggi;
+  const breve = nome.replace(/\banno\s+/iu, '').replace(/\s+/g, ' ').trim();
+  return breve.charAt(0).toUpperCase() + breve.slice(1);
+};
 const showEsercizioDropdown = computed(() => (props.esercizi?.length ?? 0) > 1);
 const hasBreadcrumbs = computed(() => props.breadcrumbs && props.breadcrumbs.length > 0);
 const { generatePath } = usePermission();
@@ -131,7 +162,14 @@ function selectEsercizio(esercizioId: number | string) {
         </slot>
 
         <div v-if="!hasBreadcrumbs && !$slots.breadcrumb" class="pl-5 border-l-2 border-primary py-1">
-          <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none break-words">
+          <!-- Accanto al titolo, se la pagina lo chiede, ciò che descrive la scheda (lo stato, in un badge): i pulsanti restano per le azioni. -->
+          <div v-if="$slots['accanto-al-titolo']" data-testid="riga-del-titolo" class="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none break-words">
+                {{ pageTitle }}
+            </h1>
+            <slot name="accanto-al-titolo" />
+          </div>
+          <h1 v-else class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none break-words">
               {{ pageTitle }}
           </h1>
           <p v-if="pageSubtitle" class="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-2xl">
@@ -153,7 +191,7 @@ function selectEsercizio(esercizioId: number | string) {
         <!-- Contenitore Pulsanti -->
         <div data-testid="pulsanti-intestazione" :class="[
           'w-full md:w-auto flex-col md:flex-row flex-wrap items-stretch md:items-center gap-2',
-          unaFila ? 'xl:flex-nowrap' : '',
+          unaFila ? (unaFilaSempre ? 'md:flex-nowrap' : 'xl:flex-nowrap') : '',
           isMobileMenuOpen ? 'flex' : 'hidden md:flex'
         ]">
 
@@ -175,13 +213,13 @@ function selectEsercizio(esercizioId: number | string) {
               class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <Building2 class="w-3.5 h-3.5 shrink-0 text-slate-400" />
-              <span data-testid="nome-condominio" :class="unaFila ? 'max-w-[16rem] truncate' : ''" :title="unaFila ? condominio.nome : undefined">{{ condominio.nome }}</span>
+              <span data-testid="nome-condominio" :class="classiDelNome" :title="unaFila ? condominio.nome : undefined">{{ condominio.nome }}</span>
               <ChevronDown class="w-3.5 h-3.5 shrink-0 text-slate-400" />
             </button>
           </SceltaCondominio>
           <div v-else class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
             <Building2 class="w-3.5 h-3.5 shrink-0 text-slate-400" />
-            <span data-testid="nome-condominio" class="text-slate-700 dark:text-slate-300" :class="unaFila ? 'max-w-[16rem] truncate' : ''" :title="unaFila ? condominio.nome : undefined">{{ condominio.nome }}</span>
+            <span data-testid="nome-condominio" class="text-slate-700 dark:text-slate-300" :class="classiDelNome" :title="unaFila ? condominio.nome : undefined">{{ condominio.nome }}</span>
           </div>
 
           <template v-if="esercizio">
@@ -190,7 +228,7 @@ function selectEsercizio(esercizioId: number | string) {
                 class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 <Calendar class="w-3.5 h-3.5 text-slate-400" />
-                {{ selectedEsercizio?.nome.toLowerCase() ?? 'Seleziona esercizio' }}
+                <span data-testid="nome-esercizio">{{ nomeDellEsercizio(selectedEsercizio?.nome, selectedEsercizio?.nome.toLowerCase() ?? 'Seleziona esercizio') }}</span>
                 <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
               </DropdownMenuTrigger>
               <DropdownMenuPortal>
@@ -203,7 +241,7 @@ function selectEsercizio(esercizioId: number | string) {
             </DropdownMenu>
             <div v-else class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
               <Calendar class="w-3.5 h-3.5 text-slate-400" />
-              <span class="text-slate-700 dark:text-slate-300">{{ esercizio.nome }}</span>
+              <span data-testid="nome-esercizio" class="text-slate-700 dark:text-slate-300">{{ nomeDellEsercizio(esercizio.nome, esercizio.nome) }}</span>
             </div>
           </template>
         </template>
@@ -239,6 +277,8 @@ function selectEsercizio(esercizioId: number | string) {
         <!-- Bottone singola guida (legacy support) -->
         <PulsanteGuida v-else-if="hasTextGuide" :testo="textGuideTitle || 'Guida'" @click="$emit('open-text-guide')" />
 
+        <StoriaDellaScheda v-if="storia" :tipo="storia.tipo" :id="storia.id ?? null" />
+
         <slot name="actions"></slot>
 
         <template v-if="condominio">
@@ -256,7 +296,13 @@ function selectEsercizio(esercizioId: number | string) {
     </div>
 
     <div v-if="hasBreadcrumbs || $slots.breadcrumb" class="pl-5 border-l-2 border-primary py-1">
-        <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
+        <div v-if="$slots['accanto-al-titolo']" data-testid="riga-del-titolo" class="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
+              {{ pageTitle }}
+          </h1>
+          <slot name="accanto-al-titolo" />
+        </div>
+        <h1 v-else class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
             {{ pageTitle }}
         </h1>
         <p v-if="pageSubtitle" class="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-4xl">

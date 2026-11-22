@@ -33,7 +33,7 @@ use Illuminate\Support\Facades\DB;
  *   `importo_dichiarato` zero) è una compensazione: non conta.
  * - **Le ritenute da versare con l'F24**, con le regole della pagina «Ritenute e F24»: le deleghe da versare (bozza o confermata) alla loro scadenza, e le
  *   ritenute dei pagamenti non ancora in una delega alla scadenza della legge, raggruppate come le raggruppa «Aggiorna scadenze» ({@see PlafondRitenuteService});
- *   per giorno, entro la finestra o già scadute.
+ *   per giorno, entro la finestra o già scadute; per ogni giorno la delega da aprire, quando è la sola aperta di quel giorno e nessuna ritenuta ne è fuori.
  * - **I deficit ereditati** da ripianare: i compiti aperti `pianifica_ripianamento_deficit`, quanti e la somma degli scoperti.
  * - **L'esercizio aperto di oggi**, dove si crea un piano rate.
  * - **Le banche e i contanti** con il saldo di oggi, e **i fondi che non si possono usare** con il saldo sopra zero, il tipo e il vincolo: dalla stessa
@@ -52,7 +52,7 @@ final class DatiDelleAzioni
      *     rateDaEmettere: list<array{pianoId:int, piano:string, esercizioId:?int, rate:list<array{rataId:int, numero:int, scadenza:string, cifra:int}>, quante:int, cifra:int,
      *         scadenze: list<array{giorno:string, cifra:int}>}>,
      *     bonifici: array{quanti:int, cifra:int, rimandati:int, rimandatiAl:?string, rimandatiGiorni:int},
-     *     ritenute: array{scadenze: list<array{giorno:string, cifra:int}>},
+     *     ritenute: array{scadenze: list<array{giorno:string, cifra:int, delega:?int}>},
      *     deficit: array{quanti:int, cifra:int},
      *     esercizioId: ?int,
      *     conti: list<array{cassaId:int, nome:string, tipo:string, saldo:int, libero:int, attiva:bool}>,
@@ -169,30 +169,42 @@ final class DatiDelleAzioni
      * Le ritenute da versare entro la finestra o già scadute, per giorno di scadenza: le deleghe da versare con la loro scadenza e il loro totale, e le ritenute
      * dei pagamenti non ancora in una delega viva alla scadenza della legge. Come la pagina «Ritenute e F24»: «Da versare» e «Aggiorna scadenze».
      *
-     * @return list<array{giorno:string, cifra:int}>
+     * Per ogni giorno anche la delega da aprire con «Prepara l'F24»: quella aperta, quando per quel giorno ce n'è una sola e nessuna ritenuta è ancora fuori da
+     * una delega. Altrimenti null, e il pulsante porta all'elenco, dove le deleghe si generano.
+     *
+     * @return list<array{giorno:string, cifra:int, delega:?int}>
      */
     private function ritenute(Condominio $condominio, CarbonImmutable $limite): array
     {
         $fino = $limite->toDateString();
         $perGiorno = [];
-        foreach (DelegaF24::delCondominio((int) $condominio->id)->aperte()->get(['data_scadenza', 'totale_debito']) as $d) {
+        $deleghe = [];
+        foreach (DelegaF24::delCondominio((int) $condominio->id)->aperte()->get(['id', 'data_scadenza', 'totale_debito']) as $d) {
             $giorno = $d->data_scadenza?->toDateString();
-            if ($giorno !== null && $giorno <= $fino && (int) $d->totale_debito > 0) {
+            if ($giorno === null) {
+                continue;
+            }
+            // Tutte le deleghe aperte del giorno, anche una a zero: con due deleghe il pulsante non sceglie.
+            $deleghe[$giorno][] = (int) $d->id;
+            if ($giorno <= $fino && (int) $d->totale_debito > 0) {
                 $perGiorno[$giorno] = ($perGiorno[$giorno] ?? 0) + (int) $d->totale_debito;
             }
         }
         // Le ritenute non ancora in una delega, raggruppate con le regole della legge (la soglia di ogni regime, le date fisse) come le raggruppa «Aggiorna
         // scadenze»: senza scrivere niente.
+        $fuori = [];
         $scoperte = app(GeneraDelegheF24Action::class)->ritenuteDaVersare($condominio)->filter(fn ($r) => $r['data_pagamento'] !== null)->values();
         foreach ($scoperte->isEmpty() ? [] : app(PlafondRitenuteService::class)->raggruppaPerScadenza($scoperte->all()) as $gruppo) {
             $giorno = $gruppo['scadenza']->toDateString();
             if ($giorno <= $fino && (int) $gruppo['importo'] > 0) {
                 $perGiorno[$giorno] = ($perGiorno[$giorno] ?? 0) + (int) $gruppo['importo'];
+                $fuori[$giorno] = true;
             }
         }
         ksort($perGiorno);
 
-        return array_values(array_map(fn ($giorno, $cifra) => ['giorno' => (string) $giorno, 'cifra' => (int) $cifra], array_keys($perGiorno), $perGiorno));
+        return array_values(array_map(fn ($giorno, $cifra) => ['giorno' => (string) $giorno, 'cifra' => (int) $cifra,
+            'delega' => ! isset($fuori[$giorno]) && count($deleghe[$giorno] ?? []) === 1 ? $deleghe[$giorno][0] : null], array_keys($perGiorno), $perGiorno));
     }
 
     /**

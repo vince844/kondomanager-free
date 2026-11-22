@@ -5,6 +5,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
 use App\Helpers\MoneyHelper;
@@ -123,6 +125,11 @@ final class VociDiEntrataNelMastro
         }
         $mastro = self::mastro($condominioId);
 
-        return Conto::whereIn('id', $daSpostare)->update(['conto_contabile_id' => $mastro->id]);
+        // Decisione 548 del registro delle modifiche: lo spostamento delle voci è un gesto solo, firmato dal contesto.
+        $gesto = Gesto::su('piani_rate', 'voce', null, 'Voci di entrata')->nelCondominio($condominioId)
+            ->riepilogo('Voci di entrata spostate sul mastro «' . $mastro->nome . '»: ' . count($daSpostare) . (count($daSpostare) === 1 ? ' voce' : ' voci'))
+            ->lotto(['voci' => $daSpostare]);
+
+        return RegistroModifiche::durante($gesto, fn () => Conto::whereIn('id', $daSpostare)->update(['conto_contabile_id' => $mastro->id]));
     }
 }

@@ -78,6 +78,12 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
               class: 'text-xs text-slate-500 dark:text-slate-400 truncate max-w-sm mt-0.5'
             }, desc) : null,
 
+            // R1: il piano emesso legato a una delibera di un altro giorno lo dice anche nell'elenco (la data del piano non cambia da sola).
+            (pianoRate as any).differenza_delibera ? h('span', {
+              class: 'text-xs text-amber-800 dark:text-amber-300 mt-0.5',
+              'data-testid': 'differenza-delibera',
+            }, `${(pianoRate as any).differenza_delibera}.`) : null,
+
             h('span', { 
                 class: 'text-[10px] font-semibold text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-primary transition-colors mt-2' 
             }, [

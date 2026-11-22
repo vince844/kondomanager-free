@@ -11,7 +11,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * norma arriva dalla pagina, che lo riceve dal server. Ogni frase dice ciò che il programma fa oggi.
  */
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { CalendarClock, ChevronRight, Coins, Handshake, Lightbulb, ListFilter, Mail, Percent, Printer, Receipt, Scale, Wallet } from 'lucide-vue-next';
+import { CalendarClock, CalendarPlus, ChevronRight, Coins, Handshake, Lightbulb, ListFilter, Mail, Percent, Printer, Receipt, Scale, Wallet } from 'lucide-vue-next';
 
 defineProps<{ open: boolean; testoNorma?: string }>();
 defineEmits(['update:open']);
@@ -121,6 +121,7 @@ defineEmits(['update:open']);
                             <ul class="space-y-2">
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" /><span>«Che cos'è»: le spese di sollecito, le spese legali prima della causa o della causa, un'altra spesa. La causale proposta segue la scelta, e la puoi cambiare.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" /><span>«Su che cosa si fonda»: la legge, il regolamento, una delibera, un provvedimento del giudice, altro o nessuna, con il riferimento. Gli avvisi dicono dove una sentenza ha visto le cose in un altro modo: non bloccano niente.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/components/gestionale/accordi/AccordoRientroDialog.vue:357 «tipo="accordo_rientro"» --><ChevronRight class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" /><span>Se un'assemblea ha respinto, rinviato, revocato o annullato una delibera che riguarda l'accordo di rientro (per esempio l'autorizzazione respinta), la scheda lo dice in testa con la frase della delibera e il collegamento all'assemblea. Sono frasi: nessun conto cambia da solo.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" /><span>La gestione è proposta, e la cambi se serve. La voce che riceve il denaro quando la persona lo versa la scegli tu.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" /><span>Una spesa che lo studio ha fatturato con la riga sull'unità non va qui: si addebita dall'estratto conto della persona, con «Nuovo addebito» e la sua riga di fattura.</span></li>
                             </ul>
@@ -143,15 +144,19 @@ defineEmits(['update:open']);
                             <span>Se l'assemblea ha dispensato l'amministratore, registra la delibera da «Dispense dei sei mesi», in alto accanto a «Guida»: la data
                             resta la stessa, e accanto si legge la dispensa che la copre.</span>
                         </p>
+                        <ul class="mt-3 space-y-2">
+                            <li class="flex gap-2"><!-- prova: resources/js/pages/gestionale/movimenti/rateScadute/RateScadute.vue:405 «origine-tipo="sei_mesi"» --><CalendarPlus class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>«Da portare in assemblea», in alto, scrive per la prossima assemblea il punto della dispensa dei sei mesi più vicini, senza nomi. Quando mancano 60 giorni il programma lo propone da sé.</span></li>
+                            <li class="flex gap-2"><CalendarPlus class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>Nel menu ⋯ della riga, «Da portare in assemblea» scrive lo stesso punto con i sei mesi più vicini di quella persona: il nome non va nel punto, perché l'avviso di convocazione lo stamperebbe; se serve, scrivilo nella nota del memo.</span></li>
+                        </ul>
                     </section>
 
                     <section>
                         <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Mail class="w-4 h-4" /> Le lettere</h3>
                         <p class="mb-3">
-                            «Prepara le lettere» scrive a tutte le persone dei filtri, o solo a quelle che hai spuntato; «Prepara una lettera», nella riga, a una
-                            persona sola. Il promemoria e il sollecito partono per email, si stampano o si scaricano; la diffida e la messa in mora si stampano o si
-                            scaricano in PDF. Una lettera stampata o scaricata, dopo averla spedita, si registra come spedita (raccomandata, PEC mandata fuori dal
-                            programma, a mano, posta, altro).
+                            «Prepara le lettere» scrive a tutte le persone dei filtri, o solo a quelle che hai spuntato; «Prepara una lettera», dal menu ⋯ della riga, a una
+                            persona sola. Il promemoria parte per email, si stampa o si scarica; il sollecito anche per PEC dalla casella dello studio; la diffida e
+                            la messa in mora per PEC o su carta, mai per email: lo spiega la parte qui sotto. Una lettera stampata o scaricata, dopo averla
+                            spedita, si registra come spedita (raccomandata, PEC mandata fuori dal programma, a mano, posta, altro).
                         </p>
                         <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                             <ul class="space-y-2">
@@ -163,10 +168,38 @@ defineEmits(['update:open']);
                         </div>
                     </section>
 
+                    <section data-testid="guida-come-partono">
+                        <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Mail class="w-4 h-4" /> Come partono le lettere</h3>
+                        <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <ul class="space-y-2">
+                                <li class="flex gap-2"><!-- prova: resources/js/components/gestionale/lettere/LettereDialog.vue:776 «`canale-${p.id}`» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Il canale lo scegli tu, persona per persona: è il menu accanto a ogni nome, nella finestra delle lettere.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/lib/gestionale/lettere/lettere.ts:22 «email: 'Email', pec: 'PEC dello studio'» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span><strong>Email</strong>: promemoria e sollecito, dalla posta dello studio. La PEC non è un indirizzo dell'email.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/lib/gestionale/lettere/lettere.ts:27 «pec: 'dalla casella PEC, con la ricevuta'» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span><strong>PEC dello studio</strong>: sollecito, diffida e messa in mora, dalla casella PEC dello studio, con la ricevuta.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Gestionale/Lettere/EmissioneLettere.php:1352 «private function scriviLaCopiaSuCarta(» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span><strong>PEC e carta</strong>: la stessa lettera parte per PEC e si stampa per la posta, con lo stesso PDF; la corrispondenza ha le due righe.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/lib/gestionale/lettere/lettere.ts:28 «stampa: 'poi registri la spedizione'» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span><strong>Stampa per la posta</strong>: poi registri la spedizione.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/lib/gestionale/lettere/lettere.ts:28 «zip: 'da mandare o stampare tu'» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span><strong>PDF per persona (.zip)</strong>: da mandare o stampare tu.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Gestionale/Lettere/EmissioneLettere.php:86 «public const TIPI_SENZA_EMAIL = ['diffida', 'messa_in_mora'];» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>La diffida e la messa in mora non partono mai per email.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Gestionale/Lettere/EmissioneLettere.php:636 «$pecComunicata => 'pec',» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Il programma propone la PEC a chi l'ha comunicata e la stampa agli altri; per il sollecito prima l'email, a chi ce l'ha. Dopo una lettera propone il canale di quella.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/components/gestionale/lettere/LettereDialog.vue:736 «Usa la PEC per chi ce l'ha ({{ senzaLaPecScelta.length }})» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>«Usa la PEC per chi ce l'ha», sopra la tabella, mette la PEC a tutti quelli che ne hanno una; poi la cambi persona per persona.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/components/gestionale/lettere/LettereDialog.vue:797 «PEC non comunicata dalla persona» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>«PEC non comunicata dalla persona»: la PEC c'è nella scheda, ma la persona non l'ha comunicata. Esempio: scritta dallo studio da un vecchio contratto. Puoi mandarla lo stesso: decidi tu. La «i» accanto lo spiega; quando la comunica, scrivi il giorno nella sua scheda.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Posta/PecDelloStudio.php:19 «public const NON_IMPOSTATA = 'Prima imposta la casella PEC dello studio.';» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Senza la casella PEC dello studio la voce c'è, spenta, con «Prima imposta la casella PEC dello studio.» e «Imposta la casella PEC» per chi apre le impostazioni.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/lib/gestionale/lettere/lettere.ts:79 «vuol dire che il gestore l» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>«Manda N PEC» chiede conferma con la casella da cui partono. Partita vuol dire che il gestore l'ha accettata: la consegna la dice la ricevuta.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Gestionale/Lettere/EmissioneLettere.php:114 «public const TETTO_PEC = 20;» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Ne partono 20 per volta: partono mentre la pagina aspetta, e la conferma lo dice. Le altre con «Manda le altre».</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/lib/gestionale/lettere/lettere.ts:96 «return `Già partita oggi alle ${ora}: non parte di nuovo.`;» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>A chi la PEC dello stesso tipo è già partita oggi non parte di nuovo, anche se rifai l'anteprima o premi di nuovo: la riga dice Già partita oggi alle 11:00, e «Manda N PEC» non la conta.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Gestionale/Lettere/EmissioneLettere.php:1005 «$restanti = [...$nonProvate, ...$fuori];» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Se il collegamento con il server della PEC cade, le altre non si provano: chi non è stato provato resta in «Manda le altre», da premere quando il collegamento torna.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/pages/gestionale/movimenti/rateScadute/RateScadute.vue:541 «Rimanda le PEC non partite» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Le PEC non partite, o con l'avviso di mancata consegna, le conta l'avviso in alto: «Rimanda le PEC non partite» le rifà tutte con le cifre di oggi; «Stampale per la posta» le stampa, e poi registri la spedizione.</span></li>
+                                <li class="flex gap-2"><!-- prova: resources/js/components/gestionale/lettere/RegistroLettere.vue:300 «Trascina qui la ricevuta di consegna (.eml)» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>La ricevuta di consegna arriva nella casella PEC dello studio: salvala come .eml e trascinala sulla lettera, nella corrispondenza della persona («Trascina qui la ricevuta di consegna (.eml)»). Il programma legge il giorno e l'ora.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Gestionale/Debiti/PassoProposto.php:365 «$da = $consegna !== null ? 'dalla consegna del '» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Con la ricevuta il termine «N giorni dal ricevimento» si conta dalla consegna: lo dicono la corrispondenza e «Sei mesi per agire»; la colonna «Ultima lettera» dice la consegna. Senza, dall'invio, come per l'email.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Posta/ConsegnaDellaPec.php:120 «non è ' . ($femminile ? 'consegnata' : 'consegnato') . ' e il termine non corre» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Se il gestore non consegna la PEC, nella casella dello studio arriva l'avviso di mancata consegna: trascinalo sulla lettera come la ricevuta. La lettera non conta come arrivata e il termine non corre: mandala di nuovo per PEC o stampala.</span></li>
+                                <li class="flex gap-2"><!-- prova: app/Services/Posta/RicevutaPec.php:23 «public const CONSEGNA = 'avvenuta-consegna';» --><ChevronRight class="w-4 h-4 text-sky-500 shrink-0 mt-0.5" /><span>Che cosa dice la legge: la PEC con le sue ricevute equivale alla notificazione per posta, salvo che la legge disponga diversamente (art. 48 c. 2 del Codice dell'amministrazione digitale). La ricevuta di consegna dice che è arrivata nella casella, anche se non l'ha letta (D.P.R. 68/2005, art. 6).</span></li>
+                            </ul>
+                        </div>
+                    </section>
+
                     <section>
                         <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Handshake class="w-4 h-4" /> L'accordo di rientro</h3>
                         <p>
-                            Dalla riga, «Registra un accordo di rientro» annota l'accordo con cui la persona riconosce il debito: la data, le rate coperte con quanto
+                            Dal menu ⋯ della riga, «Registra un accordo di rientro» annota l'accordo con cui la persona riconosce il debito: la data, le rate coperte con quanto
                             è riconosciuto, il calendario delle rate dell'accordo, la regola di decadenza se l'accordo la prevede, e se l'assemblea l'ha autorizzato.
                             Le rate coperte restano fra le scadute, con il segno dell'accordo, e le lettere proposte lasciano fuori la parte riconosciuta fino
                             all'ultima rata del calendario. L'accordo non è la dispensa dei sei mesi.

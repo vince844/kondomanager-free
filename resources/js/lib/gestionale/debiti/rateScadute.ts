@@ -19,7 +19,11 @@ export interface DataSeiMesi {
     esercizio_da_chiudere: string | null;
     dispensa: Dispensa | null;
 }
-export interface SeiMesiDellaRata { dalla_scadenza: DataSeiMesi; dalla_competenza: DataSeiMesi; coincidono: boolean; piu_vicina: string | null; piu_vicina_dispensa: Dispensa | null }
+export interface SeiMesiDellaRata {
+    dalla_scadenza: DataSeiMesi; dalla_competenza: DataSeiMesi; coincidono: boolean; piu_vicina: string | null; piu_vicina_dispensa: Dispensa | null;
+    /** L'esercizio da cui viene la data più vicina: i sei mesi da cui nasce il memo della dispensa (Coda 736). */
+    piu_vicina_esercizio?: { id: number; nome: string } | null;
+}
 export interface NonEmesse { persone: number; importo: number; saldi: number }
 
 export const giorno = (d: string | null | undefined): string => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');

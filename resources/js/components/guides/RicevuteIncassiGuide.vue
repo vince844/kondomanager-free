@@ -116,12 +116,12 @@ defineEmits(['update:open']);
                     <section>
                         <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><Mail class="w-4 h-4" /> Invia per email</h3>
                         <p class="mb-3">
-                            Scegli a quali indirizzi: primaria, secondaria, PEC. La PEC parte come email semplice, dal server di posta configurato. La finestra
-                            ripropone gli indirizzi del tuo ultimo invio in blocco in questo condominio.
+                            Scegli a quali indirizzi con i pulsanti primaria, secondaria e PEC: ognuno dice quante persone raggiunge. La PEC parte come email
+                            semplice, dal server di posta configurato. La finestra ripropone gli indirizzi del tuo ultimo invio in blocco in questo condominio.
                         </p>
                         <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                             <ul class="space-y-2">
-                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span>«Partiranno» dice quante persone, quante ricevute e quanti indirizzi.</span></li>
+                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span>Il riepilogo in fondo, accanto a «Invia», dice quante email partono, a quante persone e con quante ricevute. Mentre si aggiorna c'è un segno che gira, e «Invia» aspetta.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span>Se fra le scelte ce ne sono già inviate o in coda, la casella «Escludi le N già inviate o in coda» di serie è spuntata: restano fuori.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span>«Manda anche a chi ha versato per conto di altri» manda la ricevuta anche a chi ha pagato per un'altra persona.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /><span>«Mostra chi riceve che cosa» elenca persone, indirizzi e ricevute. Da lì togli una persona dall'invio.</span></li>
@@ -141,8 +141,9 @@ defineEmits(['update:open']);
                     <section>
                         <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2"><MailX class="w-4 h-4" /> Chi non ha un indirizzo</h3>
                         <p class="mb-3">
-                            Chi non ha un indirizzo fra quelli scelti non riceve l'email. La finestra lo nomina, prima e dopo l'invio, e «Stampa le N senza
-                            indirizzo» stampa le sue ricevute per la posta.
+                            Chi non ha un indirizzo fra quelli scelti non riceve l'email. La finestra lo nomina in un riquadro, prima e dopo l'invio, e «Stampa la
+                            ricevuta per la posta» la stampa (con più persone, le stampa tutte). Sotto le caselle degli indirizzi la finestra dice quali
+                            spuntare per raggiungere chi resta fuori.
                         </p>
                         <p>
                             Se ha un indirizzo di un altro tipo, la finestra lo dice: spuntalo per raggiungerlo. Nell'elenco, nella colonna «Email», chi non ce l'ha porta
@@ -168,6 +169,10 @@ defineEmits(['update:open']);
                         <p>
                             «Apri», nella riga, apre la finestra della ricevuta di quell'incasso: la stampi o la mandi da lì. «invia di nuovo» rimanda l'ultima
                             email della ricevuta, dopo una conferma che dice a quale indirizzo va.
+                        </p>
+                        <p class="mt-3">
+                            In «A che cosa va il versamento» una riga dice quanto va su quante quote e che cosa resta. La tabella delle quote si apre con «Mostra
+                            le quote».
                         </p>
                     </section>
                 </div>

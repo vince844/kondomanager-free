@@ -107,6 +107,8 @@ class RateScaduteController extends Controller
             'filtri' => $filtri,
             // «I sei mesi del …», dal riquadro dei sei mesi: quante persone hanno rate di quella data, la loro cifra e l'esercizio da cui viene la data.
             'sei_mesi_del' => $filtri['sei_mesi_del'] === null ? null : self::seiMesiDel($filtri['sei_mesi_del'], $righe),
+            // «Da portare in assemblea» (Coda 736): i sei mesi da cui nasce il memo della dispensa.
+            'dispensa_in_assemblea' => $filtri['vista'] === ElencoRateScadute::VISTA_SCADUTE ? self::dispensaInAssemblea($righe, $filtri['sei_mesi_del']) : null,
             'oggi' => $oggi,
             'non_emesse' => $filtri['vista'] === ElencoRateScadute::VISTA_SCADUTE ? $this->elenco->nonEmesse($condominio, $filtri['alla'], $filtri['gestione_id']) : null,
             // I suggerimenti che chiedono le regole del recupero (chi è oltre la tolleranza senza una lettera, gli interessi da proporre): sulle persone
@@ -126,10 +128,29 @@ class RateScaduteController extends Controller
             // Le lettere per email da rifare (non partite, e la persona ha ancora qualcosa da versare) e quelle in coda da più di un'ora: contate
             // come lettere, non come righe (una lettera a due indirizzi è una).
             'lettere_da_riprovare' => app(\App\Services\Gestionale\Lettere\EmissioneLettere::class)->lettereDaRiprovare($condominio),
+            // Le lettere per PEC non partite o non consegnate, da rimandare in blocco o da stampare per la posta.
+            'pec_da_rimandare' => app(\App\Services\Gestionale\Lettere\EmissioneLettere::class)->pecDaRimandare($condominio)->count(),
             'lettere_in_coda_da_tempo' => \App\Models\Gestionale\RegistroInvio::where('condominio_id', $condominio->id)
                 ->whereIn('tipo', \App\Models\Gestionale\RegistroInvio::TIPI_LETTERE)->where('stato', \App\Models\Gestionale\RegistroInvio::STATO_IN_CODA)
                 ->where('emesso_il', '<', now()->subHour())->get(['id', 'dati->lettera as lettera'])->map(fn ($r) => $r->lettera ?? 'riga-' . $r->id)->unique()->count(),
         ]);
+    }
+
+    /**
+     * L'esercizio dei sei mesi per «Da portare in assemblea» (Coda 736): con il filtro «I sei mesi del …» quello di quella data; senza, quello della data
+     * più vicina che nessuna dispensa copre, fra le rate di tutte le persone dei filtri. Null se nessuna rata ha la data dei sei mesi.
+     *
+     * @param \Illuminate\Support\Collection<int, array<string, mixed>> $righe
+     * @return array{esercizio_id: int, data: string}|null
+     */
+    private static function dispensaInAssemblea(\Illuminate\Support\Collection $righe, ?string $data): ?array
+    {
+        $rate = $righe->flatMap(fn ($r) => $r['rate'])
+            ->filter(fn ($d) => ($d['sei_mesi']['piu_vicina'] ?? null) !== null && ($d['sei_mesi']['piu_vicina_esercizio']['id'] ?? null) !== null)
+            ->filter(fn ($d) => $data !== null ? $d['sei_mesi']['piu_vicina'] === $data : ($d['sei_mesi']['piu_vicina_dispensa'] ?? null) === null);
+        $prima = $rate->sortBy(fn ($d) => $d['sei_mesi']['piu_vicina'])->first();
+
+        return $prima === null ? null : ['esercizio_id' => (int) $prima['sei_mesi']['piu_vicina_esercizio']['id'], 'data' => (string) $prima['sei_mesi']['piu_vicina']];
     }
 
     /**

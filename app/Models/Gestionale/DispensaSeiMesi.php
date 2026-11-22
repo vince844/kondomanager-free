@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * La dispensa dell'assemblea dall'agire entro sei mesi (art. 1129 c. 9 c.c.), come l'amministratore la registra: la data della delibera, il
@@ -28,6 +29,8 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  */
 class DispensaSeiMesi extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'dispense_sei_mesi';
 
     protected $fillable = [

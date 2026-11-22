@@ -12,6 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import vSelect from 'vue-select';
 
 const axiosGet = vi.fn();
 const axiosPost = vi.fn();
@@ -140,9 +141,8 @@ describe('l\'anteprima e l\'invio', () => {
         expect(pulsante('invia')?.textContent).toContain('Invia 2 email');
 
         // Ugo si stampa: l'email va solo a Bice. Bice resta nell'invio; poi si toglie Ugo dalla stampa.
-        const select = document.body.querySelector('[data-testid="canale-1"]') as HTMLSelectElement;
-        select.value = 'stampa';
-        select.dispatchEvent(new Event('change'));
+        // 1.12.0-beta.13: il canale è un `v-select`; si sceglie con il suo evento, come fanno il mouse e la tastiera.
+        finestra!.findAllComponents(vSelect).find((c) => c.attributes('data-testid') === 'canale-1')!.vm.$emit('update:modelValue', 'stampa');
         await flushPromises();
         expect(pulsante('invia')?.textContent).toContain('Invia 1 email');
         expect(pulsante('stampa')?.textContent).toContain('Stampa 1 lettera');

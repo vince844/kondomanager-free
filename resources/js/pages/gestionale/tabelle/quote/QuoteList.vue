@@ -815,6 +815,7 @@ const submit = () => {
     <div class="px-6 py-8 space-y-6">
 
       <PageHeaderGuide
+        :storia="{ tipo: 'tabella', id: props.tabella.id }"
         page-title="Associazione millesimi"
         :page-subtitle="`Gestione delle quote per la tabella: ${props.tabella.nome}`"
         :guides="pageGuides"

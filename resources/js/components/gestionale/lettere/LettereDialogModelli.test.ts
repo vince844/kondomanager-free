@@ -12,6 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import vSelect from 'vue-select';
 
 const axiosGet = vi.fn();
 const axiosPost = vi.fn();
@@ -55,12 +56,20 @@ async function apri(o = opzioni(), props: Record<string, unknown> = {}) {
     await flushPromises();
 }
 const el = <T extends HTMLElement>(id: string) => document.body.querySelector(`[data-testid="${id}"]`) as T | null;
-const menuModello = () => el<HTMLSelectElement>('modello')!;
-const voci = () => [...menuModello().querySelectorAll('option')].map((o) => o.textContent?.trim());
-const gruppi = () => [...menuModello().querySelectorAll('optgroup')].map((g) => g.getAttribute('label'));
+// 1.12.0-beta.13: il menu «Modello» è un `v-select` (la guardia dei menu): le voci si leggono dal componente, con il gruppo sotto il nome, e si sceglie con il
+// suo evento, come fanno il mouse e la tastiera.
+const componenteModello = () => finestra!.findAllComponents(vSelect).find((c) => c.attributes('data-testid') === 'modello')!;
+const menuModello = () => ({ get value() {
+    const v = componenteModello().props('modelValue');
+
+    return v === null || v === undefined ? '' : String(v);
+} });
+const vociDelMenu = () => componenteModello().props('options') as Array<{ valore: number | null; nome: string; gruppo: string | null }>;
+const voci = () => vociDelMenu().map((o) => o.nome);
+const gruppi = () => [...new Set(vociDelMenu().map((o) => o.gruppo).filter((g): g is string => !!g))];
 const area = () => el<HTMLTextAreaElement>('testo')!;
 const testo = () => (document.body.textContent ?? '').replace(/\s+/g, ' ');
-const scegli = async (valore: string) => { menuModello().value = valore; menuModello().dispatchEvent(new Event('change')); await flushPromises(); };
+const scegli = async (valore: string) => { componenteModello().vm.$emit('update:modelValue', valore === '' ? null : Number(valore)); await flushPromises(); };
 const scegliTipo = async (t: string) => { el<HTMLElement>(`tipo-${t}`)!.querySelector('input')!.click(); await flushPromises(); };
 const scrivi = async (t: string) => { area().value = t; area().dispatchEvent(new Event('input')); await flushPromises(); };
 async function corpoDellAnteprima() {

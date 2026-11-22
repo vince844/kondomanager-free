@@ -5,6 +5,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\Conto;
@@ -44,8 +46,13 @@ class StornoFatturaController extends Controller
                 ->value('id');
         }
 
+        // Il registro delle modifiche: lo storno è un gesto solo (la nota di credito, le scritture, la fattura congelata nel lotto). Il gesto si prepara
+        // prima della transazione (i nomi si leggono qui: dentro, la prima lettura del condominio è il blocco); un rollback lo lascia da solo.
+        $gestoDelloStorno = GestiDelRegistro::fatturaStornata($fattura);
+
         try {
             DB::beginTransaction();
+            RegistroModifiche::apriGesto($gestoDelloStorno);
 
             // Coda 165 (1.11.0-beta.36): la guardia qui sopra legge senza lucchetto. Una nota del fornitore collegata
             // nello stesso istante da un'altra scheda («Collega a una fattura» blocca la fattura) passava lo stesso, e il
@@ -315,6 +322,7 @@ class StornoFatturaController extends Controller
                 'stato_pagamento' => 'stornata'
             ]);
 
+            RegistroModifiche::chiudiGesto($protocolloNC);
             DB::commit();
             return back()->with($this->flashSuccess("Storno eseguito! Nota di Credito n. {$protocolloNC} generata."));
 

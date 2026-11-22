@@ -12,9 +12,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Helpers\MoneyHelper;
 use App\Models\Gestionale\Conto;
 use Database\Factories\Gestionale\RataFactory;
+use App\Traits\ContaNelGesto;
 
 class Rata extends Model
 {
+    use ContaNelGesto;
+
     use HasFactory;
 
     protected $table = 'rate';

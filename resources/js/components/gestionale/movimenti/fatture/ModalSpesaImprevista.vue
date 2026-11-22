@@ -13,6 +13,9 @@ import vSelect from 'vue-select';
 import { useTabelle } from '@/composables/useTabelle';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useFondiRiserva, type FondoRiserva } from '@/composables/useFondiRiserva';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import { giornoItaliano } from '@/lib/giorno';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 
 const { euro } = useCurrencyFormatter();
 
@@ -31,6 +34,8 @@ const props = defineProps<{
      * `StoreFatturaRequest`): «Usa fondo riserva» si spegne prima, come nella finestra dello sforo (`ModalOverrideBudget`).
      */
     hasSpesePrivate?: boolean;
+    /** 1.12.0-beta.13 (§1.4): il nome del condominio, per «Scegli la delibera» della spesa decisa dall'assemblea. */
+    condominioNome?: string;
 }>();
 
 const emit = defineEmits<{
@@ -114,10 +119,21 @@ const cheCosaSuccede = computed(() => {
 // ---------------------------------------------------------------------------
 // Watchers
 // ---------------------------------------------------------------------------
+/**
+ * 1.12.0-beta.13 (§1.4 del progetto della tappa 2): con l'origine «Delibera assembleare» la data dell'assemblea viene dalla delibera scelta (ruolo
+ * `origine_della_spesa`); la finestra la manda con i suoi dati (`delibera_id`), e il server ne riscrive il giorno. Una data di prima, senza la delibera,
+ * resta e si dice «Scritta a mano».
+ */
+const delibera = ref<DeliberaDelMenu | null>(null);
+watch(delibera, (d) => {
+    if (d) data.value.data_assemblea = d.deliberata_il;
+});
+
 watch(() => props.show, (isOpen) => {
     if (isOpen && props.precedente) {
         // Coda 693 (a): riaperta dopo un rifiuto del server, la finestra riparte da ciò che si era scritto, non da capo.
         const p = props.precedente;
+        if (delibera.value && Number(p.delibera_id) !== delibera.value.id) delibera.value = null;
         data.value = {
             nome_voce: String(p.nome_voce ?? `Imprevisto - ${props.fornitoreNome}`),
             tabella_millesimale_id: p.tabella_millesimale_id ?? null,
@@ -135,6 +151,7 @@ watch(() => props.show, (isOpen) => {
         return;
     }
     if (isOpen) {
+        delibera.value = null;
         data.value = {
             nome_voce: `Imprevisto - ${props.fornitoreNome}`,
             tabella_millesimale_id: null,
@@ -205,6 +222,7 @@ const handleConfirm = () => {
         is_ordinario: isUrgenza.value,
         richiede_copertura: true,
         motivazione_sforo: motivazione,
+        delibera_id: !isUrgenza.value && delibera.value ? delibera.value.id : null,
     });
 };
 </script>
@@ -360,7 +378,14 @@ const handleConfirm = () => {
                                         <Label class="text-xs font-bold text-slate-700 dark:text-slate-200 flex justify-between">
                                             Data assemblea <span class="text-slate-500 dark:text-slate-400 font-normal">(raccomandata)</span>
                                         </Label>
-                                        <Input type="date" v-model="data.data_assemblea" class="h-10 text-sm" />
+                                        <ScegliLaDelibera v-model="delibera" :condominio-id="condominioId" :condominio-nome="condominioNome ?? ''" ruolo="origine_della_spesa"
+                                            per-questo="questa spesa" :con-memo="false" />
+                                        <p v-if="delibera" class="text-xs text-slate-600 dark:text-slate-300">
+                                            Deliberata il <span class="font-semibold tabular-nums">{{ giornoItaliano(delibera.deliberata_il) }}</span> dalla delibera
+                                        </p>
+                                        <p v-else-if="data.data_assemblea" class="text-xs text-slate-600 dark:text-slate-300" data-testid="data-scritta-a-mano">
+                                            Scritta a mano: {{ giornoItaliano(data.data_assemblea) }}. Scegli la delibera per legarla alla riunione.
+                                        </p>
                                     </div>
                                 </Transition>
                             </div>

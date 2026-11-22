@@ -145,6 +145,17 @@ enum Permission: string
     case APPROVE_EVENTS = 'Approva scadenze in agenda';
     case DELETE_OWN_EVENTS = 'Elimina proprie scadenza in agenda';
 
+    // Registro delle modifiche (1.12.0-beta.13, decisione 518 (3), §15 del progetto della tappa 1). Condòmini e fornitori mai: le rotte rifiutano i ruoli
+    // `utente` e `fornitore` qualunque permesso abbiano (P18), quindi darli a mano a quei ruoli non apre niente.
+    case VIEW_REGISTRO_MODIFICHE = 'Vede il registro delle modifiche';
+    case VIEW_STORIA_SCHEDE = 'Vede la storia delle schede';
+
+    // Assemblee e delibere (Coda 679, §7 del progetto della tappa 2, decisione 562). Come il registro, i ruoli `utente` e `fornitore` mai: le rotte li
+    // rifiutano qualunque permesso abbiano. «Gestisce» basta per registrare a mano una delibera; il terzo carica il verbale firmato (decisione 492 (4)).
+    case VIEW_ASSEMBLEE = 'Vede le assemblee';
+    case MANAGE_ASSEMBLEE = 'Gestisce le assemblee';
+    case REGISTER_VERBALE_SOTTOSCRITTO = 'Registra il verbale sottoscritto';
+
     /**
      * Get a human-readable description for the permission.
      *
@@ -262,6 +273,15 @@ enum Permission: string
             self::PUBLISH_EVENTS => 'Permette di pubblicare scadenze in agenda',
             self::APPROVE_EVENTS => 'Permette di approvare scadenze in agenda',
             self::DELETE_OWN_EVENTS => 'Permette di eliminare le proprie scadenze in agenda',
+
+            // Registro delle modifiche
+            self::VIEW_REGISTRO_MODIFICHE => 'Permette di vedere il registro delle modifiche di ogni condominio e dello studio, di stamparlo e di verificarne l\'integrità',
+            self::VIEW_STORIA_SCHEDE => 'Permette di aprire la «Storia» di una scheda dei condomini: chi ha cambiato che cosa e quando, con il valore di prima e quello di dopo',
+
+            // Assemblee e delibere
+            self::VIEW_ASSEMBLEE => 'Permette di vedere le assemblee, le delibere e la memoria «Da portare in assemblea» dei condomini, e di scegliere una delibera nelle pagine',
+            self::MANAGE_ASSEMBLEE => 'Permette di preparare le assemblee e il loro ordine del giorno, salvare i memo, registrare a mano una delibera o una riunione di carta e collegare le delibere alle schede',
+            self::REGISTER_VERBALE_SOTTOSCRITTO => 'Permette di caricare il verbale sottoscritto di una riunione, come scansione o come PDF firmato digitalmente',
         };
     }
 }

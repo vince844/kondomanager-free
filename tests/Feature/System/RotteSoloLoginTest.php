@@ -101,6 +101,11 @@ function elencoRotteSoloLogin(): array
         'impostazioni.generali'                => $gestione,
         'impostazioni.generali.store'          => $gestione,
         'impostazioni.installazione'           => $gestione,
+        // Il registro delle modifiche dello studio (1.12.0-beta.13): «Vede il registro delle modifiche» nel controller, mai i ruoli del portale
+        // (`AccessoAlRegistro`, provato da `RegistroModifichePermessiTest`).
+        'impostazioni.registro-modifiche'        => [ROTTA_CONTROLLO, 'permesso «Vede il registro delle modifiche» nel controller, mai i ruoli del portale'],
+        'impostazioni.registro-modifiche.stampa' => [ROTTA_CONTROLLO, 'permesso «Vede il registro delle modifiche» nel controller, mai i ruoli del portale'],
+        'impostazioni.registro-modifiche.stampa.conto' => [ROTTA_CONTROLLO, 'il conto delle righe della stampa: lo stesso permesso della stampa, nel controller'],
         'impostazioni.stampe'                  => $gestione,
         'impostazioni.stampe.store'            => $gestione,
         'impostazioni.backups'                 => $gestione,

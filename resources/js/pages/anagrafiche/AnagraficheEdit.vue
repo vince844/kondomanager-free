@@ -15,6 +15,7 @@ import { LoaderCircle, Info, User, MapPin, ShieldCheck, Save } from 'lucide-vue-
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import ComeSiConvoca from '@/components/assemblee/convocazione/ComeSiConvoca.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -68,6 +69,8 @@ const form = useForm({
     email: props.anagrafica?.email, 
     email_secondaria: props.anagrafica?.email_secondaria, 
     pec: props.anagrafica?.pec, 
+    mezzo_convocazione: props.anagrafica?.mezzo_convocazione,
+    pec_comunicata_il: props.anagrafica?.pec_comunicata_il,
     telefono: props.anagrafica?.telefono, 
     cellulare: props.anagrafica?.cellulare, 
     note: props.anagrafica?.note, 
@@ -99,7 +102,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 const pageGuides = computed(() => [
   {
     title: trans('anagrafiche.guides.centralized_book_title'),
-    description: trans('anagrafiche.guides.centralized_book_desc'),
+    // Il mezzo delle convocazioni (art. 66 disp. att.): il campo «Come si convoca» del modulo.
+    description: `${trans('anagrafiche.guides.centralized_book_desc')} ${trans('anagrafiche.guides.come_si_convoca_desc')}`,
     icon: User,
     colorVariant: 'blue' as const
   },
@@ -146,6 +150,7 @@ const submit = () => {
     <div class="px-6 py-8 space-y-6">
 
       <PageHeaderGuide
+        :storia="{ tipo: 'anagrafica', id: props.anagrafica.id }"
         :page-title="trans('anagrafiche.header.edit_resident_title')"
         :page-subtitle="trans('anagrafiche.header.edit_resident_description')"
         :guides="pageGuides"
@@ -389,6 +394,13 @@ const submit = () => {
                       />
                       <InputError :message="form.errors.pec" />
                   </div>
+
+                  <ComeSiConvoca
+                      v-model:mezzo="form.mezzo_convocazione"
+                      v-model:pec-comunicata-il="form.pec_comunicata_il"
+                      :errore-mezzo="form.errors.mezzo_convocazione"
+                      :errore-pec="form.errors.pec_comunicata_il"
+                  />
 
               </div>
           </CardContent>

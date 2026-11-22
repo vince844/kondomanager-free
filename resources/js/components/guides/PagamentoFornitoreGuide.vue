@@ -150,8 +150,8 @@ defineEmits(['update:open']);
                                 non premi «Registra pagamento» nel condominio non cambia nulla.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
-                                Le fatture in attesa di ratifica per sforo di budget non vengono selezionate: prima
-                                vanno approvate, con il pulsante sulla loro riga.
+                                Le fatture in attesa di ratifica per sforo di budget non vengono selezionate: prima si usa
+                                uno dei due pulsanti sulla loro riga, «Paga per l'urgenza» o «Ratifica».
                             </p>
                         </section>
 
@@ -238,10 +238,12 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">La spesa aveva sforato il budget</h3>
                             <p>
                                 Una fattura registrata sopra il preventivo del suo capitolo resta in attesa: sulla sua
-                                riga compare «Ratifica richiesta» e non è pagabile finché non usi «Approva sforo»,
-                                dove si registra la delibera assembleare o la motivazione d'urgenza dell'art. 1135
-                                c.c. Non è un cavillo del programma: è la traccia della delibera o dell'urgenza,
-                                che resta scritta con la fattura. Il rendiconto non la stampa: in assemblea la porti tu.
+                                riga compare «Ratifica richiesta» e non si sceglie finché non usi uno dei due pulsanti.
+                                «Paga per l'urgenza» la sblocca con il motivo dell'urgenza: si paga subito e se ne
+                                riferisce alla prima assemblea (art. 1135 c. 2 c.c.), e la fattura resta da ratificare.
+                                «Ratifica» sceglie la delibera dell'assemblea che l'ha ratificata, con il giorno della
+                                riunione. Il motivo resta scritto con la fattura, e il programma propone la spesa fra i
+                                punti della prossima assemblea.
                             </p>
                         </section>
                     </TabsContent>

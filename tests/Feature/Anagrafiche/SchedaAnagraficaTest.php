@@ -308,6 +308,8 @@ it('le rotte dei documenti dell\'anagrafica sono solo quelle che il controller s
         'admin.anagrafiche.documenti.index',
         'admin.anagrafiche.documenti.store',
         'admin.anagrafiche.documenti.update',
+        // 1.12.0-beta.13 (decisione 559): lo scaricamento di una versione di prima del file, che il controller delle versioni sa fare.
+        'admin.anagrafiche.documenti.versioni.download',
     ]);
 });
 

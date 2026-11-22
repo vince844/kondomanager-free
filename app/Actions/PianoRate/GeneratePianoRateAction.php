@@ -5,6 +5,8 @@
 
 namespace App\Actions\PianoRate;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\EventoTipo;
 use App\Models\Evento;
 use App\Models\Gestionale\FatturaPassiva;
@@ -73,7 +75,27 @@ class GeneratePianoRateAction
      *
      * @return array Statistiche di generazione (es: piano_rate_id, rate_create, quote_create).
      */
+    /**
+     * Gesto 2 del registro delle modifiche: la generazione è una riga sola, «Piano «Ordinario 2027» generato: 12 rate, 312 quote», con il rimando al piano;
+     * le rate, le quote e le righe del riparto si contano nel lotto. Dentro una rigenerazione si conta nel gesto di quella.
+     */
     public function execute(
+        PianoRate $pianoRate,
+        ?bool $forzaApplicazioneSaldi = null,
+        array $saldiConfig = [],
+        bool $accettaScoperti = false,
+        ?string $notaScoperti = null,
+        bool $accettaDestinatari = false,
+        ?string $notaDestinatari = null,
+        ?Esercizio $esercizio = null,
+        bool $allaCreazione = false,
+        array $appenaSincronizzate = [],
+    ): array {
+        return RegistroModifiche::durante(GestiDelRegistro::pianoGenerato($pianoRate), fn () => $this->genera($pianoRate, $forzaApplicazioneSaldi,
+            $saldiConfig, $accettaScoperti, $notaScoperti, $accettaDestinatari, $notaDestinatari, $esercizio, $allaCreazione, $appenaSincronizzate));
+    }
+
+    private function genera(
         PianoRate $pianoRate, 
         ?bool $forzaApplicazioneSaldi = null, 
         array $saldiConfig = [],
@@ -267,7 +289,7 @@ class GeneratePianoRateAction
                             .'condòmini resta da restituire o conguagliare a fine gestione. Dettaglio: '.$dettaglioUnita,
                         // Il giorno di Roma, scritto come l'agenda scrive le ore: alle 00:30 il compito è di oggi, non di ieri.
                         scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
-                        createdByUserId: $pianoRate->created_by ?? 1,
+                        createdByUserId: Auth::id(), // senza una persona, il programma (§7): mai l'utente 1
                         condominioId: $condominioIdEccedenze,
                         context: [
                             'piano_rate_id' => $pianoRate->id,
@@ -383,7 +405,7 @@ class GeneratePianoRateAction
                         . " Motivazione registrata: \"{$notaScoperti}\"."
                         . ' Azione: compilare i millesimi mancanti o censire le anagrafiche, poi rigenerare il piano.',
                     scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
-                    createdByUserId: Auth::id() ?? 1,
+                    createdByUserId: Auth::id(), // senza una persona, il programma (§7): mai l'utente 1
                     condominioId: $condominioId,
                     context: [
                         'piano_rate_id'      => $pianoRate->id,

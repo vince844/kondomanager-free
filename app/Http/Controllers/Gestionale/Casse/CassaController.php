@@ -140,12 +140,20 @@ class CassaController extends Controller
     {
         try {
  
-            $this->createCassaAction->execute($condominio, $request->validated());
+            // Lo sblocco d'emergenza con la delibera scelta: il fondo si lega alla delibera (ruolo «deroga»), nella stessa transazione.
+            DB::transaction(function () use ($condominio, $request) {
+                $cassa = $this->createCassaAction->execute($condominio, $request->validated());
+                \App\Http\Controllers\Assemblee\DeliberaNelleSchede::collega($cassa, 'deroga', $request->deliberaDellaDeroga(), $request->user());
+            });
 
             return to_route('admin.gestionale.casse.index', $condominio)->with(
                 $this->flashSuccess(__('gestionale.success_create_cassa'))
             );
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Una delibera che non si sceglie più (revocata fra il menu e il salvataggio) è un errore del campo: la frase va accanto al campo, sulla
+            // pagina del fondo nuovo, non in un messaggio generico sull'elenco.
+            throw $e;
         } catch (\Throwable $e) {
 
             Log::error('Errore creazione cassa', [
@@ -183,6 +191,8 @@ class CassaController extends Controller
             'condomini'  => $condomini,
             'esercizio'  => $esercizio,
             'cassa'      => new UpdateCassaResource($cassa),
+            // La delibera dello sblocco d'emergenza, se è collegata: «Scegli la delibera» la mostra scelta.
+            'delibera'   => \App\Http\Controllers\Assemblee\DeliberaNelleSchede::perLaPagina($cassa, 'deroga'),
         ]);
     }
 
@@ -204,7 +214,13 @@ class CassaController extends Controller
         try {
             // 2. Chiamata alla Action
             // Iniettiamo l'action nel costruttore come fatto prima ($this->updateCassaAction)
-            $this->updateCassaAction->execute($cassa, $request->validated());
+            DB::transaction(function () use ($cassa, $request) {
+                $this->updateCassaAction->execute($cassa, $request->validated());
+                // La delibera dello sblocco, o il legame tolto (tolta la delibera, o spento lo sblocco): il servizio che chiama anche il seguito delle
+                // delibere. Il testo della motivazione resta com'è.
+                \App\Services\Gestionale\DerogaDelFondo::dallaPagina($cassa, $request->deliberaDellaDeroga(),
+                    $request->has('delibera_id') || ! $request->boolean('is_override_assemblea'), $request->user());
+            });
 
             return to_route('admin.gestionale.casse.index', $condominio)->with(
                 $this->flashSuccess('Risorsa aggiornata correttamente.')
@@ -266,7 +282,7 @@ class CassaController extends Controller
 
                 // 2. Elimina i dati bancari (ContoCorrente) se presenti
                 // Utilizziamo la relazione per eliminare il record polimorfico
-                $cassa->contoCorrente()->delete();
+                $cassa->contoCorrente()->get()->each->delete(); // con il modello: il registro delle modifiche scrive il conto tolto
 
                 // 3. Elimina la Cassa
                 $cassa->delete();

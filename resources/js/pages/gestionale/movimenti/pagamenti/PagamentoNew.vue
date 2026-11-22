@@ -15,7 +15,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
-import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
     Banknote, CreditCard, Send, ShieldCheck, ShieldAlert, AlertTriangle,
@@ -33,13 +32,17 @@ import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import axios from 'axios';
 import { oggiLocale } from '@/lib/giorno';
+import PagaPerLUrgenza from '@/components/assemblee/PagaPerLUrgenza.vue';
+import RatificaDellaSpesa from '@/components/assemblee/RatificaDellaSpesa.vue';
+import { Permission } from '@/enums/Permission';
+import { fatturaDellaRatifica } from '@/lib/assemblee/ratifica';
 import { FRASE_SENZA_VOCE, FRASE_VOCI_OFFERTE, gestioneDelPagamento, mancaLaVoce, voceDopoIlCambio, vociOfferte, type PropostaCommissione, type VoceCommissione } from '@/lib/gestionale/pagamenti/voceCommissione';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
 // ---------------------------------------------------------------------------
 const { euro } = useCurrencyFormatter();
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 
 const moneyOptions = ref({
     prefix: '€ ',
@@ -107,6 +110,11 @@ interface Pendenza {
     gestione_id?: number;
     descrizione_righe?: string;
     stato_approvazione: string;
+    /** La riga in sforo: di quanto supera il preventivo (centesimi) e di quale voce; il totale e il giorno per le due finestre. */
+    sforo_oltre?: number | null;
+    voce_sforo?: string | null;
+    totale_documento?: number;
+    data_documento_iso?: string | null;
     // UI state
     selezionata?: boolean;
     importo_allocato?: number;
@@ -251,10 +259,11 @@ const motiviSenzaFinestra = (errors: Record<string, string>): string[] =>
         .filter(([chiave, messaggio]) => messaggio && !CHIAVI_CON_FINESTRA_PROPRIA.includes(chiave))
         .map(([, messaggio]) => messaggio);
 
-// --- Ratifica Sforo (inline in PagamentoNew) ---
-const showApprovaSforoModal = ref(false);
+// --- La spesa oltre il preventivo (1.12.0-beta.13, R12, decisione 561): «Paga per l'urgenza» (lo sblocco di oggi, con il motivo) e «Ratifica» (con la
+// delibera dell'assemblea). Dopo uno dei due la fattura si sceglie fra quelle da pagare, e le pendenze si ricaricano come prima.
 const sforoTarget = ref<Pendenza | null>(null);
-const noteApprovazioneInline = ref('');
+const finestraUrgenza = ref(false);
+const finestraRatifica = ref(false);
 
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
 
@@ -486,32 +495,21 @@ const selezionaTutte = () => {
     pendenze.value.filter(p => !p.is_nota_credito && p.stato_approvazione === 'approvata').forEach(p => saldaTutto(p));
 };
 
-// Apre il modale di ratifica sforo per una fattura specifica
-const apriModaleApprovazioneSforo = (p: Pendenza) => {
+// Le due finestre della riga in sforo, con la fattura nella loro forma.
+const fatturaDelleFinestre = computed(() => sforoTarget.value ? fatturaDellaRatifica(sforoTarget.value, selectedFornitore.value?.ragione_sociale ?? null) : null);
+const gestisceLeAssemblee = computed(() => hasPermission([Permission.MANAGE_ASSEMBLEE]));
+const apriPagaPerLUrgenza = (p: Pendenza) => {
     sforoTarget.value = p;
-    noteApprovazioneInline.value = '';
-    showApprovaSforoModal.value = true;
+    finestraUrgenza.value = true;
 };
-
-// Invia la ratifica al backend e ricarica le pendenze al successo
-const executeApprovaSforoInline = () => {
-    if (!sforoTarget.value) return;
-    router.post(
-        route(generateRoute('gestionale.fatture.approva-sforo'), {
-            condominio: props.condominio.id,
-            fattura: sforoTarget.value.id,
-        }),
-        { note: noteApprovazioneInline.value || null },
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                showApprovaSforoModal.value = false;
-                sforoTarget.value = null;
-                // Ricarica le pendenze: la fattura ora appare sbloccata
-                if (form.fornitore_id) fetchPendenze(form.fornitore_id);
-            },
-        }
-    );
+const apriRatifica = (p: Pendenza) => {
+    sforoTarget.value = p;
+    finestraRatifica.value = true;
+};
+// Sbloccata o ratificata: la fattura ora appare fra quelle da pagare.
+const dopoLoSblocco = () => {
+    sforoTarget.value = null;
+    if (form.fornitore_id) fetchPendenze(form.fornitore_id);
 };
 
 const deselezionaTutte = () => {
@@ -1247,7 +1245,7 @@ const pageGuides = [
                                                 </TooltipTrigger>
                                                 <TooltipContent side="top" class="max-w-xs text-center">
                                                     <p class="font-bold mb-1">Spesa in attesa di ratifica</p>
-                                                    <p class="text-[11px] leading-relaxed font-normal opacity-90">La spesa supera il budget approvato. Usa "Approva sforo" per registrare la delibera o la motivazione di urgenza (art. 1135 c.c.).</p>
+                                                    <p class="text-xs leading-relaxed font-normal opacity-90">La spesa supera il preventivo. «Paga per l'urgenza» la sblocca con il motivo (art. 1135 c. 2 c.c.); «Ratifica» la lega alla delibera dell'assemblea.</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
@@ -1257,16 +1255,23 @@ const pageGuides = [
                                         >
                                             Da approvare
                                         </span>
-                                        <!-- Bottone inline ratifica: visibile solo per sforo_motivato -->
-                                        <button
-                                            v-if="p.stato_approvazione === 'sforo_motivato'"
-                                            type="button"
-                                            @click.stop="apriModaleApprovazioneSforo(p)"
-                                            class="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider whitespace-nowrap text-white bg-orange-500 hover:bg-orange-600 border border-orange-600 rounded-md px-2 py-0.5 leading-none transition-colors shadow-sm"
-                                        >
-                                            <Stamp class="w-2.5 h-2.5" />
-                                            Approva sforo
-                                        </button>
+                                    </div>
+                                    <!-- La riga in sforo: «Paga per l'urgenza» e «Ratifica» (decisione 561); dopo uno dei due si sceglie fra quelle da pagare. -->
+                                    <div v-if="p.stato_approvazione === 'sforo_motivato'" class="mt-1.5 space-y-1" @click.stop data-testid="sforo-della-riga">
+                                        <p v-if="p.sforo_oltre" class="text-xs text-slate-600 dark:text-slate-300">
+                                            {{ euro(p.sforo_oltre) }} oltre il preventivo{{ p.voce_sforo ? ` della voce «${p.voce_sforo}»` : '' }}
+                                        </p>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <button type="button" data-testid="paga-per-urgenza" @click.stop="apriPagaPerLUrgenza(p)"
+                                                class="inline-flex h-7 items-center gap-1 rounded-md border border-orange-300 bg-white px-2.5 text-xs font-medium text-orange-800 hover:bg-orange-50 dark:border-orange-800 dark:bg-slate-900 dark:text-orange-300">
+                                                <Stamp class="w-3.5 h-3.5" /> Paga per l'urgenza
+                                            </button>
+                                            <button v-if="gestisceLeAssemblee" type="button" data-testid="ratifica" @click.stop="apriRatifica(p)"
+                                                class="inline-flex h-7 items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                                <ShieldCheck class="w-3.5 h-3.5" /> Ratifica
+                                            </button>
+                                        </div>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400">Si sceglie fra quelle da pagare dopo uno dei due.</p>
                                     </div>
                                     <div class="flex items-center gap-3 text-[11px] text-slate-500">
                                         <span>{{ p.data_documento }}</span>
@@ -1552,63 +1557,11 @@ const pageGuides = [
             </div>
         </Teleport>
 
-        <!-- Modale Ratifica Assembleare Sforo (inline da PagamentoNew) — stesso stile ConfirmDialog -->
-        <ConfirmDialog
-            v-model="showApprovaSforoModal"
-            title="Ratifica assembleare — Sforo motivato"
-            confirm-text="Conferma ratifica"
-            variant="default"
-            size="lg"
-            :disabled="noteApprovazioneInline.trim().length < 10"
-            @confirm="executeApprovaSforoInline"
-        >
-            <div class="space-y-4">
-
-                <!-- Contesto legale -->
-                <div class="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-lg flex gap-3 items-start">
-                    <ShieldCheck class="w-5 h-5 shrink-0 mt-0.5 text-orange-600" />
-                    <div>
-                        <p class="font-bold text-orange-900">Ratifica assembleare (Art. 1135 c.c.)</p>
-                        <p class="text-xs mt-1 leading-relaxed">
-                            Questa fattura supera il budget approvato dall'assemblea.
-                        </p>
-                        <ul class="text-xs mt-2 space-y-1 leading-relaxed list-none">
-                            <li>• Se la spesa è già stata deliberata, indica nel campo note il riferimento al verbale.</li>
-                            <li>• In caso di lavori urgenti, per evitare un pregiudizio al condominio l'amministratore può procedere al pagamento, dandone comunicazione all'assemblea nella prima convocazione utile. In tal caso annota qui la motivazione, es.: <em>«Pagamento effettuato per urgenza dall'amministratore — [breve descrizione]»</em>.</li>
-                        </ul>
-                        <p class="text-xs mt-2 leading-relaxed opacity-80">
-                            La ratifica resterà segnalata nella Inbox operativa fino all'approvazione in assemblea.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Fattura in oggetto -->
-                <div v-if="sforoTarget" class="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Fattura in oggetto</p>
-                    <p class="text-sm font-bold text-slate-800">{{ sforoTarget.numero_documento }}</p>
-                    <p class="text-xs text-slate-500 mt-0.5">{{ sforoTarget.data_documento }}</p>
-                </div>
-
-                <!-- Note -->
-                <div class="space-y-1.5">
-                    <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex justify-between">
-                        <span>Riferimento verbale / Note <span class="text-rose-500">*</span></span>
-                        <span class="font-normal text-slate-400 normal-case tracking-normal ml-1" :class="{'text-rose-500 font-bold': noteApprovazioneInline.trim().length < 10}">
-                            {{ noteApprovazioneInline.trim().length < 10 ? `(minimo 10 caratteri, attuali: ${noteApprovazioneInline.trim().length})` : '(obbligatorio)' }}
-                        </span>
-                    </label>
-                    <textarea
-                        v-model="noteApprovazioneInline"
-                        rows="3"
-                        placeholder="Es: Delibera assembleare del 15/05/2025 – Verbale n. 3/2025 – Ratifica spesa urgente manutenzione ascensore..."
-                        class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 resize-none"
-                    />
-                    <p class="text-[10px] text-slate-400 leading-relaxed">
-                        Il sistema registrerà automaticamente data e autore dell'approvazione nell'audit trail della fattura.
-                    </p>
-                </div>
-            </div>
-        </ConfirmDialog>
+        <!-- La spesa oltre il preventivo: «Paga per l'urgenza» e «Ratifica» (R12, decisione 561) -->
+        <PagaPerLUrgenza v-if="fatturaDelleFinestre" v-model:open="finestraUrgenza" :condominio-id="props.condominio.id" :condominio-nome="props.condominio.nome"
+            :fattura="fatturaDelleFinestre" @fatto="dopoLoSblocco" />
+        <RatificaDellaSpesa v-if="fatturaDelleFinestre && gestisceLeAssemblee && finestraRatifica" v-model:open="finestraRatifica" :condominio-id="props.condominio.id"
+            :condominio-nome="props.condominio.nome" :fattura="fatturaDelleFinestre" @fatto="dopoLoSblocco" />
 
         <!-- ════════════════════════════════════════════════════════════════ -->
         <!-- MODALI ERRORI DI DOMINIO                                        -->

@@ -32,20 +32,24 @@
 # base: PHP con le estensioni, nginx e supervisor. Comune a vendor e runtime così le estensioni
 # si installano una volta sola e composer verifica la piattaforma giusta.
 # ---------------------------------------------------------------------------------------------
-FROM php:8.4.27-fpm-bookworm AS base
+FROM php:8.4.28-fpm-bookworm AS base
 
 # I pacchetti -dev servono solo a compilare le estensioni: dopo restano le librerie di runtime
 # (trovate con ldd sui .so compilati, com'è d'uso nell'immagine ufficiale di PHP) e i -dev se ne
 # vanno con `--auto-remove`: questo strato pesa 60 MB invece di 200. La catena di compilazione
 # dell'immagine ufficiale (gcc, make: $PHPIZE_DEPS, 314 MB) invece resta: sta in uno strato
 # dell'immagine di base, e cancellare lì dentro da uno strato successivo non toglie un byte.
+# GD e i JPG (Coda 677): nei sorgenti di PHP il JPEG di GD è spento di serie, e così un logo o una firma in JPG non si
+# caricano. Lo accendono la libreria di sviluppo (libjpeg62-turbo-dev) e `--with-jpeg`; il PNG resta com'era, sempre acceso
+# con libpng-dev. La libreria di runtime (libjpeg62-turbo) la trova anche ldd, e resta comunque segnata per nome.
 RUN savedAptMark="$(apt-mark showmanual)" \
     && apt-get update && apt-get install -y --no-install-recommends \
         nginx supervisor curl unzip zip \
-        libpng-dev libonig-dev libxml2-dev libzip-dev libicu-dev \
+        libpng-dev libjpeg62-turbo-dev libonig-dev libxml2-dev libzip-dev libicu-dev \
+    && docker-php-ext-configure gd --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql mbstring exif pcntl bcmath gd zip intl opcache \
     && apt-mark auto '.*' > /dev/null \
-    && apt-mark manual $savedAptMark nginx supervisor curl unzip zip > /dev/null \
+    && apt-mark manual $savedAptMark nginx supervisor curl unzip zip libjpeg62-turbo > /dev/null \
     && ldd "$(php -r 'echo ini_get("extension_dir");')"/*.so \
         | awk '/=>/ { so = $(NF-1); if (index(so, "/usr/local/") == 1) { next }; gsub("^/(usr/)?", "", so); print so }' \
         | sort -u | xargs -r dpkg-query --search | cut -d: -f1 | sort -u | xargs -rt apt-mark manual \

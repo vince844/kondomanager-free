@@ -34,9 +34,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import VueDatePicker from '@vuepic/vue-datepicker';
-import '@vuepic/vue-datepicker/dist/main.css';
-import { trans } from 'laravel-vue-i18n';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
+import type { DeliberaDelMenu, RuoloCollegamento } from '@/types/assemblee';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
@@ -45,6 +46,8 @@ import { creditoDisponibileCents, haCreditoDisponibile, versatoRataCents } from 
 import { rataScaduta, scadutoDaIncassare } from '@/lib/gestionale/pianiRate/scaduto';
 import { oggiLocale } from '@/lib/giorno';
 import { saldoNettoMovimenti } from '@/lib/gestionale/pianiRate/budgetMovements';
+import TestaDelPianoStraordinario from '@/components/gestionale/pianiRate/TestaDelPianoStraordinario.vue';
+import type { FondoSpecialeDelPiano, UrgenzaDelPiano } from '@/lib/gestionale/pianiRate/testaDelPiano';
 import { blocchiMessaggio, messaggioArticolato } from '@/lib/gestionale/pianiRate/blocchiMessaggio';
 import { RIGHE_VISIBILI, etichettaBadge, fraseUnitaSenzaMillesimo, gruppiPerCausa, quoteConCifra as conCifra, rigaDellaVoce, totaleConSegno, type GruppoPerCausa, type QuotaNonAssegnata, type VoceConQuote } from '@/lib/gestionale/pianiRate/quoteNonAssegnate';
 
@@ -89,6 +92,20 @@ const props = defineProps<{
   } | null; 
   /** Il piano degli addebiti a singole persone: la frase che dice perché la pagina non offre le azioni del riparto. Null per i piani del riparto. */
   degli_addebiti?: { frase: string } | null;
+  /** Il fondo speciale dei lavori (decisione 622 (2)): la riga arancio in testa al piano, null quando i piani arrivano ai lavori. */
+  fondo_speciale?: FondoSpecialeDelPiano | null;
+  /** I lavori urgenti (Coda 688): il giorno, il motivo, la prima assemblea; null senza «Urgenza». */
+  urgenza_del_piano?: UrgenzaDelPiano | null;
+  /**
+   * La delibera del piano (§1.4 del progetto delle assemblee, R1): quella collegata nella forma del menu di «Scegli la delibera», la differenza fra la sua
+   * data e quella del piano emesso, e per il piano d'urgenza il riferimento all'assemblea. Senza «Vede le assemblee» solo `vede: false`.
+   */
+  delibera_del_piano?: {
+    vede: boolean; gestisce: boolean; emesso: boolean;
+    delibera: (DeliberaDelMenu & { nota: string | null }) | null;
+    differenza: string | null;
+    riferimento: (DeliberaDelMenu & { nota: string | null }) | null;
+  } | null;
   /** Le quote non assegnate con quanto è già addebitato a una persona e quanto resta; `addebitabile` solo per quelle di un'unità. */
   addebiti_delle_quote?: Array<{ chiave: string; immobile_id: number | null; immobile_nome: string | null; conto_nome: string | null; addebitabile: boolean; addebitato_cents: number; resta_cents: number }>;
 }>()
@@ -119,22 +136,6 @@ const detachInAttesa = computed<number | null>(() => (page.props.flash as any)?.
 // questa memoria il pannello degli scoperti si ripresenterebbe dopo aver accettato i destinatari.
 const scopertiAccettati = ref<{ nota: string } | null>(null);
 
-const localeCode = computed(() => {
-    const raw = String((page.props as any).locale ?? 'pt').toLowerCase();
-    return raw.replace('_', '-').split('-')[0];
-});
-
-const approvalDatePickerLocale = computed(() => {
-    // Restituiamo stringhe, non oggetti
-    if (localeCode.value === 'it') return 'it';
-    if (localeCode.value === 'en') return 'en-US';
-    return 'pt'; // Default per portoghese
-});
-
-const approvalDateFormat = computed(() => {
-    if (localeCode.value === 'it' || localeCode.value === 'pt') return 'dd/MM/yyyy';
-    return 'yyyy-MM-dd';
-});
 const showApprovazioneModal = ref(false);
 
 // B2 (decisione 12): **nessun default «oggi»** sulla data della delibera. La misura in produzione diceva che la
@@ -144,6 +145,52 @@ const formApprovazione = ref({
     data_delibera_assemblea: (props.pianoRate as any).data_delibera_assemblea ? String((props.pianoRate as any).data_delibera_assemblea).slice(0, 10) : '',
     numero_verbale: '',
     nota_approvazione: '',
+    delibera_id: null as number | null,
+});
+
+/**
+ * «Scegli la delibera» nell'approvazione e nel riquadro della delibera (R1; scene 2 e 3 della bozza approvata con la decisione 502). Nell'approvazione la
+ * delibera scelta dà «Deliberata il» e il numero del verbale (li scrive il server dalla riunione). Sul piano già emesso, e per il riferimento del piano
+ * d'urgenza all'assemblea, il collegamento passa da una rotta sua: la data del piano emesso non cambia da sola.
+ */
+const deliberaApprovazione = ref<DeliberaDelMenu | null>(null);
+watch(deliberaApprovazione, (d) => {
+    formApprovazione.value.delibera_id = d?.id ?? null;
+    formApprovazione.value.data_delibera_assemblea = d?.deliberata_il ?? '';
+});
+const giornoItaliano = (d: string | null | undefined) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
+const deliberaDelPiano = computed(() => props.delibera_del_piano ?? null);
+// Senza «Gestisce le assemblee» l'approvazione resta quella di prima: la data della delibera e il numero del verbale scritti a mano (il server li accetta).
+const conLaDelibera = computed(() => deliberaDelPiano.value?.gestisce === true);
+
+const finestraCollega = ref(false);
+const ruoloCollega = ref<RuoloCollegamento>('delibera');
+const deliberaCollega = ref<DeliberaDelMenu | null>(null);
+const notaCollega = ref('');
+const inCollegamento = ref(false);
+const erroreCollega = ref<string | null>(null);
+function apriCollega(ruolo: RuoloCollegamento, soloLaNota = false) {
+    ruoloCollega.value = ruolo;
+    const attuale = ruolo === 'riferimento' ? deliberaDelPiano.value?.riferimento : deliberaDelPiano.value?.delibera;
+    deliberaCollega.value = soloLaNota || attuale ? (attuale ?? null) : null;
+    notaCollega.value = attuale?.nota ?? '';
+    erroreCollega.value = null;
+    finestraCollega.value = true;
+}
+function collega() {
+    if (!deliberaCollega.value) return;
+    inCollegamento.value = true;
+    router.post(route(generateRoute('gestionale.piani-rate.delibera'), {
+        condominio: props.condominio.id, esercizio: props.esercizio.id, pianoRate: props.pianoRate.id,
+    }), { delibera_id: deliberaCollega.value.id, ruolo: ruoloCollega.value, nota: notaCollega.value || null }, {
+        preserveScroll: true,
+        onSuccess: () => { finestraCollega.value = false; },
+        onError: (e: Record<string, string>) => { erroreCollega.value = Object.values(e)[0] ?? 'La delibera non è stata collegata. Riprova.'; },
+        onFinish: () => { inCollegamento.value = false; },
+    });
+}
+const indirizzoDellAssemblea = (d: DeliberaDelMenu) => route(generateRoute('gestionale.assemblee.show'), {
+    condominio: props.condominio.id, assemblea: d.assemblea_id, punto: d.punto?.id ?? undefined,
 });
 
 const orphanCheckboxes = reactive<Record<number, boolean>>({});
@@ -428,7 +475,7 @@ const rataToAnnullareId = ref<number | null>(null);
 const isRecalculateAlertOpen = ref(false);
 
 // Con «Urgenza» (art. 1135 co. 2 c.c.) non c'è una delibera da registrare: il modale non chiede la data e il
-// server non la scrive (S8-32); la competenza dello straordinario d'urgenza è dichiarata sulle fatture.
+// server non la scrive (S8-32); la competenza dello straordinario d'urgenza è il giorno dei lavori del piano (Coda 688), o il periodo della fattura.
 const isUrgenza = computed(() => (props.pianoRate as any).tipo_autorizzazione === 'urgenza');
 
 const toggleStatoPiano = (newValue: boolean) => {
@@ -441,12 +488,18 @@ const toggleStatoPiano = (newValue: boolean) => {
         data_delibera_assemblea: (props.pianoRate as any).data_delibera_assemblea ? String((props.pianoRate as any).data_delibera_assemblea).slice(0, 10) : '',
         numero_verbale: '',
         nota_approvazione: '',
+        delibera_id: props.delibera_del_piano?.delibera?.id ?? null,
     };
+    // La delibera già collegata è la proposta dell'approvazione; senza, si sceglie.
+    deliberaApprovazione.value = props.delibera_del_piano?.delibera ?? null;
+    if (deliberaApprovazione.value) formApprovazione.value.data_delibera_assemblea = deliberaApprovazione.value.deliberata_il;
     showApprovazioneModal.value = true;
 };
 
+const approvazionePronta = computed(() => isUrgenza.value
+    || (conLaDelibera.value ? !!formApprovazione.value.delibera_id : !!formApprovazione.value.data_delibera_assemblea));
 const confermaApprovazione = () => {
-    if (!isUrgenza.value && !formApprovazione.value.data_delibera_assemblea) return;
+    if (!approvazionePronta.value) return;
     showApprovazioneModal.value = false;
     eseguiCambioStato(true, formApprovazione.value);
 };
@@ -955,6 +1008,7 @@ const printRipartoCapitoli = () => {
     <div class="px-6 py-8 space-y-3">
       
       <PageHeaderGuide
+        :storia="{ tipo: 'piano_rate', id: props.pianoRate.id }"
         :page-title="`${props.pianoRate.nome}`"
         page-subtitle="Situazione aggiornata delle rate e dei pagamenti."
         :guides="pageGuides"
@@ -1136,6 +1190,108 @@ const printRipartoCapitoli = () => {
               </div>
             </div>
           </div>
+
+          <!-- La testa del piano straordinario: il fondo speciale dei lavori (decisione 622 (2)) e i lavori urgenti con il loro giorno (Coda 688). -->
+          <TestaDelPianoStraordinario v-if="props.fondo_speciale || props.urgenza_del_piano" :fondo="props.fondo_speciale" :urgenza="props.urgenza_del_piano" />
+
+          <!--
+            La delibera del piano (§1.4 del progetto delle assemblee, R1; scena 3 della bozza approvata con la decisione 502): quella collegata con «Apri
+            l'assemblea» e «Cambia»; sul piano emesso con una data diversa la differenza, che non cambia da sola, con «Scrivi una nota»; la data scritta a mano
+            con «Collega la delibera»; il piano d'urgenza «Riferito all'assemblea»; «Da portare in assemblea» per il piano in bozza o d'urgenza.
+          -->
+          <!-- Gli esiti delle delibere sul piano: «Respinto dall'assemblea …», «Rinviato …», i segni; con «Apri l'assemblea». -->
+          <EsitiDellaScheda :condominio-id="props.condominio.id" tipo="piano_rate" :id="props.pianoRate.id" />
+          <section v-if="deliberaDelPiano?.vede && !degli_addebiti" class="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-slate-950"
+            data-testid="delibera-del-piano">
+            <template v-if="isUrgenza">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3 class="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white"><Gavel class="h-4 w-4" /> Riferito all'assemblea</h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">Lavori urgenti (art. 1135 c. 2 c.c.): si riferiscono alla prima assemblea, anche con una comunicazione senza voto.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <PulsanteDaPortareInAssemblea v-if="!deliberaDelPiano.riferimento" :condominio-id="props.condominio.id" origine-tipo="piano_rate" :origine-id="props.pianoRate.id" forma="riga" />
+                  <button v-if="deliberaDelPiano.gestisce" type="button" class="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    data-testid="riferito-all-assemblea" @click="apriCollega('riferimento')">{{ deliberaDelPiano.riferimento ? 'Cambia' : 'Riferito all\'assemblea' }}</button>
+                </div>
+              </div>
+              <div v-if="deliberaDelPiano.riferimento" class="mt-2.5 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                <p class="break-words text-sm font-medium text-slate-900 dark:text-slate-100">{{ deliberaDelPiano.riferimento.testo }}</p>
+                <p class="mt-0.5 break-words text-xs text-slate-500 dark:text-slate-400">{{ deliberaDelPiano.riferimento.frase }} · {{ deliberaDelPiano.riferimento.esito_parola.toLowerCase() }}</p>
+                <Link :href="indirizzoDellAssemblea(deliberaDelPiano.riferimento)" class="mt-2 inline-flex h-8 items-center rounded-md border border-slate-200 px-3 text-xs font-medium dark:border-slate-700">Apri l'assemblea</Link>
+              </div>
+              <p v-else class="mt-2 text-sm text-amber-800 dark:text-amber-300" data-testid="da-riferire">Da riferire alla prima assemblea di {{ props.condominio.nome }}.</p>
+            </template>
+
+            <template v-else>
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h3 class="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white"><Gavel class="h-4 w-4" /> La delibera</h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">La delibera dell'assemblea che approva questo piano. Il giorno della riunione decide chi paga.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <PulsanteDaPortareInAssemblea v-if="!deliberaDelPiano.delibera && !switchState" :condominio-id="props.condominio.id" origine-tipo="piano_rate" :origine-id="props.pianoRate.id" forma="riga" />
+                  <button v-if="deliberaDelPiano.gestisce && (switchState || deliberaDelPiano.delibera)" type="button"
+                    class="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    data-testid="collega-delibera" @click="apriCollega('delibera')">{{ deliberaDelPiano.delibera ? 'Cambia' : 'Collega la delibera' }}</button>
+                </div>
+              </div>
+              <div v-if="deliberaDelPiano.delibera" class="mt-2.5 rounded-lg border border-slate-200 p-3 dark:border-slate-700" data-testid="delibera-collegata">
+                <p class="break-words text-sm font-medium text-slate-900 dark:text-slate-100">{{ deliberaDelPiano.delibera.testo }}</p>
+                <p class="mt-0.5 break-words text-xs text-slate-500 dark:text-slate-400">{{ deliberaDelPiano.delibera.frase }} · {{ deliberaDelPiano.delibera.esito_parola.toLowerCase() }}</p>
+                <p v-if="deliberaDelPiano.delibera.revocata" class="mt-1 text-xs text-rose-700 dark:text-rose-300">{{ deliberaDelPiano.delibera.revocata }}</p>
+                <p v-if="deliberaDelPiano.delibera.nota" class="mt-1 break-words text-xs text-slate-600 dark:text-slate-300">La nota: {{ deliberaDelPiano.delibera.nota }}</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <Link :href="indirizzoDellAssemblea(deliberaDelPiano.delibera)" class="inline-flex h-8 items-center rounded-md border border-slate-200 px-3 text-xs font-medium dark:border-slate-700">Apri l'assemblea</Link>
+                </div>
+              </div>
+              <!-- Piano già emesso, data diversa (scena 3): la data non cambia da sola; la differenza resta segnata. -->
+              <div v-if="deliberaDelPiano.differenza" class="mt-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                data-testid="differenza-delibera">
+                <p class="font-medium">{{ deliberaDelPiano.differenza }}.</p>
+                <p v-if="deliberaDelPiano.emesso" class="mt-0.5 text-xs">Il piano è emesso: la data non cambia da sola, perché le rate sono state calcolate con quella del piano. La differenza resta segnata qui.</p>
+                <p class="mt-1 text-xs">Se va corretta, si segue la strada che il programma ha già per un piano emesso; altrimenti si lascia la data del piano e si scrive perché nella nota.</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <Link v-if="deliberaDelPiano.delibera" :href="indirizzoDellAssemblea(deliberaDelPiano.delibera)" class="inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">Apri l'assemblea</Link>
+                  <button v-if="deliberaDelPiano.gestisce" type="button" class="inline-flex h-8 items-center rounded-md border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                    data-testid="scrivi-una-nota" @click="apriCollega('delibera', true)">Scrivi una nota</button>
+                </div>
+              </div>
+              <p v-if="!deliberaDelPiano.delibera && props.pianoRate.data_delibera_assemblea" class="mt-2 text-sm text-slate-700 dark:text-slate-300" data-testid="scritta-a-mano">
+                Scritta a mano: delibera del {{ toItalian(props.pianoRate.data_delibera_assemblea) }}{{ props.pianoRate.numero_verbale ? `, verbale n. ${props.pianoRate.numero_verbale}` : '' }}.
+                <span class="text-xs text-slate-500 dark:text-slate-400">Con «Collega la delibera» la scegli fra quelle dell'assemblea, o la registri a mano.</span>
+              </p>
+              <p v-else-if="!deliberaDelPiano.delibera" class="mt-2 text-sm text-slate-600 dark:text-slate-300" data-testid="nessuna-delibera">
+                Nessuna delibera ancora: la scegli quando approvi il piano. Se l'assemblea deve ancora decidere, portalo alla prossima.
+              </p>
+            </template>
+          </section>
+
+          <Dialog v-model:open="finestraCollega">
+            <DialogContent class="max-h-[100dvh] overflow-y-auto sm:max-w-[560px]" data-testid="finestra-collega-delibera" @open-auto-focus.prevent>
+              <DialogHeader>
+                <DialogTitle>{{ ruoloCollega === 'riferimento' ? 'Riferito all\'assemblea' : 'La delibera del piano' }}</DialogTitle>
+                <DialogDescription>
+                  {{ ruoloCollega === 'riferimento'
+                    ? 'La delibera, o la comunicazione senza voto, della prima assemblea che ha parlato di questi lavori urgenti.'
+                    : (deliberaDelPiano?.emesso ? 'Il piano è emesso: la delibera si collega e la data del piano non cambia da sola.' : 'La data della delibera entra nel piano.') }}
+                </DialogDescription>
+              </DialogHeader>
+              <div class="space-y-3">
+                <ScegliLaDelibera v-model="deliberaCollega" :condominio-id="props.condominio.id" :condominio-nome="props.condominio.nome" :ruolo="ruoloCollega"
+                  oggetto-tipo="piano_rate" :oggetto-id="props.pianoRate.id" per-questo="questo piano" />
+                <label class="block">
+                  <span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Una nota (facoltativa)</span>
+                  <Input v-model="notaCollega" type="text" placeholder="Per esempio: il piano tiene la data del verbale di carta" />
+                </label>
+                <p v-if="erroreCollega" class="text-sm text-rose-700 dark:text-rose-400">{{ erroreCollega }}</p>
+              </div>
+              <DialogFooter class="gap-2">
+                <Button variant="outline" @click="finestraCollega = false">Annulla</Button>
+                <Button :disabled="!deliberaCollega || inCollegamento" data-testid="conferma-collega" @click="collega">{{ inCollegamento ? 'Un momento…' : 'Salva' }}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Tabs v-model="tab" class="space-y-6">
 
@@ -1949,7 +2105,8 @@ const printRipartoCapitoli = () => {
                     <div>
                         <h3 class="font-black text-emerald-900 text-lg dark:text-emerald-300">Approvazione piano rate</h3>
                         <p class="text-xs text-emerald-700/70 mt-1 dark:text-emerald-300/70">
-                            <template v-if="isUrgenza">Intervento d'urgenza (art. 1135 co. 2 c.c.): verbale e note sono facoltativi, la competenza è dichiarata sulle fatture.</template>
+                            <template v-if="isUrgenza && props.urgenza_del_piano?.giorno">Intervento d'urgenza (art. 1135 co. 2 c.c.): verbale e note sono facoltativi, la competenza è il giorno dei lavori del piano, il {{ props.urgenza_del_piano.giorno }}; la fattura con il suo periodo tiene il suo.</template>
+                            <template v-else-if="isUrgenza">Intervento d'urgenza (art. 1135 co. 2 c.c.): verbale e note sono facoltativi, la competenza è dichiarata sulle fatture.</template>
                             <template v-else>Registra i dati della delibera assembleare prima di rendere esecutivo il piano (art. 1135 c.c.).</template>
                         </p>
                     </div>
@@ -1958,24 +2115,34 @@ const printRipartoCapitoli = () => {
                     <div v-if="isUrgenza" class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 leading-relaxed dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300">
                         Intervento d'urgenza: nessuna delibera da registrare, la competenza è dichiarata sulla fattura.
                     </div>
-                    <div v-else class="space-y-1.5">
-                        <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">{{ trans('gestionale.piani_rate.show.approval_modal.deliberation_date_label') }}</Label>
-                        <VueDatePicker :teleport="true"
-                            v-model="formApprovazione.data_delibera_assemblea"
-                            class="w-full"
-                            model-type="yyyy-MM-dd"
-                            :format="approvalDateFormat"
-                            :locale="approvalDatePickerLocale"
-                            :enable-time-picker="false"
-                            auto-apply
-                            :clear-button-label="localeCode === 'pt' ? 'Limpar' : (localeCode === 'it' ? 'Cancella' : 'Clear')"
-                            :today-button-label="localeCode === 'pt' ? 'Hoje' : (localeCode === 'it' ? 'Oggi' : 'Today')"
-                        />
-                        <p class="text-[10px] text-slate-400 leading-tight">{{ trans('gestionale.piani_rate.show.approval_modal.deliberation_date_help') }}</p>
+                    <!-- Senza «Gestisce le assemblee»: la data e il numero del verbale scritti a mano, come prima. -->
+                    <div v-else-if="!conLaDelibera" class="space-y-3" data-testid="approvazione-a-mano">
+                        <label class="block space-y-1.5">
+                            <span class="block text-xs font-medium text-slate-600 dark:text-slate-400">Data della delibera assembleare *</span>
+                            <Input v-model="formApprovazione.data_delibera_assemblea" type="date" class="h-10" data-testid="approvazione-data-a-mano" />
+                            <span class="block text-xs text-slate-500 dark:text-slate-400">Data in cui l'assemblea ha approvato questo piano. Resta registrata nello storico di controllo.</span>
+                        </label>
+                        <label class="block space-y-1.5">
+                            <span class="block text-xs font-medium text-slate-600 dark:text-slate-400">N. Verbale (opzionale)</span>
+                            <Input v-model="formApprovazione.numero_verbale" type="text" placeholder="Es. Verbale n. 3/2026" class="h-10" />
+                        </label>
                     </div>
-                    <div class="space-y-1.5">
-                        <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">N. Verbale (opzionale)</Label>
-                        <Input type="text" v-model="formApprovazione.numero_verbale" placeholder="Es. Verbale n. 3/2026" class="h-10" />
+                    <!-- «Scegli la delibera» al posto della data e del numero del verbale scritti a mano (decisione 502): vengono dalla riunione. -->
+                    <div v-else class="space-y-3" data-testid="approvazione-delibera">
+                        <ScegliLaDelibera v-model="deliberaApprovazione" :condominio-id="props.condominio.id" :condominio-nome="props.condominio.nome" ruolo="delibera"
+                            oggetto-tipo="piano_rate" :oggetto-id="props.pianoRate.id" per-questo="questo piano"
+                            info="Le delibere di questo condominio: in testa quelle che parlano di questo piano o della sua gestione, con il perché." />
+                        <div class="space-y-0.5">
+                            <span class="block text-xs font-medium text-slate-600 dark:text-slate-400">Deliberata il</span>
+                            <p class="text-sm text-slate-900 dark:text-slate-100">
+                                <template v-if="deliberaApprovazione"><strong class="tabular-nums">{{ giornoItaliano(deliberaApprovazione.deliberata_il) }}</strong> <span class="text-slate-500 dark:text-slate-400">dalla delibera</span></template>
+                                <span v-else class="text-slate-500 dark:text-slate-400">dalla delibera</span>
+                            </p>
+                            <p v-if="deliberaApprovazione && props.pianoRate.data_delibera_assemblea && String(props.pianoRate.data_delibera_assemblea).slice(0, 10) !== deliberaApprovazione.deliberata_il"
+                                class="text-xs text-amber-800 dark:text-amber-300" data-testid="approvazione-data-diversa">
+                                Il piano dice {{ toItalian(props.pianoRate.data_delibera_assemblea) }}: con la delibera diventa {{ giornoItaliano(deliberaApprovazione.deliberata_il) }}. Se le quote sono già generate, ricalcola il piano prima di emettere le rate.
+                            </p>
+                        </div>
                     </div>
                     <div class="space-y-1.5">
                         <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">Note o Riferimenti (opzionale)</Label>
@@ -1995,7 +2162,7 @@ const printRipartoCapitoli = () => {
                         <Button variant="outline" class="flex-1 h-11 rounded-xl font-bold" @click="annullaApprovazione">Annulla</Button>
                         <Button 
                             class="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black"
-                            :disabled="(!isUrgenza && !formApprovazione.data_delibera_assemblea) || isProcessingStatus"
+                            :disabled="!approvazionePronta || isProcessingStatus"
                             @click="confermaApprovazione"
                         >
                             <span v-if="isProcessingStatus" class="flex items-center gap-2">

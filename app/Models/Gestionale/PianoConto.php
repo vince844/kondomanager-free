@@ -10,9 +10,12 @@ use App\Models\Gestione;
 use Database\Factories\Gestionale\PianoContoFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\RegistraLeModifiche;
 
 class PianoConto extends Model
 {
+    use RegistraLeModifiche;
+
     use RisolveIFigliDelleRotte;
 
     use HasFactory;

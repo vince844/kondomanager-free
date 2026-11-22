@@ -202,6 +202,20 @@ it('⚠️ contiene una spesa fuori budget, che resta da ratificare', function (
     );
 });
 
+it('la spesa fuori budget ha la sua motivazione dove il programma la legge', function () {
+    // La motivazione dello sforo si scrive in `dati_extra.override_budget.motivazione`, come la salva la registrazione vera
+    // (`StoreFatturaRequest`). Il dimostrativo la scriveva sotto `motivo`: la fattura risultava senza motivazione, e il punto
+    // della ratifica nell'avviso dell'assemblea non diceva il perché della spesa.
+    $c = creaDimostrativo()['condominio'];
+    $sforo = \App\Models\Gestionale\FatturaPassiva::where('condominio_id', $c->id)->where('stato_approvazione', 'sforo_motivato')->firstOrFail();
+
+    $motivazione = \App\Services\Assemblee\PropostaDelPunto::motivazioneDellaSpesa($sforo);
+
+    expect($motivazione)->not->toBeNull('La fattura in sforo del dimostrativo non ha una motivazione leggibile.')
+        ->and($motivazione['di'])->toBe('sforo')
+        ->and($motivazione['motivazione'])->toContain('perdita in colonna montante');
+});
+
 it('⚠️ contiene una sopravvenienza, che accende la sezione fuori preventivo', function () {
     // ⚠️ **È un caso diverso dallo sforo, e la differenza conta.** Lo sforo è una voce che
     // esisteva a preventivo e che la spesa reale ha superato; la sopravvenienza è una spesa che a

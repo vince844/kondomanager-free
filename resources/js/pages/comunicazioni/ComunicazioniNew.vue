@@ -52,6 +52,12 @@ const props = defineProps<{
   // «Commenti in moderazione» la sceglie solo chi può approvare i commenti: per gli altri vale il di serie, e la casella non c'è.
   puo_scegliere_moderazione?: boolean;
   programmazione?: ProgrammazioneProp | null;
+  // «Avviso anche in bacheca» dalla convocazione di un'assemblea: il testo già scritto, con le frasi pubbliche dei punti.
+  // Con un punto senza la frase per la bacheca, `manca_la_frase` lo dice: in bacheca va solo la materia del punto, mai il testo dell'avviso.
+  // «Avvisa i condòmini» dal seguito di una delibera: `cosa_da_fare_id` torna con il salvataggio, e la comunicazione nasce come bozza da rileggere.
+  precompilata?: { subject: string; description: string; condomini_ids: number[]; assemblea_id?: number; cosa_da_fare_id?: number; priority?: string; manca_la_frase?: string | null } | null;
+  // Aperta da un'assemblea o da una cosa da fare (decisione 646): «Torna all'assemblea», che il server dice dove porta; «Salva» e «Annulla» riportano lì.
+  ritorno?: { url: string; testo: string } | null;
 }>();  
 
 const anagraficheOptions = ref<Anagrafica[]>([]);
@@ -89,21 +95,23 @@ const pageGuides = computed(() => [
 ]);
 
 const form = useForm({
-    subject: '',
-    description: '',
-    priority: '',
+    subject: props.precompilata?.subject ?? '',
+    description: props.precompilata?.description ?? '',
+    priority: props.precompilata?.priority ?? '',
     stato: '',
-    condomini_ids: [],
+    condomini_ids: (props.precompilata?.condomini_ids ?? []) as number[],
+    assemblea_id: props.precompilata?.assemblea_id ?? null,
+    cosa_da_fare_id: props.precompilata?.cosa_da_fare_id ?? null,
     can_comment: false as boolean,
     commenti_moderati: (props.commenti_moderati_di_serie ?? true) as boolean,
     is_featured: false as boolean,
-    is_published: true,
+    is_published: !props.precompilata?.cosa_da_fare_id,
     data_programmata: null as string | null,
     anagrafiche: [],
     allegati: [] as File[],
 });
 
-const statoSelezionato = ref<boolean | 'scheduled'>(true);
+const statoSelezionato = ref<boolean | 'scheduled'>(!props.precompilata?.cosa_da_fare_id);
 
 const optionsStato = computed(() => {
     const options = [...publishedConstants];
@@ -209,11 +217,20 @@ const submit = () => {
             :guides="pageGuides"
             :breadcrumbs="breadcrumbs"
             :video-url="null"
-            :back-url="route(generateRoute('comunicazioni.index'))"
-            :back-text="trans('comunicazioni.actions.back')"
+            :back-url="ritorno?.url ?? route(generateRoute('comunicazioni.index'))"
+            :back-text="ritorno?.testo ?? trans('comunicazioni.actions.back')"
         />
 
         <form @submit.prevent="submit" class="space-y-6">
+
+            <p v-if="precompilata?.cosa_da_fare_id" class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200"
+                data-testid="dalla-delibera">
+                Preparata dal seguito della delibera: la rileggi e la pubblichi tu. Pubblicata, la cosa da fare è fatta.
+            </p>
+            <p v-if="precompilata?.manca_la_frase" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                data-testid="manca-la-frase">
+                {{ precompilata.manca_la_frase }} La frase si scrive nel punto, nella scheda dell'assemblea.
+            </p>
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
                 <CardHeader class="pb-3 border-b border-dashed mb-4">
@@ -508,7 +525,8 @@ const submit = () => {
 
             <div class="flex items-center justify-end gap-3">
                 <Link
-                    :href="route(generateRoute('comunicazioni.index'))"
+                    :href="ritorno?.url ?? route(generateRoute('comunicazioni.index'))"
+                    data-testid="annulla"
                     class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
                 >
                     {{ trans('comunicazioni.actions.cancel') }}

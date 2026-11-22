@@ -94,7 +94,7 @@ defineEmits(['update:open']);
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span>I dipendenti: «Il condominio non ha dipendenti», o «Ci sono:» con chi e con quale contratto.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>La dichiarazione</strong>, nella parte «Le questioni pendenti»: per le cause in corso, le delibere impugnate e i sinistri aperti, «Non ce ne sono» o «Ci sono:», con quali. Il programma non sa delle cause: il silenzio non vuol dire che non ce ne sono.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>«Altri debiti certi»</strong>, che non sono fatture, con «Aggiungi un debito»: compaiono anche nella «Situazione patrimoniale», sotto la riga dei debiti, fuori dal giornale e dai totali.</span></li>
-                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>«Da decidere in assemblea»</strong>: le cose che scrivi tu, e quelle dei fatti tenuti.</span></li>
+                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>«Da decidere in assemblea»</strong>: le cose che scrivi tu, e quelle dei fatti tenuti. Con un'assemblea in preparazione che ha il punto del rendiconto di questo esercizio, la stampa mette al loro posto i punti del suo ordine del giorno.</span></li>
                             </ul>
                         </div>
                     </section>

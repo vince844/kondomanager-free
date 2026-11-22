@@ -5,7 +5,9 @@
 
 namespace App\Http\Controllers\Gestionale\Esercizi;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\DateHelper;
+use App\Http\Controllers\Assemblee\DeliberaNelleSchede;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
@@ -29,6 +31,10 @@ use Inertia\Response;
  * dalla pagina degli esercizi e dall'elenco delle rate scadute. Una delibera alla volta: è un fatto dell'assemblea, che l'amministratore
  * registra; il perimetro (gli esercizi, tutte le persone o alcune) lo dice la delibera, e il programma non lo estende da solo. Gli esercizi e
  * le persone della richiesta devono essere di questo condominio, la dispensa delle rotte anche: altrimenti 404 per tutta la richiesta.
+ *
+ * Dalla 1.12.0-beta.13 la data e il numero del verbale vengono dalla delibera scelta con «Scegli la delibera» (`delibera_id`, del condominio della rotta),
+ * e la dispensa si lega alla delibera (ruolo `dispensa`; la revoca, ruolo `revoca_della_dispensa`). Le colonne `data_delibera` e `numero_verbale` restano
+ * quelle che i sei mesi leggono; senza delibera la data scritta a mano vale come prima.
  */
 class DispensaSeiMesiController extends Controller
 {
@@ -50,6 +56,8 @@ class DispensaSeiMesiController extends Controller
                 'revocata_il' => $d->revocata_il?->format('Y-m-d'),
                 'nota_revoca' => $d->nota_revoca,
                 'verbale' => $d->documenti->first()?->name,
+                'delibera' => DeliberaNelleSchede::perLaPagina($d, 'dispensa'),
+                'delibera_della_revoca' => DeliberaNelleSchede::perLaPagina($d, 'revoca_della_dispensa'),
             ]);
 
         return Inertia::render('gestionale/esercizi/DispenseSeiMesi', [
@@ -66,6 +74,11 @@ class DispensaSeiMesiController extends Controller
 
     public function store(Request $request, Condominio $condominio): RedirectResponse
     {
+        // La delibera scelta dà il giorno della riunione e il numero del suo verbale: le colonne di oggi si scrivono con quelli (R1).
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        if ($delibera !== null) {
+            $request->merge(['data_delibera' => DeliberaNelleSchede::giorno($delibera), 'numero_verbale' => DeliberaNelleSchede::numeroDelVerbale($delibera)]);
+        }
         $dati = $request->validate([
             'data_delibera' => ['required', 'date_format:Y-m-d', 'before_or_equal:' . DateHelper::oggiUtente()],
             'numero_verbale' => ['nullable', 'string', 'max:50'],
@@ -98,7 +111,7 @@ class DispensaSeiMesiController extends Controller
 
         $percorso = null;
         try {
-            DB::transaction(function () use ($condominio, $dati, $tutti, $esercizi, $persone, $request, &$percorso) {
+            DB::transaction(function () use ($condominio, $dati, $tutti, $esercizi, $persone, $request, $delibera, &$percorso) {
                 $dispensa = DispensaSeiMesi::create([
                     'condominio_id' => $condominio->id,
                     'data_delibera' => $dati['data_delibera'],
@@ -108,9 +121,11 @@ class DispensaSeiMesiController extends Controller
                     'togli_sollecito_tesoreria' => (bool) ($dati['togli_sollecito_tesoreria'] ?? false),
                     'registrata_da' => $request->user()?->id,
                 ]);
-                $dispensa->esercizi()->sync($esercizi);
-                $dispensa->persone()->sync($persone);
-                if ($request->hasFile('verbale')) {
+                RegistroModifiche::legame($dispensa, 'esercizi', 'Esercizi', fn () => $dispensa->esercizi()->sync($esercizi));
+                RegistroModifiche::legame($dispensa, 'persone', 'Persone', fn () => $dispensa->persone()->sync($persone));
+                DeliberaNelleSchede::collega($dispensa, 'dispensa', $delibera, $request->user());
+                // Il verbale è quello della riunione della delibera: il file si carica qui solo senza la delibera.
+                if ($delibera === null && $request->hasFile('verbale')) {
                     $file = $request->file('verbale');
                     $percorso = app(ArchivioDocumenti::class)->salvaConLEstensioneDelNome($file);
                     // Un documento della dispensa: con il suo proprietario non entra nell'archivio né nel portale.
@@ -138,6 +153,10 @@ class DispensaSeiMesiController extends Controller
     public function revoca(Request $request, Condominio $condominio, string|int $dispensa): RedirectResponse
     {
         $d = $this->assicuraDispensa($condominio, $dispensa);
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        if ($delibera !== null) {
+            $request->merge(['revocata_il' => DeliberaNelleSchede::giorno($delibera)]);
+        }
         $dati = $request->validate([
             'revocata_il' => ['required', 'date_format:Y-m-d', 'after_or_equal:' . $d->data_delibera->format('Y-m-d'), 'before_or_equal:' . DateHelper::oggiUtente()],
             'nota_revoca' => ['nullable', 'string', 'max:1000'],
@@ -149,7 +168,8 @@ class DispensaSeiMesiController extends Controller
         if ($d->revocata()) {
             return back()->withErrors(['revocata_il' => 'Questa dispensa è già revocata.']);
         }
-        $d->update(['revocata_il' => $dati['revocata_il'], 'nota_revoca' => $dati['nota_revoca'] ?? null, 'revocata_da' => $request->user()?->id]);
+        // Il servizio che chiama anche il seguito delle delibere: la revoca e il collegamento nella stessa transazione.
+        \App\Services\Gestionale\RevocaDellaDispensa::revoca($d, $dati['revocata_il'], $dati['nota_revoca'] ?? null, $delibera, $request->user());
 
         return back()->with($this->flashSuccess('Dispensa revocata: accanto alle date si legge «dispensa revocata il …».'));
     }

@@ -7,6 +7,8 @@ namespace App\Http\Controllers\Anagrafiche\Documenti;
 
 use App\Http\Controllers\Controller;
 use App\Services\Documenti\ArchivioDocumenti;
+use App\Services\Documenti\VersioniDeiDocumenti;
+use Illuminate\Support\Facades\DB;
 use App\Http\Requests\Anagrafica\Documento\AnagraficaDocumentoIndexRequest;
 use App\Http\Requests\Anagrafica\Documento\CreateAnagraficaDocumentoRequest;
 use App\Http\Requests\Anagrafica\Documento\UpdateAnagraficaDocumentoRequest;
@@ -99,6 +101,8 @@ class AnagraficaDocumentoController extends Controller
             // nome qui, la barra delle schede sparisce senza un errore.
             'anagrafica' => new AnagraficaResource($anagrafica),
             'documenti'  => DocumentoResource::collection($documenti)->resolve(),
+            // Il numero accanto alla linguetta «Assemblee» (decisione 651); null senza «Vede le assemblee».
+            'assemblee_riepilogo' => \App\Services\Assemblee\AssembleeDellaPersona::riepilogo($anagrafica, $request->user()),
             'meta' => [
                 'current_page' => $documenti->currentPage(),
                 'last_page'    => $documenti->lastPage(),
@@ -145,6 +149,8 @@ class AnagraficaDocumentoController extends Controller
             'anagrafica' => new AnagraficaResource($anagrafica),
             'documento'  => new DocumentoResource($documento),
             'limiteFile' => LimiteCaricamento::etichetta(),
+            // Le versioni di prima del file (1.12.0-beta.13, decisione 559): in sola lettura, senza il percorso.
+            'versioni'   => VersioniDeiDocumenti::perLaPagina($documento),
         ]);
     }
 
@@ -203,19 +209,12 @@ class AnagraficaDocumentoController extends Controller
         $validated = $request->validated();
 
         try {
+            DB::beginTransaction();
+
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
-                // Il vecchio file si toglie solo dopo che il nuovo è stato scritto: al contrario,
-                // un errore a metà lascerebbe una riga che punta a un file che non c'è più.
-                $file = $request->file('file');
-                $nuovoPercorso = app(ArchivioDocumenti::class)->salva($file);
-
-                $vecchioPercorso = $documento->path;
-
-                $documento->path = $nuovoPercorso;
-                $documento->mime_type = $file->getClientMimeType();
-                $documento->file_size = $file->getSize();
-
-                app(ArchivioDocumenti::class)->elimina($vecchioPercorso);
+                // Il file nuovo si scrive prima; il vecchio non si toglie più: resta fra le versioni di prima (1.12.0-beta.13, decisione 559), e se la
+                // transazione cade torna al suo posto.
+                app(VersioniDeiDocumenti::class)->sostituisci($documento, $request->file('file'));
             }
 
             $documento->update([
@@ -227,7 +226,10 @@ class AnagraficaDocumentoController extends Controller
                 'is_published' => $validated['is_published'],
                 'is_approved'  => $validated['is_approved'],
             ]);
+
+            DB::commit();
         } catch (\Throwable $e) {
+            DB::rollBack();
             Log::error('Errore aggiornando un documento di un\'anagrafica: '.$e->getMessage());
 
             return to_route('admin.anagrafiche.documenti.index', ['anagrafica' => $anagrafica->id])
@@ -245,9 +247,8 @@ class AnagraficaDocumentoController extends Controller
         abort_unless($this->appartiene($documento, $anagrafica), 404);
 
         try {
-            app(ArchivioDocumenti::class)->elimina($documento->path);
-
-            $documento->delete();
+            // 1.12.0-beta.13 (decisione 559, P21): con le versioni di prima; i file si cancellano dopo il commit.
+            DB::transaction(fn () => app(VersioniDeiDocumenti::class)->elimina($documento));
         } catch (\Throwable $e) {
             Log::error('Errore eliminando un documento di un\'anagrafica: '.$e->getMessage());
 

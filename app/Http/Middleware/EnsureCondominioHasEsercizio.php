@@ -5,6 +5,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\RegistroModifiche\Autore;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Models\Condominio;
 use App\Services\CondominioService;
 use Closure;
@@ -29,9 +31,11 @@ class EnsureCondominioHasEsercizio
                 if ($condominio->esercizi()->doesntExist()) {
                     Log::info("Nessun esercizio trovato per '{$condominio->nome}', creazione automatica in corso...");
 
-                    DB::transaction(function () use ($condominio) {
-                        app(CondominioService::class)->createEsercizioForCondominio($condominio);
-                    });
+                    // Lo crea il programma, non chi ha aperto la pagina: il registro delle modifiche firma «Il programma».
+                    RegistroModifiche::comeAutore(Autore::programma('pagina', 'creato in automatico all\'apertura del gestionale del condominio'),
+                        fn () => DB::transaction(function () use ($condominio) {
+                            app(CondominioService::class)->createEsercizioForCondominio($condominio);
+                        }));
 
                     Log::info("Esercizio creato correttamente per '{$condominio->nome}'");
                 }

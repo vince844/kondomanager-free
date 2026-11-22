@@ -6,9 +6,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
 
 class CategoriaFornitore extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'categorie_fornitore';
 
     protected $fillable = [

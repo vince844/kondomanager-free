@@ -1,0 +1,37 @@
+{
+    "che_cosa": "Il lotto che la coda del verbale manda quando la rete torna, alle 20:31 di martedì 15/12/2026, dopo tre modifiche alla discussione del punto 4 scritte senza rete fra le 20:16 e le 20:18 di Roma: un gesto solo, l'ultimo testo, con la base da cui l'editor era partito e la scheda del browser che l'ha scritto. Lo scrive la coda (useVerbaleSenzaRete.test.ts) e lo riceve il server (CateneSenzaReteDelVerbaleTest.php). I segnaposti fra graffe sono i numeri del server: il verbale e il punto 4.",
+    "dispositivo": "computer di Andrea Costa#00000000",
+    "lotti": [
+        {
+            "dispositivo": "computer di Andrea Costa#00000000",
+            "gesti": [
+                {
+                    "gesto": "00000000-0000-4000-a000-000000000006",
+                    "tipo": "testo",
+                    "dati": {
+                        "verbale_id": "{verbale}",
+                        "parte": "punto:{punto4}",
+                        "scheda": "a1b2c3d4",
+                        "documento": {
+                            "type": "doc",
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": "I preventivi sono arrivati il giorno prima."
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    "base": 0,
+                    "orologio": "2026-12-15T19:18:00.000Z",
+                    "segnato_il": "2026-12-15T19:18:00.000Z"
+                }
+            ]
+        }
+    ]
+}

@@ -23,7 +23,6 @@ import {
     ListPlus, 
     Library, 
     Settings, 
-    GitGraph, 
     HousePlus, 
     Building as BuildingIcon, 
     BookText,
@@ -33,11 +32,13 @@ import {
     HandCoins, 
     Wallet, 
     ChevronRight, 
-    ArrowUpDown
+    ArrowUpDown,
+    Gavel
 } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { BreadcrumbItem, NavItem, LinkItem, Auth} from '@/types';
+import { Permission } from '@/enums/Permission';
 
 const { generatePath, canAccess, hasPermission } = usePermission();
 
@@ -132,17 +133,20 @@ const mainNavItems: NavItem[] = [
         title: 'Movimenti',
         href: generatePath('gestionale/:condominio/movimenti', { condominio: condominio.value.id }),
         icon: ArrowUpDown,
+    },
+    // Le assemblee (1.12.0-beta.13): l'archivio del condominio, per chi vede le assemblee. Con dieci voci la barra si riprova a 1.280 pixel e nel cassetto
+    // del telefono.
+    {
+        type: 'link',
+        title: 'Assemblee',
+        href: generatePath('gestionale/:condominio/assemblee', { condominio: condominio.value.id }),
+        icon: Gavel,
+        permissions: [Permission.VIEW_ASSEMBLEE, Permission.MANAGE_ASSEMBLEE],
     }
 ]; 
 
+// Il collegamento al codice sta nel piede della pagina (decisione 573): qui lascerebbe meno posto alle voci del gestionale.
 const rightNavItems: LinkItem[] = [
-    {
-        type: 'link',
-        title: 'Repository',
-        href: 'https://github.com/vince844/kondomanager-free',
-        icon: GitGraph,
-        external: true,
-    },
     {
         type: 'link',
         title: 'Documentazione',
@@ -194,7 +198,7 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
             <div class="mx-auto flex h-16 items-center px-4 md:max-w-7xl">
 
                 <!-- MOBILE MENU: anche sul tablet e sui portatili piccoli, fino a 1.280 pixel; con il menu intero a 1.024 pixel la barra usciva dallo schermo -->
-                <div class="xl:hidden">
+                <div class="min-[1240px]:hidden">
                     <Sheet>
                         <SheetTrigger as-child>
                             <Button
@@ -206,8 +210,8 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
                             </Button>
                         </SheetTrigger>
 
-                        <!-- MOBILE DRAWER -->
-                        <SheetContent side="left" class="w-[300px] p-6">
+                        <!-- MOBILE DRAWER: alto quanto la finestra, scorre (Coda 733): sotto i 700 pixel di altezza «Impostazioni» restava sotto il bordo -->
+                        <SheetContent side="left" class="w-[300px] overflow-y-auto p-6">
                             <SheetHeader>
                                 <AppLogoIcon class="size-6 text-black dark:text-white" />
                             </SheetHeader>
@@ -283,12 +287,13 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
 
                 <!-- LOGO -->
                 <Link :href="generatePath('dashboard')" class="flex items-center gap-2 hover:opacity-80">
-                    <AppLogo class="hidden h-6 xl:block" />
+                    <AppLogo class="hidden h-6 min-[1240px]:block" />
                 </Link>
 
                 <!-- DESKTOP MENU -->
-                <div class="hidden xl:flex xl:flex-1 h-full">
-                    <nav class="ml-6 flex items-center gap-1 h-full">
+                <div class="hidden min-[1240px]:flex min-[1240px]:flex-1 h-full">
+                    <!-- Le voci mai su due righe, e strette quanto basta perché da 1.240 pixel ci stiano tutte, «Assemblee» compresa (decisione 573). -->
+                    <nav class="ml-2 flex items-center gap-0.5 h-full">
                         <template v-for="item in accessibleMainItems" :key="item.title">
 
                             <!-- DESKTOP PARENT -->
@@ -296,10 +301,10 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
                                 <HoverCardTrigger as-child>
                                     <Button
                                         variant="ghost"
-                                        class="h-9 px-3 flex items-center text-sm font-medium"
+                                        class="h-9 px-2 gap-0 flex shrink-0 items-center whitespace-nowrap text-sm font-medium"
                                         :class="isParentActive(item) ? 'bg-accent text-accent-foreground' : 'hover:bg-accent'"
                                     >
-                                        <component v-if="item.icon" :is="item.icon" class="mr-2 h-4 w-4" />
+                                        <component v-if="item.icon" :is="item.icon" class="mr-1.5 h-4 w-4" />
                                         {{ item.title }}
                                     </Button>
                                 </HoverCardTrigger>
@@ -323,10 +328,10 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
                             <Link
                                 v-else
                                 :href="item.href"
-                                class="h-9 px-3 flex items-center text-sm font-medium rounded-md"
+                                class="h-9 px-2 flex shrink-0 items-center whitespace-nowrap text-sm font-medium rounded-md"
                                 :class="isCurrentRoute(item.href) ? 'bg-accent text-accent-foreground' : 'hover:bg-accent'"
                             >
-                                <component v-if="item.icon" :is="item.icon" class="mr-2 h-4 w-4" />
+                                <component v-if="item.icon" :is="item.icon" class="mr-1.5 h-4 w-4" />
                                 {{ item.title }}
                             </Link>
                         </template>
@@ -335,7 +340,7 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
 
                 <!-- RIGHT SECTION -->
                 <div class="ml-auto flex items-center gap-2">
-                    <div class="hidden xl:flex gap-1">
+                    <div class="hidden min-[1240px]:flex gap-1">
                         <TooltipProvider>
                             <template v-for="item in rightNavItems" :key="item.title">
                                 <Tooltip>

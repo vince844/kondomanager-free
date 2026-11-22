@@ -187,6 +187,7 @@ function eliminaCategoria() {
   <AppLayout>
     <div class="px-6 py-8 space-y-6">
       <PageHeaderGuide
+        :storia="{ tipo: 'categorie_fornitori' }"
         :page-title="trans('fornitori.categorie.title')"
         :page-subtitle="trans('fornitori.categorie.description')"
         :breadcrumbs="breadcrumbs"

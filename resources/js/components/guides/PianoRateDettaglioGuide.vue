@@ -73,6 +73,7 @@ defineEmits(['update:open']);
                                 <li><strong>Approvato</strong> — passa da qui solo dopo aver registrato i dati
                                     della delibera assembleare (data, numero di verbale opzionale, note). Il
                                     piano si "congela" e diventa possibile emettere le rate in contabilità.</li>
+                                <li><strong>Respinto, rinviato</strong> — se un'assemblea ha respinto, rinviato, revocato o annullato una delibera che riguarda il piano, la scheda lo dice in testa con la frase della delibera e il collegamento all'assemblea. Sono frasi: nessun conto cambia da solo.</li>
                             </ul>
                             <p class="mt-2 text-xs text-slate-500">
                                 Tornare in Bozza dopo l'approvazione è possibile solo se <strong>nessuna

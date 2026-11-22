@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * @method \Illuminate\Database\Eloquent\Relations\MorphMany tuttiICommenti()
@@ -21,6 +22,8 @@ use Illuminate\Support\Facades\Gate;
  */
 class Segnalazione extends Model implements Commentable
 {
+    use RegistraLeModifiche;
+
     use HasFactory, HasComments;
 
     protected $table = 'segnalazioni';

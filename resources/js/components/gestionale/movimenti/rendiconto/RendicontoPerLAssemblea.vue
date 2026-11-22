@@ -17,11 +17,14 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * della versione fermata. Il confronto arriva dal server (`ConfrontoDelRendiconto`); sopra la soglia di peso si chiede con un pulsante.
  */
 import { computed, ref } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 import { usePermission } from '@/composables/permissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import CampoFile from '@/components/CampoFile.vue';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
 import { AlertTriangle, Archive, FileDown, Stamp, Trash2 } from 'lucide-vue-next';
 
 export interface DocumentoVersione { id: number; parte: string; nome: string | null; impronta: string }
@@ -35,7 +38,11 @@ export interface Versione {
     cifre_non_tornano?: string | null;
     /** Il file del PDF conservato che non c'è più, o non è quello conservato: la frase, e «Carica il PDF che hai mandato». */
     pdf_frase?: string | null;
+    /** In quale assemblea è allegata: «In assemblea il 15/12, punto 1 · convocazione spedita il 03/12»; spedita, non si elimina. */
+    in_assemblea?: { frase: string; spedita: boolean } | null;
 }
+/** Un'assemblea in preparazione con il punto del rendiconto di questo esercizio, per «Per quale assemblea». */
+export interface AssembleaDelRendiconto { id: number; punto_id: number; nome: string }
 export interface ConfrontoVersione {
     versione_id: number; numero: number; stato: string; giorno: string; cambiato: boolean; frasi: string[]; frase: string | null;
     scritture: { scrittura_id: number; cosa: string; data: string | null; protocollo: string | null; causale: string | null }[];
@@ -79,7 +86,7 @@ const confronta = () => {
     confrontoInCorso.value = true;
     router.reload({ data: { confronta: 1 }, only: ['confronto'], preserveScroll: true, onFinish: () => { confrontoInCorso.value = false; } } as any);
 };
-const fermaNuova = () => { confermaFerma.value = true; };
+const fermaNuova = () => { preparaFerma(); };
 /** Il confronto di una versione fermata, nella finestra della sua approvazione: con le cifre (fatto), o il solo giornale (sopra la soglia). */
 const confrontoDi = (v: Versione) => (props.confronto?.presentate ?? []).find((c) => c.versione_id === v.id) ?? null;
 const presentataCambiata = (v: Versione) => {
@@ -99,11 +106,17 @@ const hrefDocumento = (v: Versione, id: number) => route(generateRoute('gestiona
 /* ─── Ferma per l'assemblea ─── */
 const confermaFerma = ref(false);
 const inCorso = ref(false);
+/* «Per quale assemblea»: le assemblee in preparazione con il punto del rendiconto di questo esercizio, dalla pagina; di serie la prima, o nessuna. */
+const assemblee = computed<AssembleaDelRendiconto[]>(() => ((usePage().props as Record<string, unknown>).assemblee_del_rendiconto as AssembleaDelRendiconto[] | undefined) ?? []);
+const opzioniAssemblea = computed(() => [...assemblee.value.map((a) => ({ id: a.id, nome: a.nome })), { id: 0, nome: 'Nessuna: la fermo e basta' }]);
+const assembleaScelta = ref<number>(0);
+const preparaFerma = () => { assembleaScelta.value = assemblee.value[0]?.id ?? 0; confermaFerma.value = true; };
 const ferma = () => {
     if (inCorso.value) return;
     inCorso.value = true;
     router.post(route(generateRoute('gestionale.esercizi.rendiconto.versioni.store'), base.value),
-        { parti: props.scelte, dettaglio: props.dettaglio, lettere: props.lettere && props.scelte.includes('condomini') },
+        { parti: props.scelte, dettaglio: props.dettaglio, lettere: props.lettere && props.scelte.includes('condomini'),
+            ...(assembleaScelta.value ? { assemblea_id: assembleaScelta.value } : {}) },
         { preserveScroll: true, onFinish: () => { inCorso.value = false; confermaFerma.value = false; } });
 };
 
@@ -155,7 +168,7 @@ const statoDi = (v: Versione) => ({
     <div class="rounded-md border bg-white dark:bg-slate-900 mb-6" data-test="per-l-assemblea">
         <div class="px-4 py-3 border-b bg-gray-50/50 dark:bg-slate-800/30 flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2"><Archive class="w-4 h-4 text-slate-500 dark:text-slate-400" /> Il rendiconto per l'assemblea</h3>
-            <Button v-if="!confermaFerma" size="sm" variant="outline" class="h-8" data-test="ferma" @click="confermaFerma = true">Ferma per l'assemblea</Button>
+            <Button v-if="!confermaFerma" size="sm" variant="outline" class="h-8" data-test="ferma" @click="preparaFerma">Ferma per l'assemblea</Button>
         </div>
 
         <!-- Dopo l'approvazione: che cosa è cambiato, con le cifre di allora e di oggi. Un avviso: niente si blocca. -->
@@ -213,6 +226,11 @@ const statoDi = (v: Versione) => ({
                 <p class="font-semibold">La nota sintetica (si può fermare lo stesso):</p>
                 <p v-for="m in props.notaMancanze" :key="m">{{ m }}</p>
             </div>
+            <div v-if="assemblee.length" class="space-y-1" data-test="per-quale-assemblea">
+                <p class="font-medium text-slate-700 dark:text-slate-300">Per quale assemblea</p>
+                <vSelect v-model="assembleaScelta" :options="opzioniAssemblea" label="nome" :reduce="(o: { id: number }) => o.id" :clearable="false" class="max-w-md" />
+                <p class="text-xs text-slate-500 dark:text-slate-400">La versione va con la convocazione, nel punto del rendiconto. Esempio: l'ordinaria del 15/12, punto 1.</p>
+            </div>
             <p class="text-[11.5px] text-slate-500 dark:text-slate-400">Con molti condòmini può volerci più di un minuto. Se il fascicolo è troppo grande per farlo in una volta, la versione nasce con le cifre e le parti si conservano una per una.</p>
             <div class="flex gap-2">
                 <Button size="sm" :disabled="inCorso" data-test="ferma-conferma" @click="ferma">Ferma</Button>
@@ -225,11 +243,13 @@ const statoDi = (v: Versione) => ({
         </p>
         <ul v-else class="divide-y divide-slate-100 dark:divide-slate-800">
             <li v-for="v in props.versioni" :key="v.id" class="px-4 py-3 text-[12.5px] space-y-1.5" :data-versione="v.numero" :data-stato="v.stato">
+                <!-- Gli esiti delle delibere sulla versione: «Rendiconto respinto dall'assemblea …», i segni; con «Apri l'assemblea». -->
+                <EsitiDellaScheda :condominio-id="props.condominioId" tipo="rendiconto_versione" :id="v.id" />
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <span><b>Versione {{ v.numero }}</b> · {{ statoDi(v) }}</span>
+                    <span><b>Versione {{ v.numero }}</b> · {{ statoDi(v) }}<template v-if="v.in_assemblea"> · <span data-test="in-assemblea">{{ v.in_assemblea.frase }}</span></template></span>
                     <span v-if="v.stato === 'presentata' && approvaDi !== v.id" class="flex gap-2">
                         <Button size="sm" variant="outline" class="h-7" data-test="apri-approvazione" @click="apriApprovazione(v)"><Stamp class="w-3.5 h-3.5 mr-1" /> Registra l'approvazione</Button>
-                        <Button v-if="eliminaDi !== v.id" size="sm" variant="ghost" class="h-7" data-test="apri-elimina" @click="eliminaDi = v.id"><Trash2 class="w-3.5 h-3.5 mr-1" /> Elimina la versione</Button>
+                        <Button v-if="eliminaDi !== v.id && !v.in_assemblea?.spedita" size="sm" variant="ghost" class="h-7" data-test="apri-elimina" @click="eliminaDi = v.id"><Trash2 class="w-3.5 h-3.5 mr-1" /> Elimina la versione</Button>
                     </span>
                 </div>
                 <div v-if="eliminaDi === v.id" class="rounded border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-900/20 p-2 space-y-1.5 text-rose-900 dark:text-rose-200" data-test="conferma-elimina">

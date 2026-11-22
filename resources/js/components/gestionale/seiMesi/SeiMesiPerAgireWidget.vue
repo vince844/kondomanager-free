@@ -10,7 +10,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * «Prossima azione», «Registra che hai agito»): la prossima azione che il programma suggerisce (o le azioni possibili, con «Scelgo io la prossima azione»,
  * una scelta del condominio). In fondo alla riga le azioni in blocco, la dispensa, la frase sulle lettere e «Tutte le rate di questo esercizio →». Sotto, le
  * rate senza la data dei sei mesi, che si aprono come la riga di un esercizio (le persone, perché la data manca, la prossima azione del caso), e il rendiconto
- * da portare in assemblea entro 180 giorni (art. 1130 n. 10 c.c.).
+ * da portare in assemblea entro 180 giorni (art. 1130 n. 10 c.c.). In fondo alla riga di un esercizio con persone da seguire, «Da portare in assemblea»
+ * apre il memo della dispensa con i sei mesi di quell'esercizio (Coda 736).
  *
  * Tutto arriva dal server già deciso (`SeiMesiPerAgire`): il riquadro non ricalcola niente. Nessun passo parte da solo: ogni pulsante apre una finestra o una
  * pagina dove l'amministratore guarda e decide. Niente scorrimento dentro il riquadro: fino a 8 persone tutte, oltre le 5 con la cifra più alta e la riga di fondo.
@@ -28,7 +29,9 @@ import LettereDialog from '@/components/gestionale/lettere/LettereDialog.vue';
 import AccordoRientroDialog from '@/components/gestionale/accordi/AccordoRientroDialog.vue';
 import FascicoloLegaleDialog from '@/components/gestionale/fascicolo/FascicoloLegaleDialog.vue';
 import PassoMenu from './PassoMenu.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
 import { usePermission } from '@/composables/permissions';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
 import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
 import {
     COLONNE_PERSONE, COLONNE_SENZA_DATA, FRASE_LETTERE, FRASE_NON_VERSATO, FRASE_PIEDE, FRASE_PIEDE_SCELGO_IO, FRASE_RENDICONTO, FRASE_SENZA_DATA, FRASE_SUGGERIMENTO,
@@ -41,7 +44,10 @@ import type { TipoLettera } from '@/lib/gestionale/lettere/lettere';
 const props = defineProps<{ seiMesi: SeiMesi & { testo_norma?: string }; condominioId: number; puoRispondere: boolean }>();
 const emit = defineEmits<{ (e: 'rispondi', r: RichiestaDiRisposta): void }>();
 
-const { generateRoute } = usePermission();
+const permessi = usePermission();
+const { generateRoute } = permessi;
+// Coda 736: «Da portare in assemblea» in fondo alla riga, per chi gestisce le assemblee.
+const conLeAssemblee = computed(() => gestisceLeAssemblee(permessi));
 const rotta = (nome: string, altro: Record<string, unknown> = {}) => route(generateRoute(`gestionale.${nome}`), { condominio: props.condominioId, ...altro });
 
 // Le righe aperte: la prima con la data passata o entro 60 giorni, e quella dell'ancora nell'indirizzo (il compito dell'Inbox porta qui).
@@ -343,9 +349,15 @@ const ricarica = () => router.reload({ only: ['seiMesi', 'compitiSeiMesi', 'widg
                             </Button>
                         </div>
 
-                        <!-- Il fondo della riga. -->
-                        <div class="flex flex-col gap-1.5 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-800/30 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-                            <Link :href="indirizzoDispense" class="font-medium text-slate-600 hover:text-primary hover:underline dark:text-slate-300">Registra la dispensa dell'assemblea</Link>
+                        <!-- Il fondo della riga. «Da portare in assemblea» (Coda 736) apre il memo con i sei mesi di questo esercizio: il memo e il punto che
+                             il programma propone sono un punto solo; dopo il voto, «Registra la dispensa dell'assemblea». -->
+                        <div class="flex flex-col gap-1.5 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-800/30 lg:flex-row lg:items-center lg:justify-between lg:gap-4"
+                            data-testid="fondo-riga">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                                <PulsanteDaPortareInAssemblea v-if="conLeAssemblee && riga.quante > 0" :condominio-id="condominioId" origine-tipo="sei_mesi"
+                                    :origine-id="riga.esercizio.id" forma="riga" />
+                                <Link :href="indirizzoDispense" class="font-medium text-slate-600 hover:text-primary hover:underline dark:text-slate-300">Registra la dispensa dell'assemblea</Link>
+                            </div>
                             <span class="text-slate-500 dark:text-slate-400 lg:text-center">{{ FRASE_LETTERE }}</span>
                             <Link :href="indirizzoElenco(riga)" class="shrink-0 font-medium text-primary hover:underline">Tutte le rate di questo esercizio →</Link>
                         </div>

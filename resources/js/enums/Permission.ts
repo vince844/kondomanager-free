@@ -111,5 +111,12 @@ export enum Permission {
   PUBLISH_EVENTS = 'Pubblica scadenze in agenda',
   APPROVE_EVENTS = 'Approva scadenze in agenda',
   DELETE_OWN_EVENTS = 'Elimina proprie scadenza in agenda',
+  // Registro delle modifiche (1.12.0-beta.13)
+  VIEW_REGISTRO_MODIFICHE = 'Vede il registro delle modifiche',
+  VIEW_STORIA_SCHEDE = 'Vede la storia delle schede',
+  // Assemblee e delibere
+  VIEW_ASSEMBLEE = 'Vede le assemblee',
+  MANAGE_ASSEMBLEE = 'Gestisce le assemblee',
+  REGISTER_VERBALE_SOTTOSCRITTO = 'Registra il verbale sottoscritto',
 
 }

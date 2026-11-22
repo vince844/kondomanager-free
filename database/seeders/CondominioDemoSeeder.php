@@ -853,8 +853,10 @@ class CondominioDemoSeeder extends Seeder
                 'is_sopravvenienza'  => false,
             ]],
             'dati_extra' => [
+                // La chiave è `motivazione`, come la salva la registrazione vera: è quella che leggono la fattura, la ratifica e
+                // il punto dell'assemblea.
                 'override_budget' => [
-                    'motivo' => 'Intervento urgente per perdita in colonna montante: '
+                    'motivazione' => 'Intervento urgente per perdita in colonna montante: '
                               . 'autorizzato dall\'amministratore ai sensi dell\'art. 1135 c.c., '
                               . 'da ratificare nella prossima assemblea.',
                 ],

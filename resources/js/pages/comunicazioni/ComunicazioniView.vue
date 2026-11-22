@@ -157,6 +157,7 @@ const commentiInAttesa = computed(() => {
     <div class="px-6 py-8 space-y-6">
 
         <PageHeaderGuide
+            :storia="{ tipo: 'comunicazione', id: props.comunicazione.id }"
             :page-title="trans('comunicazioni.header.view_communication_title')"
             :page-subtitle="trans('comunicazioni.header.view_communication_description')"
             :guides="pageGuides"

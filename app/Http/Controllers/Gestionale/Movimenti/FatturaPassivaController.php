@@ -5,6 +5,8 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Traits\OrdinaElenco;
 use App\Services\Documenti\ArchivioDocumenti;
 
@@ -148,8 +150,10 @@ class FatturaPassivaController extends Controller
         // L'insieme si raccoglie in **una** query per tutto l'elenco, non una per fattura.
         // Trovato dalla Fase 1-bis della beta.20, Coda 133.
         $idNoteDaStorno = PagamentoFornitoreService::idNoteNateDaStorno($condominio->id);
+        // 1.12.0-beta.13 (R12, decisione 561): le fatture con la delibera della ratifica, lette una volta per tutto l'elenco.
+        $ratificate = \App\Http\Controllers\Assemblee\RatificaPerLePagine::ratificate((int) $condominio->id);
 
-        $fatture->through(function (FatturaPassiva $fattura) use ($idNoteDaStorno) {
+        $fatture->through(function (FatturaPassiva $fattura) use ($idNoteDaStorno, $ratificate) {
             // Lo storno ha la sua guardia sul model come l'eliminazione, e l'avviso per il piano che ha già incassato
             // (1.11.0-beta.35, R1 della Fase 1-bis): il menu mostra lo stesso motivo che applicherebbe il server.
             $fattura->append(['motivo_blocco_eliminazione', 'motivo_blocco_storno', 'avviso_storno']);
@@ -159,6 +163,10 @@ class FatturaPassivaController extends Controller
             $fattura->setAttribute('motivo_blocco_collegamento', $fattura->tipo_documento === 'nota_credito'
                 ? $fattura->motivoBloccoCollegamento($eNataDaStorno)
                 : null);
+            // La ratifica (R12): aspetta la delibera (in sforo, o sbloccata per l'urgenza con il motivo), lo stato in parole, di quanto supera il preventivo.
+            foreach (\App\Http\Controllers\Assemblee\RatificaPerLePagine::perLaRiga($fattura, $ratificate) as $chiave => $valore) {
+                $fattura->setAttribute($chiave, $valore);
+            }
 
             return $fattura;
         });
@@ -354,6 +362,9 @@ class FatturaPassivaController extends Controller
 
     public function store(StoreFatturaRequest $request, Condominio $condominio): RedirectResponse
     {
+        // 1.12.0-beta.13 (§1.4): la delibera della competenza o della spesa imprevista la collega chi gestisce le assemblee.
+        $this->puoCollegareLeDelibere($request, null);
+
         try {
             // ⚠️ **Prima di registrare, non dopo.** La risposta sulla posizione fiscale del
             // fornitore cambia se e quanto si trattiene: applicarla dopo significherebbe
@@ -362,11 +373,15 @@ class FatturaPassivaController extends Controller
             // stata fatta (Coda 116).
             $this->applicaPosizioneRitenuta($request);
 
-            $this->service->registraFattura(
-                $request->validated(),
-                $condominio->id,
-                $request->file('file')
-            );
+            // La fattura e i collegamenti alle delibere scelte nel modulo, in una transazione (decisione 554).
+            DB::transaction(function () use ($request, $condominio) {
+                $fattura = $this->service->registraFattura(
+                    $request->validated(),
+                    $condominio->id,
+                    $request->file('file')
+                );
+                $this->collegaLeDelibere($request, $fattura);
+            });
 
             $coperture = collect($request->input('coperture', []));
             $sopravvenienze = $coperture->where('tipo_copertura', 'sopravvenienza');
@@ -420,6 +435,9 @@ class FatturaPassivaController extends Controller
             // Coda 165: il piano ha incassato — la nota si registra, dopo la spunta sotto il campo (R3, R7 della Fase 1-bis).
             return back()->withErrors(['avviso_nota' => $e->getMessage()]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // La delibera scelta non si sceglie per quel ruolo (R7): la frase torna accanto al campo.
+            throw $e;
         } catch (\Exception $e) {
             Log::error('FATAL ERROR NEL SERVICE: '.$e->getMessage());
             Log::error('Traccia: '.$e->getTraceAsString());
@@ -479,7 +497,8 @@ class FatturaPassivaController extends Controller
 
         // 2. ELIMINAZIONE FISICA E PULIZIA
         try {
-            DB::transaction(function () use ($fattura, $fatturaOriginale, $contiImprevistiIds) {
+            // Il registro delle modifiche: l'eliminazione è un gesto solo; le scritture tolte per sempre sono nel lotto.
+            RegistroModifiche::durante(GestiDelRegistro::fatturaEliminata($fattura), function () use ($fattura, $fatturaOriginale, $contiImprevistiIds) {
 
                 // Coda 165 (1.11.0-beta.36): la guardia qui sopra legge senza lucchetto. Una nota del fornitore collegata
                 // nello stesso istante da un'altra scheda restava scollegata in silenzio (la chiave esterna mette null):
@@ -628,9 +647,14 @@ class FatturaPassivaController extends Controller
             }
         }
 
+        // 1.12.0-beta.13 (§1.4): la delibera della competenza, se la fattura ne ha una, nella forma di «Scegli la delibera».
+        $deliberaCompetenza = \App\Services\Assemblee\CollegamentiDelleDelibere::delibera($fattura, \App\Enums\Assemblee\RuoloCollegamento::COMPETENZA->value);
+
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterEdit', [
             'condominio' => $condominio,
             'fattura' => $fattura,
+            'delibera_competenza' => $deliberaCompetenza === null ? null
+                : \App\Services\Assemblee\DelibereDelCondominio::riga($deliberaCompetenza, ...\App\Services\Assemblee\DelibereDelCondominio::siSceglie($deliberaCompetenza, 'competenza')),
             'nota_storno_originale' => $notaStornoOriginale,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
@@ -927,8 +951,9 @@ class FatturaPassivaController extends Controller
             ->whereDoesntHave('sottoconti')
             ->get();
         // La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella,
-        // non la competenza dichiarata sulla fattura (decisione 19), e la riga lo dice dove si sceglie la voce.
-        $competenzePiano = app(\App\Services\Riparto\CompetenzaDichiarataPerVoce::class)->perConti(
+        // non la competenza dichiarata sulla fattura (decisione 19), e la riga lo dice dove si sceglie la voce. Con il giorno
+        // dei piani d'urgenza fatti dalle fatture, che la fattura registrata dopo sulla stessa voce propone.
+        $competenzePiano = app(\App\Services\Riparto\CompetenzaDichiarataPerVoce::class)->perContiConLeFatture(
             $conti->pluck('id')->map(fn ($id) => (int) $id)->all(),
             $conti->mapWithKeys(fn ($c) => [(int) $c->id => $c->parent_id !== null ? (int) $c->parent_id : null])->all(),
         );
@@ -1085,12 +1110,16 @@ class FatturaPassivaController extends Controller
     public function update(UpdateFatturaRequest $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
     {
         abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+        $this->puoCollegareLeDelibere($request, $fattura);
 
         try {
-            $this->service->aggiornaFattura(
-                $fattura,
-                $request->validated(),
-            );
+            DB::transaction(function () use ($request, $fattura) {
+                $aggiornata = $this->service->aggiornaFattura(
+                    $fattura,
+                    $request->validated(),
+                );
+                $this->collegaLeDelibere($request, $aggiornata);
+            });
 
             return redirect()
                 ->route('admin.gestionale.fatture.index', ['condominio' => $condominio->id])
@@ -1122,10 +1151,62 @@ class FatturaPassivaController extends Controller
                 'numero_documento' => 'Esiste già una fattura di questo fornitore con lo stesso numero documento e la stessa data.',
             ]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // La delibera scelta non si sceglie per quel ruolo (R7): la frase torna accanto al campo.
+            throw $e;
         } catch (\Exception $e) {
             Log::error("Errore modifica fattura ID {$fattura->id}: ".$e->getMessage());
 
             return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 1.12.0-beta.13 (§1.4 del progetto della tappa 2): chi sceglie, cambia o toglie la delibera della competenza o della spesa imprevista deve gestire le assemblee
+     * (`AccessoAlleAssemblee`). Una modifica che lascia la delibera com'era non lo chiede: la fattura si cambia come prima. Prima del salvataggio, così un
+     * rifiuto non lascia niente a metà.
+     */
+    private function puoCollegareLeDelibere(StoreFatturaRequest|UpdateFatturaRequest $request, ?FatturaPassiva $fattura): void
+    {
+        $delibere = $request->delibereDellaFattura();
+        $cambia = false;
+        $ruoli = ['competenza' => [\App\Enums\Assemblee\RuoloCollegamento::COMPETENZA, 'delibera_competenza_id'],
+            'spesa' => [\App\Enums\Assemblee\RuoloCollegamento::ORIGINE_DELLA_SPESA, 'delibera_spesa_id']];
+        foreach ($ruoli as $chiave => [$ruolo, $campo]) {
+            $prima = $fattura === null ? null : \App\Services\Assemblee\CollegamentiDelleDelibere::delibera($fattura, $ruolo->value)?->id;
+            $dopo = $delibere[$chiave]?->id;
+            $togliere = $dopo === null && $prima !== null && $request->has($campo) && $request->input($campo) === null;
+            if (($dopo !== null && (int) $dopo !== (int) $prima) || $togliere) {
+                $cambia = true;
+            }
+        }
+        if ($cambia) {
+            Gate::allowIf(\App\Services\Assemblee\AccessoAlleAssemblee::gestisce($request->user()), __('errors.403_message'));
+        }
+    }
+
+    /**
+     * I collegamenti della fattura alle delibere scelte nel modulo, dopo il salvataggio e nella stessa transazione: la competenza (ruolo `competenza`) e la
+     * spesa imprevista con l'origine «delibera assembleare» (ruolo `origine_della_spesa`). Le colonne di oggi le ha già scritte la richiesta dalla delibera.
+     * In modifica, la competenza mandata vuota (un periodo, o nessuna) toglie il collegamento di prima.
+     */
+    private function collegaLeDelibere(StoreFatturaRequest|UpdateFatturaRequest $request, FatturaPassiva $fattura): void
+    {
+        $delibere = $request->delibereDellaFattura();
+        $utente = $request->user();
+        $ruoli = ['competenza' => [\App\Enums\Assemblee\RuoloCollegamento::COMPETENZA, 'delibera_competenza_id'],
+            'spesa' => [\App\Enums\Assemblee\RuoloCollegamento::ORIGINE_DELLA_SPESA, 'delibera_spesa_id']];
+        foreach ($ruoli as $chiave => [$ruolo, $campo]) {
+            $delibera = $delibere[$chiave];
+            $prima = \App\Services\Assemblee\CollegamentiDelleDelibere::delibera($fattura, $ruolo->value);
+            if ($delibera !== null && (int) $prima?->id !== (int) $delibera->id) {
+                \App\Services\Assemblee\CollegamentiDelleDelibere::collega($fattura, $ruolo->value, $delibera, null, $utente);
+            } elseif ($delibera !== null) {
+                // La stessa delibera di prima: niente cambia, e una revoca venuta dopo non ferma la modifica della fattura (R4).
+                continue;
+            } elseif ($request->has($campo) && $request->input($campo) === null && $prima !== null) {
+                \App\Services\Assemblee\CollegamentiDelleDelibere::scollega($fattura, $ruolo->value, $utente);
+            }
         }
     }
 
@@ -1172,10 +1253,13 @@ class FatturaPassivaController extends Controller
         ]);
 
         $datiExtra = $fattura->dati_extra ?? [];
+        // 1.12.0-beta.13 (decisione 561): da qui lo sblocco è per l'urgenza, e la ratifica arriva con la delibera dell'assemblea. La chiave `urgenza` lo
+        // distingue da una ratifica fatta prima della 1.12 con la stessa nota, che resta ratificata.
         $datiExtra['ratifica_assembleare'] = [
             'note' => $request->input('note'),
             'approvato_il' => now()->toIso8601String(),
             'approvato_da' => Auth::id(),
+            'urgenza' => true,
         ];
 
         $fattura->update([
@@ -1185,8 +1269,9 @@ class FatturaPassivaController extends Controller
 
         Log::info("Fattura ID {$fattura->id} ratificata (sforo_motivato → approvata) da utente ID ".Auth::id());
 
+        // La fattura non è ratificata: il pagamento è sbloccato, e la ratifica arriva con la delibera della prima assemblea.
         return back()->with($this->flashSuccess(
-            'Fattura ratificata con successo. Può ora essere pagata.'
+            'Pagamento sbloccato per l\'urgenza: la paghi adesso. La ratifica arriva con la delibera della prima assemblea di '.$condominio->nome.'.'
         ));
     }
 
@@ -1227,6 +1312,8 @@ class FatturaPassivaController extends Controller
             // nota è nata da uno storno — chiave o legame inverso. Qui il documento è uno solo.
             'fattura' => $fattura->setAttribute('e_nata_da_storno', $fattura->eNataDaStorno()),
             'utenteRatifica' => $utenteRatifica,
+            // 1.12.0-beta.13 (R12, decisione 561): la ratifica dell'assemblea come la legge la pagina (scene 1b e 1d), `null` se non è mai servita.
+            'ratifica' => \App\Http\Controllers\Assemblee\RatificaPerLePagine::perLaPagina($fattura),
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
             // Il motivo autoritativo — sono quattro condizioni diverse (pagata, stornata,
@@ -1238,6 +1325,8 @@ class FatturaPassivaController extends Controller
             // stata pagata»): il motivo vero c'era già lato server, mancava solo di
             // arrivare qui.
             'motivoBloccoModifica' => $this->service->motivoBloccoModifica($fattura),
+            // Coda 689: il riquadro «Le rate», con «Metti a rate questa spesa» solo se resta qualcosa da mettere a rate; altrimenti «Apri il piano».
+            'mettere_a_rate' => \App\Services\Gestionale\SpesaDaMettereARate::perLaFattura($fattura, request()->user()),
         ]);
     }
 

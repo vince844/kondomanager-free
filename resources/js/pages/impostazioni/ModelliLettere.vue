@@ -32,6 +32,7 @@ import {
     type Esempio, type ModelloDellaPagina, type TipoModello,
 } from '@/lib/gestionale/lettere/modelli';
 import { fraseFissa } from '@/lib/gestionale/rendiconto/invioDeiFogli';
+import ModelliDelVerbale, { type SezioneDelVerbale } from '@/components/assemblee/verbale/ModelliDelVerbale.vue';
 
 const props = defineProps<{
     tipi: Array<{ tipo: TipoModello; nome: string }>;
@@ -45,6 +46,8 @@ const props = defineProps<{
     frase_proposta_per_tipo?: Record<string, string>;
     esempio: Esempio;
     puo_modificare: boolean;
+    /** La sezione «Il verbale dell'assemblea»: il testo del programma, i modelli dello studio con i due testi, i campi. */
+    verbale?: SezioneDelVerbale;
 }>();
 
 const page = usePage<{ flash?: { message?: Flash } }>();
@@ -153,6 +156,7 @@ function elimina() {
                     <select v-model="filtroTipo" class="h-9 rounded-md border px-2 bg-transparent" data-testid="filtro-tipo">
                         <option value="">Tutti i tipi</option>
                         <option v-for="t in tipi" :key="t.tipo" :value="t.tipo">{{ t.nome }}</option>
+                        <option v-if="verbale" value="verbale">Il verbale dell'assemblea</option>
                     </select>
                 </label>
                 <label class="space-y-1">
@@ -191,6 +195,10 @@ function elimina() {
                     <p class="whitespace-pre-line text-sm">{{ m.testo }}</p>
                 </div>
             </section>
+
+            <!-- Il verbale dell'assemblea: il testo del programma e i modelli dello studio, con lo stesso editor del verbale. -->
+            <ModelliDelVerbale v-if="verbale && (filtroTipo === '' || filtroTipo === 'verbale')" :verbale="verbale" :condomini="condomini" :puo-modificare="puo_modificare"
+                :filtro-condominio="filtroCondominio" />
         </div>
 
         <Dialog :open="modulo.aperto" @update:open="(v: boolean) => { if (!v) modulo = chiuso(); }">

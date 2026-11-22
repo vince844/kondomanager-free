@@ -13,9 +13,12 @@ use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Validation\ValidationException;
+use App\Traits\RegistraLeModifiche;
 
 class Cassa extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'casse';
     
     protected $fillable = [

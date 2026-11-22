@@ -20,7 +20,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ShieldCheck, FileText, Download, Building2, Calendar, FileSignature, Landmark, Banknote, ArrowLeft, Stamp, Tags, Paperclip, Repeat2, CircleCheckBig, Trash2, Upload, Lock } from "lucide-vue-next";
+import { ShieldCheck, FileText, Download, Building2, Calendar, FileSignature, Landmark, Banknote, Stamp, Tags, Paperclip, Repeat2, CircleCheckBig, Trash2, Upload, Lock, Zap } from "lucide-vue-next";
+import PagaPerLUrgenza from '@/components/assemblee/PagaPerLUrgenza.vue';
+import RatificaDellaSpesa from '@/components/assemblee/RatificaDellaSpesa.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
+import FattureGuide from '@/components/guides/FattureGuide.vue';
+import { Permission } from '@/enums/Permission';
+import { BADGE, CLASSI_DEL_BADGE, euro as euroDaiCentesimi } from '@/lib/assemblee/assemblee';
+import { datiDellaRatifica, fatturaDellaRatifica, type RatificaDellaPagina } from '@/lib/assemblee/ratifica';
+import LeRateDellaFattura from '@/components/gestionale/movimenti/fatture/LeRateDellaFattura.vue';
+import type { SpesaDaMettereARate } from '@/lib/gestionale/fatture/mettiARate';
 
 const props = defineProps<{
     condominio: any;
@@ -29,16 +39,41 @@ const props = defineProps<{
     fattura: any;
     utenteRatifica: string | null;
     motivoBloccoModifica: string | null;
+    /** 1.12.0-beta.13 (R12, decisione 561): la ratifica dell'assemblea come la legge la pagina; `null` se non è mai servita. */
+    ratifica?: RatificaDellaPagina | null;
+    /** Coda 689: «Le rate», con «Metti a rate questa spesa» solo se resta qualcosa da mettere a rate; `null` per una nota, una stornata, senza gestione. */
+    mettere_a_rate?: SpesaDaMettereARate | null;
 }>();
 
 const { euro } = useCurrencyFormatter();
-const { generateRoute, generatePath } = usePermission();
+const { generateRoute, generatePath, hasPermission } = usePermission();
+
+// ── La ratifica dell'assemblea (1.12.0-beta.13, R12, decisione 561; scene 1b e 1d della bozza delle scene della tappa 2) ──────────────────────────
+// La spesa urgente oltre il preventivo si paga subito e si riferisce alla prima assemblea; la ratifica arriva con la sua delibera, con il giorno della
+// riunione. Il riquadro dice in che punto è: da ratificare (ferma in sforo, o pagata per l'urgenza con il motivo), o ratificata con la delibera.
+const gestisceLeAssemblee = computed(() => hasPermission([Permission.MANAGE_ASSEMBLEE]));
+const perLeFinestre = computed(() => fatturaDellaRatifica(props.fattura));
+const finestraUrgenza = ref(false);
+const finestraRatifica = ref(false);
+const mostraGuida = ref(false);
+const sforo = computed(() => props.ratifica?.sforo ?? { oltre: null, voce: null });
+const parolaDelPagamento = computed(() => ({ pagata: 'Pagata', parziale: 'Pagata in parte', aperta: 'Da pagare', stornata: 'Stornata' } as Record<string, string>)[props.fattura.stato_pagamento] ?? props.fattura.stato_pagamento);
+/** «Sbloccata», «Pagata in parte» fino al saldo, «Pagata»: la parola del server davanti a «per l'urgenza». */
+const parolaDellSblocco = computed(() => props.ratifica?.sbloccata?.parola ?? (props.ratifica?.sbloccata?.pagata ? 'Pagata' : 'Sbloccata'));
+const datiMostrati = computed(() => (props.ratifica ? datiDellaRatifica(props.ratifica) : []));
+const sottoIlPagamento = computed(() => {
+    const s = props.ratifica?.sbloccata;
+    return s ? `${s.pagata ? 'per l\'urgenza' : 'sbloccata per l\'urgenza'}${s.il ? ` il ${s.il}` : ''}` : null;
+});
+const indirizzoDellAssemblea = (assemblea: number, punto?: number | null) => route(generateRoute('gestionale.assemblee.show'), {
+    condominio: props.condominio.id, assemblea, punto: punto ?? undefined,
+});
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
+    // Corto come nelle altre pagine: il condominio è nel pulsante accanto, e con il suo nome qui la fila dei pulsanti andava a capo.
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-    { title: props.condominio.nome, href: '#' },
-    { title: 'Fatture e Uscite', href: route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }) },
-    { title: `Dettaglio Fattura ${props.fattura.numero_documento}`, href: '#' },
+    { title: 'Fatture e uscite', href: route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }) },
+    { title: `Fattura ${props.fattura.numero_documento}` },
 ]);
 
 // Stato Approvazione
@@ -53,6 +88,8 @@ const statoApprovazioneVariant = computed(() => {
 });
 
 const getStatoApprovazioneLabel = () => {
+    if (props.ratifica?.stato === 'ratificata') return 'Approvata (Ratificata)';
+    if (props.ratifica?.stato === 'da_ratificare' && props.fattura.stato_approvazione === 'approvata') return 'Approvata, da ratificare';
     if (isSforoRatificato.value) return 'Approvata (Ratificata)';
     switch (props.fattura.stato_approvazione) {
         case 'approvata': return 'Approvata';
@@ -193,7 +230,8 @@ const eliminaDocumento = () => {
     <GestionaleLayout>
         
         <div class="px-6 py-8 space-y-6">
-            <PageHeaderGuide 
+            <PageHeaderGuide
+                :storia="{ tipo: 'fattura_passiva', id: props.fattura.id }"
                 pageTitle="Dettaglio fattura" 
                 :pageSubtitle="`Fattura n. ${props.fattura.numero_documento} del Fornitore ${props.fattura.fornitore?.ragione_sociale || 'Sconosciuto'}`"
                 icon="FileText"
@@ -201,17 +239,21 @@ const eliminaDocumento = () => {
                 :breadcrumbs="(breadcrumbs as any)"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
+                :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: condominio.id })"
+                back-text="Torna all'elenco"
+                has-text-guide
+                text-guide-title="Guida"
+                una-fila
+                @open-text-guide="mostraGuida = true"
             >
+            <!-- «Guida» con il suo cassetto e una fila sola di pulsanti alti uguali: prima «Torna all'elenco» era un pulsante più alto dentro la fila, e la fila
+                 andava a capo. -->
             <template #actions>
-                <Button 
-                    variant="outline" 
-                    @click="router.visit(route(generateRoute('gestionale.fatture.index'), { condominio: condominio.id }))"
-                    class="h-9 gap-2 shadow-sm font-medium"
-                >
-                    <ArrowLeft class="w-4 h-4" /> Torna all'elenco
-                </Button>
+                <PulsanteDaPortareInAssemblea v-if="!ratifica && fattura.tipo_documento !== 'nota_credito'" :condominio-id="condominio.id" origine-tipo="fattura_passiva"
+                    :origine-id="fattura.id" />
             </template>
             </PageHeaderGuide>
+            <FattureGuide v-model:open="mostraGuida" />
 
             <div v-if="flashMessage">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />
@@ -280,39 +322,107 @@ const eliminaDocumento = () => {
                 </div>
             </div>
 
-            <!-- AUDIT TRAIL RATIFICA ASSEMBLEARE (Se presente) -->
-            <div v-if="isSforoRatificato" class="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/20 border border-orange-200 dark:border-orange-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
-                <div class="w-14 h-14 shrink-0 bg-orange-100 dark:bg-orange-900/50 rounded-full flex items-center justify-center border-4 border-orange-50/50 dark:border-orange-900/30">
-                    <ShieldCheck class="w-7 h-7 text-orange-600 dark:text-orange-400" />
+            <!-- Coda 689: «Le rate» della fattura, con «Metti a rate questa spesa» (la scheda giusta del nuovo piano) o «Apri il piano». -->
+            <LeRateDellaFattura v-if="props.mettere_a_rate" :spesa="props.mettere_a_rate" />
+
+            <!-- LA RATIFICA DELL'ASSEMBLEA (1.12.0-beta.13, R12, decisione 561): da ratificare o ratificata con la delibera -->
+            <section v-if="ratifica" class="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950" data-testid="ratifica-dell-assemblea">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div class="rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700">
+                        <span class="block text-xs font-semibold text-slate-500 dark:text-slate-400">Importo</span>
+                        <span class="block text-lg font-bold tabular-nums text-slate-900 dark:text-white">{{ euroDaiCentesimi(fattura.totale_documento) }}</span>
+                        <span v-if="sforo.oltre" class="block text-xs text-slate-500 dark:text-slate-400">{{ euroDaiCentesimi(sforo.oltre) }} oltre il preventivo della voce</span>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700">
+                        <span class="block text-xs font-semibold text-slate-500 dark:text-slate-400">Pagamento</span>
+                        <span class="block text-lg font-bold text-slate-900 dark:text-white">{{ parolaDelPagamento }}</span>
+                        <span v-if="sottoIlPagamento" class="block text-xs text-slate-500 dark:text-slate-400">{{ sottoIlPagamento }}</span>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700" data-testid="card-ratifica">
+                        <span class="block text-xs font-semibold text-slate-500 dark:text-slate-400">Ratifica</span>
+                        <span class="block text-lg font-bold" :class="ratifica.stato === 'ratificata' ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'">
+                            {{ ratifica.stato === 'ratificata' ? 'Ratificata' : 'Da ratificare' }}
+                        </span>
+                        <span class="block text-xs text-slate-500 dark:text-slate-400">
+                            {{ ratifica.delibera ? ratifica.delibera.frase.replace('Ratificata ', '') : ratifica.di_prima ? `il ${ratifica.di_prima.il} (registrata)` : `alla prossima assemblea di ${condominio.nome}` }}
+                        </span>
+                    </div>
                 </div>
-                <div class="flex-1 space-y-1">
-                    <h3 class="font-black text-orange-900 dark:text-orange-200 text-lg flex items-center gap-2">
-                        Ratifica Assembleare <Badge class="bg-orange-200 text-orange-800 hover:bg-orange-200 border-none px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">Art. 1135 c.c.</Badge>
+
+                <div>
+                    <h3 class="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                        <ShieldCheck class="h-4 w-4 text-slate-500" /> Ratifica dell'assemblea
+                        <span :class="[BADGE, CLASSI_DEL_BADGE[ratifica.stato === 'ratificata' ? 'verde' : 'ambra']]">{{ ratifica.stato === 'ratificata' ? 'Ratificata' : 'Da ratificare' }}</span>
+                        <span v-if="ratifica.stato !== 'ratificata' && ratifica.sbloccata" :class="[BADGE, CLASSI_DEL_BADGE.ambra]" data-testid="badge-sbloccata">{{ parolaDellSblocco }} per l'urgenza</span>
                     </h3>
-                    <p class="text-sm text-orange-800/80 dark:text-orange-300/80 leading-relaxed max-w-3xl">
-                        Questa spesa urgente ha superato il preventivo ed è stata registrata originariamente come <strong>sforo motivato</strong>.
-                        È stata formalmente ratificata dall'assemblea per sbloccarne il pagamento.
-                    </p>
-                </div>
-                <div class="shrink-0 bg-white/60 dark:bg-slate-900/40 rounded-xl p-4 border border-orange-100 dark:border-orange-900/30 min-w-[280px]">
-                    <div class="grid grid-cols-1 gap-2 text-xs">
-                        <div class="flex justify-between items-center border-b border-orange-100/50 dark:border-orange-900/30 pb-2">
-                            <span class="text-orange-600/70 dark:text-orange-400/70 font-medium uppercase tracking-wider text-[10px]">Ratificata il</span>
-                            <span class="font-bold text-orange-900 dark:text-orange-200">{{ new Date(props.fattura.dati_extra.ratifica_assembleare.approvato_il).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) }}</span>
+
+                    <!-- Gli esiti delle delibere sulla fattura: «Ratifica respinta …», «Rinviata …», i segni; con «Apri l'assemblea». -->
+                    <EsitiDellaScheda :condominio-id="condominio.id" tipo="fattura_passiva" :id="fattura.id" class="mt-2" />
+                    <!-- Ratificata con la delibera (scena 1d) -->
+                    <div v-if="ratifica.delibera" class="mt-2 space-y-1.5 text-sm" data-testid="ratificata-con-la-delibera">
+                        <p class="font-medium text-slate-900 dark:text-slate-100">{{ ratifica.delibera.frase }}</p>
+                        <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+                            <span>{{ [ratifica.delibera.assemblea, ratifica.delibera.numero_verbale ? `verbale n. ${ratifica.delibera.numero_verbale}` : null,
+                                ratifica.delibera.registrata_il ? `registrata il ${ratifica.delibera.registrata_il}${ratifica.delibera.registrata_da ? ` da ${ratifica.delibera.registrata_da}` : ''}` : null].filter(Boolean).join(' · ') }}</span>
+                            <a :href="indirizzoDellAssemblea(ratifica.delibera.assemblea_id, ratifica.delibera.punto_id)" class="font-medium underline" data-testid="apri-l-assemblea">Apri l'assemblea</a>
+                        </p>
+                        <p v-if="ratifica.delibera.nota" class="text-xs text-slate-600 dark:text-slate-300">La nota: «{{ ratifica.delibera.nota }}»</p>
+                        <p v-if="ratifica.sbloccata" class="text-xs text-slate-600 dark:text-slate-300">
+                            {{ parolaDellSblocco }} prima{{ ratifica.sbloccata.il ? ` il ${ratifica.sbloccata.il}` : '' }}, per l'urgenza{{ ratifica.sbloccata.da ? `, da ${ratifica.sbloccata.da}` : '' }}.
+                            <template v-if="ratifica.sbloccata.motivo">Perché era urgente «{{ ratifica.sbloccata.motivo }}».</template>
+                        </p>
+                        <p v-if="ratifica.di_prima" class="text-xs text-slate-600 dark:text-slate-300" data-testid="ratificata-prima">
+                            Registrata prima come ratificata il {{ ratifica.di_prima.il }}<template v-if="ratifica.di_prima.nota">, con la nota «{{ ratifica.di_prima.nota }}»</template>.
+                        </p>
+                    </div>
+
+                    <!-- Ratificata prima delle assemblee nel programma, con la nota: resta ratificata, e si può legare alla riunione -->
+                    <div v-else-if="ratifica.di_prima" class="mt-2 space-y-1.5 text-sm" data-testid="ratificata-di-prima">
+                        <p class="font-medium text-slate-900 dark:text-slate-100">Ratificata il {{ ratifica.di_prima.il }} (registrata)</p>
+                        <p class="text-xs text-slate-600 dark:text-slate-300">
+                            È il giorno in cui la ratifica è stata registrata, non quello della riunione. Se vuoi, collega la delibera: la ratifica prende il giorno della riunione.
+                        </p>
+                        <p v-if="ratifica.di_prima.nota" class="text-xs text-slate-600 dark:text-slate-300">La nota: «{{ ratifica.di_prima.nota }}»</p>
+                        <div v-if="gestisceLeAssemblee" class="pt-1">
+                            <Button variant="outline" class="h-8 gap-1.5 px-2.5 text-xs" data-testid="collega-la-delibera" @click="finestraRatifica = true">
+                                <ShieldCheck class="h-3.5 w-3.5" /> Collega la delibera
+                            </Button>
                         </div>
-                        <div class="flex justify-between items-center border-b border-orange-100/50 dark:border-orange-900/30 pb-2">
-                            <span class="text-orange-600/70 dark:text-orange-400/70 font-medium uppercase tracking-wider text-[10px]">Utente Audit</span>
-                            <span class="font-bold text-orange-900 dark:text-orange-200">{{ utenteRatifica || 'Sconosciuto' }}</span>
-                        </div>
-                        <div class="pt-1">
-                            <span class="block text-orange-600/70 dark:text-orange-400/70 font-medium uppercase tracking-wider text-[10px] mb-1">Riferimento Verbale / Note</span>
-                            <span class="text-orange-900 dark:text-orange-200 font-medium bg-white/50 dark:bg-slate-900/50 p-2 rounded block italic border border-orange-50 dark:border-orange-900/20">
-                                {{ props.fattura.dati_extra.ratifica_assembleare.note || 'Nessuna nota inserita.' }}
-                            </span>
+                    </div>
+
+                    <!-- Da ratificare (scena 1b, scena 1 della bozza del memo) -->
+                    <div v-else class="mt-2 space-y-1.5 text-sm" data-testid="da-ratificare">
+                        <!-- La frase dello stato, poi i dati uno per riga con l'etichetta sopra (decisione 642) -->
+                        <p class="text-slate-800 dark:text-slate-200" data-testid="stato-della-ratifica">
+                            <template v-if="ratifica.sbloccata">La paghi adesso; la riferisci alla prima assemblea e la ratifica arriva con la sua delibera.</template>
+                            <template v-else>
+                                Serve una decisione dell'assemblea: la spesa supera il preventivo{{ sforo.voce ? ` della voce «${sforo.voce}»` : '' }}{{ sforo.oltre ? ` di ${euroDaiCentesimi(sforo.oltre)}` : '' }}.
+                            </template>
+                        </p>
+                        <dl v-if="datiMostrati.length" class="space-y-2 pt-1" data-testid="dati-della-ratifica">
+                            <div v-for="d in datiMostrati" :key="d.id" :data-testid="`dato-${d.id}`">
+                                <dt class="text-xs text-slate-500 dark:text-slate-400">{{ d.etichetta }}</dt>
+                                <dd class="text-sm text-slate-800 dark:text-slate-200">
+                                    {{ d.valore }}
+                                    <a v-if="d.assemblea_id" :href="indirizzoDellAssemblea(d.assemblea_id)" class="ml-1 font-medium underline" data-testid="in-assemblea">Apri l'assemblea</a>
+                                </dd>
+                            </div>
+                        </dl>
+                        <div class="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
+                            <Button v-if="ratifica.in_sforo" variant="outline" class="h-8 gap-1.5 px-2.5 text-xs" data-testid="paga-per-urgenza" @click="finestraUrgenza = true">
+                                <Zap class="h-3.5 w-3.5" /> Paga per l'urgenza
+                            </Button>
+                            <PulsanteDaPortareInAssemblea :condominio-id="condominio.id" origine-tipo="fattura_passiva" :origine-id="fattura.id" forma="riga" />
+                            <Button v-if="gestisceLeAssemblee" variant="outline" class="h-8 gap-1.5 px-2.5 text-xs" data-testid="ratifica" @click="finestraRatifica = true">
+                                <ShieldCheck class="h-3.5 w-3.5" /> Ratifica
+                            </Button>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
+            <PagaPerLUrgenza v-if="ratifica?.in_sforo" v-model:open="finestraUrgenza" :condominio-id="condominio.id" :condominio-nome="condominio.nome" :fattura="perLeFinestre" />
+            <RatificaDellaSpesa v-if="ratifica && gestisceLeAssemblee && finestraRatifica" v-model:open="finestraRatifica" :condominio-id="condominio.id"
+                :condominio-nome="condominio.nome" :fattura="perLeFinestre" :di-prima="!!ratifica.di_prima && !ratifica.delibera" />
 
             <!-- HEADER FATTURA E IMPORTI -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">

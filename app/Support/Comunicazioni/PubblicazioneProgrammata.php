@@ -5,6 +5,8 @@
 
 namespace App\Support\Comunicazioni;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\Permission;
 use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Models\Anagrafica;
@@ -81,18 +83,32 @@ class PubblicazioneProgrammata
         $oraScelta = $comunicazione->programmata_per;
         $programmataDaId = $comunicazione->programmata_da;
 
-        $righe = DB::table('comunicazioni')
-            ->where('id', $comunicazione->id)
-            ->where('is_published', 0)
-            ->where('is_approved', 1)
-            ->whereNotNull('programmata_per')
-            ->where('programmata_per', '<=', $adesso)
-            ->update([
-                'is_published'    => 1,
-                'pubblicata_il'   => $adesso,
-                'programmata_per' => null,
-                'programmata_da'  => null,
-            ]);
+        // Il registro delle modifiche (la bozza, scena 2): «Pubblicata in bacheca», firmata dal contesto (dal pianificatore «Il programma»), nella stessa
+        // transazione della pubblicazione.
+        $righe = DB::transaction(function () use ($comunicazione, $adesso, $oraScelta, $programmataDaId) {
+            $righe = DB::table('comunicazioni')
+                ->where('id', $comunicazione->id)
+                ->where('is_published', 0)
+                ->where('is_approved', 1)
+                ->whereNotNull('programmata_per')
+                ->where('programmata_per', '<=', $adesso)
+                ->update([
+                    'is_published'    => 1,
+                    'pubblicata_il'   => $adesso,
+                    'programmata_per' => null,
+                    'programmata_da'  => null,
+                ]);
+            if ($righe > 0) {
+                // «Avvisa i condòmini» di una delibera: pubblicata adesso, la sua cosa da fare è fatta e il compito si chiude.
+                \App\Services\Assemblee\Seguito\AvvisoAiCondomini::dopoLaPubblicazione($comunicazione->newQuery()->findOrFail($comunicazione->id));
+                $chi = $programmataDaId === null ? null : \App\Models\User::query()->whereKey($programmataDaId)->value('name');
+                $quando = $oraScelta === null ? null : \App\Services\RegistroModifiche\FormatoDelValore::testo($oraScelta, 'data_ora');
+                RegistroModifiche::gesto(Gesto::sulModello($comunicazione)->riepilogo('Pubblicata in bacheca'
+                    . ($chi !== null ? '. Programmata da ' . $chi . ($quando !== null ? ' per il ' . str_replace(' ', ' alle ', $quando) : '') : '')));
+            }
+
+            return $righe;
+        });
 
         if ($righe === 0) {
             return false;

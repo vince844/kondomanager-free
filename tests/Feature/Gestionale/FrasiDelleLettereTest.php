@@ -146,7 +146,7 @@ it('le frasi del server: la data del termine, nessuna persona, «nessun termine�
         ->and(\App\Services\Gestionale\Debiti\SeiMesi::FRASE_PIU_SEI_MESI)->toBe('Più sei mesi: lo stesso giorno del sesto mese dopo, o l\'ultimo giorno di quel mese se '
             . 'quel giorno manca (31/08 → 28/02, o 29/02 negli anni bisestili). È una scelta prudente del programma: fra i modi di aggiungere sei mesi a una data, quello che '
             . 'dà la data più presto.')
-        ->and(__('impostazioni.header.mail_settings_description', [], 'it'))->toBe('Configura il metodo di invio per rate, solleciti e comunicazioni ai condòmini.');
+        ->and(__('impostazioni.header.mail_settings_description', [], 'it'))->toBe('Le caselle da cui il programma manda la posta dello studio. Ognuna serve a una cosa: le email ai condòmini partono dalla posta, le convocazioni per PEC dalla casella PEC.');
 });
 
 it('la stampa dell\'elenco e lo stato patrimoniale: le frasi della riservatezza, della data in evidenza, dell\'elenco che ora c\'è', function () {

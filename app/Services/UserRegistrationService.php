@@ -5,6 +5,7 @@
 
 namespace App\Services;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Models\User;
 use App\Notifications\Users\RegisteredUserNotification;
 use App\Settings\GeneralSettings;
@@ -61,6 +62,8 @@ class UserRegistrationService
             }
 
             $user->assignRole($nome);
+            // Coda ㉗ nel registro delle modifiche: l'utenza nata dalla pagina di registrazione.
+            AttiSulleUtenze::registrato($user);
 
             // 2. L'invito qui non si tocca: lo accetta solo il suo link, in
             //    `InvitoRegisteredUserController::store()`. Fino alla 1.11.0-beta.44 questo

@@ -19,6 +19,9 @@ import { useToast } from '@/components/ui/toast';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 import {
   Wallet, Scale, ArrowRight, Sparkles, CheckCircle2,
   AlertTriangle, Info, LoaderCircle, Building2,
@@ -54,7 +57,7 @@ interface CassaOpzione {
 
 const props = defineProps<{
   condominio: Building;
-  voce: { id: number; nome: string; importo_cents: number; gestione: string | null };
+  voce: { id: number; nome: string; importo_cents: number; gestione: string | null; gestione_id?: number | null };
   righe: Riga[];
   /** I titolari di diritto reale in corso oggi, per unità: le scelte di «Versato da». */
   titolari: Record<number, Titolare[]>;
@@ -85,10 +88,16 @@ const props = defineProps<{
   vale_per: 'tutti' | number | null;
   /** Le righe valgono per esercizi diversi (scritte fuori da questa pagina): i loro esercizi, a parole. */
   vale_per_diversi: string[];
+  /** La delibera del già versato, facoltativa, se è collegata. */
+  delibera?: DeliberaDelMenu | null;
 }>();
 
 const { euro } = useCurrencyFormatter({ fromCents: true });
-const { generatePath } = usePermission();
+const permessi = usePermission();
+const { generatePath } = permessi;
+// La delibera del già versato, facoltativa (§1.4 del progetto della tappa 2): la sua frase va in testa alla nota.
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+const delibera = ref<DeliberaDelMenu | null>(props.delibera ?? null);
 const { toast } = useToast();
 
 // ── Stato ──────────────────────────────────────────────────────────────────
@@ -160,7 +169,9 @@ const titoloEffetto = computed(() => {
 });
 // Riparte da quanto già salvato: senza questo, ogni ri-salvataggio che non
 // tocca il campo lo azzererebbe (il backend sostituisce, non fa merge).
-const descrizione = ref(props.descrizione ?? '');
+// Con la delibera collegata, la nota a video è il testo scritto dopo la sua frase: il server la rimette in testa.
+const descrizione = ref(props.delibera && (props.descrizione ?? '').startsWith(props.delibera.frase)
+  ? (props.descrizione ?? '').slice(props.delibera.frase.length).replace(/^[\s—-]+/, '') : (props.descrizione ?? ''));
 const totaleRaccolto = ref('');
 const salvando = ref(false);
 
@@ -300,6 +311,8 @@ const eseguiSalvataggio = () => {
       natura: natura.value,
       vale_per: valePer.value,
       descrizione: descrizione.value || null,
+      // Senza delibera la chiave non parte: le righe si riscrivono e i legami di prima se ne vanno con loro.
+      ...(conLaDelibera.value && delibera.value ? { delibera_id: delibera.value.id } : {}),
       righe: righe.value.map(r => ({
         immobile_id: r.immobile_id,
         anagrafica_id: r.anagrafica_id,
@@ -374,6 +387,7 @@ const guide = [
     <div class="px-6 py-8 space-y-6">
 
       <PageHeaderGuide
+        :storia="props.voce.gestione_id ? { tipo: 'gestione', id: props.voce.gestione_id } : null"
         page-title="Quanto è già stato versato"
         :page-subtitle="`Voce di spesa: ${voce.nome}`"
         :guides="guide"
@@ -693,9 +707,13 @@ const guide = [
 
       <!-- ═══ 5. NOTA + SALVA ═══ -->
       <div class="bg-white border rounded-2xl p-6 flex flex-col sm:flex-row gap-4 sm:items-end">
+        <div v-if="conLaDelibera" class="flex-1 max-w-xl" data-testid="gia-versato-con-la-delibera">
+          <ScegliLaDelibera v-model="delibera" :condominio-id="condominio.id" :condominio-nome="condominio.nome" ruolo="nota" etichetta="La delibera (facoltativa)"
+            per-questo="questa voce" :con-memo="false" />
+        </div>
         <div class="flex-1">
           <Label class="text-[11px] font-bold text-slate-600">
-            Nota (facoltativa) — es. estremi della delibera
+            {{ delibera ? 'Nota (facoltativa): la frase della delibera ci va in testa' : 'Nota (facoltativa) — es. estremi della delibera' }}
           </Label>
           <Input v-model="descrizione" class="mt-1 h-10 text-sm"
             placeholder="Delibera assembleare del 12/05/2025" />

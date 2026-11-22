@@ -1,0 +1,906 @@
+[
+    {
+        "tipo": "costituzione",
+        "che_cosa": "seconda convocazione, 11 su 26 e 484,60: costituita",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 11,
+        "valore": 48460000,
+        "atteso": {
+            "costituita": true,
+            "servono_teste": 9,
+            "servono_valore": 33333334,
+            "mancano_teste": 0,
+            "mancano_valore": 0,
+            "barra": "11 su 26 · 484,60 su 1.000,00",
+            "servono": "servono 9 e 333,34",
+            "mancano": null
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "prima convocazione, 11 su 26 e 484,60: mancano 3 condòmini e 182,07 millesimi",
+        "convocazione": "prima",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 11,
+        "valore": 48460000,
+        "atteso": {
+            "costituita": false,
+            "servono_teste": 14,
+            "servono_valore": 66666667,
+            "mancano_teste": 3,
+            "mancano_valore": 18206667,
+            "barra": "11 su 26 · 484,60 su 1.000,00",
+            "servono": "servono 14 e 666,67",
+            "mancano": "mancano 3 condòmini e 182,07 millesimi"
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "seconda convocazione, 8 su 26: manca un condòmino, il valore c'è",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 8,
+        "valore": 40000000,
+        "atteso": {
+            "costituita": false,
+            "servono_teste": 9,
+            "servono_valore": 33333334,
+            "mancano_teste": 1,
+            "mancano_valore": 0,
+            "barra": "8 su 26 · 400,00 su 1.000,00",
+            "servono": "servono 9 e 333,34",
+            "mancano": "manca 1 condòmino"
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "seconda convocazione, 8 su 26 e 186,67: manca 1 condòmino e mancano i millesimi (il verbo segue il primo)",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 8,
+        "valore": 18666667,
+        "atteso": {
+            "costituita": false,
+            "servono_teste": 9,
+            "servono_valore": 33333334,
+            "mancano_teste": 1,
+            "mancano_valore": 14666667,
+            "barra": "8 su 26 · 186,67 su 1.000,00",
+            "servono": "servono 9 e 333,34",
+            "mancano": "manca 1 condòmino e 146,67 millesimi"
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "seconda convocazione, 9 su 26 e 333,33: manca 0,01 di millesimo",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 9,
+        "valore": 33333000,
+        "atteso": {
+            "costituita": false,
+            "servono_teste": 9,
+            "servono_valore": 33333334,
+            "mancano_teste": 0,
+            "mancano_valore": 334,
+            "barra": "9 su 26 · 333,33 su 1.000,00",
+            "servono": "servono 9 e 333,34",
+            "mancano": "mancano 0,01 millesimi"
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "la tabella che non fa 1.000: il totale è la somma delle quote",
+        "convocazione": "seconda",
+        "totale_teste": 10,
+        "totale_valore": 99840000,
+        "teste": 4,
+        "valore": 33280000,
+        "atteso": {
+            "costituita": true,
+            "servono_teste": 4,
+            "servono_valore": 33280000,
+            "mancano_teste": 0,
+            "mancano_valore": 0,
+            "barra": "4 su 10 · 332,80 su 998,40",
+            "servono": "servono 4 e 332,80",
+            "mancano": null
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "la scala B del punto 7: 3 su 10 e 290,00, in seconda ne servono 4 e 333,34",
+        "convocazione": "seconda",
+        "totale_teste": 10,
+        "totale_valore": 100000000,
+        "teste": 3,
+        "valore": 29000000,
+        "atteso": {
+            "costituita": false,
+            "servono_teste": 4,
+            "servono_valore": 33333334,
+            "mancano_teste": 1,
+            "mancano_valore": 4333334,
+            "barra": "3 su 10 · 290,00 su 1.000,00",
+            "servono": "servono 4 e 333,34",
+            "mancano": "manca 1 condòmino e 43,34 millesimi"
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "prima convocazione, 13 su 26 (la metà esatta delle teste) e 700,00: non costituita, manca 1 condòmino",
+        "convocazione": "prima",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 13,
+        "valore": 70000000,
+        "atteso": {
+            "costituita": false,
+            "servono_teste": 14,
+            "servono_valore": 66666667,
+            "mancano_teste": 1,
+            "mancano_valore": 0,
+            "barra": "13 su 26 · 700,00 su 1.000,00",
+            "servono": "servono 14 e 666,67",
+            "mancano": "manca 1 condòmino"
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "seconda convocazione, 9 su 27 (un terzo esatto delle teste) e 400,00: costituita",
+        "convocazione": "seconda",
+        "totale_teste": 27,
+        "totale_valore": 100000000,
+        "teste": 9,
+        "valore": 40000000,
+        "atteso": {
+            "costituita": true,
+            "servono_teste": 9,
+            "servono_valore": 33333334,
+            "mancano_teste": 0,
+            "mancano_valore": 0,
+            "barra": "9 su 27 · 400,00 su 1.000,00",
+            "servono": "servono 9 e 333,34",
+            "mancano": null
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "prima convocazione, 14 su 26 e 666,66667 (i due terzi del valore, al centomillesimo per eccesso): costituita",
+        "convocazione": "prima",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 14,
+        "valore": 66666667,
+        "atteso": {
+            "costituita": true,
+            "servono_teste": 14,
+            "servono_valore": 66666667,
+            "mancano_teste": 0,
+            "mancano_valore": 0,
+            "barra": "14 su 26 · 666,67 su 1.000,00",
+            "servono": "servono 14 e 666,67",
+            "mancano": null
+        }
+    },
+    {
+        "tipo": "costituzione",
+        "che_cosa": "prima convocazione, 14 su 26 e 666,66666 (un centomillesimo sotto i due terzi): non costituita",
+        "convocazione": "prima",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 14,
+        "valore": 66666666,
+        "atteso": {
+            "costituita": false,
+            "servono_teste": 14,
+            "servono_valore": 66666667,
+            "mancano_teste": 0,
+            "mancano_valore": 1,
+            "barra": "14 su 26 · 666,67 su 1.000,00",
+            "servono": "servono 14 e 666,67",
+            "mancano": "mancano 0,01 millesimi"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "ordinaria in seconda, 9 su 12 e 506,40: approvata",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "atteso": {
+            "esito": "approvata"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "ordinaria in prima, 9 su 12 e 450,00: respinta, serve la metà del valore",
+        "maggioranza": "ordinaria",
+        "convocazione": "prima",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 45000000,
+        "atteso": {
+            "esito": "respinta"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "ordinaria in prima, 9 su 12 e 500,00: approvata",
+        "maggioranza": "ordinaria",
+        "convocazione": "prima",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50000000,
+        "atteso": {
+            "esito": "approvata"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "ordinaria in seconda, 6 su 12: la metà degli intervenuti non basta",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 6,
+        "favorevoli_valore": 60000000,
+        "atteso": {
+            "esito": "respinta"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "ordinaria in seconda, 7 su 12 e 333,33: manca il terzo del valore",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 7,
+        "favorevoli_valore": 33333333,
+        "atteso": {
+            "esito": "respinta"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "ordinaria in seconda, 7 su 12 e 333,34: approvata",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 7,
+        "favorevoli_valore": 33333334,
+        "atteso": {
+            "esito": "approvata"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "metà del valore, 9 su 12 e 506,40: approvata",
+        "maggioranza": "meta_del_valore",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "atteso": {
+            "esito": "approvata"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "metà del valore, 9 su 12 e 466,80: respinta",
+        "maggioranza": "meta_del_valore",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 46680000,
+        "atteso": {
+            "esito": "respinta"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "due terzi del valore, 670,00: approvata",
+        "maggioranza": "due_terzi",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 15,
+        "favorevoli_teste": 12,
+        "favorevoli_valore": 67000000,
+        "atteso": {
+            "esito": "approvata"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "due terzi del valore, 666,66: respinta",
+        "maggioranza": "due_terzi",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 15,
+        "favorevoli_teste": 12,
+        "favorevoli_valore": 66666000,
+        "atteso": {
+            "esito": "respinta"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "quattro quinti, 21 su 26 e 800,00: approvata",
+        "maggioranza": "quattro_quinti",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 22,
+        "favorevoli_teste": 21,
+        "favorevoli_valore": 80000000,
+        "atteso": {
+            "esito": "approvata"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "quattro quinti, 20 su 26: respinta",
+        "maggioranza": "quattro_quinti",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 22,
+        "favorevoli_teste": 20,
+        "favorevoli_valore": 90000000,
+        "atteso": {
+            "esito": "respinta"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "unanimità, tutti: approvata",
+        "maggioranza": "unanimita",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 26,
+        "favorevoli_teste": 26,
+        "favorevoli_valore": 100000000,
+        "atteso": {
+            "esito": "approvata"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "unanimità, uno manca: respinta",
+        "maggioranza": "unanimita",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 25,
+        "favorevoli_teste": 25,
+        "favorevoli_valore": 96000000,
+        "atteso": {
+            "esito": "respinta"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "un'altra maggioranza: decide il presidente",
+        "maggioranza": "libera",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "atteso": {
+            "esito": null
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "senza voto: trattato",
+        "maggioranza": "senza_voto",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 0,
+        "favorevoli_valore": 0,
+        "atteso": {
+            "esito": "senza_voto"
+        }
+    },
+    {
+        "tipo": "esito",
+        "che_cosa": "la maggioranza non scelta: decide il presidente",
+        "maggioranza": null,
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "atteso": {
+            "esito": null
+        }
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "ordinaria in seconda, 9 su 11 e 292,00: le teste bastano, il valore no",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 11,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 29200000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": true,
+                "frase": "Teste: 9 su 11, più della metà: sì"
+            },
+            {
+                "condizione": "valore",
+                "passa": false,
+                "frase": "Valore: 292,00 millesimi, ne servono 333,34: mancano 41,34"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "ordinaria in seconda, 9 su 12 e 506,40: tutte e due bastano",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": true,
+                "frase": "Teste: 9 su 12, più della metà: sì"
+            },
+            {
+                "condizione": "valore",
+                "passa": true,
+                "frase": "Valore: 506,40 millesimi, ne servono 333,34: sì"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "ordinaria in prima, 9 su 12 e 450,00: serve la metà del valore",
+        "maggioranza": "ordinaria",
+        "convocazione": "prima",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 45000000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": true,
+                "frase": "Teste: 9 su 12, più della metà: sì"
+            },
+            {
+                "condizione": "valore",
+                "passa": false,
+                "frase": "Valore: 450,00 millesimi, ne servono 500,00: mancano 50,00"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "ordinaria in seconda, 6 su 12: la metà degli intervenuti non basta, manca 1",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 6,
+        "favorevoli_valore": 60000000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": false,
+                "frase": "Teste: 6 su 12, più della metà: no, manca 1"
+            },
+            {
+                "condizione": "valore",
+                "passa": true,
+                "frase": "Valore: 600,00 millesimi, ne servono 333,34: sì"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "ordinaria in seconda, 4 su 12: mancano 3 teste",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 4,
+        "favorevoli_valore": 40000000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": false,
+                "frase": "Teste: 4 su 12, più della metà: no, mancano 3"
+            },
+            {
+                "condizione": "valore",
+                "passa": true,
+                "frase": "Valore: 400,00 millesimi, ne servono 333,34: sì"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "metà del valore, 9 su 12 e 466,80: mancano 33,20",
+        "maggioranza": "meta_del_valore",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 46680000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": true,
+                "frase": "Teste: 9 su 12, più della metà: sì"
+            },
+            {
+                "condizione": "valore",
+                "passa": false,
+                "frase": "Valore: 466,80 millesimi, ne servono 500,00: mancano 33,20"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "due terzi del valore, 666,66: manca un centesimo di millesimo",
+        "maggioranza": "due_terzi",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 15,
+        "favorevoli_teste": 12,
+        "favorevoli_valore": 66666000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": true,
+                "frase": "Teste: 12 su 15, più della metà: sì"
+            },
+            {
+                "condizione": "valore",
+                "passa": false,
+                "frase": "Valore: 666,66 millesimi, ne servono 666,67: mancano 0,01"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "quattro quinti, 20 su 26: manca un condòmino, il valore c'è",
+        "maggioranza": "quattro_quinti",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 22,
+        "favorevoli_teste": 20,
+        "favorevoli_valore": 90000000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": false,
+                "frase": "Teste: 20 su 26, quattro quinti dei condòmini: no, manca 1"
+            },
+            {
+                "condizione": "valore",
+                "passa": true,
+                "frase": "Valore: 900,00 millesimi, ne servono 800,00: sì"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "quattro quinti, 21 su 26 e 800,00: tutte e due bastano",
+        "maggioranza": "quattro_quinti",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 22,
+        "favorevoli_teste": 21,
+        "favorevoli_valore": 80000000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": true,
+                "frase": "Teste: 21 su 26, quattro quinti dei condòmini: sì"
+            },
+            {
+                "condizione": "valore",
+                "passa": true,
+                "frase": "Valore: 800,00 millesimi, ne servono 800,00: sì"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "unanimità, uno manca",
+        "maggioranza": "unanimita",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 25,
+        "favorevoli_teste": 25,
+        "favorevoli_valore": 96000000,
+        "atteso": [
+            {
+                "condizione": "teste",
+                "passa": false,
+                "frase": "Teste: 25 su 26, tutti: no, manca 1"
+            },
+            {
+                "condizione": "valore",
+                "passa": false,
+                "frase": "Valore: 960,00 millesimi, ne servono 1.000,00: mancano 40,00"
+            }
+        ]
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "un'altra maggioranza: nessuna condizione, decide il presidente",
+        "maggioranza": "libera",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "atteso": null
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "senza voto: nessuna condizione",
+        "maggioranza": "senza_voto",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 0,
+        "favorevoli_valore": 0,
+        "atteso": null
+    },
+    {
+        "tipo": "condizioni",
+        "che_cosa": "la maggioranza non scelta: nessuna condizione",
+        "maggioranza": null,
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "atteso": null
+    },
+    {
+        "tipo": "conflitto",
+        "che_cosa": "metà del valore: senza i suoi 39,60 millesimi i favorevoli sarebbero 466,80, determinante",
+        "maggioranza": "meta_del_valore",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "conflitto_teste": 1,
+        "conflitto_valore": 3960000,
+        "atteso": {
+            "determinante": true,
+            "frase": "Senza i suoi 39,60 millesimi i favorevoli sarebbero 466,80: il voto in conflitto è determinante."
+        }
+    },
+    {
+        "tipo": "conflitto",
+        "che_cosa": "ordinaria in seconda: con o senza i suoi 39,60 millesimi passa",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "conflitto_teste": 1,
+        "conflitto_valore": 3960000,
+        "atteso": {
+            "determinante": false,
+            "frase": "Senza i suoi 39,60 millesimi i favorevoli sarebbero 466,80: l'esito non cambia."
+        }
+    },
+    {
+        "tipo": "conflitto",
+        "che_cosa": "nessuno in conflitto",
+        "maggioranza": "ordinaria",
+        "convocazione": "seconda",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "intervenuti": 12,
+        "favorevoli_teste": 9,
+        "favorevoli_valore": 50640000,
+        "conflitto_teste": 0,
+        "conflitto_valore": 0,
+        "atteso": {
+            "determinante": false,
+            "frase": null
+        }
+    },
+    {
+        "tipo": "quinto",
+        "che_cosa": "3 condòmini su 5 e 125,70 su 200,00: dentro il quinto",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 3,
+        "valore": 12570000,
+        "atteso": {
+            "si_applica": true,
+            "oltre": false,
+            "frase": "3 condòmini su 5 · 125,70 su 200,00"
+        }
+    },
+    {
+        "tipo": "quinto",
+        "che_cosa": "Greco a 200,70: oltre il valore, rifiutata",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 2,
+        "valore": 20070000,
+        "atteso": {
+            "si_applica": true,
+            "oltre": true,
+            "frase": "2 condòmini su 5 · 200,70 su 200,00"
+        }
+    },
+    {
+        "tipo": "quinto",
+        "che_cosa": "Bianchi a 4 condòmini e 224,00: oltre il valore",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 4,
+        "valore": 22400000,
+        "atteso": {
+            "si_applica": true,
+            "oltre": true,
+            "frase": "4 condòmini su 5 · 224,00 su 200,00"
+        }
+    },
+    {
+        "tipo": "quinto",
+        "che_cosa": "6 condòmini su 5: oltre le teste",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 6,
+        "valore": 10000000,
+        "atteso": {
+            "si_applica": true,
+            "oltre": true,
+            "frase": "6 condòmini su 5 · 100,00 su 200,00"
+        }
+    },
+    {
+        "tipo": "quinto",
+        "che_cosa": "5 condòmini e 200,00 esatti: dentro il quinto",
+        "totale_teste": 26,
+        "totale_valore": 100000000,
+        "teste": 5,
+        "valore": 20000000,
+        "atteso": {
+            "si_applica": true,
+            "oltre": false,
+            "frase": "5 condòmini su 5 · 200,00 su 200,00"
+        }
+    },
+    {
+        "tipo": "quinto",
+        "che_cosa": "venti condòmini: il quinto non si applica",
+        "totale_teste": 20,
+        "totale_valore": 100000000,
+        "teste": 8,
+        "valore": 40000000,
+        "atteso": {
+            "si_applica": false,
+            "oltre": false,
+            "frase": null
+        }
+    },
+    {
+        "tipo": "delega_conta",
+        "che_cosa": "la delega per tutti i punti conta nella costituzione",
+        "punti": null,
+        "da_decidere": false,
+        "punto": null,
+        "atteso": true
+    },
+    {
+        "tipo": "delega_conta",
+        "che_cosa": "la delega per tutti i punti conta su ogni punto",
+        "punti": null,
+        "da_decidere": false,
+        "punto": 41,
+        "atteso": true
+    },
+    {
+        "tipo": "delega_conta",
+        "che_cosa": "la delega di un proprietario per il punto 1 lo porta presente nella costituzione",
+        "punti": [
+            41
+        ],
+        "da_decidere": false,
+        "punto": null,
+        "atteso": true
+    },
+    {
+        "tipo": "delega_conta",
+        "che_cosa": "la delega per il punto 1 vale sul voto del punto 1",
+        "punti": [
+            41
+        ],
+        "da_decidere": false,
+        "punto": 41,
+        "atteso": true
+    },
+    {
+        "tipo": "delega_conta",
+        "che_cosa": "la delega per il punto 1 non vale sul voto del punto 4",
+        "punti": [
+            41
+        ],
+        "da_decidere": false,
+        "punto": 44,
+        "atteso": false
+    },
+    {
+        "tipo": "delega_conta",
+        "che_cosa": "la delega oltre il quinto da decidere non conta nella costituzione",
+        "punti": null,
+        "da_decidere": true,
+        "punto": null,
+        "atteso": false
+    },
+    {
+        "tipo": "delega_conta",
+        "che_cosa": "la delega oltre il quinto da decidere non conta sul voto",
+        "punti": null,
+        "da_decidere": true,
+        "punto": 41,
+        "atteso": false
+    }
+]

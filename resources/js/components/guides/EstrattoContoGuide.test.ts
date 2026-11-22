@@ -47,6 +47,10 @@ const sorgentiPagina = [
     'app/Services/CondominioService.php',
     'app/Services/Gestionale/Accessori/AccessoriDaIncassare.php',
     'app/Services/Gestionale/Addebiti/AddebitiIndividuali.php',
+    // 1.12.0-beta.13: le lettere per PEC dalla casella dello studio (la finestra, la corrispondenza, la casella, la consegna).
+    'resources/js/components/gestionale/lettere/RegistroLettere.vue', 'resources/js/components/gestionale/lettere/LettereDialog.vue',
+    'resources/js/lib/gestionale/lettere/lettere.ts', 'resources/js/lib/gestionale/lettere/consegnaProvata.ts', 'app/Services/Posta/PecDelloStudio.php',
+    'app/Services/Posta/ConsegnaDellaPec.php', 'resources/js/components/gestionale/seiMesi/SeiMesiPerAgireWidget.vue',
 ].map(leggi).join('\n').replace(/\\'/g, '\'').replace(/\s+/g, ' ');
 
 let w: VueWrapper | null = null;
@@ -68,7 +72,7 @@ describe('la guida dell\'estratto conto', () => {
         expect(guida).not.toBeNull();
         expect([...guida!.querySelectorAll('h3')].map((h) => (h.textContent ?? '').trim())).toEqual([
             'Il menu «Azioni»', 'Le sei card', 'Gli addebiti personali', 'Quando un addebito non si annulla', 'Il credito: «Compensa» e «Rimborsa il credito»',
-            'Gli accordi di rientro', 'I versamenti per conto di altri', 'Chi risponde in solido', 'Le lettere e la corrispondenza', 'La tabella dei movimenti',
+            'Gli accordi di rientro', 'I versamenti per conto di altri', 'Chi risponde in solido', 'Le lettere e la corrispondenza', 'La lettera per PEC nella corrispondenza', 'La tabella dei movimenti',
             'La stampa',
         ]);
         expect([...guida!.querySelectorAll('h4')].map((h) => (h.textContent ?? '').trim())).toEqual(['Le tre porte di «Nuovo addebito»', 'Nel libro dei movimenti']);
@@ -96,7 +100,8 @@ describe('la guida dell\'estratto conto', () => {
     });
 
     test('ogni nome tra virgolette basse c\'è nella pagina, nei suoi pezzi o nei servizi che lo scrivono', () => {
-        const citati = [...new Set([...sorgenteGuida.matchAll(/«([^»]+)»/g)].map((m) => m[1].replace(/\s+/g, ' ')))];
+        // Le prove nei commenti (`<!-- prova: file:riga «testo» -->`) sono righe di codice, non nomi della pagina.
+        const citati = [...new Set([...sorgenteGuida.replace(/<!--[\s\S]*?-->/g, ' ').matchAll(/«([^»]+)»/g)].map((m) => m[1].replace(/\s+/g, ' ')))];
         expect(citati.length).toBeGreaterThan(40);
         // «N» è il numero che la pagina scrive con `{{ … }}`.
         const nellaPagina = (nome: string) => new RegExp(nome.split(/\bN\b/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -105,7 +110,9 @@ describe('la guida dell\'estratto conto', () => {
     });
 
     test('nessuna parola che il programma non usa, e nessuna etichetta a pillola', () => {
-        const testo = sorgenteGuida.replace(/<!--[\s\S]*?-->/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').toLowerCase();
+        // 1.12.0-beta.13 (decisioni 577 e 588): «Consegnata» si dice della PEC con la ricevuta del gestore; la parte della lettera per PEC la nomina, il resto no.
+        const senzaLaPec = sorgenteGuida.replace(/<section data-testid="guida-corrispondenza-pec">[\s\S]*?<\/section>/, ' ');
+        const testo = senzaLaPec.replace(/<!--[\s\S]*?-->/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').toLowerCase();
         for (const parola of ['dovut', 'esigibil', 'pronto', 'pronta', 'conforme', 'regolare', 'fisiologic', 'consegnat', 'recapitat', 'notificat', 'garant']) {
             expect(testo, parola).not.toContain(parola);
         }

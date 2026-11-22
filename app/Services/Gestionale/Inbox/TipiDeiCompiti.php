@@ -63,6 +63,23 @@ final class TipiDeiCompiti
         'agenda' => ['nome' => 'Agenda', 'azione' => self::FATTO, 'pagina' => false],
         'promemoria' => ['nome' => 'Promemoria', 'azione' => self::FATTO, 'pagina' => false],
         'scadenza_rata_condomino' => ['nome' => 'Rate dei condòmini', 'azione' => self::FATTO, 'pagina' => false],
+        // Le assemblee (Coda 679, R10, §4.6). Il memo: «Mettilo nell'ordine del giorno del 15/12» se un'assemblea è in preparazione,
+        // altrimenti «Prepara l'assemblea» con il punto già spuntato (la prossima azione la calcola il memo); la convocazione salva la sua pagina nel compito.
+        'memo_assemblea' => ['nome' => 'Da portare in assemblea', 'azione' => 'Prepara l\'assemblea', 'pagina' => true],
+        'spedire_convocazione' => ['nome' => 'Convocazioni da spedire', 'azione' => 'Spedisci la convocazione', 'pagina' => true],
+        'ricevute_mancanti' => ['nome' => 'Ricevute mancanti', 'azione' => 'Registra la consegna', 'pagina' => true],
+        'nuovo_titolare_non_convocato' => ['nome' => 'Nuovi titolari da convocare', 'azione' => 'Manda la convocazione', 'pagina' => true],
+        // Il verbale e la sala: la pagina del verbale o della sala, salvata nel compito.
+        'registrare_verbale' => ['nome' => 'Verbali da registrare', 'azione' => 'Apri il verbale', 'pagina' => true],
+        'trasmettere_verbale' => ['nome' => 'Verbali da trasmettere', 'azione' => 'Trasmetti il verbale', 'pagina' => true],
+        'riaprire_sala' => ['nome' => 'Sale da riaprire', 'azione' => 'Apri la sala', 'pagina' => true],
+        'sala_in_corso' => ['nome' => 'Assemblee ancora in corso', 'azione' => 'Apri la sala', 'pagina' => true],
+        'due_versioni' => ['nome' => 'Due versioni da scegliere', 'azione' => 'Scegli la versione', 'pagina' => true],
+        'da_decidere_in_sala' => ['nome' => 'Da decidere in sala', 'azione' => 'Apri la sala', 'pagina' => true],
+        // Il seguito delle delibere: la cosa da fare dopo una delibera, con l'azione mirata («Crea il piano straordinario», «Registra la dispensa», «Scrivi
+        // la regola», «Avvisa i condòmini»; la calcola la cosa), e la delibera respinta che chiede «Riproponi in assemblea» o «Chiudi con il motivo».
+        'delibera_da_eseguire' => ['nome' => 'Delibere da eseguire', 'azione' => 'Apri la delibera', 'pagina' => true],
+        'delibera_respinta' => ['nome' => 'Delibere respinte', 'azione' => 'Apri la delibera', 'pagina' => true],
     ];
 
     /** La prossima azione della segnalazione che aspetta l'approvazione (`meta.is_approved` falso). */
@@ -112,6 +129,18 @@ final class TipiDeiCompiti
      */
     public static function azione(?string $tipo, Evento $compito): array
     {
+        // Il memo dice l'assemblea in preparazione, se c'è (R10): la sua pagina la calcola il memo, non il collegamento salvato.
+        if ($tipo === 'memo_assemblea') {
+            return \App\Services\Assemblee\MemoriaDelCondominio::azioneDelCompito($compito) ?? ['testo' => self::FATTO, 'url' => null];
+        }
+        // La cosa da fare dopo una delibera dice la sua azione e la sua pagina; senza la cosa, «Segna come fatto».
+        if ($tipo === 'delibera_da_eseguire' || $tipo === 'delibera_respinta') {
+            $cosa = \App\Services\Assemblee\Seguito\CoseDaFare::delCompito($compito);
+            $azione = $cosa === null ? null : \App\Services\Assemblee\Seguito\CoseDaFare::azione($cosa);
+
+            return $azione === null || $azione['url'] === null ? ['testo' => self::FATTO, 'url' => null]
+                : ['testo' => $azione['testo'], 'url' => IndirizzoDelCompito::perIlLink($azione['url'])];
+        }
         $voce = self::voce($tipo);
         $url = ! $voce['pagina'] ? null : (isset($voce['rotta'])
             ? self::paginaDelCondominio($voce['rotta'], $compito, isset($voce['della_voce']) ? [$voce['della_voce'], self::vocePerSola($compito)] : null,
@@ -241,6 +270,7 @@ final class TipiDeiCompiti
             'eccedenza_gia_versato_rilevata' => $insieme($c['piano_rate_nome'] ?? null, $euro($c['totale_cents'] ?? null)),
             'gia_versato_acconto_dichiarato' => $insieme($c['conto_nome'] ?? null, $euro($c['importo_cents'] ?? null)),
             'pianifica_ripianamento_deficit' => isset($m['importo_buco']) ? 'Scoperto di ' . $euro($m['importo_buco']) : '',
+            'memo_assemblea' => (string) ($m['riga'] ?? ''),
             'emissione_rata_sopravvenienza' => $insieme('Sopravvenienza', $m['fornitore'] ?? null),
             'da_moderare' => CompitoDaModerare::sotto($m),
             'commento' => isset($m['contatore']) ? $insieme(((int) $m['contatore'] === 1 ? '1 commento nuovo' : (int) $m['contatore'] . ' commenti nuovi'), $m['ultimo_autore'] ?? null) : '',

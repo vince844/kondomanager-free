@@ -20,6 +20,6 @@ class FatturaRegistrata
      */
     public function __construct(
         public FatturaPassiva $fattura,
-        public int $userId
+        public ?int $userId
     ) {}
 }

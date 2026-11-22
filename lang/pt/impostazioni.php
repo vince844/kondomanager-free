@@ -54,6 +54,16 @@ return [
         'subtitle_none' => 'Não existe nenhum restauro em curso ou recém-concluído.',
         'go_to_login' => 'Ir para o login',
         'details_after_login' => 'O administrador vê os detalhes técnicos do restauro (backup de origem, versões, eventual erro) nesta página, depois de iniciar sessão.',
+        // 1.12.0-beta.13 (decisione 546): le righe del registro delle modifiche nel ripristino.
+        'registry_heading' => 'Registo de alterações',
+        'registry_kept' => 'A entrada escrita depois da cópia fica no registo, anulada pela restauração.|As :righe entradas escritas depois da cópia ficam no registo, anuladas pela restauração.',
+        'registry_none_after' => 'Nenhuma entrada do registo foi escrita depois da cópia.',
+        'registry_all_back' => 'A cópia não tinha o registo: a entrada anterior volta, anulada pela restauração.|A cópia não tinha o registo: as :righe entradas anteriores voltam todas, anuladas pela restauração.',
+        'registry_obscured' => ':righe ocultação reaplicada.|:righe ocultações reaplicadas.',
+        'registry_pdf' => 'A cópia não tinha entradas em comum com o registo: as :righe entradas anteriores estão no PDF «:nome», entre os documentos.',
+        'registry_error' => 'Nem todas as entradas escritas depois da cópia foram repostas (:errore).',
+        'registry_error_pdf' => 'Todas as entradas anteriores estão no PDF «:nome», entre os documentos.',
+        'registry_error_file' => 'O ficheiro com as entradas fica na pasta das cópias: :file.',
     ],
     'restore_recovery' => [
         'auth_failed' => 'Palavra-passe incorreta.',
@@ -254,6 +264,10 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
+        'assemblee_title' => 'Assembleias',
+        'assemblee_description' => 'Dias de correio, procurações além de um quinto, voto discordante dos comproprietários',
+        'registro_modifiche_title' => 'Registo das alterações',
+        'registro_modifiche_description' => 'Quem alterou o quê e quando, em todos os condomínios: filtros, impressão com impressão digital, verificação da integridade',
         'installazione_title' => 'Esta instalação',
         'installazione_description' => 'Limites, espaço e funções ativas desta instalação',
         'general_settings_title' => 'Configurações gerais',
@@ -310,7 +324,7 @@ return [
         'mail_legend_log' => 'Envio de email desativado — os emails são escritos apenas no ficheiro de log.',
 
         'sendmail_guide_title' => 'Sendmail — apenas para servidores dedicados',
-        'sendmail_guide_description' => 'Use esta opção APENAS se o seu servidor é um VPS ou servidor dedicado com Postfix/Exim instalado e os registos SPF e DKIM configurados no DNS do domínio remetente. Em alojamentos partilhados (Altervista, etc.) os emails serão rejeitados pelos destinatários porque os fornecedores modernos (Gmail, Outlook) exigem autenticação DNS. Para alojamentos partilhados use Gmail SMTP.',
+        'sendmail_guide_description' => 'Use esta opção APENAS se o seu servidor é um VPS ou servidor dedicado com Postfix/Exim instalado e os registos SPF e DKIM configurados no DNS do domínio remetente. Num alojamento partilhado como o Altervista os servidores de correio externos estão bloqueados: descarregue os PDF e envie-os a partir do seu programa de correio.',
 
         'test_header' => 'Teste de envio imediato',
         'test_success_title' => 'Ligação bem-sucedida',
@@ -320,7 +334,7 @@ return [
         'test_unsaved_warning' => 'Tem alterações não guardadas. O teste usa os valores que vê no formulário mas não os guarda: para os manter, guarde a configuração.',
 
         'cron_guide_1_title' => 'O Motor Invisível',
-        'cron_guide_1_desc' => 'O daemon executa em segundo plano, sem intervenção manual, a manutenção do sistema: remove eventos encerrados há mais de um ano e o cache expirado, publica as comunicações agendadas, verifica se há uma nova versão disponível e, onde a opção para hospedagens compartilhadas está ativada, também processa a fila de tarefas.',
+        'cron_guide_1_desc' => 'O daemon executa em segundo plano, sem intervenção manual, a manutenção do sistema: remove eventos encerrados há mais de um ano e o cache expirado, publica as comunicações agendadas, envia por e-mail o lembrete das convocações a enviar, verifica se há uma nova versão disponível e, onde a opção para hospedagens compartilhadas está ativada, também processa a fila de tarefas.',
         'cron_guide_2_title' => 'Webhook (Externo)',
         'cron_guide_2_desc' => 'Identificado pelo ponto laranja. Permite acionar o agendador por meio de uma URL criptografada chamada por serviços externos (por exemplo, cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Nativo)',
@@ -450,6 +464,7 @@ return [
         'funzione_pianificatore_esterno' => 'Agendador externo',
         'funzione_backup' => 'Cópias de segurança internas',
         'funzione_archiviazione_esterna' => 'Arquivo externo',
+        'funzione_posta_dell_installazione' => 'O e-mail é preparado por quem gere a instalação',
         'si' => 'sim',
         'no' => 'não',
         'documenti' => 'Onde estão os documentos',

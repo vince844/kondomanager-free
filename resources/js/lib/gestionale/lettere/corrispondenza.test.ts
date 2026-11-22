@@ -74,7 +74,8 @@ describe('filtraCorrispondenza', () => {
         expect(chiavi('diffida')).toEqual([]);
         expect(chiavi('ricevuta')).toEqual(['ricevuta-6', 'ricevuta-4']);
         expect(chiavi('avviso_compensazione')).toEqual(['avviso-5']);
-        expect(TIPI_DEI_FILTRI.map((t) => t.valore)).toEqual(['', 'lettere', 'promemoria', 'sollecito', 'diffida', 'messa_in_mora', 'ricevuta', 'avviso_compensazione']);
+        expect(TIPI_DEI_FILTRI.map((t) => t.valore)).toEqual(['', 'lettere', 'promemoria', 'sollecito', 'diffida', 'messa_in_mora', 'ricevuta', 'avviso_compensazione', 'convocazione',
+            'verbale']);
     });
 
     it('per periodo, sul giorno di emissione, con gli estremi compresi; un estremo solo vale da solo', () => {
@@ -172,5 +173,28 @@ describe('riassuntoDellaCorrispondenza', () => {
         const documenti = [documento(2, 'ricevuta'), documento(3, 'avviso_compensazione'), documento(4, 'altro')];
         const numeri = riassuntoDellaCorrispondenza(lettere, documenti).match(/\d+/g)!.map(Number);
         expect(numeri.reduce((a, b) => a + b, 0)).toBe(numeroDellaScheda(lettere, documenti));
+    });
+});
+
+describe('la convocazione di un\'assemblea nella corrispondenza', () => {
+    it('ha il suo nome e il suo filtro, senza le cifre di un incasso', () => {
+        const d = { chiave: 'convocazione-9', id: 9, quando: '2026-12-02T09:00:00Z', tipo: 'convocazione', non_da_comunicare: false, emessa_il: '2026-12-02', ora: '10:00',
+            emesso_da: 'Andrea Costa', numero: null, versamento_del: null, importo: null, annullato: false, copia_del: null, incasso_id: null, per_conto_di: null, righe: [] } as any;
+        expect(testoDocumento(d)).toBe('Convocazione dell\'assemblea del 02/12/2026 alle 10:00, da Andrea Costa');
+        expect(testoCifreDelDocumento(d)).toBe('');
+        expect(TIPI_DEI_FILTRI.find((t) => t.valore === 'convocazione')?.nome).toBe('Convocazioni delle assemblee');
+    });
+});
+
+describe('il verbale di un\'assemblea nella corrispondenza', () => {
+    it('ha il suo nome con il numero e il giorno dell\'assemblea, il suo filtro, e nessuna cifra', () => {
+        const d = { chiave: 'verbale-14', id: 14, quando: '2026-12-15T20:37:00Z', tipo: 'verbale', non_da_comunicare: false, emessa_il: '2026-12-15', ora: '21:37',
+            emesso_da: 'Andrea Costa', numero: 42, assemblea_del: '2026-12-15', versamento_del: null, importo: null, annullato: false, copia_del: null, incasso_id: null,
+            per_conto_di: null, righe: [] } as any;
+        expect(testoDocumento(d)).toBe('Verbale n. 42 dell\'assemblea del 15/12/2026, emesso il 15/12/2026 alle 21:37, da Andrea Costa');
+        expect(testoCifreDelDocumento(d)).toBe('');
+        expect(TIPI_DEI_FILTRI.find((t) => t.valore === 'verbale')?.nome).toBe('Verbali delle assemblee');
+        expect(filtraCorrispondenza([{ genere: 'documento', tipo: 'verbale', emessa_il: '2026-12-15' }, { genere: 'documento', tipo: 'convocazione', emessa_il: '2026-11-26' }],
+            { tipo: 'verbale', dal: '', al: '' })).toHaveLength(1);
     });
 });

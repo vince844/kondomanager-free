@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Gestionale\PianiConti\Conti;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\PianoConto\Conto\CreateContoRequest;
@@ -39,81 +40,9 @@ class ContoController extends Controller
         try {
             DB::beginTransaction();
             $data = $request->validated();
-            
-            // Estrazione sicura dei flag booleani (previene errori se la chiave non esiste nel payload)
-            $isCapitolo = $data['isCapitolo'] ?? false;
-            $isSottoConto = $data['isSottoConto'] ?? false;
-            $richiedeGiaVersato = $data['richiedeGiaVersato'] ?? false;
-
-            // Creazione del record principale del Conto
-            $nuovoConto = Conto::create([
-                'piano_conto_id'        => $pianoConto->id,
-                'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
-                // Fatto esplicito scelto ORA dall'amministratore, persistito subito:
-                // non va più indovinato da importo/parent_id in un secondo momento
-                // (bug "voce a zero perde la tabella millesimale", migrazione
-                // add_is_capitolo_to_conti_table).
-                'is_capitolo'           => $isCapitolo,
-                // Filtra l'elenco "Già versato" (beta.27): senza flag esplicito
-                // ogni voce di spesa vi compariva, confuso su un piano dei conti
-                // con decine di voci. Un capitolo non versa nulla direttamente
-                // (beta.22): non ha senso per lui, resta sempre false.
-                'richiede_gia_versato'  => $isCapitolo ? false : $richiedeGiaVersato,
-                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard', (string) $data['tipo']),
-                'codice'                => $data['codice'] ?? null,
-                'nome'                  => $data['nome'],
-                'descrizione'           => $data['descrizione'] ?? null,
-                'tipo'                  => $data['tipo'],
-                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard',
-                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0),
-                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null,
-                'note'                  => $data['note'] ?? null,
-                'attivo'                => true,
-            ]);
-
-            // Se NON è un capitolo (quindi è una voce di spesa effettiva), gestiamo le tabelle millesimali
-            if (!$isCapitolo) {
-                // 1. Validazione e recupero della tabella millesimale associata
-                $tabella = Tabella::where('id', $data['tabella_millesimale_id'])
-                                  ->where('condominio_id', $condominio->id)
-                                  ->first();
-                if (!$tabella) throw new \Exception('Tabella millesimale non trovata');
-
-                // 2. Associazione della tabella al conto (pivot)
-                $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
-                    'conto_id' => $nuovoConto->id, 
-                    'tabella_id' => $tabella->id, 
-                    'coefficiente' => 100.00, 
-                    'created_at' => now(), 
-                    'updated_at' => now(),
-                ]);
-
-                // 3. Preparazione delle ripartizioni (proprietario, inquilino, usufruttuario)
-                $ripartizioni = [
-                    ['soggetto' => 'proprietario', 'percentuale' => $data['percentuale_proprietario'] ?? 0],
-                    ['soggetto' => 'inquilino', 'percentuale' => $data['percentuale_inquilino'] ?? 0],
-                    ['soggetto' => 'usufruttuario', 'percentuale' => $data['percentuale_usufruttuario'] ?? 0]
-                ];
-
-                // Controllo integrità: la somma deve essere 100%
-                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
-                    throw new \Exception("La somma delle percentuali deve essere 100%");
-                }
-
-                // 4. Inserimento delle singole quote di ripartizione
-                foreach ($ripartizioni as $rip) {
-                    if ($rip['percentuale'] > 0) {
-                        DB::table('conto_tabella_ripartizioni')->insert([
-                            'conto_tabella_millesimale_id' => $contoTabellaId, 
-                            'soggetto' => $rip['soggetto'], 
-                            'percentuale' => $rip['percentuale'], 
-                            'created_at' => now(), 
-                            'updated_at' => now(),
-                        ]);
-                    }
-                }
-            }
-            
+            // L'importo da euro a centesimi una volta sola, qui al confine; la voce nasce dal servizio, la stessa strada di «Crea il piano straordinario».
+            $data['importo'] = ($data['isCapitolo'] ?? false) ? 0 : MoneyHelper::toCents($data['importo'] ?? 0);
+            \App\Services\Gestionale\CreazioneDellaVoce::crea($condominio, $pianoConto, $data);
             DB::commit();
             return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])
                 ->with($this->flashSuccess(__('gestionale.success_create_conto')));
@@ -131,6 +60,8 @@ class ContoController extends Controller
     {
         try {
             DB::beginTransaction();
+            // Gesto 7 del registro delle modifiche, voci e tabelle: le tabelle della voce prima, per il campo «Tabelle millesimali».
+            $tabelleDellaVocePrima = GestiDelRegistro::tabelleDellaVoce((int) $conto->id);
             $data = $request->validated();
             
             // Estrazione sicura
@@ -407,6 +338,7 @@ class ContoController extends Controller
                 }
             }
 
+            GestiDelRegistro::scriviTabelleDellaVoce($conto, $tabelleDellaVocePrima);
             DB::commit();
             return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])
                 ->with($this->flashSuccess(__('gestionale.success_update_conto')));
@@ -510,20 +442,6 @@ class ContoController extends Controller
      */
     private function resolveContoContabileId(int $condominioId, string $tipoSpesa, ?string $tipo = null, ?Conto $esistente = null): ?int
     {
-        if (\App\Services\Gestionale\VociDiEntrataNelMastro::diEntrata($tipo)) {
-            if ($esistente !== null && \App\Services\Gestionale\VociDiEntrataNelMastro::diEntrata((string) $esistente->getOriginal('tipo')) && $esistente->conto_contabile_id !== null) {
-                return (int) $esistente->conto_contabile_id;
-            }
-
-            return (int) \App\Services\Gestionale\VociDiEntrataNelMastro::mastro($condominioId)->id;
-        }
-        $ruolo = match($tipoSpesa) {
-            'professionista' => 'compensi_professionisti',
-            default          => 'costi_servizi',
-        };
-
-        return ContoContabile::where('condominio_id', $condominioId)
-            ->where('ruolo', $ruolo)
-            ->value('id');
+        return \App\Services\Gestionale\CreazioneDellaVoce::contoContabile($condominioId, $tipoSpesa, $tipo, $esistente);
     }
 }

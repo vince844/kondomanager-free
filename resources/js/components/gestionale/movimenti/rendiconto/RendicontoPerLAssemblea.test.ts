@@ -16,7 +16,10 @@ import { nextTick } from 'vue';
 const post = vi.fn();
 const elimina = vi.fn();
 const reload = vi.fn();
-vi.mock('@inertiajs/vue3', () => ({ router: { post: (...a: unknown[]) => post(...a), delete: (...a: unknown[]) => elimina(...a), reload: (...a: unknown[]) => reload(...a) } }));
+// Le props della pagina: le assemblee di «Per quale assemblea» (vuote di serie).
+const pagina: { props: Record<string, unknown> } = { props: {} };
+vi.mock('@inertiajs/vue3', () => ({ router: { post: (...a: unknown[]) => post(...a), delete: (...a: unknown[]) => elimina(...a), reload: (...a: unknown[]) => reload(...a) },
+    usePage: () => pagina }));
 vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome }) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string, p: Record<string, unknown> = {}) =>
     `/${nome}/${p.condominio}/${p.esercizio}${p.versione ? `/${p.versione}` : ''}${p.documento ? `/${p.documento}` : ''}`;
@@ -38,7 +41,7 @@ const monta = (versioni: unknown[], extra: Record<string, unknown> = {}) => {
 
     return w;
 };
-beforeEach(() => { post.mockReset(); elimina.mockReset(); reload.mockReset(); });
+beforeEach(() => { post.mockReset(); elimina.mockReset(); reload.mockReset(); pagina.props = {}; });
 
 /** Il confronto di una versione con le cifre di oggi, come lo manda il server. */
 const confrontoDi = (extra: Record<string, unknown> = {}) => ({
@@ -250,5 +253,30 @@ describe('il rendiconto per l\'assemblea', () => {
         await r.find('[data-test="apri-approvazione"]').trigger('click');
         expect(r.find('[data-test="approvazione-giornale"]').exists()).toBe(false);
         expect(r.find('[data-test="approvazione-cambiato"]').exists()).toBe(false);
+    });
+});
+
+describe('«Ferma per l\'assemblea» collegato al punto del rendiconto', () => {
+    test('con un\'assemblea in preparazione chiede «Per quale assemblea», di serie la prima, e la manda; senza, non chiede', async () => {
+        pagina.props = { assemblee_del_rendiconto: [{ id: 21, punto_id: 70, nome: 'Assemblea ordinaria del 15/12/2026, punto 1' }] };
+        const w = monta([]);
+        await w.get('[data-test="ferma"]').trigger('click');
+        expect(w.find('[data-test="per-quale-assemblea"]').exists()).toBe(true);
+        expect(w.text()).toContain('Per quale assemblea');
+        await w.get('[data-test="ferma-conferma"]').trigger('click');
+        expect(post.mock.calls[0][1]).toMatchObject({ assemblea_id: 21 });
+
+        pagina.props = {};
+        const w2 = monta([]);
+        await w2.get('[data-test="ferma"]').trigger('click');
+        expect(w2.find('[data-test="per-quale-assemblea"]').exists()).toBe(false);
+    });
+
+    test('la versione allegata a una convocazione spedita dice dove è, e non offre «Elimina la versione»', () => {
+        const w = monta([versione({ in_assemblea: { frase: 'In assemblea il 15/12, punto 1 · convocazione spedita il 03/12', spedita: true } })]);
+        expect(w.get('[data-test="in-assemblea"]').text()).toBe('In assemblea il 15/12, punto 1 · convocazione spedita il 03/12');
+        expect(w.find('[data-test="apri-elimina"]').exists()).toBe(false);
+        const w2 = monta([versione({ in_assemblea: { frase: 'In assemblea il 15/12, punto 1 · convocazione non ancora spedita', spedita: false } })]);
+        expect(w2.find('[data-test="apri-elimina"]').exists()).toBe(true);
     });
 });

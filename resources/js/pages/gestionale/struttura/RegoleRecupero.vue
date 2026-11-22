@@ -18,6 +18,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  *
  * Decisioni 493 e 494 (1): la sezione «Gli interessi degli eredi», le otto scelte del condominio per il debito ereditato con la successione, ognuna con la
  * riga «Adesso: …» e la «i» con il caso; le salva chi modifica il condominio, gli altri le leggono. Valgono per ogni successione, salvo quella che le cambia.
+ *
+ * Coda 736: «Da portare in assemblea» nella card «Oggi», per chi gestisce le assemblee: il memo nasce dalla regola di oggi (il punto dei criteri per gli
+ * interessi e le spese, e dopo il voto «Scrivi la regola»); senza regole, con lo stesso testo scritto.
  */
 import { computed, ref, watch } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
@@ -41,6 +44,11 @@ import InteressiDegliEredi from '@/components/gestionale/addebiti/InteressiDegli
 import { scelteDalleVoci, scelteDiverse, type SceltaDegliEredi, type VoceInteressiEredi } from '@/lib/gestionale/addebiti/interessiDegliEredi';
 import type { Building } from '@/types/buildings';
 import type { Flash } from '@/types/flash';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 
 interface Regola {
     id: number; dal: string; tasso_tipo: 'legale' | 'scritto'; tasso: string; fonte: string | null; riferimento: string | null; giorni_decorrenza: number;
@@ -74,7 +82,14 @@ function salvaEredi() {
         { preserveScroll: true, preserveState: true, only: ['interessi_eredi', 'flash', 'errors'] });
 }
 
-const { generateRoute, generatePath } = usePermission();
+const permessi = usePermission();
+const { generateRoute, generatePath } = permessi;
+// Un tasso dalla delibera dell'assemblea: con «Gestisce le assemblee» si sceglie la delibera, e il riferimento è la sua frase (§1.4 del progetto della tappa 2).
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+const delibera = ref<DeliberaDelMenu | null>(null);
+/** Il punto dei criteri del recupero, lo stesso della scheda della regola (`PropostaDelPunto`): per «Scegli la delibera» e per il memo senza regole. */
+const CRITERI = 'Criteri per l\'addebito degli interessi e delle spese di recupero dei crediti';
+watch(delibera, (d) => { nuova.value.riferimento = d ? d.frase : ''; });
 const page = usePage<{ flash?: { message?: Flash }; errors?: Record<string, unknown> }>();
 const flashMessage = computed(() => page.props.flash?.message);
 /** Gli errori della regola nuova; quelli del tasso legale arrivano nel loro gruppo, `tassoLegale`. */
@@ -112,8 +127,11 @@ function registra() {
         dal: n.dal, tasso_tipo: n.tasso_tipo, tasso_annuo: n.tasso_tipo === 'scritto' ? n.tasso_annuo : null, fonte: n.tasso_tipo === 'scritto' ? n.fonte : null,
         riferimento: n.riferimento || null, giorni_decorrenza: n.giorni_decorrenza === '' ? 0 : Number(n.giorni_decorrenza),
         giorni_tolleranza: n.giorni_tolleranza === '' ? null : Number(n.giorni_tolleranza), termine_lettere_giorni: n.termine_lettere_giorni === '' ? null : Number(n.termine_lettere_giorni),
-    }, { preserveScroll: true, onSuccess: () => { nuova.value = vuota(); } });
+        ...(conDelibera.value ? { delibera_id: delibera.value!.id } : {}),
+    }, { preserveScroll: true, onSuccess: () => { nuova.value = vuota(); delibera.value = null; } });
 }
+/** La delibera parte solo per un tasso scritto con la fonte «delibera dell'assemblea». */
+const conDelibera = computed(() => conLaDelibera.value && nuova.value.tasso_tipo === 'scritto' && nuova.value.fonte === 'delibera' && delibera.value !== null);
 function elimina(r: Regola) {
     router.delete(route(generateRoute('gestionale.recupero-crediti.destroy'), { condominio: props.condominio.id, regola: r.id }), { preserveScroll: true });
 }
@@ -154,6 +172,7 @@ const breadcrumbs = computed(() => [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-4">
             <PageHeaderGuide
+                :storia="{ tipo: 'regole_recupero', id: props.condominio.id }"
                 page-title="Recupero dei crediti"
                 page-subtitle="Le regole del condominio per gli interessi di mora e per i solleciti, con la loro storia."
                 :guides="pageGuides"
@@ -173,8 +192,15 @@ const breadcrumbs = computed(() => [
 
                         <!-- La regola di oggi -->
                         <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm p-6 lg:p-8" data-testid="di-oggi">
-                            <h3 class="text-base font-bold text-slate-900 dark:text-white">Oggi</h3>
-                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">La regola che vale il {{ giorno(oggi) }}.</p>
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Oggi</h3>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">La regola che vale il {{ giorno(oggi) }}.</p>
+                                </div>
+                                <!-- Coda 736: i criteri del recupero in assemblea, dalla regola di oggi o, senza regole, con il testo scritto. -->
+                                <PulsanteDaPortareInAssemblea v-if="conLaDelibera" :condominio-id="condominio.id" :origine-tipo="di_oggi !== null ? 'regola_recupero' : null"
+                                    :origine-id="di_oggi" :testo="di_oggi !== null ? null : CRITERI" forma="riga" />
+                            </div>
                             <p class="text-[13px] mt-4">
                                 <span class="font-bold text-slate-900 dark:text-white">Tasso degli interessi di mora:</span>
                                 <span class="text-slate-700 dark:text-slate-300 ml-1">{{ tasso_di_oggi ?? 'il tasso legale dell\'anno non è ancora nel programma' }}</span>
@@ -190,6 +216,8 @@ const breadcrumbs = computed(() => [
                             </div>
                             <div class="divide-y divide-slate-100 dark:divide-slate-800/60">
                                 <div v-for="r in regole" :key="r.id" class="px-6 lg:px-8 py-3 text-[13px] space-y-1" data-testid="regola">
+                                    <!-- Gli esiti delle delibere sulla regola: i segni della delibera che è la sua fonte; con «Apri l'assemblea». -->
+                                    <EsitiDellaScheda :condominio-id="props.condominio.id" tipo="regola_recupero" :id="r.id" />
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <span><span class="font-bold text-slate-900 dark:text-white">Dal {{ giorno(r.dal) }}</span><span v-if="r.id === di_oggi" class="ml-2 text-xs text-emerald-700 dark:text-emerald-400">vale oggi</span></span>
                                         <Button v-if="!r.usata" size="sm" variant="outline" class="h-7 text-xs" data-testid="elimina-regola" @click="elimina(r)">Elimina</Button>
@@ -245,7 +273,12 @@ const breadcrumbs = computed(() => [
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="space-y-1.5">
+                                        <div v-if="conLaDelibera && nuova.fonte === 'delibera'" class="space-y-1.5" data-testid="fonte-dalla-delibera">
+                                            <ScegliLaDelibera v-model="delibera" :condominio-id="condominio.id" :condominio-nome="condominio.nome" ruolo="fonte"
+                                                per-questo="questa regola" :testo-proposto="CRITERI" />
+                                            <p class="text-[11px] leading-snug text-slate-500 dark:text-slate-400">Il riferimento è la frase della delibera: si stampa accanto al tasso.</p>
+                                        </div>
+                                        <div v-else class="space-y-1.5">
                                             <div class="flex items-center gap-1.5">
                                                 <Label for="regola-riferimento" class="text-xs font-semibold text-slate-700 dark:text-slate-300">Il riferimento</Label>
                                                 <TooltipProvider :delay-duration="200">

@@ -1,0 +1,76 @@
+{
+    "che_cosa": "Il lotto che la pagina della sala manda quando la rete torna, dopo un punto votato tutto senza rete martedì 15/12/2026 alle 19:45 di Roma: «Si vota», «Tutti i presenti favorevoli», un contrario, la nota del presidente sul voto e la conferma «Approvata con modifiche». La votazione non ha ancora un numero: i gesti del voto dicono la seduta, il punto, il numero della votazione e il gesto «Si vota» che l'ha aperta. Lo scrive la pagina (Sala.test.ts) e lo riceve il server (CateneDellaSalaInteraTest.php). I segnaposti fra graffe sono i numeri della sala del server.",
+    "lotto": {
+        "dispositivo": "computer di Andrea Costa#5e7a0000",
+        "gesti": [
+            {
+                "gesto": "5e7a0000-0000-4000-8000-000000000003",
+                "tipo": "si_vota",
+                "dati": {
+                    "seduta_id": "{seduta}",
+                    "punto_id": "{punto}"
+                },
+                "base": null,
+                "orologio": "2026-12-15T18:45:00.000Z",
+                "segnato_il": "2026-12-15T18:45:00.000Z"
+            },
+            {
+                "gesto": "5e7a0000-0000-4000-8000-000000000004",
+                "tipo": "tutti_favorevoli",
+                "dati": {
+                    "seduta_id": "{seduta}",
+                    "punto_id": "{punto}",
+                    "numero": 1,
+                    "aperta_dal_gesto": "5e7a0000-0000-4000-8000-000000000003"
+                },
+                "base": null,
+                "orologio": "2026-12-15T18:45:00.000Z",
+                "segnato_il": "2026-12-15T18:45:00.000Z"
+            },
+            {
+                "gesto": "5e7a0000-0000-4000-8000-000000000005",
+                "tipo": "voto",
+                "dati": {
+                    "seduta_id": "{seduta}",
+                    "punto_id": "{punto}",
+                    "numero": 1,
+                    "aperta_dal_gesto": "5e7a0000-0000-4000-8000-000000000003",
+                    "testa": "{testa_contrario}",
+                    "voto": "contrario"
+                },
+                "base": 1,
+                "orologio": "2026-12-15T18:45:00.000Z",
+                "segnato_il": "2026-12-15T18:45:00.000Z"
+            },
+            {
+                "gesto": "5e7a0000-0000-4000-8000-000000000006",
+                "tipo": "nota",
+                "dati": {
+                    "seduta_id": "{seduta}",
+                    "punto_id": "{punto}",
+                    "numero": 1,
+                    "aperta_dal_gesto": "5e7a0000-0000-4000-8000-000000000003",
+                    "su": "voto",
+                    "testo": "Votato senza rete, il Wi-Fi è caduto alle 19:38."
+                },
+                "base": null,
+                "orologio": "2026-12-15T18:45:00.000Z",
+                "segnato_il": "2026-12-15T18:45:00.000Z"
+            },
+            {
+                "gesto": "5e7a0000-0000-4000-8000-000000000007",
+                "tipo": "conferma",
+                "dati": {
+                    "seduta_id": "{seduta}",
+                    "punto_id": "{punto}",
+                    "numero": 1,
+                    "aperta_dal_gesto": "5e7a0000-0000-4000-8000-000000000003",
+                    "esito": "approvata_con_modifiche"
+                },
+                "base": null,
+                "orologio": "2026-12-15T18:45:00.000Z",
+                "segnato_il": "2026-12-15T18:45:00.000Z"
+            }
+        ]
+    }
+}

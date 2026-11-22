@@ -82,6 +82,7 @@ const pageGuides = [
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
+        :storia="{ tipo: 'condominio', id: props.condominio.id }"
         page-title="Gestione palazzine"
         page-subtitle="Definisci i blocchi fisici che compongono il condominio. Una struttura ben organizzata semplifica le ripartizioni millesimali."
         :guides="pageGuides"

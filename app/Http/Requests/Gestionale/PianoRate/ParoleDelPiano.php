@@ -26,6 +26,9 @@ final class ParoleDelPiano
         'tipo_autorizzazione' => 'Tipo di autorizzazione',
         'motivazione_autorizzazione' => 'Motivazione o estremi del verbale',
         'data_delibera_assemblea' => 'Deliberata il',
+        // Coda 688: il giorno dei lavori urgenti sulle voci di una gestione straordinaria.
+        'giorno_dei_lavori' => 'Lavori ordinati il',
+        'delibera_id' => 'La delibera',
         'gestione_id' => 'Gestione di riferimento',
         'nome' => 'Nome identificativo',
         'descrizione' => 'Descrizione',
@@ -113,6 +116,7 @@ final class ParoleDelPiano
             'nota_destinatari.min' => 'Scrivi una nota di almeno :min caratteri: perché procedi con i destinatari cambiati.',
             'approvato.required' => 'Scegli se approvare il piano o riportarlo in bozza.',
             'numero_verbale.max' => 'Il numero del verbale può avere al massimo :max caratteri.',
+            'delibera_id.integer' => 'La delibera scelta non è arrivata nella forma giusta: ricarica la pagina e scegli di nuovo.',
             'nota_approvazione.max' => 'La nota dell\'approvazione può avere al massimo :max caratteri.',
 
             // Le regole generiche, con il nome a video. Le regole «quando…» hanno la frase senza l'altro campo: il suo nome e il suo valore sono del codice.

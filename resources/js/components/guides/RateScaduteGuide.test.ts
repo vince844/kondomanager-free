@@ -38,6 +38,10 @@ const sorgentiPagina = [
     'resources/js/lib/gestionale/addebiti/accessori.ts',
     'resources/js/components/gestionale/lettere/LettereDialog.vue',
     'resources/js/lib/gestionale/lettere/lettere.ts',
+    // 1.12.0-beta.13: le lettere per PEC dalla casella dello studio (la finestra, la corrispondenza, la casella, la consegna).
+    'resources/js/components/gestionale/lettere/RegistroLettere.vue', 'resources/js/components/gestionale/lettere/LettereDialog.vue',
+    'resources/js/lib/gestionale/lettere/lettere.ts', 'resources/js/lib/gestionale/lettere/consegnaProvata.ts', 'app/Services/Posta/PecDelloStudio.php',
+    'app/Services/Posta/ConsegnaDellaPec.php', 'resources/js/components/gestionale/seiMesi/SeiMesiPerAgireWidget.vue',
     'resources/js/components/gestionale/accordi/AccordoRientroDialog.vue',
     'resources/js/lib/gestionale/debiti/accordiRientro.ts',
     'resources/js/pages/gestionale/movimenti/incassi/IncassoRateNew.vue',
@@ -63,7 +67,7 @@ describe('la guida di «Rate scadute»', () => {
         expect(guida).not.toBeNull();
         expect([...guida!.querySelectorAll('h3')].map((h) => (h.textContent ?? '').trim())).toEqual([
             'Che cosa dice una riga', 'Le due viste e la data dell\'elenco', 'Che cosa non è nell\'elenco', 'I suggerimenti', 'Gli interessi di mora',
-            'Spese del ritardo', 'Le date dei sei mesi', 'Le lettere', 'L\'accordo di rientro', 'Quando la persona versa', 'La stampa', 'I filtri',
+            'Spese del ritardo', 'Le date dei sei mesi', 'Le lettere', 'Come partono le lettere', 'L\'accordo di rientro', 'Quando la persona versa', 'La stampa', 'I filtri',
         ]);
         expect(guida!.querySelector('[data-testid="guida-norma"]')?.textContent?.trim()).toBe('Art. 63 disp. att. c.c.');
         const testo = (guida!.textContent ?? '').replace(/\s+/g, ' ');
@@ -89,7 +93,8 @@ describe('la guida di «Rate scadute»', () => {
     });
 
     test('ogni nome tra virgolette basse c\'è nella pagina', () => {
-        const citati = [...new Set([...sorgenteGuida.matchAll(/«([^»]+)»/g)].map((m) => m[1].replace(/\s+/g, ' ')))];
+        // Le prove nei commenti (`<!-- prova: file:riga «testo» -->`) sono righe di codice, non nomi della pagina.
+        const citati = [...new Set([...sorgenteGuida.replace(/<!--[\s\S]*?-->/g, ' ').matchAll(/«([^»]+)»/g)].map((m) => m[1].replace(/\s+/g, ' ')))];
         expect(citati.length).toBeGreaterThan(25);
         // «N» è il numero che la pagina scrive con `{{ … }}` o `${ … }`.
         const nellaPagina = (nome: string) => new RegExp(nome.split(' N ').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))

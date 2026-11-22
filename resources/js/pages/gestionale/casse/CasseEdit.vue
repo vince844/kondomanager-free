@@ -26,6 +26,11 @@ import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { CassaOption, TipoCassa } from '@/types/gestionale/casse';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 
 interface ContoOption { label: string; value: string; }
 
@@ -33,9 +38,18 @@ const props = defineProps<{
   condominio: Building;
   condomini: Building[];
   cassa: any; 
+  /** La delibera dello sblocco d'emergenza, se è collegata (ruolo «deroga»). */
+  delibera?: DeliberaDelMenu | null;
 }>();
 
-const { generatePath, generateRoute } = usePermission();
+const permessi = usePermission();
+const { generatePath, generateRoute } = permessi;
+// Lo sblocco d'emergenza con la delibera scelta (§1.4 del progetto della tappa 2): la sua frase va in testa alla motivazione, e il testo resta dopo.
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+const delibera = ref<DeliberaDelMenu | null>(props.delibera ?? null);
+/** Il testo scritto dall'amministratore, senza la frase della delibera che il server mette in testa. */
+const senzaLaFrase = (testo: string) => (props.delibera && testo.startsWith(props.delibera.frase)
+  ? testo.slice(props.delibera.frase.length).replace(/^[\s—-]+/, '') : testo);
 
 // La guida della pagina, nel cassetto: «Guida» nell'intestazione, come nelle altre pagine.
 const mostraGuida = ref(false);
@@ -132,7 +146,7 @@ const form = useForm({
   sottotipo_fondo: (cassaData.tipo === 'fondo' ? (cassaData.sottotipo_fondo || null) : (cassaData.sottotipo_fondo || 'generico')) as string | null,
   vincolo_descrizione: cassaData.vincolo_descrizione || '', 
   is_override_assemblea: Boolean(cassaData.is_override_assemblea),
-  motivazione_override: cassaData.motivazione_override || '',
+  motivazione_override: senzaLaFrase(cassaData.motivazione_override || ''),
 });
 
 /** «Tipo non indicato: conta come vincolato», con le parole del server (`TipoDelFondo`), per un fondo che il tipo non ce l'ha. */
@@ -170,7 +184,8 @@ const submit = () => {
     const routeName = 'gestionale.casse.update';
     const params = { condominio: props.condominio.id, cassa: cassaData.id };
     
-    form.post(route(...generateRoute(routeName, params)), {
+    form.transform((d) => (conLaDelibera.value ? { ...d, delibera_id: d.is_override_assemblea ? (delibera.value?.id ?? null) : null } : d))
+        .post(route(...generateRoute(routeName, params)), {
         preserveScroll: true,
     });
 };
@@ -187,6 +202,7 @@ const submit = () => {
       <div class="px-6 py-8 space-y-4">
 
         <PageHeaderGuide
+          :storia="{ tipo: 'cassa', id: props.cassa.id }"
           :page-title="`Modifica: ${form.nome}`"
           :page-subtitle="`Aggiorna i dati della risorsa finanziaria per il condominio: ${props.condominio.nome}`"
           :guides="pageGuides"
@@ -370,14 +386,22 @@ const submit = () => {
                           Attivando questa opzione, dichiari che l'assemblea o il regolamento permettono di usare questo fondo vincolato per coprire spese urgenti.
                         </p>
                         
-                        <div v-if="form.is_override_assemblea" class="mt-3">
+                        <!-- Gli esiti delle delibere sul fondo: «Utilizzo del fondo respinto …», i segni; con «Apri l'assemblea». -->
+                        <EsitiDellaScheda :condominio-id="props.condominio.id" tipo="cassa" :id="cassaData.id" class="mt-3" />
+                        <div v-if="form.is_override_assemblea" class="mt-3 space-y-2">
+                          <div v-if="conLaDelibera" class="space-y-1.5" data-testid="sblocco-con-la-delibera">
+                            <ScegliLaDelibera v-model="delibera" :condominio-id="props.condominio.id" :condominio-nome="props.condominio.nome" ruolo="deroga"
+                              oggetto-tipo="cassa" :oggetto-id="cassaData.id" per-questo="questo fondo" etichetta="La delibera dello sblocco (se c'è)"
+                              :vuoto="`Nessuna assemblea di ${props.condominio.nome} ha ancora deliberato sull'uso di questo fondo.`" />
+                            <PulsanteDaPortareInAssemblea v-if="!delibera" :condominio-id="props.condominio.id" origine-tipo="cassa" :origine-id="cassaData.id" forma="riga" />
+                          </div>
                           <Input 
                             id="motivazione_override" 
                             v-model="form.motivazione_override" 
                             placeholder="Es. Autorizzazione verbale del 12/04/2026, art. 5 Regolamento..." 
                             class="bg-slate-50 dark:bg-slate-950 border-amber-200 text-xs" 
                           />
-                          <p class="text-xs text-amber-700 mt-1 italic dark:text-amber-400">Estremi della delibera o motivazione obbligatoria per fini di audit.</p>
+                          <p class="text-xs text-amber-700 mt-1 italic dark:text-amber-400">{{ delibera ? 'La frase della delibera va in testa alla motivazione; qui l\'articolo del regolamento o una nota, se servono.' : 'Estremi della delibera o motivazione obbligatoria per fini di audit.' }}</p>
                           <InputError :message="form.errors.motivazione_override" />
                         </div>
                       </div>

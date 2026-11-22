@@ -59,6 +59,10 @@ export interface Anagrafica {
   note: string
   user_id: string | null
   condomini: Building[] 
+  /** Come si convoca (art. 66 disp. att.): vuoto, il programma lo propone dai dati. */
+  mezzo_convocazione?: 'pec' | 'raccomandata' | 'a_mano' | 'fax' | null
+  /** Il giorno in cui la persona ha comunicato la sua PEC, `aaaa-mm-gg`. */
+  pec_comunicata_il?: string | null
 }
 
 export interface AnagraficaWithPivot extends Anagrafica {

@@ -12,10 +12,11 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  *   scritti sul grafico;
  * - la simulazione: il cursore da niente a tutte le rate già scadute, con la tacca di «quanto basta» (un clic porta lì il cursore), e le tre cifre che lo
  *   seguono: il punto più basso, i giorni sotto zero, la cifra fra 30 giorni;
- * - le azioni consigliate, ognuna con i suoi numeri e il pulsante giusto, nell'ordine: le ritenute («Prepara l'F24»), i bonifici segnalati («Verifica i
- *   bonifici», l'Action inbox del condominio su quel tipo), le rate da emettere («Emetti la rata» apre la finestra «Emetti le rate»), il recupero («Manda un sollecito»
- *   apre la lettera sulla persona o sulle persone; sotto, a contorno, «Registra gli incassi», con la riga che dice di registrare prima i versamenti già
- *   arrivati), le fatture («Apri le fatture»), il giroconto («Fai un giroconto», con i due conti e la cifra già scelti), il fondo («Registra lo sblocco», la pagina del
+ * - le azioni consigliate, ognuna con i suoi numeri e il pulsante giusto, nell'ordine: le ritenute («Prepara l'F24», la delega della scadenza quando ce n'è
+ *   una sola, se no l'elenco), i bonifici segnalati («Verifica i bonifici», l'Action inbox del condominio su quel tipo), le rate da emettere («Emetti la rata»
+ *   apre la finestra «Emetti le rate»), il recupero (le persone in una tabella sotto la frase, al telefono una card per persona; «Manda un sollecito» apre la
+ *   lettera sulla persona o sulle persone; sotto, a contorno, «Registra gli incassi», con la riga che dice di registrare prima i versamenti già arrivati), le
+ *   fatture («Apri le fatture»), il giroconto («Fai un giroconto», con i due conti e la cifra già scelti), il fondo («Registra lo sblocco», la pagina del
  *   fondo), il piano straordinario («Prepara un piano straordinario»); la riga sulle scadenze delle rate, che approva l'assemblea. Con «Scelgo io» nel
  *   condominio le azioni non ci sono.
  *
@@ -34,7 +35,7 @@ import { Permission } from '@/enums/Permission';
 import { euroSegno, type SaldoPrevisto } from '@/lib/gestionale/tesoreria/saldoPrevisto';
 import {
     RIGA_DELLE_SCADENZE, azioniConsigliate, cifreDellaSimulazione, descrizioneDelGraficoGrande, domandaDelRecupero, percentuale, quantoBasta, simulazione, situazione,
-    tacca, testoGiorniSottoZero, type AzioneConsigliata, type DatiDelleAzioni, type Recupero,
+    tacca, testoDelleAltre, testoGiorniSottoZero, type AzioneConsigliata, type DatiDelleAzioni, type Recupero,
 } from '@/lib/gestionale/tesoreria/azioniConsigliate';
 
 const GraficoTreLinee = defineAsyncComponent(() => import('./GraficoTreLinee.vue'));
@@ -95,7 +96,8 @@ const indirizzo = (a: AzioneConsigliata) => {
         case 'rate_scadute': return rotta('rate-scadute.index');
         case 'fattura': return rotta('fatture.show', { fattura: p.fatture?.[0] });
         case 'fatture': return rotta('fatture.index', { stato_pagamento: 'aperta' });
-        case 'f24': return rotta('f24.index');
+        // La delega della scadenza, quando il server ne conosce una sola per quel giorno; altrimenti l'elenco, dove le deleghe si generano.
+        case 'f24': return p.delega ? rotta('f24.show', { delega: p.delega }) : rotta('f24.index');
         // Il giroconto con i due conti e la cifra già scelti: si registra solo con «Registra giroconto», dopo la causale.
         case 'giroconto': return rotta('giroconti.create', { origine: p.origine, destinazione: p.destinazione, importo: p.importo });
         case 'fondo': return rotta('casse.edit', { cassa: p.cassaId });
@@ -210,7 +212,40 @@ const apriEmissione = (a: AzioneConsigliata) => {
                                 <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">{{ i + 1 }}</div>
                                 <div class="min-w-0 flex-1">
                                     <p class="text-sm font-bold text-slate-900 dark:text-white">{{ a.titolo }}</p>
-                                    <p class="mt-1 text-xs text-slate-600 dark:text-slate-400"><span v-for="(p, k) in a.frase" :key="k" :class="p.tono === 'forte' ? 'font-bold text-slate-800 dark:text-slate-200' : ''">{{ p.testo }}</span></p>
+                                    <p class="mt-1 text-xs text-slate-600 dark:text-slate-400" data-testid="frase-azione"><span v-for="(p, k) in a.frase" :key="k" :class="p.tono === 'forte' ? 'font-bold text-slate-800 dark:text-slate-200' : ''">{{ p.testo }}</span></p>
+                                    <!-- Le persone del recupero, sotto la frase che finisce ai due punti: una riga per persona. Al telefono ogni riga è una card, con il nome
+                                         della colonna accanto al valore; da 768 pixel una tabella, con i nomi delle colonne in testa. -->
+                                    <table v-if="a.tabella?.righe.length" data-testid="tabella-persone" class="mt-2 block w-full border-collapse text-xs text-slate-700 dark:text-slate-300 md:table">
+                                        <thead class="hidden md:table-header-group">
+                                            <tr class="border-b border-slate-200 text-left text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                                                <th scope="col" class="px-2 py-1.5 font-semibold">Chi</th>
+                                                <th scope="col" class="px-2 py-1.5 font-semibold">Unità</th>
+                                                <th scope="col" class="px-2 py-1.5 text-right font-semibold">Rate scadute</th>
+                                                <th scope="col" class="px-2 py-1.5 font-semibold">Ultima lettera</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="block space-y-2 md:table-row-group md:space-y-0">
+                                            <tr v-for="r in a.tabella.righe" :key="r.anagraficaId" data-testid="riga-persona"
+                                                class="block rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700 md:table-row md:rounded-none md:border-0 md:border-b md:border-slate-100 md:p-0 md:dark:border-slate-800">
+                                                <td data-colonna="chi" class="block pb-1 md:table-cell md:px-2 md:py-1.5"><span data-valore class="break-words font-bold text-slate-900 dark:text-white">{{ r.nome }}</span></td>
+                                                <td data-colonna="unita" class="flex items-baseline justify-between gap-3 py-0.5 md:table-cell md:px-2 md:py-1.5">
+                                                    <span data-etichetta class="shrink-0 text-slate-500 dark:text-slate-400 md:hidden">Unità</span><span data-valore class="text-right md:text-left">{{ r.unita || '—' }}</span>
+                                                </td>
+                                                <td data-colonna="rate" class="flex items-baseline justify-between gap-3 py-0.5 md:table-cell md:px-2 md:py-1.5 md:text-right">
+                                                    <span data-etichetta class="shrink-0 text-slate-500 dark:text-slate-400 md:hidden">Rate scadute</span><span data-valore class="whitespace-nowrap tabular-nums">{{ euroSegno(r.cifra) }}</span>
+                                                </td>
+                                                <td data-colonna="lettera" class="flex items-baseline justify-between gap-3 py-0.5 md:table-cell md:px-2 md:py-1.5">
+                                                    <span data-etichetta class="shrink-0 text-slate-500 dark:text-slate-400 md:hidden">Ultima lettera</span>
+                                                    <span v-if="r.lettera" data-valore class="text-right md:text-left">{{ r.lettera }}</span>
+                                                    <span v-else data-valore data-testid="nessuna-lettera"
+                                                        class="inline-flex rounded-md border border-slate-200 bg-slate-50 px-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">nessuna</span>
+                                                </td>
+                                            </tr>
+                                            <tr v-if="a.tabella.altre" class="block md:table-row">
+                                                <td colspan="4" data-testid="altre-persone" class="block pt-1 text-slate-500 dark:text-slate-400 md:table-cell md:px-2 md:py-1.5">{{ testoDelleAltre(a.tabella.altre) }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                     <template v-if="a.dettagli?.length">
                                         <button type="button" class="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
                                             data-testid="mostra-dettagli" :aria-expanded="aperti.has(i)" @click="aperti.has(i) ? aperti.delete(i) : aperti.add(i)">

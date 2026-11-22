@@ -178,6 +178,8 @@ function tutteLeCoppieMappate(): array
         PianoRate::class,
         \App\Models\Gestionale\Conto::class,
         \App\Models\Gestionale\FatturaPassiva::class,
+        // 1.12.0-beta.13 (Coda 679, §7 del progetto della tappa 2): l'assemblea è il padre delle sedute, dei punti, delle delibere, degli invii, dei convocati.
+        \App\Models\Assemblee\Assemblea::class,
     ];
 
     $coppie = [];

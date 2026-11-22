@@ -264,6 +264,7 @@ function categoriaCreata(nome: string) {
     <div class="px-6 py-8 space-y-6">
 
       <PageHeaderGuide
+        :storia="{ tipo: 'fornitore', id: props.fornitore.id }"
         :page-title="trans('fornitori.header.edit_fornitore_title')"
         :page-subtitle="trans('fornitori.header.edit_fornitore_description')"
         :guides="pageGuides"

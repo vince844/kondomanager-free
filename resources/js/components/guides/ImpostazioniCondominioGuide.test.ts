@@ -36,6 +36,7 @@ const sorgenti = [
     'resources/js/pages/gestionale/movimenti/rateScadute/RateScadute.vue',
     'app/Services/Gestionale/Debiti/PassoProposto.php',
     'resources/js/pages/gestionale/struttura/RegoleRecupero.vue',
+    'app/Services/Assemblee/Sala/TesteDelCondominio.php',
 ].map(leggi).join('\n').replace(/\\'/g, '\'').replace(/\s+/g, ' ');
 
 let w: VueWrapper | null = null;
@@ -96,6 +97,14 @@ describe('la guida delle impostazioni del condominio', () => {
         const nomi = [...new Set([...t.matchAll(/«([^«»]+)»/g)].map((m) => m[1]))].filter((n) => !n.endsWith('.'));
         expect(nomi.length).toBeGreaterThan(5);
         expect(nomi.filter((n) => !sorgenti.includes(n))).toEqual([]);
+    });
+
+    test('il caso misto dei comproprietari: due teste di serie, con la regola dei titoli diversi; una testa per il condominio con una regola sua', async () => {
+        const t = await apri();
+        expect(t).toContain('Spento, di serie: due teste');
+        expect(t).toContain('le comunioni nate da titoli diversi restano distinte anche nell\'assemblea');
+        expect(t).toContain('Acceso: una testa sola, con tutte le sue unità, per il condominio che ha una regola sua');
+        expect(t).not.toContain('Non c\'è una sentenza');
     });
 
     test('a video «la prossima azione», mai «il passo»', async () => {

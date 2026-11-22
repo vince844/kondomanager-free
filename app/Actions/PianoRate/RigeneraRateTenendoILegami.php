@@ -5,6 +5,8 @@
 
 namespace App\Actions\PianoRate;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Models\Gestionale\PianoRate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -42,6 +44,13 @@ final class RigeneraRateTenendoILegami
      * @return T
      */
     public function esegui(PianoRate $piano, callable $genera): mixed
+    {
+        // Gesto 2 del registro delle modifiche: «Piano … rigenerato», una riga sola; la generazione dentro si conta nel suo lotto.
+        return RegistroModifiche::durante(GestiDelRegistro::pianoGenerato($piano, 'rigenerato'), fn () => $this->rigenera($piano, $genera));
+    }
+
+    /** @template T @param callable(): T $genera @return T */
+    private function rigenera(PianoRate $piano, callable $genera): mixed
     {
         $numeroDi = DB::table('rate')->where('piano_rate_id', $piano->id)->pluck('numero_rata', 'id')->map(fn ($n) => (int) $n);
         $legami = DB::table('quota_scrittura')->join('rate_quote', 'rate_quote.id', '=', 'quota_scrittura.rate_quota_id')

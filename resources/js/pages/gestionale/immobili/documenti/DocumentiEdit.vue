@@ -26,6 +26,8 @@ import type { PublishedType } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
 import type { Documento } from '@/types/documenti';
 import type { Immobile } from '@/types/gestionale/immobili';
+import VersioniDiPrima from '@/components/documenti/VersioniDiPrima.vue';
+import type { VersioneDiPrima } from '@/lib/documenti/versioniDiPrima';
 
 const props = defineProps<{
   condominio: Building;
@@ -33,6 +35,8 @@ const props = defineProps<{
   documento: Documento;
   /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
   limiteFile: string;
+  /** Le versioni di prima del file (1.12.0-beta.13, decisione 559): in sola lettura. */
+  versioni?: VersioneDiPrima[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -198,6 +202,7 @@ const submit = (): void => {
         :page-subtitle="`Aggiorna i dettagli del file: ${props.documento.name}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
+        :storia="{ tipo: 'documento', id: props.documento.id }"
         :back-url="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
         back-text="Annulla e torna all'elenco"
       />
@@ -402,6 +407,10 @@ const submit = (): void => {
             </div>
 
           </form>
+
+          <!-- Le versioni di prima del file (decisione 559): sola lettura, con lo scaricamento dalla scheda dell'unità. -->
+          <VersioniDiPrima class="mt-6" :versioni="props.versioni ?? []" :documento-id="props.documento.id"
+            rotta="gestionale.immobili.documenti.versioni.download" :parametri="{ condominio: props.condominio.id, immobile: props.immobile.id }" />
 
         </div>
       </ImmobileLayout>

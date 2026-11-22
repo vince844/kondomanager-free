@@ -5,6 +5,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\DateHelper;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
@@ -166,7 +168,42 @@ final class NotaSinteticaDelRendiconto
         $proposti = $this->fatti->perEsercizio($condominio, $esercizio, $letture, $oggi ?? DateHelper::oggiUtente());
         $fatti = array_map(fn (array $f) => $f + self::statoDi($f, $contenuto), $proposti['fatti']);
 
-        return self::stampa($fatti, $contenuto, $conLaParteCondomini) + ['alla' => (string) $letture['controlli']['riepilogo']['alla']];
+        return self::conLOrdineDelGiorno(self::stampa($fatti, $contenuto, $conLaParteCondomini), $esercizio)
+            + ['alla' => (string) $letture['controlli']['riepilogo']['alla']];
+    }
+
+    /**
+     * La nota legge l'ordine del giorno (D12 del progetto delle assemblee): quando un'assemblea in preparazione o convocata ha il punto del rendiconto di
+     * questo esercizio, «Da decidere in assemblea» stampa i punti di quell'assemblea al posto delle righe della nota; la versione fermata tiene ciò che ha
+     * stampato. La pagina della nota resta com'è: le righe dell'amministratore non si toccano.
+     *
+     * @param  array<string, mixed>  $stampa
+     * @return array<string, mixed>
+     */
+    public static function conLOrdineDelGiorno(array $stampa, Esercizio $esercizio): array
+    {
+        $punto = \App\Models\Assemblee\PuntoDellOrdineDelGiorno::query()->where('materia', 'rendiconto')->where('esercizio_id', $esercizio->id)
+            ->whereIn('assemblea_id', \App\Models\Assemblee\Assemblea::query()->where('condominio_id', $esercizio->condominio_id)
+                ->whereIn('stato', ['in_preparazione', 'convocata'])->select('id'))->orderByDesc('id')->first();
+        if ($punto === null) {
+            return $stampa;
+        }
+        $punti = \App\Models\Assemblee\PuntoDellOrdineDelGiorno::query()->where('assemblea_id', $punto->assemblea_id)->orderBy('numero')->get()
+            ->map(fn ($p) => self::conIlPunto($p->numero.'. '.trim((string) $p->testo)))->all();
+        $trovata = false;
+        foreach ($stampa['parti'] as $i => $parte) {
+            if (($parte['chiave'] ?? null) === 'questioni') {
+                $stampa['parti'][$i]['da_decidere'] = $punti;
+                $trovata = true;
+            }
+        }
+        if (! $trovata) {
+            $stampa['parti'][] = ['chiave' => 'questioni', 'titolo' => self::PARTI['questioni'], 'fatti' => [], 'testo' => '', 'dichiarazione' => [],
+                'debiti_certi' => [], 'da_decidere' => $punti];
+        }
+        $stampa['vuota'] = false;
+
+        return $stampa;
     }
 
     /** La nota di oggi chiede la lettura del conguaglio? Sì, se tiene un fatto che la legge. */
@@ -525,8 +562,18 @@ final class NotaSinteticaDelRendiconto
     /** Salva la bozza dell'esercizio, con chi l'ha toccata. */
     public static function salva(Esercizio $esercizio, array $contenuto, ?User $utente): NotaSintetica
     {
-        return NotaSintetica::updateOrCreate(['esercizio_id' => $esercizio->id],
-            ['condominio_id' => $esercizio->condominio_id, 'contenuto' => $contenuto, 'aggiornata_da' => $utente?->id]);
+        // P4 del registro delle modifiche: il salvataggio della nota è un gesto (da «Salva», «Genera la nota», «Copia»), con il rimando all'esercizio.
+        return RegistroModifiche::durante(
+            Gesto::su('contabilita', 'nota_sintetica', null, 'Nota sintetica del rendiconto «' . $esercizio->nome . '»')
+                ->nelCondominio((int) $esercizio->condominio_id)->scheda('esercizio', (int) $esercizio->id)
+                ->riepilogo('Nota sintetica del rendiconto salvata')->rimando('esercizio', (int) $esercizio->id, 'Esercizio «' . $esercizio->nome . '»'),
+            function (Gesto $gesto) use ($esercizio, $contenuto, $utente) {
+                $nota = NotaSintetica::updateOrCreate(['esercizio_id' => $esercizio->id],
+                    ['condominio_id' => $esercizio->condominio_id, 'contenuto' => $contenuto, 'aggiornata_da' => $utente?->id]);
+                $gesto->oggetto((int) $nota->id);
+
+                return $nota;
+            });
     }
 
     /**

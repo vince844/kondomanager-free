@@ -360,6 +360,72 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // 1.12.0-beta.12 (decisione 490): «Kondomanager» di serie diventa «KondoManager» nelle impostazioni, solo dove vale esattamente quello; rieseguita non cambia
     // niente. Il suo effetto lo prova `tests/Feature/Mail/NomeNelleEmailTest.php`.
     'settings/2026_11_18_190000_scrivi_kondomanager_con_la_emme_maiuscola',
+    // 1.12.0-beta.13 (Coda 679, registro delle modifiche): le quattro tabelle del registro (nessuna chiave esterna), ognuna, ogni indice e la riga della
+    // catena con la sua guardia; rieseguita non tocca la catena già avanzata. Il loro effetto lo provano i test di `tests/Feature/RegistroModifiche/`.
+    '2026_11_19_100000_create_registro_modifiche_tables',
+    // 1.12.0-beta.13 (Coda 679, §7): `eventi.created_by` facoltativa, per i promemoria del programma; cambia la colonna solo se è ancora obbligatoria.
+    // Il suo effetto lo prova `tests/Feature/Gestionale/SyncF24WithPagamentoTest.php`.
+    '2026_11_19_100100_rendi_facoltativo_l_autore_degli_eventi',
+    // 1.12.0-beta.13 (Coda 679, §9, le versioni di prima dei documenti): la tabella `documenti_versioni`, l'indice e le due chiavi esterne, ognuno con la
+    // sua guardia. Il suo effetto lo prova `tests/Feature/RegistroModifiche/VersioniDeiDocumentiTest.php`.
+    '2026_11_19_110000_create_documenti_versioni_table',
+    // 1.12.0-beta.13 (Coda 679, §11, decisione 518 (1)): la durata delle righe del registro, di serie 10 anni, scritta solo se non c'è; rieseguita non
+    // riscrive una scelta già fatta. Il suo effetto lo prova `tests/Feature/RegistroModifiche/ConservazioneESospensioneTest.php`.
+    'settings/2026_11_19_120000_create_registro_modifiche_settings',
+    // 1.12.0-beta.13 (Coda 679, l'assemblea, la cerniera e la convocazione): §1.3 del progetto della tappa 2. Le tabelle dell'assemblea, della delibera e dei
+    // convocati hanno anche un `it()` che le interrompe dopo le tabelle (in fondo al file); il loro uso lo provano i test di `tests/Feature/Assemblee/Motore/`.
+    '2026_11_19_130000_create_assemblee_tables',
+    '2026_11_19_130100_create_delibere_tables',
+    '2026_11_19_130200_create_assemblee_memo_table',
+    '2026_11_19_130300_add_tabella_proprieta_to_condomini_palazzine_scale',
+    '2026_11_19_130400_add_mezzo_convocazione_to_anagrafiche',
+    '2026_11_19_130500_add_esito_to_registro_invii',
+    '2026_11_19_130600_create_assemblee_convocati_table',
+    '2026_11_19_130700_create_preventivo_versioni_table',
+    'settings/2026_11_19_130800_create_assemblee_settings',
+    // 1.12.0-beta.13 (decisione 572, le caselle di posta dello studio): la casella PEC nel suo gruppo, ogni proprietà scritta solo se manca; l'ultima
+    // prova e il giorno dell'impostazione della posta, vuoti se mancano. Rieseguite non toccano una casella già impostata. Il loro effetto lo prova
+    // `tests/Feature/Impostazioni/CaselleDelloStudioTest.php`.
+    'settings/2026_11_19_140000_create_pec_settings',
+    'settings/2026_11_19_140100_add_prova_to_mail_settings',
+    // 1.12.0-beta.13 (Coda 679, la sala): le colonne della seduta (apertura, esito, presidente, fotografia), le sei tabelle della sala, la scelta delle teste
+    // del condominio, le due scelte dello studio. Le tabelle e le colonne della seduta hanno anche un `it()` che le interrompe (in fondo al file); il loro
+    // uso lo provano i test di `tests/Feature/Assemblee/Sala/`.
+    '2026_11_20_100000_add_sala_to_assemblee_sedute',
+    '2026_11_20_100100_create_assemblee_sala_tables',
+    '2026_11_20_100200_add_teste_della_sala_to_impostazioni_condominio',
+    'settings/2026_11_20_100300_add_sala_to_assemblee_settings',
+    // 1.12.0-beta.13 (Coda 679, la sala): le note del presidente su un voto, che vanno nel verbale. Ha anche un `it()` che la interrompe (in fondo al
+    // file); il suo uso lo prova `tests/Feature/Assemblee/Sala/NoteDelPresidenteTest.php`.
+    '2026_11_20_100400_add_note_to_assemblee_votazioni',
+    // 1.12.0-beta.13 (Coda 679, la sala): quando il foglio della sala è stato stampato l'ultima volta, per «ristampa il foglio» quando una delega cambia
+    // dopo. Una colonna, una guardia; il suo uso lo prova `tests/Feature/Assemblee/Sala/RegoleDellaSalaTest.php`.
+    '2026_11_20_100500_add_foglio_stampato_il_to_assemblee',
+    // 1.12.0-beta.13 (Coda 679, i passi): quando i documenti sono stati guardati, con «Avanti: Convocazione». Una colonna, una guardia; il suo uso lo
+    // prova `tests/Feature/Assemblee/Pagine/PassiDellAssembleaTest.php`.
+    '2026_11_20_100600_add_documenti_visti_il_to_assemblee',
+    // 1.12.0-beta.13 (Coda 679, il verbale): il registro dei verbali di ogni perimetro con il punto di partenza, il verbale, il suo testo per parte e le sue
+    // versioni, il registro di nomina e revoca; e il giorno in cui l'annotazione di una seduta deserta è incollata nel libro di carta. Hanno anche un `it()`
+    // che le interrompe (in fondo al file); il loro uso lo provano i test di `tests/Feature/Assemblee/Verbale/`.
+    '2026_11_20_110000_create_assemblee_verbali_tables',
+    '2026_11_20_110100_add_nel_libro_to_assemblee_sedute',
+    // 1.12.0-beta.13 (Coda 679, il seguito delle delibere): le cose da fare dopo una delibera (la tabella, gli indici e le chiavi esterne, ognuno con la sua
+    // guardia) e sulla delibera la conferma del riepilogo e i suoi dati (una guardia per colonna e una per la chiave). Hanno anche un `it()` che le
+    // interrompe (in fondo al file); il loro uso lo provano i test di `tests/Feature/Assemblee/Seguito/`.
+    '2026_11_21_100000_create_delibere_cose_da_fare_table',
+    '2026_11_21_100100_add_seguito_to_delibere',
+    // 1.12.0-beta.13 (Coda 679, la convocazione): «Promemoria per email delle convocazioni da spedire», acceso di serie; rieseguita non riaccende un
+    // interruttore spento. Il suo effetto lo prova `tests/Feature/Impostazioni/PromemoriaDelleConvocazioniTest.php`.
+    'settings/2026_11_21_090000_add_promemoria_convocazioni_to_mail_settings',
+    // 1.12.0-beta.13 (Coda 688, i lavori urgenti sulla scheda delle fatture): il giorno dei lavori nel piano rate, una data che può essere vuota. Una
+    // colonna, una guardia; il suo uso lo prova `tests/Feature/Gestionale/UrgenzaSullaSchedaDelleFattureTest.php`.
+    '2026_11_21_130000_add_giorno_dei_lavori_to_piani_rate_table',
+    // 1.12.0-beta.13 (decisione 647, il mezzo nella riga della convocazione): la tabella dei mezzi scelti per assemblea, con l'indice unico e le tre chiavi; ha
+    // anche un `it()` che la interrompe dopo la tabella (in fondo al file); il suo uso lo prova `tests/Feature/Assemblee/Convocazione/MezzoNellaRigaTest.php`.
+    '2026_11_21_140000_create_assemblee_mezzi_scelti_table',
+    // 1.12.0-beta.13 (decisione 664 (6), rilievo C53, i contitolari presenti tutti e due): chi entra con chi rappresenta la testa, presente senza voto. Una
+    // colonna, una guardia; il suo uso lo prova `tests/Feature/Assemblee/Sala/SalaApertaTest.php`.
+    '2026_11_21_150000_add_insieme_to_assemblee_presenze',
 ]);
 
 it('la migrazione dei modelli delle lettere interrotta dopo la tabella e prima dell\'indice e delle chiavi si riprende e li mette, uno per nome', function () {
@@ -1105,5 +1171,342 @@ it('la migrazione delle impostazioni del condominio interrotta dopo la tabella s
     $migration->down();
     expect(Schema::hasTable('impostazioni_condominio'))->toBeFalse();
     $migration->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione del registro delle modifiche su tabelle già create senza la firma e senza l\'indice dell\'azione li aggiunge, uno per guardia', function () {
+    $path = database_path('migrations/2026_11_19_100000_create_registro_modifiche_tables.php');
+    expect(file_exists($path))->toBeTrue('Migrazione non trovata: 2026_11_19_100000_create_registro_modifiche_tables');
+    $migration = require $path;
+    $stato = fn () => [
+        'firma' => Schema::hasColumn('registro_modifiche', 'firma'),
+        'indici' => collect(Schema::getIndexes('registro_modifiche'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'registro_modifiche_'))->sort()->values()->all(),
+    ];
+    $atteso = ['firma' => true, 'indici' => ['registro_modifiche_area_index', 'registro_modifiche_autore_index', 'registro_modifiche_avvenuta_index',
+        'registro_modifiche_azione_index', 'registro_modifiche_oggetto_index', 'registro_modifiche_scheda_index', 'registro_modifiche_sequenza_unique']];
+    expect($stato())->toBe($atteso);
+
+    // Come nel database dove le tabelle sono nate prima della firma e dell'indice: le due cose mancano.
+    Schema::table('registro_modifiche', fn ($table) => $table->dropIndex('registro_modifiche_azione_index'));
+    Schema::table('registro_modifiche', fn ($table) => $table->dropColumn('firma'));
+    expect($stato()['firma'])->toBeFalse();
+
+    $migration->up();
+    $migration->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione dell\'assemblea interrotta dopo le quattro tabelle si riprende e mette gli indici e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite; la guardia delle chiavi legge `information_schema` lì, `PRAGMA foreign_key_list` qui).
+    $stato = fn () => collect(['assemblee', 'assemblee_sedute', 'assemblee_punti', 'assemblee_punti_oggetti'])->mapWithKeys(fn ($t) => [$t => [
+        'indici' => collect(Schema::getIndexes($t))->pluck('name')->filter(fn ($n) => str_starts_with($n, $t . '_'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys($t))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ]])->all();
+    $migrazione = require database_path('migrations/2026_11_19_130000_create_assemblee_tables.php');
+    $delibere = require database_path('migrations/2026_11_19_130100_create_delibere_tables.php');
+    $atteso = $stato();
+    expect($atteso['assemblee']['indici'])->toBe(['assemblee_condominio_data_index', 'assemblee_condominio_stato_index'])
+        ->and($atteso['assemblee']['chiavi'])->toContain('condominio_id>condomini restrict', 'riconvocata_da_id>assemblee set null', 'tabella_id>tabelle restrict')
+        ->and($atteso['assemblee_sedute']['indici'])->toBe(['assemblee_sedute_unica'])
+        ->and($atteso['assemblee_punti']['indici'])->toBe(['assemblee_punti_chiave_fonte_index', 'assemblee_punti_ordine_index'])
+        ->and($atteso['assemblee_punti_oggetti']['chiavi'])->toBe(['punto_id>assemblee_punti cascade']);
+
+    // Interrotta dopo le tabelle: gli indici e le chiavi mancano.
+    Schema::table('assemblee', function ($t) {
+        $t->dropForeign(['condominio_id']);
+        $t->dropForeign(['tabella_id']);
+    });
+    Schema::table('assemblee', fn ($t) => $t->dropIndex('assemblee_condominio_data_index'));
+    Schema::table('assemblee_sedute', fn ($t) => $t->dropUnique('assemblee_sedute_unica'));
+    Schema::table('assemblee_punti', fn ($t) => $t->dropForeign(['assemblea_id']));
+    Schema::table('assemblee_punti_oggetti', fn ($t) => $t->dropUnique('assemblee_punti_oggetti_unico'));
+    expect($stato())->not->toBe($atteso);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $delibere->down();
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('assemblee'))->toBeFalse()->and(Schema::hasTable('assemblee_punti_oggetti'))->toBeFalse();
+    $migrazione->up();
+    $delibere->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione della delibera e dei collegamenti interrotta dopo le tabelle si riprende e mette gli indici e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite).
+    // La chiave di chi conferma il seguito la mette la sua migrazione (2026_11_21_100100, con il suo `it()`): qui si guardano quelle di questa.
+    $stato = fn () => collect(['delibere', 'delibere_collegamenti'])->mapWithKeys(fn ($t) => [$t => [
+        'indici' => collect(Schema::getIndexes($t))->pluck('name')->filter(fn ($n) => str_starts_with($n, $t . '_'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys($t))->reject(fn ($k) => $k['columns'] === ['seguito_confermato_da'])
+            ->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ]])->all();
+    $migrazione = require database_path('migrations/2026_11_19_130100_create_delibere_tables.php');
+    $atteso = [
+        'delibere' => ['indici' => ['delibere_assemblea_index', 'delibere_condominio_data_index', 'delibere_punto_index'],
+            'chiavi' => ['assemblea_id>assemblee restrict', 'condominio_id>condomini restrict', 'created_by>users set null', 'punto_id>assemblee_punti restrict',
+                'revocata_da_delibera_id>delibere set null']],
+        'delibere_collegamenti' => ['indici' => ['delibere_collegamenti_condominio_index', 'delibere_collegamenti_delibera_index', 'delibere_collegamenti_unico'],
+            'chiavi' => ['collegata_da>users set null', 'delibera_id>delibere restrict']],
+    ];
+    expect($stato())->toBe($atteso);
+
+    Schema::table('delibere', function ($t) {
+        $t->dropForeign(['punto_id']);
+        $t->dropForeign(['assemblea_id']);
+    });
+    Schema::table('delibere', fn ($t) => $t->dropIndex('delibere_punto_index'));
+    Schema::table('delibere_collegamenti', fn ($t) => $t->dropForeign(['delibera_id']));
+    Schema::table('delibere_collegamenti', fn ($t) => $t->dropUnique('delibere_collegamenti_unico'));
+    expect($stato())->not->toBe($atteso);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('delibere'))->toBeFalse()->and(Schema::hasTable('delibere_collegamenti'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione dei convocati interrotta dopo la tabella si riprende e mette l\'indice unico e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite).
+    $stato = fn () => [
+        'indici' => collect(Schema::getIndexes('assemblee_convocati'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'assemblee_convocati_'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('assemblee_convocati'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $migrazione = require database_path('migrations/2026_11_19_130600_create_assemblee_convocati_table.php');
+    $atteso = ['indici' => ['assemblee_convocati_unico'], 'chiavi' => ['anagrafica_id>anagrafiche set null', 'assemblea_id>assemblee restrict',
+        'created_by>users set null', 'invio_id>registro_invii set null']];
+    expect($stato())->toBe($atteso);
+
+    Schema::table('assemblee_convocati', function ($t) {
+        $t->dropForeign(['invio_id']);
+        $t->dropForeign(['assemblea_id']);
+    });
+    Schema::table('assemblee_convocati', fn ($t) => $t->dropUnique('assemblee_convocati_unico'));
+    expect($stato())->toBe(['indici' => [], 'chiavi' => ['anagrafica_id>anagrafiche set null', 'created_by>users set null']]);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('assemblee_convocati'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione delle tabelle della sala interrotta dopo le sei tabelle si riprende e mette gli indici e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite; la guardia delle chiavi legge `information_schema` lì, `PRAGMA foreign_key_list` qui).
+    $tabelle = ['assemblee_deleghe', 'assemblee_presenze', 'assemblee_votazioni', 'assemblee_voti', 'assemblee_dichiarazioni', 'assemblee_gesti'];
+    $stato = fn () => collect($tabelle)->mapWithKeys(fn ($t) => [$t => [
+        'indici' => collect(Schema::getIndexes($t))->pluck('name')->filter(fn ($n) => str_starts_with($n, $t . '_'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys($t))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ]])->all();
+    $percorso = database_path('migrations/2026_11_20_100100_create_assemblee_sala_tables.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_20_100100_create_assemblee_sala_tables');
+    $migrazione = require $percorso;
+    $atteso = $stato();
+    expect($atteso['assemblee_deleghe']['chiavi'])->toContain('assemblea_id>assemblee restrict', 'delegato_anagrafica_id>anagrafiche set null',
+        'documento_id>documenti set null')
+        ->and($atteso['assemblee_presenze']['chiavi'])->toContain('seduta_id>assemblee_sedute restrict')
+        ->and($atteso['assemblee_votazioni']['indici'])->toBe(['assemblee_votazioni_unica'])
+        ->and($atteso['assemblee_votazioni']['chiavi'])->toContain('delibera_id>delibere set null', 'punto_id>assemblee_punti restrict')
+        ->and($atteso['assemblee_voti']['indici'])->toBe(['assemblee_voti_unico'])
+        ->and($atteso['assemblee_voti']['chiavi'])->toContain('votazione_id>assemblee_votazioni cascade')
+        ->and($atteso['assemblee_gesti']['indici'])->toBe(['assemblee_gesti_assemblea_arrivo_index', 'assemblee_gesti_gesto_unico']);
+
+    // Interrotta dopo le tabelle: gli indici e le chiavi mancano.
+    Schema::table('assemblee_deleghe', fn ($t) => $t->dropForeign(['assemblea_id']));
+    Schema::table('assemblee_deleghe', fn ($t) => $t->dropIndex('assemblee_deleghe_assemblea_stato_index'));
+    Schema::table('assemblee_voti', fn ($t) => $t->dropForeign(['votazione_id']));
+    Schema::table('assemblee_voti', fn ($t) => $t->dropUnique('assemblee_voti_unico'));
+    Schema::table('assemblee_gesti', fn ($t) => $t->dropUnique('assemblee_gesti_gesto_unico'));
+    Schema::table('assemblee_presenze', fn ($t) => $t->dropForeign(['seduta_id']));
+    expect($stato())->not->toBe($atteso);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('assemblee_deleghe'))->toBeFalse()->and(Schema::hasTable('assemblee_gesti'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione delle colonne della seduta interrotta dopo la prima colonna si riprende e mette le altre, una per nome', function () {
+    $percorso = database_path('migrations/2026_11_20_100000_add_sala_to_assemblee_sedute.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_20_100000_add_sala_to_assemblee_sedute');
+    $migrazione = require $percorso;
+    $colonne = ['aperta_il', 'chiusa_il', 'esito', 'presidente', 'segretario', 'apertura', 'fotografia', 'impronta_fotografia', 'dal_foglio'];
+    $ci = fn () => array_values(array_filter($colonne, fn ($c) => Schema::hasColumn('assemblee_sedute', $c)));
+    expect($ci())->toBe($colonne);
+
+    // Interrotta dopo la prima colonna: le altre otto mancano.
+    $migrazione->down();
+    Schema::table('assemblee_sedute', fn ($t) => $t->dateTime('aperta_il')->nullable());
+    expect($ci())->toBe(['aperta_il']);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($ci())->toBe($colonne);
+});
+
+it('la migrazione delle note del presidente interrotta dopo la prima colonna si riprende e mette l\'altra', function () {
+    $percorso = database_path('migrations/2026_11_20_100400_add_note_to_assemblee_votazioni.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_20_100400_add_note_to_assemblee_votazioni');
+    $migrazione = require $percorso;
+    $colonne = ['nota', 'nota_non_votato'];
+    $ci = fn () => array_values(array_filter($colonne, fn ($c) => Schema::hasColumn('assemblee_votazioni', $c)));
+    expect($ci())->toBe($colonne);
+
+    // Interrotta dopo la prima colonna: l'altra manca.
+    $migrazione->down();
+    Schema::table('assemblee_votazioni', fn ($t) => $t->text('nota')->nullable());
+    expect($ci())->toBe(['nota']);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($ci())->toBe($colonne);
+});
+
+it('la migrazione delle tabelle del verbale interrotta dopo le cinque tabelle si riprende e mette gli indici e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite; la guardia delle chiavi legge `information_schema` lì, `PRAGMA foreign_key_list` qui).
+    $tabelle = ['assemblee_registri_verbali', 'assemblee_verbali', 'assemblee_verbali_parti', 'assemblee_verbali_versioni', 'registro_nomine'];
+    $stato = fn () => collect($tabelle)->mapWithKeys(fn ($t) => [$t => [
+        'indici' => collect(Schema::getIndexes($t))->pluck('name')->filter(fn ($n) => str_starts_with($n, $t . '_'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys($t))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ]])->all();
+    $percorso = database_path('migrations/2026_11_20_110000_create_assemblee_verbali_tables.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_20_110000_create_assemblee_verbali_tables');
+    $migrazione = require $percorso;
+    $atteso = $stato();
+    expect($atteso['assemblee_registri_verbali']['indici'])->toBe(['assemblee_registri_verbali_unico'])
+        ->and($atteso['assemblee_verbali']['indici'])->toContain('assemblee_verbali_numero_unico', 'assemblee_verbali_assemblea_index')
+        ->and($atteso['assemblee_verbali']['chiavi'])->toContain('assemblea_id>assemblee restrict', 'condominio_id>condomini restrict',
+            'seduta_id>assemblee_sedute restrict', 'documento_id>documenti restrict', 'modello_id>modelli_testo set null', 'sostituisce_id>assemblee_verbali set null')
+        ->and($atteso['assemblee_verbali_parti']['indici'])->toBe(['assemblee_verbali_parti_unica'])
+        ->and($atteso['assemblee_verbali_parti']['chiavi'])->toContain('verbale_id>assemblee_verbali restrict', 'punto_id>assemblee_punti restrict')
+        ->and($atteso['assemblee_verbali_versioni']['indici'])->toBe(['assemblee_verbali_versioni_parte_index'])
+        ->and($atteso['registro_nomine']['indici'])->toBe(['registro_nomine_condominio_dal_index'])
+        ->and($atteso['registro_nomine']['chiavi'])->toContain('condominio_id>condomini restrict', 'delibera_id>delibere restrict', 'documento_id>documenti set null');
+
+    // Interrotta dopo le tabelle: gli indici e le chiavi mancano.
+    Schema::table('assemblee_verbali_versioni', fn ($t) => $t->dropForeign(['verbale_id']));
+    Schema::table('assemblee_verbali_versioni', fn ($t) => $t->dropIndex('assemblee_verbali_versioni_parte_index'));
+    Schema::table('assemblee_verbali_parti', fn ($t) => $t->dropForeign(['verbale_id']));
+    Schema::table('assemblee_verbali_parti', fn ($t) => $t->dropUnique('assemblee_verbali_parti_unica'));
+    Schema::table('assemblee_verbali', fn ($t) => $t->dropForeign(['sostituisce_id']));
+    Schema::table('assemblee_verbali', fn ($t) => $t->dropUnique('assemblee_verbali_numero_unico'));
+    Schema::table('registro_nomine', fn ($t) => $t->dropForeign(['delibera_id']));
+    Schema::table('assemblee_registri_verbali', fn ($t) => $t->dropUnique('assemblee_registri_verbali_unico'));
+    expect($stato())->not->toBe($atteso);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('assemblee_verbali'))->toBeFalse()->and(Schema::hasTable('registro_nomine'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione del giorno incollato nel libro di carta si riesegue e mette la colonna una volta sola', function () {
+    $percorso = database_path('migrations/2026_11_20_110100_add_nel_libro_to_assemblee_sedute.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_20_110100_add_nel_libro_to_assemblee_sedute');
+    $migrazione = require $percorso;
+    expect(Schema::hasColumn('assemblee_sedute', 'nel_libro_il'))->toBeTrue();
+
+    $migrazione->down();
+    expect(Schema::hasColumn('assemblee_sedute', 'nel_libro_il'))->toBeFalse();
+    $migrazione->up();
+    $migrazione->up();
+    expect(Schema::hasColumn('assemblee_sedute', 'nel_libro_il'))->toBeTrue();
+});
+
+it('la migrazione delle cose da fare delle delibere interrotta dopo la tabella si riprende e mette gli indici e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite; la guardia delle chiavi legge `information_schema` lì, `PRAGMA foreign_key_list` qui).
+    $stato = fn () => [
+        'indici' => collect(Schema::getIndexes('delibere_cose_da_fare'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'delibere_cose_da_fare_'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('delibere_cose_da_fare'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' '
+            . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $percorso = database_path('migrations/2026_11_21_100000_create_delibere_cose_da_fare_table.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_21_100000_create_delibere_cose_da_fare_table');
+    $migrazione = require $percorso;
+    $atteso = $stato();
+    expect($atteso['indici'])->toBe(['delibere_cose_da_fare_condominio_stato_index', 'delibere_cose_da_fare_delibera_index', 'delibere_cose_da_fare_oggetto_index'])
+        ->and($atteso['chiavi'])->toContain('delibera_id>delibere restrict', 'condominio_id>condomini restrict', 'evento_id>eventi set null',
+            'documento_id>documenti set null', 'assegnato_a>users set null');
+
+    // Interrotta dopo la tabella: gli indici e le chiavi mancano.
+    Schema::table('delibere_cose_da_fare', fn ($t) => $t->dropForeign(['delibera_id']));
+    Schema::table('delibere_cose_da_fare', fn ($t) => $t->dropForeign(['evento_id']));
+    Schema::table('delibere_cose_da_fare', fn ($t) => $t->dropIndex('delibere_cose_da_fare_oggetto_index'));
+    expect($stato())->not->toBe($atteso);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('delibere_cose_da_fare'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione del seguito sulla delibera interrotta dopo la prima colonna si riprende e mette le altre e la chiave, una per nome', function () {
+    $percorso = database_path('migrations/2026_11_21_100100_add_seguito_to_delibere.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_21_100100_add_seguito_to_delibere');
+    $migrazione = require $percorso;
+    $chiavi = fn () => collect(Schema::getForeignKeys('delibere'))->filter(fn ($k) => $k['columns'] === ['seguito_confermato_da'])->count();
+    expect(Schema::hasColumns('delibere', ['seguito_confermato_il', 'seguito_confermato_da', 'dati']))->toBeTrue()->and($chiavi())->toBe(1);
+
+    // Interrotta dopo la prima colonna: le altre e la chiave mancano.
+    $migrazione->down();
+    Schema::table('delibere', fn ($t) => $t->dateTime('seguito_confermato_il')->nullable());
+    expect(Schema::hasColumn('delibere', 'dati'))->toBeFalse();
+
+    $migrazione->up();
+    $migrazione->up();
+    expect(Schema::hasColumns('delibere', ['seguito_confermato_il', 'seguito_confermato_da', 'dati']))->toBeTrue()->and($chiavi())->toBe(1);
+});
+
+it('la migrazione dei mezzi scelti per assemblea interrotta dopo la tabella si riprende e mette l\'indice unico e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite).
+    $stato = fn () => [
+        'indici' => collect(Schema::getIndexes('assemblee_mezzi_scelti'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'assemblee_mezzi_scelti_'))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('assemblee_mezzi_scelti'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $migrazione = require database_path('migrations/2026_11_21_140000_create_assemblee_mezzi_scelti_table.php');
+    $atteso = ['indici' => ['assemblee_mezzi_scelti_unico'], 'chiavi' => ['anagrafica_id>anagrafiche cascade', 'assemblea_id>assemblee cascade', 'created_by>users set null']];
+    expect($stato())->toBe($atteso);
+
+    Schema::table('assemblee_mezzi_scelti', function ($t) {
+        $t->dropForeign(['assemblea_id']);
+        $t->dropForeign(['created_by']);
+    });
+    Schema::table('assemblee_mezzi_scelti', fn ($t) => $t->dropUnique('assemblee_mezzi_scelti_unico'));
+    expect($stato())->toBe(['indici' => [], 'chiavi' => ['anagrafica_id>anagrafiche cascade']]);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('assemblee_mezzi_scelti'))->toBeFalse();
+    $migrazione->up();
     expect($stato())->toBe($atteso);
 });

@@ -33,6 +33,8 @@ const props = defineProps<{
   text?: string;
   value?: string;
   placeholder?: string;
+  /** Alto e scritto come le altre caselle dei filtri (32 pixel, scritta a 12): la pagina che lo chiede. Senza, resta com'era. */
+  compatto?: boolean;
 }>();
 
 // Provide default values for text and value props
@@ -94,7 +96,7 @@ watch(
   <div>
     <Popover v-model:open="open">
       <PopoverTrigger as-child>
-        <TagsInput>
+        <TagsInput data-testid="multi-select-campo" :class="compatto ? 'min-h-8 py-1 px-2.5 text-xs' : undefined">
           <TagsInputItem
             v-for="item in modelValue"
             :key="item"
@@ -107,6 +109,7 @@ watch(
             <TagsInputItemDelete />
           </TagsInputItem>
           <TagsInputInput
+            :class="compatto ? 'text-xs' : undefined"
             :placeholder="placeholder"
             v-if="!modelValue?.length"
           />

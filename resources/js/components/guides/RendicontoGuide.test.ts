@@ -48,6 +48,10 @@ const casi: Caso[] = [
             'Perché è cambiato lo sai tu: il programma non lo giudica.',
             'per persona il conguaglio e il saldo finale, approvati e di oggi: un incasso cambia il saldo finale, non il conguaglio.',
             'Una versione approvata, o sostituita, resta: è la delibera dell\'assemblea.',
+            // La convocazione (1.12.0-beta.13): per quale assemblea, la riga di stato, la versione partita con la convocazione.
+            '«Per quale assemblea»',
+            '«In assemblea il 15/12, punto 1 · convocazione spedita il 03/12»',
+            'Una versione allegata a una convocazione già partita non si elimina',
         ],
         sorgenti: [`${PAGINE}/Sintesi.vue`, 'resources/js/components/gestionale/movimenti/rendiconto/RendicontoPerLAssemblea.vue', SCHEDE,
             `${SERVIZI}/VersioniDelRendiconto.php`, `${SERVIZI}/ConfrontoDelRendiconto.php`, `${SERVIZI}/SintesiDelRendiconto.php`, `${SERVIZI}/ControlliDelRendiconto.php`],
@@ -162,6 +166,8 @@ const casi: Caso[] = [
             'il saldo che leggi sull\'estratto conto che ti manda la banca',
             'Il controllo della banca non ha un fatto suo: lo spieghi sotto il saldo della banca.',
             'È la spiegazione del controllo della banca: si scrive solo qui.',
+            // Con l'assemblea in preparazione che ha il punto del rendiconto, la stampa mette i suoi punti (1.12.0-beta.13).
+            'la stampa mette al loro posto i punti del suo ordine del giorno',
         ],
         sorgenti: [`${PAGINE}/NotaSintetica.vue`, 'resources/js/components/gestionale/movimenti/rendiconto/TestoDellaNota.vue', SCHEDE,
             `${SERVIZI}/NotaSinteticaDelRendiconto.php`, `${SERVIZI}/FattiDellaNota.php`, 'resources/js/pages/gestionale/movimenti/statoPatrimoniale/Show.vue',

@@ -54,6 +54,16 @@ return [
         'subtitle_none' => 'There is no restore in progress or just finished.',
         'go_to_login' => 'Go to login',
         'details_after_login' => 'The administrator sees the technical details of the restore (source backup, versions, any error) on this page, after signing in.',
+        // 1.12.0-beta.13 (decisione 546): le righe del registro delle modifiche nel ripristino.
+        'registry_heading' => 'Change log',
+        'registry_kept' => 'The entry written after the backup stays in the log, cancelled by the restore.|The :righe entries written after the backup stay in the log, cancelled by the restore.',
+        'registry_none_after' => 'No change log entry was written after the backup.',
+        'registry_all_back' => 'The backup had no change log: the earlier entry comes back, cancelled by the restore.|The backup had no change log: all :righe earlier entries come back, cancelled by the restore.',
+        'registry_obscured' => ':righe redaction re-applied.|:righe redactions re-applied.',
+        'registry_pdf' => 'The backup had no entries in common with the log: the :righe earlier entries are in the PDF «:nome», among the documents.',
+        'registry_error' => 'Not all the entries written after the backup were put back (:errore).',
+        'registry_error_pdf' => 'All the earlier entries are in the PDF «:nome», among the documents.',
+        'registry_error_file' => 'The file with the entries stays in the backups folder: :file.',
     ],
     'restore_recovery' => [
         'auth_failed' => 'Wrong password.',
@@ -254,6 +264,10 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
+        'assemblee_title' => 'Meetings',
+        'assemblee_description' => 'Postal days, proxies beyond one fifth, split vote of co-owners',
+        'registro_modifiche_title' => 'Change log',
+        'registro_modifiche_description' => 'Who changed what and when, in every building: filters, print with fingerprint, integrity check',
         'installazione_title' => 'This installation',
         'installazione_description' => 'Limits, storage and enabled functions of this installation',
         'general_settings_title' => 'General settings',
@@ -310,7 +324,7 @@ return [
         'mail_legend_log' => 'Email sending disabled — emails are written to the log file only.',
 
         'sendmail_guide_title' => 'Sendmail — dedicated servers only',
-        'sendmail_guide_description' => 'Use this option ONLY if your server is a VPS or dedicated server with Postfix/Exim installed and SPF and DKIM records configured in your sender domain DNS. On shared hosting (Altervista, etc.) emails will be rejected by recipients because modern providers (Gmail, Outlook) require DNS authentication. For shared hosting use Gmail SMTP.',
+        'sendmail_guide_description' => 'Use this option ONLY if your server is a VPS or dedicated server with Postfix/Exim installed and SPF and DKIM records configured in your sender domain DNS. On shared hosting such as Altervista, external mail servers are blocked: download the PDFs and send them from your own mail program.',
 
         'test_header' => 'Immediate send test',
         'test_success_title' => 'Connection successful',
@@ -320,7 +334,7 @@ return [
         'test_unsaved_warning' => 'You have unsaved changes. The test uses the values you see in the form but does not save them: to keep them, save the configuration.',
 
         'cron_guide_1_title' => 'The Invisible Engine',
-        'cron_guide_1_desc' => 'The daemon runs system maintenance in the background, with no manual intervention: it removes events that ended more than a year ago and expired cache, publishes scheduled communications, checks whether a new version is available and, where the shared-hosting option is turned on, also processes the job queue.',
+        'cron_guide_1_desc' => 'The daemon runs system maintenance in the background, with no manual intervention: it removes events that ended more than a year ago and expired cache, publishes scheduled communications, emails the reminder of assembly notices still to be sent, checks whether a new version is available and, where the shared-hosting option is turned on, also processes the job queue.',
         'cron_guide_2_title' => 'Webhook (External)',
         'cron_guide_2_desc' => 'Identified by the orange dot. It allows you to trigger the scheduler via an encrypted URL called by external services (e.g., cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Native)',
@@ -450,6 +464,7 @@ return [
         'funzione_pianificatore_esterno' => 'External scheduler',
         'funzione_backup' => 'Built-in backups',
         'funzione_archiviazione_esterna' => 'External storage',
+        'funzione_posta_dell_installazione' => 'Email is set up by whoever runs the installation',
         'si' => 'yes',
         'no' => 'no',
         'documenti' => 'Where documents live',

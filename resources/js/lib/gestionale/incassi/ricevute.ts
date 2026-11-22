@@ -16,10 +16,11 @@ export const SOGLIA_BOLLO_CENTS = 7747;
  * (`assolta`, `non_dovuta`, `da_assolvere`) e, per le due «Assolta», il modo in cui è assolta (`contrassegno` o `virtuale`).
  */
 export const SCELTE_BOLLO = [
-    { id: 'non_dovuta', stato: 'non_dovuta', modo: null, etichetta: 'Non dovuta' },
-    { id: 'da_assolvere', stato: 'da_assolvere', modo: null, etichetta: 'Da assolvere' },
-    { id: 'assolta_contrassegno', stato: 'assolta', modo: 'contrassegno', etichetta: 'Assolta: contrassegno' },
-    { id: 'assolta_virtuale', stato: 'assolta', modo: 'virtuale', etichetta: 'Assolta: virtuale' },
+    { id: 'non_dovuta', stato: 'non_dovuta', modo: null, etichetta: 'Non dovuta', corta: 'Non dovuta' },
+    { id: 'da_assolvere', stato: 'da_assolvere', modo: null, etichetta: 'Da assolvere', corta: 'Da assolvere' },
+    // `corta`: la parola della barra a quattro scelte delle finestre (il titolo «Imposta di bollo» dice già che è assolta).
+    { id: 'assolta_contrassegno', stato: 'assolta', modo: 'contrassegno', etichetta: 'Assolta: contrassegno', corta: 'Contrassegno' },
+    { id: 'assolta_virtuale', stato: 'assolta', modo: 'virtuale', etichetta: 'Assolta: virtuale', corta: 'Virtuale' },
 ] as const;
 
 export type StatoBollo = (typeof SCELTE_BOLLO)[number]['stato'];
@@ -249,6 +250,13 @@ export function euroTesto(centesimi: number): string {
     return '€ ' + new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(centesimi / 100);
 }
 
+/** La riga sopra il cassetto della tabella delle quote: quanto, su quante quote e di quanti piani, e che cosa resta. Le cifre in centesimi. */
+export function riassuntoDelleQuote(q: { quote: number; piani: number; imputato: number; resta: number }): string {
+    const su = `${euroTesto(q.imputato)} su ${q.quote === 1 ? '1 quota' : `${q.quote} quote`}${q.piani > 1 ? ` di ${q.piani} piani` : ''}`;
+
+    return q.resta > 0 ? `${su}. Restano ${euroTesto(q.resta)}.` : `${su}: ${q.quote === 1 ? 'pagata' : 'pagate'} per intero.`;
+}
+
 /** Quanto della ricevuta viene dal credito usato: non conta per la soglia del bollo. */
 export function testoSogliaCredito(creditoCentesimi: number): string | null {
     return creditoCentesimi > 0 ? `In questa ricevuta ${euroTesto(creditoCentesimi)} vengono dal credito: non contano per la soglia.` : null;
@@ -375,6 +383,26 @@ export function testoAnteprima(e: { persone: number; ricevute: number; indirizzi
     return `${conta(e.persone, 'persona', 'persone')}, ${conta(e.ricevute, 'ricevuta', 'ricevute')}, a ${conta(e.indirizzi, 'indirizzo', 'indirizzi')}`;
 }
 
+/** Il riepilogo fisso in fondo alla finestra dell'invio in blocco, in pezzi per il grassetto: «Partono **2 email** a **1 persona**, 1 ricevuta.» */
+export function pezziDelRiepilogo(e: { persone: number; ricevute: number; messaggi: number }): { verbo: string; email: string; persone: string; ricevute: string } {
+    return { verbo: e.messaggi === 1 ? 'Parte' : 'Partono', email: `${e.messaggi} email`, persone: conta(e.persone, 'persona', 'persone'),
+        ricevute: conta(e.ricevute, 'ricevuta', 'ricevute') };
+}
+
+/** Il riepilogo nel piede della finestra della ricevuta singola, in pezzi per il grassetto: prima il bollo, poi quante email partono. */
+export function riepilogoDellaRicevuta(r: { bollo: boolean; perEmail: boolean; email: number }): { prima: string; forte: string | null; dopo: string } {
+    if (!r.bollo) return { prima: 'Scegli l\'imposta di bollo per stamparla o mandarla.', forte: null, dopo: '' };
+    if (!r.perEmail) return { prima: 'La ricevuta è pronta da stampare.', forte: null, dopo: '' };
+    if (r.email === 0) return { prima: 'Nessun indirizzo scelto: la ricevuta si può stampare.', forte: null, dopo: '' };
+
+    return { prima: r.email === 1 ? 'Parte ' : 'Partono ', forte: `${r.email} email`, dopo: '.' };
+}
+
+/** Sul pulsante di un tipo d'indirizzo: quante persone raggiunge, spuntato o no. */
+export function testoPerTipo(n: number): string {
+    return n === 0 ? 'nessuno' : conta(n, 'persona', 'persone');
+}
+
 /** Il riepilogo dopo l'invio, per messaggio: solo le voci che ci sono. */
 export function testoRiepilogo(r: { inviate: number; in_coda: number; non_partite: number; senza_indirizzo: number }): string {
     const parti = [
@@ -456,6 +484,21 @@ export function testoRestantiRiprova(r: { tetto_messaggi: number | null; restant
     }
 
     return `Senza il servizio della coda si riprovano al massimo ${r.tetto_messaggi} invii per volta: ne restano ${r.restanti.messaggi}, premi di nuovo «Riprova le non partite».`;
+}
+
+/** Sotto le caselle degli indirizzi: quali tipi spuntare per raggiungere chi resta fuori, con quante persone per tipo. */
+export function testoDaSpuntare(altri: Record<string, number>): string | null {
+    const nomi: Record<string, string> = { email: 'la primaria', email_secondaria: 'la secondaria', pec: 'la PEC' };
+    const parti = Object.entries(nomi)
+        .filter(([tipo]) => (altri[tipo] ?? 0) > 0)
+        .map(([tipo, nome]) => `${nome} (${altri[tipo]} ${altri[tipo] === 1 ? 'persona' : 'persone'})`);
+
+    return parti.length === 0 ? null : `Per raggiungere chi resta fuori spunta anche: ${parti.join(', ')}.`;
+}
+
+/** Il pulsante che stampa per la posta le ricevute di chi resta senza un indirizzo fra quelli scelti. */
+export function testoStampaSenzaIndirizzo(ricevute: number): string {
+    return ricevute === 1 ? 'Stampa la ricevuta per la posta' : `Stampa le ${ricevute} ricevute per la posta`;
 }
 
 /** Chi resta senza un indirizzo fra quelli scelti ma ne ha uno di un altro tipo: per tipo, perché l'amministratore lo spunti. */

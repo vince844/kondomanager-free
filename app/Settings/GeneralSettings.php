@@ -6,9 +6,8 @@
 namespace App\Settings;
 
 use App\Enums\Role;
-use Spatie\LaravelSettings\Settings;
 
-class GeneralSettings extends Settings
+class GeneralSettings extends ImpostazioniDelRegistro
 {
     public bool $user_frontend_registration = false;
     public string $language = 'it';

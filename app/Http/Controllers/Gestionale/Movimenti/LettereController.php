@@ -27,7 +27,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Le lettere ai condòmini (promemoria, sollecito, diffida, messa in mora) dall'elenco delle rate scadute e dalla pagina dell'estratto conto:
- * le opzioni della finestra, l'anteprima, la stampa, il .zip per persona, l'invio per email, la prova a sé, «riprova» e «invia di nuovo»;
+ * le opzioni della finestra, l'anteprima, la stampa, il .zip per persona, l'invio per email, la prova a sé, «riprova» e «invia di nuovo»; l'invio per PEC
+ * dalla casella dello studio, «Manda di nuovo per PEC», le PEC non partite rimandate in blocco o stampate per la posta, e la ricevuta di consegna (o l'avviso
+ * di mancata consegna) trascinata sulla riga (decisioni 569, 577 e 588);
  * «Salva come modello» e «Aggiorna» del modello di partenza; la spedizione registrata a mano, una o in blocco; il PDF conservato e le prove.
  * Le rotte stanno nel gruppo del gestionale, dietro il pannello; le persone, le righe del registro, i modelli e i documenti della richiesta
  * devono essere di questo condominio (un modello anche per tutti), altrimenti 404 per tutta la richiesta.
@@ -87,6 +89,76 @@ class LettereController extends Controller
         }
 
         return $this->json(fn () => $this->lettere->invia($condominio, $request->all(), $request->user()));
+    }
+
+    /** «Manda le PEC»: dalla casella PEC dello studio, a chi ha il canale «PEC dello studio» o «PEC e carta». */
+    public function pec(Request $request, Condominio $condominio): JsonResponse
+    {
+        return $this->json(fn () => $this->lettere->mandaPerPec($condominio, $request->all(), $request->user()));
+    }
+
+    /** «Manda di nuovo per PEC, con le cifre di oggi»: una lettera per PEC non partita. */
+    public function pecDiNuovo(Request $request, Condominio $condominio, string|int $invio): JsonResponse
+    {
+        $riga = $this->assicuraInvio($condominio, $invio);
+
+        return $this->json(fn () => $this->lettere->mandaDiNuovoPerPec($condominio, $riga, $request->user()));
+    }
+
+    /**
+     * La ricevuta di consegna trascinata sulla riga di una lettera partita per PEC (decisione 577): il programma ne legge il giorno e l'ora e la archivia. Se
+     * il file non si legge (un PDF, un `.eml` senza i dati del gestore), la pagina propone il giorno e l'ora dell'invio da confermare o correggere, e con
+     * `giorno` (e `ora`) la consegna si scrive a mano con il file come prova (decisione 588, L3). Solo un `.eml`, un PDF, un'immagine o un `.p7m`, fino a 10 MB.
+     */
+    public function ricevuta(Request $request, Condominio $condominio, string|int $invio): RedirectResponse
+    {
+        $riga = $this->assicuraInvio($condominio, $invio);
+        $request->validate([
+            'ricevuta' => ['required', 'file', 'extensions:' . implode(',', RegistroLettere::ESTENSIONI_PROVA), 'max:' . LimiteCaricamento::regolaMax(RegistroLettere::MB_PROVA),
+                \App\Support\FileComeIlNome::regola()],
+            'giorno' => ['nullable', 'string', 'max:10'],
+            'ora' => ['nullable', 'string', 'max:5'],
+            'perche' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'ricevuta.required' => 'Scegli la ricevuta.',
+            'ricevuta.extensions' => 'La ricevuta di consegna è il file .eml che salvi dalla casella PEC; se il gestore te la dà in PDF, va bene anche quello.',
+        ]);
+        try {
+            $esito = $this->registro->registraLaRicevuta($riga, $request->file('ricevuta'), $request->user(), $request->input('perche'), $request->input('giorno'),
+                $request->input('ora'));
+        } catch (LetteraNonEmettibileException $e) {
+            return back()->withErrors(['ricevuta' => $e->getMessage()]);
+        }
+
+        // L'avviso di mancata consegna: la frase dice che la lettera non è consegnata e che cosa fare.
+        return back()->with($this->flashSuccess($esito->esito === RegistroInvio::ESITO_NON_CONSEGNATA ? \App\Services\Posta\ConsegnaDellaPec::fraseDellaMancataConsegna($esito)
+            : \App\Services\Posta\ConsegnaDellaPec::frase($esito)));
+    }
+
+    /** «Rimanda le PEC non partite»: in blocco, con le cifre di oggi, dalla casella dello studio. */
+    public function pecNonPartite(Request $request, Condominio $condominio): JsonResponse
+    {
+        return $this->json(fn () => $this->lettere->rimandaLePec($condominio, $request->user()));
+    }
+
+    /**
+     * «Stampale per la posta»: le lettere per PEC non partite o non consegnate (tutte, o quelle di `invii` dalla corrispondenza) rifatte con le cifre di oggi
+     * in un PDF, con le righe per «Registra la spedizione». Gli errori tornano come testo, perché la risposta si apre in una scheda del browser.
+     */
+    public function stampaPecNonPartite(Request $request, Condominio $condominio): Response
+    {
+        $invii = $request->has('invii') ? array_values(array_filter((array) $request->input('invii'), 'is_numeric')) : null;
+        try {
+            $esito = $this->lettere->stampaLePec($condominio, $invii, $request->user());
+        } catch (LetteraNonEmettibileException $e) {
+            return response('Lettere non stampate. ' . $e->getMessage(), 422)->header('Content-Type', 'text/plain; charset=UTF-8');
+        }
+
+        return response($esito['pdf'])
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="' . $esito['nome'] . '"')
+            ->header('X-Lettere-Saltate', (string) $esito['saltate'])
+            ->header('X-Lettere-Invii', self::invii($esito['invii']));
     }
 
     public function prova(Request $request, Condominio $condominio): JsonResponse

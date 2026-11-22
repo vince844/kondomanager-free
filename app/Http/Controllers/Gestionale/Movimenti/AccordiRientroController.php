@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Helpers\DateHelper;
 use App\Helpers\MoneyHelper;
+use App\Http\Controllers\Assemblee\DeliberaNelleSchede;
 use App\Http\Controllers\Controller;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
@@ -25,7 +26,9 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * L'accordo di rientro di una persona, dalla riga dell'elenco «Rate scadute» e dal suo estratto conto: gli accordi che ha e le rate che un accordo
+ * L'accordo di rientro di una persona, dalla riga dell'elenco «Rate scadute» e dal suo estratto conto (dalla 1.12.0-beta.13 l'autorizzazione dell'assemblea
+ * viene dalla delibera scelta con «Scegli la delibera», `delibera_id` del condominio della rotta, ruolo `autorizzazione`: la data e il verbale della riunione
+ * nelle colonne di oggi, che le letture continuano a usare): gli accordi che ha e le rate che un accordo
  * può coprire a una data; la registrazione con il calendario e la regola di decadenza; l'autorizzazione dell'assemblea arrivata dopo; la scelta sulla
  * parte della rata fuori dall'accordo, cambiata dopo; la chiusura;
  * la decadenza registrata dall'amministratore; la scansione firmata. Un accordo alla volta: è un atto con una persona. Non si cancella: si chiude.
@@ -68,6 +71,8 @@ class AccordiRientroController extends Controller
 
         return response()->json([
             'persona'  => ['id' => (int) $persona->id, 'nome' => (string) $persona->nome],
+            // Il nome del condominio, per le frasi di «Scegli la delibera» nella finestra.
+            'condominio' => (string) $condominio->nome,
             'data'     => $data,
             'oggi'     => $oggi,
             // La regola di decadenza dell'ultimo accordo del condominio: la finestra la propone, l'amministratore la cambia.
@@ -76,6 +81,7 @@ class AccordiRientroController extends Controller
             'accordi'  => $tutti->map(fn (AccordoRientro $a) => $segni[$a->id] + [
                 'in_corso'  => $a->inCorsoIl($oggi),
                 'documento' => $a->documenti->first()?->name,
+                'delibera' => DeliberaNelleSchede::perLaPagina($a, 'autorizzazione'),
                 'rate'      => $a->rate->map(fn ($r) => ['rata_id' => (int) $r->rata_id, 'immobile_id' => $r->immobile_id, 'riconosciuto' => (int) $r->importo_riconosciuto]
                     + $nomi(['rata_id' => $r->rata_id, 'immobile_id' => $r->immobile_id]))->values()->all(),
             ])->values()->all(),
@@ -85,6 +91,12 @@ class AccordiRientroController extends Controller
     public function store(Request $request, Condominio $condominio): JsonResponse
     {
         $oggi = DateHelper::oggiUtente();
+        // L'autorizzazione dalla delibera scelta: il giorno della riunione e il suo verbale entrano nelle colonne di oggi (R1).
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        if ($delibera !== null) {
+            $request->merge(['autorizzato_assemblea' => '1', 'data_autorizzazione' => DeliberaNelleSchede::giorno($delibera),
+                'verbale_autorizzazione' => DeliberaNelleSchede::numeroDelVerbale($delibera)]);
+        }
         $dati = $request->validate([
             'anagrafica_id' => ['required', 'integer'],
             'data_accordo' => ['required', 'date_format:Y-m-d', 'before_or_equal:' . $oggi],
@@ -176,7 +188,7 @@ class AccordiRientroController extends Controller
         $autorizzato = filter_var($dati['autorizzato_assemblea'], FILTER_VALIDATE_BOOLEAN);
         $percorso = null;
         try {
-            $accordo = DB::transaction(function () use ($condominio, $persona, $dati, $autorizzato, $coperte, $calendario, $request, &$percorso) {
+            $accordo = DB::transaction(function () use ($condominio, $persona, $dati, $autorizzato, $coperte, $calendario, $request, $delibera, &$percorso) {
                 $accordo = AccordoRientro::create([
                     'condominio_id' => $condominio->id,
                     'anagrafica_id' => $persona->id,
@@ -192,6 +204,7 @@ class AccordiRientroController extends Controller
                     'registrato_da' => $request->user()?->id,
                 ]);
                 $accordo->rate()->createMany(array_values($coperte));
+                DeliberaNelleSchede::collega($accordo, 'autorizzazione', $delibera, $request->user());
                 if ($calendario !== null) {
                     $accordo->scadenze()->createMany($calendario);
                 }
@@ -227,6 +240,10 @@ class AccordiRientroController extends Controller
     public function autorizza(Request $request, Condominio $condominio, string|int $accordo): JsonResponse
     {
         $a = $this->assicuraAccordo($condominio, $accordo);
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        if ($delibera !== null) {
+            $request->merge(['data_autorizzazione' => DeliberaNelleSchede::giorno($delibera), 'verbale_autorizzazione' => DeliberaNelleSchede::numeroDelVerbale($delibera)]);
+        }
         $dati = $request->validate([
             'data_autorizzazione' => ['required', 'date_format:Y-m-d', 'before_or_equal:' . DateHelper::oggiUtente()],
             'verbale_autorizzazione' => ['nullable', 'string', 'max:50'],
@@ -234,10 +251,9 @@ class AccordiRientroController extends Controller
             'data_autorizzazione.required' => 'Scrivi la data della delibera che autorizza l\'accordo.',
             'data_autorizzazione.before_or_equal' => 'La data della delibera non può essere dopo oggi.',
         ]);
-        if ($a->autorizzato_assemblea) {
-            throw ValidationException::withMessages(['data_autorizzazione' => 'Questo accordo è già autorizzato dall\'assemblea.']);
-        }
-        $a->update(['autorizzato_assemblea' => true, 'data_autorizzazione' => $dati['data_autorizzazione'], 'verbale_autorizzazione' => $dati['verbale_autorizzazione'] ?? null]);
+        // Il servizio che chiama anche il seguito delle delibere: l'accordo già autorizzato non si tocca, il collegamento nella stessa transazione.
+        \App\Services\Gestionale\AutorizzazioneDellAccordo::autorizza($a, $dati['data_autorizzazione'], $dati['verbale_autorizzazione'] ?? null, $delibera,
+            $request->user());
 
         return response()->json(['messaggio' => 'Autorizzazione dell\'assemblea registrata.']);
     }

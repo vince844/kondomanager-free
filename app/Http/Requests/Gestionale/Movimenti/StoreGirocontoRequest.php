@@ -64,6 +64,9 @@ class StoreGirocontoRequest extends FormRequest
             // "Registra e nuovo": dopo il salvataggio si torna al modulo vuoto
             // invece che al dettaglio della scrittura.
             'crea_altro' => ['nullable', 'boolean'],
+
+            // La delibera accanto alla causale, facoltativa («Scegli la delibera»): il controller la cerca nel condominio e la lega alla scrittura.
+            'delibera_id' => ['nullable', 'integer'],
         ];
     }
 

@@ -8,9 +8,12 @@ namespace App\Models\Gestionale;
 use App\Models\Tabella;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\ContaNelGesto;
 
 class ContoTabellaMillesimale extends Model
 {
+    use ContaNelGesto;
+
     use HasFactory;
 
     protected $table = 'conto_tabella_millesimale';

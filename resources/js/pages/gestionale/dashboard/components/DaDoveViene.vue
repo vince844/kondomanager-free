@@ -60,10 +60,13 @@ const futuri = computed(() => testoFuturi(props.disponibile.futuri));
                 class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3">
                 <div class="min-w-0">
                     <p class="leading-snug">{{ nomeDellaRiga(r) }}</p>
-                    <Badge v-if="r.etichetta" variant="outline" :class="classeBadge(r.etichetta.tono)" data-testid="tipo-fondo" class="mt-0.5">
-                        <component :is="r.si_puo_usare ? LockOpen : Lock" class="w-3 h-3 shrink-0" />{{ r.etichetta.testo }}
-                    </Badge>
-                    <Link v-if="movimenti(r)" :href="movimenti(r)!" class="block text-xs font-medium text-primary hover:underline">Vedi i movimenti →</Link>
+                    <!-- Il tipo del fondo e «Vedi i movimenti» sulla stessa riga, sotto il nome: prima il badge andava su due righe e il collegamento su una sua. -->
+                    <div v-if="r.etichetta || movimenti(r)" class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="tipo-e-movimenti">
+                        <Badge v-if="r.etichetta" variant="outline" :class="classeBadge(r.etichetta.tono)" data-testid="tipo-fondo">
+                            <component :is="r.si_puo_usare ? LockOpen : Lock" class="w-3 h-3 shrink-0" />{{ r.etichetta.testo }}
+                        </Badge>
+                        <Link v-if="movimenti(r)" :href="movimenti(r)!" class="text-xs font-medium text-primary hover:underline">Vedi i movimenti →</Link>
+                    </div>
                 </div>
                 <span class="text-right tabular-nums whitespace-nowrap" :class="(r.saldo ?? 0) < 0 ? 'text-red-600 dark:text-red-400' : (r.saldo ?? 0) === 0 ? 'text-slate-400' : ''">
                     {{ euroSegno(r.saldo ?? 0) }}
@@ -80,7 +83,7 @@ const futuri = computed(() => testoFuturi(props.disponibile.futuri));
         <ul v-if="disponibile.tolte.length" class="space-y-1">
             <li v-for="t in disponibile.tolte" :key="t.cassa_id ?? t.voce" data-testid="riga-tolta"
                 class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 text-rose-700 dark:text-rose-300">
-                <span class="min-w-0">{{ t.voce }} <span class="text-xs text-slate-500 dark:text-slate-400">vincolato, non disponibile</span></span>
+                <span class="min-w-0">{{ t.voce }} <span class="block text-xs text-slate-500 dark:text-slate-400" data-testid="nota-tolta">vincolato, non disponibile</span></span>
                 <span class="text-right tabular-nums whitespace-nowrap">{{ euroSegno(-t.saldo) }}</span>
             </li>
         </ul>

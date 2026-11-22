@@ -10,6 +10,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Pivot;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * La riga di `anagrafica_immobile`: chi è titolare di un'unità, con quale ruolo, da quando a quando.
@@ -43,6 +44,8 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
  */
 class TitolaritaImmobile extends Pivot
 {
+    use RegistraLeModifiche;
+
     protected $table = 'anagrafica_immobile';
 
     public $incrementing = true;

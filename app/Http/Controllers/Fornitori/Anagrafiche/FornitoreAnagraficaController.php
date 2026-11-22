@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Fornitori\Anagrafiche;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\RuoloRappresentanteFornitore;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\Anagrafica\CreateFornitoreAnagraficaRequest;
@@ -101,9 +102,9 @@ class FornitoreAnagraficaController extends Controller
 
         try {
             
-            $fornitore->referenti()->attach($data['anagrafica_id'], [
+            RegistroModifiche::legame($fornitore, 'referenti', 'Rappresentanti', fn () => $fornitore->referenti()->attach($data['anagrafica_id'], [
                 'ruolo' => $data['ruolo']
-            ]);
+            ]));
 
             return to_route('admin.fornitori.anagrafiche.index', [
                 'fornitore' => $fornitore->id,
@@ -139,7 +140,7 @@ class FornitoreAnagraficaController extends Controller
 
         try {
 
-            $fornitore->referenti()->detach($anagrafica->id);
+            RegistroModifiche::legame($fornitore, 'referenti', 'Rappresentanti', fn () => $fornitore->referenti()->detach($anagrafica->id));
 
             return to_route('admin.fornitori.anagrafiche.index', [
                 'fornitore' => $fornitore->id,

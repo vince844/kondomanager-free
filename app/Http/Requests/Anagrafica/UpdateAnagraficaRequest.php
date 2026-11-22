@@ -53,6 +53,10 @@ class UpdateAnagraficaRequest extends FormRequest
             'scadenza_documento'  => $this->scadenzaDocumentoCambiata() ? 'nullable|date|after:today' : 'nullable|date',
             'data_nascita'        => 'nullable|date|before:today',
             'note'                => 'nullable|string',
+            // Come si convoca alle assemblee (art. 66 c. 3 disp. att.): vuoto, il programma lo propone dai dati; l'email semplice non è un mezzo. E il giorno in
+            // cui la persona ha comunicato la sua PEC.
+            'mezzo_convocazione'  => ['nullable', Rule::in(\App\Enums\Assemblee\MezzoConvocazione::valori())],
+            'pec_comunicata_il'   => ['nullable', 'date_format:Y-m-d', 'before_or_equal:' . \App\Helpers\DateHelper::oggiUtente()],
             'condomini'           => ['nullable', 'array', Rule::exists('condomini', 'id')]
         ];
     }
@@ -96,6 +100,8 @@ class UpdateAnagraficaRequest extends FormRequest
     public function messages()
     {
         return [
+            'mezzo_convocazione.in'            => 'Come si convoca: PEC, raccomandata, a mano o fax.',
+            'pec_comunicata_il.before_or_equal' => 'Il giorno in cui ha comunicato la PEC non può essere dopo oggi.',
             'scadenza_documento.after' => __('validation.custom.anagrafica.after:today'),
             'data_nascita.before'      => __('validation.custom.anagrafica.before:today'),
             'codice_fiscale.unique'    => __('validation.custom.anagrafica.codice_fiscale.unique')

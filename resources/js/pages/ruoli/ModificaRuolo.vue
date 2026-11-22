@@ -5,6 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 
+import StoriaDellaScheda from '@/components/registroModifiche/StoriaDellaScheda.vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { watch, onMounted, computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -147,6 +148,8 @@ const handleRevokeAdminPermission = () => {
     <Head title="Modifica ruolo" />
 
     <UtentiLayout>
+      <!-- La «Storia» del ruolo (1.12.0-beta.13, §8): i permessi cambiati; la pagina non ha l'intestazione comune. Solo l'amministratore la apre (P18). -->
+      <div class="mb-4 flex justify-end"><StoriaDellaScheda tipo="ruolo" :id="props.role.id" /></div>
       <form @submit.prevent="submit">
         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
           <div class="sm:col-span-3">

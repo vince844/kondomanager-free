@@ -42,6 +42,13 @@ import {
   type PresetCompetenza, type Tratto,
 } from '@/lib/gestionale/pianiRate/competenzaCapitolo';
 import type { BreadcrumbItem } from '@/types';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import LaDeliberaOLUrgenza from '@/components/gestionale/pianiRate/LaDeliberaOLUrgenza.vue';
+import { campiDellUrgenza } from '@/lib/gestionale/pianiRate/urgenza';
+import { oggiLocale } from '@/lib/giorno';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import { nomeDelPianoPreparato } from '@/lib/assemblee/pianoStraordinario';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 
 interface Capitolo {
   id: number;
@@ -111,9 +118,16 @@ const props = defineProps<{
   }
   hasPianoEsistente?: boolean
   anagraficheDisponibili: { id: number, nome: string }[]
+  /** «Crea il piano straordinario» dal seguito delle delibere: la delibera già scelta, risolta dal server nel condominio (decisione 622 (1)). */
+  deliberaProposta?: DeliberaDelMenu | null
+  /** «Metti a rate questa spesa» dalla fattura: «Torna alla fattura» invece di «Torna all'elenco» (il server dice dove). */
+  ritorno?: { url: string; testo: string } | null
 }>()
 
-const { generateRoute, generatePath } = usePermission()
+const permessi = usePermission()
+const { generateRoute, generatePath } = permessi
+// Con «Gestisce le assemblee» la data viene dalla delibera scelta; senza, si scrive a mano come prima (il server la accetta).
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi))
 
 // --- BREADCRUMBS & GUIDES ---
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
@@ -232,8 +246,12 @@ const form = useForm({
   fatture_config: [] as any[], 
   tipo_autorizzazione: '',
   motivazione_autorizzazione: '',
-  // B2 (decisione 12): la data della delibera nasce con il piano, senza default.
+  // B2 (decisione 12): la data della delibera nasce con il piano, senza default. Dalla 1.12, a chi gestisce le assemblee la pagina la manda con la delibera
+  // scelta («Scegli la delibera»): «Deliberata il» viene dalla riunione. Chi non le gestisce la scrive a mano, come prima.
   data_delibera_assemblea: '' as string,
+  delibera_id: null as number | null,
+  // Coda 688: «Lavori ordinati il …», con «Urgenza» su una gestione straordinaria, sulle due schede. Di serie oggi; si cambia.
+  giorno_dei_lavori: oggiLocale() as string | null,
   accetta_scoperti: false as boolean,
   nota_scoperti: '' as string,
   accetta_destinatari: false as boolean,
@@ -250,19 +268,21 @@ const form = useForm({
 /**
  * La natura della gestione scelta decide se la delibera è obbligatoria (decisione 11: `gestioni.tipo`, non il
  * tipo del piano): su una gestione straordinaria il giorno della delibera è la competenza di tutto il piano e
- * il motore senza si ferma; con «Urgenza» la competenza va invece dichiarata sulla fattura.
+ * il motore senza si ferma; con «Urgenza» decide il giorno dei lavori, o il periodo dichiarato sulla fattura.
  */
 const gestioneScelta = computed(() => props.gestioni?.find(g => g.id === form.gestione_id) as any);
 const gestioneStraordinaria = computed(() => gestioneScelta.value?.tipo === 'straordinaria');
 const deliberaObbligatoria = computed(() => gestioneStraordinaria.value && form.tipo_autorizzazione !== 'urgenza');
 const mostraDataDelibera = computed(() => gestioneStraordinaria.value || form.tipo === 'straordinario');
 
-// Le fatture nel carrello senza competenza dichiarata: con «Urgenza» il riparto si ferma su ciascuna (verifica S6, R5).
+// Le fatture nel carrello senza competenza dichiarata: con «Urgenza» prendono il giorno dei lavori del piano (Coda 688; prima il riparto si fermava).
+// Il riquadro «La delibera, o l'urgenza» dice quante sono.
 // Le pregresse a parte: non si dichiarano sulla fattura, si stornano e si registrano di nuovo (R20 della Fase 1-bis).
 const scelteSenzaCompetenza = computed(() => senzaCompetenzaScelte(fattureStraordinarie.value));
 
 // Che cosa dice il carrello sotto ogni fattura: dipende dalla gestione e dall'autorizzazione (R3 della Fase 1-bis).
-const contestoCarrello = computed(() => ({ gestioneStraordinaria: !!gestioneStraordinaria.value, urgenza: form.tipo_autorizzazione === 'urgenza' }));
+const contestoCarrello = computed(() => ({ gestioneStraordinaria: !!gestioneStraordinaria.value, urgenza: form.tipo_autorizzazione === 'urgenza',
+  giornoDeiLavori: gestioneStraordinaria.value && form.tipo_autorizzazione === 'urgenza' ? form.giorno_dei_lavori : null }));
 const avvisoDi = (fat: any) => avvisoFatturaNelCarrello(fat, contestoCarrello.value);
 
 // Il messaggio del server — una generazione fermata («Urgenza» con una pregressa senza periodo), una gestione senza piano
@@ -274,13 +294,15 @@ const flashMessage = computed(() => usePage<{ flash: { message?: Flash } }>().pr
 // Coda 686 (b): anche gli errori dei campi che la pagina non mostra accanto al campo (il giorno del mese, la ricorrenza, i saldi, …) e quelli di un campo
 // oggi nascosto (lo scudo legale a carrello vuoto, la data con «Urgenza») stanno qui: «Salva» non resta mai muto. I messaggi sono in parole semplici
 // (`ParoleDelPiano`), quindi si leggono così come arrivano.
-const scudoVisibile = computed(() => form.tipo === 'straordinario' && fattureStraordinarie.value.length > 0);
+const scudoVisibile = computed(() => form.tipo === 'straordinario' && fattureStraordinarie.value.length > 0 && !gestioneStraordinaria.value);
 const dataDeliberaVisibile = computed(() => mostraDataDelibera.value && !(form.tipo_autorizzazione === 'urgenza' && gestioneStraordinaria.value));
 const haUnPostoAccanto = (campo: string): boolean => {
   if (['nome', 'gestione_id', 'numero_rate', 'data_prima_scadenza'].includes(campo)) return true;
   if (campo === 'metodo_distribuzione') return mostraDistribuzioneSaldo.value;
-  if (campo === 'data_delibera_assemblea') return dataDeliberaVisibile.value;
-  if (campo === 'tipo_autorizzazione' || campo === 'motivazione_autorizzazione') return scudoVisibile.value;
+  if (campo === 'data_delibera_assemblea' || campo === 'delibera_id') return dataDeliberaVisibile.value;
+  if (campo === 'tipo_autorizzazione' || campo === 'motivazione_autorizzazione') return scudoVisibile.value || gestioneStraordinaria.value;
+  // Coda 688: il giorno dei lavori urgenti ha il suo posto nel riquadro «La delibera, o l'urgenza», sulle due schede.
+  if (campo === 'giorno_dei_lavori') return gestioneStraordinaria.value && form.tipo_autorizzazione === 'urgenza';
   // La competenza di una voce ha il suo errore sotto la riga della voce; i suoi tratti no.
   if (/^competenze_capitoli\.\d+$/.test(campo)) return form.tipo === 'ordinario';
   // La presa d'atto ha la sua finestra.
@@ -291,11 +313,59 @@ const erroriCarrello = computed(() => Object.entries(form.errors as Record<strin
   .map(([, messaggio]) => messaggio)
   .filter((messaggio, i, tutti) => tutti.indexOf(messaggio) === i));
 
+// Coda 688: sulla gestione straordinaria la scelta fra la delibera e l'urgenza è una sola, nel riquadro «La delibera, o l'urgenza», uguale sulle due schede;
+// di serie la delibera. Sulla gestione ordinaria resta lo «Scudo Legale» delle fatture fuori preventivo, com'era.
+watch(gestioneStraordinaria, (straordinaria) => {
+  if (straordinaria && form.tipo_autorizzazione === '') form.tipo_autorizzazione = 'delibera';
+}, { immediate: true });
+const schedaDelPiano = computed<'voci' | 'fatture'>(() => form.tipo === 'straordinario' ? 'fatture' : 'voci');
+
 // Con «Urgenza» il campo della delibera sparisce: il valore battuto prima non deve restare nel form e viaggiare
 // nascosto (verifica S6, R2). Il server non lo scriverebbe comunque; qui si dice la verità a video.
 watch(() => form.tipo_autorizzazione, (v) => {
-  if (v === 'urgenza') form.data_delibera_assemblea = '';
+  if (v === 'urgenza') {
+    form.data_delibera_assemblea = '';
+    delibera.value = null;
+  }
 });
+
+/**
+ * «Scegli la delibera» al posto della data scritta a mano (scene 1 e 3 della bozza approvata con la decisione 502): la delibera scelta dà «Deliberata il»
+ * (il giorno della riunione) e il numero del verbale; la motivazione diventa una nota facoltativa. Niente si collega finché il piano non si salva.
+ * La proposta cerca le delibere che parlano della gestione scelta.
+ */
+const delibera = ref<DeliberaDelMenu | null>(null);
+watch(delibera, (d) => {
+  form.delibera_id = d?.id ?? null;
+  form.data_delibera_assemblea = d?.deliberata_il ?? '';
+  form.clearErrors('data_delibera_assemblea');
+});
+// La delibera arrivata con l'indirizzo («Crea il piano straordinario», il piano di ripianamento) si sceglie con la prima gestione: quella dell'indirizzo,
+// o la prima scelta a mano. Cambiando gestione dopo, la delibera si toglie come sempre.
+let deliberaDallIndirizzo: DeliberaDelMenu | null = props.deliberaProposta ?? null;
+watch(() => form.gestione_id, () => {
+  if (deliberaDallIndirizzo !== null && form.gestione_id) {
+    delibera.value = deliberaDallIndirizzo;
+    // Il piano preparato dalla delibera si apre con il nome già scritto: quello della gestione, che porta il nome del punto e l'anno.
+    form.nome = nomeDelPianoPreparato(form.nome, gestioneScelta.value?.nome);
+    deliberaDallIndirizzo = null;
+    return;
+  }
+  delibera.value = null;
+});
+/** «Preparato dalla delibera del 15/12/2026, punto 4»: finché la delibera scelta è quella arrivata con l'indirizzo. */
+const preparatoDallaDelibera = computed(() => {
+  const d = props.deliberaProposta;
+  if (!d || delibera.value?.id !== d.id) return null;
+  const giorno = d.deliberata_il ? d.deliberata_il.split('-').reverse().join('/') : null;
+  return `Preparato dalla delibera${giorno ? ` del ${giorno}` : ''}${d.punto ? `, punto ${d.punto.numero}` : ''}. Niente è salvato finché non premi «Salva il piano».`;
+});
+const giornoDellaDelibera = computed(() => delibera.value?.deliberata_il ? delibera.value.deliberata_il.split('-').reverse().join('/') : null);
+const vuotoDellaDelibera = computed(() => gestioneScelta.value
+  ? `Nessuna assemblea di ${props.condominio.nome} ha deliberato sulla gestione «${gestioneScelta.value.nome}»`
+  : `Nessuna assemblea di ${props.condominio.nome} ha deliberato su questa gestione`);
+const etichettaMotivazione = computed(() => form.tipo_autorizzazione === 'urgenza' ? 'Il motivo dell\'urgenza'
+  : form.tipo_autorizzazione === 'delibera' ? (conLaDelibera.value ? 'Una nota (facoltativa)' : 'Motivazione / Estremi Verbale') : 'Motivazione o nota');
 
 const partenzaSuggerita = computed<string | null>(() => {
   const gestione = props.gestioni?.find(g => g.id === form.gestione_id);
@@ -816,8 +886,8 @@ const submit = () => {
     .filter(s => s.tipo === 'solidale' && s.ripartizione_mode === 'manuale')
     .map(s => ({ saldo_id: s.id, ripartizioni: s.ripartizioni_custom }));
 
-  // 4. Invio
-  form.post(route(...generateRoute(
+  // 4. Invio. Coda 688: il giorno dei lavori viaggia solo con «Urgenza», sulle due schede (il campo resta com'è, per un secondo invio).
+  form.transform((dati) => ({ ...dati, ...campiDellUrgenza(form.tipo_autorizzazione, schedaDelPiano.value, form.giorno_dei_lavori ?? '') })).post(route(...generateRoute(
     'gestionale.esercizi.piani-rate.store',
     { condominio: props.condominio.id, esercizio: props.esercizio.id }
   )), {
@@ -842,8 +912,8 @@ const submit = () => {
         :page-subtitle="`Generazione scadenze per l'esercizio: ${props.esercizio.nome}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
-        :back-url="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
-        back-text="Torna all'elenco"
+        :back-url="props.ritorno?.url ?? generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+        :back-text="props.ritorno?.testo ?? 'Torna all\'elenco'"
       >
         <template #actions>
           <!--
@@ -860,6 +930,10 @@ const submit = () => {
       <PianoRateGuide v-model:open="mostraGuida" />
 
       <form id="pianoRateForm" @submit.prevent="submit" class="space-y-6">
+
+        <!-- «Crea il piano straordinario» (decisione 622 (1)): la gestione, la voce e la delibera sono già scelte; il piano nasce solo con «Salva il piano». -->
+        <p v-if="preparatoDallaDelibera" class="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+          data-testid="preparato-dalla-delibera">{{ preparatoDallaDelibera }}</p>
 
         <div v-if="showBannerPreselezione" class="bg-amber-100 border border-amber-300 text-amber-900 p-4 rounded-xl shadow-sm flex items-start gap-4">
           <div class="w-10 h-10 bg-amber-200 text-amber-700 rounded-full flex items-center justify-center shrink-0 mt-0.5">
@@ -1553,7 +1627,7 @@ const submit = () => {
               I valori già scritti non vengono azzerati: cambiando di nuovo gestione il
               riquadro riappare con dentro quello che l'amministratore aveva battuto.
             -->
-            <div v-if="fattureStraordinarie.length > 0" class="bg-white dark:bg-slate-950 border border-amber-200 dark:border-amber-800 rounded-xl p-5 space-y-4">
+            <div v-if="fattureStraordinarie.length > 0 && !gestioneStraordinaria" class="bg-white dark:bg-slate-950 border border-amber-200 dark:border-amber-800 rounded-xl p-5 space-y-4">
               <h4 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Info class="w-4 h-4 text-amber-500" /> Scudo Legale (Obbligatorio)
               </h4>
@@ -1572,10 +1646,12 @@ const submit = () => {
                   />
                   <InputError :message="form.errors.tipo_autorizzazione" />
                 </div>
+                <!-- Con «Delibera assembleare» la delibera si sceglie qui sotto e questa diventa una nota facoltativa; con «Urgenza» è il motivo, obbligatorio. -->
                 <div class="space-y-2">
-                  <Label for="motivazione_autorizzazione">Motivazione / Estremi Verbale</Label>
-                  <Input id="motivazione_autorizzazione" v-model="form.motivazione_autorizzazione" placeholder="Es. Verbale del 12/03/2026..." class="bg-white dark:bg-slate-950"
-                    v-on:focus="form.clearErrors('motivazione_autorizzazione')" />
+                  <Label for="motivazione_autorizzazione">{{ etichettaMotivazione }}</Label>
+                  <Input id="motivazione_autorizzazione" v-model="form.motivazione_autorizzazione"
+                    :placeholder="form.tipo_autorizzazione === 'urgenza' ? 'Per esempio: perdita dalla colonna dell\'acqua, riparata subito' : 'Per esempio: impresa Edil Verdi, preventivo del 02/10'"
+                    class="bg-white dark:bg-slate-950" v-on:focus="form.clearErrors('motivazione_autorizzazione')" />
                   <InputError :message="form.errors.motivazione_autorizzazione" />
                 </div>
               </div>
@@ -1585,9 +1661,44 @@ const submit = () => {
           </CardContent>
         </Card>
 
+        <!-- Coda 688: sulla gestione straordinaria «La delibera, o l'urgenza», una scelta sola, uguale sulle due schede. Con la delibera, «Scegli la delibera»
+             (o la data scritta a mano, senza «Gestisce le assemblee»); con l'urgenza il motivo e il giorno dei lavori, sulle due schede. -->
+        <LaDeliberaOLUrgenza v-if="gestioneStraordinaria" v-model:tipo="form.tipo_autorizzazione" v-model:motivo="form.motivazione_autorizzazione"
+          :giorno="form.giorno_dei_lavori ?? ''" :scheda="schedaDelPiano" :condominio-nome="props.condominio.nome"
+          :fatture-senza-periodo="scelteSenzaCompetenza.correnti + scelteSenzaCompetenza.pregresse"
+          :errori="{ tipo: form.errors.tipo_autorizzazione, motivo: form.errors.motivazione_autorizzazione, giorno: (form.errors as Record<string, string>).giorno_dei_lavori }"
+          @update:giorno="(v: string) => { form.giorno_dei_lavori = v; form.clearErrors('giorno_dei_lavori' as any); }">
+          <template #delibera>
+            <div v-if="!conLaDelibera" class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end" data-testid="deliberata-il-a-mano">
+              <div class="space-y-2">
+                <Label for="data_delibera_assemblea">Deliberata il</Label>
+                <Input id="data_delibera_assemblea" type="date" v-model="form.data_delibera_assemblea" class="bg-white dark:bg-slate-950" />
+                <InputError :message="form.errors.data_delibera_assemblea" />
+              </div>
+              <p class="text-xs text-slate-600 leading-relaxed dark:text-slate-400">Su una gestione straordinaria è il giorno che decide chi paga: chi era titolare dell'unità alla delibera risponde dell'intera spesa, anche se poi vende. Nessuna data è proposta: la scrivi tu dal verbale.</p>
+            </div>
+            <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+              <ScegliLaDelibera :key="`delibera-${form.gestione_id ?? 0}`" v-model="delibera" :condominio-id="props.condominio.id" :condominio-nome="props.condominio.nome"
+                ruolo="delibera" oggetto-tipo="gestione" :oggetto-id="form.gestione_id" per-questo="questo piano" :vuoto="vuotoDellaDelibera"
+                vuoto-sotto="Se l'assemblea deve ancora decidere, portala alla prossima: il piano resta in bozza e il punto ti viene proposto quando la prepari."
+                :disabilitato="!form.gestione_id"
+                info="Le delibere di questo condominio: in testa quelle che parlano di questa gestione, con il perché. Una riunione di carta la registri con «Registra una delibera a mano»." />
+              <div class="space-y-1.5" data-testid="deliberata-il">
+                <span class="block text-xs font-medium text-slate-600 dark:text-slate-400">Deliberata il</span>
+                <p class="text-sm text-slate-900 dark:text-slate-100">
+                  <template v-if="giornoDellaDelibera"><strong class="tabular-nums">{{ giornoDellaDelibera }}</strong> <span class="text-slate-500 dark:text-slate-400">dalla delibera</span></template>
+                  <span v-else class="text-slate-500 dark:text-slate-400">dalla delibera</span>
+                </p>
+                <InputError :message="form.errors.data_delibera_assemblea || form.errors.delibera_id" />
+                <p class="text-xs text-slate-600 leading-relaxed dark:text-slate-400">È il giorno che decide chi paga: chi era titolare quel giorno risponde della spesa, anche se poi vende. Si compila dalla data della riunione quando scegli la delibera.</p>
+              </div>
+            </div>
+          </template>
+        </LaDeliberaOLUrgenza>
+
         <!-- Fuori dalla card dello straordinario: la delibera è della GESTIONE (natura), e riguarda anche un piano
              «ordinario» aperto su una gestione straordinaria. -->
-        <Card v-if="mostraDataDelibera" class="border-dashed shadow-sm" :class="deliberaObbligatoria ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-slate-50/50'">
+        <Card v-else-if="mostraDataDelibera" class="border-dashed shadow-sm" :class="deliberaObbligatoria ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-slate-50/50'">
           <CardContent class="pt-6">
             <!-- B2 (decisione 12): la data della delibera, obbligatoria e senza default quando la gestione è straordinaria
                  e l'autorizzazione non è l'urgenza. È il giorno che decide chi paga (art. 63 disp. att. c.c.; Cass. 24654/2010):
@@ -1606,16 +1717,37 @@ const submit = () => {
                 </p>
               </template>
               <template v-else>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <!-- Senza «Gestisce le assemblee»: «Deliberata il» scritta a mano, come prima. -->
+                <div v-if="!conLaDelibera" class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end" data-testid="deliberata-il-a-mano">
                   <div class="space-y-2">
                     <Label for="data_delibera_assemblea">Deliberata il</Label>
-                    <Input id="data_delibera_assemblea" type="date" v-model="form.data_delibera_assemblea" class="bg-white" />
+                    <Input id="data_delibera_assemblea" type="date" v-model="form.data_delibera_assemblea" class="bg-white dark:bg-slate-950" />
                     <InputError :message="form.errors.data_delibera_assemblea" />
                   </div>
-                  <p class="text-xs text-slate-600 leading-relaxed">
+                  <p class="text-xs text-slate-600 leading-relaxed dark:text-slate-400">
                     <template v-if="gestioneStraordinaria">Su una gestione straordinaria è il giorno che decide chi paga: chi era titolare dell'unità alla delibera risponde dell'intera spesa, anche se poi vende. Nessuna data è proposta: la scrivi tu dal verbale.</template>
                     <template v-else>Su una gestione ordinaria la data non cambia il riparto (che va in proporzione ai giorni di competenza): resta come riferimento del verbale.</template>
                   </p>
+                </div>
+                <!-- «Scegli la delibera» (decisione 502): la data non si scrive più a mano due volte, nel testo e nel campo; viene dalla riunione. -->
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                  <ScegliLaDelibera :key="`delibera-${form.gestione_id ?? 0}`" v-model="delibera" :condominio-id="props.condominio.id" :condominio-nome="props.condominio.nome"
+                    ruolo="delibera" oggetto-tipo="gestione" :oggetto-id="form.gestione_id" per-questo="questo piano" :vuoto="vuotoDellaDelibera"
+                    vuoto-sotto="Se l'assemblea deve ancora decidere, portala alla prossima: il piano resta in bozza e il punto ti viene proposto quando la prepari."
+                    :disabilitato="!form.gestione_id"
+                    info="Le delibere di questo condominio: in testa quelle che parlano di questa gestione, con il perché. Una riunione di carta la registri con «Registra una delibera a mano»." />
+                  <div class="space-y-1.5" data-testid="deliberata-il">
+                    <span class="block text-xs font-medium text-slate-600 dark:text-slate-400">Deliberata il</span>
+                    <p class="text-sm text-slate-900 dark:text-slate-100">
+                      <template v-if="giornoDellaDelibera"><strong class="tabular-nums">{{ giornoDellaDelibera }}</strong> <span class="text-slate-500 dark:text-slate-400">dalla delibera</span></template>
+                      <span v-else class="text-slate-500 dark:text-slate-400">dalla delibera</span>
+                    </p>
+                    <InputError :message="form.errors.data_delibera_assemblea || form.errors.delibera_id" />
+                    <p class="text-xs text-slate-600 leading-relaxed dark:text-slate-400">
+                      <template v-if="gestioneStraordinaria">È il giorno che decide chi paga: chi era titolare quel giorno risponde della spesa, anche se poi vende. Si compila dalla data della riunione quando scegli la delibera.</template>
+                      <template v-else>Su una gestione ordinaria la data non cambia il riparto (che va in proporzione ai giorni di competenza): resta come riferimento del verbale.</template>
+                    </p>
+                  </div>
                 </div>
               </template>
             </div>
@@ -1763,7 +1895,7 @@ const submit = () => {
 
         <div class="flex items-center justify-end gap-3 pt-2">
           <Link
-            :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+            :href="props.ritorno?.url ?? generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
             class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-6 text-[10px] font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             Annulla

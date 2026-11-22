@@ -801,6 +801,11 @@ class CalcoloQuoteService
                         $pianoRate->data_delibera_assemblea,
                         divergenzaTipoPiano: $this->competenzaBase->divergenzaTipoPiano,
                     );
+                    // Coda 688: nel piano dei lavori urgenti la fattura senza periodo prende il giorno dei lavori del piano, che arriva come base dalla
+                    // competenza del piano (`CompetenzaDelPiano`, lo stesso punto delle voci); quella con il suo periodo l'ha già preso qui sopra.
+                    if ($esitoFattura->richiedeDelibera && $pianoRate->tipo_autorizzazione === 'urgenza' && ! $this->competenzaBase->richiedeDelibera) {
+                        $esitoFattura = $this->competenzaBase;
+                    }
                     if ($esitoFattura->richiedeDelibera) {
                         if (! $soloLettura) {
                             throw new RichiedeDeliberaException($pianoRate, $fattura);

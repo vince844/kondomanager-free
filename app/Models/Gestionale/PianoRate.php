@@ -17,6 +17,7 @@ use Database\Factories\Gestionale\PianoRateFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * Modello PianoRate
@@ -26,6 +27,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class PianoRate extends Model
 {
+    use RegistraLeModifiche;
+
     use RisolveIFigliDelleRotte;
 
     use HasFactory;
@@ -67,6 +70,8 @@ class PianoRate extends Model
         'tipo',
         'tipo_autorizzazione',
         'motivazione_autorizzazione',
+        // Coda 688: «Lavori ordinati il …», il giorno dei lavori urgenti su una gestione straordinaria (`GiornoDellUrgenza`).
+        'giorno_dei_lavori',
     ];
 
     protected $casts = [
@@ -74,6 +79,7 @@ class PianoRate extends Model
         // NULL = «parte dall'inizio della gestione», che è il comportamento di sempre.
         'data_prima_scadenza'     => 'date',
         'data_delibera_assemblea' => 'date',      // Cast automatico a Carbon per formattazione agevole
+        'giorno_dei_lavori'       => 'date',
         'approvato_il'            => 'datetime',  // Cast automatico a Carbon con orario
         'attivo'                  => 'boolean',
         // NULL = piani antecedenti alla beta.32, dove la scelta non veniva persistita.

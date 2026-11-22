@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Users;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Traits\HandleFlashMessages;
@@ -46,7 +47,10 @@ class UserVerifyController extends Controller
 
             // Toggle verifica
             $user->email_verified_at = $user->email_verified_at ? null : now();
-            $user->save();
+            \Illuminate\Support\Facades\DB::transaction(function () use ($user) {
+                $user->save();
+                AttiSulleUtenze::verificaDellEmail($user, $user->email_verified_at !== null);
+            });
 
             $message = $user->email_verified_at
                 ? $this->flashSuccess(__('users.success_verify_user'))

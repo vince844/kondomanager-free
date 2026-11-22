@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestione;
+use App\Traits\ContaNelGesto;
 
 /**
  * Rappresenta un movimento in Prima Nota (Libro Giornale) del gestionale.
@@ -33,6 +34,8 @@ use App\Models\Gestione;
  */
 class ScritturaContabile extends Model
 {
+    use ContaNelGesto;
+
     use SoftDeletes, HasProtocolNumber;
 
     protected $table = 'scritture_contabili';

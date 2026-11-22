@@ -7,9 +7,12 @@ namespace App\Models\Gestionale;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\ContaNelGesto;
 
 class RicorrenzaRata extends Model
 {
+    use ContaNelGesto;
+
     use HasFactory;
 
     protected $table = 'ricorrenze_rate';

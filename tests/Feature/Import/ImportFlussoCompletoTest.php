@@ -122,6 +122,15 @@ it('porta un lotto dal caricamento all\'archivio passando per tutte le schermate
         ->and(DB::table('anagrafica_immobile')->count())->toBeGreaterThan(0)
         ->and(Saldo::count())->toBeGreaterThan(0);
 
+    // 1.12.0-beta.13 (decisione 518, P10): nel registro delle modifiche una riga per livello, firmata da chi ha avviato l'importazione, con il rimando
+    // all'elenco del lotto; nessuna riga per persona, unità o saldo.
+    $registro = \App\Models\RegistroModifica::query()->where('origine', 'importazione')->get();
+    expect($registro)->not->toBeEmpty()
+        ->and($registro->pluck('oggetto_tipo')->unique()->values()->all())->toBe(['importazione'])
+        ->and($registro->pluck('autore_id')->unique()->values()->all())->toBe([$utente->id])
+        ->and($registro->first()->rimando)->toMatchArray(['tipo' => 'importazione', 'id' => $batch->id])
+        ->and(\App\Models\RegistroModifica::query()->whereIn('oggetto_tipo', ['anagrafica', 'immobile', 'saldo', 'titolarita'])->count())->toBe(0);
+
     // S5 — esito
     $this->actingAs($utente)->get(route('import.esito', $batch->uuid))
         ->assertOk()

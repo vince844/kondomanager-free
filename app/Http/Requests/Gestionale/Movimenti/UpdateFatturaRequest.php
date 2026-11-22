@@ -8,6 +8,7 @@ namespace App\Http\Requests\Gestionale\Movimenti;
 use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
 use App\Enums\Fiscale\NaturaRigaRitenuta;
 use App\Services\Gestionale\Duplicati\RicercaFattureSimili;
+use App\Http\Requests\Assemblee\LeDelibereDellaFattura;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,6 +25,9 @@ use Illuminate\Validation\Rule;
  */
 class UpdateFatturaRequest extends FormRequest
 {
+    // 1.12.0-beta.13 (§1.4 del progetto della tappa 2): la delibera della competenza e della spesa imprevista, risolte nel condominio.
+    use LeDelibereDellaFattura;
+
     public function authorize(): bool
     {
         return true;
@@ -111,7 +115,13 @@ class UpdateFatturaRequest extends FormRequest
             // revisione avversariale della beta.12. Ora fallisce con un messaggio che dice
             // dove allegare davvero, invece di far sparire un file sotto una conferma.
             'file' => ['prohibited'],
-        ];
+        ] + $this->regoleDelleDelibere();
+    }
+
+    /** I nomi dei campi delle delibere come li dice la pagina (gli altri messaggi hanno già le loro frasi). @return array<string, string> */
+    public function attributes(): array
+    {
+        return $this->nomiDelleDelibere();
     }
 
     public function messages(): array

@@ -461,6 +461,13 @@ class DashboardController extends Controller
             'emissioneRapida'   => Inertia::optional(fn () => app(\App\Services\Treasury\FinestraDiEmissione::class)->perCondominio($condominio)),
             // Il giorno dell'amministratore, per «Ricordamelo» sui compiti dell'agenda (da domani): non quello del browser.
             'oggi'              => DateHelper::oggiUtente(),
+            // La card «Per la prossima assemblea» (1.12.0-beta.13): differita, e solo per chi vede le assemblee; senza punti la pagina non la mostra.
+            'prossimaAssemblea' => Inertia::defer(fn () => \App\Services\Assemblee\AccessoAlleAssemblee::vede(request()->user())
+                ? \App\Services\Assemblee\MemoriaDelCondominio::perLaDashboard($condominio) : null, 'assemblee'),
+            // La card «Delibere da eseguire»: le cose da fare aperte delle delibere, con la data, la persona e l'azione (per chi vede soltanto, «Apri la
+            // delibera»); differita, e solo per chi vede le assemblee. Senza righe la pagina non la mostra.
+            'delibereDaEseguire' => Inertia::defer(fn () => \App\Services\Assemblee\AccessoAlleAssemblee::vede(request()->user())
+                ? \App\Services\Assemblee\Seguito\SeguitoDelleDelibere::perLaDashboard($condominio, request()->user()) : null, 'assemblee'),
         ]);
     }
 }

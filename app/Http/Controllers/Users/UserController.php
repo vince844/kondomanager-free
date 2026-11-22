@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Users;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Traits\OrdinaElenco;
 
 use App\Enums\Role as RoleEnum;
@@ -451,7 +452,11 @@ class UserController extends Controller
 
         try {
 
-            $utenti->delete();
+            // Coda ㉗: l'atto si scrive prima del `delete`, nella sua transazione: dopo, il nome e la persona non ci sono più.
+            \Illuminate\Support\Facades\DB::transaction(function () use ($utenti) {
+                AttiSulleUtenze::eliminato($utenti);
+                $utenti->delete();
+            });
 
             return back()->with(
                 $this->flashSuccess(__('users.success_delete_user'))

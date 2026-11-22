@@ -124,7 +124,7 @@ class UpdateCassaAction
                 $this->handleBancaUpdate($cassa, $data);
             } else {
                 // Se non è più banca (ed è sicuro farlo perché non ci sono movimenti), puliamo.
-                $cassa->contoCorrente()->delete();
+                $cassa->contoCorrente()->get()->each->delete(); // con il modello: il registro delle modifiche scrive il conto tolto
             }
 
             Log::info("Cassa aggiornata", ['id' => $cassa->id, 'tipo' => $cassa->tipo]);

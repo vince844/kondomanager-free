@@ -55,6 +55,9 @@ class AppServiceProvider extends ServiceProvider
         // Il compito «da moderare» dell'Action inbox segue i modelli, da qualunque pagina cambino (decisioni 445 e 449).
         \App\Services\Gestionale\Inbox\ModerazioneNellInbox::registra();
 
+        // Una scheda eliminata porta via i suoi collegamenti alle delibere, nello stesso gesto (1.12.0-beta.13): la delibera non resta «usata» da niente.
+        \App\Services\Assemblee\CollegamentiDelleDelibere::registraLeEliminazioni();
+
         // ====================================================================
         // LA LUNGHEZZA MINIMA DELLE PASSWORD (Coda 262, decisione 127.1)
         // ====================================================================

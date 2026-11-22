@@ -5,6 +5,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\MoneyHelper;
 use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
@@ -57,7 +59,14 @@ class BudgetMovementService
             $this->controllaSpesaNegativa($piano, $sourceId, false);
         }
 
-        return DB::transaction(function () use ($piano, $sourceId, $destId, $amount, $reason, $userId, $reversesMovementId) {
+        // P4 del registro delle modifiche: lo spostamento e il suo annullamento sono un gesto, con il motivo scritto.
+        $voci = \App\Models\Gestionale\Conto::query()->whereIn('id', [$sourceId, $destId])->pluck('nome', 'id');
+        $gesto = Gesto::sulModello($piano)->perche($reason)
+            ->riepilogo(($reversesMovementId === null ? 'Budget spostato: ' : 'Spostamento di budget annullato: ') . \App\Helpers\MoneyHelper::format($amount)
+                . ' da «' . ($voci[$sourceId] ?? '') . '» a «' . ($voci[$destId] ?? '') . '»')
+            ->rimando('piano_rate', (int) $piano->id, 'Piano rate «' . $piano->nome . '»');
+
+        return RegistroModifiche::durante($gesto, function () use ($piano, $sourceId, $destId, $amount, $reason, $userId, $reversesMovementId) {
 
             // 2. Recupero Dati Pivot (con lock per evitare race conditions)
             $sourcePivot = DB::table('piano_rate_capitoli')

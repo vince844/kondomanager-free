@@ -7,6 +7,8 @@ namespace App\Http\Controllers\Fornitori\Documenti;
 
 use App\Traits\OrdinaElenco;
 use App\Services\Documenti\ArchivioDocumenti;
+use App\Services\Documenti\VersioniDeiDocumenti;
+use Illuminate\Support\Facades\DB;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\Documento\CreateFornitoreDocumentoRequest;
@@ -155,6 +157,8 @@ class FornitoreDocumentoController extends Controller
             'fornitore'  => $fornitore,
             // Il limite lo decide il server, non noi.
             'limiteFile' => \App\Support\LimiteCaricamento::etichetta(),
+            // Le versioni di prima del file (1.12.0-beta.13, decisione 559): in sola lettura, senza il percorso.
+            'versioni' => VersioniDeiDocumenti::perLaPagina($documento),
         ]); 
     }
 
@@ -171,17 +175,12 @@ class FornitoreDocumentoController extends Controller
 
         try {
 
+            // 1.12.0-beta.13 (decisione 559): una transazione, come nelle altre schede: il file nuovo si salva prima, il vecchio resta fra le versioni
+            // di prima (fino alla beta.12 si cancellava prima di salvare il nuovo); se qualcosa cade, i file tornano com'erano.
+            DB::beginTransaction();
+
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
-                // Delete old file if exists
-                app(ArchivioDocumenti::class)->elimina($documento->path);
-
-                $uploadedFile = $request->file('file');
-                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
-
-                // Update file related fields
-                $documento->path = $path;
-                $documento->mime_type = $uploadedFile->getClientMimeType();
-                $documento->file_size = $uploadedFile->getSize();
+                app(VersioniDeiDocumenti::class)->sostituisci($documento, $request->file('file'));
             }
 
             $documento->update([
@@ -195,7 +194,11 @@ class FornitoreDocumentoController extends Controller
                 'is_approved'  => $validated['is_approved'],
             ]);
 
+            DB::commit();
+
         } catch (\Exception $e) {
+
+            DB::rollBack();
 
             Log::error('Error updating documento immobile: ' . $e->getMessage());
 
@@ -221,9 +224,8 @@ class FornitoreDocumentoController extends Controller
 
         try {
 
-            app(ArchivioDocumenti::class)->elimina($documento->path);
-
-            $documento->delete();
+            // 1.12.0-beta.13 (decisione 559, P21): il documento se ne va con le sue versioni di prima; i file si cancellano dopo il commit.
+            DB::transaction(fn () => app(VersioniDeiDocumenti::class)->elimina($documento));
 
             return to_route('admin.fornitori.documenti.index', [
                 'fornitore' => $fornitore->id,

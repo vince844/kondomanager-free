@@ -7,9 +7,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use App\Traits\RegistraLeModifiche;
 
 class ContoCorrente extends Model
 {
+    use RegistraLeModifiche;
+
      protected $table = 'conti_correnti';
 
     protected $fillable = [

@@ -31,7 +31,16 @@ final class FunzioniInstallazione
             'backup' => (bool) config('backup.enabled', true),
             // I documenti su un disco S3 (DOCUMENTI_DISK=s3) invece che sul server.
             'archiviazione_esterna' => config('kondomanager.disco_documenti', 'local') !== 'local',
+            // La posta normale la prepara chi gestisce l'installazione (POSTA_DELL_INSTALLAZIONE): la card della posta in «Configurazione
+            // email» è di sola lettura. La casella PEC la imposta sempre lo studio.
+            'posta_dell_installazione' => self::postaDellInstallazione(),
         ];
+    }
+
+    /** La posta normale la prepara chi gestisce l'installazione: lo studio non la imposta né la prova (decisione 572). */
+    public static function postaDellInstallazione(): bool
+    {
+        return (bool) config('kondomanager.posta_dell_installazione', false);
     }
 
     private static function pianificatoreEsterno(): bool

@@ -5,6 +5,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\MoneyHelper;
 use App\Services\Documenti\ArchivioDocumenti;
 use App\DataTransferObjects\RitenutaCalcolo;
@@ -806,7 +808,7 @@ class FatturaPassivaService
                 'tipo' => 'competenza',
             ]);
 
-            event(new FatturaRegistrata($fattura, Auth::id() ?? 1));
+            event(new FatturaRegistrata($fattura, Auth::id())); // senza una persona, il programma (§7): mai l'utente 1
 
             return $fattura;
         });
@@ -1033,7 +1035,8 @@ class FatturaPassivaService
         $importoBefore = $fattura->netto_a_pagare;
 
         // ── Transazione atomica ──────────────────────────────────────────────
-        return DB::transaction(function () use ($fattura, $data, $dataScadenzaBefore, $importoBefore) {
+        // Il registro delle modifiche: i dati della fattura nella sua riga, le scritture riscritte in un gesto solo (mai una riga per riga di giornale).
+        return RegistroModifiche::durante(GestiDelRegistro::fatturaModificata($fattura), function () use ($fattura, $data, $dataScadenzaBefore, $importoBefore) {
 
             // Il netto della fattura che questa nota rettifica, prima della modifica (Coda 165). `false`: non serve.
             // L'importo della nota prima della modifica: il tetto di una nota contestata scatta solo se cresce (W3).

@@ -151,7 +151,12 @@ final class ImportRunner
 
             // Una transazione per livello: se salta qui, il livello non è entrato **affatto**,
             // e la ripresa lo ritenta da capo invece di trovarlo a metà.
-            $esito = DB::transaction(fn () => $livello->commit($ctx));
+            // Il registro delle modifiche: una riga per livello (una per transazione, P10), firmata da chi ha avviato l'importazione.
+            $esito = \App\Services\RegistroModifiche\RegistroModifiche::comeAutore(
+                \App\Services\RegistroModifiche\GestiDelRegistro::autoreDellImportazione($ctx->batch),
+                fn () => \App\Services\RegistroModifiche\RegistroModifiche::durante(
+                    \App\Services\RegistroModifiche\GestiDelRegistro::livelloDellImportazione($ctx->batch, $livello->chiave()),
+                    fn () => $livello->commit($ctx)));
 
             $esiti[$livello->chiave()] = $esito;
 

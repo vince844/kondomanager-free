@@ -10,6 +10,8 @@ use Illuminate\Validation\Rule;
 
 class CreateCassaRequest extends FormRequest
 {
+    use DeliberaDellaDeroga;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -77,6 +79,8 @@ class CreateCassaRequest extends FormRequest
                     $this->input('is_override_assemblea') === true
                 )
             ],
+            // La delibera dello sblocco, scelta con «Scegli la delibera»: la sua frase va in testa alla motivazione.
+            'delibera_id' => ['nullable', 'integer'],
         ];
     }
 

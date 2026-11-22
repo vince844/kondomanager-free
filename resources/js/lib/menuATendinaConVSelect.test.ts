@@ -25,9 +25,6 @@ const RADICE = join(__dirname, '..');
 /** I file che hanno ancora un `<select>` del browser: si convertono a `v-select` a mano a mano, e l'elenco si accorcia. */
 // L'elenco contiene solo file già usciti in una versione: un file nuovo nasce con `v-select`.
 const ANCORA_CON_SELECT = [
-    'components/gestionale/lettere/LettereDialog.vue',
-    'components/gestionale/lettere/RegistroLettere.vue',
-    'components/gestionale/movimenti/fatture/DataTableRowActions.vue',
     'components/gestionale/movimenti/incassi/CompensazioniSenzaAvviso.vue',
     'components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue',
     'components/gestionale/rendiconto/InvioDeiFogli.vue',
@@ -35,7 +32,6 @@ const ANCORA_CON_SELECT = [
     'pages/gestionale/contributi/ContributiEdit.vue',
     'pages/gestionale/movimenti/rendiconto/Controlli.vue',
     'pages/impostazioni/ModelliLettere.vue',
-    'pages/impostazioni/impostazioniMail.vue',
 ];
 
 /** Il sorgente senza i commenti: quelli HTML, i blocchi `/* … *\/` e le righe `//` (non `https://`). */

@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Comunicazioni\Utenti;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Events\Comunicazioni\NotifyAdminOfCreatedComunicazione;
 use App\Http\Controllers\Controller;
 use App\Traits\HasAnagrafica;
@@ -167,12 +168,12 @@ class ComunicazioneController extends Controller
 
             $comunicazione = Comunicazione::create($validated);
 
-            $comunicazione->condomini()->attach($validated['condomini_ids']);
+            RegistroModifiche::legame($comunicazione, 'condomini', 'Condomini', fn () => $comunicazione->condomini()->attach($validated['condomini_ids']));
 
             if ($validated['is_private']) {
                 
                 $anagrafica = $this->getUserAnagrafica();
-                $comunicazione->anagrafiche()->attach($anagrafica);
+                RegistroModifiche::legame($comunicazione, 'anagrafiche', 'Destinatari', fn () => $comunicazione->anagrafiche()->attach($anagrafica));
             }
 
             if ($request->hasFile('allegati')) {
@@ -335,16 +336,16 @@ class ComunicazioneController extends Controller
             // modifica non porta più).
             $comunicazione->update($validated + ['updated_by' => Auth::id()]);
 
-            $comunicazione->condomini()->sync($validated['condomini_ids']);
+            RegistroModifiche::legame($comunicazione, 'condomini', 'Condomini', fn () => $comunicazione->condomini()->sync($validated['condomini_ids']));
 
             $anagrafica = $this->getUserAnagrafica();
 
             if ($validated['is_private']) {
                
-                $comunicazione->anagrafiche()->syncWithoutDetaching([$anagrafica->id]);
+                RegistroModifiche::legame($comunicazione, 'anagrafiche', 'Destinatari', fn () => $comunicazione->anagrafiche()->syncWithoutDetaching([$anagrafica->id]));
             }else {
                 // Detach anagrafica if it was previously attached
-                $comunicazione->anagrafiche()->detach($anagrafica->id);
+                RegistroModifiche::legame($comunicazione, 'anagrafiche', 'Destinatari', fn () => $comunicazione->anagrafiche()->detach($anagrafica->id));
             }
 
             // I destinatari decidono le discussioni: il compito «Da moderare» si porta a com'è (le tabelle ponte non hanno eventi).

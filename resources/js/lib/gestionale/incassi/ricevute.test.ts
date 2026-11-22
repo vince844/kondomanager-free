@@ -24,6 +24,12 @@ import {
     testoRestantiBlocco,
     testoRestantiRiprova,
     testoAltriIndirizzi,
+    testoDaSpuntare,
+    testoStampaSenzaIndirizzo,
+    pezziDelRiepilogo,
+    riepilogoDellaRicevuta,
+    riassuntoDelleQuote,
+    testoPerTipo,
     FRASE_BOLLO,
     NOTA_MODO_UNICO,
     SCELTE_BOLLO,
@@ -994,5 +1000,53 @@ describe('il PDF in una scheda nuova', () => {
         expect(await fraseDaErroreConFile(json(503, 'Service Unavailable'), 'Non riuscito.')).toBe('Non riuscito.');
         // Il 422 resta la frase del server, che è in italiano.
         expect(await fraseDaErroreConFile(json(422, 'Ricevuta non stampata. Scegli il bollo.'), 'Non riuscito.')).toBe('Ricevuta non stampata. Scegli il bollo.');
+    });
+});
+
+describe('la finestra dell\'invio: chi resta senza indirizzo, in parole brevi', () => {
+    test('sotto le caselle degli indirizzi: quali spuntare per raggiungere chi resta fuori, con quante persone', () => {
+        expect(testoDaSpuntare({ email: 1, email_secondaria: 1, pec: 1 })).toBe('Per raggiungere chi resta fuori spunta anche: la primaria (1 persona), la secondaria (1 persona), la PEC (1 persona).');
+        expect(testoDaSpuntare({ email: 0, email_secondaria: 0, pec: 2 })).toBe('Per raggiungere chi resta fuori spunta anche: la PEC (2 persone).');
+        expect(testoDaSpuntare({ email: 0, email_secondaria: 0, pec: 0 })).toBeNull();
+    });
+
+    test('il pulsante della stampa per la posta dice quante ricevute, al singolare e al plurale', () => {
+        expect(testoStampaSenzaIndirizzo(1)).toBe('Stampa la ricevuta per la posta');
+        expect(testoStampaSenzaIndirizzo(3)).toBe('Stampa le 3 ricevute per la posta');
+    });
+});
+
+describe('la finestra dell\'invio in blocco: il riepilogo in fondo e i pulsanti degli indirizzi', () => {
+    test('il riepilogo dice le email che partono, a quante persone, con quante ricevute; il verbo segue il numero', () => {
+        expect(pezziDelRiepilogo({ persone: 1, ricevute: 1, messaggi: 2 })).toEqual({ verbo: 'Partono', email: '2 email', persone: '1 persona', ricevute: '1 ricevuta' });
+        expect(pezziDelRiepilogo({ persone: 1, ricevute: 3, messaggi: 1 })).toEqual({ verbo: 'Parte', email: '1 email', persone: '1 persona', ricevute: '3 ricevute' });
+    });
+
+    test('sul pulsante di un tipo: quante persone raggiunge, o «nessuno»', () => {
+        expect(testoPerTipo(0)).toBe('nessuno');
+        expect(testoPerTipo(1)).toBe('1 persona');
+        expect(testoPerTipo(4)).toBe('4 persone');
+    });
+
+    test('il bollo ha le parole corte per la barra: le due «Assolta» diventano «Contrassegno» e «Virtuale»', () => {
+        expect(SCELTE_BOLLO.map((s) => s.corta)).toEqual(['Non dovuta', 'Da assolvere', 'Contrassegno', 'Virtuale']);
+    });
+});
+
+describe('il riepilogo nel piede della finestra della ricevuta singola', () => {
+    test('senza bollo chiede il bollo; per email conta le email; senza indirizzi o senza posta dice che si stampa', () => {
+        expect(riepilogoDellaRicevuta({ bollo: false, perEmail: true, email: 1 })).toEqual({ prima: 'Scegli l\'imposta di bollo per stamparla o mandarla.', forte: null, dopo: '' });
+        expect(riepilogoDellaRicevuta({ bollo: true, perEmail: true, email: 1 })).toEqual({ prima: 'Parte ', forte: '1 email', dopo: '.' });
+        expect(riepilogoDellaRicevuta({ bollo: true, perEmail: true, email: 3 })).toEqual({ prima: 'Partono ', forte: '3 email', dopo: '.' });
+        expect(riepilogoDellaRicevuta({ bollo: true, perEmail: true, email: 0 })).toEqual({ prima: 'Nessun indirizzo scelto: la ricevuta si può stampare.', forte: null, dopo: '' });
+        expect(riepilogoDellaRicevuta({ bollo: true, perEmail: false, email: 0 })).toEqual({ prima: 'La ricevuta è pronta da stampare.', forte: null, dopo: '' });
+    });
+});
+
+describe('il riassunto delle quote sopra il cassetto della tabella', () => {
+    test('quanto, su quante quote e di quanti piani; che cosa resta, o che sono pagate per intero', () => {
+        expect(riassuntoDelleQuote({ quote: 6, piani: 3, imputato: 15337, resta: 1742 })).toBe('€ 153,37 su 6 quote di 3 piani. Restano € 17,42.');
+        expect(riassuntoDelleQuote({ quote: 1, piani: 1, imputato: 15000, resta: 0 })).toBe('€ 150,00 su 1 quota: pagata per intero.');
+        expect(riassuntoDelleQuote({ quote: 2, piani: 1, imputato: 30000, resta: 0 })).toBe('€ 300,00 su 2 quote: pagate per intero.');
     });
 });

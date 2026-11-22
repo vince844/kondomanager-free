@@ -7,23 +7,126 @@
  * serve a mostrarle. Le date arrivano dal server come `Y-m-d` (o `Y-m-d H:i`): qui si formattano e basta. Le cifre sono in centesimi.
  */
 import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
+import { MANCATA_CONSEGNA, testoMancataConsegna, testoPecDellUltimaLettera, type ConsegnaDellaPec } from '@/lib/gestionale/lettere/consegnaProvata';
 
 export type TipoLettera = 'promemoria' | 'sollecito' | 'diffida' | 'messa_in_mora';
-export type CanaleLettera = 'email' | 'stampa' | 'zip';
+/** I canali della finestra: l'email, la PEC dalla casella dello studio, «PEC e carta» (la stessa lettera per PEC e stampata), la stampa, il PDF per persona. */
+export type CanaleLettera = 'email' | 'pec' | 'pec_e_carta' | 'stampa' | 'zip';
 
 export const NOMI_TIPI: Record<TipoLettera, string> = { promemoria: 'Promemoria', sollecito: 'Sollecito', diffida: 'Diffida', messa_in_mora: 'Messa in mora' };
 
 /** Il genere di ogni tipo, per accordare le parole («stampato», «stampata»). */
 const FEMMINILE: Record<string, boolean> = { promemoria: false, sollecito: false, diffida: true, messa_in_mora: true };
 
-export const NOMI_CANALI: Record<CanaleLettera, string> = { email: 'Email', stampa: 'Stampa per la posta', zip: 'PDF per persona (.zip)' };
+export const NOMI_CANALI: Record<CanaleLettera, string> = {
+    email: 'Email', pec: 'PEC dello studio', pec_e_carta: 'PEC e carta', stampa: 'Stampa per la posta', zip: 'PDF per persona (.zip)',
+};
+
+/** Sotto il nome di ogni canale nel menu: che cosa succede. */
+const SOTTO_I_CANALI: Record<CanaleLettera, string> = {
+    email: 'dalla posta dello studio', pec: 'dalla casella PEC, con la ricevuta', pec_e_carta: 'per PEC e stampata per la posta',
+    stampa: 'poi registri la spedizione', zip: 'da mandare o stampare tu',
+};
+
+/** I canali che mandano la PEC dalla casella dello studio, e quelli che stampano la lettera. */
+export const CANALI_CON_LA_PEC: CanaleLettera[] = ['pec', 'pec_e_carta'];
+export const CANALI_CON_LA_STAMPA: CanaleLettera[] = ['stampa', 'pec_e_carta'];
+
+/** Una voce del menu del canale: il nome, che cosa succede o perché è spenta, e se si sceglie. */
+export interface VoceDelCanale { valore: CanaleLettera; nome: string; sotto: string; spento: boolean }
+
+/** Le voci del menu del canale di una persona: i canali del tipo; la PEC senza la casella o senza la PEC nella scheda c'è, spenta, con il perché. */
+export function opzioniDelCanale(p: Pick<PersonaDellAnteprima, 'canali' | 'canali_spenti'>): VoceDelCanale[] {
+    const spenti = (p.canali_spenti && !Array.isArray(p.canali_spenti) ? p.canali_spenti : {}) as Partial<Record<CanaleLettera, string>>;
+
+    return p.canali.map((c) => ({ valore: c, nome: NOMI_CANALI[c], sotto: spenti[c] ?? SOTTO_I_CANALI[c], spento: spenti[c] !== undefined }));
+}
 
 export const CANALI_SPEDIZIONE: Record<string, string> = {
     raccomandata: 'Raccomandata A/R', pec: 'PEC mandata fuori dal programma', a_mano: 'A mano', posta: 'Posta ordinaria', altro: 'Altro',
 };
 
-/** Diffida e messa in mora non partono per email dal programma (la stessa frase del server). */
-export const SOLO_CARTA = 'Diffida e messa in mora non partono per email dal programma: stampale o scarica un PDF per persona, spediscile, poi registra la spedizione.';
+/** Diffida e messa in mora non partono mai per email (la stessa frase del server). */
+export const SOLO_CARTA = 'Diffida e messa in mora non partono per email: mandale per PEC dalla casella dello studio, o stampale o scarica un PDF per persona e '
+    + 'registra la spedizione.';
+
+/** La riga sopra la tabella: quante PEC scelte la persona non ha comunicato. La ricevuta prova l'arrivo nella casella; il programma avvisa, non blocca. */
+export function testoPecNonComunicate(n: number): string | null {
+    if (n <= 0) {
+        return null;
+    }
+    const quante = n === 1 ? '1 PEC non risulta comunicata dalla persona' : `${n} PEC non risultano comunicate dalle persone`;
+
+    return `${quante}: la ricevuta dirà che la PEC è arrivata in quella casella. Se la persona non l'ha mai data, scegli tu se mandarla lì o stamparla.`;
+}
+
+/** I nomi plurali dei tipi, per la conferma («2 diffide»). */
+const PLURALI: Record<string, [string, string]> = {
+    promemoria: ['promemoria', 'promemoria'], sollecito: ['sollecito', 'solleciti'], diffida: ['diffida', 'diffide'], messa_in_mora: ['messa in mora', 'messe in mora'],
+};
+
+/**
+ * La conferma di «Manda N PEC»: la domanda, la casella da cui partono, quante adesso oltre il tetto per volta, che cosa vuol dire «partita», dove arriva la
+ * ricevuta e che cosa farne.
+ */
+export function testoConfermaPec(n: number, tipo: string, casella: string | null, tetto: number | null = null): string[] {
+    const [uno, tanti] = PLURALI[tipo] ?? ['lettera', 'lettere'];
+
+    return [
+        `Mandare ${n} ${n === 1 ? uno : tanti} per PEC?`,
+        `Partono adesso dalla casella PEC dello studio${casella ? `, ${casella}` : ''}, ognuna con il suo PDF.`,
+        ...(tetto !== null && n > tetto ? [`Ne partono ${tetto} adesso; le altre ${n - tetto} con «Manda le altre», dopo.`] : []),
+        '«Partita» vuol dire che il gestore l\'ha accettata. La consegna la dice la ricevuta di consegna, che arriva nella casella dello studio.',
+        'Salva la ricevuta (il file .eml) e trascinala sulla lettera, nella corrispondenza della persona: il programma ne legge il giorno e l\'ora.',
+    ];
+}
+
+/** Dopo «Manda le PEC»: dove si trovano. */
+export const FRASE_DOPO_LE_PEC = 'Le trovi nella corrispondenza di ognuno, nella pagina del suo estratto conto.';
+
+/**
+ * «Manda N PEC» senza la risposta del programma (il server web ha smesso di aspettare): alcune PEC possono essere partite. Si guarda prima di rimandarle; il
+ * programma non manda due volte la stessa PEC nello stesso giorno.
+ */
+export const FRASE_PEC_SENZA_RISPOSTA = 'La pagina non ha avuto la risposta del programma: alcune PEC possono essere partite. Prima di rimandarle guarda la '
+    + 'corrispondenza delle persone, o rifai l\'anteprima: a chi una PEC è già partita oggi non parte di nuovo.';
+
+/** Accanto alla persona con la PEC dello stesso tipo già partita oggi: «Manda N PEC» non la conta. */
+export function fraseGiaPartita(ora: string): string {
+    return `Già partita oggi alle ${ora}: non parte di nuovo.`;
+}
+
+/** La «i» del badge «PEC non comunicata dalla persona»: che cosa vuol dire, con l'esempio. */
+export const FRASE_PEC_NON_COMUNICATA = 'La PEC c\'è nella scheda, ma la persona non l\'ha comunicata. Esempio: scritta dallo studio da un vecchio contratto. '
+    + 'Puoi mandarla lo stesso: decidi tu.';
+
+/** L'avviso delle rate scadute: le lettere per PEC non partite, o con l'avviso di mancata consegna, da rimandare o da stampare. */
+export function testoPecDaRimandare(n: number): string | null {
+    if (n <= 0) {
+        return null;
+    }
+
+    return n === 1 ? '1 lettera per PEC non è partita, o ha l\'avviso di mancata consegna.'
+        : `${n} lettere per PEC non sono partite, o hanno l'avviso di mancata consegna.`;
+}
+
+/** Le PEC oltre il tetto per volta, dopo un invio: quante restano, e come mandarle. */
+export function testoRestantiPec(n: number): string | null {
+    return n > 0 ? (n === 1 ? 'Ne resta 1 da mandare per PEC: premi «Manda le altre».' : `Ne restano ${n} da mandare per PEC: premi «Manda le altre».`) : null;
+}
+
+/** Il termine «N giorni dal ricevimento» contato dalla consegna della PEC provata, come lo dà il server. */
+export interface TermineDallaConsegna { entro: string; giorni: number; consegna: string; a_mano: boolean }
+
+/** «Entro il 18/12/2026: 15 giorni dal ricevimento, contati dalla consegna del 03/12/2026.» */
+export function testoTermineDallaConsegna(t: TermineDallaConsegna | null | undefined): string | null {
+    if (!t) {
+        return null;
+    }
+    const giorni = t.giorni === 1 ? '1 giorno dal ricevimento, contato' : `${t.giorni} giorni dal ricevimento, contati`;
+
+    return `Entro il ${giorno(t.entro)}: ${giorni} dalla consegna del ${giorno(t.consegna)}${t.a_mano ? ', scritta a mano' : ''}.`;
+}
 
 /**
  * La riga dei campi della finestra, dai campi che il server manda con le opzioni (`TestiLettere::CAMPI`): tutti, nel loro ordine. Una lista sola,
@@ -131,17 +234,47 @@ export function testoSpedizione(s: SpedizioneLettera | null | undefined, tipo?: 
 
 export interface UltimaLettera {
     tipo: string; data: string; canale: string; stato: string; destinatari?: string[]; spedizione?: SpedizioneLettera | null;
+    /** La consegna della PEC provata: la ricevuta del gestore, o il giorno scritto a mano con la prova. */
+    consegna?: ConsegnaDellaPec | null;
+    /** La PEC della lettera: partita, non partita, in partenza, con l'avviso di mancata consegna, da mandare («PEC e carta» solo stampata). */
+    pec?: 'partita' | 'non_partita' | 'in_coda' | typeof MANCATA_CONSEGNA | 'da_mandare' | null;
+    /** Il giorno dell'avviso di mancata consegna. */
+    mancata_consegna_il?: string | null;
 }
 
 /**
  * L'ultima lettera di una persona, nell'elenco: il tipo, come e quando. Per l'email «consegna non provata»: il server di posta l'ha accettata,
- * che sia arrivata il programma non lo sa. Mai «consegnata», «ricevuta», «notificata».
+ * che sia arrivata il programma non lo sa. Mai «ricevuta», «notificata»; «consegnata» solo per la PEC con la consegna provata, con le parole di
+ * `consegnaProvata.ts`.
  */
 export function testoUltimaLettera(l: UltimaLettera | null | undefined): string {
     if (!l) {
         return 'Nessuna lettera';
     }
     const nome = NOMI_TIPI[l.tipo as TipoLettera] ?? l.tipo;
+    // La lettera per PEC dalla casella dello studio, con lo stato della sua PEC (le righe di prima non lo hanno: allora dallo stato della lettera).
+    if (l.canale === 'pec' || l.canale === 'pec_e_carta') {
+        const pec = l.pec ?? null;
+        const conLaCarta = l.canale === 'pec_e_carta';
+        // «PEC e carta» con la PEC da mandare o non partita: la frase dice la carta, e poi la PEC. Mai «PEC partita».
+        if (conLaCarta && (pec === 'da_mandare' || pec === 'non_partita')) {
+            const carta = l.stato === 'spedita' ? testoSpedizione(l.spedizione ?? { data: l.data }, l.tipo) : `${participio(l.tipo, 'stampato')} il ${giorno(l.data)}`;
+
+            return `${nome} ${carta}, PEC ${pec === 'da_mandare' ? 'da mandare' : 'non partita'}`;
+        }
+        if (pec === MANCATA_CONSEGNA) {
+            return `${nome} · ${testoMancataConsegna(l.mancata_consegna_il ?? l.data)}`;
+        }
+        if (pec === 'in_coda') {
+            return `${nome} · PEC in partenza dal ${giorno(l.data)}`;
+        }
+        if (pec === 'partita' || (pec === null && l.stato !== 'in_coda' && l.stato !== 'non_partita')) {
+            const testoPec = l.consegna ? testoPecDellUltimaLettera(l.consegna) : `PEC partita il ${giorno(l.data)}`;
+            const carta = conLaCarta ? (l.spedizione ? `, e ${testoSpedizione(l.spedizione, l.tipo)}` : ', e su carta') : '';
+
+            return `${nome} · ${testoPec}${carta}`;
+        }
+    }
     if (l.stato === 'spedita') {
         return `${nome} ${testoSpedizione(l.spedizione ?? { data: l.data }, l.tipo)}`;
     }
@@ -163,9 +296,12 @@ export function testoUltimaLettera(l: UltimaLettera | null | undefined): string 
     return `${nome} non ${participio(l.tipo, 'partito')} il ${giorno(l.data)}`;
 }
 
-/** Lo stato di una riga del registro (un indirizzo, o la stampa), in parole. */
+/** Lo stato di una riga del registro (un indirizzo, la stampa, la PEC), in parole. Per una PEC la frase la scrive il server, con la consegna se è provata. */
 export function testoRigaDelRegistro(r: { canale: string; formato?: string | null; destinatario: string | null; stato: string; quando: string; errore: string | null;
-    spedizione?: SpedizioneLettera | null }): string {
+    spedizione?: SpedizioneLettera | null; pec?: { frase: string } | null }): string {
+    if (r.pec) {
+        return r.pec.frase;
+    }
     switch (r.stato) {
         case 'inviata':
             return `Inviata il ${quando(r.quando)}${r.destinatario ? ` a ${r.destinatario}` : ''}, consegna non provata`;
@@ -212,11 +348,13 @@ export function testoUscite(n: number): string | null {
 }
 
 /** I conteggi dell'anteprima per canale, in una riga. */
-export function testoConteggi(c: Record<CanaleLettera, number>): string {
+export function testoConteggi(c: Partial<Record<CanaleLettera, number>>): string {
     const parti = [
-        c.email > 0 ? `${c.email} per email` : null,
-        c.stampa > 0 ? `${c.stampa} da stampare` : null,
-        c.zip > 0 ? `${c.zip} in un PDF per persona` : null,
+        (c.email ?? 0) > 0 ? `${c.email} per email` : null,
+        (c.pec ?? 0) > 0 ? `${c.pec} per PEC` : null,
+        (c.pec_e_carta ?? 0) > 0 ? `${c.pec_e_carta} per PEC e su carta` : null,
+        (c.stampa ?? 0) > 0 ? `${c.stampa} da stampare` : null,
+        (c.zip ?? 0) > 0 ? `${c.zip} in un PDF per persona` : null,
     ].filter(Boolean);
 
     return parti.length ? `Lettere: ${parti.join(', ')}.` : 'Nessuna lettera.';
@@ -291,15 +429,18 @@ export function coperteDalCredito(persone: Array<{ id: number; totale: number; c
     return persone.filter((p) => p.credito > 0 && p.credito >= p.totale).map((p) => p.id);
 }
 
-/** Dopo un'azione riuscita la finestra spegne i pulsanti: un secondo clic non manda di nuovo le stesse lettere. */
+/** Dopo un'azione riuscita la finestra spegne il suo pulsante: un secondo clic non manda di nuovo le stesse lettere. */
 export const FRASE_FATTO = 'Fatto. Per un altro invio rifai l\'anteprima.';
 
 /**
  * Il tetto di un PDF (la stessa frase del server): conta chi si stampa e chi si scarica in un PDF per persona, non chi va per email; oltre,
  * dice come fare il resto.
  */
-export function testoOltreTetto(c: Record<CanaleLettera, number>, tetto: number): string | null {
-    const [quali, n, dove] = c.stampa > tetto ? ['da stampare', c.stampa, 'in un PDF'] : c.zip > tetto ? ['da scaricare', c.zip, 'in un .zip'] : [null, 0, ''];
+export function testoOltreTetto(c: Partial<Record<CanaleLettera, number>>, tetto: number): string | null {
+    // Le copie su carta di «PEC e carta» si stampano anche loro.
+    const stampa = (c.stampa ?? 0) + (c.pec_e_carta ?? 0);
+    const zip = c.zip ?? 0;
+    const [quali, n, dove] = stampa > tetto ? ['da stampare', stampa, 'in un PDF'] : zip > tetto ? ['da scaricare', zip, 'in un .zip'] : [null, 0, ''];
     if (quali === null) {
         return null;
     }
@@ -319,11 +460,22 @@ export interface PersonaDellAnteprima {
     id: number; nome: string; totale: number; righe: number; credito: number; canale: CanaleLettera; canali: CanaleLettera[]; in_accordo?: number;
     accordo_passato?: { fino_al: string; importo: number } | null;
     indirizzi: Array<{ tipo: string; indirizzo: string }>; senza_email: boolean; solo_pec: boolean; senza_indirizzo_postale: boolean;
+    /** I canali spenti per la persona, con il perché: la PEC senza la casella dello studio, o senza la PEC nella scheda. */
+    canali_spenti?: Partial<Record<CanaleLettera, string>> | never[];
+    /** «Ha solo la PEC: …», con la casella o senza. */
+    frase_solo_pec?: string | null;
+    /** La PEC della persona, il giorno in cui l'ha comunicata, e la sua scheda (a chi la può modificare). */
+    pec?: string | null; pec_comunicata_il?: string | null; pec_non_comunicata?: boolean; scheda?: string | null;
+    /** L'ora della PEC dello stesso tipo già partita oggi: non parte di nuovo. */
+    pec_partita_oggi?: string | null;
 }
 
-/** Le persone di un canale, tolte quelle escluse dall'amministratore. */
-export function personeDelCanale(persone: PersonaDellAnteprima[], canali: Record<number, CanaleLettera>, escluse: number[], canale: CanaleLettera): PersonaDellAnteprima[] {
-    return persone.filter((p) => !escluse.includes(p.id) && (canali[p.id] ?? p.canale) === canale);
+/** Le persone di un canale (o di uno dei canali), tolte quelle escluse dall'amministratore. */
+export function personeDelCanale(persone: PersonaDellAnteprima[], canali: Record<number, CanaleLettera>, escluse: number[],
+    canale: CanaleLettera | CanaleLettera[]): PersonaDellAnteprima[] {
+    const quali = Array.isArray(canale) ? canale : [canale];
+
+    return persone.filter((p) => !escluse.includes(p.id) && quali.includes(canali[p.id] ?? p.canale));
 }
 
 /** Le persone viste nell'anteprima e rimaste nell'invio: il confine delle azioni. */

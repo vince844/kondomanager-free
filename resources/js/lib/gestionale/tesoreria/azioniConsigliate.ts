@@ -11,15 +11,17 @@
  *   sotto zero, la cifra fra 30 giorni.
  * - **(A) Il recupero**: «Recupera almeno € … delle rate scadute entro il …» quando lo scenario va sotto zero e ci sono rate scadute; le persone che bastano
  *   sono le rate scadute più alte prima, finché la somma copre la cifra (il server le ha già scelte). Quando quanto basta è più delle rate scadute, «Recupera
- *   tutte le rate scadute» e la frase dice che da solo non basta. Il pulsante è il sollecito (fino a 8 persone) o «Apri le rate scadute»; sotto, sempre,
- *   «Registra gli incassi», perché prima di sollecitare si registrano i versamenti già arrivati.
+ *   tutte le rate scadute» e la frase dice che da solo non basta. Le persone stanno in una tabella sotto la frase, una riga per persona: il nome, le unità,
+ *   le rate scadute, l'ultima lettera. Il pulsante è il sollecito (fino a 8 persone) o «Apri le rate scadute»; sotto, sempre, «Registra gli incassi», perché
+ *   prima di sollecitare si registrano i versamenti già arrivati.
  * - **(B) Le fatture**: «Chiedi di pagare le fatture del … dopo il …» quando il saldo torna sopra zero con un'entrata di rate, dopo, e resta sopra fino alla
  *   fine; le fatture sono quelle che scadono nei giorni sotto zero, e spostate dopo quell'entrata tengono il saldo sopra zero ogni giorno.
  * - Le scadenze delle rate non sono un'azione: le approva l'assemblea con il piano rate.
  *
  * Le altre sei, dai dati che il server manda con la tesoreria (`DatiDelleAzioni`), ognuna solo quando la sua regola è vera:
  * - **(H) Le ritenute**: le ritenute d'acconto da versare con l'F24 nei 30 giorni o già scadute (le deleghe da versare e le ritenute non ancora in una delega,
- *   come la pagina «Ritenute e F24»): «Paga per prime le ritenute, € … entro il 16/…». Non sono nel saldo previsto.
+ *   come la pagina «Ritenute e F24»): «Paga per prime le ritenute, € … entro il 16/…». Non sono nel saldo previsto. «Prepara l'F24» apre la delega della
+ *   scadenza del titolo quando il server ne conosce una sola per quel giorno; altrimenti l'elenco, dove le deleghe si generano.
  * - **(D) I bonifici segnalati** dal portale, da verificare: quanti e quanto, anche quelli rimandati con «Ricordamelo» (quanti e a quando), «Verifica i
  *   bonifici» verso l'Action inbox del condominio su quel tipo.
  * - **(C) Le rate non ancora emesse** che scadono nei 30 giorni o sono già scadute, una azione per piano: la rata, la cifra (per persona la sua parte da
@@ -60,6 +62,21 @@ export interface Recupero {
     cifra: number;
 }
 
+/** Una persona nella tabella del recupero: il nome, le unità scritte una volta sola, le rate scadute in centesimi, l'ultima lettera in parole (null: nessuna). */
+export interface RigaDellaPersona {
+    anagraficaId: number;
+    nome: string;
+    unita: string;
+    cifra: number;
+    lettera: string | null;
+}
+
+/** Le persone sotto la frase del recupero, una riga per persona nell'ordine del server; oltre le 8, quante restano e la loro cifra in centesimi. */
+export interface TabellaDellePersone {
+    righe: RigaDellaPersona[];
+    altre: { quante: number; cifra: number } | null;
+}
+
 /** Un pezzo di frase: il rosso dice sotto zero, il grassetto una cifra o un nome. */
 export interface Pezzo {
     testo: string;
@@ -94,8 +111,11 @@ export interface DatiDelleAzioni {
      * sono, il primo giorno a cui sono rimandati e in quanti giorni diversi.
      */
     bonifici: { quanti: number; cifra: number; rimandati?: number; rimandatiAl?: string | null; rimandatiGiorni?: number };
-    /** Le ritenute da versare con l'F24 nei 30 giorni o già scadute, per giorno di scadenza, in ordine. */
-    ritenute: { scadenze: Array<{ giorno: string; cifra: number }> };
+    /**
+     * Le ritenute da versare con l'F24 nei 30 giorni o già scadute, per giorno di scadenza, in ordine; con la delega da aprire quando per quel giorno ce n'è
+     * una sola aperta e nessuna ritenuta ne è fuori (senza, o da un server di prima, l'elenco).
+     */
+    ritenute: { scadenze: Array<{ giorno: string; cifra: number; delega?: number | null }> };
     /** I deficit ereditati da ripianare (i compiti aperti): quanti, e la somma dei loro scoperti. */
     deficit: { quanti: number; cifra: number };
     /** L'esercizio aperto di oggi, dove si crea un piano rate. */
@@ -113,6 +133,8 @@ export interface AzioneConsigliata {
     chiave: 'ritenute' | 'bonifici' | 'emissione' | 'recupero' | 'fatture' | 'giroconto' | 'fondo' | 'straordinario';
     titolo: string;
     frase: Pezzo[];
+    /** Le persone del recupero, sotto la frase che finisce ai due punti. */
+    tabella?: TabellaDellePersone;
     /** Le righe che si leggono solo aprendo «Mostra le rate» (oggi le rate non emesse di un piano): il titolo resta corto. */
     dettagli?: string[];
     pulsante: {
@@ -126,6 +148,8 @@ export interface AzioneConsigliata {
         origine?: number;
         destinazione?: number;
         importo?: number;
+        /** La delega F24 della scadenza, quando ce n'è una sola: il pulsante la apre. */
+        delega?: number;
     };
     /** Il recupero ha anche «Registra gli incassi», a contorno sotto il primo, con la riga che dice perché. */
     secondo?: { testo: string; tipo: 'incassi' };
@@ -273,18 +297,27 @@ export function situazione(sp: SaldoPrevisto, recupero: Recupero): Pezzo[] {
     return pezzi;
 }
 
-/** «int. 4» dentro una frase. */
-const internoInFrase = (interno: string) => interno.replace(/^Int\./, 'int.');
+const INTERNO = /^Int\. /;
 
-const ARTICOLI: Record<string, string> = { promemoria: 'un promemoria', sollecito: 'un sollecito', diffida: 'una diffida', messa_in_mora: 'una messa in mora' };
+/**
+ * Le unità scritte una volta sola: «Int. 1C, Int. 1B» diventa «Int. 1C, 1B». «Int.» si toglie solo dopo un altro interno; un'unità senza interno (un nome,
+ * un codice) resta com'è, e l'interno che la segue si scrive per intero.
+ */
+export function unitaUnaVoltaSola(interno: string): string {
+    const voci = interno.split(',').map((v) => v.trim()).filter((v) => v !== '');
 
-/** Una persona nella frase: il nome in grassetto, l'interno, la cifra, l'ultima lettera. */
-function pezziDellaPersona(p: PersonaDelRecupero): Pezzo[] {
-    const lettera = p.lettera === null ? 'nessuna lettera'
-        : `come ultima lettera ${ARTICOLI[p.lettera.tipo] ?? `un ${p.lettera.tipo}`} del ${giornoIntero(p.lettera.data)}`;
-
-    return [{ testo: p.nome, tono: 'forte' }, { testo: `${p.interno ? `, ${internoInFrase(p.interno)}` : ''}, ha ${euroSegno(p.cifra)} di rate scadute e ${lettera}` }];
+    return voci.map((v, i) => (i > 0 && INTERNO.test(v) && INTERNO.test(voci[i - 1]) ? v.replace(INTERNO, '') : v)).join(', ');
 }
+
+const LETTERE: Record<string, string> = { promemoria: 'promemoria', sollecito: 'sollecito', diffida: 'diffida', messa_in_mora: 'messa in mora' };
+
+/** L'ultima lettera in una cella: «sollecito del 07/11/2026»; null se non ce n'è. */
+const testoDellaLettera = (l: PersonaDelRecupero['lettera']): string | null =>
+    (l === null ? null : `${LETTERE[l.tipo] ?? l.tipo.replace(/_/g, ' ')} del ${giornoIntero(l.data)}`);
+
+/** La riga in fondo alla tabella, oltre le 8 persone: «e altre 7 persone, € 7.000,00». */
+export const testoDelleAltre = (altre: { quante: number; cifra: number }): string =>
+    `e altre ${altre.quante} ${altre.quante === 1 ? 'persona' : 'persone'}, ${euroSegno(altre.cifra)}`;
 
 /** Le persone che bastano a coprire la cifra, dalla lista ordinata del server: le rate scadute più alte prima, finché la somma la copre. */
 export function personeCheBastano(persone: PersonaDelRecupero[], cifra: number): PersonaDelRecupero[] {
@@ -299,24 +332,14 @@ export function personeCheBastano(persone: PersonaDelRecupero[], cifra: number):
     return esito;
 }
 
-/** L'elenco delle persone nella frase, con la regola delle 8. */
-function elencoDellePersone(apertura: (n: number, parola: string) => string, recupero: Recupero, mostrate: PersonaDelRecupero[]): Pezzo[] {
+/** Le persone in una tabella, con la regola delle 8: fino a 8 tutte; oltre, le prime con più rate scadute e una riga con quante restano e la loro cifra. */
+function tabellaDellePersone(recupero: Recupero, mostrate: PersonaDelRecupero[]): TabellaDellePersone {
     const oltre = recupero.servono > TUTTE_FINO_A;
-    const quante = oltre ? recupero.servono : mostrate.length;
-    const pezzi: Pezzo[] = [{ testo: apertura(quante, PAROLE[quante] ?? String(quante)) }];
-    if (oltre) pezzi.push({ testo: `le ${mostrate.length} con più rate scadute sono ` });
-    mostrate.forEach((p, i) => {
-        if (i > 0) pezzi.push({ testo: '; ' });
-        pezzi.push(...pezziDellaPersona(p));
-    });
-    if (oltre) {
-        const restano = recupero.servono - mostrate.length;
-        const cifra = recupero.servonoCents - mostrate.reduce((t, p) => t + p.cifra, 0);
-        pezzi.push({ testo: `; e altre ${restano} ${restano === 1 ? 'persona' : 'persone'}, ${euroSegno(cifra)}` });
-    }
-    pezzi.push({ testo: '.' });
 
-    return pezzi;
+    return {
+        righe: mostrate.map((p) => ({ anagraficaId: p.anagraficaId, nome: p.nome, unita: unitaUnaVoltaSola(p.interno), cifra: p.cifra, lettera: testoDellaLettera(p.lettera) })),
+        altre: oltre ? { quante: recupero.servono - mostrate.length, cifra: recupero.servonoCents - mostrate.reduce((t, p) => t + p.cifra, 0) } : null,
+    };
 }
 
 function azioneDelRecupero(sp: SaldoPrevisto, recupero: Recupero, basta: number): AzioneConsigliata {
@@ -324,8 +347,12 @@ function azioneDelRecupero(sp: SaldoPrevisto, recupero: Recupero, basta: number)
     const p = primoSottoZero(con) ?? 0;
     const dal = indiceDelRecupero(sp);
     const entro = dal === 0 ? 'entro oggi' : `entro il ${giorno(sp, dal)}`;
-    const mostrate = recupero.servono > TUTTE_FINO_A ? recupero.persone.slice(0, MOSTRATE_OLTRE) : personeCheBastano(recupero.persone, Math.min(basta, recupero.cifra));
+    const oltre = recupero.servono > TUTTE_FINO_A;
+    const mostrate = oltre ? recupero.persone.slice(0, MOSTRATE_OLTRE) : personeCheBastano(recupero.persone, Math.min(basta, recupero.cifra));
     const bastaIlRecupero = basta <= recupero.cifra;
+    // Quante persone dice la frase, che finisce ai due punti: sotto c'è la tabella.
+    const quante = oltre ? recupero.servono : mostrate.length;
+    const parola = PAROLE[quante] ?? String(quante);
 
     let titolo: string;
     const frase: Pezzo[] = [];
@@ -335,23 +362,22 @@ function azioneDelRecupero(sp: SaldoPrevisto, recupero: Recupero, basta: number)
         const iMinimo = con.indexOf(minimo);
         frase.push({ testo: iMinimo === p ? (p === 0 ? 'È quanto manca oggi per non andare sotto zero.' : `È quanto manca il ${giorno(sp, p)} per non andare sotto zero.`)
             : `È quanto serve per non andare sotto zero nei 30 giorni: il punto più basso è il ${giorno(sp, iMinimo)}, ${euroSegno(minimo)}.` });
-        frase.push(...elencoDellePersone((n, parola) => (recupero.servono > TUTTE_FINO_A ? ` Servono ${n} persone: ` : n === 1 ? ' Basta una persona: ' : ` Bastano ${parola} persone: `),
-            recupero, mostrate));
+        if (quante > 0) frase.push({ testo: oltre ? ` Servono ${quante} persone:` : quante === 1 ? ' Basta una persona:' : ` Bastano ${parola} persone:` });
     } else {
         titolo = `Recupera tutte le rate scadute, ${euroSegno(recupero.cifra)}, ${entro}`;
         const conTutte = simulazione(sp, recupero.cifra);
         const pt = primoSottoZero(conTutte) ?? 0;
         frase.push({ testo: `Da solo non basta: anche con tutte le rate scadute il conto ${pt === 0 ? 'resta sotto zero già oggi' : `va sotto zero il ${giorno(sp, pt)}`}, `
             + `fino a ${euroSegno(Math.min(...conTutte))}.` });
-        frase.push(...elencoDellePersone((n, parola) => (recupero.servono > TUTTE_FINO_A ? ` Le rate scadute sono di ${n} persone: `
-            : n === 1 ? ' Le rate scadute sono di una persona: ' : ` Le rate scadute sono di ${parola} persone: `), recupero, mostrate));
+        if (quante > 0) frase.push({ testo: quante === 1 ? ' Le rate scadute sono di una persona:' : ` Le rate scadute sono di ${oltre ? quante : parola} persone:` });
     }
 
-    const pulsante: AzioneConsigliata['pulsante'] = recupero.servono > TUTTE_FINO_A || mostrate.length === 0
+    const pulsante: AzioneConsigliata['pulsante'] = oltre || mostrate.length === 0
         ? { testo: 'Apri le rate scadute', tipo: 'rate_scadute' }
         : { testo: mostrate.length === 1 ? 'Manda un sollecito' : 'Manda i solleciti', tipo: 'lettera', persone: mostrate.map((m) => ({ id: m.anagraficaId, nome: m.nome })) };
 
-    return { chiave: 'recupero', titolo, frase, pulsante, secondo: { ...REGISTRA_GLI_INCASSI }, nota: PRIMA_DI_SOLLECITARE };
+    return { chiave: 'recupero', titolo, frase, ...(quante > 0 ? { tabella: tabellaDellePersone(recupero, mostrate) } : {}), pulsante, secondo: { ...REGISTRA_GLI_INCASSI },
+        nota: PRIMA_DI_SOLLECITARE };
 }
 
 /** Le fatture dei giorni dati, come le manda il server; da un server di prima, le voci del giorno. */
@@ -423,12 +449,15 @@ function azioneDelleRitenute(sp: SaldoPrevisto, dati: DatiDelleAzioni): AzioneCo
         poi = avanti.slice(1);
     }
     const dopo = poi.length ? ` Poi ${elencoItaliano(poi.map((p) => `${euroSegno(p.cifra)} entro il ${giornoBreve(p.giorno)}`))}.` : '';
+    // Il titolo dice una scadenza sola (l'unica già passata, o la prima): se il server ne conosce la delega, il pulsante la apre; con più scadenze, l'elenco.
+    const scadenzaDelTitolo = scadute.length === 1 ? scadute[0] : scadute.length === 0 ? avanti[0] : null;
+    const delega = scadenzaDelTitolo?.delega ?? null;
 
     return {
         chiave: 'ritenute',
         titolo,
         frase: [{ testo: `Le ritenute d'acconto dei fornitori si versano all'Erario con l'F24, alle scadenze della legge, e non sono nel saldo previsto.${dopo}` }],
-        pulsante: { testo: 'Prepara l\'F24', tipo: 'f24' },
+        pulsante: { testo: 'Prepara l\'F24', tipo: 'f24', ...(delega ? { delega } : {}) },
     };
 }
 

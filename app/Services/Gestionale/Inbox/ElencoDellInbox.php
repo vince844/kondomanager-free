@@ -106,12 +106,16 @@ final class ElencoDellInbox
         return $chi === null ? 0 : $this->query(['mie' => (int) $chi, 'tipo' => null, 'cerca' => null, 'quando' => null] + $filtri, false)->count();
     }
 
-    /** Solo i compiti delle segnalazioni assegnate a quell'utente: la segnalazione c'è e lo ha in `assigned_to`. */
+    /**
+     * Solo i compiti assegnati a quell'utente: quelli delle segnalazioni che lo hanno in `assigned_to`, e quelli che lo dicono in `meta.assegnato_a` (il
+     * memo «Da portare in assemblea» per sé o per un collaboratore, la 501 del registro delle decisioni).
+     */
     private function soloLeMie($query, string $tipoSql, int $utente): void
     {
-        $query->whereRaw("{$tipoSql} = ?", [CompitoDellaSegnalazione::TIPO])
+        $query->where(fn ($q) => $q->where(fn ($s) => $s->whereRaw("{$tipoSql} = ?", [CompitoDellaSegnalazione::TIPO])
             ->where('eventi.eventable_type', (new \App\Models\Segnalazione())->getMorphClass())
-            ->whereIn('eventi.eventable_id', fn (Builder $s) => $s->select('segnalazioni.id')->from('segnalazioni')->where('segnalazioni.assigned_to', $utente));
+            ->whereIn('eventi.eventable_id', fn (Builder $d) => $d->select('segnalazioni.id')->from('segnalazioni')->where('segnalazioni.assigned_to', $utente)))
+            ->orWhere('eventi.meta->assegnato_a', $utente));
     }
 
     /**
@@ -295,6 +299,8 @@ final class ElencoDellInbox
                     'anagrafica_nome' => $persona,
                     'action_url' => IndirizzoDelCompito::perIlLink($task->meta['action_url'] ?? null),
                     'related_id' => $task->meta['context']['related_event_id'] ?? null,
+                    // Il memo «Da portare in assemblea»: «Apri la fattura n. 45» nel menu (`MemoriaDelCondominio::apriLOrigine`).
+                    'apri' => $task->meta['apri'] ?? null,
                 ],
             ] + $risposte[$task->id];
         })->values();

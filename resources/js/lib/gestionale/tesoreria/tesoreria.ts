@@ -143,11 +143,12 @@ export function nomeDellaRiga(r: Pick<RigaDelDenaro, 'voce' | 'tipo' | 'attiva'>
     const disattivata = r.attiva ? '' : ', disattivata';
     switch (r.tipo) {
         case 'banca':
-            return `${r.voce} (conto corrente${disattivata})`;
+            // Il nome che dice già il tipo non lo ripete, come per i contanti: «Conto corrente (conto corrente)» si leggeva due volte.
+            return /conto corrente/i.test(r.voce) ? (r.attiva ? r.voce : `${r.voce} (disattivata)`) : `${r.voce} (conto corrente${disattivata})`;
         case 'contanti':
             return /contant/i.test(r.voce) && r.attiva ? r.voce : `${r.voce} (contanti${disattivata})`;
         case 'virtuale':
-            return `${r.voce} (cassa virtuale${disattivata})`;
+            return /virtuale/i.test(r.voce) ? (r.attiva ? r.voce : `${r.voce} (disattivata)`) : `${r.voce} (cassa virtuale${disattivata})`;
         case 'senza_cassa':
             return `${r.voce} (conto senza cassa)`;
         default:

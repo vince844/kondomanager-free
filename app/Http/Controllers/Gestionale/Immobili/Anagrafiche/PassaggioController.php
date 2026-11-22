@@ -5,6 +5,8 @@
 
 namespace App\Http\Controllers\Gestionale\Immobili\Anagrafiche;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\DateHelper;
 use App\Actions\Subentro\AnnullaConguaglioAction;
 use App\Actions\Subentro\AnnullaPassaggioAction;
@@ -27,6 +29,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -148,6 +151,13 @@ class PassaggioController extends Controller
 
         $subentro = $esito['subentro'];
         $anteprima = $esito['anteprima'];
+        // Il nuovo titolare che non ha ricevuto la convocazione di un'assemblea già convocata, se all'assemblea vota lui: un compito nell'Action inbox.
+        // Dopo il passaggio scritto: se il compito non nasce, il passaggio resta.
+        try {
+            app(\App\Services\Assemblee\Convocazione\NuovoTitolareNonConvocato::class)->dopoIlPassaggio($subentro);
+        } catch (\Throwable $e) {
+            \App\Support\ErroriDiagnosticabili::registra($e, 'Nuovo titolare non convocato', ['subentro_id' => $subentro->id]);
+        }
         $entranteId = $subentro->anagrafica_entrante_id;
         // La frase del pannello è al futuro («risulterà»): dopo la scrittura si dice il fatto — con la stessa frase
         // per tipo del pannello, portata al presente, non con una frase generica che per l'usufrutto e la
@@ -279,8 +289,15 @@ class PassaggioController extends Controller
 
         // Una data sola per il passaggio e le sue pertinenze: le righe `subentri` figlie la ricevono insieme (verifica S6, R12).
         $giorno = CarbonImmutable::parse($dati['copia_autentica_il'])->toDateString();
-        $subentro->update(['copia_autentica_il' => $giorno]);
-        $subentro->pertinenze()->update(['copia_autentica_il' => $giorno]);
+        RegistroModifiche::durante(
+            Gesto::su('condominio', 'passaggio', (int) $subentro->id, 'Passaggio dell\'unità ' . $immobile->etichetta)->nelCondominio($condominio)
+                ->scheda('immobile', (int) $immobile->id)
+                ->riepilogo('Copia autentica del titolo registrata, del ' . CarbonImmutable::parse($giorno)->format('d/m/Y'))
+                ->rimando('passaggio', (int) $subentro->id, 'Passaggio dell\'unità ' . $immobile->etichetta),
+            function () use ($subentro, $giorno) {
+                $subentro->update(['copia_autentica_il' => $giorno]);
+                $subentro->pertinenze()->update(['copia_autentica_il' => $giorno]);
+            });
 
         // Vendita con riserva d'usufrutto (decisione 28.3, testi T1 della Fase 1-bis della beta.38): la copia si registra
         // come per ogni vendita, ma non libera chi vende, che resta usufruttuario: lo dice come il vademecum (`FrasiObbligati`).
@@ -331,6 +348,9 @@ class PassaggioController extends Controller
             }
             throw $e;
         }
+
+        // Il compito del nuovo titolare non convocato, se c'era, si chiude: il passaggio non c'è più.
+        app(\App\Services\Assemblee\Convocazione\NuovoTitolareNonConvocato::class)->dopoLAnnullamento($subentro);
 
         // Solo ciò che il passaggio aveva davvero toccato: una locazione non sposta rate, una rinuncia non scrive conguaglio.
         $effetti = implode(' ', AnnullaPassaggioAction::frasiEffetti($esito, $esito['uscente'], $esito['entrante'], true, (bool) ($esito['successione'] ?? false)));
@@ -402,8 +422,14 @@ class PassaggioController extends Controller
         $this->assicuraUnitaDelCondominio($condominio, $immobile);
         $dati = collect($request->validated())->except('condomini')->all();
 
-        $anagrafica = Anagrafica::create($dati);
-        $anagrafica->condomini()->syncWithoutDetaching([$condominio->id]);
+        // In una transazione: la persona e il suo condominio sono una riga sola «Creata», nel registro del condominio (decisione 554). Senza, la
+        // «Creata» si scriverebbe alla fine del salvataggio, senza condomini, e il legame in una riga sua.
+        $anagrafica = DB::transaction(function () use ($dati, $condominio) {
+            $anagrafica = Anagrafica::create($dati);
+            RegistroModifiche::legame($anagrafica, 'condomini', 'Condomini', fn () => $anagrafica->condomini()->syncWithoutDetaching([$condominio->id]));
+
+            return $anagrafica;
+        });
 
         return response()->json([
             'id' => $anagrafica->id,

@@ -82,6 +82,8 @@ const props = defineProps<{
             tipo_allocazione: string | null;
             dati_extra?: any;
             stato_approvazione?: string;
+            /** 1.12.0-beta.13 (R12): la ratifica con la delibera dell'assemblea, se c'è; `giorno` è `deliberata_il`, altrimenti il giorno della nota. */
+            ratifica?: { frase: string | null; assemblea_id: number | null; punto_id: number | null; giorno: string | null } | null;
         }>;
     };
     /** Per un incasso da terzi: da quale giorno varrebbe lo storno per ognuna delle due nature (`aaaa-mm-gg`). */
@@ -188,15 +190,24 @@ const tornaIndietro = () => {
 };
 
 // ── Audit ────────────────────────────────────────────────────────────────────
+// 1.12.0-beta.13 (R12, decisione 561): con la delibera, «Ratificata con la delibera del 15/12/2026, punto 3» e il giorno della riunione; senza, il giorno
+// della nota come prima, e la spesa resta da ratificare.
 const sforoRatificatoAudit = computed(() => {
     if (!props.scrittura.fatture) return null;
     for (const f of props.scrittura.fatture) {
         if (f.stato_approvazione === 'approvata' && f.dati_extra?.ratifica_assembleare) {
-            return f.dati_extra.ratifica_assembleare;
+            const nota = f.dati_extra.ratifica_assembleare;
+            return { ...nota, ratifica: f.ratifica ?? null, giorno: f.ratifica?.giorno ?? nota.deliberata_il ?? nota.approvato_il };
         }
     }
     return null;
 });
+const indirizzoDellAssemblea = (assemblea: number, punto: number | null) => route(generateRoute('gestionale.assemblee.show'), {
+    condominio: props.condominio.id, assemblea, punto: punto ?? undefined,
+});
+/** Il giorno come si legge: una data della riunione («2026-12-15») resta un giorno, un istante della nota diventa giorno e ora come prima. */
+const giornoDellaRatifica = (v: string | null | undefined) => !v ? '' : /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.split('-').reverse().join('/')
+    : new Date(v).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
 
 // ── Scritture collegate ──────────────────────────────────────────────────────
 // Non ogni figlia annulla la scrittura, né ogni scrittura con un padre ne è lo storno (1.11.0-beta.49): la compensazione è
@@ -386,18 +397,26 @@ const confermaStorno = () => {
                         </div>
                         <div class="flex-1 space-y-1">
                             <h3 class="font-black text-orange-900 text-base flex items-center gap-2">
-                                Ratifica assembleare (Sforo Motivato)
+                                {{ sforoRatificatoAudit.ratifica?.frase ? 'Ratifica assembleare' : 'Spesa oltre il preventivo, da ratificare' }}
                                 <Badge class="bg-orange-200 text-orange-800 hover:bg-orange-200 border-none px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">Art. 1135 c.c.</Badge>
                             </h3>
                             <p class="text-sm text-orange-800/80 leading-relaxed max-w-3xl">
-                                Questa scrittura è collegata al pagamento di una spesa urgente che aveva superato il preventivo originario ed è stata formalmente ratificata dall'assemblea per poterne sbloccare il pagamento.
+                                <template v-if="sforoRatificatoAudit.ratifica?.frase">
+                                    {{ sforoRatificatoAudit.ratifica.frase }}.
+                                    <a v-if="sforoRatificatoAudit.ratifica.assemblea_id" :href="indirizzoDellAssemblea(sforoRatificatoAudit.ratifica.assemblea_id, sforoRatificatoAudit.ratifica.punto_id)"
+                                        class="font-medium underline" data-testid="apri-l-assemblea">Apri l'assemblea</a>
+                                </template>
+                                <template v-else>
+                                    Questa scrittura è collegata al pagamento di una spesa urgente che aveva superato il preventivo: il pagamento è stato sbloccato con la nota,
+                                    e la ratifica arriva con la delibera dell'assemblea.
+                                </template>
                             </p>
                         </div>
                         <div class="shrink-0 w-full md:w-auto md:max-w-sm bg-white/60 rounded-xl p-4 border border-orange-100 min-w-[280px]">
                             <div class="grid grid-cols-1 gap-2 text-xs">
                                 <div class="flex justify-between items-center border-b border-orange-100/50 pb-2">
-                                    <span class="text-orange-600/70 font-medium uppercase tracking-wider text-[10px]">Ratificata il</span>
-                                    <span class="font-bold text-orange-900">{{ new Date(sforoRatificatoAudit.approvato_il).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) }}</span>
+                                    <span class="text-orange-600/70 font-medium uppercase tracking-wider text-[10px]">{{ sforoRatificatoAudit.ratifica?.frase ? 'Ratificata il' : 'Sbloccata il' }}</span>
+                                    <span class="font-bold text-orange-900">{{ giornoDellaRatifica(sforoRatificatoAudit.giorno) }}</span>
                                 </div>
                                 <div class="pt-1">
                                     <span class="block text-orange-600/70 font-medium uppercase tracking-wider text-[10px] mb-1">Riferimento Verbale / Note</span>

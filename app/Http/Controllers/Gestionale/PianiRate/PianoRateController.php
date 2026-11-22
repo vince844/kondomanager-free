@@ -5,6 +5,8 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use Illuminate\Validation\Rule;
 use App\Enums\NaturaGestione;
 use App\Actions\PianoRate\GeneratePianoRateAction;
@@ -108,7 +110,8 @@ class PianoRateController extends Controller
             'esercizio' => $esercizio,
             'esercizi' => $esercizi,
             'condomini' => CondominioResource::collection($this->getCondomini()),
-            'pianiRate' => PianoRateResource::collection($pianiRate)->resolve(),
+            // R1 (scena 3 della bozza di «Scegli la delibera»): nella riga di un piano legato a una delibera di un altro giorno, la differenza.
+            'pianiRate' => $this->conLaDifferenzaDellaDelibera(PianoRateResource::collection($pianiRate)->resolve(), $pianiRate->getCollection()),
             'pianiAddebiti' => $pianiAddebiti,
             'meta' => [
                 'current_page' => $pianiRate->currentPage(),
@@ -194,7 +197,45 @@ class PianoRateController extends Controller
             'saldoInfo' => $saldoInfo,
             'hasPianoEsistente' => $hasPianoEsistente,
             'anagraficheDisponibili' => $condominio->anagrafiche()->orderBy('nome')->get(['anagrafiche.id', 'nome']),
+            // «Crea il piano straordinario» e il piano di ripianamento dal seguito delle delibere (decisione 622 (1)): il nuovo piano si apre con la delibera
+            // già scelta. Solo una delibera del condominio, e solo per chi gestisce le assemblee; niente si collega finché il piano non si salva.
+            'deliberaProposta' => $this->deliberaProposta($request, $condominio),
+            // «Metti a rate questa spesa» dalla fattura (`da_fattura`): «Torna alla fattura» invece di «Torna all'elenco». Solo una fattura del condominio:
+            // nessun indirizzo libero preso dalla richiesta.
+            'ritorno' => $this->ritornoAllaFattura($request, $condominio),
         ]);
+    }
+
+    /** @return ?array{url: string, testo: string} */
+    private function ritornoAllaFattura(Request $request, Condominio $condominio): ?array
+    {
+        $id = (int) $request->query('da_fattura', 0);
+        if ($id <= 0 || ! \App\Models\Gestionale\FatturaPassiva::query()->where('condominio_id', $condominio->id)->whereKey($id)->exists()) {
+            return null;
+        }
+
+        return ['url' => route('admin.gestionale.fatture.show', ['condominio' => $condominio->id, 'fattura' => $id], false), 'testo' => 'Torna alla fattura'];
+    }
+
+    /**
+     * La delibera chiesta dall'indirizzo (`delibera_id`), nella forma del menu di «Scegli la delibera»; null senza, per chi non gestisce le assemblee, o per una
+     * delibera di un altro condominio o che non si sceglie.
+     *
+     * @return ?array<string, mixed>
+     */
+    private function deliberaProposta(Request $request, Condominio $condominio): ?array
+    {
+        $id = $request->query('delibera_id');
+        if (! is_string($id) || ! ctype_digit($id) || ! \App\Services\Assemblee\AccessoAlleAssemblee::gestisce($request->user())) {
+            return null;
+        }
+        $delibera = \App\Models\Assemblee\Delibera::query()->where('condominio_id', $condominio->id)->with(['assemblea', 'punto'])->find((int) $id);
+        if ($delibera === null) {
+            return null;
+        }
+        [$si, $perche] = \App\Services\Assemblee\DelibereDelCondominio::siSceglie($delibera, \App\Enums\Assemblee\RuoloCollegamento::DELIBERA->value);
+
+        return $si ? \App\Services\Assemblee\DelibereDelCondominio::riga($delibera, $si, $perche) : null;
     }
 
     /**
@@ -224,6 +265,11 @@ class PianoRateController extends Controller
             'nota_destinatari' => 'required_if_accepted:accetta_destinatari|nullable|string|min:10',
         ], \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::messaggi(), \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::ATTRIBUTI);
         $validated = $request->validated();
+        // «Scegli la delibera» nello Scudo legale (§1.4 del progetto delle assemblee): collegare una delibera è di chi gestisce le assemblee.
+        $delibera = $request->delibera();
+        if ($delibera !== null) {
+            \Illuminate\Support\Facades\Gate::allowIf(\App\Services\Assemblee\AccessoAlleAssemblee::gestisce($request->user()), __('errors.403_message'));
+        }
         $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
         $accettaDestinatari = (bool) $request->boolean('accetta_destinatari', false);
         $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
@@ -286,6 +332,10 @@ class PianoRateController extends Controller
             if (! empty($validated['data_delibera_assemblea']) && ($validated['tipo_autorizzazione'] ?? null) !== 'urgenza') {
                 $pianoRate->data_delibera_assemblea = $validated['data_delibera_assemblea'];
             }
+            // Con la delibera scelta il giorno è quello della riunione (lo ha già messo la richiesta) e il numero del verbale è quello del suo giorno.
+            if ($delibera !== null) {
+                $pianoRate->numero_verbale = \App\Services\Assemblee\DeliberaInParole::numeroDelVerbale($delibera);
+            }
 
             if ($tipoPiano === 'straordinario') {
                 // Usiamo le colonne dedicate presenti nella tabella piani_rate
@@ -296,9 +346,30 @@ class PianoRateController extends Controller
                 $pianoRate->approvato_da_user_id = Auth::id();
                 $pianoRate->approvato_il = now();
                 $pianoRate->stato = StatoPianoRate::APPROVATO;
+            } elseif (($validated['tipo_autorizzazione'] ?? null) === 'urgenza'
+                && NaturaGestione::daStringa($gestione->tipo) === NaturaGestione::Straordinaria) {
+                // Coda 688: «Urgenza» dalla scheda «Dalle voci del preventivo» di una gestione straordinaria. La scelta e il motivo si scrivono, come sulla
+                // scheda delle fatture, e **il piano nasce approvato**: l'autorizzazione è l'urgenza (art. 1135 c. 2 c.c.), non c'è un'assemblea da aspettare.
+                // Il giorno dei lavori si scrive con le voci, più sotto.
+                $pianoRate->tipo_autorizzazione = 'urgenza';
+                $pianoRate->motivazione_autorizzazione = $validated['motivazione_autorizzazione'] ?? null;
+                $pianoRate->approvato_da_user_id = Auth::id();
+                $pianoRate->approvato_il = now();
+                $pianoRate->stato = StatoPianoRate::APPROVATO;
             }
-            
-            $pianoRate->save(); 
+            // Coda 688: il giorno dei lavori urgenti nella colonna del piano, sulle due schede di una gestione straordinaria. È il giorno che il motore legge
+            // (`GiornoDellUrgenza`, da `CompetenzaDelPiano`): sulle fatture la fattura senza periodo lo prende, sulle voci vale come quello scritto su ogni voce.
+            if ($pianoRate->tipo_autorizzazione === 'urgenza' && ! empty($validated['giorno_dei_lavori'])
+                && NaturaGestione::daStringa($gestione->tipo) === NaturaGestione::Straordinaria) {
+                $pianoRate->giorno_dei_lavori = $validated['giorno_dei_lavori'];
+            }
+
+            $pianoRate->save();
+            // La provenienza (R1): il piano è legato alla delibera scelta, nella stessa transazione; le colonne di oggi restano la verità del motore.
+            if ($delibera !== null) {
+                \App\Services\Assemblee\CollegamentiDelleDelibere::collega($pianoRate, \App\Enums\Assemblee\RuoloCollegamento::DELIBERA->value, $delibera, null,
+                    $request->user());
+            }
             // -------------------------------------------------------------
 
             // 4. Gestione Capitoli o Fatture
@@ -315,7 +386,7 @@ class PianoRateController extends Controller
                     $fattureIds[] = $fConf['id'];
                 }
                 
-                $pianoRate->fattureStraordinarie()->sync($syncFatture);
+                RegistroModifiche::legame($pianoRate, 'fattureStraordinarie', 'Fatture', fn () => $pianoRate->fattureStraordinarie()->sync($syncFatture), 'numero_documento');
 
                 // --- MAGIA DASHBOARD: Spegniamo il semaforo sulle righe di queste fatture ---
                 if (!empty($fattureIds)) {
@@ -444,10 +515,14 @@ class PianoRateController extends Controller
 
                     }
                 }
-                $pianoRate->capitoli()->sync($syncData);
+                RegistroModifiche::legame($pianoRate, 'capitoli', 'Capitoli', fn () => $pianoRate->capitoli()->sync($syncData));
 
                 // B2, S6 (decisione 20): i tratti di competenza per voce, sulla pivot appena nata.
                 $competenzeNonApplicate = $this->scriviCompetenzeCapitoli($pianoRate, $validated['competenze_capitoli'] ?? []);
+                // Coda 688: il giorno dei lavori urgenti su ogni voce del piano, dall'inizio alla fine (`GiornoDellUrgenza`): un giorno solo, non un periodo.
+                if ($pianoRate->tipo_autorizzazione === 'urgenza' && ! empty($validated['giorno_dei_lavori'])) {
+                    $this->scriviCompetenzeCapitoli($pianoRate, \App\Services\Riparto\GiornoDellUrgenza::competenzeDelGiorno($pianoRate, $validated['giorno_dei_lavori']));
+                }
             }
             // --- [FINE MODIFICA CHIRURGICA] ---
 
@@ -746,6 +821,14 @@ class PianoRateController extends Controller
                 ->exists(),
             // Il piano degli addebiti a singole persone: la pagina non offre le azioni del riparto (generare, ricalcolare, approvare, emettere).
             'degli_addebiti' => $pianoRate->eDegliAddebiti() ? ['frase' => $pianoRate->rifiutoDegliAddebiti()] : null,
+            // La delibera del piano (§1.4 del progetto delle assemblee, R1): quella collegata, la differenza fra la sua data e quella del piano emesso, e
+            // per il piano d'urgenza il riferimento all'assemblea.
+            'delibera_del_piano' => $this->deliberaDelPiano($pianoRate),
+            // Il fondo speciale dei lavori (decisione 622 (2)): quanto chiedono i piani della delibera contro i lavori deliberati, con le parole della legge;
+            // non blocca, e sparisce quando i piani arrivano ai lavori. Con «Vede le assemblee».
+            'fondo_speciale' => \App\Services\Assemblee\Seguito\FondoSpecialeDelPiano::perLaPagina($pianoRate, request()->user()),
+            // Coda 688: il piano d'urgenza lo ricorda in testa, con il giorno dei lavori, il motivo e la prima assemblea.
+            'urgenza_del_piano' => \App\Services\Riparto\GiornoDellUrgenza::perLaPagina($pianoRate, request()->user()),
             // Le quote non assegnate che si possono addebitare a una persona (quelle di un'unità), con quanto è già addebitato e quanto resta.
             'addebiti_delle_quote' => $pianoRate->eDegliAddebiti() ? [] : array_map(fn (array $v) => [
                 'chiave' => (string) ($v['chiave'] ?? ''), 'immobile_id' => $v['immobile_id'] ?? null, 'immobile_nome' => $v['immobile_nome'] ?? null,
@@ -753,6 +836,75 @@ class PianoRateController extends Controller
                 'resta_cents' => (int) $v['resta_cents'],
             ], app(\App\Services\Gestionale\Addebiti\AddebitiIndividuali::class)->quoteDaAddebitare($pianoRate)),
         ]);
+    }
+
+    /**
+     * Le righe dell'elenco con `differenza_delibera` («La delibera è del 22/10/2026, il piano dice 20/10/2026») per i piani legati a una delibera di un altro
+     * giorno: una lettura sola dei collegamenti della pagina. Senza «Vede le assemblee» la riga resta com'è.
+     *
+     * @param array<int, array<string, mixed>> $righe
+     * @param \Illuminate\Support\Collection<int, PianoRate> $piani
+     * @return array<int, array<string, mixed>>
+     */
+    private function conLaDifferenzaDellaDelibera(array $righe, \Illuminate\Support\Collection $piani): array
+    {
+        if (! \App\Services\Assemblee\AccessoAlleAssemblee::vede(request()->user()) || $piani->isEmpty()) {
+            return $righe;
+        }
+        $giorni = DB::table('delibere_collegamenti')->join('delibere', 'delibere.id', '=', 'delibere_collegamenti.delibera_id')
+            ->where('delibere_collegamenti.oggetto_tipo', 'piano_rate')->where('delibere_collegamenti.ruolo', \App\Enums\Assemblee\RuoloCollegamento::DELIBERA->value)
+            ->whereIn('delibere_collegamenti.oggetto_id', $piani->pluck('id'))->pluck('delibere.deliberata_il', 'delibere_collegamenti.oggetto_id');
+        $perId = $piani->keyBy('id');
+
+        return array_map(function (array $riga) use ($giorni, $perId) {
+            $piano = $perId[$riga['id'] ?? 0] ?? null;
+            $delibera = $giorni[$riga['id'] ?? 0] ?? null;
+            $nelPiano = $piano?->data_delibera_assemblea?->toDateString();
+            $giorno = $delibera === null ? null : \Carbon\CarbonImmutable::parse((string) $delibera)->toDateString();
+            $riga['differenza_delibera'] = $giorno !== null && $nelPiano !== null && $giorno !== $nelPiano
+                ? 'La delibera è del ' . \Carbon\CarbonImmutable::parse($giorno)->format('d/m/Y') . ', il piano dice ' . \Carbon\CarbonImmutable::parse($nelPiano)->format('d/m/Y')
+                : null;
+
+            return $riga;
+        }, $righe);
+    }
+
+    /**
+     * La delibera del piano per la pagina (R1, scena 3 della bozza di «Scegli la delibera»): la delibera collegata nella forma del menu, la frase della
+     * differenza quando il piano dice un'altra data («La delibera è del 22/10/2026, il piano dice 20/10/2026»), la nota del collegamento, se il piano è
+     * emesso; per il piano d'urgenza il riferimento all'assemblea (ruolo `riferimento`). Senza «Vede le assemblee» la pagina riceve solo le date scritte.
+     *
+     * @return array<string, mixed>
+     */
+    private function deliberaDelPiano(PianoRate $pianoRate): array
+    {
+        $utente = request()->user();
+        $vede = \App\Services\Assemblee\AccessoAlleAssemblee::vede($utente);
+        $riga = function (string $ruolo) use ($pianoRate): ?array {
+            $d = \App\Services\Assemblee\CollegamentiDelleDelibere::delibera($pianoRate, $ruolo);
+            if ($d === null) {
+                return null;
+            }
+            [$si, $perche] = \App\Services\Assemblee\DelibereDelCondominio::siSceglie($d, $ruolo);
+            $nota = DB::table('delibere_collegamenti')->where('oggetto_tipo', 'piano_rate')->where('oggetto_id', $pianoRate->id)->where('ruolo', $ruolo)->value('nota');
+
+            return \App\Services\Assemblee\DelibereDelCondominio::riga($d, $si, $perche) + ['nota' => $nota];
+        };
+        $delibera = $vede ? $riga(\App\Enums\Assemblee\RuoloCollegamento::DELIBERA->value) : null;
+        $nelPiano = $pianoRate->data_delibera_assemblea?->toDateString();
+        $differenza = $delibera !== null && $nelPiano !== null && $delibera['deliberata_il'] !== null && $delibera['deliberata_il'] !== $nelPiano
+            ? 'La delibera è del ' . \Carbon\CarbonImmutable::parse($delibera['deliberata_il'])->format('d/m/Y') . ', il piano dice '
+                . \Carbon\CarbonImmutable::parse($nelPiano)->format('d/m/Y')
+            : null;
+
+        return [
+            'vede' => $vede,
+            'gestisce' => \App\Services\Assemblee\AccessoAlleAssemblee::gestisce($utente),
+            'emesso' => $pianoRate->eImmutabile(),
+            'delibera' => $delibera,
+            'differenza' => $differenza,
+            'riferimento' => $vede && $pianoRate->tipo_autorizzazione === 'urgenza' ? $riga(\App\Enums\Assemblee\RuoloCollegamento::RIFERIMENTO->value) : null,
+        ];
     }
 
     /**
@@ -788,6 +940,20 @@ class PianoRateController extends Controller
         // arriva, non si scrive — stessa guardia di `store()` (decisione 12, verifica S6 R2, S8-32). La
         // competenza dello straordinario d'urgenza si dichiara sulle fatture del piano.
         $urgenza = $pianoRate->tipo_autorizzazione === 'urgenza';
+        // «Scegli la delibera» al posto del numero del verbale (R1 del progetto delle assemblee): la delibera è del condominio dell'indirizzo (R18), e
+        // collegarla è di chi gestisce le assemblee. Con la delibera, «Deliberata il» e il numero del verbale vengono dalla riunione. Con «Urgenza» non si
+        // legge: il piano d'urgenza si riferisce all'assemblea con la sua rotta.
+        $request->validate(['delibera_id' => 'nullable|integer'], \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::messaggi(),
+            \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::ATTRIBUTI);
+        $delibera = null;
+        if ($request->filled('delibera_id') && $request->boolean('approvato') && ! $urgenza) {
+            \Illuminate\Support\Facades\Gate::allowIf(\App\Services\Assemblee\AccessoAlleAssemblee::gestisce($request->user()), __('errors.403_message'));
+            /** @var \App\Models\Assemblee\Delibera $delibera */
+            $delibera = \App\Services\Assemblee\SchedaDelCondominio::risolvi($condominio, 'delibera', (int) $request->input('delibera_id'));
+            // Il numero del verbale della riunione di quel giorno, quando ne ha uno; senza, resta quello che il piano ha già (scritto a mano prima).
+            $request->merge(['data_delibera_assemblea' => $delibera->deliberata_il?->format('Y-m-d'),
+                'numero_verbale' => \App\Services\Assemblee\DeliberaInParole::numeroDelVerbale($delibera) ?? $pianoRate->numero_verbale]);
+        }
         $validated = $request->validate([
             'approvato'               => 'required|boolean',
             'data_delibera_assemblea' => ['nullable', 'date', Rule::requiredIf(fn () => $request->boolean('approvato') && ! $urgenza)],
@@ -797,44 +963,16 @@ class PianoRateController extends Controller
             // Coda 686 (b): la frase dell'approvazione, che non è quella della creazione.
             'data_delibera_assemblea.required' => 'Indica la data della delibera dell\'assemblea che approva il piano.',
         ]), \App\Http\Requests\Gestionale\PianoRate\ParoleDelPiano::ATTRIBUTI);
-        
-        $vecchioStato = $pianoRate->stato; // È già un oggetto Enum
-        $nuovoStato = $validated['approvato'] ? StatoPianoRate::APPROVATO : StatoPianoRate::BOZZA;
-        
-        $updateData = ['stato' => $nuovoStato];
-        $dataPrecedente = $pianoRate->data_delibera_assemblea?->toDateString();
-        $dataCambiata = false;
 
-        if ($validated['approvato']) {
-            if (! $urgenza) {
-                $updateData['data_delibera_assemblea'] = $validated['data_delibera_assemblea'];
-                $dataCambiata = ! empty($validated['data_delibera_assemblea']) && $dataPrecedente !== null && $dataPrecedente !== \Carbon\CarbonImmutable::parse($validated['data_delibera_assemblea'])->toDateString();
-            }
-            $updateData['numero_verbale']          = $validated['numero_verbale'] ?? null;
-            $updateData['nota_approvazione']       = $validated['nota_approvazione'] ?? null;
-            $updateData['approvato_da_user_id']    = Auth::id();
-            $updateData['approvato_il']            = now();
-        } else {
-            // Torna in bozza: azzera l'audit dell'approvazione, **non** la data della delibera — è un fatto
-            // dell'assemblea, non del programma, e senza di essa uno straordinario non si rigenera (decisione
-            // 12; verifica S6). Si riscrive alla prossima approvazione, se è cambiata.
-            $updateData['numero_verbale']          = null;
-            $updateData['nota_approvazione']       = null;
-            $updateData['approvato_da_user_id']    = null;
-            $updateData['approvato_il']            = null;
-        }
+        // Lo stato, l'audit e il collegamento della delibera: il servizio che chiama anche il seguito delle delibere (le regole sono le stesse).
+        $esito = \App\Services\Gestionale\ApprovazioneDelPiano::cambiaStato($pianoRate, (bool) $validated['approvato'],
+            $validated['data_delibera_assemblea'] ?? null, $validated['numero_verbale'] ?? null, $validated['nota_approvazione'] ?? null, $delibera,
+            $request->user(), $esercizio);
+        $differenza = $esito['differenza'];
+        $dataCambiata = $esito['data_cambiata'];
+        $dataPrecedente = $esito['data_precedente'];
+        $validated['data_delibera_assemblea'] = $esito['data'];
 
-        $pianoRate->update($updateData);
-        
-        PianoRateStatusUpdated::dispatch(
-            $condominio, 
-            $esercizio, 
-            $pianoRate, 
-            Auth::user(), 
-            $vecchioStato, 
-            $nuovoStato
-        );
-        
         // S8-22: su uno straordinario con quote già generate, cambiare la data della delibera sposta il gradino
         // della competenza (decisione 12) ma le quote restano quelle calcolate con la data di prima. Si accetta
         // la correzione e si dice di ricalcolare; l'emissione lo pretende (EmissioneRateController::store).
@@ -845,6 +983,10 @@ class PianoRateController extends Controller
                 'Data della delibera aggiornata dal %s al %s. Le quote già generate sono state calcolate con la data precedente: ricalcola il piano prima di emettere le rate.',
                 $formato($dataPrecedente), $formato($validated['data_delibera_assemblea'])
             )));
+        }
+
+        if ($differenza !== null) {
+            return back()->with($this->flashWarning('Piano approvato e legato alla delibera. ' . $differenza . ': il piano è emesso e la data non cambia da sola.'));
         }
 
         $messaggio = $validated['approvato']
@@ -988,6 +1130,8 @@ class PianoRateController extends Controller
         try {
             DB::beginTransaction();
 
+            // Il registro delle modifiche: l'eliminazione è un gesto solo, con le rate e le quote lette prima.
+            RegistroModifiche::durante(GestiDelRegistro::pianoEliminato($pianoRate), function () use ($pianoRate) {
             $gestione = $pianoRate->gestione;
 
             if ($gestione) {
@@ -1034,6 +1178,7 @@ class PianoRateController extends Controller
 
             // 3. Elimina fisicamente il piano rate
             $pianoRate->delete();
+            });
             
             DB::commit();
 
@@ -1179,7 +1324,7 @@ class PianoRateController extends Controller
             Immobile::bloccaDelCondominio((int) $condominio->id);
 
             // Sgancia il capitolo, elimina le rate attuali e le ricalcola
-            $pianoRate->capitoli()->detach($capitoloId);
+            RegistroModifiche::legame($pianoRate, 'capitoli', 'Capitoli', fn () => $pianoRate->capitoli()->detach($capitoloId));
             
             $vecchioStato = $pianoRate->stato;
             

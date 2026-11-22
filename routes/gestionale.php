@@ -112,6 +112,16 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/struttura', [StrutturaController::class, 'index'])
         ->name('struttura.index');
 
+    // Il registro delle modifiche del condominio (1.12.0-beta.13, §14): la voce in fondo al sottomenu della struttura, e la stampa. Il permesso lo
+    // controlla il controller («Vede il registro delle modifiche», mai i ruoli del portale).
+    Route::get('/registro-modifiche', [\App\Http\Controllers\RegistroModifiche\RegistroController::class, 'delCondominio'])
+        ->name('registro-modifiche.index');
+    Route::get('/registro-modifiche/stampa', [\App\Http\Controllers\RegistroModifiche\RegistroController::class, 'stampaDelCondominio'])
+        ->name('registro-modifiche.stampa');
+    // Il conto della finestra della stampa: quante righe uscirebbero e il limite di una stampa sola, con gli stessi filtri e permessi; niente PDF.
+    Route::get('/registro-modifiche/stampa/conto', [\App\Http\Controllers\RegistroModifiche\RegistroController::class, 'contaDelCondominio'])
+        ->name('registro-modifiche.stampa.conto');
+
     Route::get('/fetch-tabelle', FetchTabelleController::class)
         ->name('fetch-tabelle');
 
@@ -660,6 +670,14 @@ Route::prefix('/gestionale/{condominio}')
     Route::put('lettere/modelli/{modello}', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'aggiornaModello'])->name('lettere.modelli.update');
     Route::post('lettere/spedizione', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'spedizione'])->name('lettere.spedizione');
     Route::post('lettere/invii/{invio}/di-nuovo', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'inviaDiNuovo'])->name('lettere.invia-di-nuovo');
+    // 1.12.0-beta.13 (decisioni 569, 577 e 588): le lettere per PEC dalla casella dello studio, «Manda di nuovo per PEC» e la ricevuta di consegna sulla riga.
+    Route::post('lettere/pec', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'pec'])->name('lettere.pec');
+    Route::post('lettere/invii/{invio}/pec-di-nuovo', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'pecDiNuovo'])->name('lettere.pec-di-nuovo');
+    // Le PEC non partite o non consegnate: in blocco dalla casella dello studio, o stampate per la posta (tutte, o quelle della riga).
+    Route::post('lettere/pec-non-partite', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'pecNonPartite'])->name('lettere.pec-non-partite');
+    Route::post('lettere/pec-non-partite/stampa', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'stampaPecNonPartite'])
+        ->name('lettere.pec-non-partite.stampa');
+    Route::post('lettere/invii/{invio}/ricevuta', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'ricevuta'])->name('lettere.ricevuta');
     Route::post('lettere/invii/{invio}/spedizione', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'correggiSpedizione'])->name('lettere.spedizione.correggi');
     Route::get('lettere/invii/{invio}/pdf', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'pdfConservato'])->name('lettere.pdf');
     Route::post('lettere/invii/{invio}/prove', [\App\Http\Controllers\Gestionale\Movimenti\LettereController::class, 'allegaProva'])->name('lettere.prove.store');
@@ -747,6 +765,10 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('/fatture/{fattura}/edit', [FatturaPassivaController::class, 'edit'])
         ->name('fatture.edit');
+
+    // Coda 689: «Metti a rate questa spesa» dal menu della riga dell'elenco: la scheda giusta del nuovo piano, con tutto già scelto.
+    Route::get('/fatture/{fattura}/metti-a-rate', \App\Http\Controllers\Gestionale\Movimenti\MettiARateController::class)
+        ->name('fatture.metti-a-rate');
 
     Route::put('/fatture/{fattura}', [FatturaPassivaController::class, 'update'])
         ->name('fatture.update');

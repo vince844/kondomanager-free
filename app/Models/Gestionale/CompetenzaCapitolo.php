@@ -9,6 +9,7 @@ use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use App\Traits\ContaNelGesto;
 
 /**
  * Un tratto della competenza di un capitolo ordinario in un piano rate (tabella `competenze_capitolo`).
@@ -23,6 +24,8 @@ use Illuminate\Support\Collection;
  */
 class CompetenzaCapitolo extends Model
 {
+    use ContaNelGesto;
+
     protected $table = 'competenze_capitolo';
 
     protected $fillable = ['piano_rate_capitolo_id', 'dal', 'al', 'ordine'];

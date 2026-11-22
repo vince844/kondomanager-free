@@ -27,7 +27,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Mail } from 'lucide-vue-next';
+import { AlertTriangle, Mail } from 'lucide-vue-next';
 import { AVVISO_PEC, TIPI_INDIRIZZO, frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { FRASE_MODELLI_SENZA_PERMESSO, modelliDelTipo, testoAggiorna, testoAggiornato, testoSalvato, type ModelloDellaFinestra, type ModelloRicordato } from '@/lib/gestionale/lettere/modelli';
 import {
@@ -387,10 +387,16 @@ async function rimandaTutti() {
 
                 <div v-if="anteprima" class="space-y-2" data-test="anteprima-persone">
                     <p class="text-xs text-slate-600 dark:text-slate-300" data-test="calcolo">{{ anteprima.data.frase }}</p>
-                    <p class="text-xs" data-test="conteggi">
-                        {{ email(messaggiDaInviare) }} a {{ quantePersone(conIndirizzo.length) }}.<template v-if="anteprima.senza_indirizzo.length">
-                            Senza un indirizzo fra quelli scelti: {{ quantePersone(anteprima.senza_indirizzo.length) }}, il loro foglio si scarica.</template>
-                    </p>
+                    <p v-if="indirizzi.length === 0" class="text-xs" data-test="conteggi">Nessun indirizzo scelto: spunta almeno un indirizzo.</p>
+                    <p v-else class="text-xs" data-test="conteggi">{{ email(messaggiDaInviare) }} a {{ quantePersone(conIndirizzo.length) }}.</p>
+                    <!-- Chi resta senza un indirizzo fra quelli scelti: un riquadro con i nomi, come nella finestra delle ricevute. -->
+                    <div v-if="anteprima.senza_indirizzo.length" class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200" data-test="senza-indirizzo-riquadro">
+                        <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" />
+                        <div class="min-w-0">
+                            <p class="font-medium">Senza un indirizzo fra quelli scelti: {{ anteprima.senza_indirizzo.join(', ') }}.</p>
+                            <p>{{ anteprima.senza_indirizzo.length === 1 ? 'Il suo foglio si scarica dalla sua riga, qui sotto.' : 'I loro fogli si scaricano dalle loro righe, qui sotto.' }}</p>
+                        </div>
+                    </div>
                     <p v-if="(anteprima.non_disponibili ?? 0) > 0" class="text-xs text-amber-800 dark:text-amber-300" data-test="non-disponibili">
                         {{ anteprima.non_disponibili === 1 ? 'Il foglio di 1 persona ha una parte non ancora calcolata' : `I fogli di ${anteprima.non_disponibili} persone hanno una parte non ancora calcolata` }}:
                         partono lo stesso, e la loro email lo dice in una riga. Il perché è nella scheda, sotto la riga della persona.

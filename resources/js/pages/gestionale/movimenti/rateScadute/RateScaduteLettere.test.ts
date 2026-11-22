@@ -64,11 +64,16 @@ const proprieta = (extra: Record<string, unknown> = {}) => ({
 let w: VueWrapper | null = null;
 const stubs = { GestionaleLayout: { template: '<div><slot /></div>' }, MovimentiLayout: { template: '<div><slot /></div>' }, PageHeaderGuide: true };
 const monta = (extra: Record<string, unknown> = {}) => {
-    w = mount(Pagina, { props: proprieta(extra) as any, global: { stubs: { ...stubs, LettereDialog: true } } });
+    w = mount(Pagina, { attachTo: document.body, props: proprieta(extra) as any, global: { stubs: { ...stubs, LettereDialog: true } } });
 
     return w;
 };
 afterEach(() => { w?.unmount(); w = null; routerGet.mockReset(); axiosGet.mockReset(); axiosPost.mockReset(); document.body.innerHTML = ''; vi.useRealTimers(); });
+// Il menu «⋯» della riga si apre da tastiera: in jsdom il clic del mouse non apre quello di reka-ui.
+const apriMenu = async (id: number) => {
+    await w!.get(`[data-testid="menu-${id}"]`).trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+};
 const pulito = (t: string) => t.replace(/\s+/g, ' ').trim();
 
 describe('le lettere nell\'elenco', () => {
@@ -84,18 +89,26 @@ describe('le lettere nell\'elenco', () => {
             .toContain('Nessuna lettera');
     });
 
-    test('Coda 533: «Vedi la corrispondenza» porta all\'estratto conto della persona con la scheda «Corrispondenza»; senza lettere non c\'è', () => {
+    test('Coda 533: «Vedi la corrispondenza» (dal menu della riga) porta all\'estratto conto della persona con la scheda «Corrispondenza»; senza lettere non c\'è', async () => {
         const id = proprieta().righe.data[0].anagrafica_id;
-        const link = monta().get(`[data-testid="corrispondenza-${id}"]`);
-        expect(link.text()).toBe('Vedi la corrispondenza');
-        expect(link.attributes('href')).toContain('gestionale.anagrafiche.estratto-conto');
-        expect(link.attributes('href')).toMatch(/\?scheda=corrispondenza$/);
+        monta();
+        await apriMenu(id);
+        const link = document.body.querySelector(`[data-testid="corrispondenza-${id}"]`)!;
+        expect(pulito(link.textContent ?? '')).toBe('Vedi la corrispondenza');
+        expect(link.getAttribute('href')).toContain('gestionale.anagrafiche.estratto-conto');
+        expect(link.getAttribute('href')).toMatch(/\?scheda=corrispondenza$/);
         w!.unmount();
-        expect(monta({ righe: { data: [riga({ ultima_lettera: null, lettera_in_sospeso: null })], meta: proprieta().righe.meta } }).find(`[data-testid="corrispondenza-${id}"]`).exists()).toBe(false);
+        document.body.innerHTML = '';
+        monta({ righe: { data: [riga({ ultima_lettera: null, lettera_in_sospeso: null })], meta: proprieta().righe.meta } });
+        await apriMenu(id);
+        expect(document.body.querySelector(`[data-testid="corrispondenza-${id}"]`)).toBeNull();
         w!.unmount();
+        document.body.innerHTML = '';
         // Con la sola lettera in coda o non partita il collegamento c'è: nella scheda la lettera c'è.
         const inCoda = { tipo: 'diffida', data: '2026-03-18', canale: 'email', stato: 'in_coda' };
-        expect(monta({ righe: { data: [riga({ ultima_lettera: null, lettera_in_sospeso: inCoda })], meta: proprieta().righe.meta } }).find(`[data-testid="corrispondenza-${id}"]`).exists()).toBe(true);
+        monta({ righe: { data: [riga({ ultima_lettera: null, lettera_in_sospeso: inCoda })], meta: proprieta().righe.meta } });
+        await apriMenu(id);
+        expect(document.body.querySelector(`[data-testid="corrispondenza-${id}"]`)).not.toBeNull();
     });
 
     test('i filtri «Nessuna lettera negli ultimi N giorni» e «Mai scritto» vanno nell\'indirizzo', async () => {
@@ -116,7 +129,9 @@ describe('le lettere nell\'elenco', () => {
         expect(finestra.props('open')).toBe(true);
         expect(finestra.props('selezione')).toEqual({ tutte: true, ids: [] });
         expect(finestra.props('persona')).toBeNull();
-        await p.get('[data-testid="scrivi-7"]').trigger('click');
+        await apriMenu(7);
+        (document.body.querySelector('[data-testid="scrivi-7"]') as HTMLElement).click();
+        await flushPromises();
         finestra = p.findComponent({ name: 'LettereDialog' });
         expect(finestra.props('persona')).toEqual({ id: 7, nome: 'Ugo Bianchi' });
     });

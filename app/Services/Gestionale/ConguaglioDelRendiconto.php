@@ -341,6 +341,8 @@ final class ConguaglioDelRendiconto
             }
             $gestioni[] = [
                 'id' => (int) $gid, 'nome' => $g['nome'], 'tipo' => $g['tipo'], 'non_calcolabile' => $g['non_calcolabile'],
+                // Coda 688: il giorno dei lavori urgenti che divide le spese senza periodo, detto.
+                'giorno_dell_urgenza' => $g['giorno_dell_urgenza'] ?? null,
                 'righe' => self::conSubtotali($righe), 'totali' => $g['totali'] + ['non_emesse' => $nonEmesse],
                 'non_attribuite' => array_map(fn ($cid, $importo) => ['conto_id' => (int) $cid, 'voce' => (string) ($nomiConti[$cid]->nome ?? ''),
                     'piano_conto_id' => isset($nomiConti[$cid]) ? (int) $nomiConti[$cid]->piano_conto_id : null, 'importo' => (int) $importo,

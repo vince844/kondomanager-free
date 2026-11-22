@@ -72,6 +72,7 @@ const pageGuides = [
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
+        :storia="{ tipo: 'casse', id: props.condominio.id }"
         page-title="Risorse e fondi"
         page-subtitle="Configura i conti bancari, le casse e i fondi del condominio. Una corretta impostazione è la base per una tesoreria sana."
         :guides="pageGuides"

@@ -20,13 +20,15 @@ vi.mock('@inertiajs/vue3', () => ({
 }));
 let precedente: string | null = null;
 vi.mock('@/composables/useUrlPrecedente', () => ({ useUrlPrecedente: () => ({ urlPrecedente: () => precedente }) }));
-vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, generatePath: (p: string) => `/${p}` }) }));
+const permessi = vi.hoisted(() => ({ dati: [] as string[] }));
+vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, generatePath: (p: string) => `/${p}`,
+    hasPermission: (chiesti: string[]) => chiesti.some((x) => permessi.dati.includes(x)) }) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string) => `/${nome}`;
 
 const Pagina = (await import('./DispenseSeiMesi.vue')).default;
 
 let w: VueWrapper | null = null;
-afterEach(() => { w?.unmount(); w = null; post.mockReset(); });
+afterEach(() => { w?.unmount(); w = null; post.mockReset(); permessi.dati = []; });
 
 const monta = () => {
     w = mount(Pagina, {
@@ -155,5 +157,24 @@ describe('la pagina della dispensa, dopo il riordino', () => {
         expect(riga.text()).toContain('Toglie anche il sollecito in tesoreria');
         await riga.get('[data-testid="sollecito-della-dispensa"] button[role="checkbox"]').trigger('click');
         expect(post).toHaveBeenCalledWith('/gestionale.dispense.sollecito', { togli: false }, expect.anything());
+    });
+});
+
+describe('chi registra la dispensa con la delibera', () => {
+    test('chi ha solo «Vede le assemblee» registra la dispensa con i campi a mano; chi «Gestisce le assemblee» sceglie la delibera', () => {
+        const conLaPagina = () => mount(Pagina, {
+            props: { condominio: { id: 3, nome: 'Condominio Via dei Pini' }, condomini: [], esercizio: null, esercizi: [{ id: 1, nome: 'Esercizio 2026', stato: 'aperto' }],
+                persone: [], dispense: [], testo_norma: '«Salvo che…»', oggi: '2027-07-10' } as any,
+            global: { stubs: { GestionaleLayout: { template: '<div><slot /></div>' }, PageHeaderGuide: true, ScegliLaDelibera: true } },
+        });
+        permessi.dati = ['Vede le assemblee'];
+        w = conLaPagina();
+        expect(w.find('[data-testid="dispensa-con-la-delibera"]').exists()).toBe(false);
+        expect(w.find('input[type="date"]').exists()).toBe(true);
+        expect(w.find('[data-testid="numero-verbale"]').exists()).toBe(true);
+        w.unmount();
+        permessi.dati = ['Gestisce le assemblee'];
+        w = conLaPagina();
+        expect(w.find('[data-testid="dispensa-con-la-delibera"]').exists()).toBe(true);
     });
 });

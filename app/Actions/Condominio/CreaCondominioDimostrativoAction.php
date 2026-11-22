@@ -5,6 +5,10 @@
 
 namespace App\Actions\Condominio;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\Lotto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Models\Condominio;
 use Database\Seeders\CondominioDemoSeeder;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +37,18 @@ class CreaCondominioDimostrativoAction
     public function esegui(): array
     {
         $seeder = new CondominioDemoSeeder();
-        $seeder->run();
+        // P11 del registro delle modifiche: il condominio di prova è un gesto solo, con il conteggio di ciò che crea.
+        RegistroModifiche::durante(
+            Gesto::su('condominio', 'condominio', null, 'Condominio di prova')->azione('creata')
+                ->riepilogo(fn (Lotto $lotto) => 'Condominio di prova creato: ' . GestiDelRegistro::fraseDeiConteggi(
+                    GestiDelRegistro::conteggiDelCondominio((int) $seeder->condominio()->getKey())))
+                ->rimando(fn () => ['tipo' => 'condominio', 'id' => (int) $seeder->condominio()->getKey(), 'etichetta' => (string) $seeder->condominio()->nome]),
+            function (Gesto $gesto) use ($seeder) {
+                $seeder->run();
+                $gesto->oggetto((int) $seeder->condominio()->getKey(), 'Condominio ' . $seeder->condominio()->nome)
+                    ->nelCondominio($seeder->condominio());
+            }
+        );
 
         return [
             'condominio' => $seeder->condominio(),
@@ -64,7 +79,8 @@ class CreaCondominioDimostrativoAction
         // le righe tornano indietro e i file devono esserci ancora.
         $fileDelleVersioni = [];
 
-        DB::transaction(function () use ($condominio, &$fileDelleVersioni) {
+        $gesto = GestiDelRegistro::eliminazioneDelCondominio($condominio, 'Condominio di prova eliminato');
+        RegistroModifiche::durante($gesto, function () use ($condominio, &$fileDelleVersioni) {
             $id = $condominio->id;
 
             $contiContabili = DB::table('conti_contabili')->where('condominio_id', $id)->pluck('id');
@@ -100,6 +116,10 @@ class CreaCondominioDimostrativoAction
              * Provato: due tentativi precedenti hanno fallito proprio perché l'ordine era stato
              * dedotto a mente invece che dallo schema.
              */
+
+            // 0. Le assemblee, le delibere, i memo e i preventivi fermati (R15 del progetto della tappa 2): le loro chiavi verso il condominio, le palazzine,
+            // le scale, le tabelle e gli esercizi non cancellano in cascata. Dati di prova, scritti da chi prova il condominio.
+            \App\Services\Assemblee\GuardieDiCancellazione::togliTuttoDelCondominioDiProva((int) $id);
 
             // 1. I pagamenti e le deleghe F24, che bloccano condominio, casse, conti ed esercizi.
             DB::table('riga_f24_pagamento')->whereIn('pagamento_fornitore_id', $pagamenti)->delete();

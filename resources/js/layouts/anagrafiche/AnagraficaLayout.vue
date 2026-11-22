@@ -8,7 +8,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * La barra delle schede dell'anagrafica.
  *
  * Gemella di `layouts/fornitori/FornitoreLayout.vue`, e per la stessa ragione: la scheda di una
- * persona cresce per **sezioni** — dettagli, documenti, e domani unità, movimenti, comunicazioni —
+ * persona cresce per **sezioni** — dettagli, documenti, assemblee (decisione 651), e domani unità, movimenti, comunicazioni —
  * e ognuna è una pagina sua con la sua paginazione. Una pagina sola con tutto dentro diventa
  * illeggibile al terzo elenco.
  *
@@ -19,14 +19,14 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 import { computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import { usePermission } from '@/composables/permissions';
-import { Folders, TextSearch } from 'lucide-vue-next';
-import NavSezione from '@/components/NavSezione.vue';
-import type { LinkItem } from '@/types';
+import { Folders, Gavel, TextSearch } from 'lucide-vue-next';
+import NavSezione, { type VoceSezione } from '@/components/NavSezione.vue';
+import { Permission } from '@/enums/Permission';
 
-const page = usePage<{ anagrafica: { id: number } }>();
+const page = usePage<{ anagrafica: { id: number }; assemblee_riepilogo?: { totale: number } | null }>();
 
 const anagrafica = computed(() => page.props.anagrafica);
-const { generatePath } = usePermission();
+const { generatePath, hasPermission } = usePermission();
 
 /**
  * ⚠️ La prima voce è **esatta**, le altre no.
@@ -35,20 +35,27 @@ const { generatePath } = usePermission();
  * «Dettagli» resterebbe accesa anche stando sui documenti, e due linguette accese insieme non
  * dicono più dove sei. È la stessa regola della scheda del fornitore e di quella dell'unità.
  */
-const vociNav = computed<LinkItem[]>(() => [
+const vociNav = computed<VoceSezione[]>(() => [
   {
-    type: 'link',
     icon: TextSearch,
     title: 'Dettagli',
     exact: true,
     href: generatePath('anagrafiche/:anagrafica', { anagrafica: anagrafica.value.id }),
   },
   {
-    type: 'link',
     icon: Folders,
     title: 'Documenti',
     href: generatePath('anagrafiche/:anagrafica/documenti', { anagrafica: anagrafica.value.id }),
   },
+  // «Assemblee» (decisione 651): solo lo studio, con «Vede le assemblee»; il numero c'è dove la pagina lo manda (`assemblee_riepilogo`).
+  ...(hasPermission([Permission.VIEW_ASSEMBLEE, Permission.MANAGE_ASSEMBLEE])
+    ? [{
+        icon: Gavel,
+        title: 'Assemblee',
+        href: generatePath('anagrafiche/:anagrafica/assemblee', { anagrafica: anagrafica.value.id }),
+        badge: page.props.assemblee_riepilogo ? String(page.props.assemblee_riepilogo.totale) : undefined,
+      }]
+    : []),
 ]);
 </script>
 

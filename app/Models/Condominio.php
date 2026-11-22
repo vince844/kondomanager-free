@@ -21,9 +21,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use App\Traits\RegistraLeModifiche;
 
 class Condominio extends Model
 {
+    use RegistraLeModifiche;
+
     use RisolveIFigliDelleRotte;
 
     use HasFactory, HasCustomIdentifier;
@@ -69,6 +72,7 @@ class Condominio extends Model
         'anno_costruzione' => 'integer',
         'anno_acquisizione' => 'integer',
         'numero_piani' => 'integer',
+        'tabella_proprieta_id' => 'integer',
     ];
 
     protected static function booted(): void
@@ -255,6 +259,35 @@ class Condominio extends Model
         return $this->hasMany(ImportBatch::class);
     }
 
+    /** Le assemblee del programma e le riunioni registrate a mano (Coda 679). */
+    public function assemblee(): HasMany
+    {
+        return $this->hasMany(\App\Models\Assemblee\Assemblea::class, 'condominio_id');
+    }
+
+    public function delibere(): HasMany
+    {
+        return $this->hasMany(\App\Models\Assemblee\Delibera::class, 'condominio_id');
+    }
+
+    /** La memoria del condominio: i memo «Da portare in assemblea» (decisione 499). */
+    public function memoDelleAssemblee(): HasMany
+    {
+        return $this->hasMany(\App\Models\Assemblee\MemoDellAssemblea::class, 'condominio_id');
+    }
+
+    /** Il registro di nomina e revoca dell'amministratore (art. 1130 n. 7 c.c.), una riga per nomina o revoca. */
+    public function righeDiNomina(): HasMany
+    {
+        return $this->hasMany(\App\Models\Assemblee\RigaDiNomina::class, 'condominio_id');
+    }
+
+    /** La tabella di proprietà generale scelta dall'amministratore (§1.2 del progetto della tappa 2): nessuna proposta salvata da sola. */
+    public function tabellaDiProprieta(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Tabella::class, 'tabella_proprieta_id');
+    }
+
     /**
      * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
      *
@@ -281,6 +314,10 @@ class Condominio extends Model
             'batch' => 'lottiImportazione',
             'pianoRate' => 'pianiRate',
             'conto' => 'conti',
+            'assemblea' => 'assemblee',
+            'delibera' => 'delibere',
+            'memo' => 'memoDelleAssemblee',
+            'rigaDiNomina' => 'righeDiNomina',
         ];
     }
 

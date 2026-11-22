@@ -5,6 +5,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Exceptions\Gestionale\ContoPassateGestioniMancanteException;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
@@ -123,6 +125,13 @@ class RiallineaCreditiService
      * @throws ContoPassateGestioniMancanteException
      */
     public function esegui(Condominio $condominio, ?int $utenteId = null): array
+    {
+        // Decisione 548 e P11 del registro delle modifiche: una riga sola per condominio, dalla pagina e dal terminale, con l'autore del contesto.
+        return RegistroModifiche::durantePiuTransazioni(GestiDelRegistro::riallineamento($condominio, 'i crediti'), fn () => $this->riallinea($condominio, $utenteId));
+    }
+
+    /** @return array<string, mixed> */
+    private function riallinea(Condominio $condominio, ?int $utenteId): array
     {
         $rilevato = $this->rileva($condominio);
         $fatto = ['rettifiche' => [], 'emissioni' => [], 'restano' => $rilevato['restano'],

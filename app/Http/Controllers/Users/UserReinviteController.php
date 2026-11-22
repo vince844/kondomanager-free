@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Users;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Notifications\NewUserEmailNotification;
@@ -68,6 +69,7 @@ class UserReinviteController extends Controller
             $user->touch();
 
             $user->notify(new NewUserEmailNotification($user));
+            AttiSulleUtenze::invitoRimandato($user);
     
             return to_route('utenti.index')->with(
                 $this->flashSuccess(__('users.success_send_user_invite'))

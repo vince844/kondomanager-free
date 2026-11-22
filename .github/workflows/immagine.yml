@@ -92,6 +92,13 @@ jobs:
             php -m | grep -q pdo_mysql && php -m | grep -q intl && echo "estensioni ok"
           '
 
+      # Coda 677: GD deve leggere i JPG (il logo e la firma dello studio, che l'avviso di convocazione stampa). Nei
+      # sorgenti di PHP il JPEG è spento di serie: se il Dockerfile lo perde, l'immagine non si pubblica.
+      - name: GD legge i JPG
+        run: |
+          docker run --rm --entrypoint php "$IMMAGINE:${{ steps.tag.outputs.versione }}" \
+            -r 'var_dump(gd_info()["JPEG Support"]); exit(gd_info()["JPEG Support"] ? 0 : 1);'
+
       - name: Primo avvio vero, con installazione dalle variabili
         run: |
           # Il volume su storage/: nel container i documenti senza volume sono effimeri e /up

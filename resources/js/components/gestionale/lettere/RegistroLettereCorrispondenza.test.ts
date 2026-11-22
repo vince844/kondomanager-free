@@ -13,6 +13,13 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import vSelect from 'vue-select';
+
+// 1.12.0-beta.13: i menu della scheda sono `v-select` (la guardia dei menu): si sceglie con il loro evento, come fanno il mouse e la tastiera.
+async function scegliNelMenu(testid: string, valore: string) {
+    w!.findAllComponents(vSelect).find((c) => c.attributes('data-testid') === testid)!.vm.$emit('update:modelValue', valore);
+    await flushPromises();
+}
 
 vi.mock('axios', () => ({ default: { post: vi.fn(async () => ({ data: {} })) } }));
 vi.mock('@inertiajs/vue3', () => ({ router: { reload: vi.fn(), post: vi.fn(), delete: vi.fn() }, usePage: () => ({ props: { errors: {} } }) }));
@@ -61,11 +68,11 @@ describe('la scheda «Corrispondenza»', () => {
 
     test('il filtro per tipo e per periodo; «Togli i filtri»; con i filtri senza risultati una frase diversa dal vuoto vero', async () => {
         monta([lettera('a', 'sollecito', '2026-03-05', 20), lettera('b', 'promemoria', '2026-02-05', 5)], [ricevuta(12, '2026-03-10')]);
-        await w!.get('[data-testid="filtro-tipo"]').setValue('lettere');
+        await scegliNelMenu('filtro-tipo', 'lettere');
         expect(titoli()).toEqual(['Sollecito del 05/03/2026 alle 10:00, da Anna Studio', 'Promemoria del 05/02/2026 alle 10:00, da Anna Studio']);
         await w!.get('[data-testid="filtro-dal"]').setValue('2026-03-01');
         expect(titoli()).toEqual(['Sollecito del 05/03/2026 alle 10:00, da Anna Studio']);
-        await w!.get('[data-testid="filtro-tipo"]').setValue('diffida');
+        await scegliNelMenu('filtro-tipo', 'diffida');
         expect(titoli()).toEqual([]);
         expect(w!.text()).toContain('Nessun documento con questi filtri.');
         expect(w!.text()).not.toContain('Nessuna lettera, ricevuta o avviso');
@@ -121,7 +128,7 @@ describe('la scheda «Corrispondenza»', () => {
             errore: null, spedizione: null, spedibile: true, rimandabile: false }] };
         monta([conSpedizione], []);
         await w!.findAll('button').find((b) => b.text() === 'Registra la spedizione')!.trigger('click');
-        await w!.find('select:not([data-testid])').setValue('raccomandata');
+        await scegliNelMenu('canale-spedizione', 'raccomandata');
         await w!.findAll('button').find((b) => b.text() === 'Registra')!.trigger('click');
         await flushPromises();
         expect(router.reload).toHaveBeenCalledWith({ only: ['lettere', 'ultima_lettera'] });

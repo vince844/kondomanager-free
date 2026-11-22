@@ -26,6 +26,7 @@ import type { BreadcrumbItem } from '@/types';
 import type { DropdownType } from '@/types/dropdown';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Gestione } from '@/types/gestionale/gestioni';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
 
 const props = defineProps<{
   condominio: Building;
@@ -103,6 +104,7 @@ const submit = () => {
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
+                :storia="{ tipo: 'gestione', id: props.gestione.id }"
                 :page-title="`Modifica gestione — ${props.gestione.nome}`"
                 page-subtitle="Aggiorna i dettagli della gestione contabile esistente. Modifica il periodo o la tipologia per adattarla all'esercizio in corso."
                 :guides="pageGuides"
@@ -111,6 +113,8 @@ const submit = () => {
                 back-text="Torna all'elenco"
             />
 
+            <!-- Gli esiti delle delibere sulla gestione: «Lavori respinti dall'assemblea …», «Rinviati …», i segni; con «Apri l'assemblea». -->
+            <EsitiDellaScheda :condominio-id="props.condominio.id" tipo="gestione" :id="props.gestione.id" class="mb-4" />
             <form @submit.prevent="submit" class="space-y-6">
 
                 <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">

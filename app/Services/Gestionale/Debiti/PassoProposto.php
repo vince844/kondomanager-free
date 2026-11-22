@@ -7,6 +7,7 @@ namespace App\Services\Gestionale\Debiti;
 
 use App\Services\Gestionale\Accessori\SuggerimentiDelRecupero;
 use App\Services\Gestionale\Lettere\TestiLettere;
+use App\Services\Posta\ConsegnaDellaPec;
 use Carbon\CarbonImmutable;
 
 /**
@@ -38,7 +39,8 @@ use Carbon\CarbonImmutable;
  * nella tolleranza del condominio non tolgono alla lettera il suo caso, e una nota lo dice; e nel sollecito nuovo (R15) la tolleranza si guarda sulle sole rate
  * che il sollecito di prima non chiedeva.
  *
- * Il termine di una lettera: con la forma «giorni» si conta dalla spedizione registrata (o dall'invio per email), perché il programma non sa il giorno del
+ * Il termine di una lettera: con la forma «giorni» si conta dalla consegna della PEC provata (la ricevuta del gestore, o il giorno scritto a mano con la
+ * prova), che è il giorno del ricevimento; senza, dalla spedizione registrata (o dall'invio per email o per PEC), perché il programma non sa il giorno del
  * ricevimento; con la forma «data» è la data scritta; con «nessuno» non c'è. È passato dal giorno dopo: il giorno stesso no.
  */
 final class PassoProposto
@@ -210,6 +212,13 @@ final class PassoProposto
                 . ': la spedizione non è registrata.');
         }
 
+        // La diffida per PEC che il gestore non ha consegnato (l'avviso di mancata consegna): non è arrivata, e il termine non corre.
+        if ($diffida !== null && ($diffida['pec'] ?? null) === \App\Models\Gestionale\RegistroInvio::ESITO_NON_CONSEGNATA && ! in_array($diffida['stato'], self::ARRIVATA, true)) {
+            return $caso('R8n', self::DIFFIDA, self::nome($diffida['tipo']) . ' non ' . self::participio($diffida['tipo'], 'consegnat') . ' per PEC il '
+                . self::giorno((string) ($diffida['mancata_consegna_il'] ?? $diffida['data'])) . ': l\'avviso di mancata consegna del gestore dice che non è arrivata '
+                . 'nella sua casella, e il termine non corre. Mandala di nuovo, o stampala per la posta.');
+        }
+
         $salita = ($p['salita'] ?? null) === self::SALITA_RICOMINCIA ? self::SALITA_RICOMINCIA : self::SALITA_AVANTI;
         $tolleranza = isset($p['tolleranza']) ? (int) $p['tolleranza'] : null;
 
@@ -230,6 +239,10 @@ final class PassoProposto
                 $note[] = self::notaDellaTolleranza($dopo['dentro'], 'nella ' . $comeLaDiffida);
             }
             $t = self::termine($diffida);
+            // «PEC e carta»: la PEC è partita, la copia su carta è stampata e non spedita.
+            if (! empty($diffida['copia_da_spedire'])) {
+                $note[] = 'La copia su carta è stampata: la sua spedizione non è registrata.';
+            }
             $come = self::nome($diffida['tipo']) . ' ' . self::comeArrivata($diffida) . ' il ' . self::giorno(self::giornoDellaLettera($diffida));
             if ($t['giorno'] === null) {
                 return $caso('R9b', null, 'La ' . mb_strtolower(self::nome($diffida['tipo'])) . ' ' . self::comeArrivata($diffida) . ' il ' . self::giorno(self::giornoDellaLettera($diffida))
@@ -346,11 +359,14 @@ final class PassoProposto
         }
         if ($forma === 'giorni' && isset($l['termine'])) {
             $giorni = (int) $l['termine'];
+            $consegna = $l['consegna'] ?? null;
             $base = self::giornoDellaLettera($l);
-            $da = ($l['spedizione'] ?? null) !== null ? 'dalla spedizione del ' : 'dall\'invio del ';
+            // La consegna della PEC provata è il giorno del ricevimento: il termine si conta da lì.
+            $da = $consegna !== null ? 'dalla consegna del ' : (($l['spedizione'] ?? null) !== null ? 'dalla spedizione del ' : 'dall\'invio del ');
+            $come = $consegna === null ? '' : (! empty($consegna['a_mano']) ? ', scritta a mano con la prova' : ', dalla ricevuta');
 
             return ['giorno' => CarbonImmutable::parse($base, 'UTC')->addDays($giorni)->format('Y-m-d'),
-                'nota' => ($giorni === 1 ? '1 giorno' : $giorni . ' giorni') . ' dal ricevimento: contati ' . $da . self::giorno($base) . '.'];
+                'nota' => ($giorni === 1 ? '1 giorno' : $giorni . ' giorni') . ' dal ricevimento: contati ' . $da . self::giorno($base) . $come . '.'];
         }
 
         return ['giorno' => null, 'nota' => null];
@@ -432,16 +448,27 @@ final class PassoProposto
         return 'Hai agito il ' . self::giorno($agito['giorno']) . ': «' . trim((string) ($agito['nota'] ?? '')) . '»' . $chi . '.';
     }
 
-    /** Il giorno di una lettera che le frasi dicono: quello della spedizione registrata, o quello dell'uscita. */
+    /** Il giorno di una lettera che le frasi dicono: quello della consegna della PEC provata, quello della spedizione registrata, o quello dell'uscita. */
     private static function giornoDellaLettera(array $l): string
     {
-        return substr((string) ($l['spedizione']['data'] ?? $l['data']), 0, 10);
+        return substr((string) ($l['consegna']['giorno'] ?? $l['spedizione']['data'] ?? $l['data']), 0, 10);
     }
 
-    /** «spedita», «partita per email»: come è arrivata la lettera. */
+    /**
+     * «spedita», «partita per email», «partita per PEC» e, con la consegna provata dalla ricevuta del gestore (o scritta a mano con la prova), la parola della
+     * consegna ({@see ConsegnaDellaPec::participio()}): come è arrivata la lettera.
+     */
     private static function comeArrivata(array $l): string
     {
-        return $l['stato'] === 'inviata' ? self::participio($l['tipo'], 'partit') . ' per email' : self::participio($l['tipo'], 'spedit');
+        if (($l['consegna'] ?? null) !== null) {
+            return ConsegnaDellaPec::participio((string) $l['tipo']) . ' per PEC';
+        }
+        $perPec = in_array($l['canale'] ?? null, ['pec', 'pec_e_carta'], true);
+
+        return match (true) {
+            $l['stato'] === 'inviata' => self::participio($l['tipo'], 'partit') . ($perPec ? ' per PEC' : ' per email'),
+            default => self::participio($l['tipo'], 'spedit'),
+        };
     }
 
     private static function nome(string $tipo): string

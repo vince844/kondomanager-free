@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound, List, DownloadCloud, Files, MessageSquare } from 'lucide-vue-next';
+import { Settings, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound, List, DownloadCloud, Files, MessageSquare } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -122,7 +122,7 @@ const mainNavItems = computed<NavItem[]>(() => [
 
 const rightNavItems = computed(() =>
     [
-        { type: 'link', title: trans('appHeader.repository'), href: 'https://github.com/vince844/kondomanager-free', icon: GitGraph, external: true },
+        // Il collegamento al codice sta nel piede della pagina (decisione 573).
         { type: 'link', title: trans('appHeader.documentation'), href: 'https://kondomanager.com/docs/index.html', icon: BookText, external: true },
         { 
             type: 'link', 
@@ -166,7 +166,8 @@ const isMobileItemExpanded = (title: string) =>
                             </Button>
                         </SheetTrigger>
 
-                        <SheetContent side="left" class="w-[300px] p-6">
+                        <!-- Alto quanto la finestra, scorre (Coda 733): sotto i 700 pixel di altezza «Impostazioni» restava sotto il bordo -->
+                        <SheetContent side="left" class="w-[300px] overflow-y-auto p-6">
                             <SheetHeader>
                                 <AppLogoIcon class="size-6 text-black dark:text-white" />
                             </SheetHeader>

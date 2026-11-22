@@ -10,6 +10,7 @@ use App\Models\Immobile;
 use App\Models\Tabella;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\ContaNelGesto;
 
 /**
  * Una riga del dettaglio del riparto: **come** una quota è nata (1.11.0-beta.29).
@@ -48,6 +49,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class RigaRiparto extends Model
 {
+    use ContaNelGesto;
+
     protected $table = 'righe_riparto';
 
     public const TIPO_RIPARTO = 'riparto';

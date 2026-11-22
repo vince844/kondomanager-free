@@ -5,7 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { Head, Link, InfiniteScroll, router, usePage } from '@inertiajs/vue3';
+import { Deferred, Head, Link, InfiniteScroll, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
@@ -28,6 +28,11 @@ import { eDelSito, type Gruppo } from '@/lib/inbox/actionInbox';
 import SeiMesiPerAgireWidget from '@/components/gestionale/seiMesi/SeiMesiPerAgireWidget.vue';
 import SeiMesiCompito from '@/components/gestionale/seiMesi/SeiMesiCompito.vue';
 import SeiMesiRisposte from '@/components/gestionale/seiMesi/SeiMesiRisposte.vue';
+import PerLaProssimaAssemblea from '@/components/assemblee/PerLaProssimaAssemblea.vue';
+import DelibereDaEseguire from '@/components/assemblee/seguito/DelibereDaEseguire.vue';
+import AzioniDellaDashboard from '@/components/assemblee/AzioniDellaDashboard.vue';
+import type { PuntoDellaCard } from '@/lib/assemblee/pagine';
+import type { CosaDaFare } from '@/types/assemblee';
 import MenuDelCompito from '@/components/inbox/MenuDelCompito.vue';
 import RisposteDelCompito from '@/components/inbox/RisposteDelCompito.vue';
 import Alert from '@/components/Alert.vue';
@@ -139,6 +144,10 @@ const props = defineProps<{
   inboxScheda?: SchedaDellaInbox;
   /** Il giorno dell'amministratore, per «Ricordamelo» sui compiti dell'agenda (da domani). */
   oggi?: string;
+  /** La card «Per la prossima assemblea», differita; `null` per chi non vede le assemblee. */
+  prossimaAssemblea?: { punti: PuntoDellaCard[]; totale: number; altre: number; in_preparazione: { id: number; nome: string } | null } | null;
+  // La card «Delibere da eseguire»: le cose da fare aperte delle delibere, differita come «Per la prossima assemblea»; senza righe non c'è.
+  delibereDaEseguire?: (CosaDaFare & { delibera: string; assemblea_id: number })[] | null;
 }>()
 
 const { generatePath, hasPermission } = usePermission();
@@ -403,8 +412,15 @@ onUnmounted(() => {
                 :has-text-guide="true"
                 text-guide-title="Guida"
                 :una-fila="true"
+                :una-fila-sempre="true"
+                :esercizio-breve="true"
                 @open-text-guide="mostraGuida = true"
-            />
+            >
+                <!-- Le azioni veloci in un menu solo: oggi «Da portare in assemblea», per un punto scritto da zero; la fila resta su una riga. -->
+                <template #actions>
+                    <AzioniDellaDashboard :condominio-id="condominio.id" />
+                </template>
+            </PageHeaderGuide>
 
             <div class="grid gap-3 md:grid-cols-3 lg:grid-cols-12 items-stretch">
 
@@ -827,6 +843,20 @@ onUnmounted(() => {
                     class="md:col-span-3 lg:col-span-12"
                     @rispondi="apriRisposta"
                 />
+
+                <!-- «Delibere da eseguire»: le cose da fare aperte delle delibere, differite; senza righe la card non c'è. -->
+                <Deferred data="delibereDaEseguire">
+                    <template #fallback><span class="hidden" /></template>
+                    <DelibereDaEseguire v-if="delibereDaEseguire && delibereDaEseguire.length > 0" :condominio-nome="condominio.nome" :righe="delibereDaEseguire"
+                        class="md:col-span-3 lg:col-span-12" />
+                </Deferred>
+
+                <!-- «Per la prossima assemblea»: i punti che aspettano un'assemblea, differiti; senza punti la card non c'è. -->
+                <Deferred data="prossimaAssemblea">
+                    <template #fallback><span class="hidden" /></template>
+                    <PerLaProssimaAssemblea v-if="prossimaAssemblea && prossimaAssemblea.totale > 0" :condominio-id="condominio.id" :condominio-nome="condominio.nome"
+                        :dati="prossimaAssemblea" class="md:col-span-3 lg:col-span-12" />
+                </Deferred>
 
                 <!-- La fila della tesoreria, sempre due terzi e un terzo: a sinistra la tesoreria con le quattro cifre e i due cassetti; a destra il
                      saldo previsto e sotto, quando c'è, «Crediti da compensare». Ogni card tiene la sua altezza: la colonna accanto non la allunga. Al telefono una

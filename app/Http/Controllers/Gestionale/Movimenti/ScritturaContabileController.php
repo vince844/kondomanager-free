@@ -483,6 +483,9 @@ class ScritturaContabileController extends Controller
             ];
         }
 
+        // 1.12.0-beta.13 (R12): la ratifica delle fatture collegate, con la delibera dell'assemblea quando c'è.
+        $ratifiche = \App\Http\Controllers\Assemblee\RatificaPerLePagine::perLeScritture($scrittura->fatture);
+
         return Inertia::render('gestionale/movimenti/scritture/Show', [
             'condominio' => $condominio,
             'condomini'  => $listaCondomini,
@@ -573,6 +576,7 @@ class ScritturaContabileController extends Controller
                     'tipo_allocazione'   => $f->pivot->tipo?->value ?? $f->pivot->tipo,
                     'dati_extra'         => $f->dati_extra,
                     'stato_approvazione' => $f->stato_approvazione,
+                    'ratifica'           => $ratifiche[$f->id] ?? null,
                 ]),
             ],
         ]);

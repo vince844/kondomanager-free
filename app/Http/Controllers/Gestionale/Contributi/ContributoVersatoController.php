@@ -5,14 +5,20 @@
 
 namespace App\Http\Controllers\Gestionale\Contributi;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\DateHelper;
 use App\Actions\Cassa\RegistraContributoInCassaAction;
 use App\Enums\EventoTipo;
+use App\Http\Controllers\Assemblee\DeliberaNelleSchede;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
+use App\Services\Assemblee\CollegamentiDelleDelibere;
+use App\Services\Assemblee\DeliberaInParole;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\SaldoCassaService;
 use App\Traits\HasEsercizio;
@@ -373,11 +379,15 @@ class ContributoVersatoController extends Controller
                 'nome'          => $conto->nome,
                 'importo_cents' => $importo,
                 'gestione'      => $conto->pianoConto?->gestione?->nome,
+                // La «Storia» della pagina (1.12.0-beta.13): il «già versato» di una voce è nella storia della sua gestione (P4, P22).
+                'gestione_id'   => $conto->pianoConto?->gestione_id,
             ],
             'righe'              => $righe,
             'titolari'           => $titolariPerImmobile,
             'natura'             => $naturaCorrente,
             'descrizione'        => $descrizioneCorrente,
+            // La delibera del già versato, se è collegata (ruolo «nota», facoltativa): la stessa per tutte le righe della voce.
+            'delibera'           => DeliberaNelleSchede::perLaPagina($primaRiga, 'nota'),
             'stima_semplificata' => $stimaSemplificata,
             'ripartizione_mista' => $ripartizioneMista,
             'liquidita_stato'    => $liquiditaStato,
@@ -560,7 +570,29 @@ class ContributoVersatoController extends Controller
             }
         }
 
-        DB::transaction(function () use ($dati, $condominio, $conto, $liquiditaGiaDichiarata, $esercizioId) {
+        // La delibera, facoltativa (§1.4 del progetto della tappa 2, ruolo «nota»): la sua frase va nella nota, e ogni riga del già versato si lega a lei.
+        // Le righe si riscrivono per intero a ogni salvataggio: i legami delle righe di prima se ne vanno con loro, dentro lo stesso gesto (una riga sola).
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        if ($delibera !== null) {
+            $frase = DeliberaInParole::frase($delibera, scritta: true);
+            $nota = trim((string) ($dati['descrizione'] ?? ''));
+            $nota = str_starts_with($nota, $frase) ? (string) preg_replace('/^[\s—-]+/u', '', mb_substr($nota, mb_strlen($frase))) : $nota;
+            $dati['descrizione'] = mb_substr($nota === '' ? $frase : $frase . ' — ' . $nota, 0, 255);
+        }
+        $utente = $request->user();
+
+        // P4 del registro delle modifiche: il «già versato» della voce si salva tutto insieme; la riga dice, unità per unità, com'era e com'è.
+        $giaVersatoPrima = GestiDelRegistro::giaVersato($conto);
+        $gesto = Gesto::sulModello($conto)->soloSeCambia()->allaFine(fn (Gesto $g) => $g
+            ->campi(GestiDelRegistro::campiDelGiaVersato($giaVersatoPrima, GestiDelRegistro::giaVersato($conto)))
+            ->riepilogo('Già versato della voce «' . $conto->nome . '» salvato'));
+        RegistroModifiche::durante($gesto, function () use ($dati, $condominio, $conto, $liquiditaGiaDichiarata, $esercizioId, $delibera, $utente) {
+            // I legami delle righe di prima con la delibera: si tolgono con le righe (dentro il gesto, nessuna riga in più).
+            if ($utente !== null) {
+                foreach (ContributoVersato::where('target_type', Conto::class)->where('target_id', $conto->id)->get() as $vecchia) {
+                    CollegamentiDelleDelibere::scollega($vecchia, 'nota', $utente);
+                }
+            }
             // Sostituzione integrale: l'insieme inviato è la nuova verità per questa voce.
             ContributoVersato::where('target_type', Conto::class)
                 ->where('target_id', $conto->id)
@@ -579,7 +611,7 @@ class ContributoVersatoController extends Controller
 
                 $totaleGiaVersato += (int) $riga['gia_versato'];
 
-                ContributoVersato::create([
+                $versato = ContributoVersato::create([
                     'condominio_id'   => $condominio->id,
                     'target_type'     => Conto::class,
                     'target_id'       => $conto->id,
@@ -593,6 +625,7 @@ class ContributoVersatoController extends Controller
                     'liquidita_stato' => $liquiditaStato,
                     'cassa_id'        => $cassaId,
                 ]);
+                DeliberaNelleSchede::collega($versato, 'nota', $delibera, $utente);
             }
 
             if ($liquiditaGiaDichiarata || $totaleGiaVersato <= 0) {
@@ -634,7 +667,7 @@ class ContributoVersatoController extends Controller
                             .'costo totale dell\'opera o solo il saldo dopo questo acconto — il già-versato va '
                             .'applicato solo nel primo caso.',
                         scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
-                        createdByUserId: auth()->id() ?? 1,
+                        createdByUserId: auth()->id(), // senza una persona, il programma (§7): mai l'utente 1
                         condominioId: $condominio->id,
                         context: [
                             'conto_id'      => $conto->id,

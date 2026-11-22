@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Anagrafiche\Utenti;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Anagrafica\CreateUserAnagraficaRequest;
@@ -15,6 +16,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class AnagraficaController extends Controller
 {
@@ -50,19 +52,19 @@ class AnagraficaController extends Controller
         // l'email (Fase 1-bis della 1.11.0-beta.45, rilievo X2).
         $buildingCodes = Invito::where('email', $user->email)->whereNotNull('accepted_at')->first();
 
-        // Create the anagrafica and attach the user id
-        $anagrafica = Anagrafica::create([
-            'user_id' => $user->id, 
-            ...$validated           
-        ]);
+        // L'anagrafica e i condomini dell'invito in una transazione: una riga sola «Creata», con i condomini, nel registro di ognuno (decisione 554).
+        DB::transaction(function () use ($user, $validated, $buildingCodes) {
+            $anagrafica = Anagrafica::create([
+                'user_id' => $user->id,
+                ...$validated,
+            ]);
 
-        // Check if we have condomini codes (case user invited) if not then create angrafica but don't associate condomini (case user created manuallY)
-        if(!empty( $buildingCodes)){
-            // Get building IDs
-            $buildingIds = Condominio::whereIn('codice_identificativo', $buildingCodes->building_codes)->pluck('id');
-            // Associate buildings to the anagrafica
-            $anagrafica->condomini()->attach($buildingIds);
-        }
+            // Con un invito accettato, i suoi condomini; senza (l'utente creato a mano), l'anagrafica nasce senza condomini.
+            if (! empty($buildingCodes)) {
+                $buildingIds = Condominio::whereIn('codice_identificativo', $buildingCodes->building_codes)->pluck('id');
+                RegistroModifiche::legame($anagrafica, 'condomini', 'Condomini', fn () => $anagrafica->condomini()->attach($buildingIds));
+            }
+        });
 
         return redirect()->intended(RedirectHelper::userHomeRoute());
         

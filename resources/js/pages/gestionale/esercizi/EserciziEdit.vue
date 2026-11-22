@@ -5,6 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 
+import StoriaDellaScheda from '@/components/registroModifiche/StoriaDellaScheda.vue';
 import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -102,6 +103,8 @@ const submit = () => {
 
                         <!-- Action buttons -->
                         <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
+                        <!-- La «Storia» dell'esercizio (1.12.0-beta.13, §8): la pagina non ha l'intestazione comune, il pulsante sta qui, alto come gli altri. -->
+                        <StoriaDellaScheda tipo="esercizio" :id="props.esercizio.id" />
                         <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                             <Plus class="w-4 h-4" v-if="!form.processing" />
                             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />

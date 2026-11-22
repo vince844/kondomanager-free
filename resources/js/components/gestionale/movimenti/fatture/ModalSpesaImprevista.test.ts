@@ -36,6 +36,13 @@ vi.mock('vue-select', () => ({
     },
 }));
 
+// Con l'origine «Delibera assembleare» la finestra mostra «Scegli la delibera», che legge i permessi dalla pagina (1.12.0-beta.13): la pagina finta ha
+// quello per vedere le assemblee. Il menu delle delibere non si apre in queste prove.
+vi.mock('@inertiajs/vue3', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
+    usePage: () => ({ props: { auth: { user: { roles: ['amministratore'], permissions: ['Vede le assemblee'] } } } }),
+}));
+
 import ModalSpesaImprevista from './ModalSpesaImprevista.vue';
 
 const FONDO = { id: 90, nome: 'Fondo di riserva', saldo_attuale: 500_000, sottotipo_fondo: 'generico', is_override_assemblea: false, is_utilizzabile_per_imprevisti: true };

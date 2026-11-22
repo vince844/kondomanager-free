@@ -5,8 +5,9 @@
 import { h } from 'vue'
 import DataTableColumnHeader from '@/components/gestionale/movimenti/fatture/DataTableColumnHeader.vue' 
 import DropdownAction from './DataTableRowActions.vue'
-import { Archive, AlertTriangle, CheckCircle, Clock, FileMinus, RotateCcw, Files } from 'lucide-vue-next'
+import { AlertTriangle, CheckCircle, Clock, RotateCcw, Files } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { euroSegno } from '@/lib/gestionale/tesoreria/saldoPrevisto'
 import type { FatturaPassiva } from '@/types/gestionale/fatture'
 import type { ColumnDef } from '@tanstack/vue-table'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
@@ -22,31 +23,26 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
         const fattura = row.original;
         const fornitoreNome = fattura.fornitore?.ragione_sociale || 'N/D';
         
-        const badgeRow = [];
-
-        // Badge Nota di Credito
-        if (fattura.tipo_documento === 'nota_credito') {
-            badgeRow.push(
-                h('span', { 
-                    class: 'inline-flex items-center gap-1 bg-rose-50 text-rose-600 border border-rose-200 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded' 
-                }, [h(FileMinus, { class: 'w-3 h-3' }), ' Nota Credito'])
-            );
-        }
-
-        // Badge Pregresso
-        if (fattura.is_pregresso) {
-            badgeRow.push(
-                h('span', { 
-                    class: 'inline-flex items-center gap-1 bg-amber-50 text-amber-600 border border-amber-200 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded' 
-                }, [h(Archive, { class: 'w-3 h-3' }), ' Pregresso'])
-            );
-        }
-
         // Array degli elementi della seconda riga (Numero, Ritenuta, Download)
         const documentMetaElements = [];
         
         // 1. Numero Documento
         documentMetaElements.push(h('span', `n. ${fattura.numero_documento || 'S/N'}`));
+
+        // «Nota credito» e «Pregresso» accanto al numero, come «Ritenuta»: su una riga loro sotto il numero allungavano la riga e si leggevano staccati
+        // dal documento. Badge piccoli e senza icona, da 12 pixel con gli angoli `rounded-md`.
+        if (fattura.tipo_documento === 'nota_credito') {
+            documentMetaElements.push(
+                h('span', { class: 'inline-flex items-center text-xs font-medium px-1 py-px rounded-md border shrink-0 ml-1.5 ' + 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900' },
+                    ['Nota credito'])
+            );
+        }
+        if (fattura.is_pregresso) {
+            documentMetaElements.push(
+                h('span', { class: 'inline-flex items-center text-xs font-medium px-1 py-px rounded-md border shrink-0 ml-1.5 ' + 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900' },
+                    ['Pregresso'])
+            );
+        }
 
         // 2. Badge Ritenuta (se presente)
         // Era un punto ciano di 6 px con la spiegazione solo nel `title`: si
@@ -56,8 +52,7 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
         if (fattura.importo_ritenuta && fattura.importo_ritenuta > 0) {
             documentMetaElements.push(
                 h('span', {
-                    class: 'inline-flex items-center gap-1 bg-cyan-50 text-cyan-600 border border-cyan-200 '
-                         + 'text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ml-1.5',
+                    class: 'inline-flex items-center text-xs font-medium px-1 py-px rounded-md border shrink-0 ml-1.5 ' + 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-900',
                     title: 'Soggetto a ritenuta d\'acconto',
                 }, ['Ritenuta'])
             );
@@ -96,13 +91,8 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             // Riga 1: Ragione sociale
             h('span', { class: 'font-bold text-sm text-slate-900 truncate' }, fornitoreNome),
 
-            // Riga 2: Numero e Metadati (raggruppati correttamente in un div flex)
-            h('div', { class: 'text-xs text-slate-400 flex items-center' }, documentMetaElements),
-
-            // Riga 3: Badge (solo se presenti)
-            badgeRow.length > 0
-                ? h('div', { class: 'flex items-center gap-1 flex-wrap mt-0.5' }, badgeRow)
-                : null
+            // Riga 2: il numero con i suoi badge (nota di credito, pregresso, ritenuta) e gli allegati
+            h('div', { class: 'text-xs text-slate-400 flex flex-wrap items-center gap-y-1' }, documentMetaElements),
         ]);
     },
     enableSorting: false,
@@ -163,7 +153,13 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             },
         };
 
-        const { label, class: cssClass, icon } = config[stato] ?? config['da_approvare'];
+        // 1.12.0-beta.13 (R12, decisione 561): la fattura sbloccata per l'urgenza aspetta la delibera dell'assemblea, e quella con la delibera è ratificata.
+        const ratifica = (row.original as { ratifica?: string | null }).ratifica ?? null;
+        const { label, class: cssClass, icon } = ratifica === 'ratificata'
+            ? { label: 'Ratificata', class: 'bg-emerald-50 text-emerald-700 border border-emerald-200', icon: CheckCircle }
+            : ratifica === 'da_ratificare'
+                ? { label: 'Da ratificare', class: 'bg-amber-50 text-amber-800 border border-amber-200', icon: AlertTriangle }
+                : (config[stato] ?? config['da_approvare']);
 
         return h('span', { 
             class: `inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider whitespace-nowrap ${cssClass}` 
@@ -258,21 +254,21 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
                                     ? 'text-slate-400'
                                     : (isNota ? 'text-emerald-600' : 'text-slate-900 group-hover:text-indigo-600')
                             }`
-                        }, euro(totaleDoc)),
+                        }, euroSegno(totaleDoc)),
                         
                         // 2. IL NETTO / BONIFICO
                         ritenuta > 0 && !isStornata
-                            ? h('span', { class: 'text-[10px] text-amber-600 font-bold mt-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100' }, `Bonifico: ${euro(netto)}`)
+                            ? h('span', { class: 'self-start text-xs text-amber-700 font-semibold mt-0.5 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900' }, `Bonifico: ${euro(netto)}`)
                             : null,
                         
-                        // Etichetta "Accredito"
+                        // «Accredito» in un badge come «Bonifico: …», non una scritta piccola sotto la cifra.
                         isNota && !isStornata
-                            ? h('span', { class: 'text-[9px] text-emerald-500 font-bold uppercase tracking-wide mt-0.5' }, 'Accredito')
+                            ? h('span', { class: 'self-start text-xs text-emerald-700 font-semibold mt-0.5 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900' }, 'Accredito')
                             : null,
                         
                         // Etichetta "Annullato"
                         isStornata
-                            ? h('span', { class: 'text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-0.5' }, 'Annullato')
+                            ? h('span', { class: 'self-start text-xs text-slate-500 font-semibold mt-0.5 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-200 dark:bg-slate-800/60 dark:text-slate-400 dark:border-slate-700' }, 'Annullato')
                             : null
                     ])
                 }),

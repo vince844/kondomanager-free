@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Comunicazioni;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Events\Comunicazioni\NotifyUserOfCreatedComunicazione;
 use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Services\Notifiche\DestinatariNotifica;
@@ -135,7 +136,34 @@ class ComunicazioneController extends Controller
                 'pianificatore_attivo' => PubblicazioneProgrammata::pianificatoreAttivo(),
                 'adesso'               => now()->setTimezone(PubblicazioneProgrammata::fuso())->format('Y-m-d\TH:i'),
             ],
+            // «Avviso anche in bacheca» dalla convocazione di un'assemblea: la comunicazione si apre già scritta, con le frasi pubbliche dei punti.
+            'precompilata'     => $this->avvisoDellAssemblea(request()) ?? $this->avvisoDellaDelibera(request()),
+            // Aperta da un'assemblea o da una cosa da fare: «Torna all'assemblea» (decisione 646).
+            'ritorno'          => \App\Services\Assemblee\RitornoAllAssemblea::per(request()->user(), (int) request()->query('assemblea', 0), (int) request()->query('cosa_da_fare', 0)),
         ]);  
+    }
+
+    /**
+     * «Avvisa i condòmini» dal seguito di una delibera (`?cosa_da_fare=`): la comunicazione si apre già scritta con la frase pubblica del punto, per chi
+     * gestisce le assemblee; null altrimenti. @return ?array<string, mixed>
+     */
+    private function avvisoDellaDelibera(\Illuminate\Http\Request $request): ?array
+    {
+        $cosa = \App\Services\Assemblee\Seguito\AvvisoAiCondomini::cosaPer((int) $request->query('cosa_da_fare', 0), $request->user());
+
+        return $cosa === null ? null : \App\Services\Assemblee\Seguito\AvvisoAiCondomini::precompilata($cosa);
+    }
+
+    /** Il testo dell'avviso di un'assemblea (`?assemblea=`), per chi gestisce le assemblee; null altrimenti. @return ?array<string, mixed> */
+    private function avvisoDellAssemblea(\Illuminate\Http\Request $request): ?array
+    {
+        $id = (int) $request->query('assemblea', 0);
+        if ($id === 0 || ! \App\Services\Assemblee\AccessoAlleAssemblee::gestisce($request->user())) {
+            return null;
+        }
+        $assemblea = \App\Models\Assemblee\Assemblea::query()->find($id);
+
+        return $assemblea === null ? null : app(\App\Services\Assemblee\Convocazione\AvvisoInBacheca::class)->precompilata($assemblea);
     }
 
     /**
@@ -183,10 +211,10 @@ class ComunicazioneController extends Controller
                 $comunicazione->save();
             }
 
-            $comunicazione->condomini()->attach($validated['condomini_ids'] ?? []);
+            RegistroModifiche::legame($comunicazione, 'condomini', 'Condomini', fn () => $comunicazione->condomini()->attach($validated['condomini_ids'] ?? []));
         
             if (!empty($validated['anagrafiche'])) {
-                $comunicazione->anagrafiche()->attach($validated['anagrafiche'] ?? []);
+                RegistroModifiche::legame($comunicazione, 'anagrafiche', 'Destinatari', fn () => $comunicazione->anagrafiche()->attach($validated['anagrafiche'] ?? []));
             }
 
             if ($request->hasFile('allegati')) {
@@ -197,6 +225,15 @@ class ComunicazioneController extends Controller
                     (array) $request->file('allegati', []),
                     inCreazione: true
                 );
+            }
+
+            // L'avviso in bacheca di un'assemblea torna legato a lei (`assemblee.comunicazione_id`), se è del suo condominio.
+            if ($request->filled('assemblea_id') && \App\Services\Assemblee\AccessoAlleAssemblee::gestisce($request->user())) {
+                app(\App\Services\Assemblee\Convocazione\AvvisoInBacheca::class)->collega($comunicazione, (int) $request->input('assemblea_id'));
+            }
+            // «Avvisa i condòmini» di una delibera: la comunicazione torna legata alla cosa da fare; pubblicata, la cosa è fatta.
+            if ($request->filled('cosa_da_fare_id')) {
+                \App\Services\Assemblee\Seguito\AvvisoAiCondomini::collega($comunicazione, (int) $request->input('cosa_da_fare_id'), $request->user());
             }
         
             DB::commit();
@@ -219,6 +256,9 @@ class ComunicazioneController extends Controller
 
         }
         
+        $ritorno = \App\Services\Assemblee\RitornoAllAssemblea::per($request->user(), (int) $request->input('assemblea_id', 0),
+            (int) $request->input('cosa_da_fare_id', 0), array_map('intval', (array) ($validated['condomini_ids'] ?? [])));
+
         if (! $eProgrammata) {
             try {
 
@@ -235,6 +275,18 @@ class ComunicazioneController extends Controller
             }
         }
         
+        // Aperta da un'assemblea (decisione 646): si torna al passo da cui si è partiti, con il messaggio di ciò che è successo.
+        if ($ritorno !== null) {
+            if ($eProgrammata) {
+                $locale = $comunicazione->programmata_per->copy()->setTimezone(PubblicazioneProgrammata::fuso());
+                $frase = 'Avviso in bacheca programmato per il '.$locale->format('d/m/Y').' alle '.$locale->format('H:i').'.';
+            } else {
+                $frase = $comunicazione->is_published ? 'Avviso in bacheca pubblicato.' : 'Avviso in bacheca salvato in bozza: lo pubblichi da qui o dalla bacheca.';
+            }
+
+            return redirect($ritorno['url'])->with($this->flashSuccess($frase));
+        }
+
         if ($eProgrammata) {
             $locale = $comunicazione->programmata_per->copy()->setTimezone(PubblicazioneProgrammata::fuso());
 
@@ -422,14 +474,14 @@ class ComunicazioneController extends Controller
                 }
             }
 
-            $comunicazione->condomini()->sync($validated['condomini_ids'] ?? []);
+            RegistroModifiche::legame($comunicazione, 'condomini', 'Condomini', fn () => $comunicazione->condomini()->sync($validated['condomini_ids'] ?? []));
 
             // Coda 307: i destinatari si toccano solo se il modulo li manda («senza campo = non
             // toccare», la stessa regola delle categorie dei documenti): una richiesta senza il
             // campo lascia la comunicazione indirizzata a chi lo era. La chiave presente e vuota
             // vuol dire «nessuno».
             if (array_key_exists('anagrafiche', $validated)) {
-                $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+                RegistroModifiche::legame($comunicazione, 'anagrafiche', 'Destinatari', fn () => $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []));
             }
 
             // I destinatari decidono le discussioni: una persona tolta porta via i commenti della sua dal compito «Da moderare», un

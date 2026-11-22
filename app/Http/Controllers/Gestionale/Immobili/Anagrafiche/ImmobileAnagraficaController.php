@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Gestionale\Immobili\Anagrafiche;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\DateHelper;
 use App\Models\Gestionale\Subentro;
 use App\Helpers\MoneyHelper;
@@ -196,9 +197,10 @@ class ImmobileAnagraficaController extends Controller
             //
             // `syncWithoutDetaching`: chi possiede unità in più stabili non deve perderli, e
             // un secondo collegamento non deve produrre una riga doppia.
-            Anagrafica::find($data['anagrafica_id'])
-                ?->condomini()
-                ->syncWithoutDetaching([$condominio->id]);
+            $persona = Anagrafica::find($data['anagrafica_id']);
+            if ($persona !== null) {
+                RegistroModifiche::legame($persona, 'condomini', 'Condomini', fn () => $persona->condomini()->syncWithoutDetaching([$condominio->id]));
+            }
 
             // ⚠️ `tipologie_spese` non viene più scritta (beta.50). Era presa da `validated()`
             // ma **nessuna FormRequest la valida**, quindi arrivava sempre `null`: verificato,

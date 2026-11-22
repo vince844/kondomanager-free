@@ -18,7 +18,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  */
 import { computed, ref, watch } from 'vue';
 import axios from 'axios';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -27,9 +27,9 @@ import SceltaBollo from '@/components/gestionale/movimenti/incassi/SceltaBollo.v
 import EstremiBollo from '@/components/gestionale/movimenti/incassi/EstremiBollo.vue';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Eye, Loader2, Mail, Printer, Share2 } from 'lucide-vue-next';
+import { AlertTriangle, ChevronDown, Eye, Loader2, Mail, Printer, Share2 } from 'lucide-vue-next';
 import {
-    AVVISO_PEC, FRASE_BOLLO, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, RIGA_ORIGINALE, TESTO_COPIA_CAMBIATA, TESTO_IMPUTAZIONE, TIPI_INDIRIZZO, apriPdfInUnaScheda,
+    AVVISO_PEC, FRASE_BOLLO, riepilogoDellaRicevuta, riassuntoDelleQuote, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, RIGA_ORIGINALE, TESTO_COPIA_CAMBIATA, TESTO_IMPUTAZIONE, TIPI_INDIRIZZO, apriPdfInUnaScheda,
     chiaveIndirizzo, destinatariScelti, estremiDaMandare, FRASE_SESSIONE_SCADUTA, fraseDaErroreConFile, frasePerErrore, gruppiDelleQuote, indirizziIniziali, indirizzoMailto,
     nomeDalContentDisposition, preparaEmail, scaricaFile, sessioneScaduta, statoConModo, testoConfermaNonServe, testoDelPdf, testoDellaBozza, testoEmissione, testoParteInPiu, testoRiepilogo,
     testoSogliaCredito, totaliDelleQuote, verificaIlFile, type BozzaEmail, type Destinatario, type Emissione, type QuotaDellaRicevuta,
@@ -283,6 +283,18 @@ async function preparaLEmail() {
         preparando.value = false;
     }
 }
+// La forma delle finestre: i gruppi con il titolo piccolo e grigio, separati da una riga; il riepilogo nel piede, con il segno del lavoro in corso.
+const gruppo = 'space-y-3 border-b border-slate-100 py-4 last:border-b-0 dark:border-slate-800';
+const titoloGruppo = 'text-xs font-semibold text-slate-500 dark:text-slate-400';
+const riquadroArancio = 'flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200';
+const riquadroVerde = 'rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200';
+// La tabella delle quote parte chiusa a ogni apertura della finestra.
+const tabellaAperta = ref(false);
+watch(aperta, (v) => { if (v) tabellaAperta.value = false; });
+const riepilogoPerEmail = computed(() => !!opzioni.value?.inviabile && !opzioni.value.senza_server_posta);
+const riepilogo = computed(() => riepilogoDellaRicevuta({ bollo: !!bollo.value, perEmail: riepilogoPerEmail.value, email: indirizziDellEmail().length }));
+const inAggiornamento = computed(() => (!opzioni.value && !errore.value) || preparando.value || !!pdfInArrivo.value || inviando.value);
+const conPec = computed(() => !!opzioni.value?.destinatari.some((d) => d.indirizzi.some((i) => i.tipo === 'pec')));
 const scaricaDiNuovo = () => { if (preparata.value) scaricaFile(preparata.value.pdf, preparata.value.nome); };
 // Mentre il PDF si prepara la finestra non si chiude (Chiudi, la X, Esc, un clic fuori): la ricevuta è già uscita, e il PDF deve arrivare a chi
 // lavora, nella finestra di questa ricevuta, con gli indirizzi che ha scelto.
@@ -322,8 +334,10 @@ async function invia() {
 
 <template>
     <Dialog :open="aperta" @update:open="cambiaApertura">
-        <DialogContent class="sm:max-w-[620px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
+        <!-- La forma delle finestre: ancorata in alto (non si ricentra quando cambia altezza), il contenuto scorre dentro, il riepilogo e i pulsanti fissi
+             nel piede; un lavoro in corso è un segno piccolo nel riepilogo, mai una riga che compare e scompare. -->
+        <DialogContent class="top-[5vh] flex max-h-[90vh] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[720px]">
+            <DialogHeader class="border-b border-slate-100 px-5 pt-4 pb-3 pr-12 text-left dark:border-slate-800">
                 <DialogTitle>Ricevuta di pagamento</DialogTitle>
                 <DialogDescription v-if="opzioni">
                     N. {{ opzioni.numero }}, versamento di {{ euro(opzioni.importo) }} del {{ giorno(opzioni.data_versamento) }}
@@ -331,203 +345,232 @@ async function invia() {
                 </DialogDescription>
             </DialogHeader>
 
-            <div v-if="!opzioni && !errore" class="flex items-center gap-2 text-sm text-muted-foreground py-6">
-                <Loader2 class="w-4 h-4 animate-spin" /> Caricamento…
-            </div>
-
-            <div v-if="opzioni && !opzioni.emettibile" class="text-sm space-y-2">
-                <p class="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-3 text-slate-700 dark:text-slate-200">{{ opzioni.motivo }}</p>
-                <ul v-if="opzioni.persone_dell_incasso.length" class="list-disc pl-5 text-xs">
-                    <li v-for="p in opzioni.persone_dell_incasso" :key="p.id"><a :href="estrattoContoDi(p.id)" class="underline">Estratto conto di {{ p.nome }}</a></li>
-                </ul>
-            </div>
-
-            <div v-if="opzioni && opzioni.emettibile" class="space-y-5 text-sm">
-                <p v-if="opzioni.annullato" class="rounded-md border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 p-3 text-rose-800 dark:text-rose-200">
-                    Incasso annullato<template v-if="opzioni.storno"> il {{ giorno(opzioni.storno.data) }} (storno n. {{ opzioni.storno.protocollo }})</template>.
-                    La ricevuta si stampa con «INCASSO ANNULLATO».
-                    <template v-if="opzioni.inviabile">Era partita per email: puoi mandarla di nuovo agli stessi indirizzi.</template>
-                    <template v-else>Se e come dirlo alla persona lo decidi tu.</template>
-                    <template v-if="puoSegnare"> Se non serve, segnalalo: l'avviso si toglie.</template>
-                </p>
-                <!-- «Non serve comunicarla» (decisione 206.2): scrive una riga che resta, quindi chiede prima una conferma con il numero dell'incasso. -->
-                <div v-if="puoSegnare" class="-mt-3 space-y-2">
-                    <Button v-if="!chiediSegna" size="sm" variant="outline" class="h-7 text-xs" @click="chiediSegna = true">Non serve comunicarla</Button>
-                    <div v-else role="group" class="rounded-md border p-3 text-xs space-y-2">
-                        <p>{{ testoConfermaNonServe(opzioni.numero) }}</p>
-                        <div class="flex flex-wrap gap-2">
-                            <Button size="sm" class="h-7 text-xs" :disabled="segnando" @click="segnaNonServe"><Loader2 v-if="segnando" class="w-3.5 h-3.5 mr-1 animate-spin" /> Sì, segna</Button>
-                            <Button size="sm" variant="ghost" class="h-7 text-xs" @click="chiediSegna = false">No</Button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- La prima emissione è l'originale: lo si dice prima, perché chi guarda la ricevuta non lo bruci (c'è «Anteprima»). -->
-                <p v-if="!haOriginale && !opzioni.annullato" class="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">{{ RIGA_ORIGINALE }}</p>
-
-                <div v-if="opzioni.emissioni.length" class="rounded-md border bg-muted/40 p-3 space-y-1">
-                    <p class="font-medium">
-                        {{ haOriginale && opzioni.copia ? `Già emessa il ${giorno(opzioni.copia.del)}: la prossima esce come «Copia», con le cifre dell'originale.` : 'Emissioni di prima' }}
-                    </p>
-                    <div v-for="e in opzioni.emissioni.slice(0, 3)" :key="e.id" class="text-xs text-muted-foreground">
-                        {{ testoEmissione(e) }}
-                        <span v-if="e.errore_completo" class="block break-words text-[11px]">Dal server: {{ e.errore_completo }}</span>
-                    </div>
-                    <p v-if="giaInviata" class="text-xs text-amber-700 dark:text-amber-300">L'ultimo invio è partito: rimandarla la manda di nuovo.</p>
-                    <p v-if="opzioni.copia?.cambiata" class="text-xs text-amber-800 dark:text-amber-200">
-                        {{ TESTO_COPIA_CAMBIATA }} La situazione di oggi è nell'<a v-if="estrattoConto" :href="estrattoConto" class="underline">estratto conto di {{ opzioni.posizione?.nome }}</a><template v-else>estratto conto</template>.
-                    </p>
-                </div>
-
-                <!-- A che cosa va il versamento: la ricevuta lo scrive com'è registrato nell'incasso (non lo sceglie). Una tabella compatta (decisione
-                     206.1): il piano e la gestione una volta, in testa al gruppo, e sotto i titoli delle colonne, così si leggono come colonne di quel
-                     piano; una riga per quota; il totale in fondo. Una tabella sola, perché le colonne dei gruppi restino allineate. Quattro colonne
-                     strette: sul telefono l'unità e la rata vanno a capo, le cifre no. -->
-                <div class="space-y-1">
-                    <p class="font-medium">A che cosa va il versamento</p>
-                    <!-- Il criterio dell'imputazione, come la ricevuta lo stampa: la frase la compone il server (decisione 218, punto 4). -->
-                    <p v-if="opzioni.imputazione" class="text-xs" data-testid="criterio-imputazione">{{ opzioni.imputazione }}</p>
-                    <table v-if="opzioni.quote.length" class="w-full text-xs" data-testid="quote-del-versamento">
-                        <tbody v-for="(g, gi) in gruppiQuote" :key="`gruppo-${gi}`">
-                            <tr v-if="g.titolo"><th colspan="4" scope="colgroup" class="pb-1 text-left font-medium" :class="{ 'pt-3': gi > 0 }">{{ g.titolo }}</th></tr>
-                            <tr class="text-muted-foreground" data-titoli-colonne>
-                                <th scope="col" class="py-1 pr-2 text-left font-normal">Unità</th>
-                                <th scope="col" class="py-1 pr-2 text-left font-normal">Rata e scadenza</th>
-                                <th scope="col" class="py-1 pr-2 text-right font-normal">Imputato</th>
-                                <th scope="col" class="py-1 text-right font-normal">Resta</th>
-                            </tr>
-                            <tr v-for="(q, i) in g.quote" :key="`quota-${gi}-${i}`" class="border-t align-top">
-                                <td class="py-1 pr-2 break-words">{{ q.unita ?? '—' }}</td>
-                                <td class="py-1 pr-2 break-words">{{ q.rata }}<span v-if="q.scadenza" class="block text-muted-foreground">{{ giorno(q.scadenza) }}</span></td>
-                                <td class="py-1 pr-2 text-right whitespace-nowrap">{{ euro(q.imputato) }}<span v-if="q.dal_credito > 0" class="block whitespace-normal text-muted-foreground">di cui dal credito {{ euro(q.dal_credito) }}</span></td>
-                                <td class="py-1 text-right whitespace-nowrap">{{ euro(q.dopo) }}</td>
-                            </tr>
-                        </tbody>
-                        <tfoot v-if="opzioni.quote.length > 1">
-                            <tr class="border-t font-medium">
-                                <td colspan="2" class="py-1 pr-2">Totale</td>
-                                <td class="py-1 pr-2 text-right whitespace-nowrap">{{ euro(totaliQuote.imputato) }}</td>
-                                <td class="py-1 text-right whitespace-nowrap">{{ euro(totaliQuote.dopo) }}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                    <ul v-if="opzioni.parte_in_piu.length || !opzioni.quote.length" class="space-y-0.5 text-xs">
-                        <li v-for="(e, i) in opzioni.parte_in_piu" :key="`piu-${i}`">Parte in più: {{ testoParteInPiu(e) }}</li>
-                        <li v-if="opzioni.quote.length === 0 && opzioni.parte_in_piu.length === 0">Il versamento non è imputato a nessuna quota.</li>
+            <div class="min-h-0 flex-1 overflow-y-auto px-5 text-sm" data-testid="corpo-finestra">
+                <section v-if="opzioni && !opzioni.emettibile" :class="gruppo">
+                    <p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">{{ opzioni.motivo }}</p>
+                    <ul v-if="opzioni.persone_dell_incasso.length" class="list-disc pl-5 text-xs">
+                        <li v-for="p in opzioni.persone_dell_incasso" :key="p.id"><a :href="estrattoContoDi(p.id)" class="underline">Estratto conto di {{ p.nome }}</a></li>
                     </ul>
-                    <p class="text-xs text-muted-foreground">{{ TESTO_IMPUTAZIONE }}</p>
-                </div>
+                </section>
 
-                <p v-for="(c, i) in opzioni.compensazioni_escluse" :key="`comp-${i}`" class="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                    Nello stesso incasso il credito di {{ c.persona }} ha coperto {{ euro(c.importo) }} delle sue rate: è una compensazione, non un versamento,
-                    e questa ricevuta non la porta. Si legge nel suo estratto conto.
-                </p>
-
-                <!-- Il bollo: sceglie l'amministratore. Quattro pulsanti, uno solo acceso; gli estremi solo con una delle due «Assolta». -->
-                <div class="space-y-2">
-                    <SceltaBollo
-                        :stato="bollo"
-                        :modo="modo"
-                        :nota="opzioni.sopra_soglia ? 'Importo sopra € 77,47' : null"
-                        :frase="creditoNellaSoglia ? `${FRASE_BOLLO} ${creditoNellaSoglia}` : FRASE_BOLLO"
-                        @scegli="scegliBollo"
-                    />
-                    <EstremiBollo v-if="bollo === 'assolta' && modo" id="estremi-bollo-ricevuta" v-model="estremi" :modo="modo">
-                        <!-- Su una ricevuta per email la marca non viaggia: il contrassegno si può scegliere, e come assolvere il bollo lo decide l'amministratore. -->
-                        <p v-if="modo === 'contrassegno' && opzioni.inviabile && (!opzioni.senza_server_posta || preparaDisponibile)" data-testid="nota-contrassegno-email" class="text-xs text-muted-foreground">{{ NOTA_CONTRASSEGNO_EMAIL }}</p>
-                    </EstremiBollo>
-                </div>
-
-                <div class="space-y-1">
-                    <label class="font-medium" for="nota-ricevuta">Nota, facoltativa</label>
-                    <Textarea id="nota-ricevuta" v-model="nota" maxlength="500" rows="2" placeholder="Stampata sulla ricevuta" />
-                    <p class="text-xs text-muted-foreground">{{ NOTA_INTERESSI }}</p>
-                </div>
-
-                <!-- La causale è un testo libero e può portare note interne: si stampa solo se lo scegli (decisione 202). -->
-                <label v-if="opzioni.causale" class="flex items-start gap-2 cursor-pointer">
-                    <Checkbox :model-value="stampaCausale" @update:model-value="(v: any) => (stampaCausale = !!v)" class="mt-0.5" />
-                    <span>Stampa la causale<span class="block text-xs text-muted-foreground">«{{ opzioni.causale }}»</span></span>
-                </label>
-
-                <!-- Gli indirizzi: quelli spuntati ricevono la ricevuta, un messaggio per indirizzo. -->
-                <p v-if="opzioni.inviabile && opzioni.senza_server_posta" class="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-800 dark:text-amber-200">
-                    Nessun server di posta configurato: il programma non manda la ricevuta per email. Configuralo nelle impostazioni della posta; intanto
-                    puoi stamparla, o mandarla dal tuo programma di posta con «Prepara l'email».
-                </p>
-                <p v-else-if="preparaDisponibile" class="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                    L'ultimo invio non è partito. Puoi riprovare con «Invia», o mandarla dal tuo programma di posta con «Prepara l'email».
-                </p>
-                <div v-if="opzioni.inviabile && (!opzioni.senza_server_posta || preparaDisponibile)" class="space-y-3">
-                    <p class="font-medium">A chi mandarla<span v-if="opzioni.annullato" class="font-normal text-xs text-muted-foreground"> — gli indirizzi a cui era già andata</span></p>
-                    <div v-for="d in opzioni.destinatari" :key="d.anagrafica_id" class="rounded-md border p-3 space-y-2">
-                        <p class="font-medium">
-                            {{ d.nome }}
-                            <span class="text-xs font-normal text-muted-foreground">{{ d.ruolo === 'posizione' ? '— la posizione' : '— ha versato per conto della posizione' }}</span>
+                <template v-if="opzioni && opzioni.emettibile">
+                    <!-- Gli avvisi della ricevuta: l'incasso annullato, l'originale, le emissioni di prima. -->
+                    <section v-if="opzioni.annullato || !haOriginale || opzioni.emissioni.length" :class="gruppo">
+                        <p v-if="opzioni.annullato" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                            Incasso annullato<template v-if="opzioni.storno"> il {{ giorno(opzioni.storno.data) }} (storno n. {{ opzioni.storno.protocollo }})</template>.
+                            La ricevuta si stampa con «INCASSO ANNULLATO».
+                            <template v-if="opzioni.inviabile">Era partita per email: puoi mandarla di nuovo agli stessi indirizzi.</template>
+                            <template v-else>Se e come dirlo alla persona lo decidi tu.</template>
+                            <template v-if="puoSegnare"> Se non serve, segnalalo: l'avviso si toglie.</template>
                         </p>
-                        <p v-if="d.ruolo === 'versato_da'" class="text-xs text-muted-foreground">La ricevuta porta le rate e il residuo della posizione: spunta solo se va mandata anche a chi ha versato.</p>
-                        <p v-if="d.indirizzi.length === 0" class="text-xs text-amber-700 dark:text-amber-300">Nessun indirizzo email: stampala per la posta.</p>
-                        <label v-for="i in d.indirizzi" :key="chiaveIndirizzo(i)" class="flex items-start gap-2 cursor-pointer">
-                            <Checkbox :model-value="caselle[`${d.anagrafica_id}:${chiaveIndirizzo(i)}`]" :disabled="preparando" @update:model-value="(v: any) => (caselle[`${d.anagrafica_id}:${chiaveIndirizzo(i)}`] = !!v)" class="mt-0.5" />
-                            <span>
-                                {{ TIPI_INDIRIZZO[i.tipo] }}: {{ i.indirizzo }}
-                                <span v-if="i.tipo === 'pec'" class="block text-xs text-muted-foreground">{{ AVVISO_PEC }}</span>
-                            </span>
+                        <!-- «Non serve comunicarla» (decisione 206.2): scrive una riga che resta, quindi chiede prima una conferma con il numero dell'incasso. -->
+                        <div v-if="puoSegnare" class="space-y-2">
+                            <Button v-if="!chiediSegna" size="sm" variant="outline" class="h-7 text-xs" @click="chiediSegna = true">Non serve comunicarla</Button>
+                            <div v-else role="group" class="space-y-2 rounded-lg border px-3 py-2.5 text-xs">
+                                <p>{{ testoConfermaNonServe(opzioni.numero) }}</p>
+                                <div class="flex flex-wrap gap-2">
+                                    <Button size="sm" class="h-7 text-xs" :disabled="segnando" @click="segnaNonServe"><Loader2 v-if="segnando" class="mr-1 h-3.5 w-3.5 animate-spin" /> Sì, segna</Button>
+                                    <Button size="sm" variant="ghost" class="h-7 text-xs" @click="chiediSegna = false">No</Button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- La prima emissione è l'originale: lo si dice prima, perché chi guarda la ricevuta non lo bruci (c'è «Anteprima»). -->
+                        <p v-if="!haOriginale && !opzioni.annullato" class="text-xs text-muted-foreground">{{ RIGA_ORIGINALE }}</p>
+
+                        <div v-if="opzioni.emissioni.length" class="space-y-1">
+                            <p class="text-[13px] font-medium">
+                                {{ haOriginale && opzioni.copia ? `Già emessa il ${giorno(opzioni.copia.del)}: la prossima esce come «Copia», con le cifre dell'originale.` : 'Emissioni di prima' }}
+                            </p>
+                            <div v-for="e in opzioni.emissioni.slice(0, 3)" :key="e.id" class="text-xs text-muted-foreground">
+                                {{ testoEmissione(e) }}
+                                <span v-if="e.errore_completo" class="block break-words text-xs">Dal server: {{ e.errore_completo }}</span>
+                            </div>
+                            <p v-if="giaInviata" class="text-xs text-amber-700 dark:text-amber-300">L'ultimo invio è partito: rimandarla la manda di nuovo.</p>
+                            <p v-if="opzioni.copia?.cambiata" class="text-xs text-amber-800 dark:text-amber-200">
+                                {{ TESTO_COPIA_CAMBIATA }} La situazione di oggi è nell'<a v-if="estrattoConto" :href="estrattoConto" class="underline">estratto conto di {{ opzioni.posizione?.nome }}</a><template v-else>estratto conto</template>.
+                            </p>
+                        </div>
+                    </section>
+
+                    <!-- A che cosa va il versamento: la ricevuta lo scrive com'è registrato nell'incasso (non lo sceglie). Una tabella compatta (decisione
+                         206.1): il piano e la gestione una volta, in testa al gruppo, e sotto i titoli delle colonne, così si leggono come colonne di quel
+                         piano; una riga per quota; il totale in fondo. Una tabella sola, perché le colonne dei gruppi restino allineate. Quattro colonne
+                         strette: sul telefono l'unità e la rata vanno a capo, le cifre no. -->
+                    <section :class="gruppo">
+                        <h3 :class="titoloGruppo" data-testid="titolo-gruppo">A che cosa va il versamento</h3>
+                        <!-- Il criterio dell'imputazione, come la ricevuta lo stampa: la frase la compone il server (decisione 218, punto 4). -->
+                        <p v-if="opzioni.imputazione" class="text-xs" data-testid="criterio-imputazione">{{ opzioni.imputazione }}</p>
+                        <!-- Il riassunto sempre a vista; la tabella in un cassetto, chiuso all'apertura, perché la finestra resti corta. -->
+                        <div v-if="opzioni.quote.length" class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <p class="text-[13px] text-slate-700 dark:text-slate-200" data-testid="riassunto-quote">{{ riassuntoDelleQuote({ quote: opzioni.quote.length, piani: gruppiQuote.length, imputato: totaliQuote.imputato, resta: totaliQuote.dopo }) }}</p>
+                            <button type="button" class="inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline dark:text-sky-400" :aria-expanded="tabellaAperta ? 'true' : 'false'"
+                                aria-controls="cassetto-quote" data-testid="mostra-quote" @click="tabellaAperta = !tabellaAperta">
+                                <ChevronDown class="h-3.5 w-3.5 transition-transform" :class="{ 'rotate-180': tabellaAperta }" aria-hidden="true" />{{ tabellaAperta ? 'Nascondi le quote' : 'Mostra le quote' }}
+                            </button>
+                        </div>
+                        <div v-if="opzioni.quote.length" v-show="tabellaAperta" id="cassetto-quote" class="space-y-2" data-testid="cassetto-quote">
+                            <table class="w-full text-xs" data-testid="quote-del-versamento">
+                                <tbody v-for="(g, gi) in gruppiQuote" :key="`gruppo-${gi}`">
+                                    <tr v-if="g.titolo"><th colspan="4" scope="colgroup" class="pb-1 text-left font-medium" :class="{ 'pt-3': gi > 0 }">{{ g.titolo }}</th></tr>
+                                    <tr class="text-muted-foreground" data-titoli-colonne>
+                                        <th scope="col" class="py-1 pr-2 text-left font-normal">Unità</th>
+                                        <th scope="col" class="py-1 pr-2 text-left font-normal">Rata e scadenza</th>
+                                        <th scope="col" class="py-1 pr-2 text-right font-normal">Imputato</th>
+                                        <th scope="col" class="py-1 text-right font-normal">Resta</th>
+                                    </tr>
+                                    <tr v-for="(q, i) in g.quote" :key="`quota-${gi}-${i}`" class="border-t align-top">
+                                        <td class="py-1 pr-2 break-words">{{ q.unita ?? '—' }}</td>
+                                        <td class="py-1 pr-2 break-words">{{ q.rata }}<span v-if="q.scadenza" class="block text-muted-foreground">{{ giorno(q.scadenza) }}</span></td>
+                                        <td class="py-1 pr-2 text-right whitespace-nowrap">{{ euro(q.imputato) }}<span v-if="q.dal_credito > 0" class="block whitespace-normal text-muted-foreground">di cui dal credito {{ euro(q.dal_credito) }}</span></td>
+                                        <td class="py-1 text-right whitespace-nowrap">{{ euro(q.dopo) }}</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot v-if="opzioni.quote.length > 1">
+                                    <tr class="border-t font-medium">
+                                        <td colspan="2" class="py-1 pr-2">Totale</td>
+                                        <td class="py-1 pr-2 text-right whitespace-nowrap">{{ euro(totaliQuote.imputato) }}</td>
+                                        <td class="py-1 text-right whitespace-nowrap">{{ euro(totaliQuote.dopo) }}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            <p class="text-xs text-muted-foreground">{{ TESTO_IMPUTAZIONE }}</p>
+                        </div>
+                        <ul v-if="opzioni.parte_in_piu.length || !opzioni.quote.length" class="space-y-0.5 text-xs">
+                            <li v-for="(e, i) in opzioni.parte_in_piu" :key="`piu-${i}`">Parte in più: {{ testoParteInPiu(e) }}</li>
+                            <li v-if="opzioni.quote.length === 0 && opzioni.parte_in_piu.length === 0">Il versamento non è imputato a nessuna quota.</li>
+                        </ul>
+                        <p v-if="!opzioni.quote.length" class="text-xs text-muted-foreground">{{ TESTO_IMPUTAZIONE }}</p>
+                        <p v-for="(c, i) in opzioni.compensazioni_escluse" :key="`comp-${i}`" class="text-xs text-muted-foreground">
+                            Nello stesso incasso il credito di {{ c.persona }} ha coperto {{ euro(c.importo) }} delle sue rate: è una compensazione, non un versamento,
+                            e questa ricevuta non la porta. Si legge nel suo estratto conto.
+                        </p>
+                    </section>
+
+                    <!-- La ricevuta: il bollo (lo sceglie l'amministratore, una barra a quattro scelte), gli estremi solo con una delle due «Assolta»,
+                         la nota e la causale. -->
+                    <section :class="gruppo">
+                        <h3 :class="titoloGruppo" data-testid="titolo-gruppo">La ricevuta</h3>
+                        <div class="space-y-2">
+                            <SceltaBollo
+                                :stato="bollo"
+                                :modo="modo"
+                                :nota="opzioni.sopra_soglia ? 'Importo sopra € 77,47' : null"
+                                :frase="creditoNellaSoglia ? `${FRASE_BOLLO} ${creditoNellaSoglia}` : FRASE_BOLLO"
+                                @scegli="scegliBollo"
+                            />
+                            <EstremiBollo v-if="bollo === 'assolta' && modo" id="estremi-bollo-ricevuta" v-model="estremi" :modo="modo">
+                                <!-- Su una ricevuta per email la marca non viaggia: il contrassegno si può scegliere, e come assolvere il bollo lo decide l'amministratore. -->
+                                <p v-if="modo === 'contrassegno' && opzioni.inviabile && (!opzioni.senza_server_posta || preparaDisponibile)" data-testid="nota-contrassegno-email" class="text-xs text-muted-foreground">{{ NOTA_CONTRASSEGNO_EMAIL }}</p>
+                            </EstremiBollo>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[13px] font-medium" for="nota-ricevuta">Nota <span class="text-xs font-normal text-muted-foreground">facoltativa, va sulla ricevuta</span></label>
+                            <Textarea id="nota-ricevuta" v-model="nota" maxlength="500" rows="2" />
+                            <p class="text-xs text-muted-foreground">{{ NOTA_INTERESSI }}</p>
+                        </div>
+                        <!-- La causale è un testo libero e può portare note interne: si stampa solo se lo scegli (decisione 202). -->
+                        <label v-if="opzioni.causale" class="flex cursor-pointer items-start gap-2.5">
+                            <Checkbox :model-value="stampaCausale" @update:model-value="(v: any) => (stampaCausale = !!v)" class="mt-0.5 rounded" />
+                            <span class="text-[13px] font-medium">Stampa la causale<span class="block text-xs font-normal text-muted-foreground">«{{ opzioni.causale }}»</span></span>
                         </label>
+                    </section>
+
+                    <!-- A chi mandarla: gli indirizzi come pulsanti affiancati, con il tipo e l'indirizzo; un messaggio per indirizzo spuntato. -->
+                    <section v-if="opzioni.inviabile" :class="gruppo">
+                        <h3 :class="titoloGruppo" data-testid="titolo-gruppo">A chi mandarla<span v-if="opzioni.annullato" class="font-normal"> — gli indirizzi a cui era già andata</span></h3>
+                        <p v-if="opzioni.senza_server_posta" :class="riquadroArancio">
+                            <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" />
+                            <span>Nessun server di posta configurato: il programma non manda la ricevuta per email. Configuralo nelle impostazioni della posta; intanto
+                                puoi stamparla, o mandarla dal tuo programma di posta con «Prepara l'email».</span>
+                        </p>
+                        <p v-else-if="preparaDisponibile" class="text-xs text-muted-foreground">
+                            L'ultimo invio non è partito. Puoi riprovare con «Invia», o mandarla dal tuo programma di posta con «Prepara l'email».
+                        </p>
+                        <template v-if="!opzioni.senza_server_posta || preparaDisponibile">
+                            <div v-for="d in opzioni.destinatari" :key="d.anagrafica_id" class="space-y-1.5">
+                                <p class="text-[13px] font-medium">
+                                    {{ d.nome }}
+                                    <span class="text-xs font-normal text-muted-foreground">{{ d.ruolo === 'posizione' ? '— la posizione' : '— ha versato per conto della posizione' }}</span>
+                                </p>
+                                <p v-if="d.ruolo === 'versato_da'" class="text-xs text-muted-foreground">La ricevuta porta le rate e il residuo della posizione: spunta solo se va mandata anche a chi ha versato.</p>
+                                <p v-if="d.indirizzi.length === 0" class="text-xs text-amber-700 dark:text-amber-300">Nessun indirizzo email: stampala per la posta.</p>
+                                <div v-else class="flex flex-wrap gap-2">
+                                    <label v-for="i in d.indirizzi" :key="chiaveIndirizzo(i)"
+                                        class="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors"
+                                        :class="caselle[`${d.anagrafica_id}:${chiaveIndirizzo(i)}`] ? 'border-slate-900 dark:border-slate-300' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700'"
+                                        :data-acceso="caselle[`${d.anagrafica_id}:${chiaveIndirizzo(i)}`] ? 'si' : 'no'" data-testid="indirizzo">
+                                        <Checkbox :model-value="caselle[`${d.anagrafica_id}:${chiaveIndirizzo(i)}`]" :disabled="preparando" class="rounded" @update:model-value="(v: any) => (caselle[`${d.anagrafica_id}:${chiaveIndirizzo(i)}`] = !!v)" />
+                                        <span class="min-w-0 break-all"><span class="font-medium text-slate-900 dark:text-slate-100">{{ TIPI_INDIRIZZO[i.tipo] }}:</span> <span class="text-xs text-muted-foreground">{{ i.indirizzo }}</span></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <p v-if="conPec" class="text-xs text-muted-foreground">{{ AVVISO_PEC }}</p>
+                            <div v-if="!opzioni.annullato" class="space-y-1">
+                                <label class="text-xs text-muted-foreground" for="altro-indirizzo">Un altro indirizzo, se la persona chiede di mandarla altrove</label>
+                                <Input id="altro-indirizzo" v-model="altroIndirizzo" type="email" placeholder="nome@esempio.it" class="h-8 text-xs" :disabled="preparando" />
+                            </div>
+                        </template>
+                    </section>
+                </template>
+
+                <!-- Gli esiti: in fondo al corpo, dopo l'ultimo gruppo. -->
+                <div v-if="esito || preparata || errore" class="space-y-2 pb-4" :class="opzioni ? '' : 'pt-4'">
+                    <p v-if="esito" :class="riquadroVerde">{{ esito }}</p>
+                    <!-- Dopo «Prepara l'email»: la ricevuta è uscita (una stampa nel registro); che cosa fare adesso, e i collegamenti se l'email non si è aperta. -->
+                    <div v-if="preparata" :class="[riquadroVerde, 'space-y-1']">
+                        <p v-if="preparata.modo === 'condivisa'">
+                            Il PDF è pronto e la ricevuta risulta stampata. Nel programma di posta che hai scelto scrivi l'indirizzo<template v-if="preparata.a.length">: {{ preparata.a.join(', ') }}</template>.
+                        </p>
+                        <p v-else-if="preparata.modo === 'annullata'">
+                            Il PDF è pronto e la ricevuta risulta stampata. Hai chiuso la condivisione: puoi aprire l'email o scaricare il PDF da qui.
+                        </p>
+                        <p v-else>
+                            Il PDF è pronto e la ricevuta risulta stampata. Allega il PDF scaricato ({{ preparata.nome }}) all'email che si è aperta, poi mandala.
+                        </p>
+                        <p class="flex flex-wrap gap-x-3">
+                            <a :href="preparata.mailto" class="underline">Apri l'email</a>
+                            <button type="button" class="underline" @click="scaricaDiNuovo">Scarica di nuovo il PDF</button>
+                        </p>
                     </div>
-                    <div v-if="!opzioni.annullato" class="space-y-1">
-                        <label class="text-xs text-muted-foreground" for="altro-indirizzo">Un altro indirizzo, se la persona chiede di mandarla altrove</label>
-                        <Input id="altro-indirizzo" v-model="altroIndirizzo" type="email" placeholder="nome@esempio.it" class="h-8 text-xs" :disabled="preparando" />
-                    </div>
-                </div>
-
-                <p v-if="preparando" role="status" class="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                    Sto preparando il PDF: la finestra si può chiudere appena è pronto.
-                </p>
-
-                <p v-if="esito" class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-emerald-800 dark:text-emerald-200">{{ esito }}</p>
-
-                <!-- Dopo «Prepara l'email»: la ricevuta è uscita (una stampa nel registro); che cosa fare adesso, e i collegamenti se l'email non si è aperta. -->
-                <div v-if="preparata" class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-xs text-emerald-800 dark:text-emerald-200 space-y-1">
-                    <p v-if="preparata.modo === 'condivisa'">
-                        Il PDF è pronto e la ricevuta risulta stampata. Nel programma di posta che hai scelto scrivi l'indirizzo<template v-if="preparata.a.length">: {{ preparata.a.join(', ') }}</template>.
-                    </p>
-                    <p v-else-if="preparata.modo === 'annullata'">
-                        Il PDF è pronto e la ricevuta risulta stampata. Hai chiuso la condivisione: puoi aprire l'email o scaricare il PDF da qui.
-                    </p>
-                    <p v-else>
-                        Il PDF è pronto e la ricevuta risulta stampata. Allega il PDF scaricato ({{ preparata.nome }}) all'email che si è aperta, poi mandala.
-                    </p>
-                    <p class="flex flex-wrap gap-x-3">
-                        <a :href="preparata.mailto" class="underline">Apri l'email</a>
-                        <button type="button" class="underline" @click="scaricaDiNuovo">Scarica di nuovo il PDF</button>
-                    </p>
+                    <p v-if="errore" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ errore }}</p>
                 </div>
             </div>
 
-            <p v-if="errore" class="rounded-md border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 p-2 text-sm text-rose-800 dark:text-rose-200">{{ errore }}</p>
-
-            <DialogFooter class="gap-2">
-                <Button variant="outline" :disabled="preparando" @click="aperta = false">Chiudi</Button>
-                <!-- Guarda la ricevuta senza emetterla: non scrive il registro e non fa uscire come «Copia» quella che va alla persona. -->
-                <Button variant="outline" :disabled="!puoVedere" @click="anteprima">
-                    <Loader2 v-if="pdfInArrivo === 'anteprima'" class="w-4 h-4 mr-2 animate-spin" />
-                    <Eye v-else class="w-4 h-4 mr-2" /> Anteprima
-                </Button>
-                <Button variant="outline" :disabled="!puoStampare" @click="stampa">
-                    <Loader2 v-if="pdfInArrivo === 'stampa'" class="w-4 h-4 mr-2 animate-spin" />
-                    <Printer v-else class="w-4 h-4 mr-2" /> Stampa
-                </Button>
-                <!-- Per chi non ha la posta del programma, o se l'invio non è partito: il PDF al programma di posta di chi lavora. -->
-                <Button v-if="preparaDisponibile" variant="outline" :disabled="!puoPreparare" @click="preparaLEmail">
-                    <Loader2 v-if="preparando" class="w-4 h-4 mr-2 animate-spin" />
-                    <Share2 v-else class="w-4 h-4 mr-2" /> Prepara l'email
-                </Button>
-                <Button v-if="opzioni && opzioni.emettibile && opzioni.inviabile" :disabled="!puoInviare" @click="invia">
-                    <Loader2 v-if="inviando" class="w-4 h-4 mr-2 animate-spin" />
-                    <Mail v-else class="w-4 h-4 mr-2" /> Invia
-                </Button>
-            </DialogFooter>
+            <!-- Il piede fisso: il riepilogo di ciò che succede a sinistra, i pulsanti a destra (vanno sotto il riepilogo quando non ci stanno accanto). -->
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-900/60" data-testid="piede-finestra">
+                <p class="flex min-w-[200px] flex-1 items-center gap-2 text-[13px] text-slate-600 dark:text-slate-300" role="status" data-testid="riepilogo">
+                    <span v-if="inAggiornamento" class="inline-flex shrink-0" data-testid="aggiorno"><Loader2 class="h-3.5 w-3.5 animate-spin" aria-hidden="true" /></span>
+                    <component :is="riepilogoPerEmail ? Mail : Printer" v-else-if="opzioni && opzioni.emettibile" class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span class="min-w-0">
+                        <template v-if="!opzioni">{{ errore ? '' : 'Caricamento…' }}</template>
+                        <template v-else-if="preparando">Sto preparando il PDF: la finestra si può chiudere appena è pronto.</template>
+                        <template v-else-if="pdfInArrivo">Sto preparando il PDF.</template>
+                        <template v-else-if="opzioni.emettibile">{{ riepilogo.prima }}<b v-if="riepilogo.forte" class="font-semibold text-slate-900 dark:text-white">{{ riepilogo.forte }}</b>{{ riepilogo.dopo }}</template>
+                    </span>
+                </p>
+                <div class="ml-auto flex flex-wrap justify-end gap-2">
+                    <Button variant="outline" :disabled="preparando" @click="aperta = false">Chiudi</Button>
+                    <!-- Guarda la ricevuta senza emetterla: non scrive il registro e non fa uscire come «Copia» quella che va alla persona. -->
+                    <Button variant="outline" :disabled="!puoVedere" @click="anteprima">
+                        <Loader2 v-if="pdfInArrivo === 'anteprima'" class="mr-2 h-4 w-4 animate-spin" />
+                        <Eye v-else class="mr-2 h-4 w-4" /> Anteprima
+                    </Button>
+                    <Button variant="outline" :disabled="!puoStampare" @click="stampa">
+                        <Loader2 v-if="pdfInArrivo === 'stampa'" class="mr-2 h-4 w-4 animate-spin" />
+                        <Printer v-else class="mr-2 h-4 w-4" /> Stampa
+                    </Button>
+                    <!-- Per chi non ha la posta del programma, o se l'invio non è partito: il PDF al programma di posta di chi lavora. -->
+                    <Button v-if="preparaDisponibile" variant="outline" :disabled="!puoPreparare" @click="preparaLEmail">
+                        <Loader2 v-if="preparando" class="mr-2 h-4 w-4 animate-spin" />
+                        <Share2 v-else class="mr-2 h-4 w-4" /> Prepara l'email
+                    </Button>
+                    <Button v-if="opzioni && opzioni.emettibile && opzioni.inviabile" :disabled="!puoInviare" @click="invia">
+                        <Loader2 v-if="inviando" class="mr-2 h-4 w-4 animate-spin" />
+                        <Mail v-else class="mr-2 h-4 w-4" /> Invia
+                    </Button>
+                </div>
+            </div>
         </DialogContent>
     </Dialog>
 </template>

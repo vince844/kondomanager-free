@@ -24,7 +24,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * persona e una ditta sono due anagrafiche: che si leggano allo stesso modo è il punto.
  */
 import { computed } from 'vue';
+import { giornoItaliano } from '@/lib/giorno';
 import { Head, Link, usePage } from '@inertiajs/vue3';
+import { parolaDelMezzo } from '@/lib/assemblee/persona';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AnagraficaLayout from '@/layouts/anagrafiche/AnagraficaLayout.vue';
 import Alert from '@/components/Alert.vue';
@@ -66,6 +68,8 @@ const props = defineProps<{
   };
   immobili: UnitaCollegata[];
   documenti_count: number;
+  /** La riga delle assemblee (decisione 651; l'elenco è nella linguetta «Assemblee»): null senza «Vede le assemblee». */
+  assemblee_riepilogo?: { totale: number; condomini: number; ultima: string | null } | null;
 }>();
 
 const { generatePath, generateRoute, hasPermission } = usePermission();
@@ -81,7 +85,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 const pageGuides = [
   {
     title: 'Recapiti e contatti',
-    description: 'Indirizzo, telefoni e caselle di posta della persona. Il pulsante «Modifica» apre il modulo per aggiornarli.',
+    description: 'Indirizzo, telefoni e caselle di posta della persona; «Come si convoca» dice il mezzo delle convocazioni e il giorno in cui ti ha comunicato la PEC. Il pulsante «Modifica» apre il modulo per aggiornarli.',
     icon: Contact,
     colorVariant: 'blue' as const,
   },
@@ -115,6 +119,10 @@ const senzaDocumento = computed(() =>
   !documento.value.tipologia && !documento.value.numero && !documento.value.scadenza,
 );
 
+/** Come si convoca la persona (art. 66 disp. att.): il mezzo scelto, o niente se lo propone il programma dai dati; e il giorno della PEC comunicata. */
+const mezzoDellaPersona = computed(() => parolaDelMezzo(props.anagrafica.mezzo_convocazione as string | null));
+const pecComunicataIl = computed(() => (props.anagrafica.pec_comunicata_il as string | null) ?? null);
+
 /** Il collegamento all'utente: dice se questa persona ha accesso all'area riservata. */
 const utente = computed(() => (props.anagrafica.user as { id: number; email: string } | null) ?? null);
 
@@ -142,6 +150,7 @@ function etichettaRuolo(tipologia: string | null): string {
 
     <div class="px-6 py-8 space-y-4">
       <PageHeaderGuide
+        :storia="{ tipo: 'anagrafica', id: props.anagrafica.id }"
         :page-title="anagrafica.nome"
         :page-subtitle="sottotitolo"
         :guides="pageGuides"
@@ -306,6 +315,32 @@ function etichettaRuolo(tipologia: string | null): string {
                       </span>
                       <span class="block text-xs text-slate-500">Questa persona non entra nell'area riservata.</span>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- La convocazione delle assemblee: il mezzo dell'art. 66 e il giorno in cui ha comunicato la PEC. -->
+              <div class="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/50" data-testid="convocazione-della-persona">
+                <div class="px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-700/50">
+                  <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Convocazione delle assemblee</h2>
+                </div>
+                <div class="divide-y divide-slate-200/60 dark:divide-slate-700/40">
+                  <div class="px-5 py-3.5">
+                    <span class="block mb-1 text-xs text-slate-500 dark:text-slate-400">Come si convoca</span>
+                    <span class="text-sm text-slate-800 dark:text-slate-200">{{ mezzoDellaPersona ?? 'Lo propone il programma dai dati' }}</span>
+                  </div>
+                  <div class="px-5 py-3.5">
+                    <span class="block mb-1 text-xs text-slate-500 dark:text-slate-400">PEC comunicata dalla persona il</span>
+                    <span class="text-sm text-slate-800 dark:text-slate-200 tabular-nums">{{ pecComunicataIl ? giornoItaliano(pecComunicataIl) : 'non registrato' }}</span>
+                  </div>
+                  <!-- Le assemblee della persona stanno nella linguetta «Assemblee» (decisione 651); qui una riga e il collegamento. -->
+                  <div v-if="assemblee_riepilogo" class="px-5 py-3.5 text-sm text-slate-800 dark:text-slate-200" data-testid="riga-assemblee">
+                    <template v-if="assemblee_riepilogo.totale === 0">Nessuna assemblea, per ora</template>
+                    <template v-else>
+                      {{ assemblee_riepilogo.totale }} {{ assemblee_riepilogo.totale === 1 ? 'assemblea' : 'assemblee' }} in {{ assemblee_riepilogo.condomini }}
+                      {{ assemblee_riepilogo.condomini === 1 ? 'condominio' : 'condomini' }}<template v-if="assemblee_riepilogo.ultima"> · l'ultima il {{ assemblee_riepilogo.ultima }}</template>
+                      · <Link :href="generatePath('anagrafiche/:anagrafica/assemblee', { anagrafica: anagrafica.id })" class="font-medium text-sky-700 underline dark:text-sky-300">Vedi le sue assemblee</Link>
+                    </template>
                   </div>
                 </div>
               </div>

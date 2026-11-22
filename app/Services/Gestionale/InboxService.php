@@ -36,7 +36,7 @@ class InboxService
         string $title,
         string $description,
         Carbon $scadenza,
-        int $createdByUserId,
+        ?int $createdByUserId,
         ?int $condominioId = null,
         array $context = [],
         ?string $actionUrl = null,
@@ -91,7 +91,7 @@ class InboxService
         string $title,
         string $description,
         Carbon $quando,
-        int $createdByUserId,
+        ?int $createdByUserId,
         ?int $condominioId,
         ?string $actionUrl,
         array $context = [],
@@ -119,6 +119,16 @@ class InboxService
         }
 
         return $evento;
+    }
+
+    /**
+     * Sposta un compito aperto al giorno scelto (un'ora, come quando nasce), e pulisce la lettura dell'Inbox. Per chi ricorda una cosa a un altro giorno
+     * senza scrivere il compito da sé (la cosa da fare dopo una delibera, «Ricordamelo»).
+     */
+    public static function spostaIlCompito(\App\Models\Evento $compito, \Illuminate\Support\Carbon $inizio): void
+    {
+        $compito->update(['start_time' => $inizio, 'end_time' => $inizio->copy()->addHour()]);
+        self::clearAdminCache();
     }
 
     /**

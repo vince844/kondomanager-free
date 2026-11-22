@@ -33,8 +33,11 @@ use Illuminate\Support\Collection;
  */
 final class CorrispondenzaDellaPersona
 {
-    /** I tipi del registro che questa lettura porta: le lettere li porta {@see RegistroLettere::perPersona()}. */
-    public const TIPI = [RegistroInvio::TIPO_RICEVUTA, RegistroInvio::TIPO_AVVISO_COMPENSAZIONE];
+    /**
+     * I tipi del registro che questa lettura porta: le lettere li porta {@see RegistroLettere::perPersona()}. La convocazione di un'assemblea entra di
+     * proposito: è un avviso mandato alla persona, con la sua prova.
+     */
+    public const TIPI = [RegistroInvio::TIPO_RICEVUTA, RegistroInvio::TIPO_AVVISO_COMPENSAZIONE, RegistroInvio::TIPO_CONVOCAZIONE, RegistroInvio::TIPO_VERBALE];
 
     public function __construct(private readonly RegistroLettere $lettere) {}
 
@@ -76,7 +79,9 @@ final class CorrispondenzaDellaPersona
                     'ora'               => $emessa->format('H:i'),
                     'emesso_da'         => $prima->emessoDa?->name,
                     // Il numero dell'incasso: nella colonna per la ricevuta, nell'istantanea per l'avviso.
-                    'numero'            => $prima->numero ?? $incasso['numero'] ?? $contenuto['numero'] ?? null,
+                    'numero'            => $prima->numero ?? $incasso['numero'] ?? $contenuto['numero'] ?? $dati['numero_verbale'] ?? null,
+                    // Il giorno dell'assemblea del verbale trasmesso: «Verbale dell'assemblea del 15/12/2026».
+                    'assemblea_del'     => $prima->tipo === RegistroInvio::TIPO_VERBALE ? $prima->documentabile?->data?->format('Y-m-d') : null,
                     'versamento_del'    => $contenuto['data_versamento'] ?? $incasso['data'] ?? null,
                     // Della ricevuta il versato, dell'avviso la parte coperta dal credito; null se la riga non li porta («non serve comunicarla»).
                     'importo'           => isset($contenuto['importo_versato']) ? (int) $contenuto['importo_versato'] : (isset($dati['importo']) ? (int) $dati['importo'] : null),
@@ -92,6 +97,9 @@ final class CorrispondenzaDellaPersona
                         'stato'        => $r->stato,
                         'quando'       => $r->emesso_il->copy()->setTimezone($fuso)->format('Y-m-d H:i'),
                         'errore'       => ErroreDiPosta::frase($r->errore),
+                        // L'esito della consegna (la convocazione e il verbale): «consegnata alle 21:40».
+                        'esito'        => $r->esito,
+                        'esito_il'     => $r->esito_il?->copy()->setTimezone($fuso)->format('Y-m-d H:i'),
                     ])->values()->all(),
                 ];
             })

@@ -103,6 +103,16 @@ final class AnnullamentoImportazione
         // (che se ne andrebbe con il condominio).
         'rendiconto_versioni' => 'rendiconti conservati per l\'assemblea',
         'note_sintetiche' => 'note sintetiche del rendiconto',
+
+        // Le assemblee (R15 del progetto della tappa 2): preparate, convocate o registrate a mano, le delibere e la memoria «Da portare in assemblea».
+        'assemblee' => 'assemblee',
+        'delibere' => 'delibere',
+        'delibere_cose_da_fare' => 'cose da fare dopo le delibere',
+        'assemblee_memo' => 'memo da portare in assemblea',
+        // Il verbale: i verbali delle riunioni, il punto di partenza del registro dei verbali, il registro di nomina e revoca.
+        'assemblee_verbali' => 'verbali delle assemblee',
+        'assemblee_registri_verbali' => 'registri dei verbali',
+        'registro_nomine' => 'righe del registro di nomina e revoca',
     ];
 
     public function verdetto(ImportBatch $lotto): VerdettoAnnullamento
@@ -210,6 +220,9 @@ final class AnnullamentoImportazione
             }
 
             $condominio = $verdetto->condominio;
+            // Gesto 3 del registro delle modifiche: l'annullamento dice che cosa sparisce, letto prima della cascata.
+            $gesto = \App\Services\RegistroModifiche\GestiDelRegistro::eliminazioneDelCondominio($condominio, 'Importazione annullata, condominio eliminato')
+                ->rimando('importazione', (int) $lotto->id, 'L\'elenco del lotto');
 
             // ⚠️ **Catturate adesso, non dopo.** `anagrafica_condominio` scende a cascata insieme
             // al condominio: cercare queste persone dopo il `delete()` non troverebbe più niente.
@@ -221,6 +234,7 @@ final class AnnullamentoImportazione
             // Il condominio, e con lui la cascata: immobili, esercizi, gestioni, piano dei conti,
             // tabelle, saldi, titolarità. Verificato che non incontri vincoli `RESTRICT`: quelli
             // stanno su casse, pagamenti e deleghe, che `impedimenti()` ha già escluso.
+            \App\Services\RegistroModifiche\RegistroModifiche::durante($gesto, function () use ($condominio, $anagrafiche) {
             $condominio->delete();
 
             // Le persone restano se appartengono ancora a qualcun altro o se sono un utente del
@@ -236,6 +250,7 @@ final class AnnullamentoImportazione
                 ->whereNotIn('id', $superstiti->isEmpty() ? [0] : $superstiti)
                 ->whereNull('user_id')
                 ->delete();
+            });
 
             // ⚠️ Lo stato è lo stesso che usa lo scarto, e non è una svista: i due si distinguono
             // da `completato_at`, che solo un'importazione arrivata in fondo ha valorizzato. Un

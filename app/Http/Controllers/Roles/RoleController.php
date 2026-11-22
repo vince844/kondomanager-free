@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Roles;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Enums\Permission as EnumsPermission;
 use App\Enums\Role as EnumsRole;
 use App\Http\Controllers\Controller;
@@ -123,6 +124,9 @@ class RoleController extends Controller
                 $role->givePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value); 
             }
 
+            // Il registro delle modifiche: il ruolo come definizione, con i permessi dati.
+            AttiSulleUtenze::ruolo($role, 'creata', []);
+
             DB::commit();
 
         } catch (\Exception $e) {
@@ -220,6 +224,7 @@ class RoleController extends Controller
             DB::beginTransaction();
 
             $nomeDiPrima = $ruoli->name;
+            $permessiDiPrima = AttiSulleUtenze::permessiDelRuolo($ruoli);
 
             $ruoli->update([
                 'name'        => $validated['name'],
@@ -240,7 +245,10 @@ class RoleController extends Controller
             } else {
                 $ruoli->revokePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value);
             }
-            
+
+            // Il registro delle modifiche: «Ruolo «collaboratore»: permessi cambiati», con i permessi tolti e aggiunti; niente riga se sono gli stessi.
+            AttiSulleUtenze::ruolo($ruoli, 'modificata', $permessiDiPrima);
+
             DB::commit();
 
         } catch (\Exception $e) {
@@ -321,6 +329,7 @@ class RoleController extends Controller
                     }
                 }
 
+                AttiSulleUtenze::ruolo($role, 'eliminata', AttiSulleUtenze::permessiDelRuolo($role), []);
                 $role->delete();
 
                 return $riassegnati;

@@ -9,6 +9,10 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * più vecchio in parole, la data più vicina dei sei mesi con la dispensa se c'è; aperta, la riga mostra le rate con le due date. La vista
  * «In scadenza nei prossimi N giorni» è la stessa pagina. I filtri stanno nell'indirizzo e non si ricordano, come nelle altre pagine; la
  * scelta delle righe è una lista o «tutte le N dei filtri», che il server rilegge per la stampa.
+ *
+ * «Da portare in assemblea» (Coda 736), per chi gestisce le assemblee: in alto il memo della dispensa con i sei mesi dell'esercizio che il server indica
+ * (la data più vicina, o quella del filtro «I sei mesi del …»), lo stesso punto che il programma propone; nel menu «⋯» della riga lo stesso memo con i
+ * sei mesi della data più vicina di quella persona. Il punto resta senza nomi: l'avviso di convocazione stampa il testo del punto.
  */
 import { computed, ref, watch } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
@@ -27,8 +31,13 @@ import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import SpiegazioneDelFiltro from '@/components/gestionale/debiti/SpiegazioneDelFiltro.vue';
 import RateScaduteGuide from '@/components/guides/RateScaduteGuide.vue';
+import FinestraDelMemo from '@/components/assemblee/FinestraDelMemo.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
+import { useToast } from '@/components/ui/toast';
 import { usePermission } from '@/composables/permissions';
-import { AlertTriangle, ChevronDown, ChevronRight, Coins, Lightbulb, ListChecks, Mail, Printer, Scale, Send, X } from 'lucide-vue-next';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import { AlertTriangle, CalendarPlus, ChevronDown, ChevronRight, Coins, Handshake, History, Lightbulb, ListChecks, Mail, MoreHorizontal, Printer, Scale, Send, X } from 'lucide-vue-next';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import axios from 'axios';
 import LettereDialog from '@/components/gestionale/lettere/LettereDialog.vue';
 import AccordoRientroDialog from '@/components/gestionale/accordi/AccordoRientroDialog.vue';
@@ -36,8 +45,8 @@ import ProponiInteressiDialog from '@/components/gestionale/addebiti/ProponiInte
 import { ereditatiDellaPersona, testoEreditatoInElenco, type EreditatoInElenco } from '@/lib/gestionale/addebiti/interessiDegliEredi';
 import AddebitaSpesaDialog from '@/components/gestionale/addebiti/AddebitaSpesaDialog.vue';
 import { testoParteInAccordo, testoSegnaleBreve, testoSegnoAccordo, type AccordoRientro, type ParteInAccordo } from '@/lib/gestionale/debiti/accordiRientro';
-import { CANALI_SPEDIZIONE, testoRiprova, testoUltimaLettera, type UltimaLettera } from '@/lib/gestionale/lettere/lettere';
-import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
+import { CANALI_SPEDIZIONE, testoContiCambiati, testoPecDaRimandare, testoRiprova, testoUltimaLettera, type UltimaLettera } from '@/lib/gestionale/lettere/lettere';
+import { apriPdfInUnaScheda, fraseDaErroreConFile, frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { alterna, quanteSelezionate, selezionaPagina, selezioneVuota, tutteDeiFiltri, type Selezione } from '@/lib/gestionale/incassi/ricevute';
 import {
     FRASE_DATA_PASSATA, FRASE_RISERVATEZZA, NOTA_PREGRESSO_NELLA_RATA, PERSONE_NEL_MENU, RIGA_TESORERIA, SPIEGAZIONI_DEI_FILTRI, euroTesto, giorno, personeDelMenu,
@@ -75,15 +84,21 @@ const props = defineProps<{
     totale: number; persone_totali: number; filtri: Filtri; oggi: string; non_emesse: NonEmesse | null;
     gestioni: Array<{ id: number; nome: string }>; persone?: Array<{ id: number; nome: string }>; persona_della_porta: string | null; testo_norma: string; frase_festivo?: string; frase_sei_mesi?: string;
     lettere_da_riprovare?: number; lettere_in_coda_da_tempo?: number;
+    /** Le lettere per PEC non partite, o con l'avviso di mancata consegna: si rimandano in blocco o si stampano per la posta. */
+    pec_da_rimandare?: number;
     /** I suggerimenti che chiedono le regole del recupero: suggerimenti, mai azioni. */
     suggerimenti?: Array<{ chiave: string; frase: string; persone: number[]; porta: 'seleziona' | 'proponi_interessi' }>;
     /** Il tasso degli interessi di mora di oggi, con la sua fonte. */
     regole_del_recupero?: string | null;
     /** «I sei mesi del …», dal riquadro dei sei mesi: la data, l'esercizio da cui viene, quante persone e la cifra di quell'esercizio. */
     sei_mesi_del?: { data: string; esercizio: string | null; persone: number; cifra: number } | null;
+    /** «Da portare in assemblea» (Coda 736): l'esercizio dei sei mesi da cui nasce il memo della dispensa. */
+    dispensa_in_assemblea?: { esercizio_id: number; data: string } | null;
 }>();
 
-const { generateRoute, generatePath } = usePermission();
+const permessi = usePermission();
+const { generateRoute, generatePath } = permessi;
+const conLeAssemblee = computed(() => gestisceLeAssemblee(permessi));
 const page = usePage<{ flash?: { message?: Flash }; paginazione?: { consentite?: number[] } }>();
 const flashMessage = computed(() => page.props.flash?.message);
 
@@ -228,7 +243,7 @@ const scriviA = (r: Riga) => {
     selezioneDelleLettere.value = null;
     finestraLettere.value = true;
 };
-const ricaricaDopoLeLettere = () => router.reload({ only: ['righe', 'lettere_da_riprovare', 'lettere_in_coda_da_tempo'] });
+const ricaricaDopoLeLettere = () => router.reload({ only: ['righe', 'lettere_da_riprovare', 'lettere_in_coda_da_tempo', 'pec_da_rimandare'] });
 
 // ── Gli interessi e le spese per il ritardo ─────────────────────────────
 // Per le persone scelte, o per tutte quelle dei filtri, che il server rilegge.
@@ -258,6 +273,19 @@ const apriAccordo = (r: Riga) => {
     finestraAccordo.value = true;
 };
 const ricaricaDopoLAccordo = () => router.reload({ only: ['righe', 'totale', 'persone_totali'] });
+
+// ── «Da portare in assemblea», dalla riga: la dispensa con i sei mesi della persona ──
+const { toast } = useToast();
+const finestraMemo = ref(false);
+const esercizioDelMemo = ref<number | null>(null);
+/** L'esercizio della data dei sei mesi più vicina della persona (quella della riga), dalle sue rate; null senza la data. */
+const esercizioDeiSeiMesi = (r: Riga): number | null => (r.sei_mesi?.data
+    ? r.rate.find((x) => x.sei_mesi?.piu_vicina === r.sei_mesi?.data)?.sei_mesi?.piu_vicina_esercizio?.id ?? null : null);
+const memoDi = (r: Riga) => {
+    esercizioDelMemo.value = esercizioDeiSeiMesi(r);
+    finestraMemo.value = true;
+};
+const memoSalvato = (frase: string) => toast({ title: 'Da portare in assemblea', description: frase });
 const esitoRiprova = ref<string | null>(null);
 async function riprovaLettere() {
     try {
@@ -267,6 +295,32 @@ async function riprovaLettere() {
     } catch (e) {
         esitoRiprova.value = frasePerErrore(e, 'Le lettere non sono state rifatte. Riprova.');
     }
+}
+
+// ── Le lettere per PEC non partite, o con l'avviso di mancata consegna ──
+// Si rimandano in blocco dalla casella dello studio, con le cifre di oggi; oppure si stampano per la posta (poi si registra la spedizione).
+const esitoPec = ref<string | null>(null);
+async function rimandaLePec() {
+    esitoPec.value = null;
+    try {
+        const r = (await axios.post(route(generateRoute('gestionale.lettere.pec-non-partite'), { condominio: props.condominio.id }))).data;
+        const conti = testoContiCambiati(r.conti_cambiati ?? []);
+        esitoPec.value = `${r.frase}${conti ? ` ${conti}` : ''}`;
+        ricaricaDopoLeLettere();
+    } catch (e) {
+        esitoPec.value = frasePerErrore(e, 'Le PEC non sono partite. Prima di rimandarle guarda la corrispondenza delle persone.');
+    }
+}
+function stampaLePec() {
+    esitoPec.value = null;
+    // La scheda si apre nel clic, prima della richiesta: niente `await` prima di questa chiamata.
+    apriPdfInUnaScheda(() => axios.post(route(generateRoute('gestionale.lettere.pec-non-partite.stampa'), { condominio: props.condominio.id }), {},
+        { responseType: 'blob' }), 'lettere.pdf').then(() => {
+        esitoPec.value = 'Le lettere rifatte con le cifre di oggi sono nel PDF: stampale, poi registra la spedizione con il filtro «Stampate, spedizione da registrare».';
+        ricaricaDopoLeLettere();
+    }).catch(async (e) => {
+        esitoPec.value = await fraseDaErroreConFile(e, 'Le lettere non sono state stampate. Riprova.');
+    });
 }
 
 // ── La spedizione in blocco, il giorno dopo la stampa ───────────────────
@@ -323,6 +377,9 @@ const breadcrumbs = computed(() => [
     { title: 'Movimenti', href: route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }) },
     { title: titolo.value },
 ]);
+// I menu leggono il valore con una funzione con il nome: lo schema scritto dentro l'attributo il controllo dei tipi non lo legge.
+const perId = (o: { id: number }) => o.id;
+const perValore = (o: { valore: string }) => o.valore;
 </script>
 
 <template>
@@ -344,6 +401,9 @@ const breadcrumbs = computed(() => [
                 <template #actions>
                     <Link v-if="!inScadenza" :href="indirizzoDispense" data-testid="dispense-sei-mesi"
                         class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"><Scale class="w-3.5 h-3.5" />Dispense dei sei mesi</Link>
+                    <!-- Coda 736: la dispensa in assemblea, con i sei mesi dell'esercizio della data più vicina (o del filtro): lo stesso punto del programma. -->
+                    <PulsanteDaPortareInAssemblea v-if="conLeAssemblee && dispensa_in_assemblea" :condominio-id="condominio.id" origine-tipo="sei_mesi"
+                        :origine-id="dispensa_in_assemblea.esercizio_id" forma="riga" />
                 </template>
             </PageHeaderGuide>
             <MovimentiLayout>
@@ -379,7 +439,7 @@ const breadcrumbs = computed(() => [
                                         v-model="f.anagrafica_id"
                                         :options="opzioniPersone"
                                         label="nome"
-                                        :reduce="(p: { id: number }) => p.id"
+                                        :reduce="perId"
                                         :filterable="false"
                                         placeholder="Tutte le persone"
                                         class="w-full sm:w-[240px]"
@@ -387,7 +447,7 @@ const breadcrumbs = computed(() => [
                                     >
                                         <template #no-options>Nessuna persona con questo nome.</template>
                                         <template #list-footer>
-                                            <li v-if="personeTrovate.altre > 0" class="px-3 py-1.5 text-[11px] text-slate-500 border-t" data-testid="persone-altre">
+                                            <li v-if="personeTrovate.altre > 0" class="px-3 py-1.5 text-xs text-slate-500 border-t" data-testid="persone-altre">
                                                 Ne mostro {{ PERSONE_NEL_MENU }}: scrivi una parte del nome per trovare le altre {{ personeTrovate.altre }}.
                                             </li>
                                         </template>
@@ -399,7 +459,7 @@ const breadcrumbs = computed(() => [
                                         :model-value="f.fascia || null"
                                         :options="FASCE"
                                         label="etichetta"
-                                        :reduce="(o: { valore: string }) => o.valore"
+                                        :reduce="perValore"
                                         :searchable="false"
                                         placeholder="Tutte"
                                         class="w-full sm:w-[220px]"
@@ -416,7 +476,7 @@ const breadcrumbs = computed(() => [
                                         :model-value="f.gestione_id || null"
                                         :options="opzioniGestioni"
                                         label="etichetta"
-                                        :reduce="(o: { valore: string }) => o.valore"
+                                        :reduce="perValore"
                                         placeholder="Tutte"
                                         class="w-full sm:w-[220px]"
                                         @update:model-value="(v: string | null) => (f.gestione_id = v ?? '')"
@@ -438,7 +498,7 @@ const breadcrumbs = computed(() => [
                                         :model-value="f.ordine"
                                         :options="ORDINI"
                                         label="etichetta"
-                                        :reduce="(o: { valore: string }) => o.valore"
+                                        :reduce="perValore"
                                         :searchable="false"
                                         :clearable="false"
                                         class="w-full sm:w-[260px]"
@@ -476,6 +536,12 @@ const breadcrumbs = computed(() => [
                         Di solito vuol dire che sul server non gira il servizio che manda le email in coda: chi gestisce l'installazione controlla che sia attivo
                         (SCHEDULE_QUEUE_WORKER nel file .env, o un processo queue:work).
                     </p>
+                    <p v-if="testoPecDaRimandare(pec_da_rimandare ?? 0)" data-testid="pec-da-rimandare" class="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-2 text-xs text-amber-900 dark:text-amber-100">
+                        {{ testoPecDaRimandare(pec_da_rimandare ?? 0) }}
+                        <Button size="sm" variant="outline" class="h-7 text-xs" data-testid="rimanda-le-pec" @click="rimandaLePec">Rimanda le PEC non partite</Button>
+                        <Button size="sm" variant="outline" class="h-7 text-xs" data-testid="stampa-le-pec" @click="stampaLePec">Stampale per la posta</Button>
+                    </p>
+                    <p v-if="esitoPec" class="text-xs" data-testid="esito-pec">{{ esitoPec }}</p>
                     <p v-if="esitoRiprova" class="text-xs">{{ esitoRiprova }}</p>
                     <p v-if="esitoSpedizione" class="text-xs" data-testid="esito-spedizione">{{ esitoSpedizione }}</p>
                     <p v-if="!allaDiOggi" data-testid="frase-data-passata" class="text-xs text-slate-600 dark:text-slate-300">{{ FRASE_DATA_PASSATA }}</p>
@@ -490,7 +556,7 @@ const breadcrumbs = computed(() => [
                             <Lightbulb class="w-4 h-4 shrink-0" /> <span>{{ sg.frase }}</span>
                             <Button size="sm" variant="outline" class="h-7 text-xs" @click="seguiSuggerimento(sg)">{{ sg.porta === 'proponi_interessi' ? 'Proponi gli interessi' : 'Scegli queste persone' }}</Button>
                         </p>
-                        <p class="text-[11px]">Dalle <Link :href="indirizzoRegole" class="underline">regole del recupero</Link> del condominio<template v-if="regole_del_recupero"> (tasso di oggi: {{ regole_del_recupero }})</template>.</p>
+                        <p class="text-xs">Dalle <Link :href="indirizzoRegole" class="underline">regole del recupero</Link> del condominio<template v-if="regole_del_recupero"> (tasso di oggi: {{ regole_del_recupero }})</template>.</p>
                     </div>
 
                     <p v-if="cercaDallIndirizzo" class="flex flex-wrap items-center gap-2 text-xs" data-testid="filtro-cerca">
@@ -542,7 +608,7 @@ const breadcrumbs = computed(() => [
                                 :model-value="spedizione.canale || null"
                                 :options="canaliDiSpedizione"
                                 label="nome"
-                                :reduce="(c: { valore: string }) => c.valore"
+                                :reduce="perValore"
                                 :clearable="false"
                                 :searchable="false"
                                 placeholder="Come"
@@ -583,6 +649,7 @@ const breadcrumbs = computed(() => [
                                     <th v-else class="p-2 text-left">Prima scadenza</th>
                                     <th v-if="allaDiOggi" class="p-2 text-right">Credito</th>
                                     <th class="p-2 text-left">Ultima lettera</th>
+                                    <th class="p-2 w-10"><span class="sr-only">Azioni</span></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -596,15 +663,15 @@ const breadcrumbs = computed(() => [
                                         </td>
                                         <td class="p-2">
                                             <Link :href="estrattoConto(r.anagrafica_id)" class="font-medium hover:underline">{{ r.nome }}</Link>
-                                            <span v-if="r.origine_non_dichiarata" class="block text-[11px] text-amber-700 dark:text-amber-400">
+                                            <span v-if="r.origine_non_dichiarata" class="block text-xs text-amber-700 dark:text-amber-400">
                                                 pregresso con origine non dichiarata — <Link :href="indirizzoSaldi(r.anagrafica_id)" class="underline">dichiarala dai saldi</Link>
                                             </span>
                                             <!-- La prova a video della beta.12: il debito ereditato si vede anche con la riga chiusa, non solo aprendo le rate. -->
-                                            <span v-for="e in ereditatiDellaPersona(r.rate)" :key="`ered-${e.subentro_id}`" class="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300" data-testid="ereditato-in-testa">
-                                                <Badge variant="outline" class="h-5 border-violet-200 bg-violet-50 px-1.5 text-[11px] font-medium text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200">ereditato</Badge>
+                                            <span v-for="e in ereditatiDellaPersona(r.rate)" :key="`ered-${e.subentro_id}`" class="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-slate-600 dark:text-slate-300" data-testid="ereditato-in-testa">
+                                                <Badge variant="outline" class="h-5 border-violet-200 bg-violet-50 px-1.5 text-xs font-medium text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200">ereditato</Badge>
                                                 {{ e.testo }}
                                             </span>
-                                            <span v-for="a in r.accordi ?? []" :key="a.id" class="block text-[11px] text-sky-800 dark:text-sky-300" data-testid="segno-accordo">
+                                            <span v-for="a in r.accordi ?? []" :key="a.id" class="block text-xs text-sky-800 dark:text-sky-300" data-testid="segno-accordo">
                                                 {{ testoSegnoAccordo(a) }}
                                                 <span v-if="testoSegnaleBreve(a)" class="block text-amber-800 dark:text-amber-300" data-testid="segnale-accordo">{{ testoSegnaleBreve(a) }}</span>
                                             </span>
@@ -625,20 +692,41 @@ const breadcrumbs = computed(() => [
                                         <td v-if="allaDiOggi" class="p-2 text-right whitespace-nowrap text-sky-700 dark:text-sky-400">{{ (r.credito ?? 0) > 0 ? euroTesto(r.credito ?? 0) : '' }}</td>
                                         <td class="p-2" data-testid="ultima-lettera">
                                             {{ testoUltimaLettera(r.ultima_lettera) }}
-                                            <span v-if="r.lettera_in_sospeso" class="block text-[11px] text-amber-700 dark:text-amber-400">poi: {{ testoUltimaLettera(r.lettera_in_sospeso) }}</span>
-                                            <!-- Coda 533: lo storico della persona, nella scheda «Corrispondenza» del suo estratto conto. -->
-                                            <Link v-if="r.ultima_lettera || r.lettera_in_sospeso" :href="`${estrattoConto(r.anagrafica_id)}?scheda=corrispondenza`" class="block text-[11px] underline"
-                                                :data-testid="`corrispondenza-${r.anagrafica_id}`">Vedi la corrispondenza</Link>
-                                            <button type="button" class="block text-[11px] underline" :data-testid="`scrivi-${r.anagrafica_id}`" @click="scriviA(r)">Prepara una lettera</button>
-                                            <button v-if="!inScadenza" type="button" class="block text-[11px] underline" :data-testid="`accordo-${r.anagrafica_id}`" @click="apriAccordo(r)">
-                                                {{ (r.accordi ?? []).length ? 'Accordo di rientro' : 'Registra un accordo di rientro' }}
-                                            </button>
+                                            <span v-if="r.lettera_in_sospeso" class="block text-xs text-amber-700 dark:text-amber-400">poi: {{ testoUltimaLettera(r.lettera_in_sospeso) }}</span>
+                                        </td>
+                                        <td class="p-2 w-10 text-right" data-testid="azioni-riga">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger as-child>
+                                                    <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="`Apri il menu delle azioni di ${r.nome}`" :data-testid="`menu-${r.anagrafica_id}`">
+                                                        <MoreHorizontal class="w-4 h-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+                                                    <DropdownMenuItem :data-testid="`scrivi-${r.anagrafica_id}`" @click="scriviA(r)">
+                                                        <Mail class="w-4 h-4" /> Prepara una lettera
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem v-if="!inScadenza" :data-testid="`accordo-${r.anagrafica_id}`" @click="apriAccordo(r)">
+                                                        <Handshake class="w-4 h-4" /> {{ (r.accordi ?? []).length ? 'Apri l\'accordo di rientro' : 'Registra un accordo di rientro' }}
+                                                    </DropdownMenuItem>
+                                                    <!-- Lo storico della persona, nella scheda «Corrispondenza» del suo estratto conto. -->
+                                                    <DropdownMenuItem v-if="r.ultima_lettera || r.lettera_in_sospeso" as-child>
+                                                        <Link :href="`${estrattoConto(r.anagrafica_id)}?scheda=corrispondenza`" :data-testid="`corrispondenza-${r.anagrafica_id}`">
+                                                            <History class="w-4 h-4" /> Vedi la corrispondenza
+                                                        </Link>
+                                                    </DropdownMenuItem>
+                                                    <!-- Coda 736: la dispensa con i sei mesi della persona, senza il nome nel punto. -->
+                                                    <DropdownMenuItem v-if="conLeAssemblee && esercizioDeiSeiMesi(r) !== null" :data-testid="`memo-${r.anagrafica_id}`" @click="memoDi(r)">
+                                                        <CalendarPlus class="w-4 h-4" /> Da portare in assemblea
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </td>
                                     </tr>
                                     <tr v-if="aperte.has(r.anagrafica_id)" class="bg-slate-50/60 dark:bg-slate-800/30">
                                         <td></td>
-                                        <td :colspan="allaDiOggi ? 12 : 11" class="p-2">
-                                            <table class="w-full text-[11px]">
+                                        <td :colspan="allaDiOggi ? 13 : 12" class="p-2">
+                                            <table class="w-full text-xs">
                                                 <thead class="text-slate-500">
                                                     <tr>
                                                         <th class="p-1 text-left">Unità</th><th class="p-1 text-left">Piano</th><th class="p-1 text-left">Rata</th>
@@ -652,7 +740,7 @@ const breadcrumbs = computed(() => [
                                                         <td class="p-1">{{ rata.unita }}</td>
                                                         <td class="p-1">{{ rata.piano }}</td>
                                                         <td class="p-1">
-                                                            <Badge v-if="rata.ereditato" variant="outline" class="mr-1 h-5 border-violet-200 bg-violet-50 px-1.5 text-[11px] font-medium text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200" data-testid="badge-ereditato">ereditato</Badge>
+                                                            <Badge v-if="rata.ereditato" variant="outline" class="mr-1 h-5 border-violet-200 bg-violet-50 px-1.5 text-xs font-medium text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200" data-testid="badge-ereditato">ereditato</Badge>
                                                             {{ rata.numero_rata === 0 ? 'Rata 0 (pregresso)' : `Rata ${rata.numero_rata}` }}
                                                             <span v-if="rata.pregresso_nella_rata" class="block text-slate-500">{{ NOTA_PREGRESSO_NELLA_RATA }}</span>
                                                             <!-- Decisione 494 (3): da chi e con quale successione; dal debito ereditato si apre la proposta degli interessi dell'erede. -->
@@ -676,12 +764,12 @@ const breadcrumbs = computed(() => [
                                                     </tr>
                                                 </tbody>
                                             </table>
-                                            <p v-if="r.sei_mesi?.dispensa" class="mt-1 text-[11px]">{{ testoDispensa(r.sei_mesi.dispensa) }}</p>
+                                            <p v-if="r.sei_mesi?.dispensa" class="mt-1 text-xs">{{ testoDispensa(r.sei_mesi.dispensa) }}</p>
                                         </td>
                                     </tr>
                                 </template>
                                 <tr v-if="!righe.data.length">
-                                    <td colspan="13" class="p-6 text-center text-slate-500">{{ inScadenza ? 'Nessuna rata in scadenza con questi filtri.' : 'Nessuna persona con rate scadute con questi filtri.' }}</td>
+                                    <td colspan="14" class="p-6 text-center text-slate-500">{{ inScadenza ? 'Nessuna rata in scadenza con questi filtri.' : 'Nessuna persona con rate scadute con questi filtri.' }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -704,7 +792,7 @@ const breadcrumbs = computed(() => [
                         </template>
                     </div>
 
-                    <details v-if="!inScadenza" class="text-[11px] text-slate-500 dark:text-slate-400">
+                    <details v-if="!inScadenza" class="text-xs text-slate-500 dark:text-slate-400">
                         <summary class="cursor-pointer">Le due date dei sei mesi</summary>
                         <p class="mt-1">
                             Per ogni rata scaduta: dalla fine dell'esercizio che contiene la sua scadenza, e dalla fine dell'esercizio di competenza del piano
@@ -713,7 +801,7 @@ const breadcrumbs = computed(() => [
                         </p>
                         <p class="mt-1 italic">{{ testo_norma }}</p>
                     </details>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400">{{ FRASE_RISERVATEZZA }}</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">{{ FRASE_RISERVATEZZA }}</p>
                 </div>
                 <LettereDialog v-model:open="finestraLettere" :condominio-id="condominio.id" :persona="personaDellaLettera" :selezione="selezioneDelleLettere"
                     :filtri="filtriDelServer()" :vista="filtri.vista" :giorni="filtri.giorni" :oggi="oggi" @fatto="ricaricaDopoLeLettere" />
@@ -722,6 +810,8 @@ const breadcrumbs = computed(() => [
                 <ProponiInteressiDialog v-model:open="finestraInteressi" :condominio-id="condominio.id" :oggi="oggi" :persone="personeDelleAzioni" :filtri="filtriDelServer()"
                     @fatto="ricaricaDopoGliAddebiti" />
                 <AddebitaSpesaDialog v-model:open="finestraSpesa" :condominio-id="condominio.id" :persone="personeDelleAzioni" :filtri="filtriDelServer()" @fatto="ricaricaDopoGliAddebiti" />
+                <FinestraDelMemo v-if="conLeAssemblee && finestraMemo" v-model:open="finestraMemo" :condominio-id="condominio.id" origine-tipo="sei_mesi"
+                    :origine-id="esercizioDelMemo" @salvato="memoSalvato" />
             </MovimentiLayout>
         </div>
     </GestionaleLayout>

@@ -10,7 +10,6 @@ use App\Events\Gestionale\PagamentoRegistrato;
 use App\Events\Gestionale\PagamentoStornato;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
-use App\Models\User;
 use App\Services\Gestionale\CalendarioFiscaleService;
 use App\Services\Gestionale\InboxService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -114,7 +113,8 @@ class SyncF24WithPagamento implements ShouldQueue
                     'title'       => "F24 Ritenuta — {$fornitore->ragione_sociale} ({$condominio->nome})",
                     'start_time'  => $scadenzaF24,
                     'end_time'    => $scadenzaF24->copy()->addHour(),
-                    'created_by'  => $pagamento->user_id ?? User::first()?->id, // evento di sistema, ma il database richiede un id valido
+                    // Il programma, se il pagamento non ha una persona (§7 del registro delle modifiche): mai più il primo utente come falso autore.
+                    'created_by'  => $pagamento->user_id,
                     'description' => "Versare ritenuta d'acconto (Cod. {$fornitore->codice_tributo}).\n"
                                    . "Importo: {$importoFormatted} €\n"
                                    . "Pagamento registrato il: {$dataPagamento->format('d/m/Y')}",
@@ -222,7 +222,7 @@ class SyncF24WithPagamento implements ShouldQueue
                     'title'        => "F24 Ritenuta — {$fornitore->ragione_sociale} ({$condominio->nome})",
                     'start_time'   => $scadenzaF24,
                     'end_time'     => $scadenzaF24->copy()->addHour(),
-                    'created_by'   => $pagamento->user_id ?? User::first()?->id,
+                    'created_by'   => $pagamento->user_id,
                     'description'  => "Versare ritenuta d'acconto (Cod. {$fornitore->codice_tributo}).\n"
                                     . "Importo: {$importoFormatted} €\n"
                                     . "Pagamento aggiornato il: {$dataPagamento->format('d/m/Y')}",

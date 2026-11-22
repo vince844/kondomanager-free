@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use App\Traits\ContaNelGesto;
 
 /**
  * Un passaggio di titolarità registrato: l'evento datato con un autore (tabella `subentri`, B2).
@@ -30,6 +31,8 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  */
 class Subentro extends Model
 {
+    use ContaNelGesto;
+
     protected $table = 'subentri';
 
     public const TIPI_PASSAGGIO = ['vendita', 'inizio_locazione', 'fine_locazione', 'usufrutto', 'successione'];

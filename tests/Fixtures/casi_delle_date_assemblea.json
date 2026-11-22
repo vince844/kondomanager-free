@@ -1,0 +1,260 @@
+[
+    {
+        "che_cosa": "un giorno dopo",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2026-12-15 18:30"
+            }
+        ],
+        "valide": true,
+        "frase": "Un giorno diverso, un giorno dopo la prima: va bene."
+    },
+    {
+        "che_cosa": "tre giorni dopo",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2026-12-17 18:30"
+            }
+        ],
+        "valide": true,
+        "frase": "Un giorno diverso, 3 giorni dopo la prima: va bene."
+    },
+    {
+        "che_cosa": "dieci giorni dopo",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2026-12-24 18:30"
+            }
+        ],
+        "valide": true,
+        "frase": "Un giorno diverso, 10 giorni dopo la prima: va bene."
+    },
+    {
+        "che_cosa": "lo stesso giorno, più tardi",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2026-12-14 18:30"
+            }
+        ],
+        "valide": false,
+        "frase": "La seconda convocazione non può tenersi nello stesso giorno della prima: scegli un giorno dopo."
+    },
+    {
+        "che_cosa": "il giorno prima",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2026-12-13 18:30"
+            }
+        ],
+        "valide": false,
+        "frase": "La seconda convocazione viene dopo la prima: scegli un giorno dopo."
+    },
+    {
+        "che_cosa": "undici giorni dopo",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2026-12-25 18:30"
+            }
+        ],
+        "valide": false,
+        "frase": "La seconda convocazione va fissata non oltre dieci giorni dalla prima."
+    },
+    {
+        "che_cosa": "a cavallo dell'anno",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-31 20:00"
+            },
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2027-01-01 10:00"
+            }
+        ],
+        "valide": true,
+        "frase": "Un giorno diverso, un giorno dopo la prima: va bene."
+    },
+    {
+        "che_cosa": "solo la prima",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            }
+        ],
+        "valide": true,
+        "frase": "Solo la prima convocazione: se quel giorno non si raggiunge il numero, l'assemblea va convocata di nuovo."
+    },
+    {
+        "che_cosa": "senza la prima",
+        "sedute": [
+            {
+                "convocazione": "seconda",
+                "fissata_il": "2026-12-15 18:30"
+            }
+        ],
+        "valide": false,
+        "frase": "Manca la prima convocazione."
+    },
+    {
+        "che_cosa": "una prosecuzione dopo",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 1,
+                "fissata_il": "2026-12-15 18:30"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 2,
+                "fissata_il": "2026-12-16 18:30"
+            }
+        ],
+        "valide": true,
+        "frase": "Un giorno diverso, un giorno dopo la prima: va bene."
+    },
+    {
+        "che_cosa": "una prosecuzione prima",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 1,
+                "fissata_il": "2026-12-15 18:30"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 2,
+                "fissata_il": "2026-12-15 10:00"
+            }
+        ],
+        "valide": false,
+        "frase": "Una data di prosecuzione deve venire dopo la data precedente: scegli un giorno dopo."
+    },
+    {
+        "che_cosa": "due prime",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 09:00"
+            }
+        ],
+        "valide": false,
+        "frase": "Due date hanno la stessa convocazione e lo stesso numero."
+    },
+    {
+        "che_cosa": "la seconda ancora vuota",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 1,
+                "fissata_il": null
+            }
+        ],
+        "valide": true,
+        "frase": "Solo la prima convocazione: se quel giorno non si raggiunge il numero, l'assemblea va convocata di nuovo."
+    },
+    {
+        "che_cosa": "una prosecuzione senza giorno",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 1,
+                "fissata_il": "2026-12-15 18:30"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 2,
+                "fissata_il": null
+            }
+        ],
+        "valide": false,
+        "frase": "Manca il giorno di una data di prosecuzione: scrivilo o togli la riga."
+    },
+    {
+        "che_cosa": "una prosecuzione senza la seconda, prima della prima",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 1,
+                "fissata_il": null
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 2,
+                "fissata_il": "2026-12-10 18:30"
+            }
+        ],
+        "valide": false,
+        "frase": "Una data di prosecuzione segue la seconda convocazione: scrivi prima la seconda, o togli la riga."
+    },
+    {
+        "che_cosa": "una prosecuzione senza la seconda, sedici giorni dopo",
+        "sedute": [
+            {
+                "convocazione": "prima",
+                "fissata_il": "2026-12-14 08:00"
+            },
+            {
+                "convocazione": "seconda",
+                "numero": 2,
+                "fissata_il": "2026-12-30 18:30"
+            }
+        ],
+        "valide": false,
+        "frase": "Una data di prosecuzione segue la seconda convocazione: scrivi prima la seconda, o togli la riga."
+    }
+]

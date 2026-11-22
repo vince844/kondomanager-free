@@ -86,6 +86,14 @@ it('la mappa delle prossime azioni copre ogni tipo: ogni caso di EventoTipo e og
         'versamento_ritenuta' => 'Prepara l\'F24', 'f24' => 'Prepara l\'F24', 'scadenza' => 'Segna come fatto',
         'eccedenza_gia_versato_rilevata' => 'Controlla il già versato', 'convocazione_urgenza' => 'Segna come fatto', 'ratifica_sforo' => 'Segna come fatto',
         'agenda' => 'Segna come fatto', 'promemoria' => 'Segna come fatto', 'scadenza_rata_condomino' => 'Segna come fatto',
+        // Le assemblee (Coda 679): il memo ha la sua prossima azione calcolata (R10); gli altri tre portano alla pagina della convocazione salvata nel compito.
+        'memo_assemblea' => 'Prepara l\'assemblea', 'spedire_convocazione' => 'Spedisci la convocazione', 'ricevute_mancanti' => 'Registra la consegna',
+        'nuovo_titolare_non_convocato' => 'Manda la convocazione',
+        // Il verbale e la sala: la pagina del verbale o della sala salvata nel compito.
+        'registrare_verbale' => 'Apri il verbale', 'trasmettere_verbale' => 'Trasmetti il verbale', 'riaprire_sala' => 'Apri la sala', 'sala_in_corso' => 'Apri la sala',
+        'due_versioni' => 'Scegli la versione', 'da_decidere_in_sala' => 'Apri la sala',
+        // Il seguito delle delibere: l'azione mirata la calcola la cosa da fare («Crea il piano straordinario», «Registra la dispensa», …); la voce è il di serie.
+        'delibera_da_eseguire' => 'Apri la delibera', 'delibera_respinta' => 'Apri la delibera',
     ]);
 });
 

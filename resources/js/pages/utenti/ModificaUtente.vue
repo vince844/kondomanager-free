@@ -5,6 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 
+import StoriaDellaScheda from '@/components/registroModifiche/StoriaDellaScheda.vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { watch, onMounted, computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -155,6 +156,8 @@ const submit = () => {
   <Head :title="trans('users.header.edit_user_head')" />
   <AppLayout :breadcrumbs="breadcrumbs">
     <UtentiLayout>
+      <!-- La «Storia» dell'utente (1.12.0-beta.13, §8): gli atti sulle utenze; la pagina non ha l'intestazione comune. Solo l'amministratore la apre (P18). -->
+      <div class="mb-4 flex justify-end"><StoriaDellaScheda tipo="utente" :id="props.user.id" /></div>
       <form @submit.prevent="submit">
         <p
           v-if="fuoriPortata"

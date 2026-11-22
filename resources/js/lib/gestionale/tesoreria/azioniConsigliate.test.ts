@@ -7,7 +7,8 @@
  * - «quanto basta»: la cifra che, entrata il giorno prima del primo giorno sotto zero dello scenario «Con le rate in scadenza», tiene quello scenario a zero o
  *   sopra per tutti i 30 giorni; se è più delle rate scadute, la tacca sta in fondo e la frase dice che il recupero da solo non basta;
  * - la simulazione: lo scenario con le rate in scadenza più la parte recuperata, il punto più basso, i giorni sotto zero, la cifra fra 30 giorni;
- * - (A) «Recupera almeno € … delle rate scadute entro il …», con le persone che bastano (le rate scadute più alte prima finché la somma copre la cifra);
+ * - (A) «Recupera almeno € … delle rate scadute entro il …», con le persone che bastano (le rate scadute più alte prima finché la somma copre la cifra), in
+ *   una tabella sotto la frase;
  * - (B) «Chiedi di pagare le fatture del … dopo il …», quando le fatture scadono nei giorni sotto zero e un'entrata di rate dopo riporta sopra zero;
  * - la situazione in una frase, e i fatti scritti sul grafico.
  *
@@ -94,9 +95,9 @@ describe('le azioni consigliate', () => {
         const azioni = azioniConsigliate(ESEMPIO(), GIULIA);
         expect(azioni.map((a) => a.chiave)).toEqual(['recupero', 'fatture']);
         expect(azioni[0].titolo).toBe('Recupera almeno € 2.368,77 delle rate scadute entro il 19/11');
-        expect(testoDiPezzi(azioni[0].frase)).toBe(
-            'È quanto manca il 20/11 per non andare sotto zero. Basta una persona: Giulia Esposito, int. 4, ha € 3.974,10 di rate scadute e nessuna lettera.');
-        expect(azioni[0].frase.find((p) => p.tono === 'forte')?.testo).toBe('Giulia Esposito');
+        // La frase finisce ai due punti: la persona sta nella tabella sotto.
+        expect(testoDiPezzi(azioni[0].frase)).toBe('È quanto manca il 20/11 per non andare sotto zero. Basta una persona:');
+        expect(azioni[0].tabella).toEqual({ righe: [{ anagraficaId: 4, nome: 'Giulia Esposito', unita: 'Int. 4', cifra: 397410, lettera: null }], altre: null });
         expect(azioni[0].pulsante).toEqual({ testo: 'Manda un sollecito', tipo: 'lettera', persone: [{ id: 4, nome: 'Giulia Esposito' }] });
         expect(azioni[1].titolo).toBe('Chiedi di pagare le fatture del 20/11 dopo il 30/11');
         expect(testoDiPezzi(azioni[1].frase)).toBe('Il 30/11 entrano € 2.400,00 di rate: se i fornitori accettano, il conto resta sopra zero. Le fatture: '
@@ -113,7 +114,8 @@ describe('le azioni consigliate', () => {
         expect(quantoBasta(sp)).toBe(753797);
         expect(a.titolo).toBe('Recupera tutte le rate scadute, € 1.000,00, entro il 19/11');
         expect(testoDiPezzi(a.frase)).toBe('Da solo non basta: anche con tutte le rate scadute il conto va sotto zero il 20/11, fino a −€ 6.537,97. '
-            + 'Le rate scadute sono di due persone: Anna Neri, int. 1, ha € 600,00 di rate scadute e nessuna lettera; Bruno Sala, int. 2, ha € 400,00 di rate scadute e nessuna lettera.');
+            + 'Le rate scadute sono di due persone:');
+        expect(a.tabella?.righe.map((r) => [r.nome, r.unita, r.cifra, r.lettera])).toEqual([['Anna Neri', 'Int. 1', 60000, null], ['Bruno Sala', 'Int. 2', 40000, null]]);
         expect(a.pulsante).toEqual({ testo: 'Manda i solleciti', tipo: 'lettera', persone: [{ id: 1, nome: 'Anna Neri' }, { id: 2, nome: 'Bruno Sala' }] });
     });
 
@@ -150,9 +152,9 @@ describe('le azioni consigliate', () => {
         };
         const [a] = azioniConsigliate(sp, recupero);
         expect(a.titolo).toBe('Recupera almeno € 2.500,00 delle rate scadute entro il 16/11');
-        expect(testoDiPezzi(a.frase)).toBe('È quanto manca il 17/11 per non andare sotto zero. Bastano tre persone: '
-            + 'Anna Neri, int. 1, ha € 1.200,00 di rate scadute e nessuna lettera; Bruno Sala, int. 2, ha € 900,00 di rate scadute e come ultima lettera un sollecito '
-            + 'del 02/11/2026; Carla Riva, int. 3, ha € 600,00 di rate scadute e nessuna lettera.');
+        expect(testoDiPezzi(a.frase)).toBe('È quanto manca il 17/11 per non andare sotto zero. Bastano tre persone:');
+        expect(a.tabella?.righe.map((r) => [r.nome, r.unita, r.cifra, r.lettera])).toEqual([['Anna Neri', 'Int. 1', 120000, null],
+            ['Bruno Sala', 'Int. 2', 90000, 'sollecito del 02/11/2026'], ['Carla Riva', 'Int. 3', 60000, null]]);
         expect(a.pulsante.tipo).toBe('lettera');
         expect(a.pulsante.persone?.map((p) => p.id)).toEqual([1, 2, 3]);
     });
@@ -161,8 +163,9 @@ describe('le azioni consigliate', () => {
         const sp = tesoreria(10000, { 2: { fatture: [fattura(1, 'Edil Rossi srl', 1010000)] }, 20: { rate: 2000000 } }, 2000000);
         const persone = [1, 2, 3, 4, 5].map((n) => persona(n, `Persona ${n}`, 100000));
         const [a] = azioniConsigliate(sp, { persone, servono: 12, servonoCents: 1200000, quante: 20, cifra: 2000000 });
-        expect(testoDiPezzi(a.frase)).toContain('Servono 12 persone: le 5 con più rate scadute sono Persona 1, int. 1, ha € 1.000,00');
-        expect(testoDiPezzi(a.frase)).toContain('e altre 7 persone, € 7.000,00.');
+        expect(testoDiPezzi(a.frase)).toMatch(/ Servono 12 persone:$/);
+        expect(a.tabella?.righe.map((r) => r.nome)).toEqual(['Persona 1', 'Persona 2', 'Persona 3', 'Persona 4', 'Persona 5']);
+        expect(a.tabella?.altre).toEqual({ quante: 7, cifra: 700000 });
         expect(a.pulsante).toEqual({ testo: 'Apri le rate scadute', tipo: 'rate_scadute' });
     });
 

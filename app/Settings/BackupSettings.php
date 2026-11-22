@@ -5,9 +5,8 @@
 
 namespace App\Settings;
 
-use Spatie\LaravelSettings\Settings;
 
-class BackupSettings extends Settings
+class BackupSettings extends ImpostazioniDelRegistro
 {
     // Numero di backup completati da conservare: i più vecchi oltre questo
     // limite vengono eliminati automaticamente al termine di ogni backup.

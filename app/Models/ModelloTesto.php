@@ -8,6 +8,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * Un modello di testo dell'amministratore: un nome, il testo con i campi da riempire, per tutti i condomini (`condominio_id` nullo) o per uno.
@@ -25,6 +26,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class ModelloTesto extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'modelli_testo';
 
     public const AMBITO_LETTERA = 'lettera';

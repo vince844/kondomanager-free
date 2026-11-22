@@ -1108,6 +1108,7 @@ class EmissioneRicevute
             'senza_indirizzo'   => ['ricevute' => count($piano['senza_incassi']), 'incassi' => $piano['senza_incassi'], 'persone' => $piano['senza_persone']],
             'solo_pec'          => $piano['altri_indirizzi']['pec'],
             'altri_indirizzi'   => $piano['altri_indirizzi'],
+            'indirizzi_per_tipo' => $piano['per_tipo'],
             'gia_inviate'       => ['ricevute' => $gia->count(), 'incassi' => $gia->pluck('id')->values()->all()],
             // Le già emesse escono come «Copia», con le cifre dell'originale.
             'copie'             => count($this->originali($righeElenco->pluck('id')->all())),
@@ -1245,7 +1246,7 @@ class EmissioneRicevute
      * ha un indirizzo di un tipo non scelto (la secondaria, la PEC): spuntandolo lo si raggiunge.
      *
      * @param array<int, string> $tipiScelti
-     * @return array{gruppi: array<int, array{persona: Anagrafica, voci: array<int, array<string, mixed>>, indirizzi: array<string, string>}>, senza_incassi: array<int, int>, senza_persone: array<int, string>, altri_indirizzi: array<string, int>}
+     * @return array{gruppi: array<int, array{persona: Anagrafica, voci: array<int, array<string, mixed>>, indirizzi: array<string, string>}>, senza_incassi: array<int, int>, senza_persone: array<int, string>, altri_indirizzi: array<string, int>, per_tipo: array<string, int>}
      */
     private function pianoDelBlocco(Collection $righeElenco, bool $ancheChiHaVersato, array $tipiScelti): array
     {
@@ -1263,10 +1264,15 @@ class EmissioneRicevute
         $senza = [];
         $nomiSenza = [];
         $altri = array_fill_keys(array_keys(self::TIPI_INDIRIZZO), 0);
+        // Per ogni tipo, quante persone raggiunge, spuntato o no: la finestra lo scrive sul pulsante del tipo.
+        $perTipo = array_fill_keys(array_keys(self::TIPI_INDIRIZZO), 0);
         $persone = Anagrafica::whereIn('id', array_keys($perPersona))->get()->sortBy(fn (Anagrafica $a) => [mb_strtolower($a->nome), $a->id]);
         foreach ($persone as $persona) {
             $voci = collect($perPersona[$persona->id])->sortBy(fn ($r) => [$r['data'], $r['id']])->values()->all();
             $tutti = self::indirizzi($persona);
+            foreach (array_keys($tutti) as $tipo) {
+                $perTipo[$tipo]++;
+            }
             $suoi = array_intersect_key($tutti, array_flip($tipiScelti));
             if ($suoi !== []) {
                 $gruppi[] = ['persona' => $persona, 'voci' => $voci, 'indirizzi' => $suoi];
@@ -1283,7 +1289,8 @@ class EmissioneRicevute
             }
         }
 
-        return ['gruppi' => $gruppi, 'senza_incassi' => array_values(array_unique($senza)), 'senza_persone' => $nomiSenza, 'altri_indirizzi' => $altri];
+        return ['gruppi' => $gruppi, 'senza_incassi' => array_values(array_unique($senza)), 'senza_persone' => $nomiSenza, 'altri_indirizzi' => $altri,
+            'per_tipo' => $perTipo];
     }
 
     /**

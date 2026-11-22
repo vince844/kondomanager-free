@@ -109,6 +109,7 @@ const statoDot = computed(() => {
       </div>
 
       <PageHeaderGuide
+        :storia="{ tipo: 'fornitore', id: props.fornitore.id }"
         :page-title="fornitore.ragione_sociale"
         :page-subtitle="`${fornitore.categoria?.name ?? 'Fornitore'} · P.IVA ${fornitore.partita_iva ?? '—'}`"
         :guides="pageGuides"

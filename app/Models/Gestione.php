@@ -9,9 +9,12 @@ use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\RegistraLeModifiche;
 
 class Gestione extends Model
 {
+    use RegistraLeModifiche;
+
     use HasFactory;
 
     protected $table = 'gestioni';

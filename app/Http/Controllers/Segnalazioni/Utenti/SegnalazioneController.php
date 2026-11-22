@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Segnalazioni\Utenti;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\Permission;
 use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Events\Segnalazioni\NotifyAdminOfCreatedSegnalazione;
@@ -178,7 +179,7 @@ class SegnalazioneController extends Controller
 
             if ($validated['is_private']) {
                 $anagrafica = $this->getUserAnagrafica();
-                $segnalazione->anagrafiche()->attach($anagrafica);
+                RegistroModifiche::legame($segnalazione, 'anagrafiche', 'Persone', fn () => $segnalazione->anagrafiche()->attach($anagrafica));
             }
 
             if ($request->hasFile('allegati')) {
@@ -349,7 +350,7 @@ class SegnalazioneController extends Controller
 
                 if ($togliePrivata && $anagraficaAutore !== null
                     && $anagraficaAutore->condomini()->whereKey($segnalazione->condominio_id)->exists()) {
-                    $segnalazione->anagrafiche()->detach($anagraficaAutore->id);
+                    RegistroModifiche::legame($segnalazione, 'anagrafiche', 'Persone', fn () => $segnalazione->anagrafiche()->detach($anagraficaAutore->id));
                 }
             });
 

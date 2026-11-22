@@ -53,6 +53,9 @@ const sorgenti = [
     'resources/js/pages/gestionale/movimenti/giroconti/GirocontoNew.vue',
     'resources/js/pages/gestionale/dashboard/components/RigaCreditoDaCompensare.vue',
     'resources/js/pages/gestionale/struttura/ImpostazioniCondominio.vue',
+    // Il menu «Azioni» dell'intestazione e la card «Per la prossima assemblea», con il menu «⋯» dei punti.
+    'resources/js/components/assemblee/AzioniDellaDashboard.vue',
+    'resources/js/components/assemblee/PerLaProssimaAssemblea.vue',
 ].map((f) => senzaCommenti(leggi(f))).join('\n').replace(/\\'/g, '\'').replace(/\s+/g, ' ');
 
 let w: VueWrapper | null = null;
@@ -99,6 +102,14 @@ describe('la guida della dashboard del condominio', () => {
     test('l\'Inbox con la prossima azione del tipo e le risposte; le segnalazioni che non scadono', async () => {
         const t = await apri();
         for (const frase of ['Segna come fatto', 'Fatto', 'Non serve', 'Ricordamelo', 'aperta il', 'urgente']) {
+            expect(t).toContain(frase);
+        }
+    });
+
+    test('il menu «Azioni» in alto e la card «Per la prossima assemblea» con il menu dei punti e «Aggiungi un punto»', async () => {
+        const t = await apri();
+        for (const frase of ['«Azioni»', '«Da portare in assemblea»', '«Per la prossima assemblea»', '«⋯»', '«Modifica»', '«Non serve più»', '«Aggiungi un punto»',
+            '«Prepara l\'assemblea»', 'la nota sintetica']) {
             expect(t).toContain(frase);
         }
     });

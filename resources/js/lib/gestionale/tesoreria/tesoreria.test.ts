@@ -83,6 +83,11 @@ describe('«Da dove viene»', () => {
         expect(nomeDellaRiga({ voce: 'Vecchio conto', tipo: 'banca', attiva: false })).toBe('Vecchio conto (conto corrente, disattivata)');
         expect(nomeDellaRiga({ voce: 'Cassa contanti', tipo: 'contanti', attiva: true })).toBe('Cassa contanti');
         expect(nomeDellaRiga({ voce: 'Piccola cassa', tipo: 'contanti', attiva: true })).toBe('Piccola cassa (contanti)');
+        // Il nome che dice già il tipo non lo ripete fra parentesi, come per i contanti: «Conto corrente (conto corrente)» si leggeva due volte.
+        expect(nomeDellaRiga({ voce: 'Conto corrente', tipo: 'banca', attiva: true })).toBe('Conto corrente');
+        expect(nomeDellaRiga({ voce: 'Conto corrente BPER', tipo: 'banca', attiva: true })).toBe('Conto corrente BPER');
+        expect(nomeDellaRiga({ voce: 'Conto corrente', tipo: 'banca', attiva: false })).toBe('Conto corrente (disattivata)');
+        expect(nomeDellaRiga({ voce: 'Cassa virtuale PayPal', tipo: 'virtuale', attiva: true })).toBe('Cassa virtuale PayPal');
         expect(nomeDellaRiga({ voce: 'PayPal', tipo: 'virtuale', attiva: true })).toBe('PayPal (cassa virtuale)');
         expect(nomeDellaRiga({ voce: '1020 Banca Posta', tipo: 'senza_cassa', attiva: true })).toBe('1020 Banca Posta (conto senza cassa)');
         expect(nomeDellaRiga({ voce: 'Saldi di apertura non ancora registrati a giornale', tipo: 'non_registrati', attiva: true })).toBe('Saldi di apertura non ancora registrati a giornale');

@@ -33,6 +33,11 @@ import { Info } from 'lucide-vue-next';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import { frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import PulsanteDaPortareInAssemblea from '@/components/assemblee/PulsanteDaPortareInAssemblea.vue';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
 import { centesimiDaImporto } from '@/lib/gestionale/pianiRate/totaliPerTipo';
 import {
@@ -46,15 +51,21 @@ interface AccordoDellaPersona extends AccordoRientro {
     in_corso: boolean;
     documento: string | null;
     rate: Array<{ rata_id: number; immobile_id: number | null; riconosciuto: number; unita: string | null; piano: string; numero_rata: number; scadenza: string | null; causale?: string | null }>;
+    /** La delibera che autorizza l'accordo, se è collegata (ruolo «autorizzazione»). */
+    delibera?: DeliberaDelMenu | null;
 }
 
 const props = defineProps<{ open: boolean; condominioId: number; persona: { id: number; nome: string } | null; oggi: string }>();
 const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'fatto'): void }>();
 
-const { generateRoute } = usePermission();
+const permessi = usePermission();
+const { generateRoute } = permessi;
+// Con «Gestisce le assemblee» l'autorizzazione viene dalla delibera scelta (§1.4 del progetto della tappa 2); senza, la data si scrive a mano come prima.
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
 const rotta = (nome: string, altro: Record<string, unknown> = {}) => route(generateRoute(`gestionale.accordi-rientro.${nome}`), { condominio: props.condominioId, ...altro });
 
 const accordi = ref<AccordoDellaPersona[]>([]);
+const condominioNome = ref('');
 const possibili = ref<RataPossibile[]>([]);
 const errore = ref<string | null>(null);
 const esito = ref<string | null>(null);
@@ -79,6 +90,7 @@ const vuoto = (data: string) => ({
     autorizzato: null as null | '0' | '1',
     data_autorizzazione: '',
     verbale_autorizzazione: '',
+    delibera: null as DeliberaDelMenu | null,
     nota: '',
 });
 const modulo = ref(vuoto(props.oggi));
@@ -87,7 +99,7 @@ let regolaProposta = false;
 const file = ref<File | null>(null);
 const chiusura = ref<Record<number, { chiuso_il: string; nota_chiusura: string }>>({});
 const decadenza = ref<Record<number, { data: string; nota: string }>>({});
-const autorizzazione = ref<Record<number, { data_autorizzazione: string; verbale_autorizzazione: string }>>({});
+const autorizzazione = ref<Record<number, { data_autorizzazione: string; verbale_autorizzazione: string; delibera: DeliberaDelMenu | null }>>({});
 const parteFuori = ref<Record<number, InteressiParteFuori>>({});
 
 async function leggi(data?: string) {
@@ -103,6 +115,7 @@ async function leggi(data?: string) {
             return;
         }
         accordi.value = r.accordi;
+        condominioNome.value = r.condominio ?? '';
         possibili.value = r.rate;
         modulo.value.scelte = {};
         modulo.value.importi = Object.fromEntries(r.rate.map((p: RataPossibile) => [chiave(p), centesimiInEuro(p.residuo)]));
@@ -189,7 +202,7 @@ const controlloCalendario = computed<string | null>(() => {
 const ultimaRata = computed(() => modulo.value.calendario[modulo.value.calendario.length - 1]?.data ?? null);
 
 const pronto = computed(() => scelte.value.length > 0 && modulo.value.calendario.length > 0 && controlloCalendario.value === null && modulo.value.autorizzato !== null
-    && (modulo.value.autorizzato === '0' || !!modulo.value.data_autorizzazione));
+    && (modulo.value.autorizzato === '0' || (conLaDelibera.value ? modulo.value.delibera !== null : !!modulo.value.data_autorizzazione)));
 
 async function registra() {
     errore.value = null;
@@ -219,7 +232,10 @@ async function registra() {
     if (modulo.value.autorizzato !== null) {
         corpo.append('autorizzato_assemblea', modulo.value.autorizzato);
     }
-    if (modulo.value.autorizzato === '1') {
+    if (modulo.value.autorizzato === '1' && modulo.value.delibera) {
+        // La data e il verbale li prende il server dalla delibera scelta.
+        corpo.append('delibera_id', String(modulo.value.delibera.id));
+    } else if (modulo.value.autorizzato === '1') {
         corpo.append('data_autorizzazione', modulo.value.data_autorizzazione);
         corpo.append('verbale_autorizzazione', modulo.value.verbale_autorizzazione);
     }
@@ -260,7 +276,9 @@ async function autorizza(a: AccordoDellaPersona) {
     errore.value = null;
     const v = autorizzazione.value[a.id];
     try {
-        const r = (await axios.post(rotta('autorizza', { accordo: a.id }), { data_autorizzazione: v?.data_autorizzazione, verbale_autorizzazione: v?.verbale_autorizzazione || null })).data;
+        const r = (await axios.post(rotta('autorizza', { accordo: a.id }), v?.delibera
+            ? { delibera_id: v.delibera.id }
+            : { data_autorizzazione: v?.data_autorizzazione, verbale_autorizzazione: v?.verbale_autorizzazione || null })).data;
         esito.value = r.messaggio;
         await leggi();
     } catch (e) {
@@ -300,7 +318,7 @@ const valoreDellaScelta = (s: { valore: InteressiParteFuori }) => s.valore;
 const apriParteFuori = (a: AccordoDellaPersona) => { parteFuori.value = { ...parteFuori.value, [a.id]: a.interessi_parte_fuori ?? 'continuano' }; };
 const apriChiusura = (a: AccordoDellaPersona) => { chiusura.value = { ...chiusura.value, [a.id]: { chiuso_il: props.oggi, nota_chiusura: '' } }; };
 const apriDecadenza = (a: AccordoDellaPersona) => { decadenza.value = { ...decadenza.value, [a.id]: { data: props.oggi, nota: '' } }; };
-const apriAutorizzazione = (a: AccordoDellaPersona) => { autorizzazione.value = { ...autorizzazione.value, [a.id]: { data_autorizzazione: '', verbale_autorizzazione: '' } }; };
+const apriAutorizzazione = (a: AccordoDellaPersona) => { autorizzazione.value = { ...autorizzazione.value, [a.id]: { data_autorizzazione: '', verbale_autorizzazione: '', delibera: null } }; };
 const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null; causale?: string | null }) => r.causale
     ? `${r.unita ? `${r.unita}, ` : ''}${r.causale}`
     : `${r.unita ? `${r.unita}, ` : ''}${r.numero_rata === 0 ? 'rata 0 (pregresso)' : `rata ${r.numero_rata}`}${r.piano ? ` — ${r.piano}` : ''}`;
@@ -320,6 +338,7 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                     <div v-for="a in accordi" :key="a.id" class="rounded-lg border p-2 space-y-1 text-xs" data-testid="accordo">
                         <p class="font-medium">{{ testoSegnoAccordo(a) }}</p>
                         <p>{{ testoAutorizzazione(a) }}</p>
+                        <p v-if="a.delibera" class="text-slate-600 dark:text-slate-300" data-testid="delibera-dell-accordo">Dalla {{ a.delibera.frase.charAt(0).toLowerCase() + a.delibera.frase.slice(1) }}</p>
                         <p v-if="a.nota" class="text-slate-600 dark:text-slate-300">{{ a.nota }}</p>
                         <ul class="list-disc pl-4">
                             <li v-for="r in a.rate" :key="`${r.rata_id}-${r.immobile_id}`">{{ nomeRata(r) }}: riconosciuti {{ euroTesto(r.riconosciuto) }}</li>
@@ -334,10 +353,13 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                         <p v-if="a.calendario">
                             <a :href="rotta('stampa', { accordo: a.id })" target="_blank" rel="noopener" class="underline" data-testid="stampa-accordo">Stampa l'accordo</a>
                         </p>
+                        <!-- Gli esiti delle delibere sull'accordo: «Autorizzazione respinta dall'assemblea …», i segni; con «Apri l'assemblea». -->
+                        <EsitiDellaScheda :condominio-id="condominioId" tipo="accordo_rientro" :id="a.id" />
                         <p v-if="a.decadenza_registrata_il" data-testid="decadenza-registrata">Decadenza registrata il {{ giorno(a.decadenza_registrata_il) }}{{ a.nota_chiusura ? `: ${a.nota_chiusura}` : '.' }}</p>
                         <p v-else-if="a.chiuso_il" data-testid="chiuso">Chiuso il {{ giorno(a.chiuso_il) }}{{ a.nota_chiusura ? `: ${a.nota_chiusura}` : '.' }}</p>
                         <div v-else class="flex flex-wrap gap-2">
                             <Button v-if="!a.autorizzato_assemblea && !autorizzazione[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" @click="apriAutorizzazione(a)">Registra l'autorizzazione dell'assemblea</Button>
+                            <PulsanteDaPortareInAssemblea v-if="conLaDelibera && !a.autorizzato_assemblea" :condominio-id="condominioId" origine-tipo="accordo_rientro" :origine-id="a.id" forma="riga" />
                             <Button v-if="!parteFuori[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-parte-fuori" @click="apriParteFuori(a)">Cambia la scelta sulla parte fuori</Button>
                             <Button v-if="!chiusura[a.id] && !decadenza[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-chiusura" @click="apriChiusura(a)">Chiudi l'accordo</Button>
                             <Button v-if="!decadenza[a.id] && !chiusura[a.id]" size="sm" variant="ghost" class="h-7 text-xs whitespace-nowrap" data-testid="apri-decadenza" @click="apriDecadenza(a)">Registra la decadenza</Button>
@@ -352,7 +374,12 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                                 <Button size="sm" variant="outline" class="h-8 text-xs" :disabled="!decadenza[a.id].data" data-testid="conferma-decadenza" @click="registraDecadenza(a)">Conferma la decadenza</Button>
                             </div>
                         </div>
-                        <div v-if="autorizzazione[a.id] && !a.autorizzato_assemblea" class="flex flex-wrap items-end gap-2">
+                        <div v-if="autorizzazione[a.id] && !a.autorizzato_assemblea && conLaDelibera" class="space-y-1.5" data-testid="autorizza-con-la-delibera">
+                            <ScegliLaDelibera v-model="autorizzazione[a.id].delibera" :condominio-id="condominioId" :condominio-nome="condominioNome" ruolo="autorizzazione"
+                                oggetto-tipo="accordo_rientro" :oggetto-id="a.id" per-questo="questo accordo" :vuoto="`Nessuna assemblea di ${condominioNome} ha ancora autorizzato questo accordo.`" />
+                            <Button size="sm" variant="outline" class="h-8 text-xs" :disabled="!autorizzazione[a.id].delibera" @click="autorizza(a)">Registra</Button>
+                        </div>
+                        <div v-if="autorizzazione[a.id] && !a.autorizzato_assemblea && !conLaDelibera" class="flex flex-wrap items-end gap-2">
                             <label class="space-y-1"><span class="block text-slate-500">Data della delibera</span>
                                 <Input v-model="autorizzazione[a.id].data_autorizzazione" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
                             <label class="space-y-1"><span class="block text-slate-500">Verbale n.</span>
@@ -494,7 +521,12 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
                             <label class="flex items-center gap-1" data-testid="autorizzato-no"><input v-model="modulo.autorizzato" type="radio" name="autorizzato" value="0" /> No</label>
                         </div>
                         <p class="text-slate-500">{{ FRASE_AUTORIZZAZIONE }}</p>
-                        <div v-if="modulo.autorizzato === '1'" class="flex flex-wrap gap-3">
+                        <div v-if="modulo.autorizzato === '1' && conLaDelibera" class="space-y-1" data-testid="accordo-con-la-delibera">
+                            <ScegliLaDelibera v-model="modulo.delibera" :condominio-id="condominioId" :condominio-nome="condominioNome" ruolo="autorizzazione"
+                                :parla-di="persona ? [['anagrafica', persona.id]] : []" per-questo="questo accordo" />
+                            <p class="text-slate-500">Data della delibera: <strong v-if="modulo.delibera" class="text-slate-800 dark:text-slate-200">{{ giorno(modulo.delibera.deliberata_il) }}</strong><span v-else>dalla delibera</span>; il verbale è quello della riunione.</p>
+                        </div>
+                        <div v-if="modulo.autorizzato === '1' && !conLaDelibera" class="flex flex-wrap gap-3">
                             <label class="space-y-1"><span class="block text-slate-500">Data della delibera</span>
                                 <Input v-model="modulo.data_autorizzazione" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
                             <label class="space-y-1"><span class="block text-slate-500">Verbale n.</span>

@@ -5,6 +5,9 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\Lotto;
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\MoneyHelper;
 use App\Models\Gestionale\FatturaPassiva;
 use Illuminate\Support\Facades\DB;
@@ -282,7 +285,13 @@ final class FattureToccateDallaModifica
      */
     public function correggi(int $condominioId, ?array $soloFatture = null): array
     {
-        return DB::transaction(function () use ($condominioId, $soloFatture) {
+        // Decisione 548 del registro delle modifiche: la correzione è un gesto solo, firmato dal contesto (dal terminale «Il programma»).
+        $gesto = Gesto::su('contabilita', 'fatture_toccate', null, 'Fatture toccate da una modifica')->nelCondominio($condominioId)
+            ->riepilogo(fn (Lotto $l, $esito) => 'Fatture riportate come erano: ' . (int) ($esito['spostate'] ?? 0) . ' sulla loro gestione, '
+                . (int) ($esito['spogliate'] ?? 0) . ' di nuovo «Fuori preventivo»')
+            ->scriviSe(fn (Lotto $l, $esito) => (int) ($esito['spostate'] ?? 0) + (int) ($esito['spogliate'] ?? 0) > 0);
+
+        return RegistroModifiche::durante($gesto, function () use ($condominioId, $soloFatture) {
             $daCorreggere = $this->perCondominio($condominioId, $soloFatture);
             $spostate = 0;
             foreach ($daCorreggere['spostate'] as $f) {

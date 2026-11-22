@@ -5,6 +5,7 @@
 
 use App\Enums\Permission;
 use App\Http\Controllers\Impostazioni\BackupSettingsController;
+use App\Http\Controllers\Impostazioni\CasellaPecController;
 use App\Http\Controllers\Impostazioni\CarteStampaController;
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
@@ -33,6 +34,16 @@ Route::middleware('auth')->group(function () {
     Route::get('impostazioni', ImpostazioniController::class)
         ->name('impostazioni');
 
+    // Il registro delle modifiche dello studio (1.12.0-beta.13, §14): la stessa pagina del condominio, per tutti i condomini, con il condominio fra i
+    // filtri. Il permesso lo controlla il controller («Vede il registro delle modifiche», mai i ruoli del portale).
+    Route::get('impostazioni/registro-modifiche', [\App\Http\Controllers\RegistroModifiche\RegistroController::class, 'delloStudio'])
+        ->name('impostazioni.registro-modifiche');
+    Route::get('impostazioni/registro-modifiche/stampa', [\App\Http\Controllers\RegistroModifiche\RegistroController::class, 'stampaDelloStudio'])
+        ->name('impostazioni.registro-modifiche.stampa');
+    // Il conto della finestra della stampa: quante righe uscirebbero e il limite di una stampa sola, con gli stessi filtri e permessi; niente PDF.
+    Route::get('impostazioni/registro-modifiche/stampa/conto', [\App\Http\Controllers\RegistroModifiche\RegistroController::class, 'contaDelloStudio'])
+        ->name('impostazioni.registro-modifiche.stampa.conto');
+
     Route::get('impostazioni/generali', [ImpostazioniGeneraliController::class, '__invoke'])
         ->name('impostazioni.generali');
 
@@ -41,6 +52,14 @@ Route::middleware('auth')->group(function () {
 
     Route::get('impostazioni/stampe', [ImpostazioniStampeController::class, 'index'])
         ->name('impostazioni.stampe');
+
+    // Le assemblee (1.12.0-beta.13): la delega oltre il quinto e il voto discorde dei comproprietari. Solo l'amministratore (il ruolo, e il controller).
+    Route::middleware('role:amministratore')->group(function () {
+        Route::get('impostazioni/assemblee', [\App\Http\Controllers\Assemblee\Sala\ImpostazioniDellaSalaController::class, 'index'])
+            ->name('impostazioni.assemblee');
+        Route::patch('impostazioni/assemblee', [\App\Http\Controllers\Assemblee\Sala\ImpostazioniDellaSalaController::class, 'update'])
+            ->name('impostazioni.assemblee.update');
+    });
 
     // I modelli delle lettere ai condòmini (1.12.0-beta.4), da «Impostazioni → Stampe»: li vede chi entra nel pannello, come nella finestra
     // delle lettere; crearli, cambiarli ed eliminarli è di chi gestisce le impostazioni di stampa (il controllo sta nel controller).
@@ -54,6 +73,13 @@ Route::middleware('auth')->group(function () {
             ->name('impostazioni.stampe.modelli-lettere.update');
         Route::delete('impostazioni/stampe/modelli-lettere/{modello}', [ModelliLettereController::class, 'destroy'])
             ->name('impostazioni.stampe.modelli-lettere.destroy');
+        // I modelli del verbale dell'assemblea, nella stessa pagina (sezione «Il verbale dell'assemblea»), con le stesse regole.
+        Route::post('impostazioni/stampe/modelli-verbale', [\App\Http\Controllers\Impostazioni\ModelliDelVerbaleController::class, 'store'])
+            ->name('impostazioni.stampe.modelli-verbale.store');
+        Route::put('impostazioni/stampe/modelli-verbale/{modello}', [\App\Http\Controllers\Impostazioni\ModelliDelVerbaleController::class, 'update'])
+            ->name('impostazioni.stampe.modelli-verbale.update');
+        Route::delete('impostazioni/stampe/modelli-verbale/{modello}', [\App\Http\Controllers\Impostazioni\ModelliDelVerbaleController::class, 'destroy'])
+            ->name('impostazioni.stampe.modelli-verbale.destroy');
     });
 
     // «Questa installazione»: limiti, spazio, funzioni accese (1.11.0-beta.33).
@@ -112,6 +138,26 @@ Route::middleware('auth')->group(function () {
         Route::post('impostazioni/mail/test', [MailSettingsController::class, 'testConnection'])
             ->middleware(['password.recente:impostazioni.mail', 'throttle:modulo'])
             ->name('admin.settings.mail.test');
+
+        // La casella PEC dello studio, nella stessa pagina (decisione 572, proposta 17): gli stessi controlli della posta, la password ridigitata da
+        // poco per salvare e provare, sei prove al minuto.
+        Route::post('impostazioni/mail/pec', [CasellaPecController::class, 'update'])
+            ->middleware('password.recente:impostazioni.mail')
+            ->name('admin.settings.pec.update');
+
+        Route::post('impostazioni/mail/pec/prova', [CasellaPecController::class, 'prova'])
+            ->middleware(['password.recente:impostazioni.mail', 'throttle:modulo'])
+            ->name('admin.settings.pec.prova');
+
+        // «Togli la casella PEC» (decisione 577): con la password ridigitata da poco, come il salvataggio.
+        Route::delete('impostazioni/mail/pec', [CasellaPecController::class, 'destroy'])
+            ->middleware('password.recente:impostazioni.mail')
+            ->name('admin.settings.pec.destroy');
+
+        // «Promemoria per email delle convocazioni da spedire» (Coda 679): un interruttore dello studio, non della casella; non chiede la password
+        // ridigitata, perché non manda la posta altrove.
+        Route::post('impostazioni/mail/promemoria', [MailSettingsController::class, 'promemoria'])
+            ->name('admin.settings.mail.promemoria');
 
         // LOGS & AUDIT
         Route::get('logs', [LogsController::class, 'index'])

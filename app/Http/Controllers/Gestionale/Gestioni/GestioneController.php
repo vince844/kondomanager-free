@@ -5,6 +5,8 @@
 
 namespace App\Http\Controllers\Gestionale\Gestioni;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Gestione\CreateGestioneRequest;
 use App\Http\Requests\Gestionale\Gestione\GestioneIndexRequest;
@@ -164,11 +166,9 @@ class GestioneController extends Controller
             
             $data = $request->validated();
 
-            // Crea la gestione
-            $gestione = Gestione::create($data);
-
-            // Associa la gestione all’esercizio selezionato (non per forza aperto), con il periodo della gestione dentro l'esercizio
-            $esercizio->gestioni()->attach($gestione->id, ['attiva' => true] + $this->periodoNellEsercizio($gestione, $esercizio));
+            // Crea la gestione e la lega all'esercizio selezionato (non per forza aperto), con il periodo della gestione dentro l'esercizio: la stessa strada
+            // di «Crea il piano straordinario» del seguito delle delibere.
+            \App\Services\Gestionale\CreazioneDellaGestione::crea($condominio, $esercizio, $data);
 
             DB::commit();
 
@@ -250,9 +250,9 @@ class GestioneController extends Controller
             $gestione->update($data);
 
             // Associa/aggiorna la gestione all’esercizio aperto, con il periodo della gestione dentro l'esercizio
-            $esercizio->gestioni()->syncWithoutDetaching([
+            RegistroModifiche::legame($gestione, 'esercizi', 'Esercizi', fn () => $esercizio->gestioni()->syncWithoutDetaching([
                 $gestione->id => ['attiva' => true] + $this->periodoNellEsercizio($gestione, $esercizio),
-            ]);
+            ]));
 
             DB::commit();
 
@@ -366,12 +366,17 @@ class GestioneController extends Controller
             // Livello 3: Eliminazione sicura in Cascata
             DB::beginTransaction();
             
-            if ($gestione->pianoConto) {
-                $gestione->pianoConto->delete(); 
-            }
-            
-            $gestione->pianiRate()->delete();
-            $gestione->delete();
+            // Il registro delle modifiche: l'eliminazione della gestione è un gesto solo, con i piani che spariscono contati prima.
+            $pianiDellaGestione = $gestione->pianiRate()->count();
+            RegistroModifiche::durante(Gesto::sulModello($gestione)->azione('eliminata')->riepilogo('Gestione «' . $gestione->nome . '» eliminata'
+                . ($pianiDellaGestione > 0 ? ', con ' . $pianiDellaGestione . ($pianiDellaGestione === 1 ? ' piano rate' : ' piani rate') : '')), function () use ($gestione) {
+                if ($gestione->pianoConto) {
+                    $gestione->pianoConto->delete();
+                }
+
+                $gestione->pianiRate()->delete();
+                $gestione->delete();
+            });
 
             DB::commit();
 
@@ -402,9 +407,6 @@ class GestioneController extends Controller
      */
     private function periodoNellEsercizio(Gestione $gestione, Esercizio $esercizio): array
     {
-        $inizio = $gestione->data_inizio->greaterThan($esercizio->data_inizio) ? $gestione->data_inizio : $esercizio->data_inizio;
-        $fine = $gestione->data_fine->lessThan($esercizio->data_fine) ? $gestione->data_fine : $esercizio->data_fine;
-
-        return $inizio->greaterThan($fine) ? ['data_inizio' => null, 'data_fine' => null] : ['data_inizio' => $inizio, 'data_fine' => $fine];
+        return \App\Services\Gestionale\CreazioneDellaGestione::periodoNellEsercizio($gestione, $esercizio);
     }
 }

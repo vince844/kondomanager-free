@@ -9,12 +9,16 @@ use App\Enums\Fiscale\MotivoEsclusioneRitenuta;
 use App\Enums\Fiscale\NaturaRigaRitenuta;
 use App\Enums\Fiscale\TipoRitenuta;
 use App\Models\Fornitore;
+use App\Http\Requests\Assemblee\LeDelibereDellaFattura;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use App\Support\LimiteCaricamento;
 
 class StoreFatturaRequest extends FormRequest
 {
+    // 1.12.0-beta.13 (§1.4 del progetto della tappa 2): la delibera della competenza e della spesa imprevista, risolte nel condominio.
+    use LeDelibereDellaFattura;
+
     public function authorize(): bool
     {
         return true;
@@ -214,7 +218,13 @@ class StoreFatturaRequest extends FormRequest
         // La natura viaggia anche sulla riga: è ciò che la lega al suo gruppo.
         $rules['righe.*.natura']             = 'nullable|string|max:10';
 
-        return $rules;
+        return $rules + $this->regoleDelleDelibere();
+    }
+
+    /** I nomi dei campi delle delibere come li dice la pagina (gli altri messaggi hanno già le loro frasi). @return array<string, string> */
+    public function attributes(): array
+    {
+        return $this->nomiDelleDelibere();
     }
 
     public function messages(): array

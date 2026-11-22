@@ -129,6 +129,7 @@ const submit = () => {
     <div class="px-6 py-8 space-y-6">
 
       <PageHeaderGuide
+        :storia="{ tipo: 'immobile', id: props.immobile.id }"
         page-title="Modifica immobile"
         :page-subtitle="`Stai modificando l'unità immobiliare: ${props.immobile.nome}`"
         :guides="pageGuides"

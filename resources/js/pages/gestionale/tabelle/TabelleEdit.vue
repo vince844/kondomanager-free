@@ -4,8 +4,9 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup lang="ts">
-import { computed } from 'vue';
-import { Link, Head, useForm } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Link, Head, router, useForm } from '@inertiajs/vue3';
+import { Switch } from '@/components/ui/switch';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -24,6 +25,8 @@ import type { Tabella } from '@/types/gestionale/tabelle';
 const props = defineProps<{
   condominio: Building;
   tabella: Tabella;
+  /** La tabella di proprietà generale del condominio (R14): se è questa, quella di oggi, e se chi guarda la sceglie. */
+  proprieta?: { questa: boolean; attuale: string | null; si_sceglie: boolean };
 }>()
 
 type TabellaType = {
@@ -89,6 +92,24 @@ const form = useForm({
   note: props.tabella.note,
 });
 
+// «È la tabella di proprietà generale di Via Roma 12»: si salva quando la cambi, ed è una riga del registro sulla scheda del condominio.
+const diProprieta = ref(props.proprieta?.questa ?? false);
+const salvataggioProprieta = ref(false);
+const cambiaProprieta = (valore: boolean) => {
+    diProprieta.value = valore;
+    salvataggioProprieta.value = true;
+    router.post(route(generateRoute('gestionale.tabella-di-proprieta'), { condominio: props.condominio.id }),
+        { perimetro_tipo: 'condominio', perimetro_id: null, tabella_id: valore ? props.tabella.id : null },
+        { only: ['proprieta', 'flash'], preserveScroll: true, preserveState: true, onFinish: () => { salvataggioProprieta.value = false; },
+          onError: () => { diProprieta.value = !valore; } });
+};
+const adessoProprieta = computed(() => {
+    if (diProprieta.value) return `Adesso: «${props.tabella.nome}» è la tabella di proprietà generale di ${props.condominio.nome}: la proposta per la tabella del valore delle assemblee.`;
+    return props.proprieta?.attuale
+        ? `Adesso: la tabella di proprietà generale di ${props.condominio.nome} è «${props.proprieta.attuale}».`
+        : `Adesso: ${props.condominio.nome} non ha una tabella di proprietà generale.`;
+});
+
 const submit = () => {
     form.put(route(...generateRoute('gestionale.tabelle.update', { condominio: props.condominio.id, tabella: props.tabella.id })), {
         preserveScroll: true,
@@ -106,6 +127,7 @@ const submit = () => {
     <div class="px-6 py-8 space-y-6">
 
       <PageHeaderGuide
+        :storia="{ tipo: 'tabella', id: props.tabella.id }"
         page-title="Modifica tabella millesimale"
         :page-subtitle="`Aggiornamento della tabella: ${props.tabella.nome}`"
         :guides="pageGuides"
@@ -207,6 +229,20 @@ const submit = () => {
           una per rimetterle — su una release che non ha ancora il backup automatico. Quello che
           sparisce è la **promessa**, non lo spazio per mantenerla.
         -->
+
+        <Card v-if="proprieta && proprieta.si_sceglie" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20" data-testid="tabella-di-proprieta">
+          <CardHeader class="pb-3 border-b border-dashed mb-4">
+            <CardTitle class="text-base font-semibold">Per le assemblee</CardTitle>
+            <CardDescription>La tabella con cui il programma propone di contare i millesimi delle assemblee del condominio.</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-2">
+            <div class="flex items-center justify-between gap-4">
+              <Label for="di-proprieta" class="text-sm">È la tabella di proprietà generale di {{ condominio.nome }}</Label>
+              <Switch id="di-proprieta" :model-value="diProprieta" :disabled="salvataggioProprieta" @update:model-value="cambiaProprieta" />
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">{{ adessoProprieta }}</p>
+          </CardContent>
+        </Card>
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
           <CardHeader class="pb-3 border-b border-dashed mb-4">

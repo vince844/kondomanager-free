@@ -6,6 +6,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * Una carta dello studio: come esce la testata delle stampe del suo gruppo di documenti. A campi (lo studio e il condominio scritti dal
@@ -30,6 +31,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CartaStampa extends Model
 {
+    use RegistraLeModifiche;
+
     public const ASPETTO_CAMPI = 'campi';
 
     public const ASPETTO_CARTA = 'carta';

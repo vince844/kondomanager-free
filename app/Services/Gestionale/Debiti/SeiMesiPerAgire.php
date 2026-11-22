@@ -736,4 +736,15 @@ final class SeiMesiPerAgire
     {
         return '€ ' . number_format($centesimi / 100, 2, ',', '.');
     }
+
+    /**
+     * La lettura pubblica dei rendiconti da portare in assemblea (Coda 679, §5): la stessa del riquadro, per l'ordine del giorno proposto.
+     * Sta in fondo alla classe, così le righe citate dalle guide non si spostano.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function rendicontiDaPortareInAssemblea(Condominio $condominio, ?string $oggi = null): array
+    {
+        return $this->rendiconti($condominio, $oggi ?? DateHelper::oggiUtente(), $this->risposte->delCondominio((int) $condominio->id));
+    }
 }

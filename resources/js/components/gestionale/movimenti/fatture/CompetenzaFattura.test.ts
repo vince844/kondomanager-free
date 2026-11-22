@@ -38,4 +38,22 @@ describe('CompetenzaFattura — la pregressa e il suo periodo (decisione 26)', (
         expect(testo).toContain('anche su una gestione ordinaria');
         expect(testo).not.toContain('Guida le rate solo se');
     });
+
+    test('ogni scelta ha la sua spiegazione dentro il pulsante, senza un secondo elenco che sembri altre scelte; niente scritte sotto i 12 pixel', async () => {
+        const w = monta({});
+        expect(w.get('[data-testid="competenza-a-che-serve"]').text()).toContain('A che cosa serve: dice a chi tocca la spesa se l\'unità cambia proprietario.');
+        const scelte = w.findAll('[role="radio"]').map((b) => b.text().replace(/\s+/g, ' ').trim());
+        expect(scelte).toHaveLength(3);
+        expect(scelte[0]).toContain('Nessuna');
+        expect(scelte[0]).toContain('Il caso normale');
+        expect(scelte[1]).toContain('il riscaldamento da ottobre a marzo');
+        expect(scelte[2]).toContain('il giorno della delibera');
+        // Prima uno schema sotto i pulsanti ripeteva i nomi delle scelte, e sembrava un secondo elenco da cliccare (prova a video, 20/11).
+        expect(w.find('[data-testid="competenza-spiegazione"] li').exists()).toBe(false);
+        expect(w.text()).toContain('in un piano approvato non si cambia più');
+        const { readFileSync } = await import('node:fs');
+        const { resolve } = await import('node:path');
+        const sorgente = readFileSync(resolve(process.cwd(), 'resources/js/components/gestionale/movimenti/fatture/CompetenzaFattura.vue'), 'utf8');
+        expect(sorgente).not.toMatch(/text-\[(9|10|10\.5|11)px\]/);
+    });
 });

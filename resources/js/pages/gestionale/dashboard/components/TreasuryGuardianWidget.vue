@@ -212,7 +212,8 @@ const fondiVuoti = computed(() => !!t.value.hasFondoRiserva && (t.value.disponib
                             <Info class="w-3.5 h-3.5" /> Da dove viene
                         </button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" class="w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900">
+                    <!-- Largo abbastanza perché il tipo di un fondo stia su una riga; all'apertura nessun fuoco sul primo collegamento (il riquadro grigio intorno). -->
+                    <PopoverContent align="start" class="w-[26rem] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900" @open-auto-focus.prevent>
                         <DaDoveViene :disponibile="t.disponibile" :condominio-id="condominioId" />
                     </PopoverContent>
                 </Popover>

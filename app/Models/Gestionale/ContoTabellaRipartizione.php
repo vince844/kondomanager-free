@@ -7,9 +7,12 @@ namespace App\Models\Gestionale;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Traits\ContaNelGesto;
 
 class ContoTabellaRipartizione extends Model
 {
+    use ContaNelGesto;
+
     use HasFactory;
 
     protected $table = 'conto_tabella_ripartizioni';

@@ -13,9 +13,12 @@ use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
 use App\Models\Immobile;
 use Database\Factories\Gestionale\RataQuoteFactory;
+use App\Traits\ContaNelGesto;
 
 class RataQuote extends Model 
 {
+    use ContaNelGesto;
+
     use HasFactory;
 
     protected $table = 'rate_quote';

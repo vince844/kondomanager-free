@@ -87,6 +87,21 @@ defineEmits(['update:open']);
                             </p>
                         </section>
 
+                        <!-- Coda 688: i lavori urgenti su una gestione straordinaria, a schema. -->
+                        <section class="rounded-lg border border-slate-200 p-4 dark:border-slate-700" data-testid="guida-lavori-urgenti">
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Lavori urgenti su una gestione straordinaria</h3>
+                            <ul class="list-disc space-y-1 pl-5">
+                                <li>Nel riquadro «La delibera, o l'urgenza» scegli «Urgenza (art. 1135 c.c.)»: la scelta è una sola, uguale sulle due schede.</li>
+                                <li>Il motivo dell'urgenza è obbligatorio.</li>
+                                <li>Su tutte e due le schede scrivi «Lavori ordinati il …», di serie oggi: chi era titolare quel giorno paga tutto, anche se poi vende.</li>
+                                <li>Sulle fatture, la fattura senza periodo prende il giorno del piano; quella con il suo periodo tiene il suo.</li>
+                                <li>Il giorno decide chi paga, non quanto: nessuna divisione a giorni.</li>
+                                <li>Le rate si chiedono subito: il piano nasce approvato.</li>
+                                <li>Lo riferisci alla prima assemblea: il punto ti viene proposto quando la prepari.</li>
+                                <li>La fattura che registri dopo sulla voce propone lo stesso giorno; senza periodo, il conguaglio dell'opera usa il giorno del piano.</li>
+                            </ul>
+                        </section>
+
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
                             <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                             <p class="text-xs text-amber-900 dark:text-amber-200">

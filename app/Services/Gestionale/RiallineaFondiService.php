@@ -5,6 +5,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\TipoMovimentoContabile;
 use App\Models\Condominio;
 use App\Models\Gestionale\Cassa;
@@ -101,6 +103,13 @@ class RiallineaFondiService
      * @return array{rettificate:int, protocolli:array<string>}
      */
     public function esegui(Condominio $condominio, ?int $esercizioId = null): array
+    {
+        // Decisione 548 e P11 del registro delle modifiche: una riga sola per condominio, dalla pagina e dal terminale, con l'autore del contesto.
+        return RegistroModifiche::durantePiuTransazioni(GestiDelRegistro::riallineamento($condominio, 'i fondi'), fn () => $this->riallinea($condominio, $esercizioId));
+    }
+
+    /** @return array{rettificate: int, protocolli: list<string>} */
+    private function riallinea(Condominio $condominio, ?int $esercizioId): array
     {
         $daRiallineare = $this->rileva($condominio);
 

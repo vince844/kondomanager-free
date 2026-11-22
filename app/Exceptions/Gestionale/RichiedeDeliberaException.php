@@ -37,6 +37,12 @@ class RichiedeDeliberaException extends Exception
                 $pianoRate->nome,
                 $fattura->numero_documento ?? ('#' . $fattura->id),
             ),
+            // Coda 688: il piano d'urgenza sulle voci senza il giorno dei lavori (un piano importato, o scritto prima): il giorno si scrive alla creazione.
+            $pianoRate->tipo_autorizzazione === 'urgenza' && $fattura === null => sprintf(
+                'Il piano «%s» è un intervento d\'urgenza (nessuna delibera da registrare) e non dice il giorno dei lavori. Rifai il piano scegliendo «Urgenza» e '
+                . 'scrivendo «Lavori ordinati il …»: chi era titolare quel giorno paga tutto, e il programma non lo sceglie al posto tuo.',
+                $pianoRate->nome,
+            ),
             // Senza data della delibera la via è scriverla; «la competenza sulla fattura» non vale per una pregressa, che
             // non si modifica (verifica delle correzioni della Fase 1-bis, 1.11.0-beta.35).
             $fattura !== null && $fattura->is_pregresso => sprintf(

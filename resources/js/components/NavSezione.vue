@@ -132,7 +132,7 @@ const sezioneCorrente = computed(() => props.items.find(attiva) ?? props.items[0
                     <template v-else>{{ voce.title }}</template>
                     <Badge
                         v-if="voce.badge"
-                        class="ml-2 text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 rounded-md border-blue-200 hover:bg-blue-100"
+                        class="ml-2 text-xs px-1.5 py-0 bg-blue-100 text-blue-700 rounded-md border-blue-200 hover:bg-blue-100"
                     >
                         {{ voce.badge }}
                     </Badge>

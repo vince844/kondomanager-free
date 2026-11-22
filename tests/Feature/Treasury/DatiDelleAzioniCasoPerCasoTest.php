@@ -126,15 +126,17 @@ it('H: il 16 del mese dopo; versata con la conferma del versamento, la ritenuta 
             'righe' => [['descrizione' => 'Servizio', 'importo_imponibile' => 20000, 'aliquota_iva' => 22, 'conto_id' => $ctx[5]->id, 'is_sopravvenienza' => false]]]);
         (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $f, ['data_pagamento' => $giorno]));
     }
-    // Oggi il 16/11 (finestra fino al 16/12): € 800,00 entro il 16/11 (oggi) e € 800,00 entro il 16/12 (il bordo).
-    expect($leggi('2026-11-16'))->toBe([['giorno' => '2026-11-16', 'cifra' => 80000], ['giorno' => '2026-12-16', 'cifra' => 80000]])
+    // Oggi il 16/11 (finestra fino al 16/12): € 800,00 entro il 16/11 (oggi) e € 800,00 entro il 16/12 (il bordo). Nessuna delega ancora.
+    expect($leggi('2026-11-16'))->toBe([['giorno' => '2026-11-16', 'cifra' => 80000, 'delega' => null], ['giorno' => '2026-12-16', 'cifra' => 80000, 'delega' => null]])
         // Il 15/11 la finestra arriva al 15/12: solo la prima.
-        ->and($leggi('2026-11-15'))->toBe([['giorno' => '2026-11-16', 'cifra' => 80000]]);
+        ->and($leggi('2026-11-15'))->toBe([['giorno' => '2026-11-16', 'cifra' => 80000, 'delega' => null]]);
     $this->travelTo('2026-11-16 10:00:00');
     app(GeneraDelegheF24Action::class)->esegui($condominio, $esercizio->id);
     $prima = DelegaF24::where('condominio_id', $condominio->id)->orderBy('data_scadenza')->first();
     expect($prima->data_scadenza->toDateString())->toBe('2026-11-16');
     $cassa = (int) DB::table('casse')->where('condominio_id', $condominio->id)->where('conto_contabile_id', $ctx[4])->value('id');
     app(ConfermaVersamentoF24Action::class)->esegui($prima, '2026-11-16', (int) $ctx[4], $cassa ?: null);
-    expect($leggi('2026-11-16'))->toBe([['giorno' => '2026-12-16', 'cifra' => 80000]]);
+    // Resta la delega del 16/12, la sola di quel giorno.
+    $seconda = (int) DelegaF24::where('condominio_id', $condominio->id)->whereDate('data_scadenza', '2026-12-16')->value('id');
+    expect($leggi('2026-11-16'))->toBe([['giorno' => '2026-12-16', 'cifra' => 80000, 'delega' => $seconda]]);
 });

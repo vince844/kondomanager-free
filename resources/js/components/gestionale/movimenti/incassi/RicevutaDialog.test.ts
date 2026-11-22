@@ -170,10 +170,10 @@ describe('la soglia del bollo', () => {
         // Nessun riquadro (bordo, sfondo) né colore di avviso sulla riga del titolo e sulla frase; nessuna icona.
         expect(blocco.querySelector('svg')).toBeNull();
         expect(blocco.firstElementChild!.outerHTML + frase.outerHTML).not.toMatch(/amber|rose|border|bg-|text-(red|orange|yellow)/);
-        // La frase generica sta sotto il titolo, prima dei pulsanti.
+        // La forma delle finestre: la frase generica sta sotto la barra delle quattro scelte.
         const gruppo = blocco.querySelector('[role="radiogroup"]')!;
-        expect(blocco.firstElementChild!.compareDocumentPosition(frase) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(frase.compareDocumentPosition(gruppo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(blocco.firstElementChild!.compareDocumentPosition(gruppo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(gruppo.compareDocumentPosition(frase) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     test('sotto la soglia non c\'è nessun avviso sull\'importo', async () => {
@@ -304,14 +304,12 @@ describe('i quattro pulsanti del bollo', () => {
         expect(document.body.querySelectorAll('[role="radiogroup"]')).toHaveLength(1);
         expect(gruppo().getAttribute('aria-label')).toBe('Imposta di bollo');
         expect([...gruppo().querySelectorAll('[role="radio"]')].map((r) => (r.textContent ?? '').trim()))
-            .toEqual(['Non dovuta', 'Da assolvere', 'Assolta: contrassegno', 'Assolta: virtuale']);
-        // Una griglia: due colonne sul telefono, quattro in fila dalla larghezza della finestra in su; mai una riga che va a capo a pezzi. Le quattro
-        // colonne sono larghe quanto il testo e ogni pulsante sta su una riga (Vincenzo, 05/11: «Assolta: contrassegno» andava a capo).
+            .toEqual(['Non dovuta', 'Da assolvere', 'Contrassegno', 'Virtuale']);
+        // Una griglia: due colonne sul telefono, quattro in fila dalla larghezza della finestra in su; mai una riga che va a capo a pezzi.
         expect(gruppo().classList.contains('grid')).toBe(true);
         expect(gruppo().classList.contains('grid-cols-2')).toBe(true);
-        expect(gruppo().classList.contains('sm:grid-cols-[repeat(4,auto)]')).toBe(true);
-        expect(gruppo().classList.contains('sm:grid-cols-4')).toBe(false);
-        expect([...gruppo().querySelectorAll('[role="radio"]')].every((r) => r.classList.contains('sm:whitespace-nowrap'))).toBe(true);
+        // La barra delle finestre: quattro scelte uguali attaccate, con le parole corte, che stanno su una riga.
+        expect(gruppo().classList.contains('sm:grid-cols-4')).toBe(true);
         expect(gruppo().classList.contains('flex-wrap')).toBe(false);
         // Non sono più tre cerchietti con le etichette accanto, né c'è un «Come:».
         expect(document.body.querySelectorAll('[data-testid="scelta-bollo"] label')).toHaveLength(0);
@@ -326,9 +324,9 @@ describe('i quattro pulsanti del bollo', () => {
         await scegli('da_assolvere');
         expect(accesi()).toEqual(['Da assolvere']);
         await scegli('assolta_contrassegno');
-        expect(accesi()).toEqual(['Assolta: contrassegno']);
+        expect(accesi()).toEqual(['Contrassegno']);
         await scegli('assolta_virtuale');
-        expect(accesi()).toEqual(['Assolta: virtuale']);
+        expect(accesi()).toEqual(['Virtuale']);
         await scegli('non_dovuta');
         expect(accesi()).toEqual(['Non dovuta']);
     });
@@ -336,7 +334,7 @@ describe('i quattro pulsanti del bollo', () => {
     test('si scorrono con le frecce: la freccia accende il successivo', async () => {
         await apri(opzioni(ricordata({ modo_bollo: 'contrassegno', bollo_sopra: 'assolta' })));
         const tutti = [...gruppo().querySelectorAll('[role="radio"]')] as HTMLElement[];
-        expect(accesi()).toEqual(['Assolta: contrassegno']);
+        expect(accesi()).toEqual(['Contrassegno']);
 
         tutti[2].focus();
         tutti[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
@@ -345,7 +343,7 @@ describe('i quattro pulsanti del bollo', () => {
         tutti[2].dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
         await flushPromises();
 
-        expect(accesi()).toEqual(['Assolta: virtuale']);
+        expect(accesi()).toEqual(['Virtuale']);
     });
 
     test('ogni pulsante scrive per il server gli stessi valori di prima: lo stato e, per le due «Assolta», il modo', async () => {
@@ -411,7 +409,7 @@ describe('i quattro pulsanti del bollo', () => {
 
     test('l\'ultima scelta è ricordata: il pulsante è acceso e gli estremi ci sono; tornando su «Assolta» ci sono ancora, e la richiesta li porta; con un altro stato no', async () => {
         await apri(opzioni(ricordata({})));
-        expect(accesi()).toEqual(['Assolta: virtuale']);
+        expect(accesi()).toEqual(['Virtuale']);
         expect((estremi()!.querySelector('input') as HTMLInputElement).value).toBe('aut. 1');
 
         await scegli('non_dovuta');
@@ -1521,3 +1519,54 @@ describe('la finestra è una sola: chiusa e riaperta su un altro incasso mentre 
         expect(w.emitted('avviso')).toEqual([['Ricevuta n. INC-2026-00005: Ricevuta non stampata. Questo incasso copre le rate di più persone.']]);
     });
 });
+
+describe('la finestra della ricevuta nella forma delle finestre', () => {
+    const dialogo = () => document.body.querySelector('[role="dialog"]') as HTMLElement;
+    const riepilogo = () => document.body.querySelector('[data-testid="riepilogo"]') as HTMLElement;
+    const parole = (e: Element) => (e.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+    test('ancorata in alto; i gruppi con il titolo piccolo; il bollo a barra; il riepilogo e i pulsanti fissi nel piede', async () => {
+        await apri(opzioni());
+        expect(dialogo().className).toContain('top-[5vh]');
+        expect(dialogo().className).toContain('translate-y-0');
+        expect([...dialogo().querySelectorAll('[data-testid="titolo-gruppo"]')].map(parole)).toEqual(['A che cosa va il versamento', 'La ricevuta', 'A chi mandarla']);
+        expect(dialogo().querySelector('[data-testid="scelta-bollo"]')!.getAttribute('data-forma')).toBe('barra');
+        const piede = dialogo().querySelector('[data-testid="piede-finestra"]') as HTMLElement;
+        expect(piede.contains(riepilogo())).toBe(true);
+        expect([...piede.querySelectorAll('button')].map(parole)).toEqual(['Chiudi', 'Anteprima', 'Stampa', 'Invia']);
+    });
+
+    test('il riepilogo chiede il bollo, poi conta le email; gli indirizzi sono pulsanti con il tipo e l\'indirizzo', async () => {
+        await apri(opzioni());
+        expect(parole(riepilogo())).toBe('Scegli l\'imposta di bollo per stamparla o mandarla.');
+        (dialogo().querySelector('[role="radio"][value="non_dovuta"]') as HTMLElement).click();
+        await flushPromises();
+        expect(parole(riepilogo())).toBe('Parte 1 email.');
+        const indirizzo = dialogo().querySelector('[data-testid="indirizzo"]') as HTMLElement;
+        expect(parole(indirizzo)).toBe('Primaria: anna@esempio.it');
+        expect(indirizzo.getAttribute('data-acceso')).toBe('si');
+        (indirizzo.querySelector('[role="checkbox"]') as HTMLElement).click();
+        await flushPromises();
+        expect(parole(riepilogo())).toBe('Nessun indirizzo scelto: la ricevuta si può stampare.');
+    });
+});
+
+describe('la finestra della ricevuta: larga per gli indirizzi, la tabella delle quote in un cassetto', () => {
+    test('larga 720 pixel; la tabella è chiusa con il riassunto sopra, e si apre e si chiude con un clic', async () => {
+        await apri(opzioni());
+        const dialogo = document.body.querySelector('[role="dialog"]') as HTMLElement;
+        expect(dialogo.className).toContain('sm:max-w-[720px]');
+        const cassetto = () => document.body.querySelector('[data-testid="cassetto-quote"]') as HTMLElement;
+        const pulsante = () => document.body.querySelector('[data-testid="mostra-quote"]') as HTMLButtonElement;
+        expect(document.body.querySelector('[data-testid="riassunto-quote"]')!.textContent!.trim()).toBe('€ 150,00 su 1 quota: pagata per intero.');
+        expect(cassetto().style.display).toBe('none');
+        expect(pulsante().textContent!.trim()).toBe('Mostra le quote');
+        expect(pulsante().getAttribute('aria-expanded')).toBe('false');
+        pulsante().click();
+        await flushPromises();
+        expect(cassetto().style.display).toBe('');
+        expect(pulsante().textContent!.trim()).toBe('Nascondi le quote');
+        expect(pulsante().getAttribute('aria-expanded')).toBe('true');
+    });
+});
+

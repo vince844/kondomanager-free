@@ -52,6 +52,27 @@ describe('avvisoFatturaNelCarrello — il resto non cambia', () => {
     });
 });
 
+describe('avvisoFatturaNelCarrello — con «Urgenza» e il giorno dei lavori la fattura senza periodo prende il giorno del piano (Coda 688)', () => {
+    const CON_IL_GIORNO = { gestioneStraordinaria: true, urgenza: true, giornoDeiLavori: '2026-03-02' };
+
+    test('una corrente senza competenza, scelta: non si ferma, prende il giorno, in grigio', () => {
+        expect(avvisoFatturaNelCarrello({ ha_competenza: false, selezionata: true }, CON_IL_GIORNO))
+            .toEqual({ tono: 'nota', testo: 'Senza competenza dichiarata: prende il giorno dei lavori del piano, il 02/03/2026.' });
+    });
+
+    test('una pregressa senza periodo: la paga chi era titolare il giorno dei lavori, non chi lo era quando il costo è maturato', () => {
+        const a = avvisoFatturaNelCarrello(PREGRESSA_SENZA, CON_IL_GIORNO);
+        expect(a?.tono).toBe('avviso');
+        expect(a?.testo).toBe('Pregressa senza periodo dichiarato: la paga per intero chi era titolare il 02/03/2026, il giorno dei lavori del piano, non chi lo era quando il costo è maturato.');
+        expect(a?.testo).not.toContain('si fermerà');
+    });
+
+    test('con la competenza dichiarata non cambia niente', () => {
+        expect(avvisoFatturaNelCarrello({ ha_competenza: true, competenza: '16/03/2026 – 31/03/2026' }, CON_IL_GIORNO))
+            .toEqual({ tono: 'nota', testo: 'Competenza dichiarata: 16/03/2026 – 31/03/2026' });
+    });
+});
+
 describe('avvisoFatturaNelCarrello — il periodo dentro l\'esercizio (R2 della Fase 1-bis)', () => {
     test('una pregressa con la data dell\'assemblea di quest\'anno come periodo: l\'avviso accanto alla competenza', () => {
         const a = avvisoFatturaNelCarrello({ ha_competenza: true, competenza: 'deliberata il 10/03/2026', periodo_nell_esercizio: true }, ORDINARIA);

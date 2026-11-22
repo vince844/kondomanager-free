@@ -1,11 +1,14 @@
 FROM php:8.4-fpm-bookworm
 
 # Installazione dipendenze e Node.js 20
+# GD con il JPEG (Coda 677): nei sorgenti di PHP è spento di serie; lo accendono libjpeg62-turbo-dev e `--with-jpeg`.
+# Il PNG resta com'era, con libpng-dev. Qui i pacchetti -dev restano, e con loro la libreria di runtime.
 RUN apt-get update && apt-get install -y \
-    git curl unzip libpng-dev libonig-dev libxml2-dev \
+    git curl unzip libpng-dev libjpeg62-turbo-dev libonig-dev libxml2-dev \
     libzip-dev libicu-dev netcat-openbsd gnupg ca-certificates supervisor \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
+    && docker-php-ext-configure gd --with-jpeg \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip intl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 

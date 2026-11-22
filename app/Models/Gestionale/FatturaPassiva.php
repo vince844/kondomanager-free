@@ -23,9 +23,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Services\Gestionale\NettoNoteCollegate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use App\Traits\RegistraLeModifiche;
 
 class FatturaPassiva extends Model
 {
+    use RegistraLeModifiche;
+
     use RisolveIFigliDelleRotte;
 
     use HasProtocolNumber;

@@ -9,6 +9,7 @@ use App\Models\Condominio;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * Una regola del recupero dei crediti di un condominio, dal giorno in cui comincia: il tasso degli interessi di mora (legale, o scritto con la fonte e
@@ -17,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class RegolaRecupero extends Model
 {
+    use RegistraLeModifiche;
+
     public const TASSO_LEGALE = 'legale';
 
     public const TASSO_SCRITTO = 'scritto';

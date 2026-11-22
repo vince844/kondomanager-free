@@ -48,3 +48,21 @@ describe('l\'intestazione con una fila sola', () => {
         expect(w.get('[data-testid="nome-condominio"]').classes()).not.toContain('truncate');
     });
 });
+
+describe('l\'intestazione della dashboard (decisione 574)', () => {
+    test('con una-fila-sempre la fila non va a capo anche sotto xl, e il nome lungo si accorcia di più; il nome intero nel title', () => {
+        w = mount(PageHeaderGuide, { props: props({ unaFila: true, unaFilaSempre: true }) as any });
+        expect(fila().classes()).toEqual(expect.arrayContaining(['md:flex-nowrap']));
+        const nome = w.get('[data-testid="nome-condominio"]');
+        expect(nome.classes()).toEqual(expect.arrayContaining(['truncate', 'max-w-[11rem]', 'xl:max-w-[16rem]']));
+        expect(nome.attributes('title')).toBe('Condominio Residenza dei Giardini di Via Giuseppe Garibaldi 128');
+    });
+
+    test('con esercizio-breve «Esercizio anno 2026» si legge «Esercizio 2026»; senza, il nome dell\'esercizio resta com\'è', () => {
+        w = mount(PageHeaderGuide, { props: props({ unaFila: true, esercizioBreve: true, esercizio: { id: 1, nome: 'Esercizio anno 2026' } }) as any });
+        expect(w.get('[data-testid="nome-esercizio"]').text()).toBe('Esercizio 2026');
+        w.unmount();
+        w = mount(PageHeaderGuide, { props: props({ unaFila: true, esercizio: { id: 1, nome: 'Esercizio anno 2026' } }) as any });
+        expect(w.get('[data-testid="nome-esercizio"]').text()).toBe('Esercizio anno 2026');
+    });
+});

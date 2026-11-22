@@ -174,6 +174,7 @@ const submit = () => {
 
     <div class="px-4 py-6 space-y-6">
       <PageHeaderGuide
+        :storia="{ tipo: 'impostazioni_generali' }"
         :page-title="trans('impostazioni.header.general_settings_title')"
         :page-subtitle="trans('impostazioni.header.general_settings_description')"
         :guides="pageGuides"

@@ -55,6 +55,7 @@ const funzioniOrdinate = computed(() => [
   'pianificatore_esterno',
   'backup',
   'archiviazione_esterna',
+  'posta_dell_installazione',
 ].map((chiave) => ({ chiave, attiva: props.funzioni[chiave] === true })))
 </script>
 

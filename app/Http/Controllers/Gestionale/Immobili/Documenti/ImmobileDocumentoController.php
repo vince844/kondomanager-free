@@ -5,8 +5,10 @@
 
 namespace App\Http\Controllers\Gestionale\Immobili\Documenti;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Http\Controllers\Controller;
 use App\Services\Documenti\ArchivioDocumenti;
+use App\Services\Documenti\VersioniDeiDocumenti;
 use App\Http\Requests\Gestionale\Immobile\Documento\CreateImmobileDocumentoRequest;
 use App\Http\Requests\Gestionale\Immobile\Documento\ImmobileDocumentoIndexRequest;
 use App\Http\Requests\Gestionale\Immobile\Documento\UpdateImmobileDocumentoRequest;
@@ -205,7 +207,7 @@ class ImmobileDocumentoController extends Controller
                 'created_by'   => $validated['created_by'],
             ]);
 
-            $documento->condomini()->attach($condominio->id);
+            RegistroModifiche::legame($documento, 'condomini', 'Condomini', fn () => $documento->condomini()->attach($condominio->id));
 
             DB::commit();
 
@@ -260,6 +262,8 @@ class ImmobileDocumentoController extends Controller
             // e senza questa riga la schermata di modifica continuerebbe a promettere «Max 20MB» —
             // cioè il difetto segnalato, sulla schermata accanto.
             'limiteFile'  => \App\Support\LimiteCaricamento::etichetta(),
+            // Le versioni di prima del file (1.12.0-beta.13, decisione 559): in sola lettura, senza il percorso.
+            'versioni'    => VersioniDeiDocumenti::perLaPagina($documento),
         ]); 
     }
 
@@ -323,16 +327,9 @@ class ImmobileDocumentoController extends Controller
             DB::beginTransaction();
 
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
-                // Delete old file if exists
-                app(ArchivioDocumenti::class)->elimina($documento->path);
-
-                $uploadedFile = $request->file('file');
-                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
-
-                // Update file related fields
-                $documento->path = $path;
-                $documento->mime_type = $uploadedFile->getClientMimeType();
-                $documento->file_size = $uploadedFile->getSize();
+                // 1.12.0-beta.13 (decisione 559): il file nuovo si salva prima, il vecchio resta fra le versioni di prima (fino alla beta.12 si
+                // cancellava prima di salvare il nuovo); se la transazione cade, i file tornano com'erano.
+                app(VersioniDeiDocumenti::class)->sostituisci($documento, $request->file('file'));
             }
 
             $documento->update([
@@ -426,9 +423,8 @@ class ImmobileDocumentoController extends Controller
     {
         try {
 
-            app(ArchivioDocumenti::class)->elimina($documento->path);
-
-            $documento->delete();
+            // 1.12.0-beta.13 (decisione 559, P21): con le versioni di prima; i file si cancellano dopo il commit.
+            DB::transaction(fn () => app(VersioniDeiDocumenti::class)->elimina($documento));
 
             return to_route('admin.gestionale.immobili.documenti.index', [
                 'condominio' => $condominio->id,

@@ -5,6 +5,8 @@
 
 namespace App\Http\Controllers\Gestionale\Saldi;
 
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Saldi\DichiaraOrigineSaldiRequest;
 use App\Models\Condominio;
@@ -35,7 +37,11 @@ class DichiaraOrigineSaldiController extends Controller
         $origine = (string) $request->validated('origine');
         $dichiarata = $origine === OriginePregresso::NON_DICHIARATA ? null : $origine;
 
-        DB::transaction(function () use ($ids, $dichiarata, $request) {
+        // Il registro delle modifiche: la dichiarazione dell'origine di più saldi è un gesto solo.
+        $gesto = Gesto::su('contabilita', 'saldo', null, 'Saldi iniziali')->nelCondominio($condominio)
+            ->riepilogo('Origine del pregresso dichiarata su ' . count($ids) . (count($ids) === 1 ? ' saldo' : ' saldi'))
+            ->lotto(['saldi' => array_values(array_map('intval', array_slice($ids, 0, 500)))]);
+        RegistroModifiche::durante($gesto, function () use ($ids, $dichiarata, $request) {
             Saldo::query()->whereIn('id', $ids)->update([
                 'origine_dichiarata'    => $dichiarata,
                 'esercizio_origine_id'  => $dichiarata === OriginePregresso::ESERCIZIO ? (int) $request->validated('esercizio_origine_id') : null,

@@ -11,9 +11,47 @@ use Illuminate\Validation\Rule;
 
 class CreatePianoRateRequest extends FormRequest
 {
+    /**
+     * «Urgenza» dalla scheda «Dalle voci del preventivo» di una gestione straordinaria (Coda 688): si accetta, con il motivo e **il giorno dei lavori**
+     * («Lavori ordinati il …», `giorno_dei_lavori`), che decide chi paga. Con `false` la scelta si rifiuta con {@see URGENZA_SOLO_DALLE_FATTURE}, com'era
+     * prima della Coda 688. Il giorno si chiede anche sulla scheda delle fatture, dove la fattura senza periodo lo prende dal piano.
+     */
+    public const URGENZA_DALLE_VOCI = true;
+
+    public const URGENZA_SOLO_DALLE_FATTURE = 'Con l\'urgenza il piano si fa dalla scheda delle fatture.';
+
+    /** La delibera scelta con «Scegli la delibera», risolta nel condominio dell'indirizzo (R18 del progetto delle assemblee); `null` senza. */
+    private ?\App\Models\Assemblee\Delibera $delibera = null;
+
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * «Scegli la delibera» nello Scudo legale (§1.4 del progetto delle assemblee, decisione 502): con una delibera scelta, «Deliberata il» viene dalla
+     * riunione, non da un campo scritto a mano. La delibera è del condominio dell'indirizzo, o la richiesta è un 404 (R18). Con «Urgenza» la delibera non
+     * c'è: non si legge. Il server accetta ancora la data scritta senza delibera (le importazioni e le prove la usano): la pagina la manda solo con la
+     * delibera.
+     */
+    protected function prepareForValidation(): void
+    {
+        if (! $this->filled('delibera_id') || $this->input('tipo_autorizzazione') === 'urgenza' || ! ctype_digit((string) $this->input('delibera_id'))) {
+            return;
+        }
+        // Il permesso prima di tutto: chi non gestisce le assemblee riceve 403, non gli errori del modulo né un 404 sulla delibera.
+        \Illuminate\Support\Facades\Gate::allowIf(\App\Services\Assemblee\AccessoAlleAssemblee::gestisce($this->user()), __('errors.403_message'));
+        $condominio = \App\Models\Condominio::query()->findOrFail($this->idDelCondominio());
+        /** @var \App\Models\Assemblee\Delibera $delibera */
+        $delibera = \App\Services\Assemblee\SchedaDelCondominio::risolvi($condominio, 'delibera', (int) $this->input('delibera_id'));
+        $this->delibera = $delibera;
+        $this->merge(['data_delibera_assemblea' => $delibera->deliberata_il?->format('Y-m-d')]);
+    }
+
+    /** La delibera scelta, già risolta nel condominio; `null` senza, o con «Urgenza». */
+    public function delibera(): ?\App\Models\Assemblee\Delibera
+    {
+        return $this->delibera;
     }
 
     /** La natura della gestione scelta: `gestioni.tipo`, non `piani_rate.tipo` (decisione 11). */
@@ -29,9 +67,15 @@ class CreatePianoRateRequest extends FormRequest
     {
         // Coda 686 (b): ogni messaggio in parole semplici, senza il nome tecnico di un campo (`ParoleDelPiano`); qui quelli che dipendono dalla richiesta.
         return array_merge(ParoleDelPiano::messaggi(), [
-            // La coda su «Urgenza» solo dove quella scelta esiste a video: il carrello del piano straordinario (verifica S6, R4).
+            // La coda su «Urgenza» solo dove quella scelta esiste a video: il carrello del piano straordinario (verifica S6, R4), e dalla Coda 688 il riquadro
+            // «La delibera, o l'urgenza» delle due schede, con il giorno dei lavori.
             'data_delibera_assemblea.required' => 'Indica la data della delibera dell\'assemblea: su una gestione straordinaria è il giorno che decide chi paga (art. 63 disp. att. c.c.).'
-                . ($this->input('tipo') === 'straordinario' ? ' Con un intervento d\'urgenza scegli «Urgenza» e dichiara la competenza sulla fattura.' : ''),
+                . ($this->input('tipo') === 'straordinario' || self::URGENZA_DALLE_VOCI ? ' Con un intervento d\'urgenza scegli «Urgenza» e scrivi il giorno dei lavori.' : ''),
+            // Coda 688: il giorno dei lavori urgenti, sulle due schede, che decide chi paga.
+            'giorno_dei_lavori.required' => 'Scrivi il giorno dei lavori urgenti: decide chi paga, chi era titolare dell\'unità quel giorno.',
+            'giorno_dei_lavori.date_format' => 'Scegli il giorno dei lavori urgenti.',
+            // Con la delibera scelta la motivazione è una nota facoltativa; senza, o con «Urgenza», resta obbligatoria come prima.
+            'motivazione_autorizzazione.required' => ParoleDelPiano::messaggi()['motivazione_autorizzazione.required_if'],
             'competenze_capitoli.*.tratti.*.dal.required' => 'Ogni tratto di competenza vuole la data di inizio.',
             'competenze_capitoli.*.tratti.*.al.required' => 'Ogni tratto di competenza vuole la data di fine.',
         ]);
@@ -298,12 +342,31 @@ class CreatePianoRateRequest extends FormRequest
             'fatture_config.*.importo' => ['required_with:fatture_config'],
             
             // Scudo Legale (Obbligatorio per Art. 1135 c.c. se straordinario)
-            'tipo_autorizzazione'        => ['nullable', 'required_if:tipo,straordinario', 'in:delibera,urgenza'],
-            'motivazione_autorizzazione' => ['nullable', 'required_if:tipo,straordinario', 'string', 'min:5'],
+            'tipo_autorizzazione'        => ['nullable', 'required_if:tipo,straordinario', 'in:delibera,urgenza',
+                // Coda 688: «Urgenza» dalla scheda delle voci di una gestione straordinaria salvava un piano che poi non si generava (chiedeva la data
+                // della delibera che con l'urgenza non si scrive). Finché i periodi per voce non ci sono, la scelta si rifiuta con la frase che dice dove si fa.
+                function (string $campo, mixed $valore, \Closure $fail): void {
+                    if ($valore === 'urgenza' && ! self::URGENZA_DALLE_VOCI && $this->input('tipo') !== 'straordinario' && $this->gestioneStraordinaria()) {
+                        $fail(self::URGENZA_SOLO_DALLE_FATTURE);
+                    }
+                },
+            ],
+            // Con «Delibera assembleare» e la delibera scelta la motivazione diventa la nota facoltativa del piano; con «Urgenza» è il motivo dell'urgenza,
+            // su ogni scheda di una gestione straordinaria, e senza una delibera scelta resta come prima (il server accetta ancora gli estremi scritti a mano).
+            'motivazione_autorizzazione' => ['nullable', Rule::requiredIf(fn () => ($this->input('tipo') === 'straordinario'
+                && ($this->input('tipo_autorizzazione') === 'urgenza' || ! $this->filled('delibera_id')))
+                || ($this->input('tipo_autorizzazione') === 'urgenza' && $this->gestioneStraordinaria())), 'string', 'min:5'],
+            // La delibera scelta con «Scegli la delibera»: un id del condominio (la risolve `prepareForValidation`, R18).
+            'delibera_id' => ['nullable', 'integer'],
+            // Coda 688: «Lavori ordinati il …», obbligatorio con «Urgenza» su una gestione straordinaria, sulle due schede: sulle fatture la fattura senza
+            // periodo prende questo giorno, quella con il suo periodo tiene il suo. Un giorno solo, non un periodo: chi era titolare quel giorno paga tutto.
+            // Non deve stare dentro l'esercizio: i lavori del 28/12 si mettono a rate l'anno dopo. Sulla gestione ordinaria non si chiede e non si scrive.
+            'giorno_dei_lavori' => ['nullable', 'date_format:Y-m-d', Rule::requiredIf(fn () => $this->input('tipo_autorizzazione') === 'urgenza'
+                && ($this->input('tipo') === 'straordinario' || self::URGENZA_DALLE_VOCI) && $this->gestioneStraordinaria())],
             // B2 (decisione 12): la data della delibera è **obbligatoria, senza default**, quando la GESTIONE è
             // straordinaria (è la natura che decide, decisione 11 — non `tipo`) e l'autorizzazione non è
             // l'urgenza: è il giorno che fa la competenza dello straordinario (Cass. 24654/2010) e il motore
-            // senza si ferma. Con `urgenza` la competenza va dichiarata sulla fattura. Facoltativa altrove.
+            // senza si ferma. Con `urgenza` decide il giorno dei lavori (Coda 688), o il periodo della fattura. Facoltativa altrove.
             'data_delibera_assemblea'    => ['nullable', 'date', Rule::requiredIf(fn () => $this->gestioneStraordinaria() && $this->input('tipo_autorizzazione') !== 'urgenza')],
             // --- [FINE FIX BIVIO] ---
 

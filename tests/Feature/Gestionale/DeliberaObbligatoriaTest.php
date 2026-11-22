@@ -6,7 +6,7 @@
 /**
  * B2 (1.11.0-beta.31), S6 — la data della delibera nasce con il piano, obbligatoria e senza default quando
  * la GESTIONE è straordinaria (decisioni 11 e 12): è il giorno che fa la competenza dello straordinario, e il
- * motore senza si ferma. Con «Urgenza» non si chiede (la competenza va sulla fattura). Tornare in bozza non la
+ * motore senza si ferma. Con «Urgenza» non si chiede: si chiede il giorno dei lavori (Coda 688). Tornare in bozza non la
  * cancella più: è un fatto dell'assemblea, non del programma.
  */
 
@@ -81,13 +81,16 @@ it('su una gestione straordinaria con delibera la data è obbligatoria (422 senz
     expect($piano->data_delibera_assemblea->toDateString())->toBe('2026-02-12')->and($piano->stato)->toBe(StatoPianoRate::APPROVATO);
 });
 
-it('con «urgenza» la data non si chiede: la competenza va sulla fattura', function () {
+it('con «urgenza» la data non si chiede: dalla Coda 688 si chiede il giorno dei lavori, anche sulla scheda delle fatture', function () {
     $g = doGestione($this->condominio, $this->esercizio, 'straordinaria');
     $f = doFattura($this->condominio, $this->esercizio);
+    $rotta = route('admin.gestionale.esercizi.piani-rate.store', [$this->condominio, $this->esercizio]);
 
-    $r = $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store', [$this->condominio, $this->esercizio]), doCorpo($g, $f, ['tipo_autorizzazione' => 'urgenza']));
+    $this->actingAs($this->user)->postJson($rotta, doCorpo($g, $f, ['tipo_autorizzazione' => 'urgenza']))->assertUnprocessable()
+        ->assertJsonValidationErrors('giorno_dei_lavori')->assertJsonMissingValidationErrors('data_delibera_assemblea');
+    $r = $this->actingAs($this->user)->post($rotta, doCorpo($g, $f, ['tipo_autorizzazione' => 'urgenza', 'giorno_dei_lavori' => '2026-02-20']));
     $r->assertRedirect();
-    expect(PianoRate::sole()->data_delibera_assemblea)->toBeNull();
+    expect(PianoRate::sole()->data_delibera_assemblea)->toBeNull()->and(PianoRate::sole()->giorno_dei_lavori->toDateString())->toBe('2026-02-20');
 });
 
 it('su una gestione ORDINARIA la data non è obbligatoria (decisione 11: la natura è della gestione, non del tipo del piano), ma se c\'è si scrive', function () {
@@ -115,13 +118,15 @@ it('verifica S6, R2 — con «urgenza» una data della delibera arrivata nel for
     $g = doGestione($this->condominio, $this->esercizio, 'straordinaria');
     $f = doFattura($this->condominio, $this->esercizio);
 
-    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store', [$this->condominio, $this->esercizio]), doCorpo($g, $f, ['tipo_autorizzazione' => 'urgenza', 'data_delibera_assemblea' => '2026-02-12']))->assertRedirect();
+    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store', [$this->condominio, $this->esercizio]), doCorpo($g, $f, ['tipo_autorizzazione' => 'urgenza', 'data_delibera_assemblea' => '2026-02-12', 'giorno_dei_lavori' => '2026-02-20']))->assertRedirect();
     $piano = PianoRate::sole();
+    // Dalla Coda 688 il motore ha il giorno dei lavori, mai la data della delibera nascosta.
+    $esito = app(\App\Services\Riparto\CompetenzaDelPiano::class)->perPiano($piano, $this->esercizio);
     expect($piano->tipo_autorizzazione)->toBe('urgenza')->and($piano->data_delibera_assemblea)->toBeNull()
-        ->and(app(\App\Services\Riparto\CompetenzaDelPiano::class)->perPiano($piano, $this->esercizio)->richiedeDelibera)->toBeTrue();
+        ->and($esito->richiedeDelibera)->toBeFalse()->and($esito->periodi->toArray())->toBe([['dal' => '2026-02-20', 'al' => '2026-02-20']]);
 });
 
-it('verifica S6, R4/R6 — su un piano tipo=ordinario aperto su una gestione straordinaria la data è obbligatoria, e il messaggio non manda a cercare «Urgenza» (che lì non c\'è)', function () {
+it('verifica S6, R4/R6 — su un piano tipo=ordinario aperto su una gestione straordinaria la data è obbligatoria; dalla Coda 688 il messaggio dice «Urgenza» con il giorno dei lavori, che lì c\'è', function () {
     $g = doGestione($this->condominio, $this->esercizio, 'straordinaria');
     $conto = \App\Models\Gestionale\Conto::create(['piano_conto_id' => DB::table('piani_conti')->where('gestione_id', $g->id)->value('id'), 'nome' => 'Facciata', 'tipo' => 'spesa', 'natura_spesa' => 'straordinaria', 'importo' => 500000]);
     $rotta = route('admin.gestionale.esercizi.piani-rate.store', [$this->condominio, $this->esercizio]);
@@ -130,7 +135,8 @@ it('verifica S6, R4/R6 — su un piano tipo=ordinario aperto su una gestione str
 
     $r = $this->actingAs($this->user)->postJson($rotta, $corpo);
     $r->assertUnprocessable()->assertJsonValidationErrors('data_delibera_assemblea');
-    expect($r->json('errors.data_delibera_assemblea.0'))->toContain('giorno che decide chi paga')->not->toContain('Urgenza');
+    expect($r->json('errors.data_delibera_assemblea.0'))->toContain('giorno che decide chi paga')
+        ->toContain('Con un intervento d\'urgenza scegli «Urgenza» e scrivi il giorno dei lavori.')->not->toContain('sulla fattura');
 
     $this->actingAs($this->user)->post($rotta, array_merge($corpo, ['data_delibera_assemblea' => '2026-02-12']))->assertRedirect();
     expect(PianoRate::sole()->data_delibera_assemblea->toDateString())->toBe('2026-02-12');

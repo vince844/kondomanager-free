@@ -4,463 +4,124 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup lang="ts">
+/**
+ * «Configurazione email»: l'elenco delle caselle dello studio (decisione 572, bozza approvata `design/impostazioni_posta_pec_bozza.html`). In alto le tre
+ * card (la posta, la PEC, gli invii del mese con «Apri lo storico»); sotto una riga per casella, «La posta dello studio» e «La casella PEC dello studio»,
+ * ognuna con il suo stato, «Serve per», la riga «Adesso», il suo «Salva» e il suo «Prova l'invio». Una sola «Guida», con il cassetto, e «Storia».
+ *
+ * Le caselle in più si aggiungeranno nello stesso elenco (proposta 3); oggi non c'è un pulsante «Aggiungi». La vede e la cambia solo l'amministratore.
+ * Sotto le caselle, «I promemoria per email»: «Promemoria per email delle convocazioni da spedire», che si cambia da solo, al clic.
+ */
+import { computed, nextTick, onMounted, ref } from 'vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
+import { Mail, MailCheck, Send } from 'lucide-vue-next';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { computed, ref } from 'vue';
-import { Head, useForm, usePage } from '@inertiajs/vue3';
-import { Mail, Send, Save, ShieldCheck, AlertCircle, Eye, EyeOff, Loader2, Server, Terminal, CheckCircle2, Globe, AlertTriangle } from 'lucide-vue-next';
-import { Button } from '@/components/ui/button';
 import Alert from '@/components/Alert.vue';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import InputError from '@/components/InputError.vue';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import MailSetupGuide from '@/components/guides/MailSetupGuide.vue';
-import { trans } from 'laravel-vue-i18n';
-import axios from 'axios';
-import { confermaPoiRiprova } from '@/composables/useConfermaPassword';
-
-const page = usePage();
-const flashMessage = computed(() => (page.props as any).flash?.message);
-const showGuide = ref(false);
-
-interface MailSettings {
-    mail_enabled?: boolean;
-    mail_driver?: string;
-    mail_host?: string;
-    mail_port?: string | number;
-    mail_username?: string;
-    mail_encryption?: string;
-    mail_from_address?: string;
-    mail_from_name?: string;
-}
+import CasellaDellaPosta from '@/components/impostazioni/caselle/CasellaDellaPosta.vue';
+import CasellaPecDelloStudio from '@/components/impostazioni/caselle/CasellaPecDelloStudio.vue';
+import PromemoriaDelleConvocazioni from '@/components/impostazioni/caselle/PromemoriaDelleConvocazioni.vue';
+import { classiValore } from '@/components/impostazioni/caselle/aiuti';
+import type { CasellaDellaPosta as Posta, CasellaPecDelloStudio as Pec, ImpostazioniDellaPosta, InviiDelMese,
+    PromemoriaDelleConvocazioni as Promemoria } from '@/components/impostazioni/caselle/tipi';
 
 const props = defineProps<{
-    settings: MailSettings;
-    mail_host_env?: string;
+    settings: ImpostazioniDellaPosta;
+    mail_host_env?: string | null;
     password_set?: boolean;
+    caselle: { posta: Posta; pec: Pec };
+    invii: InviiDelMese;
+    /** «Prima imposta la casella PEC dello studio» porta qui con la PEC aperta. */
+    apri?: 'posta' | 'pec' | null;
+    /** «Promemoria per email delle convocazioni da spedire», sotto le caselle. */
+    promemoria?: Promemoria | null;
 }>();
 
-const form = useForm({
-    mail_enabled:     props.settings?.mail_enabled ?? false,
-    mail_driver:      props.settings?.mail_driver ?? 'smtp',
-    mail_host:        props.settings?.mail_host ?? '',
-    mail_port:        props.settings?.mail_port ?? '',
-    mail_username:    props.settings?.mail_username ?? '',
-    mail_password:    '',
-    mail_encryption:  props.settings?.mail_encryption ?? 'tls',
-    mail_from_address: props.settings?.mail_from_address ?? '',
-    mail_from_name:   props.settings?.mail_from_name ?? '',
-});
+const page = usePage();
+const flashMessage = computed(() => (page.props as { flash?: { message?: { message: string; type: string } } }).flash?.message);
+const emailDiChiEntra = computed(() => (page.props as { auth?: { user?: { email?: string } } }).auth?.user?.email ?? '');
 
-const showPassword   = ref(false);
-const isTesting      = ref(false);
-const testEmail      = ref('');
-const testStatus     = ref<'success' | 'error' | null>(null);
-const errorMessage   = ref('');
-// Coda 121: sotto il motivo della prova fallita, quando la connessione è stata rifiutata, la frase che il server manda a parte (`suggerimento`).
-const errorHint      = ref('');
+const guidaAperta = ref(false);
+const postaAperta = ref(props.apri === 'posta');
+const pecAperta = ref(props.apri === 'pec');
 
 const breadcrumbs = computed(() => [
-    {
-        title: trans('impostazioni.label.settings'),
-        href: '/impostazioni',
-    },
-    {
-        title: trans('impostazioni.header.mail_settings_title'),
-        href: '/impostazioni/mail',
-    },
+    { title: trans('impostazioni.label.settings'), href: '/impostazioni' },
+    { title: trans('impostazioni.header.mail_settings_title'), href: '/impostazioni/mail' },
 ]);
 
-const pageGuides = computed(() => [
-    {
-        title: 'Posta in Uscita',
-        description: 'Configura il server per l\'invio delle notifiche e delle ricevute di pagamento ai condòmini.',
-        icon: Mail,
-        colorVariant: 'blue' as const,
-    },
-    {
-        title: 'Driver SMTP',
-        description: 'Consigliato per la massima affidabilità. Usa il tuo gestore mail (Gmail, Outlook, Aruba, SMTP2GO).',
-        icon: Server,
-        colorVariant: 'emerald' as const,
-    },
-    {
-        title: 'Driver Sendmail',
-        description: 'Utilizza il servizio di posta nativo del server di hosting. Più semplice ma soggetto a filtri antispam.',
-        icon: Terminal,
-        colorVariant: 'amber' as const,
-    },
-]);
-
-// ─── Driver options ───────────────────────────────────────────────────────────
-const drivers = computed(() => [
-    {
-        value: 'smtp',
-        label: 'SMTP',
-        description: trans('impostazioni.driver.smtp_description'),
-        icon: Server,
-    },
-    {
-        value: 'sendmail',
-        label: 'Sendmail',
-        description: trans('impostazioni.driver.sendmail_description'),
-        icon: Terminal,
-    },
-]);
-
-// ─── Computed ────────────────────────────────────────────────────────────────
-const isSmtp     = computed(() => form.mail_driver === 'smtp');
-const isSendmail = computed(() => form.mail_driver === 'sendmail');
-
-const passwordPlaceholder = computed(() =>
-    props.password_set
-        ? trans('impostazioni.placeholder.mail_password_keep')
-        : trans('impostazioni.placeholder.mail_password_enter')
-);
-
-const mailStatus = computed(() => {
-    if (form.mail_enabled) {
-        const colors: Record<string, string> = {
-            smtp:     'text-emerald-700 bg-emerald-100 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300',
-            sendmail: 'text-amber-700 bg-amber-100 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300',
-        };
-        return {
-            label: form.mail_driver.charAt(0).toUpperCase() + form.mail_driver.slice(1),
-            color: colors[form.mail_driver] ?? colors.smtp,
-        };
+onMounted(async () => {
+    if (props.apri === 'pec') {
+        await nextTick();
+        document.getElementById('casella-pec')?.scrollIntoView?.({ block: 'start' });
     }
-    if (props.mail_host_env && !['127.0.0.1', 'localhost'].includes(props.mail_host_env)) {
-        return { label: trans('impostazioni.mail_status.env'), color: 'text-blue-700 bg-blue-100 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300' };
-    }
-    return { label: trans('impostazioni.mail_status.log'), color: 'text-slate-600 bg-slate-100 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400' };
 });
-
-// ─── Actions ─────────────────────────────────────────────────────────────────
-const submit = () => {
-    form.post(route('admin.settings.mail.update'), {
-        preserveScroll: true,
-        onSuccess: () => form.reset('mail_password'),
-    });
-};
-
-const runTest = async () => {
-    if (!testEmail.value) return;
-
-    // Il corpo si compone una volta: la prova rifatta dopo la conferma della password manda gli stessi dati.
-    await inviaProva({
-        ...form.data(),
-        test_email: testEmail.value,
-    });
-};
-
-const inviaProva = async (corpo: Record<string, unknown>) => {
-    isTesting.value  = true;
-    testStatus.value = null;
-    errorMessage.value = '';
-
-    try {
-        const response = await axios.post(route('admin.settings.mail.test'), corpo);
-        if (response.data.success) testStatus.value = 'success';
-    } catch (error: any) {
-        // La password va ridigitata (Coda 404): la finestra si apre su questa pagina e la prova riparte da sola.
-        if (confermaPoiRiprova(error.response?.status, () => inviaProva(corpo))) return;
-        testStatus.value   = 'error';
-        // Sei prove al minuto (Coda 311): il 429 del limite non ha un messaggio nella lingua della pagina.
-        errorMessage.value = error.response?.status === 429
-            ? trans('impostazioni.error_test_mail_too_many')
-            : error.response?.data?.message || 'Errore di connessione';
-        errorHint.value = error.response?.data?.suggerimento || '';
-    } finally {
-        isTesting.value = false;
-    }
-};
 </script>
 
 <template>
     <AppLayout :breadcrumbs="[]">
         <Head :title="trans('impostazioni.header.mail_settings_title')" />
 
-        <div class="px-4 py-6 space-y-6">
-
-            <!-- Header con guida e breadcrumbs integrati -->
+        <div class="space-y-5 px-4 py-6">
             <PageHeaderGuide
+                :storia="{ tipo: 'impostazioni_posta' }"
                 :page-title="trans('impostazioni.header.mail_settings_title')"
                 :page-subtitle="trans('impostazioni.header.mail_settings_description')"
-                :icon="Mail"
-                :guides="pageGuides"
+                :guides="[]"
                 :breadcrumbs="breadcrumbs"
                 back-url="/impostazioni"
                 :back-text="trans('impostazioni.label.settings')"
-            >
-                <template #actions>
-                    <Button variant="outline" size="sm" @click="showGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200 shadow-sm">
-                        <Mail class="w-4 h-4" />
-                        Guida configurazione
-                    </Button>
-                </template>
-            </PageHeaderGuide>
+                has-text-guide
+                text-guide-title="Guida"
+                una-fila
+                @open-text-guide="guidaAperta = true"
+            />
 
             <div v-if="flashMessage">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />
             </div>
 
-            <form @submit.prevent="submit">
-                <Card class="border shadow-none">
-                    <!-- Status Bar -->
-                    <div class="px-6 pt-6 pb-2">
-                        <div class="flex items-center gap-3 bg-muted/30 px-3 py-2 rounded-md border w-fit">
-                            <div class="relative flex h-3 w-3">
-                                <span v-if="form.mail_enabled" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span class="relative inline-flex rounded-full h-3 w-3" :class="form.mail_enabled ? 'bg-emerald-500' : 'bg-slate-400'"></span>
-                            </div>
-                            <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Stato Servizio:</span>
-                            <span :class="['px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md', mailStatus.color]">
-                                {{ mailStatus.label }}
-                            </span>
-                        </div>
-                    </div>
+            <!-- Le tre card: la posta, la PEC, gli invii del mese (proposta 12). -->
+            <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+                <div class="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-slate-950" data-testid="card-posta">
+                    <p class="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400"><Mail class="h-3.5 w-3.5" /> La posta dello studio</p>
+                    <p class="mt-1 text-lg font-bold md:text-xl" :class="classiValore(caselle.posta.stato)">{{ caselle.posta.card.valore }}</p>
+                    <p class="mt-0.5 text-xs text-slate-500 [overflow-wrap:anywhere] dark:text-slate-400">{{ caselle.posta.card.sotto }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-slate-950" data-testid="card-pec">
+                    <p class="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400"><MailCheck class="h-3.5 w-3.5" /> La casella PEC</p>
+                    <p class="mt-1 text-lg font-bold md:text-xl" :class="classiValore(caselle.pec.stato)">{{ caselle.pec.card.valore }}</p>
+                    <p class="mt-0.5 text-xs text-slate-500 [overflow-wrap:anywhere] dark:text-slate-400">{{ caselle.pec.card.sotto }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-slate-950" data-testid="card-invii">
+                    <p class="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400"><Send class="h-3.5 w-3.5" /> {{ invii.titolo }}</p>
+                    <p class="mt-1 text-lg font-bold tabular-nums text-slate-900 md:text-xl dark:text-slate-100">{{ invii.valore }}</p>
+                    <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        {{ invii.sotto }} ·
+                        <Link :href="invii.url" class="text-slate-700 underline underline-offset-2 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white">Apri lo storico</Link>
+                    </p>
+                </div>
+            </div>
 
-                    <CardContent class="space-y-6 pt-4">
+            <!-- L'elenco delle caselle (proposte 1, 2 e 3). -->
+            <div class="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950" data-testid="elenco-caselle">
+                <div class="border-b border-slate-100 px-4 py-3.5 sm:px-5 dark:border-slate-800">
+                    <h3 class="text-[15px] font-semibold text-slate-900 dark:text-slate-100">Le caselle dello studio</h3>
+                    <p class="mt-0.5 text-sm text-slate-500 dark:text-slate-400">Il programma usa da solo quella giusta per ogni invio. Si impostano una volta; le password
+                        restano cifrate e non si rileggono.</p>
+                </div>
+                <CasellaDellaPosta v-model:aperta="postaAperta" :settings="settings" :password-set="password_set" :casella="caselle.posta"
+                    :destinatario-di-serie="emailDiChiEntra" />
+                <div class="border-t border-slate-100 dark:border-slate-800">
+                    <CasellaPecDelloStudio v-model:aperta="pecAperta" :casella="caselle.pec" />
+                </div>
+            </div>
 
-                        <!-- Toggle abilitazione -->
-                        <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4 bg-background shadow-sm">
-                            <div class="flex-1">
-                                <Label class="block text-sm font-medium leading-none mb-1">
-                                    {{ trans('impostazioni.label.enable_db_settings') }}
-                                </Label>
-                                <p class="text-sm text-muted-foreground">
-                                    {{ trans('impostazioni.label.enable_db_description') }}
-                                </p>
-                            </div>
-                            <Switch v-model="form.mail_enabled" />
-                        </div>
-
-                        <!-- Sezione configurazione (visibile solo se abilitato) -->
-                        <div v-if="form.mail_enabled" class="space-y-6 animate-in slide-in-from-top-2 duration-300">
-
-                            <!-- Selezione driver -->
-                            <div>
-                                <Label class="block text-sm font-medium mb-3">
-                                    {{ trans('impostazioni.label.mail_driver') }}
-                                </Label>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <button
-                                        v-for="d in drivers"
-                                        :key="d.value"
-                                        type="button"
-                                        @click="form.mail_driver = d.value"
-                                        :class="[
-                                            'flex items-start gap-3 rounded-lg border p-3 text-left transition-all',
-                                            form.mail_driver === d.value
-                                                ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                                                : 'border-input bg-background hover:bg-muted/50'
-                                        ]"
-                                    >
-                                        <component :is="d.icon" class="w-4 h-4 mt-0.5 shrink-0"
-                                            :class="form.mail_driver === d.value ? 'text-primary' : 'text-muted-foreground'" />
-                                        <div>
-                                            <p class="text-sm font-semibold leading-none mb-1"
-                                                :class="form.mail_driver === d.value ? 'text-primary' : 'text-foreground'">
-                                                {{ d.label }}
-                                            </p>
-                                            <p class="text-xs text-muted-foreground leading-snug">
-                                                {{ d.description }}
-                                            </p>
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Campi SMTP -->
-                            <div v-if="isSmtp" class="space-y-4 animate-in slide-in-from-top-1 duration-200">
-                                <!-- Card Guida SMTP -->
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-2">
-                                    <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-white shadow-sm flex items-start gap-3">
-                                        <div class="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
-                                            <CheckCircle2 class="w-5 h-5" />
-                                        </div>
-                                        <div class="space-y-1">
-                                            <h4 class="font-bold text-sm text-white flex items-center gap-2">
-                                                Gmail <span class="text-[9px] uppercase font-black tracking-widest px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Consigliato per tutti</span>
-                                            </h4>
-                                            <p class="text-xs text-slate-300 leading-relaxed">
-                                                Attiva la verifica in 2 passaggi, genera una <strong>"Password per le App"</strong> e usa <code class="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">smtp.gmail.com</code>, porta <code class="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded">587</code>, TLS. Funziona su qualsiasi hosting senza configurazioni DNS.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-white shadow-sm flex items-start gap-3">
-                                        <div class="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 shrink-0">
-                                            <Globe class="w-5 h-5" />
-                                        </div>
-                                        <div class="space-y-1">
-                                            <h4 class="font-bold text-sm text-white">
-                                                Altri provider SMTP (Brevo, SMTP2Go, ecc.)
-                                            </h4>
-                                            <p class="text-xs text-slate-300 leading-relaxed">
-                                                Richiedono la verifica del dominio mittente tramite record DNS (SPF/DKIM). Usa questa opzione solo se hai un dominio proprio con accesso al pannello DNS.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                    <div class="sm:col-span-2">
-                                        <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_host') }}</Label>
-                                        <Input v-model="form.mail_host" type="text"
-                                            :placeholder="trans('impostazioni.placeholder.mail_host')"
-                                            class="w-full text-sm" />
-                                        <InputError :message="form.errors.mail_host" />
-                                    </div>
-                                    <div>
-                                        <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_port') }}</Label>
-                                        <Input v-model="form.mail_port" placeholder="587" class="w-full text-sm" />
-                                        <InputError :message="form.errors.mail_port" />
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_username') }}</Label>
-                                        <Input v-model="form.mail_username" type="text" class="w-full text-sm" />
-                                    </div>
-                                    <div>
-                                        <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_password') }}</Label>
-                                        <div class="relative">
-                                            <Input v-model="form.mail_password"
-                                                :type="showPassword ? 'text' : 'password'"
-                                                class="w-full text-sm pr-10"
-                                                :placeholder="passwordPlaceholder" />
-                                            <button type="button" @click="showPassword = !showPassword"
-                                                class="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground">
-                                                <Eye v-if="!showPassword" class="h-4 w-4" />
-                                                <EyeOff v-else class="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                        <InputError :message="form.errors.mail_password" />
-                                        <p v-if="password_set && !form.mail_password"
-                                            class="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
-                                            <ShieldCheck class="w-3 h-3" />
-                                            {{ trans('impostazioni.label.password_is_set') }}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t pt-4">
-                                    <div>
-                                        <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_encryption') }}</Label>
-                                        <select v-model="form.mail_encryption"
-                                            class="w-full text-sm bg-background border border-input rounded-md px-3 py-2 h-[38px] focus:ring-2 focus:ring-ring focus:outline-none">
-                                            <option value="tls">TLS</option>
-                                            <option value="ssl">SSL</option>
-                                            <option value="null">{{ trans('impostazioni.label.encryption_none') }}</option>
-                                        </select>
-                                    </div>
-                                    <div class="sm:col-span-2">
-                                        <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_from_address') }}</Label>
-                                        <Input v-model="form.mail_from_address" type="email"
-                                            :placeholder="trans('impostazioni.placeholder.mail_from_address')"
-                                            class="w-full text-sm" />
-                                        <InputError :message="form.errors.mail_from_address" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Campi Sendmail -->
-                            <div v-if="isSendmail" class="space-y-4 animate-in slide-in-from-top-1 duration-200">
-                                <!-- Card Guida Sendmail -->
-                                <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-white shadow-sm flex items-start gap-3 my-2">
-                                    <div class="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
-                                        <AlertTriangle class="w-5 h-5" />
-                                    </div>
-                                    <div class="space-y-1">
-                                        <h4 class="font-bold text-sm text-white flex items-center gap-2">
-                                            Sendmail <span class="text-[9px] uppercase font-black tracking-widest px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">Solo server dedicati</span>
-                                        </h4>
-                                        <p class="text-xs text-slate-300 leading-relaxed">
-                                            Usa questa opzione <strong>SOLO</strong> se il tuo server è un VPS o server dedicato con Postfix/Exim installato e i record SPF e DKIM configurati nel DNS del dominio mittente. Su hosting condivisi (Altervista, Aruba, ecc.) le email verranno rifiutate dai destinatari perché i provider moderni (Gmail, Outlook) richiedono l'autenticazione DNS. Per hosting condivisi usa Gmail SMTP.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div class="border-t pt-4">
-                                    <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_from_address') }}</Label>
-                                    <Input v-model="form.mail_from_address" type="email"
-                                        :placeholder="trans('impostazioni.placeholder.mail_from_address')"
-                                        class="w-full text-sm" />
-                                    <InputError :message="form.errors.mail_from_address" />
-                                </div>
-                            </div>
-
-                            <!-- from_name: comune a tutti i driver -->
-                            <div>
-                                <Label class="block text-sm font-medium mb-1.5">{{ trans('impostazioni.label.mail_from_name') }}</Label>
-                                <Input v-model="form.mail_from_name" type="text"
-                                    placeholder="KondoManager" class="w-full text-sm" />
-                            </div>
-
-                        </div>
-
-                        <!-- Sezione test -->
-                        <div v-if="form.mail_enabled" class="border-t pt-5 mt-6 animate-in fade-in duration-500">
-
-                            <!-- Avviso modifiche non salvate -->
-                            <div v-if="form.isDirty"
-                                class="mb-5 p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200 rounded-lg text-sm flex items-center gap-2.5 border border-amber-200 dark:border-amber-800 shadow-sm">
-                                <AlertCircle class="w-4 h-4 shrink-0 text-amber-600" />
-                                <span>{{ trans('impostazioni.dialogs.test_unsaved_warning') }}</span>
-                            </div>
-
-                            <h3 class="text-sm font-semibold mb-4 flex items-center gap-2">
-                                <Send class="w-4 h-4 text-primary" />
-                                {{ trans('impostazioni.dialogs.test_header') }}
-                            </h3>
-                            <div class="flex flex-col sm:flex-row gap-3">
-                                <Input v-model="testEmail" type="email"
-                                    :placeholder="trans('impostazioni.placeholder.test_recipient')"
-                                    class="flex-1 text-sm" />
-                                <Button type="button" variant="outline" @click="runTest"
-                                    :disabled="isTesting || !testEmail" class="gap-2 shrink-0">
-                                    <Loader2 v-if="isTesting" class="w-4 h-4 animate-spin" />
-                                    <ShieldCheck v-else class="w-4 h-4" />
-                                    {{ trans('impostazioni.label.send_test') }}
-                                </Button>
-                            </div>
-
-                            <div v-if="testStatus === 'success'"
-                                class="mt-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300 rounded-md text-sm flex items-center gap-2 border border-emerald-200">
-                                <ShieldCheck class="w-4 h-4 text-emerald-600" />
-                                {{ trans('impostazioni.dialogs.test_success_message') }}
-                            </div>
-                            <div v-if="testStatus === 'error'"
-                                class="mt-4 p-3 bg-rose-50 dark:bg-rose-900/20 text-rose-800 dark:text-rose-300 rounded-md text-sm border border-rose-200">
-                                <p class="font-bold flex items-center gap-2 mb-1">
-                                    <AlertCircle class="w-4 h-4 text-rose-600" />
-                                    {{ trans('impostazioni.dialogs.test_error_title') }}
-                                </p>
-                                <p class="text-xs opacity-80">{{ errorMessage }}</p>
-                                <p v-if="errorHint" data-suggerimento-prova class="mt-2 text-xs">{{ errorHint }}</p>
-                            </div>
-                        </div>
-
-                    </CardContent>
-
-                    <CardFooter class="flex flex-col sm:flex-row items-center justify-between gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50 mt-6">
-                        <span class="text-xs text-muted-foreground">
-                            Verifica la connessione inviando un'email di prova prima di salvare.
-                        </span>
-                        <Button type="submit" :disabled="form.processing" class="w-full sm:w-auto gap-2">
-                            <Save class="w-4 h-4" />
-                            {{ trans('impostazioni.label.save_settings') }}
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </form>
+            <PromemoriaDelleConvocazioni v-if="promemoria" :promemoria="promemoria" />
         </div>
 
-        <!-- Sheet Guida Dettagliata -->
-        <MailSetupGuide v-model:open="showGuide" />
+        <MailSetupGuide v-model:open="guidaAperta" />
     </AppLayout>
 </template>

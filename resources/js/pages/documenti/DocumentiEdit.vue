@@ -36,6 +36,8 @@ import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
+import VersioniDiPrima from '@/components/documenti/VersioniDiPrima.vue';
+import type { VersioneDiPrima } from '@/lib/documenti/versioniDiPrima';
 
 const props = defineProps<{
   /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
@@ -44,6 +46,8 @@ const props = defineProps<{
   condomini: Building[];
   categories: Categoria[];
   anagrafiche: Anagrafica[];
+  /** Le versioni di prima del file (1.12.0-beta.13, §9 del registro delle modifiche): in sola lettura. */
+  versioni?: VersioneDiPrima[];
 }>()
 
 const { generatePath, generateRoute, hasPermission } = usePermission();
@@ -283,6 +287,7 @@ const submit = (): void => {
     <div class="px-6 py-8 space-y-6">
 
       <PageHeaderGuide
+          :storia="{ tipo: 'documento', id: props.documento.id }"
           :page-title="trans('documenti.header.edit_document_title')"
           :page-subtitle="trans('documenti.header.edit_document_description')"
           :guides="pageGuides"
@@ -440,6 +445,9 @@ const submit = (): void => {
 
             </CardContent>
         </Card>
+
+        <!-- Le versioni di prima del file (§9 del registro delle modifiche): sola lettura, con lo scaricamento. -->
+        <VersioniDiPrima :versioni="props.versioni ?? []" :documento-id="props.documento.id" />
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
             <CardHeader class="pb-3 border-b border-dashed mb-4">

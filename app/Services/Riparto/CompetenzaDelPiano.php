@@ -28,9 +28,10 @@ use App\Support\PeriodoCompetenza;
  *   createDefaultGestione`, importatore), e un piano 2026 su una gestione datata 2025 non deve ereditare
  *   il 2025 — escluderebbe l'acquirente di marzo (verifica indipendente S4, critico). Intersezione vuota
  *   o date mancanti → periodo dell'esercizio.
- * - **Straordinaria**: la data della delibera come periodo di un giorno (D2). Senza, l'esito dice
+ * - **Straordinaria**: la data della delibera come periodo di un giorno (D2); per i lavori urgenti il giorno dei lavori scritto nel piano
+ *   (Coda 688, {@see GiornoDellUrgenza}), come competenza dichiarata di un giorno, sulle due schede. Senza, l'esito dice
  *   `richiedeDelibera` e chi genera **si ferma** (decisione 12); la competenza dichiarata sulla singola
- *   fattura la applica il motore, fattura per fattura.
+ *   fattura la applica il motore, fattura per fattura, e la fattura che non la dice prende il giorno dei lavori di qui.
  *
  * L'esercizio di riferimento è quello passato dal chiamante (i controller lo hanno dall'indirizzo);
  * senza, fra quelli della gestione, quello il cui periodo contiene la data di creazione del piano — un
@@ -55,6 +56,14 @@ class CompetenzaDelPiano
         $divergenza = ($natura === NaturaGestione::Straordinaria) !== ($pianoRate->tipo === 'straordinario');
 
         if ($natura === NaturaGestione::Straordinaria) {
+            // Coda 688: i lavori urgenti non hanno una delibera, hanno il giorno dei lavori scritto nel piano (sulle voci e sulle fatture). Vale come
+            // competenza dichiarata di un giorno, al posto della delibera: chi era titolare quel giorno paga tutto, e la cascata non cambia (decisione 12).
+            // Sulle fatture è la base: la fattura con il suo periodo tiene il suo (`CalcoloQuoteService::calcolaDaFattureStraordinarie`).
+            $giorno = $pianoRate->data_delibera_assemblea === null ? GiornoDellUrgenza::delPiano($pianoRate) : null;
+            if ($giorno !== null) {
+                return $this->risolutore->perStraordinaria($giorno, $giorno, null, $divergenza);
+            }
+
             return $this->risolutore->perStraordinaria(null, null, $pianoRate->data_delibera_assemblea, $divergenza);
         }
 

@@ -41,7 +41,7 @@ export interface RigaCompito extends CompitoConRisposte {
     priorita?: 'urgente' | 'alta' | null;
     /** Chi segue la segnalazione del compito (la 487 del registro delle decisioni); null per gli altri compiti. `attivo` falso: non ha più il pannello, o è sospeso. */
     assegnata?: Assegnata | null;
-    context?: { anagrafica_nome: string | null; action_url: string | null; related_id: number | null };
+    context?: { anagrafica_nome: string | null; action_url: string | null; related_id: number | null; apri?: string | null };
 }
 export interface Assegnata { nome: string | null; te: boolean; attivo: boolean }
 export interface GruppoInAnteprima { gruppo: Gruppo; numero: number; righe: RigaCompito[] }
@@ -138,6 +138,18 @@ const ASPETTI: Record<string, { icona: string; colore: string }> = {
     pianifica_ripianamento_deficit: { icona: 'deficit', colore: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
     convocazione_urgenza: { icona: 'assemblea', colore: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
     ratifica_sforo: { icona: 'assemblea', colore: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
+    memo_assemblea: { icona: 'assemblea', colore: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
+    spedire_convocazione: { icona: 'assemblea', colore: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
+    ricevute_mancanti: { icona: 'assemblea', colore: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300' },
+    nuovo_titolare_non_convocato: { icona: 'assemblea', colore: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300' },
+    registrare_verbale: { icona: 'assemblea', colore: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
+    trasmettere_verbale: { icona: 'assemblea', colore: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
+    riaprire_sala: { icona: 'assemblea', colore: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
+    sala_in_corso: { icona: 'assemblea', colore: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300' },
+    due_versioni: { icona: 'assemblea', colore: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300' },
+    da_decidere_in_sala: { icona: 'assemblea', colore: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300' },
+    delibera_da_eseguire: { icona: 'assemblea', colore: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300' },
+    delibera_respinta: { icona: 'assemblea', colore: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
     segnalazione_guasto: { icona: 'segnalazione', colore: 'bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-300' },
     commento: { icona: 'commento', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
     da_moderare: { icona: 'commento', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },

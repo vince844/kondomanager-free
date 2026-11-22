@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Users;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Traits\HandleFlashMessages;
@@ -35,7 +36,10 @@ class UserStatusController extends Controller
 
         try {
 
-            $user->update(['suspended_at' => now()]);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($user) {
+                $user->update(['suspended_at' => now()]);
+                AttiSulleUtenze::sospeso($user);
+            });
 
             return back()->with(
                 $this->flashSuccess(__('users.success_suspend_user'))
@@ -70,7 +74,10 @@ class UserStatusController extends Controller
 
         try {
 
-            $user->update(['suspended_at' => null]);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($user) {
+                $user->update(['suspended_at' => null]);
+                AttiSulleUtenze::riattivato($user);
+            });
 
             return back()->with(
                 $this->flashSuccess(__('users.success_unsuspend_user'))

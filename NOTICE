@@ -88,6 +88,8 @@ own license terms. Where applicable:
 
 For a complete list of third-party dependencies and their licenses, refer to:
 📄 package.json (for Node.js dependencies)
+📄 resources/licenze/ (license texts of the components bundled with the meeting
+   minutes editor: Tiptap and ProseMirror, MIT)
 📄 requirements.txt (for Python dependencies)
 📄 Other dependency manifest files in the repository
 

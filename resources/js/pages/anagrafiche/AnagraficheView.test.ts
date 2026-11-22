@@ -34,9 +34,10 @@ const route = (nome: string, parametri?: Record<string, unknown>) => `/${nome}${
 
 const AnagraficheView = (await import('./AnagraficheView.vue')).default;
 
-function scheda() {
+function scheda(extra: Record<string, unknown> = {}) {
     return mount(AnagraficheView, {
         props: {
+            ...extra,
             anagrafica: {
                 id: 7, nome: 'Mario Rossi', indirizzo: 'Via Roma 1', email: 'mario@example.com', email_secondaria: null, pec: null,
                 telefono: null, cellulare: null, codice_fiscale: 'RSSMRA80A01H501U', condomini: [], user: null,
@@ -106,5 +107,22 @@ describe('AnagraficheView — «Modifica dati» chiede il permesso del modulo di
         chiGuarda.permessi = ['Accesso pannello amministratore', 'Visualizza anagrafiche', 'Modifica utenti'];
 
         expect(pulsanteModifica().exists()).toBe(false);
+    });
+});
+
+describe('AnagraficheView — in «Dettagli» le assemblee sono una riga che porta alla linguetta (decisione 651)', () => {
+    test('«N assemblee in M condomini · l\'ultima il … · Vedi le sue assemblee», con il collegamento alla linguetta; l\'elenco non c\'è più', () => {
+        const pagina = scheda({ assemblee_riepilogo: { totale: 7, condomini: 2, ultima: '15/12/2026' } });
+        const riga = pagina.find('[data-testid="riga-assemblee"]');
+
+        expect(riga.text().replace(/\s+/g, ' ')).toContain("7 assemblee in 2 condomini · l'ultima il 15/12/2026 · Vedi le sue assemblee");
+        expect(riga.find('a').attributes('href')).toBe('/admin/anagrafiche/7/assemblee');
+        expect(pagina.find('[data-testid="le-sue-assemblee"]').exists()).toBe(false);
+    });
+
+    test('senza assemblee: «Nessuna assemblea, per ora»; senza «Vede le assemblee» (null) la riga non c\'è', () => {
+        expect(scheda({ assemblee_riepilogo: { totale: 0, condomini: 0, ultima: null } }).find('[data-testid="riga-assemblee"]').text()).toBe('Nessuna assemblea, per ora');
+        expect(scheda({ assemblee_riepilogo: null }).find('[data-testid="riga-assemblee"]').exists()).toBe(false);
+        expect(scheda().find('[data-testid="riga-assemblee"]').exists()).toBe(false);
     });
 });

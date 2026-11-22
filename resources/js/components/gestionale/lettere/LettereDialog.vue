@@ -16,14 +16,21 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * lettera: per il sollecito si propongono i giorni dell'ultimo sollecito, per diffida e messa in mora nessuna forma, mai; il promemoria non ne
  * ha. Il conto dell'IBAN è quello dell'ultima volta, se c'è ancora.
  *
- * Poi l'anteprima di chi riceve che cosa: per persona il totale, il credito accanto, il canale proposto (che si cambia), gli indirizzi; «togli»
- * una persona. Le azioni lavorano sulle persone viste nell'anteprima, ognuna con il suo canale: l'email (solo promemoria e sollecito), la
- * stampa, il PDF per persona; «Mandane una a me» manda la prima lettera per email a chi lavora. Dopo la stampa, la spedizione si registra in
- * blocco. Dopo un'azione riuscita i pulsanti si spengono: per un altro invio si rifà l'anteprima. La gestione dei filtri dell'elenco vale anche
- * per le persone spuntate; un'anteprima arrivata dopo un cambio delle scelte si scarta.
+ * Poi l'anteprima di chi riceve che cosa: per persona il totale, il credito accanto, il canale proposto (che si cambia, con un `v-select`), gli
+ * indirizzi; «togli» una persona. Le azioni lavorano sulle persone viste nell'anteprima, ognuna con il suo canale: l'email (solo promemoria e sollecito),
+ * la PEC dalla casella dello studio (sollecito, diffida, messa in mora: decisioni 569 e 588), «PEC e carta» (la stessa lettera per PEC e stampata), la
+ * stampa, il PDF per persona; «Mandane una a me» manda la prima lettera per email a chi lavora. Accanto alla PEC scelta, se la persona non l'ha comunicata,
+ * il badge «PEC non comunicata dalla persona» con la «i» (un pulsante: al tocco apre la spiegazione) e la sua scheda; sopra la tabella la riga che le conta
+ * e «Usa la PEC per chi ce l'ha»; senza la casella la PEC è spenta con il perché e «Imposta la casella PEC». A chi ha già oggi la PEC dello stesso tipo
+ * partita la riga lo dice, e «Manda N PEC» non la conta. «Manda N PEC» chiede conferma dicendo la casella e quante partono adesso (il tetto per volta); se
+ * la pagina non ha la risposta, dice di guardare la corrispondenza prima di rimandare. Dopo la stampa, la spedizione si registra in blocco. Dopo un'azione riuscita
+ * il suo pulsante si spegne (la PEC e la stampa delle copie di «PEC e carta» sono due azioni): per un altro invio si rifà l'anteprima. Al telefono una card
+ * per persona. La gestione dei filtri dell'elenco vale anche per le persone spuntate; un'anteprima arrivata dopo un cambio delle scelte si scarta.
  */
 import { computed, ref, watch } from 'vue';
 import axios from 'axios';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 import { usePermission } from '@/composables/permissions';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,7 +38,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-    AVVISO_PEC, TIPI_INDIRIZZO, apriPdfInUnaScheda, fraseDaErroreConFile, frasePerErrore, nomeDalContentDisposition, scaricaFile, testoDelPdf, testoRiepilogo,
+    TIPI_INDIRIZZO, apriPdfInUnaScheda, fraseDaErroreConFile, frasePerErrore, nomeDalContentDisposition, scaricaFile, testoDelPdf, testoRiepilogo,
     verificaIlFile, type Selezione,
 } from '@/lib/gestionale/incassi/ricevute';
 import { euroTesto } from '@/lib/gestionale/debiti/rateScadute';
@@ -43,9 +50,10 @@ import {
 import {
     CANALI_SPEDIZIONE, FRASE_CONSERVATO, FRASE_FATTO, FRASE_SENZA_IBAN, FRASE_SENZA_TESTO, fraseDelloStudio, FRASE_TESTO_DEL_PROGRAMMA,
     domani, fraseDeiCampi, testoAccordiPassati, testoAccordoPassato, type FormaDelTermine,
-    FRASE_TESTO_SINGOLO, NOMI_CANALI, SOLO_CARTA, coperteDalCredito, personeDelCanale, personeViste, testoAggiunte, testoConteggi, testoCredito, testoGestione,
-    testoOltreTetto, testoRestanti, testoUscite, testiSegnapostiAZero,
-    type CanaleLettera, type PersonaDellAnteprima, type TipoLettera,
+    FRASE_TESTO_SINGOLO, SOLO_CARTA, coperteDalCredito, personeDelCanale, personeViste, testoAggiunte, testoConteggi, testoCredito, testoGestione,
+    testoOltreTetto, testoRestanti, testoUscite, testiSegnapostiAZero, CANALI_CON_LA_PEC, CANALI_CON_LA_STAMPA, FRASE_DOPO_LE_PEC, opzioniDelCanale,
+    testoConfermaPec, testoPecNonComunicate, testoRestantiPec, FRASE_PEC_SENZA_RISPOSTA, FRASE_PEC_NON_COMUNICATA, fraseGiaPartita,
+    type CanaleLettera, type PersonaDellAnteprima, type TipoLettera, type VoceDelCanale,
 } from '@/lib/gestionale/lettere/lettere';
 
 const props = defineProps<{
@@ -71,8 +79,13 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'fatto'): v
 const { generateRoute } = usePermission();
 const rotta = (nome: string, altro: Record<string, unknown> = {}) => route(generateRoute(`gestionale.lettere.${nome}`), { condominio: props.condominioId, ...altro });
 
+/** La casella PEC dello studio, come la manda il server: senza, il perché e dove si imposta (solo a chi apre le impostazioni). */
+interface CasellaPec { impostata: boolean; indirizzo: string | null; perche: string | null; dove: string | null; avviso: string | null }
+
 interface Opzioni {
-    tipi: Array<{ tipo: TipoLettera; nome: string; solo_carta: boolean; conservato: boolean }>;
+    tipi: Array<{ tipo: TipoLettera; nome: string; senza_email?: boolean; conservato: boolean; canali?: CanaleLettera[] }>;
+    /** La casella PEC dello studio. */
+    casella_pec?: CasellaPec;
     /** I testi del programma, uno per tipo: non si cambiano. */
     testi: Record<TipoLettera, string>;
     /** I campi che il testo può usare, con la loro descrizione (`TestiLettere::CAMPI`): la riga dei campi li nomina tutti. */
@@ -129,8 +142,15 @@ const canali = ref<Record<number, CanaleLettera>>({});
 const errore = ref<string | null>(null);
 const esito = ref<string[]>([]);
 const inCorso = ref(false);
-/** Un'azione dell'anteprima (invio, stampa, .zip) è riuscita: i pulsanti si spengono finché non si rifà l'anteprima. */
-const fatto = ref(false);
+/**
+ * Le azioni dell'anteprima già riuscite (l'email, la PEC, la stampa, il .zip): il loro pulsante si spegne finché non si rifà l'anteprima, e un secondo clic
+ * non manda di nuovo le stesse lettere. Le altre restano: con «PEC e carta» si manda la PEC e si stampa la copia.
+ */
+const fatte = ref<string[]>([]);
+const fatta = (azione: string) => fatte.value.includes(azione);
+const segnaFatta = (azione: string) => { fatte.value = [...fatte.value, azione]; };
+/** «Manda N PEC» aspetta la conferma, che dice la casella da cui partono. */
+const confermaPec = ref(false);
 /** Il numero dell'ultima anteprima chiesta: una risposta arrivata dopo un cambio delle scelte si scarta. */
 let numeroAnteprima = 0;
 const stampate = ref<Array<{ invio: number; persona: number }>>([]);
@@ -144,7 +164,8 @@ watch(() => props.open, async (aperta) => {
     }
     tipo.value = props.tipoIniziale ?? (props.vista === 'in_scadenza' ? 'promemoria' : 'sollecito');
     invalida();
-    fatto.value = false;
+    fatte.value = [];
+    confermaPec.value = false;
     escluse.value = [];
     canali.value = {};
     errore.value = null;
@@ -161,7 +182,8 @@ watch(() => props.open, async (aperta) => {
         // Il conto ricordato solo se è ancora fra i conti di oggi; altrimenti il conto solo, o la scelta.
         const ricordato = r.data.scelta_ricordata.cassa_id;
         cassaId.value = r.data.conti.some((c: { id: number }) => c.id === ricordato) ? ricordato : (r.data.conti.length === 1 ? r.data.conti[0].id : null);
-        indirizzi.value = r.data.scelta_ricordata.indirizzi ?? ['email', 'email_secondaria'];
+        // La PEC non è un indirizzo dell'email: parte dalla casella PEC dello studio.
+        indirizzi.value = (r.data.scelta_ricordata.indirizzi ?? ['email', 'email_secondaria']).filter((t: string) => t !== 'pec');
     } catch (e) {
         errore.value = frasePerErrore(e, 'Le opzioni delle lettere non si sono caricate. Riprova.');
     }
@@ -264,11 +286,59 @@ const conConfine = () => ({
 });
 
 const persone = computed<PersonaDellAnteprima[]>(() => anteprima.value?.persone ?? []);
-const delCanale = (c: CanaleLettera) => personeDelCanale(persone.value, canali.value, escluse.value, c);
-const conteggi = computed(() => ({ email: delCanale('email').length, stampa: delCanale('stampa').length, zip: delCanale('zip').length }));
+const delCanale = (c: CanaleLettera | CanaleLettera[]) => personeDelCanale(persone.value, canali.value, escluse.value, c);
+/** Le lettere di ogni canale, per la riga dei conteggi. */
+const perCanale = computed(() => ({ email: delCanale('email').length, pec: delCanale('pec').length, pec_e_carta: delCanale('pec_e_carta').length,
+    stampa: delCanale('stampa').length, zip: delCanale('zip').length }));
+/**
+ * Le persone di ogni azione: la PEC anche per «PEC e carta» (non chi ha già oggi la PEC dello stesso tipo partita: non parte di nuovo), e la stampa anche per
+ * le copie su carta.
+ */
+const conteggi = computed(() => ({ email: perCanale.value.email, pec: delCanale(CANALI_CON_LA_PEC).filter((p) => !p.pec_partita_oggi).length,
+    stampa: delCanale(CANALI_CON_LA_STAMPA).length, zip: perCanale.value.zip }));
 const lettere = (n: number) => (n === 1 ? '1 lettera' : `${n} lettere`);
 
-const oltreTetto = computed(() => (anteprima.value ? testoOltreTetto(conteggi.value, anteprima.value.tetto) : null));
+const oltreTetto = computed(() => (anteprima.value ? testoOltreTetto(perCanale.value, anteprima.value.tetto) : null));
+
+// La PEC dello studio: la casella, il canale di ogni persona, «Usa la PEC per chi ce l'ha», le PEC non comunicate.
+const casella = computed<CasellaPec | null>(() => anteprima.value?.casella_pec ?? opzioni.value?.casella_pec ?? null);
+const tipoConLaPec = computed(() => (opzioni.value?.tipi.find((t) => t.tipo === tipo.value)?.canali ?? []).includes('pec'));
+const canaleDi = (p: PersonaDellAnteprima): CanaleLettera => canali.value[p.id] ?? p.canale;
+const scegliCanale = (id: number, valore: CanaleLettera | null) => {
+    if (valore) {
+        canali.value = { ...canali.value, [id]: valore };
+    }
+};
+const selezionabile = (o: VoceDelCanale) => !o.spento;
+const conLaPec = (p: PersonaDellAnteprima) => CANALI_CON_LA_PEC.includes(canaleDi(p));
+/** Chi ha la PEC che si può scegliere e oggi non va per PEC: «Usa la PEC per chi ce l'ha» la mette a tutti. */
+const senzaLaPecScelta = computed(() => persone.value.filter((p) => !escluse.value.includes(p.id) && !conLaPec(p)
+    && opzioniDelCanale(p).some((o) => o.valore === 'pec' && !o.spento)));
+const usaLaPec = () => {
+    canali.value = { ...canali.value, ...Object.fromEntries(senzaLaPecScelta.value.map((p) => [p.id, 'pec' as CanaleLettera])) };
+};
+const pecNonComunicate = computed(() => persone.value.filter((p) => !escluse.value.includes(p.id) && conLaPec(p) && p.pec_non_comunicata).length);
+/** Le PEC per volta: oltre, «Manda le altre». */
+const tettoPec = computed<number>(() => anteprima.value?.tetto_pec ?? 20);
+const righeDellaConferma = computed(() => testoConfermaPec(conteggi.value.pec, tipo.value, casella.value?.indirizzo ?? null, tettoPec.value));
+/** Le persone di cui si vede la spiegazione della «i» del badge «PEC non comunicata dalla persona»: si apre al tocco, e con la tastiera. */
+const spiegazioni = ref<string[]>([]);
+const alternaSpiegazione = (chiave: string) => {
+    spiegazioni.value = spiegazioni.value.includes(chiave) ? spiegazioni.value.filter((x) => x !== chiave) : [...spiegazioni.value, chiave];
+};
+/**
+ * Il menu del canale si apre sopra la finestra (`append-to-body`): dentro la finestra che scorre le ultime righe lo taglierebbero. La finestra è `fixed`: il
+ * menu prende le coordinate del suo campo, senza lo scorrimento della pagina.
+ */
+const posizionaIlMenu = (lista: HTMLElement, componente: any, { width }: { width: string }) => {
+    lista.style.width = width;
+    lista.style.position = 'fixed';
+    lista.style.zIndex = '60';
+    const campo = componente.$refs.toggle.getBoundingClientRect();
+    lista.style.left = `${campo.left}px`;
+    lista.style.top = `${campo.bottom}px`;
+};
+const restantiPec = ref<number[] | null>(null);
 
 async function chiediAnteprima() {
     errore.value = null;
@@ -283,7 +353,9 @@ async function chiediAnteprima() {
             return;
         }
         anteprima.value = r.data;
-        fatto.value = false;
+        fatte.value = [];
+        confermaPec.value = false;
+        restantiPec.value = null;
         escluse.value = [];
         canali.value = {};
     } catch (e) {
@@ -323,7 +395,7 @@ function stampa(anteprimaPdf = false) {
         const frase = testoDelPdf(arrivato, { stampa: !anteprimaPdf, una: conteggi.value.stampa === 1, documento: 'lettera' });
         esito.value = [frase, testoAggiunte(Number(risposta?.headers?.['x-persone-aggiunte'] ?? 0)), anteprimaPdf ? null : FRASE_FATTO].filter((x): x is string => !!x);
         if (!anteprimaPdf) {
-            fatto.value = true;
+            segnaFatta('stampa');
             dopoLeRighe(risposta?.headers?.['x-lettere-invii']);
             emit('fatto');
         }
@@ -341,7 +413,7 @@ async function scaricaZip() {
         scaricaFile(r.data, nomeDalContentDisposition(r.headers?.['content-disposition'], 'lettere-per-persona.zip'));
         esito.value = [`${lettere(conteggi.value.zip)} in un PDF per persona: l'archivio si scarica.`, testoAggiunte(Number(r.headers?.['x-persone-aggiunte'] ?? 0)), FRASE_FATTO]
             .filter((x): x is string => !!x);
-        fatto.value = true;
+        segnaFatta('zip');
         dopoLeRighe(r.headers?.['x-lettere-invii']);
         emit('fatto');
     } catch (e) {
@@ -360,7 +432,7 @@ async function invia(soloLe?: number[]) {
         const senza = r.senza_indirizzo?.length ? `Senza un indirizzo fra quelli scelti: ${r.senza_indirizzo.join(', ')}. Stampale per la posta.` : null;
         esito.value = [testoRiepilogo({ inviate: r.inviate, in_coda: r.in_coda, non_partite: r.non_partite, senza_indirizzo: r.senza_indirizzo?.length ?? 0 }),
             ...(r.errori ?? []), senza, testoAggiunte(r.aggiunte ?? 0), testoUscite(r.uscite ?? 0), FRASE_FATTO].filter((x): x is string => !!x);
-        fatto.value = true;
+        segnaFatta('email');
         restanti.value = r.restanti?.persone ?? null;
         const resto = testoRestanti(restanti.value?.length ?? 0);
         if (resto) {
@@ -374,6 +446,30 @@ async function invia(soloLe?: number[]) {
     }
 }
 const restanti = ref<number[] | null>(null);
+
+/**
+ * «Manda N PEC», dopo la conferma: le persone con la PEC dello studio o «PEC e carta» (le altre dell'anteprima vanno con la loro azione), oltre il tetto «Manda
+ * le altre». La frase è quella del server: quante sono partite, e perché le altre no.
+ */
+async function mandaPec(soloLe?: number[]) {
+    errore.value = null;
+    confermaPec.value = false;
+    inCorso.value = true;
+    try {
+        const corpo = soloLe ? { ...conConfine(), viste: soloLe } : conConfine();
+        const r = (await axios.post(rotta('pec'), corpo)).data;
+        restantiPec.value = r.restanti?.persone?.length ? r.restanti.persone : null;
+        esito.value = [r.frase, r.partite > 0 ? FRASE_DOPO_LE_PEC : null, testoRestantiPec(restantiPec.value?.length ?? 0), testoAggiunte(r.aggiunte ?? 0),
+            testoUscite(r.uscite ?? 0), FRASE_FATTO].filter((x): x is string => !!x);
+        segnaFatta('pec');
+        emit('fatto');
+    } catch (e) {
+        // Senza la risposta del programma alcune PEC possono essere partite: prima di rimandarle si guarda (il programma non manda la stessa PEC due volte).
+        errore.value = frasePerErrore(e, FRASE_PEC_SENZA_RISPOSTA);
+    } finally {
+        inCorso.value = false;
+    }
+}
 
 async function provaAMe() {
     errore.value = null;
@@ -486,7 +582,16 @@ async function registraSpedizione() {
 }
 
 const contoScelto = computed(() => opzioni.value?.conti.find((c) => c.id === cassaId.value) ?? null);
-const tipiIndirizzo = ['email', 'email_secondaria', 'pec'];
+/** Gli indirizzi dell'email: la primaria e la secondaria. La PEC parte dalla casella PEC dello studio, con il suo canale. */
+const tipiIndirizzo = ['email', 'email_secondaria'];
+/** Le voci del menu «Modello»: il testo del programma, poi i modelli del condominio e quelli per tutti, con il gruppo sotto il nome. */
+const vociDelModello = computed(() => [
+    { valore: null as number | null, nome: 'Testo del programma', gruppo: null as string | null },
+    ...modelliDelTipoScelto.value.delCondominio.map((m) => ({ valore: m.id as number | null, nome: m.nome, gruppo: 'Per questo condominio' as string | null })),
+    ...modelliDelTipoScelto.value.perTutti.map((m) => ({ valore: m.id as number | null, nome: m.nome, gruppo: 'Per tutti i condomini' as string | null })),
+]);
+const vociDelConto = computed(() => (opzioni.value?.conti ?? []).map((c) => ({ id: c.id, nome: `${c.nome} — ${c.iban}` })));
+const vociDellaSpedizione = Object.entries(CANALI_SPEDIZIONE).map(([valore, nome]) => ({ valore, nome }));
 const alternaIndirizzo = (t: string) => {
     indirizzi.value = indirizzi.value.includes(t) ? indirizzi.value.filter((x) => x !== t) : [...indirizzi.value, t];
     invalida();
@@ -522,16 +627,14 @@ const alternaIndirizzo = (t: string) => {
                             <a :href="indirizzoDeiModelli" target="_blank" rel="noopener" class="underline hover:text-slate-700 dark:hover:text-slate-200"
                                 data-testid="vai-ai-modelli">I modelli delle lettere</a>
                         </span>
-                        <select :value="modelloId === null ? '' : String(modelloId)" class="h-8 w-full max-w-md rounded-md border px-2 bg-transparent text-xs" data-testid="modello"
-                            @change="scegliModello(($event.target as HTMLSelectElement).value)">
-                            <option value="">Testo del programma</option>
-                            <optgroup v-if="modelliDelTipoScelto.delCondominio.length" label="Per questo condominio">
-                                <option v-for="m in modelliDelTipoScelto.delCondominio" :key="m.id" :value="String(m.id)">{{ m.nome }}</option>
-                            </optgroup>
-                            <optgroup v-if="modelliDelTipoScelto.perTutti.length" label="Per tutti i condomini">
-                                <option v-for="m in modelliDelTipoScelto.perTutti" :key="m.id" :value="String(m.id)">{{ m.nome }}</option>
-                            </optgroup>
-                        </select>
+                        <v-select :model-value="modelloId" :options="vociDelModello" label="nome" :reduce="(v: { valore: number | null }) => v.valore" :clearable="false"
+                            :searchable="false" class="w-full max-w-md text-xs" data-testid="modello"
+                            @update:model-value="(v: number | null) => scegliModello(v === null ? '' : String(v))">
+                            <template #option="v">
+                                <span class="block text-sm">{{ v.nome }}</span>
+                                <span v-if="v.gruppo" class="block text-xs text-slate-500 dark:text-slate-400">{{ v.gruppo }}</span>
+                            </template>
+                        </v-select>
                     </label>
                     <p v-if="mancante !== null" class="text-xs text-amber-800 dark:text-amber-300" data-testid="modello-mancante">{{ testoModelloMancante(mancante) }}</p>
                     <label class="block text-xs text-slate-500 dark:text-slate-400" for="testo-lettera">Testo</label>
@@ -597,10 +700,8 @@ const alternaIndirizzo = (t: string) => {
                     <div>
                         <label v-if="opzioni.conti.length > 1" class="space-y-1">
                             <span class="block text-xs text-slate-500 dark:text-slate-400">Conto per il bonifico</span>
-                            <select v-model="cassaId" class="h-8 rounded-md border px-2 bg-transparent text-xs" data-testid="conto">
-                                <option :value="null" disabled>Scegli il conto</option>
-                                <option v-for="c in opzioni.conti" :key="c.id" :value="c.id">{{ c.nome }} — {{ c.iban }}</option>
-                            </select>
+                            <v-select v-model="cassaId" :options="vociDelConto" label="nome" :reduce="(c: { id: number }) => c.id" :clearable="false" :searchable="false"
+                                placeholder="Scegli il conto" class="w-full max-w-md text-xs" data-testid="conto" />
                         </label>
                         <p v-else-if="contoScelto" class="text-xs" data-testid="iban">IBAN {{ contoScelto.iban }}</p>
                     </div>
@@ -615,7 +716,6 @@ const alternaIndirizzo = (t: string) => {
                             <Checkbox :model-value="indirizzi.includes(t)" @update:model-value="alternaIndirizzo(t)" /> {{ TIPI_INDIRIZZO[t] }}
                         </label>
                     </div>
-                    <p v-if="indirizzi.includes('pec')" class="text-xs text-slate-500 dark:text-slate-400">{{ AVVISO_PEC }}</p>
                     <label v-if="singola" class="block space-y-1">
                         <span class="block text-xs text-slate-500 dark:text-slate-400">Un altro indirizzo (solo della persona o di chi la rappresenta)</span>
                         <Input v-model="altroIndirizzo" type="email" class="h-8 text-xs" data-testid="altro-indirizzo" />
@@ -626,7 +726,16 @@ const alternaIndirizzo = (t: string) => {
 
                 <!-- L'anteprima -->
                 <div v-if="anteprima" class="space-y-2" data-testid="anteprima-persone">
-                    <p class="text-xs">{{ testoConteggi(conteggi) }}</p>
+                    <p class="text-xs">{{ testoConteggi(perCanale) }}</p>
+                    <!-- La PEC dello studio: senza la casella, il perché e «Imposta»; con la casella, «Usa la PEC per chi ce l'ha» e la riga delle PEC non comunicate. -->
+                    <p v-if="tipoConLaPec && casella && !casella.impostata" class="flex flex-wrap items-center gap-2 text-xs text-amber-800 dark:text-amber-300" data-testid="casella-da-impostare">
+                        <span>PEC dello studio: {{ casella.perche }}</span>
+                        <a v-if="casella.dove" :href="casella.dove" target="_blank" rel="noopener" class="underline" data-testid="imposta-casella-pec">Imposta la casella PEC</a>
+                    </p>
+                    <Button v-if="tipoConLaPec && casella?.impostata && senzaLaPecScelta.length" size="sm" variant="outline" class="h-7 text-xs" data-testid="usa-la-pec" @click="usaLaPec">
+                        Usa la PEC per chi ce l'ha ({{ senzaLaPecScelta.length }})
+                    </Button>
+                    <p v-if="testoPecNonComunicate(pecNonComunicate)" class="text-xs text-amber-800 dark:text-amber-300" data-testid="pec-non-comunicate">{{ testoPecNonComunicate(pecNonComunicate) }}</p>
                     <p v-if="testoGestione(anteprima.gestione)" class="text-xs" data-testid="gestione-lettere">{{ testoGestione(anteprima.gestione) }}</p>
                     <p v-for="c in anteprima.credito" :key="c.nome" class="text-xs text-sky-800 dark:text-sky-300">{{ testoCredito(c) }}</p>
                     <p v-if="testoAccordiPassati(persone.filter((p) => p.accordo_passato).map((p) => p.nome))" class="text-xs text-amber-800 dark:text-amber-300" data-testid="accordi-passati">
@@ -646,37 +755,87 @@ const alternaIndirizzo = (t: string) => {
                         <Checkbox :model-value="ancheInAccordo" @update:model-value="(v: any) => { ancheInAccordo = !!v; invalida(); }" />
                         Metti nella lettera anche le rate in accordo di rientro
                     </label>
-                    <table class="w-full text-xs">
+                    <table class="hidden w-full text-xs sm:table">
                         <thead class="text-slate-500 dark:text-slate-400">
-                            <tr><th class="p-1 text-left">Nell'invio</th><th class="p-1 text-left">Persona</th><th class="p-1 text-right">Totale</th><th class="p-1 text-left">Canale</th><th class="p-1 text-left">Indirizzi</th></tr>
+                            <tr><th class="p-1 text-left">Nell'invio</th><th class="p-1 text-left">Persona</th><th class="p-1 text-right">Totale</th><th class="p-1 text-left">Canale</th><th class="p-1 text-left">Dove</th></tr>
                         </thead>
                         <tbody>
                             <tr v-for="p in persone" :key="p.id" class="border-t align-top" data-testid="persona-anteprima">
                                 <td class="p-1"><Checkbox :model-value="!escluse.includes(p.id)" :aria-label="`Togli ${p.nome}`" @update:model-value="alterna(p.id)" /></td>
                                 <td class="p-1">
                                     {{ p.nome }}
-                                    <span v-if="p.senza_indirizzo_postale" class="block text-[11px] text-slate-500">senza indirizzo di casa: in alto c'è il solo nome, senza indirizzo</span>
-                                    <span v-if="testoAccordoPassato(p.accordo_passato)" class="block text-[11px] text-amber-800 dark:text-amber-300" data-testid="accordo-passato">{{ testoAccordoPassato(p.accordo_passato) }}</span>
+                                    <span v-if="p.senza_indirizzo_postale" class="block text-xs text-slate-500 dark:text-slate-400">senza indirizzo di casa: in alto c'è il solo nome, senza indirizzo</span>
+                                    <span v-if="testoAccordoPassato(p.accordo_passato)" class="block text-xs text-amber-800 dark:text-amber-300" data-testid="accordo-passato">{{ testoAccordoPassato(p.accordo_passato) }}</span>
                                 </td>
                                 <td class="p-1 text-right whitespace-nowrap">
-                                    {{ euroTesto(p.totale) }} <span class="block text-[11px] text-slate-500">{{ p.righe === 1 ? '1 rata' : `${p.righe} rate` }}</span>
-                                    <span v-if="testoInAccordoNellaLettera(p.in_accordo ?? 0)" class="block whitespace-normal text-[11px] text-sky-800 dark:text-sky-300" data-testid="in-accordo">{{ testoInAccordoNellaLettera(p.in_accordo ?? 0) }}</span>
+                                    {{ euroTesto(p.totale) }} <span class="block text-xs text-slate-500 dark:text-slate-400">{{ p.righe === 1 ? '1 rata' : `${p.righe} rate` }}</span>
+                                    <span v-if="testoInAccordoNellaLettera(p.in_accordo ?? 0)" class="block whitespace-normal text-xs text-sky-800 dark:text-sky-300" data-testid="in-accordo">{{ testoInAccordoNellaLettera(p.in_accordo ?? 0) }}</span>
+                                </td>
+                                <td class="min-w-[12rem] p-1">
+                                    <v-select :model-value="canaleDi(p)" :options="opzioniDelCanale(p)" label="nome" :reduce="(o: VoceDelCanale) => o.valore" :selectable="selezionabile"
+                                        :clearable="false" :searchable="false" append-to-body :calculate-position="posizionaIlMenu" class="text-xs" :data-testid="`canale-${p.id}`"
+                                        @update:model-value="(v: CanaleLettera | null) => scegliCanale(p.id, v)">
+                                        <template #option="o">
+                                            <span class="block text-sm">{{ o.nome }}</span>
+                                            <span class="block text-xs" :class="o.spento ? 'text-amber-800 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'">{{ o.sotto }}</span>
+                                        </template>
+                                    </v-select>
                                 </td>
                                 <td class="p-1">
-                                    <select :value="canali[p.id] ?? p.canale" class="h-7 rounded-md border px-1 bg-transparent" :data-testid="`canale-${p.id}`"
-                                        @change="canali = { ...canali, [p.id]: ($event.target as HTMLSelectElement).value as CanaleLettera }">
-                                        <option v-for="c in p.canali" :key="c" :value="c">{{ NOMI_CANALI[c] }}</option>
-                                    </select>
-                                </td>
-                                <td class="p-1">
-                                    <template v-if="(canali[p.id] ?? p.canale) === 'email'">
+                                    <template v-if="canaleDi(p) === 'email'">
                                         <span v-if="p.indirizzi.length">{{ p.indirizzi.map((i) => i.indirizzo).join(', ') }}</span>
-                                        <span v-else class="text-amber-800 dark:text-amber-300">{{ p.solo_pec ? 'Ha solo la PEC: spuntala, o stampala per la posta.' : 'Nessun indirizzo fra quelli scelti: stampala per la posta.' }}</span>
+                                        <span v-else class="text-amber-800 dark:text-amber-300">{{ p.frase_solo_pec ?? 'Nessun indirizzo fra quelli scelti: stampala per la posta.' }}</span>
                                     </template>
+                                    <template v-else-if="conLaPec(p)">
+                                        <span class="block break-all">{{ p.pec }}</span>
+                                        <span v-if="p.pec_partita_oggi" class="mt-1 block text-xs text-slate-600 dark:text-slate-300" :data-testid="`pec-partita-oggi-${p.id}`">
+                                            {{ fraseGiaPartita(p.pec_partita_oggi) }}
+                                        </span>
+                                        <span v-if="p.pec_non_comunicata" class="mt-1 flex flex-wrap items-center gap-1">
+                                            <span class="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                                                :data-testid="`pec-non-comunicata-${p.id}`">
+                                                PEC non comunicata dalla persona
+                                                <button type="button" class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current text-xs leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                                                    :aria-label="'Perché «PEC non comunicata dalla persona»'" :aria-expanded="spiegazioni.includes(`t${p.id}`)" :data-testid="`perche-pec-${p.id}`"
+                                                    @click="alternaSpiegazione(`t${p.id}`)">i</button>
+                                            </span>
+                                            <a v-if="p.scheda" :href="p.scheda" target="_blank" rel="noopener" class="text-xs underline" :data-testid="`scheda-${p.id}`">Apri la scheda</a>
+                                        </span>
+                                        <span v-if="p.pec_non_comunicata && spiegazioni.includes(`t${p.id}`)" class="mt-1 block text-xs text-slate-600 dark:text-slate-300"
+                                            :data-testid="`spiegazione-pec-${p.id}`">{{ FRASE_PEC_NON_COMUNICATA }}</span>
+                                    </template>
+                                    <span v-else-if="p.frase_solo_pec" class="text-amber-800 dark:text-amber-300">{{ p.frase_solo_pec }}</span>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                    <!-- Al telefono: una card per persona, con il canale sotto il nome. -->
+                    <ul class="space-y-2 sm:hidden">
+                        <li v-for="p in persone" :key="p.id" class="space-y-1 rounded-lg border p-2 text-xs" data-testid="card-persona">
+                            <div class="flex items-start justify-between gap-2">
+                                <label class="flex items-center gap-2 font-medium">
+                                    <Checkbox :model-value="!escluse.includes(p.id)" :aria-label="`Togli ${p.nome} (telefono)`" @update:model-value="alterna(p.id)" /> {{ p.nome }}
+                                </label>
+                                <span class="whitespace-nowrap">{{ euroTesto(p.totale) }}</span>
+                            </div>
+                            <v-select :model-value="canaleDi(p)" :options="opzioniDelCanale(p)" label="nome" :reduce="(o: VoceDelCanale) => o.valore" :selectable="selezionabile"
+                                :clearable="false" :searchable="false" append-to-body :calculate-position="posizionaIlMenu" class="text-xs" :data-testid="`canale-card-${p.id}`"
+                                @update:model-value="(v: CanaleLettera | null) => scegliCanale(p.id, v)" />
+                            <p v-if="conLaPec(p)" class="break-all text-slate-600 dark:text-slate-300">{{ p.pec }}</p>
+                            <p v-if="conLaPec(p) && p.pec_partita_oggi" class="text-slate-600 dark:text-slate-300">{{ fraseGiaPartita(p.pec_partita_oggi) }}</p>
+                            <div v-if="conLaPec(p) && p.pec_non_comunicata" class="flex flex-wrap items-center gap-2">
+                                <span class="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                    PEC non comunicata dalla persona
+                                    <button type="button" class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-current text-xs leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                                        :aria-label="'Perché «PEC non comunicata dalla persona»'" :aria-expanded="spiegazioni.includes(`c${p.id}`)" :data-testid="`perche-pec-card-${p.id}`"
+                                        @click="alternaSpiegazione(`c${p.id}`)">i</button>
+                                </span>
+                                <a v-if="p.scheda" :href="p.scheda" target="_blank" rel="noopener" class="underline" :data-testid="`scheda-card-${p.id}`">Apri la scheda</a>
+                            </div>
+                            <p v-if="conLaPec(p) && p.pec_non_comunicata && spiegazioni.includes(`c${p.id}`)" class="text-slate-600 dark:text-slate-300">{{ FRASE_PEC_NON_COMUNICATA }}</p>
+                            <p v-else-if="!conLaPec(p) && p.frase_solo_pec" class="text-amber-800 dark:text-amber-300">{{ p.frase_solo_pec }}</p>
+                        </li>
+                    </ul>
                     <p v-if="oltreTetto" class="text-xs text-amber-800 dark:text-amber-300" data-testid="oltre-tetto">{{ oltreTetto }}</p>
                     <p v-if="anteprima.senza_server_posta && conteggi.email > 0" class="text-xs text-amber-800 dark:text-amber-300">
                         Nessun server di posta configurato: le lettere non partono per email. Intanto puoi stamparle.
@@ -687,10 +846,8 @@ const alternaIndirizzo = (t: string) => {
                 <div v-if="stampate.length" class="space-y-2 rounded-lg border p-2" data-testid="registra-spedizione">
                     <p class="text-xs font-medium">Registra la spedizione {{ stampate.length === 1 ? 'della lettera' : `delle ${stampate.length} lettere` }}, quando l'hai fatta</p>
                     <div class="flex flex-wrap gap-2 text-xs">
-                        <select v-model="spedizione.canale" class="h-8 rounded-md border px-2 bg-transparent">
-                            <option value="" disabled>Come</option>
-                            <option v-for="(nome, c) in CANALI_SPEDIZIONE" :key="c" :value="c">{{ nome }}</option>
-                        </select>
+                        <v-select v-model="spedizione.canale" :options="vociDellaSpedizione" label="nome" :reduce="(c: { valore: string }) => c.valore" :clearable="false"
+                            :searchable="false" append-to-body :calculate-position="posizionaIlMenu" placeholder="Come" class="min-w-[12rem] text-xs" data-testid="canale-spedizione" />
                         <Input v-model="spedizione.data" type="date" :max="oggi" class="h-8 w-[150px] text-xs" />
                         <Input v-model="spedizione.nota" placeholder="Nota" class="h-8 w-[200px] text-xs" />
                     </div>
@@ -701,6 +858,20 @@ const alternaIndirizzo = (t: string) => {
                     <Button size="sm" variant="outline" :disabled="inCorso || !spedizione.canale" @click="registraSpedizione">Registra la spedizione</Button>
                 </div>
 
+                <!-- La conferma di «Manda N PEC»: da quale casella partono, che cosa vuol dire «partita», dove arriva la ricevuta. -->
+                <div v-if="confermaPec" class="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3 dark:border-sky-900 dark:bg-sky-950/40" role="alertdialog"
+                    data-testid="conferma-pec">
+                    <p class="text-sm font-semibold">{{ righeDellaConferma[0] }}</p>
+                    <ul class="list-disc space-y-0.5 pl-4 text-xs">
+                        <li v-for="r in righeDellaConferma.slice(1)" :key="r">{{ r }}</li>
+                    </ul>
+                    <p v-if="casella?.avviso" class="text-xs text-amber-800 dark:text-amber-300">{{ casella.avviso }}</p>
+                    <div class="flex flex-wrap gap-2">
+                        <Button size="sm" variant="ghost" @click="confermaPec = false">Annulla</Button>
+                        <Button size="sm" :disabled="inCorso" data-testid="conferma-manda-pec" @click="mandaPec()">Manda {{ Math.min(conteggi.pec, tettoPec) }} PEC</Button>
+                    </div>
+                </div>
+
                 <p v-for="(riga, i) in esito" :key="i" class="text-xs text-emerald-800 dark:text-emerald-300" data-testid="esito">{{ riga }}</p>
                 <p v-if="errore" class="text-xs text-red-700 dark:text-red-400" data-testid="errore">{{ errore }}</p>
             </div>
@@ -708,11 +879,15 @@ const alternaIndirizzo = (t: string) => {
 
             <DialogFooter v-if="anteprima" class="flex flex-wrap gap-2">
                 <Button size="sm" variant="ghost" :disabled="inCorso" data-testid="pdf-anteprima" @click="stampa(true)">Vedi il PDF</Button>
-                <Button v-if="conteggi.email > 0" size="sm" variant="outline" :disabled="inCorso || fatto" data-testid="prova" @click="provaAMe">Mandane una a me</Button>
-                <Button v-if="conteggi.email > 0 && !soloCarta" size="sm" :disabled="inCorso || fatto" data-testid="invia" @click="invia()">Invia {{ conteggi.email === 1 ? '1 email' : `${conteggi.email} email` }}</Button>
+                <Button v-if="conteggi.email > 0" size="sm" variant="outline" :disabled="inCorso || fatta('email')" data-testid="prova" @click="provaAMe">Mandane una a me</Button>
+                <Button v-if="conteggi.email > 0 && !soloCarta" size="sm" :disabled="inCorso || fatta('email')" data-testid="invia" @click="invia()">Invia {{ conteggi.email === 1 ? '1 email' : `${conteggi.email} email` }}</Button>
                 <Button v-if="restanti?.length" size="sm" :disabled="inCorso" @click="invia(restanti)">Invia le altre</Button>
-                <Button v-if="conteggi.stampa > 0" size="sm" :disabled="inCorso || fatto" data-testid="stampa" @click="stampa()">Stampa {{ lettere(conteggi.stampa) }}</Button>
-                <Button v-if="conteggi.zip > 0" size="sm" :disabled="inCorso || fatto" data-testid="zip" @click="scaricaZip">Scarica {{ lettere(conteggi.zip) }} in un PDF per persona</Button>
+                <Button v-if="conteggi.stampa > 0" size="sm" :disabled="inCorso || fatta('stampa')" data-testid="stampa" @click="stampa()">Stampa {{ lettere(conteggi.stampa) }}</Button>
+                <Button v-if="conteggi.zip > 0" size="sm" :disabled="inCorso || fatta('zip')" data-testid="zip" @click="scaricaZip">Scarica {{ lettere(conteggi.zip) }} in un PDF per persona</Button>
+                <Button v-if="conteggi.pec > 0" size="sm" :disabled="inCorso || fatta('pec') || !casella?.impostata" data-testid="manda-pec" @click="confermaPec = true">
+                    Manda {{ conteggi.pec }} PEC
+                </Button>
+                <Button v-if="restantiPec?.length" size="sm" :disabled="inCorso" data-testid="manda-le-altre" @click="mandaPec(restantiPec)">Manda le altre</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>

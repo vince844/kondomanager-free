@@ -32,6 +32,8 @@ export interface DocumentoInviato {
     incasso_id: number | null;
     /** Di una ricevuta mandata a chi ha versato per un altro, la persona per cui ha versato. */
     per_conto_di: string | null;
+    /** Del verbale trasmesso, il giorno dell'assemblea («Verbale n. 42 dell'assemblea del 15/12/2026»); nullo per gli altri documenti. */
+    assemblea_del?: string | null;
     righe: RigaDelDocumento[];
 }
 
@@ -51,6 +53,8 @@ export const TIPI_DEI_FILTRI: Array<{ valore: string; nome: string }> = [
     ...TIPI_LETTERE.map((t) => ({ valore: t, nome: NOMI_TIPI[t] })),
     { valore: 'ricevuta', nome: 'Ricevute' },
     { valore: 'avviso_compensazione', nome: 'Avvisi di compensazione' },
+    { valore: 'convocazione', nome: 'Convocazioni delle assemblee' },
+    { valore: 'verbale', nome: 'Verbali delle assemblee' },
 ];
 
 export interface FiltriCorrispondenza { tipo: string; dal: string; al: string }
@@ -117,7 +121,8 @@ export function paginaDi<V>(voci: V[], pagina: number, perPagina: number = PER_P
     return { voci: voci.slice((p - 1) * perPagina, p * perPagina), pagina: p, pagine };
 }
 
-const NOMI_DOCUMENTI: Record<string, string> = { ricevuta: 'Ricevuta', avviso_compensazione: 'Avviso di compensazione' };
+const NOMI_DOCUMENTI: Record<string, string> = { ricevuta: 'Ricevuta', avviso_compensazione: 'Avviso di compensazione', convocazione: 'Convocazione dell\'assemblea',
+    verbale: 'Verbale' };
 
 const numeroDi = (d: DocumentoInviato) => (d.numero !== null && d.numero !== '' ? ` n. ${d.numero}` : '');
 
@@ -130,8 +135,12 @@ export function testoDocumento(d: DocumentoInviato): string {
     if (d.non_da_comunicare) {
         return `Incasso${numeroDi(d)} annullato: «non serve comunicarlo», segnato il ${quandoDa}`;
     }
-    if (d.tipo === 'avviso_compensazione') {
+    if (d.tipo === 'avviso_compensazione' || d.tipo === 'convocazione') {
         return `${NOMI_DOCUMENTI[d.tipo]} del ${quandoDa}`;
+    }
+    // Il verbale trasmesso: il suo numero nel registro dei verbali e il giorno dell'assemblea, poi quando è stato emesso.
+    if (d.tipo === 'verbale') {
+        return `${NOMI_DOCUMENTI.verbale}${numeroDi(d)}${d.assemblea_del ? ` dell'assemblea del ${giorno(d.assemblea_del)}` : ''}, emesso il ${quandoDa}`;
     }
 
     return `${NOMI_DOCUMENTI[d.tipo] ?? d.tipo}${numeroDi(d)} del ${quandoDa}`;
@@ -139,7 +148,7 @@ export function testoDocumento(d: DocumentoInviato): string {
 
 /** Le cifre del documento com'era quando è stato emesso: il versamento della ricevuta, la parte che il credito ha coperto per l'avviso. */
 export function testoCifreDelDocumento(d: DocumentoInviato): string {
-    if (d.non_da_comunicare) {
+    if (d.non_da_comunicare || d.tipo === 'convocazione' || d.tipo === 'verbale') {
         return '';
     }
     if (d.tipo === 'avviso_compensazione') {

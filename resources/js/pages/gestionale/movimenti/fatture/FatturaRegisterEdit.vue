@@ -32,7 +32,9 @@ import { calcolaTotali, risolviRegimeRitenuta, REGIMI_RITENUTA_PREVIEW } from '@
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 import { piuGiorni } from '@/lib/giorno';
+import { lavoriUrgentiDelleVoci } from '@/lib/gestionale/pianiRate/urgenza';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -116,7 +118,7 @@ interface Conto {
         is_pregresso?: boolean
     }[]
     /** La competenza già dichiarata sulla voce in un piano rate della gestione (decisione 20), se c'è. */
-    competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[] } | null
+    competenza_piano?: { piano_rate_id: number; piano: string; tratti: { dal: string; al: string }[]; urgenza?: boolean } | null
     /** Coda 687: la gestione del piano dei conti della voce; il menu delle righe offre quelle della gestione scelta. */
     gestione_id?: number | null
 }
@@ -154,6 +156,8 @@ const props = defineProps<{
     // congelamento, non `fattura` stessa: la NC è mutabile, l'originale no. Vedi il
     // commento gemello in FatturaPassivaController::edit().
     nota_storno_originale: { importo_imponibile: number; importo_ritenuta: number; ritenuta_details: Record<string, unknown> | null } | null;
+    /** 1.12.0-beta.13 (§1.4): la delibera della competenza, se la fattura ne ha una, nella forma di «Scegli la delibera». */
+    delibera_competenza?: DeliberaDelMenu | null;
 }>();
 // La competenza che la voce ha già in un piano rate (decisione 20): sull'ordinario il riparto segue quella, non la
 // competenza dichiarata su questa fattura (decisione 19). Si dice sotto la voce, dove si sceglie.
@@ -178,6 +182,9 @@ const avvisoNotaDaConfermare = ref<string | null>(null);
 const confermaAvvisoNota = ref(false);
 const modificaVietataMsg = ref('');
 
+// 1.12.0-beta.13 (§1.4): la delibera della competenza, scelta nel pannello; nel modulo ne va l'id.
+const deliberaCompetenza = ref<DeliberaDelMenu | null>(props.delibera_competenza ?? null);
+
 const form = useForm({
     _method: 'PUT',
     fornitore_id:       props.fattura.fornitore_id,
@@ -197,6 +204,8 @@ const form = useForm({
     // La competenza (B2, S6) arriva dalle colonne, come 'Y-m-d' (cast del Model), non più da `dati_extra`.
     competenza_dal:     props.fattura.competenza_dal || '',
     competenza_al:      props.fattura.competenza_al || '',
+    // 1.12.0-beta.13 (§1.4): la delibera di «Spesa deliberata il …»; vuota, il server toglie il collegamento di prima.
+    delibera_competenza_id: (props.delibera_competenza?.id ?? null) as number | null,
     // FIX (revisione avversariale): un booleano esplicito qui, sempre, faceva
     // scattare required_if:applica_ritenuta,false in UpdateFatturaRequest per
     // OGNI fattura di un fornitore non soggetto a ritenuta (il caso comune) —
@@ -268,6 +277,10 @@ const form = useForm({
     // ⚠️ Niente più 'file' qui (Coda 102, 1.11.0-beta.12): l'allegato si carica dal
     // Dettaglio, che non passa dalla riscrittura delle scritture contabili.
 });
+watch(deliberaCompetenza, (d) => { form.delibera_competenza_id = d?.id ?? null; });
+// Coda 688: riaperta, la fattura sulla voce di un piano d'urgenza mostra il giorno come «Lavori ordinati il …», con le parole del piano. Qui non si propone:
+// la competenza è quella che la fattura ha.
+const urgenzaDelleVoci = computed(() => lavoriUrgentiDelleVoci((form.righe as { conto_id?: number | null }[]).map((r) => competenzaPianoDi(r.conto_id ?? null))));
 
 // Since fornitore is read-only and not passed in props.fornitori
 const selectedFornitore = computed(() => props.fattura.fornitore);
@@ -899,6 +912,7 @@ const pageGuides = [
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
+                :storia="{ tipo: 'fattura_passiva', id: props.fattura.id }"
                 page-title="Modifica fattura passiva"
                 page-subtitle="Aggiorna i dati nel pannello di sinistra e le voci di dettaglio nel registro a destra."
                 :guides="pageGuides"
@@ -1163,8 +1177,13 @@ const pageGuides = [
                         <CompetenzaFattura
                             v-model:dal="form.competenza_dal"
                             v-model:al="form.competenza_al"
+                            v-model:delibera="deliberaCompetenza"
+                            :condominio-id="props.condominio.id"
+                            :condominio-nome="props.condominio.nome"
+                            :fattura-id="props.fattura.id"
                             :gestione-straordinaria="gestioneSceltaStraordinaria"
                             :pregressa="form.is_pregresso"
+                            :lavori-urgenti="urgenzaDelleVoci"
                             :errori="{ dal: form.errors.competenza_dal, al: form.errors.competenza_al }" />
 
                         <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">

@@ -69,6 +69,7 @@ const pageGuides = computed(() => [
     <div class="px-6 py-8 space-y-6">
       
       <PageHeaderGuide
+        :storia="{ tipo: 'documenti' }"
         :page-title="trans('documenti.header.list_categories_title')"
         :page-subtitle="trans('documenti.header.list_categories_description')"
         :breadcrumbs="breadcrumbs"

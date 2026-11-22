@@ -5,6 +5,8 @@
 
 namespace App\Actions\Subentro;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\EventoTipo;
 use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Evento;
@@ -480,7 +482,9 @@ final class AnnullaPassaggioAction
 
         // Tre tentativi: un'emissione di più rate può prendere le quote dell'unità in un ordine diverso, e InnoDB scioglie
         // l'incrocio annullando una delle due transazioni. Il corpo scrive solo nel database, e rifarlo è sicuro.
-        $esito = DB::transaction(function () use ($padreId, $idsFamiglia, $unita, $nota, $utente) {
+        // Gesto 4 all'indietro: una riga sola, con il motivo scritto.
+        $gesto = GestiDelRegistro::passaggioAnnullato(Subentro::conAnnullati()->findOrFail($padreId), $nota);
+        $esito = DB::transaction(fn () => RegistroModifiche::durante($gesto, function () use ($padreId, $idsFamiglia, $unita, $nota, $utente) {
             // 0. I lock, PRIMA di qualunque lettura senza lock. Su MySQL (REPEATABLE READ) l'istantanea delle letture nasce
             //    alla prima SELECT semplice: presi dopo, i lock non farebbero vedere ai controlli un passaggio, un'emissione
             //    o un «Associa» appena committati, e le scritture qui sotto li sovrascriverebbero (Fase 1-bis della beta.37,
@@ -632,7 +636,7 @@ final class AnnullaPassaggioAction
 
             return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante,
                 'successione' => $padre->successione(), 'legate' => $legateInParole, 'interessi' => $interessi];
-        }, 3);
+        }), 3);
 
         // Il contatore dei promemoria dello staff è in cache per dieci minuti: il promemoria tolto non deve contare ancora.
         InboxService::clearAdminCache();

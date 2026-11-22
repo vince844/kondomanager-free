@@ -18,6 +18,9 @@ import InputError from '@/components/InputError.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import PulsanteGuida from '@/components/PulsanteGuida.vue';
 import { usePermission } from '@/composables/permissions';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Repeat2, Landmark, AlertTriangle, PiggyBank, Info } from 'lucide-vue-next';
 import vSelect from 'vue-select';
@@ -63,7 +66,11 @@ const props = defineProps<{
     preselezione?: { origine: number | null; destinazione: number | null; importo_cents: number | null } | null;
 }>();
 
-const { generateRoute, generatePath } = usePermission();
+const permessi = usePermission();
+const { generateRoute, generatePath } = permessi;
+// La delibera accanto alla causale, facoltativa (§1.4 del progetto della tappa 2): la scrittura si lega alla delibera, la causale resta quella scritta.
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+const delibera = ref<DeliberaDelMenu | null>(null);
 // Due formattatori: il form lavora in euro (MoneyInput), i saldi arrivano in centesimi.
 const { euro } = useCurrencyFormatter({ fromCents: false });
 const { euro: euroCents } = useCurrencyFormatter({ fromCents: true });
@@ -246,14 +253,14 @@ const flashMessage = computed(() => page.props.flash.message);
  */
 const submit = (creaAltro = false) => {
     if (!puoRegistrare.value) return;
-    form.transform((data) => ({ ...data, crea_altro: creaAltro }))
+    form.transform((data) => ({ ...data, crea_altro: creaAltro, ...(conLaDelibera.value && delibera.value ? { delibera_id: delibera.value.id } : {}) }))
         .post(route(generateRoute('gestionale.giroconti.store'), { condominio: props.condominio.id }), {
             preserveScroll: !creaAltro,
             // Tornando allo stesso componente, Inertia riusa l'istanza e il form
             // resterebbe pieno dei valori appena registrati: un click distratto
             // produrrebbe un doppione identico. Il modulo riparte pulito.
             onSuccess: () => {
-                if (creaAltro) form.reset();
+                if (creaAltro) { form.reset(); delibera.value = null; }
             },
         });
 };
@@ -419,6 +426,12 @@ function onKeydown(e: KeyboardEvent) {
                             <Input id="causale" v-model="form.causale" placeholder="Es. Accantonamento al fondo riserva — delibera del 12/05" maxlength="255" />
                             <p class="text-xs text-slate-500">È ciò che rende leggibile il libro giornale: scrivila come la leggeresti in assemblea.</p>
                             <InputError :message="form.errors.causale" />
+                        </div>
+
+                        <div v-if="conLaDelibera" class="space-y-1.5" data-testid="giroconto-con-la-delibera">
+                            <ScegliLaDelibera v-model="delibera" :condominio-id="condominio.id" :condominio-nome="condominio.nome" ruolo="causale" etichetta="Delibera (facoltativa)"
+                                per-questo="questo giroconto" :con-memo="false" />
+                            <p class="text-xs text-slate-500">Se l'accantonamento o lo spostamento l'ha deciso l'assemblea: la scrittura resta legata alla sua delibera.</p>
                         </div>
 
                         <div class="space-y-1.5">

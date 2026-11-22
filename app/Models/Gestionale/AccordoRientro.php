@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * L'accordo di rientro di una persona: la data, le rate coperte con l'importo riconosciuto di ognuna, il calendario (le rate dell'accordo, con il
@@ -30,6 +31,8 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  */
 class AccordoRientro extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'accordi_rientro';
 
     protected $fillable = [

@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Fornitori;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Traits\OrdinaElenco;
 
 use App\Enums\Fiscale\NaturaPercipiente;
@@ -175,9 +176,9 @@ class FornitoreController extends Controller
                 // Con il ruolo, che la validazione rende obbligatorio appena si sceglie
                 // un'anagrafica: senza, nasceva una riga che la scheda «Rappresentanti» avrebbe
                 // rifiutato, e che lì compariva con la colonna Ruolo vuota.
-                $fornitore->referenti()->attach($data['anagrafica_id'], [
+                RegistroModifiche::legame($fornitore, 'referenti', 'Rappresentanti', fn () => $fornitore->referenti()->attach($data['anagrafica_id'], [
                     'ruolo' => $data['ruolo'],
-                ]);
+                ]));
             }
 
             // 3. Creazione del Conto Corrente predefinito (se è stato inserito un IBAN)
@@ -333,7 +334,8 @@ class FornitoreController extends Controller
                 // Se l'utente cancella l'IBAN dal form, potresti volerlo eliminare
                 // o lasciarlo nello storico. Per sicurezza e coerenza col form, 
                 // cancelliamo il conto ordinario associato (se c'era).
-                $fornitore->contiCorrenti()->where('tipo', 'ordinario')->delete();
+                // Uno per uno, con il modello: il registro delle modifiche scrive il conto tolto.
+                $fornitore->contiCorrenti()->where('tipo', 'ordinario')->get()->each->delete();
             }
 
             DB::commit();
@@ -382,7 +384,8 @@ class FornitoreController extends Controller
 
             // 2. PULIZIA DATI POLIMORFICI
             // Eliminiamo tutti i conti correnti associati a questo fornitore
-            $fornitore->contiCorrenti()->delete();
+            // Uno per uno, con il modello: il registro delle modifiche scrive i conti tolti.
+            $fornitore->contiCorrenti()->get()->each->delete();
 
             // 3. ELIMINAZIONE FORNITORE
             // I referenti nella tabella pivot verranno eliminati automaticamente 

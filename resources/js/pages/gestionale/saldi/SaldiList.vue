@@ -120,6 +120,7 @@ const pageGuides = [
   <GestionaleLayout>
     <div class="px-6 py-8 space-y-4">
       <PageHeaderGuide
+        :storia="props.esercizio?.id ? { tipo: 'saldi', id: props.esercizio.id } : null"
         :page-title="`Saldi Iniziali - ${esercizio?.nome || 'Esercizio'}`"
         page-subtitle="Configura il Wallet finanziario di partenza per ogni unità immobiliare."
         :guides="pageGuides"

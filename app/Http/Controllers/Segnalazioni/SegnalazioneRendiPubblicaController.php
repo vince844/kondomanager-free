@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Segnalazioni;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Http\Controllers\Controller;
 use App\Models\Anagrafica;
@@ -65,7 +66,7 @@ class SegnalazioneRendiPubblicaController extends Controller
                     'updated_by' => Auth::id(),
                 ]);
 
-                $segnalazione->anagrafiche()->detach();
+                RegistroModifiche::legame($segnalazione, 'anagrafiche', 'Persone', fn () => $segnalazione->anagrafiche()->detach());
             });
 
         } catch (\Throwable $e) {

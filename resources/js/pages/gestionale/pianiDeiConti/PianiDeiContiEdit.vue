@@ -100,6 +100,7 @@ const submit = () => {
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
+                :storia="{ tipo: 'piano_conti', id: props.pianoConti.id }"
                 :page-title="`Modifica piano dei conti — ${props.pianoConti.nome}`"
                 page-subtitle="Aggiorna le informazioni del piano dei conti e la gestione a cui è associato nell'esercizio."
                 :guides="pageGuides"

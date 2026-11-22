@@ -18,6 +18,7 @@ import { shallowMount } from '@vue/test-utils';
 vi.mock('@inertiajs/vue3', () => ({ Head: { template: '<div />' } }));
 vi.mock('laravel-vue-i18n', () => ({
     trans: (chiave: string, valori?: Record<string, unknown>) => (valori ? `${chiave} ${JSON.stringify(valori)}` : chiave),
+    transChoice: (chiave: string, quante: number, valori?: Record<string, unknown>) => `${chiave} #${quante} ${JSON.stringify(valori ?? {})}`,
 }));
 
 const PaginaEsito = (await import('./RestoreResult.vue')).default;
@@ -79,6 +80,38 @@ describe('RestoreResult', () => {
         expect(log).toContain('version: 1.11.0');
         expect(log).toContain('error: Errore di prova');
         expect(pagina.find('[data-testid="dettagli-dopo-accesso"]').exists()).toBe(false);
+    });
+
+    test('1.12.0-beta.13 (risposta 7) — con il dettaglio, quante righe del registro delle modifiche sono state rimesse, e gli oscuramenti', () => {
+        const pagina = shallowMount(PaginaEsito, {
+            props: { restore: { phase: 'completed', outcome: { registro_modifiche: { righe_rimesse: 1250, oscuramenti_riapplicati: 2 } } }, dettaglio: true },
+        });
+        const riga = pagina.find('[data-testid="registro-modifiche"]').text();
+
+        expect(riga).toContain('impostazioni.restore_result.registry_heading');
+        expect(riga).toContain('impostazioni.restore_result.registry_kept #1250 {"righe":"1.250"}');
+        expect(riga).toContain('impostazioni.restore_result.registry_obscured #2 {"righe":"2"}');
+    });
+
+    test('1.12.0-beta.13 (risposta 7) — le righe nel PDF con il suo nome, la copia senza registro, l\'errore con il file rimasto', () => {
+        const monta = (esito: Record<string, unknown>) => shallowMount(PaginaEsito, {
+            props: { restore: { phase: 'completed', outcome: { registro_modifiche: esito } }, dettaglio: true },
+        }).find('[data-testid="registro-modifiche"]').text();
+
+        expect(monta({ righe_nel_pdf: 812, nome_pdf: 'Registro delle modifiche prima del ripristino del 15/12/2026' }))
+            .toContain('impostazioni.restore_result.registry_pdf {"righe":"812","nome":"Registro delle modifiche prima del ripristino del 15/12/2026"}');
+        expect(monta({ righe_rimesse: 4812, oscuramenti_riapplicati: 0, tutte: true })).toContain('impostazioni.restore_result.registry_all_back #4812 {"righe":"4.812"}');
+        expect(monta({ righe_rimesse: 0, oscuramenti_riapplicati: 0 })).toContain('impostazioni.restore_result.registry_none_after');
+        expect(monta({ errore: 'disco pieno', righe_rimesse: 3, file_rimasto: '.registro-modifiche-r1.ndjson' }))
+            .toContain('impostazioni.restore_result.registry_error {"errore":"disco pieno"}');
+        expect(monta({ errore: 'disco pieno', righe_rimesse: 3, file_rimasto: '.registro-modifiche-r1.ndjson' }))
+            .toContain('impostazioni.restore_result.registry_error_file {"file":".registro-modifiche-r1.ndjson"}');
+    });
+
+    test('1.12.0-beta.13 — senza l\'esito del registro (un ripristino di prima, o senza il dettaglio), nessuna riga', () => {
+        const pagina = shallowMount(PaginaEsito, { props: { restore: { phase: 'completed', outcome: {} }, dettaglio: true } });
+
+        expect(pagina.find('[data-testid="registro-modifiche"]').exists()).toBe(false);
     });
 
     test('Coda 343 — con il dettaglio un ripristino completato dice la versione del backup', () => {

@@ -193,6 +193,12 @@ class PalazzinaController extends Controller
      */
     public function destroy(Condominio $condominio, Palazzina $palazzina): RedirectResponse
     {
+        // R15 del progetto della tappa 2: usata da un'assemblea o da un punto dell'ordine del giorno, non si elimina (la chiave non cancella in cascata).
+        $usata = \App\Services\Assemblee\GuardieDiCancellazione::perLaPalazzina($palazzina);
+        if ($usata !== null) {
+            return back()->with($this->flashError($usata));
+        }
+
         try {
             $palazzina->delete();
 

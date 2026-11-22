@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Collection;
+use App\Traits\ContaNelGesto;
 
 /**
  * Quanto un'unità immobiliare ha GIÀ VERSATO verso una spesa o un fondo.
@@ -26,6 +27,8 @@ use Illuminate\Support\Collection;
  */
 class ContributoVersato extends Model
 {
+    use ContaNelGesto;
+
     protected $table = 'contributi_versati';
 
     protected $fillable = [

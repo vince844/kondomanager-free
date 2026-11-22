@@ -8,9 +8,12 @@ namespace App\Models;
 use App\Traits\RisolveIFigliDelleRotte;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
 
 class Immobile extends Model
 {
+    use RegistraLeModifiche;
+
     use RisolveIFigliDelleRotte;
 
     

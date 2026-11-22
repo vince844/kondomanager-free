@@ -384,21 +384,22 @@ final class VersioniDelRendiconto
     }
 
     /**
-     * «Registra l'approvazione» di una versione presentata.
+     * «Registra l'approvazione» di una versione presentata. Dalla delibera (il seguito delle delibere) il verbale non si ricarica: `$documentoDelVerbale` è il
+     * documento della copia sottoscritta già nell'archivio, e la versione punta a quello.
      *
      * @param  array{data_delibera:string, numero_verbale:?string, riparto_approvato:bool, nota_approvazione:?string}  $dati
      */
-    public function approva(RendicontoVersione $versione, array $dati, ?UploadedFile $verbale, ?User $utente): void
+    public function approva(RendicontoVersione $versione, array $dati, ?UploadedFile $verbale, ?User $utente, ?int $documentoDelVerbale = null): void
     {
         $percorso = $verbale === null ? null : $this->archivio->salvaConLEstensioneDelNome($verbale, $this->cartella($versione->condominio));
         try {
-            DB::transaction(function () use ($versione, $dati, $verbale, $percorso, $utente) {
+            DB::transaction(function () use ($versione, $dati, $verbale, $percorso, $utente, $documentoDelVerbale) {
                 $bloccata = RendicontoVersione::whereKey($versione->id)->lockForUpdate()->firstOrFail();
                 abort_unless($bloccata->stato === RendicontoVersione::PRESENTATA, 422, 'Si approva una versione presentata.');
                 // Una seconda approvazione dello stesso esercizio: l'assemblea che corregge fa una delibera nuova, e quella di prima resta, sostituita.
                 RendicontoVersione::where('esercizio_id', $bloccata->esercizio_id)->where('stato', RendicontoVersione::APPROVATA)
                     ->update(['stato' => RendicontoVersione::SOSTITUITA]);
-                $verbaleId = null;
+                $verbaleId = $documentoDelVerbale;
                 if ($verbale !== null) {
                     $verbaleId = $bloccata->documenti()->create([
                         'name' => $verbale->getClientOriginalName(),
@@ -419,6 +420,23 @@ final class VersioniDelRendiconto
 
             throw $e;
         }
+    }
+
+    /**
+     * Il verbale sottoscritto caricato dopo (la riunione su carta) si aggancia alle versioni approvate dalle sue delibere che non hanno ancora il documento:
+     * la versione punta al documento del verbale già nell'archivio, senza un secondo file. Una versione che ha già il suo verbale non si tocca. Rende quante.
+     *
+     * @param list<int> $versioni
+     */
+    public static function agganciaIlVerbale(array $versioni, int $documentoDelVerbale): int
+    {
+        $agganciate = 0;
+        foreach (RendicontoVersione::query()->whereIn('id', $versioni)->whereNull('verbale_documento_id')->get() as $versione) {
+            $versione->update(['verbale_documento_id' => $documentoDelVerbale]);
+            $agganciate++;
+        }
+
+        return $agganciate;
     }
 
     /**
@@ -495,6 +513,8 @@ final class VersioniDelRendiconto
             'verbale' => $v->verbale_documento_id === null ? null : ['id' => (int) $v->verbale_documento_id, 'nome' => $nomi[$v->verbale_documento_id] ?? null],
             // Che cosa mancava alla nota della versione, per la finestra dell'approvazione: la nota fermata, non la bozza di oggi.
             'nota_mancanze' => self::mancanzeDellaNota($v->nota, (array) ($v->pdf['parti'] ?? [])),
+            // In quale assemblea la versione è allegata, e se la convocazione è partita: allora non si elimina.
+            'in_assemblea' => \App\Services\Assemblee\Convocazione\RendicontoPerLAssemblea::inAssemblea($v),
         ])->values()->all();
     }
 
@@ -536,7 +556,7 @@ final class VersioniDelRendiconto
      * chiusura non lo scrive. La chiusura legge da qui, non dalla lettura di oggi; il confronto con oggi lo dice {@see ConfrontoDelRendiconto}. Null: nessuna
      * versione approvata.
      *
-     * @return array{versione_id:int, numero:int, forma:int, data_delibera:string, numero_verbale:?string, riparto_approvato:bool, conguaglio:array{gestioni:list<array<string,mixed>>, righe:list<array<string,mixed>>, da_altre_gestioni:list<array<string,mixed>>, condominio:array<string,int>}}|null
+     * @return array{versione_id:int, numero:int, forma:int, data_delibera:string, numero_verbale:?string, riparto_approvato:bool, verbale_documento_id:?int, delibere:array{rendiconto:?array<string,mixed>, riparto:?array<string,mixed>}, conguaglio:array{gestioni:list<array<string,mixed>>, righe:list<array<string,mixed>>, da_altre_gestioni:list<array<string,mixed>>, condominio:array<string,int>}}|null
      */
     public static function perLaChiusura(Esercizio $esercizio): ?array
     {
@@ -544,12 +564,21 @@ final class VersioniDelRendiconto
         if ($v === null) {
             return null;
         }
+        // Dalla delibera (il seguito delle delibere): le due delibere che hanno approvato la versione e il riparto, e il giorno da cui i trenta giorni per
+        // impugnarle sono passati per tutti (null finché un verbale non è consegnato). La chiusura decide che cosa farne.
+        $delibera = fn (string $ruolo) => \App\Services\Assemblee\CollegamentiDelleDelibere::delibera($v, $ruolo);
+        $perLaChiusura = fn (?\App\Models\Assemblee\Delibera $d) => $d === null ? null : ['id' => (int) $d->id, 'esito' => (string) $d->esito?->value,
+            'deliberata_il' => $d->deliberata_il?->format('Y-m-d'), 'frase' => \App\Services\Assemblee\DeliberaInParole::breve($d),
+            'trenta_giorni_per_tutti' => app(\App\Services\Assemblee\Verbale\TerminiDellImpugnazione::class)->perLaDelibera($d)['per_tutti'] ?? null];
+        $delibere = ['rendiconto' => $perLaChiusura($delibera(\App\Enums\Assemblee\RuoloCollegamento::APPROVAZIONE->value)),
+            'riparto' => $perLaChiusura($delibera(\App\Enums\Assemblee\RuoloCollegamento::RIPARTO->value))];
         $g = (array) ($v->cifre['conguaglio'] ?? []);
         $scegli = fn (array $righe, array $chiavi) => array_values(array_map(fn ($r) => array_intersect_key((array) $r, array_flip($chiavi)), $righe));
 
         return [
             'versione_id' => (int) $v->id, 'numero' => (int) $v->numero, 'forma' => (int) $v->forma, 'data_delibera' => $v->data_delibera->format('Y-m-d'),
-            'numero_verbale' => $v->numero_verbale, 'riparto_approvato' => (bool) $v->riparto_approvato,
+            'numero_verbale' => $v->numero_verbale, 'riparto_approvato' => (bool) $v->riparto_approvato, 'verbale_documento_id' => $v->verbale_documento_id,
+            'delibere' => $delibere,
             'conguaglio' => [
                 'gestioni' => $scegli((array) ($g['gestioni'] ?? []), ['gestione_id', 'nome', 'tipo', 'in_corso', 'opera_finita', 'non_calcolabile', 'totali']),
                 'righe' => $scegli((array) ($g['righe'] ?? []), ['gestione_id', 'anagrafica_id', 'immobile_id', 'nome', 'unita', 'a', 'personali', 'conguaglio', 'posizione', 'saldo',
@@ -630,6 +659,11 @@ final class VersioniDelRendiconto
         if ($versione->stato !== RendicontoVersione::PRESENTATA) {
             return 'La versione '.$versione->numero.' è '.($versione->stato === RendicontoVersione::APPROVATA ? 'approvata' : 'sostituita da un\'approvazione successiva')
                 .': resta, con il suo PDF, ed è la delibera dell\'assemblea. Si elimina solo una versione fermata e mai approvata.';
+        }
+        // La versione allegata a una convocazione già partita è ciò che i condòmini hanno ricevuto: resta.
+        $inAssemblea = \App\Services\Assemblee\Convocazione\RendicontoPerLAssemblea::inAssemblea($versione);
+        if ($inAssemblea !== null && $inAssemblea['spedita']) {
+            return 'La versione '.$versione->numero.' è allegata alla convocazione già spedita ('.$inAssemblea['frase'].'): è ciò che hanno ricevuto i condòmini, e resta.';
         }
         $percorsi = [];
         DB::transaction(function () use ($versione, &$percorsi) {

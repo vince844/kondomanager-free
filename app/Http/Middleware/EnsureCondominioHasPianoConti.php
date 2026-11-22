@@ -5,6 +5,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\RegistroModifiche\Autore;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Models\Condominio;
 use App\Services\CondominioService;
 use Closure;
@@ -25,7 +27,9 @@ class EnsureCondominioHasPianoConti
         if ($condominio instanceof Condominio) {
             try {
                 // Deleghiamo la logica al Service (così il codice è riutilizzabile)
-                app(CondominioService::class)->ensureDefaultConti($condominio);
+                // Li crea il programma, non chi ha aperto la pagina: il registro delle modifiche firma «Il programma».
+                RegistroModifiche::comeAutore(Autore::programma('pagina', 'creato in automatico all\'apertura del gestionale del condominio'),
+                    fn () => app(CondominioService::class)->ensureDefaultConti($condominio));
                 
             } catch (\Throwable $e) {
                 // Logghiamo l'errore ma non blocchiamo l'utente, 

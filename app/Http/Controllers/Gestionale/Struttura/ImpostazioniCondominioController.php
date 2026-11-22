@@ -22,8 +22,9 @@ use Inertia\Response;
 /**
  * Le impostazioni del condominio, nella scheda «Impostazioni» dell'area «Condominio»: le scelte che valgono solo per questo condominio, una riga per condominio
  * ({@see ImpostazioniCondominio}). Oggi la sezione «Il recupero dei crediti»: che cosa succede dopo una lettera quando scadono rate nuove, e se il programma
- * suggerisce la prossima azione. Aprire la pagina non scrive niente (senza la riga valgono le scelte di serie); le salva chi modifica il condominio
- * (`CondominioPolicy::update`, «Modifica condomini»), gli altri le vedono.
+ * suggerisce la prossima azione; e la sezione «Le assemblee», le teste nel caso misto ({@see \App\Services\Assemblee\Sala\TesteDelCondominio}). Aprire la
+ * pagina non scrive niente (senza la riga valgono le scelte di serie); le salva chi modifica il condominio (`CondominioPolicy::update`, «Modifica
+ * condomini»), gli altri le vedono.
  */
 class ImpostazioniCondominioController extends Controller
 {
@@ -39,7 +40,11 @@ class ImpostazioniCondominioController extends Controller
             'condomini' => $this->getCondomini(),
             'esercizio' => $this->getEsercizioCorrente($condominio),
             'impostazioni' => ImpostazioniCondominio::delCondominio((int) $condominio->id)->perLaPagina(),
+            // La «Storia» della pagina (1.12.0-beta.13): l'id della riga delle impostazioni, vuoto finché non sono state salvate la prima volta.
+            'impostazioni_id' => ImpostazioniCondominio::query()->where('condominio_id', $condominio->id)->value('id'),
             'puo_modificare' => Gate::allows('update', $condominio),
+            // La sezione «Le assemblee»: le teste nel caso misto, con l'esempio vero del condominio; si salva con la sua rotta (`assemblee.teste`).
+            'assemblee' => fn () => app(\App\Services\Assemblee\Sala\TesteDelCondominio::class)->perLaPagina($condominio),
         ]);
     }
 

@@ -44,6 +44,8 @@ interface Riga {
 interface Totali { a: number; personali: number; b: number; conguaglio: number; posizione: number; fuori_dalle_rate: number; saldo: number; non_disponibili: number; a_non_disponibili?: number; non_emesse?: number }
 interface Gestione {
     id: number; nome: string; tipo: string; non_calcolabile: string | null; totali: Totali;
+    /** Coda 688: il giorno dei lavori urgenti che divide le spese senza periodo, detto in una frase. */
+    giorno_dell_urgenza?: string | null;
     /** `coperti`: la parte coperta da addebiti a singole persone, per la voce (dal preventivo: può superare la cifra del consuntivo). */
     non_attribuite: { conto_id: number; voce: string; piano_conto_id: number | null; importo: number; motivo: string; coperti?: number }[];
     /** Gli addebiti a singole persone accanto alle spese non attribuite: quanto coprono, a chi, quanto resta da addebitare. */
@@ -330,6 +332,8 @@ const pageGuides = [
                         <p v-for="g in k.gestioni.filter((x) => x.non_calcolabile)" :key="`nc-${g.id}`" class="mt-3 text-[12.5px] text-amber-800 dark:text-amber-300" data-test="non-calcolabile">
                             {{ g.nome }}: il conguaglio non si calcola. {{ g.non_calcolabile }}
                         </p>
+                        <p v-for="g in k.gestioni.filter((x) => x.giorno_dell_urgenza && !x.non_calcolabile)" :key="`gu-${g.id}`" class="mt-3 text-[12.5px] text-slate-700 dark:text-slate-300"
+                            data-test="giorno-dell-urgenza">{{ g.nome }}: {{ g.giorno_dell_urgenza }}</p>
                         <NuovoAddebitoDialog :open="addebito !== null" :condominio-id="props.condominio.id" :origine="addebito"
                             @update:open="(v: boolean) => { if (!v) addebito = null; }" @fatto="router.reload({ only: ['conguaglio'] })" />
                     </MovimentiLayout>

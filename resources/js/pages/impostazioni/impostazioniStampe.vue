@@ -203,6 +203,7 @@ const submit = () => {
 
     <div class="px-4 py-6 space-y-6">
       <PageHeaderGuide
+        :storia="{ tipo: 'impostazioni_stampe' }"
         :page-title="trans('impostazioni.dialogs.print_settings_title')"
         :page-description="trans('impostazioni.dialogs.print_settings_description')"
         :icon="Printer"

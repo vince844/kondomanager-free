@@ -6,9 +6,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
+use App\Traits\RisolveIFigliDelleRotte;
 
 class Documento extends Model
 {
+    use RegistraLeModifiche;
+    use RisolveIFigliDelleRotte;
+
     protected $table = 'documenti';
 
     protected $fillable = [
@@ -82,6 +87,18 @@ class Documento extends Model
     public function documentable()
     {
         return $this->morphTo();
+    }
+
+    /** Le versioni di prima del file (1.12.0-beta.13, §9 del registro delle modifiche): tenute quando il file si sostituisce. */
+    public function versioni()
+    {
+        return $this->hasMany(DocumentoVersione::class, 'documento_id');
+    }
+
+    /** La versione di prima si cerca dentro il documento dell'indirizzo (le rotte dello scaricamento delle versioni nel gestionale, `scopeBindings`). */
+    protected function relazioniDeiFigliNelleRotte(): array
+    {
+        return ['versione' => 'versioni'];
     }
 
     /**

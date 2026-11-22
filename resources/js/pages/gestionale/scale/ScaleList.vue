@@ -74,6 +74,7 @@ const pageGuides = [
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
+        :storia="{ tipo: 'condominio', id: props.condominio.id }"
         page-title="Gestione scale"
         page-subtitle="Definisci gli ingressi e le rampe di scale. Questa organizzazione è essenziale per le ripartizioni millesimali parziali."
         :guides="pageGuides"

@@ -5,6 +5,9 @@
 
 namespace App\Http\Controllers\Condomini;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\Gesto;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Traits\OrdinaElenco;
 
 use App\Exceptions\LimiteCondominiRaggiunto;
@@ -272,9 +275,20 @@ class CondominioController extends Controller
                 .implode('; ', $versioni).'.'));
         }
 
+        // R15 del progetto della tappa 2: un'assemblea convocata, tenuta o registrata a mano, una delibera o un preventivo fermato trattengono il condominio
+        // come il rendiconto conservato; le assemblee in preparazione se ne vanno con lui, nel suo gesto.
+        $assemblee = \App\Services\Assemblee\GuardieDiCancellazione::perIlCondominio($condominio);
+        if ($assemblee !== null) {
+            return back()->with($this->flashError($assemblee));
+        }
+
         try {
-           
-            $condominio->delete();
+
+            // Gesto 3 del registro delle modifiche: i conteggi di ciò che sparisce si leggono prima, poi le chiavi a cascata li portano via.
+            RegistroModifiche::durante(GestiDelRegistro::eliminazioneDelCondominio($condominio), function () use ($condominio) {
+                \App\Services\Assemblee\GuardieDiCancellazione::togliLePreparazioni((int) $condominio->id);
+                $condominio->delete();
+            });
 
             return back()->with(
                 $this->flashSuccess(__('condomini.success_delete_building'))

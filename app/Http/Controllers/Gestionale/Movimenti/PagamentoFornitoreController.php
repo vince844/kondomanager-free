@@ -434,6 +434,10 @@ class PagamentoFornitoreController extends Controller
                     'is_nota_credito' => $f->tipo_documento === 'nota_credito',
                     'gestione_id' => $gestioneId,
                     'descrizione_righe' => $f->righe->pluck('descrizione')->filter()->implode(', '),
+                    // 1.12.0-beta.13 (R12, decisione 561): per la riga in sforo, «Paga per l'urgenza» e «Ratifica» dicono di quanto supera il preventivo.
+                    'totale_documento' => (int) $f->totale_documento,
+                    'data_documento_iso' => $f->data_documento?->format('Y-m-d'),
+                    ...($f->stato_approvazione === 'sforo_motivato' ? \App\Http\Controllers\Assemblee\RatificaPerLePagine::perLaRiga($f, []) : []),
                 ];
             });
 

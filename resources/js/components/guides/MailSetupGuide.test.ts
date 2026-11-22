@@ -25,7 +25,8 @@ describe('MailSetupGuide — il mittente (Coda 121)', () => {
     });
 
     test('dice che dipende dal gestore: una casella di posta usa l\'indirizzo della casella, con Gmail anche un alias aggiunto', () => {
-        expect(sorgente).toContain('<strong>Indirizzo "Mittente (Address)":</strong> dipende dal gestore.');
+        // L'etichetta è quella della pagina delle caselle (decisione 572): «Indirizzo del mittente».
+        expect(sorgente).toContain('<strong>Indirizzo del mittente:</strong> dipende dal gestore.');
         expect(sorgente).toContain('Con una casella di posta (Aruba, Gmail) è l\'indirizzo della casella con cui ti autentichi (con Gmail, anche un alias che hai aggiunto nell\'account).');
     });
 
@@ -60,3 +61,43 @@ describe('MailSetupGuide — che cosa registra il programma (ricevute, 1.12.0-be
         expect(sorgente).not.toContain('100% di tracciabilità');
     });
 });
+
+describe('MailSetupGuide — la ricevuta letta, «Togli la casella PEC», la posta mai provata (decisione 577)', () => {
+    test('la ricevuta di consegna trascinata: il programma ne legge il giorno e l\'ora e la archivia sulla riga', () => {
+        expect(sorgente).toContain('il programma ne legge il giorno e l\'ora, e la archivia sulla riga, da dove si scarica.');
+    });
+
+    test('«Togli la casella PEC» chiede conferma e la casella torna «Da impostare»', () => {
+        expect(sorgente).toContain('<b class="block text-slate-900 dark:text-white mb-0.5">Togli la casella PEC</b>');
+        expect(sorgente).toContain('La casella torna «Da impostare» e «Manda le PEC» lo dice; le PEC già partite restano.');
+    });
+
+    test('«Modifica» apre i campi di una casella impostata, anche accanto a «Prova l\'invio»; i dati nuovi prendono il posto dei vecchi', () => {
+        expect(sorgente).toContain('<strong>Cambiare una casella:</strong> «Modifica», sulla sua riga, apre i campi.');
+        expect(sorgente).toContain('Con un gestore nuovo scrivi i suoi dati e salva: prendono il posto dei vecchi, e la prova fatta con i dati di prima non vale per i nuovi.');
+    });
+
+    test('la posta mai provata ha il consiglio, e le email partono lo stesso', () => {
+        expect(sorgente).toContain('«Fai una prova quando puoi: gli invii continuano.». Non è un allarme: le email partono lo stesso.');
+    });
+});
+
+describe('MailSetupGuide — il promemoria per email delle convocazioni da spedire', () => {
+    test('dice a chi va, quando, che si spegne qui e che senza un server di posta non parte, con la prova di ogni frase', () => {
+        expect(sorgente).toContain('<b class="block text-slate-900 dark:text-white mb-0.5">Promemoria per email delle convocazioni da spedire</b>');
+        expect(sorgente).toContain('A chi ha preparato l\'assemblea, due giorni lavorativi prima del giorno limite del compito «Spedire la convocazione entro il …» e la mattina di quel giorno, se restano avvisi da spedire.');
+        expect(sorgente).toContain('Acceso di serie; si spegne qui, con il suo interruttore, anche dove la posta la prepara chi gestisce l\'installazione.');
+        expect(sorgente).toContain('Senza un server di posta non parte, e non dà errori: il compito resta nell\'Action inbox.');
+        expect(sorgente).toContain('<!-- prova: app/Services/Assemblee/Convocazione/PromemoriaDellaConvocazione.php');
+        expect(sorgente).toContain('<!-- prova: app/Http/Controllers/Impostazioni/MailSettingsController.php');
+    });
+
+    test('ogni prova della guida ha il numero della riga, e la riga c\'è', () => {
+        const prove = [...sorgente.matchAll(/<!-- prova: ([^\s:]+):(\d+) «([^»]+)» -->/g)];
+        expect(prove.length).toBeGreaterThanOrEqual(6);
+        const mancanti = prove.filter(([, file, riga, testo]) => !(fs.readFileSync(file, 'utf8').split('\n')[Number(riga) - 1] ?? '').replace(/\\'/g, '\'').includes(testo))
+            .map(([, f, r, t]) => `${f}:${r} «${t}»`);
+        expect(mancanti).toEqual([]);
+    });
+});
+

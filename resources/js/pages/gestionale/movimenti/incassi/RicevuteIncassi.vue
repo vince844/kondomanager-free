@@ -36,7 +36,7 @@ import { AlertTriangle, Archive, CalendarClock, Eye, FileText, ListChecks, Loade
 import {
     AVVISO_PEC, FRASE_BOLLO, NOTA_CONTRASSEGNO_EMAIL, NOTA_INTERESSI, NOTA_MODO_UNICO, RIGA_ORIGINALE, TIPI_INDIRIZZO, alterna, apriPdfInUnaScheda, bolliRichiesti,
     estremiDaMandare, etichettaParteDelPdf, fraseDaErroreConFile, frasePerErrore, nomeDalContentDisposition, payloadSelezione, pronteDaEmettere, quanteSelezionate,
-    riepilogoDelleScelte, scaricaFile, selezionaPagina, selezioneVuota, soloPersoneDaMandare, statoConModo, testoAltriIndirizzi, testoAnteprima, testoCausali,
+    riepilogoDelleScelte, scaricaFile, selezionaPagina, selezioneVuota, soloPersoneDaMandare, statoConModo, testoDaSpuntare, testoStampaSenzaIndirizzo, testoCausali, pezziDelRiepilogo, testoPerTipo,
     testoConfermaInviaDiNuovo, testoConfermaNonServe, testoConfermaRiprova, testoDelPdf, testoEmissione,
     testoDellaScelta, testoLimiteRiprova, testoEsitoInvio, testoRegistratiDiRecente, testoRestantiBlocco, testoRestantiRiprova, testoRiepilogo, testoTetto, tutteDeiFiltri, unisciEsiti, verificaIlFile,
     type Emissione, type PersonaAnteprima, type Selezione,
@@ -211,6 +211,13 @@ const partePdf = ref(0);
 const personeAnteprima = computed<PersonaAnteprima[]>(() => anteprima.value?.persone ?? []);
 const soloPersone = computed(() => soloPersoneDaMandare(personeAnteprima.value, escluse.value));
 const riepilogoInvio = computed(() => riepilogoDelleScelte(personeAnteprima.value, escluse.value));
+// La forma delle finestre: i gruppi con il titolo piccolo e grigio, separati da una riga; il riepilogo nel piede, con il segno dell'aggiornamento.
+const gruppo = 'space-y-3 border-b border-slate-100 py-4 last:border-b-0 dark:border-slate-800';
+const titoloGruppo = 'text-xs font-semibold text-slate-500 dark:text-slate-400';
+const riquadroArancio = 'flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200';
+const riquadroVerde = 'rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200';
+const pezzi = computed(() => pezziDelRiepilogo(riepilogoInvio.value));
+const inAggiornamento = computed(() => anteprimaInCorso.value || pdfInArrivo.value || (caricamento.value && !anteprima.value));
 const alternaPersona = (id: number, dentro: boolean) => { escluse.value = dentro ? escluse.value.filter((x) => x !== id) : [...escluse.value, id]; };
 const partiPdf = computed<number[][]>(() => anteprima.value?.parti_pdf ?? []);
 const richiesti = computed(() => (anteprima.value ? bolliRichiesti(anteprima.value) : { sopra: false, sotto: false }));
@@ -646,7 +653,7 @@ const breadcrumbs = computed(() => [
                 </div>
                 <div class="space-y-1 w-full sm:w-auto sm:min-w-[220px]">
                     <span class="block text-slate-500 dark:text-slate-400">Persone (vuoto: tutte)</span>
-                    <MultiSelect v-model="f.persone" :options="opzioniPersone" text="text" value="value" placeholder="Cerca per nome" />
+                    <MultiSelect v-model="f.persone" :options="opzioniPersone" text="text" value="value" placeholder="Cerca per nome" compatto />
                 </div>
             </div>
 
@@ -723,223 +730,269 @@ const breadcrumbs = computed(() => [
 
         <!-- La finestra del blocco -->
         <Dialog v-model:open="blocco.aperto">
-            <DialogContent class="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
+            <!-- La forma delle finestre: ancorata in alto (non si ricentra quando cambia altezza), il contenuto scorre dentro, il riepilogo e i pulsanti fissi
+                 nel piede; l'aggiornamento è un segno piccolo nel riepilogo, mai una riga che compare e scompare. -->
+            <DialogContent class="top-[5vh] flex max-h-[90vh] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]">
+                <DialogHeader class="border-b border-slate-100 px-5 pt-4 pb-3 pr-12 text-left dark:border-slate-800">
                     <DialogTitle>{{ blocco.modo === 'stampa' ? 'Stampa le ricevute selezionate' : blocco.modo === 'persone' ? 'Scarica un PDF per persona' : 'Invia per email le ricevute selezionate' }}</DialogTitle>
                     <DialogDescription v-if="anteprima">
                         {{ anteprima.ricevute === 1 ? '1 ricevuta' : `${anteprima.ricevute} ricevute` }}<template v-if="anteprima.annullati">, {{ anteprima.annullati }} di incassi annullati escluse</template><template v-if="anteprima.senza_versamento">, {{ anteprima.senza_versamento }} senza denaro escluse (le rate coperte solo dal credito)</template><template v-if="anteprima.piu_persone">, {{ anteprima.piu_persone }} con le rate di più persone escluse (si leggono nell'estratto conto di ciascuna)</template>.
+                        <template v-if="anteprima.ricevute - anteprima.copie > 0"> {{ RIGA_ORIGINALE }}</template>
                     </DialogDescription>
                 </DialogHeader>
 
-                <div v-if="caricamento && !anteprima" class="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Loader2 class="w-4 h-4 animate-spin" /> Preparo l'anteprima…</div>
-                <!-- L'anteprima si rifà con un'altra scelta: quella di prima resta a video, ma i pulsanti che la leggono sono fermi finché arriva la nuova. -->
-                <p v-if="anteprimaInCorso && anteprima" class="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 class="w-3.5 h-3.5 animate-spin" /> Aggiorno l'anteprima…</p>
-
-                <div v-if="anteprima && !esito" class="space-y-4 text-sm">
-                    <p v-if="anteprima.piu_vecchie > 0" class="flex items-start gap-2 rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-2 text-xs text-amber-800 dark:text-amber-200">
-                        <AlertTriangle class="w-4 h-4 shrink-0" /> {{ anteprima.piu_vecchie === 1 ? '1 ricevuta è' : `${anteprima.piu_vecchie} ricevute sono` }} di versamenti di più di 60 giorni fa. Controlla il periodo.
-                    </p>
-                    <p v-if="anteprima.copie > 0" class="text-xs text-muted-foreground">
-                        {{ anteprima.copie === 1 ? '1 è già stata emessa: esce' : `${anteprima.copie} sono già state emesse: escono` }} come «Copia», con le cifre dell'originale.
-                    </p>
-                    <!-- La prima emissione è l'originale: lo si dice prima, perché chi guarda le ricevute non lo bruci (c'è «Anteprima»). -->
-                    <p v-if="anteprima.ricevute - anteprima.copie > 0" class="text-xs text-muted-foreground">{{ RIGA_ORIGINALE }}</p>
-                    <p v-if="blocco.modo === 'stampa' && anteprima.oltre_tetto" class="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-2 text-xs text-amber-800 dark:text-amber-200">
-                        In un PDF stanno al massimo {{ anteprima.tetto }} ricevute: queste si stampano in {{ partiPdf.length }} parti, una per volta, senza dividere una persona (salvo una che da sola ha più di {{ anteprima.tetto }} ricevute).
-                    </p>
-                    <template v-if="blocco.modo === 'persone'">
-                        <p class="rounded-md border bg-muted/40 p-2 text-xs">
-                            Un PDF per persona, con le sue ricevute, in un archivio .zip; dentro c'è anche «Indirizzi email.txt», con gli indirizzi di ognuna.
-                            Lo mandi dal tuo programma di posta. Ogni ricevuta risulta stampata.
-                        </p>
-                        <p v-if="anteprima.oltre_tetto" class="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-2 text-xs text-amber-800 dark:text-amber-200">
-                            In un archivio stanno al massimo {{ anteprima.tetto }} ricevute: restringi i filtri, per esempio il periodo, e scaricale in più volte.
-                        </p>
-                    </template>
-
-                    <!-- Il bollo: la stessa scelta, una volta per le ricevute sopra la soglia e una per le altre. La frase sta sotto il titolo del primo gruppo che si vede. -->
-                    <div v-if="richiesti.sopra || richiesti.sotto" class="space-y-4">
-                        <SceltaBollo
-                            v-if="richiesti.sopra"
-                            :stato="scelte.bollo_sopra"
-                            :modo="scelte.modo_bollo"
-                            :nota="`Ricevute sopra € 77,47 (${anteprima.sopra_soglia})`"
-                            :nome="`Imposta di bollo, ricevute sopra € 77,47 (${anteprima.sopra_soglia})`"
-                            :frase="FRASE_BOLLO"
-                            @scegli="(scelta) => scegliBollo('bollo_sopra', scelta)"
-                        />
-                        <SceltaBollo
-                            v-if="richiesti.sotto"
-                            :stato="scelte.bollo_sotto"
-                            :modo="scelte.modo_bollo"
-                            :nota="`Ricevute fino a € 77,47 (${anteprima.sotto_soglia})`"
-                            :nome="`Imposta di bollo, ricevute fino a € 77,47 (${anteprima.sotto_soglia})`"
-                            :frase="richiesti.sopra ? null : FRASE_BOLLO"
-                            @scegli="(scelta) => scegliBollo('bollo_sotto', scelta)"
-                        />
-                        <!-- Il modo e l'autorizzazione sono uno solo per tutte le ricevute: l'autorizzazione del modo virtuale vale per tutte, il numero di un contrassegno no. -->
-                        <div v-if="conBolloAssolto && scelte.modo_bollo" class="space-y-2">
-                            <p v-if="dueGruppiAssolti" data-testid="nota-modo-unico" class="text-xs text-muted-foreground">{{ NOTA_MODO_UNICO }}</p>
-                            <EstremiBollo v-if="scelte.modo_bollo === 'virtuale'" id="estremi-bollo-blocco" v-model="scelte.estremi_bollo" modo="virtuale" />
-                            <p v-if="scelte.modo_bollo === 'contrassegno'" class="text-xs text-muted-foreground">
-                                Il numero del contrassegno è diverso per ogni ricevuta: in blocco non si scrive. Scrivilo sulle ricevute stampate, o emetti ogni ricevuta dalla sua finestra.
-                            </p>
-                            <!-- Su una ricevuta per email la marca non viaggia: il contrassegno si può scegliere, e come assolvere il bollo lo decide l'amministratore. -->
-                            <p v-if="scelte.modo_bollo === 'contrassegno' && blocco.modo !== 'stampa'" data-testid="nota-contrassegno-email" class="text-xs text-muted-foreground">{{ NOTA_CONTRASSEGNO_EMAIL }}</p>
-                        </div>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="font-medium" for="nota-blocco">Nota, facoltativa, su tutte</label>
-                        <Textarea id="nota-blocco" v-model="scelte.nota" maxlength="500" rows="2" />
-                        <p class="text-xs text-muted-foreground">{{ NOTA_INTERESSI }}</p>
-                    </div>
-                    <!-- La causale è un testo libero e può portare note interne: si stampa solo se lo scegli (decisione 202). -->
-                    <label class="flex items-start gap-2 cursor-pointer">
-                        <Checkbox :model-value="scelte.stampa_causale" @update:model-value="(v: any) => (scelte.stampa_causale = !!v)" class="mt-0.5" />
-                        <span>Stampa la causale<span class="block text-xs text-muted-foreground">Il testo scritto nell'incasso, per esempio «Bonifico CRO …»; può portare note interne.</span></span>
-                    </label>
-                    <div v-if="testoCausali(anteprima)" class="-mt-2 pl-6 text-xs text-muted-foreground">
-                        {{ testoCausali(anteprima) }}
-                        <button type="button" class="ml-1 text-sky-700 dark:text-sky-400 hover:underline" @click="mostraLeCausali = !mostraLeCausali">{{ mostraLeCausali ? 'nascondi' : 'mostra' }}</button>
-                        <ul v-if="mostraLeCausali" class="mt-1 space-y-0.5">
-                            <li v-for="c in anteprima.causali" :key="c.testo">«{{ c.testo }}» — {{ c.quante }}</li>
-                        </ul>
-                    </div>
-
-                    <template v-if="blocco.modo === 'stampa'">
-                        <div class="menu-ricevute space-y-1" data-testid="ordine-stampa">
-                            <span class="block font-medium">Ordine</span>
-                            <v-select
-                                :model-value="ordine"
-                                :options="VOCI_ORDINE"
-                                label="etichetta"
-                                :reduce="valoreDi"
-                                :searchable="false"
-                                :clearable="false"
-                                :disabled="partePdf > 0 || anteprimaInCorso || pdfInArrivo"
-                                class="w-full sm:w-[240px]"
-                                @update:model-value="(v: 'persona' | 'unita' | 'data') => (ordine = v)"
-                            />
-                            <span class="block text-xs text-muted-foreground">Le ricevute della stessa persona restano insieme, con l'indirizzo sulla prima: una busta per persona.</span>
-                            <span v-if="anteprima.oltre_tetto" class="block text-xs text-muted-foreground">
-                                {{ partePdf > 0 ? 'Una parte è già stampata: l\'ordine non si cambia a metà.' : 'L\'ordine vale per tutte le parti, dalla prima all\'ultima.' }}
-                            </span>
-                        </div>
-                        <p v-if="anteprima.senza_indirizzo_postale.length" class="text-xs text-amber-700 dark:text-amber-300">
-                            Senza indirizzo postale, il riquadro della busta resta vuoto: {{ anteprima.senza_indirizzo_postale.join(', ') }}.
-                        </p>
-                    </template>
-
-                    <template v-else-if="blocco.modo === 'persone'">
-                        <p v-if="scaricato" class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-xs text-emerald-800 dark:text-emerald-200">{{ scaricato }}</p>
-                    </template>
-
-                    <p v-else-if="anteprima.senza_server_posta" class="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-2 text-xs text-amber-800 dark:text-amber-200">
-                        Nessun server di posta configurato: le ricevute non possono partire per email. Configuralo nelle impostazioni della posta; intanto puoi stamparle.
-                    </p>
-
-                    <template v-else>
-                        <div class="space-y-1">
-                            <p class="font-medium">A quali indirizzi</p>
-                            <label v-for="(etichetta, tipo) in { email: 'Primaria', email_secondaria: 'Secondaria', pec: 'PEC' }" :key="tipo" class="flex items-start gap-2 cursor-pointer">
-                                <Checkbox :model-value="indirizzi.includes(tipo)" @update:model-value="(v: any) => (indirizzi = v ? [...indirizzi, tipo] : indirizzi.filter((t) => t !== tipo))" class="mt-0.5" />
-                                <span>{{ etichetta }}<span v-if="tipo === 'pec'" class="block text-xs text-muted-foreground">{{ AVVISO_PEC }}</span></span>
-                            </label>
-                        </div>
-                        <label v-if="anteprima.chi_ha_versato > 0" class="flex items-start gap-2 cursor-pointer">
-                            <Checkbox :model-value="ancheChiHaVersato" @update:model-value="(v: any) => (ancheChiHaVersato = !!v)" class="mt-0.5" />
-                            <span>Manda anche a chi ha versato per conto di altri ({{ anteprima.chi_ha_versato }})<span class="block text-xs text-muted-foreground">La ricevuta porta le rate e il residuo della posizione.</span></span>
-                        </label>
-                        <label v-if="anteprima.gia_inviate.ricevute > 0" class="flex items-start gap-2 cursor-pointer">
-                            <Checkbox :model-value="escludiGiaInviate" @update:model-value="(v: any) => (escludiGiaInviate = !!v)" class="mt-0.5" />
-                            <span>Escludi le {{ anteprima.gia_inviate.ricevute }} già inviate o in coda</span>
-                        </label>
-                        <p class="rounded-md border bg-muted/40 p-2">Partiranno: {{ testoAnteprima(riepilogoInvio) }}.</p>
-                        <p v-if="testoTetto(anteprima) && escluse.length === 0" class="text-xs text-amber-800 dark:text-amber-200">{{ testoTetto(anteprima) }}</p>
-
-                        <!-- Chi riceve che cosa: per persona, con gli indirizzi e le ricevute; si può togliere una persona dall'invio. -->
-                        <div v-if="personeAnteprima.length" class="space-y-1">
-                            <button type="button" class="text-xs font-medium text-sky-700 dark:text-sky-400 hover:underline" @click="mostraLePersone = !mostraLePersone">
-                                {{ mostraLePersone ? 'Nascondi chi riceve che cosa' : 'Mostra chi riceve che cosa' }}
-                                <template v-if="escluse.length">({{ escluse.length === 1 ? '1 persona tolta' : `${escluse.length} persone tolte` }})</template>
-                            </button>
-                            <ul v-if="mostraLePersone" class="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2 text-xs">
-                                <li v-for="p in personeAnteprima" :key="p.id" class="flex items-start gap-2">
-                                    <Checkbox :model-value="!escluse.includes(p.id)" @update:model-value="(v: any) => alternaPersona(p.id, !!v)" class="mt-0.5" />
-                                    <span>
-                                        <span class="font-medium">{{ p.nome }}</span>
-                                        — {{ p.indirizzi.map((i) => `${TIPI_INDIRIZZO[i.tipo] ?? i.tipo}: ${i.indirizzo}`).join('; ') }}
-                                        <span class="block text-muted-foreground">
-                                            {{ p.ricevute.map((r) => (r.per_conto_di ? `n. ${r.numero} (per conto di ${r.per_conto_di})` : `n. ${r.numero}`)).join(', ') }}
-                                            — {{ p.messaggi === 1 ? '1 messaggio' : `${p.messaggi} messaggi` }}
-                                        </span>
-                                    </span>
-                                </li>
-                            </ul>
-                        </div>
-                        <div v-if="anteprima.senza_indirizzo.ricevute > 0" class="flex flex-wrap items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-200">
-                            <span>
-                                Senza un indirizzo fra quelli scelti, da stampare per la posta: {{ anteprima.senza_indirizzo.persone.join(', ') }}.
-                                <template v-if="testoAltriIndirizzi(anteprima.altri_indirizzi)">{{ testoAltriIndirizzi(anteprima.altri_indirizzi) }}</template>
-                            </span>
-                            <Button size="sm" variant="outline" class="h-7 text-xs" :disabled="!pronta || pdfInArrivo || anteprimaInCorso" @click="stampaInBlocco(anteprima.senza_indirizzo.incassi)">Stampa le {{ anteprima.senza_indirizzo.ricevute }} senza indirizzo</Button>
-                        </div>
-                        <p v-if="prova" class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-xs text-emerald-800 dark:text-emerald-200">{{ prova }}</p>
-                    </template>
-                </div>
-
-                <div v-if="esito" class="space-y-3 text-sm">
-                    <p class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-emerald-800 dark:text-emerald-200">{{ testoRiepilogo(esito) }}</p>
-                    <p v-if="esito.errori?.length" class="text-xs text-rose-700 dark:text-rose-300">{{ esito.errori.join(' ') }}</p>
-                    <div v-if="esito.restanti" class="flex flex-wrap items-center gap-2 rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-800 dark:text-amber-200">
-                        <span>{{ testoRestantiBlocco(esito) }}</span>
-                        <Button size="sm" :disabled="caricamento || richiestaInCorso" @click="inviaInBlocco(esito.restanti)"><Mail class="w-4 h-4 mr-2" /> Invia le altre</Button>
-                    </div>
-                    <div v-if="esito.senza_indirizzo > 0" class="flex flex-wrap items-center gap-2">
-                        <span>{{ esito.senza_indirizzo_persone.join(', ') }}: senza indirizzo.</span>
-                        <Button size="sm" variant="outline" :disabled="pdfInArrivo" @click="stampaInBlocco(esito.senza_indirizzo_incassi)"><Printer class="w-4 h-4 mr-2" /> Stampa le {{ esito.senza_indirizzo }} senza indirizzo</Button>
-                    </div>
-                </div>
-
-                <!-- L'esito di una richiesta partita prima che la finestra si riaprisse: la stessa frase che sta in testa alla pagina, dietro lo sfondo scuro. -->
-                <p
-                    v-if="esitoDiPrima"
-                    data-testid="esito-di-prima"
-                    class="rounded-md border p-2 text-sm"
-                    :class="esitoDiPrima.riuscito
-                        ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
-                        : 'border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200'"
-                >{{ esitoDiPrima.frase }}</p>
-                <p v-if="pdfInArrivo" role="status" class="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 class="w-3.5 h-3.5 animate-spin" /> {{ pdfSenzaScheda ? 'Sto preparando il PDF: la scheda nuova non si è aperta, quindi si scarica.' : 'Sto preparando il PDF: si apre nella scheda nuova.' }}</p>
-                <p v-if="pdfArrivato" class="rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-sm text-emerald-800 dark:text-emerald-200">{{ pdfArrivato }}</p>
-                <p v-if="errore" class="rounded-md border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 p-2 text-sm text-rose-800 dark:text-rose-200">{{ errore }}</p>
-
-                <DialogFooter class="gap-2">
-                    <Button variant="outline" @click="blocco.aperto = false">Chiudi</Button>
+                <div class="min-h-0 flex-1 overflow-y-auto px-5 text-sm" data-testid="corpo-finestra">
                     <template v-if="anteprima && !esito">
-                        <template v-if="blocco.modo === 'stampa'">
-                            <!-- Guarda le ricevute senza emetterle: non scrive il registro. -->
-                            <Button variant="outline" :disabled="anteprima.ricevute === 0 || anteprimaInCorso || pdfInArrivo" @click="guardaLeRicevute"><Eye class="w-4 h-4 mr-2" /> Anteprima</Button>
-                            <!-- Fermo mentre l'anteprima si rifà: le parti a video sono quelle dell'ordine di prima. -->
-                            <Button v-if="anteprima.oltre_tetto && partiPdf.length" :disabled="!pronta || caricamento || pdfInArrivo || partePdf >= partiPdf.length" @click="stampaLaParte">
-                                <Printer class="w-4 h-4 mr-2" /> {{ partePdf >= partiPdf.length ? 'Tutte stampate' : etichettaParteDelPdf(partiPdf, partePdf) }}
-                            </Button>
-                            <Button v-else :disabled="!pronta || caricamento || pdfInArrivo || anteprima.oltre_tetto" @click="stampaInBlocco()"><Printer class="w-4 h-4 mr-2" /> Stampa</Button>
-                        </template>
-                        <template v-else-if="blocco.modo === 'persone'">
-                            <Button variant="outline" :disabled="anteprima.ricevute === 0 || anteprima.oltre_tetto || anteprimaInCorso || pdfInArrivo" @click="guardaLeRicevute"><Eye class="w-4 h-4 mr-2" /> Anteprima</Button>
-                            <Button :disabled="!pronta || caricamento || richiestaInCorso || anteprima.oltre_tetto || anteprima.ricevute === 0" @click="scaricaPerPersona">
-                                <Loader2 v-if="caricamento || richiestaInCorso" class="w-4 h-4 mr-2 animate-spin" /><Archive v-else class="w-4 h-4 mr-2" /> Scarica lo .zip
-                            </Button>
-                        </template>
-                        <template v-else>
-                            <Button variant="outline" :disabled="!pronta || anteprima.senza_server_posta || riepilogoInvio.persone === 0" @click="mandaneUnaAMe">Mandane una a me</Button>
-                            <Button :disabled="!pronta || caricamento || richiestaInCorso || anteprima.senza_server_posta || riepilogoInvio.persone === 0 || indirizzi.length === 0" @click="inviaInBlocco()">
-                                <Loader2 v-if="caricamento || richiestaInCorso" class="w-4 h-4 mr-2 animate-spin" /><Mail v-else class="w-4 h-4 mr-2" /> Invia
-                            </Button>
+                        <!-- La ricevuta: gli avvisi, il bollo, la nota e la causale. -->
+                        <section :class="gruppo">
+                            <h3 :class="titoloGruppo" data-testid="titolo-gruppo">La ricevuta</h3>
+                            <p v-if="anteprima.piu_vecchie > 0" :class="riquadroArancio">
+                                <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" /> {{ anteprima.piu_vecchie === 1 ? '1 ricevuta è' : `${anteprima.piu_vecchie} ricevute sono` }} di versamenti di più di 60 giorni fa. Controlla il periodo.
+                            </p>
+                            <p v-if="anteprima.copie > 0" class="text-xs text-muted-foreground">
+                                {{ anteprima.copie === 1 ? '1 è già stata emessa: esce' : `${anteprima.copie} sono già state emesse: escono` }} come «Copia», con le cifre dell'originale.
+                            </p>
+                            <p v-if="blocco.modo === 'stampa' && anteprima.oltre_tetto" :class="riquadroArancio">
+                                <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" /> In un PDF stanno al massimo {{ anteprima.tetto }} ricevute: queste si stampano in {{ partiPdf.length }} parti, una per volta, senza dividere una persona (salvo una che da sola ha più di {{ anteprima.tetto }} ricevute).
+                            </p>
+                            <template v-if="blocco.modo === 'persone'">
+                                <p class="text-xs text-muted-foreground">
+                                    Un PDF per persona, con le sue ricevute, in un archivio .zip; dentro c'è anche «Indirizzi email.txt», con gli indirizzi di ognuna.
+                                    Lo mandi dal tuo programma di posta. Ogni ricevuta risulta stampata.
+                                </p>
+                                <p v-if="anteprima.oltre_tetto" :class="riquadroArancio">
+                                    <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" /> In un archivio stanno al massimo {{ anteprima.tetto }} ricevute: restringi i filtri, per esempio il periodo, e scaricale in più volte.
+                                </p>
+                            </template>
+
+                            <!-- Il bollo: la stessa scelta, una volta per le ricevute sopra la soglia e una per le altre. La frase sta sotto la barra del primo gruppo che si vede. -->
+                            <div v-if="richiesti.sopra || richiesti.sotto" class="space-y-3">
+                                <SceltaBollo
+                                    v-if="richiesti.sopra"
+                                    :stato="scelte.bollo_sopra"
+                                    :modo="scelte.modo_bollo"
+                                    :nota="anteprima.sopra_soglia === 1 ? '1 ricevuta sopra € 77,47' : `${anteprima.sopra_soglia} ricevute sopra € 77,47`"
+                                    :nome="`Imposta di bollo, ricevute sopra € 77,47 (${anteprima.sopra_soglia})`"
+                                    :frase="FRASE_BOLLO"
+                                    @scegli="(scelta) => scegliBollo('bollo_sopra', scelta)"
+                                />
+                                <SceltaBollo
+                                    v-if="richiesti.sotto"
+                                    :stato="scelte.bollo_sotto"
+                                    :modo="scelte.modo_bollo"
+                                    :nota="anteprima.sotto_soglia === 1 ? '1 ricevuta fino a € 77,47' : `${anteprima.sotto_soglia} ricevute fino a € 77,47`"
+                                    :nome="`Imposta di bollo, ricevute fino a € 77,47 (${anteprima.sotto_soglia})`"
+                                    :frase="richiesti.sopra ? null : FRASE_BOLLO"
+                                    @scegli="(scelta) => scegliBollo('bollo_sotto', scelta)"
+                                />
+                                <!-- Il modo e l'autorizzazione sono uno solo per tutte le ricevute: l'autorizzazione del modo virtuale vale per tutte, il numero di un contrassegno no. -->
+                                <div v-if="conBolloAssolto && scelte.modo_bollo" class="space-y-2">
+                                    <p v-if="dueGruppiAssolti" data-testid="nota-modo-unico" class="text-xs text-muted-foreground">{{ NOTA_MODO_UNICO }}</p>
+                                    <EstremiBollo v-if="scelte.modo_bollo === 'virtuale'" id="estremi-bollo-blocco" v-model="scelte.estremi_bollo" modo="virtuale" />
+                                    <p v-if="scelte.modo_bollo === 'contrassegno'" class="text-xs text-muted-foreground">
+                                        Il numero del contrassegno è diverso per ogni ricevuta: in blocco non si scrive. Scrivilo sulle ricevute stampate, o emetti ogni ricevuta dalla sua finestra.
+                                    </p>
+                                    <!-- Su una ricevuta per email la marca non viaggia: il contrassegno si può scegliere, e come assolvere il bollo lo decide l'amministratore. -->
+                                    <p v-if="scelte.modo_bollo === 'contrassegno' && blocco.modo !== 'stampa'" data-testid="nota-contrassegno-email" class="text-xs text-muted-foreground">{{ NOTA_CONTRASSEGNO_EMAIL }}</p>
+                                </div>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="block text-[13px] font-medium" for="nota-blocco">Nota su tutte <span class="text-xs font-normal text-muted-foreground">facoltativa</span></label>
+                                <Textarea id="nota-blocco" v-model="scelte.nota" maxlength="500" rows="2" />
+                                <p class="text-xs text-muted-foreground">{{ NOTA_INTERESSI }}</p>
+                            </div>
+                            <!-- La causale è un testo libero e può portare note interne: si stampa solo se lo scegli (decisione 202). -->
+                            <label class="flex cursor-pointer items-start gap-2.5">
+                                <Checkbox :model-value="scelte.stampa_causale" @update:model-value="(v: any) => (scelte.stampa_causale = !!v)" class="mt-0.5 rounded" />
+                                <span class="text-[13px] font-medium">Stampa la causale<span class="block text-xs font-normal text-muted-foreground">Il testo scritto nell'incasso, per esempio «Bonifico CRO …»; può portare note interne.</span></span>
+                            </label>
+                            <div v-if="testoCausali(anteprima)" class="-mt-1.5 pl-6.5 text-xs text-muted-foreground">
+                                {{ testoCausali(anteprima) }}
+                                <button type="button" class="ml-1 text-sky-700 hover:underline dark:text-sky-400" @click="mostraLeCausali = !mostraLeCausali">{{ mostraLeCausali ? 'nascondi' : 'mostra' }}</button>
+                                <ul v-if="mostraLeCausali" class="mt-1 space-y-0.5">
+                                    <li v-for="c in anteprima.causali" :key="c.testo">«{{ c.testo }}» — {{ c.quante }}</li>
+                                </ul>
+                            </div>
+                        </section>
+
+                        <section v-if="blocco.modo === 'stampa'" :class="gruppo">
+                            <h3 :class="titoloGruppo" data-testid="titolo-gruppo">La stampa</h3>
+                            <div class="menu-ricevute space-y-1" data-testid="ordine-stampa">
+                                <span class="block text-[13px] font-medium">Ordine</span>
+                                <v-select
+                                    :model-value="ordine"
+                                    :options="VOCI_ORDINE"
+                                    label="etichetta"
+                                    :reduce="valoreDi"
+                                    :searchable="false"
+                                    :clearable="false"
+                                    :disabled="partePdf > 0 || anteprimaInCorso || pdfInArrivo"
+                                    class="w-full sm:w-[240px]"
+                                    @update:model-value="(v: 'persona' | 'unita' | 'data') => (ordine = v)"
+                                />
+                                <span class="block text-xs text-muted-foreground">Le ricevute della stessa persona restano insieme, con l'indirizzo sulla prima: una busta per persona.</span>
+                                <span v-if="anteprima.oltre_tetto" class="block text-xs text-muted-foreground">
+                                    {{ partePdf > 0 ? 'Una parte è già stampata: l\'ordine non si cambia a metà.' : 'L\'ordine vale per tutte le parti, dalla prima all\'ultima.' }}
+                                </span>
+                            </div>
+                            <p v-if="anteprima.senza_indirizzo_postale.length" :class="riquadroArancio">
+                                <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" /> Senza indirizzo postale, il riquadro della busta resta vuoto: {{ anteprima.senza_indirizzo_postale.join(', ') }}.
+                            </p>
+                        </section>
+
+                        <section v-else-if="blocco.modo === 'persone' && scaricato" :class="gruppo">
+                            <p :class="riquadroVerde">{{ scaricato }}</p>
+                        </section>
+
+                        <section v-else-if="blocco.modo === 'invio' && anteprima.senza_server_posta" :class="gruppo">
+                            <p :class="riquadroArancio">
+                                <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" /> Nessun server di posta configurato: le ricevute non possono partire per email. Configuralo nelle impostazioni della posta; intanto puoi stamparle.
+                            </p>
+                        </section>
+
+                        <template v-else-if="blocco.modo === 'invio'">
+                            <section :class="gruppo">
+                                <h3 :class="titoloGruppo" data-testid="titolo-gruppo">A quali indirizzi</h3>
+                                <!-- I tipi come pulsanti affiancati, ognuno con quante persone raggiunge, spuntato o no. -->
+                                <div class="flex flex-wrap gap-2">
+                                    <label v-for="(etichetta, tipo) in { email: 'Primaria', email_secondaria: 'Secondaria', pec: 'PEC' }" :key="tipo"
+                                        class="flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors"
+                                        :class="indirizzi.includes(tipo) ? 'border-slate-900 dark:border-slate-300' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700'"
+                                        :data-acceso="indirizzi.includes(tipo) ? 'si' : 'no'" data-testid="tipo-indirizzo">
+                                        <Checkbox :model-value="indirizzi.includes(tipo)" class="rounded" @update:model-value="(v: any) => (indirizzi = v ? [...indirizzi, tipo] : indirizzi.filter((t) => t !== tipo))" />
+                                        <span class="font-medium text-slate-900 dark:text-slate-100">{{ etichetta }}</span>
+                                        <span class="text-xs text-muted-foreground">{{ testoPerTipo(anteprima.indirizzi_per_tipo?.[tipo] ?? 0) }}</span>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-muted-foreground">{{ AVVISO_PEC }}</p>
+                                <!-- Quali tipi spuntare per raggiungere chi resta fuori: subito sotto i pulsanti, dove si sceglie. -->
+                                <p v-if="testoDaSpuntare(anteprima.altri_indirizzi)" class="text-xs text-amber-800 dark:text-amber-200" data-testid="da-spuntare">{{ testoDaSpuntare(anteprima.altri_indirizzi) }}</p>
+                                <!-- Chi resta senza un indirizzo fra quelli scelti: un riquadro con i nomi e la stampa per la posta. -->
+                                <div v-if="anteprima.senza_indirizzo.ricevute > 0" class="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 sm:flex-row sm:items-start sm:justify-between" data-testid="senza-indirizzo">
+                                    <div class="flex min-w-0 items-start gap-2">
+                                        <AlertTriangle class="mt-px h-3.5 w-3.5 shrink-0" />
+                                        <div class="min-w-0">
+                                            <p class="font-semibold">Senza un indirizzo fra quelli scelti: {{ anteprima.senza_indirizzo.persone.join(', ') }}.</p>
+                                            <p>{{ anteprima.senza_indirizzo.ricevute === 1 ? 'La sua ricevuta si stampa per la posta.' : 'Le loro ricevute si stampano per la posta.' }}</p>
+                                        </div>
+                                    </div>
+                                    <Button size="sm" variant="outline" class="h-7 shrink-0 bg-white text-xs dark:bg-slate-900" :disabled="!pronta || pdfInArrivo || anteprimaInCorso" @click="stampaInBlocco(anteprima.senza_indirizzo.incassi)">
+                                        <Printer class="mr-1.5 h-3.5 w-3.5" /> {{ testoStampaSenzaIndirizzo(anteprima.senza_indirizzo.ricevute) }}
+                                    </Button>
+                                </div>
+                            </section>
+
+                            <section :class="gruppo">
+                                <h3 :class="titoloGruppo" data-testid="titolo-gruppo">Chi riceve che cosa</h3>
+                                <label v-if="anteprima.chi_ha_versato > 0" class="flex cursor-pointer items-start gap-2.5">
+                                    <Checkbox :model-value="ancheChiHaVersato" @update:model-value="(v: any) => (ancheChiHaVersato = !!v)" class="mt-0.5 rounded" />
+                                    <span class="text-[13px]">Manda anche a chi ha versato per conto di altri ({{ anteprima.chi_ha_versato }})<span class="block text-xs text-muted-foreground">La ricevuta porta le rate e il residuo della posizione.</span></span>
+                                </label>
+                                <label v-if="anteprima.gia_inviate.ricevute > 0" class="flex cursor-pointer items-start gap-2.5">
+                                    <Checkbox :model-value="escludiGiaInviate" @update:model-value="(v: any) => (escludiGiaInviate = !!v)" class="mt-0.5 rounded" />
+                                    <span class="text-[13px]">Escludi le {{ anteprima.gia_inviate.ricevute }} già inviate o in coda</span>
+                                </label>
+                                <p v-if="testoTetto(anteprima) && escluse.length === 0" class="text-xs text-amber-800 dark:text-amber-200">{{ testoTetto(anteprima) }}</p>
+                                <!-- Per persona, con gli indirizzi e le ricevute; si può togliere una persona dall'invio. -->
+                                <div v-if="personeAnteprima.length" class="space-y-1">
+                                    <button type="button" class="text-xs font-medium text-sky-700 hover:underline dark:text-sky-400" @click="mostraLePersone = !mostraLePersone">
+                                        {{ mostraLePersone ? 'Nascondi chi riceve che cosa' : 'Mostra chi riceve che cosa' }} ({{ personeAnteprima.length }})
+                                        <template v-if="escluse.length"> · {{ escluse.length === 1 ? '1 persona tolta' : `${escluse.length} persone tolte` }}</template>
+                                    </button>
+                                    <ul v-if="mostraLePersone" class="max-h-56 space-y-1 overflow-y-auto rounded-lg border p-2 text-xs">
+                                        <li v-for="p in personeAnteprima" :key="p.id" class="flex items-start gap-2">
+                                            <Checkbox :model-value="!escluse.includes(p.id)" @update:model-value="(v: any) => alternaPersona(p.id, !!v)" class="mt-0.5 rounded" />
+                                            <span>
+                                                <span class="font-medium">{{ p.nome }}</span>
+                                                — {{ p.indirizzi.map((i) => `${TIPI_INDIRIZZO[i.tipo] ?? i.tipo}: ${i.indirizzo}`).join('; ') }}
+                                                <span class="block text-muted-foreground">
+                                                    {{ p.ricevute.map((r) => (r.per_conto_di ? `n. ${r.numero} (per conto di ${r.per_conto_di})` : `n. ${r.numero}`)).join(', ') }}
+                                                    — {{ p.messaggi === 1 ? '1 messaggio' : `${p.messaggi} messaggi` }}
+                                                </span>
+                                            </span>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <p v-if="prova" :class="riquadroVerde">{{ prova }}</p>
+                            </section>
                         </template>
                     </template>
-                </DialogFooter>
+
+                    <div v-if="esito" class="space-y-3 py-4">
+                        <p :class="riquadroVerde">{{ testoRiepilogo(esito) }}</p>
+                        <p v-if="esito.errori?.length" class="text-xs text-rose-700 dark:text-rose-300">{{ esito.errori.join(' ') }}</p>
+                        <div v-if="esito.restanti" class="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                            <span>{{ testoRestantiBlocco(esito) }}</span>
+                            <Button size="sm" :disabled="caricamento || richiestaInCorso" @click="inviaInBlocco(esito.restanti)"><Mail class="mr-2 h-4 w-4" /> Invia le altre</Button>
+                        </div>
+                        <div v-if="esito.senza_indirizzo > 0" class="flex flex-wrap items-center gap-2">
+                            <span>{{ esito.senza_indirizzo_persone.join(', ') }}: senza indirizzo.</span>
+                            <Button size="sm" variant="outline" :disabled="pdfInArrivo" @click="stampaInBlocco(esito.senza_indirizzo_incassi)"><Printer class="mr-2 h-4 w-4" /> {{ testoStampaSenzaIndirizzo(esito.senza_indirizzo) }}</Button>
+                        </div>
+                    </div>
+
+                    <!-- Gli esiti dei PDF e degli errori: in fondo al corpo, dopo l'ultimo gruppo. -->
+                    <div v-if="esitoDiPrima || pdfArrivato || errore" class="space-y-2 pb-4" :class="anteprima && !esito ? '' : 'pt-4'">
+                        <!-- L'esito di una richiesta partita prima che la finestra si riaprisse: la stessa frase che sta in testa alla pagina, dietro lo sfondo scuro. -->
+                        <p
+                            v-if="esitoDiPrima"
+                            data-testid="esito-di-prima"
+                            class="rounded-lg border px-3 py-2 text-sm"
+                            :class="esitoDiPrima.riuscito
+                                ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200'
+                                : 'border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200'"
+                        >{{ esitoDiPrima.frase }}</p>
+                        <p v-if="pdfArrivato" :class="riquadroVerde">{{ pdfArrivato }}</p>
+                        <p v-if="errore" class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{ errore }}</p>
+                    </div>
+                </div>
+
+                <!-- Il piede fisso: il riepilogo di ciò che succede a sinistra, i pulsanti a destra. -->
+                <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900/60" data-testid="piede-finestra">
+                    <p class="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-slate-600 dark:text-slate-300" role="status" data-testid="riepilogo">
+                        <span v-if="inAggiornamento" class="inline-flex shrink-0" data-testid="aggiorno"><Loader2 class="h-3.5 w-3.5 animate-spin" aria-hidden="true" /><span class="sr-only">{{ anteprima ? 'Aggiorno l\'anteprima…' : 'Preparo l\'anteprima…' }}</span></span>
+                        <component :is="blocco.modo === 'invio' ? Mail : blocco.modo === 'stampa' ? Printer : Archive" v-else-if="anteprima && !esito" class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span class="min-w-0">
+                            <template v-if="pdfInArrivo">{{ pdfSenzaScheda ? 'Sto preparando il PDF: la scheda nuova non si è aperta, quindi si scarica.' : 'Sto preparando il PDF: si apre nella scheda nuova.' }}</template>
+                            <template v-else-if="!anteprima">{{ caricamento ? 'Preparo l\'anteprima…' : '' }}</template>
+                            <template v-else-if="esito" />
+                            <template v-else-if="blocco.modo === 'invio'">
+                                <template v-if="anteprima.senza_server_posta">Le ricevute non possono partire per email.</template>
+                                <span v-else-if="indirizzi.length === 0" data-testid="partiranno">Nessun indirizzo scelto: spunta almeno un indirizzo.</span>
+                                <span v-else data-testid="partiranno">{{ pezzi.verbo }} <b class="font-semibold text-slate-900 dark:text-white">{{ pezzi.email }}</b> a <b class="font-semibold text-slate-900 dark:text-white">{{ pezzi.persone }}</b>, {{ pezzi.ricevute }}.</span>
+                            </template>
+                            <template v-else-if="blocco.modo === 'stampa'">Si stampano <b class="font-semibold text-slate-900 dark:text-white">{{ anteprima.ricevute === 1 ? '1 ricevuta' : `${anteprima.ricevute} ricevute` }}</b><template v-if="anteprima.oltre_tetto && partiPdf.length">, in {{ partiPdf.length }} parti</template>.</template>
+                            <template v-else>Un PDF per persona, <b class="font-semibold text-slate-900 dark:text-white">{{ anteprima.ricevute === 1 ? '1 ricevuta' : `${anteprima.ricevute} ricevute` }}</b>, in un archivio .zip.</template>
+                        </span>
+                    </p>
+                    <!-- I pulsanti restano su una riga: se il riepilogo è lungo, va a capo lui. -->
+                    <div class="flex shrink-0 flex-wrap justify-end gap-2 sm:flex-nowrap">
+                        <Button variant="outline" @click="blocco.aperto = false">Chiudi</Button>
+                        <template v-if="anteprima && !esito">
+                            <template v-if="blocco.modo === 'stampa'">
+                                <!-- Guarda le ricevute senza emetterle: non scrive il registro. -->
+                                <Button variant="outline" :disabled="anteprima.ricevute === 0 || anteprimaInCorso || pdfInArrivo" @click="guardaLeRicevute"><Eye class="mr-2 h-4 w-4" /> Anteprima</Button>
+                                <!-- Fermo mentre l'anteprima si rifà: le parti a video sono quelle dell'ordine di prima. -->
+                                <Button v-if="anteprima.oltre_tetto && partiPdf.length" :disabled="!pronta || caricamento || pdfInArrivo || partePdf >= partiPdf.length" @click="stampaLaParte">
+                                    <Printer class="mr-2 h-4 w-4" /> {{ partePdf >= partiPdf.length ? 'Tutte stampate' : etichettaParteDelPdf(partiPdf, partePdf) }}
+                                </Button>
+                                <Button v-else :disabled="!pronta || caricamento || pdfInArrivo || anteprima.oltre_tetto" @click="stampaInBlocco()"><Printer class="mr-2 h-4 w-4" /> Stampa</Button>
+                            </template>
+                            <template v-else-if="blocco.modo === 'persone'">
+                                <Button variant="outline" :disabled="anteprima.ricevute === 0 || anteprima.oltre_tetto || anteprimaInCorso || pdfInArrivo" @click="guardaLeRicevute"><Eye class="mr-2 h-4 w-4" /> Anteprima</Button>
+                                <Button :disabled="!pronta || caricamento || richiestaInCorso || anteprima.oltre_tetto || anteprima.ricevute === 0" @click="scaricaPerPersona">
+                                    <Loader2 v-if="caricamento || richiestaInCorso" class="mr-2 h-4 w-4 animate-spin" /><Archive v-else class="mr-2 h-4 w-4" /> Scarica lo .zip
+                                </Button>
+                            </template>
+                            <template v-else>
+                                <Button variant="outline" :disabled="!pronta || anteprima.senza_server_posta || riepilogoInvio.persone === 0" @click="mandaneUnaAMe">Mandane una a me</Button>
+                                <Button :disabled="!pronta || caricamento || richiestaInCorso || anteprima.senza_server_posta || riepilogoInvio.persone === 0 || indirizzi.length === 0" @click="inviaInBlocco()">
+                                    <Loader2 v-if="caricamento || richiestaInCorso" class="mr-2 h-4 w-4 animate-spin" /><Mail v-else class="mr-2 h-4 w-4" /> Invia
+                                </Button>
+                            </template>
+                        </template>
+                    </div>
+                </div>
             </DialogContent>
         </Dialog>
     </GestionaleLayout>

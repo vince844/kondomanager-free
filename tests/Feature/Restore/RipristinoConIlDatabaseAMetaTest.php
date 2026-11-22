@@ -254,14 +254,21 @@ function rdmScriviIlDump(string $percorso): string
     return $percorso;
 }
 
-/** Il numero d'ordine delle istruzioni che contano, contato come le conta l'importatore (senza i `SET`). */
+/**
+ * Il numero d'ordine delle istruzioni che contano, contato come le conta l'importatore (senza i `SET`). Per i primi dati di
+ * ogni tabella anche `prima_dei_dati_<tabella>`: il punto di ripresa del dump subito prima di loro (il `nextOffset`
+ * dell'istruzione prima), da confrontare con il punto di ripresa che l'importatore salva alla fine di ogni passo.
+ */
 function rdmPosizioni(string $dump): array
 {
     $n = 0;
     $pos = [];
+    $ripresa = 0;
 
     foreach ((new SqlDumpTokenizer($dump))->statements() as $s) {
         $sql = ltrim($s['sql']);
+        $prima = $ripresa;
+        $ripresa = $s['nextOffset'];
         if (preg_match('/^SET\s/i', $sql)) {
             continue;
         }
@@ -272,6 +279,7 @@ function rdmPosizioni(string $dump): array
             }
             if (! isset($pos['dati_'.$tabella]) && str_starts_with($sql, 'INSERT INTO `'.$tabella.'`')) {
                 $pos['dati_'.$tabella] = $n;
+                $pos['prima_dei_dati_'.$tabella] = $prima;
             }
         }
         if (! isset($pos['primo_dato']) && str_starts_with($sql, 'INSERT')) {
@@ -640,15 +648,18 @@ test('una riga di sessioni, cache o blocchi della cache scritta durante l\'impor
         expect(DB::table('cache')->where('key', 'like', '%system_cron_heartbeat')->exists())->toBeTrue();
     }
     [$token, $pos] = rdmRipristinoAvviato($admin);
+    // Il primo passo si ferma subito dopo la creazione di `sessions`: la riga si scrive appena la tabella c'è, prima
+    // che l'importatore arrivi ai suoi dati (lo controlla `$ripresaAllaScrittura`, più sotto, sulle posizioni vere).
     rdmImportatore($pos['crea_sessions'] + 2);
-    expect($pos['dati_'.$tabella])->toBeGreaterThan(2 * ($pos['crea_sessions'] + 2));
 
     $scritta = false;
-    $risposte = rdmGuida($this, $token, 80, function () use ($caso, $tabella, $chiave, &$scritta) {
+    $ripresaAllaScrittura = null;
+    $risposte = rdmGuida($this, $token, 80, function () use ($caso, $tabella, $chiave, &$scritta, &$ripresaAllaScrittura) {
         if ($scritta || ! DB::getSchemaBuilder()->hasTable($tabella)) {
             return;
         }
         $scritta = true;
+        $ripresaAllaScrittura = (int) (app(RestoreState::class)->get()['checkpoint']['import']['offset'] ?? 0);
         if ($caso === 'sessione') {
             // La pagina dell'esito aperta con il cookie della sessione: la sessione si riscrive.
             rdmNuovaRichiesta();
@@ -665,8 +676,13 @@ test('una riga di sessioni, cache o blocchi della cache scritta durante l\'impor
         }
     });
 
+    // La prova vale solo se la riga è stata scritta prima che l'importatore arrivasse ai dati della tabella: il punto di
+    // ripresa salvato alla fine del passo non va oltre l'inizio di quei dati. È la condizione vera, sulle posizioni del
+    // dump di adesso (prima era una stima fissa sul numero delle istruzioni, che le tabelle nuove spostano).
+    expect($scritta)->toBeTrue()
+        ->and($ripresaAllaScrittura)->toBeLessThanOrEqual($pos['prima_dei_dati_'.$tabella]);
+
     expect(rdmErrore())->toBe('')
-        ->and($scritta)->toBeTrue()
         ->and(end($risposte))->toBe('200 completed')
         ->and(DB::table('aa_righe')->count())->toBe(400);
 })->with(['sessione', 'cache', 'blocco della cache', 'battito del pianificatore']);

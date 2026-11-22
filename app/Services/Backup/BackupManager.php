@@ -16,11 +16,13 @@ use App\Models\User;
 use App\Services\Backup\Destinations\DestinationManager;
 use App\Services\Backup\Exceptions\BackupInProgressException;
 use App\Services\Backup\Support\StepBudget;
+use App\Services\RegistroModifiche\SigilloDelRegistro;
 use App\Services\Restore\MessaggiDelRipristino;
 use App\Settings\BackupSettings;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 use Throwable;
 
@@ -303,6 +305,12 @@ class BackupManager
         switch ($backup->status) {
             case BackupStatus::PENDING:
                 File::ensureDirectoryExists($this->tmpDir($backup));
+                // Il registro delle modifiche si sigilla prima del dump (P1 della 1.12.0-beta.13): la copia porta le righe al loro posto nella catena, e
+                // il ripristino di questa copia trova la riga in comune con il registro di adesso. Prima della migrazione del registro (il backup che
+                // precede l'aggiornamento) la tabella non c'è, e non si sigilla niente.
+                if (Schema::hasTable('registro_modifiche')) {
+                    SigilloDelRegistro::sigillaSenzaFermare();
+                }
                 $backup->forceFill(['status' => BackupStatus::DUMPING_DATABASE])->save();
                 break;
 

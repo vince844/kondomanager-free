@@ -96,6 +96,10 @@ Route::prefix('admin')->as('admin.')
             'documenti'   => 'documento',
         ]);
 
+    // La linguetta «Assemblee» della scheda della persona (decisione 651): solo lo studio, con «Vede le assemblee». Si legge e basta.
+    Route::get('anagrafiche/{anagrafica}/assemblee', [\App\Http\Controllers\Anagrafiche\AnagraficaAssembleeController::class, 'index'])
+        ->whereNumber('anagrafica')->name('anagrafiche.assemblee');
+
     Route::resource('fornitori', FornitoreController::class)
         ->parameters([
             'fornitori' => 'fornitore'
@@ -347,6 +351,36 @@ Route::prefix('admin')->as('admin.')
     if (app()->environment(['local', 'testing'])) {
         Route::get('/test-quadratura/{condominio}', [TestContabilitaController::class, 'checkQuadratura']);
     }
+
+    /*
+     * Il registro delle modifiche (1.12.0-beta.13, §8, §14 e P18 del progetto della tappa 1). Il controllo sta nei controller: il permesso «Vede la
+     * storia delle schede» o «Vede il registro delle modifiche», e mai i ruoli `utente` e `fornitore`, che il gruppo qui sopra lascerebbe entrare con
+     * «Accesso pannello amministratore». Nessuna `Route::resource` ha questo prefisso: un indirizzo nuovo sotto `registro-modifiche` non finisce in uno
+     * `show()` di un'altra rotta (il difetto della Coda ㉗; lo controlla `RegistroModifichePermessiTest`).
+     */
+    Route::get('registro-modifiche/storia/{tipo}/{id?}', \App\Http\Controllers\RegistroModifiche\StoriaController::class)
+        ->where(['tipo' => '[a-z_]+', 'id' => '[0-9]+'])
+        ->name('registro-modifiche.storia');
+    Route::get('registro-modifiche/righe/{riga}/ripristina', [\App\Http\Controllers\RegistroModifiche\RipristinoController::class, 'anteprima'])
+        ->whereNumber('riga')
+        ->name('registro-modifiche.ripristina.anteprima');
+    Route::post('registro-modifiche/righe/{riga}/ripristina', [\App\Http\Controllers\RegistroModifiche\RipristinoController::class, 'ripristina'])
+        ->whereNumber('riga')
+        ->name('registro-modifiche.ripristina');
+    Route::post('registro-modifiche/verifica', [\App\Http\Controllers\RegistroModifiche\VerificaController::class, 'verifica'])
+        ->name('registro-modifiche.verifica');
+    Route::get('registro-modifiche/verifica/rapporto', [\App\Http\Controllers\RegistroModifiche\VerificaController::class, 'rapporto'])
+        ->name('registro-modifiche.verifica.rapporto');
+
+    // Il registro delle modifiche, i casi speciali (1.12.0-beta.13): versioni dei documenti, oscuramento, conservazione, sospensione.
+    require __DIR__.'/registro_modifiche_casi_speciali.php';
+
+    // Le assemblee (Coda 679): le pagine dell'assemblea e della cerniera, poi la convocazione e il fascicolo, poi la sala, poi il verbale, poi il seguito.
+    require __DIR__.'/assemblee.php';
+    require __DIR__.'/assemblee_convocazione.php';
+    require __DIR__.'/assemblee_sala.php';
+    require __DIR__.'/assemblee_verbale.php';
+    require __DIR__.'/assemblee_seguito.php';
 
     require __DIR__.'/gestionale.php';
 });

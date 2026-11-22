@@ -54,6 +54,16 @@ return [
         'subtitle_none' => 'No hay ninguna restauración en curso o recién finalizada.',
         'go_to_login' => 'Ir al inicio de sesión',
         'details_after_login' => 'El administrador ve los detalles técnicos de la restauración (copia de origen, versiones, posible error) en esta página, después de iniciar sesión.',
+        // 1.12.0-beta.13 (decisione 546): le righe del registro delle modifiche nel ripristino.
+        'registry_heading' => 'Registro de cambios',
+        'registry_kept' => 'La entrada escrita después de la copia queda en el registro, anulada por la restauración.|Las :righe entradas escritas después de la copia quedan en el registro, anuladas por la restauración.',
+        'registry_none_after' => 'Ninguna entrada del registro se escribió después de la copia.',
+        'registry_all_back' => 'La copia no tenía el registro: la entrada anterior vuelve, anulada por la restauración.|La copia no tenía el registro: las :righe entradas anteriores vuelven todas, anuladas por la restauración.',
+        'registry_obscured' => ':righe ocultación aplicada de nuevo.|:righe ocultaciones aplicadas de nuevo.',
+        'registry_pdf' => 'La copia no tenía entradas en común con el registro: las :righe entradas anteriores están en el PDF «:nome», entre los documentos.',
+        'registry_error' => 'No se pudieron restablecer todas las entradas escritas después de la copia (:errore).',
+        'registry_error_pdf' => 'Todas las entradas anteriores están en el PDF «:nome», entre los documentos.',
+        'registry_error_file' => 'El archivo con las entradas queda en la carpeta de las copias: :file.',
     ],
     'restore_recovery' => [
         'auth_failed' => 'Contraseña incorrecta.',
@@ -254,6 +264,10 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
+        'assemblee_title' => 'Juntas',
+        'assemblee_description' => 'Días de correo, delegaciones más allá de un quinto, voto discordante de los copropietarios',
+        'registro_modifiche_title' => 'Registro de cambios',
+        'registro_modifiche_description' => 'Quién cambió qué y cuándo, en todos los edificios: filtros, impresión con huella, verificación de la integridad',
         'installazione_title' => 'Esta instalación',
         'installazione_description' => 'Límites, espacio y funciones activas de esta instalación',
         'general_settings_title' => 'General settings',
@@ -310,7 +324,7 @@ return [
         'mail_legend_log' => 'Email sending disabled — emails are written to the log file only.',
 
         'sendmail_guide_title' => 'Sendmail — dedicated servers only',
-        'sendmail_guide_description' => 'Use this option ONLY if your server is a VPS or dedicated server with Postfix/Exim installed and SPF and DKIM records configured in your sender domain DNS. On shared hosting (Altervista, etc.) emails will be rejected by recipients because modern providers (Gmail, Outlook) require DNS authentication. For shared hosting use Gmail SMTP.',
+        'sendmail_guide_description' => 'Use this option ONLY if your server is a VPS or dedicated server with Postfix/Exim installed and SPF and DKIM records configured in your sender domain DNS. On shared hosting such as Altervista, external mail servers are blocked: download the PDFs and send them from your own mail program.',
 
         'test_header' => 'Immediate send test',
         'test_success_title' => 'Connection successful',
@@ -320,7 +334,7 @@ return [
         'test_unsaved_warning' => 'Tienes cambios sin guardar. La prueba usa los valores que ves en el formulario, pero no los guarda: para conservarlos, guarda la configuración.',
 
         'cron_guide_1_title' => 'El Motor Invisible',
-        'cron_guide_1_desc' => 'El demonio ejecuta en segundo plano, sin intervención manual, el mantenimiento del sistema: elimina los eventos terminados hace más de un año y la caché caducada, publica las comunicaciones programadas, comprueba si hay una nueva versión disponible y, donde está activada la opción para hostings compartidos, también procesa la cola de tareas.',
+        'cron_guide_1_desc' => 'El demonio ejecuta en segundo plano, sin intervención manual, el mantenimiento del sistema: elimina los eventos terminados hace más de un año y la caché caducada, publica las comunicaciones programadas, envía por correo el recordatorio de las convocatorias por enviar, comprueba si hay una nueva versión disponible y, donde está activada la opción para hostings compartidos, también procesa la cola de tareas.',
         'cron_guide_2_title' => 'Webhook (Externo)',
         'cron_guide_2_desc' => 'Identificado por el punto naranja. Permite activar el programador a través de una URL cifrada llamada por servicios externos (por ejemplo, cron-job.org).',
         'cron_guide_3_title' => 'System Cron (Nativo)',
@@ -450,6 +464,7 @@ return [
         'funzione_pianificatore_esterno' => 'Planificador externo',
         'funzione_backup' => 'Copias de seguridad internas',
         'funzione_archiviazione_esterna' => 'Archivo externo',
+        'funzione_posta_dell_installazione' => 'El correo lo prepara quien gestiona la instalación',
         'si' => 'sí',
         'no' => 'no',
         'documenti' => 'Dónde están los documentos',

@@ -5,6 +5,8 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Models\Gestionale\RigaRiparto;
 use App\Enums\NaturaGestione;
 use App\Helpers\MoneyHelper;
@@ -189,7 +191,8 @@ class EmissioneRateController extends Controller
         $presiPrima = [];
 
         try {
-            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche, &$aGiornale, &$senzaQuote, &$creditoUsato, &$giaEmesse, &$quoteFerme, &$rateFerme, &$restanoEmesse, &$presiPrima) {
+            // Gesto 2 del registro delle modifiche: l'emissione è una riga sola, con le scritture contate nel lotto.
+            RegistroModifiche::durante(GestiDelRegistro::emissione($pianoRate), function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $contoPassateGestioni, $inviaNotifiche, &$aGiornale, &$senzaQuote, &$creditoUsato, &$giaEmesse, &$quoteFerme, &$rateFerme, &$restanoEmesse, &$presiPrima) {
                 
                 // Le quote delle rate si bloccano come PRIMA istruzione: la scrittura va intestata al titolare di adesso, e
                 // i promemoria del portale riscritti più sotto con gli importi di adesso. Un passaggio che riassegna le bozze,
@@ -760,7 +763,8 @@ class EmissioneRateController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($rata, $condominio, $pianoRate, $request, $esercizio) { 
+            // Gesto 2 all'indietro: le scritture tolte per sempre (righe 5–6 del contesto) sono nel lotto, mai una riga per riga di giornale.
+            RegistroModifiche::durante(GestiDelRegistro::emissioneAnnullata($pianoRate, $rata), function () use ($rata, $condominio, $pianoRate, $request, $esercizio) { 
                 
                 // 1. Sgancio e rimozione Scritture
                 $scrittureIds = $rata->rateQuote()->pluck('scrittura_contabile_id')->filter()->unique();

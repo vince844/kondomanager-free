@@ -6,7 +6,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 <script setup lang="ts">
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Info, AlertTriangle, Zap, Home, History, Copy } from 'lucide-vue-next';
+import { FileText, Info, AlertTriangle, Zap, Home, History, Copy, CalendarRange } from 'lucide-vue-next';
 
 defineProps<{
     open: boolean;
@@ -167,6 +167,19 @@ defineEmits(['update:open']);
 
           <!-- TAB: Casi speciali -->
           <TabsContent value="speciali" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
+            <section>
+              <div class="flex items-center gap-2 mb-2">
+                <CalendarRange class="w-4 h-4 text-slate-500" />
+                <h3 class="font-bold text-slate-900 dark:text-white">La competenza: a chi tocca la spesa dopo una vendita</h3>
+              </div>
+              <p class="mb-2">Il riquadro «Competenza» dice a chi tocca la spesa se l'unità cambia proprietario. Si sceglie fra tre:</p>
+              <ul class="mb-2 list-disc space-y-1 pl-5">
+                <li><strong>Nessuna</strong>: il caso normale, ed è di serie. La spesa segue il periodo della sua voce, o della gestione.</li>
+                <li><strong>Costo maturato dal … al …</strong>: un costo di un periodo, per esempio il riscaldamento da ottobre a marzo. Paga chi era proprietario in quel periodo.</li>
+                <li><strong>Spesa deliberata il …</strong>: una spesa decisa dall'assemblea, per esempio i lavori del portone. Paga chi era proprietario il giorno della delibera; con le assemblee nel programma si sceglie la delibera.</li>
+              </ul>
+              <p>Conta quando la fattura va in un piano rate straordinario, anche su una gestione ordinaria. Si sceglie prima: in un piano approvato non si cambia più.</p>
+            </section>
             <section>
               <div class="flex items-center gap-2 mb-2">
                 <History class="w-4 h-4 text-slate-500" />

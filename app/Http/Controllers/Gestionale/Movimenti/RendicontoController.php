@@ -72,6 +72,9 @@ class RendicontoController extends Controller
             'parti' => FascicoloDelRendiconto::PARTI,
             // Le versioni fermate per l'assemblea, senza le cifre, e i nomi delle parti per «Conserva le parti una per una».
             'versioni' => VersioniDelRendiconto::elenco($esercizio),
+            // «Per quale assemblea» di «Ferma per l'assemblea»: le assemblee in preparazione con il punto del rendiconto di questo esercizio.
+            'assemblee_del_rendiconto' => \App\Services\Assemblee\AccessoAlleAssemblee::gestisce($request->user())
+                ? \App\Services\Assemblee\Convocazione\RendicontoPerLAssemblea::assemblee($esercizio) : [],
             'nomi_parti' => FascicoloDelRendiconto::NOMI,
             'oggi' => \App\Helpers\DateHelper::oggiUtente(),
             // Dopo l'approvazione, che cosa è cambiato con le cifre di allora e di oggi; e per la finestra dell'approvazione, dal giorno della versione

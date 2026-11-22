@@ -1,0 +1,22 @@
+{
+    "che_cosa": "I lotti che la coda manda quando la rete torna, dopo cinque gesti segnati senza rete martedì 15/12/2026 fra le 19:39 e le 19:41 di Roma, con l'orologio del portatile indietro di dieci minuti: il primo lotto si ferma prima di «Tutti i presenti favorevoli», che aspetta il numero della votazione. Lo scrive la coda (coda.test.ts) e lo riceve il server (CateneSenzaReteTest.php). I segnaposti fra graffe sono i numeri dell'anagrafica e della sala del server.",
+    "dispositivo": "computer di Andrea Costa#a1b2c3d4",
+    "scarto_ms": 600000,
+    "lotti": [
+        {
+            "dispositivo": "computer di Andrea Costa#a1b2c3d4",
+            "gesti": [
+                { "gesto": "5a1a0000-0000-4000-8000-000000000001", "tipo": "entra", "dati": { "seduta_id": "{seduta}", "persona": { "anagrafica_id": "{rossi}" }, "come": "in_sala" }, "base": 0, "orologio": "2026-12-15T18:29:00.000Z", "segnato_il": "2026-12-15T18:39:00.000Z" },
+                { "gesto": "5a1a0000-0000-4000-8000-000000000002", "tipo": "entra", "dati": { "seduta_id": "{seduta}", "persona": { "anagrafica_id": "{c40}" }, "come": "in_sala" }, "base": 0, "orologio": "2026-12-15T18:29:20.000Z", "segnato_il": "2026-12-15T18:39:20.000Z" },
+                { "gesto": "5a1a0000-0000-4000-8000-000000000003", "tipo": "si_vota", "dati": { "seduta_id": "{seduta}", "punto_id": "{punto1}" }, "base": null, "orologio": "2026-12-15T18:30:00.000Z", "segnato_il": "2026-12-15T18:40:00.000Z" }
+            ]
+        },
+        {
+            "dispositivo": "computer di Andrea Costa#a1b2c3d4",
+            "gesti": [
+                { "gesto": "5a1a0000-0000-4000-8000-000000000004", "tipo": "tutti_favorevoli", "dati": { "votazione_id": "{votazione}" }, "base": null, "orologio": "2026-12-15T18:30:30.000Z", "segnato_il": "2026-12-15T18:40:30.000Z" },
+                { "gesto": "5a1a0000-0000-4000-8000-000000000005", "tipo": "voto", "dati": { "votazione_id": "{votazione}", "testa": "p-{c40}", "voto": "contrario" }, "base": 1, "orologio": "2026-12-15T18:31:00.000Z", "segnato_il": "2026-12-15T18:41:00.000Z" }
+            ]
+        }
+    ]
+}

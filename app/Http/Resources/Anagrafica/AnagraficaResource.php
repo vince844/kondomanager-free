@@ -27,6 +27,9 @@ class AnagraficaResource extends JsonResource
             'email'            => $this->email,
             'email_secondaria' => $this->email_secondaria,
             'pec'              => $this->pec,
+            // Come si convoca alle assemblee e il giorno in cui ha comunicato la PEC (la scheda della persona le mostra).
+            'mezzo_convocazione' => $this->mezzo_convocazione,
+            'pec_comunicata_il' => $this->pec_comunicata_il === null ? null : substr((string) $this->pec_comunicata_il, 0, 10),
             'telefono'         => $this->telefono,
             'cellulare'        => $this->cellulare,
             'condomini'        => CondominioResource::collection($this->whenLoaded('condomini'))

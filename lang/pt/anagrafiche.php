@@ -149,5 +149,6 @@ return [
         'building_link_desc'     => 'Ligue os contactos aos respetivos edifícios para simplificar as sucessões e as atribuições de frações.',
         'fiscal_data_title'      => 'Dados Fiscais e Documentos',
         'fiscal_data_desc'       => 'Mantenha os números de contribuinte e os documentos de identificação atualizados para garantir a conformidade das faturas.',
+        'come_si_convoca_desc'   => 'Em «Come si convoca» escolhes como a pessoa é convocada para as assembleias (PEC, carta registada, em mão, fax): vazio, o programa propõe-no a partir dos dados. O e-mail simples não vale.',
     ],
 ];

@@ -80,6 +80,7 @@ const pageGuides = computed(() => [
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
+        :storia="{ tipo: 'immobile', id: props.immobile.id }"
         page-title="Dettaglio unità immobiliare"
         :page-subtitle="`Scheda informativa dell'immobile: ${immobile.nome}`"
         :guides="pageGuides"

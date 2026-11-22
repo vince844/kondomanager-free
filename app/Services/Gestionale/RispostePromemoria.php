@@ -5,6 +5,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\DateHelper;
 use App\Models\Condominio;
 use App\Models\Evento;
@@ -123,11 +125,18 @@ final class RispostePromemoria
     public function fattoDelCompito(Evento $compito, ?string $nota, ?User $utente): RispostaPromemoria
     {
         $r = DB::transaction(function () use ($compito, $nota, $utente) {
+            // Il registro delle modifiche: il compito chiuso da una persona è una sua riga, con il titolo copiato (il programma che chiude da solo no).
+            if ($utente !== null) {
+                RegistroModifiche::gesto(GestiDelRegistro::agenda($compito, 'Compito chiuso: fatto', self::notaPulita($nota)));
+            }
             $r = $this->chiudiIlCompito($compito, self::FATTO, self::notaPulita($nota), $utente, []);
             // Sul bonifico segnalato la rata non resta «in verifica»: si riallinea alle quote, con l'incasso dopo la segnalazione se c'è.
             if (self::eUnBonificoSegnalato($compito)) {
                 app(SegnalazioneDelBonifico::class)->chiusa($compito);
             }
+            // Coda 679, R10: il memo e il suo compito sono una cosa sola, e la risposta passa dal memo.
+            \App\Services\Assemblee\MemoriaDelCondominio::dopoLaRispostaDelCompito($compito, self::FATTO, ['nota' => self::notaPulita($nota)], $utente);
+            \App\Services\Assemblee\Seguito\CoseDaFare::dopoLaRispostaDelCompito($compito, self::FATTO, ['nota' => self::notaPulita($nota)], $utente);
 
             return $r;
         });
@@ -144,9 +153,17 @@ final class RispostePromemoria
     public function nonServeDelCompito(Evento $compito, string $motivo, ?User $utente): RispostaPromemoria
     {
         $r = DB::transaction(function () use ($compito, $motivo, $utente) {
+            if ($utente !== null) {
+                RegistroModifiche::gesto(GestiDelRegistro::agenda($compito, self::eUnBonificoSegnalato($compito) ? 'Segnalazione del bonifico rifiutata'
+                    : 'Compito chiuso: non serve', self::notaPulita($motivo)));
+            }
             $rifiutata = $this->rifiutaLaSegnalazione($compito, $motivo);
+            $r = $this->chiudiIlCompito($compito, self::NON_SERVE, self::notaPulita($motivo), $utente, $rifiutata === null ? [] : ['segnalazione_rifiutata' => $rifiutata]);
+            // R10: «Non serve più» dal menu del compito chiude anche il memo, con il motivo.
+            \App\Services\Assemblee\MemoriaDelCondominio::dopoLaRispostaDelCompito($compito, self::NON_SERVE, ['motivo' => self::notaPulita($motivo)], $utente);
+            \App\Services\Assemblee\Seguito\CoseDaFare::dopoLaRispostaDelCompito($compito, self::NON_SERVE, ['motivo' => self::notaPulita($motivo)], $utente);
 
-            return $this->chiudiIlCompito($compito, self::NON_SERVE, self::notaPulita($motivo), $utente, $rifiutata === null ? [] : ['segnalazione_rifiutata' => $rifiutata]);
+            return $r;
         });
         InboxService::clearAdminCache();
 
@@ -161,7 +178,9 @@ final class RispostePromemoria
     public function ricordameloDelCompito(Evento $compito, string $giorno, ?string $nota, User $utente): RispostaPromemoria
     {
         $nota = self::notaPulita($nota);
-        $r = DB::transaction(fn () => $this->scriviDelCompito($compito, function (RispostaPromemoria $r) use ($compito, $giorno, $nota, $utente) {
+        // Il registro delle modifiche: il compito spostato da una persona («Ricordamelo il…») è una sua riga.
+        $r = DB::transaction(fn () => RegistroModifiche::durante(GestiDelRegistro::agenda($compito, 'Compito rimandato al ' . \Carbon\CarbonImmutable::parse($giorno)->format('d/m/Y'), $nota),
+            fn () => $this->scriviDelCompito($compito, function (RispostaPromemoria $r) use ($compito, $giorno, $nota, $utente) {
             $dati = ['giorno' => $giorno];
             if (self::promemoriaAParte($compito)) {
                 [$titolo, $diSerie] = self::titoloEDescrizioneDelPromemoria($compito, $r->condominio_id === null ? null : (int) $r->condominio_id);
@@ -182,7 +201,10 @@ final class RispostePromemoria
             $r->fill(['stato' => self::RICORDAMELO, 'ricordami_il' => $giorno, 'promemoria_evento_id' => $evento->id, 'nota' => $nota, 'aggiornata_da' => $utente->id]);
             $r->dati = array_merge(array_diff_key((array) ($r->dati ?? []), ['contatore' => true]), ['ricordamelo' => $dati], $tornaPrima);
             $r->registro = RegistroDelGesto::registra(['registro' => $r->registro ?? []], self::RICORDAMELO, (string) $nota, $utente, $dati)['registro'];
-        }));
+            // R10: «Ricordamelo» sposta anche il giorno del memo.
+            \App\Services\Assemblee\MemoriaDelCondominio::dopoLaRispostaDelCompito($compito, self::RICORDAMELO, ['giorno' => $giorno], $utente);
+            \App\Services\Assemblee\Seguito\CoseDaFare::dopoLaRispostaDelCompito($compito, self::RICORDAMELO, ['giorno' => $giorno], $utente);
+        })));
         InboxService::clearAdminCache();
 
         return $r;
@@ -299,7 +321,12 @@ final class RispostePromemoria
      */
     public function agito(Condominio $condominio, int $esercizioId, int $personaId, string $giorno, string $nota, ?User $utente, array $riga, array $altro = []): RispostaPromemoria
     {
-        return DB::transaction(fn () => $this->agitoDentro($condominio, $esercizioId, $personaId, $giorno, $nota, $utente, $riga, $altro));
+        return DB::transaction(function () use ($condominio, $esercizioId, $personaId, $giorno, $nota, $utente, $riga, $altro) {
+            $r = $this->agitoDentro($condominio, $esercizioId, $personaId, $giorno, $nota, $utente, $riga, $altro);
+            self::nelRegistro($r, $utente, 'Compito chiuso: azione registrata il ' . \Carbon\CarbonImmutable::parse($giorno)->format('d/m/Y'), $nota);
+
+            return $r;
+        });
     }
 
     /**
@@ -323,6 +350,9 @@ final class RispostePromemoria
             foreach ($persone as $id => $datiPersona) {
                 $this->agitoDentro($condominio, $esercizioId, (int) $id, $giorno, $nota, $utente, $datiPersona, ['da' => self::FATTO]);
             }
+            $quante = count($persone);
+            self::nelRegistro($riga, $utente, 'Compito chiuso: fatto' . ($quante === 0 ? '' : ' per ' . ($quante === 1 ? '1 persona' : $quante . ' persone')), $nota,
+                array_keys($persone));
 
             return $riga;
         });
@@ -335,14 +365,14 @@ final class RispostePromemoria
      */
     public function nonServe(Condominio $condominio, string $argomento, int $esercizioId, string $motivo, ?User $utente, array $dati): RispostaPromemoria
     {
-        return DB::transaction(fn () => $this->scrivi(self::chiave($argomento, (int) $condominio->id, $esercizioId, null),
+        return DB::transaction(fn () => self::nelRegistro($this->scrivi(self::chiave($argomento, (int) $condominio->id, $esercizioId, null),
             ['condominio_id' => $condominio->id, 'argomento' => $argomento, 'esercizio_id' => $esercizioId],
             function (RispostaPromemoria $r) use ($motivo, $utente, $dati) {
                 $tolto = $this->togliPromemoria($r);
                 $r->fill(['stato' => self::NON_SERVE, 'nota' => $motivo, 'dati' => $dati, 'aggiornata_da' => $utente?->id]);
                 $r->registro = RegistroDelGesto::registra(['registro' => $r->registro ?? []], self::NON_SERVE, $motivo, $utente,
                     $dati + ($tolto === null ? [] : ['promemoria_tolto' => $tolto]))['registro'];
-            }));
+            }), $utente, 'Compito chiuso: non serve', $motivo));
     }
 
     /**
@@ -351,7 +381,7 @@ final class RispostePromemoria
      */
     public function ricordamelo(Condominio $condominio, string $argomento, int $esercizioId, string $giorno, ?string $nota, User $utente, string $titolo, string $ritorno): RispostaPromemoria
     {
-        return DB::transaction(fn () => $this->scrivi(self::chiave($argomento, (int) $condominio->id, $esercizioId, null),
+        return DB::transaction(fn () => self::nelRegistro($this->scrivi(self::chiave($argomento, (int) $condominio->id, $esercizioId, null),
             ['condominio_id' => $condominio->id, 'argomento' => $argomento, 'esercizio_id' => $esercizioId],
             function (RispostaPromemoria $r) use ($condominio, $giorno, $nota, $utente, $titolo, $ritorno) {
                 $evento = $this->eventoNelGiorno($r, 'promemoria_evento_id', (int) $condominio->id, $giorno, $nota, $utente, $titolo, $ritorno);
@@ -359,20 +389,20 @@ final class RispostePromemoria
                 $r->fill(['stato' => self::RICORDAMELO, 'ricordami_il' => $giorno, 'promemoria_evento_id' => $evento->id, 'nota' => $nota, 'aggiornata_da' => $utente->id]);
                 $r->dati = array_merge((array) ($r->dati ?? []), ['ricordamelo' => $dati]);
                 $r->registro = RegistroDelGesto::registra(['registro' => $r->registro ?? []], self::RICORDAMELO, (string) $nota, $utente, $dati)['registro'];
-            }));
+            }), $utente, 'Compito rimandato al ' . \Carbon\CarbonImmutable::parse($giorno)->format('d/m/Y'), $nota));
     }
 
     /** «Mettilo in agenda» per il rendiconto: un evento nell'agenda del condominio, uno solo; non chiude il compito e non cambia lo stato. */
     public function inAgenda(Condominio $condominio, int $esercizioId, string $giorno, ?string $nota, User $utente, string $titolo, string $ritorno): RispostaPromemoria
     {
-        return DB::transaction(fn () => $this->scrivi(self::chiave(self::RENDICONTO, (int) $condominio->id, $esercizioId, null),
+        return DB::transaction(fn () => self::nelRegistro($this->scrivi(self::chiave(self::RENDICONTO, (int) $condominio->id, $esercizioId, null),
             ['condominio_id' => $condominio->id, 'argomento' => self::RENDICONTO, 'esercizio_id' => $esercizioId],
             function (RispostaPromemoria $r) use ($condominio, $giorno, $nota, $utente, $titolo, $ritorno) {
                 $evento = $this->eventoNelGiorno($r, 'agenda_evento_id', (int) $condominio->id, $giorno, $nota, $utente, $titolo, $ritorno);
                 $r->fill(['agenda_evento_id' => $evento->id, 'aggiornata_da' => $utente->id]);
                 $r->registro = RegistroDelGesto::registra(['registro' => $r->registro ?? []], 'in_agenda', (string) $nota, $utente,
                     ['giorno' => $giorno, 'evento_id' => $evento->id])['registro'];
-            }));
+            }), $utente, 'Messo in agenda per il ' . \Carbon\CarbonImmutable::parse($giorno)->format('d/m/Y'), $nota));
     }
 
     /**
@@ -421,7 +451,7 @@ final class RispostePromemoria
                     $r->registro = RegistroDelGesto::registra(['registro' => $r->registro ?? []], 'riapri', '', $utente,
                         ['prima' => $prima] + ($tolto === null ? [] : ['promemoria_tolto' => $tolto]))['registro'];
                 });
-            $riaperte = 0;
+            $riaperte = [];
             if ($prima === self::FATTO && $personaId === null && $argomento === self::SEI_MESI) {
                 $giorno = (string) ($r->dati['giorno'] ?? '');
                 foreach ((array) ($r->dati['persone'] ?? []) as $id) {
@@ -432,11 +462,14 @@ final class RispostePromemoria
                     $p->fill(['stato' => null, 'aggiornata_da' => $utente?->id]);
                     $p->registro = RegistroDelGesto::registra(['registro' => $p->registro ?? []], 'riapri', '', $utente, ['prima' => self::AGITO, 'da' => self::FATTO])['registro'];
                     $p->save();
-                    $riaperte++;
+                    $riaperte[] = (int) $id;
                 }
             }
+            $quante = count($riaperte);
+            self::nelRegistro($r, $utente, 'Compito riaperto' . ($quante === 0 ? '' : ': ' . ($quante === 1 ? '1 persona torna' : $quante . ' persone tornano')
+                . ' nel riquadro'), null, $riaperte);
 
-            return ['risposta' => $r, 'persone' => $riaperte];
+            return ['risposta' => $r, 'persone' => $quante];
         });
     }
 
@@ -459,6 +492,22 @@ final class RispostePromemoria
         $evento?->delete();
 
         return $giorno;
+    }
+
+    /**
+     * Il programma chiude un compito da solo, con la frase nella risposta («Chiuso: il punto è nell'ordine del giorno del 15/12/2026», «Chiuso dalla delibera
+     * del 15/12/2026, punto 3»): come «Fatto», senza una persona, e quindi senza una riga del registro delle modifiche (547 (2) del registro delle decisioni). Un compito già
+     * chiuso resta com'è.
+     */
+    public function chiudiDalProgramma(Evento $compito, string $frase): ?RispostaPromemoria
+    {
+        if ($compito->is_completed) {
+            return null;
+        }
+        $r = DB::transaction(fn () => $this->chiudiIlCompito($compito, self::FATTO, $frase, null, ['dal_programma' => true]));
+        InboxService::clearAdminCache();
+
+        return $r;
     }
 
     /** Chiude il compito con la risposta, dentro una transazione già aperta. */
@@ -532,6 +581,21 @@ final class RispostePromemoria
                 $r->fill(['stato' => self::AGITO, 'giorno' => $giorno, 'nota' => $nota, 'dati' => $dati, 'aggiornata_da' => $utente?->id]);
                 $r->registro = RegistroDelGesto::registra(['registro' => $r->registro ?? []], self::AGITO, $nota, $utente, ['giorno' => $giorno] + $dati)['registro'];
             });
+    }
+
+    /**
+     * Il registro delle modifiche (Coda 679, i gesti delle persone sull'agenda e sui compiti): la risposta di una persona a un compito del riquadro è una
+     * riga sua, con il nome del compito, nella transazione della risposta. Il programma che risponde da solo no. Rende la risposta.
+     *
+     * @param list<int>|array<int, int> $persone
+     */
+    private static function nelRegistro(RispostaPromemoria $r, ?User $utente, string $riepilogo, ?string $perche, array $persone = []): RispostaPromemoria
+    {
+        if ($utente !== null) {
+            RegistroModifiche::gesto(GestiDelRegistro::compitoDelRiquadro($r, $riepilogo, self::notaPulita($perche), $persone));
+        }
+
+        return $r;
     }
 
     /** La riga con la sua chiave, scritta sotto il lucchetto: prima la riga vuota se non c'è, poi la lettura, poi il gesto. */

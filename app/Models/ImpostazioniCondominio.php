@@ -7,6 +7,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RegistraLeModifiche;
 
 /**
  * Le impostazioni di un condominio: una riga per condominio, una colonna per scelta (la scheda «Impostazioni» dell'area «Condominio»). Senza la riga valgono i
@@ -17,11 +18,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $recupero_suggerisce_azione
  * @property ?int $aggiornate_da
  *
+ * Le assemblee: `assemblee_teste`, come contano le teste nel caso misto (Rossi con l'Int. 3 da solo e l'Int. 5 a metà con Bianchi): `due_teste` di serie,
+ * o `una_testa` per il condominio che ha una regola sua; non si cambia mentre un'assemblea del condominio è in corso ({@see \App\Services\Assemblee\Sala\ImpostazioniDellaSala}).
+ *
  * Decisioni 493 e 494: le otto scelte sugli interessi degli eredi («Recupero dei crediti», sezione «Gli interessi degli eredi»), una colonna ciascuna, con i
  * nomi di {@see \App\Services\Gestionale\Accessori\RegoleDegliEredi::SCELTE}: valgono per ogni successione, salvo quella che le cambia per sé.
  */
 class ImpostazioniCondominio extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'impostazioni_condominio';
 
     /** Dopo una lettera, quando scadono rate nuove: la salita va avanti (di serie). */
@@ -32,13 +38,22 @@ class ImpostazioniCondominio extends Model
 
     public const SALITE = [self::SALITA_AVANTI, self::SALITA_RICOMINCIA];
 
+    /** Le teste del caso misto: una testa sola per le persone legate da una comproprietà (la scelta del condominio con una regola sua). */
+    public const UNA_TESTA = 'una_testa';
+
+    /** Le teste del caso misto: la persona per le sue unità, e l'unità in comproprietà a parte con il suo rappresentante (di serie). */
+    public const DUE_TESTE = 'due_teste';
+
+    public const TESTE = [self::UNA_TESTA, self::DUE_TESTE];
+
     /** I valori di serie, gli stessi delle colonne. */
     public const DI_SERIE = ['recupero_salita' => self::SALITA_AVANTI, 'recupero_suggerisce_azione' => true]
+        + ['assemblee_teste' => self::DUE_TESTE]
         + \App\Services\Gestionale\Accessori\RegoleDegliEredi::DI_SERIE;
 
     protected $fillable = ['condominio_id', 'recupero_salita', 'recupero_suggerisce_azione', 'aggiornate_da',
         'eredi_interessi_sugli_interessi', 'eredi_dal_decesso', 'eredi_tolleranza_rata_nuova', 'eredi_rata_per_rata', 'eredi_versamento_prima', 'eredi_anche_accordo',
-        'eredi_buco_continuano', 'eredi_interessi_defunto_agli_eredi'];
+        'eredi_buco_continuano', 'eredi_interessi_defunto_agli_eredi', 'assemblee_teste'];
 
     protected $casts = [
         'condominio_id' => 'integer',

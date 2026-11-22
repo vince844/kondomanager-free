@@ -1,0 +1,75 @@
+{
+    "che_cosa": "Il lotto che la pagina della sala manda quando la rete torna, dopo una serata cominciata senza rete martedì 15/12/2026: alle 18:35 «Segna deserta la prima convocazione» (non ancora segnata, la prima era lunedì 14/12: la finestra scrive l'ora sul giorno della prima), alle 18:42 «Apri l'assemblea» sulla seconda, che la sala vista da questo computer mette da aprire dopo la prima deserta (il controllo non c'è: lo rifà il server, `controllo_visto` è null), alle 18:45 Rossi entra, alle 19:00 «Si vota» il punto e Rossi contrario. Lo scrive la pagina (Sala.test.ts) e lo riceve il server (CateneNienteSiPerdeTest.php). I segnaposti fra graffe sono i numeri della sala del server.",
+    "lotto": {
+        "dispositivo": "computer di Andrea Costa#de5e0000",
+        "gesti": [
+            {
+                "gesto": "de5e0000-0000-4000-8000-000000000003",
+                "tipo": "deserta",
+                "dati": {
+                    "seduta_id": "{prima}"
+                },
+                "base": null,
+                "orologio": "2026-12-15T17:35:00.000Z",
+                "segnato_il": "2026-12-14T17:35:00.000Z"
+            },
+            {
+                "gesto": "de5e0000-0000-4000-8000-000000000004",
+                "tipo": "apri",
+                "dati": {
+                    "seduta_id": "{seconda}",
+                    "presidente": {
+                        "anagrafica_id": "{presidente}"
+                    },
+                    "segretario": {
+                        "nome": "L'amministratore"
+                    },
+                    "controllo_visto": null
+                },
+                "base": null,
+                "orologio": "2026-12-15T17:42:00.000Z",
+                "segnato_il": "2026-12-15T17:42:00.000Z"
+            },
+            {
+                "gesto": "de5e0000-0000-4000-8000-000000000005",
+                "tipo": "entra",
+                "dati": {
+                    "seduta_id": "{seconda}",
+                    "persona": {
+                        "anagrafica_id": "{rossi}"
+                    },
+                    "come": "in_sala"
+                },
+                "base": 0,
+                "orologio": "2026-12-15T17:45:00.000Z",
+                "segnato_il": "2026-12-15T17:45:00.000Z"
+            },
+            {
+                "gesto": "de5e0000-0000-4000-8000-000000000006",
+                "tipo": "si_vota",
+                "dati": {
+                    "seduta_id": "{seconda}",
+                    "punto_id": "{punto}"
+                },
+                "base": null,
+                "orologio": "2026-12-15T18:00:00.000Z",
+                "segnato_il": "2026-12-15T18:00:00.000Z"
+            },
+            {
+                "gesto": "de5e0000-0000-4000-8000-000000000007",
+                "tipo": "voto",
+                "dati": {
+                    "seduta_id": "{seconda}",
+                    "punto_id": "{punto}",
+                    "numero": 1,
+                    "aperta_dal_gesto": "de5e0000-0000-4000-8000-000000000006",
+                    "testa": "p-{rossi}",
+                    "voto": "contrario"
+                },
+                "base": 0,
+                "orologio": "2026-12-15T18:00:00.000Z",
+                "segnato_il": "2026-12-15T18:00:00.000Z"
+            }
+        ]
+    }
+}

@@ -25,6 +25,8 @@ beforeEach(function () {
 
 function smpVietate(string $testo): array
 {
+    // «Consegnata» si dice solo con la consegna della PEC provata (la ricevuta del gestore, o il giorno scritto a mano con la prova): «consegnata per PEC il …».
+    $testo = (string) preg_replace('/consegnat[ao] per PEC il \d{2}\/\d{2}\/\d{4}/u', ' ', $testo);
     $t = mb_strtolower(str_replace(\App\Services\Gestionale\Debiti\SeiMesi::TESTO_NORMA, ' ', $testo));
 
     return array_values(array_filter(SMP_PAROLE, fn ($p) => str_contains($t, $p)));
@@ -57,6 +59,17 @@ it('le frasi del riquadro, con lettere, accordi, dispense, risposte e rendiconti
     $testo = json_encode(smaRiquadro($s), JSON_UNESCAPED_UNICODE);
 
     expect(smpVietate($testo))->toBe([]);
+});
+
+it('la diffida per PEC con la ricevuta del gestore: il riquadro dice la consegna per PEC, e nessun\'altra parola vietata', function () {
+    $s = smaViaVerdi($this);
+    $riga = smaLettera($s, 'bianchi', 'diffida', 'inviata', '2026-05-10', [1, 2, 3, 4, 5], ['consegna' => ['giorno' => '2026-05-11', 'ora' => '09:02', 'a_mano' => false]]);
+    $riga->forceFill(['canale' => 'pec', 'esito' => 'consegnata', 'ricevuta_il' => '2026-05-11'])->save();
+    $testo = json_encode(smaRiquadro($s), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    expect($testo)->toContain('Diffida consegnata per PEC il 11/05/2026')
+        ->and(smpVietate($testo))->toBe([])
+        ->and(smpVietate('La diffida è stata consegnata a mano'))->toBe(['consegnata']);
 });
 
 it('a video «la prossima azione», mai «il passo»: le frasi del riquadro, con la dispensa, le lettere, l\'accordo e la tolleranza, non lo dicono', function () {

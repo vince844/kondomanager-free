@@ -7,6 +7,7 @@ use App\Providers\AppServiceProvider;
 use App\Providers\AuditServiceProvider;
 use App\Providers\BackupServiceProvider;
 use App\Providers\MailConfigServiceProvider;
+use App\Providers\RegistroModificheServiceProvider;
 use App\Providers\UpgradePatchServiceProvider;
 
 return [
@@ -14,5 +15,6 @@ return [
     AuditServiceProvider::class,
     BackupServiceProvider::class,
     MailConfigServiceProvider::class,
+    RegistroModificheServiceProvider::class,
     UpgradePatchServiceProvider::class,
 ];

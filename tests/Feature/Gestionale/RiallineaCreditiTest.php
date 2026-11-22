@@ -403,8 +403,18 @@ it('R1 — DC1 sulla rata zero: la rettifica sposta i 20000 della compensazione 
     expect(rlcImpronta($s))->toBe($impronta);
 
     $ultimo = rlcUltimoId();
+    $ultimaRiga = (int) \App\Models\RegistroModifica::query()->max('id');
+    // Dal terminale non c'è una persona in sessione: le pagine lette sopra nel test l'avevano lasciata.
+    \Illuminate\Support\Facades\Auth::forgetGuards();
     rlcComando($s);
     $nuove = ScritturaContabile::where('id', '>', $ultimo)->get();
+    // 1.12.0-beta.13 (decisione 548): il comando scrive una riga sola nel registro delle modifiche per il condominio, firmata «Il programma», con la
+    // scrittura di rettifica nel lotto e non una riga sua.
+    $registro = \App\Models\RegistroModifica::query()->where('id', '>', $ultimaRiga)->get();
+    expect($registro)->toHaveCount(1)
+        ->and($registro[0]->autore_nome)->toBe('Il programma')
+        ->and($registro[0]->riepilogo)->toBe('Riallineati i crediti: 1 scrittura di rettifica')
+        ->and($registro[0]->lotto['id']['scrittura_contabile'] ?? [])->toBe($nuove->pluck('id')->all());
     // Una sola scrittura: AVERE «Crediti» 20000 e DARE «Passate» 20000, a nome di Ugo, sulla rata 0. Crediti 20000 − 20000 = 0;
     // Passate 0 − 20000 = −20000 (DARE netto: il credito è uscito da dove stava). Mastrino 20000 − 20000 = 0; estratto invariato.
     expect($nuove)->toHaveCount(1);
@@ -423,8 +433,11 @@ it('R1 — DC1 sulla rata zero: la rettifica sposta i 20000 della compensazione 
         ->and(rlcEstratto($this, $s, 'ugo')['stats']['saldo_raw'])->toBe(0);
 
     $impronta = rlcImpronta($s);
+    $ultimaRiga = (int) \App\Models\RegistroModifica::query()->max('id');
     rlcComando($s);
-    expect(rlcImpronta($s))->toBe($impronta);
+    expect(rlcImpronta($s))->toBe($impronta)
+        // Un condominio senza rettifiche non scrive niente nel registro (decisione 548).
+        ->and(\App\Models\RegistroModifica::query()->where('id', '>', $ultimaRiga)->count())->toBe(0);
 });
 
 it('R1-bis — decisione 76.1 e rilievo LDA-3: la rata zero che la 1.10 ha segnato «emessa» senza righe, con il credito usato tutto, il comando non la tocca e la card non la manda a emettere: dopo la rettifica di DC1 l\'emissione non avrebbe niente da portare', function () {

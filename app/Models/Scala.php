@@ -7,9 +7,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
 
 class Scala extends Model
 {
+    use RegistraLeModifiche;
+
     use HasFactory;
 
     protected $table = 'scale';
@@ -21,6 +24,12 @@ class Scala extends Model
         'description',
         'note',
     ];
+
+    /** La tabella di proprietà generale scelta per questo perimetro (§1.2 del progetto della tappa 2). */
+    public function tabellaDiProprieta()
+    {
+        return $this->belongsTo(Tabella::class, 'tabella_proprieta_id');
+    }
 
     // Relazione con il condominio (obbligatoria)
     public function condominio()

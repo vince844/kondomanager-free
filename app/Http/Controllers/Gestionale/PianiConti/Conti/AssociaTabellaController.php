@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Gestionale\PianiConti\Conti;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Esercizio;
@@ -29,6 +30,8 @@ class AssociaTabellaController extends Controller
 
         try {
             DB::beginTransaction();
+            // Gesto 7 del registro delle modifiche, voci e tabelle: le tabelle della voce prima, per il campo «Tabelle millesimali».
+            $tabelleDellaVocePrima = GestiDelRegistro::tabelleDellaVoce((int) $conto->id);
 
             $data = $request->validate([
                 'tabella_millesimale_id'    => 'required|exists:tabelle,id',
@@ -103,6 +106,7 @@ class AssociaTabellaController extends Controller
                 }
             }
 
+            GestiDelRegistro::scriviTabelleDellaVoce($conto, $tabelleDellaVocePrima);
             DB::commit();
 
             return redirect()->back()->with('message', [

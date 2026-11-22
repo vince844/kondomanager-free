@@ -14,6 +14,9 @@ let paginaDiPartenza: string | null = null;
  * La dispensa dell'assemblea dall'agire entro sei mesi (art. 1129 c. 9): l'elenco delle delibere registrate, la registrazione di una nuova
  * (data, verbale, esercizi coperti, tutte le persone o alcune, nota) e la revoca. Una delibera alla volta. Il programma la mostra accanto
  * alle date dei sei mesi dell'elenco delle rate scadute; le date non cambiano.
+ *
+ * La data della delibera e il numero del verbale vengono dalla delibera scelta con «Scegli la delibera» (§1.4 del progetto della tappa 2): la data «dalla
+ * delibera», il verbale è quello della riunione. Lo stesso per la revoca. Chi non gestisce le assemblee scrive la data a mano, come prima.
  */
 import { computed, ref } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
@@ -30,6 +33,10 @@ import 'vue-select/dist/vue-select.css';
 import SpiegazioneDelFiltro from '@/components/gestionale/debiti/SpiegazioneDelFiltro.vue';
 import CampoFile from '@/components/CampoFile.vue';
 import DispenseSeiMesiGuide from '@/components/guides/DispenseSeiMesiGuide.vue';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 import { usePermission } from '@/composables/permissions';
 import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
 import { CalendarClock, FileText, Scale } from 'lucide-vue-next';
@@ -41,6 +48,9 @@ interface Dispensa {
     esercizi: Array<{ id: number; nome: string }>; persone: Array<{ id: number; nome: string }>; revocata_il: string | null; nota_revoca: string | null; verbale: string | null;
     /** La dispensa toglie anche il sollecito in tesoreria: una scelta di lavoro, di serie no. */
     togli_sollecito_tesoreria?: boolean;
+    /** La delibera collegata (ruolo «dispensa») e quella della revoca, se ci sono. */
+    delibera?: DeliberaDelMenu | null;
+    delibera_della_revoca?: DeliberaDelMenu | null;
 }
 const props = defineProps<{
     condominio: { id: number; nome: string }; condomini: any; esercizio: any;
@@ -48,7 +58,12 @@ const props = defineProps<{
     dispense: Dispensa[]; testo_norma: string; oggi: string;
 }>();
 
-const { generateRoute, generatePath } = usePermission();
+const permessi = usePermission();
+const { generateRoute, generatePath } = permessi;
+// Con «Gestisce le assemblee» la data viene dalla delibera scelta; senza, si scrive a mano come prima.
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+const delibera = ref<DeliberaDelMenu | null>(null);
+const deliberaDellaRevoca = ref<DeliberaDelMenu | null>(null);
 const page = usePage<{ flash?: { message?: Flash }; errors?: Record<string, string> }>();
 const flashMessage = computed(() => page.props.flash?.message);
 const errori = computed(() => page.props.errors ?? {});
@@ -65,10 +80,15 @@ const opzioniPersone = computed(() => {
     return [...mostrate, ...scelte];
 });
 const alterna = (lista: number[], id: number) => (lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id]);
+/** La data che parte: quella della delibera scelta, o quella scritta a mano. */
+const dataDellaDispensa = computed(() => (delibera.value ? delibera.value.deliberata_il : nuova.value.data_delibera));
 function registra() {
+    const conDelibera = delibera.value !== null;
     router.post(route(generateRoute('gestionale.dispense.store'), { condominio: props.condominio.id }), {
-        ...nuova.value, ...(verbale.value ? { verbale: verbale.value } : {}),
-    }, { forceFormData: true, preserveScroll: true, onSuccess: () => { nuova.value = { data_delibera: '', numero_verbale: '', nota: '', esercizi: [], per_tutti: '', persone: [], togli_sollecito_tesoreria: false }; verbale.value = null; } });
+        ...nuova.value,
+        ...(conDelibera ? { delibera_id: delibera.value!.id, data_delibera: delibera.value!.deliberata_il, numero_verbale: '' } : {}),
+        ...(!conDelibera && verbale.value ? { verbale: verbale.value } : {}),
+    }, { forceFormData: true, preserveScroll: true, onSuccess: () => { nuova.value = { data_delibera: '', numero_verbale: '', nota: '', esercizi: [], per_tutti: '', persone: [], togli_sollecito_tesoreria: false }; verbale.value = null; delibera.value = null; } });
 }
 
 /** «Togli anche il sollecito in tesoreria», cambiata dall'elenco: una scelta di lavoro, non una parte della delibera. */
@@ -81,9 +101,15 @@ const SPIEGAZIONE_SOLLECITO = 'La dispensa toglie le azioni verso il legale (la 
 const revoca = ref<{ id: number | null; revocata_il: string; nota_revoca: string }>({ id: null, revocata_il: '', nota_revoca: '' });
 function revoca_conferma() {
     if (!revoca.value.id) return;
+    const conDelibera = deliberaDellaRevoca.value !== null;
     router.post(route(generateRoute('gestionale.dispense.revoca'), { condominio: props.condominio.id, dispensa: revoca.value.id }), {
-        revocata_il: revoca.value.revocata_il, nota_revoca: revoca.value.nota_revoca,
-    }, { preserveScroll: true, onSuccess: () => { revoca.value = { id: null, revocata_il: '', nota_revoca: '' }; } });
+        revocata_il: conDelibera ? deliberaDellaRevoca.value!.deliberata_il : revoca.value.revocata_il, nota_revoca: revoca.value.nota_revoca,
+        ...(conDelibera ? { delibera_id: deliberaDellaRevoca.value!.id } : {}),
+    }, { preserveScroll: true, onSuccess: () => { revoca.value = { id: null, revocata_il: '', nota_revoca: '' }; deliberaDellaRevoca.value = null; } });
+}
+function apriLaRevoca(d: Dispensa) {
+    revoca.value = { id: d.id, revocata_il: props.oggi, nota_revoca: '' };
+    deliberaDellaRevoca.value = null;
 }
 const indirizzoVerbale = (d: Dispensa) => route(generateRoute('gestionale.dispense.verbale'), { condominio: props.condominio.id, dispensa: d.id });
 const indirizzoElenco = computed(() => route(generateRoute('gestionale.rate-scadute.index'), { condominio: props.condominio.id }));
@@ -140,23 +166,33 @@ const breadcrumbs = computed(() => [
             <!-- Le dispense registrate -->
             <div class="rounded-xl border bg-white dark:bg-slate-900 divide-y dark:divide-slate-800">
                 <div v-for="d in dispense" :key="d.id" class="p-3 text-sm space-y-1" data-testid="dispensa">
+                    <!-- Gli esiti delle delibere sulla dispensa: «Revoca respinta …», i segni; con «Apri l'assemblea». -->
+                    <EsitiDellaScheda :condominio-id="props.condominio.id" tipo="dispensa_sei_mesi" :id="d.id" />
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <span class="font-semibold">Assemblea del {{ giorno(d.data_delibera) }}<template v-if="d.numero_verbale"> — verbale n. {{ d.numero_verbale }}</template></span>
                         <span v-if="d.revocata_il" class="text-xs text-rose-700 dark:text-rose-300">revocata il {{ giorno(d.revocata_il) }}</span>
-                        <Button v-else size="sm" variant="outline" class="h-7 text-xs" @click="revoca = { id: d.id, revocata_il: oggi, nota_revoca: '' }">Registra la revoca</Button>
+                        <Button v-else size="sm" variant="outline" class="h-7 text-xs" @click="apriLaRevoca(d)">Registra la revoca</Button>
                     </div>
                     <p class="text-xs">Esercizi: {{ d.esercizi.map((e) => e.nome).join(', ') }} · {{ d.tutte_le_persone ? 'tutte le persone' : `solo ${d.persone.map((p) => p.nome).join(', ')}` }}</p>
+                    <p v-if="d.delibera" class="text-xs text-slate-600 dark:text-slate-300" data-testid="delibera-della-dispensa">Dalla {{ d.delibera.frase.charAt(0).toLowerCase() + d.delibera.frase.slice(1) }}</p>
                     <p v-if="d.nota" class="text-xs text-slate-500">{{ d.nota }}</p>
                     <p v-if="d.nota_revoca" class="text-xs text-slate-500">Revoca: {{ d.nota_revoca }}</p>
+                    <p v-if="d.delibera_della_revoca" class="text-xs text-slate-600 dark:text-slate-300">Revocata dalla {{ d.delibera_della_revoca.frase.charAt(0).toLowerCase() + d.delibera_della_revoca.frase.slice(1) }}</p>
                     <a v-if="d.verbale" :href="indirizzoVerbale(d)" class="text-xs underline">Verbale: {{ d.verbale }}</a>
                     <label v-if="!d.revocata_il" class="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300" data-testid="sollecito-della-dispensa">
                         <Checkbox :model-value="!!d.togli_sollecito_tesoreria" @update:model-value="(v: boolean | 'indeterminate') => cambiaSollecito(d, v === true)" />
                         {{ d.togli_sollecito_tesoreria ? 'Toglie anche il sollecito in tesoreria' : 'Togli anche il sollecito in tesoreria' }}
                     </label>
+                    <div v-if="revoca.id === d.id && conLaDelibera" class="max-w-xl pt-2" data-testid="revoca-con-la-delibera">
+                        <ScegliLaDelibera v-model="deliberaDellaRevoca" :condominio-id="condominio.id" :condominio-nome="condominio.nome" ruolo="revoca_della_dispensa"
+                            oggetto-tipo="dispensa_sei_mesi" :oggetto-id="d.id" per-questo="questa revoca" etichetta="La delibera della revoca"
+                            :vuoto="`Nessuna assemblea di ${condominio.nome} ha ancora revocato questa dispensa.`" :con-memo="false" />
+                        <p v-if="deliberaDellaRevoca" class="mt-1 text-xs text-slate-600 dark:text-slate-300">Revocata il <strong>{{ giorno(deliberaDellaRevoca.deliberata_il) }}</strong> dalla delibera.</p>
+                    </div>
                     <div v-if="revoca.id === d.id" class="flex flex-wrap items-end gap-2 pt-2">
-                        <label class="text-xs space-y-1"><span class="block">Data della revoca</span><Input v-model="revoca.revocata_il" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
+                        <label v-if="!conLaDelibera" class="text-xs space-y-1"><span class="block">Data della revoca</span><Input v-model="revoca.revocata_il" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
                         <label class="text-xs space-y-1 flex-1 min-w-[200px]"><span class="block">Nota</span><Input v-model="revoca.nota_revoca" class="h-8 text-xs" /></label>
-                        <Button size="sm" class="h-8" @click="revoca_conferma">Revoca</Button>
+                        <Button size="sm" class="h-8" :disabled="conLaDelibera && !deliberaDellaRevoca" @click="revoca_conferma">Revoca</Button>
                         <Button size="sm" variant="ghost" class="h-8" @click="revoca = { id: null, revocata_il: '', nota_revoca: '' }">Annulla</Button>
                     </div>
                 </div>
@@ -166,8 +202,18 @@ const breadcrumbs = computed(() => [
             <!-- Una dispensa nuova -->
             <div class="rounded-xl border bg-white dark:bg-slate-900 p-4 space-y-3 text-sm">
                 <h3 class="font-semibold">Registra una dispensa</h3>
+                <!-- La delibera della dispensa: la data e il verbale vengono dalla riunione -->
+                <div v-if="conLaDelibera" class="max-w-xl space-y-1.5" data-testid="dispensa-con-la-delibera">
+                    <ScegliLaDelibera v-model="delibera" :condominio-id="condominio.id" :condominio-nome="condominio.nome" ruolo="dispensa" per-questo="questa dispensa"
+                        :vuoto="`Nessuna assemblea di ${condominio.nome} ha ancora deliberato la dispensa dei sei mesi.`"
+                        testo-proposto="Dispensa dall'agire entro sei mesi per la riscossione dei crediti (art. 1129 c. 9 c.c.)" />
+                    <p class="text-xs text-slate-600 dark:text-slate-300" data-testid="data-dalla-delibera">
+                        Data della delibera: <strong v-if="delibera">{{ giorno(delibera.deliberata_il) }}</strong><span v-else class="text-slate-500">dalla delibera</span>
+                        <span class="block text-slate-500 dark:text-slate-400">Si compila dal giorno della riunione quando scegli la delibera; il verbale è quello della riunione.</span>
+                    </p>
+                </div>
                 <TooltipProvider :delay-duration="200">
-                    <div class="flex flex-wrap items-end gap-3">
+                    <div v-if="!conLaDelibera" class="flex flex-wrap items-end gap-3">
                         <label class="text-xs flex flex-col gap-1"><span class="block">Data della delibera</span><Input v-model="nuova.data_delibera" type="date" :max="oggi" class="h-8 w-[150px] text-xs" /></label>
                         <label class="text-xs flex flex-col gap-1">
                             <span class="flex items-center gap-1">Numero del verbale <SpiegazioneDelFiltro :testo="SPIEGAZIONE_VERBALE" /></span>
@@ -219,7 +265,7 @@ const breadcrumbs = computed(() => [
                 <ul v-if="Object.keys(errori).length" class="text-xs text-rose-700 dark:text-rose-300 list-disc pl-4">
                     <li v-for="(m, k) in errori" :key="k">{{ m }}</li>
                 </ul>
-                <Button size="sm" :disabled="!nuova.data_delibera || !nuova.esercizi.length || !nuova.per_tutti" @click="registra">Registra la dispensa</Button>
+                <Button size="sm" :disabled="!dataDellaDispensa || !nuova.esercizi.length || !nuova.per_tutti" @click="registra">Registra la dispensa</Button>
             </div>
         </div>
         <DispenseSeiMesiGuide v-model:open="mostraGuida" :testo-norma="testo_norma" />

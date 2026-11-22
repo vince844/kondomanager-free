@@ -5,8 +5,10 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Services\Gestionale\DeliberaDellOpera;
 use App\Helpers\DateHelper;
 use App\Helpers\MoneyHelper;
+use App\Http\Controllers\Assemblee\DeliberaNelleSchede;
 use App\Http\Controllers\Controller;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
@@ -16,6 +18,7 @@ use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RigaRiparto;
 use App\Models\Gestione;
 use App\Models\Immobile;
+use App\Services\Assemblee\DeliberaInParole;
 use App\Services\Gestionale\Addebiti\AddebitiIndividuali;
 use App\Services\Gestionale\Addebiti\PersoneDellAddebito;
 use Carbon\CarbonImmutable;
@@ -31,6 +34,10 @@ use Illuminate\Validation\ValidationException;
  *
  * Le rotte stanno nel gruppo del gestionale, dietro il pannello. Le persone, le unità, i piani, le gestioni e gli addebiti della richiesta devono essere
  * di questo condominio: altrimenti 404. Gli importi arrivano in euro, come li scrive chi lavora, e diventano centesimi qui, una volta.
+ *
+ * Una spesa del ritardo che si fonda su una delibera dell'assemblea porta la delibera scelta con «Scegli la delibera» (`delibera_id`, del condominio della
+ * rotta): la base è «delibera», il riferimento è la frase della delibera, e ogni quota addebitata si lega alla delibera (ruolo `base`, §1.4 del progetto
+ * della tappa 2).
  */
 class AddebitiController extends Controller
 {
@@ -43,15 +50,17 @@ class AddebitiController extends Controller
     public function proposta(Request $request, Condominio $condominio): JsonResponse
     {
         $oggi = DateHelper::oggiUtente();
+        // Il nome del condominio, per le frasi di «Scegli la delibera» quando la base è una delibera dell'assemblea.
+        $nome = ['condominio' => (string) $condominio->nome];
         if ($request->filled('piano_rate_id')) {
-            return response()->json($this->dalPiano($condominio, $request, $oggi));
+            return response()->json($this->dalPiano($condominio, $request, $oggi) + $nome);
         }
         if ($request->filled('anagrafica_id')) {
-            return response()->json($this->dallaPersona($condominio, $request, $oggi));
+            return response()->json($this->dallaPersona($condominio, $request, $oggi) + $nome);
         }
         abort_unless($request->filled('gestione_id') && $request->filled('esercizio_id'), 404);
 
-        return response()->json($this->dalConguaglio($condominio, $request, $oggi));
+        return response()->json($this->dalConguaglio($condominio, $request, $oggi) + $nome);
     }
 
     public function store(Request $request, Condominio $condominio): JsonResponse
@@ -84,6 +93,16 @@ class AddebitiController extends Controller
             'voci.*.scadenza.required' => 'Scrivi la scadenza dell\'addebito.',
             'data.date_format' => 'Scrivi la data dell\'addebito.',
         ]);
+        // La delibera della base: vale per le voci che si fondano su «una delibera dell'assemblea», con la sua frase come riferimento.
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        if ($delibera !== null) {
+            $frase = DeliberaInParole::frase($delibera, scritta: true);
+            foreach ($dati['voci'] as $i => $v) {
+                if (($v['base'] ?? null) === 'delibera') {
+                    $dati['voci'][$i]['riferimento'] = $frase;
+                }
+            }
+        }
         $gestione = Gestione::whereKey((int) $dati['gestione_id'])->where('condominio_id', $condominio->id)->first();
         $esercizio = Esercizio::whereKey((int) $dati['esercizio_id'])->where('condominio_id', $condominio->id)->first();
         abort_if($gestione === null || $esercizio === null, 404);
@@ -96,7 +115,20 @@ class AddebitiController extends Controller
             return $v;
         }, $dati['voci']);
 
-        $rate = $this->addebiti->registra($condominio, $gestione, $esercizio, $voci, $request->user()?->id, $dati['data'] ?? null);
+        $rate = DB::transaction(function () use ($condominio, $gestione, $esercizio, $voci, $request, $dati, $delibera) {
+            $rate = $this->addebiti->registra($condominio, $gestione, $esercizio, $voci, $request->user()?->id, $dati['data'] ?? null);
+            if ($delibera !== null) {
+                foreach ($rate as $rata) {
+                    foreach ($rata->rateQuote as $quota) {
+                        if ((($quota->regole_calcolo['addebito'] ?? [])['base'] ?? null) === 'delibera') {
+                            DeliberaNelleSchede::collega($quota, 'base', $delibera, $request->user());
+                        }
+                    }
+                }
+            }
+
+            return $rate;
+        });
         $totale = array_sum(array_map(fn (Rata $r) => (int) $r->importo_totale, $rate));
 
         return response()->json([
@@ -142,12 +174,18 @@ class AddebitiController extends Controller
         $immobile = Immobile::findOrFail((int) $unita->first());
         $esercizio = $piano->esercizio_id ? Esercizio::find($piano->esercizio_id) : null;
         $dove = $this->dove($condominio, $piano->gestione, $esercizio);
-        $straordinaria = $piano->tipo === 'straordinario';
+        // Decisione 11: «straordinaria» è la natura della gestione, non il tipo del piano; decisione 322: la delibera è quella che ha approvato l'opera,
+        // con la regola in un posto solo (`DeliberaDellOpera`), e con più delibere diverse non si propone nessuno.
+        $straordinaria = \App\Enums\NaturaGestione::daStringa($piano->gestione?->tipo) === \App\Enums\NaturaGestione::Straordinaria;
+        $opera = $straordinaria ? app(DeliberaDellOpera::class)->perEsercizio($piano->gestione, $esercizio?->id) : ['delibera' => null, 'motivo' => null];
 
         return [
             'unita' => ['id' => (int) $immobile->id, 'nome' => (string) $immobile->etichetta],
-            'persone' => $this->persone->proposte((int) $immobile->id, $esercizio?->data_inizio?->format('Y-m-d'), $esercizio?->data_fine?->format('Y-m-d'),
-                $straordinaria ? $piano->data_delibera_assemblea?->format('Y-m-d') : null, $oggi),
+            // Con più delibere diverse (`nessuna_proposta`) i titolari ci sono lo stesso, senza la regola della delibera: la finestra non ne sceglie
+            // nessuno e lo dice, e la scelta è dell'amministratore.
+            'persone' => $this->persone->proposte((int) $immobile->id, $esercizio?->data_inizio?->format('Y-m-d'),
+                $esercizio?->data_fine?->format('Y-m-d'), $opera['delibera'], $oggi),
+            'nessuna_proposta' => $opera['motivo'],
             'voci' => $voci->map(fn (array $v) => [
                 'chiave' => $v['chiave'], 'piano_origine_id' => (int) $piano->id, 'conto_id' => $v['conto_id'] ?? null,
                 'importo_cents' => (int) $v['importo_cents'], 'addebitato_cents' => (int) $v['addebitato_cents'], 'resta_cents' => (int) $v['resta_cents'],
@@ -197,13 +235,18 @@ class AddebitiController extends Controller
             abort_unless(Immobile::whereKey($immobileId)->where('condominio_id', $condominio->id)->exists(), 404);
         }
         $straordinaria = \App\Enums\NaturaGestione::daStringa($gestione->tipo) === \App\Enums\NaturaGestione::Straordinaria;
+        // Decisione 322: la delibera che ha approvato l'opera (il primo piano attivo: la delibera più vecchia, a parità il numero più basso), non quella del
+        // piano con l'id più basso; con più delibere diverse nell'esercizio del primo piano non si propone nessuno, e la finestra lo dice.
+        $opera = $straordinaria ? app(DeliberaDellOpera::class)->perEsercizio($gestione, (int) $esercizio->id) : ['delibera' => null, 'motivo' => null];
 
         return [
             'unita' => Immobile::where('condominio_id', $condominio->id)->orderBy('id')->get()->map(fn (Immobile $i) => ['id' => (int) $i->id, 'nome' => (string) $i->etichetta])->values()->all(),
             'immobile_id' => $immobileId,
-            'persone' => $immobileId === null ? [] : $this->persone->proposte($immobileId, $esercizio->data_inizio?->format('Y-m-d'), $esercizio->data_fine?->format('Y-m-d'),
-                $straordinaria && ($d = PianoRate::where('gestione_id', $gestione->id)->delRiparto()->whereNotNull('data_delibera_assemblea')->orderBy('id')->value('data_delibera_assemblea')) !== null
-                    ? substr((string) $d, 0, 10) : null, $oggi),
+            // Con più delibere diverse (`nessuna_proposta`) i titolari ci sono lo stesso, senza la regola della delibera: la finestra non ne sceglie
+            // nessuno e lo dice, e la scelta è dell'amministratore.
+            'persone' => $immobileId === null ? [] : $this->persone->proposte($immobileId, $esercizio->data_inizio?->format('Y-m-d'),
+                $esercizio->data_fine?->format('Y-m-d'), $opera['delibera'], $oggi),
+            'nessuna_proposta' => $opera['motivo'],
             'causale' => 'Spese dei giorni senza titolare, ' . $gestione->nome,
             'origine' => ['gestione_id' => (int) $gestione->id, 'esercizio_id' => (int) $esercizio->id],
             'dove' => $this->dove($condominio, $gestione, $esercizio),

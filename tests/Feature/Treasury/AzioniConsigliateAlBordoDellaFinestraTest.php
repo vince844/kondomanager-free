@@ -10,6 +10,7 @@
  */
 
 use App\Actions\Gestionale\Movimenti\GeneraDelegheF24Action;
+use App\Models\Gestionale\DelegaF24;
 use App\Services\Gestionale\PagamentoFornitoreService;
 use App\Services\Treasury\DatiDelleAzioni;
 use App\Services\Treasury\TreasuryGuardianService;
@@ -65,10 +66,11 @@ it('(H) una ritenuta che scade proprio il trentesimo giorno è nella finestra, p
     };
 
     // Il 17/03 la finestra arriva al 16/04, il giorno della scadenza; il 16/03 al 15/04.
-    expect($leggi('2026-03-17'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000]])
+    expect($leggi('2026-03-17'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => null]])
         ->and($leggi('2026-03-16'))->toBe([]);
     app(GeneraDelegheF24Action::class)->esegui($condominio, $esercizio->id);
-    expect($leggi('2026-03-17'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000]])
+    $delega = (int) DelegaF24::where('condominio_id', $condominio->id)->value('id');
+    expect($leggi('2026-03-17'))->toBe([['giorno' => '2026-04-16', 'cifra' => 80000, 'delega' => $delega]])
         ->and($leggi('2026-03-16'))->toBe([]);
 });
 

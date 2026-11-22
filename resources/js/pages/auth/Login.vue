@@ -14,6 +14,8 @@ import AuthBase from '@/layouts/AuthLayout.vue';
 import { trans } from 'laravel-vue-i18n';
 import { Head, useForm } from '@inertiajs/vue3';
 import { LoaderCircle } from 'lucide-vue-next';
+import { onMounted } from 'vue';
+import { cancellaIlLavoroSenzaRete } from '@/lib/senzaRete/uscita';
 
 defineProps<{
     status?: string;
@@ -26,6 +28,10 @@ const form = useForm({
     password: '',
     remember: false,
 });
+
+// Alla pagina di accesso le copie della sala e il suo stato tenuti nel browser si cancellano: chi entra dopo non li trova. I gesti in coda restano a chi li
+// ha segnati, e partono quando rientra lui (la sessione scaduta, «Rientra»).
+onMounted(() => { void cancellaIlLavoroSenzaRete({ ancheLaCoda: false }); });
 
 const submit = () => {
     form.post(route('login'), {

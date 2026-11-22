@@ -14,6 +14,7 @@ use App\Models\Backup;
 use App\Models\User;
 use App\Services\Backup\BackupManager;
 use App\Services\Backup\Support\StepBudget;
+use App\Services\RegistroModifiche\Autore;
 use App\Services\Restore\Exceptions\ImportInterruptedException;
 use App\Services\Restore\Exceptions\RestoreInProgressException;
 use App\Services\Restore\Exceptions\SafetyBackupFailedException;
@@ -48,6 +49,7 @@ class RestoreManager
         private readonly DatabaseImporter $importer,
         private readonly BackupManager $backupManager,
         private readonly SystemFinalizer $finalizer,
+        private readonly RegistroNelRipristino $registro,
     ) {}
 
     /**
@@ -105,6 +107,10 @@ class RestoreManager
             'checkpoint' => [],
             'outcome' => [],
             'created_by' => $user?->id,
+            // Il nome e il ruolo di chi avvia, copiati adesso (P15 del registro delle modifiche): la riga «Ripristinata la copia del …» li scrive dopo
+            // l'import, quando la tabella degli utenti è quella della copia.
+            'created_by_nome' => $user?->name,
+            'created_by_ruolo' => $user === null ? null : Autore::ruoloDi($user),
             // L'impronta della password di chi avvia (è già un hash): «Riprendi» e «Annulla» dalla pagina 503 la
             // verificano qui, perché durante l'import la tabella degli utenti è a metà. Si toglie quando il
             // ripristino si chiude, completato o annullato.
@@ -215,12 +221,20 @@ class RestoreManager
         // Ripreso, il ripristino non è più fermo: la fase del fallimento si azzera con l'errore. La finestra dei backup
         // e la pagina 503 la leggono per dire dove si è fermato (e, nel backup di sicurezza, che il database non è stato
         // toccato): se si ferma di nuovo, la scrive `fail()`; se resta fermo senza errore, conta la fase in cui è.
+        // «Riprendi» nella finalizzazione la rifà da capo, come prima della fase del registro delle modifiche: il segno `sistema_finalizzato` serve solo
+        // a non rifare le migrazioni fra un blocco e l'altro della fase del registro dentro lo stesso ripristino che avanza.
+        $checkpoint = $state['checkpoint'] ?? [];
+        if (($state['failed_phase'] ?? null) === RestoreStatus::FINALIZING->value) {
+            $checkpoint['sistema_finalizzato'] = false;
+        }
+
         $this->state->merge([
             'phase' => $state['failed_phase'] ?? RestoreStatus::PENDING->value,
             'failed_phase' => null,
             'error' => null,
             'failed_at' => null,
             'resumed_at' => time(),
+            'checkpoint' => $checkpoint,
         ]);
 
         return $this->runStep();
@@ -243,6 +257,8 @@ class RestoreManager
                 // (il safety backup potrebbe essere db_only o disattivato).
                 $this->rollbackFiles($state);
                 $this->cleanupTemp($state);
+                // Il file delle righe del registro delle modifiche (P16): annullato il ripristino, non serve più (le righe sono nel backup di sicurezza).
+                $this->registro->togliIlFile($state);
                 $this->state->merge([
                     'phase' => RestoreStatus::FAILED->value,
                     'aborted' => true,
@@ -270,7 +286,7 @@ class RestoreManager
             RestoreStatus::VERIFYING => $this->advanceVerifying($state),
             RestoreStatus::IMPORTING_DATABASE => $this->advanceImporting($state, $budget),
             RestoreStatus::RESTORING_FILES => $this->advanceRestoringFiles($state, $budget),
-            RestoreStatus::FINALIZING => $this->advanceFinalizing($state),
+            RestoreStatus::FINALIZING => $this->advanceFinalizing($state, $budget),
             default => $state,
         };
     }
@@ -387,6 +403,15 @@ class RestoreManager
     {
         // 1) Azzeramento schema (una volta sola)
         if (! ($state['checkpoint']['wiped'] ?? false)) {
+            // 0) Prima di toccare il database, le righe del registro delle modifiche in un file accanto alle copie (decisione 546, P16), a blocchi
+            //    dentro il budget: dopo il ripristino quelle venute dopo la copia si rimettono (la fase del registro, in finalizzazione).
+            if (! ($state['checkpoint']['registro']['salvato'] ?? false)) {
+                $state = $this->patchCheckpoint($state, ['registro' => $this->registro->salva($state, $budget)]);
+                if (! ($state['checkpoint']['registro']['salvato'] ?? false)) {
+                    return $state;
+                }
+            }
+
             $this->importer->wipe();
             $state = $this->patchCheckpoint($state, ['wiped' => true, 'import' => ['offset' => 0, 'delimiter' => ';']]);
         }
@@ -461,33 +486,51 @@ class RestoreManager
         return $state;
     }
 
-    private function advanceFinalizing(array $state): array
+    private function advanceFinalizing(array $state, StepBudget $budget): array
     {
         $outcome = $state['outcome'] ?? [];
 
-        // a) Adozione dell'APP_KEY dall'archivio (se richiesta)
-        if (($state['options']['adopt_app_key'] ?? false) && ! ($state['checkpoint']['app_key_adopted'] ?? false)) {
-            $adopted = $this->adoptAppKey($state);
-            $outcome['app_key_adopted'] = $adopted;
-            $state = $this->patchCheckpoint($state, ['app_key_adopted' => true]);
+        // Il sistema si finalizza una volta: la fase del registro che segue può durare più passi, e un passo dopo l'altro non rifà le migrazioni.
+        if (! ($state['checkpoint']['sistema_finalizzato'] ?? false)) {
+            // a) Adozione dell'APP_KEY dall'archivio (se richiesta)
+            if (($state['options']['adopt_app_key'] ?? false) && ! ($state['checkpoint']['app_key_adopted'] ?? false)) {
+                $adopted = $this->adoptAppKey($state);
+                $outcome['app_key_adopted'] = $adopted;
+                $state = $this->patchCheckpoint($state, ['app_key_adopted' => true]);
+            }
+
+            // b) Finalizzazione di sistema: migrazioni + versione DB + cache + storage link
+            $this->finalizer->finalize();
+
+            // c) Sonda di decifratura: se l'APP_KEY non decifra i dati importati,
+            //    azzera 2FA e password SMTP (altrimenti login in 500 / mail rotta)
+            $cleanup = $this->decryptionProbeAndCleanup();
+            if ($cleanup !== []) {
+                $outcome['cleanup'] = $cleanup;
+            }
+
+            // d) Azzera lo stato di sessione/cache ereditato dal backup
+            $this->resetVolatileState();
+
+            // e) Ri-registra gli archivi presenti su disco (la tabella backups è
+            //    stata importata come sola struttura: nessun record di backup)
+            $outcome['reregistered_backups'] = $this->reregisterOrphanBackups();
+
+            $state = $this->state->merge(['outcome' => $outcome]);
+            $state = $this->patchCheckpoint($state, ['sistema_finalizzato' => true]);
         }
 
-        // b) Finalizzazione di sistema: migrazioni + versione DB + cache + storage link
-        $this->finalizer->finalize();
-
-        // c) Sonda di decifratura: se l'APP_KEY non decifra i dati importati,
-        //    azzera 2FA e password SMTP (altrimenti login in 500 / mail rotta)
-        $cleanup = $this->decryptionProbeAndCleanup();
-        if ($cleanup !== []) {
-            $outcome['cleanup'] = $cleanup;
+        // e-bis) Il registro delle modifiche (decisione 546, P1): le righe venute dopo la copia si rimettono, gli oscuramenti si riportano, la catena si
+        //    ricostruisce e si scrive la riga del ripristino. Una fase a sé nel checkpoint, a blocchi dentro il budget; un suo errore non ferma il
+        //    ripristino (lo dice la riga del ripristino).
+        $registro = $this->registro->rimetti($state, $budget);
+        $state = $this->patchCheckpoint($state, ['registro' => $registro]);
+        if (($registro['fase'] ?? null) !== RegistroNelRipristino::FATTO) {
+            return $state;
         }
-
-        // d) Azzera lo stato di sessione/cache ereditato dal backup
-        $this->resetVolatileState();
-
-        // e) Ri-registra gli archivi presenti su disco (la tabella backups è
-        //    stata importata come sola struttura: nessun record di backup)
-        $outcome['reregistered_backups'] = $this->reregisterOrphanBackups();
+        if (isset($registro['esito'])) {
+            $outcome['registro_modifiche'] = $registro['esito'];
+        }
 
         // f) Pulizia file temporanei del ripristino
         $this->cleanupTemp($state);

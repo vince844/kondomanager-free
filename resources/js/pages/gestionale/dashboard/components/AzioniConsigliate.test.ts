@@ -13,6 +13,9 @@
  * straordinario), ognuna con il pulsante verso la pagina dove la cosa si fa e quello che serve già scelto; il TFR mai; senza il permesso dell'agenda i bonifici
  * senza pulsante; con «Scelgo io» nessuna.
  *
+ * Il recupero con le persone in una tabella sotto la frase (al telefono una card per persona); «Prepara l'F24» verso la delega della scadenza, quando ce n'è
+ * una sola.
+ *
  * Le rate da emettere: «Emetti la rata» apre la finestra «Emetti le rate» sul piano dell'azione; dopo l'emissione l'esito si legge in testa alle azioni, con il
  * suggerimento dei crediti in un capoverso suo, finché il cassetto resta aperto.
  */
@@ -126,7 +129,9 @@ describe('il cassetto delle azioni consigliate', () => {
         const azioni = tutti('azione-consigliata');
         expect(azioni).toHaveLength(2);
         expect(pulito(azioni[0].textContent)).toContain('Recupera almeno € 2.368,77 delle rate scadute entro il 19/11');
-        expect(pulito(azioni[0].textContent)).toContain('Basta una persona: Giulia Esposito, int. 4, ha € 3.974,10 di rate scadute e nessuna lettera.');
+        // La frase finisce ai due punti; la persona sta nella tabella sotto.
+        expect(pulito(azioni[0].querySelector('[data-testid="frase-azione"]')?.textContent)).toBe('È quanto manca il 20/11 per non andare sotto zero. Basta una persona:');
+        expect(pulito(azioni[0].querySelector('[data-testid="riga-persona"] [data-colonna="chi"]')?.textContent)).toBe('Giulia Esposito');
         expect(pulito(azioni[1].textContent)).toContain('Chiedi di pagare le fatture del 20/11 dopo il 30/11');
         const fatture = azioni[1].querySelector('a[data-testid="pulsante-azione"]') as HTMLAnchorElement;
         expect(pulito(fatture.textContent)).toBe('Apri le fatture');
@@ -284,7 +289,77 @@ describe('il cassetto delle azioni consigliate', () => {
         expect(pulito(document.body.textContent)).not.toContain('Paga per prime le ritenute');
     });
 
+    test('le persone del recupero in una tabella sotto la frase: «Chi» in grassetto, le unità una volta sola, le rate scadute a destra, «nessuna» in un badge grigio', async () => {
+        const recupero = { ...recuperoDellEsempio(), servono: 3, servonoCents: 18311, persone: [
+            { anagraficaId: 31, nome: 'Tobia Cecchino', interno: 'Int. 1C, Int. 1B', cifra: 12904, lettera: { tipo: 'sollecito', data: '2026-11-07' } },
+            { anagraficaId: 32, nome: 'Cecilia Angeli', interno: 'Int. 1B, Int. 1A, Int. 1C', cifra: 3388, lettera: null },
+            { anagraficaId: 33, nome: 'Danilo Allegretti', interno: 'Int. 1A', cifra: 2019, lettera: null },
+        ] };
+        await apri({ recupero });
+        const azione = tutti('azione-consigliata')[0];
+        // La frase finisce ai due punti; la tabella viene dopo, e prima della riga «Prima di sollecitare».
+        expect(pulito(azione.querySelector('[data-testid="frase-azione"]')?.textContent)).toBe('È quanto manca il 20/11 per non andare sotto zero. Bastano tre persone:');
+        const tabella = azione.querySelector('table[data-testid="tabella-persone"]') as HTMLTableElement;
+        expect(tabella).not.toBeNull();
+        expect(tabella.compareDocumentPosition(azione.querySelector('[data-testid="prima-di-sollecitare"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const intestazioni = [...tabella.querySelectorAll('th')];
+        expect(intestazioni.map((t) => pulito(t.textContent))).toEqual(['Chi', 'Unità', 'Rate scadute', 'Ultima lettera']);
+        expect(intestazioni[2].className).toContain('text-right');
+        const valori = (colonna: string) => [...tabella.querySelectorAll(`[data-colonna="${colonna}"] [data-valore]`)].map((c) => pulito(c.textContent));
+        expect(valori('chi')).toEqual(['Tobia Cecchino', 'Cecilia Angeli', 'Danilo Allegretti']);
+        expect(valori('unita')).toEqual(['Int. 1C, 1B', 'Int. 1B, 1A, 1C', 'Int. 1A']);
+        expect(valori('rate')).toEqual(['€ 129,04', '€ 33,88', '€ 20,19']);
+        expect(valori('lettera')).toEqual(['sollecito del 07/11/2026', 'nessuna', 'nessuna']);
+        expect(tabella.querySelector('[data-colonna="chi"] [data-valore]')!.className).toContain('font-bold');
+        expect((tabella.querySelector('td[data-colonna="rate"]') as HTMLElement).className).toContain('md:text-right');
+        const badge = tabella.querySelector('[data-testid="nessuna-lettera"]') as HTMLElement;
+        expect(badge.className).toContain('rounded-md');
+        expect(badge.className).not.toContain('rounded-full');
+        expect(badge.className).toContain('bg-slate-');
+        expect(tabella.querySelector('[data-testid="altre-persone"]')).toBeNull();
+        // La lettera dei solleciti resta com'è: le tre persone, spuntate.
+        (azione.querySelector('button[data-testid="pulsante-azione"]') as HTMLButtonElement).click();
+        await flushPromises();
+        expect(w!.getComponent(Lettere).props('selezione')).toEqual({ tutte: false, ids: [31, 32, 33] });
+    });
+
+    test('oltre le 8 persone: le prime 5 nella tabella e la riga «e altre 4 persone, € …»', async () => {
+        const persone = Array.from({ length: 5 }, (_, i) => ({ anagraficaId: 10 + i, nome: `Persona ${i + 1}`, interno: `Int. ${i + 1}`, cifra: 50000, lettera: null }));
+        await apri({ recupero: { ...recuperoDellEsempio(), persone, servono: 9, servonoCents: 450000 } });
+        const azione = tutti('azione-consigliata')[0];
+        expect(pulito(azione.querySelector('[data-testid="frase-azione"]')?.textContent)).toMatch(/ Servono 9 persone:$/);
+        expect(azione.querySelectorAll('[data-testid="riga-persona"]')).toHaveLength(5);
+        expect(pulito(azione.querySelector('[data-testid="altre-persone"]')?.textContent)).toBe('e altre 4 persone, € 2.000,00');
+    });
+
+    test('al telefono ogni persona è una card, senza scorrimento di lato; da 768 pixel una tabella', async () => {
+        await apri();
+        const tabella = q('tabella-persone')!;
+        expect(tabella.className).toContain('block');
+        expect(tabella.className).toContain('md:table');
+        expect(tabella.querySelector('thead')!.className).toContain('hidden');
+        expect(tabella.querySelector('thead')!.className).toContain('md:table-header-group');
+        const riga = tabella.querySelector('[data-testid="riga-persona"]') as HTMLElement;
+        for (const c of ['block', 'rounded-lg', 'border', 'md:table-row']) expect(riga.className.split(/\s+/)).toContain(c);
+        // Nella card le colonne si leggono con il loro nome, che nella tabella sta in testa.
+        expect([...riga.querySelectorAll('[data-etichetta]')].map((e) => [pulito(e.textContent), e.className.includes('md:hidden')]))
+            .toEqual([['Unità', true], ['Rate scadute', true], ['Ultima lettera', true]]);
+        expect(sorgente).not.toMatch(/overflow-x-(auto|scroll)/);
+    });
+
+    test('«Prepara l\'F24» apre la delega della scadenza quando il server ne conosce una sola; altrimenti l\'elenco', async () => {
+        await apri({ datiDelleAzioni: datiDelleAzioniDellEsempio({ ritenute: { scadenze: [{ giorno: '2026-11-16', cifra: 30000, delega: 19 }] } }) });
+        const f24 = tutti('azione-consigliata').find((a) => a.dataset.chiave === 'ritenute')!.querySelector('a[data-testid="pulsante-azione"]') as HTMLAnchorElement;
+        expect(pulito(f24.textContent)).toBe('Prepara l\'F24');
+        expect(f24.getAttribute('href')).toBe('/admin.gestionale.f24.show?condominio=7&delega=19');
+        w?.unmount();
+        await apri({ datiDelleAzioni: datiDelleAzioniDellEsempio({ ritenute: { scadenze: [{ giorno: '2026-11-16', cifra: 30000, delega: null }] } }) });
+        expect((tutti('azione-consigliata').find((a) => a.dataset.chiave === 'ritenute')!.querySelector('a[data-testid="pulsante-azione"]') as HTMLAnchorElement)
+            .getAttribute('href')).toBe('/admin.gestionale.f24.index?condominio=7');
+    });
+
     test('il disegno: niente scritte sotto i 12 pixel, nessun menu del browser, il tema scuro, nessuna parola del lavoro', () => {
+        expect(sorgente).not.toContain('v-html');
         expect(sorgente).not.toMatch(/text-\[(8|9|10|11)px\]/);
         expect(sorgente).not.toContain('<select');
         expect(sorgente).toContain('dark:');

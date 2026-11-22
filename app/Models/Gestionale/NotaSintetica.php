@@ -10,6 +10,7 @@ use App\Models\Esercizio;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\ContaNelGesto;
 
 /**
  * La bozza della nota sintetica esplicativa del rendiconto di un esercizio: una per esercizio, mentre l'amministratore la scrive. Il contenuto è un
@@ -18,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class NotaSintetica extends Model
 {
+    use ContaNelGesto;
+
     protected $table = 'note_sintetiche';
 
     protected $fillable = ['condominio_id', 'esercizio_id', 'contenuto', 'aggiornata_da'];

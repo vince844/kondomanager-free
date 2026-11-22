@@ -605,6 +605,7 @@ const statusBadgeClass = (status: string) => {
 
     <div class="px-4 py-6 space-y-6">
       <PageHeaderGuide
+        :storia="{ tipo: 'impostazioni_backup' }"
         :page-title="trans('impostazioni.dialogs.backups_settings_title')"
         :page-subtitle="trans('impostazioni.header.backups_settings_description')"
         :icon="DatabaseBackup"

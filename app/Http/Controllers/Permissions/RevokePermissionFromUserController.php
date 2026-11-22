@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Permissions;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Traits\ValidaConcessioneRuoli;
@@ -56,7 +57,11 @@ class RevokePermissionFromUserController extends Controller
             abort(403, __('policies.users_revoke_not_owned'));
         }
 
-        $user->revokePermissionTo($permission);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($user, $permission) {
+            $accessoPrima = AttiSulleUtenze::fotografia($user);
+            $user->revokePermissionTo($permission);
+            AttiSulleUtenze::accessoCambiato($user, $accessoPrima);
+        });
 
         return back();
     }

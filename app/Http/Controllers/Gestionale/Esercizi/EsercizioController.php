@@ -452,6 +452,8 @@ class EsercizioController extends Controller
         // l'esercizio. La frase dice ogni versione: una fermata e mai approvata si elimina dalla Sintesi, un'approvata resta.
         $frasi = [...$frasi, ...\App\Services\Gestionale\VersioniDelRendiconto::perIlRifiuto(
             \App\Models\Gestionale\RendicontoVersione::where('esercizio_id', $esercizio->id), false)];
+        // Il punto del rendiconto o del preventivo di un'assemblea e il preventivo fermato (R15 del progetto della tappa 2).
+        $frasi = [...$frasi, ...\App\Services\Assemblee\GuardieDiCancellazione::perLEsercizio((int) $esercizio->id)];
         // La nota sintetica scritta se ne andrebbe con l'esercizio; una bozza salvata senza niente dentro no.
         $nota = \App\Models\Gestionale\NotaSintetica::where('esercizio_id', $esercizio->id)->first();
         if ($nota !== null && ! \App\Services\Gestionale\NotaSinteticaDelRendiconto::bozzaVuota(\App\Services\Gestionale\NotaSinteticaDelRendiconto::normalizza((array) $nota->contenuto))) {

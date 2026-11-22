@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Gestionale\PianiConti\Conti;
 
+use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Esercizio;
@@ -31,6 +32,8 @@ class DissociaTabellaController extends Controller
 
         try {
             DB::beginTransaction();
+            // Gesto 7 del registro delle modifiche, voci e tabelle: le tabelle della voce prima, per il campo «Tabelle millesimali».
+            $tabelleDellaVocePrima = GestiDelRegistro::tabelleDellaVoce((int) $conto->id);
 
             // Trova l'associazione conto-tabella
             $contoTabella = DB::table('conto_tabella_millesimale')
@@ -50,6 +53,7 @@ class DissociaTabellaController extends Controller
                     ->delete();
             }
 
+            GestiDelRegistro::scriviTabelleDellaVoce($conto, $tabelleDellaVocePrima);
             DB::commit();
 
             return redirect()->back()->with('message', [

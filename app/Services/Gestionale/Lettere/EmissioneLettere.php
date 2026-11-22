@@ -23,8 +23,15 @@ use App\Services\Gestionale\Ricevute\LimiteAltroIndirizzo;
 use App\Services\PDF\CartaDiStampa;
 use App\Services\PDF\GruppoCarta;
 use App\Services\PDF\PdfService;
+use App\Services\Posta\CasellaPec;
+use App\Services\Posta\CasellaPecNonImpostata;
+use App\Services\Posta\DocumentoPerPec;
+use App\Services\Posta\ErroreDellaPec;
+use App\Services\Posta\InvioPerPec;
+use App\Services\Posta\PecDelloStudio;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -41,9 +48,14 @@ use Illuminate\Support\Str;
  *   resta nella riga del registro, e anche il testo con i campi (`dati.modello`), per rifare la lettera con le cifre di un altro giorno. Se il
  *   testo è partito da un modello dello studio, la riga tiene anche il suo numero e il suo nome ({@see ModelliLettere}): il testo è copiato, e
  *   cambiare o cancellare il modello dopo non cambia la lettera.
- * - **Il canale** di ogni persona si propone dalla sua ultima lettera; senza lettere, l'email se ne ha una (primaria o secondaria), altrimenti la
- *   stampa. Si cambia persona per persona. Diffida e messa in mora non partono per email dal programma: stampa o un PDF per persona (.zip), poi
- *   la spedizione registrata a mano.
+ * - **Il canale** di ogni persona si propone dalla sua ultima lettera; senza lettere, per il promemoria e il sollecito l'email se ne ha una (primaria o
+ *   secondaria), poi per sollecito, diffida e messa in mora la PEC dalla casella dello studio se la persona l'ha comunicata, altrimenti la stampa. Si cambia
+ *   persona per persona ({@see CANALI_PER_TIPO}). Diffida e messa in mora non partono mai per email: per PEC, su carta, o per PEC e su carta.
+ * - **La PEC** (decisioni 569 e 588) parte dalla casella PEC dello studio con lo stesso servizio della convocazione ({@see InvioPerPec}), una riga `pec` per
+ *   persona con il PDF di oggi conservato e la sua impronta ({@see mandaPerPec()}); la PEC non è più un indirizzo dell'email. «PEC e carta» è la stessa
+ *   lettera mandata per PEC e stampata per la posta: due righe con lo stesso `dati.lettera` e lo stesso PDF, qualunque delle due azioni venga prima, se le
+ *   scelte sono le stesse (con un altro testo, un altro termine o altre cifre è una lettera nuova). Una PEC dello stesso tipo già partita oggi alla persona
+ *   non parte due volte. Le PEC non partite, o non consegnate, si rimandano una per una, in blocco ({@see rimandaLePec()}) o si stampano ({@see stampaLePec()}).
  * - **Il PDF conservato**: per sollecito, diffida e messa in mora il PDF si fa una volta per lettera, all'emissione, e si salva come documento
  *   della riga; l'email lo allega, un nuovo tentativo lo riusa, il .zip lo contiene, e l'impronta della riga è la sua. La stampa in blocco resta
  *   di un passaggio solo, con lo stesso contenuto. Il promemoria non conserva il PDF: basta l'istantanea della riga.
@@ -70,20 +82,73 @@ final class EmissioneLettere
     /** Il titolo dell'elenco degli indirizzi del .zip. */
     public const NOMI_PLURALI = ['promemoria' => 'Promemoria', 'sollecito' => 'Solleciti', 'diffida' => 'Diffide', 'messa_in_mora' => 'Messe in mora'];
 
-    /** I tipi che il programma non manda per email: si stampano o si scaricano, poi si spediscono. */
-    public const TIPI_SOLO_CARTA = ['diffida', 'messa_in_mora'];
+    /** I tipi che il programma non manda per email (decisione 569): partono per PEC dalla casella dello studio, o su carta. */
+    public const TIPI_SENZA_EMAIL = ['diffida', 'messa_in_mora'];
 
     /** I tipi di cui si conserva il PDF partito. */
     public const TIPI_CONSERVATI = ['sollecito', 'diffida', 'messa_in_mora'];
 
-    public const CANALI = ['email', 'stampa', 'zip'];
+    /**
+     * I canali di ogni tipo (decisioni 569 e 588): `pec` è la PEC dalla casella dello studio; `pec_e_carta` la stessa lettera per PEC e stampata per la
+     * posta. Il promemoria non è una lettera a chi è in ritardo: resta email, stampa e PDF per persona.
+     */
+    public const CANALI_PER_TIPO = [
+        'promemoria'    => ['email', 'stampa', 'zip'],
+        'sollecito'     => ['email', 'pec', 'pec_e_carta', 'stampa', 'zip'],
+        'diffida'       => ['pec', 'pec_e_carta', 'stampa', 'zip'],
+        'messa_in_mora' => ['pec', 'pec_e_carta', 'stampa', 'zip'],
+    ];
+
+    /** I canali che mandano la PEC, e quelli che stampano la lettera. */
+    public const CANALI_CON_LA_PEC = ['pec', 'pec_e_carta'];
+
+    public const CANALI_CON_LA_STAMPA = ['stampa', 'pec_e_carta'];
+
+    /** Gli indirizzi dell'email nelle lettere: la primaria e la secondaria. La PEC non è un indirizzo dell'email: parte dalla casella dello studio. */
+    public const INDIRIZZI_EMAIL = ['email' => 'primaria', 'email_secondaria' => 'secondaria'];
+
+    /**
+     * Le PEC per volta: partono mentre la pagina aspetta, fino a 20 secondi per collegamento. Venti, finché il tempo di una PEC non è misurato su una casella
+     * vera: cinquanta potevano superare il tempo che il server web aspetta, e la pagina avrebbe detto «non sono partite» mentre partivano.
+     */
+    public const TETTO_PEC = 20;
+
+    /** Quanto dura al più il blocco di un invio per PEC, in secondi: se il lavoro si ferma senza toglierlo, dopo questo tempo si riprova. */
+    public const DURATA_DEL_BLOCCO = 900;
+
+    /** Le chiavi della lettera nella riga: «PEC e carta» le copia dalla riga gemella, così le due righe dicono la stessa lettera. */
+    private const CHIAVI_DELLA_LETTERA = ['lettera', 'persona', 'alla', 'modello', 'modello_id', 'modello_nome', 'singola', 'rifatta_da', 'testo', 'righe', 'totale',
+        'in_accordo', 'anche_in_accordo', 'termine', 'termine_forma', 'termine_data', 'giorni', 'gestione_id', 'cassa_id', 'iban', 'intestatario', 'segnaposti'];
+
+    /**
+     * Le chiavi che fanno il contenuto di una lettera: con «PEC e carta» la seconda azione prende la riga gemella solo se queste sono uguali (lo stesso testo,
+     * lo stesso termine, lo stesso conto, la stessa gestione, le stesse rate e cifre, la stessa persona). Altrimenti è un'altra lettera.
+     */
+    private const CHIAVI_DEL_CONTENUTO = ['persona', 'testo', 'righe', 'totale', 'in_accordo', 'termine', 'termine_forma', 'termine_data', 'gestione_id', 'cassa_id',
+        'iban', 'intestatario'];
 
     public const TETTO_PDF = 200;
 
     public const ETICHETTA_ANTEPRIMA = 'ANTEPRIMA';
     public const ETICHETTA_PROVA = 'PROVA';
 
-    public const SOLO_CARTA = 'Diffida e messa in mora non partono per email dal programma: stampale o scarica un PDF per persona, spediscile, poi registra la spedizione.';
+    public const SOLO_CARTA = 'Diffida e messa in mora non partono per email: mandale per PEC dalla casella dello studio, o stampale o scarica un PDF per persona e '
+        . 'registra la spedizione.';
+    public const SOLO_PEC_CON_LA_CASELLA = 'Ha solo la PEC: scegli «PEC dello studio», o stampala.';
+    public const SOLO_PEC_SENZA_CASELLA = 'Ha solo la PEC: imposta la casella PEC dello studio, o stampala.';
+    public const SOLO_PEC_CHIEDI_LA_CASELLA = 'Ha solo la PEC: chiedi a chi gestisce le impostazioni di impostare la casella PEC dello studio, o stampala.';
+    public const SENZA_PEC = 'Nella sua scheda non c\'è una PEC.';
+    public const PROMEMORIA_NON_PER_PEC = 'Il promemoria non parte per PEC: mandalo per email, o stampalo.';
+    public const NESSUNA_PEC = 'Nessuna lettera da mandare per PEC: scegli «PEC dello studio» per qualcuno.';
+    public const PEC_GIA_IN_CORSO = 'Le PEC di questo condominio stanno già partendo: aspetta che finiscano, poi rifai l\'anteprima.';
+    public const SOLO_PEC_NON_PARTITE = 'Si manda di nuovo per PEC solo una lettera per PEC che non è partita, che ha l\'avviso di mancata consegna o che si è '
+        . 'fermata in partenza.';
+    public const NESSUNA_PEC_DA_RIMANDARE = 'Nessuna lettera per PEC da rimandare: quelle non partite o con l\'avviso di mancata consegna sono già state rifatte.';
+    public const NESSUNA_PEC_DA_STAMPARE = 'Nessuna lettera per PEC da stampare: quelle non partite o con l\'avviso di mancata consegna sono già state rifatte, o hanno '
+        . 'già la copia su carta.';
+    public const SOLO_PEC_DA_RIMANDARE = 'Si stampa per la posta una lettera per PEC che non è partita o che ha l\'avviso di mancata consegna, e che non è già stata '
+        . 'rifatta.';
+    public const ERA_PER_EMAIL_ALLA_PEC = 'Questa lettera era andata per email alla PEC: mandala per PEC dalla casella dello studio, o stampala.';
     public const SENZA_SERVER_POSTA = 'Nessun server di posta configurato: le lettere non partono per email. Configuralo nelle impostazioni della posta; intanto puoi stamparle.';
     public const NESSUNA_PERSONA = 'Per nessuna delle persone scelte c\'è qualcosa da mettere in questa lettera.';
     public const SCEGLI_IL_CONTO = 'Il condominio ha più di un conto con l\'IBAN: scegli quello da scrivere nella lettera.';
@@ -137,8 +202,8 @@ final class EmissioneLettere
     public function opzioni(Condominio $condominio, ?User $utente): array
     {
         return [
-            'tipi'               => collect(self::NOMI)->map(fn ($nome, $tipo) => ['tipo' => $tipo, 'nome' => $nome, 'solo_carta' => in_array($tipo, self::TIPI_SOLO_CARTA, true),
-                'conservato' => in_array($tipo, self::TIPI_CONSERVATI, true)])->values()->all(),
+            'tipi'               => collect(self::NOMI)->map(fn ($nome, $tipo) => ['tipo' => $tipo, 'nome' => $nome, 'senza_email' => in_array($tipo, self::TIPI_SENZA_EMAIL, true),
+                'conservato' => in_array($tipo, self::TIPI_CONSERVATI, true), 'canali' => self::CANALI_PER_TIPO[$tipo]])->values()->all(),
             // I testi del programma: non si cambiano. Per diffida e messa in mora la finestra dice di controllarli.
             'testi'              => TestiLettere::DI_SERIE,
             'modelli'            => $this->modelli->delCondominio($condominio),
@@ -156,7 +221,24 @@ final class EmissioneLettere
             'carta_intestata'    => self::cartaIntestata(),
             'senza_server_posta' => EmissioneRicevute::senzaServerPosta(),
             'tetto'              => self::TETTO_PDF,
+            // La casella PEC dello studio: senza, la PEC si vede spenta con il perché e «Imposta» per chi apre le impostazioni.
+            'casella_pec'        => self::casellaPec(),
         ];
+    }
+
+    /**
+     * La casella PEC dello studio vista dalla finestra delle lettere (decisione 572, proposta 11): se c'è, da quale indirizzo partono le PEC, senza il perché
+     * e dove si imposta (solo a chi apre le impostazioni), e l'avviso dell'ultima prova non andata, per la conferma.
+     *
+     * @return array{impostata: bool, indirizzo: ?string, perche: ?string, dove: ?string, avviso: ?string}
+     */
+    public static function casellaPec(): array
+    {
+        $pec = app(PecDelloStudio::class);
+        $casella = app(CasellaPec::class)->configurazione();
+
+        return ['impostata' => $casella !== null, 'indirizzo' => $casella?->indirizzo, 'perche' => $casella === null ? PecDelloStudio::NON_IMPOSTATA : null,
+            'dove' => $pec->dove(), 'avviso' => $casella === null ? null : $pec->avviso()];
     }
 
     /**
@@ -189,10 +271,13 @@ final class EmissioneLettere
             $cassa = null;
         }
 
+        // Gli indirizzi dell'email ricordati: la PEC spuntata in una lettera di prima non c'è più, perché non è un indirizzo dell'email.
+        $indirizzi = $sue()->whereNotNull('dati->tipi_scelti')->first()?->dati['tipi_scelti'] ?? null;
+
         return [
             'termini'   => $termini,
             'cassa_id'  => $cassa === null ? null : (int) $cassa,
-            'indirizzi' => $sue()->whereNotNull('dati->tipi_scelti')->first()?->dati['tipi_scelti'] ?? null,
+            'indirizzi' => $indirizzi === null ? null : array_values(array_intersect((array) $indirizzi, array_keys(self::INDIRIZZI_EMAIL))),
         ];
     }
 
@@ -273,7 +358,7 @@ final class EmissioneLettere
         }
         $cassa = $cassaId !== null ? $conti[$cassaId] : $conti->first();
 
-        $tipi = array_values(array_intersect(array_keys(EmissioneRicevute::TIPI_INDIRIZZO), array_map('strval', array_filter((array) ($input['indirizzi'] ?? EmissioneRicevute::TIPI_PROPOSTI), 'is_scalar'))));
+        $tipi = self::indirizziScelti($input);
 
         // I giorni della vista «In scadenza nei prossimi N giorni», da cui il promemoria prende le rate.
         $giorni = $input['filtri']['giorni'] ?? $input['giorni'] ?? null;
@@ -303,7 +388,7 @@ final class EmissioneLettere
 
             return [null, null, null];
         }
-        if (in_array($tipo, self::TIPI_SOLO_CARTA, true) && $modello === '') {
+        if (in_array($tipo, self::TIPI_SENZA_EMAIL, true) && $modello === '') {
             throw new LetteraNonEmettibileException(self::SERVE_IL_TESTO);
         }
         $giorni = $input['termine'] ?? null;
@@ -514,9 +599,10 @@ final class EmissioneLettere
     }
 
     /**
-     * Il canale proposto per ogni persona: quello della sua ultima lettera (promemoria o sollecito; per diffida e messa in mora l'ultima diffida
-     * o messa in mora, fra stampa e .zip); senza lettere, l'email se la persona ha la primaria o la secondaria fra i tipi scelti, altrimenti la
-     * stampa.
+     * Il canale proposto per ogni persona: quello della sua ultima lettera (promemoria o sollecito; per diffida e messa in mora l'ultima diffida o messa in
+     * mora), se oggi c'è ancora; senza lettere, l'email per il promemoria e il sollecito se la persona ha la primaria o la secondaria fra i tipi scelti; poi,
+     * per sollecito, diffida e messa in mora, la PEC dalla casella dello studio a chi l'ha comunicata (decisione 588, L1); altrimenti la stampa. Mai la PEC
+     * senza la PEC della persona né senza la casella dello studio ({@see canaliSpenti()}).
      *
      * @param array<int, array<string, mixed>> $contenuti
      * @param array<int, string> $tipiScelti
@@ -524,34 +610,84 @@ final class EmissioneLettere
      */
     public function canaliProposti(Condominio $condominio, string $tipo, array $contenuti, array $tipiScelti): array
     {
-        $soloCarta = in_array($tipo, self::TIPI_SOLO_CARTA, true);
-        $simili = $soloCarta ? self::TIPI_SOLO_CARTA : ['promemoria', 'sollecito'];
+        $simili = in_array($tipo, self::TIPI_SENZA_EMAIL, true) ? self::TIPI_SENZA_EMAIL : ['promemoria', 'sollecito'];
         $ultime = RegistroInvio::where('condominio_id', $condominio->id)->whereIn('anagrafica_id', array_keys($contenuti) ?: [0])->whereIn('tipo', $simili)
             ->whereIn('stato', [...RegistroInvio::STATI_LETTERA_USCITA, RegistroInvio::STATO_IN_CODA])
-            ->orderBy('id')->get(['id', 'anagrafica_id', 'canale', 'dati->formato as formato'])
+            ->orderBy('id')->get(['id', 'anagrafica_id', 'canale', 'dati->formato as formato', 'dati->pec_e_carta as pec_e_carta'])
             ->groupBy('anagrafica_id')->map(fn ($g) => $g->last());
+        $casella = app(CasellaPec::class)->impostata();
 
         $canali = [];
         foreach ($contenuti as $id => $c) {
-            // Gli indirizzi dei tipi spuntati: la primaria e la secondaria, come la ricevuta, e la PEC solo se l'amministratore l'ha spuntata (chi
-            // ha solo la PEC, senza la PEC spuntata, è proposto per la stampa, con la frase).
+            $spenti = self::canaliSpenti($tipo, $c['persona'], $casella);
+            $ammessi = array_values(array_diff(self::CANALI_PER_TIPO[$tipo], array_keys($spenti)));
+            // Gli indirizzi dell'email dei tipi spuntati: la primaria e la secondaria.
             $conEmail = array_intersect_key(EmissioneRicevute::indirizzi($c['persona']), array_flip($tipiScelti)) !== [];
             $ultima = $ultime->get($id);
-            $daUltima = $ultima === null ? null : ($ultima->canale === RegistroInvio::CANALE_EMAIL ? 'email' : ($ultima->formato === 'zip' ? 'zip' : 'stampa'));
-            $canale = $daUltima ?? ($conEmail ? 'email' : 'stampa');
-            if ($canale === 'email' && ($soloCarta || ! $conEmail)) {
-                $canale = 'stampa';
+            $daUltima = $ultima === null ? null : self::canaleDellaRiga($ultima->canale, $ultima->formato, $ultima->pec_e_carta);
+            if ($daUltima !== null && in_array($daUltima, $ammessi, true) && ($daUltima !== 'email' || $conEmail)) {
+                $canali[$id] = $daUltima;
+
+                continue;
             }
-            $canali[$id] = $canale;
+            $pecComunicata = in_array('pec', $ammessi, true) && filled($c['persona']->pec_comunicata_il ?? null);
+            $canali[$id] = match (true) {
+                $conEmail && in_array('email', $ammessi, true) => 'email',
+                $pecComunicata => 'pec',
+                default => 'stampa',
+            };
         }
 
         return $canali;
     }
 
     /**
+     * I canali che la persona non può avere per questo tipo, con il perché: la PEC senza la casella dello studio, o senza la PEC nella sua scheda.
+     *
+     * @return array<string, string>
+     */
+    public static function canaliSpenti(string $tipo, Anagrafica $persona, bool $casella): array
+    {
+        if (! in_array('pec', self::CANALI_PER_TIPO[$tipo] ?? [], true)) {
+            return [];
+        }
+        $perche = ! $casella ? PecDelloStudio::NON_IMPOSTATA : (! filled($persona->pec) ? self::SENZA_PEC : null);
+
+        return $perche === null ? [] : array_fill_keys(self::CANALI_CON_LA_PEC, $perche);
+    }
+
+    /** Il canale della finestra di una riga del registro: l'email, la PEC, la stampa, il PDF per persona, «PEC e carta». */
+    private static function canaleDellaRiga(string $canale, mixed $formato, mixed $pecECarta): string
+    {
+        if (in_array(self::testoJson($pecECarta), ['1', 'true'], true)) {
+            return 'pec_e_carta';
+        }
+
+        return match ($canale) {
+            RegistroInvio::CANALE_EMAIL => 'email',
+            RegistroInvio::CANALE_PEC => 'pec',
+            default => self::testoJson($formato) === 'zip' ? 'zip' : 'stampa',
+        };
+    }
+
+    /** Un valore letto dal JSON con `->`: su MySQL arriva con le virgolette, su SQLite senza. */
+    private static function testoJson(mixed $v): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+        if (is_bool($v)) {
+            return $v ? 'true' : 'false';
+        }
+        $v = (string) $v;
+
+        return str_starts_with($v, '"') ? (string) json_decode($v) : $v;
+    }
+
+    /**
      * L'anteprima di chi riceve che cosa: per persona il totale, quante rate, il credito accanto, il canale proposto (o quello scelto nella
-     * finestra), gli indirizzi dei tipi scelti, se manca l'indirizzo di casa; i conteggi per canale; chi della lista non ha niente da scrivere;
-     * i dati dello studio; il server di posta; il tetto.
+     * finestra) con i canali del tipo e quelli spenti con il perché, gli indirizzi dell'email dei tipi scelti, la PEC e se la persona l'ha comunicata, se manca
+     * l'indirizzo di casa; i conteggi per canale; chi della lista non ha niente da scrivere; i dati dello studio; il server di posta; la casella PEC; i tetti.
      *
      * @param array<string, mixed> $input
      * @return array<string, mixed>
@@ -560,15 +696,20 @@ final class EmissioneLettere
     {
         $tipo = is_string($input['tipo'] ?? null) && in_array($input['tipo'], self::TIPI, true) ? $input['tipo'] : throw new LetteraNonEmettibileException(self::TIPO_CHE_NON_C_E);
         $modello = ModelliLettere::scelto($condominio, $tipo, $input['modello_id'] ?? null);
-        $tipi = array_values(array_intersect(array_keys(EmissioneRicevute::TIPI_INDIRIZZO), array_map('strval', array_filter((array) ($input['indirizzi'] ?? EmissioneRicevute::TIPI_PROPOSTI), 'is_scalar'))));
+        $tipi = self::indirizziScelti($input);
         $gestione = $this->gestioneScelta($condominio, $input);
         $c = $this->contenutiPer($condominio, $tipo, array_diff_key($input, ['viste' => true, 'in_anteprima' => true]), $gestione['id'] ?? null);
         $canali = $this->canaliScelti($condominio, $tipo, $c['persone'], $tipi, $input);
+        $casella = self::casellaPec();
+        // La PEC dello stesso tipo già partita oggi: non parte due volte, e l'anteprima lo dice accanto alla persona.
+        $partiteOggi = in_array('pec', self::CANALI_PER_TIPO[$tipo], true) ? $this->pecDiOggi($condominio, $tipo, array_keys($c['persone'])) : [];
 
         $persone = [];
         foreach ($c['persone'] as $id => $p) {
             $tutti = EmissioneRicevute::indirizzi($p['persona']);
             $scelti = array_intersect_key($tutti, array_flip($tipi));
+            $pec = filled($p['persona']->pec) ? (string) $p['persona']->pec : null;
+            $soloPec = $scelti === [] && $pec !== null;
             $persone[] = [
                 'id'          => $id,
                 'nome'        => $p['nome'],
@@ -582,14 +723,27 @@ final class EmissioneLettere
                 'interessi'   => (int) ($p['accessori']['interessi'] ?? 0),
                 'spese'       => (int) ($p['accessori']['spese'] ?? 0),
                 'canale'      => $canali[$id],
-                'canali'      => in_array($tipo, self::TIPI_SOLO_CARTA, true) ? ['stampa', 'zip'] : self::CANALI,
+                'canali'      => self::CANALI_PER_TIPO[$tipo],
+                // La PEC senza la casella dello studio, o senza la PEC nella scheda: la voce del menu c'è, spenta, con il perché.
+                'canali_spenti' => self::canaliSpenti($tipo, $p['persona'], $casella['impostata']),
                 'indirizzi'   => collect($scelti)->map(fn ($indirizzo, $t) => ['tipo' => $t, 'indirizzo' => $indirizzo])->values()->all(),
                 'senza_email' => $scelti === [],
-                'solo_pec'    => $scelti === [] && isset($tutti['pec']),
+                'solo_pec'    => $soloPec,
+                // Senza la casella, a chi non apre le impostazioni la frase dice di chiederla.
+                'frase_solo_pec' => $soloPec && $tipo !== 'promemoria' ? ($casella['impostata'] ? self::SOLO_PEC_CON_LA_CASELLA
+                    : ($casella['dove'] !== null ? self::SOLO_PEC_SENZA_CASELLA : self::SOLO_PEC_CHIEDI_LA_CASELLA)) : null,
+                // La PEC della persona, e il giorno in cui l'ha comunicata: senza, la riga lo dice se la PEC è scelta (decisione 588, L1). Avvisa, non blocca.
+                'pec'         => $pec,
+                'pec_comunicata_il' => $pec !== null && filled($p['persona']->pec_comunicata_il) ? \Carbon\CarbonImmutable::parse($p['persona']->pec_comunicata_il)->format('Y-m-d') : null,
+                'pec_non_comunicata' => $pec !== null && ! filled($p['persona']->pec_comunicata_il),
+                // L'ora della PEC dello stesso tipo già partita oggi: «Manda N PEC» la salta.
+                'pec_partita_oggi' => isset($partiteOggi[$id]) ? $partiteOggi[$id]->emesso_il->copy()->setTimezone(self::fuso())->format('H:i') : null,
+                // La scheda della persona, dove si scrive il giorno in cui ha comunicato la sua PEC: a chi la può modificare.
+                'scheda'      => auth()->user()?->can('update', $p['persona']) ? route('admin.anagrafiche.edit', $id) : null,
                 'senza_indirizzo_postale' => $p['indirizzo'] === null,
             ];
         }
-        $conteggi = ['email' => 0, 'stampa' => 0, 'zip' => 0];
+        $conteggi = array_fill_keys(['email', 'pec', 'pec_e_carta', 'stampa', 'zip'], 0);
         foreach ($canali as $canale) {
             $conteggi[$canale]++;
         }
@@ -616,15 +770,17 @@ final class EmissioneLettere
             // Le lettere escono su una carta intestata che si legge: lo studio lo porta la carta, e la frase della finestra lo dice.
             'carta_intestata'    => self::cartaIntestata(),
             'senza_server_posta' => EmissioneRicevute::senzaServerPosta(),
+            'casella_pec'        => $casella,
             'tetto_messaggi'     => EmissioneRicevute::tettoMessaggi(),
+            'tetto_pec'          => self::TETTO_PEC,
             'tetto'              => self::TETTO_PDF,
-            // Il tetto è del PDF: conta chi si stampa (o si scarica in un PDF per persona), non chi va per email.
-            'oltre_tetto'        => max($conteggi['stampa'], $conteggi['zip']) > self::TETTO_PDF,
+            // Il tetto è del PDF: conta chi si stampa (anche «PEC e carta») o si scarica in un PDF per persona, non chi va per email o per PEC.
+            'oltre_tetto'        => max($conteggi['stampa'] + $conteggi['pec_e_carta'], $conteggi['zip']) > self::TETTO_PDF,
         ];
     }
 
     /**
-     * Il canale di ogni persona: quello scelto nella finestra (`canali`), se è uno dei canali di quel tipo, altrimenti quello proposto.
+     * Il canale di ogni persona: quello scelto nella finestra (`canali`), se è uno dei canali di quel tipo e non è spento per lei, altrimenti quello proposto.
      *
      * @param array<int, array<string, mixed>> $contenuti
      * @return array<int, string>
@@ -632,11 +788,12 @@ final class EmissioneLettere
     private function canaliScelti(Condominio $condominio, string $tipo, array $contenuti, array $tipiScelti, array $input): array
     {
         $proposti = $this->canaliProposti($condominio, $tipo, $contenuti, $tipiScelti);
-        $ammessi = in_array($tipo, self::TIPI_SOLO_CARTA, true) ? ['stampa', 'zip'] : self::CANALI;
         $scelti = is_array($input['canali'] ?? null) ? $input['canali'] : [];
+        $casella = $scelti === [] ? false : app(CasellaPec::class)->impostata();
         foreach ($proposti as $id => $canale) {
             $chiesto = $scelti[$id] ?? $scelti[(string) $id] ?? null;
-            if (is_string($chiesto) && in_array($chiesto, $ammessi, true)) {
+            if (is_string($chiesto) && in_array($chiesto, self::CANALI_PER_TIPO[$tipo], true)
+                && ! array_key_exists($chiesto, self::canaliSpenti($tipo, $contenuti[$id]['persona'], $casella))) {
                 $proposti[$id] = $chiesto;
             }
         }
@@ -645,19 +802,26 @@ final class EmissioneLettere
     }
 
     /**
-     * Le persone su cui lavora un'azione: senza `canali` tutte quelle della selezione; con `canali`, quelle con il canale dell'azione.
+     * Le persone su cui lavora un'azione: senza `canali` tutte quelle della selezione; con `canali`, quelle con uno dei canali dell'azione.
      *
      * @param array<int, array<string, mixed>> $contenuti
+     * @param string|list<string> $canale
      * @return array<int, array<string, mixed>>
      */
-    private function dellAzione(Condominio $condominio, string $tipo, array $contenuti, array $tipiScelti, array $input, string $canale): array
+    private function dellAzione(Condominio $condominio, string $tipo, array $contenuti, array $tipiScelti, array $input, string|array $canale): array
     {
         if (! is_array($input['canali'] ?? null)) {
             return $contenuti;
         }
         $canali = $this->canaliScelti($condominio, $tipo, $contenuti, $tipiScelti, $input);
 
-        return array_filter($contenuti, fn ($c, $id) => ($canali[$id] ?? null) === $canale, ARRAY_FILTER_USE_BOTH);
+        return array_filter($contenuti, fn ($c, $id) => in_array($canali[$id] ?? null, (array) $canale, true), ARRAY_FILTER_USE_BOTH);
+    }
+
+    /** Gli indirizzi dell'email scelti nella finestra: la primaria e la secondaria (la PEC non è un indirizzo dell'email). */
+    private static function indirizziScelti(array $input): array
+    {
+        return array_values(array_intersect(array_keys(self::INDIRIZZI_EMAIL), array_map('strval', array_filter((array) ($input['indirizzi'] ?? EmissioneRicevute::TIPI_PROPOSTI), 'is_scalar'))));
     }
 
     // ── La stampa e il PDF per persona ───────────────────────────────────
@@ -674,8 +838,10 @@ final class EmissioneLettere
     {
         $scelte = $this->scelte($condominio, $input);
         $c = $this->contenutiPer($condominio, $scelte['tipo'], $input, $scelte['gestione']['id'] ?? null);
-        // «Vedi il PDF» mostra tutte le lettere dell'anteprima, qualunque sia il canale; la stampa solo quelle da stampare.
-        $persone = $anteprima ? $c['persone'] : $this->dellAzione($condominio, $scelte['tipo'], $c['persone'], $scelte['tipi_scelti'], $input, 'stampa');
+        // «Vedi il PDF» mostra tutte le lettere dell'anteprima, qualunque sia il canale; la stampa solo quelle da stampare, anche la copia di «PEC e carta».
+        $persone = $anteprima ? $c['persone'] : $this->dellAzione($condominio, $scelte['tipo'], $c['persone'], $scelte['tipi_scelti'], $input, self::CANALI_CON_LA_STAMPA);
+        $conLaPec = $anteprima || ! is_array($input['canali'] ?? null) ? [] : array_keys(array_filter($this->canaliScelti($condominio, $scelte['tipo'], $c['persone'],
+            $scelte['tipi_scelti'], $input), fn ($canale) => $canale === 'pec_e_carta'));
         $this->dentroIlTettoDelPdf($persone, $anteprima ? 'anteprima' : 'stampa');
         $adesso = now();
 
@@ -689,21 +855,28 @@ final class EmissioneLettere
         }
 
         $invii = [];
-        $pdf = $this->conIFile(fn () => DB::transaction(function () use ($condominio, $persone, $scelte, $utente, $adesso, &$voci, &$invii) {
-            $ids = [];
-            foreach ($persone as $p) {
-                [$righe] = $this->scriviLettera($condominio, $p, $scelte, $utente, $adesso, 'stampa');
-                $voci[] = $this->voceDallaRiga($righe[0]);
-                $ids = [...$ids, ...array_map(fn ($r) => $r->id, $righe)];
-                $invii[(int) $righe[0]->id] = (int) $p['anagrafica_id'];
-            }
-            $pdf = $this->rendi($condominio, $voci);
-            if (! in_array($scelte['tipo'], self::TIPI_CONSERVATI, true)) {
-                RegistroInvio::whereIn('id', $ids ?: [0])->update(['impronta' => hash('sha256', $pdf)]);
-            }
+        // Una closure con `use (&…)`, non una funzione freccia: la freccia copia le variabili, e le righe scritte (`invii`, per «Registra la spedizione» subito
+        // dalla finestra) non tornerebbero fuori.
+        $pdf = $this->conIFile(function () use ($condominio, $persone, $scelte, $utente, $adesso, $conLaPec, &$voci, &$invii) {
+            return DB::transaction(function () use ($condominio, $persone, $scelte, $utente, $adesso, $conLaPec, &$voci, &$invii) {
+                $ids = [];
+                foreach ($persone as $id => $p) {
+                    // «PEC e carta»: la copia su carta della stessa lettera, con la riga gemella della PEC se è già partita oggi.
+                    [$righe] = in_array($id, $conLaPec, true)
+                        ? $this->scriviLaCopiaSuCarta($condominio, $p, $scelte, $utente, $adesso)
+                        : $this->scriviLettera($condominio, $p, $scelte, $utente, $adesso, 'stampa');
+                    $voci[] = $this->voceDallaRiga($righe[0]);
+                    $ids = [...$ids, ...array_map(fn ($r) => $r->id, $righe)];
+                    $invii[(int) $righe[0]->id] = (int) $p['anagrafica_id'];
+                }
+                $pdf = $this->rendi($condominio, $voci);
+                if (! in_array($scelte['tipo'], self::TIPI_CONSERVATI, true)) {
+                    RegistroInvio::whereIn('id', $ids ?: [0])->update(['impronta' => hash('sha256', $pdf)]);
+                }
 
-            return $pdf;
-        }));
+                return $pdf;
+            });
+        });
 
         return ['pdf' => $pdf, 'nome' => self::nomeFile($condominio, $scelte['tipo']), 'aggiunte' => $c['aggiunte'], 'invii' => $invii];
     }
@@ -765,6 +938,489 @@ final class EmissioneLettere
         }
     }
 
+    // ── L'invio per PEC ──────────────────────────────────────────────────
+
+    /**
+     * «Manda le PEC» (decisioni 569 e 588): per ogni persona dell'anteprima con il canale «PEC dello studio» o «PEC e carta», la lettera di oggi parte dalla
+     * casella PEC dello studio con lo stesso servizio della convocazione ({@see InvioPerPec}): il PDF della lettera (la vista di sempre, con la carta delle
+     * lettere), l'oggetto e il testo dell'email, una riga `pec` con il PDF conservato e la sua impronta. La PEC parte solo verso la PEC della persona: per la
+     * PEC non c'è un altro indirizzo. Una PEC che il gestore non accetta resta «non partita» con l'errore; un collegamento che non parte ferma le altre. Al più
+     * {@see TETTO_PEC} per volta, a persone intere (le altre tornano in `restanti`, per «Manda le altre»); un invio per volta per condominio ({@see conIlBlocco()}).
+     * Con «PEC e carta» la lettera è la stessa della copia su carta già stampata oggi, se c'è ed è la stessa lettera: lo stesso PDF, lo stesso `dati.lettera`.
+     *
+     * **Nessuna PEC due volte**: chi ha già oggi una PEC dello stesso tipo partita (o in partenza) non la riceve di nuovo, anche dopo un collegamento caduto e
+     * l'anteprima rifatta; la frase lo dice (`gia_partite`). Dopo un collegamento caduto **chi non è stato provato** torna in `restanti` con chi è oltre il
+     * tetto, per «Manda le altre». Un errore che non è del trasporto (il PDF, un indirizzo scritto male) è una riga «non partita» con la frase.
+     *
+     * @param array<string, mixed> $input
+     * @return array{partite: int, non_partite: int, non_provate: int, frase: string, errore: ?string, restanti: ?array{persone: list<int>}, gia_partite: list<string>, aggiunte: int, uscite: int}
+     */
+    public function mandaPerPec(Condominio $condominio, array $input, User $utente): array
+    {
+        $scelte = $this->scelte($condominio, $input);
+        if (! in_array('pec', self::CANALI_PER_TIPO[$scelte['tipo']], true)) {
+            throw new LetteraNonEmettibileException(self::PROMEMORIA_NON_PER_PEC);
+        }
+        if (! app(CasellaPec::class)->impostata()) {
+            throw new LetteraNonEmettibileException(PecDelloStudio::NON_IMPOSTATA);
+        }
+        $c = $this->contenutiPer($condominio, $scelte['tipo'], $input, $scelte['gestione']['id'] ?? null);
+        $canali = $this->canaliScelti($condominio, $scelte['tipo'], $c['persone'], $scelte['tipi_scelti'], $input);
+        $persone = array_filter($c['persone'], fn ($p, $id) => in_array($canali[$id] ?? null, self::CANALI_CON_LA_PEC, true) && filled($p['persona']->pec),
+            ARRAY_FILTER_USE_BOTH);
+        if ($persone === []) {
+            throw new LetteraNonEmettibileException(self::NESSUNA_PEC);
+        }
+
+        return self::conIlBlocco($condominio, function () use ($condominio, $persone, $scelte, $canali, $utente, $c) {
+            // Dentro il blocco: chi ha già oggi una PEC dello stesso tipo partita o in partenza non la riceve di nuovo.
+            $giaOggi = $this->pecDiOggi($condominio, $scelte['tipo'], array_keys($persone));
+            $gia = array_intersect_key($persone, $giaOggi);
+            [$dentro, $fuori] = self::dentroIlTettoDellaPec(array_diff_key($persone, $giaOggi));
+            $adesso = now();
+            [$partite, $nonPartite, $provate, $errore] = [0, 0, [], null];
+            foreach ($dentro as $id => $p) {
+                try {
+                    $riga = $this->mandaUnaPec($condominio, $p, $scelte, $utente, $adesso, $canali[$id] === 'pec_e_carta');
+                } catch (CasellaPecNonImpostata) {
+                    $errore = PecDelloStudio::NON_IMPOSTATA;
+
+                    break;
+                }
+                $provate[] = (int) $id;
+                if ($riga->stato === RegistroInvio::STATO_INVIATA) {
+                    $partite++;
+
+                    continue;
+                }
+                $nonPartite++;
+                $errore = ErroreDellaPec::frase($riga->errore, app(CasellaPec::class)->configurazione());
+                // Il collegamento non parte: gli altri non si provano (la porta chiusa li farebbe aspettare tutti).
+                if (ErroreDellaPec::diConnessione($riga->errore)) {
+                    break;
+                }
+            }
+            // Chi non è stato provato (dopo un collegamento caduto) torna con chi è oltre il tetto: «Manda le altre» manda solo loro.
+            $nonProvate = array_values(array_diff(array_map('intval', array_keys($dentro)), $provate));
+            $restanti = [...$nonProvate, ...$fuori];
+            $frase = $dentro === [] ? '' : self::fraseDellePec($partite, count($dentro) - $partite, $errore);
+
+            return ['partite' => $partite, 'non_partite' => $nonPartite, 'non_provate' => count($nonProvate),
+                'frase' => trim($frase . ' ' . self::fraseGiaPartite($gia, $giaOggi)), 'errore' => $errore,
+                'restanti' => $restanti === [] ? null : ['persone' => $restanti], 'gia_partite' => array_values(array_map(fn ($p) => (string) $p['nome'], $gia)),
+                'aggiunte' => $c['aggiunte'], 'uscite' => $c['uscite']];
+        });
+    }
+
+    /**
+     * Le PEC dello stesso tipo partite oggi (o in partenza) per le persone date, nel calendario dell'amministratore: una per persona, l'ultima. Non quelle che
+     * il gestore non ha consegnato.
+     *
+     * @param list<int> $persone
+     * @return array<int, RegistroInvio>
+     */
+    private function pecDiOggi(Condominio $condominio, string $tipo, array $persone): array
+    {
+        $inizio = \Illuminate\Support\Carbon::parse(DateHelper::oggiUtente(), self::fuso())->startOfDay()->utc();
+
+        return RegistroInvio::where('condominio_id', $condominio->id)->whereIn('anagrafica_id', $persone ?: [0])->where('tipo', $tipo)
+            ->where('canale', RegistroInvio::CANALE_PEC)->whereIn('stato', [RegistroInvio::STATO_INVIATA, RegistroInvio::STATO_IN_CODA])
+            ->where(fn ($q) => $q->whereNull('esito')->orWhere('esito', '!=', RegistroInvio::ESITO_NON_CONSEGNATA))
+            ->where('emesso_il', '>=', $inizio)->where('emesso_il', '<', $inizio->copy()->addDay())->orderBy('id')->get()
+            ->keyBy(fn (RegistroInvio $r) => (int) $r->anagrafica_id)->all();
+    }
+
+    /**
+     * «A Ugo è già partita oggi alle 11:00: non parte due volte nello stesso giorno, la trovi nella sua corrispondenza.»; con più persone i nomi, senza l'ora.
+     *
+     * @param array<int, array<string, mixed>> $gia
+     * @param array<int, RegistroInvio> $righe
+     */
+    private static function fraseGiaPartite(array $gia, array $righe): string
+    {
+        if ($gia === []) {
+            return '';
+        }
+        $nomi = array_values(array_map(fn ($p) => (string) $p['nome'], $gia));
+        if (count($nomi) === 1) {
+            $id = (int) array_key_first($gia);
+
+            return 'A ' . $nomi[0] . ' è già partita oggi alle ' . $righe[$id]->emesso_il->copy()->setTimezone(self::fuso())->format('H:i')
+                . ': non parte due volte nello stesso giorno, la trovi nella sua corrispondenza.';
+        }
+
+        return 'A ' . implode(', ', array_slice($nomi, 0, -1)) . ' e ' . end($nomi) . ' è già partita oggi: non parte due volte nello stesso giorno, la trovi '
+            . 'nella loro corrispondenza.';
+    }
+
+    /**
+     * «Manda di nuovo per PEC, con le cifre di oggi»: una lettera per PEC che non è partita, che il gestore non ha consegnato (l'avviso di mancata consegna) o
+     * che si è fermata in partenza ({@see ConsegnaDellaPec::ferma()}) si rifà come «Invia di nuovo» dell'email, in una riga nuova, alla PEC che la persona ha
+     * oggi nella sua scheda. Non per una PEC partita, e non se dopo la persona ha già un'altra lettera dello stesso tipo uscita o in coda.
+     *
+     * @return array{partite: int, non_partite: int, frase: string, errore: ?string, conti_cambiati: list<array{prima: string, ora: ?string}>}
+     */
+    public function mandaDiNuovoPerPec(Condominio $condominio, RegistroInvio $riga, User $utente): array
+    {
+        if (! self::daRimandarePerPec($riga)) {
+            throw new LetteraNonEmettibileException(self::SOLO_PEC_NON_PARTITE);
+        }
+        if (! app(CasellaPec::class)->impostata()) {
+            throw new LetteraNonEmettibileException(PecDelloStudio::NON_IMPOSTATA);
+        }
+        $this->contiCambiati = [];
+        $nuova = self::conIlBlocco($condominio, fn () => $this->rifaiPerPec($condominio, $riga, $utente));
+        $partita = $nuova->stato === RegistroInvio::STATO_INVIATA;
+        $errore = $partita ? null : ErroreDellaPec::frase($nuova->errore, app(CasellaPec::class)->configurazione());
+
+        return ['partite' => $partita ? 1 : 0, 'non_partite' => $partita ? 0 : 1, 'frase' => self::fraseDellePec($partita ? 1 : 0, $partita ? 0 : 1, $errore),
+            'errore' => $errore, 'conti_cambiati' => $this->contiCambiati];
+    }
+
+    /** Una riga per PEC che si manda di nuovo: non partita, non consegnata, o ferma in partenza. */
+    public static function daRimandarePerPec(RegistroInvio $riga): bool
+    {
+        return $riga->canale === RegistroInvio::CANALE_PEC && in_array($riga->tipo, self::TIPI, true)
+            && ($riga->stato === RegistroInvio::STATO_NON_PARTITA || \App\Services\Posta\ConsegnaDellaPec::nonConsegnata($riga)
+                || \App\Services\Posta\ConsegnaDellaPec::ferma($riga));
+    }
+
+    /**
+     * La lettera di una riga per PEC rifatta con le cifre di oggi e mandata, in una riga nuova; senza il blocco, che tiene chi chiama.
+     *
+     * @throws LetteraNonEmettibileException|CasellaPecNonImpostata
+     */
+    private function rifaiPerPec(Condominio $condominio, RegistroInvio $riga, User $utente): RegistroInvio
+    {
+        $sue = RegistroInvio::where('condominio_id', $condominio->id)->where('anagrafica_id', $riga->anagrafica_id)->where('tipo', $riga->tipo)->get();
+        if (RegistroLettere::superata($riga, $sue)) {
+            throw new LetteraNonEmettibileException(self::GIA_RIFATTA);
+        }
+        [$scelte, $p, $persona] = $this->letteraDaRifare($condominio, $riga, null);
+        if (! filled($persona->pec)) {
+            throw new LetteraNonEmettibileException($persona->nome . ' non ha più la PEC nella sua scheda: stampala per la posta.');
+        }
+
+        return $this->mandaUnaPec($condominio, $p, $scelte, $utente, now(), false);
+    }
+
+    /**
+     * Le lettere per PEC da rimandare: le righe `pec` non partite o non consegnate, dopo le quali la persona non ha un'altra lettera dello stesso tipo uscita o
+     * in coda. Le contano le rate scadute, accanto alle email da rifare.
+     *
+     * @return Collection<int, RegistroInvio>
+     */
+    public function pecDaRimandare(Condominio $condominio, ?int $personaId = null): Collection
+    {
+        $tutte = RegistroInvio::where('condominio_id', $condominio->id)->whereIn('tipo', self::TIPI)->whereNotNull('anagrafica_id')
+            ->when($personaId !== null, fn ($q) => $q->where('anagrafica_id', $personaId))->orderBy('id')->get();
+
+        return $tutte->filter(fn (RegistroInvio $r) => $r->canale === RegistroInvio::CANALE_PEC
+            && ($r->stato === RegistroInvio::STATO_NON_PARTITA || \App\Services\Posta\ConsegnaDellaPec::nonConsegnata($r)))
+            ->reject(fn (RegistroInvio $r) => RegistroLettere::superata($r, $tutte))->values();
+    }
+
+    /**
+     * «Rimanda le PEC non partite»: ogni lettera da rimandare ({@see pecDaRimandare()}) rifatta con le cifre di oggi e mandata dalla casella dello studio, al
+     * più {@see TETTO_PEC} per volta; un collegamento che non parte ferma le altre. Quelle che non si rifanno (la persona non ha più niente da versare, la data
+     * del termine è passata, la PEC tolta dalla scheda) restano, e la frase le conta.
+     *
+     * @return array{partite: int, non_partite: int, non_provate: int, saltate: int, restanti: int, frase: string, errore: ?string}
+     */
+    public function rimandaLePec(Condominio $condominio, User $utente): array
+    {
+        $righe = $this->pecDaRimandare($condominio);
+        if ($righe->isEmpty()) {
+            throw new LetteraNonEmettibileException(self::NESSUNA_PEC_DA_RIMANDARE);
+        }
+        if (! app(CasellaPec::class)->impostata()) {
+            throw new LetteraNonEmettibileException(PecDelloStudio::NON_IMPOSTATA);
+        }
+        $this->contiCambiati = [];
+
+        return self::conIlBlocco($condominio, function () use ($condominio, $righe, $utente) {
+            $dentro = $righe->take(self::TETTO_PEC);
+            [$partite, $nonPartite, $provate, $saltate, $errore] = [0, 0, 0, 0, null];
+            foreach ($dentro as $riga) {
+                try {
+                    $nuova = $this->rifaiPerPec($condominio, $riga, $utente);
+                } catch (LetteraNonEmettibileException) {
+                    $provate++;
+                    $saltate++;
+
+                    continue;
+                } catch (CasellaPecNonImpostata) {
+                    $errore = PecDelloStudio::NON_IMPOSTATA;
+
+                    break;
+                }
+                $provate++;
+                if ($nuova->stato === RegistroInvio::STATO_INVIATA) {
+                    $partite++;
+
+                    continue;
+                }
+                $nonPartite++;
+                $errore = ErroreDellaPec::frase($nuova->errore, app(CasellaPec::class)->configurazione());
+                if (ErroreDellaPec::diConnessione($nuova->errore)) {
+                    break;
+                }
+            }
+            $restanti = $righe->count() - $provate;
+            $frase = self::fraseDellePec($partite, $nonPartite + $saltate, $errore);
+            if ($saltate > 0) {
+                $frase .= ' ' . ($saltate === 1 ? '1 lettera non si rifà' : $saltate . ' lettere non si rifanno') . ': la persona non ha più niente da versare, la '
+                    . 'data del termine è passata o la PEC non è più nella sua scheda. Le trovi nella sua corrispondenza.';
+            }
+            if ($restanti > 0) {
+                $frase .= ' ' . ($restanti === 1 ? 'Ne resta 1: premi di nuovo.' : 'Ne restano ' . $restanti . ': premi di nuovo.');
+            }
+
+            return ['partite' => $partite, 'non_partite' => $nonPartite, 'non_provate' => $dentro->count() - $provate, 'saltate' => $saltate,
+                'restanti' => $restanti, 'frase' => $frase, 'errore' => $errore, 'conti_cambiati' => $this->contiCambiati];
+        });
+    }
+
+    /**
+     * «Stampale per la posta»: le lettere per PEC da rimandare ({@see pecDaRimandare()}), o quelle date dalla corrispondenza, rifatte con le cifre di oggi e
+     * stampate in un PDF, una riga «stampata» per lettera (poi «Registra la spedizione»). Una lettera «PEC e carta» che ha già la copia su carta non si stampa
+     * di nuovo; quelle che non si rifanno restano, e l'intestazione le conta.
+     *
+     * @param ?list<int> $invii
+     * @return array{pdf: string, nome: string, invii: array<int, int>, saltate: int}
+     */
+    public function stampaLePec(Condominio $condominio, ?array $invii, ?User $utente): array
+    {
+        $righe = $this->pecDaRimandare($condominio);
+        if ($invii !== null) {
+            $chieste = app(RegistroLettere::class)->righeDelCondominio($condominio, $invii);
+            if ($chieste->contains(fn (RegistroInvio $r) => ! $righe->contains('id', $r->id))) {
+                throw new LetteraNonEmettibileException(self::SOLO_PEC_DA_RIMANDARE);
+            }
+            $righe = $righe->whereIn('id', $chieste->pluck('id')->all())->values();
+        }
+        $conLaCopia = RegistroInvio::where('condominio_id', $condominio->id)->where('canale', RegistroInvio::CANALE_STAMPA)
+            ->whereIn('anagrafica_id', $righe->pluck('anagrafica_id')->unique()->values()->all() ?: [0])->get()
+            ->map(fn (RegistroInvio $r) => (string) ($r->dati['lettera'] ?? ''))->filter()->flip();
+        $righe = $righe->reject(fn (RegistroInvio $r) => $conLaCopia->has((string) ($r->dati['lettera'] ?? '')))->values();
+        if ($righe->isEmpty()) {
+            throw new LetteraNonEmettibileException(self::NESSUNA_PEC_DA_STAMPARE);
+        }
+        if ($righe->count() > self::TETTO_PDF) {
+            $righe = $righe->take(self::TETTO_PDF);
+        }
+        $this->contiCambiati = [];
+        $voci = [];
+        $scritte = [];
+        $saltate = 0;
+        $pdf = $this->conIFile(function () use ($condominio, $righe, $utente, &$voci, &$scritte, &$saltate) {
+            return DB::transaction(function () use ($condominio, $righe, $utente, &$voci, &$scritte, &$saltate) {
+                $adesso = now();
+                foreach ($righe as $riga) {
+                    try {
+                        [$scelte, $p] = $this->letteraDaRifare($condominio, $riga, null);
+                    } catch (LetteraNonEmettibileException) {
+                        $saltate++;
+
+                        continue;
+                    }
+                    [$nuove] = $this->scriviLettera($condominio, $p, $scelte, $utente, $adesso, 'stampa');
+                    $voci[] = $this->voceDallaRiga($nuove[0]);
+                    $scritte[(int) $nuove[0]->id] = (int) $p['anagrafica_id'];
+                }
+                if ($voci === []) {
+                    throw new LetteraNonEmettibileException(self::NESSUNA_PEC_DA_STAMPARE);
+                }
+
+                return $this->rendi($condominio, $voci);
+            });
+        });
+
+        return ['pdf' => $pdf, 'nome' => self::nomeFile($condominio, (string) $righe->first()->tipo, 'per-la-posta'), 'invii' => $scritte, 'saltate' => $saltate];
+    }
+
+    /**
+     * Le persone di un invio per PEC dentro il tetto ({@see TETTO_PEC}), e gli identificativi di quelle che restano.
+     *
+     * @param array<int, array<string, mixed>> $persone
+     * @return array{0: array<int, array<string, mixed>>, 1: list<int>}
+     */
+    public static function dentroIlTettoDellaPec(array $persone): array
+    {
+        return [array_slice($persone, 0, self::TETTO_PEC, true), array_map('intval', array_keys(array_slice($persone, self::TETTO_PEC, null, true)))];
+    }
+
+    /**
+     * Un invio per PEC per volta per condominio: un secondo clic, o una seconda scheda, trova il blocco e lo dice, invece di mandare le stesse lettere due volte
+     * mentre il primo invio lavora. Lo stesso blocco della convocazione, con la chiave sua.
+     *
+     * @template T
+     * @param \Closure(): T $lavoro
+     * @return T
+     */
+    public static function conIlBlocco(Condominio $condominio, \Closure $lavoro): mixed
+    {
+        $blocco = Cache::lock(self::chiaveDelBlocco($condominio), self::DURATA_DEL_BLOCCO);
+        if (! $blocco->get()) {
+            throw new LetteraNonEmettibileException(self::PEC_GIA_IN_CORSO);
+        }
+        try {
+            return $lavoro();
+        } finally {
+            $blocco->release();
+        }
+    }
+
+    public static function chiaveDelBlocco(Condominio $condominio): string
+    {
+        return 'lettere:pec:' . $condominio->id;
+    }
+
+    /** «2 PEC sono partite: il gestore le ha accettate, la consegna la dice la ricevuta.», con le altre e il perché: le parole della convocazione. */
+    public static function fraseDellePec(int $partite, int $altre, ?string $errore): string
+    {
+        $frase = match (true) {
+            $partite === 0 => 'Nessuna PEC è partita.',
+            $partite === 1 => '1 PEC è partita: il gestore l\'ha accettata, la consegna la dice la ricevuta.',
+            default => $partite . ' PEC sono partite: il gestore le ha accettate, la consegna la dice la ricevuta.',
+        };
+        if ($errore === null) {
+            return $frase;
+        }
+
+        return $partite === 0 ? $errore . ' ' . $frase
+            : $frase . ' ' . ($altre === 1 ? 'L\'altra non è partita: ' : 'Le altre ' . $altre . ' non sono partite: ') . lcfirst($errore);
+    }
+
+    /**
+     * Una lettera per PEC a una persona: la sua riga `pec`, partita o no. Con «PEC e carta» e una copia su carta già stampata oggi della stessa lettera, la
+     * lettera è quella: gli stessi dati e lo stesso PDF (letto dal file conservato), quindi la stessa impronta.
+     *
+     * @param array<string, mixed> $p il contenuto della lettera della persona
+     * @throws CasellaPecNonImpostata
+     */
+    private function mandaUnaPec(Condominio $condominio, array $p, array $scelte, User $utente, CarbonInterface $adesso, bool $conLaCarta): RegistroInvio
+    {
+        $dati = null;
+        try {
+            $dati = $this->datiDellaLettera($condominio, $p, $scelte, $adesso);
+            // La gemella solo se è la stessa lettera: con un altro testo, un altro termine o altre cifre la PEC parte con le scelte di adesso.
+            $gemella = $conLaCarta ? $this->gemellaDiOggi($condominio, (int) $p['anagrafica_id'], $scelte['tipo'], RegistroInvio::CANALE_PEC, $dati) : null;
+            if ($gemella !== null) {
+                $dati = array_intersect_key((array) $gemella->dati, array_flip(self::CHIAVI_DELLA_LETTERA));
+                $voce = $this->voceDallaRiga($gemella);
+                $pdf = $this->pdfConservatoDi($gemella) ?? $this->rendi($condominio, [$voce]);
+            } else {
+                $voce = self::voce($condominio, $dati, $scelte['tipo'], $adesso);
+                $pdf = $this->rendi($condominio, [$voce]);
+            }
+            // L'oggetto e il testo dell'email di oggi: la lettera è nel PDF.
+            $messaggio = LetteraNotification::testo((string) $condominio->nome, $voce);
+            $testo = implode("\n\n", [$messaggio['saluto'], ...$messaggio['righe'], $messaggio['chiusura']]);
+        } catch (\Throwable $e) {
+            // Il programma non è riuscito a preparare la PEC (il PDF, il testo): una riga «non partita» con l'errore, come quelle che il gestore rifiuta.
+            Log::warning('PEC non preparata: ' . $e->getMessage(), ['persona' => $p['anagrafica_id']]);
+
+            return $this->pecNonPreparata($condominio, $p, $scelte, $utente, $adesso, $dati, $conLaCarta, $e);
+        }
+        $documento = new DocumentoPerPec((int) $condominio->id, (int) $p['anagrafica_id'], (string) $p['persona']->pec, $scelte['tipo'], $p['persona'], $pdf,
+            self::nomeFile($condominio, $scelte['tipo'], Str::slug($p['nome'])), $messaggio['oggetto'], $testo,
+            $dati + ['tipo_indirizzo' => 'pec'] + ($conLaCarta ? ['pec_e_carta' => true] : []));
+
+        return app(InvioPerPec::class)->invia($documento, $utente->id);
+    }
+
+    /** La riga di una PEC che il programma non è riuscito a preparare: «non partita», con l'errore, per mandarla di nuovo dalla corrispondenza. */
+    private function pecNonPreparata(Condominio $condominio, array $p, array $scelte, User $utente, CarbonInterface $adesso, ?array $dati, bool $conLaCarta,
+        \Throwable $e): RegistroInvio
+    {
+        return RegistroInvio::create(['condominio_id' => $condominio->id, 'anagrafica_id' => $p['anagrafica_id'], 'tipo' => $scelte['tipo'],
+            'canale' => RegistroInvio::CANALE_PEC, 'documentabile_type' => Anagrafica::class, 'documentabile_id' => $p['anagrafica_id'],
+            'destinatario' => (string) $p['persona']->pec, 'stato' => RegistroInvio::STATO_NON_PARTITA, 'emesso_da' => $utente->id, 'emesso_il' => $adesso,
+            'errore' => mb_substr(ErroreDellaPec::PREPARAZIONE . ($e->getMessage() !== '' ? $e->getMessage() : $e::class), 0, 1000),
+            'dati' => ($dati ?? ['lettera' => (string) Str::uuid(), 'persona' => ['id' => $p['anagrafica_id'], 'nome' => $p['nome']], 'modello' => $scelte['modello'],
+                'termine' => $scelte['termine'], 'termine_forma' => $scelte['termine_forma'] ?? null, 'termine_data' => $scelte['termine_data'] ?? null])
+                + ['tipo_indirizzo' => 'pec'] + ($conLaCarta ? ['pec_e_carta' => true] : [])]);
+    }
+
+    /**
+     * «PEC e carta», la copia su carta: la riga `stampata` della stessa lettera della PEC partita oggi (gli stessi dati, lo stesso PDF conservato e la stessa
+     * impronta), o una lettera nuova segnata «PEC e carta» se la PEC non è ancora partita: allora sarà la PEC a prendere questa.
+     *
+     * @return array{0: array<int, RegistroInvio>, 1: ?string}
+     */
+    private function scriviLaCopiaSuCarta(Condominio $condominio, array $p, array $scelte, ?User $utente, CarbonInterface $adesso): array
+    {
+        // La gemella solo se è la stessa lettera: con scelte nuove la copia su carta è una lettera nuova, e la PEC di prima resta la sua.
+        $gemella = $this->gemellaDiOggi($condominio, (int) $p['anagrafica_id'], $scelte['tipo'], RegistroInvio::CANALE_STAMPA,
+            $this->datiDellaLettera($condominio, $p, $scelte, $adesso));
+        if ($gemella === null) {
+            return $this->scriviLettera($condominio, $p, $scelte, $utente, $adesso, 'stampa', [], ['pec_e_carta' => true]);
+        }
+        $dati = array_intersect_key((array) $gemella->dati, array_flip(self::CHIAVI_DELLA_LETTERA)) + ['formato' => 'stampa', 'pec_e_carta' => true]
+            + (isset($gemella->dati['documento_id']) ? ['documento_id' => $gemella->dati['documento_id']] : []);
+        $riga = RegistroInvio::create(['condominio_id' => $condominio->id, 'anagrafica_id' => $p['anagrafica_id'], 'tipo' => $scelte['tipo'],
+            'documentabile_type' => Anagrafica::class, 'documentabile_id' => $p['anagrafica_id'], 'emesso_da' => $utente?->id, 'emesso_il' => $adesso,
+            'canale' => RegistroInvio::CANALE_STAMPA, 'stato' => RegistroInvio::STATO_STAMPATA, 'dati' => $dati, 'impronta' => $gemella->impronta]);
+
+        return [[$riga], null];
+    }
+
+    /**
+     * La riga gemella di «PEC e carta» emessa oggi per la persona e il tipo: della lettera segnata «PEC e carta» che non ha ancora la riga del canale che manca
+     * (la stampa dopo la PEC, o la PEC dopo la stampa), **ed è la stessa lettera** di quella di adesso ({@see CHIAVI_DEL_CONTENUTO}). Null se non c'è.
+     *
+     * @param array<string, mixed> $adesso i dati della lettera con le scelte di adesso
+     */
+    private function gemellaDiOggi(Condominio $condominio, int $persona, string $tipo, string $manca, array $adesso): ?RegistroInvio
+    {
+        $inizio = \Illuminate\Support\Carbon::parse(DateHelper::oggiUtente(), self::fuso())->startOfDay()->utc();
+        $righe = RegistroInvio::where('condominio_id', $condominio->id)->where('anagrafica_id', $persona)->where('tipo', $tipo)
+            ->where('emesso_il', '>=', $inizio)->where('emesso_il', '<', $inizio->copy()->addDay())->orderByDesc('id')->get();
+        foreach ($righe->groupBy(fn (RegistroInvio $r) => (string) ($r->dati['lettera'] ?? 'riga-' . $r->id)) as $sue) {
+            if (empty($sue->first()->dati['pec_e_carta']) || $sue->contains(fn (RegistroInvio $r) => $r->canale === $manca)
+                || ! self::stessaLettera((array) $sue->first()->dati, $adesso)) {
+                continue;
+            }
+
+            return $sue->first();
+        }
+
+        return null;
+    }
+
+    /** Due lettere con lo stesso contenuto: le chiavi di {@see CHIAVI_DEL_CONTENUTO}, nell'ordine che sia. */
+    private static function stessaLettera(array $a, array $b): bool
+    {
+        $chiavi = array_flip(self::CHIAVI_DEL_CONTENUTO);
+
+        return self::inOrdine(array_intersect_key($a, $chiavi)) === self::inOrdine(array_intersect_key($b, $chiavi));
+    }
+
+    /** Un valore con le chiavi in ordine, in JSON: per confrontare due istantanee lette da strade diverse (il registro, la lettura di adesso). */
+    private static function inOrdine(mixed $v): string
+    {
+        $ordina = function (mixed $x) use (&$ordina): mixed {
+            if (! is_array($x)) {
+                return $x;
+            }
+            ksort($x);
+
+            return array_map($ordina, $x);
+        };
+
+        return (string) json_encode($ordina($v), JSON_UNESCAPED_UNICODE);
+    }
+
+    /** Il PDF conservato di una riga, letto dal disco: null se non c'è. */
+    private function pdfConservatoDi(RegistroInvio $riga): ?string
+    {
+        $id = (int) ($riga->dati['documento_id'] ?? 0);
+        $documento = $id === 0 ? null : \App\Models\Documento::find($id);
+
+        return $documento === null ? null : $this->archivio->leggi($documento->path);
+    }
+
     // ── L'invio per email ────────────────────────────────────────────────
 
     /**
@@ -780,12 +1436,12 @@ final class EmissioneLettere
     public function invia(Condominio $condominio, array $input, ?User $utente): array
     {
         $scelte = $this->scelte($condominio, $input);
-        if (in_array($scelte['tipo'], self::TIPI_SOLO_CARTA, true)) {
+        if (in_array($scelte['tipo'], self::TIPI_SENZA_EMAIL, true)) {
             throw new LetteraNonEmettibileException(self::SOLO_CARTA);
         }
         self::conServerPosta();
         if ($scelte['tipi_scelti'] === [] && ! filled($input['altro_indirizzo'] ?? null)) {
-            throw new LetteraNonEmettibileException('Scegli a quali indirizzi mandare le lettere: primaria, secondaria, PEC.');
+            throw new LetteraNonEmettibileException('Scegli a quali indirizzi mandare le lettere: la primaria, la secondaria o tutte e due.');
         }
         $c = $this->contenutiPer($condominio, $scelte['tipo'], $input, $scelte['gestione']['id'] ?? null);
         $persone = $this->dellAzione($condominio, $scelte['tipo'], $c['persone'], $scelte['tipi_scelti'], $input, 'email');
@@ -864,7 +1520,7 @@ final class EmissioneLettere
             throw new LetteraNonEmettibileException('Il tuo utente non ha un indirizzo email.');
         }
         $c = $this->contenutiPer($condominio, $scelte['tipo'], $input, $scelte['gestione']['id'] ?? null);
-        $persone = in_array($scelte['tipo'], self::TIPI_SOLO_CARTA, true) ? $c['persone'] : $this->dellAzione($condominio, $scelte['tipo'], $c['persone'], $scelte['tipi_scelti'], $input, 'email');
+        $persone = in_array($scelte['tipo'], self::TIPI_SENZA_EMAIL, true) ? $c['persone'] : $this->dellAzione($condominio, $scelte['tipo'], $c['persone'], $scelte['tipi_scelti'], $input, 'email');
         $prima = reset($persone);
         if ($prima === false) {
             throw new LetteraNonEmettibileException(self::NESSUNA_PERSONA);
@@ -902,6 +1558,8 @@ final class EmissioneLettere
             ->map(fn (Collection $g) => $g->last())
             ->filter(fn (RegistroInvio $r) => $r->stato === RegistroInvio::STATO_NON_PARTITA)
             ->reject(fn (RegistroInvio $r) => RegistroLettere::superata($r, $tutte))
+            // Un'email non partita verso la PEC della persona non si rifà per email (decisione 588, L2): si manda per PEC dalla casella dello studio, o si stampa.
+            ->reject(fn (RegistroInvio $r) => RegistroLettere::perEmailAllaPec($r))
             ->values();
         // Una lettera con la data del termine già passata non si rifà: la si prepara di nuovo dall'elenco, con un termine nuovo. Sta a parte, e
         // non conta fra quelle da riprovare.
@@ -1000,8 +1658,11 @@ final class EmissioneLettere
     public function inviaDiNuovo(Condominio $condominio, RegistroInvio $riga, ?User $utente): array
     {
         self::conServerPosta();
-        if ($riga->canale !== RegistroInvio::CANALE_EMAIL || ! in_array($riga->tipo, self::TIPI, true) || in_array($riga->tipo, self::TIPI_SOLO_CARTA, true)) {
+        if ($riga->canale !== RegistroInvio::CANALE_EMAIL || ! in_array($riga->tipo, self::TIPI, true) || in_array($riga->tipo, self::TIPI_SENZA_EMAIL, true)) {
             throw new LetteraNonEmettibileException('Si rimanda solo una lettera già mandata per email.');
+        }
+        if (RegistroLettere::perEmailAllaPec($riga)) {
+            throw new LetteraNonEmettibileException(self::ERA_PER_EMAIL_ALLA_PEC);
         }
         if ($riga->stato === RegistroInvio::STATO_IN_CODA) {
             throw new LetteraNonEmettibileException(self::ANCORA_IN_CODA);
@@ -1026,7 +1687,41 @@ final class EmissioneLettere
      */
     private function rifai(Condominio $condominio, Collection $righe, ?User $utente, ?array $contenuti = null): array
     {
-        $riga = $righe->first();
+        [$scelte, $p, $persona] = $this->letteraDaRifare($condominio, $righe->first(), $contenuti);
+        $destinazioni = [];
+        $senza = null;
+        foreach ($righe as $r) {
+            $tipo = (string) (($r->dati['tipo_indirizzo'] ?? null) ?: 'altro');
+            // La PEC non è più un indirizzo dell'email: una lettera di prima andata anche alla PEC si rifà agli altri indirizzi.
+            if ($tipo === 'pec') {
+                continue;
+            }
+            $indirizzo = $tipo === 'altro' ? $r->destinatario : (EmissioneRicevute::indirizzi($persona)[$tipo] ?? null);
+            if (filled($indirizzo)) {
+                $destinazioni[] = [$indirizzo, $tipo];
+            } else {
+                $senza ??= $tipo;
+            }
+        }
+        if ($destinazioni === []) {
+            throw new LetteraNonEmettibileException($senza === null ? self::ERA_PER_EMAIL_ALLA_PEC
+                : $persona->nome . ' non ha più l\'indirizzo ' . (EmissioneRicevute::TIPI_INDIRIZZO[$senza] ?? '') . ': stampala per la posta.');
+        }
+        [$nuove] = $this->conIFile(fn () => DB::transaction(fn () => $this->scriviLettera($condominio, $p, $scelte, $utente, now(), 'email', $destinazioni)));
+
+        return $this->spedisci($nuove);
+    }
+
+    /**
+     * Le scelte e il contenuto di oggi di una lettera da rifare dalla sua riga: lo stesso tipo, lo stesso modello del testo, lo stesso termine, lo stesso conto
+     * (o quello solo di oggi, detto in `conti_cambiati`), la stessa gestione, le cifre di oggi. Per «Invia di nuovo», «Riprova le non partite» e «Manda di
+     * nuovo per PEC».
+     *
+     * @param array<string, array<int, array<string, mixed>>>|null $contenuti
+     * @return array{0: array<string, mixed>, 1: array<string, mixed>, 2: Anagrafica}
+     */
+    private function letteraDaRifare(Condominio $condominio, RegistroInvio $riga, ?array $contenuti): array
+    {
         $dati = (array) $riga->dati;
         $persona = $riga->anagrafica;
         if ($persona === null) {
@@ -1062,23 +1757,8 @@ final class EmissioneLettere
         if ($p === null) {
             throw new LetteraNonEmettibileException(self::NESSUNA_PERSONA);
         }
-        $destinazioni = [];
-        $senza = null;
-        foreach ($righe as $r) {
-            $tipo = (string) (($r->dati['tipo_indirizzo'] ?? null) ?: 'altro');
-            $indirizzo = $tipo === 'altro' ? $r->destinatario : (EmissioneRicevute::indirizzi($persona)[$tipo] ?? null);
-            if (filled($indirizzo)) {
-                $destinazioni[] = [$indirizzo, $tipo];
-            } else {
-                $senza ??= $tipo;
-            }
-        }
-        if ($destinazioni === []) {
-            throw new LetteraNonEmettibileException($persona->nome . ' non ha più l\'indirizzo ' . (EmissioneRicevute::TIPI_INDIRIZZO[$senza] ?? '') . ': stampala per la posta.');
-        }
-        [$nuove] = $this->conIFile(fn () => DB::transaction(fn () => $this->scriviLettera($condominio, $p, $scelte, $utente, now(), 'email', $destinazioni)));
 
-        return $this->spedisci($nuove);
+        return [$scelte, $p, $persona];
     }
 
     /** Una lettera è l'insieme delle sue righe (una per indirizzo): `dati.lettera`. */
@@ -1126,11 +1806,13 @@ final class EmissioneLettere
      *
      * @param array<string, mixed> $persona il contenuto della lettera di una persona
      * @param array<int, array{0: string, 1: string}> $destinazioni [indirizzo, tipo]
+     * @param array<string, mixed> $piu i dati in più della riga («PEC e carta»)
      * @return array{0: array<int, RegistroInvio>, 1: ?string} le righe e il PDF conservato
      */
-    private function scriviLettera(Condominio $condominio, array $persona, array $scelte, ?User $utente, CarbonInterface $adesso, string $canale, array $destinazioni = []): array
+    private function scriviLettera(Condominio $condominio, array $persona, array $scelte, ?User $utente, CarbonInterface $adesso, string $canale, array $destinazioni = [],
+        array $piu = []): array
     {
-        $dati = $this->datiDellaLettera($condominio, $persona, $scelte, $adesso);
+        $dati = $this->datiDellaLettera($condominio, $persona, $scelte, $adesso) + $piu;
         $base = ['condominio_id' => $condominio->id, 'anagrafica_id' => $persona['anagrafica_id'], 'tipo' => $scelte['tipo'], 'documentabile_type' => Anagrafica::class,
             'documentabile_id' => $persona['anagrafica_id'], 'emesso_da' => $utente?->id, 'emesso_il' => $adesso];
         $righe = [];

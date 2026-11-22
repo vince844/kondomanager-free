@@ -6,6 +6,7 @@
 namespace App\Providers;
 
 use App\Settings\MailSettings;
+use App\Support\FunzioniInstallazione;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Crypt;
@@ -26,6 +27,8 @@ use Illuminate\Support\Facades\DB;
  * Driver supportati: smtp, sendmail.
  * Fallback automatico alla configurazione .env se il DB non è disponibile
  * o se la configurazione da database è disattivata dall'utente.
+ * Dove la posta la prepara chi gestisce l'installazione (`posta_dell_installazione`)
+ * la configurazione salvata dallo studio non si usa: vale quella letta all'avvio.
  */
 class MailConfigServiceProvider extends ServiceProvider
 {
@@ -47,6 +50,7 @@ class MailConfigServiceProvider extends ServiceProvider
         // Salva la config .env originale una sola volta (smtp + from)
         if (static::$defaultConfig === null) {
             static::$defaultConfig = [
+                'default' => config('mail.default'),
                 'smtp' => config('mail.mailers.smtp'),
                 'from' => config('mail.from'),
             ];
@@ -96,6 +100,12 @@ class MailConfigServiceProvider extends ServiceProvider
     protected function syncMailConfig(?string $jobName = null): void
     {
         try {
+            // La posta la prepara chi gestisce l'installazione (decisione 572): quella salvata dallo studio, anche di prima, non si usa.
+            if (FunzioniInstallazione::postaDellInstallazione()) {
+                $this->applyInstallazione();
+                return;
+            }
+
             $settings = app(MailSettings::class)->refresh();
 
             // Se la configurazione da DB è disattivata, usa il fallback .env
@@ -193,6 +203,20 @@ class MailConfigServiceProvider extends ServiceProvider
             Config::set('mail.default', 'smtp');
             Config::set('mail.mailers.smtp', static::$defaultConfig['smtp']);
             Config::set('mail.from', static::$defaultConfig['from']);
+        }
+    }
+
+    /**
+     * La posta dell'installazione: la configurazione letta all'avvio, così com'è (il mailer di serie, l'SMTP, il mittente), senza il fallback su «log»
+     * dell'.env vuoto: chi gestisce l'installazione può aver scelto un altro mailer.
+     */
+    protected function applyInstallazione(): void
+    {
+        Config::set('mail.default', static::$defaultConfig['default'] ?? config('mail.default'));
+        Config::set('mail.mailers.smtp', static::$defaultConfig['smtp'] ?? config('mail.mailers.smtp'));
+        Config::set('mail.from', static::$defaultConfig['from'] ?? config('mail.from'));
+        if (app()->resolved('mail.manager')) {
+            app('mail.manager')->forgetMailers();
         }
     }
 

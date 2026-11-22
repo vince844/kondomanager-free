@@ -11,6 +11,7 @@ import { Link, router } from '@inertiajs/vue3';
 import { LogOut, UserRound } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 import type { User } from '@/types';
+import { cancellaIlLavoroSenzaRete, contaIlLavoroNonArrivato } from '@/lib/senzaRete/uscita';
 
 interface Props {
     user: User;
@@ -18,7 +19,17 @@ interface Props {
 
 defineProps<Props>();
 
-function handleLogout() {
+/**
+ * «Esci»: prima il lavoro della sala tenuto in questo browser si cancella (le copie delle pagine, lo stato della sala, i gesti), così chi usa il browser dopo
+ * non lo trova. I gesti della sala che non sono arrivati al server si cancellano solo dopo averlo chiesto.
+ */
+async function handleLogout() {
+    const nonArrivati = await contaIlLavoroNonArrivato();
+    if (nonArrivati > 0 && !globalThis.confirm?.(`${nonArrivati === 1 ? '1 gesto della sala non è ancora arrivato' : `${nonArrivati} gesti della sala non sono ancora arrivati`} `
+        + 'al server: uscendo si cancellano da questo computer. Per mandarli, resta e aspetta la rete. Esci lo stesso?')) {
+        return;
+    }
+    await cancellaIlLavoroSenzaRete({ ancheLaCoda: true });
     router.post(route('logout'), {}, {
         onSuccess: () => {
             router.flushAll()

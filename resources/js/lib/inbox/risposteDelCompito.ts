@@ -8,7 +8,7 @@
  */
 
 export type RispostaAlCompito = 'fatto' | 'non_serve' | 'ricordamelo';
-export type VoceDelCompito = RispostaAlCompito | 'registro';
+export type VoceDelCompito = RispostaAlCompito | 'registro' | 'apri' | 'assemblea';
 
 export interface RigaDelRegistro {
     tipo: string;
@@ -31,6 +31,10 @@ export interface CompitoConRisposte {
     /** Sul bonifico segnalato ancora in verifica, perché «Fatto» è spento. */
     fatto_spento?: string | null;
     risposta?: { tornato: string | null; registro: RigaDelRegistro[] } | null;
+    /** Il collegamento e la voce «Apri …» del memo, dall'elenco dell'Inbox. */
+    context?: { action_url?: string | null; apri?: string | null } | null;
+    /** Il condominio del compito, per «Portalo in assemblea». */
+    condominio_id?: number | null;
 }
 
 /** Il bonifico segnalato dal portale. */
@@ -40,14 +44,32 @@ export const eUnBonificoSegnalato = (c: Pick<CompitoConRisposte, 'type'>): boole
 export const eUnaSegnalazioneDiGuasto = (c: Pick<CompitoConRisposte, 'type'>): boolean => c.type === 'segnalazione_guasto';
 
 /** Le voci del menu «⋯» del compito, nell'ordine; una voce spenta porta la frase che dice perché. */
+/** Il compito del memo «Da portare in assemblea»: «Apri …», «Ricordamelo», «Non serve più»; senza «Fatto», che la rotta rifiuta. */
+export const eUnMemoDellAssemblea = (c: Pick<CompitoConRisposte, 'type'>): boolean => c.type === 'memo_assemblea';
+
+/**
+ * I compiti del seguito delle delibere: le risposte passano dalla cosa da fare. «Delibere da eseguire» ha «Segna eseguita, con una nota», «Ricordamelo»
+ * e «Non serve più»; «Delibere respinte» chiede una scelta, «Chiudi con il motivo» (che chiude anche i compiti dell'origine) o «Riproponi in assemblea»
+ * dalla sua pagina: niente «Fatto».
+ */
+const VOCI_DELLE_DELIBERE: Record<string, { tipo: VoceDelCompito; etichetta: string }[]> = {
+    delibera_da_eseguire: [{ tipo: 'fatto', etichetta: 'Segna eseguita, con una nota' }, { tipo: 'ricordamelo', etichetta: 'Ricordamelo il…' },
+        { tipo: 'non_serve', etichetta: 'Non serve più, con il motivo' }],
+    delibera_respinta: [{ tipo: 'non_serve', etichetta: 'Chiudi con il motivo' }, { tipo: 'ricordamelo', etichetta: 'Ricordamelo il…' }],
+};
+
 export function vociDelMenu(c: CompitoConRisposte): { tipo: VoceDelCompito; etichetta: string; spenta?: string }[] {
-    const voci: { tipo: VoceDelCompito; etichetta: string; spenta?: string }[] = eUnaSegnalazioneDiGuasto(c)
+    const apri = c.context?.apri && c.context?.action_url ? [{ tipo: 'apri' as const, etichetta: c.context.apri }] : [];
+    const voci: { tipo: VoceDelCompito; etichetta: string; spenta?: string }[] = VOCI_DELLE_DELIBERE[c.type] ? [...apri, ...VOCI_DELLE_DELIBERE[c.type]]
+        : eUnaSegnalazioneDiGuasto(c)
         ? [{ tipo: 'ricordamelo', etichetta: 'Ricordamelo il…' }]
-        : [
-            { tipo: 'fatto', etichetta: 'Fatto, con una nota', ...(c.fatto_spento ? { spenta: c.fatto_spento } : {}) },
-            { tipo: 'non_serve', etichetta: eUnBonificoSegnalato(c) ? 'Non serve: rifiuta la segnalazione' : 'Non serve, con il motivo' },
-            { tipo: 'ricordamelo', etichetta: 'Ricordamelo il…' },
-        ];
+        : eUnMemoDellAssemblea(c)
+            ? [...apri, { tipo: 'ricordamelo', etichetta: 'Ricordamelo il…' }, { tipo: 'non_serve', etichetta: 'Non serve più' }]
+            : [
+                { tipo: 'fatto', etichetta: 'Fatto, con una nota', ...(c.fatto_spento ? { spenta: c.fatto_spento } : {}) },
+                { tipo: 'non_serve', etichetta: eUnBonificoSegnalato(c) ? 'Non serve: rifiuta la segnalazione' : 'Non serve, con il motivo' },
+                { tipo: 'ricordamelo', etichetta: 'Ricordamelo il…' },
+            ];
     if (c.risposta?.registro?.length) {
         voci.push({ tipo: 'registro', etichetta: 'Il registro' });
     }

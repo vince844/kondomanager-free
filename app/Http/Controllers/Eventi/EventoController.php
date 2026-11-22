@@ -5,6 +5,9 @@
 
 namespace App\Http\Controllers\Eventi;
 
+use App\Services\RegistroModifiche\FormatoDelValore;
+use App\Services\RegistroModifiche\GestiDelRegistro;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Traits\OrdinaElenco;
 
 use App\Http\Controllers\Controller;
@@ -191,6 +194,9 @@ class EventoController extends Controller
                 $evento->anagrafiche()->sync($validated['anagrafiche']);
             }
 
+            // Decisione 547: l'appuntamento creato da una persona è una riga del registro delle modifiche, con il titolo copiato.
+            RegistroModifiche::gesto(GestiDelRegistro::agenda($evento, 'Creato, per il ' . FormatoDelValore::testo($evento->getRawOriginal('start_time'), 'data')));
+
             DB::commit();
 
             return to_route('admin.eventi.index')->with(
@@ -266,6 +272,7 @@ class EventoController extends Controller
         $validated = $request->validated();
         $mode = $validated['mode'] ?? 'all';
 
+        $inizioPrima = $evento->getRawOriginal('start_time');
         DB::beginTransaction();
         try {
             $wasRecurring = $evento->recurrence_id !== null;
@@ -303,6 +310,13 @@ class EventoController extends Controller
                     throw new \InvalidArgumentException("Invalid update mode");
             }
 
+            // Decisione 547: lo spostamento (o la modifica) di una persona è una riga del registro delle modifiche.
+            $evento->refresh();
+            $inizioDopo = $evento->getRawOriginal('start_time');
+            RegistroModifiche::gesto(GestiDelRegistro::agenda($evento, $inizioDopo !== $inizioPrima
+                ? 'Spostato: dal ' . FormatoDelValore::testo($inizioPrima, 'data') . ' al ' . FormatoDelValore::testo($inizioDopo, 'data')
+                : 'Modificato'));
+
             DB::commit();
 
             return to_route('admin.eventi.index')->with(
@@ -334,6 +348,18 @@ class EventoController extends Controller
     {
         Gate::authorize('delete', $evento);
 
+        // Decisione 547: la cancellazione di una persona è una riga del registro delle modifiche, con il titolo copiato prima del `delete`.
+        $parole = match ($request->input('mode', 'only_this')) {
+            'all' => 'Cancellato, con tutte le ripetizioni',
+            'this_and_future' => 'Cancellato da questa ripetizione in poi',
+            default => 'Cancellato',
+        };
+
+        return RegistroModifiche::durante(GestiDelRegistro::agenda($evento, $parole), fn () => $this->eliminaEvento($request, $evento));
+    }
+
+    private function eliminaEvento(Request $request, Evento $evento): RedirectResponse
+    {
         $mode = $request->input('mode', 'only_this'); 
 
         if (!$evento->recurrence_id) {

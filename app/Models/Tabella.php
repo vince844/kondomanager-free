@@ -8,9 +8,12 @@ namespace App\Models;
 use App\Models\Gestionale\Conto;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
 
 class Tabella extends Model
 {
+    use RegistraLeModifiche;
+
     use HasFactory;
 
     protected $table = 'tabelle';

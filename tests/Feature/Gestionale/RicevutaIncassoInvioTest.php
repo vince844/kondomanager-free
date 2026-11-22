@@ -599,6 +599,19 @@ test('chi ha solo un indirizzo di un tipo non scelto (la secondaria, la PEC) va 
         ->and($a['altri_indirizzi'])->toBe(['email' => 0, 'email_secondaria' => 1, 'pec' => 0]);
 });
 
+test('l\'anteprima conta per ogni tipo d\'indirizzo quante persone raggiunge, spuntato o no: la finestra lo scrive sul suo pulsante', function () {
+    $s = scenarioRicevutaIncasso();
+    $s->ugo->update(['email_secondaria' => 'ugo.casa@prova.it']);
+    $ugo = incassaPerRicevuta($s, $s->ugo, [[$s->ugo1, 60.00]], '2026-02-01', 60.00);
+    $u = amministratoreRicevute();
+
+    foreach ([['email'], ['email_secondaria'], ['email', 'email_secondaria', 'pec']] as $scelti) {
+        $a = $this->actingAs($u)->postJson(route('admin.gestionale.ricevute.anteprima', ['condominio' => $s->condominio->id]),
+            ['incassi' => [$ugo->id], 'indirizzi' => $scelti])->json();
+        expect($a['indirizzi_per_tipo'])->toBe(['email' => 0, 'email_secondaria' => 1, 'pec' => 0]);
+    }
+});
+
 test('senza il servizio della coda partono al massimo 50 messaggi per volta: l\'anteprima lo dice, la risposta dice chi resta, e il secondo invio manda il resto', function () {
     Notification::fake();
     config(['queue.default' => 'sync']);

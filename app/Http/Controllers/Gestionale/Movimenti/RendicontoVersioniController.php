@@ -45,9 +45,19 @@ class RendicontoVersioniController extends Controller
             'parti.*' => ['string', Rule::in(FascicoloDelRendiconto::PARTI)],
             'dettaglio' => ['nullable', 'boolean'],
             'lettere' => ['nullable', 'boolean'],
+            // «Per quale assemblea»: quella in preparazione con il punto del rendiconto di questo esercizio, o nessuna.
+            'assemblea_id' => ['nullable', 'integer'],
         ]);
+        $assemblea = empty($dati['assemblea_id']) ? null : \App\Services\Assemblee\SchedaDelCondominio::risolvi($condominio, 'assemblea', (int) $dati['assemblea_id']);
+        // L'assemblea scelta si controlla prima: se non si può legare, la versione non nasce.
+        if ($assemblea !== null) {
+            \App\Services\Assemblee\Convocazione\RendicontoPerLAssemblea::puntoPer($assemblea, (int) $esercizio->id, (int) $condominio->id, $request->user());
+        }
         $versione = $this->versioni->ferma($condominio, $esercizio, $dati['parti'] ?? [], (bool) ($dati['dettaglio'] ?? false), (bool) ($dati['lettere'] ?? false),
             $request->user());
+        if ($assemblea !== null) {
+            \App\Services\Assemblee\Convocazione\RendicontoPerLAssemblea::allega($assemblea, $versione, $request->user());
+        }
 
         // Le cifre fermate che non tornano si dicono subito: il PDF è conservato com'è, e l'amministratore lo sa prima dell'assemblea.
         $nonTornano = VersioniDelRendiconto::cifreCheNonTornano([(int) $versione->id])[(int) $versione->id] ?? null;
@@ -120,11 +130,16 @@ class RendicontoVersioniController extends Controller
             : $this->flashError($rifiuto));
     }
 
-    /** Un documento della versione: il PDF conservato, una sua parte, quello caricato, il verbale. */
+    /**
+     * Un documento della versione: il PDF conservato, una sua parte, quello caricato, il verbale. Il verbale approvato dall'assemblea (il seguito delle
+     * delibere) è il documento del verbale sottoscritto, già fra i documenti dell'assemblea: la versione lo indica con `verbale_documento_id`, e si apre da qui
+     * con il permesso di chi vede il rendiconto.
+     */
     public function documento(Condominio $condominio, Esercizio $esercizio, string $versione, string $documento, ArchivioDocumenti $archivio)
     {
         $v = $this->assicuraVersione($condominio, $esercizio, $versione);
-        $d = Documento::where('documentable_type', RendicontoVersione::class)->where('documentable_id', $v->id)->find((int) $documento);
+        $d = Documento::query()->whereKey((int) $documento)->where(fn ($q) => $q->where(fn ($w) => $w->where('documentable_type', RendicontoVersione::class)
+            ->where('documentable_id', $v->id))->when($v->verbale_documento_id !== null, fn ($w) => $w->orWhere('id', (int) $v->verbale_documento_id)))->first();
         abort_if($d === null || ! $archivio->esiste($d->path), 404);
 
         return $archivio->apri($d->path, $d->nomeDiScaricamento(), (string) $d->mime_type);

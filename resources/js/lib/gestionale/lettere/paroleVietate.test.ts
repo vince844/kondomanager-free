@@ -80,6 +80,18 @@ describe('le parole vietate nei sorgenti delle pagine', () => {
     });
 });
 
+describe('«consegnata» solo con la consegna della PEC provata', () => {
+    // Quattro: il badge, la colonna «Ultima lettera», la PEC con l'avviso di mancata consegna («non consegnata») e lo stato che il server manda per quella.
+    test('la dice soltanto `consegnaProvata.ts`, che non è fra i file guardati, e quattro volte', () => {
+        const file = 'resources/js/lib/gestionale/lettere/consegnaProvata.ts';
+        expect(FILE).not.toContain(file);
+        // Il nome della costante non è una frase.
+        const testo = senzaCommenti(readFileSync(resolve(process.cwd(), file), 'utf8')).toLowerCase().replaceAll('badge_consegnata', ' ');
+        expect(testo.match(/consegnata/g)?.length).toBe(4);
+        expect(VIETATE.filter((p) => p !== 'consegnata' && testo.includes(p))).toEqual([]);
+    });
+});
+
 describe('le parole in più dei sei mesi per agire, solo sui file nuovi', () => {
     test.each(FILE_DEI_SEI_MESI)('%s', (file) => {
         const testo = senzaCommenti(readFileSync(resolve(process.cwd(), file), 'utf8')).toLowerCase();

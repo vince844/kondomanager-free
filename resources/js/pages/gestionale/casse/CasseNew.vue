@@ -25,6 +25,9 @@ import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { CassaOption, TipoCassa } from '@/types/gestionale/casse';
+import ScegliLaDelibera from '@/components/assemblee/ScegliLaDelibera.vue';
+import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
+import type { DeliberaDelMenu } from '@/types/assemblee';
 
 interface ContoOption {
     label: string;
@@ -36,7 +39,11 @@ const props = defineProps<{
   condomini: Building[];
 }>()
 
-const { generatePath, generateRoute } = usePermission();
+const permessi = usePermission();
+const { generatePath, generateRoute } = permessi;
+// Lo sblocco d'emergenza con la delibera scelta (§1.4 del progetto della tappa 2): la sua frase va in testa alla motivazione, e il testo resta dopo.
+const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+const delibera = ref<DeliberaDelMenu | null>(null);
 
 // --- CONFIGURAZIONE MONEY INPUT ---
 const moneyOptions = ref({
@@ -166,7 +173,8 @@ onMounted(() => {
 });
 
 const submit = () => {
-    form.post(route(...generateRoute('gestionale.casse.store', { condominio: props.condominio.id })), {
+    form.transform((d) => (conLaDelibera.value && d.is_override_assemblea && delibera.value ? { ...d, delibera_id: delibera.value.id } : d))
+        .post(route(...generateRoute('gestionale.casse.store', { condominio: props.condominio.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset();
@@ -354,14 +362,16 @@ const submit = () => {
                           Attivando questa opzione, dichiari che l'assemblea o il regolamento permettono di usare questo fondo vincolato per coprire spese urgenti.
                         </p>
                         
-                        <div v-if="form.is_override_assemblea" class="mt-3">
+                        <div v-if="form.is_override_assemblea" class="mt-3 space-y-2">
+                          <ScegliLaDelibera v-if="conLaDelibera" v-model="delibera" :condominio-id="props.condominio.id" :condominio-nome="props.condominio.nome" ruolo="deroga"
+                            per-questo="questo fondo" etichetta="La delibera dello sblocco (se c'è)" />
                           <Input 
                             id="motivazione_override" 
                             v-model="form.motivazione_override" 
                             placeholder="Es. Autorizzazione verbale del 12/04/2026, art. 5 Regolamento..." 
                             class="bg-slate-50 dark:bg-slate-950 border-amber-200 text-xs" 
                           />
-                          <p class="text-[10px] text-amber-600 mt-1 italic">Estremi della delibera o motivazione obbligatoria per fini di audit.</p>
+                          <p class="text-xs text-amber-700 mt-1 italic dark:text-amber-400">{{ delibera ? 'La frase della delibera va in testa alla motivazione; qui l\'articolo del regolamento o una nota, se servono.' : 'Estremi della delibera o motivazione obbligatoria per fini di audit.' }}</p>
                           <InputError :message="form.errors.motivazione_override" />
                         </div>
                       </div>

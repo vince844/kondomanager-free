@@ -148,5 +148,6 @@ return [
         'building_link_desc'     => 'Link contacts to their respective buildings to simplify successions and unit assignments.',
         'fiscal_data_title'      => 'Fiscal Data & Documents',
         'fiscal_data_desc'       => 'Keep tax codes and ID documents up to date to ensure compliance for all procedures and invoices.',
+        'come_si_convoca_desc'   => 'In «Come si convoca» choose how the person is summoned to meetings (PEC, registered letter, by hand, fax): left empty, the program suggests it from the data. Plain email does not count.',
     ],
 ];

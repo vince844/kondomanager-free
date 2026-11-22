@@ -126,6 +126,7 @@ class ActionInboxController extends Controller
         }
 
         if ($tipo === RispostePromemoria::FATTO) {
+            $this->fattoNonPerIlMemo($task);
             $this->fattoSoloDopoLIncasso($task);
             $dati = $request->validate(['nota' => ['nullable', 'string', 'max:500']]);
             $risposte->fattoDelCompito($task, $dati['nota'] ?? null, $utente);
@@ -196,11 +197,26 @@ class ActionInboxController extends Controller
         if ($this->eUnaSegnalazione($task)) {
             throw ValidationException::withMessages(['tipo' => CompitoDellaSegnalazione::FRASE_SOLO_RICORDAMELO]);
         }
+        $this->fattoNonPerIlMemo($task);
         $this->fattoSoloDopoLIncasso($task);
 
         $risposte->fattoDelCompito($task, null, $request->user());
 
         return back()->with('success', 'Task completato.');
+    }
+
+    /** La frase di «Fatto» sul compito di un memo «Da portare in assemblea». */
+    public const FRASE_MEMO_SENZA_FATTO = 'Questo compito non ha «Fatto»: si chiude quando il punto entra in un ordine del giorno. Se non serve più, scegli «Non serve più».';
+
+    /**
+     * Il compito del memo «Da portare in assemblea» non ha «Fatto» (il suo menu ha «Apri …», «Ricordamelo», «Non serve più»): si chiude quando il punto entra
+     * in un ordine del giorno, e il memo con la delibera. Se la rotta lo riceve, lo rifiuta con la frase.
+     */
+    private function fattoNonPerIlMemo(Evento $task): void
+    {
+        if (($task->meta['type'] ?? $task->tipo?->value) === \App\Services\Assemblee\MemoriaDelCondominio::TIPO_DEL_COMPITO) {
+            throw ValidationException::withMessages(['tipo' => self::FRASE_MEMO_SENZA_FATTO]);
+        }
     }
 
     /** Il compito di una segnalazione di guasto: si chiude con la segnalazione, e qui ha solo «Ricordamelo». */

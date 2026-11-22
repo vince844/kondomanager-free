@@ -25,6 +25,8 @@ final class SpazioDocumenti
     public function usatoByte(): int
     {
         $byte = (int) Documento::query()->sum('file_size');
+        // Le versioni di prima dei documenti sostituiti occupano spazio come gli altri file (1.12.0-beta.13, decisione 518 (4)).
+        $byte += VersioniDeiDocumenti::byteDelleVersioni();
 
         // La firma sta fuori dalla tabella: si aggiunge dal disco. Su S3 giù `exists()`/`size()`
         // sollevano: la somma della colonna resta esatta e la firma, pochi KB, si salta.

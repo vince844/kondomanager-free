@@ -5,8 +5,10 @@
 
 namespace App\Http\Controllers\Documenti\Utenti;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Events\Documenti\NotifyAdminOfCreatedDocumento;
 use App\Services\Documenti\ArchivioDocumenti;
+use App\Services\Documenti\VersioniDeiDocumenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
 use App\Http\Requests\Documento\Utenti\UpdateDocumentoRequest;
@@ -107,14 +109,14 @@ class DocumentoController extends Controller
                 'is_approved'  => $validated['is_approved'],
             ]);
 
-            $documento->categorie()->attach($validated['categorie']);
+            RegistroModifiche::legame($documento, 'categorie', 'Categorie', fn () => $documento->categorie()->attach($validated['categorie']), 'name');
 
-            $documento->condomini()->attach($validated['condomini_ids']);
+            RegistroModifiche::legame($documento, 'condomini', 'Condomini', fn () => $documento->condomini()->attach($validated['condomini_ids']));
 
             if ($validated['is_private']) {
                 
                 $anagrafica = $this->getUserAnagrafica();
-                $documento->anagrafiche()->attach($anagrafica);
+                RegistroModifiche::legame($documento, 'anagrafiche', 'Destinatari', fn () => $documento->anagrafiche()->attach($anagrafica));
             }
 
             DB::commit();
@@ -195,16 +197,9 @@ class DocumentoController extends Controller
 
             /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
-                // Delete old file if exists
-                app(ArchivioDocumenti::class)->elimina($documento->path);
-
-                $uploadedFile = $request->file('file');
-                $path = app(ArchivioDocumenti::class)->salva($uploadedFile);
-
-                // Update file related fields
-                $documento->path = $path;
-                $documento->mime_type = $uploadedFile->getClientMimeType();
-                $documento->file_size = $uploadedFile->getSize();
+                // 1.12.0-beta.13 (§9 del registro delle modifiche): come dall'archivio dello studio, il file nuovo si salva prima e il vecchio resta
+                // fra le versioni di prima; se la transazione cade, i file tornano com'erano.
+                app(VersioniDeiDocumenti::class)->sostituisci($documento, $request->file('file'));
             }
 
             $documento->update([
@@ -227,7 +222,7 @@ class DocumentoController extends Controller
             // nessun messaggio. È la ragione per cui la tendina multipla va anche qui, e non solo
             // nei moduli dell'amministratore.
             if (isset($validated['categorie'])) {
-                $documento->categorie()->sync($validated['categorie']);
+                RegistroModifiche::legame($documento, 'categorie', 'Categorie', fn () => $documento->categorie()->sync($validated['categorie']), 'name');
             }
 
             DB::commit();
@@ -259,11 +254,8 @@ class DocumentoController extends Controller
             // Start a transaction in case you need to roll back
             DB::beginTransaction();
 
-            // Delete the file from storage
-            app(ArchivioDocumenti::class)->elimina($documento->path);
-
-            // Delete the database record
-            $documento->delete();
+            // 1.12.0-beta.13 (§9, P21): il documento se ne va con le sue versioni di prima; i file si cancellano dopo il commit.
+            app(VersioniDeiDocumenti::class)->elimina($documento);
 
             DB::commit();
 

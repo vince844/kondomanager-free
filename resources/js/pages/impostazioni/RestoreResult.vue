@@ -12,7 +12,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 // dice che i dettagli si vedono qui dopo l'accesso (Coda 343).
 import { Head } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
-import { trans } from 'laravel-vue-i18n'
+import { trans, transChoice } from 'laravel-vue-i18n'
 import { CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Copy, ClipboardCheck } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -47,6 +47,32 @@ const reconfigure = computed(() => {
     items.push(trans('impostazioni.restore_result.reconfigure_backup_password'))
   }
   return items
+})
+
+// 1.12.0-beta.13 (decisione 546): che cosa è successo alle righe del registro delle modifiche. Le manda il server solo con il dettaglio
+// (`outcome.registro_modifiche`): righe rimesse e annullate, la copia senza registro, il PDF con il suo nome, o l'errore.
+const cifra = (n: number) => String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+const righeRegistro = computed(() => {
+  const r = props.restore?.outcome?.registro_modifiche
+  if (!r || typeof r !== 'object') return [] as string[]
+  const righe: string[] = []
+  if (r.errore) {
+    righe.push(trans('impostazioni.restore_result.registry_error', { errore: String(r.errore) }))
+    if (r.nome_pdf) righe.push(trans('impostazioni.restore_result.registry_error_pdf', { nome: String(r.nome_pdf) }))
+    else if (r.file_rimasto) righe.push(trans('impostazioni.restore_result.registry_error_file', { file: String(r.file_rimasto) }))
+    return righe
+  }
+  if (r.nome_pdf) {
+    righe.push(trans('impostazioni.restore_result.registry_pdf', { righe: cifra(Number(r.righe_nel_pdf ?? 0)), nome: String(r.nome_pdf) }))
+    return righe
+  }
+  const rimesse = Number(r.righe_rimesse ?? 0)
+  if (r.tutte) righe.push(transChoice('impostazioni.restore_result.registry_all_back', rimesse, { righe: cifra(rimesse) }))
+  else if (rimesse > 0) righe.push(transChoice('impostazioni.restore_result.registry_kept', rimesse, { righe: cifra(rimesse) }))
+  else if (r.righe_rimesse !== undefined) righe.push(trans('impostazioni.restore_result.registry_none_after'))
+  const oscuramenti = Number(r.oscuramenti_riapplicati ?? 0)
+  if (oscuramenti > 0) righe.push(transChoice('impostazioni.restore_result.registry_obscured', oscuramenti, { righe: cifra(oscuramenti) }))
+  return righe
 })
 
 // Log tecnico compatto da copiare e inviare all'assistenza
@@ -99,6 +125,14 @@ function copyLog() {
           </h2>
           <ul class="mt-2 space-y-1.5 pl-6 text-[13px] text-amber-800 list-disc">
             <li v-for="(item, i) in reconfigure" :key="i">{{ item }}</li>
+          </ul>
+        </div>
+
+        <!-- Il registro delle modifiche: le righe venute dopo la copia, o il PDF (decisione 546) -->
+        <div v-if="righeRegistro.length" class="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4" data-testid="registro-modifiche">
+          <h2 class="text-sm font-semibold text-slate-800">{{ trans('impostazioni.restore_result.registry_heading') }}</h2>
+          <ul class="mt-2 space-y-1.5 text-[13px] text-slate-700">
+            <li v-for="(riga, i) in righeRegistro" :key="i">{{ riga }}</li>
           </ul>
         </div>
 

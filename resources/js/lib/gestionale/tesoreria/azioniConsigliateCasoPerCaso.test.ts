@@ -124,15 +124,16 @@ describe('A — il recupero', () => {
     test('(a)(c) la cifra esatta che basta: una persona con € 500,00 di rate scadute', () => {
         const a = una(azioniConsigliate(buco, rec([['Rossi', 50000]], 50000)), 'recupero');
         expect(a?.titolo).toBe('Recupera almeno € 500,00 delle rate scadute entro il 19/11');
-        expect(testoDiPezzi(a!.frase)).toBe('È quanto manca il 20/11 per non andare sotto zero. Basta una persona: Rossi, int. 1, ha € 500,00 di rate scadute e nessuna lettera.');
+        expect(testoDiPezzi(a!.frase)).toBe('È quanto manca il 20/11 per non andare sotto zero. Basta una persona:');
+        expect(a?.tabella?.righe).toEqual([{ anagraficaId: 1, nome: 'Rossi', unita: 'Int. 1', cifra: 50000, lettera: null }]);
         expect(a?.pulsante).toEqual({ testo: 'Manda un sollecito', tipo: 'lettera', persone: [{ id: 1, nome: 'Rossi' }] });
         expect(a?.secondo).toEqual({ testo: 'Registra gli incassi', tipo: 'incassi' });
     });
     test('(c) un centesimo in meno: «da solo non basta», il conto va sotto zero il 20/11 fino a −€ 0,01', () => {
         const a = una(azioniConsigliate(buco, rec([['Rossi', 49999]], 50000)), 'recupero');
         expect(a?.titolo).toBe('Recupera tutte le rate scadute, € 499,99, entro il 19/11');
-        expect(testoDiPezzi(a!.frase)).toBe('Da solo non basta: anche con tutte le rate scadute il conto va sotto zero il 20/11, fino a −€ 0,01. Le rate scadute sono di una persona: '
-            + 'Rossi, int. 1, ha € 499,99 di rate scadute e nessuna lettera.');
+        expect(testoDiPezzi(a!.frase)).toBe('Da solo non basta: anche con tutte le rate scadute il conto va sotto zero il 20/11, fino a −€ 0,01. Le rate scadute sono di una persona:');
+        expect(a?.tabella?.righe.map((r) => r.cifra)).toEqual([49999]);
     });
     test('(c) un centesimo in più: basta, e la cifra resta € 500,00', () => {
         expect(una(azioniConsigliate(buco, rec([['Rossi', 50001]], 50000)), 'recupero')?.titolo).toBe('Recupera almeno € 500,00 delle rate scadute entro il 19/11');
@@ -158,13 +159,14 @@ describe('A — il recupero', () => {
         expect(a?.pulsante.tipo).toBe('lettera');
         expect(a?.pulsante.testo).toBe('Manda i solleciti');
     });
-    test('(g) più di 8 persone: «Apri le rate scadute», le prime 5 nella frase e le altre contate', () => {
+    test('(g) più di 8 persone: «Apri le rate scadute», le prime 5 nella tabella e le altre contate', () => {
         // Nove persone da € 100,00; buco € 900,00: servono tutte e nove.
         const r = rec(Array.from({ length: 9 }, (_, i) => [`P${i + 1}`, 10000] as [string, number]), 90000);
         const a = una(azioniConsigliate(sp({ saldo0: 0, uscite: { 3: 90000 } }), r), 'recupero');
         expect(a?.pulsante).toEqual({ testo: 'Apri le rate scadute', tipo: 'rate_scadute' });
-        expect(testoDiPezzi(a!.frase)).toContain('Servono 9 persone: le 5 con più rate scadute sono ');
-        expect(testoDiPezzi(a!.frase)).toContain('; e altre 4 persone, € 400,00.');
+        expect(testoDiPezzi(a!.frase)).toMatch(/ Servono 9 persone:$/);
+        expect(a?.tabella?.righe).toHaveLength(5);
+        expect(a?.tabella?.altre).toEqual({ quante: 4, cifra: 40000 });
     });
 });
 

@@ -80,4 +80,17 @@ return [
     */
     'container' => filter_var(env('KM_CONTAINER', false), FILTER_VALIDATE_BOOL),
 
+    /*
+    |--------------------------------------------------------------------------
+    | La posta la prepara chi gestisce l'installazione?
+    |--------------------------------------------------------------------------
+    |
+    | `POSTA_DELL_INSTALLAZIONE=1` quando la posta normale (avvisi di rata, solleciti, ricevute,
+    | comunicazioni) parte da un servizio di invio preparato da chi gestisce l'installazione, con
+    | le chiavi nel `.env`. La pagina «Configurazione email» mostra allora la posta dello studio di
+    | sola lettura, e il suo salvataggio e la sua prova rispondono 403. La casella PEC dello studio
+    | non cambia: la imposta sempre lo studio. Di serie spenta: la pagina è quella di sempre.
+    */
+    'posta_dell_installazione' => filter_var(env('POSTA_DELL_INSTALLAZIONE', false), FILTER_VALIDATE_BOOL),
+
 ];

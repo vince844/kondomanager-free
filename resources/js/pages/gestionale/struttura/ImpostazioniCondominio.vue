@@ -11,6 +11,11 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * con un esempio che cosa succede con l'interruttore com'è, e cambia appena lo si muove, prima di salvare; «di serie» compare solo lì. «Salva» manda le due
  * scelte insieme, e si accende quando qualcosa cambia. Chi non modifica il condominio vede gli interruttori, fermi. Il pulsante «Guida» dell'intestazione apre
  * la guida della pagina nel cassetto laterale.
+ *
+ * La sezione «Le assemblee»: «Una testa sola per chi ha anche una comproprietà», spento di serie (due teste: le comunioni nate da titoli diversi restano
+ * distinte anche nell'assemblea; acceso è la scelta del condominio con una regola sua), con la riga
+ * «Adesso: …» che il server scrive con un esempio vero del condominio per le due posizioni; ferma mentre un'assemblea è in corso. Ha il suo «Salva», con la
+ * sua rotta.
  */
 import { computed, ref } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
@@ -29,12 +34,18 @@ import type { Building } from '@/types/buildings';
 import type { Flash } from '@/types/flash';
 
 interface Impostazioni { recupero_salita: 'avanti' | 'ricomincia'; recupero_suggerisce_azione: boolean }
+/** Le teste nel caso misto: la scelta, il perché è ferma, la riga «Adesso» per le due posizioni. */
+interface Assemblee { teste: 'una_testa' | 'due_teste'; ferma: string | null; adesso: { una_testa: string; due_teste: string } }
 
 const props = defineProps<{
     condominio: Building; condomini: Building[]; esercizio: any;
     impostazioni: Impostazioni;
+    /** La riga delle impostazioni, per la «Storia» (1.12.0-beta.13): vuota finché non sono state salvate la prima volta. */
+    impostazioni_id?: number | null;
     /** Chi modifica il condominio salva; gli altri vedono. */
     puo_modificare: boolean;
+    /** La sezione «Le assemblee». */
+    assemblee?: Assemblee;
 }>();
 
 const { generateRoute, generatePath } = usePermission();
@@ -91,6 +102,22 @@ function salva() {
     });
 }
 
+// Le assemblee: una testa o due teste nel caso misto, la scelta del condominio.
+const unaTesta = ref(props.assemblee?.teste === 'una_testa');
+const testeCambiate = computed(() => props.assemblee !== undefined && unaTesta.value !== (props.assemblee.teste === 'una_testa'));
+const testeFerme = computed(() => !props.puo_modificare || !!props.assemblee?.ferma);
+const testeInCorso = ref(false);
+const ESEMPIO_TESTE = 'Per esempio: Moretti Franco ha l\'Int. 11 da solo e l\'Int. 10 a metà con Moretti Elisa. Due teste, di serie: Franco per l\'Int. 11, e l\'Int. 10 a parte; una testa: contano una volta, con le due unità.';
+const adessoDelleTeste = computed(() => (!props.assemblee ? '' : unaTesta.value ? props.assemblee.adesso.una_testa : `${props.assemblee.adesso.due_teste} Di serie.`));
+function salvaLeTeste() {
+    if (!testeCambiate.value || testeInCorso.value || testeFerme.value) return;
+    testeInCorso.value = true;
+    router.patch(route(generateRoute('gestionale.assemblee.teste'), { condominio: props.condominio.id }), { assemblee_teste: unaTesta.value ? 'una_testa' : 'due_teste' }, {
+        preserveScroll: true,
+        onFinish: () => { testeInCorso.value = false; },
+    });
+}
+
 // La guida che si apre di lato dal pulsante «Guida» dell'intestazione, come nelle altre pagine.
 const mostraGuida = ref(false);
 
@@ -113,6 +140,7 @@ const breadcrumbs = computed(() => [
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-4">
             <PageHeaderGuide
+                :storia="props.impostazioni_id ? { tipo: 'impostazioni_condominio', id: props.impostazioni_id } : null"
                 page-title="Impostazioni del condominio"
                 page-subtitle="Le scelte che valgono solo per questo condominio. Decidono che cosa il programma ti suggerisce: da solo non manda niente."
                 :guides="pageGuides"
@@ -179,6 +207,46 @@ const breadcrumbs = computed(() => [
                                 </p>
                                 <Button v-if="puo_modificare" size="sm" class="h-9 w-full sm:w-auto" :disabled="!cambiate || inCorso" data-testid="salva" @click="salva">
                                     <Loader2 v-if="inCorso" class="mr-1 h-4 w-4 animate-spin" /> Salva
+                                </Button>
+                            </div>
+                        </section>
+
+                        <!-- Le assemblee: le teste nel caso misto -->
+                        <section v-if="assemblee" class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm p-6 lg:p-8 text-sm" data-testid="sezione-assemblee">
+                            <h3 class="text-base font-bold text-slate-900 dark:text-white">Le assemblee</h3>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">Come la sala conta le teste di questo condominio. Vale solo qui.</p>
+                            <div class="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4 dark:border-slate-800" data-testid="riga-teste">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                        <label for="interruttore-teste" class="block text-sm font-medium leading-none text-slate-900 dark:text-white" data-testid="titolo-teste">Una testa sola per chi ha anche una comproprietà</label>
+                                        <TooltipProvider :delay-duration="200">
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <span tabindex="0" role="img" :aria-label="ESEMPIO_TESTE" data-testid="info-teste"
+                                                        class="inline-flex items-center text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 cursor-help rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
+                                                        <Info class="w-3.5 h-3.5" />
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent class="max-w-80 text-xs leading-snug"><p>{{ ESEMPIO_TESTE }}</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
+                                    <p class="text-sm text-muted-foreground">Spento, di serie: due teste, la persona per le sue unità e l'unità in comproprietà a parte. Acceso: una testa.</p>
+                                    <p class="mt-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-xs leading-snug text-slate-700 dark:bg-slate-800/50 dark:text-slate-300" data-testid="adesso-teste">{{ adessoDelleTeste }}</p>
+                                    <p v-if="assemblee.ferma" class="mt-2 text-xs text-amber-800 dark:text-amber-300" data-testid="ferma-teste">{{ assemblee.ferma }} La sala conta con la regola fermata all'apertura.</p>
+                                </div>
+                                <Switch id="interruttore-teste" v-model="unaTesta" :disabled="testeFerme" data-testid="interruttore-teste" />
+                            </div>
+                            <ul class="mt-4 list-disc space-y-0.5 pl-4 text-xs text-slate-600 dark:text-slate-400" data-testid="da-sapere">
+                                <li>Le comunioni nate da titoli diversi restano distinte anche nell'assemblea: chi ha un'unità da solo e un'altra in comproprietà conta due volte, una per titolo.</li>
+                                <li>Una persona, una testa (Cass. 25558/2020); un'unità in comproprietà, un rappresentante (art. 67 c. 2 disp. att.).</li>
+                                <li>Di serie due teste. Se il regolamento del condominio ha una regola sua, una testa sola, accendi l'interruttore.</li>
+                                <li>Il cambio resta nel registro delle modifiche.</li>
+                            </ul>
+                            <div class="mt-6 flex flex-col gap-2 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                                <p class="text-xs text-slate-500 dark:text-slate-400">Vale solo per questo condominio, da quando salvi.</p>
+                                <Button v-if="puo_modificare" size="sm" class="h-9 w-full sm:w-auto" :disabled="!testeCambiate || testeInCorso || testeFerme" data-testid="salva-teste" @click="salvaLeTeste">
+                                    <Loader2 v-if="testeInCorso" class="mr-1 h-4 w-4 animate-spin" /> Salva
                                 </Button>
                             </div>
                         </section>

@@ -10,6 +10,8 @@ use Illuminate\Validation\Rule;
 
 class UpdateCassaRequest extends FormRequest
 {
+    use DeliberaDellaDeroga;
+
     public function authorize(): bool
     {
         return true;
@@ -70,6 +72,8 @@ class UpdateCassaRequest extends FormRequest
                     $this->input('is_override_assemblea') === true
                 )
             ],
+            // La delibera dello sblocco, scelta con «Scegli la delibera»: la sua frase va in testa alla motivazione.
+            'delibera_id' => ['nullable', 'integer'],
         ];
     }
 

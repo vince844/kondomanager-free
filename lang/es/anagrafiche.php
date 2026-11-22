@@ -148,5 +148,6 @@ return [
         'building_link_desc'     => 'Link contacts to their respective buildings to simplify successions and unit assignments.',
         'fiscal_data_title'      => 'Fiscal Data & Documents',
         'fiscal_data_desc'       => 'Keep tax codes and ID documents up to date to ensure compliance for all procedures and invoices.',
+        'come_si_convoca_desc'   => 'En «Come si convoca» eliges cómo se convoca a la persona a las asambleas (PEC, carta certificada, en mano, fax): vacío, lo propone el programa a partir de los datos. El correo simple no vale.',
     ],
 ];

@@ -203,6 +203,12 @@ class ScalaController extends Controller
      */
     public function destroy(Condominio $condominio, Scala $scala): RedirectResponse
     {
+        // R15 del progetto della tappa 2: usata da un'assemblea o da un punto dell'ordine del giorno, non si elimina (la chiave non cancella in cascata).
+        $usata = \App\Services\Assemblee\GuardieDiCancellazione::perLaScala($scala);
+        if ($usata !== null) {
+            return back()->with($this->flashError($usata));
+        }
+
         try {
             $scala->delete();
 

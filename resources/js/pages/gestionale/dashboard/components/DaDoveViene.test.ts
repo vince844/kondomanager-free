@@ -8,6 +8,8 @@
  * tipo in un badge `rounded-md`, «Tutto il denaro», i fondi vincolati come righe tolte («vincolato, non disponibile»), la cifra della casella; ciò che non è
  * nella cifra (i movimenti dopo oggi); la frase sull'estratto conto; il saldo della banca scritto nella nota; «Vedi i movimenti →» per ogni cassa.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 
@@ -45,6 +47,23 @@ describe('«Da dove viene»', () => {
         expect(w.get('[data-testid="riga-tolta"]').classes().join(' ')).toContain('text-rose-700');
         expect(dueColonne('[data-testid="disponibile-oggi"]')).toEqual(['Disponibile oggi', '€ 4.480,38']);
         expect(w.text()).toContain('I fondi sono parti del conto corrente: l\'estratto della banca li comprende.');
+    });
+
+    test('il tipo del fondo e «Vedi i movimenti» sulla stessa riga; «vincolato, non disponibile» sotto il nome del fondo tolto', () => {
+        const w = monta();
+        const fondo = w.findAll('[data-testid="riga-denaro"]').find((r) => r.find('[data-testid="tipo-fondo"]').exists())!;
+        const riga = fondo.get('[data-testid="tipo-e-movimenti"]');
+        expect(riga.classes()).toEqual(expect.arrayContaining(['flex', 'flex-wrap']));
+        expect(riga.find('[data-testid="tipo-fondo"]').exists()).toBe(true);
+        expect(riga.find('a').text()).toBe('Vedi i movimenti →');
+        expect(w.get('[data-testid="riga-tolta"] [data-testid="nota-tolta"]').classes()).toContain('block');
+    });
+
+    test('il pannello è largo 26rem e all\'apertura non mette il fuoco sul primo collegamento', () => {
+        const widget = readFileSync(resolve(process.cwd(), 'resources/js/pages/gestionale/dashboard/components/TreasuryGuardianWidget.vue'), 'utf8');
+        const pannello = widget.slice(widget.indexOf('<PopoverContent'), widget.indexOf('<DaDoveViene'));
+        expect(pannello).toContain('w-[26rem]');
+        expect(pannello).toContain('@open-auto-focus.prevent');
     });
 
     test('i tipi dei fondi sono badge con gli angoli `rounded-md`', () => {

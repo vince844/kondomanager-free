@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Inviti;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Inviti\InvitoResource;
 use App\Models\Condominio;
@@ -122,6 +123,7 @@ class InvitoController extends Controller
                 ]);
 
                 $invito->notify(new InviteUserNotification($invito));
+                AttiSulleUtenze::invito($invito, 'Invito mandato');
 
             }
 
@@ -166,7 +168,10 @@ class InvitoController extends Controller
 
         try {
 
-            $inviti->delete();
+            \Illuminate\Support\Facades\DB::transaction(function () use ($inviti) {
+                AttiSulleUtenze::invito($inviti, 'Invito revocato');
+                $inviti->delete();
+            });
 
             return back()->with(
                 $this->flashSuccess(__('users.success_delete_user_invite'))

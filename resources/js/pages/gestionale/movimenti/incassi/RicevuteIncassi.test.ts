@@ -193,7 +193,7 @@ describe('chi riceve che cosa', () => {
         await monta();
         await apriIlBlocco('invio', anteprima());
 
-        expect(testo()).toMatch(/Partiranno: 3 persone, 3 ricevute, a 3 indirizzi/);
+        expect(testo()).toContain('Partono 3 email a 3 persone, 3 ricevute.');
         await clic('Mostra chi riceve che cosa');
         expect(testo()).toContain('Anna Bruni — Primaria: anna@esempio.it');
         expect(testo()).toContain('n. INC-2');
@@ -203,7 +203,7 @@ describe('chi riceve che cosa', () => {
         expect(caselle).toHaveLength(3);
         caselle[1].click();
         await flushPromises();
-        expect(testo()).toMatch(/Partiranno: 2 persone, 2 ricevute, a 2 indirizzi/);
+        expect(testo()).toContain('Partono 2 email a 2 persone, 2 ricevute.');
         expect(testo()).toContain('1 persona tolta');
 
         axiosPost.mockResolvedValueOnce({ data: { persone: 2, ricevute: 2, messaggi: 2, inviate: 0, in_coda: 2, non_partite: 0, senza_indirizzo: 0, senza_indirizzo_incassi: [], senza_indirizzo_persone: [], restanti: null, errori: [] } });
@@ -265,7 +265,7 @@ describe('la nota e il bollo', () => {
         const gruppo = document.body.querySelector('[data-testid="scelta-bollo"]') as HTMLElement;
         const [titolo, dato] = [...gruppo.firstElementChild!.children];
         expect(titolo.textContent).toBe('Imposta di bollo');
-        expect(dato.textContent).toBe('Ricevute sopra € 77,47 (3)');
+        expect(dato.textContent).toBe('3 ricevute sopra € 77,47');
         expect(gruppo.querySelector('[role="radiogroup"]')!.getAttribute('aria-label')).toBe('Imposta di bollo, ricevute sopra € 77,47 (3)');
         expect(testo()).not.toMatch(/di norma|scontano il bollo|€\s?2,00|da confermare|è una lettura|solo denaro versato|non lo assolve\. Lo stato/i);
     });
@@ -323,7 +323,7 @@ describe('dopo «Invia le altre»', () => {
         await clic('Invia le altre');
 
         expect(testo()).toContain('Ugo Neri: senza indirizzo.');
-        expect(pulsante('Stampa le 1 senza indirizzo')).toBeDefined();
+        expect(pulsante('Stampa la ricevuta per la posta')).toBeDefined();
     });
 });
 
@@ -516,12 +516,12 @@ describe('il bollo in blocco: quattro pulsanti per gruppo', () => {
             expect(titolo.textContent).toBe('Imposta di bollo');
             expect(dato.classList.contains('text-muted-foreground')).toBe(true);
             expect([...g.querySelectorAll('[role="radio"]')].map((r) => (r.textContent ?? '').trim()))
-                .toEqual(['Non dovuta', 'Da assolvere', 'Assolta: contrassegno', 'Assolta: virtuale']);
+                .toEqual(['Non dovuta', 'Da assolvere', 'Contrassegno', 'Virtuale']);
             expect(g.querySelector('[role="radiogroup"]')!.className).toBe(sopra.querySelector('[role="radiogroup"]')!.className);
             expect(g.querySelector('svg')).toBeNull();
         }
-        expect(sopra.firstElementChild!.children[1].textContent).toBe('Ricevute sopra € 77,47 (3)');
-        expect(sotto.firstElementChild!.children[1].textContent).toBe('Ricevute fino a € 77,47 (2)');
+        expect(sopra.firstElementChild!.children[1].textContent).toBe('3 ricevute sopra € 77,47');
+        expect(sotto.firstElementChild!.children[1].textContent).toBe('2 ricevute fino a € 77,47');
         expect(sopra.querySelector('[role="radiogroup"]')!.getAttribute('aria-label')).toBe('Imposta di bollo, ricevute sopra € 77,47 (3)');
         expect(sotto.querySelector('[role="radiogroup"]')!.getAttribute('aria-label')).toBe('Imposta di bollo, ricevute fino a € 77,47 (2)');
         // La frase generica una volta, dentro il primo gruppo.
@@ -529,7 +529,7 @@ describe('il bollo in blocco: quattro pulsanti per gruppo', () => {
         expect(sopra.textContent).toContain(FRASE_BOLLO);
         expect(sotto.textContent).not.toContain(FRASE_BOLLO);
         // La scelta ricordata: sopra «Assolta: virtuale», sotto «Non dovuta».
-        expect(accesi(sopra)).toEqual(['Assolta: virtuale']);
+        expect(accesi(sopra)).toEqual(['Virtuale']);
         expect(accesi(sotto)).toEqual(['Non dovuta']);
         // Né i cerchietti con le etichette accanto, né «Come:».
         expect(testo()).not.toContain('Come:');
@@ -541,7 +541,7 @@ describe('il bollo in blocco: quattro pulsanti per gruppo', () => {
         await apriIlBlocco('invio', anteprima({ ricevute: 2, sopra_soglia: 0, sotto_soglia: 2 }));
 
         expect(gruppi()).toHaveLength(1);
-        expect(gruppi()[0].firstElementChild!.children[1].textContent).toBe('Ricevute fino a € 77,47 (2)');
+        expect(gruppi()[0].firstElementChild!.children[1].textContent).toBe('2 ricevute fino a € 77,47');
         expect(gruppi()[0].textContent).toContain(FRASE_BOLLO);
         expect(testo().split(FRASE_BOLLO).length - 1).toBe(1);
     });
@@ -553,7 +553,7 @@ describe('il bollo in blocco: quattro pulsanti per gruppo', () => {
 
         await scegli(sotto, 'da_assolvere');
         expect(accesi(sotto)).toEqual(['Da assolvere']);
-        expect(accesi(sopra)).toEqual(['Assolta: virtuale']);
+        expect(accesi(sopra)).toEqual(['Virtuale']);
         expect(await invia()).toMatchObject({ bollo_sopra: 'assolta', bollo_sotto: 'da_assolvere', modo_bollo: 'virtuale', estremi_bollo: 'aut. 1' });
     });
 
@@ -588,8 +588,8 @@ describe('il bollo in blocco: quattro pulsanti per gruppo', () => {
         await scegli(sotto, 'assolta_virtuale');
         expect(testo()).toContain(NOTA_MODO_UNICO);
         await scegli(sotto, 'assolta_contrassegno');
-        expect(accesi(sotto)).toEqual(['Assolta: contrassegno']);
-        expect(accesi(sopra)).toEqual(['Assolta: contrassegno']);
+        expect(accesi(sotto)).toEqual(['Contrassegno']);
+        expect(accesi(sopra)).toEqual(['Contrassegno']);
 
         await scegli(sotto, 'non_dovuta');
         expect(testo()).not.toContain(NOTA_MODO_UNICO);
@@ -1529,7 +1529,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             expect(rigaDiPrima()?.textContent?.trim()).toBe(frase);
             expect(inPagina()).toBe(frase);
             expect(anteprimeChieste() - prima).toBe(1);
-            expect(dentro()).toContain('Partiranno: 3 persone');
+            expect(dentro()).toContain('Partono 3 email a 3 persone');
             expect(pulsante('Invia')?.disabled).toBe(true);
             // La finestra nuova è costruita su quella scelta: la scelta resta.
             expect(testo()).toContain('2 selezionate su 2 con questi filtri');
@@ -1626,7 +1626,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             expect(senzaVarianteScura(document.body.querySelector('[role="dialog"]')!)).toEqual([]);
         });
 
-        test('«Stampa le senza indirizzo» è fermo mentre la finestra riaperta rilegge il registro: la sua lista è quella di prima', async () => {
+        test('«Stampa la ricevuta per la posta» (chi è senza indirizzo) è fermo mentre la finestra riaperta rilegge il registro: la sua lista è quella di prima', async () => {
             const senza = () => anteprima({ senza_indirizzo: { ricevute: 1, incassi: [3], persone: ['Dina Rossi'] } });
             await monta();
             await apriIlBlocco('invio', senza());
@@ -1638,12 +1638,12 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             viaggio.arriva({ data: esitoInvio });
             await flushPromises();
 
-            expect(pulsante('Stampa le 1 senza indirizzo')?.disabled).toBe(true);
+            expect(pulsante('Stampa la ricevuta per la posta')?.disabled).toBe(true);
 
             nuova.arriva({ data: senza() });
             await flushPromises();
 
-            expect(pulsante('Stampa le 1 senza indirizzo')?.disabled).toBe(false);
+            expect(pulsante('Stampa la ricevuta per la posta')?.disabled).toBe(false);
         });
 
         test('l\'esito che arriva a finestra chiusa si legge in testa alla pagina, con quello che resta da mandare; la scelta delle righe si toglie, come nella stessa finestra', async () => {
@@ -1831,7 +1831,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
             await flushPromises();
 
             expect(dentro()).not.toContain('Non è stato possibile preparare l\'anteprima');
-            expect(dentro()).toContain('Partiranno: 3 persone');
+            expect(dentro()).toContain('Partono 3 email a 3 persone');
         });
     });
 
@@ -1872,7 +1872,7 @@ describe('la finestra del blocco chiusa e riaperta mentre una richiesta viaggia'
                 await flushPromises();
 
                 expect(inPagina()).toBe(frase);
-                expect(dentro()).toContain('Partiranno: 3 persone');
+                expect(dentro()).toContain('Partono 3 email a 3 persone');
                 expect(dentro()).not.toContain(frase);
                 await chiudi();
             }
@@ -2107,5 +2107,59 @@ describe('dopo una stampa la scelta delle righe si toglie, come dopo l\'invio', 
         await clic('Stampa l\'ultima');
         expect(testo()).toContain('Non è stato possibile stampare le ricevute');
         expect(conteggio()).toBe('2 selezionate su 2 con questi filtri');
+    });
+});
+
+describe('la finestra dell\'invio in blocco nella forma delle finestre', () => {
+    const finestra = () => document.body.querySelector('[role="dialog"]') as HTMLElement;
+    const riepilogo = () => document.body.querySelector('[data-testid="riepilogo"]') as HTMLElement;
+
+    test('ancorata in alto; i gruppi con il titolo piccolo; il bollo a barra; il riepilogo e i pulsanti fissi nel piede', async () => {
+        await monta();
+        await apriIlBlocco('invio', anteprima({ indirizzi_per_tipo: { email: 3, email_secondaria: 1, pec: 0 } }));
+        expect(finestra().className).toContain('top-[5vh]');
+        expect(finestra().className).toContain('translate-y-0');
+        expect([...finestra().querySelectorAll('[data-testid="titolo-gruppo"]')].map((t) => t.textContent!.trim())).toEqual(['La ricevuta', 'A quali indirizzi', 'Chi riceve che cosa']);
+        expect(finestra().querySelector('[data-testid="scelta-bollo"]')!.getAttribute('data-forma')).toBe('barra');
+        const piede = finestra().querySelector('[data-testid="piede-finestra"]') as HTMLElement;
+        expect(piede.contains(riepilogo())).toBe(true);
+        expect([...piede.querySelectorAll('button')].map((b) => b.textContent!.trim())).toEqual(['Chiudi', 'Mandane una a me', 'Invia']);
+        expect(riepilogo().textContent!.replace(/\s+/g, ' ').trim()).toBe('Partono 3 email a 3 persone, 3 ricevute.');
+    });
+
+    test('gli indirizzi sono pulsanti con quante persone raggiungono; togliere un tipo non aggiunge righe: il segno dell\'aggiornamento è nel riepilogo', async () => {
+        await monta();
+        await apriIlBlocco('invio', anteprima({ indirizzi_per_tipo: { email: 3, email_secondaria: 1, pec: 0 } }));
+        const tipi = () => [...finestra().querySelectorAll('[data-testid="tipo-indirizzo"]')] as HTMLElement[];
+        expect(tipi().map((t) => [...t.querySelectorAll(':scope > span')].map((x) => x.textContent!.trim()).join(' '))).toEqual(['Primaria 3 persone', 'Secondaria 1 persona', 'PEC nessuno']);
+        expect(tipi()[0].getAttribute('data-acceso')).toBe('si');
+
+        let arriva: (v: unknown) => void = () => {};
+        axiosPost.mockReturnValueOnce(new Promise((r) => { arriva = r; }));
+        (tipi()[1].querySelector('[role="checkbox"]') as HTMLElement).click();
+        await flushPromises();
+        // L'anteprima nuova è in viaggio: il segno è dentro il riepilogo, «Invia» è fermo, e nessuna riga è comparsa nel corpo.
+        expect(riepilogo().querySelector('[data-testid="aggiorno"]')).not.toBeNull();
+        expect(finestra().querySelector('[data-testid="corpo-finestra"] .animate-spin')).toBeNull();
+        expect(pulsante('Invia')?.disabled).toBe(true);
+        arriva({ data: anteprima({ indirizzi_per_tipo: { email: 3, email_secondaria: 1, pec: 0 } }) });
+        await flushPromises();
+        expect(riepilogo().querySelector('[data-testid="aggiorno"]')).toBeNull();
+    });
+
+    test('senza indirizzi scelti il riepilogo lo dice, e chi resta fuori ha il riquadro con la stampa per la posta', async () => {
+        await monta();
+        await apriIlBlocco('invio', anteprima({ persone: [], email: { persone: 0, ricevute: 0, indirizzi: 0, messaggi: 0, messaggi_adesso: 0 },
+            senza_indirizzo: { ricevute: 1, incassi: [7], persone: ['Cecilia Angeli'] }, indirizzi_per_tipo: { email: 1, email_secondaria: 1, pec: 0 } }));
+        // Di serie sono spuntate la primaria e la secondaria: si tolgono tutte e due.
+        for (const i of [0, 1]) {
+            axiosPost.mockResolvedValueOnce({ data: anteprima({ persone: [], senza_indirizzo: { ricevute: 1, incassi: [7], persone: ['Cecilia Angeli'] } }) });
+            (finestra().querySelectorAll('[data-testid="tipo-indirizzo"] [role="checkbox"]')[i] as HTMLElement).click();
+            await flushPromises();
+        }
+        expect(riepilogo().textContent).toContain('Nessun indirizzo scelto: spunta almeno un indirizzo.');
+        const fuori = finestra().querySelector('[data-testid="senza-indirizzo"]') as HTMLElement;
+        expect(fuori.textContent).toContain('Senza un indirizzo fra quelli scelti: Cecilia Angeli.');
+        expect(fuori.textContent).toContain('Stampa la ricevuta per la posta');
     });
 });

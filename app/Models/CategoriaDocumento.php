@@ -6,9 +6,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
 
 class CategoriaDocumento extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'categorie_documento';
 
     /**
@@ -26,6 +29,9 @@ class CategoriaDocumento extends Model
 
     /** Le chiavi stabili in uso. Aggiungerne una qui significa che il codice la cerca. */
     public const SLUG_FATTURE = 'fatture';
+
+    /** I PDF caricati da un punto dell'ordine del giorno, nel passo «Documenti» dell'assemblea. */
+    public const SLUG_ASSEMBLEE = 'assemblee';
 
     /**
      * I documenti di questa categoria — dalla 1.11.0-beta.10 il legame è **molti a molti**.
@@ -69,5 +75,22 @@ class CategoriaDocumento extends Model
     {
         return static::where('slug', self::SLUG_FATTURE)->first()
             ?? static::where('name', 'Fatture')->first();
+    }
+
+    /**
+     * La categoria dei PDF caricati dai punti dell'assemblea: per chiave stabile, poi per etichetta (quella scritta dall'amministratore si usa e prende la
+     * chiave), e se non c'è nasce «Assemblee». Come {@see perFatture()}, l'etichetta resta libera: rinominarla non ne fa nascere un'altra.
+     */
+    public static function perLeAssemblee(): self
+    {
+        $categoria = static::where('slug', self::SLUG_ASSEMBLEE)->first() ?? static::where('name', 'Assemblee')->whereNull('slug')->orderBy('id')->first();
+        if ($categoria === null) {
+            $categoria = static::create(['name' => 'Assemblee', 'description' => 'I documenti dei punti delle assemblee, caricati dal passo «Documenti».']);
+        }
+        if ($categoria->getAttribute('slug') === null) {
+            $categoria->forceFill(['slug' => self::SLUG_ASSEMBLEE])->saveQuietly();
+        }
+
+        return $categoria;
     }
 }

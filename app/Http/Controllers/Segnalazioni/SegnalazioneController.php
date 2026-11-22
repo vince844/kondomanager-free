@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Segnalazioni;
 
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Events\Notifiche\DestinatariDaAvvisare;
 use App\Events\Segnalazioni\NotifyUserOfApprovedSegnalazione;
 use App\Events\Segnalazioni\NotifyUserOfCreatedSegnalazione;
@@ -170,7 +171,7 @@ class SegnalazioneController extends Controller
             $segnalazione = Segnalazione::create(Arr::except($validated, ['assigned_to']));
 
             if (!empty($validated['anagrafiche'])) {
-                $segnalazione->anagrafiche()->attach($validated['anagrafiche']);
+                RegistroModifiche::legame($segnalazione, 'anagrafiche', 'Persone', fn () => $segnalazione->anagrafiche()->attach($validated['anagrafiche']));
             }
 
             if ($request->hasFile('allegati')) {
@@ -343,7 +344,7 @@ class SegnalazioneController extends Controller
             // toccare», la stessa regola delle categorie dei documenti). La chiave presente e vuota
             // vuol dire «nessuno».
             if (array_key_exists('anagrafiche', $validated)) {
-                $segnalazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+                RegistroModifiche::legame($segnalazione, 'anagrafiche', 'Persone', fn () => $segnalazione->anagrafiche()->sync($validated['anagrafiche'] ?? []));
             }
 
             DB::commit();

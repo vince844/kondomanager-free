@@ -29,7 +29,8 @@ defineEmits(['update:open']);
             <SheetTitle class="text-2xl font-extrabold tracking-tight">Guida: fatture passive</SheetTitle>
           </div>
           <SheetDescription class="text-base text-slate-600 dark:text-slate-400">
-            Cosa entra in questo elenco e cosa no, come si legge una riga, e la domanda che arriva prima o poi a tutti: ho sbagliato una fattura, la elimino o la storno?
+            Cosa entra in questo elenco e cosa no, come si legge una riga, la domanda che arriva prima o poi a tutti (ho sbagliato una fattura, la elimino o la
+            storno?) e i tre pulsanti della ratifica sulla pagina di una fattura.
           </SheetDescription>
         </SheetHeader>
 
@@ -64,7 +65,7 @@ defineEmits(['update:open']);
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span>Il badge <span class="inline-flex items-center bg-cyan-50 text-cyan-600 border border-cyan-200 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded">Ritenuta</span> segnala una fattura <strong>soggetta a ritenuta d'acconto</strong>: dalla cassa esce il netto, la ritenuta resta a debito verso l'Erario finché non la versi con l'F24.</span>
+                  <span>Il badge <span class="inline-flex items-center bg-cyan-50 text-cyan-600 border border-cyan-200 text-xs font-black uppercase tracking-wider px-1.5 py-0.5 rounded">Ritenuta</span> segnala una fattura <strong>soggetta a ritenuta d'acconto</strong>: dalla cassa esce il netto, la ritenuta resta a debito verso l'Erario finché non la versi con l'F24.</span>
                 </li>
                 <li class="flex gap-2">
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
@@ -85,7 +86,7 @@ defineEmits(['update:open']);
             <div class="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex gap-3 text-[13px]">
               <TriangleAlert class="w-5 h-5 text-amber-600 shrink-0" />
               <div>
-                <strong>Registrare non è deliberare.</strong> Uno sforo va portato in assemblea (art. 1135 c.c.): finché non lo si ratifica dal menu della riga («Ratifica assembleare»), la fattura resta nel contatore <em>Da ratificare</em> in cima alla pagina. La motivazione resta scritta con la fattura, e il rendiconto non la stampa: in assemblea la porti tu. Vale la pena scriverla per chi la leggerà, non per chiudere il dialogo.
+                <strong>Registrare non è deliberare.</strong> Uno sforo va portato in assemblea (art. 1135 c.c.). Dal menu della riga, «Paga per l'urgenza» sblocca il pagamento con il motivo dell'urgenza, e la spesa si riferisce alla prima assemblea; «Ratifica» la lega alla delibera dell'assemblea che l'ha ratificata, con il giorno della riunione. Finché non fai l'una o l'altra la fattura resta nel contatore <em>Da ratificare</em> in cima alla pagina, e nella colonna dell'approvazione resta «Da ratificare» fino alla delibera. Il programma propone la spesa fra i punti della prossima assemblea. Vale la pena scriverla per chi la leggerà, non per chiudere il dialogo.
               </div>
             </div>
           </section>
@@ -188,6 +189,57 @@ defineEmits(['update:open']);
             <p>
               Una fattura può essere coperta, in tutto o in parte, da un fondo già accantonato. Finché la copertura è <strong>in attesa</strong> è solo un'indicazione. Quando la <strong>confermi</strong>, nasce un giroconto vero nel Libro Giornale: da quel momento il fondo è stato consumato, e la fattura non si elimina più senza prima stornare quel giroconto — altrimenti resterebbe un movimento senza più il motivo che lo giustificava.
             </p>
+          </section>
+
+          <!-- 6b — Coda 689: «Metti a rate questa spesa», a schema -->
+          <section data-testid="guida-metti-a-rate">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Mettere a rate una spesa</h3>
+            <ul class="list-disc space-y-1 pl-5">
+              <li>Sulla pagina della fattura, nel riquadro «Le rate», e nel menu della riga dell'elenco: «Metti a rate questa spesa».</li>
+              <li>C'è solo se resta qualcosa da mettere a rate; altrimenti il riquadro dice «Nei piani della voce» e porta al piano.</li>
+              <li>Apre il nuovo piano sulla scheda giusta, con tutto già scelto: una spesa sulla voce va su «Dalle voci del preventivo».</li>
+              <li>Una fattura con una riga «Fuori preventivo» va su «Spese fuori preventivo», con la fattura nel carrello.</li>
+              <li>Con la delibera della gestione già scelta, se la spesa ne ha una. Il piano nasce quando lo salvi.</li>
+            </ul>
+          </section>
+
+          <!-- 6c — Coda 688: la competenza dei lavori urgenti, a schema -->
+          <section data-testid="guida-lavori-urgenti-fattura">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">La competenza dei lavori urgenti</h3>
+            <ul class="list-disc space-y-1 pl-5">
+              <li>Se una voce della fattura sta in un piano d'urgenza, la competenza ha un modo in più: «Lavori ordinati il …».</li>
+              <li>Una fattura nuova lo propone con il giorno del piano; lo cambi se la fattura dice altro.</li>
+              <li>Senza periodo, il conguaglio dell'opera usa il giorno del piano, come le rate.</li>
+              <li>Messa a rate con «Urgenza» da «Spese fuori preventivo», la fattura senza periodo prende il giorno del piano; quella con il suo periodo tiene il suo.</li>
+            </ul>
+          </section>
+
+          <!-- 7 — I tre pulsanti della ratifica, sulla pagina della fattura -->
+          <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">
+              <ShieldCheck class="w-4 h-4 inline-block -mt-0.5 text-indigo-500" /> La pagina di una fattura: i tre pulsanti della ratifica
+            </h3>
+            <p class="mb-3">
+              Una spesa che supera il preventivo aspetta la ratifica dell'assemblea, e finché non c'è non si paga. Il caso: la fattura n. 45 di Idraulica Bianchi,
+              € 1.800,00 per la colonna dell'acqua, va oltre il preventivo della voce, e registrandola hai scritto la motivazione dello sforo. Il programma la propone
+              fra i punti della prossima assemblea, con la sua motivazione sotto. Sulla pagina della fattura trovi tre pulsanti.
+            </p>
+            <ul class="space-y-2">
+              <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span><strong>«Paga per l'urgenza»</strong>: i lavori non potevano aspettare,
+                e la paghi subito. «Perché era urgente» parte con la motivazione che hai scritto registrando la fattura: cambiala solo se serve, e premi «Sblocca il
+                pagamento». Il motivo resta sulla fattura, va sotto il punto che il programma propone per la prossima assemblea e lo leggono anche i condòmini
+                nell'avviso di convocazione. È la regola dei lavori urgenti (art. 1135 c. 2 c.c.): li riferisci alla prima assemblea, e la ratifica arriva dopo, con la
+                sua delibera. Sbloccata, la fattura dice Sbloccata per l'urgenza finché non la paghi, Pagata in parte per l'urgenza fino al saldo, Pagata per l'urgenza
+                dopo: lo stesso dice il punto proposto per la prossima assemblea.</span></li>
+              <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span><strong>«Da portare in assemblea»</strong>: un promemoria per portare la
+                fattura in assemblea prima di pagarla o di decidere che cosa fare: niente si paga, e il punto ti aspetta quando prepari l'assemblea.</span></li>
+              <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span><strong>«Ratifica»</strong>: l'assemblea ne ha parlato e l'ha ratificata.
+              <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Se un'assemblea ha respinto, rinviato, revocato o annullato una delibera che riguarda la fattura (per esempio la ratifica respinta), la scheda lo dice in testa con la frase della delibera e il collegamento all'assemblea. Sono frasi: nessun conto cambia da solo.</span></li>
+                Scegli la delibera di quella riunione: la fattura diventa ratificata, con il giorno della riunione e non quello del clic, e i compiti della ratifica si
+                chiudono.</span></li>
+              <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Una fattura <strong>ratificata prima</strong> che le assemblee fossero nel
+                programma resta ratificata, con la sua nota e il giorno in cui l'hai registrata. Se vuoi, «Collega la delibera» la lega alla riunione registrata a mano.</span></li>
+            </ul>
           </section>
 
         </div>

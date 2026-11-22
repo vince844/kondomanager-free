@@ -128,6 +128,15 @@ it('con «urgenza» e ogni fattura con la competenza tace', function () {
     expect(vdOutput($c))->toContain('Nessun segnale');
 });
 
+it('Coda 688 — con «urgenza» e il giorno dei lavori nel piano la fattura senza competenza non si segnala: prende il giorno del piano', function () {
+    [$c, $e] = vdCondominio();
+    $g = vdGestione($c, $e, 'straordinaria');
+    $p = vdPiano($g, ['nome' => 'Colonna rotta', 'tipo_autorizzazione' => 'urgenza', 'data_delibera_assemblea' => null, 'giorno_dei_lavori' => '2026-03-02']);
+    vdFattura($c, $e, $p, 'URG-45');
+
+    expect(vdOutput($c))->toContain('Nessun segnale')->not->toContain('URG-45');
+});
+
 it('conta i segnali dei tre tipi insieme e resta SUCCESS', function () {
     [$c, $e] = vdCondominio();
     $g = vdGestione($c, $e, 'straordinaria');

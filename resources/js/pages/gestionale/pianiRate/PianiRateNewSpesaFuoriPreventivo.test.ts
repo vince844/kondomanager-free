@@ -205,8 +205,8 @@ describe('(b) il pulsante e i messaggi', () => {
         expect(pulsanteSalva().getAttribute('aria-disabled')).toBeNull();
     });
 
-    test('D194: gli errori del tipo di autorizzazione e della motivazione stanno sotto i due campi', async () => {
-        await monta({ carrello: [FATTURA] });
+    test('D194: gli errori del tipo di autorizzazione e della motivazione stanno sotto i due campi (lo Scudo Legale, su una gestione ordinaria)', async () => {
+        await monta({ carrello: [FATTURA], gestione: ORDINARIA.id });
         form().errors = {
             tipo_autorizzazione: 'Scegli il tipo di autorizzazione: «Delibera Assembleare» o «Urgenza».',
             motivazione_autorizzazione: 'Scrivi la motivazione o gli estremi del verbale, per esempio «Verbale del 12/03/2026».',
@@ -217,6 +217,17 @@ describe('(b) il pulsante e i messaggi', () => {
         expect(campo('motivazione_autorizzazione')).toContain('Scrivi la motivazione o gli estremi del verbale, per esempio «Verbale del 12/03/2026».');
         expect(document.body.querySelector('label[for="tipo_autorizzazione"]')!.closest('.space-y-2')!.textContent)
             .toContain('Scegli il tipo di autorizzazione: «Delibera Assembleare» o «Urgenza».');
+    });
+
+    test('Coda 688: su una gestione straordinaria gli stessi errori stanno sotto i campi di «La delibera, o l\'urgenza», che prende il posto dello Scudo Legale', async () => {
+        await monta({ carrello: [FATTURA] });
+        form().tipo_autorizzazione = 'urgenza';
+        form().errors = { motivazione_autorizzazione: 'Scrivi il motivo dell\'urgenza.' };
+        await flushPromises();
+
+        expect(document.body.querySelector('#motivazione_autorizzazione')).toBeNull();
+        expect(document.body.querySelector('[data-testid="la-delibera-o-l-urgenza"]')!.textContent).toContain('Scrivi il motivo dell\'urgenza.');
+        expect(document.body.querySelector('[data-testid="periodo-sulle-fatture"]')).not.toBeNull();
     });
 
     test('l\'errore di un campo che la pagina non mostra accanto al campo sta sopra il pulsante', async () => {

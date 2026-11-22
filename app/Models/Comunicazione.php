@@ -14,9 +14,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
+use App\Traits\RegistraLeModifiche;
 
 class Comunicazione extends Model implements Commentable
 {
+    use RegistraLeModifiche;
+
     use HasFactory, HasComments;
     
     protected $table = 'comunicazioni';
@@ -85,6 +88,13 @@ class Comunicazione extends Model implements Commentable
             }
             if (! array_key_exists('allegati_moderati', $comunicazione->getAttributes()) || $comunicazione->allegati_moderati === null) {
                 $comunicazione->allegati_moderati = app(\App\Settings\GeneralSettings::class)->allegati_moderati_di_serie;
+            }
+        });
+
+        // «Avvisa i condòmini» di una delibera: la comunicazione appena pubblicata fa la sua cosa da fare e chiude il compito, da qualunque pagina.
+        static::saved(function (self $comunicazione) {
+            if ($comunicazione->wasChanged(['is_published', 'is_approved']) || $comunicazione->wasRecentlyCreated) {
+                \App\Services\Assemblee\Seguito\AvvisoAiCondomini::dopoLaPubblicazione($comunicazione);
             }
         });
 

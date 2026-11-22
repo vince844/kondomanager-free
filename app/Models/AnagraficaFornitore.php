@@ -6,9 +6,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RegistraLeModifiche;
 
 class AnagraficaFornitore extends Model
 {
+    use RegistraLeModifiche;
+
     protected $table = 'anagrafica_fornitore';
 
     protected $fillable = [

@@ -5,6 +5,7 @@
 
 namespace App\Services;
 
+use App\Services\RegistroModifiche\AttiSulleUtenze;
 use App\Models\Anagrafica;
 use App\Repositories\UserRepository;
 use App\Notifications\NewUserEmailNotification;
@@ -49,6 +50,9 @@ class UserService
                 $this->userRepository->linkAnagrafica($user, $validatedData['anagrafica']);
             }
 
+            // Coda ㉗ nel registro delle modifiche: l'atto «creato», con il ruolo e i permessi dati.
+            AttiSulleUtenze::creato($user);
+
             return $user;
         });
     }
@@ -66,10 +70,13 @@ class UserService
 
         $aggiornato = DB::transaction(function () use ($user, $validatedData) {
 
+            $accessoPrima = AttiSulleUtenze::fotografia($user);
             $this->userRepository->update($user, $validatedData);
 
             $user->syncRoles($validatedData['roles']);
             $user->syncPermissions($this->permessiDaSincronizzare($user, $validatedData['permissions'] ?? []));
+            // Coda ㉗: solo se il ruolo o i permessi sono cambiati (correggere il nome o l'email non è un atto di governo).
+            AttiSulleUtenze::accessoCambiato($user, $accessoPrima);
 
             if (!empty($validatedData['anagrafica'])) {
                 $this->dissociateAnagrafica($user);

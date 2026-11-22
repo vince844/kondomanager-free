@@ -7,12 +7,14 @@ namespace App\Http\Controllers\Gestionale\Struttura;
 
 use App\Enums\Permission;
 use App\Helpers\DateHelper;
+use App\Http\Controllers\Assemblee\DeliberaNelleSchede;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\RegolaRecupero;
+use App\Services\Assemblee\DeliberaInParole;
 use App\Services\Gestionale\Accessori\RegoleDegliEredi;
 use App\Services\Gestionale\Accessori\RegoleDelRecupero;
 use App\Services\Gestionale\Accessori\TassoLegaleAMano;
@@ -33,6 +35,9 @@ use Inertia\Response;
  * Le regole del recupero dei crediti del condominio, nella sua scheda: la storia delle regole, la regola nuova dal giorno in cui comincia, l'eliminazione
  * di una regola che nessun interesse registrato ha usato. Una regola non si riscrive: per cambiarla se ne scrive una nuova, e la vecchia resta per i
  * giorni in cui valeva.
+ *
+ * Un tasso scritto che viene da una delibera dell'assemblea si lega alla delibera scelta con «Scegli la delibera» (§1.4 del progetto della tappa 2, ruolo
+ * `fonte`): la fonte è «delibera», il riferimento è la frase della delibera. Il collegamento nasce con la regola nuova, perché una regola non si riscrive.
  *
  * Nella stessa pagina la tabella del tasso legale: per un anno che il programma non ha ancora lo studio può scriverlo a mano, con la fonte, una volta per
  * tutti i condomini ({@see TassoLegaleAMano}). Lo scrive, lo corregge e lo toglie solo chi gestisce le impostazioni generali: per gli altri 403.
@@ -113,6 +118,11 @@ class RegoleRecuperoController extends Controller
 
     public function store(Request $request, Condominio $condominio): RedirectResponse
     {
+        // La fonte «delibera» dalla delibera scelta: il riferimento è la sua frase, la stessa di ogni campo di testo (§1.4).
+        $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
+        if ($delibera !== null) {
+            $request->merge(['fonte' => 'delibera', 'riferimento' => mb_substr(DeliberaInParole::frase($delibera, scritta: true), 0, self::RIFERIMENTO_MASSIMO)]);
+        }
         $dati = $request->validate([
             'dal' => ['required', 'date_format:Y-m-d'],
             'tasso_tipo' => ['required', Rule::in([RegolaRecupero::TASSO_LEGALE, RegolaRecupero::TASSO_SCRITTO])],
@@ -145,18 +155,22 @@ class RegoleRecuperoController extends Controller
         }
         // Una regola che comincia dentro giorni già registrati non li cambia: lo dice, non lo impedisce.
         $registrati = $this->giorniRegistrati($condominio, $dati['dal']);
-        RegolaRecupero::create([
-            'condominio_id' => $condominio->id,
-            'dal' => $dati['dal'],
-            'tasso_tipo' => $dati['tasso_tipo'],
-            'tasso_annuo' => $tasso,
-            'fonte' => $dati['tasso_tipo'] === RegolaRecupero::TASSO_SCRITTO ? $dati['fonte'] : null,
-            'riferimento' => filled($dati['riferimento'] ?? null) ? trim((string) $dati['riferimento']) : null,
-            'giorni_decorrenza' => (int) ($dati['giorni_decorrenza'] ?? 0),
-            'giorni_tolleranza' => $dati['giorni_tolleranza'] ?? null,
-            'termine_lettere_giorni' => $dati['termine_lettere_giorni'] ?? null,
-            'creata_da' => $request->user()?->id,
-        ]);
+        DB::transaction(function () use ($condominio, $dati, $tasso, $request, $delibera) {
+            $regola = RegolaRecupero::create([
+                'condominio_id' => $condominio->id,
+                'dal' => $dati['dal'],
+                'tasso_tipo' => $dati['tasso_tipo'],
+                'tasso_annuo' => $tasso,
+                'fonte' => $dati['tasso_tipo'] === RegolaRecupero::TASSO_SCRITTO ? $dati['fonte'] : null,
+                'riferimento' => filled($dati['riferimento'] ?? null) ? trim((string) $dati['riferimento']) : null,
+                'giorni_decorrenza' => (int) ($dati['giorni_decorrenza'] ?? 0),
+                'giorni_tolleranza' => $dati['giorni_tolleranza'] ?? null,
+                'termine_lettere_giorni' => $dati['termine_lettere_giorni'] ?? null,
+                'creata_da' => $request->user()?->id,
+            ]);
+            // Solo un tasso scritto ha una fonte: la delibera si lega a quello.
+            DeliberaNelleSchede::collega($regola, 'fonte', $dati['tasso_tipo'] === RegolaRecupero::TASSO_SCRITTO ? $delibera : null, $request->user());
+        });
 
         $frase = 'Regola registrata: vale dal ' . CarbonImmutable::parse($dati['dal'])->format('d/m/Y') . '. Le regole di prima restano per i loro giorni.';
         if ($registrati !== null) {
@@ -174,7 +188,13 @@ class RegoleRecuperoController extends Controller
             throw ValidationException::withMessages(['regola' => 'Questa regola è servita per gli interessi registrati al ' . CarbonImmutable::parse($quando)->format('d/m/Y')
                 . ': resta nella storia. Per cambiarla, scrivi una regola nuova con il suo giorno di inizio.']);
         }
-        $r->delete();
+        DB::transaction(function () use ($r) {
+            // La delibera che dava la fonte resta: se ne va solo il legame con la regola.
+            if (($utente = request()->user()) !== null) {
+                \App\Services\Assemblee\CollegamentiDelleDelibere::scollega($r, 'fonte', $utente);
+            }
+            $r->delete();
+        });
 
         return back()->with($this->flashSuccess('Regola eliminata.'));
     }

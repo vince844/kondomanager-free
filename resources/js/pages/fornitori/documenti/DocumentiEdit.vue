@@ -26,12 +26,16 @@ import type { PublishedType } from '@/types/documenti';
 import type { Documento } from '@/types/documenti';
 import type { Fornitore } from '@/types/fornitori';
 import type { BreadcrumbItem } from '@/types';
+import VersioniDiPrima from '@/components/documenti/VersioniDiPrima.vue';
+import type { VersioneDiPrima } from '@/lib/documenti/versioniDiPrima';
 
 const props = defineProps<{
   /** Limite di caricamento già scritto per l'utente («2 MB»), calcolato dal server: non è un numero nostro. */
   limiteFile: string;
   fornitore: Fornitore;
   documento: Documento;
+  /** Le versioni di prima del file (1.12.0-beta.13, decisione 559): in sola lettura. */
+  versioni?: VersioneDiPrima[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -202,6 +206,7 @@ const submit = (): void => {
           :page-subtitle="`Aggiorna il documento del fornitore ${fornitore.ragione_sociale}`"
           :guides="pageGuides"
           :breadcrumbs="breadcrumbs"
+          :storia="{ tipo: 'documento', id: props.documento.id }"
           :video-url="null"
           :back-url="generatePath('fornitori/:fornitore/documenti', { fornitore: props.fornitore.id })"
           back-text="Torna ai documenti"
@@ -436,6 +441,10 @@ const submit = (): void => {
         </div>
 
       </form>
+
+      <!-- Le versioni di prima del file (decisione 559): sola lettura, con lo scaricamento dalla scheda del fornitore. -->
+      <VersioniDiPrima :versioni="props.versioni ?? []" :documento-id="props.documento.id" rotta="fornitori.documenti.versioni.download"
+        :parametri="{ fornitore: props.fornitore.id }" />
     </div>
   </AppLayout>
 </template>

@@ -170,6 +170,7 @@ const submit = () => {
       <div class="px-6 py-8 space-y-6">
         
         <PageHeaderGuide
+            :storia="{ tipo: 'segnalazione', id: props.segnalazione.id }"
             :page-title="trans('segnalazioni.header.edit_ticket_title')"
             :page-subtitle="trans('segnalazioni.header.edit_ticket_description')"
             :guides="pageGuides"

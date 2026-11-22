@@ -1,0 +1,63 @@
+Return-Path: <posta-certificata@pec.gestore-prova.it>
+Received: from smtps.pec.gestore-prova.it (prova) by pec.gestore-prova.it; Thu, 3 Dec 2026 10:14:23 +0100
+Date: Thu, 3 Dec 2026 10:14:22 +0100
+From: posta-certificata@pec.gestore-prova.it
+To: studio.costa@pec.it
+Subject: =?UTF-8?B?Q09OU0VHTkE6IENvbnZvY2F6aW9uZSBkZWxsJ2Fzc2VtYmxlYSBvcmRpbmFyaWEg4oCUIENvbmRvbWluaW8gVmlhIFJvbWEgMTIsIDE1LzEyLzIwMjY=?=
+Message-ID: <opec0001.20261203101422.00042.01.1.1.consegna@pec.gestore-prova.it>
+X-Ricevuta: avvenuta-consegna
+X-Riferimento-Message-ID: <convocazione-0001@pec.it>
+X-Trasporto: posta-certificata
+MIME-Version: 1.0
+Content-Type: multipart/signed; protocol="application/x-pkcs7-signature";
+ micalg="sha-256"; boundary="----confine-firma-0001"
+
+This is an S/MIME signed message
+
+------confine-firma-0001
+Content-Type: multipart/mixed;
+ boundary="----confine-parti-0001"
+
+------confine-parti-0001
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: base64
+
+UmljZXZ1dGEgZGkgYXZ2ZW51dGEgY29uc2VnbmEKSWwgZ2lvcm5vIDAzLzEyLzIwMjYgYWxsZSBv
+cmUgMTA6MTQ6MjIgKCswMTAwKSBpbCBtZXNzYWdnaW8KIkNvbnZvY2F6aW9uZSBkZWxsJ2Fzc2Vt
+YmxlYSBvcmRpbmFyaWEg4oCUIENvbmRvbWluaW8gVmlhIFJvbWEgMTIsIDE1LzEyLzIwMjYiIHBy
+b3ZlbmllbnRlIGRhICJzdHVkaW8uY29zdGFAcGVjLml0IgplZCBpbmRpcml6emF0byBhICJtYXJp
+by5yb3NzaUBwZWMuaXQiCsOoIHN0YXRvIGNvbnNlZ25hdG8gbmVsbGEgY2FzZWxsYSBkaSBkZXN0
+aW5hemlvbmUuCklkZW50aWZpY2F0aXZvIG1lc3NhZ2dpbzogb3BlYzAwMDEuMjAyNjEyMDMxMDE0
+MjIuMDAwNDIuMDEuMS4xQHBlYy5nZXN0b3JlLXByb3ZhLml0Cg==
+
+------confine-parti-0001
+Content-Type: application/xml; name="daticert.xml"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="daticert.xml"
+
+PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPCFET0NUWVBFIHBvc3RhY2Vy
+dCBTWVNURU0gIlBvc3RhY2VydC5kdGQiPgo8cG9zdGFjZXJ0IHRpcG89ImF2dmVudXRhLWNvbnNl
+Z25hIiBlcnJvcmU9Im5lc3N1bm8iPgogIDxpbnRlc3RhemlvbmU+CiAgICA8bWl0dGVudGU+c3R1
+ZGlvLmNvc3RhQHBlYy5pdDwvbWl0dGVudGU+CiAgICA8ZGVzdGluYXRhcmkgdGlwbz0iY2VydGlm
+aWNhdG8iPm1hcmlvLnJvc3NpQHBlYy5pdDwvZGVzdGluYXRhcmk+CiAgICA8cmlzcG9zdGU+c3R1
+ZGlvLmNvc3RhQHBlYy5pdDwvcmlzcG9zdGU+CiAgICA8b2dnZXR0bz5Db252b2NhemlvbmUgZGVs
+bCZhcG9zO2Fzc2VtYmxlYSBvcmRpbmFyaWEg4oCUIENvbmRvbWluaW8gVmlhIFJvbWEgMTIsIDE1
+LzEyLzIwMjY8L29nZ2V0dG8+CiAgPC9pbnRlc3RhemlvbmU+CiAgPGRhdGk+CiAgICA8Z2VzdG9y
+ZS1lbWl0dGVudGU+R2VzdG9yZSBQRUMgZGkgcHJvdmE8L2dlc3RvcmUtZW1pdHRlbnRlPgogICAg
+PGRhdGEgem9uYT0iKzAxMDAiPgogICAgICA8Z2lvcm5vPjAzLzEyLzIwMjY8L2dpb3Jubz4KICAg
+ICAgPG9yYT4xMDoxNDoyMjwvb3JhPgogICAgPC9kYXRhPgogICAgPGlkZW50aWZpY2F0aXZvPm9w
+ZWMwMDAxLjIwMjYxMjAzMTAxNDIyLjAwMDQyLjAxLjEuMUBwZWMuZ2VzdG9yZS1wcm92YS5pdDwv
+aWRlbnRpZmljYXRpdm8+CiAgICA8bXNnaWQ+Jmx0O2NvbnZvY2F6aW9uZS0wMDAxQHBlYy5pdCZn
+dDs8L21zZ2lkPgogICAgPHJpY2V2dXRhIHRpcG89ImJyZXZlIiAvPgogICAgPGNvbnNlZ25hPm1h
+cmlvLnJvc3NpQHBlYy5pdDwvY29uc2VnbmE+CiAgPC9kYXRpPgo8L3Bvc3RhY2VydD4K
+
+------confine-parti-0001--
+
+------confine-firma-0001
+Content-Type: application/x-pkcs7-signature; name="smime.p7s"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="smime.p7s"
+
+ZmlybWEgZmludGEgZGVsIGdlc3RvcmUgZGkgcHJvdmE6IG5vbiBlJyB1bmEgZmlybWEgdmVyYQ==
+
+------confine-firma-0001--
