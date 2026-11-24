@@ -15,7 +15,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  *    spiegazione è un pulsante che genera una email di assistenza.
  */
 import { computed, ref } from 'vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import ImportGuide from '@/components/guides/ImportGuide.vue';
@@ -25,7 +25,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import Alert from '@/components/Alert.vue';
 import { CheckCircle2, CircleAlert, Info, FileDown } from 'lucide-vue-next';
+import type { Flash } from '@/types/flash';
 
 interface RigaRapporto {
   livello: string;
@@ -37,6 +39,8 @@ interface RigaRapporto {
   gia_a_posto: boolean;
   /** Saltato perché il dato non c'era: è un'assenza dichiarata, non un guasto. */
   saltato: boolean;
+  /** I saldi lasciati fuori con «Importa senza i saldi»: la riga porta il perché e il rimedio nei suoi prerequisiti. */
+  per_scelta?: boolean;
   prerequisiti_mancanti: { codice: string; cosa_manca: string; rimedio: string }[];
   rilievi: { messaggio: string; rimedio: string | null; riga: number | null }[];
   avvisi: { messaggio: string; rimedio: string | null; riga: number | null }[];
@@ -110,12 +114,20 @@ const cosaSparisce = computed(() =>
 
 const mostraGuida = ref(false);
 
+// I messaggi del server: «Questa importazione è già entrata: la trovi qui.» dopo una seconda conferma (`ImportController::confermaUnaVolta()`).
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash?.message);
+
 const headerBreadcrumbs = [{ title: 'Importa dati', href: route('import.index') }, { title: 'Esito' }];
 
 const livelli = computed(() => props.rapporto.livelli ?? []);
 const completato = computed(() => props.lotto.stato === 'completato');
 const avvisi = computed(() => livelli.value.flatMap((l) => l.avvisi ?? []));
-const bloccato = computed(() => livelli.value.find((l) => !l.riuscito));
+// Un livello **saltato** (il file non c'era, o i saldi lasciati fuori per scelta) non è quello a cui l'importazione si è fermata: a
+// un'importazione completata la card «Si è fermata a…» non va. Quello che manca lo dice la riga sotto la tabella.
+const bloccato = computed(() => livelli.value.find((l) => !l.riuscito && !l.saltato));
+
+const nonEntrati = computed(() => livelli.value.filter((l) => l.saltato && l.prerequisiti_mancanti.length));
 
 // ⚠️ **Un livello a zero non è un livello andato male, ed è la differenza che l'amministratore
 // non può dedurre da solo.** «Capitoli di spesa · 0 · 0 · 0» lo lascia a chiedersi se ha saltato
@@ -182,6 +194,8 @@ const conteggi = computed(() => livelli.value.reduce(
         @open-text-guide="mostraGuida = true"
       />
 
+      <Alert v-if="flashMessage" :message="flashMessage.message" :type="flashMessage.type" />
+
       <!-- Quando si è fermata, il perché viene prima di tutto -->
       <Card v-if="bloccato" class="border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30">
         <CardHeader>
@@ -212,7 +226,7 @@ const conteggi = computed(() => livelli.value.reduce(
         -->
         <Card :class="conteggi.creati ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30' : ''">
           <CardContent class="pt-6">
-            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Creati</p>
+            <p class="text-xs text-muted-foreground">Creati</p>
             <p class="mt-1 text-3xl font-semibold tabular-nums">{{ conteggi.creati }}</p>
             <p class="mt-1 text-xs leading-snug text-muted-foreground">
               Righe nuove, scritte adesso in archivio.
@@ -222,17 +236,17 @@ const conteggi = computed(() => livelli.value.reduce(
 
         <Card>
           <CardContent class="pt-6">
-            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Uniti a esistenti</p>
+            <p class="text-xs text-muted-foreground">Uniti a esistenti</p>
             <p class="mt-1 text-3xl font-semibold tabular-nums">{{ conteggi.uniti }}</p>
             <p class="mt-1 text-xs leading-snug text-muted-foreground">
-              C'erano già: ho aggiunto solo i dati che mancavano, senza sovrascrivere i tuoi.
+              C'erano già: li ho aggiornati con i dati del file, come hai scelto con «Unisci».
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent class="pt-6">
-            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Saltati</p>
+            <p class="text-xs text-muted-foreground">Saltati</p>
             <p class="mt-1 text-3xl font-semibold tabular-nums">{{ conteggi.saltati }}</p>
             <p class="mt-1 text-xs leading-snug text-muted-foreground">
               Identici a quello che c'era: non ho toccato niente.
@@ -250,7 +264,7 @@ const conteggi = computed(() => livelli.value.reduce(
             : 'border-amber-300 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20'"
         >
           <CardContent class="pt-6">
-            <p class="text-[11px] uppercase tracking-wider text-muted-foreground">Scarto sui saldi</p>
+            <p class="text-xs text-muted-foreground">Scarto sui saldi</p>
             <!--
               Tre stati, non due: `quadra` è falso sia quando lo scarto non è zero sia quando
               non è mai stato calcolato. Con due soli rami il riquadro usciva rosso — cioè
@@ -336,7 +350,8 @@ const conteggi = computed(() => livelli.value.reduce(
                     La distinzione esiste dalla beta.5 su `PrerequisitoMancante::$bloccante`, ma
                     non arrivava fin qui.
                   -->
-                  <BadgeStato v-if="l.saltato" stato="neutro">non fornito</BadgeStato>
+                  <BadgeStato v-if="l.per_scelta" stato="warn">non importati, per tua scelta</BadgeStato>
+                  <BadgeStato v-else-if="l.saltato" stato="neutro">non fornito</BadgeStato>
                   <Badge v-else-if="!l.riuscito" variant="destructive">fermato</Badge>
                   <BadgeStato v-else-if="l.gia_a_posto && !l.creati && !l.uniti && !l.saltati" stato="neutro">
                     non nei tuoi file
@@ -347,6 +362,21 @@ const conteggi = computed(() => livelli.value.reduce(
               </TableRow>
             </TableBody>
           </Table>
+
+          <!-- Quello che non è entrato perché il file non c'era o per scelta: che cosa manca e chi lo scrive, sotto la tabella. -->
+          <div
+            v-if="nonEntrati.length"
+            class="mt-4 space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-950/30"
+            data-non-entrati
+          >
+            <div v-for="l in nonEntrati" :key="'ne' + l.livello" class="space-y-1">
+              <p class="font-medium">{{ l.etichetta }}</p>
+              <div v-for="(p, i) in l.prerequisiti_mancanti" :key="'ne' + l.livello + i">
+                <p>{{ p.cosa_manca }}</p>
+                <p class="text-muted-foreground">{{ p.rimedio }}</p>
+              </div>
+            </div>
+          </div>
 
           <div
             v-if="senzaDati.length"

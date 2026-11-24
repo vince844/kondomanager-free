@@ -12,6 +12,7 @@ use App\Traits\HasComments;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Collection;
 use App\Traits\RegistraLeModifiche;
@@ -40,12 +41,14 @@ class Comunicazione extends Model implements Commentable
         'reference',
         'allegati_accesso',
         'allegati_moderati',
+        'chiedi_presa_visione',
     ];
 
     protected $casts = [
         'can_comment' => 'boolean',
         'commenti_moderati' => 'boolean',
         'allegati_moderati' => 'boolean',
+        'chiedi_presa_visione' => 'boolean',
         'programmata_per' => 'datetime',
         'pubblicata_il' => 'datetime',
     ];
@@ -105,6 +108,11 @@ class Comunicazione extends Model implements Commentable
         static::deleted(function (self $comunicazione) {
             app(\App\Services\Allegati\AllegatoService::class)->completaPuliziaPerElemento($comunicazione);
         });
+    }
+
+    public function letture(): HasMany
+    {
+        return $this->hasMany(ComunicazioneLettura::class, 'comunicazione_id');
     }
 
     public function allegati(): MorphMany

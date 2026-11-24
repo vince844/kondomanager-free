@@ -217,8 +217,9 @@ final class ElencoUnitaParser
             $rilievi[] = Rilievo::avviso(
                 'titolarita.quota_solo_nelle_note',
                 sprintf('Le note di questa riga parlano di quote: «%s».', mb_strimwidth(preg_replace('/\s+/', ' ', $note) ?? '', 0, 90, '…')),
-                'Il tracciato di Danea non ha un campo per le quote di comproprietà, quindi la '
-                .'importo al 100% al primo intestatario. Correggila dopo, sulla scheda dell\'unità.',
+                // Dalla 1.12.0-beta.14 (Coda 599) più persone nello stesso ruolo entrano in parti uguali (`LivelloTitolarita`), non più a 100 ciascuna.
+                'Il tracciato di Danea non ha un campo per le quote di comproprietà: se l\'unità ha più persone nello stesso ruolo le importo in parti '
+                .'uguali, se ne ha una sola la importo al 100%. Correggi le quote dopo, sulla scheda dell\'unità.',
                 $rigaUtente,
                 'Note',
             );

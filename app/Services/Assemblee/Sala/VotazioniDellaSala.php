@@ -20,6 +20,7 @@ use App\Models\Assemblee\SedutaDellAssemblea;
 use App\Models\Assemblee\VotazioneDelPunto;
 use App\Models\Assemblee\VotoInSala;
 use App\Services\Assemblee\StatiDellAssemblea;
+use App\Services\Assemblee\UnitaDelPunto;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Settings\AssembleeSettings;
@@ -30,7 +31,8 @@ use Illuminate\Validation\ValidationException;
  *
  * - **«Si vota»** ferma il momento (`votata_il`) e gli intervenuti: le teste del punto presenti in quel momento, ognuna con chi la porta e i millesimi
  *   della tabella del punto. Chi entra dopo non conta, chi è uscito o caduto nemmeno. Con le scelte del presidente: l'usufruttuario che vota sul punto
- *   straordinario (art. 67 c. 7 disp. att.). Il punto della sola scala ha il conto della scala, che **avvisa e non blocca**.
+ *   straordinario (art. 67 c. 7 disp. att.). Il punto della sola scala, o del gruppo di una tabella (Coda 734), ha il conto della parte, che **avvisa e
+ *   non blocca**; il messaggio di «Si vota» dice l'assemblea e la parte ({@see messaggioDelVoto()}).
  * - **«Tutti i presenti favorevoli»** è un gesto solo; poi i contrari e gli astenuti, una testa per volta. Il voto discorde dei comproprietari conta
  *   astenuto, o come lo decide il presidente (l'impostazione dello studio).
  * - **Il conflitto d'interessi** si segna con la nota: non toglie nessuno dal conto, e se è determinante la sala lo dice. Su un voto già confermato vale come
@@ -85,9 +87,34 @@ final class VotazioniDellaSala
                 PresenzeDellaSala::presenti($seduta, $g->segnatoIl))));
 
         return ['versione' => (int) $votazione->versione, 'votazione_id' => (int) $votazione->id,
-            'messaggio' => $costituzione['costituita'] ? ($intervenuti['perimetro']['avviso'] ?? null)
-                // Il messaggio dice il punto (rilievo C52): con due punti votati a sala non costituita non sono due messaggi uguali.
-                : 'Punto ' . $punto->numero . ': l\'assemblea non risulta costituita (' . $costituzione['barra'] . '; ' . $costituzione['servono'] . '). Decide il presidente.'];
+            'messaggio' => self::messaggioDelVoto((int) $punto->numero, $costituzione, $intervenuti['perimetro'])];
+    }
+
+    /**
+     * Il messaggio di «Si vota». L'assemblea costituita: l'avviso della parte che non basta, o niente. Non costituita (il messaggio dice il punto, rilievo
+     * C52): con il punto di una parte dice le due cose (Coda 734), «Punto 5: il gruppo della tabella «Box» basta (7 su 8 · 875,00 su 1.000,00); l'assemblea
+     * di tutti non risulta costituita (…). Decide il presidente.», o «…, e nemmeno il gruppo della tabella «Box» (…)». Per la scala, «la scala B». Una
+     * votazione su una fotografia della beta.13 (senza la parte) dice la frase di prima.
+     *
+     * @param array<string, mixed> $costituzione {@see ContiDellaSala::costituzione()} dell'assemblea
+     * @param ?array<string, mixed> $parte il perimetro degli intervenuti ({@see intervenuti()})
+     */
+    public static function messaggioDelVoto(int $numero, array $costituzione, ?array $parte): ?string
+    {
+        if ($costituzione['costituita']) {
+            return $parte['avviso'] ?? null;
+        }
+        $assemblea = '(' . $costituzione['barra'] . '; ' . $costituzione['servono'] . ')';
+        $breve = $parte === null ? null : UnitaDelPunto::nomeBreve($parte['parte'] ?? null, $parte['gruppo'] ?? null);
+        if ($breve === null) {
+            return 'Punto ' . $numero . ': l\'assemblea non risulta costituita ' . $assemblea . '. Decide il presidente.';
+        }
+        $conto = (array) $parte['costituzione'];
+
+        return $conto['costituita']
+            ? 'Punto ' . $numero . ': ' . $breve . ' basta (' . $conto['barra'] . '); l\'assemblea di tutti non risulta costituita ' . $assemblea . '. Decide il presidente.'
+            : 'Punto ' . $numero . ': l\'assemblea non risulta costituita ' . $assemblea . ', e nemmeno ' . $breve . ' (' . $conto['barra'] . '; ' . $conto['servono']
+                . '). Decide il presidente.';
     }
 
     public function tuttiFavorevoli(GestoInArrivo $g): array
@@ -472,7 +499,8 @@ final class VotazioniDellaSala
 
     /**
      * Gli intervenuti di un punto in un momento: le teste del punto (con le scelte del presidente sull'usufrutto) portate da qualcuno presente in quel
-     * momento; i totali del punto; per il punto di una parte del condominio, il conto della parte che avvisa e non blocca.
+     * momento; i totali del punto; per il punto di una parte del condominio (la sola scala o palazzina, il gruppo di una tabella), il conto della parte che
+     * avvisa e non blocca, con la parte, il gruppo e la riga di chi vota («Votano solo i condòmini della tabella «Box»»).
      *
      * @param array<int, string> $usufruttuari unità => il perché
      * @param array<string, \DateTimeInterface> $usciteDaProvare chiave => ora: le uscite da contare senza scriverle (vedi {@see PresenzeDellaSala::presenti()})
@@ -498,7 +526,11 @@ final class VotazioniDellaSala
         $perimetro = null;
         if (($voce['perimetro'] ?? null) !== null) {
             $conto = ContiDellaSala::costituzione((string) $fotografia['convocazione'], $delPunto['totale_teste'], $delPunto['totale_valore'], count($teste), $valore);
-            $perimetro = ['nome' => (string) $voce['perimetro'], 'costituzione' => $conto, 'avviso' => $conto['costituita'] ? null
+            // La parte e il gruppo (Coda 734): una fotografia della beta.13 non li ha, e la riga «Votano solo…» non c'è, come prima.
+            $parte = $voce['parte'] ?? null;
+            $gruppo = $voce['gruppo']['nome'] ?? null;
+            $perimetro = ['nome' => (string) $voce['perimetro'], 'parte' => $parte, 'gruppo' => $gruppo, 'chi_vota' => UnitaDelPunto::chiVota($parte, $gruppo),
+                'costituzione' => $conto, 'avviso' => $conto['costituita'] ? null
                 : $voce['perimetro'] . ': ' . $conto['barra'] . '; ' . $conto['servono'] . '. Il conto della parte non basta: decide il presidente, e il verbale lo scrive.'];
         }
 

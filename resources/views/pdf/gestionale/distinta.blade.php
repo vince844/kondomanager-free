@@ -62,35 +62,73 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
         </table>
     </div>
 
+    {{--
+        Coda 754 (3): una riga per ogni legame fra il pagamento e i documenti, con come si chiude. La fattura compensata con una nota di
+        credito ha due righe (la parte pagata e la parte compensata) e la nota una sua, con il meno: sommarle tutte contava due volte la
+        compensazione («Totale Allocato» € 1.403,00 su una fattura di € 1.220,00). Il piede dice le due cifre che contano, con la regola
+        di `TipoAllocazioneFattura`: le righe «pagamento» sono l'uscita dal conto (uguale al «Netto pagato» del riepilogo), le righe
+        «compensazione» delle fatture la parte chiusa con le note.
+    --}}
+    @php
+        $euroConSegno = fn (int $centesimi) => ($centesimi < 0 ? '- ' : '').'€ '.number_format(abs($centesimi) / 100, 2, ',', '.');
+        $tipoDellaRiga = fn ($documento) => $documento->pivot->tipo instanceof \BackedEnum ? $documento->pivot->tipo->value : (string) $documento->pivot->tipo;
+        $eNota = fn ($documento) => $documento->tipo_documento === 'nota_credito';
+        $noteUsate = $fatture->filter(fn ($d) => $eNota($d) && $tipoDellaRiga($d) === 'compensazione')->unique('id');
+        $nomeNota = $noteUsate->count() === 1 ? ' '.($noteUsate->first()->numero_documento ?? "NC#{$noteUsate->first()->id}") : '';
+        $uscitoDalConto = (int) $fatture->filter(fn ($d) => $tipoDellaRiga($d) === 'pagamento')->sum(fn ($d) => (int) $d->pivot->importo_allocato);
+        $chiusoConNote = (int) $fatture->filter(fn ($d) => ! $eNota($d) && $tipoDellaRiga($d) === 'compensazione')->sum(fn ($d) => (int) $d->pivot->importo_allocato);
+        // Le righe di una fattura una sotto l'altra (prima la parte pagata, poi quella compensata), le note in fondo.
+        $righeDellaDistinta = $fatture->sortBy(fn ($d) => sprintf('%d-%012d-%d', $eNota($d) ? 1 : 0, $d->id, $tipoDellaRiga($d) === 'pagamento' ? 0 : 1))->values();
+    @endphp
     <div class="section">
-        <div class="section-title">Fatture Saldate</div>
+        <div class="section-title">Documenti del pagamento</div>
         @if($fatture->isEmpty())
             <p>Nessuna fattura associata in modo diretto (es. acconto generico o storno).</p>
         @else
             <table class="table-report">
                 <thead>
                     <tr>
-                        <th>N° Documento</th>
-                        <th>Data</th>
-                        <th class="text-right">Importo Lordo</th>
-                        <th class="text-right">Allocato</th>
+                        <th style="width: 14%;">N° Documento</th>
+                        <th style="width: 12%;">Data</th>
+                        <th class="text-right" style="width: 16%;">Importo del documento</th>
+                        <th style="width: 40%;">Come si chiude</th>
+                        <th class="text-right" style="width: 18%;">Importo</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($fatture as $fattura)
+                    @foreach($righeDellaDistinta as $fattura)
+                    @php
+                        $nota = $eNota($fattura);
+                        $tipo = $tipoDellaRiga($fattura);
+                        $comeSiChiude = match (true) {
+                            $nota && $tipo === 'compensazione' => 'Nota di credito usata',
+                            $tipo === 'compensazione' => 'Compensazione con la nota di credito'.$nomeNota,
+                            default => 'Pagamento',
+                        };
+                        // La nota toglie: la sua riga e il suo importo con il meno.
+                        $importoDocumento = abs((int) $fattura->importo_imponibile + (int) $fattura->importo_iva) * ($nota ? -1 : 1);
+                        $importoRiga = (int) $fattura->pivot->importo_allocato * ($nota ? -1 : 1);
+                    @endphp
                     <tr>
                         <td>{{ $fattura->numero_documento ?? "FT#{$fattura->id}" }}</td>
                         <td>{{ $fattura->data_documento ? $fattura->data_documento->format('d/m/Y') : '' }}</td>
-                        <td class="text-right">€ {{ number_format(($fattura->importo_imponibile + $fattura->importo_iva) / 100, 2, ',', '.') }}</td>
-                        <td class="text-right text-bold">€ {{ number_format($fattura->pivot->importo_allocato / 100, 2, ',', '.') }}</td>
+                        <td class="text-right">{{ $euroConSegno($importoDocumento) }}</td>
+                        <td>{{ $comeSiChiude }}</td>
+                        <td class="text-right text-bold">{{ $euroConSegno($importoRiga) }}</td>
                     </tr>
                     @endforeach
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td colspan="3" class="text-right text-bold">Totale Allocato:</td>
-                        <td class="text-right text-bold">€ {{ number_format($fatture->sum('pivot.importo_allocato') / 100, 2, ',', '.') }}</td>
+                        <td colspan="4" class="text-right text-bold">Uscito dal conto{{ $pagamento->importo_commissione > 0 ? ', senza le commissioni' : '' }}:</td>
+                        <td class="text-right text-bold">{{ $euroConSegno($uscitoDalConto) }}</td>
                     </tr>
+                    @if($chiusoConNote !== 0)
+                    <tr>
+                        <td colspan="4" class="text-right">Chiuso con note di credito:</td>
+                        <td class="text-right">{{ $euroConSegno($chiusoConNote) }}</td>
+                    </tr>
+                    @endif
                 </tfoot>
             </table>
         @endif

@@ -30,9 +30,10 @@ class ComunicazionePortaleResource extends ComunicazioneResource
     {
         return Arr::only(parent::toArray($request), self::CAMPI) + [
             'created_by' => $this->whenLoaded('createdBy', fn () => AutorePortale::di($this->createdBy)),
+            // Coda 668: dei palazzi dell'avviso solo quelli di chi guarda, tutti a chi l'ha scritto (`PalazziDelCondomino`), mai il nome di un altro palazzo dello studio.
             'condomini'  => [
-                'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini')),
-                'full'    => CondominioPortaleResource::collection($this->whenLoaded('condomini')),
+                'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini', fn () => PalazziDelCondomino::fra($request, $this->condomini, $this->created_by))),
+                'full'    => CondominioPortaleResource::collection($this->whenLoaded('condomini', fn () => PalazziDelCondomino::fra($request, $this->condomini, $this->created_by))),
             ],
         ];
     }

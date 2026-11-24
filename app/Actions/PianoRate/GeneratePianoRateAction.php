@@ -66,6 +66,9 @@ class GeneratePianoRateAction
      *                            che il cancello indica è un'altra (registrarli e rimandare il modulo).
      * @param list<int> $appenaSincronizzate Le voci che «Sincronizza» ha appena scritto nel piano: se una è negativa il rifiuto non dice di toglierla dal piano,
      *                                        perché il rifiuto annulla la scrittura e nel piano non c'è nessuna copia.
+     * @param bool $scriviLaRigaVuota Coda 489 (decisione 685 (3)): la generazione è il ricalcolo di un piano (`PianoRateGenerationController`): un piano
+     *                                con la riga delle voci vuota si scrive le voci che il motore prende, senza importo (`scriviLaRigaVuota()`). Le altre
+     *                                generazioni non la toccano.
      * @throws DestinatariCambiatiException Se la risoluzione temporale cambia dei destinatari e $accettaDestinatari è false.
      * @throws \App\Exceptions\Gestionale\RichiedeDeliberaException Straordinario senza data della delibera (decisione 12).
      *
@@ -90,9 +93,11 @@ class GeneratePianoRateAction
         ?Esercizio $esercizio = null,
         bool $allaCreazione = false,
         array $appenaSincronizzate = [],
+        bool $scriviLaRigaVuota = false,
     ): array {
         return RegistroModifiche::durante(GestiDelRegistro::pianoGenerato($pianoRate), fn () => $this->genera($pianoRate, $forzaApplicazioneSaldi,
-            $saldiConfig, $accettaScoperti, $notaScoperti, $accettaDestinatari, $notaDestinatari, $esercizio, $allaCreazione, $appenaSincronizzate));
+            $saldiConfig, $accettaScoperti, $notaScoperti, $accettaDestinatari, $notaDestinatari, $esercizio, $allaCreazione, $appenaSincronizzate,
+            $scriviLaRigaVuota));
     }
 
     private function genera(
@@ -106,6 +111,7 @@ class GeneratePianoRateAction
         ?Esercizio $esercizio = null,
         bool $allaCreazione = false,
         array $appenaSincronizzate = [],
+        bool $scriviLaRigaVuota = false,
     ): array
     {
         $pianoRate->refresh();
@@ -190,6 +196,14 @@ class GeneratePianoRateAction
             $pianoRate->save();
         }
         $competenza = app(CompetenzaDelPiano::class)->perPiano($pianoRate, $esercizio);
+
+        // Coda 489 (decisione 685 (3)): al ricalcolo, il piano con la riga delle voci vuota (nato con le versioni di prima) si scrive nella riga le voci che
+        // il motore sta per prendere, senza importo: con la riga scritta il motore prende le stesse voci con gli stessi importi, e da lì le impegna per gli
+        // altri piani, per la creazione e per la guardia del già versato. Solo il ricalcolo (`$scriviLaRigaVuota`, dalla rotta «Ricalcola»): la creazione
+        // la riga la scrive da sé. Nella transazione della generazione (`RegistroModifiche::durante`): se la generazione si ferma, la riga resta vuota.
+        if ($scriviLaRigaVuota && $pianoRate->tipo !== 'straordinario') {
+            $this->scriviLaRigaVuota($pianoRate, $gestione);
+        }
 
         if ($pianoRate->tipo === 'straordinario') {
             $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate, $competenza);
@@ -619,6 +633,27 @@ class GeneratePianoRateAction
      * @param list<array<string, mixed>> $scoperti gli scoperti del motore, con le righe senza millesimo (`importo` 0)
      * @param bool $presaDAtto la generazione ha la presa d'atto dell'amministratore, con la nota
      */
+    /**
+     * Coda 489: la riga delle voci di un piano che non ne ha, scritta con le voci che il motore prende senza righe (`CalcoloQuoteService::vociDellaRigaVuota`),
+     * senza importo. Niente se il piano ha già delle righe, se non c'è nessuna voce da prendere, o se la riga non si può scrivere uguale a ciò che il
+     * motore prende: allora il piano resta com'era.
+     */
+    private function scriviLaRigaVuota(PianoRate $pianoRate, ?Gestione $gestione): void
+    {
+        if ($gestione === null || DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id)->exists()) {
+            return;
+        }
+        $voci = $this->calcolatore->vociDellaRigaVuota($pianoRate, $gestione);
+        if ($voci === null || $voci === []) {
+            return;
+        }
+
+        RegistroModifiche::legame($pianoRate, 'capitoli', 'Capitoli', fn () => $pianoRate->capitoli()->attach(
+            array_fill_keys($voci, ['importo' => null, 'note' => 'Scritta dal ricalcolo del piano senza voci'])
+        ));
+        $pianoRate->unsetRelation('capitoli');
+    }
+
     private function registraQuoteNonAssegnate(PianoRate $pianoRate, array $scoperti, bool $presaDAtto = true): void
     {
         if ($scoperti === []) {

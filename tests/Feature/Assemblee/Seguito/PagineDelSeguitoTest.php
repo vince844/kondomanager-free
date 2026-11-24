@@ -243,3 +243,32 @@ it('il punto «Stato di esecuzione delle delibere precedenti» nell\'ordine del 
             ->where('ordine.0.dati.stato_esecuzione.aperte.0.testo', 'Lavori nelle parti comuni')
             ->where('ordine.0.dati.stato_esecuzione.eseguite', []));
 });
+
+it('«Trenta giorni» con un punto rinviato e le varie: la data c\'è, e le righe senza voto dicono che non c\'è niente da impugnare (Coda 750 B1)', function () {
+    $s = SalaDiViaRoma12::nuovo($this);
+    $a = SeguitoDiViaRoma12::tenuta($this, $s, [
+        ['testo' => 'Portone: € 14.500,00 con Serramenti Marino', 'materia' => 'lavori', 'importo' => 1450000],
+        ['testo' => 'Rifacimento del cortile', 'materia' => 'lavori', 'importo' => 900000],
+        ['testo' => 'Varie ed eventuali', 'materia' => 'varie'],
+    ], [2 => 'rinviata']);
+
+    $pagina = SeguitoDelleDelibere::perLaPagina($a, $s->admin);
+    $righe = collect($pagina['tabella'])->keyBy('punto');
+    // Tutti in sala e favorevoli al portone: nessuno può impugnarlo, i trenta giorni hanno il giorno della delibera.
+    expect($pagina['trenta_giorni']['per_tutti'])->toBe('2026-12-15')
+        ->and($pagina['trenta_giorni']['frase'])->toBe('Nessuno può impugnarla: tutti presenti e favorevoli. Resta la nullità.')
+        ->and($righe[1]['trenta_giorni']['per_tutti'])->toBe('2026-12-15')
+        ->and($righe[2]['trenta_giorni'])->toBe(['per_tutti' => null, 'dal' => null, 'frase' => 'Niente da impugnare: rinviato.'])
+        ->and($righe[3]['trenta_giorni'])->toBe(['per_tutti' => null, 'dal' => null, 'frase' => 'Niente da impugnare: trattato senza voto.']);
+});
+
+it('il rendiconto e il riparto votati a parte: due righe nella tabella del passo 6, ognuna con il suo oggetto (Coda 750 B6)', function () {
+    $s = SalaDiViaRoma12::nuovo($this);
+    $a = SeguitoDiViaRoma12::tenuta($this, $s, [
+        ['testo' => 'Approvazione del rendiconto 2025 e dello stato di riparto', 'materia' => 'rendiconto'],
+        ['testo' => 'Portone: € 14.500,00 con Serramenti Marino', 'materia' => 'lavori', 'importo' => 1450000],
+    ]);
+
+    $righe = collect(SeguitoDelleDelibere::perLaPagina($a, $s->admin)['tabella']);
+    expect($righe->map(fn ($r) => [$r['punto'], $r['oggetto']])->all())->toBe([[1, 'rendiconto'], [1, 'riparto'], [2, null]]);
+});

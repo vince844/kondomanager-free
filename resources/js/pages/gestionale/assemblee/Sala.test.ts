@@ -154,6 +154,23 @@ describe('la barra della costituzione e la rete', () => {
         expect(testo('[data-innesto="rete"]')).toContain('In linea');
     });
 
+    test('il punto di una parte: sotto la regola la riga azzurra di chi vota; un punto fermato nella beta.13, senza la riga, resta com\'era (Coda 734)', async () => {
+        const sala = salaAperta();
+        const scala = sala.punti[2];
+        sala.punti[2] = { ...scala, perimetro: { ...scala.perimetro!, chi_vota: 'Votano solo i condòmini della scala B' } };
+        await monta(sala);
+        await clic('[data-testid="punto-7"]');
+        expect(testo('[data-testid="chi-vota-sul-punto"]')).toBe('Votano solo i condòmini della scala B: chi altro è in sala non vota su questo punto.');
+        expect(document.body.querySelector('[data-testid="chi-vota-sul-punto"]')!.className).toContain('bg-sky-50');
+        await clic('[data-testid="punto-4"]');
+        expect(document.body.querySelector('[data-testid="chi-vota-sul-punto"]')).toBeNull();
+        w!.unmount();
+        document.body.innerHTML = '';
+        await monta();
+        await clic('[data-testid="punto-7"]');
+        expect(document.body.querySelector('[data-testid="chi-vota-sul-punto"]')).toBeNull();
+    });
+
     test('il punto della sola scala aggiunge la sua riga, gialla quando non basta', async () => {
         await monta();
         await clic('[data-testid="punto-7"]');
@@ -263,7 +280,8 @@ describe('le presenze', () => {
         const v = sala.punti[0].votazioni[0];
         sala.punti[0] = { ...sala.punti[0], votazioni: [{ ...v, intervenuti: { ...v.intervenuti, teste: v.intervenuti.teste.filter((t) => t.chiave !== 'p-14') } }] };
         await monta(sala);
-        expect(testo('[data-testa="p-14"]')).toContain('entrato alle 19:20, dopo il voto del punto 1 (19:05): per il punto 1 non conta');
+        expect(testo('[data-testa="p-14"]')).toContain('in sala dalle 19:20, dopo il voto del punto 1 (19:05): per il punto 1 non conta');
+        expect(testo('[data-testa="p-14"]')).not.toContain('entrato');
         expect(testo('[data-testa="p-1"]')).not.toContain('dopo il voto');
     });
 
@@ -344,6 +362,15 @@ describe('il voto di un punto', () => {
         expect(testo('[data-testid="conferma-voto"]')).toBe('Conferma: approvata');
         await clic('[data-testid="conferma-voto"]');
         expect(ultimo()).toMatchObject({ tipo: 'conferma', dati: { votazione_id: 404, esito: 'approvata' }, base: 5 });
+    });
+
+    test('a sala aperta il motivo di «Un altro esito» si legge sotto il voto, con le parole della sala chiusa (rilievo C55)', async () => {
+        const sala = salaAperta();
+        sala.punti[1] = { ...sala.punti[1], votazioni: [votazioneDelPortone({ esito: 'approvata', motivo: 'Il presidente legge i voti in modo diverso.',
+            confermata_il: '2026-12-15T18:40:00Z' })] };
+        await monta(sala);
+        await clic('[data-testid="punto-4"]');
+        expect(testo('[data-testid="il-motivo"]')).toBe('Il motivo dell\'esito: Il presidente legge i voti in modo diverso.');
     });
 
     test('un esito diverso da quello proposto chiede il motivo', async () => {
@@ -570,7 +597,7 @@ describe('la sala chiusa si legge com\'era (decisione 660)', () => {
     test('la barra dice la costituzione vera, non zero: 11 su 26, 512,57 millesimi, costituita', async () => {
         await monta(salaChiusa());
         expect(testo('[data-testid="barra-stato"]')).toBe('Chiusa alle 18:42 · costituita in seconda convocazione');
-        expect(testo('[data-testid="barra-teste"]')).toBe('11 su 26 condòmini in sala');
+        expect(testo('[data-testid="barra-teste"]')).toBe('11 su 26 condòmini alla costituzione');
         expect(testo('[data-testid="barra-valore"]')).toBe('512,57 millesimi su 1.000');
         expect(testo('[data-testid="barra-servono"]')).toBe('Chiusa alle 18:42 · costituita in seconda convocazione con 11 su 26 e 512,57 millesimi.');
     });

@@ -13,7 +13,8 @@ use App\Models\User;
  * La comunicazione (`ComunicazioniEdit.vue`, `ComunicazioneController::update`, con la `FormRequest` della creazione). Nel modulo i dati obbligatori
  * com'è oggi (titolo, testo, priorità, commenti, in evidenza, pubblicata, condomini); fuori la programmazione (la sua chiave, anche vuota, la azzererebbe),
  * i destinatari, «avvisa i destinatari» e la moderazione dei commenti: con quelle chiavi assenti la pagina non le tocca e non manda avvisi. La scrittura
- * del titolo o del testo segna chi l'ha cambiata, come la pagina.
+ * del titolo o del testo segna chi l'ha cambiata, come la pagina. «Chiedi la presa visione» (Coda 594) c'è com'è oggi: la richiesta della pagina, senza
+ * la sua chiave, la leggerebbe spenta.
  */
 final class ModuloComunicazione extends ModuloDellaScheda
 {
@@ -47,6 +48,7 @@ final class ModuloComunicazione extends ModuloDellaScheda
             'can_comment' => (bool) $cosa->getRawOriginal('can_comment'),
             'is_featured' => (bool) $cosa->getRawOriginal('is_featured'),
             'is_published' => (bool) $cosa->getRawOriginal('is_published'),
+            'chiedi_presa_visione' => (bool) $cosa->getRawOriginal('chiedi_presa_visione'),
             'condomini_ids' => $cosa->condomini()->pluck('condomini.id')->map(fn ($id) => (int) $id)->all(),
         ];
     }

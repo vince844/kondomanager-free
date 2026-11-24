@@ -22,6 +22,10 @@ class GeneralSettings extends ImpostazioniDelRegistro
     public int $allegati_massimo_per_elemento = 5;
     public bool $segnalazioni_assegnazione_visibile_nel_portale = false;
     public bool $segnalazioni_assegnazione_porta_in_lavorazione = false;
+    public bool $comunicazioni_registra_aperture = false;
+
+    /** Coda 788, decisione 713: i condòmini e i fornitori hanno «Avvisa lo studio» sulla pagina d'errore. Acceso di serie. */
+    public bool $errori_avviso_dalla_pagina = true;
 
     /**
      * Quante righe mostrano gli elenchi a chi non ha ancora scelto.

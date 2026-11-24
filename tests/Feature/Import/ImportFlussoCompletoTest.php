@@ -252,7 +252,11 @@ it('la seconda importazione sullo stesso archivio si completa dalle schermate', 
     $condomini = Condominio::count();
     $anagrafiche = Anagrafica::count();
 
-    // Seconda importazione degli stessi file: adesso condominio e persone esistono già.
+    // Seconda importazione degli stessi file: adesso condominio e persone esistono già. Scrivere in un condominio che c'è già chiede
+    // «Modifica condomini» (Coda 759, l'alto 2 dello scettico della tappa 5 della 1.12.0-beta.14): chi ha solo «Importa dati» riceve un 403.
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Modifica condomini', 'guard_name' => 'web']);
+    $utente->givePermissionTo('Modifica condomini');
+    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
     $secondo = caricaBundle($utente);
 
     $props = $this->actingAs($utente)->get(route('import.anteprima', $secondo->uuid))

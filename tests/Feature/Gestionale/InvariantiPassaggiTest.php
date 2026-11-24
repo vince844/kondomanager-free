@@ -142,8 +142,8 @@
  *   proprietari) nella .41 e nella .42 il conguaglio si fermava; dalla .43 (decisione 56) la parte legata con la riserva alla
  *   nuda di chi ha comprato torna a lui e quella dell'usufrutto censito al nudo censito, e l'oracolo lo controlla coppia per
  *   coppia;
- * - un saldo intestato all'unità (S=UN) entra nella griglia con I1–I4: nessun invariante dice a chi va. Lo dice, com'è, la
- *   sentinella della Coda 174 nella sezione «Coerenza», qui sotto;
+ * - un saldo intestato all'unità (S=UN) entra nella griglia con I1–I4: nessun invariante dice a chi va. Lo dice la regola
+ *   della issue 58 (Coda 174, decisione 674), provata nella sezione «Coerenza», qui sotto, e in `Beta14PregressoPassaggioTest`;
  * - «il destinatario cambierebbe» quando paga sempre la stessa persona — nella costituzione con la voce sul
  *   «Proprietario», e nella riserva con la voce sull'«Usufruttuario» o sull'«Inquilino» senza inquilino (rilievo R1): non
  *   è un difetto. Per il motore il destinatario è la risoluzione per periodo, e il ricalcolo chiede davvero la presa
@@ -152,12 +152,14 @@
  *   programma dice e ciò che fa, trovate dalla critica del piano insieme a questa, sono corrette nei testi (decisione 28.8,
  *   cantieri C7 e C8) e provate in fondo al file, nella sezione «Coerenza»: con un saldo intestato all'unità, o al solo box
  *   passato con lo stesso atto, la frase «Il programma non intesta nulla a …» dell'anteprima e dello storico e la sua
- *   gemella «Nessuna quota è intestata a …» della nota di solidarietà nominano l'eccezione, senza dire a chi vada il saldo;
+ *   gemella «Nessuna quota è intestata a …» della nota di solidarietà dicono che il saldo resta a chi ne era titolare il
+ *   primo giorno del suo esercizio, salvo una scelta diversa nel piano rate (issue 58);
  *   la nota della vendita della sola nuda proprietà nomina l'usufruttuario solo quando l'usufrutto grava con certezza
  *   sulla quota venduta; le quote di una straordinaria tutta di chi vende, in bozza e già emesse, vanno fra le
- *   informazioni; la finestra della nota senza l'esercizio precedente. Lì il denaro del saldo intestato all'unità in un
- *   piano straordinario generato dopo il passaggio è fissato com'è, come sentinella della Coda 174: nella riserva tutto a
- *   chi compra, nella vendita piena metà a chi compra e metà a chi vende.
+ *   informazioni; la finestra della nota senza l'esercizio precedente. Lì anche il denaro del saldo intestato all'unità in
+ *   un piano straordinario generato dopo il passaggio: tutto a chi vende, titolare il primo giorno dell'esercizio, nella
+ *   riserva e nella vendita piena (fino alla 1.12.0-beta.13 la sentinella della Coda 174 fissava tutto a chi compra nella
+ *   riserva e metà per uno nella vendita piena).
  *
  * **Cosa resta scoperto** (regola «ogni test dichiara cosa NON copre»): l'emissione è simulata a giornale, non passa da
  * `EmissioneRateController`; nessun pagamento e nessuna segnalazione dal portale (i rami «pagata» e «segnalata» sono gli
@@ -1267,34 +1269,33 @@ it('griglia C — le due forme del risolutore danno le stesse righe su ogni peri
 
 // --- Coerenza: ciò che il programma dice e ciò che fa (decisione 28.8) ------------------------------------------------------
 
-// Decisione 28.8 a. Un saldo intestato all'unità (l'arretrato dell'appartamento, non di una persona) si addebita quando si
-// genera il piano, ai titolari che il ramo B2 di `GenerateSaldiAction` legge in quel momento (`vincolaQuery`, senza periodo):
-// nella riserva, per la straordinaria, tutto al nudo proprietario, perché la catena solidale parte da lui; nella vendita piena
-// metà a chi compra e metà a chi vende, perché senza periodo `vincolaQuery` prende anche la riga chiusa di chi vende. La
-// frase «Il programma non intesta nulla a chi compra» (anteprima e storico) e la sua gemella nella nota di solidarietà,
-// «Nessuna quota è intestata a … per quel periodo», nella riserva e nella vendita piena (lì l'incoerenza era anteriore),
-// erano false: ora nominano l'eccezione quando l'unità o una pertinenza del passaggio ha saldi intestati all'unità, con la
-// stessa forma, che non dice a chi vadano (`FrasiObbligati::SALVO_SALDI_DELL_UNITA`). La nota senza il saldo la fissano per
-// intero «testi T4, controprova» e le note della riserva in `RiservaUsufruttoTest`. Il denaro non cambia — se quei saldi
-// debbano seguire chi era titolare nel periodo è una regola di denaro, la Coda 174 — ed è fissato com'è come sentinella
-// della Coda 174: quando la regola cambierà, questo test diventa rosso e le frasi vanno rilette. Il test
-// sulle combinazioni asseriva zero a chi compra: era la regola della Coda 174, non ancora decisa.
-it('coerenza, decisione 28.8 a — con un saldo intestato all\'unità la frase «Il programma non intesta nulla a chi compra» e la nota di solidarietà nominano l\'eccezione, nella riserva e nella vendita, in anteprima, nello storico e nella nota; senza, la frase resta quella di prima. Sentinella della Coda 174: il piano straordinario generato dopo addebita oggi l\'arretrato dell\'unità tutto a chi compra nella riserva, e nella vendita piena lo divide con chi vende', function (string $forma, string $senza, string $con, array $arretrato) {
+// Decisione 28.8 a, con la issue 58 (Coda 174, decisione 674). Un saldo intestato all'unità (l'arretrato dell'appartamento, non di
+// una persona) va a chi ne era titolare il primo giorno del suo esercizio (ramo B2 di `GenerateSaldiAction`, con il giorno): nella
+// riserva e nella vendita piena dell'1/5 tutto a chi vende, Ugo, titolare l'1/1. Fino alla 1.12.0-beta.13 `vincolaQuery` era senza
+// periodo: nella riserva, per la straordinaria, tutto al nudo proprietario; nella vendita piena metà a chi compra e metà a chi vende,
+// perché prendeva anche la riga chiusa di chi vende — e la frase non diceva a chi andassero. Ora la frase «Il programma non intesta
+// nulla a chi compra» (anteprima e storico) e la sua gemella nella nota di solidarietà, «Nessuna quota è intestata a … per quel
+// periodo», dicono la regola quando l'unità o una pertinenza del passaggio ha saldi intestati all'unità
+// (`FrasiObbligati::saldiDellUnita()`): in anteprima «salvo una tua scelta diversa nel piano rate», nello storico e nella nota senza
+// «tua». La nota senza il saldo la fissano per intero «testi T4, controprova» e le note della riserva in `RiservaUsufruttoTest`. Questo
+// test era la sentinella della Coda 174, con € 90,00 a testa nella vendita piena: la regola è cambiata con la decisione 674 (3), e le
+// cifre e le frasi con lei. I casi della regola sono in `Beta14PregressoPassaggioTest`.
+it('coerenza, decisione 28.8 a e issue 58 — con un saldo intestato all\'unità la frase «Il programma non intesta nulla a chi compra» e la nota di solidarietà dicono che quei saldi restano a chi ne era titolare il primo giorno del loro esercizio, nella riserva e nella vendita, in anteprima, nello storico e nella nota; senza, la frase resta quella di prima. Il piano straordinario generato dopo addebita l\'arretrato dell\'unità tutto a chi vende, titolare l\'1/1', function (string $forma, string $senza, string $con, array $arretrato) {
     $s = ruScenario('tutte_rate', 0, 'straordinaria', '2026-05-20', '2026-06-05', 6, genera: false);
     $dati = ($forma === 'riserva' ? ruPassaggio('riserva', $s['rigaV'], $s['a'], '2026-05-01', 100) : ruPassaggio('vendita', $s['rigaV'], $s['a'], '2026-05-01', 100))
         + ['ho_letto' => true, 'nota_cancello' => 'Rogito letto, passaggio del 1 maggio'];
     $frasi = fn () => implode("\n", ruAnteprima($this, $s, $dati)['obbligati']['frasi']);
     $nota = fn () => app(\App\Services\Subentro\NotaSolidarieta::class)->per($s['c'], $s['a'])[0]['testo'] ?? '';
-    $nellaNota = 'Nessuna quota è intestata ad Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: ';
+    $nellaNota = 'Nessuna quota è intestata ad Acquirente Elsa per quel periodo, e i saldi intestati all\'unità restano a chi ne era titolare il primo giorno del loro esercizio, salvo una scelta diversa nel piano rate: ';
 
     expect($frasi())->toContain($senza)->not->toContain('saldi intestati all\'unità');
     \App\Models\Saldo::create(['esercizio_id' => $s['e']->id, 'condominio_id' => $s['c']->id, 'anagrafica_id' => null, 'immobile_id' => $s['unita']->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 18000, 'origine' => 'manuale', 'is_applicato' => false]);
-    expect($frasi())->toContain($con);
+    expect($frasi())->toContain(sprintf($con, 'una tua scelta'));
     $subentro = ruRegistra($this, $s, $dati);
-    expect(implode("\n", app(\App\Services\Subentro\FrasiObbligati::class)->daSubentro($subentro)))->toContain($con)
+    expect(implode("\n", app(\App\Services\Subentro\FrasiObbligati::class)->daSubentro($subentro)))->toContain(sprintf($con, 'una scelta'))
         ->and($nota())->toContain($nellaNota);
 
-    // Coda 174, sentinella: il denaro di oggi, l'arretrato dell'unità per persona.
+    // Issue 58: il denaro, l'arretrato dell'unità per persona.
     app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($s['piano'], forzaApplicazioneSaldi: true, accettaDestinatari: true, notaDestinatari: 'Letto: passaggio nel 2026', esercizio: $s['e']);
     $saldoUsato = fn (int $id) => DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $s['piano']->id)->where('rate_quote.anagrafica_id', $id)
         ->pluck('rate_quote.regole_calcolo')->sum(fn ($r) => (int) (json_decode((string) $r, true)['importi']['saldo_usato'] ?? 0));
@@ -1304,38 +1305,37 @@ it('coerenza, decisione 28.8 a — con un saldo intestato all\'unità la frase �
 })->with([
     'vendita o donazione con riserva d\'usufrutto' => ['riserva',
         'Il programma non intesta nulla ad Acquirente Elsa per quel periodo.',
-        'Il programma non intesta nulla ad Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano.',
-        // Tutto a chi compra la nuda proprietà: la catena solidale della straordinaria parte dal nudo proprietario.
-        ['Elsa' => 18000, 'Ugo' => 0]],
+        'Il programma non intesta nulla ad Acquirente Elsa per quel periodo, e i saldi intestati all\'unità restano a chi ne era titolare il primo giorno del loro esercizio, salvo %s diversa nel piano rate.',
+        // Tutto a chi vende: l'1/1 Ugo era proprietario pieno, e la catena della straordinaria lo trova (prima tutto a Elsa, nuda proprietaria).
+        ['Elsa' => 0, 'Ugo' => 18000]],
     'vendita piena' => ['vendita',
         'Il programma non intesta nulla ad Acquirente Elsa: la nota resta qui',
-        'Il programma non intesta nulla ad Acquirente Elsa, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: la nota resta qui',
-        // Metà per uno: senza periodo `vincolaQuery` prende anche la riga chiusa di chi vende, e le due righe «proprietario» al
-        // 100 % si dividono l'arretrato. Per questo la frase non dice a chi vada.
-        ['Elsa' => 9000, 'Ugo' => 9000]],
+        'Il programma non intesta nulla ad Acquirente Elsa, e i saldi intestati all\'unità restano a chi ne era titolare il primo giorno del loro esercizio, salvo %s diversa nel piano rate: la nota resta qui',
+        // Tutto a chi vende: la riga chiusa di Ugo l'1/1 è in vigore, quella di Elsa comincia il 1/5 (prima € 90,00 a testa).
+        ['Elsa' => 0, 'Ugo' => 18000]],
 ]);
 
-// Decisione 28.8 a con le pertinenze. Il saldo intestato al solo box, venduto con lo stesso atto, fa nominare l'eccezione come
-// quello dell'unità: in anteprima (le unità spuntate nel modulo), nello storico e nella nota di solidarietà (l'unità del
-// passaggio e le sue pertinenze, `FrasiObbligati::immobiliDelPassaggio`; la nota ha una voce per l'unità e una per il box, e
-// tutte e due guardano il box). Controprova sullo stesso passaggio: tolto il saldo, storico e nota tornano senza eccezione.
-// Il denaro non si guarda: il box qui non ha quote nel piano, e a chi vada il saldo è la Coda 174.
-it('coerenza, decisione 28.8 a — un saldo intestato al solo box, pertinenza venduta con lo stesso atto, fa nominare l\'eccezione in anteprima, nello storico e in tutte e due le voci della nota di solidarietà; tolto il saldo, storico e nota tornano senza', function () {
+// Decisione 28.8 a con le pertinenze. Il saldo intestato al solo box, venduto con lo stesso atto, fa dire la regola come quello
+// dell'unità: in anteprima (le unità spuntate nel modulo), nello storico e nella nota di solidarietà (l'unità del passaggio e le sue
+// pertinenze, `FrasiObbligati::immobiliDelPassaggio`; la nota ha una voce per l'unità e una per il box, e tutte e due guardano il
+// box). Controprova sullo stesso passaggio: tolto il saldo, storico e nota tornano senza. Il denaro non si guarda: il box qui non ha
+// quote nel piano; la regola è quella dell'unità (issue 58).
+it('coerenza, decisione 28.8 a — un saldo intestato al solo box, pertinenza venduta con lo stesso atto, fa dire la regola dei saldi dell\'unità in anteprima, nello storico e in tutte e due le voci della nota di solidarietà; tolto il saldo, storico e nota tornano senza', function () {
     $s = ruScenario('tutte_rate', 0, 'straordinaria', '2026-05-20', '2026-06-05', 6, genera: false);
     $box = Immobile::forceCreate(['condominio_id' => $s['c']->id, 'nome' => 'Box 12', 'descrizione' => 'Box', 'interno' => 'B12', 'pertinenza_di_immobile_id' => $s['unita']->id]);
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $s['v']->id, 'immobile_id' => $box->id, 'tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => '2019-01-01', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
     $dati = ruPassaggio('vendita', $s['rigaV'], $s['a'], '2026-05-01', 100, [$box->id]) + ['ho_letto' => true, 'nota_cancello' => 'Rogito letto, passaggio del 1 maggio'];
-    $salvo = 'Il programma non intesta nulla ad Acquirente Elsa, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: la nota resta qui';
-    $nellaNota = 'Nessuna quota è intestata ad Acquirente Elsa per quel periodo, salvo i saldi intestati all\'unità, che si addebitano quando si genera il piano: ';
+    $salvo = 'Il programma non intesta nulla ad Acquirente Elsa, e i saldi intestati all\'unità restano a chi ne era titolare il primo giorno del loro esercizio, salvo %s diversa nel piano rate: la nota resta qui';
+    $nellaNota = 'Nessuna quota è intestata ad Acquirente Elsa per quel periodo, e i saldi intestati all\'unità restano a chi ne era titolare il primo giorno del loro esercizio, salvo una scelta diversa nel piano rate: ';
 
     expect(implode("\n", ruAnteprima($this, $s, $dati)['obbligati']['frasi']))->not->toContain('saldi intestati all\'unità');
     $saldo = \App\Models\Saldo::create(['esercizio_id' => $s['e']->id, 'condominio_id' => $s['c']->id, 'anagrafica_id' => null, 'immobile_id' => $box->id, 'gestione_id' => $s['g']->id, 'saldo_iniziale' => 18000, 'origine' => 'manuale', 'is_applicato' => false]);
-    expect(implode("\n", ruAnteprima($this, $s, $dati)['obbligati']['frasi']))->toContain($salvo);
+    expect(implode("\n", ruAnteprima($this, $s, $dati)['obbligati']['frasi']))->toContain(sprintf($salvo, 'una tua scelta'));
 
     $subentro = ruRegistra($this, $s, $dati);
     $storico = fn () => implode("\n", app(\App\Services\Subentro\FrasiObbligati::class)->daSubentro($subentro));
     $note = fn () => collect(app(\App\Services\Subentro\NotaSolidarieta::class)->per($s['c'], $s['a']))->pluck('testo', 'immobile');
-    expect($storico())->toContain($salvo)
+    expect($storico())->toContain(sprintf($salvo, 'una scelta'))
         ->and($note()->keys()->sort()->values()->all())->toBe(['Box 12 (Int. B12)', 'Interno 1 (Int. 1)'])
         ->and($note()->every(fn ($testo) => str_contains($testo, $nellaNota)))->toBeTrue();
 

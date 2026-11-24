@@ -86,7 +86,7 @@ function apriLoStesso() {
     <div v-else-if="tenuta === 'non_promette'" class="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200"
         data-testid="nota-del-browser">
         <Info class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        <p>Questo browser tiene il lavoro, ma non promette di non cancellarlo se il disco si riempie. Per la sala di stasera basta. Per esserne sicuro, tieni il
+        <p>Questo browser tiene il lavoro, ma non promette di non cancellarlo se il disco si riempie. Per questa sala basta. Per esserne sicuro, tieni il
             foglio della sala.</p>
     </div>
 </template>

@@ -5,6 +5,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Traits\OrdinaElenco;
 
 use App\Exceptions\Gestionale\IncassoNonRegistrabileException;
@@ -122,8 +123,8 @@ class IncassoRateController extends Controller
                 ->count(),
             'incassi_mese' => ScritturaContabile::where('condominio_id', $condominio->id)
                 ->where('tipo_movimento', 'incasso_rata')
-                ->whereMonth('data_registrazione', now()->month)
-                ->whereYear('data_registrazione', now()->year)
+                ->whereMonth('data_registrazione', DateHelper::adessoUtente()->month)
+                ->whereYear('data_registrazione', DateHelper::adessoUtente()->year)
                 ->count(),
             // StornoIncassoRateAction sigilla la scrittura originale con stato='annullata'
             // (giornale append-only: la scrittura resta, viene solo marcata). 'stornato'

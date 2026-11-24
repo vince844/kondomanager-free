@@ -166,12 +166,20 @@ final class MemoriaDelCondominio
         });
     }
 
-    /** «Mettilo nell'ordine del giorno del 15/12»: il memo diventa un punto dell'assemblea in preparazione. */
+    /**
+     * «Mettilo nell'ordine del giorno del 15/12»: il memo diventa un punto dell'assemblea in preparazione. Il memo di un gruppo ({@see gruppoDelMemo()}) va
+     * solo in un'assemblea di quel gruppo.
+     */
     public static function nellOrdine(MemoDellAssemblea $memo, Assemblea $assemblea, User $utente): PuntoDellOrdineDelGiorno
     {
         abort_if((int) $assemblea->condominio_id !== (int) $memo->condominio_id, 404);
         if (! $memo->eInAttesa()) {
             throw ValidationException::withMessages(['memo' => 'Questo memo non è più in attesa.']);
+        }
+        $gruppo = self::gruppoDelMemo($memo);
+        if ($gruppo !== null && UnitaDelPunto::gruppoDellAssemblea($assemblea) !== $gruppo['tabella_id']) {
+            throw ValidationException::withMessages(['memo' => 'Il memo è dei condòmini della tabella «' . $gruppo['nome'] . '»: lo propone la prossima assemblea dei '
+                . 'condòmini della tabella «' . $gruppo['nome'] . '».']);
         }
 
         return OrdineDelGiorno::aggiungi($assemblea, self::comeProposta($memo), $utente);
@@ -220,9 +228,29 @@ final class MemoriaDelCondominio
      * Il memo torna «in attesa»: il punto è stato tolto, l'assemblea annullata, o tenuta fuori dal programma senza delibera su quel punto (con `$tieniIlPunto`
      * il memo ricorda il punto, e la proposta dice «non trattato il 15/12/2026»). Se la sua data è ancora davanti, il compito torna.
      */
-    public static function tornaInAttesa(MemoDellAssemblea $memo, bool $tieniIlPunto = false): void
+    public static function tornaInAttesa(MemoDellAssemblea $memo, bool $tieniIlPunto = false, bool $assembleaChesiElimina = false): void
     {
-        $memo->update(['stato' => StatoMemo::IN_ATTESA->value, 'punto_id' => $tieniIlPunto ? $memo->punto_id : null, 'assemblea_id' => null]);
+        if ($assembleaChesiElimina && ! $tieniIlPunto && $memo->ambito === AmbitoAssemblea::GRUPPO && $memo->punto_id !== null) {
+            // Fase 1-bis della beta.14: l'assemblea del gruppo che aveva preso il memo si elimina, e con lei il suo punto: il memo torna al punto da cui era nato
+            // (il rinvio in un'altra assemblea dello stesso gruppo), così il gruppo si legge ancora e la proposta dice «rinviato il …».
+            $origine = self::puntoDiOrigineDelMemo($memo);
+            $memo->update(['stato' => StatoMemo::IN_ATTESA->value, 'punto_id' => $origine, 'assemblea_id' => null]);
+            self::ridaiIlCompito($memo);
+
+            return;
+        }
+        // Il memo di un gruppo che esce dal punto senza tenerlo resta del gruppo: va all'assemblea del gruppo da cui esce ({@see gruppoDelMemo()}).
+        $delGruppo = ! $tieniIlPunto && $memo->ambito === AmbitoAssemblea::GRUPPO && $memo->punto_id !== null ? DB::table('assemblee_punti')
+            ->join('assemblee', 'assemblee.id', '=', 'assemblee_punti.assemblea_id')->where('assemblee_punti.id', $memo->punto_id)
+            ->where('assemblee.ambito', AmbitoAssemblea::GRUPPO->value)->value('assemblee.id') : null;
+        $memo->update(['stato' => StatoMemo::IN_ATTESA->value, 'punto_id' => $tieniIlPunto ? $memo->punto_id : null,
+            'assemblea_id' => $delGruppo === null ? null : (int) $delGruppo]);
+        self::ridaiIlCompito($memo);
+    }
+
+    /** Se la data del memo è ancora davanti e il compito non c'è o è chiuso, il compito torna. */
+    private static function ridaiIlCompito(MemoDellAssemblea $memo): void
+    {
         $giorno = $memo->ricordami_dal?->format('Y-m-d');
         $compito = $memo->evento_id === null ? null : Evento::query()->find($memo->evento_id);
         if ($giorno !== null && $giorno >= DateHelper::oggiUtente() && ($compito === null || $compito->is_completed)) {
@@ -231,8 +259,30 @@ final class MemoriaDelCondominio
     }
 
     /**
+     * Il punto da cui è nato il memo di un gruppo che esce dal punto di un'assemblea che si elimina: il punto con lo stesso testo di un'altra assemblea
+     * della stessa tabella (la più recente), quello rinviato. Null se non c'è più (allora il memo non ha più un gruppo che si legge).
+     */
+    private static function puntoDiOrigineDelMemo(MemoDellAssemblea $memo): ?int
+    {
+        $eliminata = DB::table('assemblee_punti')->join('assemblee', 'assemblee.id', '=', 'assemblee_punti.assemblea_id')
+            ->where('assemblee_punti.id', $memo->punto_id)->where('assemblee.ambito', AmbitoAssemblea::GRUPPO->value)->first(['assemblee.id', 'assemblee.tabella_id']);
+        if ($eliminata === null) {
+            return null;
+        }
+        $id = DB::table('assemblee_punti')->join('assemblee', 'assemblee.id', '=', 'assemblee_punti.assemblea_id')
+            ->where('assemblee.condominio_id', $memo->condominio_id)->where('assemblee.ambito', AmbitoAssemblea::GRUPPO->value)
+            ->where('assemblee.tabella_id', $eliminata->tabella_id)->where('assemblee.id', '!=', $eliminata->id)
+            ->where('assemblee_punti.testo', $memo->testo)
+            ->orderByDesc('assemblee.data')->orderByDesc('assemblee_punti.id')->value('assemblee_punti.id');
+
+        return $id === null ? null : (int) $id;
+    }
+
+    /**
      * Il punto scritto a mano e rinviato torna nella memoria del condominio: un memo in attesa, per la prossima assemblea, con il testo del punto, che ricorda
-     * il punto (`punto_id`, come un memo tornato in attesa dopo un rinvio: la proposta dice «rinviato il …»). Rilievo C62.
+     * il punto (`punto_id`, come un memo tornato in attesa dopo un rinvio: la proposta dice «rinviato il …»). Rilievo C62. Il perimetro è quello
+     * dell'assemblea: il punto rinviato nell'assemblea dei condòmini di un gruppo torna come memo del gruppo ({@see gruppoDelMemo()}), e lo propone solo la
+     * prossima assemblea di quel gruppo.
      */
     public static function dalPuntoRinviato(PuntoDellOrdineDelGiorno $punto, User $utente): MemoDellAssemblea
     {
@@ -241,6 +291,31 @@ final class MemoriaDelCondominio
         return MemoDellAssemblea::create(['condominio_id' => $assemblea->condominio_id, 'ambito' => $assemblea->ambito?->value ?? $assemblea->ambito,
             'palazzina_id' => $assemblea->palazzina_id, 'scala_id' => $assemblea->scala_id, 'testo' => (string) $punto->testo, 'punto_id' => $punto->id,
             'stato' => StatoMemo::IN_ATTESA->value, 'created_by' => $utente->id]);
+    }
+
+    /**
+     * Il gruppo di un memo dei condòmini di un gruppo (Coda 734): il memo non ha una tabella sua, e il gruppo è la tabella dell'assemblea di un gruppo del
+     * suo punto (il punto rinviato, o quello in cui è entrato dopo), o dell'assemblea a cui va. Null per gli altri memo, e per il memo del gruppo che non ha
+     * più né l'uno né l'altra (l'assemblea eliminata): allora vale per tutto il condominio.
+     *
+     * @return array{tabella_id: int, nome: string}|null
+     */
+    public static function gruppoDelMemo(MemoDellAssemblea $memo): ?array
+    {
+        if ($memo->ambito !== AmbitoAssemblea::GRUPPO) {
+            return null;
+        }
+        $assemblee = array_filter([$memo->punto_id === null ? null : DB::table('assemblee_punti')->where('id', $memo->punto_id)->value('assemblea_id'),
+            $memo->assemblea_id]);
+        foreach ($assemblee as $id) {
+            $tabella = DB::table('assemblee')->join('tabelle', 'tabelle.id', '=', 'assemblee.tabella_id')->where('assemblee.id', (int) $id)
+                ->where('assemblee.ambito', AmbitoAssemblea::GRUPPO->value)->first(['tabelle.id', 'tabelle.nome']);
+            if ($tabella !== null) {
+                return ['tabella_id' => (int) $tabella->id, 'nome' => (string) $tabella->nome];
+            }
+        }
+
+        return null;
     }
 
     /** La delibera sul suo punto chiude il memo (R10). */
@@ -275,7 +350,8 @@ final class MemoriaDelCondominio
         $tutti = [];
         foreach (ProposteDellOrdineDelGiorno::per($condominio, null, conLaNota: false) as $gruppo) {
             foreach ($gruppo['punti'] as $p) {
-                if (($p['chiave_fonte'] ?? null) === ProposteDellOrdineDelGiorno::CHIAVE_VARIE) {
+                // Il rendiconto e il preventivo di una gestione di un gruppo li propone l'assemblea del gruppo, non la card; il memo del gruppo sì, con la frase.
+                if (($p['chiave_fonte'] ?? null) === ProposteDellOrdineDelGiorno::CHIAVE_VARIE || (isset($p['gruppo_id']) && ($p['memo_id'] ?? null) === null)) {
                     continue;
                 }
                 $tutti[] = ['testo' => $p['testo'], 'origine' => $gruppo['titolo'], 'gruppo' => $gruppo['chiave'], 'chiave_fonte' => $p['chiave_fonte'],
@@ -599,12 +675,21 @@ final class MemoriaDelCondominio
         return $campi;
     }
 
-    /** Il perimetro, con la palazzina e la scala del condominio (R18). @param array<string, mixed> $dati @return array{0: string, 1: ?int, 2: ?int} */
+    /**
+     * Il perimetro, con la palazzina e la scala del condominio (R18). I condòmini di un gruppo (Coda 734) non hanno né palazzina né scala: il gruppo è la
+     * tabella dell'assemblea, che risolve chi la prepara ({@see PreparazioneDellAssemblea}).
+     *
+     * @param array<string, mixed> $dati
+     * @return array{0: string, 1: ?int, 2: ?int}
+     */
     public static function perimetro(Condominio $condominio, array $dati): array
     {
         $ambito = AmbitoAssemblea::tryFrom((string) ($dati['ambito'] ?? 'condominio')) ?? AmbitoAssemblea::CONDOMINIO;
         $palazzina = null;
         $scala = null;
+        if ($ambito === AmbitoAssemblea::GRUPPO) {
+            return [$ambito->value, null, null];
+        }
         if ($ambito === AmbitoAssemblea::PALAZZINA) {
             $palazzina = (int) SchedaDelCondominio::risolvi($condominio, 'palazzina', (int) ($dati['palazzina_id'] ?? 0))->getKey();
         }

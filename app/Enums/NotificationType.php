@@ -59,6 +59,9 @@ enum NotificationType: string
     case ATTACHMENT_APPROVED = 'attachment_approved';
     case ATTACHMENT_DELETED = 'attachment_deleted';
 
+    // Gli errori (1.12.0-beta.14, decisione 701): un condòmino o un collaboratore ha avvisato lo studio di un errore dalla pagina d'errore.
+    case ERROR_REPORTED = 'error_reported';
+
     /**
      * Get a human-readable label for the notification type.
      *
@@ -101,6 +104,9 @@ enum NotificationType: string
             self::ATTACHMENT_UNDER_MODERATION => 'Allegato in attesa di moderazione',
             self::ATTACHMENT_APPROVED => 'Allegato approvato',
             self::ATTACHMENT_DELETED => 'Allegato eliminato',
+
+            // Gli errori
+            self::ERROR_REPORTED => 'Errore avvisato',
         };
     }
 }

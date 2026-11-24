@@ -4,6 +4,7 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup lang="ts">
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 import { Head, Link } from '@inertiajs/vue3';
 </script>
 
@@ -98,31 +99,8 @@ import { Head, Link } from '@inertiajs/vue3';
           </div>
 
           <!-- Mini-footer interno alla card -->
-          <div class="mt-8 border-t border-[#1914001a] pt-5 text-xs text-[#706f6c] dark:border-[#3E3E3A] dark:text-[#A1A09A]">
-            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-              <span>
-                Powered by 
-                <a 
-                  href="https://www.kondomanager.com" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  class="font-semibold transition-colors hover:text-[#1b1b18] hover:underline dark:hover:text-[#EDEDEC]"
-                >
-                  KondoManager
-                </a> 
-              </span>
-              
-              <!-- Il separatore visibile solo su schermi più grandi -->
-              <span class="hidden sm:inline-block">—</span>
-              
-              <a 
-                href="https://github.com/KondoManager" 
-                target="_blank" 
-                class="transition-colors hover:text-[#1b1b18] hover:underline dark:hover:text-[#EDEDEC]"
-              >
-                Software Open Source (AGPL-3.0)
-              </a>
-            </div>
+          <div class="mt-8 border-t border-[#1914001a] pt-5 dark:border-[#3E3E3A]">
+            <NotaDiLicenza />
           </div>
         </div>
 

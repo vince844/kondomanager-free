@@ -10,6 +10,7 @@ use App\Helpers\MoneyHelper;
 use App\Models\Comunicazione;
 use App\Models\Evento;
 use App\Models\Segnalazione;
+use App\Services\Gestionale\F24\PromemoriaDelleRitenute;
 use App\Services\Treasury\DisponibilitaDiOggi;
 use Illuminate\Support\Str;
 
@@ -49,8 +50,9 @@ final class TipiDeiCompiti
         // Ciò che aspetta un'approvazione (decisioni 445 e 449): un compito per elemento; il testo della prossima azione lo dice il compito (`meta.azione`) e il
         // collegamento è la pagina filtrata sull'elemento (`meta.action_url`).
         'da_moderare' => ['nome' => 'Da moderare', 'azione' => 'Modera i commenti', 'pagina' => true],
-        // La ritenuta d'acconto da versare con l'F24: la scrivono il pagamento di una fattura con la ritenuta (`versamento_ritenuta`) e il condominio di
-        // prova (`f24`). È la stessa cosa: un nome solo, e la pagina «Ritenute e F24» del condominio, dove si prepara la delega e si registra il versamento.
+        // La ritenuta d'acconto da versare con l'F24: la scrivono i promemoria delle ritenute (`versamento_ritenuta`, `PromemoriaDelleRitenute`) e il condominio
+        // di prova (`f24`). È la stessa cosa: un nome solo, e la pagina «Ritenute e F24» del condominio, dove si prepara la delega e si registra il versamento.
+        // Il promemoria di una delega (Coda 718) porta alla scheda della delega, con «Apri la delega» ({@see azione()}).
         'versamento_ritenuta' => ['nome' => 'Ritenute da versare', 'azione' => 'Prepara l\'F24', 'pagina' => true, 'rotta' => 'admin.gestionale.f24.index'],
         'f24' => ['nome' => 'Ritenute da versare', 'azione' => 'Prepara l\'F24', 'pagina' => true, 'rotta' => 'admin.gestionale.f24.index'],
         'scadenza' => ['nome' => 'Scadenze', 'azione' => self::FATTO, 'pagina' => false],
@@ -80,6 +82,9 @@ final class TipiDeiCompiti
         // la regola», «Avvisa i condòmini»; la calcola la cosa), e la delibera respinta che chiede «Riproponi in assemblea» o «Chiudi con il motivo».
         'delibera_da_eseguire' => ['nome' => 'Delibere da eseguire', 'azione' => 'Apri la delibera', 'pagina' => true],
         'delibera_respinta' => ['nome' => 'Delibere respinte', 'azione' => 'Apri la delibera', 'pagina' => true],
+        // L'avviso di un errore dalla pagina d'errore (la 698 (4) del registro delle decisioni): la scheda «Errori» delle impostazioni con il codice cercato, salvata nel compito,
+        // che apre l'errore da sola. Lo leggono solo quelli che hanno «Gestisci impostazioni generali» ({@see CompitoDellErrore}).
+        'errore_avvisato' => ['nome' => 'Errori avvisati', 'azione' => 'Apri l\'errore', 'pagina' => true],
     ];
 
     /** La prossima azione della segnalazione che aspetta l'approvazione (`meta.is_approved` falso). */
@@ -141,6 +146,13 @@ final class TipiDeiCompiti
             return $azione === null || $azione['url'] === null ? ['testo' => self::FATTO, 'url' => null]
                 : ['testo' => $azione['testo'], 'url' => IndirizzoDelCompito::perIlLink($azione['url'])];
         }
+        // Il promemoria di una delega F24 da versare (Coda 718): la scheda della delega, «Apri la delega».
+        if ($tipo === PromemoriaDelleRitenute::TIPO && isset($compito->meta['context']['delega_f24_id'])) {
+            $delega = self::schedaDellaDelega($compito, (int) $compito->meta['context']['delega_f24_id']);
+            if ($delega !== null) {
+                return ['testo' => PromemoriaDelleRitenute::AZIONE_DELEGA, 'url' => $delega];
+            }
+        }
         $voce = self::voce($tipo);
         $url = ! $voce['pagina'] ? null : (isset($voce['rotta'])
             ? self::paginaDelCondominio($voce['rotta'], $compito, isset($voce['della_voce']) ? [$voce['della_voce'], self::vocePerSola($compito)] : null,
@@ -190,6 +202,17 @@ final class TipiDeiCompiti
         }
 
         return IndirizzoDelCompito::perIlLink(route($rotta, ['condominio' => $condominio] + $parametri, false));
+    }
+
+    /** La scheda della delega F24 del compito, nel condominio del compito; senza condominio, nessuna. */
+    private static function schedaDellaDelega(Evento $compito, int $delega): ?string
+    {
+        $condominio = $compito->relationLoaded('condomini')
+            ? $compito->condomini->sortBy('id')->first()?->id
+            : $compito->condomini()->orderBy('condomini.id')->value('condomini.id');
+
+        return $condominio === null ? null
+            : IndirizzoDelCompito::perIlLink(route('admin.gestionale.f24.show', ['condominio' => $condominio, 'delega' => $delega], false));
     }
 
     /** La voce delle eccedenze del compito (`meta.context.eccedenze[].conto_id`), se è una sola; con più voci, o senza il dettaglio, nessuna. */
@@ -265,7 +288,10 @@ final class TipiDeiCompiti
             'emissione_rata', 'controllo_incassi' => isset($m['numero_rata']) ? $insieme('Rata ' . $m['numero_rata'], $euro($m['totale_rata'] ?? null)) : '',
             'verifica_pagamento' => $insieme($persona, $euro($m['importo_dichiarato'] ?? null)),
             'pagamento_fornitore' => $insieme(! empty($m['numero_documento']) ? 'Fattura n. ' . $m['numero_documento'] : 'Fattura in scadenza', $euro($m['importo'] ?? null)),
-            'versamento_ritenuta', 'f24' => $insieme(! empty($m['fornitore']) ? 'Ritenuta di ' . $m['fornitore'] : 'Ritenuta d\'acconto', $euro($m['importo'] ?? null)),
+            // Il promemoria di una delega («Delega del 16/06/2026 · 2 ritenute · € 32,00») o delle ritenute senza delega («2 ritenute senza delega · € 32,00 ·
+            // con il cumulo si versano entro il 16/06/2026», Coda 718); quello di un pagamento delle versioni di prima, e il condominio di prova, come prima.
+            'versamento_ritenuta', 'f24' => PromemoriaDelleRitenute::sotto($m)
+                ?? $insieme(! empty($m['fornitore']) ? 'Ritenuta di ' . $m['fornitore'] : 'Ritenuta d\'acconto', $euro($m['importo'] ?? null)),
             'scoperto_documentato' => $insieme($c['piano_rate_nome'] ?? null, $euro($c['importo_cents'] ?? null)),
             'eccedenza_gia_versato_rilevata' => $insieme($c['piano_rate_nome'] ?? null, $euro($c['totale_cents'] ?? null)),
             'gia_versato_acconto_dichiarato' => $insieme($c['conto_nome'] ?? null, $euro($c['importo_cents'] ?? null)),

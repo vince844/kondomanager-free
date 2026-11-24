@@ -5,6 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup>
 import { Head } from '@inertiajs/vue3';
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 
 defineProps({
     reason: String,
@@ -49,6 +50,8 @@ defineProps({
                         Versione corrente: <strong class="text-gray-700">{{ $page.props.version }}</strong>
                     </p>
                 </div>
+
+                <NotaDiLicenza class="mt-6" />
             </div>
         </div>
     </div>

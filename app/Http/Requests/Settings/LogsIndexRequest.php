@@ -31,6 +31,14 @@ class LogsIndexRequest extends FormRequest
             'date_from' => ['sometimes', 'nullable', 'date'],
             'date_to'   => ['sometimes', 'nullable', 'date'],
             'per_page'  => ['sometimes', 'nullable', 'integer', 'in:10,25,50,100'],
+            // La scheda «Errori» (1.12.0-beta.14): i suoi filtri hanno nomi loro, per non mescolarsi con quelli delle email.
+            'scheda'         => ['sometimes', 'nullable', 'string', 'in:email,errori'],
+            'cerca'          => ['sometimes', 'nullable', 'string', 'max:255'],
+            'stato_errori'   => ['sometimes', 'nullable', 'string', 'in:tutti,nuovo,avvisato,visto'],
+            'errori_dal'     => ['sometimes', 'nullable', 'date'],
+            'errori_al'      => ['sometimes', 'nullable', 'date'],
+            'errori_per_page' => ['sometimes', 'nullable', 'integer', 'in:10,25,50,100'],
+            'errore'         => ['sometimes', 'nullable', 'integer', 'min:1'],
         ];
     }
 

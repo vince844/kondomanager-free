@@ -17,7 +17,7 @@ return new class extends Migration
     public function up(): void
     {
         // Critico su Windows / hosting condiviso: evita timeout se lanciato da UI/HTTP
-        set_time_limit(0);
+        \App\Support\LimiteDiTempo::alza(0);
 
         if (DB::getDriverName() === 'mysql') {
             DB::statement("

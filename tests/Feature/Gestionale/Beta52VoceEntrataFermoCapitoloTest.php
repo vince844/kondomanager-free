@@ -583,3 +583,53 @@ it('controprova — un sottoconto negativo nato prima del piano è ripartito: l\
     expect($avviso['voci'] ?? null)->toBe(['Il sottoconto «Rimborso assicurazione», sotto il capitolo «Antenna», ha un importo negativo (meno € 500,00) e il capitolo ha nel piano una copia negativa (meno € 400,00): il piano ripartisce la copia anche su di lui, e il totale non è quello del capitolo.']);
 });
 
+
+// ─── Coda 277 (1.12.0-beta.14): «Sincronizza» scrive la copia del capitolo con i sottoconti che il motore guarda ─────────────────
+
+/**
+ * Il capitolo «Antenna» con «Manutenzione antenna» (spesa € 100,00) nata **prima** del piano, fuori dal piano (che chiede la sola «Pulizia»), e «Affitto
+ * antenna» (entrata € 500,00) nata **dopo**. Il motore divide la copia del capitolo fra i soli sottoconti nati fino alla creazione del piano
+ * (`CalcoloQuoteService::ripartoFraIFigli`): qui la sola «Manutenzione antenna».
+ */
+function be52Cap277($test, bool $affittoDopo = true): array
+{
+    $s = be52CapScenario();
+    $s['padre'] = ($s['mk'])('Antenna', null, 0, 'spesa', false);
+    $s['figli']['Manutenzione antenna'] = ($s['mk'])('Manutenzione antenna', $s['padre']->id, 10000, 'spesa');
+    if (! $affittoDopo) {
+        $s['figli']['Affitto antenna'] = ($s['mk'])('Affitto antenna', $s['padre']->id, 50000, 'entrata');
+    }
+    $test->travel(2)->seconds();
+    $s['piano'] = b52tPiano($test, $s, ['capitoli_config' => [['id' => $s['pulizia']->id, 'importo' => '1.200,00', 'note' => '']]]);
+    $test->travel(2)->seconds();
+    if ($affittoDopo) {
+        $s['figli']['Affitto antenna'] = ($s['mk'])('Affitto antenna', $s['padre']->id, 50000, 'entrata');
+    }
+
+    return $s;
+}
+
+it('Coda 277 — «Sincronizza» di un capitolo con un sottoconto di entrata nato dopo il piano scrive la copia dei soli sottoconti del piano: € 100,00, e il piano chiede € 1.300,00', function () {
+    $s = be52Cap277($this);
+    expect(b52tQuoteDelMotore($s['piano']->fresh()))->toBe(120000);
+
+    $esito = be52CapRicalcola($this, $s, [$s['padre']->id]);
+
+    // Dalla regola del motore: la copia del capitolo va ai sottoconti nati fino alla creazione del piano, la sola «Manutenzione antenna» (spesa € 100,00);
+    // «Affitto antenna», nata dopo, il piano non la guarda. La copia giusta è € 100,00, e il piano chiede € 1.200,00 + € 100,00 = € 1.300,00. Oggi «Sincronizza»
+    // scriveva la somma dei sottoconti di adesso (€ 600,00), tutta a «Manutenzione antenna» come spesa: il piano chiedeva € 1.800,00.
+    expect($esito['type'] ?? null)->toBe('success')
+        ->and(be52CapPivot($s))->toBe([$s['pulizia']->id => 120000, $s['padre']->id => 10000])
+        ->and(b52tQuoteDelMotore($s['piano']->fresh()))->toBe(130000);
+});
+
+it('controprova — «Sincronizza» di un capitolo misto con i due sottoconti nati prima del piano: la copia è € 600,00, e il piano chiede € 1.200,00 + € 100,00 − € 500,00 = € 800,00', function () {
+    $s = be52Cap277($this, affittoDopo: false);
+
+    $esito = be52CapRicalcola($this, $s, [$s['padre']->id]);
+
+    // Il motore divide € 600,00 in proporzione agli importi: € 100,00 a «Manutenzione antenna» (spesa) e € 500,00 ad «Affitto antenna» (entrata, con il meno).
+    expect($esito['type'] ?? null)->toBe('success')
+        ->and(be52CapPivot($s))->toBe([$s['pulizia']->id => 120000, $s['padre']->id => 60000])
+        ->and(b52tQuoteDelMotore($s['piano']->fresh()))->toBe(80000);
+});

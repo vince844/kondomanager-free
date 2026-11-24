@@ -54,7 +54,7 @@ it('una riga per gesto, dalla sala all\'annullamento; un salvataggio non è una 
     $ora = fn ($t) => $t->copy()->setTimezone('Europe/Rome')->format('H:i');
     expect($righe->map(fn ($r) => $r->oggetto_tipo . ' · ' . $r->riepilogo . ' · ' . $ora($r->avvenuta_il) . '/' . $ora($r->registrata_il))->all())->toBe([
         'verbale · versione 1, scritta in sala: la discussione del punto 4 · dal dispositivo «portatile di Andrea» · 19:51/21:00',
-        'assemblea · Assemblea ordinaria del 15/12/2026: chiusa alle 20:55: 6 delibere · 20:55/21:00',
+        'assemblea · Assemblea ordinaria del 15/12/2026: chiusa alle 20:55: 5 delibere, 1 senza voto · 20:55/21:00',
         'verbale · discussioni scritte in sala: il punto 4 · 20:55/21:00',
         'verbale · generato dal modello «Testo del programma», versione 1 · 21:00/21:00',
         'verbale · parti con i dati della sala aggiornate, versione 2 · 21:00/21:00',

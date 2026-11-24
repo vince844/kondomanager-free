@@ -12,6 +12,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * «Cambia» sceglie la tabella del valore dell'assemblea e, con la casella, la fa diventare la tabella di proprietà generale del perimetro (una riga del
  * registro sulla scheda del condominio, della palazzina o della scala). Le visite rileggono solo `assemblea` e `passi` (la tabella che copre tutte le
  * unità fa il primo passo).
+ *
+ * L'assemblea dei condòmini di un gruppo (Coda 734): la tabella del valore è il gruppo, ferma come in «Prepara l'assemblea» (il gruppo e la tabella decidono
+ * chi è convocato, e il server non li cambia): la riga dice «la tabella del gruppo», e «Cambia» non c'è.
  */
 import { computed, ref, watch } from 'vue';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -40,7 +43,8 @@ const scelta = ref<number | null>(null);
 const diProprieta = ref(true);
 const inCorso = ref(false);
 
-const siCambia = computed(() => props.gestisce && props.assemblea.in_preparazione);
+const delGruppo = computed(() => props.assemblea.perimetro_tipo === 'gruppo');
+const siCambia = computed(() => props.gestisce && props.assemblea.in_preparazione && !delGruppo.value);
 const chiave = computed(() => chiaveDelPerimetro(props.assemblea.ambito, props.assemblea.palazzina_id, props.assemblea.scala_id));
 const nomeDelPerimetro = computed(() => props.assemblea.perimetro_tipo === 'condominio' ? props.condominioNome : props.assemblea.perimetro.replace('Solo ', ''));
 const opzioni = computed<Opzione[]>(() => props.scelte.tabelle.map((t) => ({ valore: t.id, nome: t.nome, sotto: t.controlli[chiave.value]?.frase ?? `${t.unita} unità` })));
@@ -76,7 +80,7 @@ function salva() {
     <div class="rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700" data-testid="tabella-dell-assemblea">
         <div v-if="assemblea.tabella" class="flex flex-wrap items-center justify-between gap-2">
             <p class="text-sm text-slate-800 dark:text-slate-200" data-testid="controllo-tabella">
-                Tabella «{{ assemblea.tabella.nome }}» · {{ assemblea.tabella.controllo.frase }}
+                Tabella «{{ assemblea.tabella.nome }}»{{ delGruppo ? ' · la tabella del gruppo' : '' }} · {{ assemblea.tabella.controllo.frase }}
             </p>
             <button v-if="siCambia" type="button" class="text-xs font-medium underline" data-testid="cambia-tabella" @click="aperta = true">Cambia</button>
         </div>

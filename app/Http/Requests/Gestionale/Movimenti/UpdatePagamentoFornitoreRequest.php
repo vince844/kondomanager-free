@@ -50,6 +50,14 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
         }
     }
 
+    protected function prepareForValidation(): void
+    {
+        // L'IBAN si valida e si scrive senza spazi e in maiuscolo (Coda 626); un campo svuotato arriva vuoto e cancella l'IBAN registrato.
+        if ($this->has('iban_beneficiario') && is_string($this->input('iban_beneficiario'))) {
+            $this->merge(['iban_beneficiario' => \App\Services\Gestionale\PagamentoFornitoreService::normalizzaIban($this->input('iban_beneficiario')) ?: null]);
+        }
+    }
+
     public function rules(): array
     {
         return [
@@ -86,7 +94,7 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
             'voce_commissione_id' => 'nullable|integer',
             'causale_bonifico' => 'nullable|string|max:500',
             'riferimento_bancario' => 'nullable|string|max:100',
-            'iban_beneficiario' => 'nullable|string|max:50',
+            'iban_beneficiario' => 'nullable|string|max:34',
             'note_override' => 'nullable|string|max:2000',
 
             // --- BONIFICO PARLANTE (DETRAZIONI FISCALI) ---

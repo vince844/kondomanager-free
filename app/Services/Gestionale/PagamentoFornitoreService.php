@@ -15,6 +15,7 @@ use App\Events\Gestionale\PagamentoAggiornato;
 use App\Events\Gestionale\PagamentoRegistrato;
 use App\Events\Gestionale\PagamentoStornato;
 use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
+use App\Exceptions\Pagamenti\BonificoParlanteConRitenutaException;
 use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
@@ -28,16 +29,19 @@ use App\Exceptions\Pagamenti\PagamentoGiaStornatoException;
 use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
 use App\Exceptions\Pagamenti\PossibilePagamentoDuplicatoException;
 use App\Exceptions\Pagamenti\RitenutaIncoerenteException;
+use App\Exceptions\Pagamenti\RitenutaInDelegaConfermataException;
 use App\Models\Esercizio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
+use App\Models\Gestionale\DelegaF24;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\FatturaScrittura;
 use App\Models\Gestionale\PagamentoFornitore;
 use App\Models\Gestionale\ScritturaContabile;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -136,6 +140,7 @@ class PagamentoFornitoreService
      * @throws FiscalYearClosedException
      * @throws AllocazioniInconsistentiException
      * @throws FatturaNonApprovataException
+     * @throws BonificoParlanteConRitenutaException
      * @throws OverpaymentException
      * @throws IllegalCashAmountException
      * @throws InsufficientFundsException
@@ -390,7 +395,7 @@ class PagamentoFornitoreService
                     'metodo_pagamento' => MetodoPagamento::from($data['metodo_pagamento']),
                     'data_pagamento' => $data['data_pagamento'],
                     'data_valuta' => $data['data_valuta'] ?? null,
-                    'iban_beneficiario' => $data['iban_beneficiario'] ?? null,
+                    'iban_beneficiario' => self::normalizzaIban($data['iban_beneficiario'] ?? null) ?: null,
                     'causale_bonifico' => $causaleBonifico,
                     'riferimento_bancario' => $data['riferimento_bancario'] ?? null,
                     'bonifico_parlante' => (bool) ($data['bonifico_parlante'] ?? false),
@@ -456,9 +461,10 @@ class PagamentoFornitoreService
     /**
      * L'IBAN per il confronto: senza spazi (anche quello che non si spezza, che arriva copiando da un PDF o da una pagina web) e senza i due caratteri
      * invisibili che una copia porta e `\s` non toglie (lo spazio di larghezza zero e il segno di inizio testo), in maiuscolo. Le pagine del pagamento
-     * tolgono gli stessi caratteri, così la pagina e il server dicono «uguale» e «diverso» insieme.
+     * tolgono gli stessi caratteri, così la pagina e il server dicono «uguale» e «diverso» insieme. È anche la forma in cui l'IBAN si valida e si
+     * scrive (Coda 626): le due richieste lo normalizzano prima di controllare i 34 caratteri della colonna.
      */
-    private static function normalizzaIban(?string $iban): string
+    public static function normalizzaIban(?string $iban): string
     {
         return strtoupper((string) preg_replace('/[\s\x{200B}\x{FEFF}]+/u', '', (string) $iban));
     }
@@ -511,6 +517,7 @@ class PagamentoFornitoreService
      * @param  array  $data  Dati validati da UpdatePagamentoFornitoreRequest.
      *
      * @throws PagamentoModificaVietataException
+     * @throws BonificoParlanteConRitenutaException
      * @throws OverpaymentException
      */
     public function aggiornaPagamento(PagamentoFornitore $pagamento, array $data): PagamentoFornitore
@@ -564,7 +571,9 @@ class PagamentoFornitoreService
         // significa «non toccare»: prima diventava 0 e azzerava la ritenuta registrata.
         //
         // C'è però una cosa che in modifica cambia eccome, ed è il **bonifico parlante**.
-        // Spuntandolo la ritenuta va a zero (la opera la banca); togliendolo deve tornare
+        // Spuntandolo la ritenuta va a zero (la opera la banca), e dalla Coda 754 (2) solo su
+        // fatture senza la ritenuta: su una fattura con la ritenuta la spunta si ferma più
+        // sotto e manda a togliere la ritenuta dalla fattura. Togliendolo deve tornare
         // quella che le fatture prevedono, altrimenti resterebbe a zero per sempre e il
         // condominio smetterebbe di trattenere senza che nessuno l'abbia deciso.
         //
@@ -604,6 +613,19 @@ class PagamentoFornitoreService
             ? TipoDetrazione::from($data['tipo_detrazione'])
             : null;
 
+        // ── La ritenuta in una delega F24 confermata (Coda 754 (10)) ─────────
+        // La data del pagamento decide il mese della riga della delega e la scadenza, la ritenuta la cifra: cambiarle lascerebbe la
+        // delega confermata a dire un'altra cosa, e «Aggiorna scadenze» non la rifà. Si ferma come lo storno. Gli altri campi (il conto,
+        // l'importo netto, la commissione, la nota) la delega non li porta, e passano. Una delega versata non ferma (decisione 704).
+        $cambiaLaDelega = $nuovoImportoRitenuta !== (int) $importoRitenutaBefore
+            || Carbon::parse($nuovaData)->toDateString() !== $dataPagamentoBefore;
+        if ($cambiaLaDelega) {
+            $bloccoDellaDelega = DelegaF24::motivoBloccoDelPagamento((int) $pagamento->id, 'modifica il pagamento');
+            if ($bloccoDellaDelega !== null) {
+                throw new RitenutaInDelegaConfermataException($bloccoDellaDelega);
+            }
+        }
+
         // ── Validazione residuo post-modifica (overpayment) ──────────────────
         // Recupera le fatture collegate e verifica che il nuovo importo non ecceda
         // il residuo disponibile + quanto già allocato da questo pagamento.
@@ -618,6 +640,20 @@ class PagamentoFornitoreService
             throw new PagamentoModificaVietataException(
                 'Pagamento cumulativo su più fatture: non modificabile con il form rapido. Usa lo storno e registra un nuovo pagamento.'
             );
+        }
+
+        // La spunta del bonifico parlante messa in modifica sul pagamento di una fattura con la ritenuta si ferma come in registrazione
+        // (Coda 754 (2)). Solo quando la spunta si mette: un pagamento registrato prima con la spunta si corregge negli altri campi senza
+        // essere rifiutato (non peggiora), e togliendo la spunta la ritenuta torna quella della fattura.
+        if ($nuovoBonificoParlanteRitenuta && ! $bonificoParlanteBefore) {
+            $this->rifiutaBonificoParlanteSuFattureConRitenuta($this->allocazioniDelPagamento($scrittura), $fatture->keyBy('id'), true);
+        }
+
+        // La spunta che resta, su una fattura con la ritenuta: il pagamento di prima si corregge negli altri campi e può scendere, ma l'importo
+        // non si alza (come la regola dei contanti della Coda 466: si corregge, non si peggiora). Alzarlo pagherebbe il fornitore senza la ritenuta,
+        // che resterebbe sull'Erario senza F24.
+        if ($nuovoBonificoParlanteRitenuta && $bonificoParlanteBefore && $nuovoImportoNetto > (int) $pagamento->importo_netto) {
+            $this->rifiutaBonificoParlanteSuFattureConRitenuta($this->allocazioniDelPagamento($scrittura), $fatture->keyBy('id'), true);
         }
 
         $allowOverpayment = (bool) ($data['allow_overpayment'] ?? false);
@@ -739,7 +775,8 @@ class PagamentoFornitoreService
                 'causale_bonifico' => $data['causale_bonifico'] ?? $pagamento->causale_bonifico,
                 'riferimento_bancario' => $data['riferimento_bancario'] ?? $pagamento->riferimento_bancario,
                 'note_override' => $data['note_override'] ?? $pagamento->note_override,
-                'iban_beneficiario' => $data['iban_beneficiario'] ?? $pagamento->iban_beneficiario,
+                // Il campo inviato e vuoto cancella l'IBAN; il campo assente lascia quello registrato (Coda 626).
+                'iban_beneficiario' => array_key_exists('iban_beneficiario', $data) ? (self::normalizzaIban($data['iban_beneficiario']) ?: null) : $pagamento->iban_beneficiario,
                 'bonifico_parlante' => $nuovoBonificoParlante,
                 'tipo_detrazione' => $nuovoTipoDetrazione,
             ]);
@@ -842,6 +879,14 @@ class PagamentoFornitoreService
                 throw new PagamentoGiaStornatoException(
                     "Pagamento #{$pagamento->id} è già stornato."
                 );
+            }
+
+            // La ritenuta del pagamento in una delega F24 confermata (Coda 754 (10)): la confermata non si rifà, e terrebbe la ritenuta di
+            // un pagamento stornato. Si ferma e lo dice; riportarla in bozza lo decide l'amministratore (`DelegaF24::motivoBloccoDelPagamento`).
+            // Una delega già versata non ferma lo storno (decisione 704): lo avvisa il messaggio dello storno (`StornoPagamentoController`).
+            $bloccoDellaDelega = DelegaF24::motivoBloccoDelPagamento((int) $pagamento->id, 'storna il pagamento');
+            if ($bloccoDellaDelega !== null) {
+                throw new RitenutaInDelegaConfermataException($bloccoDellaDelega);
             }
 
             // Carica scrittura originale con le righe per il mirror
@@ -1275,7 +1320,11 @@ class PagamentoFornitoreService
             );
         }
 
-        // 4. Overpayment check per ogni fattura coinvolta
+        // 3-bis. Il bonifico parlante di una fattura con la ritenuta si ferma (Coda 754 (2), decisione 696): prima del controllo
+        //        dell'eccedenza, perché l'importo pieno che l'amministratore crede di pagare supera il netto della fattura, e il rifiuto
+        //        dell'eccedenza direbbe un'altra cosa.
+        $this->rifiutaBonificoParlanteSuFattureConRitenuta($data['allocazioni'], $fatture, (bool) ($data['bonifico_parlante'] ?? false));
+
         // 4. Overpayment check per ogni fattura coinvolta
         $allowOverpayment = (bool) ($data['allow_overpayment'] ?? false);
 
@@ -1507,23 +1556,32 @@ class PagamentoFornitoreService
      */
     private function ritenutaProQuotaDelPagamento(ScritturaContabile $scrittura): int
     {
+        return $this->calcolaRitenutaProQuota($this->allocazioniDelPagamento($scrittura), $scrittura->fatture->keyBy('id'));
+    }
+
+    /**
+     * Le allocazioni di un pagamento già registrato, nella forma che arriva dalle Request (il tipo come stringa).
+     *
+     * `FatturaScrittura` casta `tipo` a enum, mentre `calcolaRitenutaProQuota()` riceve dalle Request un array con la stringa. Passare
+     * l'enum così com'è farebbe fallire il confronto in silenzio, scartando ogni allocazione e restituendo zero: è lo stesso inciampo
+     * enum-contro-stringa già pagato altrove, e qui costerebbe una ritenuta persa.
+     *
+     * @return list<array{tipo: string, fattura_id: int, importo_allocato_cents: int}>
+     */
+    private function allocazioniDelPagamento(ScritturaContabile $scrittura): array
+    {
         $scrittura->loadMissing('fatture');
 
-        // `FatturaScrittura` casta `tipo` a enum, mentre `calcolaRitenutaProQuota()` riceve
-        // dalle Request un array con la stringa. Passare l'enum così com'è farebbe fallire il
-        // confronto in silenzio, scartando ogni allocazione e restituendo zero: è lo stesso
-        // inciampo enum-contro-stringa già pagato altrove, e qui costerebbe una ritenuta persa.
-        $allocazioni = $scrittura->fatture
+        return $scrittura->fatture
             ->map(fn ($f) => [
                 'tipo' => $f->pivot->tipo instanceof \BackedEnum
                     ? $f->pivot->tipo->value
                     : (string) $f->pivot->tipo,
-                'fattura_id' => $f->id,
+                'fattura_id' => (int) $f->id,
                 'importo_allocato_cents' => (int) $f->pivot->importo_allocato,
             ])
+            ->values()
             ->all();
-
-        return $this->calcolaRitenutaProQuota($allocazioni, $scrittura->fatture->keyBy('id'));
     }
 
     private function calcolaRitenutaProQuota(array $allocazioni, $fatture, bool $bonificoParlante = false): int
@@ -1533,7 +1591,13 @@ class PagamentoFornitoreService
         // questo metodo risponde è «quanto trattiene il condominio», e la risposta con il
         // bonifico parlante è zero: lasciarlo fuori significherebbe che ogni nuovo chiamante
         // debba ricordarselo, e il primo che se ne dimentica riapre il doppio prelievo.
+        //
+        // Zero, però, solo per fatture senza la ritenuta (Coda 754 (2)): una fattura con la ritenuta l'ha già scritta su «Debiti
+        // v/Erario» alla registrazione, e un pagamento che la mettesse a zero la lascerebbe lì senza che nessun F24 la versi. Il
+        // rifiuto scatta prima, in `validaInput()` e in `aggiornaPagamento()`; qui è la seconda linea, per un chiamante nuovo.
         if ($bonificoParlante) {
+            $this->rifiutaBonificoParlanteSuFattureConRitenuta($allocazioni, $fatture, true);
+
             return 0;
         }
 
@@ -1554,6 +1618,44 @@ class PagamentoFornitoreService
         }
 
         return $totale;
+    }
+
+    /**
+     * Il bonifico parlante di una fattura registrata con la ritenuta si ferma (Coda 754 (2), decisione 696: «Fermarsi e dirlo»).
+     *
+     * La ritenuta si decide in un posto solo, la fattura: una fattura con la ritenuta l'ha scritta su «Debiti v/Erario» alla
+     * registrazione e chiede al fornitore il netto. Con il bonifico parlante la ritenuta la opera la banca: si toglie prima dalla
+     * fattura (Modifica, motivo «Bonifico parlante», o storno e nuova registrazione per una pregressa), poi esce l'importo pieno. Le
+     * fatture che contano sono quelle pagate dal conto (righe «pagamento»): sono quelle su cui `calcolaRitenutaProQuota()` trattiene.
+     *
+     * @param  array  $allocazioni  [{fattura_id, tipo, importo_allocato_cents}]
+     * @param  \Illuminate\Support\Collection<int,FatturaPassiva>  $fatture  indicizzata per id
+     *
+     * @throws BonificoParlanteConRitenutaException
+     */
+    private function rifiutaBonificoParlanteSuFattureConRitenuta(array $allocazioni, $fatture, bool $bonificoParlante): void
+    {
+        if (! $bonificoParlante) {
+            return;
+        }
+
+        $conRitenuta = collect($allocazioni)
+            ->filter(fn ($a) => ($a['tipo'] ?? null) === TipoAllocazioneFattura::PAGAMENTO->value)
+            ->pluck('fattura_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->map(fn (int $id) => $fatture[$id] ?? null)
+            ->filter(fn (?FatturaPassiva $f) => $f !== null && (int) ($f->importo_ritenuta ?? 0) > 0 && (int) ($f->netto_a_pagare ?? 0) > 0)
+            ->sortBy('id')
+            ->values();
+
+        if ($conRitenuta->isEmpty()) {
+            return;
+        }
+
+        $fornitore = Fornitore::find($conRitenuta->first()->fornitore_id)?->ragione_sociale ?? 'questo fornitore';
+
+        throw BonificoParlanteConRitenutaException::perLeFatture($conRitenuta, $fornitore);
     }
 
     /**

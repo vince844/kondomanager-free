@@ -73,6 +73,7 @@ const props = defineProps<{
     casse: Array<{ id: number; nome: string; tipo: string; saldo_cents: number; saldo_formattato: string }>;
     /** Il credito di chi esce ancora in `saldi` (coppia del passaggio non assorbita): non è ancora una quota. */
     credito_in_saldi: number;
+    rate_da_pagare?: number;
   };
   /**
    * B2, S7: la solidarietà dell'art. 63 co. 4 verso questa persona come entrante — nota, non quota. Dalla beta.51 (Coda 172)
@@ -524,9 +525,19 @@ const getImportoStyle = (riga: any) => {
                         >
                             <Banknote class="w-3.5 h-3.5" /> Rimborsa il credito
                         </button>
-                        <p v-else-if="rimborso && rimborso.credito_in_saldi > 0" class="text-[10px] text-blue-700/80 mt-2 leading-tight">
-                            {{ euro(rimborso.credito_in_saldi / 100) }} di credito dal passaggio di titolarità sono ancora nei saldi della gestione:
-                            diventano una quota rimborsabile quando il prossimo piano rate li assorbe.
+                        <!-- Coda 227: con rate ancora da pagare quel credito può andare prima su quelle (con «Compensa»); si rimborsa quello che avanza. «Può»: fra
+                             le rate da pagare ci sono anche quelle non ancora scadute, e lì decide l'amministratore (art. 1243 c.c., debiti esigibili). -->
+                        <p v-else-if="rimborso && rimborso.credito_in_saldi > 0" class="text-xs text-blue-700/80 mt-2 leading-snug" data-testid="credito-in-saldi">
+                            <template v-if="(rimborso.rate_da_pagare ?? 0) > 0">
+                                {{ euro(rimborso.credito_in_saldi / 100) }} di credito dal passaggio di titolarità sono ancora nei saldi della gestione:
+                                quando il prossimo piano rate li assorbe diventano una quota a credito.
+                                {{ anagrafica.nome }} ha ancora {{ euro((rimborso.rate_da_pagare ?? 0) / 100) }} di rate da pagare: quel credito può andare prima
+                                su quelle, con «Compensa»; si rimborsa quello che avanza.
+                            </template>
+                            <template v-else>
+                                {{ euro(rimborso.credito_in_saldi / 100) }} di credito dal passaggio di titolarità sono ancora nei saldi della gestione:
+                                diventano una quota rimborsabile quando il prossimo piano rate li assorbe.
+                            </template>
                         </p>
                     </div>
                 </div>
@@ -783,7 +794,7 @@ const getImportoStyle = (riga: any) => {
                                                               riga.breakdown.type === 'incasso' ? 'Dettaglio Incasso' : 
                                                               (riga.breakdown.type === 'storno' ? 'Dettaglio Storno' : (riga.breakdown.type === 'rimborso' ? 'Dettaglio Rimborso' : (riga.breakdown.type === 'compensazione' ? 'Dettaglio Compensazione' : 'Dettaglio Addebito'))) 
                                                             }}
-                                                            <span v-if="riga.breakdown.immobile !== 'Generico'">(Int. {{ riga.breakdown.immobile }})</span>
+                                                            <span v-if="riga.breakdown.immobile && riga.breakdown.immobile !== 'Generico'">(Int. {{ riga.breakdown.immobile }})</span>
                                                         </span>
                                                     </div>
 

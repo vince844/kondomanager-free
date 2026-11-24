@@ -481,15 +481,19 @@ it('Coda 75, decisione 166 — il messaggio del già versato parla di un già ve
         ->and($messaggio)->not->toContain('già-versato');
 })->with(B60E_ORDINI);
 
-/** Un integrativo del 2027 creato dalla pagina del 2027 senza generarlo, quando le voci sono tutte nel piano del 2027: nasce senza voci. */
+/**
+ * Un integrativo del 2027 con la riga delle voci vuota, quando le voci sono tutte nel piano del 2027. Fino alla 1.12.0-beta.13 nasceva così dalla
+ * pagina, creato senza generarlo; dalla Coda 489 quella creazione si rifiuta, e il piano di prima si fa con una voce scelta, poi la riga svuotata.
+ */
 function b60eSenzaVoci2027($test, array $s): PianoRate
 {
     $test->actingAs($test->user)->from('/crea')->post(route('admin.gestionale.esercizi.piani-rate.store', [$s['c'], $s['es']['2027']]), [
         'tipo' => 'ordinario', 'gestione_id' => $s['g']->id, 'nome' => 'Integrativo 2027', 'metodo_distribuzione' => 'tutte_rate', 'numero_rate' => 12,
         'giorno_scadenza' => 5, 'data_prima_scadenza' => '2027-01-05', 'genera_subito' => 0,
+        'capitoli_config' => [['id' => $s['pulizie']->id, 'importo' => '200,00']],
     ])->assertSessionHasNoErrors();
     $p27 = PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Integrativo 2027')->firstOrFail();
-    expect(DB::table('piano_rate_capitoli')->where('piano_rate_id', $p27->id)->count())->toBe(0);
+    DB::table('piano_rate_capitoli')->where('piano_rate_id', $p27->id)->delete();
 
     return $p27;
 }

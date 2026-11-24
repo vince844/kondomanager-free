@@ -89,7 +89,7 @@ final class StampeDelVerbale
             'condominio' => $a->condominio,
             'verbale' => $verbale,
             'per_il_libro' => $perIlLibro,
-            'titolo' => $perIlLibro && $numero !== null ? 'Verbale n. ' . $numero . ' · ' . mb_strtolower($assemblea['breve'])
+            'titolo' => $perIlLibro && $numero !== null ? 'Verbale n. ' . $numero . ' · ' . self::minuscola($assemblea['breve'])
                 : ($numero !== null ? 'Verbale n. ' . $numero : 'Bozza del verbale da firmare'),
             'titolo_stampa' => $perIlLibro ? self::PAGINA_DEL_LIBRO . ' · Verbale n. ' . $numero . ' · impronta ' . $breve
                 : ($numero !== null ? 'Verbale n. ' . $numero . ' · versione ' . $versione . ' · impronta ' . $breve
@@ -138,8 +138,10 @@ final class StampeDelVerbale
             // L'indirizzo di casa si scrive per la raccomandata e la consegna a mano; la PEC ha il suo nel messaggio.
             'indirizzo' => in_array($mezzo, ['raccomandata', 'a_mano'], true) ? ($destinatario['indirizzo'] ?? null) : null,
             'assemblea' => $assemblea['lunga'],
-            'oggetto' => 'Oggetto: trasmissione del verbale n. ' . $verbale->numero . ' dell\'' . mb_strtolower($assemblea['breve']),
-            'corpo' => 'le trasmetto il verbale n. ' . $verbale->numero . ' dell\'' . mb_strtolower($assemblea['breve']) . ' dei condòmini del '
+            'oggetto' => 'Oggetto: trasmissione del verbale n. ' . $verbale->numero . ' dell\'' . self::minuscola($assemblea['breve']),
+            // L'assemblea dei condòmini di un gruppo li dice già nel nome breve: «dei condòmini» una volta sola.
+            'corpo' => 'le trasmetto il verbale n. ' . $verbale->numero . ' dell\'' . self::minuscola($assemblea['breve'])
+                . ($a->ambito === AmbitoAssemblea::GRUPPO ? ' del ' : ' dei condòmini del ')
                 . TestiLettere::condominioConNome((string) $a->condominio->nome) . ($mezzo === 'pec'
                     // Nella PEC la copia sottoscritta è un allegato a parte, com'è (anche il .p7m): non segue la lettera nello stesso PDF.
                     ? ', nella copia sottoscritta allegata a questo messaggio.' : ', nella copia sottoscritta che segue questa lettera.'),
@@ -277,7 +279,7 @@ final class StampeDelVerbale
     }
 
     /**
-     * L'assemblea in parole: `breve` «Assemblea ordinaria del 15/12/2026» (con la scala o la palazzina), `lunga` con la convocazione («…, seconda
+     * L'assemblea in parole: `breve` «Assemblea ordinaria del 15/12/2026» (con la scala, la palazzina o il gruppo), `lunga` con la convocazione («…, seconda
      * convocazione»; «…, prosecuzione»).
      *
      * @return array{breve: string, lunga: string}
@@ -289,7 +291,9 @@ final class StampeDelVerbale
         $perimetro = match ($a->ambito) {
             AmbitoAssemblea::SCALA => $a->scala?->name !== null ? ' della scala ' . $a->scala->name : '',
             AmbitoAssemblea::PALAZZINA => $a->palazzina?->name !== null ? ' della palazzina ' . $a->palazzina->name : '',
-            default => '',
+            // L'assemblea dei condòmini di un gruppo (Coda 734): «Assemblea straordinaria dei condòmini della tabella «Box» del 14/12/2026».
+            AmbitoAssemblea::GRUPPO => $a->tabella?->nome !== null ? ' dei condòmini della tabella «' . $a->tabella->nome . '»' : '',
+            AmbitoAssemblea::CONDOMINIO, null => '',
         };
         $giorno = $seduta?->fissata_il?->format('d/m/Y') ?? $a->data?->format('d/m/Y');
         $breve = 'Assemblea ' . mb_strtolower((string) ($a->tipo?->parola() ?? '')) . $perimetro . ($giorno !== null ? ' del ' . $giorno : '');
@@ -297,6 +301,15 @@ final class StampeDelVerbale
             ? 'seconda convocazione' : 'prima convocazione'));
 
         return ['breve' => $breve, 'lunga' => $breve . ($convocazione !== null ? ', ' . $convocazione : '')];
+    }
+
+    /**
+     * Il nome breve dentro la frase: «assemblea ordinaria della scala B del 15/12/2026». Solo la prima lettera minuscola: il nome della scala e della tabella
+     * («Box») restano come sono scritti.
+     */
+    private static function minuscola(string $breve): string
+    {
+        return mb_strtolower(mb_substr($breve, 0, 1)) . mb_substr($breve, 1);
     }
 
     /**

@@ -77,10 +77,17 @@ final class RegistraSubentroAction
     }
 
     /**
+     * Decisione 705: i passaggi registrati insieme passano da qui uno per volta (`RegistraPassaggiInsiemeAction`), con tre chiavi facoltative in `$dati`:
+     * `insieme_id` (il primo dell'insieme, dal secondo in poi), `documento_id` (il titolo allegato al primo) e `nomi_uscenti` (tutte le persone che escono,
+     * per il nome del documento e la frase della solidarietà). E il pannello dell'insieme li registra **in prova** (`prova`, la prova a secco di
+     * `AnteprimaDelGruppo`, dentro una transazione che poi torna indietro): si saltano solo le scelte che l'amministratore non ha ancora fatto — la spunta e
+     * la nota del cancello, l'impronta dell'ordinaria, il fermo del piano da ricalcolare, che il pannello dice come oggi —, e niente documento né promemoria.
+     * Gli errori veri (la quota che sfora, la riga già chiusa) si fermano come oggi.
+     *
      * @param array<string,mixed> $dati `AnteprimaPassaggioRequest::datiPassaggio()`
      * @return array{subentro: Subentro, anteprima: array<string,mixed>, coppie: int, documento: ?Documento, promemoria: ?Evento, avvisi: list<string>}
      */
-    public function execute(Condominio $condominio, Immobile $immobile, array $dati, User $utente): array
+    public function execute(Condominio $condominio, Immobile $immobile, array $dati, User $utente, bool $prova = false): array
     {
         $path = null;
         $avvisi = [];
@@ -88,7 +95,7 @@ final class RegistraSubentroAction
         try {
             // Gesto 4 del registro delle modifiche: il passaggio è una riga sola, con il rimando; le titolarità, le rate e i saldi toccati si contano nel
             // lotto (il «prima e dopo» resta in `subentri.registro`).
-            $esito = RegistroModifiche::durante(GestiDelRegistro::passaggioRegistrato($condominio, $immobile), function () use ($condominio, $immobile, $dati, $utente, &$path, &$avvisi) {
+            $esito = RegistroModifiche::durante(GestiDelRegistro::passaggioRegistrato($condominio, $immobile), function () use ($condominio, $immobile, $dati, $utente, $prova, &$path, &$avvisi) {
                 $decorrenza = $dati['decorrenza'];
                 $giornoPrima = $decorrenza->subDay();
                 $tipo = (string) $dati['tipo'];
@@ -116,15 +123,20 @@ final class RegistraSubentroAction
                     }
                     $dati['riga_uscente'] = $uscente;
                 }
+                // La rete (rilievo 1 dello scettico della tappa 7): i passaggi che la richiesta vuole con chi esce non si scrivono senza. Una richiesta scritta a
+                // mano che sfugge ai controlli di chi esce registrava una vendita in cui nessuno esce: chi entra aperto, chi c'era ancora in corso.
+                if ($uscente === null && in_array($tipo, ['vendita', 'fine_locazione', 'usufrutto', 'successione'], true)) {
+                    throw ValidationException::withMessages(['riga_uscente_id' => 'Manca chi esce: scegli la riga in «Chi esce» e ricalcola il pannello.']);
+                }
 
                 // 2. Il pannello, ricalcolato qui: è ciò che si scrive. E il cancello (1) sul server.
                 $anteprima = $this->anteprima->calcola($condominio, $immobile, $dati);
                 // Il conguaglio che si scrive prenderebbe un piano da ricalcolare prima (§6.3): l'anteprima lo dice e lascia scegliere «Non scriverlo»,
                 // la registrazione si ferma prima di ogni scrittura.
-                if (! empty($anteprima['rate']['piano_da_ricalcolare'])) {
+                if (! $prova && ! empty($anteprima['rate']['piano_da_ricalcolare'])) {
                     throw ValidationException::withMessages(['passaggio' => $anteprima['rate']['piano_da_ricalcolare']]);
                 }
-                if ($anteprima['cancello']['richiesto'] && (! $dati['ho_letto'] || mb_strlen(trim((string) ($dati['nota_cancello'] ?? ''))) < 10)) {
+                if (! $prova && $anteprima['cancello']['richiesto'] && (! $dati['ho_letto'] || mb_strlen(trim((string) ($dati['nota_cancello'] ?? ''))) < 10)) {
                     throw ValidationException::withMessages(['nota_cancello' => 'Questo passaggio tocca rate già emesse o cambia un destinatario: spunta «Ho letto cosa cambierà» e scrivi perché lo registri così (almeno dieci caratteri).']);
                 }
 
@@ -171,7 +183,7 @@ final class RegistraSubentroAction
                 // Rilievo S1: con la legge si spostano le voci di adesso, non quelle che il pannello ha mostrato. Se l'elenco
                 // è cambiato fra l'anteprima e il clic, ci si ferma e il modulo ricalcola il pannello. Con «come la voce» le
                 // voci non si toccano, e senza l'impronta (chiamate senza pannello) vale l'elenco di adesso.
-                if ($ordinaria['applicabile'] && $ordinaria['scelta'] === Subentro::ORDINARIA_ALL_USUFRUTTUARIO
+                if (! $prova && $ordinaria['applicabile'] && $ordinaria['scelta'] === Subentro::ORDINARIA_ALL_USUFRUTTUARIO
                     && ($dati['ordinaria_impronta'] ?? null) !== null && $dati['ordinaria_impronta'] !== $ordinaria['impronta']) {
                     throw ValidationException::withMessages(['ordinaria_impronta' => 'Le voci da spostare sono cambiate da quando il pannello le ha mostrate: il pannello è stato ricalcolato, ricontrolla l\'elenco e conferma.']);
                 }
@@ -196,6 +208,8 @@ final class RegistraSubentroAction
                 $subentro = Subentro::create([
                     'condominio_id'          => $condominio->id,
                     'immobile_id'            => $immobile->id,
+                    // Decisione 705: nei passaggi registrati insieme, dal secondo in poi, il primo dell'insieme (`RegistraPassaggiInsiemeAction`).
+                    'insieme_id'             => $dati['insieme_id'] ?? null,
                     'anagrafica_uscente_id'  => $uscente?->anagrafica_id,
                     'anagrafica_entrante_id' => $esitoRighe['anagrafica_entrante_id'] ?? $entrante?->id,
                     'riga_uscente_id'        => $uscente?->id,
@@ -207,6 +221,8 @@ final class RegistraSubentroAction
                     'regime_contratto'       => $dati['regime_contratto'] ?? null,
                     'estremi_titolo'         => $dati['estremi_titolo'] ?? null,
                     'copia_autentica_il'     => $dati['copia_autentica'] ? $dati['copia_autentica_il']?->toDateString() : null,
+                    // Decisione 705: il titolo è uno per tutti i passaggi dell'insieme, allegato al primo.
+                    'documento_id'           => $dati['documento_id'] ?? null,
                     'nota'                   => $dati['nota'] ?? null,
                     'nota_cancello'          => $anteprima['cancello']['richiesto'] ? trim((string) $dati['nota_cancello']) : null,
                     'nota_conguaglio'        => $rinuncia ? ($dati['nota_conguaglio'] ?? null) : null,
@@ -267,9 +283,12 @@ final class RegistraSubentroAction
                 // 7. Il PDF del titolo: documento dell'unità, dell'amministratore. Il file si scrive qui, così
                 //    `$path` è noto al catch anche se `create()` fallisce subito dopo (verifica S5, R5).
                 $documento = null;
-                if (($dati['allegato_titolo'] ?? null) instanceof UploadedFile) {
+                if (! $prova && ($dati['allegato_titolo'] ?? null) instanceof UploadedFile) {
                     $path = app(ArchivioDocumenti::class)->salva($dati['allegato_titolo']);
-                    $documento = $this->salvaDocumento($immobile, $dati['allegato_titolo'], $path, $tipo, $decorrenza, $uscente?->anagrafica?->nome, $entrante?->nome, $utente);
+                    // Decisione 705: nei passaggi registrati insieme il nome del documento dice tutte le persone che escono.
+                    $nomiUscenti = array_values(array_filter((array) ($dati['nomi_uscenti'] ?? [])));
+                    $documento = $this->salvaDocumento($immobile, $dati['allegato_titolo'], $path, $tipo, $decorrenza,
+                        $nomiUscenti !== [] ? implode(', ', $nomiUscenti) : $uscente?->anagrafica?->nome, $entrante?->nome, $utente);
                     $subentro->update(['documento_id' => $documento->id]);
                 }
 
@@ -282,8 +301,8 @@ final class RegistraSubentroAction
             throw $e;
         }
 
-        // 8. Il promemoria in agenda, opt-in, dopo il commit: se fallisce non annulla il passaggio.
-        $esito['promemoria'] = $this->creaPromemoria($condominio, $immobile, $esito['subentro'], $dati, $utente, $avvisi);
+        // 8. Il promemoria in agenda, opt-in, dopo il commit: se fallisce non annulla il passaggio. In prova, niente.
+        $esito['promemoria'] = $prova ? null : $this->creaPromemoria($condominio, $immobile, $esito['subentro'], $dati, $utente, $avvisi);
         $esito['avvisi'] = $avvisi;
 
         return $esito;

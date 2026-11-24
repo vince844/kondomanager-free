@@ -274,3 +274,107 @@ test('le deleghe escono ordinate per scadenza', function () {
 
     expect($scadenze)->toEqual($ordinate);
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Coda 717 (decisione 571; forum t=202, casi A–C di Edoardo): la soglia di ogni regime, guardata sul mese
+// ════════════════════════════════════════════════════════════════════════════
+//
+// La legge, letta su Normattiva il 19/11/2026: per il 20 % si rinvia finché il cumulo «non supera» € 100,00 (art. 9, c. 4,
+// D.Lgs. 1/2024; dal 2027 art. 32, c. 1, lett. a), D.Lgs. 33/2025); per gli appalti finché non «raggiunga» € 500,00 (art.
+// 25-ter, c. 2-bis, DPR 600/1973; dal 2027 art. 40, c. 3). E in tutti e due i casi conta il cumulo delle ritenute operate
+// nel mese, non il singolo pagamento: si guarda alla fine del mese.
+
+test('Coda 717, caso A — 20 %: € 100,00 il 10/03 non superano la soglia e si rinviano, da sole, al 16/12', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-03-10', 10_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+    ]);
+
+    // € 100,00 non è «oltre € 100,00»: l'unica data-limite del 20 % è il 16 dicembre (mercoledì 16/12/2026).
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-12-16')
+        ->and($deleghe[0]['importo'])->toEqual(10_000)
+        ->and($deleghe[0]['motivo'])->toEqual('termine_di_legge');
+});
+
+test('Coda 717, caso A2 — 20 %: € 100,00 il 10/03 e € 50,00 il 10/05 fanno € 150,00 a maggio, da versare il 16/06', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-03-10', 10_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+        ritenuta('2026-05-10', 5_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+    ]);
+
+    // marzo: € 100,00, non oltre → rinvio; maggio: € 150,00 > € 100,00 → il 16 del mese dopo maggio, martedì 16/06/2026.
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-06-16')
+        ->and($deleghe[0]['importo'])->toEqual(15_000)
+        ->and($deleghe[0]['ritenute'])->toHaveCount(2)
+        ->and($deleghe[0]['motivo'])->toEqual('soglia_raggiunta');
+});
+
+test('Coda 717, caso B — appalti: € 500,00 il 05/04 e € 40,00 il 20/04 si versano insieme, € 540,00 al 18/05', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-04-05', 50_000),
+        ritenuta('2026-04-20', 4_000),
+    ]);
+
+    // Aprile: € 540,00 ≥ € 500,00 → 16/05/2026, sabato → lunedì 18/05/2026. I € 40,00 non restano indietro fino al 16 giugno.
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-05-18')
+        ->and($deleghe[0]['importo'])->toEqual(54_000)
+        ->and($deleghe[0]['ritenute'])->toHaveCount(2);
+});
+
+test('Coda 717, caso B2 — appalti nell\'ordine inverso: € 40,00 il 05/04 e € 500,00 il 20/04, € 540,00 al 18/05 (la controprova)', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-04-05', 4_000),
+        ritenuta('2026-04-20', 50_000),
+    ]);
+
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-05-18')
+        ->and($deleghe[0]['importo'])->toEqual(54_000);
+});
+
+test('Coda 717, caso C — 20 %: € 120,00 il 05/04 e € 30,00 il 20/04 fanno € 150,00 ad aprile, da versare il 18/05 e non i € 30,00 a dicembre', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-04-05', 12_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+        ritenuta('2026-04-20', 3_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+    ]);
+
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-05-18')
+        ->and($deleghe[0]['importo'])->toEqual(15_000)
+        ->and($deleghe[0]['ritenute'])->toHaveCount(2);
+});
+
+test('Coda 717 — appalti: € 500,00 esatti raggiungono la soglia, al 16 del mese dopo (il «raggiunga» della legge)', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-03-10', 50_000),
+    ]);
+
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-04-16')
+        ->and($deleghe[0]['motivo'])->toEqual('soglia_raggiunta');
+});
+
+test('Coda 717 — un mese che passa la soglia solo all\'ultimo pagamento porta con sé tutto il mese e i rinvii di prima', function () {
+    // 20 %: gennaio € 40,00 (rinvio), marzo € 30,00 + € 20,00 + € 15,00: il cumulo arriva a € 105,00 solo con l'ultimo pagamento del 28/03.
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-01-12', 4_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+        ritenuta('2026-03-02', 3_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+        ritenuta('2026-03-15', 2_000, TipoRitenuta::LAVORO_AUTONOMO_20),
+        ritenuta('2026-03-28', 1_500, TipoRitenuta::LAVORO_AUTONOMO_20),
+    ]);
+
+    // € 105,00 > € 100,00 a marzo → giovedì 16/04/2026, tutte e quattro insieme.
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-04-16')
+        ->and($deleghe[0]['importo'])->toEqual(10_500)
+        ->and($deleghe[0]['ritenute'])->toHaveCount(4);
+});
+
+test('Coda 717 — il confronto della soglia sta sul plafond: «oltre» per i € 100,00, «almeno» per i € 500,00', function () {
+    expect(PlafondRitenuta::SOGLIA_100_ANNUALE->superaLaSoglia(10_000, 10_000))->toBeFalse()
+        ->and(PlafondRitenuta::SOGLIA_100_ANNUALE->superaLaSoglia(10_001, 10_000))->toBeTrue()
+        ->and(PlafondRitenuta::SOGLIA_500_TRE_FINESTRE->superaLaSoglia(49_999, 50_000))->toBeFalse()
+        ->and(PlafondRitenuta::SOGLIA_500_TRE_FINESTRE->superaLaSoglia(50_000, 50_000))->toBeTrue();
+});

@@ -59,9 +59,42 @@ export interface Comunicazione {
   is_published: boolean;
   is_approved: boolean;
   can_comment: boolean;
+  chiedi_presa_visione?: boolean;
+  letture?: {
+    aperte: number;
+    prese_visione: number;
+  };
   anagrafiche: Anagrafica[];
   // Quanti commenti e allegati (decisione 441), calcolati dal server; solo nelle righe degli elenchi.
   contatori?: { commenti: number; allegati: number; in_attesa: number };
+}
+
+export interface LetturaPortale {
+  apertura: { il: string; alle: string } | null;
+  puo_confermare: boolean;
+  presa_visione: { il: string; alle: string } | null;
+}
+
+export type RigaLetturaPannello = {
+  anagrafica_id: number;
+  nome: string;
+  stato: 'presa_visione' | 'aperta' | 'senza_accesso' | 'non_confermata' | 'non_aperta' | string;
+  aperta: { il: string; alle: string } | null;
+  presa_visione: { il: string; alle: string } | null;
+  manca: boolean;
+};
+
+export interface LetturePannello {
+  registra_aperture: boolean;
+  chiedi_presa_visione: boolean;
+  attive: boolean;
+  riassunto: {
+    destinatari: number;
+    senza_accesso: number;
+    aperte: number;
+    prese_visione: number;
+  } | null;
+  righe: RigaLetturaPannello[];
 }
 
 // Priority options

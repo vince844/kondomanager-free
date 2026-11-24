@@ -158,3 +158,18 @@ test('index espone i 4 stati ammessi come prop stati, più «fuori ordine, non d
             ->where('stati', ['bozza', 'registrata', 'riconciliata', 'annullata', 'fuori_ordine'])
         );
 });
+
+test('la card «incassi del mese» conta il mese di Roma: alle 00:30 del 01/12 un incasso del 01/12 è di dicembre (Coda 547)', function () {
+    // Alle 00:30 di Roma del 01/12/2026 `now()` (UTC) dice ancora le 23:30 del 30/11: il mese era novembre.
+    $user = adminIncassiRate();
+    $ctx = setupContabile();
+    [$condominio] = $ctx;
+    creaIncassoRata($ctx, 'registrata', '2026-12-01');
+
+    $this->travelTo(\Carbon\Carbon::parse('2026-12-01 00:30', 'Europe/Rome'));
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.movimenti-rate.index', ['condominio' => $condominio->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('stats.incassi_mese', 1));
+});

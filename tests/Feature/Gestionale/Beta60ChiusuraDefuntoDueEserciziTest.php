@@ -177,13 +177,15 @@ it('Coda 332 — il piano del 2026 creato quando il 2027 è l\'esercizio aperto:
         ->and($voce['frase'])->not->toContain('registra dal Wallet');
 });
 
-it('Coda 332 — la parte nel 2027 con tutti e due gli esercizi aperti: il Wallet mostra un solo esercizio aperto, il 2026, e la frase non dice che mostra «l\'esercizio aperto»', function () {
+it('Coda 332 — la parte nel 2027 con tutti e due gli esercizi aperti: il Wallet mostra un solo esercizio aperto, il più recente (il 2027), e la frase non dice che quei saldi mancano', function () {
     [$s, $es, $piano] = b60dConsuntivoConLaParteNel2027($this);
-    // L'importatore lascia aperti gli esercizi che crea: il Wallet ne mostra uno, il primo con lo stato «aperto» (`HasEsercizio::getEsercizioCorrente`), il 2026.
+    // L'importatore lascia aperti gli esercizi che crea: il Wallet ne mostra uno, il più recente (`HasEsercizio::getEsercizioCorrente`, Coda 646,
+    // decisione 707 (4)), il 2027, dove stanno i saldi della parte.
     $es['2026']->update(['stato' => 'aperto']);
 
     $voce = Beta51Scenario::voceDelDefunto($s->cancello($piano));
-    expect($voce['frase'])->toEndWith(' I saldi dell\'esercizio «Esercizio 2027» non compaiono nel Wallet, che mostra un solo esercizio aperto: il piano li assorbe lo stesso, perché prende i saldi della gestione di ogni esercizio.')
+    expect($voce['frase'])->toEndWith('I saldi ci sono già: Ugo, Anna e Bruno hanno un saldo su quella gestione e quell\'unità, e questo piano li assorbe nelle loro quote con questa generazione. Non serve registrare altro.')
+        ->and($voce['frase'])->not->toContain('non compaiono nel Wallet')
         ->and($voce['frase'])->not->toContain('mostra solo l\'esercizio aperto');
 });
 
@@ -200,6 +202,8 @@ it('Coda 332 — la rotta del ricalcolo porta la stessa voce, con i saldi del 20
 it('Coda 332 — la parte registrata nel 2026 quando era l\'esercizio aperto, poi chiuso: il cancello la vede come prima e dice che il Wallet non la mostra', function () {
     $this->travelTo(now()->setDate(2026, 6, 15));
     [$s, $es] = b60dScenario($this);
+    // Giugno 2026: il 2027 non è ancora aperto. Con due esercizi aperti il Wallet scriverebbe nel più recente (Coda 646, decisione 707 (4)).
+    $es['2027']->update(['stato' => 'chiuso']);
     $piano = b60dPiano($s, $es['2026'], '2026');
     b60dSuccessione($s, '2026-05-01');
     b60dParte($this, $s);
@@ -216,6 +220,8 @@ it('Coda 332 — la parte registrata nel 2026 quando era l\'esercizio aperto, po
 it('Coda 332 — le righe legate alla successione scritte nel 2026, poi chiuso: il cancello le legge come prima e dice che il Wallet non le mostra', function () {
     $this->travelTo(now()->setDate(2026, 6, 15));
     [$s, $es] = b60dScenario($this);
+    // Giugno 2026: il 2027 non è ancora aperto. Con due esercizi aperti il Wallet scriverebbe nel più recente (Coda 646, decisione 707 (4)).
+    $es['2027']->update(['stato' => 'chiuso']);
     $piano = b60dPiano($s, $es['2026'], '2026');
     $sub = b60dSuccessione($s, '2026-05-01');
     b60dParte($this, $s, $sub);
@@ -261,6 +267,8 @@ it('Coda 332 — un saldo solo della parte fuori dall\'esercizio aperto: la fras
 it('Coda 332 — solo Ugo ha la sua riga legata, nel 2026 chiuso: il cancello chiede quelle che mancano, dice che la sua c\'è già e che il Wallet non la mostra', function () {
     $this->travelTo(now()->setDate(2026, 6, 15));
     [$s, $es] = b60dScenario($this);
+    // Giugno 2026: il 2027 non è ancora aperto. Con due esercizi aperti il Wallet scriverebbe nel più recente (Coda 646, decisione 707 (4)).
+    $es['2027']->update(['stato' => 'chiuso']);
     $piano = b60dPiano($s, $es['2026'], '2026');
     $sub = b60dSuccessione($s, '2026-05-01');
     b60dWallet($this, $s, 'ugo', -39452, $sub);

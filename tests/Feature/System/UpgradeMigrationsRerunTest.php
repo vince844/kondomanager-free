@@ -426,6 +426,35 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // 1.12.0-beta.13 (decisione 664 (6), rilievo C53, i contitolari presenti tutti e due): chi entra con chi rappresenta la testa, presente senza voto. Una
     // colonna, una guardia; il suo uso lo prova `tests/Feature/Assemblee/Sala/SalaApertaTest.php`.
     '2026_11_21_150000_add_insieme_to_assemblee_presenze',
+    // 1.12.0-beta.14 (Coda 718, decisione 685 (7)): i promemoria «F24 Ritenuta» per pagamento aperti si chiudono e nascono quelli per delega e il
+    // «Prepara le deleghe F24». Solo dati; due volte di fila con i dati lo prova `tests/Feature/Gestionale/Beta14PromemoriaF24Test.php`.
+    '2026_11_22_100000_allinea_i_promemoria_delle_ritenute',
+    // 1.12.0-beta.14 (Coda 734, il condominio parziale): il segno «tabella di un gruppo», falso di serie; nessuna tabella lo prende dalla migrazione. Una
+    // colonna, una guardia; il suo uso lo prova `tests/Feature/Assemblee/Sala/CondominioParzialeTest.php`.
+    '2026_11_22_130000_add_di_un_gruppo_to_tabelle',
+    // 1.12.0-beta.14 (Coda 755 (1), decisione 698): il registro degli errori nel database, l'errore per impronta e le sue volte, con due indici unici o no e
+    // due chiavi esterne, una guardia per ognuno; ha anche un `it()` che la interrompe dopo le tabelle (in fondo al file). Il suo uso lo provano
+    // `tests/Feature/System/RegistroDegliErroriTest.php` e `PaginaDiErroreSenzaDettagliTest.php`.
+    '2026_11_22_200000_create_errori_tables',
+    // 1.12.0-beta.14 (decisione 701): la preferenza «Errore avvisato», spenta di serie, scritta solo per chi non l'ha già (solo dati). Il suo uso lo prova
+    // `tests/Feature/System/AvvisoDellErroreTest.php`.
+    '2026_11_22_200100_seed_preferenza_notifica_errore_avvisato',
+    // 1.12.0-beta.14 (Coda 113, decisione 707 (3)): le voci di spesa importate senza il loro conto prendono il mastro che darebbe il salvataggio a mano. Solo dati;
+    // l'uso lo prova `tests/Feature/System/Beta14RiparaVociImportateTest.php`.
+    '2026_11_23_100000_assegna_il_conto_alle_voci_di_spesa_importate',
+    // 1.12.0-beta.14 (Coda 594, decisioni 310–313, la conferma di lettura delle comunicazioni): la tabella delle letture, una riga per persona e per
+    // comunicazione, con l'indice unico e le due chiavi esterne, una guardia per ognuno; la colonna «Chiedi la presa visione», spenta di serie; l'impostazione
+    // generale «Registra quando una comunicazione viene aperta nel portale», spenta di serie. Il loro uso lo provano `tests/Feature/LettureComunicazioni/`.
+    '2026_11_23_110000_create_comunicazione_letture_table',
+    '2026_11_23_110100_add_chiedi_presa_visione_to_comunicazioni',
+    'settings/2026_11_23_110200_add_comunicazioni_registra_aperture_to_general_settings',
+    // 1.12.0-beta.14 (Coda 788, decisione 713): l'impostazione generale «I condòmini possono avvisare lo studio dalla pagina d'errore», accesa di serie. Il suo
+    // uso lo prova `tests/Feature/System/Beta14Coda788AvvisiTest.php`.
+    'settings/2026_11_23_220000_add_errori_avviso_dalla_pagina_to_general_settings',
+    // 1.12.0-beta.14 (decisione 705, più persone che escono in un passaggio): `subentri.insieme_id`, con l'indice e la chiave esterna su `subentri`, una
+    // guardia per ognuno; ha anche un `it()` che la interrompe dopo la colonna (in fondo al file). Il suo uso lo prova
+    // `tests/Feature/Gestionale/Beta14PiuVenditoriTest.php`.
+    '2026_11_23_180000_add_insieme_id_to_subentri',
 ]);
 
 it('la migrazione dei modelli delle lettere interrotta dopo la tabella e prima dell\'indice e delle chiavi si riprende e li mette, uno per nome', function () {
@@ -1507,6 +1536,85 @@ it('la migrazione dei mezzi scelti per assemblea interrotta dopo la tabella si r
     $migrazione->down();
     $migrazione->down();
     expect(Schema::hasTable('assemblee_mezzi_scelti'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione del registro degli errori interrotta dopo le tabelle si riprende e mette gli indici e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite).
+    $stato = fn () => [
+        'indici' => collect(['errori', 'errori_volte'])->flatMap(fn ($t) => collect(Schema::getIndexes($t))->pluck('name')
+            ->filter(fn ($n) => str_starts_with($n, 'errori_')))->sort()->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('errori_volte'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $migrazione = require database_path('migrations/2026_11_22_200000_create_errori_tables.php');
+    $atteso = [
+        'indici' => ['errori_impronta_unico', 'errori_ultima_volta_indice', 'errori_volte_avvenuto_indice', 'errori_volte_codice_indice', 'errori_volte_errore_avvenuto_indice'],
+        'chiavi' => ['avvisato_da>users set null', 'errore_id>errori cascade'],
+    ];
+    expect($stato())->toBe($atteso);
+
+    Schema::table('errori_volte', function ($t) {
+        $t->dropForeign(['avvisato_da']);
+    });
+    Schema::table('errori_volte', fn ($t) => $t->dropIndex('errori_volte_codice_indice'));
+    Schema::table('errori', fn ($t) => $t->dropUnique('errori_impronta_unico'));
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('errori'))->toBeFalse()->and(Schema::hasTable('errori_volte'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la preferenza «Errore avvisato» nasce spenta per chi ha già delle preferenze, e rieseguita non tocca chi l\'ha accesa', function () {
+    $migrazione = require database_path('migrations/2026_11_22_200100_seed_preferenza_notifica_errore_avvisato.php');
+    $uno = User::factory()->create();
+    $due = User::factory()->create();
+    DB::table('notification_preferences')->insert([
+        ['user_id' => $uno->id, 'type' => 'new_ticket', 'enabled' => true, 'created_at' => now(), 'updated_at' => now()],
+        ['user_id' => $due->id, 'type' => 'new_ticket', 'enabled' => false, 'created_at' => now(), 'updated_at' => now()],
+    ]);
+
+    $migrazione->up();
+    $leggi = fn () => DB::table('notification_preferences')->where('type', 'error_reported')->orderBy('user_id')->pluck('enabled', 'user_id')->map(fn ($v) => (bool) $v)->all();
+    expect($leggi())->toBe([$uno->id => false, $due->id => false]);
+
+    DB::table('notification_preferences')->where('type', 'error_reported')->where('user_id', $uno->id)->update(['enabled' => true]);
+    $migrazione->up();
+    expect($leggi())->toBe([$uno->id => true, $due->id => false]);
+});
+
+it('la migrazione dei passaggi registrati insieme interrotta dopo la colonna si riprende e mette l\'indice e la chiave, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite).
+    $percorso = database_path('migrations/2026_11_23_180000_add_insieme_id_to_subentri.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_23_180000_add_insieme_id_to_subentri');
+    $migrazione = require $percorso;
+    $stato = fn () => [
+        'colonna' => Schema::hasColumn('subentri', 'insieme_id'),
+        'indici' => collect(Schema::getIndexes('subentri'))->pluck('name')->filter(fn ($n) => str_contains($n, 'insieme'))->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('subentri'))->filter(fn ($k) => $k['columns'] === ['insieme_id'])
+            ->map(fn ($k) => $k['foreign_table'] . '(' . implode(',', $k['foreign_columns']) . ') ' . strtolower((string) $k['on_delete']))->values()->all(),
+    ];
+    $atteso = ['colonna' => true, 'indici' => ['subentri_insieme_id_index'], 'chiavi' => ['subentri(id) set null']];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la colonna: l'indice e la chiave mancano.
+    $migrazione->down();
+    Schema::table('subentri', fn ($t) => $t->unsignedBigInteger('insieme_id')->nullable());
+    expect($stato())->toBe(['colonna' => true, 'indici' => [], 'chiavi' => []]);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect($stato())->toBe(['colonna' => false, 'indici' => [], 'chiavi' => []]);
     $migrazione->up();
     expect($stato())->toBe($atteso);
 });

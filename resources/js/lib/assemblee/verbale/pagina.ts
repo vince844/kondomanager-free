@@ -10,7 +10,7 @@
 import { giornoItaliano } from '@/lib/giorno';
 import { ora as oraDiRoma } from '@/lib/senzaRete/sala';
 import type { NodoDelVerbale } from './struttura';
-import type { DestinatarioDelVerbale, ParteDelVerbale, StatoDiChiScrive, TrasmissioneDelVerbale } from '@/types/verbale';
+import type { DestinatarioDelVerbale, ParteDelVerbale, StatoDiChiScrive, TerminiDellaDelibera, TrasmissioneDelVerbale } from '@/types/verbale';
 
 /** La frase accanto a ogni «fino al»: il conto è quello prudente. */
 export const CALCOLO_PRUDENTE = 'calcolato in modo prudente';
@@ -32,6 +32,41 @@ export function puntiInParole(punti: number[]): string {
 
 const MAIUSCOLA = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** «a, b e c». */
+const elenco = (voci: string[]) => (voci.length <= 1 ? (voci[0] ?? '') : `${voci.slice(0, -1).join(', ')} e ${voci[voci.length - 1]}`);
+
+/**
+ * Una votazione di un punto, come la manda il server (`DestinatariDelVerbale`, Coda 750 B2): il rendiconto e il riparto votati a parte sono due delibere, e
+ * `oggetto` dice quale dei due (vuoto quando il punto si è votato una volta sola).
+ */
+export interface VoceDelPunto {
+    votazione_id: number;
+    delibera_id: number;
+    numero: number;
+    oggetto: 'rendiconto' | 'riparto' | null;
+}
+
+/** I termini di una persona con le votazioni a cui si riferiscono (`voci`): il server le manda sempre; una prova che non le ha legge `punti`. */
+type TerminiConLeVoci = DestinatarioDelVerbale['termini'][number] & { voci?: VoceDelPunto[] };
+/** La persona con i suoi voti per votazione (`voti_per_votazione`): `voto` vuoto dove era fuori. */
+export type DestinatarioPerVotazione = DestinatarioDelVerbale & { voti_per_votazione?: (VoceDelPunto & { voto: string | null })[] };
+
+/**
+ * I punti e le parti di punto, senza preposizione: «punto 4», «punti 1 e 2», «il riparto del punto 1», «punti 2 e 3 e il rendiconto del punto 1». Il punto
+ * votato due volte è intero quando ci sono tutte e due le sue votazioni; altrimenti si dice quale. Come `DestinatariDelVerbale::aiPunti()`.
+ */
+export function puntiEParti(voci: Pick<VoceDelPunto, 'numero' | 'oggetto'>[]): string {
+    const perPunto = new Map<number, (string | null)[]>();
+    for (const v of voci) perPunto.set(v.numero, [...(perPunto.get(v.numero) ?? []), v.oggetto ?? null]);
+    const interi: number[] = [];
+    const parti: string[] = [];
+    for (const [numero, oggetti] of [...perPunto.entries()].sort((a, b) => a[0] - b[0])) {
+        if (oggetti.includes(null) || (oggetti.includes('rendiconto') && oggetti.includes('riparto'))) interi.push(numero);
+        else for (const o of [...new Set(oggetti)]) parti.push(`il ${o} del punto ${numero}`);
+    }
+    return elenco([...(interi.length ? [puntiInParole(interi)] : []), ...parti]);
+}
+
 /**
  * Da quale giorno contano i trenta giorni di chi era assente, quando non è la consegna: « (dal ritiro del 28/12/2026)» per la raccomandata in giacenza poi
  * ritirata, « (dalla compiuta giacenza, il 28/12/2026)» per quella non ritirata (l'avviso più dieci giorni). Come `DestinatariDelVerbale::daQuando()`.
@@ -43,20 +78,57 @@ export function daQuando(come: string | null | undefined, dal: string | null | u
     return '';
 }
 
+/** I punti in cui la persona era fuori, con la votazione per il punto votato due volte: «punti 4 e 6», «il riparto del punto 1» (Coda 750 B2). */
+export function puntiDaAssente(p: DestinatarioDelVerbale): string {
+    const voci = p.termini.filter((t) => t.perche === 'assente').flatMap((t: TerminiConLeVoci) => t.voci ?? []);
+    return voci.length ? puntiEParti(voci) : puntiInParole(p.punti_assente);
+}
+
 /**
  * Le righe dei trenta giorni di una persona, come si leggono sotto «Può impugnare»: per i punti in cui era assente «dalla consegna» (o la data), per gli
- * altri dalla delibera; i favorevoli niente. Con la virgola: «punti 1–3, fino al 21/12/2026», «punto 4, contrario, fino al 14/01/2027».
+ * altri dalla delibera; i favorevoli niente. Con la virgola: «punti 1–3, fino al 21/12/2026», «punto 4, contrario, fino al 14/01/2027». Il rendiconto e il
+ * riparto votati a parte si leggono per votazione (Coda 750 B2): «il riparto del punto 1, dalla consegna», «il rendiconto del punto 1, favorevole, nessun
+ * termine».
  */
-export function righeDeiTrentaGiorni(p: DestinatarioDelVerbale): string[] {
-    const righe = p.termini.map((t) => {
-        const come = { assente: '', tolto: 'tolto dalla lista, conta astenuto, ', contrario: 'contrario, ', astenuto: 'astenuto, ', non_votato: 'non ha votato, conta astenuto, ' }[t.perche] ?? '';
+export function righeDeiTrentaGiorni(p: DestinatarioPerVotazione): string[] {
+    const righe = p.termini.map((t: TerminiConLeVoci) => {
+        const come = { assente: '', tolto: 'tolta dalla lista, conta astenuto, ', contrario: 'contrario, ', astenuto: 'astenuto, ', non_votato: 'non ha votato, conta astenuto, ' }[t.perche] ?? '';
         const quando = t.fino_al ? `fino al ${giorno(t.fino_al)}${daQuando(t.dal_come, t.dal)}` : 'dalla consegna';
-        return `${puntiInParole(t.punti)}, ${come}${quando}`;
+        return `${t.voci?.length ? puntiEParti(t.voci) : puntiInParole(t.punti)}, ${come}${quando}`;
     });
-    const voti = Array.isArray(p.voti) ? {} : p.voti;
-    const favorevoli = Object.entries(voti).filter(([, v]) => v === 'favorevole').map(([n]) => Number(n));
-    if (favorevoli.length) righe.push(`${puntiInParole(favorevoli)}, favorevole, nessun termine`);
+    const favorevoli = favorevoliDi(p);
+    if (favorevoli) righe.push(`${favorevoli}, favorevole, nessun termine`);
     return righe;
+}
+
+/** I punti (e le parti di punto) in cui la persona era in sala e favorevole: «punti 2 e 3 e il riparto del punto 1»; vuoto se nessuno. */
+function favorevoliDi(p: DestinatarioPerVotazione): string {
+    if (p.voti_per_votazione) {
+        const perPunto = new Map<number, (VoceDelPunto & { voto: string | null })[]>();
+        for (const v of p.voti_per_votazione) perPunto.set(v.numero, [...(perPunto.get(v.numero) ?? []), v]);
+        // Il punto votato due volte, favorevole a tutte e due: il punto intero.
+        const voci = [...perPunto.values()].flatMap((vv) => (vv.every((v) => v.voto === 'favorevole') ? vv.map((v) => ({ ...v, oggetto: null }))
+            : vv.filter((v) => v.voto === 'favorevole')));
+        return puntiEParti(voci);
+    }
+    const voti = Array.isArray(p.voti) ? {} : p.voti;
+    const numeri = Object.entries(voti).filter(([, v]) => v === 'favorevole').map(([n]) => Number(n));
+    return numeri.length ? puntiInParole(numeri) : '';
+}
+
+/** «Punto 1», o «Punto 1, il rendiconto» per una delle due votazioni del punto (Coda 750 B2: il server manda `oggetto` sulla delibera). */
+export const nomeDellaDelibera = (d: TerminiDellaDelibera & { oggetto?: 'rendiconto' | 'riparto' | null }) => `Punto ${d.punto}${d.oggetto ? `, il ${d.oggetto}` : ''}`;
+
+/**
+ * Il gesto principale di «Chi riceve il verbale», l'unico pulsante scuro (rilievi C28 e C60): le lettere ancora da stampare, se ce ne sono; altrimenti le
+ * PEC da mandare; altrimenti «Registra la spedizione» delle lettere stampate; altrimenti nessuno. Una lettera già stampata si può ristampare, ma non è più
+ * il gesto che aspetta.
+ */
+export function gestoPrincipale(t: TrasmissioneDelVerbale): 'lettere' | 'pec' | 'spedizione' | null {
+    const daSpedire = t.persone.filter((p) => p.riceve && !p.invio?.spedito);
+    if (daSpedire.some((p) => ['raccomandata', 'a_mano', 'mano', 'fax'].includes(p.mezzo.mezzo) && p.invio?.stato !== 'stampata')) return 'lettere';
+    if (daSpedire.some((p) => p.mezzo.mezzo === 'pec')) return 'pec';
+    return t.persone.some((p) => p.riceve && p.invio?.stato === 'stampata') ? 'spedizione' : null;
 }
 
 export interface GruppiDeiDestinatari {

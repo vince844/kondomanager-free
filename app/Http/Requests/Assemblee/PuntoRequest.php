@@ -57,7 +57,7 @@ class PuntoRequest extends RichiestaDelleAssemblee
             'maggioranza_libera.soglia' => ['nullable', 'string', 'max:255'],
             'maggioranza_libera.norma' => ['nullable', 'string', 'max:255'],
             'conduttore' => ['nullable', Rule::in(ConduttorePunto::valori())],
-            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valori())],
+            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valoriDeiPunti())],
             'palazzina_id' => ['nullable', 'integer', 'required_if:' . $prefisso . 'ambito,palazzina'],
             'scala_id' => ['nullable', 'integer', 'required_if:' . $prefisso . 'ambito,scala'],
             'tabella_id' => ['nullable', 'integer'],
@@ -72,6 +72,8 @@ class PuntoRequest extends RichiestaDelleAssemblee
             'dati.delega' => ['nullable', 'array:ambito,fino_al'],
             'dati.delega.ambito' => ['nullable', Rule::in(\App\Enums\Assemblee\AmbitoDellaDelega::valori())],
             'dati.delega.fino_al' => ['nullable', 'date_format:Y-m-d'],
+            // «Mettilo lo stesso» (decisione 699 (3)): il punto di tutto il condominio nell'assemblea di un gruppo, scelto dall'amministratore con il rischio.
+            'mettilo_lo_stesso' => ['sometimes', 'boolean'],
         ], $prefisso);
     }
 
@@ -95,6 +97,7 @@ class PuntoRequest extends RichiestaDelleAssemblee
             'dati.nuova_destinazione' => 'la nuova destinazione d\'uso',
             'dati.delega.ambito' => 'per che cosa',
             'dati.delega.fino_al' => 'fino al',
+            'mettilo_lo_stesso' => '«Mettilo lo stesso»',
         ], $prefisso);
     }
 

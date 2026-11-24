@@ -20,7 +20,10 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  *   sì», «Valore: 292,00 millesimi, ne servono 333,34: mancano 41,34»): arrivano con i conteggi del server; con un gesto del voto ancora qui si contano sul
  *   posto, con lo stesso conto. Un'altra maggioranza non ha condizioni: resta la frase, «decide il presidente».
  * - **Accanto alla conferma**: l'avviso quando l'assemblea non risulta costituita («decide il presidente»), il conto della sola scala, il conflitto
- *   determinante; le note del presidente sul voto e su chi non ha votato, che vanno nel verbale; la dichiarazione a verbale.
+ *   determinante; le note del presidente sul voto e su chi non ha votato, che vanno nel verbale; il motivo di «Un altro esito» (rilievo C55); la
+ *   dichiarazione a verbale.
+ * - **Il punto di una parte** (la sola scala, il gruppo di una tabella; Coda 734): sotto la regola la riga azzurra «Votano solo i condòmini della tabella
+ *   «Box»: chi altro è in sala non vota su questo punto.». Un voto fermato nella beta.13 non ha la riga.
  * - **La riga del voto** (decisione 664 (4), rilievo C51): «Nota sul voto», «Nota su chi non ha votato», «Dichiarazione a verbale», «Un altro esito» (un
  *   pulsante), tutti alti 28 px e chiari; il gesto principale («Conferma: approvata», «Si vota») scuro e alto uguale, a destra; al telefono a tutta riga.
  * - **Le dichiarazioni a verbale** (decisione 664 (7), rilievo C53): ognuna in una riga sotto il punto, con chi l'ha fatta; «Modifica» (la finestra della
@@ -339,6 +342,9 @@ const principale = 'inline-flex h-9 items-center justify-center rounded-md bg-sl
             <p v-if="punto.motivazione" class="mt-1 break-words text-[13px] text-slate-700 dark:text-slate-300" data-testid="motivazione-del-punto">{{ punto.motivazione }}</p>
             <p class="text-xs text-slate-600 dark:text-slate-400">{{ regola }}</p>
             <p v-if="punto.perimetro?.avviso" class="mt-1 text-xs text-amber-800 dark:text-amber-300">{{ punto.perimetro.avviso }}</p>
+            <!-- Il punto di una parte (la sola scala, il gruppo di una tabella; Coda 734): chi vota, e chi altro è in sala non vota su questo punto. -->
+            <p v-if="punto.perimetro?.chi_vota" class="mt-1.5 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                data-testid="chi-vota-sul-punto">{{ punto.perimetro.chi_vota }}: chi altro è in sala non vota su questo punto.</p>
         </div>
 
         <!-- Il punto senza voto -->
@@ -453,7 +459,7 @@ const principale = 'inline-flex h-9 items-center justify-center rounded-md bg-sl
                                 {{ s.etichetta }}
                             </button>
                             <button v-if="r.comproprietari && gestisce" type="button" :class="[delVoto, delVotoSpento]" :aria-pressed="r.voto?.voto === 'discorde' ? 'true' : 'false'"
-                                data-testid="discorde" @click="discorde(r.testa.chiave)">Discorde</button>
+                                title="I comproprietari presenti votano in modo diverso" data-testid="discorde" @click="discorde(r.testa.chiave)">Discorde</button>
                             <button v-if="gestisce && r.voto && !confermata" type="button" :class="[delVoto, delVotoSpento]" :aria-pressed="r.voto.in_conflitto ? 'true' : 'false'"
                                 data-testid="in-conflitto" @click="conflitto(r)">{{ r.voto.in_conflitto ? 'Togli il conflitto' : 'In conflitto' }}</button>
                         </span>
@@ -465,6 +471,8 @@ const principale = 'inline-flex h-9 items-center justify-center rounded-md bg-sl
             <div class="space-y-1 text-xs text-slate-700 dark:text-slate-300">
                 <p v-if="votazione.nota" data-testid="la-nota"><b class="font-semibold">Nota del presidente:</b> {{ votazione.nota }}</p>
                 <p v-if="votazione.nota_non_votato" data-testid="la-nota-non-votato"><b class="font-semibold">Su chi non ha votato:</b> {{ votazione.nota_non_votato }}</p>
+                <!-- Il motivo di «Un altro esito», con le parole della sala chiusa (rilievo C55). -->
+                <p v-if="votazione.motivo" data-testid="il-motivo"><b class="font-semibold">Il motivo dell'esito:</b> {{ votazione.motivo }}</p>
                 <p v-if="nomina && nominato" data-testid="nuovo-amministratore-detto"><b class="font-semibold">Il nuovo amministratore:</b> {{ nominato }}</p>
             </div>
 

@@ -152,10 +152,16 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Nominali e solidali</h3>
                             <p>
                                 I saldi <strong>nominali</strong> seguono la persona. Quelli <strong>solidali</strong>
-                                (art. 63 disp. att. c.c.) seguono l'<strong>unità immobiliare</strong>: restano
-                                attaccati all'appartamento anche se cambia il proprietario, ed è il motivo per cui il
-                                gestionale li tiene separati invece di sommarli.
+                                (art. 63 disp. att. c.c.) sono dell'<strong>unità immobiliare</strong>, e il gestionale
+                                li tiene separati invece di sommarli.
                             </p>
+                            <ul class="mt-2 list-disc space-y-1 pl-5">
+                                <li>Vanno a <strong>chi ne era titolare il primo giorno del loro esercizio</strong>, anche se dopo l'appartamento ha cambiato proprietario.</li>
+                                <li>Se il passaggio è proprio di quel giorno, a chi era titolare il giorno prima.</li>
+                                <li>Con una successione: con l'arretrato agli eredi vanno agli eredi, per le loro quote; con l'arretrato a nome del defunto restano al defunto.</li>
+                                <li>Al defunto solo se è morto dall'inizio dell'esercizio prima di quello del saldo: con una morte di prima, o con una successione registrata senza la scelta sull'arretrato, vanno agli eredi.</li>
+                                <li>Dove un passaggio li tocca, «Configura riparto saldi» lo dice e ti lascia scegliere: la regola, chi era titolare prima o dopo il passaggio, o un riparto a mano. La scelta resta scritta nel piano, e un ricalcolo la rifà finché il passaggio resta com'era. Se il passaggio è stato annullato o cambiato, il ricalcolo, anche togliendo una voce, torna alla regola, e se il pregresso va a un'altra persona l'esito lo dice.</li>
+                            </ul>
                         </section>
                     </TabsContent>
 
@@ -247,7 +253,7 @@ defineEmits(['update:open']);
                                 sulla stessa unità i saldi non legati di un erede sono gli stessi in tutte e due le voci: se sono già la sua
                                 parte per un defunto, per l'altro la voce chiede il saldo legato e lo dice; se il programma non sa se
                                 comprendono le parti, le voci dopo la prima dicono che le comprendono solo se le comprendono
-                                insieme. Se un defunto è anche erede dell'altro, e tutte e due le successioni passano l'arretrato agli eredi, il cancello lo dice: la sua parte da erede della cifra
+                                insieme. Se un defunto è anche erede di un altro defunto, anche con la successione registrata su un'altra unità, e tutte e due le successioni passano l'arretrato agli eredi, il cancello lo dice: la sua parte da erede della cifra
                                 dell'altro non passa ai suoi eredi, la divisione la decide l'amministratore e le righe del Wallet non chiudono la voce.
                             </p>
                         </section>

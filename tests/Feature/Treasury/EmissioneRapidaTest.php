@@ -195,7 +195,7 @@ it('l\'emissione dalla finestra emette le rate scelte con la data, la descrizion
         'rate_ids' => [lcdRata($s, 4), lcdRata($s, 5)], 'data_emissione' => '2026-05-18', 'descrizione_personalizzata' => 'Rate di primavera', 'invia_notifiche' => true, 'da' => 'dashboard',
     ]);
     $r->assertRedirect($dashboard)->assertSessionHasNoErrors();
-    expect($r->getSession()->get('message'))->toBe(['type' => 'success', 'message' => 'Rate emesse e notificate correttamente ai condòmini.'])
+    expect($r->getSession()->get('message'))->toBe(['type' => 'success', 'message' => 'Rate emesse: i condòmini le vedono nel portale.'])
         ->and($r->getSession()->get('esito_emissione'))->toBe(['titolo' => 'Emissione completata', 'testo' => 'Sono state emesse 2 rate.']);
     $scritture = DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'emissione_rata')->where('data_competenza', 'like', '2026-05-18%')->get();
     expect($scritture)->toHaveCount(2)
@@ -233,7 +233,7 @@ it('dopo l\'emissione dalla finestra la dashboard riporta la tesoreria, l\'Inbox
     $props = $this->actingAs($this->user)->get($r->headers->get('Location'))->assertOk()->json('props');
     expect($props)->toHaveKeys(['widgets', 'flash', 'inboxTasks', 'inboxSchede', 'inboxScaduti', 'seiMesi', 'compitiSeiMesi'])
         ->not->toHaveKeys(['copertura', 'fattureScoperte', 'pianiDisallineati', 'emissioneRapida'])
-        ->and($props['flash']['message'])->toBe(['type' => 'success', 'message' => 'Rate emesse e notificate correttamente ai condòmini.'])
+        ->and($props['flash']['message'])->toBe(['type' => 'success', 'message' => 'Rate emesse: i condòmini le vedono nel portale.'])
         ->and($props['flash']['esito_emissione']['testo'])->toBe('Sono state emesse 2 rate.');
     $azione = $props['widgets']['treasury_guardian']['datiDelleAzioni']['rateDaEmettere'];
     expect(array_column($azione[0]['rate'], 'rataId'))->toBe([lcdRata($s, 6)])->and($azione[0]['cifra'])->toBe(100000);
@@ -304,7 +304,7 @@ it('dalla pagina del piano tutto come prima: l\'emissione torna alla pagina da c
 
     $r = $this->actingAs($this->user)->from(erpPaginaDelPiano($s))->post(erpRotta($s), ['rate_ids' => [lcdRata($s, 4)], 'data_emissione' => '2026-05-20', 'descrizione_personalizzata' => '', 'invia_notifiche' => true]);
     $r->assertRedirect(erpPaginaDelPiano($s))->assertSessionHasNoErrors();
-    expect($r->getSession()->get('message'))->toBe(['type' => 'success', 'message' => 'Rate emesse e notificate correttamente ai condòmini.'])
+    expect($r->getSession()->get('message'))->toBe(['type' => 'success', 'message' => 'Rate emesse: i condòmini le vedono nel portale.'])
         ->and($r->getSession()->get('esito_emissione'))->toBe(['titolo' => 'Emissione completata', 'testo' => 'È stata emessa 1 rata.'])
         ->and(DB::table('rate')->where('id', lcdRata($s, 4))->value('stato'))->toBe('emessa');
 

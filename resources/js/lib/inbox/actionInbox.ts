@@ -154,6 +154,8 @@ const ASPETTI: Record<string, { icona: string; colore: string }> = {
     commento: { icona: 'commento', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
     da_moderare: { icona: 'commento', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
     allegato: { icona: 'allegato', colore: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300' },
+    // L'avviso di un errore dalla pagina d'errore (1.12.0-beta.14, la 698 del registro delle decisioni): rosso, il guasto, come l'icona della pagina d'errore.
+    errore_avvisato: { icona: 'errore', colore: 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300' },
 };
 const ASPETTO_DI_SERIE = { icona: 'scadenza', colore: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' };
 export const aspettoDelTipo = (tipo: string): { icona: string; colore: string } => ASPETTI[tipo] ?? ASPETTO_DI_SERIE;

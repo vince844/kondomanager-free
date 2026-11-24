@@ -678,6 +678,10 @@ watch(
         const f = props.fornitori.find(x => x.id === newFornitoreId);
         if (!f) return;
 
+        // Coda 281: la prima chiamata (`immediate`, alla apertura della pagina) non ha un valore di prima: scadenza, IBAN e modalità sono quelli
+        // salvati sulla fattura e restano com'erano. Si ricalcola solo quando fornitore o data cambiano davvero.
+        if (oldFornitoreId === undefined && oldDataDoc === undefined) return;
+
         if (newFornitoreId !== oldFornitoreId || newDataDoc !== oldDataDoc) {
             // La data del documento più i giorni del fornitore, sui numeri della data (1.12.0-beta.3): passando da un istante, a marzo
             // l'ora legale la faceva uscire un giorno prima.
@@ -1246,7 +1250,7 @@ const pageGuides = [
                     <div class="p-5 bg-slate-900 dark:bg-slate-950 text-white border-t border-slate-700 shrink-0 space-y-4">
                         <div class="space-y-2">
                             <div class="flex justify-between text-xs">
-                                <span class="text-slate-400">Imponibile lordo</span>
+                                <span class="text-slate-400">Imponibile</span>
                                 <span>{{ euro(totali.imponibile_cents) }}</span>
                             </div>
 

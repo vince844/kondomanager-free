@@ -11,6 +11,7 @@ use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\DelegaF24;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\DoubleEntryValidator;
+use App\Services\Gestionale\F24\PromemoriaDelleRitenute;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -51,7 +52,7 @@ class ConfermaVersamentoF24Action
         ?int $cassaId = null,
         ?string $note = null,
     ): DelegaF24 {
-        return DB::transaction(function () use ($delega, $dataVersamento, $contoBancarioId, $cassaId, $note) {
+        $versata = DB::transaction(function () use ($delega, $dataVersamento, $contoBancarioId, $cassaId, $note) {
 
             $delega = DelegaF24::whereKey($delega->id)->lockForUpdate()->firstOrFail();
 
@@ -103,6 +104,13 @@ class ConfermaVersamentoF24Action
 
             return $delega->fresh(['righe', 'scrittura']);
         });
+
+        // Dopo il commit: la delega versata non ha più niente da chiedere, e il suo promemoria si chiude (Coda 718).
+        if ($versata->condominio !== null) {
+            app(PromemoriaDelleRitenute::class)->allineaSenzaFermare($versata->condominio);
+        }
+
+        return $versata;
     }
 
     /**
@@ -132,6 +140,13 @@ class ConfermaVersamentoF24Action
 
         if ($delega->righe()->count() === 0) {
             throw new \DomainException('La delega non ha righe: nulla da versare.');
+        }
+
+        // La ritenuta di un pagamento stornato (Coda 754 (10)): versata, andrebbe all'Erario una ritenuta che lo storno ha tolto, e il
+        // pagamento registrato di nuovo la porterebbe una seconda volta. Vale per la bozza non rifatta e per la confermata.
+        $stornati = $delega->motivoBloccoPerPagamentiStornati();
+        if ($stornati !== null) {
+            throw new \DomainException($stornati);
         }
     }
 

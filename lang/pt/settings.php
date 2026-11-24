@@ -146,6 +146,10 @@ return [
             'label' => 'Ocorrência atualizada',
             'description' => 'Receba uma notificação quando uma ocorrência que acompanha for alterada',
         ],
+        'error_reported' => [
+            'label' => 'Erro avisado',
+            'description' => 'Receba um email no primeiro aviso de um erro de um condómino ou de um colaborador: o código, a hora, a página e quem avisou, sem o detalhe técnico. Os avisos seguintes do mesmo erro contam-se na tarefa da Action inbox, sem outro email.',
+        ],
         'ticket_assigned' => [
             'label' => 'Ticket de avaria atribuído',
             'description' => 'Receba uma notificação quando um ticket de avaria lhe for atribuído, ou deixar de estar atribuído a si',

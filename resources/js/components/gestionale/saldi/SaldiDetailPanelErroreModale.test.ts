@@ -75,7 +75,7 @@ const radioSolidale = (w: VueWrapper) => w.findAll('input[type="radio"]').find((
 const testo = (w: VueWrapper) => w.text().replace(/\s+/g, ' ');
 
 /** Scrive un importo e preme «Salva Debito»; restituisce le opzioni con cui è partita la richiesta. */
-async function salva(w: VueWrapper): Promise<{ onError?: (e: Record<string, string>) => void; onSuccess?: () => void }> {
+async function salva(w: VueWrapper): Promise<{ onError?: (e: Record<string, string>) => void; onSuccess?: () => void; onFinish?: () => void }> {
     vi.mocked(router.post).mockClear();
     modulo(w).importo = '50,00';
     await w.vm.$nextTick();
@@ -122,6 +122,7 @@ describe('il rifiuto del server si legge dentro il modale', () => {
         const w = await apriIlModale([]);
         const opzioni = await salva(w);
         opzioni.onError!({ anagrafica_id: RIFIUTO_SOLIDALE });
+        opzioni.onFinish!(); // Inertia chiama onFinish dopo onError: il pulsante si riaccende
         await w.vm.$nextTick();
         expect(testo(w)).toContain(RIFIUTO_SOLIDALE);
 

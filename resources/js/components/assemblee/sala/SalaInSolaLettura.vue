@@ -41,9 +41,9 @@ const righe = computed<Riga[]>(() => presenze.value.map((p) => {
     return {
         chiave: `${p.id}-${p.chiave}`, nome: p.nome, come: inCollegamento ? 'In collegamento' : 'In sala',
         entrata: oraDiRoma(p.entrata_il), uscita: oraDiRoma(p.uscita_il),
-        // I contitolari entrati con chi rappresenta l'unità, presenti senza voto (rilievo C53).
+        // I contitolari entrati con chi rappresenta l'unità, presenti senza voto (rilievo C53), «in comproprietà» (decisione 673 (5)).
         nota: [perConto.length ? `per delega di ${perConto.join(', ')}` : null, p.insieme?.length ? `con ${elencoDeiNomi(p.insieme.map((x) => x.nome))}, `
-            + (p.insieme.length === 1 ? 'contitolare, presente senza voto' : 'contitolari, presenti senza voto') : null, p.caduto ? 'collegamento caduto' : null]
+            + (p.insieme.length === 1 ? 'in comproprietà, presente senza voto' : 'in comproprietà, presenti senza voto') : null, p.caduto ? 'collegamento caduto' : null]
             .filter(Boolean).join(' · ') || null,
     };
 }));

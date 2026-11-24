@@ -27,13 +27,22 @@ const { generateRoute, generatePath } = usePermission()
 // La porta verso il mastrino (D21.7): «tutti i movimenti della banca» per chi pensa alla
 // cassa e non al conto 1010.01. Serve l'esercizio corrente, che la pagina riceve dal
 // controller; senza un esercizio aperto — o senza un conto contabile — la voce non compare.
-const pagina = usePage<{ esercizio?: { id: number } | null }>()
+const pagina = usePage<{ esercizio?: { id: number } | null, storni_delle_aperture?: Record<string, string> }>()
 const hrefMovimenti = (cassa: Cassa): string | null => {
   const esercizio = pagina.props.esercizio
   if (!esercizio || !cassa.conto_contabile_id) return null
   return generatePath('gestionale/:condominio/esercizi/:esercizio/conti/:contoContabile/movimenti', {
     condominio: condominio.id, esercizio: esercizio.id, contoContabile: cassa.conto_contabile_id,
   }) + '?da=casse' // così il pulsante «indietro» del mastrino riporta qui
+}
+
+// Coda 754 (1): la risorsa con l'apertura a giornale si elimina, e il programma storna la sua apertura. La frase, con l'importo e il giorno, la scrive il
+// controller dell'elenco (`CassaController::index`), per le sole risorse che si possono eliminare.
+const descrizioneElimina = (cassa: Cassa): string => {
+  const storno = pagina.props.storni_delle_aperture?.[String(cassa.id)]
+  return storno
+    ? `Questa azione non è reversibile. ${storno}`
+    : 'Questa azione non è reversibile: la risorsa sparisce dall\'elenco e il suo conto resta archiviato.'
 }
 
 function handleDelete(targetCassa: Cassa) {
@@ -113,7 +122,7 @@ function deleteCassa() {
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
     title="Sei sicuro di voler eliminare questa cassa?"
-    description="Questa azione non è reversibile. Eliminerà la palazzina e tutti i dati ad essa associati."
+    :description="descrizioneElimina(cassa)"
     :loading="isDeleting"
     @confirm="deleteCassa"
   />

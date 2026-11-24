@@ -172,10 +172,11 @@ it('un versamento di dicembre registrato a gennaio sta nell\'esercizio nuovo, ma
 
 it('un versamento del 03/01/2027 registrato con il 2026 ancora aperto, stornato dopo la chiusura del 2026: la sua data è nel 2027 aperto, l\'errore si retrodata', function () {
     $s = snBianca($this, false);
-    snEsercizio2027($s);
     $this->travelTo('2027-01-10 11:00:00');
     $incasso = lcdIncassa($this, $s, 'bianca', [lcdQuota($s, 'bianca', 1) => 30000], '2027-01-03');
     expect((int) DB::table('scritture_contabili')->where('id', $incasso)->value('esercizio_id'))->toBe((int) $s['e']->id);
+    // Il 2027 si apre dopo il versamento: con due esercizi aperti l'incasso andrebbe nel più recente (Coda 646, decisione 707 (4)).
+    snEsercizio2027($s);
     DB::table('esercizi')->where('id', $s['e']->id)->update(['stato' => 'chiuso']);
     $this->travelTo('2027-01-15 11:00:00');
 

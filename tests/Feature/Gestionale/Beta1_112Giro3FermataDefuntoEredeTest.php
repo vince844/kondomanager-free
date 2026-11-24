@@ -361,21 +361,64 @@ it('Coda 480, controprova — Ada, erede di Ugo, lascia l\'arretrato a nome suo:
     expect($voci['Ugo']['frase'])->toContain('€ 147,50 a debito di Ada')->not->toContain('a sua volta');
 });
 
-it('Coda 480, controprova — la successione di Ada è su un\'altra unità (la B): sull\'unità A la parte di Ada non è nel caso, le voci sono quelle di prima', function () {
+/** La voce di Ada su A quando la sua riga lì è ancora aperta dopo il decesso: la cifra fino al decesso, e la strada per i giorni dopo (rilievo 3 dello scettico della tappa 2). */
+const G3F_ADA_SU_A_DOPO_IL_DECESSO = 'Il piano calcola ancora per Ada € 376,25 su Interno A, per i giorni in cui ne era titolare. Il decesso è del 1 maggio 2026 e la '
+    . 'successione è registrata su Interno B: quella successione non li passa ai suoi eredi. Decidi tu come dividerli; le righe del Wallet non chiudono questa voce.'
+    . ' La riga di Ada su Interno A è ancora aperta dopo il decesso: il piano calcola a suo nome anche € 918,75 per i giorni dopo, che non sono suoi. Registra la '
+    . 'successione anche su Interno A, poi genera di nuovo il piano.';
+
+it('Coda 480 e Coda 484 — la successione di Ada è su un\'altra unità (la B): la voce di Ugo la nomina e la divisione la decide l\'amministratore, e i giorni di Ada su A hanno una voce loro', function () {
+    // Coda 484 (1.12.0-beta.14): fino alla beta.13 questa era la controprova della 480 e fissava il limite che la 484 toglie (lo SF6 dello scettico della fermata
+    // della 1.12.0-beta.1): la successione dell'erede si cercava sulla sola unità della voce, così la voce di Ugo chiedeva «€ 73,75 a debito di Ada», una defunta,
+    // e i giorni di Ada su A non avevano nessuna voce. Ora la successione di Ada si cerca in tutto il condominio (`DefuntoNelPiano::successioniDegliEredi`), e chi
+    // ha una cifra su un'unità dove non ha una successione ha una voce sua (`DefuntoNelPiano::voceAltrove`). Le prove della 484 sono in
+    // `Beta14EredeCheVendeEMuoreTest.php`, con la vendita.
     // A e B da 500 millesimi: 182500 a unità. Ugo e Ada al 50 % di A, Ada al 100 % di B. Ugo muore il 1/3 su A (0,5 × 59 × 500 = 14750, la parte di Ada 7375), Ada il
-    // 1/5 solo su B (120 × 500 = 60000, le parti Anna 30000 e Bruno 30000).
+    // 1/5 con la successione solo su B (120 × 500 = 60000, le parti Anna 30000 e Bruno 30000). La riga di Ada su A resta aperta: il motore le dà su A
+    // 0,5 × 59 × 500 + 0,75 × 306 × 500 = 14750 + 114750 = 129500, e nessuna successione lo passa ai suoi eredi. Ma solo i giorni fino al decesso sono suoi
+    // (rilievo 3 dello scettico della tappa 2): 14750 + 0,75 × 61 × 500 = 14750 + 22875 = 37625; i 245 giorni dopo, 0,75 × 245 × 500 = 91875, sono già dei suoi
+    // eredi, e la voce dice la strada: la successione di Ada anche su A.
     [$s] = g3fScenario($this, ['A' => 500, 'B' => 500], [['A', 'ugo', 50], ['A', 'ada', 50], ['B', 'ada', 100]],
         [['A', 'ugo', '2026-03-01', ['ada' => 25, 'anna' => 25], 'ada'], ['B', 'ada', '2026-05-01', ['anna' => 50, 'bruno' => 50], 'anna']]);
 
-    $voci = g3fVoci(g3fGenera($this, $s));
+    // Ada ha due voci, una per unità: le voci si leggono per defunto e unità.
+    $voci = collect(g3fGenera($this, $s)->getSession()->get('destinatari_warning') ?? [])->where('motivo', 'defunto_nel_piano')
+        ->keyBy(fn ($v) => $v['defunto']['nome'] . ' · ' . $v['immobile_nome'])->all();
 
-    expect(array_keys($voci))->toBe(['Ugo', 'Ada'])
-        ->and($voci['Ugo']['cifra'])->toBe(14750)->and(g3fParti($voci['Ugo']))->toBe(['Ada' => 7375, 'Anna' => 7375])
-        ->and($voci['Ada']['cifra'])->toBe(60000)->and(g3fParti($voci['Ada']))->toBe(['Anna' => 30000, 'Bruno' => 30000])
-        ->and($voci['Ugo']['parti_da_decidere'])->toBeFalse()->and($voci['Ada']['parti_da_decidere'])->toBeFalse();
-    foreach ($voci as $voce) {
-        expect($voce['frase'])->not->toContain('è anche erede')->not->toContain('a sua volta');
+    expect(array_keys($voci))->toBe(['Ugo · Interno A', 'Ada · Interno A', 'Ada · Interno B'])
+        ->and($voci['Ugo · Interno A']['cifra'])->toBe(14750)->and(g3fParti($voci['Ugo · Interno A']))->toBe(['Ada' => null, 'Anna' => null])
+        ->and($voci['Ugo · Interno A']['parti_da_decidere'])->toBeTrue()
+        ->and($voci['Ugo · Interno A']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 147,50')
+            . ' Ada, erede di Ugo, ha a sua volta una successione su Interno B (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 73,75, il programma non la passa ai suoi eredi, Anna e Bruno.' . G3F_CHIUSURA)
+        ->and($voci['Ada · Interno A']['cifra'])->toBe(37625)->and(g3fParti($voci['Ada · Interno A']))->toBe(['Anna' => null, 'Bruno' => null])
+        ->and($voci['Ada · Interno A']['parti_da_decidere'])->toBeTrue()
+        ->and($voci['Ada · Interno A']['frase'])->toBe(G3F_ADA_SU_A_DOPO_IL_DECESSO
+            . ' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 73,75, il programma non la passa ai suoi eredi, Anna e Bruno.')
+        ->and($voci['Ada · Interno B']['cifra'])->toBe(60000)->and(g3fParti($voci['Ada · Interno B']))->toBe(['Anna' => 30000, 'Bruno' => 30000])
+        ->and($voci['Ada · Interno B']['parti_da_decidere'])->toBeFalse();
+    expect($voci['Ada · Interno B']['frase'])->not->toContain('è anche erede')->not->toContain('a sua volta');
+    foreach (['Ugo · Interno A', 'Ada · Interno A'] as $chiave) {
+        expect($voci[$chiave]['frase'])->not->toContain('a debito di Ada')->not->toContain('registra dal Wallet')->not->toContain('Non serve registrare altro');
     }
+});
+
+it('Coda 484 — la strada che la voce di Ada su A dice: registrata la successione di Ada anche su A, il piano le calcola su A la cifra fino al decesso (€ 376,25), e i giorni dopo vanno ai suoi eredi', function () {
+    // Lo scenario della prova qui sopra. La voce dice «registra la successione anche su Interno A, poi genera di nuovo il piano»: registrata dalla rotta (eredi Anna e
+    // Bruno, la quota di Ada su A, 75), la generazione dà ad Ada su A 14750 + 0,75 × 61 × 500 = 37625, la cifra che la voce diceva da dividere; la voce di Ada su
+    // A è quella della successione sulla stessa unità, senza «ancora aperta», e i 91875 dei giorni dopo il decesso sono degli eredi.
+    [$s, $sub] = g3fScenario($this, ['A' => 500, 'B' => 500], [['A', 'ugo', 50], ['A', 'ada', 50], ['B', 'ada', 100]],
+        [['A', 'ugo', '2026-03-01', ['ada' => 25, 'anna' => 25], 'ada'], ['B', 'ada', '2026-05-01', ['anna' => 50, 'bruno' => 50], 'anna']]);
+    $chiave = fn ($v) => $v['defunto']['nome'] . ' · ' . $v['immobile_nome'];
+    $prima = collect(g3fGenera($this, $s)->getSession()->get('destinatari_warning') ?? [])->where('motivo', 'defunto_nel_piano')->keyBy($chiave)->all();
+    expect($prima['Ada · Interno A']['cifra'])->toBe(37625)->and($prima['Ada · Interno A']['frase'])->toStartWith(G3F_ADA_SU_A_DOPO_IL_DECESSO);
+
+    $s->passaggio('successione', 'A', 'ada', null, '2026-05-01', ['eredi' => ['anna' => 45, 'bruno' => 30], 'arretrato' => 'eredi', 'riferimento' => 'anna']);
+    $dopo = collect(g3fGenera($this, $s)->getSession()->get('destinatari_warning') ?? [])->where('motivo', 'defunto_nel_piano')->keyBy($chiave)->all();
+
+    expect(array_keys($dopo))->toBe(['Ugo · Interno A', 'Ada · Interno A', 'Ada · Interno B'])
+        ->and($dopo['Ada · Interno A']['cifra'])->toBe(37625)
+        ->and($dopo['Ada · Interno A']['frase'])->toStartWith('La successione di Ada (decesso del 1 maggio 2026) ha passato l\'arretrato agli eredi, ma questo piano calcola ancora per Ada € 376,25 su Interno A')
+        ->not->toContain('ancora aperta');
 });
 
 it('Coda 480 — Ada non ha una voce sua (nessuna cifra del motore: il piano straordinario è della delibera del 1/2, prima delle due successioni): la voce di Ugo nomina Ada e la sua parte (€ 600,00)', function () {
@@ -514,4 +557,34 @@ it('Coda 480 — Ugo con due successioni, la nuda proprietà con l\'arretrato a 
         ->toContain(' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede il programma non la passa ai suoi eredi, Bruno.')
         ->toEndWith(G3F_CHIUSURA)->not->toContain('€ 177');
     expect($voci['Ada']['frase'])->toContain(' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede il programma non la passa ai suoi eredi, Bruno.');
+});
+
+it('Fase 1-bis — Ada morta il 01/12/2025 con la successione solo su B: la voce su A, con tutti i giorni dopo il decesso, non chiede di dividere € 0,00 e dice solo la strada', function () {
+    $this->travelTo(now()->setDate(2027, 6, 15)->setTime(10, 0));
+    $s = Beta51Scenario::nuovo($this)->tabella('Proprietà', ['A' => 500, 'B' => 500]);
+    $es = [2026 => $s->e];
+    $gestioni = [];
+    foreach ([2026, 2027] as $anno) {
+        $es[$anno] ??= Esercizio::create(['condominio_id' => $s->c->id, 'nome' => "Esercizio {$anno}", 'data_inizio' => "{$anno}-01-01", 'data_fine' => "{$anno}-12-31", 'stato' => 'aperto']);
+        $gestioni[] = app(CondominioService::class)->createDefaultGestione($s->c, $es[$anno])->id;
+    }
+    $g = \App\Models\Gestione::findOrFail($gestioni[0]);
+    $s->gestioni['Ordinaria'] = ['g' => $g, 'tipo' => 'ordinaria', 'pc' => PianoConto::create(['condominio_id' => $s->c->id, 'gestione_id' => $g->id, 'nome' => 'Piano dei conti'])];
+    // 365000 × 500 / 1000 = 182500 su A, tutti i giorni del 2026 sono dopo il decesso del 01/12/2025.
+    $s->voce('Ordinaria', 'Spese generali', 365000, ['Proprietà' => 100]);
+    $s->titolare('A', 'ada', 'proprietario', 100);
+    $s->titolare('B', 'ada', 'proprietario', 100);
+    $es[2026]->update(['stato' => 'chiuso']);
+    $s->e = $es[2026];
+    $s->pianoOrdinario('Preventivo 2026', 'Ordinaria', primaScadenza: '2026-01-05', applicaSaldi: true);
+    $s->passaggio('successione', 'B', 'ada', null, '2025-12-01', ['eredi' => ['anna' => 50, 'bruno' => 50], 'arretrato' => 'eredi', 'riferimento' => 'anna']);
+
+    $r = $s->ricalcola('Preventivo 2026', false);
+    $voce = collect($r->getSession()->get('destinatari_warning') ?? [])->where('motivo', 'defunto_nel_piano')->first(fn ($v) => $v['defunto']['nome'] === 'Ada' && $v['immobile_nome'] === 'Interno A');
+
+    expect($voce)->not->toBeNull();
+    expect($voce['frase'])->toStartWith('La riga di Ada su Interno A è ancora aperta dopo il decesso del 1 dicembre 2025')
+        ->toContain('€ 1.825,00')->toContain('Registra la successione anche su Interno A')
+        ->not->toContain('Decidi tu come dividerli')->not->toContain('€ 0,00');
+    expect($voce['parti_da_decidere'])->toBeFalse();
 });

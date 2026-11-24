@@ -71,7 +71,13 @@ final class MatriceRipartoBuilder
         $chiaveCelle = $perTabelle ? 'per_tabella' : 'per_capitolo';
         $chiaveTotali = $perTabelle ? 'tot_per_tabella' : 'tot_per_capitolo';
 
-        ['righe' => $dettaglio, 'fonte' => $fonte] = DettaglioRiparto::perPiano($pianoRate);
+        ['righe' => $dettaglio, 'fonte' => $fonte] = DettaglioRiparto::perPiano($pianoRate, perLaStampa: true);
+
+        // Coda 483: l'anteprima di un piano che la guardia del già versato non lascerebbe generare non stampa la tabella, che mostrerebbe il già
+        // versato tolto un'altra volta: le stampe dicono il messaggio della guardia (`fonte.non_si_genera`).
+        if (! empty($fonte['non_si_genera'])) {
+            return $this->vuota($chiaveColonne, $chiaveTotali, $fonte);
+        }
 
         // ─── 1. Le colonne, dalle righe ──────────────────────────────────────────────────────
         $colonne = [];      // chiave colonna → info

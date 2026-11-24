@@ -420,3 +420,42 @@ describe('Coda 165 — la nota collegata in modifica (R5 della Fase 1-bis)', () 
         wrapper.unmount();
     });
 });
+
+describe('Coda 281: la scadenza, l\'IBAN e la modalità salvati non si riscrivono aprendo la pagina', () => {
+    /** Il fornitore a 30 giorni, con un IBAN e una modalità diversi da quelli salvati sulla fattura. */
+    const conFornitore = () => {
+        const f = fatturaOrdinaria();
+        const fornitore = {
+            ...(f.fornitore as Record<string, unknown>),
+            giorni_scadenza: 30,
+            iban_principale: 'IT60X0542811101000000123456',
+            modalita_pagamento_default: 'riba',
+        };
+        return { ...f, fornitore, data_documento: '2026-03-10', data_scadenza: '2026-04-10', iban_fornitore: 'IT02L1234512345123456789012', modalita_pagamento: 'bonifico' };
+    };
+
+    test('aperta e inviata senza toccare niente: scadenza, IBAN e modalità sono quelli salvati', async () => {
+        const wrapper = render(conFornitore());
+        await wrapper.vm.$nextTick();
+        const vm = wrapper.vm as any;
+
+        expect(vm.form.data_scadenza).toBe('2026-04-10');
+        expect(vm.form.iban_fornitore).toBe('IT02L1234512345123456789012');
+        expect(vm.form.modalita_pagamento).toBe('bonifico');
+        wrapper.unmount();
+    });
+
+    test('cambiando la data del documento la scadenza si ricalcola: data più i giorni del fornitore', async () => {
+        const fattura = conFornitore();
+        const wrapper = render(fattura);
+        const vm = wrapper.vm as any;
+
+        vm.form.data_documento = '2026-03-20';
+        await wrapper.vm.$nextTick();
+
+        expect(vm.form.data_scadenza).toBe('2026-04-19');
+        // L'IBAN e la modalità sono del fornitore, non cambia: restano come sono.
+        expect(vm.form.iban_fornitore).toBe('IT02L1234512345123456789012');
+        wrapper.unmount();
+    });
+});

@@ -192,9 +192,10 @@ final class RipartoConsuntivoParser
                     count($conCambio),
                     count($conCambio) === 1 ? 'unità' : 'unità',
                 ),
-                'Kondomanager non gestisce ancora il subentro: importo il titolare attuale senza '
+                'L\'importazione non porta i passaggi di proprietà: importo il titolare attuale senza '
                 .'decorrenza e porto il saldo di chi è uscito sull\'unità, in solido. Se una spesa '
-                .'va divisa pro-rata fra vecchio e nuovo titolare, quella parte va fatta a mano.',
+                .'va divisa pro-rata fra vecchio e nuovo titolare, la dividi registrando il passaggio '
+                .'dalla scheda dell\'unità («Registra passaggio»).',
             );
         }
 

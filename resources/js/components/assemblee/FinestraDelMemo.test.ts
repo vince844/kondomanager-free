@@ -105,6 +105,16 @@ describe('la finestra del memo', () => {
         expect(t).toContain('Adesso: lo trovi proposto quando prepari la prossima assemblea di Via Roma 12.');
     });
 
+    test('il punto dell\'accordo di rientro non ha il nome; la nota arriva già scritta con il nome, solo nella nota dello studio (749)', async () => {
+        axiosGet.mockResolvedValue({ data: { ...proposta, testo: 'Autorizzazione di un accordo di rientro di € 1.200,00 in 6 rate, fino al 31/03/2027',
+            nota: 'Accordo con Gallo Enzo del 01/10/2026.', origine: { tipo: 'accordo_rientro', id: 9, nome: 'Accordo di Gallo Enzo', apri: null }, gia_proposto: null } });
+        w = mount(Finestra, { attachTo: document.body, props: { open: true, condominioId: 3, origineTipo: 'accordo_rientro', origineId: 9 } });
+        await flushPromises();
+        expect((campo('testo-memo') as HTMLInputElement).value).toBe('Autorizzazione di un accordo di rientro di € 1.200,00 in 6 rate, fino al 31/03/2027');
+        expect((campo('testo-memo') as HTMLInputElement).value).not.toContain('Gallo');
+        expect((campo('nota-memo') as HTMLInputElement).value).toBe('Accordo con Gallo Enzo del 01/10/2026.');
+    });
+
     test('con «Ricordamelo» i giorni prima di oggi sono spenti nel calendario; un giorno buono si salva con a chi', async () => {
         await monta();
         (campo('ricordamelo') as HTMLButtonElement).click();

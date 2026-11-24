@@ -236,11 +236,22 @@ final class LivelloSoggetti implements LivelloImport
             'codice_fiscale' => $dati->codiceFiscale,
             'indirizzo' => $dati->indirizzo,
             'telefono' => $dati->telefoni[0] ?? null,
-            'cellulare' => $dati->telefoni[1] ?? null,
+            // Il cellulare scritto nel file (modello Excel) vince; da Danea, che ha solo una lista di numeri, è il secondo.
+            'cellulare' => $dati->cellulare ?? $dati->telefoni[1] ?? null,
             'note' => $this->note($dati),
+            'pec_comunicata_il' => $dati->pecComunicataIl,
+            'mezzo_convocazione' => $dati->mezzoConvocazione,
+            'data_nascita' => $dati->dataNascita,
+            'luogo_nascita' => $dati->luogoNascita,
+            'tipologia_documento' => $dati->tipologiaDocumento,
+            'scadenza_documento' => $dati->scadenzaDocumento,
         ];
 
-        foreach (['email' => $dati->email, 'pec' => $dati->pec] as $colonna => $valore) {
+        // I recapiti e il numero del documento hanno un indice unico a schema: se sono già di un'altra persona entra senza, con l'avviso.
+        $unici = ['email' => $dati->email, 'email_secondaria' => $dati->emailSecondaria, 'pec' => $dati->pec, 'numero_documento' => $dati->numeroDocumento];
+        $parole = ['email' => 'La email', 'email_secondaria' => 'La seconda email', 'pec' => 'La PEC', 'numero_documento' => 'Il numero del documento'];
+
+        foreach ($unici as $colonna => $valore) {
             if ($valore === null || $valore === '') {
                 continue;
             }
@@ -263,14 +274,16 @@ final class LivelloSoggetti implements LivelloImport
             $avvisi[] = Rilievo::avviso(
                 'soggetto.recapito_gia_usato',
                 sprintf(
-                    'La %s «%s» risulta già di «%s»: l\'ho lasciata a lui e importato «%s» senza.',
-                    $colonna === 'pec' ? 'PEC' : 'email',
+                    '%s «%s» risulta già di «%s»: l\'ho lasciato a lui e importato «%s» senza.',
+                    $parole[$colonna],
                     $valore,
                     $occupante->nome,
                     $dati->nome,
                 ),
-                'Kondomanager tiene un recapito per persona. Se sono due persone diverse che '
-                .'condividono la casella, aggiungine una seconda dopo l\'importazione.',
+                $colonna === 'numero_documento'
+                    ? 'Il numero di un documento è di una persona sola: controlla di non averlo scritto due volte, poi completalo a mano sulla scheda.'
+                    : 'Kondomanager tiene un recapito per persona. Se sono due persone diverse che '
+                        .'condividono la casella, aggiungine una seconda dopo l\'importazione.',
             );
         }
 

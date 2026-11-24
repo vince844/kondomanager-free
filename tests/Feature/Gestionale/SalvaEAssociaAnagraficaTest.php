@@ -1,9 +1,12 @@
 <?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 
 /**
  * "Salva e associa le anagrafiche" (issue #10).
  *
- * Il terzo bottone della scheda "Nuovo immobile" salva l'unità e manda alla pagina di associazione
+ * Il secondo pulsante della scheda "Nuovo immobile" salva l'unità e manda alla pagina di associazione
  * dell'unità appena creata; "Salva Immobile" resta com'era e manda all'elenco. Qui si verifica solo
  * la destinazione del redirect, non il rendering delle due pagine.
  */
@@ -42,7 +45,7 @@ beforeEach(function () {
         ]);
 });
 
-function datiNuovaUnita($test, array $extra = []): array
+function seaDatiNuovaUnita($test, array $extra = []): array
 {
     return array_merge([
         'nome'          => 'Appartamento 4',
@@ -56,7 +59,7 @@ function datiNuovaUnita($test, array $extra = []): array
 it('con "Salva e associa le anagrafiche" salva l\'unità e va alla pagina di associazione', function () {
     $risposta = $this->actingAs($this->user)
         ->post(route('admin.gestionale.immobili.store', ['condominio' => $this->condominio->id]),
-            datiNuovaUnita($this, ['associa_anagrafica' => true]))
+            seaDatiNuovaUnita($this, ['associa_anagrafica' => true]))
         ->assertSessionHasNoErrors()
         ->assertSessionHas('message', fn ($m) => $m['type'] === 'success');
 
@@ -71,7 +74,7 @@ it('con "Salva e associa le anagrafiche" salva l\'unità e va alla pagina di ass
 it('con il solo "Salva Immobile" torna all\'elenco, come prima', function () {
     $this->actingAs($this->user)
         ->post(route('admin.gestionale.immobili.store', ['condominio' => $this->condominio->id]),
-            datiNuovaUnita($this, ['associa_anagrafica' => false]))
+            seaDatiNuovaUnita($this, ['associa_anagrafica' => false]))
         ->assertRedirect(route('admin.gestionale.immobili.index', ['condominio' => $this->condominio->id]));
 
     expect(Immobile::where('condominio_id', $this->condominio->id)->count())->toBe(1);

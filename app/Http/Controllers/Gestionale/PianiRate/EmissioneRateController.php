@@ -145,7 +145,19 @@ class EmissioneRateController extends Controller
             throw $this->dallaDashboard($request) ? $e->redirectTo($this->indirizzoDellaDashboard($condominio)) : $e;
         }
 
-        $esercizio = $this->getEsercizioCorrente($condominio);
+        // Coda 646 (1.12.0-beta.14): le rate vanno nell'esercizio **del piano**, non nel primo aperto. Con il 2025 ancora aperto e il
+        // 2026 importato (l'esercizio importato nasce aperto) la scrittura andava nel 2025, e il registro e lo stato patrimoniale del
+        // 2026 non la vedevano.
+        // ⚠️ **Con l'esercizio del piano chiuso, la rata va nell'esercizio aperto, come prima.** È un caso voluto, non un ripiego: la
+        // rata 11 del piano 2026 emessa a gennaio, dopo la chiusura, sta nel 2027, e il riepilogo per competenza la dice nella riga
+        // che lega le quote («emesse altrove», `RiepilogoPerCompetenza`). Fermarla qui avrebbe tolto una strada che il rendiconto
+        // conosce. Lo stesso ripiego per il piano che non sa dire il suo esercizio.
+        $esercizio = $this->esercizioDelPiano($condominio, $pianoRate);
+
+        if ($esercizio === null) {
+            return $this->ritorno($request, $condominio)->with($this->flashError('Il condominio non ha un esercizio aperto: aprine uno prima di emettere le rate.'));
+        }
+
         $inviaNotifiche = $request->boolean('invia_notifiche', true); // Default a true se non passato
         
         $contoCrediti = ContoContabile::where('condominio_id', $condominio->id)
@@ -277,7 +289,7 @@ class EmissioneRateController extends Controller
                         ]);
                     }
 
-                    // 5. Invio Notifiche
+                    // 5. L'evento della rata emessa: chiude il compito dello studio, non manda notifiche né email
                     if ($inviaNotifiche) {
                         RataEmessa::dispatch($rata);
                     }
@@ -306,7 +318,7 @@ class EmissioneRateController extends Controller
             $esito = $this->esitoEmissione(count($aGiornale), $senzaQuote, $giaEmesse, $restanoEmesse, $presiPrima, $quoteFerme, $rateFerme, $creditoUsato);
 
             $msg = $aGiornale === [] ? $esito['testo'] : ($inviaNotifiche
-                ? 'Rate emesse e notificate correttamente ai condòmini.'
+                ? 'Rate emesse: i condòmini le vedono nel portale.'
                 : 'Rate emesse in modalità silenziosa. I condòmini non vedranno gli importi finché non li pubblicherai.');
 
             // Proposta compensazione: se qualche intestatario delle rate appena
@@ -355,6 +367,18 @@ class EmissioneRateController extends Controller
      * Dove torna la risposta dell'emissione, con ogni suo messaggio: alla dashboard del condominio se la richiesta parte dalla finestra della tesoreria, altrimenti
      * alla pagina di prima, come è sempre stato per la pagina del piano.
      */
+    /**
+     * L'esercizio in cui vanno le rate del piano: il suo (`CompetenzaDelPiano::esercizioDelPiano()`: quello con cui è stato generato, o
+     * dedotto per i piani di prima) se è aperto; altrimenti l'esercizio aperto del condominio (`getEsercizioCorrente()`), cioè le rate
+     * emesse dopo la chiusura, o il piano che non sa dire il suo. `null` senza nessun esercizio aperto.
+     */
+    private function esercizioDelPiano(Condominio $condominio, PianoRate $pianoRate): ?Esercizio
+    {
+        $delPiano = app(\App\Services\Riparto\CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
+
+        return $delPiano !== null && $delPiano->stato === 'aperto' ? $delPiano : $this->getEsercizioCorrente($condominio);
+    }
+
     private function ritorno(Request $request, Condominio $condominio): RedirectResponse
     {
         return $this->dallaDashboard($request) ? redirect()->to($this->indirizzoDellaDashboard($condominio)) : back();
@@ -756,7 +780,8 @@ class EmissioneRateController extends Controller
             ));
         }
 
-        $esercizio = $this->getEsercizioCorrente($condominio);
+        // Coda 646: il promemoria rimanda al piano dentro il **suo** esercizio, come l'emissione che si annulla.
+        $esercizio = $this->esercizioDelPiano($condominio, $pianoRate);
 
         if (!$esercizio) {
             return back()->with($this->flashError('Nessun esercizio aperto trovato per generare il link del task.'));
@@ -855,12 +880,13 @@ class EmissioneRateController extends Controller
 
     /**
      * Sblocca la visibilità delle rate emesse in modalità "Silenziosa".
-     * Le rende visibili nell'app e invia finalmente le notifiche ai condòmini.
+     * Le rende visibili nel portale dei condòmini. Non manda notifiche né email: l'evento della rata ha un solo ascoltatore, che chiude il
+     * compito dell'emissione dello studio.
      */
    /*
     * `Esercizio $esercizio` tipizzato (rilievo S1 della Fase 1-bis della 1.11.0-beta.42): senza tipo il genitore del piano
     * nell'indirizzo restava una stringa, e il piano si risolveva senza vincolo — il piano di un altro condominio, sotto il
-    * proprio, si pubblicava e mandava le notifiche ai suoi condòmini. Il vincolo è la coppia esercizio > piano.
+    * proprio, si pubblicava ai suoi condòmini. Il vincolo è la coppia esercizio > piano.
     */
    public function publishSilent(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
@@ -913,7 +939,7 @@ class EmissioneRateController extends Controller
                     ]);
                 }
 
-                // 2. Notifiche (Dispatch una sola volta per rata id)
+                // 2. L'evento della rata emessa (una sola volta per rata id): chiude il compito dello studio, non avvisa nessuno
                 foreach (array_unique($rataIds) as $rId) {
                     $rata = Rata::find($rId);
                     if ($rata) RataEmessa::dispatch($rata);

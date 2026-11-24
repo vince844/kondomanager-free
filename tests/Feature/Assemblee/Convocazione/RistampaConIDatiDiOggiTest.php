@@ -137,7 +137,7 @@ it('chi non è più fra i convocati: la sua lettera stampata non si registra spe
     $this->post(route('admin.gestionale.assemblee.convocazione.spedizione', [$s->c, $a]), ['invii' => [$lettera->id], 'canale' => 'a_mano', 'data' => '2026-11-26'])
         ->assertSessionHasErrors(['consegne' => 'La lettera di Ferri Luca è di una persona che non è più fra i convocati di questa assemblea: non spedirla.']);
     $riga = collect(app(StatoDellaConvocazione::class)->perLaPagina($a->refresh())['convocati']['righe'])->firstWhere('nome', 'Ferri Luca');
-    expect($riga)->toMatchArray(['stato' => 'non_piu_convocato', 'stato_parola' => 'Non più convocato'])
+    expect($riga)->toMatchArray(['stato' => 'non_piu_convocato', 'stato_parola' => 'Non più fra i convocati'])
         ->and($riga['azioni']['spedizione'])->toBeFalse()
         ->and($lettera->refresh()->stato)->toBe(RegistroInvio::STATO_STAMPATA);
 });

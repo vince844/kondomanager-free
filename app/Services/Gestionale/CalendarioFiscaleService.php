@@ -16,7 +16,8 @@ use Carbon\CarbonInterface;
  * tutte le date del ciclo — il 16 mensile, il 16 giugno, il 16 dicembre e il 16 gennaio.
  *
  * Prima esisteva solo il mezzo controllo dentro `SyncF24WithPagamento`: `isWeekend()` e via.
- * Le festività non c'erano, ed è il difetto §8 punto 5 del design.
+ * Le festività non c'erano, ed è il difetto §8 punto 5 del design. Dalla 1.12.0-beta.14 le scadenze fiscali passano da
+ * `scadenzaFiscale()`, che aggiunge la regola del 20 agosto (Coda 717).
  *
  * **Quale festività può davvero colpire il giorno 16.** Nessuna ricorrenza nazionale a data
  * fissa cade il 16 di un mese, né il 17 o il 18 su cui si atterra slittando da un fine
@@ -130,11 +131,37 @@ class CalendarioFiscaleService
     }
 
     /**
-     * La scadenza del versamento delle ritenute operate con un pagamento.
+     * Il giorno vero di una scadenza fiscale: la regola di agosto, poi lo slittamento di sabato e festivi (Coda 717).
      *
-     * Il 16 del mese successivo a quello del pagamento, slittato al primo giorno lavorativo.
-     * `addMonthNoOverflow()` evita che un 31 gennaio diventi 3 marzo prima ancora di
-     * arrivare al `day(16)`.
+     * Gli adempimenti e i versamenti che scadono **dal 1° al 20 agosto** si possono fare entro il **20 agosto**, senza maggiorazione
+     * (art. 37, c. 11-bis, D.L. 223/2006; dal 1° gennaio 2027 art. 11 D.Lgs. 33/2025). Il 16/08/2026 è domenica: fino alla
+     * 1.12.0-beta.13 il programma diceva lunedì 17/08/2026, e dal 18 la delega era «Scaduta da 1 giorno»; con la regola è giovedì
+     * 20/08/2026. Se il 20 agosto cade di sabato o domenica slitta anche lui (il 20/08/2028 è domenica: lunedì 21/08/2028).
+     *
+     * La regola si guarda anche dopo lo slittamento: un termine che slittando entra fra il 1° e il 20 agosto vale fino al 20.
+     *
+     * ⚠️ **Solo per le scadenze fiscali.** `primoGiornoLavorativo()` resta il calendario e basta: lo usano anche i termini delle
+     * assemblee (`TerminiDellImpugnazione`, `TerminiDellaConvocazione`, `PromemoriaDellaConvocazione`), dove agosto non sposta niente.
+     */
+    public function scadenzaFiscale(CarbonInterface $giorno): CarbonImmutable
+    {
+        $slittato = $this->primoGiornoLavorativo(CarbonImmutable::instance($giorno->toDateTime())->startOfDay());
+
+        if ($slittato->month === 8 && $slittato->day <= 20) {
+            return $this->primoGiornoLavorativo($slittato->day(20));
+        }
+
+        return $slittato;
+    }
+
+    /**
+     * La scadenza del versamento delle ritenute operate con un pagamento, senza cumulo.
+     *
+     * Il 16 del mese successivo a quello del pagamento, con la regola di agosto e lo slittamento ({@see scadenzaFiscale()}).
+     * `addMonthNoOverflow()` evita che un 31 gennaio diventi 3 marzo prima ancora di arrivare al `day(16)`.
+     *
+     * Non è la data della delega, che applica il cumulo e le soglie di ogni regime (`PlafondRitenuteService`): fino alla
+     * 1.12.0-beta.13 la usava il promemoria di ogni pagamento, e la stessa ritenuta aveva due date (Coda 718).
      */
     public function scadenzaVersamentoRitenute(CarbonInterface $dataPagamento): CarbonImmutable
     {
@@ -143,6 +170,6 @@ class CalendarioFiscaleService
             ->day(16)
             ->startOfDay();
 
-        return $this->primoGiornoLavorativo($sedici);
+        return $this->scadenzaFiscale($sedici);
     }
 }

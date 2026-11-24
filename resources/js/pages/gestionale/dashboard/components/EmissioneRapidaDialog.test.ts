@@ -5,7 +5,7 @@
 
 /**
  * La finestra «Emetti le rate» del cassetto della tesoreria. All'apertura legge i dati con un caricamento parziale; il piano dell'azione in un menu del
- * programma, che non si apre da solo; le rate spuntate di serie (le già scadute e quelle dei prossimi 30 giorni); la data di oggi; «Avvisa i condòmini» acceso;
+ * programma, che non si apre da solo; le rate spuntate di serie (le già scadute e quelle dei prossimi 30 giorni); la data di oggi; «Rendi visibili ai condòmini» acceso;
  * il riepilogo; «Emetti N rate», spento senza spunte; «Apri il piano». Il cambio di piano. L'invio alla rotta della pagina del piano con la visita parziale della
  * sola tesoreria; dopo l'emissione la finestra si chiude e passa l'esito; un rifiuto, un esito senza rate emesse e gli errori si leggono nella finestra, che
  * resta. Il messaggio non resta in cima alla pagina.
@@ -103,7 +103,7 @@ describe('la finestra «Emetti le rate»', () => {
         expect(tutti('rata-finestra')).toHaveLength(4);
     });
 
-    test('il piano dell\'azione; spuntate le rate già scadute e quelle dei prossimi 30 giorni; la data di oggi; l\'avviso acceso; il riepilogo e il pulsante', async () => {
+    test('il piano dell\'azione; spuntate le rate già scadute e quelle dei prossimi 30 giorni; la data di oggi; la visibilità accesa; il riepilogo e il pulsante', async () => {
         await apri();
         expect(pulito(q('finestra-emissione')?.textContent)).toContain('Emetti le rate');
         expect(pulito(q('menu-piano')?.querySelector('.vs__selected')?.textContent)).toBe('Preventivo 2026 (4 rate da emettere)');
@@ -118,7 +118,9 @@ describe('la finestra «Emetti le rate»', () => {
         expect(pulito(q('spuntate-di-serie')?.textContent)).toBe('Spuntate di serie le rate già scadute e quelle che scadono entro il 16/12/2026, come nell\'azione.');
         expect((q('data-emissione') as HTMLInputElement).value).toBe('2026-11-16');
         expect(q('interruttore-avvisa')?.getAttribute('data-state')).toBe('checked');
+        expect(pulito(q('riga-avvisa')?.querySelector('label')?.textContent)).toBe('Rendi visibili ai condòmini');
         expect(pulito(q('adesso-avvisa')?.textContent)).toBe('Adesso: i condòmini delle rate spuntate vedono la scadenza nella loro area. Di serie, come nella pagina del piano.');
+        expect(pulito(q('riga-avvisa')?.textContent)).not.toMatch(/avvis|notific/i);
         expect(pulito(q('riepilogo-cifre')?.textContent)).toBe('3 rate, 4 condòmini, € 3.588,94');
         expect(pulito(q('emetti')?.textContent)).toBe('Emetti 3 rate');
         expect((q('emetti') as HTMLButtonElement).disabled).toBe(false);

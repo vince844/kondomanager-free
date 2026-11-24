@@ -11,6 +11,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 // manda solo la fase e che cosa riconfigurare: niente log tecnico, e la pagina
 // dice che i dettagli si vedono qui dopo l'accesso (Coda 343).
 import { Head } from '@inertiajs/vue3'
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 import { computed, ref } from 'vue'
 import { trans, transChoice } from 'laravel-vue-i18n'
 import { CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Copy, ClipboardCheck } from 'lucide-vue-next'
@@ -187,6 +188,8 @@ function copyLog() {
           {{ trans('impostazioni.restore_result.go_to_login') }}
         </a>
       </div>
+
+      <NotaDiLicenza class="mt-6 border-t pt-4" />
     </div>
   </div>
 </template>

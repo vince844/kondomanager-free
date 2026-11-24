@@ -433,3 +433,123 @@ test('la scrittura di apertura ha un protocollo suo', function () {
     expect($protocollo)->toStartWith('APE-')
         ->and($protocollo)->not->toStartWith('SCR-');
 });
+
+/**
+ * Coda 546 (decisione 685 (4)): una cassa aperta dopo il primo esercizio scrive la sua apertura nell'esercizio che contiene il «Saldo al», non nel primo.
+ *
+ * Il caso: il 2026 è chiuso, il 2027 è aperto; il 01/06/2027 si apre la cassa contanti con € 1.000,00. L'apertura va nel 2027, al 01/06/2027; il riporto
+ * del 2026 non cambia e quello del 2027 contiene i € 1.000,00.
+ */
+
+use App\Models\Esercizio;
+use Illuminate\Validation\ValidationException;
+
+/** Il condominio di `setupContabile` (2026) con il 2026 chiuso e un 2027 aperto; restituisce [condominio, esercizio2026, esercizio2027]. */
+function condominioConDueEsercizi(): array
+{
+    [$condominio] = setupContabile();
+    $e2026 = Esercizio::where('condominio_id', $condominio->id)->first();
+    $e2026->update(['stato' => 'chiuso']);
+    $e2027 = Esercizio::create([
+        'condominio_id' => $condominio->id, 'nome' => 'Esercizio 2027', 'stato' => 'aperto',
+        'data_inizio' => '2027-01-01', 'data_fine' => '2027-12-31',
+    ]);
+
+    return [$condominio, $e2026, $e2027];
+}
+
+function scritturaDiApertura(Cassa $cassa): ?object
+{
+    return DB::table('righe_scritture as rs')
+        ->join('scritture_contabili as sc', 'rs.scrittura_id', '=', 'sc.id')
+        ->where('rs.conto_contabile_id', $cassa->conto_contabile_id)
+        ->where('sc.tipo_movimento', TipoMovimentoContabile::APERTURA->value)
+        ->first(['sc.esercizio_id', 'sc.data_registrazione', 'sc.data_competenza']);
+}
+
+test('«Saldo al» dentro l\'esercizio aperto: l\'apertura va in quell\'esercizio, a quel giorno, e il riporto del 2026 non cambia', function () {
+    [$condominio, $e2026, $e2027] = condominioConDueEsercizi();
+    $cassa = cassaSenzaApertura($condominio->id, 0);
+
+    app(UpdateCassaAction::class)->execute($cassa, datiModificaCassa($cassa, '1.000,00') + ['saldo_al' => '2027-06-01']);
+
+    $apertura = scritturaDiApertura($cassa);
+    expect((int) $apertura->esercizio_id)->toBe($e2027->id)
+        ->and(substr((string) $apertura->data_registrazione, 0, 10))->toBe('2027-06-01')
+        ->and(substr((string) $apertura->data_competenza, 0, 10))->toBe('2027-06-01');
+
+    // La catena: il riporto del registro. Il 2026, chiuso, non nomina la cassa; il 2027 parte da € 1.000,00.
+    $riporto = app(\App\Services\Gestionale\RiportoDiCassa::class);
+    expect($riporto->perConto($e2026)[$cassa->conto_contabile_id] ?? 0)->toBe(0)
+        ->and($riporto->perConto($e2027)[$cassa->conto_contabile_id] ?? 0)->toBe(100000);
+});
+
+test('senza «Saldo al» l\'apertura va al primo giorno del primo esercizio aperto, non nel primo esercizio in assoluto', function () {
+    [$condominio, , $e2027] = condominioConDueEsercizi();
+    $cassa = cassaSenzaApertura($condominio->id, 0);
+
+    app(UpdateCassaAction::class)->execute($cassa, datiModificaCassa($cassa, '1.000,00'));
+
+    $apertura = scritturaDiApertura($cassa);
+    expect((int) $apertura->esercizio_id)->toBe($e2027->id)
+        ->and(substr((string) $apertura->data_registrazione, 0, 10))->toBe('2027-01-01');
+});
+
+test('«Saldo al» dentro un esercizio chiuso si rifiuta, e nulla viene scritto', function () {
+    [$condominio] = condominioConDueEsercizi();
+    $cassa = cassaSenzaApertura($condominio->id, 0);
+
+    expect(fn () => app(UpdateCassaAction::class)->execute($cassa, datiModificaCassa($cassa, '1.000,00') + ['saldo_al' => '2026-06-01']))
+        ->toThrow(ValidationException::class);
+
+    expect(apertureDi($cassa))->toBe(0)
+        ->and((int) $cassa->fresh()->saldo_iniziale)->toBe(0);
+});
+
+test('«Saldo al» fuori da ogni esercizio si rifiuta con la frase sul campo', function () {
+    [$condominio] = condominioConDueEsercizi();
+    $cassa = cassaSenzaApertura($condominio->id, 0);
+
+    try {
+        app(UpdateCassaAction::class)->execute($cassa, datiModificaCassa($cassa, '1.000,00') + ['saldo_al' => '2030-03-01']);
+        $this->fail('Doveva rifiutare una data fuori da ogni esercizio.');
+    } catch (ValidationException $e) {
+        expect($e->errors())->toHaveKey('saldo_al');
+    }
+    expect(apertureDi($cassa))->toBe(0);
+});
+
+test('la richiesta di una cassa nuova accetta «Saldo al» come data e rifiuta il resto', function () {
+    $regole = (new \App\Http\Requests\Gestionale\Casse\CreateCassaRequest())->rules();
+    expect($regole)->toHaveKey('saldo_al');
+    $v = fn (string $d) => validator(['saldo_al' => $d], ['saldo_al' => $regole['saldo_al']])->passes();
+    expect($v('2027-06-01'))->toBeTrue()->and($v('01/06/2027'))->toBeFalse();
+});
+
+test('dalla pagina: la cassa nuova con «Saldo al» scrive l\'apertura nel 2027 e le pagine portano il giorno suggerito', function () {
+    [$condominio, , $e2027] = condominioConDueEsercizi();
+    $this->actingAs(utenteApertura());
+
+    $this->post(route('admin.gestionale.casse.store', $condominio->id), [
+        'nome' => 'Cassa contanti', 'tipo' => 'contanti', 'saldo_iniziale' => '1.000,00', 'saldo_al' => '2027-06-01',
+    ])->assertSessionHasNoErrors();
+
+    $cassa = Cassa::where('condominio_id', $condominio->id)->where('nome', 'Cassa contanti')->firstOrFail();
+    $apertura = scritturaDiApertura($cassa);
+    expect((int) $apertura->esercizio_id)->toBe($e2027->id)
+        ->and(substr((string) $apertura->data_registrazione, 0, 10))->toBe('2027-06-01');
+
+    $this->get(route('admin.gestionale.casse.create', $condominio->id))
+        ->assertInertia(fn ($p) => $p->where('saldo_al_predefinito', '2027-01-01')->where('saldo_al_minimo', '2027-01-01'));
+});
+
+test('dalla pagina: «Saldo al» dentro l\'esercizio chiuso torna con l\'errore sul campo', function () {
+    [$condominio] = condominioConDueEsercizi();
+    $this->actingAs(utenteApertura());
+
+    $this->post(route('admin.gestionale.casse.store', $condominio->id), [
+        'nome' => 'Cassa contanti', 'tipo' => 'contanti', 'saldo_iniziale' => '1.000,00', 'saldo_al' => '2026-06-01',
+    ])->assertSessionHasErrors('saldo_al');
+
+    expect(Cassa::where('condominio_id', $condominio->id)->where('nome', 'Cassa contanti')->exists())->toBeFalse();
+});

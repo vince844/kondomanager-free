@@ -19,13 +19,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 
-const inertia = vi.hoisted(() => ({ get: vi.fn() }));
+const inertia = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }));
 const pagina = vi.hoisted(() => ({ props: {} as Record<string, unknown> }));
 
 vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
     Head: { template: '<div />' },
-    router: { put: vi.fn(), get: inertia.get, post: vi.fn(), delete: vi.fn() },
+    router: { put: inertia.put, get: inertia.get, post: vi.fn(), delete: vi.fn() },
     usePage: () => pagina,
 }));
 vi.mock('laravel-vue-i18n', () => ({ trans: (chiave: string) => chiave }));
@@ -71,6 +71,7 @@ function ilServerRisponde() {
 beforeEach(() => {
     vi.useFakeTimers();
     inertia.get.mockReset();
+    inertia.put.mockReset();
 });
 
 afterEach(() => {
@@ -205,5 +206,36 @@ describe('ElencoUtenti — il clic su una card applica il suo filtro (Coda 398)'
         expect(inertia.get).toHaveBeenCalledTimes(1);
         expect(parametri()).toEqual({ stato: ['sospeso'], per_page: 10, page: 1 });
         expect((elenco.get('input').element as HTMLInputElement).value).toBe('Anna');
+    });
+});
+
+describe('ElencoUtenti — togliere la verifica aggiorna anche le card (Coda 416)', () => {
+    test('dopo la verifica tolta, la risposta del server porta i numeri nuovi e la card «da verificare» dice 4', async () => {
+        const utente = {
+            id: '5', name: 'Anna', email: 'anna@example.com', suspended_at: null, email_verified_at: '2026-10-01',
+            roles: [], permissions: [], anagrafica: null, gestibile: true,
+        };
+        pagina.props = reactive({
+            filters: {}, meta, sort: null, direction: null, stats,
+            ruoliDisponibili: [], flash: {},
+            auth: { user: { roles: ['amministratore'], permissions: ['Modifica utenti'] } },
+        });
+        const elenco = mount(ElencoUtenti, {
+            props: { users: [utente], meta, stats },
+            global: { stubs: { AppLayout: layoutFinto, UtentiLayout: layoutFinto, DataTablePagination: true } },
+        });
+        // Il server risponde solo con le proprietà che la richiesta chiede (`only`), come fa Inertia.
+        inertia.put.mockImplementation(async (_url: string, _dati: unknown, opzioni: { only?: string[]; onSuccess?: () => void }) => {
+            const nuovi = { users: [{ ...utente, email_verified_at: null }], stats: { totale: 7, da_verificare: 4, sospesi: 2 } };
+            const risposta = Object.fromEntries(Object.entries(nuovi).filter(([k]) => (opzioni.only ?? []).includes(k)));
+            await elenco.setProps(risposta);
+            opzioni.onSuccess?.();
+        });
+
+        await elenco.get('[title="users.table.verified_tooltip"]').trigger('click');
+        await dopoLAttesa();
+
+        expect(inertia.put).toHaveBeenCalledTimes(1);
+        expect(card(elenco, 'da_verificare').find('span').text()).toBe('4');
     });
 });

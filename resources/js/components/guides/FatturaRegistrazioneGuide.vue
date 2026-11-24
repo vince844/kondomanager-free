@@ -192,11 +192,21 @@ defineEmits(['update:open']);
                 il debito patrimoniale dei saldi iniziali, la capienza della rata zero, o altri fondi.
                 Il radar anti-duplicati ti avvisa se una fattura simile risulta già registrata.
               </p>
+              <ul class="space-y-1.5 list-disc pl-5 mb-2">
+                <li><strong>«Imponibile (senza IVA)»</strong>: scrivi la cifra senza IVA, il programma aggiunge l'IVA con la
+                    percentuale accanto. Sotto, il totale del documento che registrerà.</li>
+                <li>La parte <strong>non coperta</strong> dai saldi iniziali apre la finestra della nuova voce di spesa.
+                    <strong>Origine dell'incarico</strong> parte vuota e la scegli tu: con l'urgenza la fattura resta da
+                    ratificare in assemblea; con la delibera no.</li>
+                <li><strong>Usa fondo riserva</strong>: il programma prepara la copertura dal fondo, da confermare con il
+                    giroconto, come per una spesa fuori preventivo dell'anno. La voce nasce a € 0,00 e nessun piano rate la
+                    chiede ai condòmini.</li>
+              </ul>
               <p class="mb-2">
-                Se una parte <strong>non è coperta</strong> dai saldi iniziali, quella parte finisce in un piano rate
-                straordinario: allora il pannello «Competenza» chiede il <strong>periodo in cui il costo è
-                maturato</strong>, obbligatorio e chiuso prima di questo esercizio. Decide chi paga dopo una vendita:
-                senza, la pagherebbe chi è entrato. Una pregressa non si modifica dopo: si storna e si registra di nuovo.
+                Se una parte <strong>non è coperta</strong> dai saldi iniziali, il pannello «Competenza» chiede il
+                <strong>periodo in cui il costo è maturato</strong>, obbligatorio e chiuso prima di questo esercizio. Se quella
+                parte va in un piano rate straordinario, decide chi paga dopo una vendita: senza, la pagherebbe chi è entrato.
+                Una pregressa non si modifica dopo: si storna e si registra di nuovo.
               </p>
             </section>
             <section>

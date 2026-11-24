@@ -46,6 +46,8 @@ final class OrdineImputazione
     public const FUORI_ORDINE = 'fuori_ordine';
     public const COMPENSAZIONE = 'compensazione';
     public const ACCORDO_RIENTRO = 'accordo_rientro';
+    /** Coda 713: l'incasso di un erede tutto sul suo debito ereditato (decisione 529). Un calcolo, non una dichiarazione, come la compensazione. */
+    public const DEBITO_EREDITATO = 'debito_ereditato';
 
     /** Le due dichiarazioni che il modulo può mandare quando la distribuzione si discosta dall'ordine. */
     public const SCELTE = [self::INDICATA_DAL_VERSANTE, self::SCELTA_AMMINISTRATORE];
@@ -135,6 +137,9 @@ final class OrdineImputazione
      *
      * - `compensazione`: l'incasso non porta denaro (solo credito). Non è «secondo l'ordine» anche se lo segue: non c'è un versamento
      *   da imputare.
+     * - `debito_ereditato` (Coda 713): il denaro va tutto al debito ereditato dell'erede (`$ereditatoCents`, decisione 529), fuori dalle sue rate: non c'è
+     *   un versamento sulle rate da mettere in ordine. Il denaro sul debito ereditato non entra mai nel contante qui (`$contanteCents` è senza di lui, come
+     *   lo manda il modulo): contato, sarebbe una parte «in più» davanti alla prima rata aperta dell'erede, e l'incasso «fuori ordine».
      * - `ordine_scadenze`: ogni rata che riceve **denaro** (la parte che il credito non copre, come la dice il pianificatore) ha davanti
      *   nell'ordine solo rate che l'incasso salda, col denaro o col credito; e la parte in più che diventa credito non lascia rate
      *   aperte dopo nell'ordine.
@@ -146,9 +151,12 @@ final class OrdineImputazione
      *
      * @param  array<int|string, array{rata_id:int|string, importo:int|float|string}>  $pagamentiOrdinari  le righe a importo positivo, con le chiavi della richiesta
      * @param  array<int|string, int>  $contantePerRiga  per chiave, i centesimi che paga il denaro (`PianoCreditoIncasso`, `contante`)
+     * @param  int  $contanteCents  il denaro dell'incasso, senza la parte sul debito ereditato
+     * @param  int  $ereditatoCents  la parte sul debito ereditato (Coda 713); di serie zero: la rotta del modulo non la manda, e la toglie già dal totale
      * @return array{esito:string, rata_aperta:?array, parte_in_piu:bool, nell_accordo:bool, fuori_dall_accordo:bool}
      */
-    public function esito(int $condominioId, int $paganteId, array $pagamentiOrdinari, array $contantePerRiga, int $contanteCents, bool $versamentoAccordo = false): array
+    public function esito(int $condominioId, int $paganteId, array $pagamentiOrdinari, array $contantePerRiga, int $contanteCents, bool $versamentoAccordo = false,
+        int $ereditatoCents = 0): array
     {
         $quoteFaro = RataQuote::whereIn('id', collect($pagamentiOrdinari)->pluck('rata_id')->map(fn ($id) => (int) $id)->all())->pluck('rata_id', 'id');
 
@@ -216,7 +224,8 @@ final class OrdineImputazione
         }
 
         if ($contanteCents <= 0) {
-            return ['esito' => self::COMPENSAZIONE, 'rata_aperta' => null, 'parte_in_piu' => false, 'nell_accordo' => false, 'fuori_dall_accordo' => false];
+            return ['esito' => $ereditatoCents > 0 ? self::DEBITO_EREDITATO : self::COMPENSAZIONE, 'rata_aperta' => null, 'parte_in_piu' => false,
+                'nell_accordo' => false, 'fuori_dall_accordo' => false];
         }
 
         $fuori = $denaroDopo || $nellAccordo || ($parteInPiu && $primaAperta !== null);
@@ -269,6 +278,7 @@ final class OrdineImputazione
             self::FUORI_ORDINE => 'Fuori ordine, non dichiarata',
             self::COMPENSAZIONE => 'Compensazione con il credito',
             self::ACCORDO_RIENTRO => 'Versamento dell\'accordo di rientro',
+            self::DEBITO_EREDITATO => 'Sul debito ereditato',
             default => 'Non dichiarata: registrato prima che il programma la chiedesse',
         };
     }

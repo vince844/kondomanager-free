@@ -337,7 +337,7 @@ defineExpose({ form, esito, destinatario, provaLInvio, inProva, utenteScritto, d
                 <EsitoDellaProva v-else-if="casella.stato === 'provata' && casella.ultima_prova" casella="pec" :andata="true" :quando="casella.ultima_prova.quando"
                     :destinatario="casella.ultima_prova.destinatario" :motivo="null" :testo="null" />
                 <p v-if="nonAndata && !esito" class="text-xs text-slate-500 dark:text-slate-400">La prova non andata è anche una riga dello storico delle email,
-                    in «Audit & Logs di Sistema», scheda «Email Logs», con il testo del server.</p>
+                    in «Registri», scheda «Email», con il testo del server.</p>
             </div>
 
             <div class="flex flex-col items-stretch gap-3 border-t border-slate-200 pt-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">

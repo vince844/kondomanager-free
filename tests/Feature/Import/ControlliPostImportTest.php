@@ -226,8 +226,8 @@ it('ogni codice di avviso che il motore produce è nel catalogo', function () {
     // ultimi tre — «foglio non riconosciuto», «righe fuse su una posizione» e «tabelle omonime» —
     // vengono dalle due revisioni avversariali che hanno chiuso la beta.5. Il trentottesimo, della
     // 1.12.0-beta.4: l'esercizio d'origine scritto nel modello manuale che fra gli esercizi del
-    // condominio non c'è.
-    expect(array_unique($sorgente))->toHaveCount(38);
+    // condominio non c'è. Il trentanovesimo, della 1.12.0-beta.14 (Coda 599): le quote scritte che fanno già 100 accanto a persone senza quota. I sei in più, della 1.12.0-beta.14 (Coda 769): i campi dell'anagrafica del modello Excel (recapito non valido o ripetuto, mezzo, data, documento, contatti diversi).
+    expect(array_unique($sorgente))->toHaveCount(45);
 
     $catalogo = array_keys(CatalogoControlli::voci());
     $fuori = array_values(array_diff(array_unique($sorgente), $catalogo));

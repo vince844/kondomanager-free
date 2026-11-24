@@ -207,9 +207,10 @@ final class AccessoriAgliEredi
                 ->orderBy('g.id')->get(['g.id', 'g.tipo']);
             $gestioneId = $gestioni->contains('id', $piano->gestione_id) ? (int) $piano->gestione_id
                 : (int) ($gestioni->firstWhere('tipo', $piano->gestione?->tipo)?->id ?? $piano->gestione_id);
+            // Coda 494: il giorno dell'amministratore, non quello di Greenwich (alle 00:30 di Roma del 01/01 era ancora il 31/12).
             $scrittura = ScritturaContabile::create([
                 'condominio_id' => $subentro->condominio_id, 'esercizio_id' => $esercizio->id, 'gestione_id' => $gestioneId,
-                'data_registrazione' => now()->toDateString(), 'data_competenza' => $giorno,
+                'data_registrazione' => \App\Helpers\DateHelper::oggiUtente(), 'data_competenza' => $giorno,
                 'causale' => mb_substr('Agli eredi: ' . $d['causale'], 0, 255), 'tipo_movimento' => TipoMovimentoContabile::EMISSIONE_RATA,
                 'stato' => 'registrata', 'created_by' => auth()->id(),
             ]);
@@ -334,7 +335,7 @@ final class AccessoriAgliEredi
         }
     }
 
-    /** L'esercizio della scrittura: quello del piano degli addebiti, se è aperto; altrimenti il primo aperto del condominio. */
+    /** L'esercizio della scrittura: quello del piano degli addebiti, se è aperto; altrimenti quello aperto del condominio (con due, il più recente: `HasEsercizio`). */
     private function esercizio(PianoRate $piano, int $condominioId): ?Esercizio
     {
         $delPiano = $piano->esercizio_id === null ? null : Esercizio::find($piano->esercizio_id);
@@ -342,6 +343,6 @@ final class AccessoriAgliEredi
             return $delPiano;
         }
 
-        return Esercizio::where('condominio_id', $condominioId)->where('stato', 'aperto')->orderBy('data_inizio')->first();
+        return Esercizio::apertoPiuRecente($condominioId);
     }
 }

@@ -24,7 +24,8 @@
  *
  * Le cifre si rifanno dalla regola: ritenuta = imponibile × 4 %; dicembre al 16 gennaio; sotto la soglia di € 500,00
  * le ritenute fino a novembre al 16 dicembre; raggiunta la soglia, il 16 del mese dopo; un sabato o un festivo slitta
- * al primo giorno lavorativo (16/01/2027 è sabato → lunedì 18/01/2027; 16/08/2026 è domenica → lunedì 17/08/2026).
+ * al primo giorno lavorativo (16/01/2027 è sabato → lunedì 18/01/2027). Dalla 1.12.0-beta.14 (Coda 717) una scadenza dal 1° al 20
+ * agosto vale fino al 20 (art. 37, c. 11-bis, D.L. 223/2006): il 16/08/2026 non diventa più lunedì 17/08/2026 ma giovedì 20/08/2026.
  */
 
 use App\Enums\Fiscale\StatoDelegaF24;
@@ -273,7 +274,7 @@ test('Coda 314 — con l\'esercizio dal 01/11 al 31/10 le ritenute di ottobre e 
         ->and($aperte->first()->righe->flatMap->pagamenti)->toHaveCount(2);
 });
 
-test('Coda 314 — con l\'esercizio dal 01/07 al 30/06 le ritenute di giugno e di luglio 2026 raggiungono la soglia a luglio: € 600,00 al 17/08/2026, non al 16 dicembre', function () {
+test('Coda 314 — con l\'esercizio dal 01/07 al 30/06 le ritenute di giugno e di luglio 2026 raggiungono la soglia a luglio: € 600,00 al 20/08/2026 (Coda 717), non al 16 dicembre', function () {
     Carbon::setTestNow('2026-06-01 10:00:00');
     $ctx = b59fCtx('2025-07-01', '2026-06-30');
     $giugno = b59fFattura($ctx, 7500);
@@ -290,11 +291,12 @@ test('Coda 314 — con l\'esercizio dal 01/07 al 30/06 le ritenute di giugno e d
     b59fAggiorna($this, $ctx)->assertRedirect();
 
     // Giugno € 300,00 (finestra giugno–novembre, nessuna data-limite fra le due) + luglio € 300,00 = € 600,00 a luglio
-    // → 16/08/2026, domenica → 17/08/2026. Con il cumulo spezzato all'esercizio ciascuna andrebbe al 16 dicembre.
+    // → 16/08/2026, che cade fra il 1° e il 20 agosto → giovedì 20/08/2026 (Coda 717). Con il cumulo spezzato all'esercizio ciascuna
+    // andrebbe al 16 dicembre.
     $aperte = DelegaF24::where('condominio_id', $ctx[0]->id)->aperte()->get();
     expect($aperte)->toHaveCount(1)
         ->and($aperte->first()->totale_debito)->toBe(60000)
-        ->and($aperte->first()->data_scadenza->toDateString())->toBe('2026-08-17');
+        ->and($aperte->first()->data_scadenza->toDateString())->toBe('2026-08-20');
 });
 
 test('Coda 314 — l\'avviso dei fornitori da classificare vede la ritenuta di dicembre del 2026 anche dopo l\'apertura del 2027', function () {
@@ -515,11 +517,11 @@ test('Coda 314 — la ritenuta di giugno di un esercizio chiuso, mai in una dele
     b59fPaga($ctx, $luglio, '2026-07-10', $nuovo);
     Carbon::setTestNow('2026-07-20 10:00:00');
 
-    // Giugno € 300,00 + luglio € 300,00 = € 600,00 ≥ € 500,00 raggiunti a luglio: 16/08/2026 (domenica) → 17/08/2026.
+    // Giugno € 300,00 + luglio € 300,00 = € 600,00 ≥ € 500,00 raggiunti a luglio: 16/08/2026 → 20/08/2026 (Coda 717).
     b59fAggiorna($this, $ctx)->assertRedirect();
     $delega = DelegaF24::where('condominio_id', $ctx[0]->id)->aperte()->sole();
     expect($delega->totale_debito)->toBe(60000)
-        ->and($delega->data_scadenza->toDateString())->toBe('2026-08-17');
+        ->and($delega->data_scadenza->toDateString())->toBe('2026-08-20');
 
     // Se giugno era già stato versato fuori dal programma, annullare la delega toglie dai contatori anche luglio…
     b59fAnnulla($this, $ctx, $delega, 'Giugno versato fuori dal programma');
@@ -533,7 +535,7 @@ test('Coda 314 — la ritenuta di giugno di un esercizio chiuso, mai in una dele
     b59fAggiorna($this, $ctx)->assertRedirect();
     $rifatta = DelegaF24::where('condominio_id', $ctx[0]->id)->aperte()->sole();
     expect($rifatta->totale_debito)->toBe(60000)
-        ->and($rifatta->data_scadenza->toDateString())->toBe('2026-08-17');
+        ->and($rifatta->data_scadenza->toDateString())->toBe('2026-08-20');
 });
 
 test('Coda 314 — la scheda di una delega di un esercizio non corrente dice il suo esercizio; quella dell\'esercizio corrente no', function () {
@@ -608,4 +610,41 @@ test('Coda 314 — lo storno, a gennaio 2027, del versamento di una delega del 2
     expect($delega->fresh()->stato)->toBe(StatoDelegaF24::STORNATA)
         ->and((int) $storno->esercizio_id)->toBe($ctx[1]->id)
         ->and($storno->data_competenza->toDateString())->toBe('2027-01-10');
+});
+
+test('Coda 423 — il giorno della scadenza la delega non è «Scaduta», né nel contatore né nel filtro; il giorno dopo sì, in tutti e due, anche alle 00:30 di Roma', function () {
+    Carbon::setTestNow('2026-12-01 10:00:00');
+    $ctx = b59fCtx();
+    $fattura = b59fFattura($ctx, 6000);
+    b59fPaga($ctx, $fattura, '2026-12-20', $ctx[1]);
+    Carbon::setTestNow('2026-12-21 10:00:00');
+    b59fAggiorna($this, $ctx)->assertRedirect();
+    // Dicembre al 16 gennaio; il 16/01/2027 è sabato → lunedì 18/01/2027.
+    $delega = DelegaF24::where('condominio_id', $ctx[0]->id)->sole();
+    expect($delega->data_scadenza->toDateString())->toBe('2027-01-18');
+
+    $scadute = fn () => $this->actingAs($this->admin)->get(route('admin.gestionale.f24.index', ['condominio' => $ctx[0]->id, 'stato' => 'scadute']))
+        ->assertOk()->viewData('page')['props'];
+
+    // Il 18/01/2027, il giorno stesso: si può ancora versare. Prima il contatore diceva 1 (`isPast()` alle 10:00) e il filtro non trovava niente.
+    Carbon::setTestNow('2027-01-18 10:00:00');
+    $p = $scadute();
+    expect($p['riepilogo']['scadute'])->toBe(0)
+        ->and($p['deleghe']['data'])->toHaveCount(0)
+        ->and($delega->fresh()->isScaduta())->toBeFalse()
+        ->and(DelegaF24::scadute()->count())->toBe(0);
+
+    // Alle 00:30 di Roma del 19/01/2027 (le 23:30 UTC del 18): è il giorno dopo per l'amministratore, e tutti e due lo dicono.
+    Carbon::setTestNow(Carbon::parse('2027-01-19 00:30:00', 'Europe/Rome')->utc());
+    $p = $scadute();
+    expect($p['riepilogo']['scadute'])->toBe(1)
+        ->and(collect($p['deleghe']['data'])->pluck('id')->all())->toBe([$delega->id])
+        ->and($delega->fresh()->isScaduta())->toBeTrue()
+        ->and(DelegaF24::scadute()->pluck('id')->all())->toBe([$delega->id]);
+
+    // Il 19/01/2027 alle 10:00: lo stesso.
+    Carbon::setTestNow('2027-01-19 10:00:00');
+    $p = $scadute();
+    expect($p['riepilogo']['scadute'])->toBe(1)
+        ->and($p['deleghe']['data'])->toHaveCount(1);
 });

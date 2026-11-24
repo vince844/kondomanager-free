@@ -6,13 +6,14 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 <script setup lang="ts">
 import { computed, watch, onMounted, ref, nextTick } from 'vue'
 import { Head, useForm, usePage, Link } from '@inertiajs/vue3'
+import { router } from '@inertiajs/core'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { Settings, Globe, Building2, ShieldCheck } from 'lucide-vue-next'
+import { Settings, Globe, Building2, ShieldCheck, Send } from 'lucide-vue-next'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import Alert from '@/components/Alert.vue'
 import InputError from '@/components/InputError.vue'
@@ -58,6 +59,12 @@ const pageGuides = computed(() => [
     description: trans('impostazioni.guides.security_desc'),
     icon: ShieldCheck,
     colorVariant: 'amber' as const
+  },
+  {
+    title: trans('impostazioni.guides.errors_notice_title'),
+    description: trans('impostazioni.guides.errors_notice_desc'),
+    icon: Send,
+    colorVariant: 'blue' as const
   }
 ])
 
@@ -125,8 +132,41 @@ const form = useForm({
   segnalazioni_assegnazione_porta_in_lavorazione: (page.props as Record<string, unknown>).segnalazioni_assegnazione_porta_in_lavorazione !== undefined
     ? Boolean(Number((page.props as Record<string, unknown>).segnalazioni_assegnazione_porta_in_lavorazione))
     : false,
+  comunicazioni_registra_aperture: Boolean(
+    typeof (page.props as Record<string, unknown>).comunicazioni_registra_aperture === 'string'
+      ? (page.props as Record<string, unknown>).comunicazioni_registra_aperture === '1' || (page.props as Record<string, unknown>).comunicazioni_registra_aperture === 'true'
+      : (page.props as Record<string, unknown>).comunicazioni_registra_aperture
+  ),
+  // Coda 788: acceso di serie; senza il valore resta acceso.
+  errori_avviso_dalla_pagina: (page.props as Record<string, unknown>).errori_avviso_dalla_pagina === undefined
+    ? true
+    : Boolean(
+      typeof (page.props as Record<string, unknown>).errori_avviso_dalla_pagina === 'string'
+        ? (page.props as Record<string, unknown>).errori_avviso_dalla_pagina === '1' || (page.props as Record<string, unknown>).errori_avviso_dalla_pagina === 'true'
+        : (page.props as Record<string, unknown>).errori_avviso_dalla_pagina
+    ),
   default_per_page: Number(default_per_page) || 10,
 })
+
+const confermaCancellazioneAperture = ref(false)
+const countAperture = computed(() => Number((page.props as Record<string, unknown>).aperture_registrate ?? 0))
+
+function chiediConfermaCancellazione() {
+  confermaCancellazioneAperture.value = true
+}
+
+function annullaCancellazione() {
+  confermaCancellazioneAperture.value = false
+}
+
+function eseguiCancellazioneAperture() {
+  router.delete(route('impostazioni.generali.aperture.destroy'), {
+    preserveScroll: true,
+    onSuccess: () => {
+      confermaCancellazioneAperture.value = false
+    },
+  })
+}
 
 /* -------------------------------------------------
  * Selected language label
@@ -442,6 +482,82 @@ const submit = () => {
                 </p>
               </div>
               <Switch v-model="form.segnalazioni_assegnazione_porta_in_lavorazione" />
+            </div>
+
+            <!-- REGISTRAZIONE APERTURE COMUNICAZIONI NEL PORTALE -->
+            <div data-impostazione="comunicazioni_registra_aperture" class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1 space-y-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.comunicazioni_registra_aperture_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.comunicazioni_registra_aperture_description') }}
+                </p>
+                <p data-nota="privacy-aperture" class="text-xs text-amber-700 dark:text-amber-400 pt-1">
+                  {{ trans('impostazioni.dialogs.comunicazioni_registra_aperture_privacy') }}
+                </p>
+              </div>
+              <Switch v-model="form.comunicazioni_registra_aperture" />
+            </div>
+
+            <!-- APERTURE REGISTRATE E CANCELLAZIONE -->
+            <div data-riquadro="aperture-registrate" class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1 space-y-1">
+                <div class="text-sm font-medium leading-none tabular-nums">
+                  {{ trans('impostazioni.dialogs.comunicazioni_aperture_registrate', { count: countAperture }) }}
+                </div>
+                <p v-if="confermaCancellazioneAperture" class="text-xs text-red-600 dark:text-red-400 pt-1">
+                  {{ trans('impostazioni.dialogs.comunicazioni_cancella_aperture_conferma') }}
+                </p>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <template v-if="!confermaCancellazioneAperture">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-azione="cancella-aperture"
+                    :disabled="countAperture === 0"
+                    @click="chiediConfermaCancellazione"
+                    class="min-h-10 text-xs"
+                  >
+                    {{ trans('impostazioni.dialogs.comunicazioni_cancella_aperture') }}
+                  </Button>
+                </template>
+                <template v-else>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    data-azione="conferma-cancella-aperture"
+                    @click="eseguiCancellazioneAperture"
+                    class="min-h-10 text-xs"
+                  >
+                    {{ trans('impostazioni.dialogs.comunicazioni_cancella_aperture_si') }}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-azione="annulla-cancella-aperture"
+                    @click="annullaCancellazione"
+                    class="min-h-10 text-xs"
+                  >
+                    {{ trans('impostazioni.dialogs.comunicazioni_cancella_aperture_no') }}
+                  </Button>
+                </template>
+              </div>
+            </div>
+
+            <!-- AVVISO DALLA PAGINA D'ERRORE (Coda 788, decisione 713) -->
+            <div data-impostazione="errori_avviso_dalla_pagina" class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1 space-y-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.errori_avviso_dalla_pagina_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.errori_avviso_dalla_pagina_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.errori_avviso_dalla_pagina" />
             </div>
 
           </CardContent>

@@ -3648,3 +3648,24 @@ it('Coda 380 — chi riprende i giorni li aveva con il conguaglio (Ines → Pia 
         ->and(pcc360PagateDa($s, 'Pia'))->toBe(['Sara' => 10829])
         ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 2752]);
 });
+
+it('Coda 395 — la storia di Sara (il cambio con «Annulla il conguaglio», Teo dal 1/8 al 31/8): la stampa dice «da ricevere da Teo» con € 7,05 e nessuna cifra porta il segno meno', function () {
+    // Il verso è nelle parole: la riga di Sara, «da ricevere da Teo», aveva la cifra con il meno («€ -7,05»), che un condòmino non sa leggere. Il piede usa già il valore assoluto.
+    [$s] = pcc366Storia($this, 'subito');
+    $stampa = fclStampa($s);
+
+    expect($stampa)->toContain('€ 7,05 da ricevere da Teo')
+        ->and($stampa)->not->toContain('€ -');
+});
+
+it('Coda 429 — la strada A′ con un\'entrata («Affitto antenna» € 500,00 dal 1/9, il cambio Ines → Sara con «Non scriverlo»): la riga di Ines dice il verso giusto, € 150,00 da ricevere da Ines e € 181,48 da restituire a Ines', function () {
+    // Le spese dei giorni di Sara, 18148 × 30 % → € 181,48, le ha pagate Ines (da restituire a lei); l'entrata di quei giorni, € 150,00, l'ha incassata Ines nelle sue rate: è lei a doverla a Sara.
+    // La riga positiva diceva «da restituire a Ines», con il verso dell'altra. Il piede (€ 31,48 a Ines) era giusto.
+    $s = pcc361ConLAntenna($this, '500,00', false);
+    pcc360Cambio($this, $s, 'Ines', 'Sara', '2026-07-01', 'non_scrivere');
+    $stampa = fclStampa($s);
+
+    expect($stampa)->toContain('€ 181,48 da restituire a Ines')
+        ->and($stampa)->toContain('€ 150,00 da ricevere da Ines')
+        ->and($stampa)->not->toContain('€ 150,00 da restituire a Ines');
+});

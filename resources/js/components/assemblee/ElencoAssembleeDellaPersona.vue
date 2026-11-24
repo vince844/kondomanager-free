@@ -9,12 +9,15 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * (un badge) e il chevron; la prima riga della pagina aperta, le altre si aprono con un tocco. Dentro: la convocazione, in sala, i voti con le dichiarazioni,
  * «Può impugnare», le delibere sulle sue cose e il collegamento all'assemblea. Al telefono ogni riga è una scheda. **Solo lo studio**: non va nel portale dei
  * condòmini. I testi delle persone (le dichiarazioni) sono testo, mai HTML.
+ *
+ * I voti si leggono per votazione (Coda 750 B2): il rendiconto e il riparto votati a parte con due voti diversi sono due righe («Punto 1, il rendiconto ·
+ * Contrario»), e il riparto a favore va con i favorevoli («Favorevole ai punti 2, 3 e 5 e al riparto del punto 1»).
  */
 import { computed, ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { ChevronDown, ChevronUp } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
-import type { PersonaInAssemblea } from '@/lib/assemblee/persona';
+import { aiPunti, type PersonaInAssemblea } from '@/lib/assemblee/persona';
 
 const props = defineProps<{ assemblee: PersonaInAssemblea[] }>();
 const { generateRoute } = usePermission();
@@ -32,13 +35,14 @@ function giraLaRiga(a: PersonaInAssemblea, i: number) {
 }
 const indirizzo = (a: PersonaInAssemblea) => route(generateRoute('gestionale.assemblee.show'), { condominio: a.condominio_id, assemblea: a.id });
 
-/** «Favorevole ai punti 1, 2, 3 e 5», con «espressi da … per delega». */
+/** «Favorevole ai punti 1, 2, 3 e 5», «Favorevole ai punti 2 e 3 e al riparto del punto 1», con «espressi da … per delega». */
 function favorevoli(a: PersonaInAssemblea): string | null {
-    const n = a.favorevole_ai_punti;
-    if (n.length === 0) return null;
-    const punti = n.length === 1 ? `al punto ${n[0]}` : `ai punti ${n.slice(0, -1).join(', ')} e ${n[n.length - 1]}`;
+    const punti = aiPunti(a.favorevole_ai_punti, a.favorevole_alle_parti ?? []);
+    if (punti === '') return null;
     return `Favorevole ${punti}${a.per_delega_da ? ` · espressi da ${a.per_delega_da} per delega` : ''}`;
 }
+/** «Punto 1», o «Punto 1, il rendiconto» per una delle due votazioni del punto. */
+const nomeDelVoto = (v: PersonaInAssemblea['altri_voti'][number]) => `Punto ${v.punto}${v.oggetto ? `, il ${v.oggetto}` : ''}`;
 
 const TONI: Record<string, string> = {
     ambra: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
@@ -73,9 +77,9 @@ const TONI: Record<string, string> = {
                         <template v-if="favorevoli(a) || a.altri_voti.length">
                             <dt class="text-xs text-slate-500 dark:text-slate-400">Voti</dt>
                             <dd class="space-y-1.5 text-slate-800 dark:text-slate-200">
-                                <p v-if="favorevoli(a)">{{ favorevoli(a) }}</p>
-                                <div v-for="v in a.altri_voti" :key="v.punto" data-testid="voto-della-persona">
-                                    <p><span class="font-medium">Punto {{ v.punto }}</span> · {{ v.voto }}<template v-if="v.testo"> · <span class="break-words">{{ v.testo }}</span></template></p>
+                                <p v-if="favorevoli(a)" data-testid="favorevoli">{{ favorevoli(a) }}</p>
+                                <div v-for="v in a.altri_voti" :key="`${v.punto}:${v.oggetto ?? ''}`" data-testid="voto-della-persona">
+                                    <p><span class="font-medium">{{ nomeDelVoto(v) }}</span> · {{ v.voto }}<template v-if="v.testo"> · <span class="break-words">{{ v.testo }}</span></template></p>
                                     <p v-for="(d, k) in v.dichiarazioni" :key="k" class="break-words text-xs text-slate-600 dark:text-slate-300">Dichiarazione a verbale: «{{ d }}»</p>
                                 </div>
                             </dd>

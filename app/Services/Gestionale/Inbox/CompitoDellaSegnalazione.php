@@ -82,11 +82,13 @@ final class CompitoDellaSegnalazione
     {
         $tipoSql = FasceDeiCompiti::sqlTipo();
         $segnalazione = (new Segnalazione())->getMorphClass();
-        $speciali = [self::TIPO, CompitoDaModerare::TIPO];
+        // Gli avvisi degli errori (1.12.0-beta.14) hanno la loro regola: solo chi ha «Gestisci impostazioni generali» ({@see CompitoDellErrore}).
+        $speciali = [self::TIPO, CompitoDaModerare::TIPO, CompitoDellErrore::TIPO];
+        $segnaposti = implode(', ', array_fill(0, count($speciali), '?'));
 
-        return $query->where(function (Builder $q) use ($tipoSql, $vede, $segnalazione, $moderare, $speciali) {
-            // Non è il compito di una segnalazione, né uno da moderare (che ha la sua regola, per tipo di elemento).
-            $q->where(fn (Builder $altro) => $altro->whereRaw("COALESCE({$tipoSql}, '') NOT IN (?, ?)", $speciali)
+        return $query->where(function (Builder $q) use ($tipoSql, $vede, $segnalazione, $moderare, $speciali, $segnaposti) {
+            // Non è il compito di una segnalazione, né uno da moderare (che ha la sua regola, per tipo di elemento), né l'avviso di un errore.
+            $q->where(fn (Builder $altro) => $altro->whereRaw("COALESCE({$tipoSql}, '') NOT IN ({$segnaposti})", $speciali)
                 ->where(fn (Builder $colonna) => $colonna->whereNull('eventi.tipo')->orWhereNotIn('eventi.tipo', $speciali)));
             if ($vede !== self::NESSUNA) {
                 // O lo è, e la segnalazione c'è e si apre (il compito da moderare di una segnalazione segue la stessa regola, e in più chi legge sa
@@ -100,6 +102,8 @@ final class CompitoDellaSegnalazione
             }
             // I compiti da moderare delle comunicazioni, dei documenti e degli eventi che chi legge apre.
             CompitoDaModerare::aggiungiLaRegola($q, $moderare);
+            // Gli avvisi degli errori, a chi ha «Gestisci impostazioni generali» (`$moderare['errori']`, da `CompitoDaModerare::chiVede()`).
+            CompitoDellErrore::aggiungiLaRegola($q, $moderare);
         });
     }
 

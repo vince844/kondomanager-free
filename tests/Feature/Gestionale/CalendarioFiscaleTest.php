@@ -67,10 +67,11 @@ test('un martedì qualunque è lavorativo', function () {
 // Scadenza del versamento
 // ════════════════════════════════════════════════════════════════════════════
 
-test('un pagamento di luglio scade il 16 agosto, se è feriale', function () {
-    // 16 agosto 2026 è una domenica → slitta a lunedì 17.
+test('Coda 717 — un pagamento di luglio scade il 20 agosto: le scadenze dal 1° al 20 agosto valgono fino al 20', function () {
+    // Art. 37, c. 11-bis, D.L. 223/2006 (dal 2027 art. 11 D.Lgs. 33/2025). Il 16/08/2026 è domenica: prima del 20 agosto il
+    // programma diceva lunedì 17/08/2026, e dal 18 la delega diceva «Scaduta da 1 giorno». Il 20/08/2026 è giovedì.
     expect(calendario()->scadenzaVersamentoRitenute(CarbonImmutable::parse('2026-07-10'))->format('Y-m-d'))
-        ->toEqual('2026-08-17');
+        ->toEqual('2026-08-20');
 });
 
 test('il 16 che cade di sabato slitta al lunedì', function () {
@@ -132,4 +133,52 @@ test('il 31 gennaio non scavalca febbraio', function () {
     // addMonth() puro porterebbe al 3 marzo prima di applicare day(16).
     expect(calendario()->scadenzaVersamentoRitenute(CarbonImmutable::parse('2026-01-31'))->format('Y-m'))
         ->toEqual('2026-02');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Coda 717 (decisione 571; forum t=202, casi D ed E di Edoardo): il 20 agosto
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Le deleghe di un elenco di ritenute, con le regole di `PlafondRitenuteService`: data, importo in centesimi, regime. */
+function calendarioDeleghe(array $righe): array
+{
+    $servizio = new \App\Services\Gestionale\PlafondRitenuteService(new CalendarioFiscaleService);
+
+    return $servizio->raggruppaPerScadenza(array_map(fn ($r) => ['data_pagamento' => $r[0], 'importo' => $r[1], 'tipo_ritenuta' => $r[2]], $righe));
+}
+
+test('Coda 717, caso D — 20 %: € 200,00 il 10/07 superano la soglia a luglio e si versano il 20/08/2026, non il 17/08', function () {
+    $deleghe = calendarioDeleghe([['2026-07-10', 20_000, \App\Enums\Fiscale\TipoRitenuta::LAVORO_AUTONOMO_20]]);
+
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-08-20')
+        ->and($deleghe[0]['importo'])->toEqual(20_000);
+});
+
+test('Coda 717, caso E — appalti: € 600,00 il 10/07 si versano il 20/08/2026', function () {
+    $deleghe = calendarioDeleghe([['2026-07-10', 60_000, \App\Enums\Fiscale\TipoRitenuta::APPALTO_4]]);
+
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual('2026-08-20');
+});
+
+test('Coda 717 — il 20/08/2028 è domenica: la scadenza di luglio 2028 slitta a lunedì 21/08/2028', function () {
+    expect(CarbonImmutable::parse('2028-08-20')->isSunday())->toBeTrue()
+        ->and(calendario()->scadenzaVersamentoRitenute(CarbonImmutable::parse('2028-07-10'))->format('Y-m-d'))->toEqual('2028-08-21')
+        ->and(calendarioDeleghe([['2028-07-10', 60_000, \App\Enums\Fiscale\TipoRitenuta::APPALTO_4]])[0]['scadenza']->format('Y-m-d'))->toEqual('2028-08-21');
+});
+
+test('Coda 717 — la regola di agosto vale dal 1° al 20: il 1° agosto diventa il 20, il 21 resta il 21, le altre date non si muovono', function () {
+    expect(calendario()->scadenzaFiscale(CarbonImmutable::parse('2026-08-01'))->format('Y-m-d'))->toEqual('2026-08-20')
+        ->and(calendario()->scadenzaFiscale(CarbonImmutable::parse('2026-08-20'))->format('Y-m-d'))->toEqual('2026-08-20')
+        ->and(calendario()->scadenzaFiscale(CarbonImmutable::parse('2026-08-21'))->format('Y-m-d'))->toEqual('2026-08-21')
+        // fuori da agosto solo lo slittamento: il 16/05/2026 è sabato → lunedì 18/05/2026
+        ->and(calendario()->scadenzaFiscale(CarbonImmutable::parse('2026-05-16'))->format('Y-m-d'))->toEqual('2026-05-18')
+        ->and(calendario()->scadenzaFiscale(CarbonImmutable::parse('2026-06-16'))->format('Y-m-d'))->toEqual('2026-06-16');
+});
+
+test('Coda 717 — il 20 agosto è solo delle scadenze fiscali: il primo giorno lavorativo delle assemblee resta quello del calendario', function () {
+    // `primoGiornoLavorativo()` serve anche i termini delle assemblee (convocazione, impugnazione): lì agosto non sposta niente.
+    expect(calendario()->primoGiornoLavorativo(CarbonImmutable::parse('2026-08-16'))->format('Y-m-d'))->toEqual('2026-08-17')
+        ->and(calendario()->primoGiornoLavorativo(CarbonImmutable::parse('2026-08-04'))->format('Y-m-d'))->toEqual('2026-08-04');
 });

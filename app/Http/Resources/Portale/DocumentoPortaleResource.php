@@ -32,9 +32,10 @@ class DocumentoPortaleResource extends DocumentoResource
             // `when` e non `whenLoaded`: con la relazione caricata e vuota (l'autore eliminato) `whenLoaded` dà null, e la forma promessa da
             // `AutorePortale` non arriva.
             'created_by' => $this->when($this->resource->relationLoaded('createdBy'), fn () => AutorePortale::di($this->createdBy)),
+            // Coda 668: dei palazzi dell'avviso solo quelli di chi guarda, tutti a chi l'ha scritto (`PalazziDelCondomino`), mai il nome di un altro palazzo dello studio.
             'condomini'  => [
-                'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini')),
-                'full'    => CondominioPortaleResource::collection($this->whenLoaded('condomini')),
+                'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini', fn () => PalazziDelCondomino::fra($request, $this->condomini, $this->created_by))),
+                'full'    => CondominioPortaleResource::collection($this->whenLoaded('condomini', fn () => PalazziDelCondomino::fra($request, $this->condomini, $this->created_by))),
             ],
         ];
     }

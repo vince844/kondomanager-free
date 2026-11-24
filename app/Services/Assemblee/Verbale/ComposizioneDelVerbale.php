@@ -13,6 +13,7 @@ use App\Models\Assemblee\VerbaleDellAssemblea;
 use App\Models\User;
 use App\Services\Assemblee\Sala\LetturaDellaSala;
 use App\Services\Assemblee\Sala\VotazioniDellaSala;
+use App\Services\Assemblee\UnitaDelPunto;
 use App\Services\Gestionale\Lettere\TestiLettere;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\RegistroModifiche;
@@ -357,6 +358,12 @@ final class ComposizioneDelVerbale
         if (str_contains($convocazione, ', essendo')) {
             $valori['[convocazione] '] = $convocazione . ', ';
         }
+        // L'assemblea dei condòmini di un gruppo (Coda 734), come la scena 10 della bozza approvata: «… l'assemblea straordinaria dei condòmini della tabella
+        // «Box» del Condominio Via Roma 12.». Un modello con altre parole intorno al campo ha il condominio con «limitata alle unità della tabella «Box»».
+        if (filled($dati['assemblea']['gruppo'] ?? null)) {
+            $valori['dei condòmini del [condominio]'] = 'dei condòmini della tabella «' . $dati['assemblea']['gruppo'] . '» del '
+                . TestiLettere::condominioConNome((string) $dati['assemblea']['condominio']);
+        }
 
         return $valori;
     }
@@ -417,8 +424,8 @@ final class ComposizioneDelVerbale
             $frasi = ($c['costituita'] ?? false)
                 ? ['Alle ore ' . ParoleDelVerbale::ora($c['al']) . ' l\'assemblea è regolarmente costituita.', 'Sono presenti, di persona o per delega, ' . $presenti]
                 : ['L\'assemblea non risulta costituita. Alle ore ' . ParoleDelVerbale::ora($c['al']) . ' sono presenti, di persona o per delega, ' . $presenti];
-            // I contitolari entrati con chi rappresenta la loro unità, presenti senza voto (rilievo C53): il verbale li nomina tutti.
-            array_push($frasi, ...self::presentiSenzaVoto((array) ($s['presenze'] ?? []), $this->fotografiaDellaSeduta((int) $s['id'])));
+            // I contitolari entrati con chi rappresenta la loro unità, presenti senza voto (rilievo C53); l'assemblea di un gruppo, chi vota (Coda 734).
+            array_push($frasi, ...self::presentiSenzaVoto((array) ($s['presenze'] ?? []), $this->fotografiaDellaSeduta((int) $s['id'])), ...self::delGruppo($dati['assemblea'], $c));
             $b['costituzione:' . $s['id']] = StrutturaDelVerbale::datiDellaSala('costituzione:' . $s['id'], $frasi);
         }
         foreach ($dati['punti'] as $p) {
@@ -456,8 +463,8 @@ final class ComposizioneDelVerbale
             $b['prosecuzione:' . $s['id']] = StrutturaDelVerbale::datiDellaSala('prosecuzione:' . $s['id'], [
                 'Il giorno ' . ParoleDelVerbale::giorno(substr((string) $s['fissata_il'], 0, 10)) . ', alle ore ' . ParoleDelVerbale::ora($s['aperta_il']) . ', presso '
                 . $luogo . ', prosegue l\'assemblea ' . $dati['assemblea']['tipo'] . ' del ' . ParoleDelVerbale::giorno(substr((string) ($prima['fissata_il'] ?? ''), 0, 10))
-                . ' dei condòmini del ' . TestiLettere::condominioConNome((string) $dati['assemblea']['condominio'])
-                . ', sospesa alle ore ' . ParoleDelVerbale::ora($prima['chiusa_il'] ?? null) . ($trattati !== [] ? ', per ' . ParoleDelVerbale::punti($trattati)
+                . ' dei condòmini' . (filled($dati['assemblea']['gruppo'] ?? null) ? ' della tabella «' . $dati['assemblea']['gruppo'] . '»' : '')
+                . ' del ' . TestiLettere::condominioConNome((string) $dati['assemblea']['condominio']) . ', sospesa alle ore ' . ParoleDelVerbale::ora($prima['chiusa_il'] ?? null) . ($trattati !== [] ? ', per ' . ParoleDelVerbale::punti($trattati)
                     . ' dell\'ordine del giorno' : '') . '.',
                 'Assume la presidenza ' . (self::nomeDiMezzaFrase((string) ($s['presidente']['nome'] ?? '')) ?: '—') . '; funge da segretario '
                     . (self::nomeDiMezzaFrase((string) ($s['segretario']['nome'] ?? '')) ?: '—') . '.',
@@ -501,16 +508,22 @@ final class ComposizioneDelVerbale
         }
         $i = (array) $v['intervenuti'];
         $c = (array) ($v['conteggi'] ?? []);
-        $su = match ($v['oggetto'] ?? null) {
-            'rendiconto' => 'Sul rendiconto: ',
-            'riparto' => 'Sul riparto: ',
-            default => '',
+        // Dopo i due punti la frase continua con la minuscola (rilievo B3): «Sul rendiconto: si vota alle ore …».
+        $siVota = match ($v['oggetto'] ?? null) {
+            'rendiconto' => 'Sul rendiconto: si vota',
+            'riparto' => 'Sul riparto: si vota',
+            default => 'Si vota',
         };
         $regola = VotazioniDellaSala::regolaDellaMaggioranza($v['maggioranza'] ?? null, (string) ($i['convocazione'] ?? 'seconda'), (int) ($i['totale_teste'] ?? 0),
             (int) ($i['totale_valore'] ?? 0));
-        $frasi = [$su . 'Si vota alle ore ' . ParoleDelVerbale::ora($v['votata_il']) . ': intervengono ' . ParoleDelVerbale::condomini((int) ($i['numero'] ?? 0))
+        // Il punto di una parte (la sola scala, il gruppo di una tabella; Coda 734): prima del voto chi vota e su quanti, con le cifre del punto. Una votazione
+        // fermata nella beta.13 non ha la parte, e la frase non c'è.
+        $soli = UnitaDelPunto::soliCondomini($i['perimetro']['parte'] ?? null, $i['perimetro']['gruppo'] ?? null, true);
+        $frasi = $soli === null ? [] : ['Sul punto votano ' . $soli . ': ' . ((int) ($i['totale_teste'] ?? 0) === 1 ? '1 partecipante' : (int) ($i['totale_teste'] ?? 0)
+            . ' partecipanti') . ' per ' . ParoleDelVerbale::millesimi((int) ($i['totale_valore'] ?? 0)) . ' millesimi.'];
+        $frasi[] = $siVota . ' alle ore ' . ParoleDelVerbale::ora($v['votata_il']) . ': intervengono ' . ParoleDelVerbale::condomini((int) ($i['numero'] ?? 0))
             . ' per ' . ParoleDelVerbale::millesimi((int) ($i['valore'] ?? 0)) . ' millesimi; '
-            . ($regola ?? ($v['maggioranza'] === Maggioranza::LIBERA->value ? 'la maggioranza la decide il presidente' : 'la maggioranza non è scelta: decide il presidente')) . '.'];
+            . ($regola ?? ($v['maggioranza'] === Maggioranza::LIBERA->value ? 'la maggioranza la decide il presidente' : 'la maggioranza non è scelta: decide il presidente')) . '.';
         foreach ((array) ($v['scelte']['usufruttuari'] ?? []) as $u) {
             if (filled($u['frase'] ?? null)) {
                 $frasi[] = (string) $u['frase'];
@@ -597,7 +610,8 @@ final class ComposizioneDelVerbale
 
     /**
      * I contitolari presenti senza voto (art. 67 c. 2 disp. att. c.c., rilievo C53): per ogni ingresso di chi rappresenta una testa con altri della stessa
-     * testa, «Russo Marco, che rappresenta l'Int. 5, e Russo Anna, contitolare, presente senza voto.». Una frase per testa, anche se è entrata due volte.
+     * testa, «Russo Marco rappresenta l'Int. 5; è presente senza voto anche Russo Anna, in comproprietà.» (la frase con il verbo, rilievo B3; «in
+     * comproprietà», decisione 673 (5)). Al plurale «sono presenti senza voto anche Russo Anna e Russo Luca». Una frase per testa, anche se è entrata due volte.
      *
      * @param list<array<string, mixed>> $presenze
      * @param array<string, mixed> $fotografia
@@ -614,8 +628,8 @@ final class ComposizioneDelVerbale
             $unita = array_map(fn ($u) => (string) ($fotografia['unita'][$u]['nome'] ?? $fotografia['unita'][(string) $u]['nome'] ?? ''), (array) ($p['rappresenta'] ?? []));
             $unita = array_values(array_filter($unita));
             $altri = ParoleDelVerbale::elenco(array_map(fn ($x) => (string) $x['nome'], $insieme));
-            $frasi[] = trim((string) $p['nome']) . ($unita !== [] ? ', che rappresenta l\'' . ParoleDelVerbale::elenco($unita) . ',' : '') . ' e ' . $altri
-                . (count($insieme) === 1 ? ', contitolare, presente senza voto.' : ', contitolari, presenti senza voto.');
+            $frasi[] = ($unita !== [] ? trim((string) $p['nome']) . ' rappresenta l\'' . ParoleDelVerbale::elenco($unita) . '; ' : 'Con ' . trim((string) $p['nome']) . ' ')
+                . (count($insieme) === 1 ? 'è presente' : 'sono presenti') . ' senza voto anche ' . $altri . ', in comproprietà.';
         }
 
         return array_values(array_unique($frasi));
@@ -644,6 +658,26 @@ final class ComposizioneDelVerbale
     {
         return StrutturaDelVerbale::datiDellaSala('dichiarazione:' . $d['id'], [trim((string) $d['nome']) . ' chiede che sia messo a verbale: «'
             . trim((string) $d['testo']) . '»']);
+    }
+
+    /**
+     * L'assemblea dei condòmini di un gruppo (Coda 734, scena 10 della bozza): dopo la costituzione una frase sola, con le teste e i millesimi del gruppo;
+     * i punti non la ripetono. Per le altre assemblee niente.
+     *
+     * @param array<string, mixed> $assemblea
+     * @param array<string, mixed> $costituzione
+     * @return list<string>
+     */
+    private static function delGruppo(array $assemblea, array $costituzione): array
+    {
+        $gruppo = trim((string) ($assemblea['gruppo'] ?? ''));
+        if ($gruppo === '') {
+            return [];
+        }
+        $teste = (int) ($costituzione['totale_teste'] ?? 0);
+
+        return ['L\'assemblea riguarda ' . UnitaDelPunto::soliCondomini(null, $gruppo, true) . ': ' . ($teste === 1 ? '1 partecipante' : $teste . ' partecipanti')
+            . ' per ' . ParoleDelVerbale::millesimi((int) ($costituzione['totale_valore'] ?? 0)) . ' millesimi.'];
     }
 
     /** L'impronta delle parti «Dati della sala»: chiave => testo semplice, in JSON. @param array<string, array<string, mixed>> $blocchi */

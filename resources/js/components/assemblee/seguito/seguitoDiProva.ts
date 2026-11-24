@@ -42,7 +42,8 @@ const punto = (p: Partial<PuntoDelRiepilogo>): PuntoDelRiepilogo => ({
     seguito: { stato: 'da_confermare', parola: 'Da confermare', eseguita_il: null, fatte: 0, quante: 0 }, ...p,
 });
 
-export const rigaDelPasso = (r: Partial<RigaDelPassoSei>): RigaDelPassoSei => ({
+/** Una riga del passo 6; `oggetto` per una delle due votazioni del rendiconto (la tabella lo legge, Coda 750 B6). */
+export const rigaDelPasso = (r: Partial<RigaDelPassoSei & { oggetto: 'rendiconto' | 'riparto' | null }>): RigaDelPassoSei & { oggetto?: 'rendiconto' | 'riparto' | null } => ({
     delibera_id: 1, punto: 1, punto_id: 10, testo: 'Rendiconto 2025 e stato di riparto', esito: 'approvata', esito_parola: 'Approvata',
     seguito: { stato: 'eseguita', parola: 'Eseguita', eseguita_il: '2026-12-16', fatte: 0, quante: 0 }, cose: [], righe_da_applicare: [], verbale_annullato: false,
     segni: [], fondo_speciale: null, trenta_giorni: { per_tutti: '2027-01-21', dal: '2027-01-22', frase: 'Passati per tutti dal 22/01/2027. Resta la nullità.' },

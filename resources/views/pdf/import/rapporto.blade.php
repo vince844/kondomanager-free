@@ -21,7 +21,18 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
         &middot; {{ $creati }} record creati
         <br>
         Riferimento lotto <span style="font-family: monospace;">{{ $lotto->uuid }}</span>
-        &middot; origine: {{ $lotto->sorgente }}
+        {{--
+            L'origine si legge dal tipo dei file del lotto, non da `sorgente`: quella colonna
+            vale «danea» anche per il modello compilato a mano, e il foglio che si allega a un
+            verbale non può dire «danea» per un'importazione che da Danea non è mai passata.
+        --}}
+        @php
+            $tipiFile = $lotto->files->pluck('report_type')->filter()->unique();
+            $origine = $tipiFile->isNotEmpty() && $tipiFile->every(fn ($t) => $t === \App\Services\Import\ReportType::ModelloManuale->value)
+                ? 'modello di KondoManager'
+                : 'Danea';
+        @endphp
+        &middot; origine: {{ $origine }}
     </p>
 
     {{--
@@ -78,7 +89,12 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                     <td style="padding: 1.5mm 2mm; border-bottom: 1px solid #e6ebf0; text-align: right;">{{ $l['uniti'] }}</td>
                     <td style="padding: 1.5mm 2mm; border-bottom: 1px solid #e6ebf0; text-align: right;">{{ $l['saltati'] }}</td>
                     <td style="padding: 1.5mm 2mm; border-bottom: 1px solid #e6ebf0;">
-                        @if(! $l['riuscito']) fermato
+                        {{-- Gli stessi stati della schermata dell'esito (`ImportEsito.vue`): un livello
+                             non fornito non è «fermato», e uno che nei file non c'era non è «a posto». --}}
+                        @if(! empty($l['per_scelta'])) non importati, per tua scelta
+                        @elseif(! empty($l['saltato'])) non fornito
+                        @elseif(! $l['riuscito']) fermato
+                        @elseif($l['gia_a_posto'] && ! $l['creati'] && ! $l['uniti'] && ! $l['saltati']) non nei tuoi file
                         @elseif($l['gia_a_posto']) era già a posto
                         @else completo
                         @endif
@@ -87,6 +103,17 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
             @endforeach
         </tbody>
     </table>
+
+    {{-- Quello che non è entrato perché il file non c'era o per scelta: che cosa manca e chi lo scrive (come la schermata dell'esito). --}}
+    @foreach($livelli as $l)
+        @if(! empty($l['saltato']) && ! empty($l['prerequisiti_mancanti']))
+            <p style="font-size: 9pt; margin: 0 0 1mm;"><strong>{{ $l['etichetta'] }}</strong></p>
+            @foreach($l['prerequisiti_mancanti'] as $p)
+                <p style="font-size: 9pt; margin: 0 0 1mm;">{{ $p['cosa_manca'] }}</p>
+                <p style="font-size: 9pt; color: #666; margin: 0 0 3mm;">{{ $p['rimedio'] }}</p>
+            @endforeach
+        @endif
+    @endforeach
 
     @if(count($controlli))
         <h2 style="font-size: 11pt; margin: 0 0 1mm;">Da controllare</h2>

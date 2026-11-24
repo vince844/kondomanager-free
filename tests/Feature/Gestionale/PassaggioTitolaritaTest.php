@@ -527,11 +527,73 @@ it('le teste in assemblea guardano entrambi: chi vende la sua unica unità a un 
     $rotta = route('admin.gestionale.immobili.passaggi.anteprima', [$this->condominio, $this->immobile]);
 
     $aEstraneo = $this->actingAs($this->user)->postJson($rotta, corpoAnteprimaVendita($rigaRossi, $bianchi))->json();
-    expect($aEstraneo['invarianti']['frasi'][2])->toBe('Teste in assemblea: si contano per persona, e il numero non cambia — Rossi Mario esce dal conteggio, Bianchi Anna vi entra.');
+    expect($aEstraneo['invarianti']['frasi'][2])->toBe('Teste in assemblea, come le conta la sala con la scelta del condominio («due teste»): oggi 2, dopo il passaggio 2.');
 
     $aCondomino = $this->actingAs($this->user)->postJson($rotta, corpoAnteprimaVendita($rigaRossi, $neri))->json();
-    expect($aCondomino['invarianti']['frasi'][2])->toBe('Teste in assemblea: si contano per persona, e il numero scende di uno — Rossi Mario esce dal conteggio, Neri Paolo era già nel conteggio.');
+    expect($aCondomino['invarianti']['frasi'][2])->toBe('Teste in assemblea, come le conta la sala con la scelta del condominio («due teste»): oggi 2, dopo il passaggio 1.');
 });
+
+/**
+ * Coda 758 (1): il pannello della vendita conta le teste come la sala, con la scelta del condominio. Ugo ha l'Int. 3 tutto suo e il 50 % dell'Int. 5 con
+ * Bice; vende l'Int. 3. Zeno è nuovo, oppure ha già l'Int. 7.
+ */
+function vendeUgoASeno758(object $test, string $scelta, bool $zenoHaGiaUnUnita): array
+{
+    DB::table('impostazioni_condominio')->updateOrInsert(['condominio_id' => $test->condominio->id], ['assemblee_teste' => $scelta, 'created_at' => now(), 'updated_at' => now()]);
+    $ugo = personaDelCondominio($test->condominio, 'Ugo Rossi');
+    $bice = personaDelCondominio($test->condominio, 'Bice Verdi');
+    $zeno = personaDelCondominio($test->condominio, 'Zeno Neri');
+    $rigaUgo = rigaTitolarita($test->immobile, $ugo, 'proprietario', '2019-03-03');
+    $comune = Immobile::forceCreate(['condominio_id' => $test->condominio->id, 'nome' => 'Interno 5', 'descrizione' => 'Appartamento', 'interno' => '5']);
+    rigaTitolarita($comune, $ugo, 'proprietario', '2018-01-01', null, 50.0);
+    rigaTitolarita($comune, $bice, 'proprietario', '2018-01-01', null, 50.0);
+    if ($zenoHaGiaUnUnita) {
+        $terza = Immobile::forceCreate(['condominio_id' => $test->condominio->id, 'nome' => 'Interno 7', 'descrizione' => 'Appartamento', 'interno' => '7']);
+        rigaTitolarita($terza, $zeno, 'proprietario', '2018-01-01');
+    }
+    $rotta = route('admin.gestionale.immobili.passaggi.anteprima', [$test->condominio, $test->immobile]);
+
+    return $test->actingAs($test->user)->postJson($rotta, corpoAnteprimaVendita($rigaUgo, $zeno))->assertOk()->json();
+}
+
+it('le teste del pannello della vendita sono quelle della sala con «due teste»: Zeno nuovo, il numero non cambia (2 e 2)', function () {
+    // Prima: Ugo (Int. 3), la comproprietà Ugo e Bice, a parte = 2. Dopo: Zeno, la comproprietà = 2.
+    $json = vendeUgoASeno758($this, 'due_teste', false);
+    expect($json['invarianti']['frasi'][2])->toBe('Teste in assemblea, come le conta la sala con la scelta del condominio («due teste»): oggi 2, dopo il passaggio 2.');
+});
+
+it('le teste del pannello della vendita sono quelle della sala con «due teste»: Zeno con l\'Int. 7, il numero scende di uno (3 e 2)', function () {
+    // Prima: Ugo, la comproprietà, Zeno = 3. Dopo: Zeno (Int. 3 e 7), la comproprietà = 2.
+    $json = vendeUgoASeno758($this, 'due_teste', true);
+    expect($json['invarianti']['frasi'][2])->toBe('Teste in assemblea, come le conta la sala con la scelta del condominio («due teste»): oggi 3, dopo il passaggio 2.');
+});
+
+it('le teste del pannello della vendita sono quelle della sala con «una testa»: Zeno nuovo, il numero sale di uno (1 e 2)', function () {
+    // Prima: Ugo e Bice sono una testa sola = 1. Dopo: Zeno, e Ugo con Bice = 2.
+    $json = vendeUgoASeno758($this, 'una_testa', false);
+    expect($json['invarianti']['frasi'][2])->toBe('Teste in assemblea, come le conta la sala con la scelta del condominio («una testa»): oggi 1, dopo il passaggio 2.');
+});
+
+it('le teste del pannello della vendita sono quelle della sala con «una testa»: Zeno con l\'Int. 7, il numero resta 2 e 2', function () {
+    // Prima: Ugo con Bice = 1, Zeno = 1: 2. Dopo: Zeno (Int. 3 e 7), Ugo con Bice: 2.
+    $json = vendeUgoASeno758($this, 'una_testa', true);
+    expect($json['invarianti']['frasi'][2])->toBe('Teste in assemblea, come le conta la sala con la scelta del condominio («una testa»): oggi 2, dopo il passaggio 2.');
+});
+
+/** Coda 758 (1), le pertinenze: Ugo vende l'Int. 3 con il suo box a Zeno nuovo; chi esce e chi entra portano unità e box insieme, la sala conta una testa. */
+it('le teste del pannello contano le pertinenze che passano con l\'unità: Ugo vende l\'Int. 3 e il suo box a Zeno, la sala conta 1 e 1', function (string $scelta, string $parole) {
+    DB::table('impostazioni_condominio')->updateOrInsert(['condominio_id' => $this->condominio->id], ['assemblee_teste' => $scelta, 'created_at' => now(), 'updated_at' => now()]);
+    $ugo = personaDelCondominio($this->condominio, 'Ugo Rossi');
+    $zeno = personaDelCondominio($this->condominio, 'Zeno Neri');
+    $riga = rigaTitolarita($this->immobile, $ugo, 'proprietario', '2019-03-03');
+    $box = Immobile::forceCreate(['condominio_id' => $this->condominio->id, 'nome' => 'Box 3', 'descrizione' => 'Box', 'interno' => 'B3', 'pertinenza_di_immobile_id' => $this->immobile->id]);
+    rigaTitolarita($box, $ugo, 'proprietario', '2019-03-03');
+    $rotta = route('admin.gestionale.immobili.passaggi.anteprima', [$this->condominio, $this->immobile]);
+
+    $json = $this->actingAs($this->user)->postJson($rotta, corpoAnteprimaVendita($riga, $zeno, ['pertinenze' => [$box->id]]))->assertOk()->json();
+
+    expect($json['invarianti']['frasi'][2])->toBe('Teste in assemblea, come le conta la sala con la scelta del condominio («' . $parole . '»): oggi 1, dopo il passaggio 1.');
+})->with([['due_teste', 'due teste'], ['una_testa', 'una testa']]);
 
 it('la copia autentica spuntata senza data risponde con una frase in italiano, non con lo slug di Laravel', function () {
     $rossi = personaDelCondominio($this->condominio, 'Rossi Mario');

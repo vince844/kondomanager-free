@@ -67,6 +67,15 @@ describe('columns degli utenti — lo scudo della verifica segue la portata e il
         expect(inertia.put.mock.calls[0][0]).toBe('/utenti.toggle-verification');
     });
 
+    test('la richiesta chiede anche le card (`stats`): togliere la verifica cambia il numero dei «da verificare» (Coda 416)', async () => {
+        const cella = cellaDelNome(true);
+
+        await cella.find('[title]').trigger('click');
+
+        const opzioni = inertia.put.mock.calls[0][2] as { only: string[] };
+        expect(opzioni.only).toEqual(expect.arrayContaining(['users', 'stats', 'flash']));
+    });
+
     test('fuori portata lo scudo non manda niente', async () => {
         const cella = cellaDelNome(false);
         const scudo = cella.find('[title]');

@@ -95,6 +95,10 @@ use Illuminate\Support\Facades\DB;
  *
  * **Le quote contro il riparto** (`riparto_per_unita`, per gestione): per i piani con le righe del riparto, la spesa delle quote di ogni unità è la
  * somma delle sue righe; dove non torna, il conguaglio delle righe di quell'unità non è disponibile, con il perché.
+ *
+ * **Le spese personali per unità** (`personali_per_unita`): non chieste, di giorni senza un titolare, chieste con rate non emesse, contro le
+ * anticipazioni aperte; `personali_non_calcolabili` (unità => i perché) dice le unità di un piano dell'esercizio senza il dettaglio del riparto che
+ * non si ricostruisce, dove la parte personale delle quote non si sa (Coda 681).
  */
 class ConsuntivoPerPersona
 {
@@ -515,6 +519,15 @@ class ConsuntivoPerPersona
             $personaliPerUnita[$iid]['non_emesse'] += (int) $cifra;
         }
         $personaliPerUnita = array_filter($personaliPerUnita, fn (array $u) => $u !== $zero);
+        // Coda 681 (1.12.0-beta.14): le unità di un piano dell'esercizio senza il dettaglio del riparto che non si ricostruisce, con il perché. La parte
+        // personale delle sue quote non si sa: il controllo delle spese personali le dice non calcolabili, invece di un «torna» o «non torna» a caso.
+        $personaliNonCalcolabili = [];
+        foreach ($nonRicostruite as $perUnita) {
+            foreach ($perUnita as $iid => $motivo) {
+                $personaliNonCalcolabili[(int) $iid][$motivo] = $motivo;
+            }
+        }
+        $personaliNonCalcolabili = array_map('array_values', $personaliNonCalcolabili);
         $nonRegistrati = $this->passaggiNonRegistrati($esercizio);
         foreach ($nonRicostruite as $g => $perUnita) {
             foreach ($perUnita as $iid => $motivo) {
@@ -709,6 +722,7 @@ class ConsuntivoPerPersona
         $risultato['da_altre_gestioni'] = $daAltre;
         $risultato['alla'] = $alla;
         $risultato['personali_per_unita'] = $personaliPerUnita;
+        $risultato['personali_non_calcolabili'] = $personaliNonCalcolabili;
         $risultato['passaggi_non_registrati'] = $nonRegistrati;
 
         return $risultato;

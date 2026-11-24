@@ -131,12 +131,13 @@ it('parte negativa (l\'entrata supera la spesa nei giorni di Elsa): le righe rov
 it('gestione su due esercizi: la riga legata scritta sull\'esercizio aperto entra nel piano dell\'altro esercizio della stessa gestione', function () {
     // La generazione prende i saldi della gestione senza guardare l'esercizio (`GenerateSaldiAction`): la riga legata non fa eccezione.
     $s = sl53Scenario($this);
-    $dopo = Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2027', 'data_inizio' => '2027-01-01', 'data_fine' => '2027-12-31', 'stato' => 'aperto']);
-    legaAEsercizio($dopo, $s['g']->id);
     expect(sl53Errori(sl53Posta($this, $s, 'Elsa', 6016, (int) $s['vendita']->id)))->toBe([]);
     $riga = Saldo::where('anagrafica_id', $s['persone']['Elsa']->id)->where('saldo_iniziale', 6016)->firstOrFail();
     expect((int) $riga->esercizio_id)->toBe((int) $s['e']->id)
         ->and($riga->passaggio_id === null ? null : (int) $riga->passaggio_id)->toBe((int) $s['vendita']->id);
+    // Il 2027 si apre dopo: con due esercizi aperti la pagina dei saldi scrive nel più recente (Coda 646, decisione 707 (4)), e la riga starebbe nel 2027.
+    $dopo = Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2027', 'data_inizio' => '2027-01-01', 'data_fine' => '2027-12-31', 'stato' => 'aperto']);
+    legaAEsercizio($dopo, $s['g']->id);
 
     $piano = PianoRate::create(['gestione_id' => $s['g']->id, 'condominio_id' => $s['c']->id, 'esercizio_id' => $dopo->id, 'nome' => 'Preventivo 2027', 'stato' => 'bozza',
         'tipo' => 'ordinario', 'numero_rate' => 2, 'giorno_scadenza' => 5, 'data_prima_scadenza' => '2027-01-05', 'metodo_distribuzione' => 'prima_rata', 'applica_saldi' => true]);

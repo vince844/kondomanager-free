@@ -19,7 +19,7 @@ class SpostaDeliberaRequest extends RichiestaDelleAssemblee
             'riunione_id' => ['nullable', 'integer', 'required_without:giorno'],
             'giorno' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:' . DateHelper::oggiUtente(), 'required_without:riunione_id'],
             'numero_verbale' => ['nullable', 'string', 'max:50'],
-            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valori())],
+            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valoriDeiPunti())],
             'palazzina_id' => ['nullable', 'integer'],
             'scala_id' => ['nullable', 'integer'],
         ];

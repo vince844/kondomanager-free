@@ -233,8 +233,10 @@ final class LetturaDellaSala
         $sedute = $a->sedute()->get();
         $votazioni = VotazioneDelPunto::query()->whereIn('seduta_id', $sedute->pluck('id'))->with(['voti', 'delibera'])->orderBy('id')->get()->groupBy('punto_id');
 
-        $a->loadMissing(['condominio', 'scala', 'palazzina']);
+        $a->loadMissing(['condominio', 'scala', 'palazzina', 'tabella']);
         $tutteLeVotazioni = $votazioni->flatten(1);
+        // L'assemblea dei condòmini di un gruppo (Coda 734): il gruppo nell'intestazione del verbale e nella frase dopo la costituzione.
+        $gruppo = \App\Services\Assemblee\UnitaDelPunto::gruppoDellAssemblea($a) !== null ? (string) ($a->tabella?->nome ?? '') : null;
 
         return [
             'assemblea_id' => (int) $a->id,
@@ -244,8 +246,10 @@ final class LetturaDellaSala
                 'ambito' => $a->ambito?->value, 'perimetro' => match ($a->ambito?->value) {
                     'scala' => $a->scala?->name !== null ? 'scala ' . $a->scala->name : null,
                     'palazzina' => $a->palazzina?->name !== null ? 'palazzina ' . $a->palazzina->name : null,
+                    'gruppo' => $gruppo !== null ? 'limitata alle unità della tabella «' . $gruppo . '»' : null,
                     default => null,
                 },
+                'gruppo' => $gruppo,
                 'condominio' => (string) $a->condominio?->nome,
                 'riconvocata' => \App\Models\Assemblee\Assemblea::query()->where('riconvocata_da_id', $a->id)->orderBy('id')->first()?->only(['id', 'data']),
             ],

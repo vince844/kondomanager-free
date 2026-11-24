@@ -102,7 +102,7 @@ final class PresenzeDellaSala
         $base = $g->baseDaControllare();
         if ($aperta === null) {
             if ($base !== null && $base !== $versione && $versione === 0) {
-                throw new DueVersioni($nome . ': esce alle ' . $g->ora(), $nome . ': non è mai entrato in questa seduta', 'presenza:' . $seduta->id . ':' . $chiave);
+                throw new DueVersioni($nome . ': esce alle ' . $g->ora(), $nome . ': mai in sala in questa seduta', 'presenza:' . $seduta->id . ':' . $chiave);
             }
 
             return ['versione' => $versione, 'messaggio' => 'Era già così: niente da cambiare.'];
@@ -181,7 +181,7 @@ final class PresenzeDellaSala
     {
         $seduta = StatiDellaSala::sedutaApertaDelGesto($g);
         [$chiave, $anagraficaId, $nome] = $this->chi($g, $seduta);
-        $aperta = self::aperta($seduta->id, $chiave) ?? throw ValidationException::withMessages(['gesto' => $nome . ' non è presente: prima segnalo entrato.']);
+        $aperta = self::aperta($seduta->id, $chiave) ?? throw ValidationException::withMessages(['gesto' => $nome . ' non è presente: prima segna l\'entrata.']);
         $unita = $this->rappresenta($g, $seduta, $anagraficaId);
         $nomi = array_map(fn ($u) => (string) ($seduta->fotografia['unita'][$u]['nome'] ?? $u), $unita);
 
@@ -383,19 +383,19 @@ final class PresenzeDellaSala
         return PresenzaInSala::query()->where('seduta_id', $sedutaId)->where('chiave', $chiave)->whereNull('uscita_il')->latest('id')->first();
     }
 
-    /** Lo stato di adesso di una persona, per le due versioni: «in sala dalle 18:45», «uscito alle 19:20». */
+    /** Lo stato di adesso di una persona, per le due versioni, nella forma senza genere (rilievo C59): «in sala dalle 18:45», «fuori dalle 19:20». */
     private static function statoDi(int $sedutaId, string $chiave): string
     {
         $ultima = PresenzaInSala::query()->where('seduta_id', $sedutaId)->where('chiave', $chiave)->latest('id')->first();
         $fuso = (string) config('app.user_timezone', 'Europe/Rome');
         if ($ultima === null) {
-            return 'non è entrato';
+            return 'mai in sala';
         }
         if ($ultima->uscita_il === null) {
             return ($ultima->come === ComePresente::IN_SALA ? 'in sala' : 'in collegamento') . ' dalle ' . $ultima->entrata_il->copy()->setTimezone($fuso)->format('H:i');
         }
 
-        return 'uscito alle ' . $ultima->uscita_il->copy()->setTimezone($fuso)->format('H:i');
+        return 'fuori dalle ' . $ultima->uscita_il->copy()->setTimezone($fuso)->format('H:i');
     }
 
     /**
@@ -432,7 +432,7 @@ final class PresenzeDellaSala
     }
 
     /**
-     * «, con Russo Anna, contitolare, presente senza voto» all'entrata, «, con Russo Anna» all'uscita; niente senza nessuno.
+     * «, con Russo Anna, in comproprietà, presente senza voto» all'entrata (decisione 673 (5)), «, con Russo Anna» all'uscita; niente senza nessuno.
      *
      * @param list<array{anagrafica_id: int, nome: string}> $insieme
      */
@@ -443,7 +443,7 @@ final class PresenzeDellaSala
         }
         $nomi = TesteDellaSala::elenco(array_map(fn ($x) => (string) $x['nome'], $insieme));
 
-        return ', con ' . $nomi . ($entrata ? (count($insieme) === 1 ? ', contitolare, presente senza voto' : ', contitolari, presenti senza voto') : '');
+        return ', con ' . $nomi . ($entrata ? ', in comproprietà, ' . (count($insieme) === 1 ? 'presente senza voto' : 'presenti senza voto') : '');
     }
 
     /**

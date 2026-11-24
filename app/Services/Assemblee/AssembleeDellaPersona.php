@@ -26,7 +26,7 @@ use Illuminate\Support\Carbon;
  * assemblea in cui è convocata:
  *
  * - la convocazione: il mezzo e com'è andata la consegna («Per PEC · Consegnata il 05/12/2026»);
- * - in sala: di persona, in collegamento, per delega a chi, o assente;
+ * - in sala: di persona, in collegamento, per delega a chi, presente senza voto (entrata «insieme» a chi rappresenta l'unità), o assente;
  * - i voti, dal verbale registrato: i punti a favore in una riga, i contrari e le astensioni con la dichiarazione a verbale, se c'è;
  * - «Può impugnare fino al …» dove ha votato contro, si è astenuta o era assente (dalla trasmissione del verbale); dove ha votato a favore no;
  * - le delibere sulle sue cose: il suo accordo di rientro autorizzato.
@@ -124,11 +124,18 @@ final class AssembleeDellaPersona
         };
     }
 
-    /** Una persona in un'assemblea. @return array<string, mixed> */
+    /**
+     * Una persona in un'assemblea. I voti si leggono **per votazione** (Coda 750 B2): il rendiconto e il riparto votati a parte sono due righe quando il voto
+     * è diverso («Punto 1, il rendiconto · Contrario», e il riparto fra i favorevoli: «Favorevole ai punti 2 e 3 e al riparto del punto 1»); con lo stesso voto
+     * il punto resta una riga sola.
+     *
+     * @return array<string, mixed>
+     */
     private static function inUnAssemblea(Assemblea $a, Anagrafica $persona, ?ConvocatoDellAssemblea $convocato): array
     {
         $giorno = fn ($d) => $d === null ? null : Carbon::parse($d)->format('d/m/Y');
         $verbali = [];
+        /** @var array<int, array{punto: int, oggetto: ?string, voto: string}> $voti votazione => il voto */
         $voti = [];
         $punti = [];
         $termini = [];
@@ -147,11 +154,15 @@ final class AssembleeDellaPersona
             if ($suo === null) {
                 continue;
             }
-            foreach ((array) $suo['voti'] as $numero => $voto) {
-                $voti[(int) $numero] = (string) $voto;
+            // Le votazioni per cui riceve il verbale come assente (o per cui è stata tolta dalla lista): «Assente», anche se aggiunta a mano fra chi c'era.
+            $assente = collect((array) $suo['termini'])->whereIn('perche', ['assente', 'tolto'])->flatMap(fn ($t) => (array) ($t['voci'] ?? []))
+                ->keyBy(fn ($x) => (int) $x['votazione_id']);
+            foreach ((array) ($suo['voti_per_votazione'] ?? []) as $x) {
+                $voti[(int) $x['votazione_id']] = ['punto' => (int) $x['numero'], 'oggetto' => $x['oggetto'] ?? null,
+                    'voto' => $assente->has((int) $x['votazione_id']) || $x['voto'] === null ? 'assente' : (string) $x['voto']];
             }
-            foreach ((array) $suo['punti_assente'] as $numero) {
-                $voti[(int) $numero] = 'assente';
+            foreach ($assente as $id => $x) {
+                $voti[(int) $id] = ['punto' => (int) $x['numero'], 'oggetto' => $x['oggetto'] ?? null, 'voto' => 'assente'];
             }
             foreach ((array) $suo['termini'] as $t) {
                 if (($t['fino_al'] ?? null) !== null) {
@@ -161,24 +172,41 @@ final class AssembleeDellaPersona
                 }
             }
         }
-        ksort($voti);
+        uasort($voti, fn ($x, $y) => [$x['punto'], $x['oggetto'] === 'riparto' ? 1 : 0] <=> [$y['punto'], $y['oggetto'] === 'riparto' ? 1 : 0]);
         $dichiarazioni = DichiarazioneAVerbale::query()->where('anagrafica_id', $persona->id)
             ->whereIn('punto_id', array_column($punti, 'id'))->orderBy('id')->get()->groupBy(fn ($x) => (int) $x->punto_id);
-        $favorevoli = array_keys(array_filter($voti, fn ($v) => $v === 'favorevole'));
+        $favorevoli = [];
+        $favorevoliInParte = [];
         $altri = [];
-        foreach ($voti as $numero => $voto) {
-            if ($voto === 'favorevole') {
-                continue;
-            }
+        foreach (collect($voti)->groupBy('punto') as $numero => $righe) {
+            $numero = (int) $numero;
             $punto = $punti[$numero] ?? null;
-            $altri[] = ['punto' => $numero, 'voto' => match ($voto) {
-                'contrario' => 'Contrario', 'astenuto' => 'Astenuto', 'assente' => 'Assente', 'non_votato' => 'Non ha votato', default => ucfirst($voto),
-            }, 'testo' => $punto['testo'] ?? null,
-                'dichiarazioni' => $punto === null ? [] : ($dichiarazioni->get($punto['id']) ?? collect())->pluck('testo')->map(fn ($t) => (string) $t)->values()->all()];
+            // Lo stesso voto in tutte e due le votazioni del punto: una riga sola, per il punto intero.
+            $righe = $righe->pluck('voto')->unique()->count() === 1 ? collect([['punto' => $numero, 'oggetto' => null, 'voto' => $righe->first()['voto']]]) : $righe->values();
+            $conLaDichiarazione = false;
+            foreach ($righe as $r) {
+                if ($r['voto'] === 'favorevole') {
+                    if ($r['oggetto'] === null) {
+                        $favorevoli[] = $numero;
+                    } else {
+                        $favorevoliInParte[] = ['punto' => $numero, 'oggetto' => $r['oggetto']];
+                    }
+                    continue;
+                }
+                $altri[] = ['punto' => $numero, 'oggetto' => $r['oggetto'], 'voto' => match ($r['voto']) {
+                    'contrario' => 'Contrario', 'astenuto' => 'Astenuto', 'assente' => 'Assente', 'non_votato' => 'Non ha votato', default => ucfirst($r['voto']),
+                }, 'testo' => $punto['testo'] ?? null,
+                    // La dichiarazione è del punto: una volta, sulla prima riga.
+                    'dichiarazioni' => $punto === null || $conLaDichiarazione ? [] : ($dichiarazioni->get($punto['id']) ?? collect())->pluck('testo')->map(fn ($t) => (string) $t)->values()->all()];
+                $conLaDichiarazione = true;
+            }
         }
         $delega = DelegaDellAssemblea::query()->where('assemblea_id', $a->id)->where('delegante_anagrafica_id', $persona->id)
             ->where('stato', StatoDelega::VALIDA->value)->orderByDesc('id')->first();
         $presenza = PresenzaInSala::query()->whereIn('seduta_id', $a->sedute()->select('id'))->where('anagrafica_id', $persona->id)->orderBy('entrata_il')->first();
+        // Il comproprietario entrato «insieme» a chi rappresenta l'unità non ha una riga sua: c'era, senza voto (Coda 750 B3).
+        $insieme = $presenza !== null ? null : PresenzaInSala::query()->whereIn('seduta_id', $a->sedute()->select('id'))->whereNotNull('insieme')->orderBy('entrata_il')
+            ->get()->first(fn (PresenzaInSala $p) => in_array((int) $persona->id, array_map(fn ($x) => (int) ($x['anagrafica_id'] ?? 0), (array) $p->insieme), true));
         $tenuta = $a->sedute()->whereNotNull('aperta_il')->exists();
         $invio = $convocato?->invio_id === null ? null : RegistroInvio::query()->find($convocato->invio_id);
 
@@ -194,11 +222,13 @@ final class AssembleeDellaPersona
             'in_sala' => match (true) {
                 $delega !== null => 'Per delega a ' . $delega->delegato_nome,
                 $presenza !== null => ($presenza->come?->parola() ?? 'In sala') === 'In sala' ? 'Presente di persona' : (string) $presenza->come?->parola(),
+                $insieme !== null => (($insieme->come?->parola() ?? 'In sala') === 'In sala' ? 'Presente' : (string) $insieme->come?->parola()) . ', senza voto',
                 $tenuta => 'Assente',
                 default => null,
             },
             'per_delega_da' => $delega?->delegato_nome,
             'favorevole_ai_punti' => $favorevoli,
+            'favorevole_alle_parti' => $favorevoliInParte,
             'altri_voti' => $altri,
             'puo_impugnare_fino_al' => $termini === [] ? null : $giorno(max($termini)),
             'impugnare_dopo_la_consegna' => $senzaData,

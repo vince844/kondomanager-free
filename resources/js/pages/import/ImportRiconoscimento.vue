@@ -105,6 +105,12 @@ function escludi(file: FileRiconosciuto) {
 }
 
 const utilizzabili = () => props.file.filter((f) => f.tipo && f.importabile).length;
+
+// Coda 759 (1), 1.12.0-beta.14: «Puoi proseguire lo stesso» vale solo per i file che non fermano niente. Quello che ferma — l'Elenco
+// unità, quando ci sono i saldi del riparto — sta sopra, in rosso; gli altri sotto, «quando vuoi, anche dopo» (la bozza approvata,
+// scena 1). Prima la card diceva le due cose insieme, e la seconda era falsa per il primo file.
+const bloccanti = computed(() => props.mancanti.filter((m) => m.bloccante));
+const facoltativi = computed(() => props.mancanti.filter((m) => !m.bloccante));
 </script>
 
 <template>
@@ -224,19 +230,27 @@ const utilizzabili = () => props.file.filter((f) => f.tipo && f.importabile).len
         <CardHeader>
           <CardTitle class="flex items-center gap-2 text-base">
             <AlertTriangle class="h-4 w-4" />
-            Cosa manca, se vuoi saperlo prima
+            {{ bloccanti.length ? 'Mancano dei file' : 'Cosa manca, se vuoi saperlo prima' }}
           </CardTitle>
-          <CardDescription>
+          <CardDescription v-if="!bloccanti.length">
             Puoi proseguire lo stesso e aggiungere questi file quando vuoi.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ul class="space-y-1 text-sm">
-            <li v-for="m in props.mancanti" :key="m.cosa">
+        <CardContent class="space-y-3">
+          <ul v-if="bloccanti.length" class="space-y-1 text-sm" data-mancanti="bloccanti">
+            <li v-for="m in bloccanti" :key="m.cosa">
               Manca <strong>{{ m.cosa }}</strong>: serve per {{ m.serve_per }}.
-              <Badge v-if="m.bloccante" variant="destructive" class="ml-1">senza, non si prosegue</Badge>
+              <Badge variant="destructive" class="ml-1">senza, persone e saldi non entrano</Badge>
             </li>
           </ul>
+          <div v-if="facoltativi.length" data-mancanti="facoltativi">
+            <p v-if="bloccanti.length" class="mb-1 text-sm text-muted-foreground">Questi puoi aggiungerli quando vuoi, anche dopo:</p>
+            <ul class="space-y-1 text-sm">
+              <li v-for="m in facoltativi" :key="m.cosa">
+                Manca <strong>{{ m.cosa }}</strong>: serve per {{ m.serve_per }}.
+              </li>
+            </ul>
+          </div>
         </CardContent>
       </Card>
 

@@ -129,3 +129,44 @@ test('Coda 313 — lo storno di una fattura di un altro condominio, dall\'indiri
         ->and(DB::table('scritture_contabili')->count())->toBe($scritture)
         ->and((bool) $fatturaB->fresh()->is_stornata)->toBeFalse();
 });
+
+test('Coda 432 — il versamento di una delega sul conto della banca di un altro condominio è rifiutato e non scrive niente; sul conto del suo condominio passa', function () {
+    $a = b59perCtx();
+    $b = b59perCtx();
+    $delegaA = b59perDelega($this, $a);
+    $scritture = DB::table('scritture_contabili')->count();
+    $righe = DB::table('righe_scritture')->count();
+
+    // La pagina manda solo le banche del condominio; una richiesta scritta a mano può mandare il conto di B.
+    $this->actingAs($this->admin)
+        ->from(route('admin.gestionale.f24.show', [$a[0]->id, $delegaA->id]))
+        ->post(route('admin.gestionale.f24.versa', [$a[0]->id, $delegaA->id]), [
+            'data_versamento' => now()->toDateString(),
+            'conto_corrente_id' => $b[4],
+        ])
+        ->assertSessionHasErrors('conto_corrente_id');
+
+    expect(DB::table('scritture_contabili')->count())->toBe($scritture)
+        ->and(DB::table('righe_scritture')->count())->toBe($righe)
+        ->and($delegaA->fresh()->stato)->toBe(StatoDelegaF24::BOZZA);
+
+    // Un conto del condominio che non è il conto di una sua cassa (qui il 2202) non è una banca da cui versare.
+    $erario = DB::table('conti_contabili')->where('condominio_id', $a[0]->id)->where('ruolo', 'debiti_erario_ritenute')->value('id');
+    $this->actingAs($this->admin)
+        ->post(route('admin.gestionale.f24.versa', [$a[0]->id, $delegaA->id]), [
+            'data_versamento' => now()->toDateString(),
+            'conto_corrente_id' => $erario,
+        ])
+        ->assertSessionHasErrors('conto_corrente_id');
+    expect($delegaA->fresh()->stato)->toBe(StatoDelegaF24::BOZZA);
+
+    // La controprova: la banca di A.
+    $this->actingAs($this->admin)
+        ->post(route('admin.gestionale.f24.versa', [$a[0]->id, $delegaA->id]), [
+            'data_versamento' => now()->toDateString(),
+            'conto_corrente_id' => $a[4],
+        ])
+        ->assertSessionHasNoErrors();
+    expect($delegaA->fresh()->stato)->toBe(StatoDelegaF24::VERSATA);
+});
+

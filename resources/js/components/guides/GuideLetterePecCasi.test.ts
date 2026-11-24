@@ -9,7 +9,7 @@
  * - Le rate scadute: una PEC già partita oggi non parte di nuovo; dopo un collegamento caduto «Manda le altre» manda chi non è stato provato; le PEC non
  *   partite si rimandano in blocco o si stampano; l'avviso di mancata consegna; «PEC non comunicata dalla persona».
  * - L'estratto conto: l'avviso di mancata consegna sulla riga, «Stampala per la posta», la PEC ferma in partenza, la prova della consegna scritta a mano.
- * - La convocazione: «da ristampare» per ogni cambio dell'avviso, la frase anche dopo il salvataggio, «Non più convocato», «dalla persona».
+ * - La convocazione: «da ristampare» per ogni cambio dell'avviso, la frase anche dopo il salvataggio, «Non più fra i convocati», «dalla persona».
  * - Le fatture: «Pagata in parte per l'urgenza»; e nessuna scritta sotto i 12 pixel.
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -61,9 +61,9 @@ describe('l\'estratto conto', () => {
 describe('la convocazione', () => {
     const file = 'resources/js/components/guides/ConvocazioneGuide.vue';
 
-    test('«da ristampare» per ogni cambio dell\'avviso, la frase anche dopo il salvataggio, «Non più convocato», «dalla persona»', () => {
+    test('«da ristampare» per ogni cambio dell\'avviso, la frase anche dopo il salvataggio, «Non più fra i convocati», «dalla persona»', () => {
         const t = testoDi(leggi(file));
-        for (const pezzo of ['la piattaforma, il tipo, il perimetro', 'anche nel messaggio dopo «Salva le date»', 'Non più convocato',
+        for (const pezzo of ['la piattaforma, il tipo, il perimetro', 'anche nel messaggio dopo «Salva le date»', 'Non più fra i convocati',
             'PEC comunicata dalla persona il', 'la ristampa ha i dati di oggi']) {
             expect(t, pezzo).toContain(pezzo);
         }

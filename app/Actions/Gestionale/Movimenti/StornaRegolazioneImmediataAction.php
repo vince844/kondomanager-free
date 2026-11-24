@@ -5,6 +5,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Gestionale\RegolazioneImmediataNonAmmessaException;
 use App\Models\Condominio;
@@ -65,9 +66,8 @@ class StornaRegolazioneImmediataAction
             $esercizioTarget = $esercizioOriginale;
 
             if (! $esercizioOriginale || $esercizioOriginale->stato === 'chiuso') {
-                $esercizioTarget = Esercizio::where('condominio_id', $condominio->id)
-                    ->where('stato', 'aperto')
-                    ->first();
+                // L'esercizio aperto: con due aperti il più recente (Coda 646, decisione 707 (4), `HasEsercizio`), non il primo che il database restituisce.
+                $esercizioTarget = Esercizio::apertoPiuRecente((int) $condominio->id);
 
                 if (! $esercizioTarget) {
                     throw new RegolazioneImmediataNonAmmessaException(
@@ -91,8 +91,8 @@ class StornaRegolazioneImmediataAction
                 'esercizio_id' => $esercizioTarget->id,
                 'gestione_id' => $scrittura->gestione_id,
                 'scrittura_padre_id' => $scrittura->id,
-                'data_registrazione' => now()->toDateString(),
-                'data_competenza' => now()->toDateString(),
+                'data_registrazione' => DateHelper::oggiUtente(),
+                'data_competenza' => DateHelper::oggiUtente(),
                 'causale' => mb_substr($causale, 0, 255),
                 'tipo_movimento' => TipoMovimentoContabile::STORNO_REGOLAZIONE_IMMEDIATA,
                 'stato' => 'registrata',

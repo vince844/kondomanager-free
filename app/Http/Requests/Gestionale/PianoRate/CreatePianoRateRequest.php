@@ -174,7 +174,51 @@ class CreatePianoRateRequest extends FormRequest
 
             $this->guardiaSpeseNegative($validator);
             $this->guardiaFattureRettificate($validator);
+            $this->guardiaImportoDelleFatture($validator);
         });
+    }
+
+    /**
+     * Coda 166 (1.12.0-beta.14): l'importo di una fattura **senza note collegate** è più di zero e al massimo quanto ne resta da mettere
+     * a rate. Il numero è quello del carrello (`CarrelloDelloStraordinario::righe()`: il documento, meno quello che altri piani in bozza
+     * o approvati ne chiedono già), lo stesso che la pagina propone accanto alla fattura. Prima l'importo era libero: una richiesta
+     * fatta a mano metteva a rate € 5.000,00 di una fattura da € 3.000,00, e lo zero voleva dire «tutto» per il motore e «niente» per
+     * il carrello, che la offriva di nuovo intera a un secondo piano.
+     *
+     * Le fatture con una nota collegata le guarda `guardiaFattureRettificate()` (il tetto sul netto, e lo zero che vuol dire «il
+     * netto»); una fattura che il carrello non offre la rifiutano le regole del campo (`fuoriDalloStraordinario`, la gestione):
+     * qui si salta.
+     */
+    private function guardiaImportoDelleFatture($validator): void
+    {
+        $fatture = $this->input('fatture_config', []);
+        $gestioneId = $this->input('gestione_id');
+        if (! is_array($fatture) || $fatture === [] || ! is_numeric($gestioneId)) {
+            return;
+        }
+
+        $carrello = null;
+        foreach ($fatture as $i => $conf) {
+            if (! is_array($conf) || empty($conf['id']) || $validator->errors()->has("fatture_config.{$i}.id") || $validator->errors()->has("fatture_config.{$i}.importo")) {
+                continue;
+            }
+            $f = \App\Models\Gestionale\FatturaPassiva::where('condominio_id', $this->idDelCondominio())->find($conf['id']);
+            if ($f === null || $f->nettoNoteCollegate() !== null) {
+                continue;
+            }
+            $carrello ??= collect(app(\App\Services\Gestionale\CarrelloDelloStraordinario::class)->righe($this->idDelCondominio(), (int) $gestioneId, null))->keyBy('id');
+            $riga = $carrello->get((int) $f->id);
+            if ($riga === null) {
+                continue;
+            }
+
+            $importo = \App\Helpers\MoneyHelper::toCents($conf['importo'] ?? '');
+            if ($importo <= 0) {
+                $validator->errors()->add("fatture_config.{$i}.importo", ParoleDelPiano::importoFatturaAZero((string) $f->numero_documento, $riga['residuo']));
+            } elseif ($importo > $riga['residuo']) {
+                $validator->errors()->add("fatture_config.{$i}.importo", ParoleDelPiano::importoFatturaOltre((string) $f->numero_documento, $riga['netto'], $riga['gia'], $riga['residuo']));
+            }
+        }
     }
 
     /**
@@ -226,7 +270,7 @@ class CreatePianoRateRequest extends FormRequest
      * d'ingresso della stessa regola che ferma il ricalcolo: meglio dirlo qui, sull'indice della fattura, che trovarlo
      * alla generazione. Importo vuoto o zero vuol dire «tutto»: ciò che il motore ripartisce, mai oltre il netto.
      *
-     * Le fatture senza note collegate restano come prima: il tetto generale dell'importo è la Coda 166.
+     * Le fatture senza note collegate le guarda `guardiaImportoDelleFatture()` (Coda 166).
      */
     private function guardiaFattureRettificate($validator): void
     {
@@ -423,7 +467,10 @@ class CreatePianoRateRequest extends FormRequest
             // Configurazione personalizzata dei saldi (Riparto manuale Art. 63)
             'saldi_config'                             => ['nullable', 'array', $this->ripartoManualeQuadra()],
             'saldi_config.*.saldo_id'                  => ['required', 'integer', Rule::exists('saldi', 'id')->where('condominio_id', $condominioId)],
-            'saldi_config.*.ripartizioni'              => ['required', 'array'],
+            // Issue 58 (Coda 174, decisione 674 (2)): un saldo dell'unità che tocca un passaggio si dà ai titolari di un altro giorno
+            // (`alla_data`) o si divide a mano (`ripartizioni`); senza nessuno dei due segue la regola, e non si scrive.
+            'saldi_config.*.ripartizioni'              => ['required_without:saldi_config.*.alla_data', 'array'],
+            'saldi_config.*.alla_data'                 => ['nullable', 'date_format:Y-m-d', $this->giornoOfferto()],
             // Qualunque persona del condominio, come il modulo offre oggi (decisione 44): resta possibile un accordo fra le parti.
             'saldi_config.*.ripartizioni.*.anagrafica_id' => ['required', 'integer', Rule::exists('anagrafiche', 'id')->where(fn ($q) => $q
                 // La stessa regola della persona del condominio negli incassi (`StoreIncassoRateRequest::personaDelCondominio()`):
@@ -433,6 +480,49 @@ class CreatePianoRateRequest extends FormRequest
                     ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')->where('immobili.condominio_id', $condominioId)))],
             'saldi_config.*.ripartizioni.*.importo'    => ['required', 'string'],
         ];
+    }
+
+    /**
+     * Issue 58 (Coda 174, decisione 674 (2)): il giorno dei titolari scelto per un saldo dell'unità è uno di quelli che la finestra
+     * «Riparto saldi iniziali» offre per quel saldo (`GenerateSaldiAction::giorniOfferti()`, le stesse funzioni dell'anteprima), non
+     * un giorno qualunque: un giorno senza passaggi intorno darebbe il pregresso a chi non c'entra. Un saldo di un altro condominio
+     * lo rifiuta già `exists`, e qui non si legge.
+     */
+    private function giornoOfferto(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail): void {
+            $indice = (int) explode('.', $attribute)[1];
+            $saldo = \App\Models\Saldo::where('condominio_id', $this->idDelCondominio())->find($this->input("saldi_config.{$indice}.saldo_id"));
+            if ($saldo === null || ! is_string($value)) {
+                return;
+            }
+            if (! in_array($value, app(\App\Actions\PianoRate\GenerateSaldiAction::class)->giorniOfferti($saldo), true)) {
+                $fail(ParoleDelPiano::giornoNonOfferto((string) (\App\Models\Immobile::whereKey($saldo->immobile_id)->value('nome') ?? '')));
+            }
+        };
+    }
+
+    /**
+     * I dati validati, con le persone della scelta accanto al giorno (rilievo 2 dello scettico della tappa 1 della 1.12.0-beta.14): per
+     * ogni saldo dell'unità con `alla_data`, `titolari` sono gli `anagrafica_id` della scelta che la finestra offre per quel giorno, letti
+     * dal server con le stesse funzioni dell'anteprima (`GenerateSaldiAction::titolariDellaScelta()`), mai dal browser (il campo non ha
+     * una regola, e `validated()` lo lascerebbe fuori). Il piano li conserva in `saldi_config`: se il passaggio di quel giorno viene
+     * annullato e registrato di nuovo con un'altra persona, il ricalcolo non dà il pregresso a chi nessuno ha scelto.
+     */
+    public function validated($key = null, $default = null)
+    {
+        $dati = parent::validated();
+        foreach ((array) ($dati['saldi_config'] ?? []) as $i => $conf) {
+            if (! is_array($conf) || empty($conf['alla_data']) || ! empty($conf['ripartizioni'])) {
+                continue;
+            }
+            $saldo = \App\Models\Saldo::where('condominio_id', $this->idDelCondominio())->find($conf['saldo_id'] ?? null);
+            if ($saldo !== null) {
+                $dati['saldi_config'][$i]['titolari'] = app(\App\Actions\PianoRate\GenerateSaldiAction::class)->titolariDellaScelta($saldo, (string) $conf['alla_data']);
+            }
+        }
+
+        return data_get($dati, $key, $default);
     }
 
     /** L'id del condominio dell'indirizzo (decisione 44), letto una volta per le regole e per le chiusure. */

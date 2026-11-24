@@ -294,6 +294,86 @@ export interface VoceDaSpostare {
   }[];
 }
 
+/**
+ * Tappa 7 della 1.12.0-beta.14 (decisione 705): più persone che escono in un passaggio solo. La risposta di `POST …/passaggi/anteprima` con `righe_uscenti`
+ * (§1.9 di `docs/riferimenti/beta14_1_12_lavori/tappa7_progetto.md`): il server registra in prova i passaggi uno dopo l'altro e li toglie, e manda le cifre che si
+ * scriveranno. Una parte per persona che esce, con il suo pannello intero; chi resta obbligato e le teste una volta sola; il cancello raggruppato per persona.
+ */
+export interface AnteprimaGruppoParte {
+  riga_id: number;
+  anagrafica_id: number;
+  nome: string;
+  /** La quota della riga che esce, in percentuale. */
+  quota: number | string;
+  pertinenze: string[];
+  anteprima: AnteprimaPassaggioDati;
+}
+
+export interface AnteprimaGruppoDati {
+  insieme: true;
+  /** L'impronta dei numeri del pannello: la registrazione la rimanda, e il server si ferma se nel frattempo è cambiata. */
+  impronta: string;
+  riferimento: AnteprimaPassaggioDati['riferimento'];
+  anagrafica: AnteprimaPassaggioDati['anagrafica'];
+  parti: AnteprimaGruppoParte[];
+  /** Il riquadro «In tutto»: quello che arriva a chi entra. `frase` è la frase intera, scritta dal server. */
+  totale: {
+    quota_che_esce: number | string;
+    conguaglio_entrante: number;
+    conguaglio_entrante_formattato: string;
+    bozze: number;
+    frase: string;
+  };
+  obbligati: AnteprimaPassaggioDati['obbligati'];
+  invarianti: AnteprimaPassaggioDati['invarianti'];
+  /** Come oggi, quella del primo passaggio. */
+  ordinaria: OrdinariaDopoAtto;
+  cancello: {
+    richiesto: boolean;
+    gruppi: { nome: string; motivi: string[] }[];
+    informazioni: string[];
+    avvisi: string[];
+  };
+}
+
+/** La risposta dell'anteprima: una persona che esce, o un insieme. */
+export type AnteprimaRisposta = AnteprimaPassaggioDati | AnteprimaGruppoDati;
+
+export function eAnteprimaGruppo(d: AnteprimaRisposta | null | undefined): d is AnteprimaGruppoDati {
+  return !!d && (d as AnteprimaGruppoDati).insieme === true;
+}
+
+/** Le quote (percentuali) sommate al centesimo di punto, in centesimi di punto interi: 33,34 + 33,33 = 6667. */
+export function sommaQuoteCentesimi(quote: (number | string)[]): number {
+  return quote.reduce<number>((tot, q) => tot + Math.round(Number(q) * 100), 0);
+}
+
+/** La somma come la vuole il server (`quota`, con il punto): «100», «66.67». */
+export function sommaQuoteComeStringa(quote: (number | string)[]): string {
+  return String(sommaQuoteCentesimi(quote) / 100);
+}
+
+const RUOLO_COME_DIRITTO: Record<string, string> = {
+  proprietario: 'la proprietà piena',
+  nuda_proprietario: 'la nuda proprietà',
+  usufruttuario: "l'usufrutto",
+};
+
+/** «due», «tre», … fino a dieci, poi la cifra: come `AnteprimaPassaggioRequest::quanti()`. */
+const QUANTI: Record<number, string> = { 2: 'due', 3: 'tre', 4: 'quattro', 5: 'cinque', 6: 'sei', 7: 'sette', 8: 'otto', 9: 'nove', 10: 'dieci' };
+
+/**
+ * Chi esce insieme ha lo stesso ruolo (il server lo ripete). Con ruoli diversi, la frase con la strada, la stessa del server
+ * (`AnteprimaPassaggioRequest::controllaLInsieme`): «Chi esce insieme deve avere lo stesso ruolo: Cecilia Angeli ha la proprietà piena, Marta Acciaioli la
+ * nuda proprietà. Registra due passaggi, uno per persona.» Senza il genere. `null` se i ruoli sono lo stesso.
+ */
+export function erroreRuoliDiversi(righe: { nome: string; tipologia: string }[]): string | null {
+  if (righe.length < 2 || righe.every((r) => r.tipologia === righe[0].tipologia)) return null;
+  const elenco = righe.map((r, i) => `${r.nome} ${i === 0 ? 'ha ' : ''}${RUOLO_COME_DIRITTO[r.tipologia] ?? r.tipologia}`).join(', ');
+
+  return `Chi esce insieme deve avere lo stesso ruolo: ${elenco}. Registra ${QUANTI[righe.length] ?? String(righe.length)} passaggi, uno per persona.`;
+}
+
 /** Una riga dello storico «Chi ha avuto questa unità» (`StoricoTitolarita`). */
 export interface RigaStorico {
   id: number;
@@ -397,6 +477,30 @@ export interface PassaggioRegistrato {
    * (`effetti`, solo ciò che il passaggio ha toccato) e che cosa resta da fare (`avvisi`).
    */
   annullabile: { si: boolean; motivo: string | null; avvisi: string[]; effetti: string[] };
+  /**
+   * Tappa 7 (decisione 705): se il passaggio è uno di un insieme registrato insieme, la scheda è una sola, con le persone che escono; i campi di sopra restano
+   * sul primo per chi non conosce l'insieme. `null` (o assente) per un passaggio da solo.
+   */
+  insieme?: PassaggioInsieme | null;
+}
+
+/** Il passaggio di una persona dentro un insieme: i campi di una voce dello storico che servono a leggerla e a annullarne il conguaglio. */
+export interface PassaggioDellInsieme {
+  id: number;
+  uscente: string | null;
+  quota: number | string;
+  conguaglio: PassaggioRegistrato['conguaglio'];
+  /** Le fermate dopo «Scrivi» della persona: stanno qui, non in cima alla voce (`StoricoTitolarita::voceDellInsieme`). */
+  fermate?: string[];
+}
+
+export interface PassaggioInsieme {
+  passaggi: PassaggioDellInsieme[];
+  /**
+   * La quota di chi entra dopo tutti i passaggi, in percentuale (`StoricoTitolarita::quotaDiChiEntra`): il terzo fratello che aveva già il 33,33 % ha il
+   * 100 %, non la somma delle parti (66,67 %). `null` (o assente, in uno storico di prima) se il server non la sa: allora la somma.
+   */
+  quota_entrante?: number | null;
 }
 
 export interface StoricoTitolaritaDati {

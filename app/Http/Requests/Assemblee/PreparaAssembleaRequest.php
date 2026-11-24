@@ -12,14 +12,17 @@ use App\Enums\Assemblee\TipoAssemblea;
 use Illuminate\Validation\Rule;
 
 /**
- * «Prepara l'assemblea» (§3 P2): il tipo, per chi, le date, dove, come si partecipa, la tabella del valore, i punti proposti spuntati e i punti scritti
- * dall'amministratore. I proposti arrivano come le loro chiavi: il server rilegge le proposte e prende solo quelle (R18: niente si fida del corpo della
+ * «Prepara l'assemblea» (§3 P2): il tipo, per chi (anche i condòmini di una tabella segnata «di un gruppo», Coda 734: allora la tabella è il gruppo), le
+ * date, dove, come si partecipa, la tabella del valore, i punti proposti spuntati e i punti scritti dall'amministratore. I proposti arrivano come le loro chiavi: il server rilegge le proposte e prende solo quelle (R18: niente si fida del corpo della
  * richiesta). I punti scritti (`punti`) hanno le regole, i nomi dei campi e le frasi di «Aggiungi un punto» ({@see PuntoRequest}): un errore torna sul suo
  * punto (`punti.1.testo`) e l'assemblea non nasce. Le date le controlla il servizio con la frase della pagina (R11). Con `aggiorna` ogni campo è
  * facoltativo.
  */
 class PreparaAssembleaRequest extends RichiestaDelleAssemblee
 {
+    /** L'assemblea dei condòmini di un gruppo senza una tabella segnata (Coda 734, §1.1-bis del progetto della tappa 3). */
+    public const FRASE_DEL_GRUPPO = 'Scegli una tabella segnata «di un gruppo»: è lei che dice chi è convocato.';
+
     /** @return array<string, mixed> */
     public function rules(): array
     {
@@ -35,7 +38,8 @@ class PreparaAssembleaRequest extends RichiestaDelleAssemblee
             'piattaforma' => ['nullable', 'string', 'max:255'],
             'consenso_videoconferenza_il' => ['nullable', 'date_format:Y-m-d'],
             'consenso_videoconferenza_modo' => ['nullable', 'string', 'max:255'],
-            'tabella_id' => ['nullable', 'integer'],
+            // Per i condòmini di un gruppo la tabella del valore è il gruppo (Coda 734): senza, l'assemblea non sa chi convocare.
+            'tabella_id' => ['nullable', 'integer', 'required_if:ambito,gruppo'],
             // «Segna come tabella di proprietà generale»: solo per il condominio intero e solo se il condominio non ne ha già una.
             'segna_di_proprieta' => ['sometimes', 'boolean'],
             // L'affissione dell'avviso per la modifica della destinazione d'uso (art. 1117-ter: almeno trenta giorni consecutivi).
@@ -101,6 +105,7 @@ class PreparaAssembleaRequest extends RichiestaDelleAssemblee
             'sedute.*.ora.required' => 'Scrivi l\'ora della convocazione.',
             'sedute.*.giorno.required' => 'Scrivi il giorno della convocazione.',
             'palazzina_id.required_if' => 'Scegli la palazzina.',
+            'tabella_id.required_if' => self::FRASE_DEL_GRUPPO,
             'scala_id.required_if' => 'Scegli la scala.',
             'affissione_al.after_or_equal' => 'L\'affissione finisce dopo il giorno in cui comincia.',
             'punti.max' => 'Al massimo 50 punti scritti per volta: gli altri li aggiungi nella pagina dell\'assemblea.',

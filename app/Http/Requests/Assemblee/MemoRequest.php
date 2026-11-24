@@ -33,7 +33,7 @@ class MemoRequest extends RichiestaDelleAssemblee
             'ricordami_dal' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:' . DateHelper::oggiUtente(), 'required_if:ricordami,true,1'],
             'a_chi' => ['nullable', Rule::in(AChiMemo::valori())],
             'assegnato_a' => ['nullable', 'integer', 'required_if:a_chi,collaboratore'],
-            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valori())],
+            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valoriDeiPunti())],
             'palazzina_id' => ['nullable', 'integer', 'required_if:ambito,palazzina'],
             'scala_id' => ['nullable', 'integer', 'required_if:ambito,scala'],
         ];

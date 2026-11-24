@@ -35,6 +35,8 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
             'allegati_massimo_per_elemento' => 'sometimes|integer|min:1|max:50',
             'segnalazioni_assegnazione_visibile_nel_portale' => 'sometimes|boolean',
             'segnalazioni_assegnazione_porta_in_lavorazione' => 'sometimes|boolean',
+            'comunicazioni_registra_aperture' => 'sometimes|boolean',
+            'errori_avviso_dalla_pagina' => 'sometimes|boolean',
             'language'                   => 'required|in:it,en,pt,es',
             'app_name'                   => 'required|string|max:255',
             'open_condominio_on_login'   => 'required|boolean',

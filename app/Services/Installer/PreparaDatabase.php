@@ -15,17 +15,30 @@ use Spatie\Permission\PermissionRegistrar;
 /**
  * Il passo «ambiente» del wizard, senza il wizard: migrazioni, pulizia della cache dei permessi,
  * seeder. Lo usano sia `InstallerWizard::runEnvironmentSetup()` (con `migrate:fresh`, come ha
- * sempre fatto: il wizard lavora su un database che dichiara vuoto) sia `km:install` (con
+ * sempre fatto, ma solo su un database vuoto o già preparato da lui: `ControlloDatabaseVuoto`) sia `km:install` (con
  * `migrate`, che su un database vuoto è la stessa cosa e su uno già installato non distrugge
  * nulla). Una logica sola: un installer che ne duplica un'altra resta indietro al primo cambio.
  */
 class PreparaDatabase
 {
     /**
+     * @param  bool  $databaseDelWizard  con `$fresh`: il database è quello che il wizard ha appena preparato (si può rifare da capo)
+     *
+     * @throws \DomainException se con `$fresh` il database ha delle tabelle che non sono del wizard: `migrate:fresh` le cancellerebbe tutte (Coda 755 (3))
      * @throws \RuntimeException se una migrazione fallisce
      */
-    public function migra(bool $fresh): void
+    public function migra(bool $fresh, bool $databaseDelWizard = false): void
     {
+        // La cintura: il wizard controlla prima di scrivere il `.env`, ma chi arriva qui da un altro punto non deve poter cancellare le tabelle
+        // di un altro programma. `migrate` senza `fresh` non cancella niente e non passa di qui.
+        if ($fresh) {
+            app(ControlloDatabaseVuoto::class)->controlla(
+                DB::getDefaultConnection(),
+                (string) DB::connection()->getDatabaseName(),
+                $databaseDelWizard,
+            );
+        }
+
         $comando = $fresh ? 'migrate:fresh' : 'migrate';
         $exitCode = Artisan::call($comando, ['--force' => true]);
 

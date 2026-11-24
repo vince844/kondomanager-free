@@ -11,53 +11,17 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     viene rifiutata la sessione non è ancora partita, quindi il flash finisce in un archivio mai
     salvato e l'utente riceve un 302 verso il modulo senza alcun avviso. Trovato dal ripasso della
     beta.58 leggendo l'ordine dei middleware. Una vista non ha bisogno della sessione: è l'unica
-    forma che regge in questo punto della catena.
+    forma che regge in questo punto della catena. Nella veste comune delle pagine d'errore dalla 1.12.0-beta.14.
 --}}
-<!DOCTYPE html>
-<html lang="{{ app()->getLocale() }}">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ __('errors.413_title') }}</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-</head>
-<body class="bg-gray-50">
+@extends('errors.minimal')
 
-    @php
-      $user = auth()->user();
-    @endphp
-
-  <div class="flex min-h-screen flex-col items-center px-4 py-12 sm:px-6 lg:px-8">
-    <div class="mx-auto max-w-md text-center mt-20">
-       <!-- Icona Km -->
-      <div class="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-black text-white shadow-lg">
-        <span class="text-lg font-bold">Km</span>
-      </div>
-
-      <h1 class="mt-4 text-3xl font-bold tracking-tight sm:text-4xl text-foreground">{{ __('errors.413_title') }}</h1>
-
-      <p class="mt-4 text-muted-foreground">
-        {{ __('validation.corpo_troppo_grande', ['limite' => \App\Support\LimiteCaricamento::etichettaPost()]) }}
-      </p>
-
-      <div class="mt-6">
-        @if ($user)
-          <a href="{{ $user->hasPermissionTo('Accesso pannello amministratore')
-              ? route('admin.dashboard')
-              : route('user.dashboard') }}"
-            class="inline-flex items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-            {{ __('errors.back_to_dashboard') }}
-          </a>
-        @else
-          <a href="{{ route('login') }}"
-            class="inline-flex items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-            {{ __('errors.back_to_login') }}
-          </a>
-        @endif
-      </div>
-
-    </div>
-  </div>
-
-</body>
-</html>
+@section('title', __('errors.413_title'))
+@section('code', '413')
+@section('tono', 'sl')
+@section('message', __('errors.413_title'))
+@section('icona')
+    <svg class="i l" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 11v3"/><path d="M12 18h.01"/></svg>
+@endsection
+@section('corpo')
+    <p class="lead">{{ __('validation.corpo_troppo_grande', ['limite' => \App\Support\LimiteCaricamento::etichettaPost()]) }}</p>
+@endsection

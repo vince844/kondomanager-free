@@ -9,6 +9,7 @@ import { computed, ref, watch, onMounted } from 'vue';
 import { Head, useForm, Link, router, usePage } from '@inertiajs/vue3';
 import ScopertoWarning, { type ScopertoCents } from '@/components/gestionale/pianiRate/ScopertoWarning.vue';
 import DestinatariWarning, { type DestinatarioCambiato } from '@/components/gestionale/pianiRate/DestinatariWarning.vue';
+import AChiVaIlPregresso, { aChiVa, elencoDeiNomi, giornoInParole, sceltaInVigore, toccaUnPassaggio, type ModoDelPregresso, type RipartoPrevisto } from '@/components/gestionale/pianiRate/AChiVaIlPregresso.vue';
 import axios from 'axios';
 import vSelect from 'vue-select';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -26,7 +27,7 @@ import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft, ReceiptText, CalendarRange, Search } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Users, CalendarDays, TrendingDown, BookOpen, ArrowRightLeft, ReceiptText, CalendarRange, Search } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -89,19 +90,19 @@ interface SaldoDettaglio {
   importo: number;
   is_debito: boolean;
   immobile_id?: number;
-  ripartizione_mode: 'automatica' | 'manuale';
+  ripartizione_mode: ModoDelPregresso;
   ripartizioni_custom: { anagrafica_id: number; importo: string | number }[];
   /**
-   * Chi pagherebbe cosa in automatico, calcolato dal server con le stesse funzioni del
-   * generatore. `null` sui saldi nominali, che un destinatario ce l'hanno già.
+   * Issue 58 (Coda 174): il giorno dei titolari scelto nella finestra per un saldo dell'unità che tocca un passaggio; `null` è la
+   * regola (chi era titolare il primo giorno del suo esercizio), e non si manda.
    */
-  riparto_previsto: {
-    risolvibile: boolean;
-    ruolo: string | null;
-    ruolo_label: string | null;
-    motivo: string | null;
-    quote: { anagrafica_id: number; nome: string; quota: number; importo: number }[];
-  } | null;
+  alla_data: string | null;
+  /**
+   * Chi pagherebbe cosa in automatico, calcolato dal server con le stesse funzioni del
+   * generatore. `null` sui saldi nominali, che un destinatario ce l'hanno già. Con un passaggio
+   * nell'arco della solidarietà porta anche i passaggi e le scelte della finestra (issue 58).
+   */
+  riparto_previsto: RipartoPrevisto | null;
 }
 
 const props = defineProps<{
@@ -755,7 +756,8 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
         saldiDettaglio.value = resSaldi.data.map((s: any) => ({
           ...s,
           ripartizione_mode: 'automatica',
-          ripartizioni_custom: []
+          ripartizioni_custom: [],
+          alla_data: null,
         }));
     } else {
         saldiDettaglio.value = [];
@@ -803,10 +805,78 @@ const toggleDay = (dayValue: string) => {
   else form.recurrence_by_day.push(dayValue);
 }
 
+// La finestra lavora sulle scelte della pagina, e chiuderla le tiene comunque (decisione 689 (1)): la X, Esc, il clic fuori, «Chiudi» e
+// «Conferma il riparto». Come prima della beta, quando c'era solo «Chiudi Modale»: chi chiude per abitudine non perde il riparto a mano né
+// la scelta di a chi va il pregresso. Per tornare al riparto automatico c'è la scelta dentro la finestra («Automatico», o la regola).
 const apriConfigurazioneSaldi = () => {
   if (!form.gestione_id || isLoadingSaldi.value) return;
   isModaleSaldiAperta.value = true;
 }
+const chiudiLaFinestra = () => { isModaleSaldiAperta.value = false; }
+const aggiornaLaFinestra = (aperta: boolean) => { if (aperta) { apriConfigurazioneSaldi(); } else { chiudiLaFinestra(); } }
+
+/** Issue 58: la scelta della finestra per un saldo dell'unità che tocca un passaggio. */
+const scegliIlPregresso = (saldo: SaldoDettaglio, valore: { modo: ModoDelPregresso; alla_data: string | null }) => {
+  saldo.ripartizione_mode = valore.modo;
+  saldo.alla_data = valore.modo === 'manuale' ? null : valore.alla_data;
+}
+
+/** Le scelte del menu dei saldi dell'unità senza passaggi (vSelect, decisione 392): «Automatico» e «A mano». */
+const OPZIONI_DEL_RIPARTO = [{ label: 'Automatico', value: 'automatica' }, { label: 'A mano', value: 'manuale' }];
+
+/** I saldi dell'unità che toccano un passaggio (bozza della issue 58): la riga arancio della pagina e il riepilogo della finestra. */
+const pregressiCheToccano = computed(() => saldiDettaglio.value.filter(s => s.tipo === 'solidale' && toccaUnPassaggio(s.riparto_previsto)));
+
+/** La riga arancio sotto «Saldi iniziali rilevati»: quanti, quali, e a chi vanno con la scelta di adesso. */
+const rigaDeiPregressi = computed(() => {
+  const toccano = pregressiCheToccano.value;
+  if (toccano.length === 0) return null;
+  const elenco = toccano.map(s => `${s.immobile_nome}, ${euro(Math.abs(s.importo) / 100)}`).join('; ');
+  if (toccano.length > 1) {
+    return { titolo: `${toccano.length} pregressi dell'unità toccano un passaggio: ${elenco}.`, dettaglio: 'Controlla a chi vanno prima di generare.' };
+  }
+  const s = toccano[0];
+  const scelta = sceltaInVigore(s.riparto_previsto, s.ripartizione_mode, s.alla_data);
+  const va = scelta === null
+    ? 'Lo dividi a mano.'
+    : scelta.regola
+      // Con le parole dell'etichetta della regola, che il server scrive: «titolare al 1 gennaio 2026», «eredi di Ugo Rossi», «a nome del
+      // defunto» (rilievo 4: con la successione gli eredi non erano titolari quel giorno), «con l'arretrato di Ugo Rossi agli eredi» o «con
+      // l'arretrato a nome di Ugo Rossi» quando accanto a loro c'è chi era già titolare (rilievo 3 del secondo scettico).
+      ? `Va a ${elencoDeiNomi(scelta.quote.map(q => q.nome))}, ${scelta.etichetta.replace(/ · la regola$/, '')}.`
+      : `Va a ${elencoDeiNomi(scelta.quote.map(q => q.nome))}, scelta tua.`;
+
+  return { titolo: `1 pregresso dell'unità tocca un passaggio: ${elenco}.`, dettaglio: `${va} Controlla a chi va prima di generare.` };
+});
+
+/** Il riepilogo fisso in fondo alla finestra (decisione 608 (5)): quanti saldi, e a chi va ogni pregresso che tocca un passaggio. */
+const riepilogoDeiSaldi = computed(() => {
+  const n = saldiDettaglio.value.length;
+  const base = `${n} ${n === 1 ? 'saldo' : 'saldi'}`;
+  const toccano = pregressiCheToccano.value;
+  if (toccano.length === 0) {
+    const manuali = saldiDettaglio.value.filter(s => s.tipo === 'solidale' && s.ripartizione_mode === 'manuale').length;
+    return { base, toccano: null, resto: manuali > 0 ? ` · ${manuali} ${manuali === 1 ? 'diviso' : 'divisi'} a mano.` : '.' };
+  }
+  if (toccano.length === 1) {
+    const s = toccano[0];
+    return { base, toccano: '1 tocca un passaggio', resto: s.ripartizione_mode === 'manuale' ? ': diviso a mano.' : `: va a ${aChiVa(s.riparto_previsto, s.ripartizione_mode, s.alla_data)}.` };
+  }
+  const regola = toccano.filter(s => sceltaInVigore(s.riparto_previsto, s.ripartizione_mode, s.alla_data)?.regola === true).length;
+  const mano = toccano.filter(s => s.ripartizione_mode === 'manuale').length;
+  const tue = toccano.length - regola - mano;
+  const parti = [regola > 0 ? `${regola} con la regola` : '', tue > 0 ? `${tue} con una scelta tua` : '', mano > 0 ? `${mano} a mano` : ''].filter(Boolean);
+  return { base, toccano: `${toccano.length} toccano un passaggio`, resto: `: ${parti.join(', ')}.` };
+});
+
+/** La descrizione sotto il titolo della finestra: la gestione, e quanti saldi dell'unità e nominali. */
+const descrizioneDellaFinestra = computed(() => {
+  const nome = props.gestioni.find(g => g.id === form.gestione_id)?.nome ?? '';
+  const unita = saldiDettaglio.value.filter(s => s.tipo === 'solidale').length;
+  const nominali = saldiDettaglio.value.filter(s => s.tipo === 'nominale').length;
+  const parti = [unita > 0 ? `${unita} ${unita === 1 ? 'saldo dell\'unità' : 'saldi dell\'unità'}` : '', nominali > 0 ? `${nominali} ${nominali === 1 ? 'nominale' : 'nominali'}` : ''].filter(Boolean);
+  return [nome, parti.join(', ')].filter(Boolean).join(' · ') + '.';
+});
 
 const aggiungiRigaRiparto = (saldo: SaldoDettaglio) => {
   // Stringa fin da subito, stesso motivo delle altre due righe corrette sopra.
@@ -882,9 +952,12 @@ const submit = () => {
     : [];
 
   // 3. Saldi config (comune a entrambi)
+  // Issue 58: un saldo dell'unità con una scelta diversa dalla regola porta il giorno dei titolari (`alla_data`); con la regola non si manda.
   form.saldi_config = saldiDettaglio.value
-    .filter(s => s.tipo === 'solidale' && s.ripartizione_mode === 'manuale')
-    .map(s => ({ saldo_id: s.id, ripartizioni: s.ripartizioni_custom }));
+    .filter(s => s.tipo === 'solidale' && (s.ripartizione_mode === 'manuale' || s.alla_data !== null))
+    .map(s => s.ripartizione_mode === 'manuale'
+      ? { saldo_id: s.id, ripartizioni: s.ripartizioni_custom }
+      : { saldo_id: s.id, alla_data: s.alla_data });
 
   // 4. Invio. Coda 688: il giorno dei lavori viaggia solo con «Urgenza», sulle due schede (il campo resta com'è, per un secondo invio).
   form.transform((dati) => ({ ...dati, ...campiDellUrgenza(form.tipo_autorizzazione, schedaDelPiano.value, form.giorno_dei_lavori ?? '') })).post(route(...generateRoute(
@@ -1174,6 +1247,22 @@ const submit = () => {
                   </div>
                 </div>
 
+                <!-- Issue 58 (bozza, scena 5): il pregresso dell'unità che tocca un passaggio si vede anche senza aprire la finestra. Sta dopo
+                     la catena v-if / v-else-if / v-else qui sopra, non dentro: in mezzo, il v-else si legava a lei e «Nessun saldo pregresso»
+                     compariva accanto ai saldi rilevati (rilievo 5 dello scettico della tappa 1 della 1.12.0-beta.14). -->
+                <div v-if="!isLoadingSaldi && rigaDeiPregressi"
+                     class="flex flex-wrap items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+                     data-testid="pregressi-che-toccano">
+                  <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <div class="min-w-0 flex-1">
+                    <b class="block font-semibold">{{ rigaDeiPregressi.titolo }}</b>
+                    {{ rigaDeiPregressi.dettaglio }}
+                  </div>
+                  <Button type="button" variant="outline" size="sm" class="ml-auto h-8 bg-white text-xs dark:bg-slate-950" @click="apriConfigurazioneSaldi">
+                    <Wallet class="mr-1.5 h-3.5 w-3.5" /> Configura riparto saldi
+                  </Button>
+                </div>
+
               </template>
             </div>
             <!-- ── FINE BANNER ────────────────────────────────────────────── -->
@@ -1242,7 +1331,7 @@ const submit = () => {
                       </li>
                       <li class="flex items-start gap-2">
                         <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0"></div>
-                        <span><strong>Saldi Solidali:</strong> Legati all'immobile, il sistema li ripartirà <strong>in automatico</strong> fra chi ha un diritto reale sull'unità — mai l'inquilino, che verso il condominio non è debitore. Apri il pulsante qui sotto per <strong>vedere chi pagherà</strong> prima di generare, o per forzare un riparto manuale.</span>
+                        <span><strong>Saldi Solidali:</strong> Legati all'immobile, il sistema li ripartirà <strong>in automatico</strong> fra chi ne era titolare il primo giorno del loro esercizio, con un diritto reale sull'unità — mai l'inquilino, che verso il condominio non è debitore. Apri il pulsante qui sotto per <strong>vedere chi pagherà</strong> prima di generare, per scegliere a chi va un pregresso che tocca un passaggio, o per un riparto a mano.</span>
                       </li>
                     </ul>
                   </div>
@@ -1706,7 +1795,7 @@ const submit = () => {
             <div class="bg-white border rounded-xl p-5 space-y-3" :class="deliberaObbligatoria ? 'border-amber-200' : 'border-slate-200'">
               <h4 class="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Info class="w-4 h-4" :class="deliberaObbligatoria ? 'text-amber-500' : 'text-slate-400'" />
-                Data della delibera dell'assemblea <span v-if="deliberaObbligatoria" class="text-[10px] font-semibold uppercase tracking-widest text-amber-700">obbligatoria</span><span v-else class="text-[10px] font-normal text-slate-400">(facoltativa)</span>
+                <template v-if="conLaDelibera">La delibera dell'assemblea</template><template v-else>Data della delibera dell'assemblea</template> <span v-if="deliberaObbligatoria" class="text-xs font-semibold uppercase tracking-widest text-amber-700">obbligatoria</span><span v-else class="text-xs font-normal text-slate-400">(facoltativa)</span>
               </h4>
               <template v-if="form.tipo_autorizzazione === 'urgenza' && gestioneStraordinaria">
                 <p class="text-xs text-slate-600 leading-relaxed">
@@ -1919,161 +2008,139 @@ const submit = () => {
       </form>
     </div>
 
-    <Dialog :open="isModaleSaldiAperta" @update:open="isModaleSaldiAperta = $event">
-      <DialogContent class="!max-w-6xl w-[95vw] max-h-[88vh] flex flex-col p-0 overflow-hidden">
-        
-        <DialogHeader class="px-7 py-5 border-b bg-white">
-          <DialogTitle class="flex items-center gap-3 text-xl font-bold">
-            <div class="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
-              <Wallet class="w-5 h-5 text-indigo-600" />
-            </div>
-            Riparto saldi iniziali
-          </DialogTitle>
-          <DialogDescription class="text-sm text-slate-500 mt-1">
-            Configura come verranno distribuiti i saldi pregressi al momento della generazione delle rate.
-          </DialogDescription>
+    <!-- Lo standard delle finestre (decisione 608): ancorata in alto, i gruppi con il titolo piccolo e grigio, il riepilogo e i pulsanti fissi
+         in fondo; niente sotto i 12 px. La issue 58 (bozza `beta14_pregresso_passaggio_bozza.html`): il saldo dell'unità che tocca un passaggio
+         dice il passaggio e lascia scegliere a chi va (`AChiVaIlPregresso`). -->
+    <Dialog :open="isModaleSaldiAperta" @update:open="aggiornaLaFinestra">
+      <DialogContent class="top-[5vh] flex max-h-[90vh] w-[95vw] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[720px]" data-testid="finestra-riparto-saldi">
+
+        <DialogHeader class="border-b border-slate-100 px-5 pt-4 pb-3 pr-12 text-left dark:border-slate-800">
+          <DialogTitle class="text-lg font-semibold">Riparto saldi iniziali</DialogTitle>
+          <DialogDescription class="text-sm text-slate-500 dark:text-slate-400">{{ descrizioneDellaFinestra }}</DialogDescription>
         </DialogHeader>
 
-        <div class="flex-1 overflow-y-auto px-7 py-6 space-y-5 bg-slate-50/60">
-          
-          <div v-if="isLoadingSaldi" class="flex justify-center py-16 text-slate-400 gap-3">
-            <LoaderCircle class="w-5 h-5 animate-spin" /><span>Caricamento saldi in corso...</span>
+        <div class="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 text-sm" data-testid="corpo-finestra">
+
+          <div v-if="isLoadingSaldi" class="flex justify-center gap-3 py-16 text-slate-500">
+            <LoaderCircle class="h-5 w-5 animate-spin" /><span>Caricamento dei saldi…</span>
           </div>
-          <div v-else-if="!form.gestione_id" class="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-            <Wallet class="w-12 h-12 opacity-20" /><p class="text-sm font-semibold">Nessuna gestione selezionata.</p>
-          </div>
-          <div v-else-if="Object.keys(saldiRaggruppati).length === 0" class="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-            <CheckCircle class="w-12 h-12 opacity-20" /><p class="text-sm font-semibold">Nessun saldo iniziale per questa gestione.</p>
-          </div>
+          <div v-else-if="!form.gestione_id" class="py-16 text-center text-sm text-slate-500">Scegli prima la gestione.</div>
+          <div v-else-if="Object.keys(saldiRaggruppati).length === 0" class="py-16 text-center text-sm text-slate-500">Nessun saldo iniziale per questa gestione.</div>
 
           <template v-else>
-            <div v-for="(gruppo, gKey) in saldiRaggruppati" :key="gKey" class="bg-white border rounded-xl shadow-sm overflow-hidden">
-              <div class="bg-slate-50 px-5 py-3.5 border-b flex justify-between items-center gap-4">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-8 h-8 rounded-full bg-white border-2 flex items-center justify-center shrink-0" :class="gruppo.tipo === 'solidale' ? 'border-indigo-200' : 'border-slate-200'">
-                    <Building2 v-if="gruppo.tipo === 'solidale'" class="w-4 h-4 text-indigo-500" />
-                    <User v-else class="w-4 h-4 text-slate-500" />
+            <section v-for="(gruppo, gKey) in saldiRaggruppati" :key="gKey" class="border-b border-slate-100 py-4 last:border-b-0 dark:border-slate-800">
+              <div v-for="saldo in gruppo.voci" :key="saldo.id" class="space-y-2">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <span class="text-sm font-semibold text-slate-900 dark:text-white">{{ saldo.tipo === 'solidale' ? saldo.immobile_nome : gruppo.nome }}</span>
+                    <span v-if="saldo.tipo === 'solidale'" class="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-px text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300">Solidale · art. 63</span>
+                    <span v-else class="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-px text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Nominale</span>
+                    <span v-if="saldo.tipo === 'solidale' && toccaUnPassaggio(saldo.riparto_previsto)" class="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-px text-xs font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" data-testid="tocca-un-passaggio">Tocca un passaggio</span>
                   </div>
-                  <div class="min-w-0 flex items-center gap-2 flex-wrap">
-                    <span class="font-bold text-slate-900 text-sm truncate">{{ gruppo.nome }}</span>
-                    <span v-if="gruppo.tipo === 'solidale'" class="text-[9px] px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 font-bold uppercase border border-indigo-200">Solidale · Art. 63</span>
-                    <span v-else class="text-[9px] px-2 py-0.5 rounded-md bg-slate-200 text-slate-600 font-bold uppercase">Nominale</span>
-                  </div>
-                </div>
-                <div class="flex items-center gap-1.5 shrink-0">
-                  <span class="text-xs text-slate-400 font-semibold">Totale</span>
-                  <span class="font-bold text-sm px-2.5 py-1 rounded-lg" :class="gruppo.totale_soggetto > 0 ? 'text-red-700 bg-red-50 border-red-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100'">
-                    {{ euro(gruppo.totale_soggetto / 100, { forcePlus: true }) }}
+                  <span class="shrink-0 text-base font-bold tabular-nums" :class="saldo.importo > 0 ? 'text-red-700 dark:text-red-400' : (saldo.importo < 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500')">
+                    {{ euro(saldo.importo / 100, { forcePlus: true }) }}
                   </span>
                 </div>
-              </div>
+                <p v-if="saldo.tipo === 'solidale'" class="text-xs text-slate-500 dark:text-slate-400">
+                  {{ saldo.is_debito ? 'Debito pregresso' : 'Credito a favore' }}<template v-if="saldo.riparto_previsto?.riferito_al"> al {{ giornoInParole(saldo.riparto_previsto.riferito_al) }}</template>, intestato all'unità.
+                </p>
+                <p v-else class="text-xs text-slate-500 dark:text-slate-400">
+                  {{ saldo.is_debito ? 'Debito pregresso' : 'Credito a favore' }} su {{ saldo.immobile_nome }}: resta a <b class="font-semibold text-slate-700 dark:text-slate-200">{{ saldo.soggetto_nome }}</b>.
+                </p>
 
-              <div class="divide-y divide-slate-100">
-                <div v-for="saldo in gruppo.voci" :key="saldo.id" class="px-5 py-4 space-y-3">
-                  <div class="flex justify-between items-start gap-4">
-                    <div class="space-y-1.5 flex-1 min-w-0">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-sm font-semibold text-slate-800">{{ saldo.immobile_nome }}</span>
-                        <span class="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-bold uppercase border">{{ saldo.ruolo }}</span>
-                      </div>
-                      <span :class="saldo.is_debito ? 'text-red-600 bg-red-50 border-red-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border uppercase">
-                        {{ saldo.is_debito ? 'Debito pregresso' : 'Credito a favore' }}
-                      </span>
-                    </div>
-                    <div class="text-right shrink-0">
-                      <div class="font-bold text-base" :class="saldo.is_debito ? 'text-red-700' : 'text-emerald-700'">
-                        {{ euro(saldo.importo / 100, { forcePlus: true }) }}
-                      </div>
-                    </div>
-                  </div>
+                <template v-if="saldo.tipo === 'solidale'">
+                  <!-- Il saldo dell'unità che tocca un passaggio: il passaggio, le scelte affiancate, la frase della solidarietà e il perché (issue 58). -->
+                  <AChiVaIlPregresso v-if="toccaUnPassaggio(saldo.riparto_previsto)" :riparto="saldo.riparto_previsto!" :modo="saldo.ripartizione_mode"
+                    :alla-data="saldo.alla_data" @scegli="scegliIlPregresso(saldo, $event)" />
 
-                  <div v-if="saldo.tipo === 'nominale'" class="flex items-center gap-2 text-[11px] text-slate-500 bg-slate-50 border rounded-lg px-3 py-2">
-                    <User class="w-3.5 h-3.5 text-slate-400" /> Già intestato a <strong class="text-slate-700">{{ saldo.soggetto_nome }}</strong>.
-                  </div>
-
-                  <div v-if="saldo.tipo === 'solidale'" class="space-y-3">
-                    <div class="flex items-center justify-between gap-3 flex-wrap">
-                      <span class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5"><Building2 class="w-3.5 h-3.5 text-indigo-400" /> Modalità riparto subentro:</span>
-                      <v-select :options="[{ label: 'Auto — Pro-quota proprietari', value: 'automatica' }, { label: 'Manuale — Split', value: 'manuale' }]" v-model="saldo.ripartizione_mode" :reduce="(o: any) => o.value" :clearable="false" class="w-64 text-xs bg-white" />
+                  <!-- Senza passaggi: «Automatico» (la regola, con l'anteprima di chi paga) o «A mano». -->
+                  <template v-else>
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <span class="text-xs font-semibold text-slate-500 dark:text-slate-400">Come si ripartisce</span>
+                      <v-select :options="OPZIONI_DEL_RIPARTO" v-model="saldo.ripartizione_mode" :reduce="(o: any) => o.value" :clearable="false" class="w-48 bg-white text-sm" />
                     </div>
 
-                    <!-- Anteprima del riparto automatico. Prima qui non c'era niente: in
-                         automatico l'amministratore scopriva chi era stato addebitato solo
-                         DOPO aver generato il piano. I numeri arrivano dal server, calcolati
-                         con le stesse funzioni del generatore — non ricalcolati qui. -->
-                    <div v-if="saldo.ripartizione_mode === 'automatica' && saldo.riparto_previsto" class="rounded-xl border p-4 space-y-2"
-                         :class="saldo.riparto_previsto.risolvibile ? 'bg-slate-50/60 border-slate-200' : 'bg-amber-50 border-amber-200'">
-
+                    <!-- L'anteprima del riparto automatico, calcolata dal server con le stesse funzioni del generatore. -->
+                    <div v-if="saldo.ripartizione_mode === 'automatica' && saldo.riparto_previsto" class="space-y-1.5 rounded-lg border p-3"
+                         :class="saldo.riparto_previsto.risolvibile ? 'border-slate-200 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-900/40' : 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30'">
                       <template v-if="saldo.riparto_previsto.risolvibile">
-                        <p class="text-[11px] text-slate-500 font-bold uppercase tracking-wide flex items-center gap-1.5">
-                          <Users class="w-3.5 h-3.5 text-slate-400" />
-                          A carico di: {{ saldo.riparto_previsto.ruolo_label }}
+                        <p class="flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          <Users class="h-3.5 w-3.5" aria-hidden="true" /> A carico di: {{ saldo.riparto_previsto.ruolo_label }}<template v-if="saldo.riparto_previsto.riferito_al">, titolare al {{ giornoInParole(saldo.riparto_previsto.titolari_al ?? saldo.riparto_previsto.riferito_al) }}</template>
                         </p>
                         <div v-for="q in saldo.riparto_previsto.quote" :key="q.anagrafica_id"
-                             class="flex items-center justify-between gap-3 text-xs bg-white border border-slate-100 rounded-lg px-3 py-1.5">
-                          <span class="font-semibold text-slate-700 truncate">{{ q.nome }}</span>
-                          <span class="flex items-center gap-3 shrink-0">
-                            <span class="text-[10px] text-slate-400 font-semibold">quota {{ q.quota }}</span>
-                            <span class="font-bold" :class="q.importo > 0 ? 'text-red-700' : 'text-emerald-700'">
-                              {{ euro(q.importo / 100, { forcePlus: true }) }}
-                            </span>
+                             class="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-white px-3 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950">
+                          <span class="truncate font-semibold text-slate-700 dark:text-slate-200">{{ q.nome }}</span>
+                          <span class="flex shrink-0 items-center gap-3">
+                            <span class="text-xs text-slate-500 dark:text-slate-400">quota {{ q.quota.toLocaleString('it-IT') }} %</span>
+                            <span class="font-bold tabular-nums" :class="q.importo > 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'">{{ euro(q.importo / 100, { forcePlus: true }) }}</span>
                           </span>
                         </div>
-                        <p class="text-[10px] text-slate-400 leading-snug pt-1">
-                          Il criterio è la natura della gestione: l'ordinaria è dell'usufruttuario (art. 1004 c.c.),
-                          la straordinaria del proprietario (art. 1005); su un'unità in parte in piena proprietà, il
-                          proprietario pieno paga la sua quota. L'inquilino non è debitore verso il condominio.
-                          Se fra le parti vale un accordo diverso, passa al riparto manuale.
+                        <p class="text-xs leading-snug text-slate-500 dark:text-slate-400">
+                          Va a chi era titolare il primo giorno del suo esercizio, fra chi ha un diritto reale: l'ordinaria all'usufruttuario (art. 1004 c.c.),
+                          la straordinaria al proprietario (art. 1005); l'inquilino non è debitore verso il condominio. Se fra le parti vale un accordo diverso, scegli «A mano».
                         </p>
                       </template>
-
                       <template v-else>
-                        <p class="text-[11px] text-amber-800 font-bold uppercase tracking-wide flex items-center gap-1.5">
-                          <AlertTriangle class="w-3.5 h-3.5" /> Questo pregresso non ha su chi cadere
+                        <p class="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                          <AlertTriangle class="h-3.5 w-3.5" aria-hidden="true" /> Questo pregresso non ha su chi cadere
                         </p>
-                        <p class="text-[11px] text-amber-700 leading-snug">{{ saldo.riparto_previsto.motivo }}</p>
+                        <p class="text-xs leading-snug text-amber-800 dark:text-amber-200">{{ saldo.riparto_previsto.motivo }}</p>
                       </template>
                     </div>
+                  </template>
 
-                    <div v-if="saldo.ripartizione_mode === 'manuale'" class="bg-indigo-50/40 border-2 border-dashed border-indigo-200 rounded-xl p-4 space-y-3">
-                      <p class="text-[11px] text-indigo-600 font-bold uppercase tracking-wide">Da distribuire: {{ euro(Math.abs(saldo.importo) / 100) }}</p>
-                      <div v-for="(rip, rIndex) in saldo.ripartizioni_custom" :key="rIndex" class="flex items-center gap-3">
-                        <v-select :options="anagraficheDisponibili" label="nome" v-model="rip.anagrafica_id" :reduce="(a: any) => a.id" class="flex-1 text-xs bg-white" placeholder="Seleziona soggetto..." />
-                        <div class="relative w-32 shrink-0">
-                          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">€</span>
-                          <MoneyInput 
-                              v-model="rip.importo" 
-                              :money-options="moneyOptions"
-                              :lazy="true"
-                              class="h-8 pl-7 text-right text-sm" 
-                          />
-                        </div>
-                        <Button type="button" variant="ghost" size="icon" class="h-8 w-8 text-slate-400 hover:text-red-500" @click="saldo.ripartizioni_custom.splice(rIndex, 1)"><Trash2 class="w-4 h-4" /></Button>
+                  <!-- «A mano» e «Divido a mano»: il riparto a mano di sempre, con la somma che deve tornare al centesimo. -->
+                  <div v-if="saldo.ripartizione_mode === 'manuale'" class="space-y-2 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-3 dark:border-indigo-800 dark:bg-indigo-950/30" data-testid="divido-a-mano">
+                    <p class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">Da dividere: {{ euro(Math.abs(saldo.importo) / 100) }}</p>
+                    <div v-for="(rip, rIndex) in saldo.ripartizioni_custom" :key="rIndex" class="flex items-center gap-2">
+                      <v-select :options="anagraficheDisponibili" label="nome" v-model="rip.anagrafica_id" :reduce="(a: any) => a.id" class="min-w-0 flex-1 bg-white text-sm" placeholder="Scegli la persona…" />
+                      <div class="relative w-32 shrink-0">
+                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-500">€</span>
+                        <MoneyInput
+                            v-model="rip.importo"
+                            :money-options="moneyOptions"
+                            :lazy="true"
+                            class="h-8 pl-7 text-right text-sm"
+                        />
                       </div>
-
-                      <div v-if="saldo.ripartizioni_custom.length > 0">
-                        <div v-if="Math.abs(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + parseMoney(r.importo), 0) - Math.abs(saldo.importo) / 100) > 0.01" class="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                          <AlertTriangle class="w-3.5 h-3.5" /> La somma ripartita ({{ euro(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + parseMoney(r.importo), 0)) }}) non combacia.
-                        </div>
-                      </div>
-
-                      <Button type="button" variant="outline" size="sm" @click="aggiungiRigaRiparto(saldo)" class="h-7 text-[11px] font-bold border-indigo-200 text-indigo-600 bg-white"><Plus class="w-3 h-3 mr-1.5" /> Aggiungi soggetto</Button>
+                      <Button type="button" variant="ghost" size="icon" class="h-8 w-8 text-slate-500 hover:text-red-600" aria-label="Togli la persona" @click="saldo.ripartizioni_custom.splice(rIndex, 1)"><Trash2 class="h-4 w-4" /></Button>
                     </div>
+                    <p v-if="saldo.ripartizioni_custom.length > 0 && Math.abs(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + parseMoney(r.importo), 0) - Math.abs(saldo.importo) / 100) > 0.01"
+                       class="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                      <AlertTriangle class="h-3.5 w-3.5" /> La somma divisa ({{ euro(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + parseMoney(r.importo), 0)) }}) non torna con il pregresso.
+                    </p>
+                    <Button type="button" variant="outline" size="sm" @click="aggiungiRigaRiparto(saldo)" class="h-8 bg-white text-xs dark:bg-slate-950"><Plus class="mr-1.5 h-3.5 w-3.5" /> Aggiungi una persona</Button>
                   </div>
-                </div>
+                </template>
               </div>
-            </div>
+            </section>
+
+            <details class="group my-3 rounded-md border border-slate-200 dark:border-slate-700" data-testid="come-si-ripartiscono">
+              <summary class="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <Info class="h-3.5 w-3.5" aria-hidden="true" /> Come si ripartiscono i saldi
+              </summary>
+              <ul class="list-disc space-y-1 px-3 pb-2 pl-7 text-xs text-slate-600 dark:text-slate-300">
+                <li><b>Nominali</b>: si addebitano alla persona indicata.</li>
+                <li><b>Dell'unità</b>: a chi ne era titolare il primo giorno del loro esercizio, fra chi ha un diritto reale; mai all'inquilino.</li>
+                <li>Se quel giorno comincia un passaggio, conta chi era titolare il giorno prima.</li>
+                <li>Con una successione: con l'arretrato agli eredi vanno agli eredi, per le loro quote; con l'arretrato a nome del defunto restano al defunto.</li>
+                <!-- Il confine della decisione 691 (1) (rilievo 8 del secondo scettico della tappa 1). -->
+                <li>Al defunto solo se è morto dall'inizio dell'esercizio prima di quello del saldo: con una morte di prima, o con una successione registrata senza la scelta sull'arretrato, vanno agli eredi.</li>
+                <li>Dove un passaggio li tocca, scegli tu a chi vanno: la scelta resta scritta nel piano.</li>
+              </ul>
+            </details>
           </template>
         </div>
 
-        <div class="px-7 py-5 border-t bg-white flex flex-col sm:flex-row justify-between gap-5">
-          <div class="text-[11px] text-slate-500 space-y-1 bg-slate-50 p-3 rounded-lg border flex-1">
-            <span class="font-bold text-slate-700 block mb-1">Guida rapida:</span>
-            • <b>Nominali:</b> Vengono emessi automaticamente sulla persona indicata.<br>
-            • <b>Solidali:</b> Se lasci su "Auto", il sistema usa le quote millesimali degli attuali proprietari.
-          </div>
-          <div class="flex items-end shrink-0">
-            <Button type="button" class="h-10 px-8 shadow-md text-xs font-bold uppercase tracking-widest" @click="isModaleSaldiAperta = false">Chiudi Modale</Button>
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+          <p class="flex min-w-[200px] flex-1 items-center gap-2 text-[13px] text-slate-600 dark:text-slate-300" role="status" data-testid="riepilogo-saldi">
+            <span v-if="isLoadingSaldi" class="inline-flex shrink-0"><LoaderCircle class="h-3.5 w-3.5 animate-spin" aria-hidden="true" /></span>
+            <Wallet v-else class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span class="min-w-0">{{ riepilogoDeiSaldi.base }}<template v-if="riepilogoDeiSaldi.toccano"> · <b class="font-semibold text-slate-900 dark:text-white">{{ riepilogoDeiSaldi.toccano }}</b></template>{{ riepilogoDeiSaldi.resto }}</span>
+          </p>
+          <div class="ml-auto flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" @click="chiudiLaFinestra">Chiudi</Button>
+            <Button type="button" :disabled="isLoadingSaldi" data-testid="conferma-il-riparto" @click="chiudiLaFinestra">Conferma il riparto</Button>
           </div>
         </div>
 

@@ -358,6 +358,14 @@ return [
     ],
 
     // Assegnazione segnalazioni (decisione 294)
+    'errore_avvisato' => [
+        'subject' => 'Errore :codice: ti ha avvisato :nome',
+        'line_1' => ':nome (:ruolo) ti ha avvisato di un errore il :quando.',
+        'line_codice' => 'Il codice dell\'errore: :codice.',
+        'line_pagina' => 'La pagina: :pagina.',
+        'action' => 'Apri l\'errore',
+        'line_dettaglio' => 'Il dettaglio, la nota e il rapporto sono nella scheda «Errori» delle impostazioni: in questa email non ci sono.',
+    ],
     'assigned_ticket' => [
         'subject' => 'Segnalazione assegnata a te: :title',
         'line_1' => ':user ti ha assegnato la segnalazione ":title" (:building).',

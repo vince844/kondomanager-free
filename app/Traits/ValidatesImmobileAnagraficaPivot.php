@@ -15,7 +15,8 @@ use App\Services\Subentro\GuardieTitolarita;
  *
  * - Guardia 1 (inv. 12): non «la persona è già collegata», ma «i due periodi della stessa persona con lo
  *   stesso ruolo si sovrappongono». Vende e ricompra: ammesso.
- * - Guardia 2 (inv. 11): la somma delle quote per ruolo ≤ 100 **in ogni giorno**, non su tutte le righe.
+ * - Guardia 2 (inv. 11): la somma delle quote per ruolo ≤ 100 **in ogni giorno**, non su tutte le righe. In modifica (dalla 1.12.0-beta.14,
+ *   Coda 599) basta che la correzione non peggiori la somma di quel giorno: un'unità a 200 si corregge scendendo.
  */
 trait ValidatesImmobileAnagraficaPivot
 {
@@ -34,7 +35,10 @@ trait ValidatesImmobileAnagraficaPivot
                 'data_inizio'   => $this->input('data_inizio') ?: DateHelper::oggiUtente(),
                 'data_fine'     => $this->input('data_fine') ?: null,
             ];
-            foreach (GuardieTitolarita::errori($immobile->titolarita()->get(), $nuova, $currentRigaId, $quotaField) as $campo => $messaggio) {
+            // La modifica di una riga che c'è già non deve peggiorare la somma, ma può lasciarla sopra 100 se la abbassa (Coda 599): un'unità entrata a
+            // 100 + 100 si corregge un passo alla volta. «Associa» resta alla regola di sempre.
+            $errori = GuardieTitolarita::errori($immobile->titolarita()->get(), $nuova, $currentRigaId, $quotaField, nonPeggiorare: $currentRigaId !== null);
+            foreach ($errori as $campo => $messaggio) {
                 $validator->errors()->add($campo, $messaggio);
             }
         });

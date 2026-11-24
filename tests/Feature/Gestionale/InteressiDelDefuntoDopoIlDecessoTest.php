@@ -189,6 +189,22 @@ it('(h) lo storico dice la scelta; l\'annullamento la toglie, e la proposta di E
         ->and(iddRiga($this, $s))->toBe([403, '2026-12-31']);
 });
 
+it('(h2) lo storico con l\'arretrato a nome del defunto e «si fermano al decesso» dice anche che dopo il decesso nessuno conta interessi su quel debito (Coda 709); con l\'arretrato agli eredi niente cambia', function () {
+    $s = iddCaso($this);
+    $storico = fn (Subentro $p) => collect(app(\App\Services\Subentro\StoricoTitolarita::class)->perImmobile($s['unita']['U1']->fresh())['subentri'])->firstWhere('id', $p->id);
+
+    $alDefunto = iddRegistra($this, $s, iddSuccessione($s, Subentro::ARRETRATO_AL_DEFUNTO, Subentro::INTERESSI_AL_DECESSO));
+    expect((string) $storico($alDefunto)['arretrato']['frase'])
+        ->toContain('Gli interessi di Ettore Fabbri si fermano al decesso: la sua proposta degli interessi conta i giorni fino al 16/11/2026: dopo il decesso nessuno conta interessi su questo debito.');
+
+    // Con l'arretrato agli eredi li contano gli eredi: la frase è quella di sempre, senza l'aggiunta.
+    $this->actingAs($this->user)->deleteJson(route('admin.gestionale.immobili.passaggi.annulla', [$s['c'], $s['unita']['U1'], $alDefunto]), ['nota_annullamento' => 'Prova di annullamento'])->assertRedirect();
+    $agliEredi = iddRegistra($this, $s, iddSuccessione($s, Subentro::ARRETRATO_AGLI_EREDI));
+    $frase = (string) $storico($agliEredi)['arretrato']['frase'];
+    expect($frase)->toContain('Gli interessi di Ettore Fabbri si fermano al decesso: la sua proposta degli interessi conta i giorni fino al 16/11/2026.')
+        ->and($frase)->not->toContain('nessuno conta interessi');
+});
+
 it('lo storico con «continuano a suo nome» lo dice con il giorno del decesso', function () {
     $s = iddCaso($this);
     $passaggio = iddRegistra($this, $s, iddSuccessione($s, Subentro::ARRETRATO_AL_DEFUNTO));

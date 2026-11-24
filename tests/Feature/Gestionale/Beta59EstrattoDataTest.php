@@ -322,9 +322,10 @@ it('Coda 317 — la registrazione è il giorno dell\'amministratore, non quello 
     }
     $this->travelTo('2026-10-30 09:00:00');
 
-    // Il presupposto: il programma scrive la registrazione con il giorno di Greenwich (`now()`, fuso UTC), non quello di Roma.
+    // Il presupposto: dalla 1.12.0-beta.14 (Coda 494) il programma scrive la registrazione con il giorno di Roma, non più con quello di
+    // Greenwich (`now()`, fuso UTC); la pagina la mostra allo stesso modo nei due casi.
     $scritta = (string) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->value('data_registrazione');
-    expect(substr($scritta, 0, 10))->toBe(substr($istante, 0, 10));
+    expect(substr($scritta, 0, 10))->toBe(\Illuminate\Support\Carbon::parse($istante, 'UTC')->setTimezone('Europe/Rome')->toDateString());
 
     // A mano (D6): la data di registrazione è il giorno in cui il movimento è stato inserito, nel calendario dell'amministratore (Europe/Rome:
     // UTC+1 in inverno, UTC+2 con l'ora legale); la pagina la scrive solo quando è diversa dalla data del movimento.

@@ -28,7 +28,7 @@ class DeliberaAManoRequest extends RichiestaDelleAssemblee
         return [
             'giorno' => ['required', 'date_format:Y-m-d', 'before_or_equal:' . DateHelper::oggiUtente()],
             'tipo' => ['nullable', Rule::in(TipoAssemblea::valori())],
-            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valori())],
+            'ambito' => ['nullable', Rule::in(AmbitoAssemblea::valoriDeiPunti())],
             'palazzina_id' => ['nullable', 'integer', 'required_if:ambito,palazzina'],
             'scala_id' => ['nullable', 'integer', 'required_if:ambito,scala'],
             'testo' => ['required', 'string', 'max:2000'],

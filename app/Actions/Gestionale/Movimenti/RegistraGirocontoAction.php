@@ -5,6 +5,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Gestionale\GirocontoNonAmmessoException;
 use App\Helpers\MoneyHelper;
@@ -198,7 +199,7 @@ class RegistraGirocontoAction
                 'condominio_id' => $condominio->id,
                 'esercizio_id' => $esercizio->id,
                 'gestione_id' => $validated['gestione_id'],
-                'data_registrazione' => now()->toDateString(),
+                'data_registrazione' => DateHelper::oggiUtente(),
                 'data_competenza' => $validated['data_operazione'],
                 'causale' => mb_substr($validated['causale'], 0, 255),
                 'tipo_movimento' => TipoMovimentoContabile::GIROCONTO,

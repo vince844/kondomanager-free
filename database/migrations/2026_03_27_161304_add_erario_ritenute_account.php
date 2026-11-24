@@ -15,7 +15,7 @@ return new class extends Migration
         // Critico su Windows / hosting condiviso: questa migration gira dentro
         // una richiesta HTTP (Artisan::call in SystemUpgradeController).
         // max_execution_time = 60s di default — insufficiente con molti condomini.
-        set_time_limit(0);
+        \App\Support\LimiteDiTempo::alza(0);
 
         // lazy() usa un cursor DB invece di caricare tutti i record in RAM
         Condominio::query()->select('id')->lazy()->each(function (Condominio $condominio) {

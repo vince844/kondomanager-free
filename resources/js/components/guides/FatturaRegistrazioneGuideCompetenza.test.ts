@@ -24,3 +24,22 @@ describe('la guida della registrazione: la competenza', () => {
         expect(guida).toContain('in un piano approvato non si cambia più');
     });
 });
+
+/*
+ * 1.12.0-beta.14, tappa 6, Coda 754 (4), (5), (6): la parte del debito dell'esercizio precedente dice il campo senza IVA con il totale sotto, la scelta
+ * dell'origine nella finestra, e che con il fondo il programma prepara la copertura e nessun piano rate la chiede ai condòmini.
+ */
+describe('la guida della registrazione: il debito dell\'esercizio precedente', () => {
+    test('il campo «Imponibile (senza IVA)» e il totale che il programma aggiunge', () => {
+        expect(guida).toContain('<strong>«Imponibile (senza IVA)»</strong>');
+        expect(guida).toContain('il programma aggiunge l\'IVA');
+        expect(guida).not.toMatch(/Imponibile Lordo/i);
+    });
+
+    test('la finestra della parte non coperta: l\'origine si sceglie, il fondo prepara la copertura', () => {
+        expect(guida).toContain('<strong>Origine dell\'incarico</strong>');
+        expect(guida).toContain('con l\'urgenza la fattura resta da ratificare in assemblea; con la delibera no');
+        expect(guida).toContain('<strong>Usa fondo riserva</strong>');
+        expect(guida).toContain('nessun piano rate la chiede ai condòmini');
+    });
+});

@@ -65,14 +65,22 @@ final class GuardieTitolarita
      * Guardia 2: con la riga nuova, in quale giorno la somma delle quote del ruolo supera 100?
      * Restituisce `['giorno' => 'Y-m-d', 'somma' => float]` per il primo giorno che sfora, o `null`.
      *
+     * **`$nonPeggiorare`** (Coda 599, 1.12.0-beta.14; spento di serie): la correzione di una riga che c'è già (`$escludiRigaId`) si rifiuta solo nei
+     * giorni in cui la somma nuova supera 100 **e** supera la somma di prima, con la riga nella sua quota e nel suo periodo di prima. Un'unità entrata
+     * a 100 + 100 (le importazioni fino alla beta.13) si corregge dalla scheda un passo alla volta: Ugo a 50 fa 150, che non peggiora 200. Lo accendono
+     * solo le porte della modifica dalla scheda (`ValidatesImmobileAnagraficaPivot`, `ImmobileAnagraficaController::ripassaLeGuardie()`): i passaggi e
+     * il loro annullamento restano alla regola di sempre.
+     *
      * @param Collection<int, object> $righe le righe dell'unità (tutte)
      * @param array{tipologia: string, quota: float|string, data_inizio: string|CarbonImmutable, data_fine?: string|CarbonImmutable|null} $nuova
      */
-    public static function sforoQuotePerGiorno(Collection $righe, array $nuova, ?int $escludiRigaId = null): ?array
+    public static function sforoQuotePerGiorno(Collection $righe, array $nuova, ?int $escludiRigaId = null, bool $nonPeggiorare = false): ?array
     {
         [$dal, $al] = self::estremi($nuova);
-        $coppia = $righe
+        $stessoRuolo = $righe
             ->filter(fn ($r) => self::attiva($r) && (string) $r->tipologia === (string) $nuova['tipologia'])
+            ->values();
+        $coppia = $stessoRuolo
             ->reject(fn ($r) => $escludiRigaId !== null && (int) ($r->id ?? 0) === $escludiRigaId)
             ->values();
 
@@ -86,35 +94,63 @@ final class GuardieTitolarita
             }
         }
 
-        foreach ($giorni as $g) {
-            $somma = (float) $nuova['quota'];
-            foreach ($coppia as $r) {
-                [$rDal, $rAl] = self::estremi(['data_inizio' => $r->data_inizio ?? null, 'data_fine' => $r->data_fine ?? null]);
-                if ($rDal->lte($g) && ($rAl === null || $rAl->gte($g))) {
-                    $somma += (float) $r->quota;
-                }
-            }
-            if ($somma > 100 + self::TOLLERANZA) {
-                return ['giorno' => $g->toDateString(), 'somma' => round($somma, 2)];
+        // Con `$nonPeggiorare` anche il giorno dopo la fine della riga di prima, se cade nel periodo della nuova: da lì la somma di prima scende e
+        // quella nuova no (Ugo era fino al 30/06, la correzione lo lascia senza fine: il 01/07 è il giorno che peggiora).
+        $diPrima = $nonPeggiorare && $escludiRigaId !== null
+            ? $stessoRuolo->first(fn ($r) => (int) ($r->id ?? 0) === $escludiRigaId)
+            : null;
+        if ($diPrima !== null) {
+            [, $finePrima] = self::estremi(['data_inizio' => $diPrima->data_inizio ?? null, 'data_fine' => $diPrima->data_fine ?? null]);
+            $dopo = $finePrima?->addDay();
+            if ($dopo !== null && $dopo->gte($dal) && ($al === null || $dopo->lte($al))) {
+                $giorni[] = $dopo;
             }
         }
 
+        foreach ($giorni as $g) {
+            $somma = (float) $nuova['quota'] + self::sommaIl($coppia, $g);
+            if ($somma <= 100 + self::TOLLERANZA) {
+                continue;
+            }
+            if ($nonPeggiorare && $somma <= self::sommaIl($stessoRuolo, $g) + self::TOLLERANZA) {
+                continue;
+            }
+
+            return ['giorno' => $g->toDateString(), 'somma' => round($somma, 2)];
+        }
+
         return null;
+    }
+
+    /** La somma delle quote delle righe in corso il giorno `$g`. */
+    private static function sommaIl(Collection $righe, CarbonImmutable $g): float
+    {
+        $somma = 0.0;
+        foreach ($righe as $r) {
+            [$rDal, $rAl] = self::estremi(['data_inizio' => $r->data_inizio ?? null, 'data_fine' => $r->data_fine ?? null]);
+            if ($rDal->lte($g) && ($rAl === null || $rAl->gte($g))) {
+                $somma += (float) $r->quota;
+            }
+        }
+
+        return $somma;
     }
 
     /**
      * Le due guardie insieme, come errori per campo: le usano la FormRequest di «Associa» e «Modifica» e, sotto lock, il
      * controller che scrive la riga (giro di verifica della 1.11.0-beta.37, C-R4: la FormRequest legge senza lock).
      *
+     * `$nonPeggiorare` passa alla guardia 2 (vedi {@see sforoQuotePerGiorno()}): lo accende solo la modifica di una riga dalla scheda.
+     *
      * @return array<string, string>
      */
-    public static function errori(Collection $righe, array $nuova, ?int $escludiRigaId = null, string $campoQuota = 'quota'): array
+    public static function errori(Collection $righe, array $nuova, ?int $escludiRigaId = null, string $campoQuota = 'quota', bool $nonPeggiorare = false): array
     {
         $errori = [];
         if ($sovrapposta = self::sovrapposizioneStessaPersona($righe, $nuova, $escludiRigaId)) {
             $errori['anagrafica_id'] = self::messaggioSovrapposizione($sovrapposta);
         }
-        if ($sforo = self::sforoQuotePerGiorno($righe, $nuova, $escludiRigaId)) {
+        if ($sforo = self::sforoQuotePerGiorno($righe, $nuova, $escludiRigaId, $nonPeggiorare)) {
             $errori[$campoQuota] = self::messaggioSforo((string) $nuova['tipologia'], $sforo);
         }
 

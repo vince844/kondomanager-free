@@ -50,8 +50,15 @@ const props = defineProps<{
     motivo_blocco_modifica: string | null;
     /** I campi che il modello ministeriale vuole e che l'anagrafica non sa ancora. */
     campi_mancanti: string[];
+    /** Il codice fiscale della delega o, in mancanza, quello di oggi del condominio: lo stesso della stampa del modello (Coda 754 (10)). */
+    codice_fiscale_contribuente: string | null;
     /** Il nome dell'esercizio della delega quando non è quello corrente, altrimenti `null` (Coda 314). */
     esercizio_non_corrente: string | null;
+    /**
+     * Le ritenute di questa delega già versate con un'altra, per un pagamento poi stornato (Coda 754 (10), decisione 704): una frase
+     * per fattura, da `DelegaF24::avvisiRitenuteGiaVersate()`.
+     */
+    avvisi_ritenute_gia_versate?: string[];
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -76,6 +83,8 @@ const righe = computed(() => righeProspetto(props.delega.righe ?? []));
 const totaleRighe = computed(() => totaleDebito(props.delega.righe ?? []));
 const totaleDiscorde = computed(() => totaleRighe.value !== Number(props.delega.totale_debito));
 
+const isBozza = computed(() => props.delega.stato === 'bozza');
+const isConfermata = computed(() => props.delega.stato === 'confermata');
 const isVersata = computed(() => props.delega.stato === 'versata');
 const isChiusa = computed(() => ['stornata', 'annullata'].includes(props.delega.stato));
 const puoVersare = computed(() => ['bozza', 'confermata'].includes(props.delega.stato));
@@ -204,6 +213,21 @@ const copia = async () => {
 
 // ── Azioni ───────────────────────────────────────────────────────────────────
 
+/**
+ * «Conferma la delega» e «Riporta in bozza» (Coda 754 (10)): lo stato della delega cambia, e basta. La confermata resta com'è anche
+ * dopo «Aggiorna scadenze»; nessuna scrittura contabile. Il messaggio del risultato arriva dal server, come per le altre azioni.
+ */
+const cambiandoStato = ref(false);
+
+const cambiaStato = (nomeRotta: 'gestionale.f24.conferma-delega' | 'gestionale.f24.riporta-in-bozza') => {
+    cambiandoStato.value = true;
+    router.post(
+        route(generateRoute(nomeRotta), { condominio: props.condominio.id, delega: props.delega.id }),
+        {},
+        { preserveScroll: true, onFinish: () => (cambiandoStato.value = false) },
+    );
+};
+
 const mostraVersamento = ref(false);
 const mostraStorno = ref(false);
 
@@ -304,7 +328,7 @@ const storna = () => {
                 <h1 class="text-xl font-bold text-slate-900">Delega F24 — Ritenute d'acconto</h1>
                 <p class="mt-1 text-sm text-slate-700">
                     {{ props.delega.denominazione_contribuente }}
-                    <span v-if="props.delega.cf_contribuente"> · C.F. {{ props.delega.cf_contribuente }}</span>
+                    <span v-if="props.codice_fiscale_contribuente"> · C.F. {{ props.codice_fiscale_contribuente }}</span>
                 </p>
                 <p class="mt-0.5 text-xs text-slate-500">
                     Scadenza {{ dataIt(props.delega.data_scadenza) }} · totale {{ euro(totaleRighe) }}
@@ -332,7 +356,7 @@ const storna = () => {
                     <div>
                         <p class="text-[11px] uppercase tracking-wider text-slate-400">Contribuente</p>
                         <p class="text-sm font-semibold text-slate-800">{{ props.delega.denominazione_contribuente }}</p>
-                        <p class="text-xs text-slate-500 font-mono">{{ props.delega.cf_contribuente ?? '—' }}</p>
+                        <p class="text-xs text-slate-500 font-mono">{{ props.codice_fiscale_contribuente ?? '—' }}</p>
                     </div>
                     <div>
                         <p class="text-[11px] uppercase tracking-wider text-slate-400">Scadenza</p>
@@ -385,7 +409,7 @@ const storna = () => {
                 del divieto muto corretto nella beta.34.
             -->
             <div
-                v-if="!props.delega.cf_contribuente"
+                v-if="!props.codice_fiscale_contribuente"
                 class="border border-amber-300 bg-amber-50 rounded-xl p-4 text-sm text-amber-900 flex gap-3"
             >
                 <AlertOctagon class="w-5 h-5 shrink-0" />
@@ -393,9 +417,26 @@ const storna = () => {
                     <p class="font-semibold">Manca il codice fiscale del condominio</p>
                     <p class="mt-1">
                         L'F24 non si può presentare senza il codice fiscale del contribuente. Inseriscilo
-                        nell'anagrafica del condominio, poi torna qui e premi «Aggiorna scadenze»: la delega
-                        verrà ricalcolata con il dato corretto.
+                        nell'anagrafica del condominio e ricarica questa pagina: la delega lo legge da lì.
                     </p>
+                </div>
+            </div>
+
+            <!--
+                Decisione 704: lo storno di un pagamento con la ritenuta già versata passa, e il pagamento rifatto porta la sua
+                ritenuta in questa delega. Se è la stessa ritenuta, versarla di nuovo la darebbe due volte all'Erario: si dice qui,
+                prima del versamento, con la fattura e la data.
+            -->
+            <div
+                v-if="(props.avvisi_ritenute_gia_versate ?? []).length"
+                class="border border-amber-300 bg-amber-50 rounded-xl p-4 text-sm text-amber-900 flex gap-3 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+                <AlertOctagon class="w-5 h-5 shrink-0" />
+                <div>
+                    <p class="font-semibold">Ritenuta già versata con un'altra delega</p>
+                    <ul class="mt-1 space-y-1">
+                        <li v-for="avviso in props.avvisi_ritenute_gia_versate" :key="avviso">{{ avviso }}</li>
+                    </ul>
                 </div>
             </div>
 
@@ -542,7 +583,42 @@ const storna = () => {
             </div>
 
             <!-- Azioni -->
-            <div v-if="puoVersare" class="no-print bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div v-if="puoVersare" class="no-print bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                <!-- Lo stato della delega: confermarla la tiene ferma anche dopo «Aggiorna scadenze»; riportarla in bozza la rimette in gioco. -->
+                <div v-if="!mostraVersamento" class="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                        <p class="text-sm font-semibold text-slate-800">
+                            {{ isBozza ? 'Vuoi tenere ferma questa delega?' : 'Delega confermata' }}
+                        </p>
+                        <p class="text-xs text-slate-500">
+                            <template v-if="isBozza">
+                                Confermandola, «Aggiorna scadenze» non la rifà più: le cifre restano ferme fino al versamento.
+                            </template>
+                            <template v-else>
+                                «Aggiorna scadenze» non la rifà. Per modificarla, riportala in bozza.
+                            </template>
+                        </p>
+                    </div>
+                    <Button
+                        v-if="isBozza"
+                        variant="outline"
+                        class="shrink-0"
+                        :disabled="cambiandoStato"
+                        @click="cambiaStato('gestionale.f24.conferma-delega')"
+                    >
+                        <Check class="w-4 h-4 mr-2" /> Conferma la delega
+                    </Button>
+                    <Button
+                        v-else-if="isConfermata"
+                        variant="outline"
+                        class="shrink-0"
+                        :disabled="cambiandoStato"
+                        @click="cambiaStato('gestionale.f24.riporta-in-bozza')"
+                    >
+                        <RotateCcw class="w-4 h-4 mr-2" /> Riporta in bozza
+                    </Button>
+                </div>
+
                 <div v-if="!mostraVersamento" class="flex items-center justify-between">
                     <div>
                         <p class="text-sm font-semibold text-slate-800">Hai già versato questo F24?</p>

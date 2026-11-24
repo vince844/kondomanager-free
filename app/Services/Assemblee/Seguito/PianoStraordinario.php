@@ -176,7 +176,7 @@ final class PianoStraordinario
     /** Gli esercizi aperti del condominio, dal più vecchio. @return \Illuminate\Support\Collection<int, Esercizio> */
     private static function esercizi(Condominio $condominio): \Illuminate\Support\Collection
     {
-        return Esercizio::query()->where('condominio_id', $condominio->id)->where('stato', 'aperto')->orderBy('data_inizio')->get();
+        return Esercizio::query()->where('condominio_id', $condominio->id)->where('stato', 'aperto')->orderBy('data_inizio')->orderBy('id')->get();
     }
 
     /**
@@ -188,7 +188,8 @@ final class PianoStraordinario
      */
     private static function esercizioProposto(\Illuminate\Support\Collection $esercizi, ?string $entroIl = null): ?Esercizio
     {
-        $contiene = fn (string $giorno) => $esercizi->first(fn (Esercizio $e) => $e->data_inizio?->format('Y-m-d') <= $giorno
+        // Dal più recente: fra due esercizi aperti che contengono il giorno vince quello che comincia dopo (Coda 646, decisione 707 (4), la regola di `HasEsercizio`).
+        $contiene = fn (string $giorno) => $esercizi->reverse()->first(fn (Esercizio $e) => $e->data_inizio?->format('Y-m-d') <= $giorno
             && $e->data_fine?->format('Y-m-d') >= $giorno);
 
         return ($entroIl !== null ? $contiene($entroIl) : null) ?? $contiene(DateHelper::oggiUtente()) ?? $esercizi->last();

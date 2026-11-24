@@ -350,6 +350,22 @@ return [
         ],
     ],
 
+    'errore_avvisato' => [
+
+        'subject' => 'Error :codice: te ha avisado :nome',
+
+        'line_1' => ':nome (:ruolo) te ha avisado de un error el :quando.',
+
+        'line_codice' => 'El código del error: :codice.',
+
+        'line_pagina' => 'La página: :pagina.',
+
+        'action' => 'Abrir el error',
+
+        'line_dettaglio' => 'El detalle, la nota y el informe están en la pestaña «Errori» de la configuración: no están en este correo.',
+
+    ],
+
     'assigned_ticket' => [
         'subject' => 'Aviso asignado a ti: :title',
         'line_1' => ':user te ha asignado el aviso ":title" (:building).',

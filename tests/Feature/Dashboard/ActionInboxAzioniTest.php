@@ -94,6 +94,8 @@ it('la mappa delle prossime azioni copre ogni tipo: ogni caso di EventoTipo e og
         'due_versioni' => 'Scegli la versione', 'da_decidere_in_sala' => 'Apri la sala',
         // Il seguito delle delibere: l'azione mirata la calcola la cosa da fare («Crea il piano straordinario», «Registra la dispensa», …); la voce è il di serie.
         'delibera_da_eseguire' => 'Apri la delibera', 'delibera_respinta' => 'Apri la delibera',
+        // L'avviso di un errore dalla pagina d'errore (la 698 (4) del registro delle decisioni): la scheda «Errori» con il codice cercato, salvata nel compito.
+        'errore_avvisato' => 'Apri l\'errore',
     ]);
 });
 

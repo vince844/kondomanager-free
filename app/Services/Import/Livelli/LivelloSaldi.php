@@ -13,6 +13,7 @@ use App\Models\ImportBatchItem;
 use App\Models\Saldo;
 use App\Services\Import\Canonical\CanonicalSaldiApertura;
 use App\Services\Import\Canonical\CanonicalSaldo;
+use App\Services\Import\Canonical\CanonicalSoggetto;
 use App\Services\Import\EsitoCommit;
 use App\Services\Import\ImportContext;
 use App\Services\Import\LivelloImport;
@@ -127,6 +128,7 @@ final class LivelloSaldi implements LivelloImport
 
         $unita = $ctx->risoltiMolti(LivelloUnita::CHIAVE);
         $soggetti = $ctx->risoltiMolti(LivelloSoggetti::CHIAVE);
+        $nomiNeiFile = $this->nomiNeiFile($ctx->canonico(LivelloSoggetti::CHIAVE));
 
         $rilievi = [];
         $avvisi = [];
@@ -171,7 +173,7 @@ final class LivelloSaldi implements LivelloImport
             $anagrafica = null;
 
             if (! $saldo->isSolidale()) {
-                $anagrafica = $this->risolviSoggetto($saldo, $soggetti, $rilievi, $avvisi, $dati->fonte === 'foglio dei saldi');
+                $anagrafica = $this->risolviSoggetto($saldo, $soggetti, $rilievi, $avvisi, $dati->fonte === 'foglio dei saldi', $nomiNeiFile);
 
                 if ($anagrafica === null) {
                     continue;
@@ -488,8 +490,11 @@ final class LivelloSaldi implements LivelloImport
      * Confronto **esatto**, in centesimi interi. Una tolleranza qui sarebbe un centesimo che si
      * perde a ogni migrazione, cioè la cosa che nessuno ritrova più — è la stessa scelta già
      * fatta per il riparto manuale del pregresso in `CreatePianoRateRequest`.
+     *
+     * Pubblico dalla 1.12.0-beta.14 (Coda 759 (2)): lo chiama anche la verifica, `ImportVerificaService::saldiCheNonEntrano()`,
+     * così lo scarto si dice prima della conferma, con le stesse cifre, invece di scoprirlo dopo con l'importazione a metà.
      */
-    private function verificaQuadratura(CanonicalSaldiApertura $dati): ?Rilievo
+    public function verificaQuadratura(CanonicalSaldiApertura $dati): ?Rilievo
     {
         $scarto = $dati->scartoCents();
 
@@ -514,16 +519,66 @@ final class LivelloSaldi implements LivelloImport
     }
 
     /**
+     * Le righe che `commit()` non saprebbe a chi scrivere, dette **prima** della conferma (1.12.0-beta.14): un saldo su un'unità che i
+     * file non hanno (o che corrisponde a più unità), un saldo intestato a un nome che non è fra le persone dei file. Scrivendo, il livello
+     * si fermava dopo che condominio, unità e persone erano già entrati: l'importazione a metà. La verifica le chiede qui, sui dati dei
+     * file, con la stessa ricerca di `commit()` (`risolviUnita()` e `risolviSoggetto()`: la chiave dell'unità o il suo progressivo, il
+     * nome senza badare a maiuscole e spazi, i pezzi di un nome scritto in una cella sola) — e `commit()`, che cerca anche fra i nomi dei
+     * file, trova ogni riga che la verifica ha trovato.
+     *
+     * @param  array<string, mixed>  $unita  chiave → unità dei file
+     * @param  array<string, CanonicalSoggetto>  $soggetti  chiave → persona dei file
+     * @return list<array{saldo: CanonicalSaldo, codice: string}>  `codice`: quello che `commit()` darebbe (`saldi.unita_non_trovata`,
+     *                                                             `saldi.unita_ambigua`, `saldi.soggetto_non_trovato`)
+     */
+    public function righeSenzaDestinatario(CanonicalSaldiApertura $dati, array $unita, array $soggetti): array
+    {
+        $righe = [];
+
+        foreach ($dati->righe as $saldo) {
+            $rilievi = [];
+            $avvisi = [];
+
+            if ($this->risolviUnita($saldo, $unita, $rilievi) === null
+                || (! $saldo->isSolidale() && $this->risolviSoggetto($saldo, $soggetti, $rilievi, $avvisi, $dati->fonte === 'foglio dei saldi') === null)
+            ) {
+                $righe[] = ['saldo' => $saldo, 'codice' => $rilievi[0]->codice];
+            }
+        }
+
+        return $righe;
+    }
+
+    /**
+     * I nomi delle persone **come li scrivono i file**, per chiave: con «Lascia com'è» la persona in archivio tiene il suo nome, che può
+     * essere scritto diversamente (trovata per codice fiscale), mentre il riparto intesta il saldo al nome del file.
+     *
+     * @return array<string, string>
+     */
+    private function nomiNeiFile(mixed $soggetti): array
+    {
+        $nomi = [];
+
+        foreach (is_array($soggetti) ? $soggetti : [] as $chiave => $s) {
+            if ($s instanceof CanonicalSoggetto) {
+                $nomi[$chiave] = $s->nome;
+            }
+        }
+
+        return $nomi;
+    }
+
+    /**
      * Il riparto stampa solo il progressivo (`01`, `016`), non la terna dell'elenco unità.
      *
      * Su un condominio con una palazzina sola è sufficiente; con più palazzine è **ambiguo**, e
      * l'ambiguità non si risolve indovinando: si chiede. È la trappola 17, che i file veri hanno
      * mostrato solo quando si è arrivati a incrociare due report diversi.
      *
-     * @param  array<string, Model>  $unita  chiave `palazzina-gruppo-progressivo` → immobile
+     * @param  array<string, mixed>  $unita  chiave `palazzina-gruppo-progressivo` → immobile (in archivio, o dei file per la verifica)
      * @param  list<Rilievo>  $rilievi
      */
-    private function risolviUnita(CanonicalSaldo $saldo, array $unita, array &$rilievi): ?Model
+    private function risolviUnita(CanonicalSaldo $saldo, array $unita, array &$rilievi): mixed
     {
         // ⚠️ **La chiave intera vince, quando c'è.** Il riparto di Danea porta solo il
         // progressivo, ed è per quello che esiste la ricerca per coda qui sotto; il modello
@@ -597,17 +652,27 @@ final class LivelloSaldi implements LivelloImport
     }
 
     /**
-     * @param  array<string, Model>  $soggetti
+     * Il nome si cerca fra quelli delle persone e, per la stessa chiave, fra quelli scritti nei file (`$nomiNeiFile`): la verifica
+     * cerca solo fra i secondi (`righeSenzaDestinatario()`), così una riga che la verifica trova, qui si trova sempre.
+     *
+     * @param  array<string, mixed>  $soggetti  chiave → persona (in archivio, o dei file per la verifica): basta il nome
      * @param  list<Rilievo>  $rilievi
      * @param  list<Rilievo>  $avvisi
+     * @param  array<string, string>  $nomiNeiFile
      */
-    private function risolviSoggetto(CanonicalSaldo $saldo, array $soggetti, array &$rilievi, array &$avvisi, bool $fonteManuale): ?Model
+    private function risolviSoggetto(CanonicalSaldo $saldo, array $soggetti, array &$rilievi, array &$avvisi, bool $fonteManuale, array $nomiNeiFile = []): mixed
     {
         $cercato = $this->normalizzaNome($saldo->soggettoNome ?? '');
+        $nomi = fn (string|int $chiave, mixed $soggetto): array => array_values(array_unique(array_filter(
+            [(string) $soggetto->nome, $nomiNeiFile[$chiave] ?? null],
+            fn (?string $n) => $n !== null && $n !== '',
+        )));
 
-        foreach ($soggetti as $anagrafica) {
-            if ($this->normalizzaNome($anagrafica->nome) === $cercato) {
-                return $anagrafica;
+        foreach ($soggetti as $chiave => $anagrafica) {
+            foreach ($nomi($chiave, $anagrafica) as $nome) {
+                if ($this->normalizzaNome($nome) === $cercato) {
+                    return $anagrafica;
+                }
             }
         }
 
@@ -615,8 +680,8 @@ final class LivelloSaldi implements LivelloImport
         // («ROSSI G. /  BIANCHI N.», trappola 8). Cercare il nome fra i componenti è una regola
         // spiegabile — non una somiglianza a occhio — e va **detta**, perché è un accostamento
         // che abbiamo fatto noi.
-        foreach ($soggetti as $anagrafica) {
-            foreach (preg_split('#\s*/\s*#', (string) $anagrafica->nome) ?: [] as $pezzo) {
+        foreach ($soggetti as $chiave => $anagrafica) {
+            foreach (array_merge(...array_map(fn (string $n) => preg_split('#\s*/\s*#', $n) ?: [], $nomi($chiave, $anagrafica))) as $pezzo) {
                 if ($this->normalizzaNome($pezzo) === $cercato && $cercato !== '') {
                     $avvisi[] = Rilievo::avviso(
                         'saldi.soggetto_da_nome_composto',

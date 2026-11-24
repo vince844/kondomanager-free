@@ -331,7 +331,8 @@ const modalitaVersamento = computed(() => {
                                     <div class="text-sm font-medium text-slate-800 dark:text-slate-200">Rata {{ rata.numero }}</div>
                                 </TableCell>
                                 <TableCell>
-                                    <div class="text-sm text-slate-600 dark:text-slate-300">Int. {{ rata.immobile || 'N/D' }}</div>
+                                    <!-- Coda 707: l'etichetta del server dice già «Int. …» per un'unità con l'interno, e il nome per una senza. -->
+                                    <div class="text-sm text-slate-600 dark:text-slate-300">{{ rata.immobile || 'N/D' }}</div>
                                 </TableCell>
                                 <TableCell class="text-slate-600 dark:text-slate-300">{{ rata.scadenza }}</TableCell>
                                 <TableCell>

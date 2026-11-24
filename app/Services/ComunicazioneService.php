@@ -92,7 +92,11 @@ class ComunicazioneService
      */
     private function getAdminScopedQuery(array $validated = [], ?int $limit = null): LengthAwarePaginator|Collection
     {
-        $query = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche']);
+        $query = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
+            ->withCount([
+                'letture as letture_aperte_count' => fn ($q) => $q->whereNotNull('aperta_il'),
+                'letture as letture_prese_visione_count' => fn ($q) => $q->whereNotNull('presa_visione_il'),
+            ]);
         $query = $this->applyFilters($query, $validated);
 
         $query->orderBy('created_at', 'desc');

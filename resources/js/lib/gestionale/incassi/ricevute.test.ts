@@ -612,7 +612,7 @@ describe('le scelte del bollo', () => {
 
     test('il segnaposto degli estremi segue il modo; in blocco una riga dice che il modo è uno solo', () => {
         expect(SEGNAPOSTO_ESTREMI).toEqual({ contrassegno: 'contrassegno n. …', virtuale: 'autorizzazione n. … del …' });
-        expect(NOTA_MODO_UNICO).toBe('Con «Assolta» in tutti e due i gruppi il modo è uno solo, per tutte le ricevute.');
+        expect(NOTA_MODO_UNICO).toBe('Con «Contrassegno» o «Virtuale» in tutti e due i gruppi il modo è uno solo, per tutte le ricevute.');
     });
 });
 

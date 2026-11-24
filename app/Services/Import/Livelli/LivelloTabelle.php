@@ -248,7 +248,7 @@ final class LivelloTabelle implements LivelloImport
                     $creati === 1 ? 'tabella è entrata' : 'tabelle sono entrate',
                 ),
                 'Finché una tabella non è collegata a un capitolo, nessuna spesa viene ripartita '
-                .'con quei millesimi — in elenco le vedrai come «Orfane». Il collegamento si fa '
+                .'con quei millesimi — in elenco le vedrai con il segno «Orfana». Il collegamento si fa '
                 .'dal piano dei conti, ed è una scelta contabile che non posso fare io: '
                 .'l\'export non dice quale spesa va su quale tabella.',
             );

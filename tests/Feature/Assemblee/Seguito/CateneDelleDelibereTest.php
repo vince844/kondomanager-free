@@ -339,6 +339,10 @@ it('catena 8 · le regole del recupero: «Scrivi la regola» da fare, fatta quan
     SeguitoDiViaRoma12::conferma($this, $s, $a)->assertOk();
     $cosa = CosaDaFareDellaDelibera::query()->where('delibera_id', $d->id)->firstOrFail();
     expect($cosa->tipo)->toBe(TipoCosaDaFare::SCRIVI_REGOLA);
+    // La regola del recupero la scrive chi ha «Modifica condomini» (Coda 755 (2)).
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => \App\Enums\Permission::EDIT_CONDOMINI->value, 'guard_name' => 'web']);
+    $s->admin->givePermissionTo(\App\Enums\Permission::EDIT_CONDOMINI->value);
+    app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
     $this->actingAs($s->admin)->postJson(route('admin.gestionale.recupero-crediti.store', [$s->c]), [
         'dal' => '2027-01-01', 'tasso_tipo' => 'scritto', 'tasso_annuo' => '3', 'fonte' => 'delibera', 'riferimento' => null, 'delibera_id' => $d->id,
     ])->assertSessionHasNoErrors();

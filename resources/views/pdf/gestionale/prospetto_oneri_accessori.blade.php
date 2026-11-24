@@ -33,6 +33,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     // di chi è entrato dopo.
     $conIlCambio = fn (array $v) => empty($v['regolato']) ? 'con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null)
         : 'con il cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null) . ' regolato fra le parti';
+    // Coda 395: nei modi che il verso lo dicono a parole («da ricevere da», «da restituire a», «a suo credito nel Wallet») la cifra è in valore assoluto: «€ -7,05» non lo legge nessuno.
+    // Nei modi «piano», «rate» e simili la cifra tiene il segno.
+    $cifraRiga = fn (array $v) => in_array($v['modo'] ?? null, ['entrato_dopo', 'restituzione', 'credito'], true) ? $euro(abs((int) $v['importo'])) : $euro($v['importo']);
     $come = fn (array $v) => match (true) {
         $v['modo'] === 'piano' && ! empty($v['chi']) => 'con la regola del piano, a chi sta al posto dell\'inquilino (' . $v['chi'] . ')' . $nelleRate($v),
         $v['modo'] === 'piano' => 'con la regola del piano' . $nelleRate($v),
@@ -42,7 +45,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
         $v['modo'] === 'regolato' => 'regolata fra le parti al cambio d\'inquilino del ' . $data($v['conguaglio_del'] ?? null),
         // Coda 413 (decisione 156.4): il credito della coppia dell'uscita di chi aveva il pezzo regolato fra le parti è nel Wallet, non nell'accordo.
         $v['modo'] === 'credito' => (int) $v['importo'] > 0 ? 'a suo debito nel Wallet' : 'a suo credito nel Wallet',
-        $v['modo'] === 'restituzione' => 'da restituire a ' . ($v['a_chi'] ?? 'chi è uscito') . ' (' . $allaFine($v) . ')',
+        // Coda 429: il verso è quello della cifra. Negativa: chi è uscito riceve («da restituire a»); positiva (un'entrata che nei giorni dopo l'uscita supera la spesa): è lui a dover dare, «da ricevere da».
+        $v['modo'] === 'restituzione' => ((int) $v['importo'] > 0 ? 'da ricevere da ' : 'da restituire a ') . ($v['a_chi'] ?? 'chi è uscito') . ' (' . $allaFine($v) . ')',
         $v['modo'] === 'da_restituire' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . '): si restituisce a chi l\'ha pagata, fra le parti',
         // Coda 364 (1.11.0-beta.55): i giorni di un conduttore entrato dopo un cambio d'inquilino, che chi è entrato con il cambio ha pagato con il conguaglio.
         $v['modo'] === 'entrato_dopo' => ((int) $v['importo'] < 0 ? 'da ricevere da ' : 'da restituire a ') . $v['da_chi'] . ': la parte di ' . $v['da_chi'] . ' dei giorni presi ' . $conIlCambio($v),
@@ -110,7 +114,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                         <td style="padding: 3px 5px; text-align: right;">{{ $v['quota_inquilino'] !== null ? $v['quota_inquilino'] . ' %' : '—' }}</td>
                         <td style="padding: 3px 5px;">{{ $tratti($v['competenza']) }}</td>
                         <td style="padding: 3px 5px; text-align: right;">{{ $v['giorni'] ?? '—' }}</td>
-                        <td style="padding: 3px 5px; text-align: right; white-space: nowrap;">{{ $euro($v['importo']) }}</td>
+                        <td style="padding: 3px 5px; text-align: right; white-space: nowrap;">{{ $cifraRiga($v) }}</td>
                         <td style="padding: 3px 5px; font-size: 7pt;">{{ $come($v) }}</td>
                     </tr>
                 @endforeach
@@ -268,7 +272,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                 <tr style="border-bottom: 1px solid #e3e8ef;">
                     <td style="padding: 3px 5px;">{{ $v['conto'] }}@if($piuPiani) <span style="color: #888;">({{ $v['piano'] }})</span>@endif @if(! empty($v['nota']))<br><span style="color: #888; font-size: 6.8pt;">{{ $v['nota'] }}</span>@endif</td>
                     <td style="padding: 3px 5px; text-align: right;">{{ $v['giorni'] ?? '—' }} giorni</td>
-                    <td style="padding: 3px 5px; text-align: right; white-space: nowrap;">{{ $euro($v['importo']) }}</td>
+                    <td style="padding: 3px 5px; text-align: right; white-space: nowrap;">{{ $cifraRiga($v) }}</td>
                     <td style="padding: 3px 5px; font-size: 7pt;">{{ $come($v) }}</td>
                 </tr>
             @endforeach

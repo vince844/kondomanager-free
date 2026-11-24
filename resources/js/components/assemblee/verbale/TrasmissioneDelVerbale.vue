@@ -11,7 +11,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  *   è stato aggiunto; in videoconferenza o mista tutti), con il mezzo e la prova della convocazione; «Togli dalla lista» nel «⋯» della riga, «Aggiungi una
  *   persona» in cima.
  * - **Le azioni della convocazione**: «Manda le PEC (5)», «Stampa le lettere (11)», «Registra la spedizione»: pulsanti piccoli e chiari (alti 28 px, scritta
- *   a 12), a tutta riga al telefono; scuro, e piccolo anche lui, solo il gesto principale (rilievo C28). «Registra la consegna» è nel «⋯» della riga.
+ *   a 12), a tutta riga al telefono; scuro, e piccolo anche lui, solo il gesto principale (rilievi C28 e C60, `gestoPrincipale`). «Registra la consegna» è nel «⋯» della riga.
  * - **I trenta giorni** per persona e per punto (art. 1137 c. 2 c.c.): «dalla consegna», «fino al 14/01/2027», «favorevole, nessun termine», con il conto
  *   prudente; sotto, chi c'era (contrari, astenuti, chi non ha votato) dalla delibera, e «Segna impugnata» su ogni delibera.
  * - **La copia di prima**: dopo «Sostituisci la copia», chi l'aveva già riceve l'avviso «N hanno la copia di prima: rimandala», con l'elenco (decisione 615 (6));
@@ -32,7 +32,7 @@ import RegistraLaSpedizione from '@/components/assemblee/convocazione/RegistraLa
 import { apriPdfInUnaScheda, fraseDaErroreConFile } from '@/lib/gestionale/incassi/ricevute';
 import { BADGE, CLASSI_DEL_BADGE } from '@/lib/assemblee/assemblee';
 import {
-    CALCOLO_PRUDENTE, conLaCopiaDiPrima, giorno, gruppiDeiDestinatari, mezzoDellaConsegna, righeDeiTrentaGiorni, stampateConLaCopiaDiPrima,
+    CALCOLO_PRUDENTE, conLaCopiaDiPrima, gestoPrincipale, giorno, gruppiDeiDestinatari, mezzoDellaConsegna, nomeDellaDelibera, righeDeiTrentaGiorni, stampateConLaCopiaDiPrima,
 } from '@/lib/assemblee/verbale/pagina';
 import AggiungiUnaPersona from './AggiungiUnaPersona.vue';
 import RimandaLaCopia from './RimandaLaCopia.vue';
@@ -50,8 +50,8 @@ const pec = computed(() => daSpedire(['pec']));
 const lettere = computed(() => daSpedire(['raccomandata', 'a_mano', 'mano', 'fax']));
 const copiaDiPrima = computed(() => conLaCopiaDiPrima(t.value, props.verbale.copia?.sostituita_il));
 const stampateDiPrima = computed(() => stampateConLaCopiaDiPrima(t.value, props.verbale.copia?.sostituita_il));
-/** Il gesto principale: le lettere da stampare, se ce ne sono; altrimenti le PEC da mandare; altrimenti nessuno. */
-const principale = computed<'lettere' | 'pec' | null>(() => (lettere.value.length > 0 ? 'lettere' : pec.value.length > 0 ? 'pec' : null));
+/** Il gesto principale: le lettere ancora da stampare; altrimenti le PEC da mandare; altrimenti la spedizione delle lettere stampate; altrimenti nessuno. */
+const principale = computed(() => gestoPrincipale(t.value));
 const perTutti = computed(() => props.verbale.termini?.per_tutti ?? null);
 const inCorso = ref<string | null>(null);
 const messaggio = ref('');
@@ -110,7 +110,7 @@ const puoTogliere = (p: DestinatarioDelVerbale) => p.proposto && !p.invio?.spedi
 const COLONNE = 'lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_6.5rem_8.5rem_minmax(0,1.4fr)_2rem]';
 const gruppi = computed(() => [
     { chiave: 'tutti', titolo: 'In videoconferenza o mista: tutti i convocati', persone: g.value.tutti },
-    { chiave: 'mai_entrati', titolo: 'Non sono mai entrati', persone: g.value.mai_entrati },
+    { chiave: 'mai_entrati', titolo: 'Mai in sala', persone: g.value.mai_entrati },
     { chiave: 'fuori', titolo: 'Fuori al voto di un punto', persone: g.value.fuori },
     { chiave: 'aggiunti', titolo: 'Aggiunti da te', persone: g.value.aggiunti },
 ].filter((x) => x.persone.length));
@@ -136,8 +136,8 @@ const chiCera = computed(() => (props.verbale.termini?.delibere ?? []).filter((d
             <button type="button" :class="[principale === 'pec' ? PRINCIPALE_PICCOLO : PICCOLO, 'w-full sm:w-auto']" :disabled="pec.length === 0 || inCorso !== null" data-testid="manda-le-pec"
                 @click="mandaLePec()">
                 <Loader2 v-if="inCorso === 'pec'" class="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Manda le PEC ({{ pec.length }})</button>
-            <button type="button" :class="[PICCOLO, 'w-full sm:w-auto']" :disabled="daRegistrareSpedite.length === 0" data-testid="registra-la-spedizione"
-                @click="finestraSpedizione = true">Registra la spedizione</button>
+            <button type="button" :class="[principale === 'spedizione' ? PRINCIPALE_PICCOLO : PICCOLO, 'w-full sm:w-auto']" :disabled="daRegistrareSpedite.length === 0"
+                data-testid="registra-la-spedizione" @click="finestraSpedizione = true">Registra la spedizione</button>
             <button type="button" :class="[PICCOLO, 'w-full sm:w-auto']" data-testid="aggiungi-una-persona" @click="finestraAggiungi = true">Aggiungi una persona</button>
             <a v-if="rotte.prova" :href="rotte.prova" target="_blank" rel="noopener" :class="[PICCOLO, 'w-full sm:w-auto']" data-testid="la-prova-della-trasmissione">La prova della trasmissione</a>
         </div>
@@ -218,7 +218,7 @@ const chiCera = computed(() => (props.verbale.termini?.delibere ?? []).filter((d
         <div v-if="chiCera.length" class="space-y-1.5 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/40" data-testid="chi-cera">
             <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">Chi c'era: i trenta giorni dalla delibera</p>
             <div v-for="d in chiCera" :key="d.delibera_id" class="flex flex-col gap-1 text-xs text-slate-700 sm:flex-row sm:items-start sm:justify-between dark:text-slate-300">
-                <p class="min-w-0 break-words"><b class="font-semibold">Punto {{ d.punto }}</b> · {{ d.chi.filter((c) => c.perche !== 'assente').map((c) => `${c.nome} (${c.perche === 'non_votato'
+                <p class="min-w-0 break-words"><b class="font-semibold">{{ nomeDellaDelibera(d) }}</b> · {{ d.chi.filter((c) => c.perche !== 'assente').map((c) => `${c.nome} (${c.perche === 'non_votato'
                     ? 'non ha votato, conta astenuto' : c.perche})`).join(', ') }}<template v-if="d.chi.find((c) => c.fino_al && c.perche !== 'assente')"> · fino al {{
                     giorno(d.chi.find((c) => c.fino_al && c.perche !== 'assente')!.fino_al) }}</template></p>
                 <button v-if="puoGestire" type="button" class="shrink-0 text-xs font-medium underline underline-offset-2" data-testid="segna-impugnata"

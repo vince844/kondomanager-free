@@ -5,6 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup>
 
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 import { Link } from '@inertiajs/vue3';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,7 @@ const props = defineProps({
                     </Link>
                 </Button>
             </CardFooter>
+            <NotaDiLicenza class="border-t px-6 py-3" />
         </Card>
     </div>
 </template>

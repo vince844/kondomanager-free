@@ -36,6 +36,11 @@ const props = defineProps<{
     hasSpesePrivate?: boolean;
     /** 1.12.0-beta.13 (§1.4): il nome del condominio, per «Scegli la delibera» della spesa decisa dall'assemblea. */
     condominioNome?: string;
+    /**
+     * Coda 754 (5), 1.12.0-beta.14: «pregressa» per la parte del debito dell'esercizio precedente non coperta dai saldi iniziali, «corrente» per la spesa fuori
+     * preventivo dell'anno. La pagina lo passava già; per la pregressa l'origine dell'incarico non si preseleziona.
+     */
+    mode?: 'corrente' | 'pregressa';
 }>();
 
 const emit = defineEmits<{
@@ -50,6 +55,14 @@ const { fondiUtilizzabili } = useFondiRiserva(fondiRiservaRef);
 // ---------------------------------------------------------------------------
 // Stato interno
 // ---------------------------------------------------------------------------
+type OrigineDellIncarico = 'gestione_corrente' | 'delibera_assembleare';
+
+/**
+ * Coda 754 (5), 1.12.0-beta.14: l'origine da cui parte la finestra. Per la pregressa nessuna: partiva da «Intervento d'urgenza», e chi confermava senza
+ * guardare registrava un debito dell'anno prima come una spesa da ratificare (prova G6). Per la spesa fuori preventivo dell'anno resta l'urgenza.
+ */
+const origineDiPartenza = (): OrigineDellIncarico | null => (props.mode === 'pregressa' ? null : 'gestione_corrente');
+
 const data = ref({
     nome_voce: '',
     tabella_millesimale_id: null as number | null,
@@ -58,7 +71,7 @@ const data = ref({
     percentuale_usufruttuario: 0,
     show_advanced_percentages: false,
 
-    origine_decisionale: 'gestione_corrente' as 'gestione_corrente' | 'delibera_assembleare',
+    origine_decisionale: origineDiPartenza(),
     data_assemblea: '',
 
     strategia_rientro: 'conguaglio_fine_anno' as 'conguaglio_fine_anno' | 'rata_integrativa' | 'fondo_riserva',
@@ -141,7 +154,9 @@ watch(() => props.show, (isOpen) => {
             percentuale_inquilino: Number(p.percentuale_inquilino ?? 0),
             percentuale_usufruttuario: Number(p.percentuale_usufruttuario ?? 0),
             show_advanced_percentages: Boolean(p.show_advanced_percentages),
-            origine_decisionale: p.origine_decisionale === 'delibera_assembleare' ? 'delibera_assembleare' : 'gestione_corrente',
+            origine_decisionale: p.origine_decisionale === 'delibera_assembleare' || p.origine_decisionale === 'gestione_corrente'
+                ? p.origine_decisionale
+                : origineDiPartenza(),
             data_assemblea: String(p.data_assemblea ?? ''),
             strategia_rientro: ['conguaglio_fine_anno', 'rata_integrativa', 'fondo_riserva'].includes(p.strategia_rientro) ? p.strategia_rientro : 'conguaglio_fine_anno',
             fondo_patrimoniale_id: p.fondo_patrimoniale_id ?? null,
@@ -159,7 +174,7 @@ watch(() => props.show, (isOpen) => {
             percentuale_inquilino: 0,
             percentuale_usufruttuario: 0,
             show_advanced_percentages: false,
-            origine_decisionale: 'gestione_corrente',
+            origine_decisionale: origineDiPartenza(),
             data_assemblea: '',
             strategia_rientro: 'conguaglio_fine_anno',
             fondo_patrimoniale_id: null,
@@ -190,6 +205,8 @@ watch(() => props.hasSpesePrivate, lasciaIlFondoSeNonSiPuo);
 const isValid = computed(() => {
     if (data.value.nome_voce.length < 5) return false;
     if (!data.value.tabella_millesimale_id) return false;
+    // Coda 754 (5): l'origine si sceglie (per la pregressa parte vuota).
+    if (!data.value.origine_decisionale) return false;
     if (!percentualiValide.value) return false;
 
     // Coda 693 (a), decisione 533: il giustificativo dell'urgenza è obbligatorio con ogni strategia, anche con il fondo. Prima con il fondo si nascondeva, la
@@ -370,7 +387,12 @@ const handleConfirm = () => {
                                         v-model="data.origine_decisionale"
                                         :reduce="(o: any) => o.id"
                                         :clearable="false"
+                                        placeholder="Scegli l'origine..."
                                         class="bg-white dark:bg-slate-800 font-semibold" />
+                                    <!-- Coda 754 (5): per la pregressa l'origine parte vuota, e si dice perché la voce non si conferma ancora. -->
+                                    <p v-if="!data.origine_decisionale" data-test="scegli-origine" class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                                        Con l'urgenza la fattura resta da ratificare in assemblea; con la delibera no.
+                                    </p>
                                 </div>
 
                                 <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-y-2 h-0" enter-to-class="opacity-100 translate-y-0 h-auto">

@@ -38,7 +38,12 @@ class HandleInertiaRequests extends Middleware
             // (piè di pagina, intestazione, impostazioni, aggiornamento) sta dietro l'accesso (Coda 342,
             // decisione 127.6).
             'version' => fn () => $request->user() ? config('app.version') : null,
-            'is_demo' => env('IS_DEMO', false),
+            // La demo pubblica dalla configurazione (`kondomanager.demo`): con `artisan optimize` la variabile IS_DEMO letta qui con env() valeva sempre falso (1.12.0-beta.14).
+            'is_demo' => (bool) config('kondomanager.demo', false),
+
+            // Coda 493 (decisione 687): l'indirizzo dei termini del servizio, se l'istanza l'ha impostato (vuoto di serie), per la finestra «Note legali» che sta
+            // anche nelle pagine per ospiti. Solo un indirizzo web: altro non diventa un collegamento.
+            'termini_del_servizio_url' => fn () => preg_match('#^https?://#i', (string) config('kondomanager.termini_del_servizio_url')) ? config('kondomanager.termini_del_servizio_url') : null,
 
             // Cosa questa installazione sa fare (aggiornamenti in app, pianificatore esterno,
             // backup, archiviazione esterna): una mappa sola, vedi App\Support\FunzioniInstallazione.

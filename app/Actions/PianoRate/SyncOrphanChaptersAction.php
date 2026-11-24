@@ -60,7 +60,7 @@ class SyncOrphanChaptersAction
         $syncData = [];
         foreach ($contiOrfani as $conto) {
             $syncData[$conto->id] = [
-                'importo' => $this->calcolaImportoSnapshot($conto),
+                'importo' => $this->calcolaImportoSnapshot($conto, $pianoRate->created_at),
                 'note'    => 'Snapshot sincronizzazione orfani',
             ];
         }
@@ -75,15 +75,21 @@ class SyncOrphanChaptersAction
      * Calcola ricorsivamente l'importo totale del conto per lo snapshot.
      * - Mastro (ha figli non tecnici): somma ricorsiva degli importi dei figli.
      * - Foglia (nessun figlio): restituisce il proprio importo.
+     *
+     * Coda 277 (1.12.0-beta.14): i figli sono quelli che il motore guarda per il piano, i nati fino alla sua creazione o, se nessuno lo è, tutti
+     * (`Conto::sottocontiDelPiano`, come `CalcoloQuoteService::ripartoFraIFigli`). Il motore divide la copia del capitolo fra quei figli in proporzione ai
+     * loro importi e dà a ognuno il segno del suo tipo (`Conto::importoConSegno`): con la somma dei loro importi ognuno riceve il suo, una spesa come spesa
+     * e un'entrata come entrata. Fino alla beta.13 la somma era dei figli di adesso: un'entrata nata dopo il piano entrava nella copia e il motore la
+     * dava tutta ai figli del piano, come spesa (€ 600,00 a «Manutenzione antenna» invece di € 100,00, il piano a € 1.800,00 invece di € 1.300,00).
      */
-    private function calcolaImportoSnapshot(Conto $conto): int
+    private function calcolaImportoSnapshot(Conto $conto, ?\Carbon\CarbonInterface $pianoNato): int
     {
         $figli = $conto->sottoconti ?? collect();
 
         if ($figli->isNotEmpty()) {
             $totale = 0;
-            foreach ($figli as $sottoconto) {
-                $totale += $this->calcolaImportoSnapshot($sottoconto);
+            foreach ($conto->sottocontiDelPiano($pianoNato) as $sottoconto) {
+                $totale += $this->calcolaImportoSnapshot($sottoconto, $pianoNato);
             }
             return $totale;
         }

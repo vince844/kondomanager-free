@@ -38,6 +38,9 @@ use Illuminate\Validation\Validator;
  */
 class AnteprimaPassaggioRequest extends FormRequest
 {
+    /** Rilievo 1 dello scettico della tappa 7: una riga di chi esce che non è un id (scritta a mano: «+12», 12.0, un booleano). */
+    public const RIGA_NON_RICONOSCIUTA = 'La riga di chi esce non si riconosce: ricarica la pagina e spunta di nuovo chi esce.';
+
     /** Decisione 72 (1.11.0-beta.48): con l'arretrato agli eredi il conguaglio non si sceglie. */
     public const NON_SCRIVERE_CON_GLI_EREDI = 'Con l\'arretrato agli eredi il conguaglio e l\'arretrato fanno un conto solo: per non scrivere il conguaglio lascia l\'arretrato a nome del defunto.';
 
@@ -52,6 +55,8 @@ class AnteprimaPassaggioRequest extends FormRequest
         // (la regola `in`); il cast su un array faceva una pagina 500 prima di arrivarci.
         $tipo = is_string($t = $this->input('tipo')) ? $t : '';
         $sottotipo = is_string($st = $this->input('sottotipo')) ? $st : '';
+        // Decisione 705: più persone che escono con lo stesso atto, nella vendita; con due o più righe non c'è `riga_uscente_id`.
+        $insieme = $this->filled('righe_uscenti');
 
         return [
             'tipo' => ['required', Rule::in(Subentro::TIPI_PASSAGGIO)],
@@ -61,11 +66,24 @@ class AnteprimaPassaggioRequest extends FormRequest
             'sottotipo' => ['nullable', 'required_if:tipo,usufrutto', Rule::prohibitedIf(fn () => in_array($tipo, ['inizio_locazione', 'fine_locazione'], true)),
                 Rule::in(match ($tipo) { 'vendita' => [Subentro::RISERVA_USUFRUTTO], 'successione' => [Subentro::LEGATO], default => ['costituzione', 'estinzione'] })],
             'riga_uscente_id' => [
-                // L'inizio di una locazione non ha chi esce (S8-20): una riga qui chiuderebbe il proprietario.
-                Rule::prohibitedIf(fn () => $tipo === 'inizio_locazione'),
-                Rule::requiredIf(fn () => in_array($tipo, ['vendita', 'fine_locazione', 'usufrutto', 'successione'], true)),
+                // L'inizio di una locazione non ha chi esce (S8-20): una riga qui chiuderebbe il proprietario. Con più persone che escono, le righe sono in
+                // `righe_uscenti` (decisione 705).
+                Rule::prohibitedIf(fn () => $tipo === 'inizio_locazione' || $insieme),
+                Rule::requiredIf(fn () => ! $insieme && in_array($tipo, ['vendita', 'fine_locazione', 'usufrutto', 'successione'], true)),
                 'nullable', 'integer',
             ],
+            // Decisione 705: le righe delle persone che escono insieme, nell'ordine del modulo; solo nella vendita (anche con la riserva d'usufrutto).
+            'righe_uscenti' => ['nullable', 'array', 'list', 'min:2', Rule::prohibitedIf(fn () => $insieme && $tipo !== 'vendita')],
+            // Rilievo 1 dello scettico della tappa 7: l'id di una riga si legge in un modo solo, qui e in `insieme()` (`idDellaRiga`). La regola `integer`
+            // accettava «+12» e `true`, che `insieme()` scartava: l'insieme restava acceso nelle regole e spento nei controlli, e si registrava una vendita
+            // senza chi esce.
+            'righe_uscenti.*' => [function (string $attributo, mixed $valore, \Closure $fail) {
+                if (self::idDellaRiga($valore) === null) {
+                    $fail(self::RIGA_NON_RICONOSCIUTA);
+                }
+            }, 'distinct'],
+            // L'impronta del pannello dell'insieme (`AnteprimaDelGruppo`): una parte per persona, unite da un punto.
+            'impronta_del_gruppo' => ['nullable', 'string', 'max:255', Rule::prohibitedIf(fn () => ! $insieme)],
             'anagrafica_entrante_id' => [
                 Rule::requiredIf(fn () => $tipo === 'vendita' || $tipo === 'inizio_locazione' || ($tipo === 'usufrutto' && $this->input('sottotipo') !== 'estinzione')),
                 // Nella successione entrano gli eredi, in `eredi`: un solo campo per una persona sola nasconderebbe gli altri.
@@ -200,124 +218,44 @@ class AnteprimaPassaggioRequest extends FormRequest
             }
             /** @var Immobile $immobile */
             $immobile = $this->route('immobile');
-            $uscente = $this->rigaUscente();
+            $tipo = $this->testo('tipo');
+            // Decisione 705: più persone che escono con lo stesso atto (`righe_uscenti`). I controlli di chi esce valgono per ogni riga, sulla sua riga del
+            // modulo e con il nome della persona davanti; la quota è la somma; tutte con lo stesso ruolo.
+            $righe = $this->insieme() ? $this->righeUscenti() : null;
+            $uscente = $righe === null ? $this->rigaUscente() : null;
 
-            if ($this->filled('riga_uscente_id') && $uscente === null) {
-                $v->errors()->add('riga_uscente_id', 'La riga di chi esce non appartiene a questa unità.');
+            // Rilievo 1 dello scettico della tappa 7: l'elenco c'è ma non accende l'insieme (le regole lo hanno già detto, riga per riga o sull'elenco). Niente
+            // controlli di chi esce su un passaggio da solo che non ha chi esce: ci si ferma qui, e la vendita senza chi esce non arriva alla registrazione.
+            if ($righe === null && $this->filled('righe_uscenti')) {
+                if (! collect(array_keys($v->errors()->messages()))->contains(fn (string $k) => $k === 'righe_uscenti' || str_starts_with($k, 'righe_uscenti.'))) {
+                    $v->errors()->add('righe_uscenti', self::RIGA_NON_RICONOSCIUTA);
+                }
 
                 return;
             }
-
-            if ($uscente !== null && ! $uscente->attivo) {
-                $v->errors()->add('riga_uscente_id', 'Questa riga è disattivata: il passaggio si registra da un titolare in corso.');
-            }
-
-            if ($uscente !== null && $this->filled('decorrenza')) {
-                $decorrenza = CarbonImmutable::parse($this->input('decorrenza'));
-                if ($uscente->data_inizio !== null && $decorrenza->lte($uscente->data_inizio)) {
-                    $v->errors()->add('decorrenza', sprintf(
-                        // Rilievo R7 della Fase 1-bis della .48: nella successione la data è il giorno del decesso.
-                        $this->successione() ? 'Il giorno del decesso deve essere successivo al %s, giorno in cui %s è diventato titolare.'
-                            : 'La data del passaggio deve essere successiva al %s, giorno in cui %s è diventato titolare.',
-                        $uscente->data_inizio->locale('it')->translatedFormat('j F Y'),
-                        $uscente->anagrafica?->nome ?? 'chi esce',
-                    ));
+            if ($righe !== null) {
+                $mancano = false;
+                foreach ($righe as $i => $riga) {
+                    if ($riga === null) {
+                        $v->errors()->add("righe_uscenti.{$i}", 'La riga di chi esce non appartiene a questa unità.');
+                        $mancano = true;
+                    }
                 }
-                // Una `data_fine` **futura** è una scadenza (§6.6: «non un automatismo»), e l'inquilino che
-                // recede prima della scadenza è il caso principale di «Fine locazione»: il periodo è in
-                // corso alla data dell'atto e si accetta (S5 lo chiuderà al giorno prima). Si rifiuta solo
-                // il periodo finito **prima** del giorno che precede la decorrenza.
-                if ($uscente->data_fine !== null && $uscente->data_fine->lt($decorrenza->subDay())) {
-                    $v->errors()->add('riga_uscente_id', sprintf($this->successione()
-                        ? 'Questo periodo si è chiuso il %s: la successione si registra da un titolare in corso il giorno del decesso.'
-                        : 'Questo periodo si è chiuso il %s: il passaggio si registra da un titolare in corso alla data dell\'atto.',
-                        $uscente->data_fine->locale('it')->translatedFormat('j F Y'),
-                    ));
-                } elseif ($uscente->data_fine !== null && $uscente->passaggioCheLaChiude() !== null) {
-                    // Giro sulle correzioni della Fase 1-bis della .44 (G25): la riga di chi esce che un passaggio registrato dopo ha già
-                    // chiuso — come chi esce, o sommandola nella riga nuova di chi riceve. La registrazione la richiudeva al giorno prima,
-                    // sotto ciò che è successo dopo. Una data di fine scritta a mano (la scadenza della locazione, l'usufrutto a termine)
-                    // resta accettata.
-                    $v->errors()->add('riga_uscente_id', ucfirst(self::fraseUscenteChiusa($uscente)));
+                if ($mancano) {
+                    return;
                 }
-            }
-
-            // Il ruolo di chi esce deve combaciare con il tipo: un inquilino non «vende», un proprietario
-            // non «finisce una locazione». Il client filtra già l'elenco; il server non si fida del client.
-            if ($uscente !== null) {
-                $ammessi = self::ruoliUscente($this->testo('tipo'), $this->testo('sottotipo'));
-                if ($ammessi !== [] && ! in_array($uscente->tipologia, $ammessi, true)) {
-                    $v->errors()->add('riga_uscente_id', sprintf(
-                        '%s è %s: per registrare la sua uscita usa «%s».',
-                        $uscente->anagrafica?->nome ?? 'Questa persona',
-                        mb_strtolower(RuoloAnagraficaImmobile::tryFrom($uscente->tipologia)?->label() ?? $uscente->tipologia),
-                        self::tipoPerRuolo($uscente->tipologia),
-                    ));
+                foreach ($righe as $i => $riga) {
+                    $this->controllaChiEsce($riga, $this->aggiungiPerLaRiga($v, $riga, $i), conLaQuota: false);
                 }
-            }
+                $this->controllaLInsieme($v, $righe);
+            } elseif ($this->filled('riga_uscente_id') && $uscente === null) {
+                $v->errors()->add('riga_uscente_id', 'La riga di chi esce non appartiene a questa unità.');
 
-            if ($uscente !== null && $this->filled('anagrafica_entrante_id')
-                && (int) $this->input('anagrafica_entrante_id') === (int) $uscente->anagrafica_id) {
-                $v->errors()->add('anagrafica_entrante_id', 'Chi entra non può essere la stessa persona che esce.');
+                return;
+            } elseif ($uscente !== null) {
+                $this->controllaChiEsce($uscente, fn (string $chiave, string $messaggio) => $v->errors()->add($chiave, $messaggio));
             }
-
-            // S8-21: nella vendita chi entra ha il ruolo di chi esce. Nuda → piena farebbe entrare come proprietario
-            // pieno chi ha comprato solo la nuda (la quota ordinaria andrebbe a lui, art. 1004 c.c.). Piena → nuda è la
-            // vendita con riserva d'usufrutto (beta.38, decisione 28): ha una sua via, ma si dichiara — il programma non
-            // deduce che chi vende resta usufruttuario, e non sceglie al posto dell'amministratore.
-            $riserva = $this->testo('tipo') === 'vendita' && $this->testo('sottotipo') === Subentro::RISERVA_USUFRUTTO;
-            if ($uscente !== null && ! $riserva && $this->testo('tipo') === 'vendita' && $this->filled('tipologia')
-                && $this->testo('tipologia') !== (string) $uscente->tipologia
-                && in_array((string) $uscente->tipologia, ['proprietario', 'nuda_proprietario'], true)) {
-                $v->errors()->add('tipologia', (string) $uscente->tipologia === 'nuda_proprietario'
-                    ? 'Chi vende la nuda proprietà la passa come nuda proprietà: chi compra entra come nudo proprietario. Se nello stesso atto si estingue anche l\'usufrutto, registra poi «Usufrutto → estinzione» con la stessa data.'
-                    // Testi T6 della beta.38: la via a mano non vale quanto un passaggio. Le righe aperte da «Associa soggetto» non
-                    // hanno un predecessore e per il riparto valgono da sempre (D7 stretto, decisione 23). Testi T8: «o dona».
-                    : 'Nella vendita chi entra ha il ruolo di chi esce. Se chi vende o dona si tiene l\'usufrutto, è una vendita o donazione con riserva d\'usufrutto: spunta «Chi vende o dona resta usufruttuario». Se l\'usufrutto va a un\'altra persona, registrala a mano — chiudi la riga di chi vende con una data di fine da «Modifica associazione», poi da «Associa soggetto» apri chi compra come nudo proprietario e l\'usufruttuario — senza conguaglio automatico. Per il riparto le righe aperte da «Associa soggetto» valgono da sempre: un piano generato o ricalcolato dopo addebita all\'usufruttuario le sue voci anche per i mesi prima dell\'atto.');
-            }
-
-            // La riserva d'usufrutto (decisione 28): da un proprietario pieno, sulla sua quota intera — con meno
-            // resterebbe un usufrutto su tutta la quota e una nuda proprietà su una parte, e il resto di nessuno —, e chi
-            // compra entra nudo proprietario.
-            if ($riserva && $uscente !== null) {
-                if ((string) $uscente->tipologia !== 'proprietario') {
-                    $v->errors()->add('sottotipo', sprintf(
-                        'La riserva d\'usufrutto si dichiara quando vende un proprietario pieno: %s è %s, e non ha un usufrutto da riservarsi.',
-                        $uscente->anagrafica?->nome ?? 'chi vende',
-                        mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? (string) $uscente->tipologia),
-                    ));
-                }
-                if ($this->filled('tipologia') && $this->testo('tipologia') !== 'nuda_proprietario') {
-                    $v->errors()->add('tipologia', 'Nella vendita o donazione con riserva d\'usufrutto chi compra entra come nudo proprietario: chi vende resta usufruttuario.');
-                }
-                if ($this->filled('quota') && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
-                    $v->errors()->add('quota', sprintf(
-                        'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (%s %%): chi vende resta usufruttuario sulla stessa quota.',
-                        rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
-                    ));
-                }
-            }
-
-            // Decisione 37 (1.11.0-beta.42): il passaggio porta tutta la quota di chi esce. Con un numero diverso la registrazione
-            // chiudeva tutta la riga di chi esce e apriva chi entra alla quota scritta, e il resto non era di nessuno: Elsa al
-            // 100 % che «vende 50» a Carlo, e il riparto addebitava a Carlo anche l'altra metà. La vendita di una parte della
-            // propria quota — chi vende resta sulla parte che tiene — è la Coda 175. Non all'estinzione, dove la quota del modulo
-            // non conta (tornano pieni i nudi, ciascuno alla sua), né alla fine di una locazione senza un nuovo inquilino; la
-            // riserva ha la sua frase qui sopra.
-            $tipo = $this->testo('tipo');
-            $portaLaQuota = ($tipo === 'vendita' && ! $riserva)
-                || ($tipo === 'usufrutto' && $this->testo('sottotipo') !== 'estinzione')
-                || ($tipo === 'fine_locazione' && $this->filled('anagrafica_entrante_id'))
-                // La successione porta tutta la quota del defunto, divisa fra gli eredi (decisione 65).
-                || $tipo === 'successione';
-            if ($uscente !== null && $portaLaQuota && $this->filled('quota') && is_numeric($this->input('quota'))
-                && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
-                $v->errors()->add('quota', sprintf(
-                    'Il passaggio porta tutta la quota di %s (%s %%): passarne solo una parte non è ancora previsto. Se l\'atto trasferisce solo una parte della quota, registralo a mano: chiudi la riga di chi esce al giorno prima dell\'atto da «Modifica associazione», poi da «Associa soggetto» riapri chi esce alla quota che tiene e apri chi entra alla sua, dal giorno dell\'atto, senza conguaglio automatico. Una riga con lo stesso ruolo di quella chiusa conta dal giorno dell\'atto. Una riga con un ruolo che sull\'unità non c\'era, come l\'usufruttuario di una costituzione, oppure aperta dopo un buco fra le date, per il riparto vale da sempre: un piano generato o ricalcolato dopo gliela addebita anche per i mesi prima dell\'atto.',
-                    $uscente->anagrafica?->nome ?? 'chi esce',
-                    rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
-                ));
-            }
+            $riserva = $tipo === 'vendita' && $this->testo('sottotipo') === Subentro::RISERVA_USUFRUTTO;
 
             // All'estinzione, su ogni unità del passaggio (l'unità e le pertinenze spuntate): quali nudi tornano pieni (decisione 57,
             // la stessa regola della registrazione), e le guardie che guardano proprio quei nudi. Qui, perché anteprima e registrazione
@@ -527,14 +465,17 @@ class AnteprimaPassaggioRequest extends FormRequest
             }
             // Giro sulle correzioni (G1): nella riserva l'usufrutto che chi vende tiene, nella costituzione la nuda che chi costituisce tiene,
             // si sommano a una riga che ha già; con una data di fine la registrazione si fermava solo alla fine, dopo un'anteprima pulita.
-            $riserva = $tipo === 'vendita' && $this->testo('sottotipo') === Subentro::RISERVA_USUFRUTTO;
             $costituzione = $tipo === 'usufrutto' && $this->testo('sottotipo') === 'costituzione';
-            if ($uscente !== null && $this->filled('decorrenza') && ($riserva || $costituzione)) {
+            // Decisione 705: con l'insieme, per ogni persona, sulla sua riga del modulo.
+            $diChiEsce = $righe ?? ($uscente !== null ? [$uscente] : []);
+            if ($diChiEsce !== [] && $this->filled('decorrenza') && ($riserva || $costituzione)) {
                 [$ruolo, $cheCosa] = $riserva ? ['usufruttuario', 'l\'usufrutto riservato'] : ['nuda_proprietario', 'la nuda proprietà che resta'];
-                foreach ($this->unitaDelPassaggio($immobile) as $unita) {
-                    $frase = $this->fraseRigaGiaChiusa($unita, (int) $uscente->anagrafica_id, $ruolo, CarbonImmutable::parse((string) $this->input('decorrenza'))->startOfDay(), $cheCosa);
-                    if ($frase !== null) {
-                        $v->errors()->add('decorrenza', ((int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ') . $frase);
+                foreach ($diChiEsce as $i => $chiEsce) {
+                    foreach ($this->unitaDelPassaggio($immobile) as $unita) {
+                        $frase = $this->fraseRigaGiaChiusa($unita, (int) $chiEsce->anagrafica_id, $ruolo, CarbonImmutable::parse((string) $this->input('decorrenza'))->startOfDay(), $cheCosa);
+                        if ($frase !== null) {
+                            $v->errors()->add($righe === null ? 'decorrenza' : "righe_uscenti.{$i}", ((int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ') . $frase);
+                        }
                     }
                 }
             }
@@ -594,7 +535,9 @@ class AnteprimaPassaggioRequest extends FormRequest
                 // «Anteprima = scrittura» anche qui: chi esce deve essere titolare della pertinenza, con lo stesso
                 // ruolo, il giorno prima della decorrenza — è lo stesso controllo che la registrazione fa, e
                 // farlo già nell'anteprima ferma il pulsante prima del clic (verifica S5, R12).
-                if ($uscente !== null && $this->filled('decorrenza')) {
+                if ($righe !== null && $this->filled('decorrenza')) {
+                    $this->controllaLePertinenzeDellInsieme($v, $valide, $righe);
+                } elseif ($uscente !== null && $this->filled('decorrenza')) {
                     $giornoPrima = CarbonImmutable::parse((string) $this->input('decorrenza'))->subDay();
                     foreach ($valide as $pertinenza) {
                         $li = $pertinenza->titolarita()->with('anagrafica')->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)->get()
@@ -615,6 +558,263 @@ class AnteprimaPassaggioRequest extends FormRequest
         });
     }
 
+    /**
+     * I controlli di chi esce, su una riga (prima della 1.12.0-beta.14 stavano qui sopra, nel `withValidator`). `$aggiungi(chiave, messaggio)` scrive
+     * l'errore: per il passaggio da solo sulla chiave di oggi; per i passaggi registrati insieme (decisione 705) sulla riga del modulo, con il nome della
+     * persona davanti ({@see aggiungiPerLaRiga()}). Con l'insieme la quota si confronta con la somma, una volta ({@see controllaLInsieme()}): `$conLaQuota`
+     * falso.
+     *
+     * @param \Closure(string, string): mixed $aggiungi
+     */
+    private function controllaChiEsce(TitolaritaImmobile $uscente, \Closure $aggiungi, bool $conLaQuota = true): void
+    {
+        if ($uscente !== null && ! $uscente->attivo) {
+            $aggiungi('riga_uscente_id', 'Questa riga è disattivata: il passaggio si registra da un titolare in corso.');
+        }
+
+        if ($uscente !== null && $this->filled('decorrenza')) {
+            $decorrenza = CarbonImmutable::parse($this->input('decorrenza'));
+            if ($uscente->data_inizio !== null && $decorrenza->lte($uscente->data_inizio)) {
+                $aggiungi('decorrenza', sprintf(
+                    // Rilievo R7 della Fase 1-bis della .48: nella successione la data è il giorno del decesso.
+                    $this->successione() ? 'Il giorno del decesso deve essere successivo al %s, giorno in cui %s è diventato titolare.'
+                        : 'La data del passaggio deve essere successiva al %s, giorno in cui %s è diventato titolare.',
+                    $uscente->data_inizio->locale('it')->translatedFormat('j F Y'),
+                    $uscente->anagrafica?->nome ?? 'chi esce',
+                ));
+            }
+            // Una `data_fine` **futura** è una scadenza (§6.6: «non un automatismo»), e l'inquilino che
+            // recede prima della scadenza è il caso principale di «Fine locazione»: il periodo è in
+            // corso alla data dell'atto e si accetta (S5 lo chiuderà al giorno prima). Si rifiuta solo
+            // il periodo finito **prima** del giorno che precede la decorrenza.
+            if ($uscente->data_fine !== null && $uscente->data_fine->lt($decorrenza->subDay())) {
+                $aggiungi('riga_uscente_id', sprintf($this->successione()
+                    ? 'Questo periodo si è chiuso il %s: la successione si registra da un titolare in corso il giorno del decesso.'
+                    : 'Questo periodo si è chiuso il %s: il passaggio si registra da un titolare in corso alla data dell\'atto.',
+                    $uscente->data_fine->locale('it')->translatedFormat('j F Y'),
+                ));
+            } elseif ($uscente->data_fine !== null && $uscente->passaggioCheLaChiude() !== null) {
+                // Giro sulle correzioni della Fase 1-bis della .44 (G25): la riga di chi esce che un passaggio registrato dopo ha già
+                // chiuso — come chi esce, o sommandola nella riga nuova di chi riceve. La registrazione la richiudeva al giorno prima,
+                // sotto ciò che è successo dopo. Una data di fine scritta a mano (la scadenza della locazione, l'usufrutto a termine)
+                // resta accettata.
+                $aggiungi('riga_uscente_id', ucfirst(self::fraseUscenteChiusa($uscente)));
+            }
+        }
+
+        // Il ruolo di chi esce deve combaciare con il tipo: un inquilino non «vende», un proprietario
+        // non «finisce una locazione». Il client filtra già l'elenco; il server non si fida del client.
+        if ($uscente !== null) {
+            $ammessi = self::ruoliUscente($this->testo('tipo'), $this->testo('sottotipo'));
+            if ($ammessi !== [] && ! in_array($uscente->tipologia, $ammessi, true)) {
+                $aggiungi('riga_uscente_id', sprintf(
+                    '%s è %s: per registrare la sua uscita usa «%s».',
+                    $uscente->anagrafica?->nome ?? 'Questa persona',
+                    mb_strtolower(RuoloAnagraficaImmobile::tryFrom($uscente->tipologia)?->label() ?? $uscente->tipologia),
+                    self::tipoPerRuolo($uscente->tipologia),
+                ));
+            }
+        }
+
+        if ($uscente !== null && $this->filled('anagrafica_entrante_id')
+            && (int) $this->input('anagrafica_entrante_id') === (int) $uscente->anagrafica_id) {
+            $aggiungi('anagrafica_entrante_id', 'Chi entra non può essere la stessa persona che esce.');
+        }
+
+        // S8-21: nella vendita chi entra ha il ruolo di chi esce. Nuda → piena farebbe entrare come proprietario
+        // pieno chi ha comprato solo la nuda (la quota ordinaria andrebbe a lui, art. 1004 c.c.). Piena → nuda è la
+        // vendita con riserva d'usufrutto (beta.38, decisione 28): ha una sua via, ma si dichiara — il programma non
+        // deduce che chi vende resta usufruttuario, e non sceglie al posto dell'amministratore.
+        $riserva = $this->testo('tipo') === 'vendita' && $this->testo('sottotipo') === Subentro::RISERVA_USUFRUTTO;
+        if ($uscente !== null && ! $riserva && $this->testo('tipo') === 'vendita' && $this->filled('tipologia')
+            && $this->testo('tipologia') !== (string) $uscente->tipologia
+            && in_array((string) $uscente->tipologia, ['proprietario', 'nuda_proprietario'], true)) {
+            $aggiungi('tipologia', (string) $uscente->tipologia === 'nuda_proprietario'
+                ? 'Chi vende la nuda proprietà la passa come nuda proprietà: chi compra entra come nudo proprietario. Se nello stesso atto si estingue anche l\'usufrutto, registra poi «Usufrutto → estinzione» con la stessa data.'
+                // Testi T6 della beta.38: la via a mano non vale quanto un passaggio. Le righe aperte da «Associa soggetto» non
+                // hanno un predecessore e per il riparto valgono da sempre (D7 stretto, decisione 23). Testi T8: «o dona».
+                : 'Nella vendita chi entra ha il ruolo di chi esce. Se chi vende o dona si tiene l\'usufrutto, è una vendita o donazione con riserva d\'usufrutto: spunta «Chi vende o dona resta usufruttuario». Se l\'usufrutto va a un\'altra persona, registrala a mano — chiudi la riga di chi vende con una data di fine da «Modifica associazione», poi da «Associa soggetto» apri chi compra come nudo proprietario e l\'usufruttuario — senza conguaglio automatico. Per il riparto le righe aperte da «Associa soggetto» valgono da sempre: un piano generato o ricalcolato dopo addebita all\'usufruttuario le sue voci anche per i mesi prima dell\'atto.');
+        }
+
+        // La riserva d'usufrutto (decisione 28): da un proprietario pieno, sulla sua quota intera — con meno
+        // resterebbe un usufrutto su tutta la quota e una nuda proprietà su una parte, e il resto di nessuno —, e chi
+        // compra entra nudo proprietario.
+        if ($riserva && $uscente !== null) {
+            if ((string) $uscente->tipologia !== 'proprietario') {
+                $aggiungi('sottotipo', sprintf(
+                    'La riserva d\'usufrutto si dichiara quando vende un proprietario pieno: %s è %s, e non ha un usufrutto da riservarsi.',
+                    $uscente->anagrafica?->nome ?? 'chi vende',
+                    mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? (string) $uscente->tipologia),
+                ));
+            }
+            if ($this->filled('tipologia') && $this->testo('tipologia') !== 'nuda_proprietario') {
+                $aggiungi('tipologia', 'Nella vendita o donazione con riserva d\'usufrutto chi compra entra come nudo proprietario: chi vende resta usufruttuario.');
+            }
+            if ($conLaQuota && $this->filled('quota') && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
+                $aggiungi('quota', sprintf(
+                    'Nella vendita o donazione con riserva d\'usufrutto chi compra riceve la nuda proprietà di tutta la quota di chi vende (%s %%): chi vende resta usufruttuario sulla stessa quota.',
+                    rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
+                ));
+            }
+        }
+
+        // Decisione 37 (1.11.0-beta.42): il passaggio porta tutta la quota di chi esce. Con un numero diverso la registrazione
+        // chiudeva tutta la riga di chi esce e apriva chi entra alla quota scritta, e il resto non era di nessuno: Elsa al
+        // 100 % che «vende 50» a Carlo, e il riparto addebitava a Carlo anche l'altra metà. La vendita di una parte della
+        // propria quota — chi vende resta sulla parte che tiene — è la Coda 175. Non all'estinzione, dove la quota del modulo
+        // non conta (tornano pieni i nudi, ciascuno alla sua), né alla fine di una locazione senza un nuovo inquilino; la
+        // riserva ha la sua frase qui sopra.
+        $tipo = $this->testo('tipo');
+        $portaLaQuota = ($tipo === 'vendita' && ! $riserva)
+            || ($tipo === 'usufrutto' && $this->testo('sottotipo') !== 'estinzione')
+            || ($tipo === 'fine_locazione' && $this->filled('anagrafica_entrante_id'))
+            // La successione porta tutta la quota del defunto, divisa fra gli eredi (decisione 65).
+            || $tipo === 'successione';
+        if ($conLaQuota && $portaLaQuota && $this->filled('quota') && is_numeric($this->input('quota'))
+            && abs((float) $this->input('quota') - (float) $uscente->quota) > 0.001) {
+            $aggiungi('quota', sprintf(
+                'Il passaggio porta tutta la quota di %s (%s %%): passarne solo una parte non è ancora previsto. Se l\'atto trasferisce solo una parte della quota, registralo a mano: chiudi la riga di chi esce al giorno prima dell\'atto da «Modifica associazione», poi da «Associa soggetto» riapri chi esce alla quota che tiene e apri chi entra alla sua, dal giorno dell\'atto, senza conguaglio automatico. Una riga con lo stesso ruolo di quella chiusa conta dal giorno dell\'atto. Una riga con un ruolo che sull\'unità non c\'era, come l\'usufruttuario di una costituzione, oppure aperta dopo un buco fra le date, per il riparto vale da sempre: un piano generato o ricalcolato dopo gliela addebita anche per i mesi prima dell\'atto.',
+                $uscente->anagrafica?->nome ?? 'chi esce',
+                rtrim(rtrim(number_format((float) $uscente->quota, 2, ',', '.'), '0'), ','),
+            ));
+        }
+    }
+
+    /**
+     * Decisione 705: più persone che escono con lo stesso atto. Solo nella vendita (anche con la riserva d'usufrutto), con l'elenco delle righe; una riga
+     * sola è il passaggio di oggi, con `riga_uscente_id`.
+     */
+    public function insieme(): bool
+    {
+        $righe = $this->input('righe_uscenti');
+
+        return $this->testo('tipo') === 'vendita' && is_array($righe) && count($righe) >= 2 && array_is_list($righe)
+            && collect($righe)->every(fn ($id) => self::idDellaRiga($id) !== null);
+    }
+
+    /**
+     * L'id di una riga di chi esce, letto come lo leggono le regole e `insieme()` (rilievo 1 dello scettico della tappa 7): un intero positivo, o le sole
+     * cifre (il modulo con l'allegato arriva in multipart, dove tutto è testo). Nient'altro: né «+12», né 12.0, né un booleano. `null` se non è un id.
+     */
+    private static function idDellaRiga(mixed $id): ?int
+    {
+        if (is_int($id)) {
+            return $id > 0 ? $id : null;
+        }
+
+        return is_string($id) && $id !== '' && ctype_digit($id) && (int) $id > 0 ? (int) $id : null;
+    }
+
+    /**
+     * Le righe di chi esce insieme, nell'ordine del modulo; `null` al posto di una riga che non è di questa unità (l'id arriva dal browser).
+     *
+     * @return list<?TitolaritaImmobile>
+     */
+    public function righeUscenti(): array
+    {
+        /** @var Immobile $immobile */
+        $immobile = $this->route('immobile');
+        $ids = array_map(fn ($id) => (int) self::idDellaRiga($id), (array) $this->input('righe_uscenti', []));
+        $trovate = $immobile->titolarita()->with('anagrafica')->whereIn('anagrafica_immobile.id', $ids)->get()->keyBy('id');
+
+        return array_values(array_map(fn (int $id) => $trovate[$id] ?? null, $ids));
+    }
+
+    /**
+     * Decisione 705: l'errore di chi esce insieme, sulla sua riga del modulo (`righe_uscenti.<i>`) per ciò che riguarda la riga e la sua data, con il nome
+     * della persona davanti («Marta Acciaioli: …»); un messaggio che comincia già con il suo nome resta com'è. La regola sul ruolo di chi entra è una per
+     * tutte (lo stesso ruolo): si dice una volta, senza il nome.
+     */
+    private function aggiungiPerLaRiga(Validator $v, TitolaritaImmobile $riga, int $i): \Closure
+    {
+        $nome = (string) ($riga->anagrafica?->nome ?? 'Chi esce');
+
+        return function (string $chiave, string $messaggio) use ($v, $nome, $i): void {
+            if (in_array($chiave, ['tipologia', 'quota'], true)) {
+                if (! in_array($messaggio, $v->errors()->get($chiave), true)) {
+                    $v->errors()->add($chiave, $messaggio);
+                }
+
+                return;
+            }
+            $chiave = in_array($chiave, ['riga_uscente_id', 'decorrenza'], true) ? "righe_uscenti.{$i}" : $chiave;
+            $v->errors()->add($chiave, str_starts_with($messaggio, $nome) ? $messaggio : $nome . ': ' . mb_lcfirst($messaggio));
+        };
+    }
+
+    /**
+     * Decisione 705: le regole dell'insieme. Tutte le righe con lo stesso ruolo (tutte la proprietà piena o tutte la nuda proprietà); nessuna persona due
+     * volte; la quota è la somma delle quote delle righe, al centesimo di punto (la regola «porta tutta la quota» della decisione 37, allargata).
+     *
+     * @param list<TitolaritaImmobile> $righe
+     */
+    private function controllaLInsieme(Validator $v, array $righe): void
+    {
+        $ruoli = collect($righe)->map(fn (TitolaritaImmobile $r) => (string) $r->tipologia)->unique()->values();
+        if ($ruoli->count() > 1) {
+            $parole = fn (TitolaritaImmobile $r) => match ((string) $r->tipologia) {
+                'proprietario' => 'la proprietà piena',
+                'nuda_proprietario' => 'la nuda proprietà',
+                default => mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $r->tipologia)?->label() ?? (string) $r->tipologia),
+            };
+            $pezzi = array_map(fn (TitolaritaImmobile $r, int $i) => sprintf($i === 0 ? '%s ha %s' : '%s %s', $r->anagrafica?->nome ?? 'chi esce', $parole($r)), $righe, array_keys($righe));
+            $v->errors()->add('righe_uscenti', sprintf('Chi esce insieme deve avere lo stesso ruolo: %s. Registra %s passaggi, uno per persona.',
+                implode(', ', $pezzi), self::quanti(count($righe))));
+        }
+        $persone = collect($righe)->map(fn (TitolaritaImmobile $r) => (int) $r->anagrafica_id);
+        if ($persone->unique()->count() !== $persone->count()) {
+            $v->errors()->add('righe_uscenti', 'La stessa persona compare due volte fra chi esce: spunta una riga per persona.');
+        }
+        $somma = round((float) collect($righe)->sum(fn (TitolaritaImmobile $r) => (float) $r->quota), 2);
+        if ($this->filled('quota') && is_numeric($this->input('quota')) && abs((float) $this->input('quota') - $somma) > 0.001) {
+            $v->errors()->add('quota', sprintf('I passaggi portano tutta la quota di chi esce: %s, in tutto il %s %%. Passarne solo una parte non è ancora previsto: registra la parte a mano, come per una persona sola.',
+                self::elencoNomi(array_map(fn (TitolaritaImmobile $r) => sprintf('%s %% di %s', self::numero((float) $r->quota), $r->anagrafica?->nome ?? 'chi esce'), $righe)),
+                self::numero($somma)));
+        }
+    }
+
+    /**
+     * Decisione 705: le pertinenze spuntate con più persone che escono. Ognuna passa con la parte di chi ne è titolare il giorno prima, con lo stesso ruolo
+     * (anche di più persone: il box in comproprietà); una pertinenza di cui non è titolare nessuna si ferma, detta per tutte. La regola di G25 vale per ognuna.
+     *
+     * @param \Illuminate\Support\Collection<int, Immobile> $valide
+     * @param list<TitolaritaImmobile> $righe
+     */
+    private function controllaLePertinenzeDellInsieme(Validator $v, \Illuminate\Support\Collection $valide, array $righe): void
+    {
+        $giornoPrima = CarbonImmutable::parse((string) $this->input('decorrenza'))->subDay();
+        foreach ($valide as $pertinenza) {
+            $titolari = array_values(array_filter(array_map(fn (TitolaritaImmobile $r) => self::titolareDellaPertinenza($pertinenza, $r, $giornoPrima), $righe)));
+            foreach ($titolari as $li) {
+                if ($li->data_fine !== null && $li->passaggioCheLaChiude() !== null) {
+                    $v->errors()->add('pertinenze', $pertinenza->nome . ': ' . self::fraseUscenteChiusa($li));
+
+                    return;
+                }
+            }
+            if ($titolari === []) {
+                $ruolo = mb_strtolower(RuoloAnagraficaImmobile::tryFrom((string) $righe[0]->tipologia)?->label() ?? (string) $righe[0]->tipologia);
+                $v->errors()->add('pertinenze', sprintf('%s: nessuna delle persone che escono (%s) risulta %s alla data del passaggio. Togli la spunta, o registra il passaggio dalla pertinenza.',
+                    $pertinenza->nome, self::elencoNomi(array_map(fn (TitolaritaImmobile $r) => (string) ($r->anagrafica?->nome ?? 'chi esce'), $righe)), $ruolo));
+
+                return;
+            }
+        }
+    }
+
+    /** La riga di chi esce sulla pertinenza, con lo stesso ruolo, in corso il giorno prima dell'atto (il controllo della registrazione). */
+    private static function titolareDellaPertinenza(Immobile $pertinenza, TitolaritaImmobile $uscente, CarbonImmutable $giornoPrima): ?TitolaritaImmobile
+    {
+        return $pertinenza->titolarita()->with('anagrafica')->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)->get()
+            ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giornoPrima));
+    }
+
+    /** «due», «tre», … fino a dieci; poi la cifra. */
+    private static function quanti(int $n): string
+    {
+        return [2 => 'due', 3 => 'tre', 4 => 'quattro', 5 => 'cinque', 6 => 'sei', 7 => 'sette', 8 => 'otto', 9 => 'nove', 10 => 'dieci'][$n] ?? (string) $n;
+    }
+
     /** I nomi dei campi come li legge l'amministratore: senza, Laravel scrive «copia autentica il è richiesto quando copia autentica è true». */
     public function attributes(): array
     {
@@ -627,6 +827,8 @@ class AnteprimaPassaggioRequest extends FormRequest
             'arretrato' => 'l\'arretrato del defunto',
             'erede_di_riferimento' => 'l\'erede di riferimento',
             'riga_uscente_id' => 'chi esce',
+            'righe_uscenti' => 'chi esce',
+            'righe_uscenti.*' => 'chi esce',
             'anagrafica_entrante_id' => 'chi entra',
             'decorrenza' => $this->successione() ? 'il giorno del decesso' : 'la data dell\'atto',
             'quota' => 'la quota',
@@ -655,7 +857,13 @@ class AnteprimaPassaggioRequest extends FormRequest
             'copia_autentica_il.before_or_equal' => 'La copia autentica non può essere stata ricevuta in un giorno futuro.',
             'anagrafica_entrante_id.required' => 'Scegli chi entra, o crea una nuova anagrafica.',
             'riga_uscente_id.required' => 'Scegli chi esce fra i titolari in corso.',
-            'riga_uscente_id.prohibited' => 'L\'inizio di una locazione non ha chi esce: togli la riga, o usa «Fine locazione» per cambiare inquilino.',
+            'riga_uscente_id.prohibited' => $this->filled('righe_uscenti')
+                ? 'Con più persone che escono le righe si mandano tutte insieme: ricarica la pagina.'
+                : 'L\'inizio di una locazione non ha chi esce: togli la riga, o usa «Fine locazione» per cambiare inquilino.',
+            'righe_uscenti.prohibited' => 'Più persone che escono insieme si registrano nella vendita o donazione: negli altri passaggi si sceglie una persona sola.',
+            'righe_uscenti.min' => 'Con una persona sola che esce si registra il passaggio di oggi: scegli la riga in «Chi esce».',
+            'righe_uscenti.*.distinct' => 'La stessa riga compare due volte fra chi esce.',
+            'impronta_del_gruppo.prohibited' => 'L\'impronta dell\'insieme c\'è solo con più persone che escono: ricarica la pagina.',
             // P6 della 1.11.0-beta.48: nella successione la data è il giorno del decesso, non quella di un atto.
             'decorrenza.required' => $this->successione()
                 ? 'Scrivi il giorno del decesso: il programma non ne sceglie uno al posto tuo.'
@@ -796,6 +1004,7 @@ class AnteprimaPassaggioRequest extends FormRequest
             return;
         }
         $giorno = CarbonImmutable::parse((string) $this->input('decorrenza'))->startOfDay();
+        $this->controllaIDecessi($v, $immobile, $uscente, $eredi, $giorno, $nome);
         // Rilievo L16 della Fase 1-bis della .44: il controllo vale anche per le pertinenze spuntate, con il loro nome; e non dice che
         // usufrutto e nuda «si riuniscono» per quella parte, perché l'usufrutto dell'erede può stare sopra la nuda di un altro.
         foreach ($this->unitaDelPassaggio($immobile) as $unita) {
@@ -828,6 +1037,42 @@ class AnteprimaPassaggioRequest extends FormRequest
                     $v->errors()->add('eredi', ((int) $unita->id === (int) $immobile->id ? '' : $unita->nome . ': ') . $frase);
                 }
             }
+        }
+    }
+
+    /**
+     * Coda 485 (1.12.0-beta.14): le date dei decessi, nei due versi. Un erede con una successione non annullata del condominio e il decesso fino al giorno
+     * di questa, lo stesso giorno compreso (chi muore nello stesso momento non eredita dall'altro, art. 4 c.c.), non è un erede: prima il motore gli
+     * intestava anche i giorni dopo il suo decesso. E chi è fra gli eredi di una successione non annullata con il decesso da questo giorno in poi non può
+     * avere il decesso qui. Si legge la successione dell'unità principale (le righe delle pertinenze hanno gli stessi eredi). L'erede morto dopo il
+     * defunto (la catena della decisione 530) passa.
+     *
+     * @param \Illuminate\Support\Collection<int, array<string, mixed>> $eredi
+     */
+    private function controllaIDecessi(Validator $v, Immobile $immobile, TitolaritaImmobile $uscente, \Illuminate\Support\Collection $eredi, CarbonImmutable $giorno, string $nome): void
+    {
+        $successioni = Subentro::with(['uscente', 'immobile'])->where('condominio_id', $immobile->condominio_id)->where('tipo_passaggio', 'successione')
+            ->whereNull('subentro_padre_id')->orderBy('decorrenza')->orderBy('id')->get();
+        if ($successioni->isEmpty()) {
+            return;
+        }
+        $il = $giorno->toDateString();
+        $data = fn (Subentro $s): string => $s->decorrenza->format('d/m/Y');
+        $defuntoDi = fn (Subentro $s): string => (string) ($s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'il defunto'));
+        foreach ($eredi as $i => $e) {
+            $sua = $successioni->first(fn (Subentro $s) => (int) $s->anagrafica_uscente_id === (int) $e['anagrafica_id'] && $s->decorrenza->toDateString() <= $il);
+            if ($sua !== null && (int) $e['anagrafica_id'] !== (int) $uscente->anagrafica_id) {
+                $v->errors()->add("eredi.{$i}.anagrafica_id", sprintf('Il decesso di %s è del %s (successione registrata su %s), %s di quello di %s: non può essere fra i suoi eredi. '
+                    . 'Indica gli eredi come li dice la dichiarazione di successione.', $defuntoDi($sua), $data($sua), $sua->immobile?->nome ?? 'un\'altra unità',
+                    $sua->decorrenza->toDateString() === $il ? 'lo stesso giorno' : 'prima', $nome));
+            }
+        }
+        $diChi = $successioni->first(fn (Subentro $s) => $s->decorrenza->toDateString() >= $il && (int) $s->anagrafica_uscente_id !== (int) $uscente->anagrafica_id
+            && collect($s->eredi())->contains(fn (array $e) => (int) $e['anagrafica_id'] === (int) $uscente->anagrafica_id));
+        if ($diChi !== null) {
+            $v->errors()->add('decorrenza', sprintf('%s è fra gli eredi di %s, con il decesso del %s: il suo decesso non può essere %s. Se la data è giusta, annulla prima la '
+                . 'successione di %s e registrala con gli eredi giusti.', $nome, $defuntoDi($diChi), $data($diChi),
+                $diChi->decorrenza->toDateString() === $il ? 'dello stesso giorno' : 'di prima, del ' . $giorno->format('d/m/Y'), $defuntoDi($diChi)));
         }
     }
 
@@ -919,8 +1164,31 @@ class AnteprimaPassaggioRequest extends FormRequest
         return $immobile->titolarita()->with('anagrafica')->find((int) $this->input('riga_uscente_id'));
     }
 
-    /** I dati nella forma che `AnteprimaPassaggio::calcola()` e la scrittura (S5) ricevono. */
+    /**
+     * I dati nella forma che `AnteprimaPassaggio::calcola()` e la scrittura (S5) ricevono.
+     *
+     * Decisione 705: con più persone che escono (`righe_uscenti`) in più `membri`, i dati di ciascuna nell'ordine delle righe — i dati comuni con la sua riga
+     * (`riga_uscente`), la sua quota e le pertinenze spuntate di cui è titolare —, e `impronta_del_gruppo`. Lo leggono `AnteprimaDelGruppo` e
+     * `RegistraPassaggiInsiemeAction`; i dati comuni hanno la quota di tutti e nessuna riga di chi esce. Senza insieme non cambia niente.
+     */
     public function datiPassaggio(): array
+    {
+        $dati = $this->datiComuni();
+        if (! $this->insieme()) {
+            return $dati;
+        }
+
+        $giornoPrima = $dati['decorrenza']->subDay();
+        $pertinenze = $dati['pertinenze'] === [] ? collect() : $this->route('immobile')->pertinenze()->whereIn('id', $dati['pertinenze'])->get();
+        $membri = array_map(fn (TitolaritaImmobile $riga) => ['riga_uscente' => $riga, 'quota' => (float) $riga->quota,
+            'pertinenze' => $pertinenze->filter(fn (Immobile $p) => self::titolareDellaPertinenza($p, $riga, $giornoPrima) !== null)->pluck('id')->map(fn ($id) => (int) $id)->values()->all()] + $dati,
+            array_values(array_filter($this->righeUscenti())));
+
+        return ['riga_uscente' => null, 'membri' => $membri, 'impronta_del_gruppo' => $this->validated()['impronta_del_gruppo'] ?? null] + $dati;
+    }
+
+    /** I dati di oggi, comuni a tutti i passaggi dell'insieme. */
+    private function datiComuni(): array
     {
         $d = $this->validated();
 

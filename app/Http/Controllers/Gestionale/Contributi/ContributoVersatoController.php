@@ -568,6 +568,15 @@ class ContributoVersatoController extends Controller
                     'nota_acconto' => 'Descrivi brevemente quando e a chi è stato versato questo acconto.',
                 ]);
             }
+
+            // Coda 754 (9): l'accredito sulla cassa si deve poter scrivere, prima di salvare le righe. Senza il conto «Fondo Passate Gestioni» (o
+            // senza un esercizio) l'azione non scriveva niente, la risposta diceva «aggiornati» e le righe restavano «registrata in cassa»: la
+            // domanda non tornava più e la cassa restava a zero. Il conto non si ricrea da qui (regola 76.3).
+            if (($dati['liquidita_stato'] ?? null) === ContributoVersato::LIQUIDITA_REGISTRATA_IN_CASSA
+                && collect($dati['righe'])->sum(fn ($r) => max(0, (int) $r['gia_versato'])) > 0
+                && ($motivo = RegistraContributoInCassaAction::motivoDelRifiuto(Cassa::findOrFail($dati['cassa_id']))) !== null) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['cassa_id' => $motivo]);
+            }
         }
 
         // La delibera, facoltativa (§1.4 del progetto della tappa 2, ruolo «nota»): la sua frase va nella nota, e ogni riga del già versato si lega a lei.
@@ -634,38 +643,29 @@ class ContributoVersatoController extends Controller
 
             if ($liquiditaStato === ContributoVersato::LIQUIDITA_REGISTRATA_IN_CASSA && $cassaId) {
                 $cassa = Cassa::find($cassaId);
-                if ($cassa) {
-                    app(RegistraContributoInCassaAction::class)->execute(
-                        $cassa,
-                        $totaleGiaVersato,
-                        mb_substr('Già versato — '.$conto->nome, 0, 255)
-                    );
+                // Coda 754 (9): se l'accredito non si scrive, non si salva niente (la transazione del gesto torna indietro) e l'errore lo dice.
+                if ($cassa && ! app(RegistraContributoInCassaAction::class)->execute(
+                    $cassa,
+                    $totaleGiaVersato,
+                    mb_substr('Già versato — '.$conto->nome, 0, 255)
+                )) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'cassa_id' => RegistraContributoInCassaAction::motivoDelRifiuto($cassa) ?? RegistraContributoInCassaAction::SENZA_PASSATE_GESTIONI,
+                    ]);
                 }
             } elseif ($liquiditaStato === ContributoVersato::LIQUIDITA_GIA_SPESO_ACCONTO) {
                 try {
-                    // Il link porta a "Registra fattura pregressa", non più alla
-                    // pagina del già-versato stessa: quel debito verso il fornitore
-                    // va registrato con `is_pregresso` (già esistente, già testato,
-                    // con le sue coperture rata_0/fondo_riserva/sopravvenienza) —
-                    // non un secondo sistema parallelo. Il già-versato (lato
-                    // condòmini) e il pregresso (lato fornitore) restano due
-                    // registri distinti e indipendenti: l'admin deve comunque
-                    // scegliere lui il fornitore e valutare se la FUTURA fattura
-                    // reale rappresenterà il costo totale dell'opera (il netting
-                    // resta corretto) o solo il residuo dopo questo acconto (in tal
-                    // caso il già-versato non va applicato una seconda volta) —
-                    // nessuna delle due scritture può saperlo da sola.
+                    // Coda 754 (9): un'istruzione sola, la stessa della finestra «Dove sono questi soldi?» e della guida del già versato. Non più
+                    // «registra come fattura pregressa»: una pregressa è un debito da pagare, e per un acconto già uscito ne creerebbe uno che non
+                    // c'è. Il già versato (lato condòmini) e la fattura dell'opera (lato fornitore) restano due registri distinti: quando la fattura
+                    // arriva, l'amministratore guarda se il fornitore ha già scontato l'acconto. Il link porta alla registrazione della fattura.
                     InboxService::createTask(
                         tipo: EventoTipo::GIA_VERSATO_ACCONTO_DICHIARATO,
                         title: 'Già versato dichiarato come acconto già speso — '.$conto->nome,
-                        description: 'L\'amministratore ha dichiarato che il già versato per "'.$conto->nome.'" '
-                            .'(€ '.number_format($totaleGiaVersato / 100, 2, ',', '.').') è già stato versato al '
-                            .'fornitore come acconto, prima di Kondomanager. Nota: '.($dati['nota_acconto'] ?? '—')
-                            .'. Registra questo importo come fattura pregressa (is_pregresso) verso il fornitore '
-                            .'corretto: è lo stesso meccanismo già usato per i debiti ereditati da altri gestionali. '
-                            .'Quando arriverà la fattura reale per il residuo dei lavori, verifica se rappresenta il '
-                            .'costo totale dell\'opera o solo il saldo dopo questo acconto — il già-versato va '
-                            .'applicato solo nel primo caso.',
+                        description: 'L\'acconto di '.\App\Helpers\MoneyHelper::format($totaleGiaVersato).' è già uscito verso il fornitore prima di '
+                            .'KondoManager. Quando registri la fattura dell\'opera, controlla se il fornitore lo ha già scontato; se la fattura è per '
+                            .'l\'intero costo, il programma vedrà da pagare anche l\'acconto: annotalo e paga solo il resto. Voce: «'.$conto->nome.'». '
+                            .'La tua nota: '.($dati['nota_acconto'] ?? '—'),
                         scadenza: \App\Helpers\DateHelper::adessoComeSiLegge(),
                         createdByUserId: auth()->id(), // senza una persona, il programma (§7): mai l'utente 1
                         condominioId: $condominio->id,

@@ -4,11 +4,7 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup lang="ts">
-
-import { usePage } from '@inertiajs/vue3';
-import { Heart, Coffee } from 'lucide-vue-next';
-
-const { version } = usePage().props;
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 
 </script>
 
@@ -16,11 +12,7 @@ const { version } = usePage().props;
     <footer class="bg-white dark:bg-gray-800 border-t border-sidebar-border/70 dark:border-sidebar-border">
         <div class="container mx-auto px-4 py-3">
             <div class="flex flex-col md:flex-row justify-between items-center">
-                <div class="mb-4 md:mb-0">
-                    <p class="text-gray-600 dark:text-gray-300 text-sm">
-                        KondoManager software open source per il condominio v{{ version }}
-                    </p>
-                </div>
+                <NotaDiLicenza con-versione class="mb-4 md:mb-0" />
                 <div class="flex space-x-6">
          <!--            <a href="#" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition">
                         <span class="sr-only">Facebook</span>

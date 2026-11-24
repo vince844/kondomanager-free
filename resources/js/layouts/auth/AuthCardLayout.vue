@@ -5,6 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from '@inertiajs/vue3';
 
@@ -33,6 +34,8 @@ defineProps<{
                     </CardHeader>
                     <CardContent class="px-10 py-8">
                         <slot />
+                        <hr class="my-6 border-border" />
+                        <NotaDiLicenza />
                     </CardContent>
                 </Card>
             </div>

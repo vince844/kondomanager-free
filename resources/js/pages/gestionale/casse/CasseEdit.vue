@@ -40,6 +40,9 @@ const props = defineProps<{
   cassa: any; 
   /** La delibera dello sblocco d'emergenza, se è collegata (ruolo «deroga»). */
   delibera?: DeliberaDelMenu | null;
+  /** Il primo giorno del primo esercizio aperto: il «Saldo al» di partenza e il minimo del calendario. */
+  saldo_al_predefinito?: string | null;
+  saldo_al_minimo?: string | null;
 }>();
 
 const permessi = usePermission();
@@ -127,6 +130,7 @@ const form = useForm({
   descrizione: cassaData.descrizione || '',
   tipo: cassaData.tipo as TipoCassa,
   saldo_iniziale: cassaData.saldo_iniziale, 
+  saldo_al: props.saldo_al_predefinito ?? '',
   note: cassaData.note || '',
   intestatario: bancaData.intestatario || props.condominio.nome,
   tipo_conto: bancaData.tipo || 'ordinario', 
@@ -147,6 +151,14 @@ const form = useForm({
   vincolo_descrizione: cassaData.vincolo_descrizione || '', 
   is_override_assemblea: Boolean(cassaData.is_override_assemblea),
   motivazione_override: senzaLaFrase(cassaData.motivazione_override || ''),
+});
+
+/** Il «Saldo al» serve solo se c'è un saldo di apertura: con il campo vuoto o a zero l'azione lo ignora (importo zero). */
+const saldoCompilato = computed(() => {
+  const v = String(form.saldo_iniziale ?? '').trim();
+  if (v === '') return false;
+  const n = parseFloat(v.replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) && n !== 0;
 });
 
 /** «Tipo non indicato: conta come vincolato», con le parole del server (`TipoDelFondo`), per un fondo che il tipo non ce l'ha. */
@@ -295,6 +307,20 @@ const submit = () => {
                       Da quel momento il campo non è più modificabile da qui: controllalo adesso.
                     </p>
                     <InputError :message="form.errors.saldo_iniziale" />
+                  </div>
+
+                  <div v-if="!cassaData.saldo_iniziale_bloccato && saldoCompilato" class="sm:col-span-3">
+                    <Label for="saldo_al" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Saldo al</Label>
+                    <Input
+                      id="saldo_al"
+                      type="date"
+                      v-model="form.saldo_al"
+                      :min="props.saldo_al_minimo ?? undefined"
+                      class="mt-1 block w-full bg-white dark:bg-slate-950"
+                      @focus="form.clearErrors('saldo_al')"
+                    />
+                    <InputError :message="form.errors.saldo_al" />
+                    <p class="text-xs text-slate-500 mt-1">Il giorno a cui vale il saldo: l'apertura va nell'esercizio che lo contiene. Non può cadere in un esercizio chiuso.</p>
                   </div>
 
                   <div class="sm:col-span-3">

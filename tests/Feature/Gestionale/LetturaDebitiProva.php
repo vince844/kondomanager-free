@@ -413,7 +413,7 @@ function lcdEmetti($test, array $s, array $numeri, string $data): void
 {
     $test->actingAs($test->user)->post(route('admin.gestionale.piani-rate.emetti', [$s['c'], $s['piano']]), [
         'rate_ids' => array_map(fn ($n) => lcdRata($s, $n), $numeri), 'data_emissione' => $data, 'invia_notifiche' => false,
-    ])->assertSessionHasNoErrors();
+    ])->assertSessionHasNoErrors()->assertRedirect();
 }
 
 /** L'incasso dalla rotta della pagina: [id quota => centesimi], la parte in più in centesimi. Restituisce l'id della scrittura. */
@@ -424,7 +424,7 @@ function lcdIncassa($test, array $s, string $chi, array $righe, string $data, in
         'pagante_id' => $s['persone'][$chi]->id, 'cassa_id' => $s['cassa']->id, 'data_pagamento' => $data, 'importo_totale' => number_format($totale / 100, 2, '.', ''),
         'descrizione' => 'Bonifico', 'eccedenza' => number_format($parteInPiu / 100, 2, '.', ''), 'gestione_id' => $s['g']->id,
         'dettaglio_pagamenti' => array_map(fn ($id, $cent) => ['rata_id' => (int) $id, 'importo' => number_format($cent / 100, 2, '.', '')], array_keys($righe), array_values($righe)),
-    ])->assertSessionHasNoErrors();
+    ])->assertSessionHasNoErrors()->assertRedirect(); // una pagina d'errore 500 non lascia errori in sessione: senza il redirect passava per verde (Coda 754 (7))
 
     return (int) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->max('id');
 }
@@ -432,7 +432,7 @@ function lcdIncassa($test, array $s, string $chi, array $righe, string $data, in
 /** Lo storno dalla rotta della pagina; senza un'altra natura, «versamento tornato indietro». */
 function lcdStorna($test, array $s, int $scritturaId, array $dati = []): void
 {
-    $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $scritturaId]), $dati + stornoVersamentoTornato())->assertSessionHasNoErrors();
+    $test->actingAs($test->user)->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $scritturaId]), $dati + stornoVersamentoTornato())->assertSessionHasNoErrors()->assertRedirect();
 }
 
 function lcdLeggi(array $s, string $chi, ?string $alla = null): array

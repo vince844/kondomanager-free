@@ -54,7 +54,12 @@ class TabellaController extends Controller
             })
             ->tap(fn ($q) => $this->ordina($q, $validated, TabellaIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
             ->paginate($validated['per_page']);
-        
+
+        // Le tabelle segnate «di un gruppo» (Coda 734), per il badge «Di un gruppo» accanto al nome. Si leggono **prima** delle risorse:
+        // `TabellaResource::collection()` sostituisce le righe della pagina con le risorse, e dopo il filtro riceveva una risorsa (l'elenco rispondeva
+        // 500 su ogni condominio con una tabella; trovato nella prova a video della Fase 1-bis della 1.12.0-beta.14).
+        $gruppi = $tabelle->getCollection()->filter(fn (Tabella $t) => (bool) $t->di_un_gruppo)->map(fn (Tabella $t) => (int) $t->id)->values()->all();
+
         // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
         $condomini = $this->getCondomini();
 
@@ -66,6 +71,7 @@ class TabellaController extends Controller
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'tabelle'    => TabellaResource::collection($tabelle)->resolve(),
+            'gruppi'     => $gruppi,
             'sort'       => $validated['sort'] ?? null,
             'direction'  => $validated['direction'] ?? null,
             'meta'       => [
@@ -200,6 +206,12 @@ class TabellaController extends Controller
                 'questa' => $diProprieta !== null && (int) $diProprieta->id === (int) $tabella->id,
                 'attuale' => $diProprieta?->nome,
                 'si_sceglie' => \App\Services\Assemblee\AccessoAlleAssemblee::gestisce(request()->user()),
+            ],
+            // La tabella di un gruppo (Coda 734): il segno, le unità con la quota e quelle del condominio, per la riga «Adesso: «Box» ha 8 unità su 26…».
+            'gruppo'     => [
+                'questa' => (bool) $tabella->di_un_gruppo,
+                'unita' => count(\App\Services\Assemblee\UnitaDelPunto::quoteMaggioriDiZero([(int) $tabella->id])[(int) $tabella->id] ?? []),
+                'del_condominio' => $condominio->immobili()->count(),
             ],
         ]);
     }

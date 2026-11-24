@@ -1807,11 +1807,17 @@ const imprevistoComuneCents = computed(() => totali.value.imponibile_sopravvenie
 
 /**
  * Coda 693 (d): l'imprevisto urgente da giustificare come sforo, con la sua parte comune; nessuno se la fattura non ha più una riga «Fuori preventivo»
- * comune (i dati della finestra restano, ma non c'è più niente da giustificare). Sulla pregressa com'era: la sua eccedenza ha la sua finestra.
+ * comune (i dati della finestra restano, ma non c'è più niente da giustificare).
+ *
+ * Coda 754 (5), 1.12.0-beta.14: sulla pregressa l'importo è la parte non coperta dai saldi iniziali (`eccedenzaPregressaCents`), quella della sua finestra.
+ * Prima era la parte comune delle righe «Fuori preventivo», che la pregressa non ha: con l'urgenza la fattura restava da ratificare per € 0,00 (prova G6).
+ * Una pregressa tutta coperta dai saldi non ha niente da giustificare, anche con i dati di una finestra confermata prima.
  */
-const imprevistoDaGiustificare = () => (form.is_pregresso || imprevistoComuneCents.value > 0)
-    ? imprevistoUrgente(form.dati_extra.log_legale_sopravvenienza, imprevistoComuneCents.value)
-    : null;
+const imprevistoDaGiustificare = () => {
+    const importoCents = form.is_pregresso ? eccedenzaPregressaCents.value : imprevistoComuneCents.value;
+
+    return importoCents > 0 ? imprevistoUrgente(form.dati_extra.log_legale_sopravvenienza, importoCents) : null;
+};
 
 /** Coda 693 (c): la gestione della fattura, per la frase in fondo alla finestra «Fuori preventivo». */
 const gestioneDellaFattura = computed(() => {
@@ -1867,6 +1873,17 @@ const eccedenzaPregressaCents = computed(() => {
 // cui il costo è maturato, chiuso prima dell'esercizio della fattura. La regola sta in `StoreFatturaRequest`; qui la si
 // annuncia nel pannello e la si controlla prima dell'invio. L'esercizio è quello scelto sulla fattura.
 const periodoPregressaObbligatorio = computed(() => !isNotaCredito.value && form.is_pregresso && eccedenzaPregressaCents.value > 0);
+
+/**
+ * Coda 754 (4), 1.12.0-beta.14: il fondo che copre la parte non coperta della pregressa, scelto con «Usa fondo riserva» nella finestra (il nome, dal
+ * menu dei fondi); null senza. Il pannello «Competenza» lo dice al posto del piano rate, come il rifiuto del server (`StoreFatturaRequest`).
+ */
+const fondoDellaPregressa = computed<string | null>(() => {
+    const finestra = form.dati_extra.log_legale_sopravvenienza;
+    if (!form.is_pregresso || finestra?.strategia_rientro !== 'fondo_riserva' || !finestra?.fondo_patrimoniale_id) return null;
+
+    return (props.fondi_riserva ?? []).find((f: any) => f.id === finestra.fondo_patrimoniale_id)?.nome ?? null;
+});
 const inizioEsercizioFattura = computed(() => (props.esercizi ?? []).find((e: any) => e.id === form.esercizio_id)?.data_inizio ?? null);
 
 /**
@@ -2647,6 +2664,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                             :gestione-straordinaria="gestioneSceltaStraordinaria"
                             :pregressa="form.is_pregresso"
                             :periodo-obbligatorio="periodoPregressaObbligatorio"
+                            :fondo-che-copre="fondoDellaPregressa"
                             :inizio-esercizio="inizioEsercizioFattura"
                             :lavori-urgenti="urgenzaDelleVoci"
                             :errori="{ dal: form.errors.competenza_dal, al: form.errors.competenza_al }" />
@@ -2694,7 +2712,8 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                         <!-- Campi imponibile/iva per pregressi -->
                         <div v-if="form.is_pregresso" class="grid grid-cols-3 gap-3 p-4 bg-amber-50/30 dark:bg-amber-900/5 border border-amber-100 dark:border-amber-800/30 rounded-lg mt-3">
                             <div class="col-span-2 space-y-1.5">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Imponibile Lordo</Label>
+                                <!-- Coda 754 (6), 1.12.0-beta.14: era «Imponibile Lordo», e il programma ci aggiunge l'IVA (`FatturaPassivaService::ivaPregressaCents`). -->
+                                <Label for="importo_pregresso" class="text-xs font-bold text-slate-600 dark:text-slate-300">Imponibile (senza IVA)</Label>
                                 <MoneyInput
                                     id="importo_pregresso"
                                     v-model="form.imponibile_pregresso"
@@ -2704,13 +2723,17 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                                     placeholder="0,00" />
                             </div>
                             <div class="col-span-1 space-y-1.5 relative">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">IVA</Label>
+                                <Label class="text-xs font-bold text-slate-600 dark:text-slate-300">IVA</Label>
                                 <div class="relative">
                                     <Input min="0" max="100" v-model="form.aliquota_iva_pregressa"
                                         class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm focus:border-amber-400 focus:ring-amber-400/20" />
                                     <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
                                 </div>
                             </div>
+                            <!-- Coda 754 (6): il totale che il programma registrerà, mentre si scrive (lo stesso calcolo del server, `calcolaTotali`). -->
+                            <p data-test="totale-pregressa" class="col-span-3 text-xs text-slate-600 dark:text-slate-300">
+                                Totale del documento: <span class="font-bold tabular-nums text-slate-900 dark:text-slate-100">{{ euro(totali.totale_documento_cents) }}</span>
+                            </p>
                         </div>
 
                         <hr class="border-slate-100 dark:border-slate-800">
@@ -3009,7 +3032,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                     <div class="p-5 bg-slate-900 dark:bg-slate-950 text-white border-t border-slate-700 shrink-0 space-y-4">
                         <div class="space-y-2">
                             <div class="flex justify-between text-xs">
-                                <span class="text-slate-400">Imponibile lordo</span>
+                                <span class="text-slate-400">Imponibile</span>
                                 <span>{{ euro(totali.imponibile_cents) }}</span>
                             </div>
 

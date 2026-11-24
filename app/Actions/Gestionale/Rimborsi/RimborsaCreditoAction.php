@@ -5,6 +5,7 @@
 
 namespace App\Actions\Gestionale\Rimborsi;
 
+use App\Helpers\DateHelper;
 use App\Exceptions\Gestionale\ContoPassateGestioniMancanteException;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
@@ -115,7 +116,7 @@ final class RimborsaCreditoAction
                 'condominio_id'      => $condominio->id,
                 'esercizio_id'       => $esercizio->id,
                 'gestione_id'        => $piano->gestione_id,
-                'data_registrazione' => now(),
+                'data_registrazione' => DateHelper::oggiUtente(),
                 'data_competenza'    => $data->toDateString(),
                 'causale'            => 'Rimborso credito a ' . $nome,
                 'descrizione'        => $nota ?: null,

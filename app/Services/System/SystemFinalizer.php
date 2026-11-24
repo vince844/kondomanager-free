@@ -40,8 +40,10 @@ class SystemFinalizer
         // Artisan::call gira nello stesso processo PHP della richiesta HTTP
         // e ne eredita il max_execution_time (60s tipici su hosting
         // condiviso/Windows): troppo poco per migration con data-migration.
-        set_time_limit(0);
-        @ini_set('max_execution_time', '0');
+        \App\Support\LimiteDiTempo::alza(0);
+        if (function_exists('ini_set')) {
+            @ini_set('max_execution_time', '0');
+        }
 
         foreach ($this->passiDatabase() as $passo) {
             $passo();
@@ -80,7 +82,7 @@ class SystemFinalizer
      */
     public function runMigrationsWithRetry(int $maxAttempts = 3): void
     {
-        set_time_limit(0);
+        \App\Support\LimiteDiTempo::alza(0);
 
         $attempts = 0;
 

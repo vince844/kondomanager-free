@@ -25,9 +25,12 @@
  * **Il perimetro (31.2).** Le voci, la spesa di una sola unità (addebito diretto), il ripiego sui giorni scoperti, i
  * saldi pregressi.
  *
- * **Cosa NON copre.** I saldi pregressi di un'unità diventata mista **con un passaggio**: si calcolano senza periodo, una
- * riga chiusa conta ancora (Coda 174), le quote fanno più di 100 e il pregresso resta com'era — qui si provano solo le
- * unità miste senza passaggi. Un'unità con più persone sullo stesso ruolo e sulla stessa metà (due usufruttuari al 25 %)
+ * **I saldi pregressi di un'unità diventata mista con un passaggio** (issue 58, Coda 174, decisione 674): dalla 1.12.0-beta.14
+ * si guardano il primo giorno dell'esercizio del saldo, e quel giorno l'unità era com'era — una riserva su metà del 1/5 non la
+ * rende mista l'1/1. Il caso è in `Beta14PregressoPassaggioTest` (prova 5); qui le unità miste senza passaggi e chi vende e
+ * ricompra.
+ *
+ * **Cosa NON copre.** Un'unità con più persone sullo stesso ruolo e sulla stessa metà (due usufruttuari al 25 %)
  * non ha un caso suo. La tolleranza sulle quote (0,01) non ha un caso al limite. Le stampe del riparto e il dettaglio
  * ricostruito per i piani anteriori alla beta.29 non si guardano: si guarda il riparto del motore e le righe scritte.
  */
@@ -496,15 +499,16 @@ it('rilievo D2 — saldi pregressi: la stessa persona sul ruolo e sul gemello pa
     'straordinaria, quote 30 e 70' => ['straordinaria', [['E', 'proprietario', 30], ['E', 'nuda_proprietario', 70], ['U', 'usufruttuario', 70]], ['E' => 100000]],
 ]);
 
-it('rilievo D2 — già prima della beta: chi vende e ricompra ha due righe sullo stesso ruolo, e il pregresso non si crea dal nulla', function () {
-    // Ugo vende a Elsa il 1/05 ed Elsa gli rivende il 1/09; i pregressi si calcolano senza periodo (Coda 174): le tre righe
-    // contano tutte. Prima: Ugo € 1.000,00 due volte ed Elsa € 500,00, € 2.000,00 su un pregresso da € 1.000,00. Ora le
-    // quote si sommano per persona (Ugo 200, Elsa 100): la proporzione della Coda 174 resta, l'eccedenza sparisce.
+it('rilievo D2 e issue 58 — chi vende e ricompra ha due righe sullo stesso ruolo: il pregresso non si crea dal nulla, e va a chi era titolare il primo giorno dell\'esercizio', function () {
+    // Ugo vende a Elsa il 1/05 ed Elsa gli rivende il 1/09. Nella .41 i pregressi si calcolavano senza periodo e le tre righe
+    // contavano tutte: prima della .41 Ugo € 1.000,00 due volte ed Elsa € 500,00, € 2.000,00 su un pregresso da € 1.000,00; con le
+    // quote sommate per persona Ugo € 666,67 ed Elsa € 333,33. Con la issue 58 (Coda 174) conta l'1/1/2026, il primo giorno
+    // dell'esercizio del saldo: quel giorno il titolare è Ugo, con la prima riga, e il pregresso è tutto suo.
     $s = umSaldoUnitaMista('ordinaria', righe: [
         ['U', 'proprietario', 100, '2019-01-01', '2026-04-30'], ['E', 'proprietario', 100, '2026-05-01', '2026-08-31'], ['U', 'proprietario', 100, '2026-09-01'],
     ]);
     $distribuzione = app(GenerateSaldiAction::class)->execute($s->piano, $s->gestione);
 
-    expect($distribuzione[$s->persone['U']->id][$s->immobile->id]['importo'])->toBe(66667)
-        ->and($distribuzione[$s->persone['E']->id][$s->immobile->id]['importo'])->toBe(33333);
+    expect($distribuzione[$s->persone['U']->id][$s->immobile->id]['importo'])->toBe(100000)
+        ->and($distribuzione)->not->toHaveKey($s->persone['E']->id);
 });

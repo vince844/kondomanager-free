@@ -42,20 +42,59 @@ function tdvPersona(array $d, string $nome): array
     return collect($d['persone'])->firstWhere('nome', $nome) ?? throw new \RuntimeException('Nessuno: ' . $nome);
 }
 
+/** I termini di una persona senza le delibere e le voci (per votazione: le prova `DueVotiNelloStessoPuntoTest`). @return list<array<string, mixed>> */
+function tdvTermini(array $persona): array
+{
+    return array_map(fn ($t) => array_diff_key($t, ['delibere' => true, 'voci' => true]), $persona['termini']);
+}
+
+/**
+ * La sala del 15/12/2026 con i Russo comproprietari dell'Int. 5 che entrano insieme all'ora data (Russo Marco rappresenta l'unità, Russo Anna presente
+ * senza voto, rilievo C53): gli altri come la sala del verbale, i punti 1–5 tutti favorevoli (alle 19:00, 19:10, 19:25, 19:44, 20:05), le varie senza
+ * voto, la chiusura, il verbale n. 42 registrato. @return array{0: Beta51Scenario, 1: \App\Models\Assemblee\Assemblea, 2: \App\Models\Assemblee\VerbaleDellAssemblea}
+ */
+function tdvRussoInsieme($t, string $alle): array
+{
+    $s = SalaDiViaRoma12::nuovo($t);
+    $a = SalaDiViaRoma12::convoca(SalaDiViaRoma12::ordinaria($s), $s);
+    $seduta = SalaDiViaRoma12::apriLaSeconda($t, $s, $a);
+    SalaDiViaRoma12::entrano($t, $s, $a, ['rossi', 'rita', 'gallo', ...array_map(fn ($i) => 'c' . $i, range(30, 36))]);
+    $entrano = fn () => SalaDiViaRoma12::applica($t, $s, $a, SalaDiViaRoma12::gesto('entra', ['seduta_id' => $seduta->id,
+        'persona' => ['anagrafica_id' => $s->persone['marco']->id], 'come' => 'in_sala', 'con' => [$s->persone['anna']->id]], '2026-12-15 ' . $alle));
+    $entrati = false;
+    foreach ([1 => '19:00', 2 => '19:10', 3 => '19:25', 4 => '19:44', 5 => '20:05'] as $numero => $ora) {
+        if (! $entrati && $alle < $ora) {
+            $entrano();
+            $entrati = true;
+        }
+        VerbaleDiViaRoma12::tuttiFavorevoli($t, $s, $a, $numero, '2026-12-15 ' . $ora);
+    }
+    if (! $entrati) {
+        $entrano();
+    }
+    SalaDiViaRoma12::applica($t, $s, $a, SalaDiViaRoma12::gesto('trattato', ['seduta_id' => $seduta->id, 'punto_id' => VerbaleDiViaRoma12::punto($a, 6)], '2026-12-15 20:30'));
+    SalaDiViaRoma12::applica($t, $s, $a, SalaDiViaRoma12::gesto('chiudi', ['seduta_id' => $seduta->id], '2026-12-15 20:55'));
+    $verbale = VerbaleDiViaRoma12::genera($t, $s, $a->refresh());
+    VerbaleDiViaRoma12::registra($t, $s, $verbale)->assertSessionHasNoErrors();
+
+    return [$s, $a->refresh(), $verbale->refresh()];
+}
+
 it('la lista proposta: chi non è mai entrato, chi è entrato dopo il voto, chi è uscito prima, il conduttore per i suoi punti; chi c\'era non la riceve', function () {
     [, , $verbale] = tdvRegistrato($this);
     $d = app(DestinatariDelVerbale::class)->per($verbale);
 
     expect(tdvPersona($d, 'Condomino 37'))->toMatchArray(['gruppo' => 'mai_entrati', 'riceve' => true, 'perche' => 'assente a tutti i punti', 'punti_assente' => [1, 2, 3, 4, 5]])
-        ->and(tdvPersona($d, 'Bianchi Anna'))->toMatchArray(['gruppo' => 'fuori', 'riceve' => true, 'perche' => 'entrato alle 19:20: assente ai punti 1 e 2'])
-        ->and(tdvPersona($d, 'Condomino 36'))->toMatchArray(['gruppo' => 'fuori', 'perche' => 'uscito alle 19:30: assente ai punti 4 e 5'])
+        // Le parole senza genere (rilievo C59): «in sala dalle», «fuori dalle».
+        ->and(tdvPersona($d, 'Bianchi Anna'))->toMatchArray(['gruppo' => 'fuori', 'riceve' => true, 'perche' => 'in sala dalle 19:20: assente ai punti 1 e 2'])
+        ->and(tdvPersona($d, 'Condomino 36'))->toMatchArray(['gruppo' => 'fuori', 'perche' => 'fuori dalle 19:30: assente ai punti 4 e 5'])
         ->and(tdvPersona($d, 'Ferri Luca'))->toMatchArray(['gruppo' => 'mai_entrati', 'punti_assente' => [5]])
         ->and(tdvPersona($d, 'Colombo Rita'))->toMatchArray(['gruppo' => 'cera', 'riceve' => false])
-        ->and(tdvPersona($d, 'Colombo Rita')['termini'])->toBe([['punti' => [1, 4], 'perche' => 'contrario', 'dal' => '2026-12-15', 'fino_al' => '2027-01-14',
+        ->and(tdvTermini(tdvPersona($d, 'Colombo Rita')))->toBe([['punti' => [1, 4], 'perche' => 'contrario', 'dal' => '2026-12-15', 'fino_al' => '2027-01-14',
             'da_consegnare' => false, 'dal_come' => null]])
         ->and(tdvPersona($d, 'Russo Marco')['termini'][0])->toMatchArray(['punti' => [4], 'perche' => 'non_votato', 'fino_al' => '2027-01-14'])
         // Ai punti 3, 4 e 5 c'era ed era favorevole: niente termine. Ai punti 1 e 2 era fuori: dalla consegna, che non c'è ancora.
-        ->and(tdvPersona($d, 'Bianchi Anna')['termini'])->toBe([['punti' => [1, 2], 'perche' => 'assente', 'dal' => null, 'fino_al' => null, 'da_consegnare' => true, 'dal_come' => null]])
+        ->and(tdvTermini(tdvPersona($d, 'Bianchi Anna')))->toBe([['punti' => [1, 2], 'perche' => 'assente', 'dal' => null, 'fino_al' => null, 'da_consegnare' => true, 'dal_come' => null]])
         ->and($d['quanti'])->toBe(18)->and($d['spediti'])->toBe(0);
 });
 
@@ -77,10 +116,10 @@ it('«Togli» con il perché: non riceve, e per i punti in cui era fuori conta c
 
     $d = app(DestinatariDelVerbale::class)->per($verbale->refresh());
     expect(tdvPersona($d, 'Condomino 36')['riceve'])->toBeFalse()
-        ->and(tdvPersona($d, 'Condomino 36')['termini'])->toBe([['punti' => [4, 5], 'perche' => 'tolto', 'dal' => '2026-12-15', 'fino_al' => '2027-01-14', 'da_consegnare' => false, 'dal_come' => null]])
+        ->and(tdvTermini(tdvPersona($d, 'Condomino 36')))->toBe([['punti' => [4, 5], 'perche' => 'tolto', 'dal' => '2026-12-15', 'fino_al' => '2027-01-14', 'da_consegnare' => false, 'dal_come' => null]])
         ->and(tdvPersona($d, 'Colombo Rita'))->toMatchArray(['riceve' => true, 'gruppo' => 'aggiunti', 'punti_assente' => [4]])
         ->and(\App\Models\RegistroModifica::query()->where('id', '>', $prima)->pluck('riepilogo')->all())
-        ->toBe(['chi lo riceve: tolto Condomino 36 · i punti 4 e 5 contati dal 15/12', 'chi lo riceve: aggiunto Colombo Rita come assente per il punto 4 · i trenta giorni dalla consegna']);
+        ->toBe(['chi lo riceve: tolta dalla lista: Condomino 36 · i punti 4 e 5 contati dal 15/12', 'chi lo riceve: aggiunta a mano: Colombo Rita, come assente per il punto 4 · i trenta giorni dalla consegna']);
 });
 
 it('«Manda le PEC»: la lettera e la copia sottoscritta com\'è, il .p7m compreso; la riga del registro degli invii è del tipo del verbale', function () {
@@ -151,4 +190,22 @@ it('un PDF che la libreria non legge si rifiuta alla registrazione e alla sostit
     $r->assertSessionHasErrors(['trasmissione' => $frase]);
     expect($r->status())->toBe(302)
         ->and(RegistroInvio::query()->where('tipo', 'verbale')->where('anagrafica_id', $s->persone['bianchi']->id)->count())->toBe(0);
+});
+
+it('il comproprietario entrato «insieme» dopo il rendiconto è fuori come chi rappresenta l\'unità, con la stessa frase (Coda 750 B3)', function () {
+    [, , $verbale] = tdvRussoInsieme($this, '19:20');
+    $d = app(DestinatariDelVerbale::class)->per($verbale);
+
+    $frase = 'in sala dalle 19:20: assente ai punti 1 e 2';
+    expect(tdvPersona($d, 'Russo Anna'))->toMatchArray(['gruppo' => 'fuori', 'riceve' => true, 'perche' => $frase, 'punti_assente' => [1, 2]])
+        ->and(tdvPersona($d, 'Russo Marco'))->toMatchArray(['gruppo' => 'fuori', 'riceve' => true, 'perche' => $frase, 'punti_assente' => [1, 2]]);
+});
+
+it('entrati «insieme» dopo tutti i voti: chi era in sala senza voto non è fra chi non è mai entrato (Coda 750 B3)', function () {
+    [, , $verbale] = tdvRussoInsieme($this, '20:10');
+    $d = app(DestinatariDelVerbale::class)->per($verbale);
+
+    $frase = 'in sala dalle 20:10: assente ai punti 1, 2, 3, 4 e 5';
+    expect(tdvPersona($d, 'Russo Anna'))->toMatchArray(['gruppo' => 'fuori', 'perche' => $frase])
+        ->and(tdvPersona($d, 'Russo Marco'))->toMatchArray(['gruppo' => 'fuori', 'perche' => $frase]);
 });

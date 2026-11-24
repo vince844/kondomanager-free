@@ -27,6 +27,12 @@ use Illuminate\Support\Carbon;
  * Le due stampe consumano la stessa forma nei tre casi: il ripiego non è un secondo codice ma la
  * stessa lettura su una sorgente diversa. È ciò che toglie l'oggetto alla Coda 78 — due
  * aritmetiche che potevano divergere.
+ *
+ * Coda 483 (1.12.0-beta.14): l'anteprima **delle stampe** passa anche dalla guardia del già versato, senza fermarsi. Se la
+ * generazione si fermerebbe, `fonte.non_si_genera` porta il messaggio della guardia, e le stampe lo dicono al posto della tabella:
+ * prima l'anteprima toglieva il già versato che la generazione rifiuta di togliere una seconda volta. Gli altri lettori del
+ * dettaglio (il conguaglio del passaggio, il prospetto degli oneri, il deliberato ricostruito, la quota) non lo chiedono e leggono
+ * come prima.
  */
 final class DettaglioRiparto
 {
@@ -35,9 +41,11 @@ final class DettaglioRiparto
     public const ANTEPRIMA = 'anteprima';
 
     /**
-     * @return array{righe: list<array<string,mixed>>, fonte: array{tipo: string, generato_il: ?Carbon, versione: ?string}}
+     * @param bool $perLaStampa La lettura è delle due stampe del riparto (`MatriceRipartoBuilder`): nell'anteprima di un piano non
+     *                          generato il motore passa dalla guardia del già versato senza fermarsi (Coda 483).
+     * @return array{righe: list<array<string,mixed>>, fonte: array{tipo: string, generato_il: ?Carbon, versione: ?string, non_si_genera: ?string}}
      */
-    public static function perPiano(PianoRate $pianoRate): array
+    public static function perPiano(PianoRate $pianoRate, bool $perLaStampa = false): array
     {
         $registrate = RigaRiparto::where('piano_rate_id', $pianoRate->id)->orderBy('id')->get();
 
@@ -57,6 +65,7 @@ final class DettaglioRiparto
                     'competenza'  => null,
                     'competenza_non_risolta' => false,
                     'legenda'     => self::legendaCompetenza($righe),
+                    'non_si_genera' => null,
                 ],
             ];
         }
@@ -82,8 +91,10 @@ final class DettaglioRiparto
             // (con incassi le rate restano, per decisione): le note si applicano solo all'anteprima (R6 della Fase 1-bis).
             $motore->calcolaDaFattureStraordinarie($pianoRate, $competenza, soloLettura: true, conNoteCollegate: ! $haQuote);
         } elseif ($gestione) {
-            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true, periodo: $competenza);
+            // Coda 483: l'anteprima delle stampe dice ciò che la generazione farà, anche quando la guardia del già versato la fermerebbe.
+            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true, periodo: $competenza, guardiaSenzaFermarsi: $perLaStampa && ! $haQuote);
         }
+        $nonSiGenera = $perLaStampa && ! $haQuote && $pianoRate->tipo !== 'straordinario' ? $motore->getNonSiGenera() : null;
         $risoluzione = $motore->getRisoluzioneTemporale();
         $righe = $motore->getRigheDettaglio();
         if ($haQuote) {
@@ -103,6 +114,7 @@ final class DettaglioRiparto
                 'competenza'  => $competenza?->toArray(),
                 'competenza_non_risolta' => $risoluzione['competenza_non_risolta'],
                 'legenda'     => self::legendaCompetenza($righe),
+                'non_si_genera' => $nonSiGenera,
             ],
         ];
     }

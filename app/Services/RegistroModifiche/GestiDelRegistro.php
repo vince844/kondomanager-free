@@ -111,6 +111,90 @@ final class GestiDelRegistro
             ->rimando('passaggio', (int) $passaggio->id, 'Passaggio dell\'unità ' . $etichetta);
     }
 
+    /**
+     * Decisione 705: più persone che escono con lo stesso atto. «Passaggi registrati insieme: vendita dell'unità Int. 1A da Cecilia Angeli e Marta Acciaioli a
+     * Luca Toscani dal 16/11/2026», con tutte le persone fra i soggetti e il rimando al primo passaggio; i gesti dei passaggi di ciascuna (il gesto 4) si
+     * contano nel lotto. I passaggi si conoscono alla fine del lavoro: l'esito porta `passaggi`, nell'ordine in cui sono stati scritti.
+     */
+    public static function passaggiRegistratiInsieme(Condominio $condominio, Immobile $immobile): Gesto
+    {
+        $gesto = Gesto::su('condominio', 'passaggio', null, 'Passaggio dell\'unità ' . $immobile->etichetta)->nelCondominio($condominio)
+            ->scheda('immobile', (int) $immobile->id);
+
+        return $gesto->riepilogo(function (Lotto $lotto, mixed $esito) use ($gesto, $immobile) {
+            $passaggi = array_values(array_filter(is_array($esito) ? (array) ($esito['passaggi'] ?? []) : [], fn ($p) => $p instanceof Subentro));
+            if ($passaggi === []) {
+                return 'Passaggi registrati insieme: ' . $immobile->etichetta;
+            }
+            self::soggettiDellInsieme($gesto, $passaggi)->oggetto((int) $passaggi[0]->id)
+                ->rimando('passaggio', (int) $passaggi[0]->id, 'Passaggio dell\'unità ' . $immobile->etichetta);
+
+            return 'Passaggi registrati insieme: ' . self::fraseInsieme($passaggi, $immobile);
+        });
+    }
+
+    /**
+     * Decisione 705, all'indietro: «Passaggi annullati insieme: …», con il motivo scritto, tutte le persone fra i soggetti e il rimando al primo passaggio.
+     * I gesti dell'annullamento di ciascuno si contano nel lotto.
+     *
+     * @param iterable<Subentro> $passaggi i passaggi dell'insieme, nell'ordine in cui sono stati scritti
+     */
+    public static function passaggiAnnullatiInsieme(iterable $passaggi, string $nota): Gesto
+    {
+        $passaggi = array_values(array_filter(is_array($passaggi) ? $passaggi : iterator_to_array($passaggi, false), fn ($p) => $p instanceof Subentro));
+        $primo = $passaggi[0] ?? null;
+        $immobile = $primo === null ? null : Immobile::query()->find($primo->immobile_id);
+        $etichetta = $immobile?->etichetta ?? '';
+
+        $gesto = Gesto::su('condominio', 'passaggio', $primo === null ? null : (int) $primo->id, 'Passaggio dell\'unità ' . $etichetta)
+            ->nelCondominio($primo === null ? null : (int) $primo->condominio_id)
+            ->scheda('immobile', $immobile === null ? null : (int) $immobile->id)
+            ->riepilogo('Passaggi annullati insieme: ' . self::fraseInsieme($passaggi, $immobile))
+            ->perche($nota);
+        if ($primo !== null) {
+            $gesto->rimando('passaggio', (int) $primo->id, 'Passaggio dell\'unità ' . $etichetta);
+        }
+
+        return self::soggettiDellInsieme($gesto, $passaggi);
+    }
+
+    /** @param list<Subentro> $passaggi */
+    private static function soggettiDellInsieme(Gesto $gesto, array $passaggi): Gesto
+    {
+        foreach ($passaggi as $p) {
+            $gesto->soggetto('anagrafica', $p->anagrafica_uscente_id === null ? null : (int) $p->anagrafica_uscente_id)
+                ->soggetto('anagrafica', $p->anagrafica_entrante_id === null ? null : (int) $p->anagrafica_entrante_id);
+        }
+
+        return $gesto;
+    }
+
+    /**
+     * «vendita dell'unità Int. 1A da Cecilia Angeli e Marta Acciaioli a Luca Toscani dal 16/11/2026»: chi esce in tutti, chi entra e la data del primo (sono
+     * gli stessi su tutti). I nomi dal registro se l'anagrafica non c'è più.
+     *
+     * @param list<Subentro> $passaggi
+     */
+    private static function fraseInsieme(array $passaggi, ?Immobile $immobile): string
+    {
+        if ($passaggi === []) {
+            return trim($immobile?->etichetta ?? '');
+        }
+        $ids = collect($passaggi)->flatMap(fn (Subentro $p) => [$p->anagrafica_uscente_id, $p->anagrafica_entrante_id])->filter()->map(fn ($id) => (int) $id)->unique()->all();
+        $nomi = Anagrafica::query()->whereKey($ids)->pluck('nome', 'id');
+        $uscenti = collect($passaggi)->map(fn (Subentro $p) => $p->anagrafica_uscente_id !== null ? ($nomi[(int) $p->anagrafica_uscente_id] ?? null) : null)
+            ->map(fn ($nome, $i) => $nome ?? ($passaggi[$i]->registro['nomi']['uscente'] ?? null))->filter()->unique()->values()->all();
+        $primo = $passaggi[0];
+        $entrante = $primo->anagrafica_entrante_id !== null ? ($nomi[(int) $primo->anagrafica_entrante_id] ?? null) : null;
+        $entrante ??= $primo->registro['nomi']['entrante'] ?? null;
+        $dal = $primo->getAttributes()['decorrenza'] ?? null;
+        $cosa = $primo->riservaUsufrutto() ? 'vendita con riserva d\'usufrutto' : 'vendita';
+        $elenco = count($uscenti) <= 1 ? (string) ($uscenti[0] ?? '') : implode(', ', array_slice($uscenti, 0, -1)) . ' e ' . end($uscenti);
+
+        return trim($cosa . ' dell\'unità ' . ($immobile?->etichetta ?? '') . ($elenco !== '' ? ' da ' . $elenco : '') . ($entrante !== null ? ' a ' . $entrante : '')
+            . ($dal !== null ? ' dal ' . FormatoDelValore::testo($dal, 'data') : ''));
+    }
+
     /** «Int. 7 da Mario Rossi a Ida Romano dal 01/03/2026». */
     private static function frasePassaggio(Subentro $subentro, ?Immobile $immobile): string
     {

@@ -146,6 +146,10 @@ return [
             'label' => 'Incidencia actualizada',
             'description' => 'Recibe una notificación cuando se modifica una incidencia que sigues',
         ],
+        'error_reported' => [
+            'label' => 'Error avisado',
+            'description' => 'Recibe un correo con el primer aviso de un error de un residente o de un colaborador: el código, la hora, la página y quién avisó, sin el detalle técnico. Los avisos posteriores del mismo error se cuentan en la tarea de la Action inbox, sin otro correo.',
+        ],
         'ticket_assigned' => [
             'label' => 'Aviso de avería asignado',
             'description' => 'Recibe una notificación cuando se te asigna un aviso de avería, o deja de estar asignado a ti',

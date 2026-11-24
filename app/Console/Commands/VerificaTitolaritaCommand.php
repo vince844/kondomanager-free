@@ -43,13 +43,18 @@ use Illuminate\Support\Facades\DB;
  *    senza data di fine. Due titolari al 100 % si normalizzano a 200 e prendono il 50 % ciascuno.
  *    Dalla beta.31 una riga chiusa non entra nella somma: venditore chiuso e acquirente in corso
  *    non sono più un falso allarme, sono un passaggio registrato bene.
+ *
+ * ➕ **Dalla 1.12.0-beta.14 (Coda 485) un quinto segnale**: le successioni con un erede che ha a sua volta una successione con il
+ *    decesso prima del defunto, o lo stesso giorno. Il motore gli intesta anche i giorni dopo il suo decesso; la registrazione oggi
+ *    le rifiuta, quelle scritte prima restano. La strada è dell'amministratore: annullare la successione del defunto e registrarla
+ *    di nuovo con gli eredi giusti.
  */
 class VerificaTitolaritaCommand extends Command
 {
     protected $signature = 'kondomanager:verifica-titolarita
                             {--condominio= : ID del condominio (omesso = tutti)}';
 
-    protected $description = 'Elenca le associazioni con date di competenza che cambiano il riparto (chiuse, spente, quote che non fanno 100). Non modifica nulla.';
+    protected $description = 'Elenca le associazioni con date di competenza che cambiano il riparto (chiuse, spente, quote che non fanno 100) e gli eredi con il decesso prima del defunto. Non modifica nulla.';
 
     public function handle(): int
     {
@@ -73,8 +78,9 @@ class VerificaTitolaritaCommand extends Command
             $spente    = $this->righeSpente($condominio->id);
             $sospette  = $this->quoteNonAlCento($condominio->id);
             $stessoGiorno = $this->chiusuraEAperturaLoStessoGiorno($condominio->id);
+            $erediMortiPrima = $this->erediMortiPrima($condominio->id);
 
-            $segnali = $conFine->count() + $spente->count() + $sospette->count() + $stessoGiorno->count();
+            $segnali = $conFine->count() + $spente->count() + $sospette->count() + $stessoGiorno->count() + count($erediMortiPrima);
             if ($segnali === 0) {
                 continue;
             }
@@ -134,11 +140,18 @@ class VerificaTitolaritaCommand extends Command
                 );
             }
 
+            if ($erediMortiPrima !== []) {
+                $this->line('');
+                $this->line('  <fg=red>Eredi con il decesso prima del defunto o lo stesso giorno (' . count($erediMortiPrima) . '):</> il riparto intesta all\'erede anche i giorni dopo il suo decesso.');
+                $this->line('  <fg=gray>Annulla la successione del defunto e registrala di nuovo con gli eredi come li dice la dichiarazione di successione.</>');
+                $this->table(['Unità', 'Defunto', 'Decesso', 'Erede', 'Decesso dell\'erede'], $erediMortiPrima);
+            }
+
             $this->line('');
         }
 
         if ($totaleSegnali === 0) {
-            $this->info('Nessun segnale: nessuna data di fine compilata, nessuna associazione spenta, tutte le quote in corso fanno 100, nessuna chiusura e apertura lo stesso giorno.');
+            $this->info('Nessun segnale: nessuna data di fine compilata, nessuna associazione spenta, tutte le quote in corso fanno 100, nessuna chiusura e apertura lo stesso giorno, nessun erede con il decesso prima del defunto.');
             return self::SUCCESS;
         }
 
@@ -212,6 +225,34 @@ class VerificaTitolaritaCommand extends Command
                 'i.interno as unita', 'a.tipologia', 'au.nome as uscente', 'ab.nome as entrante', 'a.data_fine as giorno',
                 DB::raw('a.quota + b.quota as somma'),
             ]);
+    }
+
+    /**
+     * Coda 485 (1.12.0-beta.14): le successioni non annullate con un erede che ha una successione non annullata del condominio con il decesso fino al
+     * giorno del decesso del defunto, lo stesso giorno compreso (art. 4 c.c.). Le stesse due condizioni della registrazione
+     * (`AnteprimaPassaggioRequest::controllaIDecessi`), lette sulle successioni già scritte; quelle delle pertinenze hanno gli stessi eredi
+     * dell'unità principale e non si ripetono.
+     *
+     * @return list<array{0: string, 1: string, 2: string, 3: string, 4: string}>
+     */
+    private function erediMortiPrima(int $condominioId): array
+    {
+        $successioni = \App\Models\Gestionale\Subentro::with(['uscente', 'immobile'])->where('condominio_id', $condominioId)->where('tipo_passaggio', 'successione')
+            ->whereNull('subentro_padre_id')->orderBy('decorrenza')->orderBy('id')->get();
+        $righe = [];
+        foreach ($successioni as $s) {
+            foreach ($s->eredi() as $e) {
+                $sua = $successioni->first(fn ($x) => (int) $x->anagrafica_uscente_id === (int) $e['anagrafica_id'] && (int) $x->id !== (int) $s->id
+                    && $x->decorrenza->toDateString() <= $s->decorrenza->toDateString());
+                if ($sua !== null) {
+                    $righe[] = [(string) ($s->immobile?->nome ?? '—'), (string) ($s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? '—')), $s->decorrenza->format('d/m/Y'),
+                        (string) ($sua->uscente?->nome ?? ($sua->registro['nomi']['uscente'] ?? '—')),
+                        $sua->decorrenza->format('d/m/Y') . ', successione su ' . ($sua->immobile?->nome ?? '—')];
+                }
+            }
+        }
+
+        return $righe;
     }
 
     private function quoteNonAlCento(int $condominioId)

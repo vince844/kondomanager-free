@@ -36,7 +36,7 @@ class CreateCassaAction
             //    entrerebbe come attività "sospesa" e lo Stato Patrimoniale non
             //    chiuderebbe. Se non è possibile registrarla, il saldo resta in
             //    colonna e il calcolo resta comunque corretto.
-            $this->aperturaAction->execute($cassa);
+            $this->aperturaAction->execute($cassa, $data['saldo_al'] ?? null);
 
             Log::info("Nuova cassa creata", [
                 'condominio_id' => $condominio->id,

@@ -106,6 +106,10 @@ class PianoRateGenerationController extends Controller
             // passaggio o il suo annullamento che committasse nel frattempo lascerebbe quote calcolate su righe e saldi che
             // non esistono più (giro di verifica della 1.11.0-beta.37, C-R3; `Immobile::bloccaPerScrivere`).
             Immobile::bloccaDelCondominio((int) $condominio->id);
+            // Il pregresso dell'unità com'è adesso nelle quote: l'esito dice se il ricalcolo lo dà ad altre persone (rilievi 2, 4 e 7 del secondo scettico
+            // della tappa 1 della 1.12.0-beta.14, `GenerateSaldiAction::fraseDelPregressoCambiato`).
+            $saldiAction = app(\App\Actions\PianoRate\GenerateSaldiAction::class);
+            $pregressoDiPrima = $saldiAction->pregressoDelleUnita($pianoRate);
 
             // 3. Sincronizzazione Granulare
             $orphanIds = $validated['orphan_ids'] ?? [];
@@ -140,6 +144,7 @@ class PianoRateGenerationController extends Controller
                 notaDestinatari: $notaDestinatari,
                 esercizio: $esercizio,
                 appenaSincronizzate: $appenaSincronizzate,
+                scriviLaRigaVuota: true,
             ));
 
             // Ricreiamo l'inbox con i nuovi ID delle rate
@@ -172,6 +177,8 @@ class PianoRateGenerationController extends Controller
                     . "Per includere un sotto-conto, elimina il piano e ricrealo selezionando la voce."
                 ));
             }
+
+            $msg .= ($frase = $saldiAction->fraseDelPregressoCambiato($pianoRate, $pregressoDiPrima)) !== null ? ' ' . $frase : '';
 
             return back()->with($this->flashSuccess($msg));
 

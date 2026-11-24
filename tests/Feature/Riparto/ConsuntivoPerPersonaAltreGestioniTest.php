@@ -169,10 +169,11 @@ it('il già versato che i piani non hanno usato e l\'eccedenza stanno in una rig
     // U1 ha versato € 2.000,00 per le Pulizie prima del piano: il piano ne usa 1.500,00 (la sua parte), l'eccedenza è 500,00. A di Neri (1.650,00 −
     // 1.500,00) + 450,00 = 600,00; B 500,00 (le sole Manutenzioni); conguaglio +100,00. Dopo il piano U3 versa € 300,00 per le Manutenzioni: nessun
     // piano li usa. Nessuna cifra cambia; le righe li dicono.
+    // Coda 754 (7): Neri versa una parte della quarta rata, ridotta dal già versato, non i € 200,00 di sempre (`cpcRateEIncassiConGiaVersato`).
     $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]]]);
     ContributoVersato::create(['condominio_id' => $s['c']->id, 'target_type' => Conto::class, 'target_id' => $s['manutenzioni']->id, 'immobile_id' => $s['unita']['U3']->id,
         'anagrafica_id' => null, 'importo_cents' => 30000, 'natura' => 'fondo_vincolato', 'origine' => 'migrazione', 'esercizio_id' => $s['e']->id]);
-    cpcRateEIncassi($this, $s);
+    cpcRateEIncassiConGiaVersato($this, $s);
     cpcSpese($s);
     $c = cpcLeggi($this, $s);
 

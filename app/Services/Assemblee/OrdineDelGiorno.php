@@ -5,6 +5,7 @@
 
 namespace App\Services\Assemblee;
 
+use App\Enums\Assemblee\AmbitoAssemblea;
 use App\Enums\Assemblee\FontePunto;
 use App\Enums\Assemblee\MateriaPunto;
 use App\Enums\Assemblee\RuoloOggettoPunto;
@@ -14,6 +15,7 @@ use App\Models\Assemblee\MemoDellAssemblea;
 use App\Models\Assemblee\OggettoDelPunto;
 use App\Models\Assemblee\PuntoDellOrdineDelGiorno;
 use App\Models\Documento;
+use App\Models\Tabella;
 use App\Models\User;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\Gesto;
@@ -28,10 +30,25 @@ use Illuminate\Validation\ValidationException;
  * Le righe del registro: un punto aggiunto, riscritto o tolto è la riga del suo tratto, nella «Storia» dell'assemblea («Punto 4 — … · Creata, con 4 dati»);
  * togliendo un punto, gli altri si rinumerano dentro lo stesso gesto e non fanno righe; riordinare è un gesto solo («Ordine del giorno riordinato: il punto 5
  * diventa il 4»). «Varie ed eventuali» resta in fondo.
+ *
+ * **L'assemblea dei condòmini di un gruppo** (Coda 734, §1.1-bis del progetto della tappa 3, decisione 699 (3)), in un posto solo per `aggiungi`, `riscrivi` e
+ * `dalleProposte` ({@see nelGruppo()}): il punto che non si conta sul gruppo (la scala, la palazzina, una tabella senza il segno o con unità fuori) si ferma
+ * sempre; il punto di tutto il condominio (il rendiconto e il preventivo, la nomina e la revoca dell'amministratore, la dispensa dei sei mesi, le regole del
+ * recupero dei crediti) si ferma con la frase del rischio, e con «Mettilo lo stesso» (`mettilo_lo_stesso`) entra: la scelta resta nel registro, con chi l'ha
+ * fatta. Il rendiconto di una gestione che riguarda solo il gruppo passa sempre.
  */
 final class OrdineDelGiorno
 {
     public const FRASE_NON_SI_CAMBIA = 'Dalla prima spedizione date e ordine del giorno non si cambiano più: si annulla e si riconvoca.';
+
+    /** Le materie che per legge sono di tutto il condominio, con l'inizio della frase del rischio (decisione 699 (3)). */
+    public const MATERIE_DI_TUTTI = [
+        'rendiconto' => 'Il rendiconto è',
+        'preventivo' => 'Il preventivo è',
+        'nomina' => 'La nomina e la revoca dell\'amministratore sono',
+        'dispensa' => 'La dispensa dei sei mesi è',
+        'regole' => 'Le regole del recupero dei crediti sono',
+    ];
 
     /** I campi del punto che arrivano dalla pagina o dalla proposta. */
     private const CAMPI = ['testo', 'testo_pubblico', 'materia', 'maggioranza', 'maggioranza_libera', 'amministrazione', 'conduttore', 'ambito', 'palazzina_id',
@@ -46,8 +63,9 @@ final class OrdineDelGiorno
     public static function aggiungi(Assemblea $assemblea, array $dati, User $utente): PuntoDellOrdineDelGiorno
     {
         self::siPuoCambiare($assemblea);
+        $rischio = self::nelGruppo($assemblea, $dati);
 
-        return DB::transaction(function () use ($assemblea, $dati, $utente) {
+        return DB::transaction(function () use ($assemblea, $dati, $utente, $rischio) {
             // Un sospeso è un punto solo: se l'assemblea ha già il punto con la stessa chiave, il memo entra lì, e non nasce un secondo punto.
             $chiave = $dati['chiave_fonte'] ?? null;
             if ($chiave !== null && $chiave !== ProposteDellOrdineDelGiorno::CHIAVE_VARIE) {
@@ -75,6 +93,7 @@ final class OrdineDelGiorno
             ]);
             self::scriviGliOggetti($punto, (array) ($dati['oggetti'] ?? []));
             self::entranoIMemo($assemblea, $punto, $dati);
+            self::rigaDelRischio($assemblea, $punto, $rischio);
 
             return $punto;
         });
@@ -107,6 +126,7 @@ final class OrdineDelGiorno
     public static function riscrivi(PuntoDellOrdineDelGiorno $punto, array $dati, User $utente): PuntoDellOrdineDelGiorno
     {
         self::siPuoCambiare($punto->assemblea);
+        $rischio = self::nelGruppo($punto->assemblea, $dati, $punto);
         $campi = array_intersect_key($dati, array_flip(self::CAMPI));
         if (isset($campi['materia']) && ! array_key_exists('amministrazione', $campi)) {
             $campi['amministrazione'] = MaggioranzePerMateria::amministrazione((string) $campi['materia'], $campi['maggioranza'] ?? $punto->maggioranza?->value);
@@ -115,6 +135,7 @@ final class OrdineDelGiorno
         if (array_key_exists('oggetti', $dati)) {
             self::scriviGliOggetti($punto, (array) $dati['oggetti'], true);
         }
+        self::rigaDelRischio($punto->assemblea, $punto, $rischio);
 
         return $punto->refresh();
     }
@@ -183,12 +204,139 @@ final class OrdineDelGiorno
      */
     public static function dalleProposte(Assemblea $assemblea, array $proposte, User $utente): array
     {
+        // Il fermo del gruppo per ogni proposta, prima di scrivere: o entrano tutte, o nessuna.
+        foreach ($proposte as $proposta) {
+            self::nelGruppo($assemblea, $proposta);
+        }
         $punti = [];
         foreach ($proposte as $proposta) {
             $punti[] = self::aggiungi($assemblea, $proposta, $utente);
         }
 
         return $punti;
+    }
+
+    /**
+     * Il punto nell'assemblea dei condòmini di un gruppo (§1.1-bis, 6; decisione 699 (3)). Il punto che non si può contare sul gruppo si ferma sempre (422):
+     * «Per chi» una scala o una palazzina, o una tabella che non è quella del gruppo né una tabella di un gruppo dentro di lei. Il punto di tutto il
+     * condominio ({@see MATERIE_DI_TUTTI}) si ferma con la frase del rischio, salvo `mettilo_lo_stesso`: allora entra, e la funzione rende la frase per la riga
+     * del registro. Null per tutto il resto, e per le assemblee che non sono di un gruppo. Con `$punto` (riscrivere) i campi che non arrivano sono i suoi.
+     *
+     * @param array<string, mixed> $dati
+     */
+    private static function nelGruppo(Assemblea $assemblea, array $dati, ?PuntoDellOrdineDelGiorno $punto = null): ?string
+    {
+        $gruppo = UnitaDelPunto::gruppoDellAssemblea($assemblea);
+        if ($gruppo === null) {
+            return null;
+        }
+        $nome = (string) Tabella::query()->whereKey($gruppo)->value('nome');
+        $fuori = 'In un\'assemblea dei condòmini della tabella «' . $nome . '» un punto si vota fra loro: con la tabella «' . $nome
+            . '» o con la tabella di un gruppo che sta dentro di lei.';
+        $ambito = array_key_exists('ambito', $dati) ? $dati['ambito'] : $punto?->ambito?->value;
+        if ($ambito !== null && $ambito !== AmbitoAssemblea::CONDOMINIO->value) {
+            throw ValidationException::withMessages(['ambito' => $fuori]);
+        }
+        $tabella = array_key_exists('tabella_id', $dati) ? $dati['tabella_id'] : $punto?->tabella_id;
+        if ($tabella !== null && (int) $tabella !== $gruppo && ! self::dentroIlGruppo((int) $tabella, $gruppo)) {
+            throw ValidationException::withMessages(['tabella_id' => $fuori]);
+        }
+        $materia = (string) (array_key_exists('materia', $dati) ? $dati['materia'] : $punto?->materia?->value);
+        // Riscritto con la stessa materia: il punto di tutti l'amministratore l'ha già messo lo stesso, e la sua riga c'è.
+        if (! isset(self::MATERIE_DI_TUTTI[$materia]) || $punto?->materia?->value === $materia || self::dellaGestioneDelGruppo($dati, $punto, $gruppo)) {
+            return null;
+        }
+        $rischio = self::MATERIE_DI_TUTTI[$materia] . ' di tutto il condominio: con i soli condòmini del gruppo la delibera è annullabile da chi non è convocato.';
+        if (! filter_var($dati['mettilo_lo_stesso'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            throw ValidationException::withMessages(['materia' => $rischio . ' Mettilo in un\'assemblea di tutto il condominio, o premi «Mettilo lo stesso».']);
+        }
+
+        return $rischio;
+    }
+
+    /** Una tabella segnata «di un gruppo» con le sue unità (quelle con la quota) tutte dentro il gruppo dell'assemblea. */
+    private static function dentroIlGruppo(int $tabella, int $gruppo): bool
+    {
+        if (! (bool) Tabella::query()->whereKey($tabella)->value('di_un_gruppo')) {
+            return false;
+        }
+        $quote = UnitaDelPunto::quoteMaggioriDiZero([$tabella, $gruppo]);
+        $sue = array_keys($quote[$tabella] ?? []);
+
+        return $sue !== [] && array_diff($sue, array_keys($quote[$gruppo] ?? [])) === [];
+    }
+
+    /**
+     * Il rendiconto (o il preventivo) di una gestione che riguarda solo il gruppo: il punto parla di una gestione (fra i suoi oggetti) le cui voci si
+     * dividono solo con il gruppo o con tabelle di un gruppo dentro di lui. Passa sempre (decisione 699 (3)). Le proposte dell'assemblea del gruppo lo
+     * offrono con la gestione fra gli oggetti ({@see gestioniDelGruppo()}).
+     *
+     * @param array<string, mixed> $dati
+     */
+    private static function dellaGestioneDelGruppo(array $dati, ?PuntoDellOrdineDelGiorno $punto, int $gruppo): bool
+    {
+        $gestioni = [];
+        foreach ((array) ($dati['oggetti'] ?? []) as $o) {
+            [$tipo, $id] = array_is_list($o) ? [$o[0] ?? null, $o[1] ?? null] : [$o['tipo'] ?? null, $o['id'] ?? null];
+            if ($tipo === 'gestione' && $id !== null) {
+                $gestioni[] = (int) $id;
+            }
+        }
+        if ($punto !== null && ! array_key_exists('oggetti', $dati)) {
+            $gestioni = OggettoDelPunto::query()->where('punto_id', $punto->id)->where('oggetto_tipo', 'gestione')->pluck('oggetto_id')->map(fn ($id) => (int) $id)->all();
+        }
+        if ($gestioni === []) {
+            return false;
+        }
+        $tabelle = DB::table('conto_tabella_millesimale')->join('conti', 'conti.id', '=', 'conto_tabella_millesimale.conto_id')
+            ->join('piani_conti', 'piani_conti.id', '=', 'conti.piano_conto_id')->whereIn('piani_conti.gestione_id', $gestioni)
+            ->distinct()->pluck('conto_tabella_millesimale.tabella_id')->map(fn ($id) => (int) $id)->all();
+
+        return self::soloDelGruppo($tabelle, $gruppo);
+    }
+
+    /**
+     * Le gestioni attive del condominio che riguardano solo il gruppo (decisione 699 (3)): le loro voci si dividono solo con la tabella del gruppo o con
+     * tabelle di un gruppo dentro di lei. Il loro rendiconto e il loro preventivo sono fra le proposte dell'assemblea del gruppo.
+     *
+     * @return list<array{id: int, nome: string, tipo: string}>
+     */
+    public static function gestioniDelGruppo(int $condominioId, int $gruppo): array
+    {
+        $tabelle = [];
+        foreach (DB::table('conto_tabella_millesimale')->join('conti', 'conti.id', '=', 'conto_tabella_millesimale.conto_id')
+            ->join('piani_conti', 'piani_conti.id', '=', 'conti.piano_conto_id')->join('gestioni', 'gestioni.id', '=', 'piani_conti.gestione_id')
+            ->where('gestioni.condominio_id', $condominioId)->where('gestioni.attiva', true)->distinct()
+            ->get(['piani_conti.gestione_id', 'conto_tabella_millesimale.tabella_id']) as $r) {
+            $tabelle[(int) $r->gestione_id][] = (int) $r->tabella_id;
+        }
+        $del = array_keys(array_filter($tabelle, fn (array $t) => self::soloDelGruppo($t, $gruppo)));
+
+        return $del === [] ? [] : DB::table('gestioni')->whereIn('id', $del)->orderBy('data_inizio')->orderBy('id')->get(['id', 'nome', 'tipo'])
+            ->map(fn ($g) => ['id' => (int) $g->id, 'nome' => (string) $g->nome, 'tipo' => (string) $g->tipo])->values()->all();
+    }
+
+    /** Le tabelle (di una gestione) sono il gruppo o tabelle di un gruppo dentro di lui, e almeno una. @param list<int> $tabelle */
+    private static function soloDelGruppo(array $tabelle, int $gruppo): bool
+    {
+        return $tabelle !== [] && array_filter($tabelle, fn (int $t) => $t !== $gruppo && ! self::dentroIlGruppo($t, $gruppo)) === [];
+    }
+
+    /**
+     * La riga del registro del punto di tutto il condominio messo lo stesso nell'assemblea di un gruppo: una riga sua, scritta subito (anche dentro la
+     * preparazione, che altrimenti la conterebbe soltanto), con l'autore di ogni riga, cioè chi l'ha scelto.
+     */
+    private static function rigaDelRischio(Assemblea $assemblea, PuntoDellOrdineDelGiorno $punto, ?string $rischio): void
+    {
+        if ($rischio === null) {
+            return;
+        }
+        $nome = (string) Tabella::query()->whereKey(UnitaDelPunto::gruppoDellAssemblea($assemblea))->value('nome');
+        $gesto = Gesto::su('assemblee', 'assemblea', (int) $assemblea->id, GestiDelRegistro::nomeDellAssemblea($assemblea))
+            ->nelCondominio((int) $assemblea->condominio_id)
+            ->riepilogo((new \App\Services\RegistroModifiche\Schede\PuntoNelRegistro())->nome($punto) . ': messo lo stesso nell\'assemblea dei condòmini della '
+                . 'tabella «' . $nome . '». ' . $rischio);
+        RegistroModifiche::scrivi($gesto->perLaRiga());
     }
 
     /** Un'assemblea si cambia solo in preparazione. */

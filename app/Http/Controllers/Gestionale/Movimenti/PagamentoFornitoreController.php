@@ -5,11 +5,13 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Traits\OrdinaElenco;
 
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\StatoPagamentoFornitore;
 use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
+use App\Exceptions\Pagamenti\BonificoParlanteConRitenutaException;
 use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
@@ -125,8 +127,8 @@ class PagamentoFornitoreController extends Controller
             'totale_pagato_mese' => PagamentoFornitore::where('condominio_id', $condominio->id)
                 ->where('stato', 'confermato')
                 ->whereNull('pagamento_padre_id')
-                ->whereMonth('data_pagamento', now()->month)
-                ->whereYear('data_pagamento', now()->year)
+                ->whereMonth('data_pagamento', DateHelper::adessoUtente()->month)
+                ->whereYear('data_pagamento', DateHelper::adessoUtente()->year)
                 ->sum('importo_lordo'),
             'totale_stornati' => PagamentoFornitore::where('condominio_id', $condominio->id)
                 ->where('stato', 'stornato')
@@ -338,6 +340,11 @@ class PagamentoFornitoreController extends Controller
             // il servizio lo conosce già.
             return back()->withErrors(['ritenuta_incoerente' => $e->getMessage()]);
 
+        } catch (BonificoParlanteConRitenutaException $e) {
+            // Coda 754 (2): il bonifico parlante di una fattura con la ritenuta. Non è bypassabile: la ritenuta si toglie prima dalla
+            // fattura, e la frase dice come. Sul campo della spunta, e nella finestra dei rifiuti della pagina.
+            return back()->withErrors(['bonifico_parlante' => $e->getMessage()]);
+
         } catch (IdempotencyKeyConflittoException $e) {
             // La chiave di idempotenza è già in uso, ma non da un replay di questo
             // pagamento: nessuna scrittura è avvenuta e si risolve rigenerandola.
@@ -390,6 +397,7 @@ class PagamentoFornitoreController extends Controller
         // stornata porta `dati_extra.stornata_da_id` con l'id della nota. Si raccolgono in un colpo
         // solo — una query, non una per nota — e si escludono per id. Nessuna migrazione.
         $idNoteDaStorno = PagamentoFornitoreService::idNoteNateDaStorno($condominio->id);
+        $nomeFornitore = Fornitore::find($fornitoreId)?->ragione_sociale ?? 'questo fornitore';
 
         // Fatture aperte/parziali del fornitore
         // Fatture aperte/parziali del fornitore (incluse non approvate per mostrarle disabilitate)
@@ -411,7 +419,7 @@ class PagamentoFornitoreController extends Controller
             ->with('righe')
             ->orderBy('data_scadenza')
             ->get()
-            ->map(function (FatturaPassiva $f) {
+            ->map(function (FatturaPassiva $f) use ($nomeFornitore) {
                 $lordo = $f->importo_imponibile + $f->importo_iva;
                 $residuoCents = $f->residuo;
 
@@ -437,6 +445,11 @@ class PagamentoFornitoreController extends Controller
                     // 1.12.0-beta.13 (R12, decisione 561): per la riga in sforo, «Paga per l'urgenza» e «Ratifica» dicono di quanto supera il preventivo.
                     'totale_documento' => (int) $f->totale_documento,
                     'data_documento_iso' => $f->data_documento?->format('Y-m-d'),
+                    // Coda 754 (2): la ritenuta della fattura, per l'avviso del bonifico parlante (la fattura con la ritenuta non si paga con
+                    // il bonifico parlante: la ritenuta si toglie prima dalla fattura, o dalla pregressa con lo storno).
+                    'importo_ritenuta' => (int) $f->importo_ritenuta,
+                    'is_pregresso' => (bool) $f->is_pregresso,
+                    'bonifico_parlante_frase' => self::fraseDelBonificoParlante($f, $nomeFornitore),
                     ...($f->stato_approvazione === 'sforo_motivato' ? \App\Http\Controllers\Assemblee\RatificaPerLePagine::perLaRiga($f, []) : []),
                 ];
             });
@@ -598,6 +611,9 @@ class PagamentoFornitoreController extends Controller
             'condomini' => $listaCondomini,
             'esercizio' => $esercizio,
             'pagamento' => new PagamentoFornitoreResource($pagamento),
+            // Coda 754 (2): le fatture di questo pagamento registrate con la ritenuta. Con una di loro la spunta del bonifico parlante si
+            // ferma: la pagina lo dice prima dell'invio, con il collegamento alla modifica della fattura.
+            'fatture_con_ritenuta' => $this->fattureConRitenuta($pagamento),
             'banche' => $banche,
             'fornitori' => Fornitore::all(),
             'voci_commissione' => app(VoceDellaCommissione::class)->elenco($condominio->id),
@@ -683,6 +699,10 @@ class PagamentoFornitoreController extends Controller
             // cambiare: un valore diverso da quello registrato è sempre un errore.
             return back()->withErrors(['ritenuta_incoerente' => $e->getMessage()]);
 
+        } catch (BonificoParlanteConRitenutaException $e) {
+            // Coda 754 (2): la spunta del bonifico parlante messa sul pagamento di una fattura con la ritenuta, come in registrazione.
+            return back()->withErrors(['bonifico_parlante' => $e->getMessage()]);
+
         } catch (VoceCommissioneNonAmmessaException $e) {
             return back()->withErrors(['voce_commissione_id' => $e->getMessage()]);
 
@@ -692,6 +712,44 @@ class PagamentoFornitoreController extends Controller
 
             return back()->withErrors(['error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Le fatture di un pagamento pagate dal conto e registrate con la ritenuta (Coda 754 (2)): il numero, la ritenuta, se è pregressa.
+     *
+     * @return list<array{id: int, numero_documento: string, importo_ritenuta: int, importo_pieno: int, is_pregresso: bool, frase: string}>
+     */
+    private function fattureConRitenuta(PagamentoFornitore $pagamento): array
+    {
+        $nomeFornitore = $pagamento->fornitore?->ragione_sociale ?? 'questo fornitore';
+
+        return ($pagamento->scrittura?->fatture ?? collect())
+            ->filter(fn (FatturaPassiva $f) => ($f->pivot->tipo instanceof \BackedEnum ? $f->pivot->tipo->value : (string) $f->pivot->tipo) === 'pagamento'
+                && (int) $f->importo_ritenuta > 0 && (int) $f->netto_a_pagare > 0)
+            ->unique('id')
+            ->map(fn (FatturaPassiva $f) => [
+                'id' => (int) $f->id,
+                'numero_documento' => $f->numero_documento ?: "#{$f->id}",
+                'importo_ritenuta' => (int) $f->importo_ritenuta,
+                'importo_pieno' => (int) $f->netto_a_pagare + (int) $f->importo_ritenuta,
+                'is_pregresso' => (bool) $f->is_pregresso,
+                'frase' => (string) self::fraseDelBonificoParlante($f, $nomeFornitore),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * La frase del rifiuto del bonifico parlante per una fattura con la ritenuta, la stessa che il servizio manda all'invio
+     * (`BonificoParlanteConRitenutaException::perLeFatture()`): la pagina la dice prima. Nulla per una fattura senza la ritenuta.
+     */
+    private static function fraseDelBonificoParlante(FatturaPassiva $fattura, string $nomeFornitore): ?string
+    {
+        if ((int) $fattura->importo_ritenuta <= 0 || (int) $fattura->netto_a_pagare <= 0) {
+            return null;
+        }
+
+        return BonificoParlanteConRitenutaException::perLeFatture(collect([$fattura]), $nomeFornitore)->getMessage();
     }
 
     /**

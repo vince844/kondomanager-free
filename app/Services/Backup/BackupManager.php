@@ -165,7 +165,7 @@ class BackupManager
 
         // Su hosting che lo consentono alziamo il limite; dove è disabilitato
         // il budget (ben sotto i max_execution_time tipici) fa da guardia.
-        @set_time_limit($budgetSeconds + 30);
+        \App\Support\LimiteDiTempo::alza($budgetSeconds + 30);
         ignore_user_abort(true);
 
         try {

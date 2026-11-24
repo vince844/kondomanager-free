@@ -87,8 +87,9 @@ defineEmits(['update:open']);
                                     Allocando su una riga che porta anche il debito di un altro, i soldi saldano solo
                                     le quote del pagante: se sulla riga ne distribuisci più di quanto vale la sua
                                     quota, la parte che non è sua non ha dove andare e l'incasso <strong>si
-                                    ferma</strong> con «Errore di integrità contabile», senza scrivere niente. Cerca per
-                                    persona, oppure incassa dalla riga solo la sua quota. Se su quella rata il pagante
+                                    ferma</strong>, senza scrivere niente: sopra il pulsante di conferma un messaggio dice
+                                    quanto deve il pagante e di chi è il resto. Registra un incasso per persona, con
+                                    «Versato da» se ha pagato uno solo, oppure cerca per persona. Se su quella rata il pagante
                                     non ha proprio nessuna quota, l'incasso viene <strong>rifiutato</strong> e il motivo
                                     compare sopra il pulsante di conferma.
                                 </p>

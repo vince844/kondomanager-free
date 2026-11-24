@@ -177,7 +177,9 @@ it('versato nel 2027 con il 2026 chiuso e senza il piano dei conti della gestion
 });
 
 it('versato nel 2027 con il 2026 aperto: l\'incasso sta nel 2026 e cambia le sue spese; la riga dell\'elenco oltre il confine lo dice', function () {
-    [$s, $quota] = saInteressiEAnnoDopo($this, 'aperto');
+    [$s, $quota, $e27] = saInteressiEAnnoDopo($this, 'aperto');
+    // Il 2027 non è ancora aperto: con due esercizi aperti l'incasso andrebbe nel più recente (Coda 646, decisione 707 (4)), e non starebbe nel 2026.
+    $e27->update(['stato' => 'chiuso']);
     saVersaNel2027($this, $s, $quota)->assertSessionHasNoErrors();
     $id = (int) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->max('id');
     $riga = collect(app(\App\Services\Gestionale\AnnoACavallo::class)->perEsercizio($s['c'], $s['e']->fresh())['righe'])->firstWhere('scrittura_id', $id);

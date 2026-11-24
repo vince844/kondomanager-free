@@ -5,6 +5,7 @@
 
 namespace App\Services;
 
+use App\Helpers\DateHelper;
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
 use App\Exceptions\LimiteCondominiRaggiunto;
@@ -98,7 +99,8 @@ class CondominioService
      */
     public function createEsercizioForCondominio(Condominio $condominio): Esercizio
     {
-        $currentYear = now()->year;
+        $oggi = DateHelper::adessoUtente();
+        $currentYear = $oggi->year;
         $existing = $condominio->esercizi()
             ->whereYear('data_inizio', $currentYear)
             ->whereYear('data_fine', $currentYear)
@@ -123,8 +125,8 @@ class CondominioService
             'condominio_id' => $condominio->id,
             'nome' => "Esercizio anno {$currentYear}",
             'descrizione' => "Esercizio anno {$currentYear}",
-            'data_inizio' => now()->startOfYear(),
-            'data_fine' => now()->endOfYear(),
+            'data_inizio' => $oggi->copy()->startOfYear(),
+            'data_fine' => $oggi->copy()->endOfYear(),
             'stato' => 'aperto',
             'note' => 'Esercizio creato automaticamente.',
         ]);

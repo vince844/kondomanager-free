@@ -79,9 +79,10 @@
  *   nell'estinzione, non chiedono la spunta; emesse, nella vendita piena, non «passano ancora» e vanno fra le informazioni.
  *   Nella sezione «Coerenza» di `InvariantiPassaggiTest`: l'eccezione dei saldi intestati all'unità, o a una pertinenza del
  *   passaggio, nella frase «Il programma non intesta nulla a …» dell'anteprima e dello storico e nella frase gemella
- *   «Nessuna quota è intestata a …» della nota di solidarietà, con una forma che non dice a chi vadano quei saldi (lo fissa
- *   com'è la sentinella della Coda 174, sul piano straordinario: tutto a chi compra nella riserva, metà a chi compra e metà a
- *   chi vende nella vendita piena); la nota della vendita della sola nuda proprietà, che nomina l'usufruttuario solo quando l'usufrutto grava con
+ *   «Nessuna quota è intestata a …» della nota di solidarietà, che dice dove vanno quei saldi: a chi ne era titolare il primo
+ *   giorno del loro esercizio, salvo una scelta diversa nel piano rate (issue 58, Coda 174, decisione 674; sul piano
+ *   straordinario tutto a chi vende, nella riserva e nella vendita piena, e i casi in `Beta14PregressoPassaggioTest`); la nota
+ *   della vendita della sola nuda proprietà, che nomina l'usufruttuario solo quando l'usufrutto grava con
  *   certezza sulla quota venduta; le quote di una straordinaria tutta di chi vende, in bozza e già emesse, fra le
  *   informazioni; la finestra della nota;
  * - le bozze non risolte di un predecessore (anteriore, Coda 173): in una catena di vendite piene, su un piano senza data
@@ -254,10 +255,11 @@ it('chi resta obbligato: dal giorno dell\'atto in solido nudo proprietario e usu
         ->not->toContain('risponde in solido con Venditore Ugo per i contributi di Interno 1');
 });
 
-it('teste in assemblea: chi vende resta come usufruttuario e continua a contare, chi compra la nuda proprietà si aggiunge', function () {
+it('teste in assemblea: il pannello conta come la sala; con la riserva chi compra la nuda proprietà non è una testa sull\'ordinaria', function () {
     $s = ruScenario('prima_rata', 0);
     $invarianti = implode("\n", ruAnteprima($this, $s, ruRiserva($s))['invarianti']['frasi']);
-    expect($invarianti)->toContain('resta come usufruttuario')->toContain('continua a contare');
+    // Coda 758 (1): la frase è quella della sala con la scelta del condominio; sull'ordinaria vota l'usufruttuario, quindi la nuda proprietà del compratore non è una testa.
+    expect($invarianti)->toContain('Teste in assemblea, come le conta la sala con la scelta del condominio («due teste»): oggi 1, dopo il passaggio 1.');
 });
 
 it('lo storico la chiama vendita con riserva d\'usufrutto e aspetta la copia autentica come ogni vendita', function () {

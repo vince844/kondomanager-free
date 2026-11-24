@@ -95,39 +95,41 @@ class CreateSaldoRequest extends FormRequest
                     return;
                 }
 
-                // B2 (S5): le righe del conguaglio di un passaggio (`subentro_id`) non occupano lo slot —
-                // dopo un subentro l'entrante deve poter registrare un suo pregresso sulla stessa gestione. Dalla
-                // 1.11.0-beta.53 nemmeno le righe legate a un passaggio (`passaggio_id`): il posto conta un saldo per
-                // persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio.
-                $query = Saldo::where('esercizio_id', $esercizio->id)
-                    ->where('gestione_id', $gestioneId)
-                    ->where('immobile_id', $immobileId)
-                    ->whereNull('subentro_id')
-                    ->whereNull('passaggio_id');
-
-                if (is_null($anagraficaId)) {
-                    // Saldo solidale: max uno per (esercizio, gestione, immobile)
-                    $esiste = (clone $query)->whereNull('anagrafica_id')->exists();
-
-                    if ($esiste) {
-                        $validator->errors()->add(
-                            'anagrafica_id',
-                            'Esiste già un saldo solidale per questo immobile in questa gestione. Modifica quello esistente.'
-                        );
-                    }
-                } else {
-                    // Saldo personale: max uno per (esercizio, gestione, immobile, anagrafica)
-                    $esiste = (clone $query)->where('anagrafica_id', $anagraficaId)->exists();
-
-                    if ($esiste) {
-                        $validator->errors()->add(
-                            'anagrafica_id',
-                            'Esiste già un saldo per questa anagrafica in questa gestione.'
-                        );
-                    }
+                // Il posto (un saldo per persona, gestione, unità ed esercizio): la stessa funzione che la scrittura ripete dentro la transazione.
+                $frase = self::fraseDelPostoOccupato((int) $esercizio->id, (int) $gestioneId, (int) $immobileId, $anagraficaId === null ? null : (int) $anagraficaId);
+                if ($frase !== null) {
+                    $validator->errors()->add('anagrafica_id', $frase);
                 }
             }
         ];
+    }
+
+    /**
+     * Il posto del saldo scritto a mano: la frase del rifiuto se è già occupato, altrimenti null. Lo usano la richiesta e, dentro la transazione e
+     * dopo il blocco dell'unità, `SaldoInizialeController::store` (Coda 323: due invii quasi insieme passavano tutti e due la richiesta).
+     *
+     * B2 (S5): le righe del conguaglio di un passaggio (`subentro_id`) non occupano il posto — dopo un subentro l'entrante deve poter registrare
+     * un suo pregresso sulla stessa gestione. Dalla 1.11.0-beta.53 nemmeno le righe legate a un passaggio (`passaggio_id`): il posto conta un
+     * saldo per persona, gestione, unità ed esercizio, senza contare quelli scritti da un passaggio né quelli legati a un passaggio.
+     * Il saldo solidale (senza persona) è uno solo per esercizio, gestione e unità.
+     */
+    public static function fraseDelPostoOccupato(int $esercizioId, int $gestioneId, int $immobileId, ?int $anagraficaId): ?string
+    {
+        $query = Saldo::where('esercizio_id', $esercizioId)
+            ->where('gestione_id', $gestioneId)
+            ->where('immobile_id', $immobileId)
+            ->whereNull('subentro_id')
+            ->whereNull('passaggio_id');
+
+        if ($anagraficaId === null) {
+            return (clone $query)->whereNull('anagrafica_id')->exists()
+                ? 'Esiste già un saldo solidale per questo immobile in questa gestione. Modifica quello esistente.'
+                : null;
+        }
+
+        return (clone $query)->where('anagrafica_id', $anagraficaId)->exists()
+            ? 'Esiste già un saldo per questa anagrafica in questa gestione.'
+            : null;
     }
 
     /** Il passaggio padre a cui la riga si lega, la sua unità, la persona e la gestione: ogni rifiuto dice il campo e la ragione. */

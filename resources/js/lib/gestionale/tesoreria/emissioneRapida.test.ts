@@ -4,11 +4,12 @@
 
 /**
  * Le regole della finestra «Emetti le rate», fuori dal componente: le rate spuntate di serie (le già scadute e quelle fino al giorno che manda il server), il
- * riepilogo con le persone contate una volta, i testi, la scadenza rispetto a oggi, l'esito della risposta del server e le frasi degli errori.
+ * riepilogo con le persone contate una volta, i testi, la scadenza rispetto a oggi, l'esito della risposta del server e le frasi degli errori; l'interruttore
+ * della visibilità, che dice il vero come quello della pagina del piano.
  */
 import { describe, expect, test } from 'vitest';
 import {
-    esitoDellaRisposta, etichettaDelPiano, frasiDegliErrori, quandoScade, riepilogo, spuntateDiSerie, testoDelPulsante, testoDelRiepilogo, type PianoDellaFinestra,
+    AVVISA, esitoDellaRisposta, etichettaDelPiano, frasiDegliErrori, quandoScade, riepilogo, spuntateDiSerie, testoDelPulsante, testoDelRiepilogo, type PianoDellaFinestra,
 } from './emissioneRapida';
 
 const preventivo: PianoDellaFinestra = {
@@ -90,7 +91,7 @@ describe('la risposta del server', () => {
     });
 
     test('le rate emesse: l\'esito del server, con il suggerimento dei crediti in un capoverso suo; senza esito, le rate chieste', () => {
-        expect(esitoDellaRisposta({ message: { type: 'success', message: 'Rate emesse e notificate correttamente ai condòmini.' },
+        expect(esitoDellaRisposta({ message: { type: 'success', message: 'Rate emesse: i condòmini le vedono nel portale.' },
             esito_emissione: { titolo: 'Emissione completata', testo: 'Sono state emesse 3 rate.' }, suggerimento_crediti: 'Nota: Rossi ha € 50,00 di credito spendibile subito.' }, 3))
             .toEqual({ tipo: 'emesse', titolo: 'Emissione completata', testo: 'Sono state emesse 3 rate.\n\nNota: Rossi ha € 50,00 di credito spendibile subito.' });
         expect(esitoDellaRisposta({ message: { type: 'success', message: 'ok' } }, 1)).toEqual({ tipo: 'emesse', titolo: 'Emissione completata', testo: 'È stata emessa 1 rata.' });
@@ -101,5 +102,14 @@ describe('la risposta del server', () => {
         expect(frasiDegliErrori({ 'rate_ids.1': 'Una delle rate scelte non è di questo piano: scegli di nuovo le rate.', 'rate_ids.2': 'Una delle rate scelte non è di questo piano: scegli di nuovo le rate.',
             data_emissione: ['Scrivi la data di emissione.'] })).toEqual(['Una delle rate scelte non è di questo piano: scegli di nuovo le rate.', 'Scrivi la data di emissione.']);
         expect(frasiDegliErrori(null)).toEqual([]);
+    });
+});
+
+describe('l\'interruttore della visibilità', () => {
+    test('si chiama come nella pagina del piano, «Rendi visibili ai condòmini»: rende visibili le rate nel portale, non manda avvisi né notifiche', () => {
+        expect(AVVISA.titolo).toBe('Rendi visibili ai condòmini');
+        for (const frase of Object.values(AVVISA)) {
+            expect(frase).not.toMatch(/avvis|notific/i);
+        }
     });
 });

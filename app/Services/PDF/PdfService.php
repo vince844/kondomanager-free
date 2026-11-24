@@ -176,10 +176,7 @@ class PdfService
      */
     public static function alzaIlLimiteDiTempo(): void
     {
-        $limiteCorrente = (int) ini_get('max_execution_time');
-        if ($limiteCorrente > 0 && $limiteCorrente < 120 && function_exists('set_time_limit')) {
-            @set_time_limit(120);
-        }
+        \App\Support\LimiteDiTempo::alza(120);
     }
 
     /**

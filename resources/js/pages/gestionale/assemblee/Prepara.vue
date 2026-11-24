@@ -23,7 +23,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * eventuali» in fondo), con le frecce «Sposta su» e «Sposta giù» della pagina dell'assemblea (decisione 661). L'ordine parte con «Prepara l'assemblea» in
  * `ordine`: le chiavi dei proposti e `scritto:N` per il punto scritto N; «Varie ed eventuali» resta sempre l'ultimo e non si sposta.
  *
- * I proposti partono come le loro chiavi: il server rilegge le proposte (R18). Al telefono i campi stanno uno sotto l'altro.
+ * I proposti partono come le loro chiavi: il server rilegge le proposte (R18). Al telefono i campi stanno uno sotto l'altro. **I condòmini di un gruppo**
+ * (`gruppo:<id>`, Coda 734): la tabella del valore è quella del gruppo, ferma; le proposte di tutto il condominio non si offrono; la finestra sa il gruppo.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -42,7 +43,7 @@ import { BADGE, CLASSI_DEL_BADGE, coloreDellaMaggioranza } from '@/lib/assemblee
 import { cardDellaPreparazione } from '@/lib/assemblee/cardDellaGuida';
 import { controllaLeDate } from '@/lib/assemblee/date';
 import {
-    chiaveDelPerimetro, datiDelModulo, rigaDelleDate, seduteDaControllare, type DatiDelPunto, type ModuloDelleDate, type PassoDellaStrada, type ScelteDelleAssemblee,
+    datiDelModulo, gruppoDelPerimetro, materiaDiTutti, rigaDelleDate, rigaDellaTabellaDelGruppo, seduteDaControllare, type DatiDelPunto, type ModuloDelleDate, type PassoDellaStrada, type ScelteDelleAssemblee,
 } from '@/lib/assemblee/pagine';
 import type { Building } from '@/types/buildings';
 import type { GruppoDiProposte, PuntoProposto, TerminiDellaPrima } from '@/types/assemblee';
@@ -83,7 +84,20 @@ const maggioranze = ref<Record<string, string | null>>(Object.fromEntries(props.
 const errori = ref<Record<string, string>>({});
 const inCorso = ref(false);
 
-const gruppi = computed(() => props.proposte.filter((g) => g.punti.length > 0));
+// I condòmini di un gruppo (Coda 734): la tabella è il gruppo, ferma; le proposte di tutto il condominio non si offrono (e non restano spuntate). Le proposte
+// di un gruppo (`gruppo_id`: il memo del punto rinviato nella sua assemblea, il rendiconto e il preventivo della sua gestione) ci sono solo con «Per chi»
+// quel gruppo: il suo memo spuntato, la gestione no; i memo di tutto il condominio, per i condòmini di un gruppo, non spuntati.
+const gruppo = computed(() => gruppoDelPerimetro(props.scelte, modulo.value.perimetro));
+const diTutti = (p: PuntoProposto) => p.gruppo_id == null && gruppo.value !== null && materiaDiTutti(p.materia);
+const diUnAltroGruppo = (p: PuntoProposto) => p.gruppo_id != null && p.gruppo_id !== gruppo.value?.tabella_id;
+watch(() => gruppo.value?.tabella_id, (id, prima) => {
+    tabella.value = id ?? (prima !== undefined ? props.tabella_di_proprieta?.id ?? null : tabella.value);
+    props.proposte.flatMap((g) => g.punti).filter(diTutti).forEach((p) => { spuntate.value[p.chiave_fonte] = false; });
+    props.proposte.forEach((g) => g.punti.filter((p) => p.gruppo_id != null || g.chiave === 'da_te').forEach((p) => {
+        spuntate.value[p.chiave_fonte] = p.gruppo_id != null ? g.chiave === 'da_te' && p.gruppo_id === id : id === undefined && p.spuntato;
+    }));
+});
+const gruppi = computed(() => props.proposte.map((g) => ({ ...g, punti: g.punti.filter((p) => !diTutti(p) && !diUnAltroGruppo(p)) })).filter((g) => g.punti.length > 0));
 
 // I punti scritti qui: restano nella pagina e nascono con l'assemblea. La chiave resta la stessa se un altro punto si toglie, e tiene gli errori del server.
 interface PuntoScritto { chiave: number; dati: DatiDelPunto }
@@ -167,19 +181,14 @@ const conErroriNeiPunti = computed(() => Object.keys(erroriDeiPunti.value).lengt
 const quante = computed(() => Object.values(spuntate.value).filter(Boolean).length + scritti.value.length);
 const controllo = computed(() => controllaLeDate(seduteDaControllare(modulo.value.sedute)));
 const tabelle = computed(() => [{ valore: null as number | null, nome: 'Nessuna, la scelgo dopo' }, ...props.scelte.tabelle.map((t) => ({
-    valore: t.id as number | null, nome: t.nome, sotto: t.controlli[chiaveDelPerimetro(...perimetroDiviso())]?.frase ?? '' }))]);
+    valore: t.id as number | null, nome: t.nome, sotto: t.controlli[modulo.value.perimetro]?.frase ?? '' }))]);
 const memoMesso = (p: PuntoProposto) => props.memo !== null && p.memo_id === props.memo.id;
-
-function perimetroDiviso(): [string, number | null, number | null] {
-    const [ambito, id] = modulo.value.perimetro.split(':');
-    return [ambito, ambito === 'palazzina' ? Number(id) : null, ambito === 'scala' ? Number(id) : null];
-}
 
 const intestazione = computed(() => {
     const prima = modulo.value.sedute.find((s) => s.convocazione === 'prima' && s.numero === 1)?.giorno;
     const seconda = modulo.value.sedute.find((s) => s.convocazione === 'seconda' && s.numero === 1)?.giorno;
     const it = (d?: string) => (d ? d.split('-').reverse().join('/') : '');
-    return `Assemblea ${modulo.value.tipo} di ${props.condominio.nome}${prima ? ` · prima convocazione ${it(prima)}` : ''}${seconda ? `, seconda ${it(seconda)}` : ''}`;
+    return `Assemblea ${modulo.value.tipo}${gruppo.value ? ` dei condòmini della tabella «${gruppo.value.nome}»` : ''} di ${props.condominio.nome}${prima ? ` · prima convocazione ${it(prima)}` : ''}${seconda ? `, seconda ${it(seconda)}` : ''}`;
 });
 
 // Lasciare la pagina con i punti scritti non ancora preparati li perde: il browser chiede conferma prima di chiudere la scheda, e un clic verso un'altra
@@ -281,10 +290,10 @@ const pulsanteTogli = `${BOTTONE} text-rose-700 dark:text-rose-400`;
                     <section class="space-y-3.5 rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950" data-testid="prepara-date">
                         <DateDellAssemblea v-model="modulo" :scelte="scelte" :mostra-mancanti="tentato" :termini="termini_della_prima ?? null" />
                         <div class="menu-campo max-w-xl"><span class="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">La tabella del valore</span>
-                            <v-select v-model="tabella" :options="tabelle" label="nome" :reduce="(o: { valore: number | null }) => o.valore" :clearable="false" :searchable="tabelle.length > 8">
+                            <v-select v-model="tabella" :options="tabelle" label="nome" :reduce="(o: { valore: number | null }) => o.valore" :clearable="false" :searchable="tabelle.length > 8" :disabled="gruppo !== null">
                                 <template #option="o"><span class="block">{{ o.nome }}</span><span v-if="o.sotto" class="block text-xs opacity-70">{{ o.sotto }}</span></template>
                             </v-select>
-                            <span v-if="!tabella_di_proprieta" class="mt-1 block text-xs text-slate-500 dark:text-slate-400" data-testid="nota-tabella">Nessuna tabella di {{ condominio.nome }} è segnata come di proprietà generale.</span>
+                            <span v-if="gruppo" class="mt-1 block text-xs text-slate-600 dark:text-slate-300" data-testid="tabella-del-gruppo">{{ rigaDellaTabellaDelGruppo(scelte, gruppo) }}</span><span v-else-if="!tabella_di_proprieta" class="mt-1 block text-xs text-slate-500 dark:text-slate-400" data-testid="nota-tabella">Nessuna tabella di {{ condominio.nome }} è segnata come di proprietà generale.</span>
                             <!-- La tabella scelta qui vale per questa assemblea; la casella la segna anche per il condominio, così è già scelta nelle prossime. -->
                             <label v-if="puoiSegnare" class="mt-2 flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300" data-testid="segna-proprieta">
                                 <Checkbox v-model="segnaProprieta" class="mt-px rounded" />
@@ -379,7 +388,7 @@ const pulsanteTogli = `${BOTTONE} text-rose-700 dark:text-rose-400`;
             </StradaDellAssemblea>
         </div>
         <FinestraDelPunto v-model:open="finestra" nella-pagina :condominio-id="condominio.id" :condominio-nome="condominio.nome" :assemblea-nome="intestazione"
-            :tabella-dell-assemblea="nomeDellaTabella" :punto="null" :bozza="inModifica?.dati ?? null"
+            :tabella-dell-assemblea="nomeDellaTabella" :gruppo="gruppo" :punto="null" :bozza="inModifica?.dati ?? null"
             :errori-del-punto="inModifica ? erroriDeiPunti[inModifica.chiave] ?? null : null" :scelte="scelte" @salva="tieniIlPunto" />
         <AssembleaGuide v-model:open="mostraGuida" />
     </GestionaleLayout>

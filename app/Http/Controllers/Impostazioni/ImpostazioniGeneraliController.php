@@ -9,8 +9,10 @@ use App\Enums\Role as RoleEnum;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\ConfermaPasswordRecente;
 use App\Http\Requests\Settings\CreateImpostazioniGeneraliRequest;
+use App\Models\ComunicazioneLettura;
 use App\Models\Condominio;
 use App\Settings\GeneralSettings;
+use App\Support\Comunicazioni\LettureComunicazione;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -50,6 +52,9 @@ class ImpostazioniGeneraliController extends Controller
             'allegati_massimo_per_elemento' => (int) $settings->allegati_massimo_per_elemento,
             'segnalazioni_assegnazione_visibile_nel_portale' => (bool) $settings->segnalazioni_assegnazione_visibile_nel_portale,
             'segnalazioni_assegnazione_porta_in_lavorazione' => (bool) $settings->segnalazioni_assegnazione_porta_in_lavorazione,
+            'comunicazioni_registra_aperture' => (bool) $settings->comunicazioni_registra_aperture,
+            'errori_avviso_dalla_pagina' => (bool) $settings->errori_avviso_dalla_pagina,
+            'aperture_registrate'      => ComunicazioneLettura::whereNotNull('aperta_il')->count(),
             'default_per_page'         => (int) $settings->default_per_page,
             // Il 100 resta fuori: il portale condòmino non ha un selettore per le righe, quindi un
             // valore globale così alto gli darebbe cento schede da scorrere e nessun comando per
@@ -116,6 +121,12 @@ class ImpostazioniGeneraliController extends Controller
             if (array_key_exists('segnalazioni_assegnazione_porta_in_lavorazione', $validated)) {
                 $settings->segnalazioni_assegnazione_porta_in_lavorazione = (bool) $validated['segnalazioni_assegnazione_porta_in_lavorazione'];
             }
+            if (array_key_exists('comunicazioni_registra_aperture', $validated)) {
+                $settings->comunicazioni_registra_aperture = (bool) $validated['comunicazioni_registra_aperture'];
+            }
+            if (array_key_exists('errori_avviso_dalla_pagina', $validated)) {
+                $settings->errori_avviso_dalla_pagina = (bool) $validated['errori_avviso_dalla_pagina'];
+            }
             $settings->default_per_page = $validated['default_per_page'];
             $settings->save();
 
@@ -144,5 +155,19 @@ class ImpostazioniGeneraliController extends Controller
             $this->flashSuccess(__('impostazioni.success_save_general_settings'))
         );
 
+    }
+
+    /**
+     * Cancella le aperture registrate per tutte le comunicazioni.
+     */
+    public function cancellaAperture(GeneralSettings $settings): RedirectResponse
+    {
+        Gate::authorize('manage', $settings);
+
+        LettureComunicazione::cancellaAperture();
+
+        return back()->with(
+            $this->flashSuccess(__('impostazioni.success_delete_openings'))
+        );
     }
 }

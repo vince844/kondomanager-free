@@ -59,6 +59,10 @@ it('catena · su carta il 15/12 → il 16/12 la conferma, la regola e la gestion
     $cosa = CosaDaFareDellaDelibera::query()->where('delibera_id', $d3->id)->where('tipo', TipoCosaDaFare::CREA_PIANO_STRAORDINARIO->value)->firstOrFail();
 
     // Il 16/12, prima del verbale: la regola dalla delibera e la gestione del portone.
+    // La regola del recupero la scrive chi ha «Modifica condomini» (Coda 755 (2)).
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => \App\Enums\Permission::EDIT_CONDOMINI->value, 'guard_name' => 'web']);
+    $s->admin->givePermissionTo(\App\Enums\Permission::EDIT_CONDOMINI->value);
+    app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
     $this->actingAs($s->admin)->postJson(route('admin.gestionale.recupero-crediti.store', [$s->c]), [
         'dal' => '2027-01-01', 'tasso_tipo' => 'scritto', 'tasso_annuo' => '3', 'fonte' => 'delibera', 'riferimento' => null, 'delibera_id' => $d2->id,
     ])->assertSessionHasNoErrors();

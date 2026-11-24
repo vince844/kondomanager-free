@@ -435,7 +435,11 @@ class RegistroContabilitaService
         // perché l'esercizio è nel futuro: così riporto + righe = fotografia ad `al`, sempre.
         $fineRiporto = min($dal, $dopoAl);
 
-        $naturaDare = in_array($conto->tipo->value, ['attivo', 'costo'], true);
+        // Coda 754 (8), decisione 696 (D5): il mastro «Entrate e proventi» è di tipo costo, in diminuzione dei costi (`VociDiEntrataNelMastro`), ma qui si
+        // legge come un'entrata, avere meno dare: l'affitto dell'antenna, € 100,00 in avere, è € 100,00 e non «−€ 100,00 contro natura». Solo il mastrino
+        // (e il libro mastro, che lo ripete): la situazione patrimoniale e il risultato di gestione lo contano ancora fra i costi con il meno.
+        $entrate = $conto->ruolo === VociDiEntrataNelMastro::RUOLO;
+        $naturaDare = in_array($conto->tipo->value, ['attivo', 'costo'], true) && ! $entrate;
         $verso = fn (int $dare, int $avere) => $naturaDare ? $dare - $avere : $avere - $dare;
 
         $base = fn () => DB::table('righe_scritture as rs')
@@ -585,6 +589,8 @@ class RegistroContabilitaService
                 'nome' => $conto->nome,
                 'tipo' => $conto->tipo->value,
                 'natura_dare' => $naturaDare,
+                // Il mastro delle entrate: la pagina e la stampa dicono perché la situazione patrimoniale ha la stessa cifra con il meno.
+                'entrate' => $entrate,
             ],
             'periodo' => ['dal' => $dal, 'al' => $al, 'stato' => $stato],
             // La data a cui il riporto è davvero il saldo: il giorno prima del periodo, oppure

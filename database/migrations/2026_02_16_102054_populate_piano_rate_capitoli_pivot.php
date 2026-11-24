@@ -14,7 +14,7 @@ return new class extends Migration {
         // Critico su Windows / hosting condiviso: questa migration gira dentro
         // una richiesta HTTP (Artisan::call in SystemUpgradeController).
         // max_execution_time = 60s di default — insufficiente con molti piani rate.
-        set_time_limit(0);
+        \App\Support\LimiteDiTempo::alza(0);
 
         // PULIZIA SELETTIVA: Ricalcoliamo lo storico solo per i piani in bozza o approvati.
         // I piani emessi o chiusi hanno già generato rate e il loro snapshot non deve

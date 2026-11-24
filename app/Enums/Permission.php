@@ -188,7 +188,7 @@ enum Permission: string
             self::EDIT_CONDOMINI => 'Permette di modificare i condomini registrati',
             self::DELETE_CONDOMINI => 'Permette di eliminare i condomini registrati',
             self::VIEW_CONDOMINI => 'Permette di visualizzare i condomini registrati',
-            self::IMPORTA_DATI => 'Permette di importare un condominio da un altro gestionale, e di annullare l\'importazione',
+            self::IMPORTA_DATI => 'Permette di importare un condominio da un altro gestionale; per annullare un\'importazione serve anche «Elimina condomini»',
 
             // Comunicazioni
             self::CREATE_COMUNICAZIONI => 'Permette di creare comunicazioni in bacheca',

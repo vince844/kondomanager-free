@@ -80,9 +80,9 @@ export function cardDellaPreparazione(): GuideItem[] {
         {
             title: 'Che cosa prepari qui',
             // prova: resources/js/components/assemblee/DateDellAssemblea.vue:125 «<span :class="etichetta">Dove</span>»
-            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:283 «La tabella del valore»
-            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:304 «data-testid="aggiungi-punto" @click="aggiungiUnPunto"»
-            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:314 «Non spuntato: resta per la prossima assemblea.»
+            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:292 «La tabella del valore»
+            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:313 «data-testid="aggiungi-punto" @click="aggiungiUnPunto"»
+            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:323 «Non spuntato: resta per la prossima assemblea.»
             description: 'Le date, dove si tiene, la tabella del valore e l\'ordine del giorno: i punti che il programma propone e quelli che scrivi tu, con «Aggiungi un punto». Ciò che non spunti resta per la prossima assemblea.',
             icon: ClipboardList,
             colorVariant: 'blue',
@@ -99,8 +99,8 @@ export function cardDellaPreparazione(): GuideItem[] {
         {
             title: 'Dopo «Prepara l\'assemblea»',
             // prova: app/Services/Assemblee/PassiDellAssemblea.php:73 «resta in preparazione: niente parte ai condòmini.'»
-            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:264 «Fino alla convocazione cambi tutto.»
-            // prova: app/Http/Controllers/Assemblee/AssembleeController.php:129 «'scheda' => $fatto ? 'documenti' : 'date'»
+            // prova: resources/js/pages/gestionale/assemblee/Prepara.vue:273 «Fino alla convocazione cambi tutto.»
+            // prova: app/Http/Controllers/Assemblee/AssembleeController.php:130 «'scheda' => $fatto ? 'documenti' : 'date'»
             // prova: app/Services/Assemblee/PassiDellAssemblea.php:79 «quando il primo passo è fatto: le date valgono»
             // prova: resources/js/pages/gestionale/assemblee/Assemblea.vue:421 «data-testid="documenti-visti"»
             description: 'L\'assemblea resta in preparazione: niente parte ai condòmini, e date e punti si cambiano ancora. Poi la pagina dell\'assemblea apre «Documenti» se le date valgono e c\'è almeno un punto, altrimenti «Date e ordine del giorno»; «Convocazione» con «Avanti» dai documenti.',

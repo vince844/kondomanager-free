@@ -5,13 +5,13 @@
 
 namespace App\Services\Assemblee\Convocazione;
 
-use App\Enums\Assemblee\AmbitoAssemblea;
 use App\Enums\Assemblee\AmministrazionePunto;
 use App\Enums\Assemblee\MateriaPunto;
 use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Assemblee\Assemblea;
 use App\Models\Assemblee\PuntoDellOrdineDelGiorno;
 use App\Models\Immobile;
+use App\Services\Assemblee\UnitaDelPunto;
 use App\Services\Riparto\RisolutoreTitolari;
 use App\Support\PeriodoCompetenza;
 use Illuminate\Support\Collection;
@@ -20,13 +20,19 @@ use Illuminate\Support\Collection;
  * Chi è convocato a un'assemblea a un giorno (§4.1 del progetto della tappa 2): «si convoca chi risulta dall'anagrafe alla data dell'invio». Prima
  * dell'invio l'elenco si calcola e non si scrive; la riga di `assemblee_convocati` nasce nel gesto dell'invio con i dati copiati.
  *
- * Le unità del perimetro (il condominio, o la palazzina, o la scala), per ognuna i titolari attivi quel giorno ({@see RisolutoreTitolari::attiviAlla()}, con
+ * Le unità del perimetro (il condominio, o la palazzina, o la scala, o per i condòmini di un gruppo le unità con la quota nella tabella del gruppo: Coda 734,
+ * {@see UnitaDelPunto::dellAssemblea()}), per ognuna i titolari attivi quel giorno ({@see RisolutoreTitolari::attiviAlla()}, con
  * la data d'inizio che vale solo con un predecessore chiuso). **Una persona è un convocato**, anche con più unità. I ruoli:
  *
  * - i proprietari, **ogni comproprietario** con il suo avviso;
- * - con l'usufrutto, **l'avviso va a tutti e due appena l'ordine del giorno ha un punto straordinario** (art. 67 c. 7 disp. att., e per prudenza), e al solo
- *   usufruttuario se tutti i punti sono di amministrazione ordinaria; il nudo proprietario non è mai convocato da solo, salvo un'unità senza usufruttuario;
- * - il conduttore solo per i punti dove vota o interviene (art. 10 L. 392/1978; decisione 566: nel suo avviso ci sono solo quei punti).
+ * - con l'usufrutto, **l'avviso va a tutti e due appena fra i punti della loro unità ce n'è uno straordinario** (art. 67 c. 7 disp. att., e per prudenza),
+ *   e al solo usufruttuario se quei punti sono tutti di amministrazione ordinaria; il nudo proprietario non è mai convocato da solo, salvo un'unità senza
+ *   usufruttuario;
+ * - il conduttore solo per i punti dove vota o interviene (art. 10 L. 392/1978; decisione 566: nel suo avviso ci sono solo quei punti), e solo se la sua
+ *   unità è fra le unità del punto.
+ *
+ * **I punti di un'unità** (Coda 734) sono quelli che la comprendono: il punto della sola scala B non è delle unità della scala A, il punto votato con una
+ * tabella segnata «di un gruppo» è delle sole unità con la quota ({@see UnitaDelPunto}). L'avviso va comunque a ogni condòmino del perimetro dell'assemblea.
  */
 final class ConvocatiDellAssemblea
 {
@@ -42,12 +48,18 @@ final class ConvocatiDellAssemblea
     public function alGiorno(Assemblea $assemblea, string $giorno): array
     {
         $punti = $assemblea->relationLoaded('punti') ? $assemblea->punti : $assemblea->punti()->get();
-        $straordinaria = $punti->contains(fn (PuntoDellOrdineDelGiorno $p) => $p->amministrazione === AmministrazionePunto::STRAORDINARIA);
-        $puntiDelConduttore = $punti->filter(fn (PuntoDellOrdineDelGiorno $p) => $p->conduttore !== null)->pluck('numero')->map(fn ($n) => (int) $n)->values()->all();
         $periodo = PeriodoCompetenza::puntuale($giorno);
+        $immobili = $this->unita($assemblea);
+        // Chi è fuori da un punto non si convoca per quel punto (Coda 734): i punti di ogni unità sono quelli che la comprendono ({@see UnitaDelPunto}).
+        $diOgniPunto = UnitaDelPunto::diOgniPunto($punti, $immobili->mapWithKeys(fn (Immobile $i) => [(int) $i->id => [
+            'scala_id' => $i->scala_id === null ? null : (int) $i->scala_id, 'palazzina_id' => $i->palazzina_id === null ? null : (int) $i->palazzina_id]])->all(),
+            UnitaDelPunto::gruppoDellAssemblea($assemblea));
 
         $persone = [];
-        foreach ($this->unita($assemblea) as $immobile) {
+        foreach ($immobili as $immobile) {
+            $suoi = $punti->filter(fn (PuntoDellOrdineDelGiorno $p) => in_array((int) $immobile->id, $diOgniPunto[(int) $p->id] ?? [], true));
+            $straordinaria = $suoi->contains(fn (PuntoDellOrdineDelGiorno $p) => $p->amministrazione === AmministrazionePunto::STRAORDINARIA);
+            $puntiDelConduttore = $suoi->filter(fn (PuntoDellOrdineDelGiorno $p) => $p->conduttore !== null)->pluck('numero')->map(fn ($n) => (int) $n)->values()->all();
             $attivi = $this->risolutore->attiviAlla($immobile->anagrafiche, $periodo);
             $perRuolo = $attivi->groupBy(fn ($a) => (string) $a->pivot->tipologia);
             $haUsufrutto = $perRuolo->has(RuoloAnagraficaImmobile::USUFRUTTUARIO->value);
@@ -249,13 +261,10 @@ final class ConvocatiDellAssemblea
         return implode(', ', $voci) . ' e ' . $ultima;
     }
 
-    /** Le unità del perimetro, con le persone e la pivot. @return Collection<int, Immobile> */
+    /** Le unità del perimetro, con le persone e la pivot ({@see UnitaDelPunto::dellAssemblea()}, le stesse della fotografia). @return Collection<int, Immobile> */
     private function unita(Assemblea $assemblea): Collection
     {
-        return Immobile::query()->where('condominio_id', $assemblea->condominio_id)
-            ->when($assemblea->ambito === AmbitoAssemblea::PALAZZINA && $assemblea->palazzina_id !== null, fn ($q) => $q->where('palazzina_id', $assemblea->palazzina_id))
-            ->when($assemblea->ambito === AmbitoAssemblea::SCALA && $assemblea->scala_id !== null, fn ($q) => $q->where('scala_id', $assemblea->scala_id))
-            ->with('anagrafiche')->orderBy('id')->get();
+        return UnitaDelPunto::dellAssemblea($assemblea);
     }
 
     private static function giornoDi(mixed $valore): ?string

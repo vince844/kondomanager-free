@@ -5,13 +5,18 @@
 
 namespace App\Services\Assemblee\Sala;
 
+use App\Enums\Assemblee\Maggioranza;
 use App\Enums\Assemblee\ModalitaAssemblea;
 use App\Models\Assemblee\Assemblea;
 use App\Models\Assemblee\SedutaDellAssemblea;
 use App\Models\Gestionale\RegistroInvio;
+use App\Models\RegistroModifica;
+use App\Models\Tabella;
 use App\Services\Assemblee\Convocazione\ConvocatiDellAssemblea;
 use App\Services\Assemblee\Convocazione\ElencoDeiConvocati;
 use App\Services\Assemblee\Convocazione\TerminiDellaConvocazione;
+use App\Services\Assemblee\UnitaDelPunto;
+use App\Services\RegistroModifiche\Schede\TabellaNelRegistro;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -25,7 +30,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Queste sono **le cose da scegliere**: decide il presidente, «Rinvia l'assemblea» o «Apri, e il verbale lo scrive» con il motivo. **Le cose da guardare**,
  * che non chiedono la scelta: la videoconferenza senza il consenso registrato (art. 66 c. 6 disp. att.), la PEC non comunicata dalla persona, le deleghe che
- * con la fotografia della seduta superano il quinto.
+ * con la fotografia della seduta superano il quinto, il segno «di un gruppo» di una tabella dei punti cambiato dopo l'invio dell'avviso
+ * ({@see segniCambiati()}, Coda 734).
  */
 final class ControlloDellApertura
 {
@@ -90,6 +96,9 @@ final class ControlloDellApertura
         foreach ((array) $fotografia['avvisi'] as $avviso) {
             $daGuardare[] = ['tipo' => 'fotografia', 'frase' => (string) $avviso];
         }
+        foreach ($this->segniCambiati($assemblea) as $frase) {
+            $daGuardare[] = ['tipo' => 'segno_cambiato', 'frase' => $frase];
+        }
         // Prima i problemi nell'ordine dei tipi, poi per nome: la frase della scelta li elenca così.
         $ordine = ['non_convocato' => 0, 'fuori_tempo' => 1, 'rifiutato' => 2];
         usort($problemi, fn ($x, $y) => [$ordine[$x['tipo']], mb_strtolower($x['nome'])] <=> [$ordine[$y['tipo']], mb_strtolower($y['nome'])]);
@@ -101,6 +110,54 @@ final class ControlloDellApertura
             'serve_la_scelta' => $problemi !== [],
             'frase' => $problemi === [] ? null : $frasi . ' ' . self::FRASE_LEGGE,
         ];
+    }
+
+    /**
+     * Il segno «di un gruppo» di una tabella dei punti cambiato dopo la prima spedizione (Coda 734, §1.1 del progetto della tappa 3): l'avviso ha detto chi
+     * vota sul punto con il segno di allora, e la sala conta con quello di adesso. Il segno di allora si legge nel registro delle modifiche della tabella:
+     * il primo cambio dopo la spedizione ha il valore di prima, l'ultimo il giorno. Messo e tolto di nuovo (com'era all'invio), niente. La tabella del gruppo
+     * dell'assemblea dei condòmini di un gruppo non conta: il suo segno non si toglie finché l'assemblea è aperta.
+     *
+     * @return list<string>
+     */
+    private function segniCambiati(Assemblea $assemblea): array
+    {
+        $primoInvio = DB::table('registro_invii')->where('tipo', RegistroInvio::TIPO_CONVOCAZIONE)->where('documentabile_type', $assemblea->getMorphClass())
+            ->where('documentabile_id', $assemblea->id)->min('emesso_il');
+        if ($primoInvio === null) {
+            return [];
+        }
+        $gruppo = UnitaDelPunto::gruppoDellAssemblea($assemblea);
+        $numeri = [];
+        foreach ($assemblea->punti()->whereNotNull('tabella_id')->orderBy('numero')->get(['numero', 'tabella_id', 'maggioranza']) as $p) {
+            if ((int) $p->tabella_id !== $gruppo && $p->maggioranza !== Maggioranza::SENZA_VOTO) {
+                $numeri[(int) $p->tabella_id][] = (string) $p->numero;
+            }
+        }
+        if ($numeri === []) {
+            return [];
+        }
+        $righe = RegistroModifica::query()->where('oggetto_tipo', TabellaNelRegistro::TIPO)->whereIn('oggetto_id', array_keys($numeri))
+            ->where('avvenuta_il', '>', $primoInvio)->orderBy('avvenuta_il')->orderBy('id')->get(['oggetto_id', 'campi', 'avvenuta_il']);
+        $tabelle = Tabella::query()->whereIn('id', array_keys($numeri))->get(['id', 'nome', 'di_un_gruppo'])->keyBy('id');
+        $frasi = [];
+        foreach ($numeri as $id => $diQuesta) {
+            $cambi = $righe->where('oggetto_id', $id)->map(fn (RegistroModifica $r) => ['campo' => collect((array) $r->campi)->firstWhere('chiave', 'di_un_gruppo'),
+                'il' => $r->avvenuta_il])->filter(fn ($c) => $c['campo'] !== null)->values();
+            $tabella = $tabelle->get($id);
+            if ($cambi->isEmpty() || $tabella === null || (bool) ($cambi->first()['campo']['valore_prima'] ?? false) === (bool) $tabella->di_un_gruppo) {
+                continue;
+            }
+            $giorno = $cambi->last()['il']->copy()->setTimezone((string) config('app.user_timezone', 'Europe/Rome'))->format('d/m/Y');
+            $punti = (count($diQuesta) === 1 ? 'sul punto ' : 'sui punti ') . ConvocatiDellAssemblea::elenco($diQuesta);
+            $frasi[] = (bool) $tabella->di_un_gruppo
+                ? 'La tabella «' . $tabella->nome . '» è segnata «di un gruppo» dal ' . $giorno . ', dopo l\'invio dell\'avviso: ' . $punti
+                    . ' votano solo i condòmini delle sue unità, e l\'avviso non lo dice.'
+                : 'La tabella «' . $tabella->nome . '» non è più segnata «di un gruppo» dal ' . $giorno . ', dopo l\'invio dell\'avviso: ' . $punti
+                    . ' l\'avviso dice che votano solo i condòmini delle sue unità, e in sala vota tutto il perimetro del punto.';
+        }
+
+        return $frasi;
     }
 
     /** Da quando la persona è titolare dell'unità, quando lo è da dopo la prima spedizione: «10/12/2026». @param array<string, mixed> $convocato */

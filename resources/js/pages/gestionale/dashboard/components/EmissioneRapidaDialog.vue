@@ -10,8 +10,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * - il piano in un menu del programma (quello dell'azione; gli altri piani del condominio con rate da emettere si scelgono da lì), che nella finestra non si
  *   apre da solo;
  * - le rate non ancora emesse del piano, con la casella: spuntate di serie le già scadute e quelle dei prossimi 30 giorni, cioè le rate dell'azione;
- * - la data di emissione (oggi, nel giorno dell'amministratore), la descrizione facoltativa, «Avvisa i condòmini» con l'interruttore acceso, come nella pagina
- *   del piano;
+ * - la data di emissione (oggi, nel giorno dell'amministratore), la descrizione facoltativa, «Rendi visibili ai condòmini» con l'interruttore acceso, come
+ *   nella pagina del piano;
  * - il riepilogo (quante rate, quanti condòmini, la cifra), «Apri il piano» e «Emetti N rate», spento senza rate spuntate.
  *
  * I dati arrivano a ogni apertura con un caricamento parziale della dashboard (`emissioneRapida`, solo quando la finestra li chiede). L'emissione va alla rotta
@@ -311,7 +311,7 @@ function emetti() {
                     </div>
                 </section>
 
-                <!-- Avvisa i condòmini: l'interruttore della pagina del piano, acceso di serie. -->
+                <!-- Rendi visibili ai condòmini: l'interruttore della pagina del piano, con lo stesso nome, acceso di serie. -->
                 <section class="flex flex-col justify-between gap-4 rounded-lg border border-slate-200 p-4 dark:border-slate-800 sm:flex-row sm:items-center" data-testid="riga-avvisa">
                     <div class="flex-1">
                         <div class="mb-1 flex items-center gap-1.5">

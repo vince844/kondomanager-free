@@ -9,7 +9,9 @@ use App\Enums\EventoTipo;
 use App\Enums\Permission;
 use App\Models\Evento;
 use App\Models\User;
+use App\Services\Gestionale\Inbox\CompitoDaModerare;
 use App\Services\Gestionale\Inbox\CompitoDellaSegnalazione;
+use App\Services\Gestionale\Inbox\CompitoDellErrore;
 use App\Traits\PerimetroFuoriPannello;
 use Illuminate\Auth\Access\Response;
 
@@ -29,9 +31,14 @@ class EventoPolicy
 
     /**
      * Determine whether the user can view the model.
+     *
+     * Il compito di una segnalazione, da moderare o di un errore avvisato, come in `update()`, solo da chi lo legge nelle Inbox ({@see compitoCheVede()}).
      */
     public function view(User $user, Evento $evento): Response
     {
+        if (! self::compitoCheVede($user, $evento)) {
+            return Response::deny(__('policies.view_events'));
+        }
 
         return $user->hasPermissionTo(Permission::VIEW_EVENTS->value)  
                ? Response::allow() 
@@ -58,7 +65,8 @@ class EventoPolicy
      * quel permesso concesso da solo nascondeva o spostava la rata di un altro palazzo.
      *
      * Il compito di una segnalazione si apre e si modifica solo da chi apre la segnalazione ({@see compitoCheVede()}): la pagina di modifica ne mostra il
-     * titolo e la descrizione.
+     * titolo e la descrizione. Lo stesso per il compito di un errore avvisato, che porta il nome di chi ha avvisato e la sua nota: solo chi ha «Gestisci
+     * impostazioni generali».
      */
     public function update(User $user, Evento $evento): Response
     {
@@ -188,17 +196,19 @@ class EventoPolicy
 
     /**
      * Il compito di una segnalazione si tocca solo da chi apre la segnalazione, con la regola delle due Inbox ({@see CompitoDellaSegnalazione::chiVede()}):
-     * chi ha «Modifica scadenza in agenda» e non apre le segnalazioni non ne legge il titolo dalla pagina di modifica. Gli altri eventi non si leggono.
+     * chi ha «Modifica scadenza in agenda» e non apre le segnalazioni non ne legge il titolo dalla pagina di modifica. Lo stesso per i compiti da moderare
+     * e per quelli degli errori avvisati, che legge solo chi ha «Gestisci impostazioni generali» ({@see CompitoDellErrore::chiLoVede()}): il titolo ha il
+     * nome di chi ha avvisato, la descrizione la sua nota. Gli altri eventi non si leggono.
      */
     private static function compitoCheVede(User $user, Evento $evento): bool
     {
         $tipo = $evento->tipo?->value ?? data_get($evento->meta, 'type');
-        if ($tipo !== CompitoDellaSegnalazione::TIPO && $tipo !== \App\Services\Gestionale\Inbox\CompitoDaModerare::TIPO) {
+        if (! in_array($tipo, [CompitoDellaSegnalazione::TIPO, CompitoDaModerare::TIPO, CompitoDellErrore::TIPO], true)) {
             return true;
         }
 
         return CompitoDellaSegnalazione::soloQuelliCheVede(Evento::query()->whereKey($evento->getKey()), CompitoDellaSegnalazione::chiVede($user),
-            \App\Services\Gestionale\Inbox\CompitoDaModerare::chiVede($user))->exists();
+            CompitoDaModerare::chiVede($user))->exists();
     }
 
     /**

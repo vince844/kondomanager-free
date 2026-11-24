@@ -269,10 +269,17 @@ final class PassiDellAssemblea
     /** La tabella del valore copre tutte le unità del perimetro, ognuna con la sua quota; la frase; se una tabella è scelta. @return array{0: bool, 1: string, 2: bool} */
     private function tabella(Assemblea $a): array
     {
+        if (UnitaDelPunto::gruppoDellAssemblea($a) !== null && $a->tabella !== null) {
+            // I condòmini di un gruppo (Coda 734): la tabella è il gruppo, e copre le sue unità per come sono fatte ({@see UnitaDelPunto::dellAssemblea()}).
+            $c = UnitaDelPunto::controlloDelGruppo($a->tabella);
+
+            return [$c['unita'] > 0, '«' . $a->tabella->nome . '» · ' . $c['unita'] . ' unità su ' . $c['unita'] . ' · la tabella del gruppo', true];
+        }
         $perimetro = match ($a->ambito) {
             AmbitoAssemblea::SCALA => $a->scala,
             AmbitoAssemblea::PALAZZINA => $a->palazzina,
-            default => $a->condominio,
+            AmbitoAssemblea::GRUPPO => null,
+            AmbitoAssemblea::CONDOMINIO, null => $a->condominio,
         };
         if ($a->tabella === null || $perimetro === null) {
             return [false, 'da scegliere qui sotto', false];
@@ -576,23 +583,15 @@ final class PassiDellAssemblea
         return 'in corso · ' . $c['teste'] . ' su ' . (int) $aperta->fotografia['costituzione']['totale_teste'] . ' presenti · ' . $punto;
     }
 
-    /** «chiusa alle 20:40 · 6 delibere», «deserta in prima e in seconda convocazione». */
+    /** «chiusa alle 20:40 · 2 delibere, 2 senza voto, 4 punti rinviati» (la frase è di `StatiDellaSala::riepilogoDelleDelibere`), «deserta in prima e in seconda convocazione». */
     private function rigaDopoLaSala(Assemblea $a): string
     {
         if ($a->stato === StatoAssemblea::DESERTA) {
             return 'deserta in prima e in seconda convocazione';
         }
         $ultima = $a->sedute()->get()->filter(fn ($s) => $s->chiusa_il !== null)->sortByDesc('chiusa_il')->first();
-        $delibere = \App\Models\Assemblee\Delibera::query()->where('assemblea_id', $a->id)->get();
-        $rinviate = $delibere->filter(fn ($d) => $d->esito === \App\Enums\Assemblee\EsitoDelibera::RINVIATA)->count();
-        $altre = $delibere->count() - $rinviate;
-        $pezzi = [];
-        if ($altre > 0) {
-            $pezzi[] = $altre === 1 ? '1 delibera' : $altre . ' delibere';
-        }
-        if ($rinviate > 0) {
-            $pezzi[] = $rinviate === 1 ? '1 punto rinviato' : $rinviate . ' punti rinviati';
-        }
+        $riepilogo = \App\Services\Assemblee\Sala\StatiDellaSala::riepilogoDelleDelibere((int) $a->id);
+        $pezzi = $riepilogo === 'nessuna delibera' ? [] : [$riepilogo];
 
         return 'chiusa' . ($ultima !== null ? ' alle ' . $ultima->chiusa_il->copy()->setTimezone((string) config('app.user_timezone', 'Europe/Rome'))->format('H:i') : '')
             . ($pezzi !== [] ? ' · ' . implode(', ', $pezzi) : '');

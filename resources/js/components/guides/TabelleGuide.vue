@@ -5,7 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { BookOpen, ChevronRight, Info, Table } from 'lucide-vue-next';
+import { ChevronRight, Info, Table } from 'lucide-vue-next';
 
 defineProps<{
     open: boolean;
@@ -117,6 +117,22 @@ defineEmits(['update:open']);
                   Ideali per ripartizioni come tetti, corselli box o il classico 1/3 e 2/3. Ti aiutano a mantenere in ordine il piano dei conti e a rendere i preventivi più chiari.
                 </p>
               </div>
+            </div>
+          </section>
+
+          <!-- La tabella di un gruppo (Coda 734): quando sì, quando no, a schema. -->
+          <section data-testid="guida-tabella-di-un-gruppo">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Per le assemblee: la tabella di un gruppo</h3>
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+              <ul class="space-y-2">
+                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Nella pagina della tabella, «È la tabella di un gruppo»: su un punto votato con lei votano solo i condòmini delle sue unità (art. 1123 c. 3 c.c.).</span></li>
+                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Teste, millesimi e costituzione del punto si contano fra loro; la convocazione va comunque a tutti.</span></li>
+                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Sì per ciò che serve solo alcune unità: i box, la scala B, l'ascensore di una palazzina.</span></li>
+                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>No per una tabella d'uso con degli zeri: il piano terra che non usa l'ascensore ne è proprietario, e vota.</span></li>
+                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Il programma non lo deduce dagli zeri: il segno lo metti tu, e l'elenco delle tabelle lo dice con «Di un gruppo».</span></li>
+                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Il segno della tabella di un'assemblea dei suoi condòmini non ancora chiusa non si toglie: sotto l'interruttore la pagina dice perché.</span></li>
+                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" /><span>Messo o tolto con un'assemblea già convocata, cambia chi vota sui punti con questa tabella: il controllo dell'apertura lo dice.</span></li>
+              </ul>
             </div>
           </section>
 

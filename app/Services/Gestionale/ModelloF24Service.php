@@ -98,7 +98,7 @@ class ModelloF24Service
                 // si incolonna da sinistra e le ultime cinque restano vuote, come si compila
                 // a penna.
                 'codice_fiscale' => $this->caselle(
-                    $delega->cf_contribuente ?? $condominio?->codice_fiscale
+                    $delega->codiceFiscaleDelContribuente()
                 ),
                 'denominazione' => $delega->denominazione_contribuente ?? $condominio?->nome ?? '',
                 // Il domicilio fiscale non è congelato sulla delega: non lo è perché non è un
@@ -132,7 +132,7 @@ class ModelloF24Service
         $condominio = $delega->condominio;
 
         $attesi = [
-            'Codice fiscale del condominio' => $delega->cf_contribuente ?? $condominio?->codice_fiscale,
+            'Codice fiscale del condominio' => $delega->codiceFiscaleDelContribuente(),
             'Denominazione del condominio' => $delega->denominazione_contribuente ?? $condominio?->nome,
             'Comune del domicilio fiscale' => $condominio?->comune,
             'Provincia del domicilio fiscale' => $condominio?->provincia,

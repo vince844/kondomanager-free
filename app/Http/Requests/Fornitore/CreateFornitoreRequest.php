@@ -130,7 +130,8 @@ class CreateFornitoreRequest extends FormRequest
     protected function prepareForValidation()
     {
         $this->merge([
-            'capitale_sociale'      => MoneyHelper::toCents($this->capitale_sociale) ?? 0,
+            // Un campo vuoto è un capitale che non c'è, non € 0,00 (Coda 750 C1).
+            'capitale_sociale'      => blank($this->input('capitale_sociale')) ? null : MoneyHelper::toCents($this->capitale_sociale),
             'data_iscrizione_cciaa' => $this->data_iscrizione_cciaa ? Carbon::parse($this->input('data_iscrizione_cciaa'))->toDateString() : null,
             'email'                 => $this->email ? Str::lower($this->input('email')) : null,
             'pec'                   => $this->pec ? Str::lower($this->input('pec')) : null,

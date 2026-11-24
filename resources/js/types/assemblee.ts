@@ -223,6 +223,11 @@ export interface PuntoProposto {
   importo: number | null;
   /** Il punto «Stato di esecuzione delle delibere precedenti» porta il suo elenco. */
   dati?: { stato_esecuzione?: ElencoDelloStatoDiEsecuzione } | null;
+  /**
+   * La proposta di un gruppo (Coda 734): la tabella del gruppo. Il memo del punto rinviato nell'assemblea dei condòmini di quel gruppo, il rendiconto e il
+   * preventivo di una gestione che si divide solo fra loro: «Prepara l'assemblea» li mostra solo con «Per chi» quel gruppo.
+   */
+  gruppo_id?: number | null;
 }
 
 export interface GruppoDiProposte {
@@ -359,8 +364,11 @@ export interface PuntoNellaFotografia {
   maggioranza: Maggioranza | null;
   amministrazione: AmministrazionePunto;
   conduttore: ConduttorePunto | null;
-  /** «Solo la scala B», o null per tutto il perimetro dell'assemblea. */
+  /** «Solo la scala B», «Solo i condòmini della tabella «Box»», o null per tutto il perimetro dell'assemblea. */
   perimetro: string | null;
+  /** La parte del punto («la scala B») e il gruppo della tabella segnata (Coda 734): assenti nelle fotografie della beta.13. */
+  parte?: string | null;
+  gruppo?: { tabella_id: number; nome: string } | null;
   tabella: { id: number; nome: string } | null;
   /** Unità del punto => centomillesimi della tabella del punto. */
   millesimi: Record<string, number>;
@@ -492,9 +500,16 @@ export interface TestaIntervenuta extends TestaDellaFotografia {
   chi: ChiPortaLaTesta;
 }
 
-/** Il conto della parte (la sola scala) per un punto: avvisa e non blocca. */
+/** Il conto della parte (la sola scala, il gruppo di una tabella) per un punto: avvisa e non blocca. */
 export interface PerimetroDelPunto {
   nome: string;
+  /**
+   * La parte («la scala B»), il nome della tabella del gruppo e la riga di chi vota («Votano solo i condòmini della tabella «Box»», Coda 734): assenti, o
+   * null, per un voto fermato nella beta.13.
+   */
+  parte?: string | null;
+  gruppo?: string | null;
+  chi_vota?: string | null;
   costituzione: CostituzioneDellaSala;
   avviso: string | null;
 }

@@ -14,6 +14,7 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\DoubleEntryValidator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Porta a giornale il saldo di apertura di una cassa.
@@ -49,7 +50,7 @@ class RegistraAperturaCassaAction
      * Il sesto esito possibile resta un'eccezione: se la partita doppia non quadra è un
      * guasto, non uno stato da raccontare all'utente.
      */
-    public function execute(Cassa $cassa): EsitoAperturaCassa
+    public function execute(Cassa $cassa, ?string $saldoAl = null): EsitoAperturaCassa
     {
         $importo = (int) $cassa->saldo_iniziale;
 
@@ -65,10 +66,9 @@ class RegistraAperturaCassaAction
             return EsitoAperturaCassa::GIA_REGISTRATA;
         }
 
-        // L'apertura precede tutto: si aggancia al primo esercizio del condominio.
-        $esercizio = Esercizio::where('condominio_id', $cassa->condominio_id)
-            ->orderBy('data_inizio')
-            ->first();
+        // Il «Saldo al»: l'apertura va nell'esercizio che contiene quel giorno, a quel giorno. Senza, al primo giorno del primo esercizio aperto (la
+        // cassa aperta dopo il primo anno non scrive più nell'anno chiuso); se nessun esercizio è aperto, il primo del condominio, com'era.
+        [$esercizio, $dataApertura] = $this->doveVaLApertura($cassa, $saldoAl);
 
         $contropartita = ContoContabile::where('condominio_id', $cassa->condominio_id)
             ->where('ruolo', 'passate_gestioni')
@@ -90,15 +90,15 @@ class RegistraAperturaCassaAction
                 : EsitoAperturaCassa::ESERCIZIO_MANCANTE;
         }
 
-        DB::transaction(function () use ($cassa, $esercizio, $contropartita, $importo) {
+        DB::transaction(function () use ($cassa, $esercizio, $dataApertura, $contropartita, $importo) {
             $scrittura = ScritturaContabile::create([
                 'condominio_id'      => $cassa->condominio_id,
                 // NULL per scelta: l'apertura di una cassa è un fatto di condominio,
                 // non di gestione (design doc §10 D7).
                 'gestione_id'        => null,
                 'esercizio_id'       => $esercizio->id,
-                'data_registrazione' => $esercizio->data_inizio,
-                'data_competenza'    => $esercizio->data_inizio,
+                'data_registrazione' => $dataApertura,
+                'data_competenza'    => $dataApertura,
                 'causale'            => mb_substr('Saldo di apertura — '.$cassa->nome, 0, 255),
                 'tipo_movimento'     => TipoMovimentoContabile::APERTURA,
                 'stato'              => 'registrata',
@@ -136,13 +136,47 @@ class RegistraAperturaCassaAction
         return EsitoAperturaCassa::REGISTRATA;
     }
 
+    /**
+     * L'esercizio e il giorno dell'apertura. Con un «Saldo al» il giorno è quello, e l'esercizio è quello che lo contiene: se nessuno lo contiene, o se
+     * è chiuso, è un rifiuto sul campo `saldo_al` (nulla viene scritto: i chiamanti sono dentro una transazione). Senza «Saldo al» non si rifiuta mai.
+     *
+     * @return array{0: ?Esercizio, 1: mixed} l'esercizio (nullo se il condominio non ne ha) e il giorno.
+     */
+    private function doveVaLApertura(Cassa $cassa, ?string $saldoAl): array
+    {
+        $esercizi = Esercizio::where('condominio_id', $cassa->condominio_id);
+
+        if (filled($saldoAl)) {
+            $giorno = \Illuminate\Support\Carbon::parse($saldoAl)->format('Y-m-d');
+            $contiene = (clone $esercizi)->whereDate('data_inizio', '<=', $giorno)->whereDate('data_fine', '>=', $giorno)->first();
+
+            if (! $contiene) {
+                throw ValidationException::withMessages(['saldo_al' => 'Nessun esercizio di questo condominio contiene questa data: scegli un giorno dell\'esercizio aperto.']);
+            }
+            if ($contiene->stato === 'chiuso') {
+                throw ValidationException::withMessages(['saldo_al' => 'Questa data cade nell\'esercizio «'.$contiene->nome.'», che è chiuso: scegli un giorno dell\'esercizio aperto.']);
+            }
+
+            return [$contiene, $giorno];
+        }
+
+        // Senza «Saldo al», l'esercizio aperto: con due aperti il più recente (Coda 646, decisione 707 (4), `HasEsercizio`), come il giorno che il modulo propone.
+        $esercizio = Esercizio::apertoPiuRecente((int) $cassa->condominio_id)
+            ?? (clone $esercizi)->orderBy('data_inizio')->first();
+
+        return [$esercizio, $esercizio?->data_inizio];
+    }
+
     private function haGiaApertura(Cassa $cassa): bool
     {
+        // Coda 754 (1): un'apertura annullata, e il suo storno, contano come assenti (come `Cassa::hasAperturaRegistrata`).
         return DB::table('righe_scritture as rs')
             ->join('scritture_contabili as sc', 'rs.scrittura_id', '=', 'sc.id')
             ->where('rs.conto_contabile_id', $cassa->conto_contabile_id)
             ->where('sc.tipo_movimento', TipoMovimentoContabile::APERTURA->value)
             ->whereNull('sc.deleted_at')
+            ->whereNull('sc.scrittura_padre_id')
+            ->where(fn ($q) => $q->whereNull('sc.stato')->orWhere('sc.stato', '!=', 'annullata'))
             ->exists();
     }
 }

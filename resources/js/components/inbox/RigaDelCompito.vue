@@ -17,7 +17,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 import { computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import {
-    ArrowDownToLine, ArrowRight, ArrowUpFromLine, Banknote, Building2, CalendarDays, Check, ChartPie, Landmark, MessageSquare, Paperclip, Receipt, TrendingDown,
+    ArrowDownToLine, ArrowRight, ArrowUpFromLine, Banknote, Bug, Building2, CalendarDays, Check, ChartPie, Landmark, MessageSquare, Paperclip, Receipt, TrendingDown,
     Users, Wrench,
 } from 'lucide-vue-next';
 import MenuDelCompito from '@/components/inbox/MenuDelCompito.vue';
@@ -29,7 +29,7 @@ const emit = defineEmits<{ (e: 'rispondi', voce: VoceDelCompito): void }>();
 
 const ICONE = {
     emissione: ArrowUpFromLine, incassi: ArrowDownToLine, bonifico: Banknote, fattura: Receipt, f24: Landmark, quote: ChartPie, deficit: TrendingDown,
-    assemblea: Users, segnalazione: Wrench, commento: MessageSquare, allegato: Paperclip, scadenza: CalendarDays,
+    assemblea: Users, segnalazione: Wrench, commento: MessageSquare, allegato: Paperclip, scadenza: CalendarDays, errore: Bug,
 } as const;
 
 const aspetto = computed(() => aspettoDelTipo(props.riga.type));

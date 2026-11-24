@@ -142,13 +142,27 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 Sulla gestione usata in più esercizi il pulsante non è bloccato, ma si rifiuta per due forme di piano che vengono di
                                 solito dalle versioni più vecchie: il piano <strong>senza il suo esercizio salvato</strong> (anche dal cestino delle voci), e il
-                                piano <strong>ordinario senza voci associate</strong> quando la gestione ha un piano in un altro esercizio. Il programma
+                                piano <strong>ordinario senza voci associate</strong> quando la gestione ha, in un altro esercizio, un piano che prende le voci
+                                del preventivo: uno straordinario o il piano degli addebiti non contano, perché non prendono voci. Il programma
                                 non sa a quale esercizio appartiene, o quali voci gli spettano, e ricalcolandolo potrebbe spostare il già versato
                                 da un esercizio all'altro o chiedere due volte le stesse voci. Il messaggio nomina il piano, la gestione e gli
                                 esercizi, e dice la strada: eliminarlo dall'elenco dei piani rate (un piano approvato si riporta prima in bozza) e
                                 crearlo di nuovo dalla pagina dei piani rate del suo esercizio, scegliendo le voci. È la strada anche quando un
                                 altro messaggio chiede di ricalcolare quel piano, per esempio prima di emetterlo dopo una vendita.
                             </p>
+                            <p class="mt-2">
+                                Sulla gestione con un esercizio solo il piano ordinario <strong>senza voci associate</strong> si ricalcola:
+                            </p>
+                            <ul class="ml-5 mt-1 list-disc space-y-1">
+                                <li>il ricalcolo <strong>gli scrive le voci che chiede</strong>, senza importo e con gli stessi importi, e da lì gli altri piani le vedono;
+                                    applica le regole di oggi, anche a chi va il pregresso dell'unità, e se lo dà a un'altra persona l'esito del ricalcolo lo dice;</li>
+                                <li>finché un piano così c'è nella gestione, in qualunque esercizio, un piano nuovo creato senza scegliere le voci si ferma: il messaggio
+                                    dice di ricalcolarlo prima o, dove il suo ricalcolo si rifiuta (vedi sopra), di eliminarlo e crearlo di nuovo scegliendo le voci;</li>
+                                <li>finché un piano così si ricalcola, si ferma anche il piano nuovo con le voci scelte: il messaggio dice di ricalcolarlo prima, perché si
+                                    scriva le voci con le sue cifre;</li>
+                                <li>non lo ferma un piano così di un altro esercizio con quote a giornale, un incasso o il conguaglio di un passaggio: non si ricalcola né
+                                    si elimina, e il piano nuovo non prende le sue voci.</li>
+                            </ul>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
@@ -245,7 +259,8 @@ defineEmits(['update:open']);
                                 L'ultima voce di un piano ordinario non si toglie: un piano senza voci, al ricalcolo, prende tutte le voci della gestione
                                 che nessun altro piano del suo esercizio ha già, quindi anche quella appena tolta se nessun altro piano l'ha. Se il
                                 piano deve chiedere un'altra voce, si aggiunge prima con «Sincronizza», se è libera, e poi si toglie questa; se non
-                                serve più, si elimina dall'elenco dei piani rate.
+                                serve più, si elimina dall'elenco dei piani rate. Per la stessa ragione l'ultima voce di un piano, anche in bozza, non si
+                                elimina dal piano dei conti.
                             </p>
                             <p class="mt-2">
                                 Le versioni precedenti permettevano una voce di spesa con un importo
@@ -314,12 +329,12 @@ defineEmits(['update:open']);
                         <div class="flex items-start gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-900/40">
                             <Info class="mt-0.5 h-5 w-5 shrink-0 text-indigo-500" />
                             <div class="space-y-1 text-xs text-slate-600 dark:text-slate-300">
-                                <p><strong>Emissione «silenziosa».</strong> Disattiva «Rendi visibile e invia
-                                notifiche» se prima devi caricare a mano dei pagamenti pregressi (es. un
+                                <p><strong>Emissione «silenziosa».</strong> Disattiva «Rendi visibili ai condòmini»
+                                se prima devi caricare a mano dei pagamenti pregressi (es. un
                                 allineamento da un vecchio Excel): le rate vengono generate in contabilità ma
                                 restano nascoste ai condòmini finché non premi <strong>«Pubblica nascoste»</strong>,
-                                che compare in toolbar quando ce n'è almeno una in questo stato e invia le
-                                notifiche a quel punto.</p>
+                                che compare in toolbar quando ce n'è almeno una in questo stato e le rende visibili a
+                                quel punto.</p>
                             </div>
                         </div>
 
@@ -454,7 +469,7 @@ defineEmits(['update:open']);
                             <ul class="ml-5 list-disc space-y-1.5 text-xs">
                                 <li><strong>Scadenziario per condòmino</strong> — una riga per intestatario,
                                     con tutte le sue rate.</li>
-                                <li><strong>Scadenziario per unità</strong> — una riga per immobile.</li>
+                                <li><strong>Scadenziario per unità</strong> — le unità con i loro soggetti: una riga per ogni persona, con il suo ruolo e la sua parte, e il totale dell'unità accanto.</li>
                                 <li><strong>Entrambi</strong> — i due prospetti in un unico PDF.</li>
                                 <li><strong>Riparto per Tabella</strong> — le spese raggruppate per tabella
                                     millesimale, con i coefficienti usati.</li>

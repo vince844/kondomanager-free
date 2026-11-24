@@ -21,6 +21,7 @@ use App\Services\ComunicazioneService;
 use App\Support\Allegati\RegoleAllegati;
 use App\Support\Commenti\RegoleCommenti;
 use App\Support\Comunicazioni\ContatoriElenco;
+use App\Support\Comunicazioni\LettureComunicazione;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\PaginaElenco;
@@ -257,6 +258,8 @@ class ComunicazioneController extends Controller
         $user = request()->user();
         $comunicazione->loadMissing('createdBy.anagrafica');
 
+        LettureComunicazione::registraApertura($comunicazione, $user, request());
+
         return Inertia::render('comunicazioni/ComunicazioniView', [
             // Coda 260: la risorsa minima del portale; la policy non carica più le persone collegate
             // sul modello, e la risorsa non le mostrerebbe comunque.
@@ -270,6 +273,7 @@ class ComunicazioneController extends Controller
             'allegati_config' => RegoleAllegati::configScheda($user, $comunicazione),
             'commenti_config' => RegoleCommenti::configSchedaComunicazione($user, $comunicazione),
             'discussioni'     => RegoleCommenti::discussioniInScheda($user, $comunicazione, 'user'),
+            'lettura'         => LettureComunicazione::perPortale($comunicazione, $user),
         ]);
     }
 

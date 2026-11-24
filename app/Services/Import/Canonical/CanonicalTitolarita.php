@@ -30,7 +30,7 @@ final readonly class CanonicalTitolarita
         public string $soggettoRef,       // CF o `nome:…`
         public RuoloAnagraficaImmobile $ruolo,
         public ?int $saldoPrecedenteCents = null,   // già nella convenzione di Kondomanager
-        public ?float $quota = null,                // null = 100%, che è il default dello schema
+        public ?float $quota = null,                // null = il file non la dice: la calcola `LivelloTitolarita` (parti uguali, o il resto fino a 100)
         public ?int $rigaSorgente = null,           // 1-based, per i messaggi
     ) {}
 

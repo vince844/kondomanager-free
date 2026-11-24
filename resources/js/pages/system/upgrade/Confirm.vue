@@ -4,6 +4,7 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup>
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 import { ref, computed } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -225,6 +226,7 @@ async function startUpgrade() {
                     </Link>
                 </Button>
             </CardFooter>
+            <NotaDiLicenza class="border-t px-6 py-3" />
         </Card>
     </div>
 </template>

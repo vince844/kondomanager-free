@@ -7,6 +7,7 @@ use App\Http\Controllers\Allegati\AllegatoController;
 use App\Http\Controllers\Anagrafiche\Utenti\AnagraficaController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneCommentoController;
 use App\Http\Controllers\Comunicazioni\Utenti\ComunicazioneController;
+use App\Http\Controllers\Comunicazioni\Utenti\ComunicazionePresaVisioneController;
 use App\Http\Controllers\Documenti\Utenti\CategoriaDocumentoController;
 use App\Http\Controllers\Documenti\Utenti\DocumentoController;
 use App\Http\Controllers\Segnalazioni\Utenti\SegnalazioneController;
@@ -63,6 +64,9 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
 
     Route::post('comunicazioni/{comunicazione}/commenti', [ComunicazioneCommentoController::class, 'store'])
         ->name('comunicazioni.commenti.store');
+
+    Route::post('comunicazioni/{comunicazione}/presa-visione', ComunicazionePresaVisioneController::class)
+        ->name('comunicazioni.presa-visione');
 
     /*
     |--------------------------------------------------------------------------

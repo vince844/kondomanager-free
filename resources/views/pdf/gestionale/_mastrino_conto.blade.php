@@ -31,9 +31,16 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     riporto</b>, cioè da quanto c'era sul conto il {{ $giornoPrima }}, e l'ultimo saldo progressivo
     del periodo è quello della situazione patrimoniale al {{ $al }}. Il saldo è nel verso naturale
     del conto, {{ $conto['natura_dare'] ? 'dare meno avere' : 'avere meno dare' }}:
-    un importo negativo è contro natura{{ $conto['natura_dare'] ? ' (per una cassa, un conto sotto zero)' : ' (per un fornitore, un credito verso di lui)' }}.
+    un importo negativo è contro natura{{ ! empty($conto['entrate']) ? ' (per le entrate, più rimborsi o storni che entrate)' : ($conto['natura_dare'] ? ' (per una cassa, un conto sotto zero)' : ' (per un fornitore, un credito verso di lui)') }}.
     <b>Le operazioni stornate restano</b>, marcate come tali: una cancellazione che nasconde il
     cancellato sarebbe contraria all'art. 2219 c.c.
+</div>
+@endif
+
+{{-- Coda 754 (8): il mastro «Entrate e proventi» si legge in avere; la riga c'è anche nel libro mastro, dove la nota «Come leggere» sta in testa. --}}
+@if(! empty($conto['entrate']))
+<div class="chiusura">
+    <b>Entrate: il saldo si legge in avere.</b> Nella situazione patrimoniale la stessa cifra sta fra i costi con il meno, perché le entrate li riducono.
 </div>
 @endif
 

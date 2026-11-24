@@ -32,6 +32,8 @@ class UpdateCassaRequest extends FormRequest
             'descrizione' => 'nullable|string|max:255',
             'note'        => 'nullable|string',
             'saldo_iniziale' => 'nullable|string',
+            // Il giorno del saldo di apertura (Coda 546): l'apertura va nell'esercizio che lo contiene. L'azione rifiuta un giorno in un esercizio chiuso.
+            'saldo_al'       => 'nullable|date_format:Y-m-d',
             
             // ⚠️ **L'IBAN non è obbligatorio, e dalla beta.75 non lo è più.** Lo era con
             // `required_if:tipo,banca`, e bloccava la creazione del conto corrente — cioè il

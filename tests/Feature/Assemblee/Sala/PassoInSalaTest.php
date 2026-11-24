@@ -117,6 +117,15 @@ it('chiusa: fatto, con le delibere; deserta: fatto', function () {
     expect(pisPassi($b)['sala'])->toMatchArray(['stato' => 'fatto', 'riga' => 'deserta in prima e in seconda convocazione']);
 });
 
+it('chiusa: le delibere, i punti senza voto e i rinviati si dicono separati, sia nel passo sia nella riga del registro (1.12.0-beta.14, C57)', function () {
+    [$s, $a] = VerbaleDiViaRoma12::salaChiusa($this, true);
+
+    // Cinque punti votati e uno trattato senza voto: non sono «6 delibere».
+    expect(pisPassi($a)['sala']['riga'])->toBe('chiusa alle 20:55 · 5 delibere, 1 senza voto');
+    $riga = \App\Models\RegistroModifica::query()->where('oggetto_tipo', 'assemblea')->where('riepilogo', 'like', '%chiusa alle%')->latest('id')->first();
+    expect($riga->riepilogo)->toContain('chiusa alle 20:55: 5 delibere, 1 senza voto')->not->toContain('6 delibere');
+});
+
 it('la riga del passo è corta e non si sovrappone: le deleghe, le rifiutate, il giorno della sala', function () {
     $s = SalaDiViaRoma12::nuovo($this);
     $a = SalaDiViaRoma12::convoca(SalaDiViaRoma12::ordinaria($s), $s);

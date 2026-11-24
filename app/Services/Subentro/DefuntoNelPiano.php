@@ -93,6 +93,12 @@ use Carbon\CarbonImmutable;
  * I saldi le voci del caso li leggono come prima, con la divisione del motore: chi ha la parte due volte la voce lo dice, con la tabella (decisioni 164.1 e 170), e
  * per le altre voci della stessa unità i saldi non legati di una persona restano la sua parte in una voce sola (`secondaSerieAltrove`).
  *
+ * L'erede che vende la quota ereditata e poi muore (Coda 484, 1.12.0-beta.14, la sola fermata; la regola completa è della Coda 481): la sua successione si registra
+ * dove ha ancora una riga, su un'altra unità. La successione dell'erede si cerca in tutto il condominio (`successioniDegliEredi`): la voce del primo defunto è nello
+ * stato della divisione da decidere e dice su quale unità è registrata. E chi ha una cifra del motore su un'unità dove non ha nessuna successione, e una con
+ * l'arretrato agli eredi su un'altra (`successioniAltrove`), ha una voce sua (`voceAltrove`): la cifra di quell'unità, che la successione non passa ai suoi eredi,
+ * senza cifre per erede né la strada del Wallet. Le somme del piano non cambiano.
+ *
  * Seconde fonti dichiarate: chi ha già un saldo non legato è `FermataDopoScrivi::conUnSaldo` (la stessa regola del posto del Wallet);
  * le righe di V1 sono le gemelle di quelle di `FermataDopoScrivi::stradaAMano`, che è privata; la divisione per quota è
  * `MoneyHelper::ripartisciPerQuote` con i pesi dell'arretrato (`AnteprimaPassaggio::pesiDegliEredi`); i saldi che entrano sono la
@@ -126,50 +132,51 @@ final class DefuntoNelPiano
             return [];
         }
 
-        // Le successioni non annullate (lo scope `non_annullati` nasconde le altre) di chi ha una cifra, sulle unità della cifra, per defunto e
-        // unità, nell'ordine delle righe di titolarità che chiudono: quello non cambia con l'ordine in cui sono state registrate.
+        // Le successioni non annullate (lo scope `non_annullati` nasconde le altre) di chi ha una cifra, nell'ordine delle righe di titolarità che chiudono:
+        // quello non cambia con l'ordine in cui sono state registrate. Quelle sulle unità della cifra fanno le voci, per defunto e unità.
         $gruppi = [];
-        $unita = collect($cifre)->flatMap(fn (array $perUnita) => array_keys($perUnita))->unique()->values()->all();
-        foreach (Subentro::with('padre')->where('condominio_id', $piano->condominio_id)->where('tipo_passaggio', 'successione')
-            ->whereIn('immobile_id', $unita)->whereIn('anagrafica_uscente_id', array_keys($cifre))->orderBy('riga_uscente_id')->orderBy('id')->get() as $s) {
+        $sue = Subentro::with('padre')->where('condominio_id', $piano->condominio_id)->where('tipo_passaggio', 'successione')
+            ->whereIn('anagrafica_uscente_id', array_keys($cifre))->orderBy('riga_uscente_id')->orderBy('id')->get();
+        foreach ($sue as $s) {
             if (($cifre[(int) $s->anagrafica_uscente_id][(int) $s->immobile_id] ?? 0) !== 0) {
                 $gruppi[(int) $s->anagrafica_uscente_id . ':' . (int) $s->immobile_id][] = $s;
             }
         }
         // La scelta sta nel padre: la riga del box ha gli eredi, non l'arretrato.
         $gruppi = array_filter($gruppi, fn (array $successioni) => collect($successioni)->contains(fn (Subentro $s) => self::agliEredi($s)));
-        if ($gruppi === []) {
+        // Coda 484: chi ha una cifra su un'unità dove non ha una successione, e una successione con l'arretrato agli eredi su un'altra (l'erede che vende la quota
+        // ereditata e poi muore). Quella successione non passa ai suoi eredi la cifra di quest'unità: una voce sua, nello stato della divisione da decidere.
+        $altrove = self::successioniAltrove($cifre, $sue);
+        if ($gruppi === [] && $altrove === []) {
             return [];
         }
 
-        // Coda 480 (decisione 190.1): chi, fra gli eredi di un defunto della voce, è a sua volta defunto sulla stessa unità (`successioniDegliEredi`), e le voci che
-        // ne vengono (`fermate`). I suoi eredi servono ai nomi della frase.
+        // Coda 480 (decisione 190.1): chi, fra gli eredi di un defunto della voce, è a sua volta defunto (`successioniDegliEredi`; dalla Coda 484 anche con la
+        // successione su un'altra unità), e le voci che ne vengono (`fermate`). I suoi eredi servono ai nomi della frase.
         $erediDefunti = self::successioniDegliEredi($piano, $gruppi);
         $fermate = $this->fermate($gruppi, $cifre, $erediDefunti, $righeDettaglio);
 
         $persone = [];
-        foreach ($gruppi as $successioni) {
+        foreach ([...array_values($gruppi), ...array_values($erediDefunti), ...array_values($altrove)] as $successioni) {
             foreach ($successioni as $s) {
                 $persone[] = (int) $s->anagrafica_uscente_id;
                 array_push($persone, ...array_column($s->eredi(), 'anagrafica_id'));
             }
         }
-        foreach ($erediDefunti as $perPersona) {
-            foreach ($perPersona as $successioni) {
-                foreach ($successioni as $s) {
-                    $persone[] = (int) $s->anagrafica_uscente_id;
-                    array_push($persone, ...array_column($s->eredi(), 'anagrafica_id'));
-                }
-            }
-        }
         $nomiPersone = Anagrafica::whereIn('id', array_values(array_unique($persone)))->pluck('nome', 'id');
-        $nomiUnita = Immobile::whereIn('id', array_map(fn (array $successioni) => (int) $successioni[0]->immobile_id, $gruppi))->pluck('nome', 'id');
+        $nomiUnita = Immobile::whereIn('id', array_merge(array_map(fn (array $successioni) => (int) $successioni[0]->immobile_id, $gruppi),
+            array_map(fn (string $k) => (int) explode(':', $k)[1], array_keys($altrove)),
+            array_map(fn (Subentro $s) => (int) $s->immobile_id, array_merge([], ...array_values($altrove)))))->pluck('nome', 'id');
 
         $voci = [];
         $serie = [];
         foreach ($gruppi as $chiave => $successioni) {
             $cifra = $cifre[(int) $successioni[0]->anagrafica_uscente_id][(int) $successioni[0]->immobile_id];
             $voci[$chiave] = $this->voce($piano, $successioni, $cifra, $pianoApplicaSaldi, $allaCreazione, $righeDettaglio, $nomiPersone->all(), $nomiUnita->all(), [], $serie[$chiave], fermata: $fermate[$chiave] ?? []);
+        }
+        foreach ($altrove as $chiave => $successioni) {
+            [$defuntoId, $immobileId] = array_map('intval', explode(':', $chiave));
+            $voci[$chiave] = $this->voceAltrove($defuntoId, $immobileId, $cifre[$defuntoId][$immobileId], $successioni, $pianoApplicaSaldi, $nomiPersone->all(), $nomiUnita->all(), $fermate[$chiave] ?? [], $righeDettaglio);
         }
         // Decisione 164.1 con più defunti sulla stessa unità: i saldi non legati di una persona si leggono per unità, non per successione, e sono
         // gli stessi in ogni voce. Sono la seconda serie in una voce sola, e in nessuna se in un'altra voce sono la sua parte. Coda 440 (decisione
@@ -205,33 +212,63 @@ final class DefuntoNelPiano
     }
 
     /**
-     * Coda 480 (decisione 190.1): le successioni con l'arretrato agli eredi, non annullate, degli eredi dei defunti delle voci, sulle unità delle voci: chi, fra gli
-     * eredi di un defunto, è a sua volta defunto sulla stessa unità. Anche senza una cifra del motore su quell'unità: la parte da erede c'è lo stesso. Quale erede sia
-     * erede di un arretrato che passa lo dice `fermate`.
+     * Coda 480 (decisione 190.1): le successioni con l'arretrato agli eredi, non annullate, degli eredi dei defunti delle voci: chi, fra gli eredi di un defunto, è
+     * a sua volta defunto. Anche senza una cifra del motore su quell'unità: la parte da erede c'è lo stesso. Quale erede sia erede di un arretrato che passa lo dice
+     * `fermate`. Coda 484 (1.12.0-beta.14): in tutto il condominio, non solo sulle unità delle voci. L'erede che vende la quota ereditata e poi muore ha la
+     * successione solo dove ha ancora una riga: cercata sull'unità della voce, la sua parte da erede restava a nome suo con «Non serve registrare altro».
      *
      * @param array<string, list<Subentro>> $gruppi
-     * @return array<int, array<int, list<Subentro>>> id dell'unità => id dell'erede defunto => le sue successioni
+     * @return array<int, list<Subentro>> id dell'erede defunto => le sue successioni, su ogni unità
      */
     private static function successioniDegliEredi(PianoRate $piano, array $gruppi): array
     {
-        $unita = [];
         $eredi = [];
         foreach ($gruppi as $successioni) {
             foreach ($successioni as $s) {
-                $unita[] = (int) $s->immobile_id;
                 array_push($eredi, ...array_map('intval', array_column($s->eredi(), 'anagrafica_id')));
             }
         }
+        if ($eredi === []) {
+            return [];
+        }
         $trovate = [];
         foreach (Subentro::with('padre')->where('condominio_id', $piano->condominio_id)->where('tipo_passaggio', 'successione')
-            ->whereIn('immobile_id', array_values(array_unique($unita)))->whereIn('anagrafica_uscente_id', array_values(array_unique($eredi)))
-            ->orderBy('riga_uscente_id')->orderBy('id')->get() as $s) {
+            ->whereIn('anagrafica_uscente_id', array_values(array_unique($eredi)))->orderBy('riga_uscente_id')->orderBy('id')->get() as $s) {
             if (self::agliEredi($s)) {
-                $trovate[(int) $s->immobile_id][(int) $s->anagrafica_uscente_id][] = $s;
+                $trovate[(int) $s->anagrafica_uscente_id][] = $s;
             }
         }
 
         return $trovate;
+    }
+
+    /**
+     * Coda 484 (1.12.0-beta.14): per chi ha una cifra del motore su un'unità dove non ha nessuna successione, le sue successioni con l'arretrato agli eredi su altre
+     * unità («persona:unità» => le successioni). Il caso: Ada, erede di Ugo sull'Interno A, vende la sua quota di A e muore; la successione si registra solo sull'Interno
+     * B, dove ha ancora una riga, e i suoi giorni su A non hanno una voce. Una successione sull'unità della cifra, anche con l'arretrato a suo nome, è la voce di
+     * sempre (o la scelta dell'amministratore): qui non c'entra.
+     *
+     * @param array<int, array<int, int>> $cifre [anagrafica_id][immobile_id] => centesimi, solo le cifre non nulle
+     * @param \Illuminate\Support\Collection<int, Subentro> $sue le successioni non annullate di chi ha una cifra
+     * @return array<string, list<Subentro>>
+     */
+    private static function successioniAltrove(array $cifre, \Illuminate\Support\Collection $sue): array
+    {
+        $altrove = [];
+        foreach ($cifre as $anagraficaId => $perUnita) {
+            $diLui = $sue->filter(fn (Subentro $s) => (int) $s->anagrafica_uscente_id === (int) $anagraficaId);
+            $agliEredi = $diLui->filter(fn (Subentro $s) => self::agliEredi($s))->values()->all();
+            if ($agliEredi === []) {
+                continue;
+            }
+            foreach (array_keys($perUnita) as $immobileId) {
+                if (! $diLui->contains(fn (Subentro $s) => (int) $s->immobile_id === (int) $immobileId)) {
+                    $altrove[(int) $anagraficaId . ':' . (int) $immobileId] = $agliEredi;
+                }
+            }
+        }
+
+        return $altrove;
     }
 
     /**
@@ -240,14 +277,18 @@ final class DefuntoNelPiano
      * divisione di questo defunto non si fa: una successione con l'arretrato a suo nome, un pezzo che non si attribuisce). Per la voce del defunto che è anche erede
      * (se ha una cifra del motore e quindi una voce), `come_erede`: di chi è erede, i suoi decessi e la stessa parte.
      *
+     * Coda 484: le successioni dell'erede sulla stessa unità, se ne ha; altrimenti quelle sulle altre unità, con i loro nomi (`dove`), perché la frase dica dove sono.
+     *
      * @param array<string, list<Subentro>> $gruppi
      * @param array<int, array<int, int>> $cifre [anagrafica_id][immobile_id] => centesimi, solo le cifre non nulle
-     * @param array<int, array<int, list<Subentro>>> $erediDefunti `successioniDegliEredi`
+     * @param array<int, list<Subentro>> $erediDefunti `successioniDegliEredi`
      * @param list<array<string, mixed>> $righeDettaglio
-     * @return array<string, array{defunti_eredi?: list<array{id: int, decessi: list<string>, successioni: int, eredi: list<int>, parte: int|null}>, come_erede?: list<array{da: int, decessi: list<string>, parte: int|null}>}>
+     * @return array<string, array{defunti_eredi?: list<array{id: int, decessi: list<string>, successioni: int, eredi: list<int>, parte: int|null, dove: list<string>}>, come_erede?: list<array{da: int, decessi: list<string>, parte: int|null}>}>
      */
     private function fermate(array $gruppi, array $cifre, array $erediDefunti, array $righeDettaglio): array
     {
+        $altreUnita = array_values(array_unique(array_map(fn (Subentro $s) => (int) $s->immobile_id, array_merge([], ...array_values($erediDefunti)))));
+        $nomiUnita = $altreUnita === [] ? [] : Immobile::whereIn('id', $altreUnita)->pluck('nome', 'id')->all();
         $fermate = [];
         foreach ($gruppi as $chiave => $successioni) {
             $defuntoId = (int) $successioni[0]->anagrafica_uscente_id;
@@ -260,7 +301,7 @@ final class DefuntoNelPiano
                     }
                 }
             }
-            $secondi = array_values(array_filter(array_keys($erediDelDefunto), fn (int $id) => isset($erediDefunti[$immobileId][$id])));
+            $secondi = array_values(array_filter(array_keys($erediDelDefunto), fn (int $id) => isset($erediDefunti[$id])));
             if ($secondi === []) {
                 continue;
             }
@@ -268,8 +309,12 @@ final class DefuntoNelPiano
             $decessiDelDefunto = self::decessi($successioni);
             foreach ($secondi as $id) {
                 $parte = $perErede === null ? null : ($perErede[$id]['cifra'] ?? null);
-                $fermate[$chiave]['defunti_eredi'][] = ['id' => $id, 'decessi' => self::decessi($erediDefunti[$immobileId][$id]), 'successioni' => count($erediDefunti[$immobileId][$id]),
-                    'eredi' => array_keys(self::soloLeQuote($erediDefunti[$immobileId][$id])), 'parte' => $parte];
+                $qui = array_values(array_filter($erediDefunti[$id], fn (Subentro $s) => (int) $s->immobile_id === $immobileId));
+                $sueSuccessioni = $qui !== [] ? $qui : $erediDefunti[$id];
+                $dove = $qui !== [] ? [] : array_values(array_unique(array_map(fn (Subentro $s) => (string) ($nomiUnita[(int) $s->immobile_id] ?? 'un\'altra unità'), $sueSuccessioni)));
+                $fermate[$chiave]['defunti_eredi'][] = ['id' => $id, 'decessi' => self::decessi($sueSuccessioni),
+                    'successioni' => count(array_unique(array_map(fn (Subentro $s) => (int) $s->capo()->id, $sueSuccessioni))),
+                    'eredi' => array_keys(self::soloLeQuote($sueSuccessioni)), 'parte' => $parte, 'dove' => $dove];
                 // Per la voce dell'erede, se ne ha una (senza una cifra del motore non c'è: il caso lo dice la voce di chi lo ha come erede).
                 $fermate[$id . ':' . $immobileId]['come_erede'][] = ['da' => $defuntoId, 'decessi' => $decessiDelDefunto, 'parte' => $parte];
             }
@@ -921,13 +966,12 @@ final class DefuntoNelPiano
         if (count($successioni) > 1) {
             $frasi[] = sprintf('%s ha su quest\'unità più di una successione (%s).', $defunto, self::quali($successioni, $nomiPersone));
         }
-        foreach ($fermata['come_erede'] ?? [] as $x) {
-            $frasi[] = sprintf('%s è anche erede di %s su quest\'unità (%s): %s il programma non la passa ai suoi eredi, %s.',
-                $defunto, $nome($x['da']), $quando($x['decessi']), $laParte($x['parte']), $suoiEredi);
-        }
+        array_push($frasi, ...self::frasiComeErede($defunto, $fermata['come_erede'] ?? [], $nomiPersone, $suoiEredi));
         foreach ($fermata['defunti_eredi'] ?? [] as $x) {
-            $frasi[] = sprintf('%s, erede di %s, ha a sua volta %s su quest\'unità (%s) con l\'arretrato passato agli eredi: %s il programma non la passa ai suoi eredi, %s.',
-                $nome($x['id']), $defunto, $x['successioni'] > 1 ? 'più successioni' : 'una successione', $quando($x['decessi']), $laParte($x['parte']),
+            // Coda 484: la successione dell'erede su un'altra unità, detta con il suo nome.
+            $frasi[] = sprintf('%s, erede di %s, ha a sua volta %s %s (%s) con l\'arretrato passato agli eredi: %s il programma non la passa ai suoi eredi, %s.',
+                $nome($x['id']), $defunto, $x['successioni'] > 1 ? 'più successioni' : 'una successione',
+                ($x['dove'] ?? []) === [] ? 'su quest\'unità' : self::elenco(array_map(fn (string $u) => 'su ' . $u, $x['dove'])), $quando($x['decessi']), $laParte($x['parte']),
                 self::elenco(array_map($nome, $x['eredi'])));
         }
         $frasi[] = 'La divisione fra gli eredi la decide l\'amministratore: il programma non ne propone le parti né le righe del Wallet, e nessuna riga del Wallet chiude questa voce, che torna a ogni generazione.';
@@ -936,6 +980,146 @@ final class DefuntoNelPiano
         }
 
         return implode(' ', $frasi);
+    }
+
+    /**
+     * Coda 480: per ogni defunto di cui il defunto della voce è erede su quest'unità, la frase della sua parte da erede: «Ada è anche erede di Ugo su quest'unità
+     * (decesso del 1 marzo 2026): la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Anna e Bruno.»
+     *
+     * @param list<array{da: int, decessi: list<string>, parte: int|null}> $comeErede
+     * @param array<int, string> $nomiPersone
+     * @return list<string>
+     */
+    private static function frasiComeErede(string $defunto, array $comeErede, array $nomiPersone, string $suoiEredi): array
+    {
+        return array_map(fn (array $x) => sprintf('%s è anche erede di %s su quest\'unità (%s): %s il programma non la passa ai suoi eredi, %s.',
+            $defunto, (string) ($nomiPersone[$x['da']] ?? ('Anagrafica #' . $x['da'])),
+            (count($x['decessi']) === 1 ? 'decesso del ' : 'decessi del ') . implode(' e del ', array_map(fn (string $g) => CarbonImmutable::parse($g)->locale('it')->translatedFormat('j F Y'), $x['decessi'])),
+            $x['parte'] === null ? 'la sua parte da erede' : sprintf('la sua parte da erede, %s,', self::cifra($x['parte'])), $suoiEredi), $comeErede);
+    }
+
+    /**
+     * Coda 484 (1.12.0-beta.14): la voce di chi ha una cifra su un'unità dove non ha una successione, e una successione con l'arretrato agli eredi su un'altra
+     * (`successioniAltrove`). Quella successione non passa ai suoi eredi la cifra di quest'unità: la voce lo dice, nello stato della divisione da decidere della
+     * Coda 480, senza cifre per erede, senza la strada del Wallet, e le righe non la chiudono. La fermata dice, non sposta: le somme del piano restano quelle del
+     * motore. La regola completa (la cifra ai suoi eredi per quota) è della Coda 481. Se il defunto della voce è anche erede di un altro defunto di quest'unità, la
+     * voce lo dice come quelle della Coda 480 (`come_erede`). Le stesse chiavi delle altre voci.
+     *
+     * Se la sua riga su quest'unità è ancora aperta dopo il decesso (nessuna successione l'ha chiusa: è morto senza vendere), il motore gli dà anche i giorni dopo,
+     * che sono già dei suoi eredi (rilievo 3 dello scettico della tappa 2): la cifra da dividere è la sola parte fino al giorno prima del decesso
+     * (`finoAlDecesso`, dai giorni delle righe del dettaglio), e la voce dice la strada, registrare la successione anche su quest'unità e generare di nuovo il
+     * piano. Se il dettaglio non dice i giorni (un calcolo senza competenza), la cifra resta intera e la voce chiede solo la successione.
+     *
+     * @param list<Subentro> $successioni le sue successioni con l'arretrato agli eredi, su altre unità
+     * @param array<int, string> $nomiPersone
+     * @param array<int, string> $nomiUnita
+     * @param array{come_erede?: list<array{da: int, decessi: list<string>, parte: int|null}>} $fermata
+     * @param list<array<string, mixed>> $righeDettaglio il dettaglio del riparto che il motore ha appena calcolato
+     * @return array<string, mixed>
+     */
+    private function voceAltrove(int $defuntoId, int $immobileId, int $cifra, array $successioni, bool $pianoApplicaSaldi, array $nomiPersone, array $nomiUnita, array $fermata, array $righeDettaglio = []): array
+    {
+        $s = $successioni[count($successioni) - 1];
+        $defunto = $nomiPersone[$defuntoId] ?? ($s->registro['nomi']['uscente'] ?? 'il defunto');
+        $decessi = self::decessi($successioni);
+        $eredi = array_map(fn ($id, array $e) => ['id' => $id, 'nome' => $nomiPersone[$id] ?? ('Anagrafica #' . $id), 'quota' => $e['quota'], 'cifra' => null, 'cifra_formattata' => null],
+            array_keys(self::soloLeQuote($successioni)), array_values(self::soloLeQuote($successioni)));
+        $una = count(array_unique(array_map(fn (Subentro $x) => (int) $x->capo()->id, $successioni))) === 1;
+        $dove = self::elenco(array_values(array_unique(array_map(fn (Subentro $x) => (string) ($nomiUnita[(int) $x->immobile_id] ?? 'un\'altra unità'), $successioni))));
+        $giorni = array_map(fn (string $d) => CarbonImmutable::parse($d)->locale('it')->translatedFormat('j F Y'), $decessi);
+        $unita = $nomiUnita[$immobileId] ?? 'un\'unità';
+        $quanto = fn (int $c): string => $c < 0 ? 'un credito di ' . MoneyHelper::format(abs($c)) : MoneyHelper::format($c);
+        $quando = count($giorni) === 1 ? 'Il decesso è del ' . $giorni[0] : 'I decessi sono del ' . implode(' e del ', $giorni);
+        $registrata = $una ? 'la successione è registrata su ' . $dove : 'le successioni sono registrate su ' . $dove;
+        // Rilievo 3 dello scettico della tappa 2: la riga del defunto su quest'unità ancora aperta dopo il decesso. Il primo decesso: i giorni dopo non sono suoi.
+        $decesso = min($decessi);
+        $aperta = \Illuminate\Support\Facades\DB::table('anagrafica_immobile')->where('anagrafica_id', $defuntoId)->where('immobile_id', $immobileId)->where('attivo', true)
+            ->where(fn ($q) => $q->whereNull('data_fine')->orWhere('data_fine', '>=', $decesso))->exists();
+        $partiDaDecidere = true;
+        $prima = $aperta ? self::finoAlDecesso($righeDettaglio, $defuntoId, $immobileId, $decesso, $cifra) : $cifra;
+        if ($prima === null) {
+            $frase = sprintf('Il piano calcola ancora per %s %s su %s, anche per i giorni dopo il decesso: la riga di %s su %s è ancora aperta. %s e %s, non su %s. Registra la successione anche su %s, poi genera di nuovo il piano; le righe del Wallet non chiudono questa voce.',
+                $defunto, $quanto($cifra), $unita, $defunto, $unita, $quando, $registrata, $unita, $unita);
+        } elseif ($prima === 0) {
+            // Fase 1-bis della beta.14: la riga è ancora aperta e tutti i giorni calcolati sono dopo il decesso: non c'è niente da dividere, la voce dice solo la strada.
+            $frase = sprintf('La riga di %s su %s è ancora aperta dopo il decesso del %s: il piano calcola a suo nome %s per i giorni dopo, che non sono suoi. Registra la successione anche su %s, poi genera di nuovo il piano; le righe del Wallet non chiudono questa voce.',
+                $defunto, $unita, CarbonImmutable::parse($decesso)->locale('it')->translatedFormat('j F Y'), $quanto($cifra), $unita);
+            $partiDaDecidere = false;
+        } else {
+            $frase = sprintf('Il piano calcola ancora per %s %s su %s, per i giorni in cui ne era titolare. %s e %s: %s. Decidi tu come dividerli; le righe del Wallet non chiudono questa voce.',
+                $defunto, $quanto($prima), $unita, $quando, $registrata,
+                $una ? 'quella successione non li passa ai suoi eredi' : 'quelle successioni non li passano ai suoi eredi');
+            if ($aperta) {
+                $frase .= sprintf(' La riga di %s su %s è ancora aperta dopo il decesso: il piano calcola a suo nome anche %s per i giorni dopo, che non sono suoi. Registra la successione anche su %s, poi genera di nuovo il piano.',
+                    $defunto, $unita, $quanto($cifra - $prima), $unita);
+            }
+            $cifra = $prima;
+        }
+        $frasi = [$frase, ...self::frasiComeErede($defunto, $fermata['come_erede'] ?? [], $nomiPersone, self::elenco(array_column($eredi, 'nome')))];
+
+        return [
+            'immobile_id'         => $immobileId,
+            'immobile_nome'       => $nomiUnita[$immobileId] ?? 'un\'unità',
+            'tipologia'           => (string) $s->tipologia,
+            'conto_id'            => null,
+            'conto_nome'          => null,
+            'motivo'              => self::MOTIVO,
+            'gradino'             => null,
+            'periodo'             => [],
+            'passaggio_id'        => (int) $s->capo()->id,
+            'passaggi_ids'        => array_values(array_unique(array_map(fn (Subentro $x) => (int) $x->capo()->id, $successioni))),
+            'defunto'             => ['id' => $defuntoId, 'nome' => $defunto],
+            'decesso'             => $decessi[count($decessi) - 1],
+            'cifra'               => $cifra,
+            'cifra_formattata'    => self::cifra($cifra),
+            'eredi'               => $eredi,
+            'wallet'              => false,
+            'piano_applica_saldi' => $pianoApplicaSaldi,
+            'con_un_saldo'        => [],
+            'parti_da_decidere'   => $partiDaDecidere,
+            'due_serie'           => [],
+            'frase'               => implode(' ', $frasi),
+        ];
+    }
+
+    /**
+     * Rilievo 3 dello scettico della tappa 2: la parte della cifra del defunto su un'unità che il motore ha calcolato per i giorni fino al giorno prima del
+     * decesso. Dalle righe del dettaglio del defunto sull'unità: ogni riga copre il suo tratto di titolarità (`titolarita_dal`/`titolarita_al`, le righe
+     * pro rata) o tutta la competenza (`competenza_dal`/`competenza_al`); una riga a cavallo del decesso si divide per giorni, con i resti maggiori. Il già
+     * versato (le righe `netting`) è suo. Null se una riga non dice i suoi giorni (un calcolo senza competenza) o se le righe non fanno la cifra.
+     *
+     * @param list<array<string, mixed>> $righeDettaglio
+     */
+    private static function finoAlDecesso(array $righeDettaglio, int $defuntoId, int $immobileId, string $decesso, int $cifra): ?int
+    {
+        $prima = 0;
+        $totale = 0;
+        $giorno = CarbonImmutable::parse($decesso, 'UTC')->startOfDay();
+        foreach ($righeDettaglio as $r) {
+            if ((int) ($r['anagrafica_id'] ?? 0) !== $defuntoId || (int) ($r['immobile_id'] ?? 0) !== $immobileId) {
+                continue;
+            }
+            $importo = (int) ($r['importo'] ?? 0);
+            $totale += $importo;
+            if (($r['tipo'] ?? null) === 'netting') {
+                $prima += $importo;
+                continue;
+            }
+            $dal = $r['titolarita_dal'] ?? $r['competenza_dal'] ?? null;
+            $al = $r['titolarita_al'] ?? $r['competenza_al'] ?? null;
+            if ($dal === null || $al === null) {
+                return null;
+            }
+            $tratto = new \App\Support\PeriodoCompetenza((string) $dal, (string) $al);
+            if ($tratto->al->lt($giorno)) {
+                $prima += $importo;
+            } elseif ($tratto->dal->lt($giorno)) {
+                $giorniPrima = (new \App\Support\PeriodoCompetenza($tratto->dal, $giorno->subDay()))->giorni();
+                $prima += MoneyHelper::ripartisciPerQuote($importo, ['prima' => $giorniPrima, 'dopo' => $tratto->giorni() - $giorniPrima])['prima'];
+            }
+        }
+
+        return $totale === $cifra ? $prima : null;
     }
 
     /**

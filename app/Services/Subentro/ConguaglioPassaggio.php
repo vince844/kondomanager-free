@@ -1109,8 +1109,9 @@ final class ConguaglioPassaggio
      * 1.7.x non lo hanno: la colonna nasce vuota con la beta.32, e la riparazione dei lucchetti orfani la riempie leggendo la
      * composizione delle quote, proprio ciò che a queste manca (revisione della Fase 1-ter, F3-1). Per loro vale il saldo
      * senza piano dello stesso esercizio del piano, scritto prima delle sue quote: la 1.7.0 prendeva i saldi «manuali» per
-     * condominio ed esercizio. Mai le coppie dei passaggi né i debiti verso i fornitori. La persona è chi ha la quota oggi o chi
-     * la aveva quando è stata generata (`righe_di`, una bozza passata di mano con un passaggio).
+     * condominio ed esercizio. Mai le coppie dei passaggi, né le righe legate a un passaggio (Coda 711), né i debiti verso i
+     * fornitori. La persona è chi ha la quota oggi o chi la aveva quando è stata generata (`righe_di`, una bozza passata di mano
+     * con un passaggio).
      *
      * @param array<int, ?int> $eserciziPerPiano
      * @return array<string, true>
@@ -1125,7 +1126,9 @@ final class ConguaglioPassaggio
         $esercizi = array_values(array_filter(array_map(fn ($id) => $eserciziPerPiano[$id] ?? null, $piani)));
         $nate = DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->whereIn('rate.piano_rate_id', $piani)
             ->groupBy('rate.piano_rate_id')->selectRaw('rate.piano_rate_id, MIN(rate_quote.created_at) as nate')->pluck('nate', 'piano_rate_id');
-        $saldi = DB::table('saldi')->whereNull('subentro_id')->whereNull('fornitore_id')->where('saldo_iniziale', '!=', 0)
+        // Mai le coppie dei passaggi, i debiti verso i fornitori e le righe legate a un passaggio: la stessa regola di `PianoRate::saldoAssorbito` (Coda 711),
+        // detta anche qui perché la riga letta non porta le colonne che il criterio guarda.
+        $saldi = DB::table('saldi')->whereNull('subentro_id')->whereNull('fornitore_id')->whereNull('passaggio_id')->where('saldo_iniziale', '!=', 0)
             ->where(fn ($q) => $q->whereIn('piano_rate_id', $piani)->orWhere(fn ($q2) => $q2->whereNull('piano_rate_id')->whereIn('esercizio_id', $esercizi)))
             ->get(['piano_rate_id', 'esercizio_id', 'immobile_id', 'anagrafica_id', 'created_at']);
         $chiavi = [];

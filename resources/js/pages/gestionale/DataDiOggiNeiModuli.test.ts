@@ -97,7 +97,7 @@ describe('alle 00:30 del 01/01/2027 a Roma ogni modulo propone il 01/01/2027', (
     test('la delega F24: la data del versamento e quella dello storno', async () => {
         const delega = { id: 7, stato: 'confermata', plafond: 'soglia_500_tre_finestre', data_scadenza: '2027-01-18', data_versamento: null, denominazione_contribuente: 'Condominio Test',
             cf_contribuente: '80012345678', totale_debito: 24000, motivo_codice: null, note: null, righe: [] };
-        const forme = await moduliDi('../gestionale/movimenti/f24/F24Show.vue', { delega, banche: [], motivo_blocco_modifica: null, campi_mancanti: [], esercizio_non_corrente: null });
+        const forme = await moduliDi('../gestionale/movimenti/f24/F24Show.vue', { delega, banche: [], motivo_blocco_modifica: null, campi_mancanti: [], codice_fiscale_contribuente: '80012345678', esercizio_non_corrente: null });
         expect([...campo(forme, 'data_versamento'), ...campo(forme, 'data_storno')]).toEqual(['2027-01-01', '2027-01-01']);
     });
 

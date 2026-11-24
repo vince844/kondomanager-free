@@ -50,4 +50,40 @@ describe('RitenuteF24Guide', () => {
         expect(sorgente).not.toContain('quando premerlo cambia davvero qualcosa');
         expect(sorgente).toContain('quando ci sono ritenute operate che non stanno ancora in nessuna delega.');
     });
+
+    test('Coda 717 — la guida dice le tre regole del versamento: il totale del mese, il confronto di ogni soglia, il 20 agosto', () => {
+        // Casi A–E di t=202: € 100 esatti di un professionista si rinviano, € 500 esatti di appalti bastano; € 120 + € 30 ad aprile insieme a maggio.
+        expect(sorgente).toContain('Il totale si guarda <strong>sul mese</strong>: tutte le ritenute operate nel mese, più quelle rinviate dai mesi prima.');
+        expect(sorgente).toContain('Quando la soglia scatta, si versa <strong>tutto il mese</strong> entro il 16 del mese dopo');
+        expect(sorgente).toContain('in cui il totale <strong>raggiunge</strong> la soglia: {{ soglia(soglie.appalti_cents) }} esatti bastano.');
+        expect(sorgente).toContain('solo quando il totale <strong>supera</strong> la soglia: {{ soglia(soglie.professionisti_cents) }} esatti si rinviano ancora.');
+        expect(sorgente).toContain('Le scadenze <strong>dal 1° al 20 agosto</strong> valgono fino al <strong>20 agosto</strong>');
+        // «Stessa meccanica» non è più vero: il confronto della soglia del 20 % non è quello degli appalti.
+        expect(sorgente).not.toContain('Stessa meccanica');
+    });
+
+    test('Coda 718 — la guida dice il promemoria per delega e il «Prepara le deleghe F24», non più un promemoria per pagamento', () => {
+        expect(sorgente).toContain('nella tua Inbox c\'è <strong>un promemoria solo</strong> per condominio, «Prepara le deleghe F24», con la data del cumulo');
+        expect(sorgente).toContain('<strong>un promemoria per ogni delega</strong>, «F24 da versare», con la sua scadenza e «Apri la delega»');
+        expect(sorgente).toContain('«Segna come fatto» resta: il promemoria torna solo se la scadenza cambia.');
+        expect(sorgente).not.toContain('Registrando un pagamento con ritenuta compare un promemoria nella tua Inbox');
+    });
+
+    test('Coda 754 (10) — la guida dice a che cosa serve «Conferma la delega» e come si torna indietro', () => {
+        expect(sorgente).toContain('«Conferma la delega»');
+        expect(sorgente).toContain('«Aggiorna scadenze» non la rifà più');
+        expect(sorgente).toContain('Non scrive niente in contabilità');
+        expect(sorgente).toContain('«Riporta in bozza»');
+    });
+
+    test('Coda 754 (10) — la guida dice che i pagamenti di una delega confermata non si stornano né cambiano data finché è confermata', () => {
+        expect(sorgente).toContain('Finché è confermata, i pagamenti che porta non si stornano e non cambiano data:');
+        expect(sorgente).toContain('il programma si ferma e ti chiede di riportarla in bozza prima.');
+    });
+
+    test('Coda 754 (10), decisione 704 — la guida dice l\'avviso della ritenuta già versata, non un blocco', () => {
+        expect(sorgente).toContain('Se storni un pagamento la cui ritenuta è già stata versata, il programma te lo dice;');
+        expect(sorgente).toContain('la delega del pagamento rifatto porta l\'avviso «non versarla di nuovo».');
+        expect(sorgente).not.toContain('storna prima il versamento con «Storna» nella scheda della delega');
+    });
 });

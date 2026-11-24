@@ -51,6 +51,10 @@ describe('la guida della risorsa o del fondo', () => {
         expect(t).toContain('Consenti sblocco d\'emergenza');
         expect(t).toContain('motivazione');
         expect(t).toContain('Registra lo sblocco');
+        // Coda 754 (1): il saldo di apertura registrato sbagliato si corregge eliminando e ricreando la risorsa, e l'eliminazione storna l'apertura.
+        expect(t).toContain('eliminandola, il programma storna la sua apertura nel libro giornale, e restano visibili tutte e due');
+        // Rilievo 5 dello scettico della tappa 6: un fondo con un giroconto da confermare su una fattura non si elimina (`Cassa::motivoBloccoEliminazione`).
+        expect(t).toContain('Un fondo che copre una fattura con il giroconto ancora da confermare non si elimina: conferma il giroconto o storna la fattura.');
         w!.unmount();
         document.body.innerHTML = '';
         await apri(false);

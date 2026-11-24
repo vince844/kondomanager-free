@@ -127,3 +127,26 @@ it('i filtri per condominio e per anno e le pagine lavorano sul server; le card 
     $this->get(route('admin.anagrafiche.assemblee', [$rita, 'per_page' => 1, 'page' => 2]))->assertInertia(fn (AssertableInertia $p) => $p->where('meta.total', 2)
         ->where('meta.current_page', 2)->where('meta.last_page', 2)->where('righe.0.id', $altra->id)->has('righe', 1));
 });
+
+it('il comproprietario entrato «insieme» a chi rappresenta l\'unità: «Presente, senza voto», non «Assente» (Coda 750 B3)', function () {
+    $s = SalaDiViaRoma12::nuovo($this);
+    $a = SalaDiViaRoma12::convoca(SalaDiViaRoma12::ordinaria($s), $s);
+    $seduta = SalaDiViaRoma12::apriLaSeconda($this, $s, $a);
+    SalaDiViaRoma12::entrano($this, $s, $a, ['rossi', 'rita', 'gallo', ...array_map(fn ($i) => 'c' . $i, range(30, 36))]);
+    SalaDiViaRoma12::applica($this, $s, $a, SalaDiViaRoma12::gesto('entra', ['seduta_id' => $seduta->id, 'persona' => ['anagrafica_id' => $s->persone['marco']->id],
+        'come' => 'in_sala', 'con' => [$s->persone['anna']->id]], '2026-12-15 18:50'));
+    foreach ([1 => '19:00', 2 => '19:10', 3 => '19:25', 4 => '19:44', 5 => '20:05'] as $numero => $ora) {
+        VerbaleDiViaRoma12::tuttiFavorevoli($this, $s, $a, $numero, '2026-12-15 ' . $ora);
+    }
+    SalaDiViaRoma12::applica($this, $s, $a, SalaDiViaRoma12::gesto('trattato', ['seduta_id' => $seduta->id, 'punto_id' => VerbaleDiViaRoma12::punto($a, 6)], '2026-12-15 20:30'));
+    SalaDiViaRoma12::applica($this, $s, $a, SalaDiViaRoma12::gesto('chiudi', ['seduta_id' => $seduta->id], '2026-12-15 20:55'));
+    SeguitoDiViaRoma12::registra($this, $s, $a->refresh());
+
+    $anna = collect(AssembleeDellaPersona::perLaScheda($s->persone['anna'], $s->admin))->firstWhere('id', $a->id);
+    $marco = collect(AssembleeDellaPersona::perLaScheda($s->persone['marco'], $s->admin))->firstWhere('id', $a->id);
+    expect($anna['in_sala'])->toBe('Presente, senza voto')
+        ->and($anna['per_lei'])->toBe(['parola' => 'Presente', 'tono' => 'verde'])
+        // I voti della sua unità li ha espressi chi la rappresenta: favorevole come lui.
+        ->and($anna['favorevole_ai_punti'])->toBe($marco['favorevole_ai_punti'])
+        ->and($marco['in_sala'])->toBe('Presente di persona');
+});

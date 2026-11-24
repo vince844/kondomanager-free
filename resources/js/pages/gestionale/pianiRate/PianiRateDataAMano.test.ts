@@ -36,4 +36,9 @@ describe('la data scritta a mano a chi non gestisce le assemblee', () => {
         expect(pagina).toMatch(/<div v-if="!conLaDelibera"[^>]*data-testid="deliberata-il-a-mano">.*?<Input id="data_delibera_assemblea" type="date" v-model="form\.data_delibera_assemblea"/);
         expect(pagina).toMatch(/data-testid="deliberata-il-a-mano">.*?<div v-else class="grid[^"]*"> <ScegliLaDelibera/);
     });
+
+    test('il titolo del riquadro non dice «Data della delibera» sopra «Scegli la delibera»: con la scelta è «La delibera dell\'assemblea» (750 C4)', () => {
+        const pagina = compatto(leggi('PianiRateNew.vue'));
+        expect(pagina).toMatch(/<template v-if="conLaDelibera">La delibera dell'assemblea<\/template><template v-else>Data della delibera dell'assemblea<\/template>/);
+    });
 });

@@ -8,8 +8,10 @@ namespace App\Http\Controllers\Gestionale\Movimenti;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\NessunEsercizioApertoException;
 use App\Exceptions\Pagamenti\PagamentoGiaStornatoException;
+use App\Exceptions\Pagamenti\RitenutaInDelegaConfermataException;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Gestionale\DelegaF24;
 use App\Models\Gestionale\PagamentoFornitore;
 use App\Services\Gestionale\PagamentoFornitoreService;
 use App\Traits\HandleFlashMessages;
@@ -60,11 +62,15 @@ class StornoPagamentoController extends Controller
 
             Log::info("Storno pagamento #{$pagamento->id} eseguito da utente #" . Auth::id() . " — motivo: {$validated['motivo']}");
 
-            return back()->with(
-                $this->flashSuccess(
-                    "Storno eseguito con successo. Le fatture collegate sono state riaperte e il saldo del conto è stato ripristinato."
-                )
-            );
+            $fatto = "Storno eseguito con successo. Le fatture collegate sono state riaperte e il saldo del conto è stato ripristinato.";
+
+            // La ritenuta del pagamento già versata con una delega F24 (Coda 754 (10), decisione 704): lo storno passa, e il messaggio
+            // avvisa di non versarla di nuovo con il pagamento rifatto. Un avviso, che resta in pagina finché non lo si chiude.
+            $avviso = DelegaF24::avvisoRitenutaGiaVersata((int) $pagamento->id);
+
+            return back()->with($avviso === null
+                ? $this->flashSuccess($fatto)
+                : $this->flashWarning($fatto.' '.$avviso));
 
         } catch (PagamentoGiaStornatoException $e) {
             return back()->with(
@@ -80,6 +86,10 @@ class StornoPagamentoController extends Controller
             return back()->with(
                 $this->flashError('Impossibile eseguire lo storno cross-esercizio: non esiste un esercizio corrente aperto per questo condominio.')
             );
+
+        } catch (RitenutaInDelegaConfermataException $e) {
+            // Coda 754 (10): la ritenuta è in una delega F24 confermata. La frase dice la delega e che cosa fare prima.
+            return back()->with($this->flashError($e->getMessage()));
 
         } catch (\Exception $e) {
             Log::error("Errore storno pagamento #{$pagamento->id}: " . $e->getMessage(), [

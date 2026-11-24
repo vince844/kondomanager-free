@@ -106,8 +106,15 @@ defineEmits(['update:open']);
                   <h4 class="font-bold">Intero immobile (solidale)</h4>
                 </div>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400">
-                  Il saldo resta dell'unità. All'emissione viene ripartito <strong>in automatico fra chi ha un diritto reale sull'unità</strong>, in proporzione alla quota di ciascuno. È la scelta giusta quando il pregresso è dell'appartamento e non di una persona in particolare — ed è il modo in cui il sistema regge la solidarietà del subentro (<strong>art. 63 disp. att. c.c.</strong>).
+                  Il saldo resta dell'unità. Quando il piano rate lo applica viene ripartito <strong>in automatico fra chi ha un diritto reale sull'unità il primo giorno del suo esercizio</strong>, in proporzione alla quota di ciascuno. È la scelta giusta quando il pregresso è dell'appartamento e non di una persona in particolare — ed è il modo in cui il sistema regge la solidarietà del subentro (<strong>art. 63 disp. att. c.c.</strong>).
                 </p>
+                <ul class="mt-2 list-disc space-y-1 pl-5 text-[13px] text-slate-600 dark:text-slate-400">
+                  <li>Se l'unità è stata venduta dopo, il saldo resta a chi era titolare quel giorno: chi compra ne risponde in solido verso il condominio, ma il programma non glielo addebita da sé.</li>
+                  <li>Se il passaggio è proprio del primo giorno, conta chi era titolare il giorno prima.</li>
+                  <li>Con una successione: con l'arretrato agli eredi va agli eredi, per le loro quote; con l'arretrato a nome del defunto resta al defunto.</li>
+                  <li>Al defunto solo se è morto dall'inizio dell'esercizio prima di quello del saldo: con una morte di prima, o con una successione registrata senza la scelta sull'arretrato, va agli eredi.</li>
+                  <li>Dove un passaggio tocca il saldo, il nuovo piano lo dice e ti lascia scegliere a chi va: la regola, chi era titolare prima o dopo il passaggio, o un riparto a mano.</li>
+                </ul>
                 <p class="text-[13px] text-slate-600 dark:text-slate-400 mt-2">
                   <strong>L'inquilino non partecipa mai</strong>: verso il condominio non è debitore, il suo rapporto è con il locatore. Fra i titolari decide la natura della gestione — l'ordinaria è dell'usufruttuario (art. 1004 c.c.), la straordinaria del proprietario (art. 1005) —, e su un'unità in parte in piena proprietà il proprietario pieno paga la sua quota sia dell'ordinaria sia della straordinaria. Prima di generare il piano vedi l'anteprima di chi pagherà, e se fra le parti vale un accordo diverso puoi forzare un riparto manuale.
                 </p>

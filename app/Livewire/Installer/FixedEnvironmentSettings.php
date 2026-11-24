@@ -5,6 +5,7 @@
 
 namespace App\Livewire\Installer;
 
+use App\Services\Installer\ControlloDatabaseVuoto;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Livewire\Attributes\On;
@@ -171,7 +172,7 @@ class FixedEnvironmentSettings extends Component
         $this->validate($this->dbFieldRules());
 
         // Connessione dedicata "installer_test": non tocca la connessione 'mysql'
-        // usata più avanti da migrate:fresh, così un test fallito non lascia
+        // usata più avanti da migrate:fresh (che parte solo su un database vuoto), così un test fallito non lascia
         // configurazione sporca dietro di sé.
         config(['database.connections.installer_test' => array_merge(
             config('database.connections.mysql', []),
@@ -187,8 +188,19 @@ class FixedEnvironmentSettings extends Component
         try {
             DB::connection('installer_test')->select('select 1');
 
-            $this->dbTestStatus = 'success';
-            $this->dbTestMessage = __('installer.database.test_success', ['database' => $this->dbDatabase]);
+            // Raggiungibile non basta (Coda 755 (3)): il wizard si ferma su un database che ha già delle tabelle, e qui si dice prima, non «riuscita».
+            // Il database che il wizard ha appena preparato, su cui si torna, non è un avviso.
+            $controllo = app(ControlloDatabaseVuoto::class);
+            $tabelle = $controllo->tabelle('installer_test');
+            $preparato = $controllo->preparatoDalWizard((string) config('installer.options.progress_file'), $this->dbHost, $this->dbPort, (string) $this->dbDatabase);
+
+            if ($tabelle !== [] && ! $preparato) {
+                $this->dbTestStatus = 'error';
+                $this->dbTestMessage = $controllo->frase((string) $this->dbDatabase, count($tabelle));
+            } else {
+                $this->dbTestStatus = 'success';
+                $this->dbTestMessage = __('installer.database.test_success', ['database' => $this->dbDatabase]);
+            }
         } catch (\Throwable $e) {
             $this->dbTestStatus = 'error';
             $this->dbTestMessage = __('installer.database.test_error', ['error' => $e->getMessage()]);

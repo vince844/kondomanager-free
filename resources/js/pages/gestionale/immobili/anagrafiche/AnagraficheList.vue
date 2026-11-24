@@ -68,6 +68,11 @@ interface PassaggioRegistrato {
   /** Rilievo L2: con più eredi, o con l'arretrato, il netto per erede di conguaglio e arretrato («€ 80,00 a credito di Anna Erede»), e la testa. */
   per_erede?: string[];
   per_erede_testa?: string | null;
+  /**
+   * Tappa 7 della 1.12.0-beta.14 (decisione 705): più persone che escono registrate insieme, una voce per persona con la frase del suo conguaglio
+   * («€ 20,49 a credito di Cecilia Angeli», `null` se per lei non si scrive niente); `null` o assente per un passaggio da solo.
+   */
+  insieme?: { nome: string; quota: number | string; frase_conguaglio: string | null; estratto_conto: string | null }[] | null;
 }
 const page = usePage<{ flash: { message?: Flash; passaggio_registrato?: PassaggioRegistrato | null } }>();
 // Dopo «Registra passaggio» l'avviso verde è quello dedicato (§6.4), con le due azioni: il flash generico tace.
@@ -75,6 +80,9 @@ const passaggioRegistrato = computed(() => page.props.flash.passaggio_registrato
 const flashMessage = computed(() => (passaggioRegistrato.value ? undefined : page.props.flash.message));
 // La scheda dello storico fa più azioni nella stessa visita: l'Alert si rimonta a ogni visita riuscita (L-R4).
 const giroFlash = useGiroFlash();
+/** Il flash di un insieme: i conguagli scritti, persona per persona (senza quelli per cui non si scrive niente). */
+const insiemeRegistrato = computed(() => (passaggioRegistrato.value?.insieme?.length ? passaggioRegistrato.value.insieme : null));
+const conguagliDellInsieme = computed(() => (insiemeRegistrato.value ?? []).map((i) => i.frase_conguaglio).filter((f): f is string => !!f));
 const promemoriaAParole = computed(() => passaggioRegistrato.value?.promemoria
   ? new Date(passaggioRegistrato.value.promemoria + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })
   : null);
@@ -242,13 +250,17 @@ function urlPassaggio(tipo: TipoPassaggio) {
              Niente «Scarica l'attestazione» (stampa della v1.16) e niente «situazione debitoria dell'unità»
              (oggi è un endpoint JSON, non una pagina): l'estratto conto di chi entra mostra il conguaglio. -->
         <div v-if="passaggioRegistrato" class="py-3">
-          <div class="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/10 p-4 space-y-3">
+          <div data-testid="passaggio-registrato" class="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/10 p-4 space-y-3">
             <div class="flex items-start gap-3">
               <CheckCircle2 class="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <div class="min-w-0 space-y-1">
-                <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Passaggio registrato.</p>
+                <p class="text-sm font-semibold text-emerald-900 dark:text-emerald-200">{{ insiemeRegistrato ? `${insiemeRegistrato.length} passaggi registrati insieme.` : 'Passaggio registrato.' }}</p>
                 <p class="text-sm text-emerald-900/90 dark:text-emerald-200/90">{{ passaggioRegistrato.frase }}</p>
-                <p v-if="passaggioRegistrato.per_erede_testa && passaggioRegistrato.per_erede?.length" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
+                <!-- Tappa 7: i conguagli persona per persona e quello che arriva a chi entra (la somma, che il flash porta come negli altri passaggi). -->
+                <p v-if="insiemeRegistrato && passaggioRegistrato.coppie > 0 && conguagliDellInsieme.length" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
+                  Conguaglio scritto in saldi: {{ conguagliDellInsieme.join(', ') }}, {{ passaggioRegistrato.conguaglio }} a {{ passaggioRegistrato.conguaglio_rovesciato ? 'credito' : 'debito' }} di {{ passaggioRegistrato.entrante ?? 'chi entra' }}. Il prossimo piano rate le assorbe.
+                </p>
+                <p v-else-if="passaggioRegistrato.per_erede_testa && passaggioRegistrato.per_erede?.length" class="text-[13px] text-emerald-900/80 dark:text-emerald-200/80">
                   {{ passaggioRegistrato.per_erede_testa }}: {{ passaggioRegistrato.per_erede.join(', ') }}. Il prossimo piano rate della gestione assorbe queste righe.
                 </p>
                 <!-- Fase 1-bis della .50 (R11): alla fine senza un nuovo inquilino nessuno entra; la coppia è di chi paga al posto dell'inquilino. -->

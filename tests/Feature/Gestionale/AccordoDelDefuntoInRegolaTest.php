@@ -33,15 +33,15 @@ beforeEach(function () {
     $this->withoutVite();
 });
 
-/** L'accordo del 15/07 sulla rata 1 di Neri, per l'importo e con il calendario dati. */
-function adrAccordo($test, array $s, string $importo, array $calendario, array $date = ['2026-07-31', '2026-08-31']): AccordoRientro
+/** L'accordo del 15/07 sulla rata 1 di Neri, per l'importo e con il calendario dati; con la scelta sulla parte fuori (decisione 450), se data. */
+function adrAccordo($test, array $s, string $importo, array $calendario, array $date = ['2026-07-31', '2026-08-31'], ?string $parteFuori = null): AccordoRientro
 {
     $test->travelTo('2026-07-15 12:00:00');
     $test->actingAs($test->user)->postJson(route('admin.gestionale.accordi-rientro.store', ['condominio' => $s['c']->id]), [
         'anagrafica_id' => $s['persone']['Neri']->id, 'data_accordo' => '2026-07-15', 'autorizzato_assemblea' => '0',
         'rate' => [['rata_id' => lcdRata($s, 1), 'immobile_id' => (int) $s['unita']['U1']->id, 'importo' => $importo]],
         'scadenze' => aclCalendario($calendario, $date), 'decadenza_rate' => 2, 'decadenza_giorni' => 15,
-    ])->assertCreated();
+    ] + ($parteFuori !== null ? ['interessi_parte_fuori' => $parteFuori] : []))->assertCreated();
 
     return AccordoRientro::latest('id')->firstOrFail();
 }
@@ -218,4 +218,46 @@ it('l\'anteprima dice la scelta, di serie «resta in regola fino al decesso»; u
         ->assertRedirect();
     $a = $a->fresh();
     expect($a->chiuso_il)->toBeNull()->and($a->chiusura_per_successione)->toBeNull();
+});
+
+/** Le due cifre della frase in testa a Neri nella proposta alla data (Coda 678): [fuori_per_intero, di_cui_nell_accordo]. */
+function adrFuoriPerIntero($test, array $s, string $alla): array
+{
+    $neri = accDi(accProposta($test, $s, ['Neri'], $alla)->assertOk()->json(), $s, 'Neri');
+
+    return [$neri['fuori_per_intero'], $neri['di_cui_nell_accordo']];
+}
+
+it('Coda 712: l\'accordo su tutta la rata, con «continuano», chiuso in regola dalla successione: la proposta di Neri non dice che restano fuori per gli interessi sospesi', function () {
+    // Il caso della lente del sito (Ettore, l'accordo del 12/10 su tutta la rata): l'accordo copre i € 200,00 che restano della rata 1 e la scelta è quella di
+    // serie. Chiuso dalla successione, la parte in corso è zero e la rata, € 100,00 alla data, non è «fuori per intero» per una scelta che nessuno ha fatto.
+    // Con il codice di prima: [10000, 0], e la frase «hai scelto che gli interessi restino sospesi».
+    [$s, $a] = adrCaso($this);
+    aclVersa($this, $s, [lcdQuota($s, 'Neri', 1) => 10000], '2026-07-31');
+    expect($a->interessi_parte_fuori)->toBe(AccordoRientro::INTERESSI_CONTINUANO);
+    $this->travelTo('2026-08-20 10:00:00');
+    expect(adrFuoriPerIntero($this, $s, '2026-08-20'))->toBe([0, 0]);
+
+    adrRegistra($this, $s, adrSuccessione($s));
+    expect(adrFuoriPerIntero($this, $s, '2026-08-25'))->toBe([0, 0])
+        ->and(adrRiga($this, $s, '2026-08-25'))->toBe([105, '2026-07-14']);
+    $this->travelTo('2026-12-31 10:00:00');
+    expect(adrFuoriPerIntero($this, $s, '2026-12-31'))->toBe([0, 0]);
+});
+
+it('Coda 712: l\'accordo «sospesi» su € 100,00 dei € 200,00 della rata, chiuso dalla successione: la frase dei sospesi vale finché l\'accordo è in corso, poi no', function () {
+    // Con l'accordo in corso la frase è quella della Coda 678: restano fuori € 200,00, dei quali € 100,00 nell'accordo. Chiuso dalla successione l'accordo
+    // non regge più (è chiuso), e la frase non lo dice; gli interessi restano quelli di prima (€ 1,05, i giorni prima dell'accordo). Con il codice di prima,
+    // dopo la successione: [20000, 0].
+    $s = accViaVerdi($this);
+    $this->travelTo('2026-04-30 10:00:00');
+    lcdIncassa($this, $s, 'Neri', [lcdQuota($s, 'Neri', 1) => 10000], '2026-04-30');
+    $a = adrAccordo($this, $s, '100,00', ['50,00', '50,00'], ['2026-07-31', '2026-08-31'], AccordoRientro::INTERESSI_SOSPESI);
+    expect($a->interessi_parte_fuori)->toBe(AccordoRientro::INTERESSI_SOSPESI);
+    $this->travelTo('2026-08-20 10:00:00');
+    expect(adrFuoriPerIntero($this, $s, '2026-08-20'))->toBe([20000, 10000]);
+
+    adrRegistra($this, $s, adrSuccessione($s));
+    expect(adrFuoriPerIntero($this, $s, '2026-08-25'))->toBe([0, 0])
+        ->and(adrRiga($this, $s, '2026-08-25'))->toBe([105, '2026-07-14']);
 });

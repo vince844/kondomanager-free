@@ -13,6 +13,7 @@ use App\Models\Evento;
 use App\Models\Gestionale\RispostaPromemoria;
 use App\Models\User;
 use App\Services\Gestionale\Inbox\CompitoDellaSegnalazione;
+use App\Services\Gestionale\Inbox\CompitoDellErrore;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -32,7 +33,8 @@ use Illuminate\Support\Str;
  * 09:00, scritte come le scrive il resto dell'agenda: l'ora così come si legge, «alle 09:00», d'inverno e d'estate. Una risposta ha un evento solo per tipo: una seconda volta si sposta lo stesso; se non c'è più, se ne
  * scrive uno nuovo. Il giorno vero lo dice l'evento (spostato nell'agenda, vale il giorno nuovo): `ricordami_il` è la copia del giorno scelto, per il registro.
  * Il promemoria del compito di una segnalazione non porta l'oggetto della segnalazione, che si legge solo aprendola: l'agenda dello studio la legge anche chi
- * non apre le segnalazioni ({@see TITOLO_DEL_PROMEMORIA_DELLA_SEGNALAZIONE}).
+ * non apre le segnalazioni ({@see TITOLO_DEL_PROMEMORIA_DELLA_SEGNALAZIONE}). Quello di un errore avvisato non porta il codice, il nome di chi ha avvisato
+ * né la sua nota ({@see CompitoDellErrore::TITOLO_DEL_PROMEMORIA}).
  *
  * **I compiti dell'agenda** (le due Inbox): «Fatto» e «Non serve» chiudono l'evento come facevano «Completa» e «Rifiuta», e scrivono la risposta, riga
  * `compito` con il titolo e il tipo copiati al primo gesto (la risposta resta quando l'evento se ne va). «Ricordamelo» non chiude niente: sposta l'evento al
@@ -71,7 +73,9 @@ final class RispostePromemoria
      * fattura (la convocazione per lo sforo, la ratifica, la sopravvenienza, il deficit ereditato); i commenti e gli allegati, che tornano prima se ne arriva
      * uno nuovo e allora devono contare con il loro giorno (nel numero della barra, fra gli urgenti); la segnalazione di guasto e il bonifico segnalato, il cui
      * giorno dice da quando aspettano («aperta il», «segnalato il», i più vecchi prima): «Ricordamelo» lascia l'evento al suo giorno e scrive un promemoria a
-     * parte. Per gli altri il giorno dell'evento è solo un promemoria, e si sposta.
+     * parte. Per gli altri il giorno dell'evento è solo un promemoria, e si sposta. L'errore avvisato ha il promemoria a parte per un'altra ragione, e sta
+     * in {@see promemoriaAParte()}: il compito porta il nome di chi ha avvisato e la sua nota, che legge solo chi ha «Gestisci impostazioni generali», e
+     * spostato finirebbe nell'agenda dello studio, che legge anche chi non ce l'ha.
      */
     public const COMPITI_CON_IL_PROMEMORIA_A_PARTE = ['pagamento_fornitore', 'versamento_ritenuta', 'convocazione_urgenza', 'ratifica_sforo',
         'emissione_rata_sopravvenienza', 'pianifica_ripianamento_deficit', 'commento', 'allegato', 'segnalazione_guasto', 'verifica_pagamento', 'da_moderare'];
@@ -110,7 +114,9 @@ final class RispostePromemoria
 
     public static function promemoriaAParte(Evento $compito): bool
     {
-        return in_array(self::tipoDelCompito($compito), self::COMPITI_CON_IL_PROMEMORIA_A_PARTE, true);
+        $tipo = self::tipoDelCompito($compito);
+
+        return in_array($tipo, self::COMPITI_CON_IL_PROMEMORIA_A_PARTE, true) || $tipo === CompitoDellErrore::TIPO;
     }
 
     public static function eUnBonificoSegnalato(Evento $compito): bool
@@ -212,12 +218,16 @@ final class RispostePromemoria
 
     /**
      * Il titolo e la descrizione di serie del promemoria a parte: «Ricordamelo: » con il titolo del compito; per il compito di una segnalazione
-     * {@see TITOLO_DEL_PROMEMORIA_DELLA_SEGNALAZIONE}, con il nome del condominio, perché l'agenda la legge anche chi non apre le segnalazioni.
+     * {@see TITOLO_DEL_PROMEMORIA_DELLA_SEGNALAZIONE}, con il nome del condominio, perché l'agenda la legge anche chi non apre le segnalazioni; per quello di
+     * un errore avvisato {@see CompitoDellErrore::TITOLO_DEL_PROMEMORIA}, perché la legge anche chi non ha «Gestisci impostazioni generali».
      *
      * @return array{0: string, 1: string}
      */
     private static function titoloEDescrizioneDelPromemoria(Evento $compito, ?int $condominioId): array
     {
+        if (self::tipoDelCompito($compito) === CompitoDellErrore::TIPO) {
+            return [CompitoDellErrore::TITOLO_DEL_PROMEMORIA, CompitoDellErrore::DESCRIZIONE_DEL_PROMEMORIA];
+        }
         if (self::tipoDelCompito($compito) === CompitoDellaSegnalazione::TIPO) {
             $nome = $condominioId === null ? '' : (string) Condominio::whereKey($condominioId)->value('nome');
             // Senza il nome (un compito senza condominio) il titolo si ferma prima del separatore.

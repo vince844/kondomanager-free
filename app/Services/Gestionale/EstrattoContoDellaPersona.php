@@ -72,8 +72,9 @@ final class EstrattoContoDellaPersona
     /**
      * Il giorno in cui l'amministratore ha inserito il movimento, nel suo calendario, come `d/m/Y` (Coda 317, D6).
      *
-     * Il programma scrive `data_registrazione` con `now()`, in UTC (`config('app.timezone')`), e la colonna è una DATE: tiene il giorno di
-     * Greenwich, che fra la mezzanotte e le 01:00 o le 02:00 di Roma è ancora ieri, e l'ora non si ricava più. L'ora esatta sta in
+     * Le scritture nuove portano già `data_registrazione` nel giorno di Roma (`DateHelper::oggiUtente()`, Coda 494); le vecchie la scrivevano
+     * con `now()`, in UTC (`config('app.timezone')`), e la colonna è una DATE: tiene il giorno di Greenwich, che fra la mezzanotte e le 01:00
+     * o le 02:00 di Roma è ancora ieri, e l'ora non si ricava più. Per quelle vecchie l'ora esatta sta in
      * `created_at`, un timestamp: se il giorno della registrazione è quello di Greenwich dell'inserimento (la scrittura è stata registrata
      * con `now()`), il giorno vero è quello di `created_at` nel fuso dell'amministratore (`config('app.user_timezone')`, lo stesso con cui si
      * controlla la data del movimento: `DateHelper::oggiUtente()`). Una registrazione con un altro giorno (scritta da chi sceglie il giorno,

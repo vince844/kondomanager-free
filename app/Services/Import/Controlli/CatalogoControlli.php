@@ -93,9 +93,10 @@ final class CatalogoControlli
             'riparto.titolarita_cambiata_in_corso_anno' => new VoceCatalogo(
                 rotta: $immobili,
                 etichettaAzione: 'Vai alle unità',
-                perche: 'Kondomanager non gestisce ancora il subentro: se una spesa va divisa '
-                    .'pro-rata fra vecchio e nuovo titolare, quella parte va fatta a mano — e '
-                    .'nessuna query può stabilire da sola se serviva.',
+                perche: 'L\'importazione non porta i passaggi di proprietà: se una spesa va divisa '
+                    .'pro-rata fra vecchio e nuovo titolare, la si divide registrando il passaggio '
+                    .'dalla scheda dell\'unità («Registra passaggio») — e nessuna query può '
+                    .'stabilire da sola se serviva.',
             ),
             'riparto.saldi_di_titolari_cessati' => new VoceCatalogo(
                 rotta: $saldi,
@@ -203,6 +204,13 @@ final class CatalogoControlli
                 perche: 'Il file e l\'archivio non concordano su chi è collegato a quell\'unità, e '
                     .'quale delle due versioni sia quella giusta lo sai solo tu.',
             ),
+            // Coda 599 (1.12.0-beta.14): nel file alcune persone dello stesso ruolo hanno quote che fanno già 100 e altre non ne hanno; l'unità non è
+            // entrata. Non è ricontrollabile da sola: quale quota spetti a chi non ce l'ha lo dice l'atto.
+            'titolarita.quote_senza_resto' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle unità',
+                perche: 'Il file dava già 100 ad alcune persone e niente alle altre: quale quota spetti a chi non ce l\'ha lo dice solo l\'atto.',
+            ),
             'titolarita.quota_solo_nelle_note' => new VoceCatalogo(
                 rotta: $immobili,
                 etichettaAzione: 'Vai alle unità',
@@ -243,6 +251,37 @@ final class CatalogoControlli
             // file che non esiste più. Una query sull'archivio direbbe com'è andata a finire, non
             // se ciò che si è scritto era quello che l'amministratore intendeva — che è
             // esattamente la domanda che questi avvisi pongono.
+            // 1.12.0-beta.14 (Coda 769): i campi dell'anagrafica del modello Excel. Il valore è rimasto fuori dall'archivio, e quale sia quello giusto sta nel file.
+            'modello.recapito_non_valido' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle anagrafiche',
+                perche: 'Un indirizzo di posta scritto male non è entrato: quello giusto lo sai solo tu guardando il file, e va scritto sulla scheda della persona.',
+            ),
+            'modello.recapito_ripetuto' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle anagrafiche',
+                perche: 'La seconda email era uguale alla prima ed è entrata una volta sola: se la persona ne ha una seconda vera, la conosci solo tu.',
+            ),
+            'modello.mezzo_sconosciuto' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle anagrafiche',
+                perche: 'Il mezzo di convocazione scritto non era uno dei quattro: è rimasto vuoto e il programma lo propone dai dati della persona. Se volevi un mezzo preciso, lo scegli sulla scheda.',
+            ),
+            'modello.data_non_valida' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle anagrafiche',
+                perche: 'Una data scritta male o impossibile non è entrata: quella giusta sta nel file e la scrivi sulla scheda della persona.',
+            ),
+            'modello.documento_sconosciuto' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle anagrafiche',
+                perche: 'Il tipo di documento scritto non era passaporto né carta d\'identità: è rimasto vuoto, il numero è entrato. Il tipo giusto lo scegli sulla scheda.',
+            ),
+            'modello.contatti_diversi' => new VoceCatalogo(
+                rotta: $immobili,
+                etichettaAzione: 'Vai alle anagrafiche',
+                perche: 'La stessa persona era scritta su più righe con contatti diversi: è entrato il primo valore non vuoto, e quale fosse quello giusto lo dice solo il file.',
+            ),
             'modello.unita_ripetuta' => new VoceCatalogo(
                 rotta: $immobili,
                 etichettaAzione: 'Vai alle unità',

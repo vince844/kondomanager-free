@@ -76,7 +76,7 @@ final class TrasmissioneDelVerbale
             $scelte['tolti'][$anagraficaId] = ['perche' => trim($perche), 'il' => now()->utc()->toIso8601ZuluString(), 'da' => $utente->name];
         }
         $giorno = $verbale->seduta?->fissata_il?->format('d/m');
-        RegistroModifiche::durante(GestiDelRegistro::delVerbale($verbale, 'chi lo riceve: tolto ' . $persona['nome'] . ($punti !== []
+        RegistroModifiche::durante(GestiDelRegistro::delVerbale($verbale, 'chi lo riceve: tolta dalla lista: ' . $persona['nome'] . ($punti !== []
             ? ' · ' . ParoleDelVerbale::punti($punti) . ' contati dal ' . $giorno : ''), null, trim($perche), [$anagraficaId]),
             fn () => $verbale->update(['trasmissione' => $scelte]));
 
@@ -103,8 +103,8 @@ final class TrasmissioneDelVerbale
         if ($persona['riceve']) {
             throw ValidationException::withMessages(['anagrafica_id' => 'Questa persona riceve già il verbale.']);
         }
-        $deliberati = array_map(fn ($p) => (int) $p['numero'], $d['punti']);
-        $punti = $punti === null || $punti === [] ? $deliberati : array_values(array_intersect(array_map('intval', $punti), $deliberati));
+        $deliberati = array_values(array_unique(array_map(fn ($p) => (int) $p['numero'], $d['punti'])));
+        $punti = $punti === null || $punti === [] ? $deliberati : array_values(array_unique(array_intersect(array_map('intval', $punti), $deliberati)));
         if ($punti === []) {
             throw ValidationException::withMessages(['punti' => 'Scegli i punti per cui la persona riceve il verbale come assente.']);
         }
@@ -114,7 +114,7 @@ final class TrasmissioneDelVerbale
         } else {
             $scelte['aggiunti'][$anagraficaId] = ['punti' => $punti, 'perche' => trim($perche), 'il' => now()->utc()->toIso8601ZuluString(), 'da' => $utente->name];
         }
-        RegistroModifiche::durante(GestiDelRegistro::delVerbale($verbale, 'chi lo riceve: aggiunto ' . $persona['nome'] . ' come assente per '
+        RegistroModifiche::durante(GestiDelRegistro::delVerbale($verbale, 'chi lo riceve: aggiunta a mano: ' . $persona['nome'] . ', come assente per '
             . ParoleDelVerbale::punti($punti) . ' · i trenta giorni dalla consegna', null, trim($perche), [$anagraficaId]),
             fn () => $verbale->update(['trasmissione' => $scelte]));
 
@@ -339,12 +339,22 @@ final class TrasmissioneDelVerbale
     /** @param array<string, mixed> $v @return array<string, mixed> */
     private function perLaLettera(array $v): array
     {
+        // Le delibere per cui è assente (non i soli numeri dei punti): chi era fuori al solo riparto del punto 1 non ha un termine per il rendiconto che ha votato.
+        $voci = [];
+        foreach ((array) ($v['termini'] ?? []) as $t) {
+            if (($t['perche'] ?? null) === 'assente') {
+                array_push($voci, ...array_values((array) ($t['voci'] ?? [])));
+            }
+        }
         $assente = $v['punti_assente'];
+        // Ogni voce è una delibera: «al riparto del punto 1» è una sola, «ai punti 1 e 2» sono più delibere.
+        $dove = $voci !== [] ? DestinatariDelVerbale::aiPunti($voci) : ($assente !== [] ? ParoleDelVerbale::punti($assente) : '');
+        $piu = count($voci) > 1 || ($voci === [] && count($assente) > 1);
 
         return ['nome' => $v['nome'], 'unita' => $v['unita'], 'mezzo' => (string) ($v['mezzo']['mezzo'] ?? ''), 'mezzo_parola' => $v['mezzo']['parola'] ?? null,
             'indirizzo' => $v['mezzo']['indirizzo'] ?? null, 'righe' => array_values(array_filter([
-            $assente !== [] ? 'Lo riceve come assente per ' . ParoleDelVerbale::punti($assente) . ': i trenta giorni per impugnare le delibere di quei punti '
-                . 'decorrono da quando lo riceve (art. 1137 c. 2 c.c.).' : null,
+            $dove !== '' ? 'Lo riceve come assente ' . ($voci !== [] ? '' : 'per ') . $dove . ': i trenta giorni per impugnare ' . ($piu ? 'quelle delibere' : 'quella delibera')
+                . ' decorrono da quando lo riceve (art. 1137 c. 2 c.c.).' : null,
         ]))];
     }
 

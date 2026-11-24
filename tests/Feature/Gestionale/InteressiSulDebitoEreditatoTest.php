@@ -431,6 +431,9 @@ it('le scelte del condominio si salvano da «Recupero dei crediti», con il perm
     $s = ideCaso($this);
     $scelte = array_merge(RegoleDegliEredi::diSerie(), ['dal_decesso' => false, 'buco_continuano' => true]);
     $permesso = \Spatie\Permission\Models\Permission::firstOrCreate(['name' => \App\Enums\Permission::EDIT_CONDOMINI->value, 'guard_name' => 'web']);
+    // `adbAdmin` ha già «Modifica condomini» dal ruolo (Coda 755 (2)): per provare il 403 si toglie al ruolo.
+    $this->user->roles->first()->revokePermissionTo($permesso);
+    app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
     $this->actingAs($this->user)->post(route('admin.gestionale.recupero-crediti.interessi-eredi', [$s['c']]), ['scelte' => $scelte])->assertForbidden();
     $this->user->givePermissionTo($permesso);
     $this->actingAs($this->user)->post(route('admin.gestionale.recupero-crediti.interessi-eredi', [$s['c']]), ['scelte' => ['dal_decesso' => false]])->assertSessionHasErrors(['scelte']);

@@ -132,6 +132,15 @@ const scelti = computed(() => (opzioni.value ? destinatariScelti(opzioni.value.d
 // La copia c'è solo se una ricevuta è già uscita (stampata o partita): il server lo dice con `copia`.
 const haOriginale = computed(() => !!opzioni.value?.copia);
 const giaInviata = computed(() => opzioni.value?.emissioni.find((e) => e.canale === 'email' && e.stato === 'inviata') ?? null);
+// La riga sotto il titolo, in una stringa sola (Coda 707): con il nome in un `<template>` a capo lo spazio dell'a capo finiva prima della virgola,
+// «del 18/11/2026 , Cecilia Angeli».
+const descrizione = computed(() => {
+    const o = opzioni.value;
+    if (!o) return '';
+    const chi = o.posizione ? `, ${o.versato_da ? `per conto di ${o.posizione.nome}` : o.posizione.nome}` : '';
+
+    return `N. ${o.numero}, versamento di ${euro(o.importo)} del ${giorno(o.data_versamento)}${chi}.`;
+});
 const scelte = () => ({
     bollo: bollo.value,
     ...estremiDaMandare([bollo.value], modo.value, estremi.value, false),
@@ -339,10 +348,7 @@ async function invia() {
         <DialogContent class="top-[5vh] flex max-h-[90vh] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[720px]">
             <DialogHeader class="border-b border-slate-100 px-5 pt-4 pb-3 pr-12 text-left dark:border-slate-800">
                 <DialogTitle>Ricevuta di pagamento</DialogTitle>
-                <DialogDescription v-if="opzioni">
-                    N. {{ opzioni.numero }}, versamento di {{ euro(opzioni.importo) }} del {{ giorno(opzioni.data_versamento) }}
-                    <template v-if="opzioni.posizione">, {{ opzioni.versato_da ? `per conto di ${opzioni.posizione.nome}` : opzioni.posizione.nome }}</template>.
-                </DialogDescription>
+                <DialogDescription v-if="opzioni">{{ descrizione }}</DialogDescription>
             </DialogHeader>
 
             <div class="min-h-0 flex-1 overflow-y-auto px-5 text-sm" data-testid="corpo-finestra">

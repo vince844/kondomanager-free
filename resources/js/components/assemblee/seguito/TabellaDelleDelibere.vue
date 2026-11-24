@@ -35,7 +35,7 @@ const props = withDefaults(defineProps<{
     condominioId: number;
     condominioNome: string;
     assembleaId: number;
-    righe: RigaDelPassoSei[];
+    righe: (RigaDelPassoSei & { oggetto?: 'rendiconto' | 'riparto' | null })[];
     puoGestire: boolean;
     /** La delibera o la cosa da mostrare in evidenza (l'azione del compito, della card). */
     evidenzia?: { delibera: number | null; cosa: number | null };
@@ -134,7 +134,7 @@ function riproponi(c: CosaDaFare) {
             <div v-for="r in righe" :key="r.delibera_id" :class="[GRIGLIA, 'items-start border-b border-slate-100 px-4 py-3 last:border-b-0 dark:border-slate-800', { 'bg-sky-50/70 dark:bg-sky-950/20': inEvidenza(r) }]"
                 data-testid="riga-del-passo" :data-delibera="r.delibera_id">
                 <span class="text-sm font-semibold tabular-nums text-slate-500 dark:text-slate-400">{{ r.punto }}</span>
-                <span class="min-w-0 break-words text-sm text-slate-900 dark:text-slate-100">{{ r.testo }}</span>
+                <span class="min-w-0 break-words text-sm text-slate-900 dark:text-slate-100">{{ r.testo }}<template v-if="r.oggetto"> · il {{ r.oggetto }}</template></span>
                 <span><span :class="[BADGE, CLASSI_DEL_BADGE[coloreDellEsito(r.esito)]]">{{ r.esito_parola }}</span></span>
                 <div class="min-w-0 space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
                     <p class="flex flex-wrap items-center gap-1.5">
@@ -182,7 +182,7 @@ function riproponi(c: CosaDaFare) {
                     <DropdownMenu v-if="puoGestire && vociDelMenu(r, condominioNome).length" :modal="false">
                         <DropdownMenuTrigger as-child>
                             <button type="button" class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                                :aria-label="`Altre azioni sul punto ${r.punto}`" data-testid="menu-della-riga"><MoreHorizontal class="h-4 w-4" /></button>
+                                :aria-label="`Altre azioni sul punto ${r.punto}${r.oggetto ? `, il ${r.oggetto}` : ''}`" data-testid="menu-della-riga"><MoreHorizontal class="h-4 w-4" /></button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" class="w-72">
                             <DropdownMenuItem v-for="v in vociDelMenu(r, condominioNome)" :key="v.voce" class="flex cursor-pointer flex-col items-start gap-0 px-2 py-1.5 text-[13px]"
@@ -199,7 +199,7 @@ function riproponi(c: CosaDaFare) {
         <ul class="space-y-2 sm:hidden" data-testid="delibere-al-telefono">
             <li v-for="r in visibiliAlTelefono" :key="r.delibera_id" class="space-y-2 rounded-xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950"
                 :class="{ 'ring-2 ring-sky-200 dark:ring-sky-900': inEvidenza(r) }" data-testid="riga-al-telefono" :data-delibera="r.delibera_id">
-                <p class="break-words text-sm text-slate-900 dark:text-slate-100"><span class="mr-1.5 font-semibold tabular-nums text-slate-500 dark:text-slate-400">{{ r.punto }}</span>{{ r.testo }}</p>
+                <p class="break-words text-sm text-slate-900 dark:text-slate-100"><span class="mr-1.5 font-semibold tabular-nums text-slate-500 dark:text-slate-400">{{ r.punto }}</span>{{ r.testo }}<template v-if="r.oggetto"> · il {{ r.oggetto }}</template></p>
                 <p class="flex flex-wrap items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
                     <span :class="[BADGE, CLASSI_DEL_BADGE[coloreDellEsito(r.esito)]]">{{ r.esito_parola }}</span>
                     <span v-if="r.seguito.stato !== 'senza_seguito'" :class="[BADGE, CLASSI_DEL_BADGE[coloreDelSeguito(r)]]">{{ r.seguito.parola }}</span>
@@ -228,7 +228,7 @@ function riproponi(c: CosaDaFare) {
                     <DropdownMenu v-if="vociDelMenu(r, condominioNome).length" :modal="false">
                         <DropdownMenuTrigger as-child>
                             <button type="button" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 dark:border-slate-700"
-                                :aria-label="`Altre azioni sul punto ${r.punto}`"><MoreHorizontal class="h-4 w-4" /></button>
+                                :aria-label="`Altre azioni sul punto ${r.punto}${r.oggetto ? `, il ${r.oggetto}` : ''}`"><MoreHorizontal class="h-4 w-4" /></button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" class="w-64">
                             <DropdownMenuItem v-for="v in vociDelMenu(r, condominioNome)" :key="v.voce" class="flex cursor-pointer flex-col items-start gap-0 px-2 py-1.5 text-[13px]"

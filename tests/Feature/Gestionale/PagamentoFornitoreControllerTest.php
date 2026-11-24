@@ -120,8 +120,9 @@ test('pagamento fattura con ritenuta: il listener F24 viene triggerato', functio
 
     (new SyncF24WithPagamento)->handle(new PagamentoRegistrato($pagamento));
 
+    // Coda 718 (decisione 675): un promemoria per condominio, «Prepara le deleghe F24», non uno per pagamento.
     $task = Evento::where('meta->type', 'versamento_ritenuta')
-        ->where('meta->context->pagamento_id', $pagamento->id)
+        ->where('meta->context->prepara_deleghe', true)
         ->first();
 
     if (! $task) {
@@ -560,4 +561,109 @@ test('la modifica con un IBAN diverso da quello del fornitore, senza conferma, t
     // Con la conferma dell'amministratore la stessa modifica passa.
     $this->actingAs($this->user)->put($rotta, $dati + ['iban_confermato_manualmente' => true])->assertSessionHasNoErrors();
     expect($pagamento->fresh()->iban_beneficiario)->toBe('IT28W8000000292100645211208');
+});
+
+test('la card «pagato nel mese» conta il mese di Roma: alle 00:30 del 01/12 un pagamento del 01/12 è di dicembre (Coda 547)', function () {
+    // Alle 00:30 di Roma del 01/12/2026 `now()` (UTC) dice ancora le 23:30 del 30/11: il mese era novembre.
+    $ctx = setupPagamentiHttp();
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
+    $fattura = registraFatturaServiceTest($ctx);
+    $this->travelTo(\Carbon\Carbon::parse('2026-12-01 00:30', 'Europe/Rome'));
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => '2026-12-01',
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => 122000]],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ])->assertSessionHasNoErrors();
+
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.pagamenti-fornitori.index', [$condominio]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('stats.totale_pagato_mese', 122000));
+});
+
+/** Un pagamento a bonifico di € 1.220,00 con l'IBAN dato (o senza), scritto dalla rotta; restituisce il contesto e il pagamento. */
+function b14PagamentoConIban(?string $iban): array
+{
+    $ctx = setupPagamentiHttp();
+    [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
+    $fattura = registraFatturaServiceTest($ctx);
+    $dati = [
+        'fornitore_id' => $fornitore->id, 'esercizio_id' => $esercizio->id, 'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento' => now()->toDateString(), 'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'allocazioni' => [['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => 122000]],
+        'bonifico_parlante' => false, 'allow_overdraft' => true,
+    ] + ($iban === null ? [] : ['iban_beneficiario' => $iban]);
+    test()->actingAs(test()->user)->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), $dati)->assertSessionHasNoErrors();
+
+    return [$ctx, PagamentoFornitore::firstOrFail()];
+}
+
+/** I campi del modulo di modifica come li manda la pagina: quelli del pagamento com'è, più quelli dati. */
+function b14DatiModifica(PagamentoFornitore $p, int $contoId, array $in): array
+{
+    return $in + [
+        'conto_corrente_id' => $contoId, 'data_pagamento' => $p->data_pagamento->toDateString(), 'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => $p->importo_lordo, 'importo_netto_cents' => $p->importo_netto, 'importo_ritenuta_cents' => $p->importo_ritenuta,
+    ];
+}
+
+test('la pagina di modifica del pagamento porta l\'IBAN registrato (Coda 626)', function () {
+    [$ctx, $p] = b14PagamentoConIban('IT60X0542811101000000123456');
+
+    $this->actingAs($this->user)->get(route('admin.gestionale.pagamenti-fornitori.edit', [$ctx[0], $p]))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('pagamento.iban_beneficiario', 'IT60X0542811101000000123456'));
+});
+
+test('un IBAN scritto a gruppi di quattro passa nella registrazione e nella modifica e si salva senza spazi (Coda 626)', function () {
+    [$ctx, $p] = b14PagamentoConIban('IT60 X054 2811 1010 0000 0123 456');
+    expect($p->iban_beneficiario)->toBe('IT60X0542811101000000123456');
+
+    $trentuno = 'IT28 W800 0000 2921 0064 5211 208';
+    $this->actingAs($this->user)->put(route('admin.gestionale.pagamenti-fornitori.update', [$ctx[0], $p]), b14DatiModifica($p, $ctx[4], ['iban_beneficiario' => $trentuno, 'iban_confermato_manualmente' => true]))
+        ->assertSessionHasNoErrors();
+
+    expect($p->fresh()->iban_beneficiario)->toBe('IT28W8000000292100645211208');
+});
+
+test('un IBAN lungo più di 34 caratteri, già normalizzato, si rifiuta nella registrazione e nella modifica (Coda 626)', function () {
+    [$ctx, $p] = b14PagamentoConIban('IT60X0542811101000000123456');
+    $lungo = 'IT60 X054 2811 1010 0000 0123 4560 0000 0123 4560';
+
+    $this->actingAs($this->user)->put(route('admin.gestionale.pagamenti-fornitori.update', [$ctx[0], $p]), b14DatiModifica($p, $ctx[4], ['iban_beneficiario' => $lungo]))
+        ->assertSessionHasErrors('iban_beneficiario');
+    expect($p->fresh()->iban_beneficiario)->toBe('IT60X0542811101000000123456');
+
+    $fattura2 = registraFatturaServiceTest($ctx);
+    $this->actingAs($this->user)->post(route('admin.gestionale.pagamenti-fornitori.store', [$ctx[0]]), [
+        'fornitore_id' => $ctx[3]->id, 'esercizio_id' => $ctx[1]->id, 'conto_corrente_id' => $ctx[4], 'data_pagamento' => now()->toDateString(),
+        'metodo_pagamento' => MetodoPagamento::BONIFICO->value, 'iban_beneficiario' => $lungo,
+        'allocazioni' => [['fattura_id' => $fattura2->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => 122000]],
+        'bonifico_parlante' => false, 'allow_overdraft' => true,
+    ])->assertSessionHasErrors('iban_beneficiario');
+    expect(PagamentoFornitore::count())->toBe(1);
+});
+
+test('in modifica un IBAN svuotato si cancella: non torna quello di prima (Coda 626)', function () {
+    [$ctx, $p] = b14PagamentoConIban('IT60X0542811101000000123456');
+
+    $this->actingAs($this->user)->put(route('admin.gestionale.pagamenti-fornitori.update', [$ctx[0], $p]), b14DatiModifica($p, $ctx[4], ['iban_beneficiario' => '']))
+        ->assertSessionHasNoErrors();
+
+    expect($p->fresh()->iban_beneficiario)->toBeNull();
+});
+
+test('in modifica, senza il campo IBAN nella richiesta, quello registrato resta (Coda 626)', function () {
+    [$ctx, $p] = b14PagamentoConIban('IT60X0542811101000000123456');
+
+    $this->actingAs($this->user)->put(route('admin.gestionale.pagamenti-fornitori.update', [$ctx[0], $p]), b14DatiModifica($p, $ctx[4], ['causale_bonifico' => 'Altra causale']))
+        ->assertSessionHasNoErrors();
+
+    expect($p->fresh()->iban_beneficiario)->toBe('IT60X0542811101000000123456');
 });

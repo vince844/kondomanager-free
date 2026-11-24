@@ -40,6 +40,7 @@ class CreateComunicazioneRequest extends FormRequest
             'priority'        => 'required|string',
             'can_comment'     => 'required|boolean',
             'commenti_moderati' => ['nullable', 'boolean'],
+            'chiedi_presa_visione' => ['sometimes', 'boolean'],
             'is_featured'     => 'required|boolean',
             'is_published'    => 'required|boolean',
             'anagrafiche'     => ['nullable', 'array'],
@@ -151,12 +152,18 @@ class CreateComunicazioneRequest extends FormRequest
 
         $user = Auth::user();
 
-        $this->merge([
+        $dati = [
             'created_by' => $user->id,
             'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value) 
             ? true 
             : false,
-        ]);
+        ];
+
+        if (! $this->has('chiedi_presa_visione')) {
+            $dati['chiedi_presa_visione'] = false;
+        }
+
+        $this->merge($dati);
     }
 
     /**
@@ -174,6 +181,7 @@ class CreateComunicazioneRequest extends FormRequest
             'stato'         => __('validation.attributes.comunicazioni.stato'),
             'condomini_ids' => __('validation.attributes.comunicazioni.condomini_ids'),
             'data_programmata' => __('validation.attributes.comunicazioni.data_programmata'),
+            'chiedi_presa_visione' => __('comunicazioni.label.ask_acknowledgement'),
         ];
     }
 }

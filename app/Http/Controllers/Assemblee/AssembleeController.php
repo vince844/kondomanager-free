@@ -102,7 +102,8 @@ class AssembleeController extends Controller
             unset($dati['tabella_id']);
         }
         $dati['sedute'] = $request->sedute();
-        $punti = $this->propostePrese($condominio, null, (array) $request->validated('proposte', []), (array) $request->validated('maggioranze', []));
+        $punti = $this->propostePrese($condominio, null, (array) $request->validated('proposte', []), (array) $request->validated('maggioranze', []),
+            ($dati['ambito'] ?? null) === AmbitoAssemblea::GRUPPO->value ? (int) ($dati['tabella_id'] ?? 0) : null);
         // I punti scritti in questa pagina: per la strada di «Aggiungi un punto», con la scala, la palazzina e la tabella del condominio (R18).
         $scritti = array_map(fn (array $p) => PuntiController::nelCondominio($condominio, $p), $request->puntiScritti());
         $segnata = null;
@@ -253,15 +254,18 @@ class AssembleeController extends Controller
      *
      * @param list<string> $chiavi
      * @param array<string, ?string> $maggioranze
+     * @param ?int $gruppo la tabella del gruppo dell'assemblea che nasce con «Prepara l'assemblea», se è dei condòmini di un gruppo
      * @return list<array<string, mixed>>
      */
-    public static function propostePrese(Condominio $condominio, ?Assemblea $assemblea, array $chiavi, array $maggioranze): array
+    public static function propostePrese(Condominio $condominio, ?Assemblea $assemblea, array $chiavi, array $maggioranze, ?int $gruppo = null): array
     {
         $scelte = array_flip(array_map('strval', $chiavi));
         $punti = [];
-        foreach (ProposteDellOrdineDelGiorno::per($condominio, $assemblea) as $gruppo) {
-            foreach ($gruppo['punti'] as $p) {
-                if (! isset($scelte[$p['chiave_fonte']])) {
+        foreach (ProposteDellOrdineDelGiorno::per($condominio, $assemblea) as $gruppi) {
+            foreach ($gruppi['punti'] as $p) {
+                // Una proposta di un gruppo (il suo memo, la sua gestione) va solo nell'assemblea di quel gruppo (Coda 734): per quella che nasce qui lo dice
+                // `$gruppo`, per le altre le proposte stesse.
+                if (! isset($scelte[$p['chiave_fonte']]) || ($assemblea === null && isset($p['gruppo_id']) && (int) $p['gruppo_id'] !== $gruppo)) {
                     continue;
                 }
                 if (array_key_exists($p['chiave_fonte'], $maggioranze)) {
@@ -279,7 +283,7 @@ class AssembleeController extends Controller
     /** @param array{anno: ?string, stato: ?string} $filtri */
     private function archivio(Condominio $condominio, array $filtri)
     {
-        $query = Assemblea::query()->where('condominio_id', $condominio->id)->withCount(['punti', 'delibere'])->with(['sedute', 'palazzina', 'scala'])
+        $query = Assemblea::query()->where('condominio_id', $condominio->id)->withCount(['punti', 'delibere'])->with(['sedute', 'palazzina', 'scala', 'tabella'])
             ->when($filtri['anno'] !== null, fn ($q) => $q->whereYear('data', (int) $filtri['anno']))
             ->when($filtri['stato'] === 'in_preparazione', fn ($q) => $q->where('stato', StatoAssemblea::IN_PREPARAZIONE->value))
             ->when($filtri['stato'] === 'convocata', fn ($q) => $q->where('stato', StatoAssemblea::CONVOCATA->value))
@@ -299,7 +303,8 @@ class AssembleeController extends Controller
             'stato' => $a->stato?->value,
             'stato_parola' => PerLePagine::statoParola($a),
             'a_mano' => $a->eAMano(),
-            'perimetro' => PerLePagine::perimetroDi($a->ambito?->value, $a->palazzina, $a->scala),
+            // Per i condòmini di un gruppo il nome della tabella (Coda 734): «Solo i condòmini della tabella «Box»».
+            'perimetro' => PerLePagine::perimetroDi($a->ambito?->value, $a->palazzina, $a->scala, $a->tabella),
             'sottotitolo' => PerLePagine::sottotitolo($a),
             'punti' => (int) $a->punti_count,
             'delibere' => (int) $a->delibere_count,

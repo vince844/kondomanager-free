@@ -5,7 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 
-import { computed } from "vue";
+import { computed, h } from "vue";
 import { Head, usePage, Link } from "@inertiajs/vue3";
 import GestionaleLayout from "@/layouts/GestionaleLayout.vue";
 import DataTable from "@/components/gestionale/tabelle/DataTable.vue";
@@ -18,17 +18,27 @@ import type { Flash } from "@/types/flash";
 import type { Tabella } from "@/types/gestionale/tabelle";
 import type { Building } from "@/types/buildings";
 import type { PaginationMeta } from "@/types/pagination";
+import { BADGE, CLASSI_DEL_BADGE } from '@/lib/assemblee/assemblee';
 
 const props = defineProps<{
   condominio: Building;
   condomini: Building[];
   tabelle: Tabella[];
   meta: PaginationMeta;
+  /** Le tabelle segnate «di un gruppo» (Coda 734): il badge accanto al nome. */
+  gruppi?: number[];
 }>();
 
 const { generatePath, generateRoute } = usePermission();
 
-const columns = computed(() => getColumns(props.condominio));
+// Il badge «Di un gruppo» accanto al nome della tabella segnata (Coda 734): la colonna del nome resta quella di sempre, con il badge a fianco.
+const columns = computed(() => getColumns(props.condominio).map((c) => {
+  if (!('accessorKey' in c) || c.accessorKey !== 'nome' || typeof c.cell !== 'function') return c;
+  const cella = c.cell;
+  return { ...c, cell: (ctx: Parameters<typeof cella>[0]) => (props.gruppi ?? []).includes(ctx.row.original.id)
+    ? h('div', { class: 'flex items-start gap-2' }, [cella(ctx), h('span', { class: [BADGE, CLASSI_DEL_BADGE.blu, 'mt-2'], 'data-testid': 'badge-di-un-gruppo' }, 'Di un gruppo')])
+    : cella(ctx) };
+}));
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);

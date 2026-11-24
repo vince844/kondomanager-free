@@ -70,7 +70,7 @@ export function registrato(piu: Partial<VerbaleDellaPagina> = {}): VerbaleDellaP
             persona({ invio: { id: 501, canale: 'pec', mezzo: 'pec', stato: 'inviata', esito: 'consegnata', esito_parola: 'Consegnata', esito_il: '2026-12-15T20:40:00Z',
                 ricevuta_il: '2026-12-15', spedito: true, errore: null, creato_il: '2026-12-15T20:38:00Z' },
                 termini: [{ punti: [3, 4, 6], perche: 'assente', dal: '2026-12-15', fino_al: '2027-01-14', da_consegnare: false }] }),
-            persona({ anagrafica_id: 3, nome: 'Rossi Mario', unita: 'Int. 3, box 21', gruppo: 'fuori', perche: 'uscito alle 19:30: assente ai punti 4 e 6', punti_assente: [4, 6],
+            persona({ anagrafica_id: 3, nome: 'Rossi Mario', unita: 'Int. 3, box 21', gruppo: 'fuori', perche: 'fuori dalle 19:30: assente ai punti 4 e 6', punti_assente: [4, 6],
                 voti: { 3: 'favorevole' }, mezzo: { mezzo: 'raccomandata', parola: 'Raccomandata', dalla_convocazione: true, indirizzo: 'Via Roma 12', perche: null },
                 termini: [{ punti: [4, 6], perche: 'assente', dal: null, fino_al: null, da_consegnare: true }] }),
             persona({ anagrafica_id: 13, nome: 'Romano Ida', gruppo: 'cera', riceve: false, proposto: false, perche: 'c\'era a tutti i punti', punti_assente: [],

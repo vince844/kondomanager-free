@@ -105,7 +105,7 @@ class StornoIncassoRateAction
                     'esercizio_id'       => $scr->esercizio_id,
                     'gestione_id'        => $scr->gestione_id,
                     'scrittura_padre_id' => $scr->id, // 🟢 LINK DIRETTO ALLA SCRITTURA ORIGINALE
-                    'data_registrazione' => now(),
+                    'data_registrazione' => DateHelper::oggiUtente(),
                     // ⚠️ **La rettifica ha la data in cui viene fatta, non quella dell'incasso.**
                     // Era l'unico storno del gestionale a retrodatare (giroconto, regolazione
                     // immediata, pagamento fornitore e F24 usano tutti `now()`), e nel registro
@@ -299,7 +299,7 @@ class StornoIncassoRateAction
                 'esercizio_id'       => $emissione->esercizio_id,
                 'gestione_id'        => $emissione->gestione_id,
                 'scrittura_padre_id' => $emissione->id,
-                'data_registrazione' => now(),
+                'data_registrazione' => DateHelper::oggiUtente(),
                 'data_competenza'    => $dataFiglia($emissione->data_competenza?->format('Y-m-d')),
                 'causale'            => 'Credito riportato restituito da uno storno — ' . $emissione->causale,
                 'tipo_movimento'     => 'emissione_rata',
@@ -369,7 +369,7 @@ class StornoIncassoRateAction
             'esercizio_id'       => $emissione->esercizio_id,
             'gestione_id'        => $emissione->gestione_id,
             'scrittura_padre_id' => $emissione->id,
-            'data_registrazione' => now(),
+            'data_registrazione' => DateHelper::oggiUtente(),
             'data_competenza'    => $dataFiglia($emissione->data_competenza?->format('Y-m-d')),
             'causale'            => 'Credito riportato restituito da uno storno — ' . $emissione->causale,
             'tipo_movimento'     => 'emissione_rata',

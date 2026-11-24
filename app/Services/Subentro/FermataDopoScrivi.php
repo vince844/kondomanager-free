@@ -50,6 +50,9 @@ use Illuminate\Support\Collection;
  */
 final class FermataDopoScrivi
 {
+    // La regola sola dell'esercizio aperto (Coda 646): `esercizioAperto()` la chiama.
+    use \App\Traits\HasEsercizio;
+
     /** Il prefisso delle chiavi dei conduttori nei pesi: rimborsano con il prospetto, e non sono mai chi riceve una fermata. */
     private const CONDUTTORE = 'c';
 
@@ -2795,10 +2798,10 @@ final class FermataDopoScrivi
         return fn (Saldo $x): bool => ! $x->eBloccato() && (int) $x->esercizio_id === (int) ($aperti[(int) $x->condominio_id] ?? 0);
     }
 
-    /** L'esercizio aperto del condominio, con la regola della pagina dei saldi e della porta (`HasEsercizio::getEsercizioCorrente`): il primo con lo stato «aperto». */
+    /** L'esercizio aperto del condominio, con la regola della pagina dei saldi e della porta (`HasEsercizio::getEsercizioCorrente`): con più d'uno aperto, il più recente (Coda 646, decisione 707 (4)). */
     private static function esercizioAperto(int $condominioId): ?int
     {
-        return \App\Models\Condominio::find($condominioId)?->esercizi()->where('stato', 'aperto')->first()?->id;
+        return self::esercizioApertoPiuRecente($condominioId)?->id;
     }
 
     /** Il motivo del cancello per la parte che risale: corto, con le due cifre. */
@@ -3513,7 +3516,7 @@ final class FermataDopoScrivi
 
     /**
      * Le righe che la pagina dei saldi non mostra: stanno in un esercizio che non è quello aperto del loro condominio. La pagina legge solo
-     * quello, con la regola di `HasEsercizio::getEsercizioCorrente` (il primo esercizio del condominio con lo stato «aperto»): lì una riga di
+     * quello, con la regola di `HasEsercizio::getEsercizioCorrente` (l'esercizio aperto del condominio, il più recente se sono più d'uno): lì una riga di
      * un altro esercizio non si modifica né si toglie, e la porta ne accetta una nuova nell'esercizio aperto (`fattiDeiLegati`).
      *
      * @param Collection<int, Saldo> $saldi con `condominio_id` ed `esercizio_id`

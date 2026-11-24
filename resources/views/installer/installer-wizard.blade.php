@@ -64,12 +64,17 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                 </div>
 
                 <div class="mt-auto pt-6">
-                    <p class="bg-gray-50 rounded-xl px-3 py-3 text-center text-xs text-gray-400">
-                        Powered by
-                        <a href="https://www.kondomanager.com" target="_blank" rel="noopener noreferrer" class="font-semibold text-gray-500 hover:text-gray-700 hover:underline">Kondomanager</a>
-                        —
-                        <a href="https://github.com/vince844/kondomanager-free" target="_blank" rel="noopener noreferrer" class="hover:text-gray-700 hover:underline">{{ __('installer.wizard.footer_license') }}</a>
-                    </p>
+                    <div class="bg-gray-50 rounded-xl px-3 py-3 text-center text-xs text-gray-400" x-data="{ noteAperte: false }">
+                        <p>{{ __('installer.wizard.footer_copyright') }}
+                            ·
+                            <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer" class="hover:text-gray-700 hover:underline">{{ __('installer.wizard.footer_license') }}</a>
+                            ·
+                            <button type="button" class="hover:text-gray-700 hover:underline" x-on:click="noteAperte = ! noteAperte" x-bind:aria-expanded="noteAperte">{{ __('installer.wizard.footer_notes') }}</button>
+                            ·
+                            <a href="https://github.com/vince844/kondomanager-free" target="_blank" rel="noopener noreferrer" class="hover:text-gray-700 hover:underline">{{ __('installer.wizard.footer_source') }}</a>
+                        </p>
+                        <p x-show="noteAperte" style="display: none" class="mt-2 text-left">{{ __('installer.wizard.footer_notes_text') }}</p>
+                    </div>
                 </div>
             </div>
 

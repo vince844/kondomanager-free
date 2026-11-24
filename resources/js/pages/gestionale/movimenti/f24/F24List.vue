@@ -72,6 +72,11 @@ const props = defineProps<{
      * codice tributo sarebbe 1019 o 1020 a caso (Coda 119).
      */
     fornitori_da_classificare: { id: number | null; ragione_sociale: string }[];
+    /**
+     * Le deleghe da versare con la ritenuta di una fattura già versata con un'altra delega, per un pagamento poi stornato
+     * (Coda 754 (10), decisione 704): la frase e la delega a cui porta.
+     */
+    avvisi_ritenute_gia_versate?: { delega_id: number; messaggio: string }[];
 }>();
 
 const { generatePath, generateRoute, hasPermission } = usePermission();
@@ -233,6 +238,29 @@ const calcola = () => {
                                     class="font-bold underline underline-offset-2"
                                 >{{ f.ragione_sociale }}</Link>
                                 <span v-else class="font-bold">{{ f.ragione_sociale }}</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Decisione 704: una delega da versare che porta una ritenuta già versata con un'altra delega, per un pagamento poi
+                 stornato. Si dice prima del versamento, con il collegamento alla delega. -->
+            <div
+                v-if="(props.avvisi_ritenute_gia_versate ?? []).length"
+                class="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30"
+            >
+                <div class="flex items-start gap-3">
+                    <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <div class="space-y-2 text-[13px] text-amber-900 dark:text-amber-200">
+                        <p class="font-bold">Ritenuta già versata con un'altra delega</p>
+                        <ul class="space-y-1">
+                            <li v-for="a in props.avvisi_ritenute_gia_versate" :key="`${a.delega_id}-${a.messaggio}`">
+                                <span>{{ a.messaggio }}</span>
+                                <Link
+                                    :href="route(generateRoute('gestionale.f24.show'), { condominio: props.condominio.id, delega: a.delega_id })"
+                                    class="ml-1 font-bold underline underline-offset-2"
+                                >Apri la delega</Link>
                             </li>
                         </ul>
                     </div>

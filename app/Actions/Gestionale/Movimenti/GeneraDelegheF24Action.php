@@ -13,6 +13,7 @@ use App\Models\Condominio;
 use App\Models\Gestionale\DelegaF24;
 use App\Models\Gestionale\PagamentoFornitore;
 use App\Models\Gestionale\RigaF24;
+use App\Services\Gestionale\F24\PromemoriaDelleRitenute;
 use App\Services\Gestionale\PlafondRitenuteService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -59,7 +60,7 @@ class GeneraDelegheF24Action
      */
     public function esegui(Condominio $condominio, int $esercizioId): \Illuminate\Support\Collection
     {
-        return DB::transaction(function () use ($condominio, $esercizioId) {
+        $create = DB::transaction(function () use ($condominio, $esercizioId) {
 
             // Le bozze si rifanno da zero: non sono documenti, sono una proposta.
             //
@@ -67,9 +68,15 @@ class GeneraDelegheF24Action
             // € 500,00 è un monte unico del condominio, e le ritenute qui sotto vengono da tutti gli esercizi:
             // una bozza del vecchio esercizio lasciata in piedi terrebbe fuori dal ricalcolo le sue ritenute
             // (sono «già in una delega»), e il cumulo ripartirebbe da zero al confine dell'esercizio.
-            DelegaF24::where('condominio_id', $condominio->id)
-                ->where('stato', StatoDelegaF24::BOZZA->value)
-                ->each(fn (DelegaF24 $d) => $d->righe()->delete() && $d->delete());
+            //
+            // ⚠️ **Un `foreach`, non `each()`** (Coda 212). Con `each(fn ($d) => $d->righe()->delete() && $d->delete())`
+            // la funzione restituiva il risultato dell'espressione: per una bozza senza righe la cancellazione delle
+            // righe vale 0, l'`&&` non cancellava la bozza e `each()`, che si ferma al primo falso, lasciava in piedi
+            // anche le bozze dopo di lei, con le loro ritenute «già in una delega».
+            foreach (DelegaF24::where('condominio_id', $condominio->id)->where('stato', StatoDelegaF24::BOZZA->value)->orderBy('id')->get() as $bozza) {
+                RigaF24::where('delega_f24_id', $bozza->id)->delete();
+                $bozza->delete();
+            }
 
             $ritenute = $this->ritenuteDaVersare($condominio);
 
@@ -91,6 +98,12 @@ class GeneraDelegheF24Action
 
             return $create;
         });
+
+        // Dopo il commit: un promemoria per ogni delega nuova (il compito della bozza rifatta segue la delega che ne prende il posto), e
+        // il «Prepara le deleghe F24» si chiude se non resta niente fuori (Coda 718).
+        app(PromemoriaDelleRitenute::class)->allineaSenzaFermare($condominio);
+
+        return $create;
     }
 
     /**

@@ -54,6 +54,12 @@ const props = defineProps<{
    * non a chi entra, e le due voci lo dicono.
    */
   senzaSuccessore?: boolean;
+  /**
+   * Tappa 7 della 1.12.0-beta.14 (decisione 705): la sola sezione delle rate, senza il guscio del pannello, il titolo, gli stati, gli altri tre blocchi e
+   * la casella della rinuncia. È la parte di una persona dentro `AnteprimaGruppo.vue` (più persone che escono in un passaggio solo): il guscio, chi resta
+   * obbligato, le teste e la casella «Le parti hanno regolato il conguaglio fra loro» sono dell'insieme, una volta sola.
+   */
+  soloRate?: boolean;
 }>();
 
 /** La rinuncia alla coppia proposta e la sua ragione: stato del modulo, tenuto da chi ci sta sopra. */
@@ -143,8 +149,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
   <!-- Verifica a video della .50, su richiesta di Vincenzo: da desktop il pannello non supera l'altezza dello schermo e scorre al suo
        interno, con il titolo sempre in vista; le due voci della scelta, in fondo, si raggiungono senza scorrere tutta la pagina. Da
        telefono resta nella colonna, senza scorrimento interno. -->
-  <aside class="lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] space-y-0 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden lg:overflow-y-auto">
-    <div class="lg:sticky lg:top-0 lg:z-10 px-5 py-4 border-b border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 lg:bg-slate-50 dark:lg:bg-slate-800 flex items-start gap-3">
+  <component :is="soloRate ? 'div' : 'aside'" :class="soloRate ? '' : 'lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] space-y-0 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden lg:overflow-y-auto'">
+    <div v-if="!soloRate" class="lg:sticky lg:top-0 lg:z-10 px-5 py-4 border-b border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 lg:bg-slate-50 dark:lg:bg-slate-800 flex items-start gap-3">
       <div class="p-2 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 shrink-0">
         <Scale class="w-4 h-4" />
       </div>
@@ -158,7 +164,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
     </div>
 
     <!-- Errore: il pulsante resta disabilitato a monte, qui si dice solo la verità. -->
-    <div v-if="errore" class="p-5 flex items-start gap-3 text-sm text-rose-800 dark:text-rose-300 bg-rose-50/60 dark:bg-rose-900/10">
+    <div v-if="!soloRate && errore" class="p-5 flex items-start gap-3 text-sm text-rose-800 dark:text-rose-300 bg-rose-50/60 dark:bg-rose-900/10">
       <AlertTriangle class="w-5 h-5 shrink-0 mt-0.5" />
       <div>
         <p class="font-semibold">Non riesco a calcolare le conseguenze: riprova.</p>
@@ -167,7 +173,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
     </div>
 
     <!-- Bloccato: un dato del modulo non passa la validazione del server. -->
-    <div v-else-if="bloccato" class="p-5 flex items-start gap-3 text-sm text-amber-900 dark:text-amber-200 bg-amber-50/70 dark:bg-amber-900/10">
+    <div v-else-if="!soloRate && bloccato" class="p-5 flex items-start gap-3 text-sm text-amber-900 dark:text-amber-200 bg-amber-50/70 dark:bg-amber-900/10">
       <AlertTriangle class="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
       <div>
         <p class="font-semibold">{{ attesaScelta ? 'Manca una scelta nel modulo.' : 'Un dato del modulo non è accettabile.' }}</p>
@@ -176,7 +182,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
     </div>
 
     <!-- In attesa: il modulo non basta ancora. -->
-    <div v-else-if="!pronto" class="p-5 text-sm text-slate-600 dark:text-slate-400 space-y-3">
+    <div v-else-if="!soloRate && !pronto" class="p-5 text-sm text-slate-600 dark:text-slate-400 space-y-3">
       <p class="flex items-start gap-2">
         <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
         <span v-if="mancante.length">Il pannello si compila da solo mentre scrivi. Per cominciare {{ mancante.length === 1 ? 'manca' : 'mancano' }}:</span>
@@ -188,10 +194,10 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
     </div>
 
     <!-- Pronto: i quattro blocchi. -->
-    <div v-else-if="dati" class="divide-y divide-dashed divide-slate-200 dark:divide-slate-700">
+    <div v-else-if="dati" :class="soloRate ? '' : 'divide-y divide-dashed divide-slate-200 dark:divide-slate-700'">
 
       <!-- 1. Anagrafica -->
-      <section class="p-5 space-y-2">
+      <section v-if="!soloRate" class="p-5 space-y-2">
         <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
           <Users class="w-3.5 h-3.5" /> 1. Anagrafica
         </h4>
@@ -202,8 +208,8 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
       </section>
 
       <!-- 2. Rate già emesse -->
-      <section class="p-5 space-y-3">
-        <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+      <section :class="soloRate ? 'space-y-3' : 'p-5 space-y-3'">
+        <h4 v-if="!soloRate" class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
           <Receipt class="w-3.5 h-3.5" /> 2. Rate già emesse
           <span v-if="conguaglio && haCoppie && daScegliere" class="ml-auto inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 px-1.5 py-0.5 text-[9px] normal-case tracking-normal font-semibold">
             <ArrowLeftRight class="w-3 h-3" /> conguaglio da scegliere
@@ -346,14 +352,14 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
             </tfoot>
           </table>
 
-          <p v-if="haCoppie && arretratoAgliEredi" class="px-3 py-2.5 border-t border-indigo-100 dark:border-indigo-900/40 text-[11px] text-slate-500 dark:text-slate-400 leading-snug bg-white dark:bg-slate-900">
+          <p v-if="!soloRate && haCoppie && arretratoAgliEredi" class="px-3 py-2.5 border-t border-indigo-100 dark:border-indigo-900/40 text-[11px] text-slate-500 dark:text-slate-400 leading-snug bg-white dark:bg-slate-900">
             Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: insieme danno a ogni erede la sua quota di tutto ciò che il defunto ha lasciato aperto. Per non scrivere il conguaglio, lascia l'arretrato a nome del defunto.
           </p>
           <!-- Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, due voci e nessuna
                già scelta, al posto della casella; «Non scriverlo» non dichiara un accordo e la nota è facoltativa. Decisione 77
                (1.11.0-beta.50): le stesse due voci alla fine di una locazione, con i testi della locazione; una scelta sola per
                l'appartamento e le pertinenze spuntate. -->
-          <div v-else-if="haCoppie && sceltaRichiesta" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
+          <div v-else-if="!soloRate && haCoppie && sceltaRichiesta" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
             <p class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">Il conguaglio si sceglie: il programma non lo sceglie al posto tuo.</p>
             <label class="flex items-start gap-2 cursor-pointer">
               <input type="radio" value="scrivi" v-model="sceltaConguaglio" class="mt-0.5 accent-indigo-600" />
@@ -399,7 +405,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
             </div>
             <p v-if="sceltaConguaglio === null" class="text-[11px] text-amber-700 dark:text-amber-400">Scegli se scrivere il conguaglio.</p>
           </div>
-          <div v-else-if="haCoppie" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
+          <div v-else-if="!soloRate && haCoppie" class="px-3 py-3 border-t border-indigo-100 dark:border-indigo-900/40 space-y-2 bg-white dark:bg-slate-900">
             <label class="flex items-start gap-2 cursor-pointer">
               <Checkbox :model-value="rinuncia" @update:model-value="(v: boolean | 'indeterminate') => rinuncia = v === true" class="mt-0.5" />
               <span class="text-[12px] text-slate-700 dark:text-slate-300 leading-snug">
@@ -435,7 +441,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
       </section>
 
       <!-- 3. Chi resta obbligato -->
-      <section class="p-5">
+      <section v-if="!soloRate" class="p-5">
         <div class="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/10 p-4 space-y-2">
           <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-amber-800 dark:text-amber-300">
             <ShieldCheck class="w-3.5 h-3.5" /> 3. Chi resta obbligato
@@ -445,7 +451,7 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
       </section>
 
       <!-- 4. Cosa non cambia -->
-      <section class="p-5 space-y-2">
+      <section v-if="!soloRate" class="p-5 space-y-2">
         <h4 class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
           <Info class="w-3.5 h-3.5" /> 4. Cosa non cambia
         </h4>
@@ -456,5 +462,5 @@ const dataBreve = (iso: string) => iso.split('-').reverse().join('/');
         </ul>
       </section>
     </div>
-  </aside>
+  </component>
 </template>

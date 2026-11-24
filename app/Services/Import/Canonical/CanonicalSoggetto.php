@@ -53,6 +53,17 @@ final readonly class CanonicalSoggetto
         public ?array $recapitoSpedizioni = null,
         public ?string $note = null,
         public ?string $refEsterno = null,
+        // Dalla 1.12.0-beta.14 (Coda 769) il modello Excel porta tutti i campi dell'anagrafica. Le date sono già «Y-m-d», il mezzo è un valore di
+        // `MezzoConvocazione`, la tipologia del documento è `passport` o `id_card`: il parser le ha già riconosciute, qui non si ricontrolla niente.
+        public ?string $emailSecondaria = null,
+        public ?string $pecComunicataIl = null,
+        public ?string $mezzoConvocazione = null,
+        public ?string $cellulare = null,
+        public ?string $dataNascita = null,
+        public ?string $luogoNascita = null,
+        public ?string $tipologiaDocumento = null,
+        public ?string $numeroDocumento = null,
+        public ?string $scadenzaDocumento = null,
     ) {}
 
     /**
@@ -87,6 +98,15 @@ final readonly class CanonicalSoggetto
             'telefoni' => $this->telefoni,
             'recapito_spedizioni' => $this->recapitoSpedizioni,
             'note' => $this->note,
+            'email_secondaria' => $this->emailSecondaria,
+            'pec_comunicata_il' => $this->pecComunicataIl,
+            'mezzo_convocazione' => $this->mezzoConvocazione,
+            'cellulare' => $this->cellulare,
+            'data_nascita' => $this->dataNascita,
+            'luogo_nascita' => $this->luogoNascita,
+            'tipologia_documento' => $this->tipologiaDocumento,
+            'numero_documento' => $this->numeroDocumento,
+            'scadenza_documento' => $this->scadenzaDocumento,
         ];
     }
 }

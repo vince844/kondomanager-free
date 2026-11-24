@@ -89,7 +89,7 @@ function conferma() {
                 <div v-if="altre.length > 0" class="space-y-1.5">
                     <label v-for="a in altre" :key="a.id" class="flex cursor-pointer items-start gap-2 text-sm text-slate-800 dark:text-slate-200" :data-testid="`anche-${a.id}`">
                         <Checkbox :model-value="anche.includes(a.id)" class="mt-0.5 rounded" @update:model-value="(v: boolean | 'indeterminate') => spunta(a.id, v)" />
-                        <span>Anche {{ a.etichetta }} è {{ come === 'in_collegamento' ? 'collegato' : 'in sala' }}, senza voto</span>
+                        <span>Anche {{ a.etichetta }} è {{ come === 'in_collegamento' ? 'in collegamento' : 'in sala' }}, senza voto</span>
                     </label>
                     <p class="text-xs text-slate-500 dark:text-slate-400">L'unità in comproprietà ha un solo rappresentante, che vota (art. 67 c. 2 disp. att.): la sala conta una testa.</p>
                 </div>

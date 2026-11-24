@@ -43,7 +43,7 @@ class StatoDellaConvocazione
         'non_partita' => ['Non partita', 'ro'],
         'da_verificare' => ['Da verificare', 'am'],
         'da_ristampare' => ['Da ristampare', 'am'],
-        'non_piu_convocato' => ['Non più convocato', 'sl'],
+        'non_piu_convocato' => ['Non più fra i convocati', 'sl'],
     ];
 
     public function __construct(

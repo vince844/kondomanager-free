@@ -19,6 +19,7 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\NotaSintetica;
+use App\Models\Tabella;
 use App\Services\Gestionale\Debiti\SeiMesiPerAgire;
 use App\Services\Gestionale\FattiDellaNota;
 use App\Services\Gestionale\NotaSinteticaDelRendiconto;
@@ -37,7 +38,11 @@ use Throwable;
  *
  * Ogni punto: `chiave_fonte`, `testo`, `testo_pubblico`, `frase` (la riga sotto), `materia`, `maggioranza` (proposta), `avviso`, `amministrazione`,
  * `origine` (il gruppo), `fonte`, `spuntato` (di serie sì: ciò che si toglie resta per la prossima; per un'assemblea di una palazzina o di una scala i
- * sospesi di tutto il condominio no), `memo_id`, `oggetti`, `esercizio_id`, `importo`.
+ * sospesi di tutto il condominio no), `memo_id`, `oggetti`, `esercizio_id`, `importo`. Per l'assemblea dei condòmini di un gruppo le materie di tutto il
+ * condominio ({@see OrdineDelGiorno::MATERIE_DI_TUTTI}) non si propongono, salvo il rendiconto e il preventivo di una gestione che riguarda solo il gruppo
+ * ({@see delleGestioniDelGruppo()}, decisione 699 (3)); i memo sono quelli del gruppo (il punto rinviato in un'assemblea del gruppo, spuntati) e quelli di
+ * tutto il condominio (non spuntati). Le proposte di un gruppo hanno `gruppo_id` (la tabella del gruppo): l'assemblea di un altro perimetro non le propone,
+ * e «Prepara l'assemblea» (senza assemblea) le mostra solo con «Per chi» quel gruppo.
  */
 final class ProposteDellOrdineDelGiorno
 {
@@ -59,10 +64,13 @@ final class ProposteDellOrdineDelGiorno
         // Un'assemblea di una palazzina o di una scala: i sospesi di tutto il condominio si propongono, ma non spuntati (decide l'amministratore se sono
         // anche di quella parte); i memo sono già del suo perimetro, e «Varie ed eventuali» resta spuntata.
         $diUnaParte = $assemblea !== null && $assemblea->ambito !== null && $assemblea->ambito !== AmbitoAssemblea::CONDOMINIO;
+        // L'assemblea dei condòmini di un gruppo (Coda 734, decisione 699 (3)): le cose che per legge sono di tutto il condominio non si propongono.
+        $diUnGruppo = UnitaDelPunto::gruppoDellAssemblea($assemblea) !== null;
         // R8 del seguito delle delibere: il sospeso che torna proposto dopo un rinvio dice «rinviato dal 15/12/2026».
         $rinvii = \App\Services\Assemblee\Seguito\StatoDiEsecuzione::rinvii($condominio);
-        $aggiungi = function (string $gruppo, array $punto) use (&$gruppi, $occupate, $diUnaParte, $rinvii) {
-            if (in_array($punto['chiave_fonte'], $occupate, true)) {
+        $aggiungi = function (string $gruppo, array $punto) use (&$gruppi, $occupate, $diUnaParte, $diUnGruppo, $rinvii) {
+            if (in_array($punto['chiave_fonte'], $occupate, true)
+                || ($diUnGruppo && ! isset($punto['gruppo_id']) && isset(OrdineDelGiorno::MATERIE_DI_TUTTI[(string) $punto['materia']]))) {
                 return;
             }
             $materia = (string) $punto['materia'];
@@ -84,7 +92,7 @@ final class ProposteDellOrdineDelGiorno
             ];
         };
 
-        foreach (self::diSerie($condominio, $assemblea) as $p) {
+        foreach ([...self::diSerie($condominio, $assemblea), ...self::delleGestioniDelGruppo($condominio, $assemblea)] as $p) {
             $aggiungi('di_serie', $p);
         }
         foreach (self::dalProgramma($condominio) as $p) {
@@ -286,6 +294,38 @@ final class ProposteDellOrdineDelGiorno
     }
 
     /**
+     * Il rendiconto e il preventivo di una gestione che riguarda solo un gruppo (decisione 699 (3), {@see OrdineDelGiorno::gestioniDelGruppo()}), con la
+     * gestione fra gli oggetti: dalla rotta entrano senza la frase del rischio. Il rendiconto per ogni gestione attiva del gruppo; il preventivo per quella non
+     * straordinaria con un piano rate ordinario in bozza (lo straordinario lo propone il programma, come lavori). Non spuntati, con `gruppo_id`: per
+     * l'assemblea del gruppo quelli del suo gruppo; senza assemblea («Prepara l'assemblea») quelli di ogni tabella segnata; per le altre niente.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function delleGestioniDelGruppo(Condominio $condominio, ?Assemblea $assemblea): array
+    {
+        $delGruppo = UnitaDelPunto::gruppoDellAssemblea($assemblea);
+        $gruppi = $assemblea === null ? Tabella::query()->where('condominio_id', $condominio->id)->where('di_un_gruppo', true)->orderBy('id')
+            ->pluck('nome', 'id')->all() : ($delGruppo === null ? [] : [$delGruppo => (string) $assemblea->tabella?->nome]);
+        $punti = [];
+        foreach ($gruppi as $gruppo => $nome) {
+            foreach (OrdineDelGiorno::gestioniDelGruppo((int) $condominio->id, (int) $gruppo) as $g) {
+                $comune = ['fonte' => FontePunto::DI_SERIE->value, 'oggetti' => [['gestione', $g['id'], 'parla_di']], 'spuntato' => false, 'gruppo_id' => (int) $gruppo,
+                    'frase' => 'La gestione «' . $g['nome'] . '» si divide solo fra i condòmini della tabella «' . $nome . '»: il punto è loro.'];
+                $punti[] = ['chiave_fonte' => 'rendiconto_gestione:' . $g['id'], 'testo' => 'Approvazione del rendiconto della gestione «' . $g['nome']
+                    . '» e dello stato di riparto', 'materia' => MateriaPunto::RENDICONTO->value] + $comune;
+                $inBozza = $g['tipo'] !== 'straordinaria' && DB::table('piani_rate')->where('gestione_id', $g['id'])->where('tipo', 'ordinario')
+                    ->where('stato', 'bozza')->exists();
+                if ($inBozza) {
+                    $punti[] = ['chiave_fonte' => 'preventivo_gestione:' . $g['id'], 'testo' => 'Approvazione del preventivo della gestione «' . $g['nome']
+                        . '» e del piano di riparto', 'materia' => MateriaPunto::PREVENTIVO->value] + $comune;
+                }
+            }
+        }
+
+        return $punti;
+    }
+
+    /**
      * Lo sforo, i lavori senza delibera, i lavori d'urgenza non riferiti, il deficit da ripianare, la dispensa dei sei mesi ({@see DispensaInAssemblea}).
      *
      * @return list<array<string, mixed>>
@@ -429,7 +469,11 @@ final class ProposteDellOrdineDelGiorno
             ->where(fn ($q) => $q->whereNull('assemblea_id')->orWhereNotIn('assemblea_id', $inPreparazione)
                 ->when($assemblea !== null, fn ($w) => $w->orWhere('assemblea_id', $assemblea->id)))
             ->orderBy('created_at')->orderBy('id');
-        if ($assemblea !== null && $assemblea->ambito !== AmbitoAssemblea::CONDOMINIO) {
+        $delGruppo = $assemblea !== null && $assemblea->ambito === AmbitoAssemblea::GRUPPO;
+        if ($delGruppo) {
+            // I condòmini di un gruppo: i memo del suo gruppo e quelli di tutto il condominio; qui sotto si sceglie fra quelli del gruppo.
+            $query->whereIn('ambito', [AmbitoAssemblea::CONDOMINIO->value, AmbitoAssemblea::GRUPPO->value]);
+        } elseif ($assemblea !== null && $assemblea->ambito !== AmbitoAssemblea::CONDOMINIO) {
             // Un'assemblea di una palazzina o di una scala: i memo di tutto il condominio e quelli del suo perimetro.
             $query->where(fn ($q) => $q->where('ambito', AmbitoAssemblea::CONDOMINIO->value)
                 ->orWhere(fn ($w) => $w->where('ambito', $assemblea->ambito?->value)
@@ -438,6 +482,20 @@ final class ProposteDellOrdineDelGiorno
         }
         $punti = [];
         foreach ($query->get() as $memo) {
+            // Il memo di un gruppo (il punto rinviato in un'assemblea dei condòmini di un gruppo, Coda 734) lo propone solo un'assemblea di quel gruppo, spuntato;
+            // in quella del gruppo i memo di tutto il condominio non sono spuntati, salvo quello scritto per lei. Senza assemblea porta il gruppo, non spuntato.
+            $gruppo = MemoriaDelCondominio::gruppoDelMemo($memo);
+            $scelta = [];
+            if ($delGruppo) {
+                if ($gruppo !== null && $gruppo['tabella_id'] !== UnitaDelPunto::gruppoDellAssemblea($assemblea)) {
+                    continue;
+                }
+                $scelta = ['spuntato' => $gruppo !== null || (int) $memo->assemblea_id === (int) $assemblea->id];
+            } elseif ($assemblea !== null && $gruppo !== null) {
+                continue;
+            } elseif ($gruppo !== null) {
+                $scelta = ['gruppo_id' => $gruppo['tabella_id'], 'spuntato' => false];
+            }
             $p = MemoriaDelCondominio::comeProposta($memo);
             $nonTrattato = $memo->punto_id === null ? null : DB::table('assemblee_punti')->join('assemblee', 'assemblee.id', '=', 'assemblee_punti.assemblea_id')
                 ->where('assemblee_punti.id', $memo->punto_id)->value('assemblee.data');
@@ -445,13 +503,14 @@ final class ProposteDellOrdineDelGiorno
             $rinviato = $nonTrattato !== null && DB::table('delibere')->where('punto_id', $memo->punto_id)->where('esito', 'rinviata')->exists();
             $riga = array_values(array_filter([
                 'Memo del ' . $memo->created_at?->copy()->setTimezone(config('app.user_timezone', 'Europe/Rome'))->format('d/m'),
+                $assemblea === null && $gruppo !== null ? 'per i condòmini della tabella «' . $gruppo['nome'] . '»' : null,
                 $memo->origine_nome,
                 $memo->nota !== null && trim($memo->nota) !== '' ? 'la tua nota: ' . trim($memo->nota) : null,
                 $nonTrattato !== null ? ($rinviato ? 'rinviato il ' : 'non trattato il ') . \Illuminate\Support\Carbon::parse($nonTrattato)->format('d/m/Y') : null,
                 // Il memo su una spesa oltre il preventivo porta la sua motivazione, come il punto del programma.
                 isset($p['dati']['motivazione']) ? rtrim(PropostaDelPunto::fraseDellaMotivazione($p['dati']['motivazione'], $p['dati']['motivazione_di']), '.') : null,
             ]));
-            $punti[] = $p + ['frase' => implode(' · ', $riga), 'oggetti' => $p['oggetti']];
+            $punti[] = $p + ['frase' => implode(' · ', $riga), 'oggetti' => $p['oggetti']] + $scelta;
         }
 
         return $punti;

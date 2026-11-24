@@ -25,14 +25,24 @@ use Carbon\CarbonInterface;
  * (sanzionabili) o anticipati.
  *
  * **Appalti, 4% — art. 25-ter** (`SOGLIA_500_TRE_FINESTRE`)
- * Si versa entro il 16 del mese successivo a quello in cui il **cumulo** raggiunge 500 €.
+ * Si versa entro il 16 del mese successivo a quello in cui il **cumulo** raggiunge 500 € («raggiunga»: 500 € esatti bastano).
  * A prescindere dalla soglia si versa comunque entro il **16 giugno** e il **16 dicembre**.
  * Le ritenute operate a **dicembre** vanno entro il **16 gennaio** successivo.
  *
  * **Lavoro autonomo e provvigioni, 20% e 23% — artt. 25 e 25-bis** (`SOGLIA_100_ANNUALE`)
- * Stessa meccanica ma soglia **100 €** e **una sola** data-limite annuale, il 16 dicembre.
+ * Soglia **100 €** e **una sola** data-limite annuale, il 16 dicembre. Il confronto non è lo stesso del 4%: si rinvia finché
+ * il cumulo «non supera» 100 € (art. 9, c. 4, D.Lgs. 1/2024), quindi 100 € esatti si rinviano ancora
+ * (`PlafondRitenuta::superaLaSoglia()`, Coda 717). Valgono le stesse regole per i non residenti al 30%.
  * È un accumulatore **separato**: le ritenute 4% non concorrono a raggiungere i 100 €, né
  * viceversa. Il dossier lo dice esplicitamente — *«non riusare la stessa logica del 4%»*.
+ *
+ * **Le tre regole che valgono per tutti i regimi con la soglia** (Coda 717, dai casi di t=202):
+ * 1. il confronto con la soglia è quello del regime (sopra);
+ * 2. la soglia si guarda sul **mese**: si sommano tutte le ritenute operate nel mese, con ciò che i mesi prima hanno rinviato,
+ *    e se il cumulo fa scattare il versamento si versa tutto il 16 del mese dopo **quel mese**. Fino alla 1.12.0-beta.13 si
+ *    guardava a ogni pagamento: con € 120,00 + € 30,00 di un professionista ad aprile i € 30,00 finivano al 16 dicembre,
+ *    sette mesi dopo il 18 maggio giusto;
+ * 3. una scadenza fra il 1° e il 20 agosto vale fino al 20 (`CalendarioFiscaleService::scadenzaFiscale()`).
  *
  * **Lavoro dipendente — art. 23** (`MENSILE_SEMPRE`)
  * Nessun rinvio: 16 del mese successivo, sempre. Il motore paghe è fuori scope, ma la
@@ -93,10 +103,15 @@ class PlafondRitenuteService
     /**
      * Accumula le ritenute di un singolo plafond e le chiude in gruppi.
      *
-     * Un gruppo si chiude quando succede la prima delle tre cose: il cumulo raggiunge la
+     * Un gruppo si chiude quando succede la prima delle tre cose: il cumulo del mese fa scattare la
      * soglia, si arriva a una data-limite di legge, oppure finiscono le ritenute. Le
      * ritenute di dicembre stanno sempre per conto loro, perché il loro termine è il 16
      * gennaio a prescindere da tutto.
+     *
+     * Il passo è il **mese**, non la ritenuta (Coda 717): si aggiungono tutte le ritenute del mese, poi si guarda la soglia
+     * sul cumulo (con ciò che i mesi prima hanno rinviato), poi la data-limite fra questo mese e il prossimo che ha ritenute.
+     * Guardando a ogni ritenuta, un mese che superava la soglia a metà chiudeva il gruppo lì, e le ritenute dello stesso mese
+     * venute dopo ripartivano da zero e si rinviavano: € 500,00 + € 40,00 di appalti ad aprile davano € 40,00 al 16 giugno.
      *
      * @param  array<int,array<string,mixed>>  $righe  ordinate per data
      * @return array<int,array<string,mixed>>
@@ -117,7 +132,7 @@ class PlafondRitenuteService
 
         foreach ($this->raggruppaPerAnno($dicembre) as $anno => $righeAnno) {
             $gruppi[] = [
-                'scadenza' => $this->calendario->primoGiornoLavorativo(
+                'scadenza' => $this->calendario->scadenzaFiscale(
                     CarbonImmutable::create($anno + 1, 1, 16)->startOfDay()
                 ),
                 'plafond' => $plafond,
@@ -133,7 +148,7 @@ class PlafondRitenuteService
             }
 
             $gruppi[] = [
-                'scadenza' => $this->calendario->primoGiornoLavorativo($scadenzaTeorica),
+                'scadenza' => $this->calendario->scadenzaFiscale($scadenzaTeorica),
                 'plafond' => $plafond,
                 'importo' => $cumulo,
                 'ritenute' => array_column($corrente, 'originale'),
@@ -144,17 +159,27 @@ class PlafondRitenuteService
             $cumulo = 0;
         };
 
-        foreach ($righe as $i => $riga) {
-            $corrente[] = $riga;
-            $cumulo += $riga['importo'];
+        // Le ritenute per mese, nell'ordine: le righe arrivano già ordinate per data.
+        $mesi = [];
+        foreach ($righe as $riga) {
+            $mesi[$riga['data']->format('Y-m')][] = $riga;
+        }
+        $chiavi = array_keys($mesi);
 
-            $data = $riga['data'];
-            $prossima = $righe[$i + 1]['data'] ?? null;
+        foreach ($chiavi as $i => $chiave) {
+            foreach ($mesi[$chiave] as $riga) {
+                $corrente[] = $riga;
+                $cumulo += $riga['importo'];
+            }
 
-            // Soglia raggiunta: si versa entro il 16 del mese successivo a QUESTO mese.
-            if ($soglia !== null && $cumulo >= $soglia) {
+            // L'ultima ritenuta del mese e la prima del mese dopo che ne ha: le date-limite si guardano al cambio di mese.
+            $data = end($mesi[$chiave])['data'];
+            $prossima = isset($chiavi[$i + 1]) ? $mesi[$chiavi[$i + 1]][0]['data'] : null;
+
+            // Soglia scattata con il cumulo del mese: si versa entro il 16 del mese successivo a QUESTO mese.
+            if ($soglia !== null && $plafond->superaLaSoglia($cumulo, $soglia)) {
                 $chiudi(
-                    $data->addMonthNoOverflow()->day(16)->startOfDay(),
+                    $data->startOfMonth()->addMonthNoOverflow()->day(16)->startOfDay(),
                     'soglia_raggiunta'
                 );
 
@@ -164,7 +189,7 @@ class PlafondRitenuteService
             // Nessun rinvio possibile per questo regime.
             if ($plafond === PlafondRitenuta::MENSILE_SEMPRE) {
                 $chiudi(
-                    $data->addMonthNoOverflow()->day(16)->startOfDay(),
+                    $data->startOfMonth()->addMonthNoOverflow()->day(16)->startOfDay(),
                     'mensile_obbligatorio'
                 );
 

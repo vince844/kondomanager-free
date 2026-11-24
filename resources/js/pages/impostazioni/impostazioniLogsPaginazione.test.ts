@@ -126,7 +126,8 @@ describe('le pagine del registro delle email si sfogliano (Coda 464)', () => {
         apri(LINK_PRIMA_PAGINA);
 
         expect(pagina!.text()).not.toContain('attività di sistema');
-        expect(pagina!.text()).toContain('Il registro delle email inviate dal programma');
+        // 1.12.0-beta.14 (bozza docs/design/beta14_pagine_errore_grafica_bozza.html, proposta 15): la pagina «Registri» dice le email e gli errori.
+        expect(pagina!.text()).toContain('Le email che il programma ha mandato, con il motivo di quelle non partite');
     });
 
     test('sulla prima pagina «precedente» non è un collegamento: è un pulsante spento', () => {
@@ -189,10 +190,13 @@ describe('la scheda «Attività Sistema» non c\'è finché non ha dati (Coda 46
 
         const testo = pagina!.text();
 
-        expect(testo).toContain('Audit & Logs');
-        expect(testo).toContain('Email Logs');
+        // 1.12.0-beta.14 (proposta 15 della bozza): la pagina si chiama «Registri», e le schede «Email» ed «Errori».
+        expect(testo).toContain('Registri');
+        expect(testo).not.toContain('Audit & Logs');
+        expect(pagina!.find('[data-testid="scheda-email"]').text()).toContain('Email');
+        expect(pagina!.find('[data-testid="scheda-errori"]').text()).toContain('Errori');
         expect(testo).toContain('destinatario1@studio.example');
-        // Il contatore accanto a «Email Logs» legge il totale del registro delle email.
+        // Il contatore accanto a «Email» legge il totale del registro delle email.
         expect(pagina!.findAll('nav button')[0].text()).toContain('15');
     });
 
@@ -201,7 +205,8 @@ describe('la scheda «Attività Sistema» non c\'è finché non ha dati (Coda 46
 
         expect(pagina!.text()).not.toContain('Attività Sistema');
         expect(pagina!.text()).not.toContain('Nessuna attività registrata');
-        expect(pagina!.findAll('nav button')).toHaveLength(1);
+        // Le schede sono due dalla 1.12.0-beta.14: «Email» ed «Errori»; «Attività Sistema» no.
+        expect(pagina!.findAll('nav button').map((b) => b.attributes('data-testid'))).toEqual(['scheda-email', 'scheda-errori']);
     });
 
     test('la prop «activityLogs» non è più fra quelle della pagina', () => {

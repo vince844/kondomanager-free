@@ -5,11 +5,14 @@
 
 namespace App\Services\Gestionale;
 
+use App\Enums\ContoContabileCategoria;
+use App\Enums\ContoContabileTipo;
 use App\Models\Condominio;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Tabella;
+use App\Services\CondominioService;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use Illuminate\Support\Facades\DB;
 
@@ -112,7 +115,7 @@ final class CreazioneDellaVoce
      * alla prima richiesta; fino alla 1.12.0-beta.11 finiva in «Costi per Servizi». Una voce di entrata che c'era già, modificata, tiene il suo mastro: lo
      * corregge l'amministratore dal controllo del piano dei conti, mai il salvataggio della voce. Una voce di spesa come prima, dal tipo di spesa.
      */
-    public static function contoContabile(int $condominioId, string $tipoSpesa, ?string $tipo = null, ?Conto $esistente = null): ?int
+    public static function contoContabile(int $condominioId, string $tipoSpesa, ?string $tipo = null, ?Conto $esistente = null): int
     {
         if (VociDiEntrataNelMastro::diEntrata($tipo)) {
             if ($esistente !== null && VociDiEntrataNelMastro::diEntrata((string) $esistente->getOriginal('tipo')) && $esistente->conto_contabile_id !== null) {
@@ -126,6 +129,39 @@ final class CreazioneDellaVoce
             default          => 'costi_servizi',
         };
 
-        return ContoContabile::where('condominio_id', $condominioId)->where('ruolo', $ruolo)->value('id');
+        return (int) (ContoContabile::where('condominio_id', $condominioId)->where('ruolo', $ruolo)->value('id') ?? self::creaIlMastro($condominioId, $ruolo)->id);
+    }
+
+    /**
+     * Il mastro di spesa che manca (Coda 113, decisione 707 (3)): non si restituisce più `null` in silenzio, perché una voce senza il suo conto ferma la
+     * prima fattura su «Integrità compromessa». Lo crea come alla nascita del condominio ({@see CondominioService::ensureDefaultConti()}, che esce
+     * da solo se il piano dei conti c'è già) e, nei condomini di prima che hanno il piano ma non questo mastro, con la stessa riga di sistema.
+     */
+    private static function creaIlMastro(int $condominioId, string $ruolo): ContoContabile
+    {
+        app(CondominioService::class)->ensureDefaultConti(Condominio::findOrFail($condominioId));
+        $esiste = ContoContabile::where('condominio_id', $condominioId)->where('ruolo', $ruolo)->first();
+        if ($esiste !== null) {
+            return $esiste;
+        }
+        $compensi = $ruolo === 'compensi_professionisti';
+        $codice = $compensi ? '6002' : '6001';
+        for ($n = 1; ContoContabile::withTrashed()->where('condominio_id', $condominioId)->where('codice', $codice)->exists(); $n++) {
+            $codice = ($compensi ? '6002.' : '6001.').$n;
+        }
+
+        return ContoContabile::create([
+            'condominio_id' => $condominioId,
+            'parent_id' => null,
+            'codice' => $codice,
+            'nome' => $compensi ? 'Compensi Professionisti' : 'Costi per Servizi',
+            'descrizione' => $compensi ? 'Amministratore, avvocati, tecnici e consulenti' : 'Manutenzioni, pulizie, utenze e servizi generali del condominio',
+            'tipo' => ContoContabileTipo::COSTO->value,
+            'categoria' => ContoContabileCategoria::COSTI->value,
+            'ruolo' => $ruolo,
+            'di_sistema' => true,
+            'attivo' => true,
+            'livello' => 1,
+        ]);
     }
 }

@@ -5,7 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useForm, Head, router } from '@inertiajs/vue3';
+import { useForm, Head, Link, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import PulsanteGuida from '@/components/PulsanteGuida.vue';
@@ -115,6 +115,13 @@ interface Pendenza {
     voce_sforo?: string | null;
     totale_documento?: number;
     data_documento_iso?: string | null;
+    /**
+     * Coda 754 (2): la ritenuta della fattura (centesimi), se è pregressa, e la frase del rifiuto del bonifico parlante (nulla senza la
+     * ritenuta). La frase è quella che il server manda all'invio (`BonificoParlanteConRitenutaException`): la pagina la dice prima.
+     */
+    importo_ritenuta?: number;
+    is_pregresso?: boolean;
+    bonifico_parlante_frase?: string | null;
     // UI state
     selezionata?: boolean;
     importo_allocato?: number;
@@ -697,6 +704,24 @@ watch(() => form.fornitore_id, async (newVal) => {
 // Richiede IBAN per bonifico
 const richiedeIban = computed(() => form.metodo_pagamento === 'bonifico');
 
+/**
+ * Coda 754 (2), decisione 696: le fatture scelte registrate con la ritenuta. Con una di loro il bonifico parlante si ferma all'invio:
+ * la ritenuta si toglie prima dalla fattura (Modifica, motivo «Bonifico parlante»; per una pregressa lo storno e una registrazione
+ * nuova), poi esce l'importo pieno. L'avviso lo dice mentre si sceglie, con la frase del server e il collegamento alla fattura.
+ */
+const fattureConRitenutaScelte = computed(() =>
+    pendenze.value.filter(p => p.selezionata && !p.is_nota_credito && (p.importo_ritenuta ?? 0) > 0 && !!p.bonifico_parlante_frase)
+);
+
+/** Il riquadro rosso è visibile: «Registra Pagamento» resta spento finché la spunta o la fattura non cambiano (il server resta la guardia vera). */
+const bonificoParlanteFermo = computed(() =>
+    richiedeIban.value && form.bonifico_parlante && fattureConRitenutaScelte.value.length > 0
+);
+
+/** Dove si toglie la ritenuta: la modifica della fattura, o la sua scheda per una pregressa (che si storna e si registra di nuovo). */
+const indirizzoDellaFattura = (p: Pendenza): string =>
+    route(generateRoute(p.is_pregresso ? 'gestionale.fatture.show' : 'gestionale.fatture.edit'), { condominio: props.condominio.id, fattura: p.id });
+
 // Il Bonifico Parlante richiede un bonifico tracciabile (art. 16-bis TUIR):
 // se si cambia metodo, la dichiarazione fiscale non è più valida.
 watch(() => form.metodo_pagamento, (metodo) => {
@@ -1000,10 +1025,27 @@ const pageGuides = [
                                             l'importo pieno, perché la ritenuta la opera la banca. Non è una
                                             comodità come la causale — è denaro che cambia strada — e per questo sta
                                             in un riquadro diverso.
+
+                                            Coda 754 (2): l'avviso si sdoppia. Con una fattura registrata con la ritenuta
+                                            il pagamento si ferma all'invio (la ritenuta si toglie prima dalla fattura):
+                                            la frase del rifiuto e il collegamento alla fattura. Senza, la frase di prima,
+                                            che allora è vera.
                                         -->
-                                        <div v-if="selectedFornitore?.soggetto_ritenuta" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200">
+                                        <div v-if="bonificoParlanteFermo" data-test="bonifico-parlante-con-ritenuta" class="flex items-start gap-2 px-2.5 py-2 bg-rose-50 dark:bg-rose-950/30 rounded-lg border border-rose-200 dark:border-rose-800/50">
+                                            <Ban class="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                                            <div class="space-y-1.5 text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
+                                                <p v-for="p in fattureConRitenutaScelte" :key="p.id">{{ p.bonifico_parlante_frase }}</p>
+                                                <p class="flex flex-wrap gap-x-3 gap-y-1">
+                                                    <Link v-for="p in fattureConRitenutaScelte" :key="`apri-${p.id}`" :href="indirizzoDellaFattura(p)"
+                                                        class="font-semibold underline underline-offset-2 hover:text-rose-950 dark:hover:text-rose-100">
+                                                        {{ p.is_pregresso ? 'Apri la fattura' : 'Modifica la fattura' }} n. {{ p.numero_documento }}
+                                                    </Link>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div v-else-if="selectedFornitore?.soggetto_ritenuta" data-test="bonifico-parlante-importo-pieno" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200">
                                             <AlertTriangle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                                            <p class="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                                            <p class="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
                                                 <strong>Il condominio non tratterrà la ritenuta d'acconto</strong> su questo pagamento:
                                                 con il bonifico parlante la opera la banca (11%), e applicarla entrambi sarebbe un
                                                 doppio prelievo. Al fornitore uscirà l'importo pieno, e nulla entrerà nell'F24.
@@ -1043,7 +1085,7 @@ const pageGuides = [
                             </div>
                         </div>
 
-                        <Button type="button" :disabled="form.processing || form.allocazioni.length === 0" @click="handleSubmit"
+                        <Button type="button" data-test="registra-pagamento" :disabled="form.processing || form.allocazioni.length === 0 || bonificoParlanteFermo" @click="handleSubmit"
                             class="w-full h-12 font-black text-sm uppercase tracking-wider rounded-xl gap-2"
                             :class="transactionStatus === 'WARNING_CASH' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'">
                             <Save class="w-5 h-5" />

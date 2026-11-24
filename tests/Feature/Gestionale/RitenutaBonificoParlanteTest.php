@@ -11,30 +11,36 @@
  * energetica, la ritenuta la opera **la banca** — e il condominio non applica la propria, per
  * non produrre un doppio prelievo sullo stesso corrispettivo.
  *
- * Nel gestionale il presupposto c'era tutto: `pagamenti_fornitori.bonifico_parlante` esiste
- * ed è validato, `tipo_detrazione` porta i cinque casi con i riferimenti normativi per la
- * causale, e l'enum `MotivoEsclusioneRitenuta::BONIFICO_PARLANTE` era **dichiarato**. Solo che
- * `calcolaRitenutaProQuota()` quel dato non lo leggeva: la ritenuta continuava a essere
- * trattenuta al fornitore e a finire nell'F24.
+ * ## Dalla Coda 754 (2) (decisione 696, 1.12.0-beta.14): la ritenuta si decide nella fattura
  *
- * ## Perché la ritenuta si azzera al PAGAMENTO e non alla fattura
+ * Fino alla beta.13 la ritenuta si azzerava **al pagamento**: la fattura la esponeva, e la spunta
+ * «Bonifico Parlante» metteva a zero quella del pagamento. Ma la fattura con la ritenuta la scrive
+ * su «Debiti v/Erario» già alla registrazione e chiede al fornitore il netto: il pagamento usciva
+ * del netto (€ 1.180,00 su € 1.220,00, il lordo rifiutato come eccedenza) e la ritenuta restava
+ * sull'Erario senza che nessun F24 la versasse, perché le deleghe leggono la ritenuta dei pagamenti.
  *
- * La fattura non sbaglia a esporre la ritenuta: quando viene registrata nessuno sa ancora come
- * verrà pagata. È il bonifico parlante a rimuoverla, ed è una scelta che si fa al momento del
- * pagamento — coerente con il principio su cui è costruito tutto il modulo F24, che il fatto
- * generatore è il pagamento e non la registrazione. Tant'è che la stessa fattura si può pagare
- * in due volte, un acconto con bonifico ordinario e il saldo con bonifico parlante.
+ * Con la decisione la ritenuta si decide in un posto solo, la fattura. La fattura che si pagherà
+ * con il bonifico parlante si registra **senza** la ritenuta, con il motivo
+ * `MotivoEsclusioneRitenuta::BONIFICO_PARLANTE`; il pagamento con la spunta di una fattura
+ * registrata con la ritenuta **si ferma** (`BonificoParlanteConRitenutaException`) e dice di
+ * togliere prima la ritenuta dalla fattura. Non si può più pagare la stessa fattura con la ritenuta
+ * metà con un bonifico ordinario e metà con il bonifico parlante. Le prove di questo file che
+ * fissavano la regola di prima ora fissano questa; le prove dalle rotte, con la catena fino all'F24
+ * e il comando dei dati già scritti, sono in `Beta14BonificoParlanteConRitenutaTest.php`.
  *
- * Il motivo dell'esclusione **non si persiste**: si deriva. Un pagamento con
- * `bonifico_parlante = true` e ritenuta a zero *è* un'esclusione da bonifico parlante, e una
- * colonna in più direbbe la stessa cosa con la possibilità di divergere.
+ * Il motivo dell'esclusione sta nella fattura; sul pagamento **non si persiste**, si deriva. Un
+ * pagamento con `bonifico_parlante = true` e ritenuta a zero *è* un'esclusione da bonifico parlante,
+ * e una colonna in più direbbe la stessa cosa con la possibilità di divergere.
  */
 
 use App\Actions\Gestionale\Movimenti\GeneraDelegheF24Action;
+use App\Exceptions\Pagamenti\BonificoParlanteConRitenutaException;
+use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PagamentoFornitore;
 use App\Services\Gestionale\CalendarioFiscaleService;
 use App\Services\Gestionale\PagamentoFornitoreService;
 use App\Services\Gestionale\PlafondRitenuteService;
+use Illuminate\Support\Facades\DB;
 
 require_once __DIR__.'/GestionaleTestHelpers.php';
 
@@ -57,42 +63,72 @@ function datiBonificoParlante(array $extra = []): array
     ], $extra);
 }
 
+/** La fattura che si pagherà con il bonifico parlante, registrata come vuole la decisione 696: senza ritenuta, con il motivo. */
+function fatturaConMotivoBonificoParlante(array $ctx): FatturaPassiva
+{
+    return registraFatturaServiceTest($ctx, [
+        'applica_ritenuta' => false,
+        'dati_extra' => ['fiscal' => ['motivo_esclusione_ritenuta' => 'bonifico_parlante'], 'competenza' => null, 'override_budget' => null],
+    ]);
+}
+
+/**
+ * Un pagamento come lo scriveva la beta.13: il bonifico parlante sulla fattura con la ritenuta, la ritenuta del pagamento a zero,
+ * uscito il netto. Il servizio oggi lo rifiuta, quindi si registra senza la spunta e la spunta si scrive nel database.
+ */
+function pagamentoConBonificoParlanteDiPrima(array $ctx, FatturaPassiva $fattura): PagamentoFornitore
+{
+    $pagamento = (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $fattura));
+    DB::table('pagamenti_fornitori')->where('id', $pagamento->id)->update([
+        'bonifico_parlante' => true,
+        'tipo_detrazione' => 'ristrutturazione',
+        'importo_ritenuta' => 0,
+        'importo_lordo' => (int) $pagamento->importo_netto,
+    ]);
+
+    return $pagamento->fresh();
+}
+
 // ════════════════════════════════════════════════════════════════════════════
-// Raggiungibilità: il caso esiste davvero
+// Raggiungibilità: il caso esiste davvero, e si ferma
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
  * Prima di credere a un difetto, verificare che ci si arrivi — la lezione della beta.37.
- * Se una guardia vietasse di spuntare il bonifico parlante su una fattura con ritenuta, il
- * doppio prelievo sarebbe impossibile e questi test non servirebbero a niente.
+ * Prima della beta.14 questa prova diceva che la spunta passava su una fattura con la ritenuta;
+ * dalla decisione 696 il pagamento si ferma, e non scrive niente.
  */
-test('il bonifico parlante è davvero spuntabile su una fattura che porta ritenuta', function () {
+test('il bonifico parlante su una fattura che porta ritenuta si ferma e non scrive niente', function () {
     $ctx = ctxBonificoParlante();
     $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
 
     expect((int) $fattura->importo_ritenuta)->toBeGreaterThan(0);
+
+    expect(fn () => (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $fattura, datiBonificoParlante())))
+        ->toThrow(BonificoParlanteConRitenutaException::class, 'togli prima la ritenuta dalla fattura (Modifica, motivo «Bonifico parlante»)');
+
+    expect(PagamentoFornitore::count())->toEqual(0);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// L'esclusione: la fattura registrata con il motivo «Bonifico parlante»
+// ════════════════════════════════════════════════════════════════════════════
+
+test('con il bonifico parlante il condominio non trattiene la ritenuta', function () {
+    $ctx = ctxBonificoParlante();
+    $fattura = fatturaConMotivoBonificoParlante($ctx);
+
+    // Il fornitore è soggetto: a togliere la ritenuta è il motivo della fattura.
+    expect($ctx[3]->soggetto_ritenuta)->toBeTrue()
+        ->and((int) $fattura->importo_ritenuta)->toEqual(0);
 
     $pagamento = (new PagamentoFornitoreService)->registraPagamento(
         datiPagamento($ctx, $fattura, datiBonificoParlante())
     );
 
     expect($pagamento->bonifico_parlante)->toBeTrue()
-        ->and($pagamento->tipo_detrazione->value)->toEqual('ristrutturazione');
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// L'esclusione
-// ════════════════════════════════════════════════════════════════════════════
-
-test('con il bonifico parlante il condominio non trattiene la ritenuta', function () {
-    $ctx = ctxBonificoParlante();
-    $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
-
-    $pagamento = (new PagamentoFornitoreService)->registraPagamento(
-        datiPagamento($ctx, $fattura, datiBonificoParlante())
-    );
-
-    expect((int) $pagamento->importo_ritenuta)->toEqual(0);
+        ->and($pagamento->tipo_detrazione->value)->toEqual('ristrutturazione')
+        ->and((int) $pagamento->importo_ritenuta)->toEqual(0);
 });
 
 /**
@@ -102,29 +138,40 @@ test('con il bonifico parlante il condominio non trattiene la ritenuta', functio
  */
 test('al fornitore esce l importo pieno, senza trattenuta', function () {
     $ctx = ctxBonificoParlante();
-    $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
+    $fattura = fatturaConMotivoBonificoParlante($ctx);
 
     $pagamento = (new PagamentoFornitoreService)->registraPagamento(
         datiPagamento($ctx, $fattura, datiBonificoParlante())
     );
 
-    expect((int) $pagamento->importo_netto)->toEqual((int) $pagamento->importo_lordo);
+    expect((int) $pagamento->importo_netto)->toEqual((int) $pagamento->importo_lordo)
+        ->and((int) $pagamento->importo_netto)->toEqual(122000);
 });
 
 /**
- * La fattura **conserva** la sua ritenuta: non era sbagliata, semplicemente non sapeva come
- * sarebbe stata pagata. Riscriverla significherebbe perdere il dato di partenza.
+ * Prima della beta.14: «la fattura conserva la ritenuta che aveva calcolato» mentre il pagamento la
+ * azzerava, ed era il difetto. Ora il pagamento rifiutato lascia la fattura com'era, con la sua
+ * ritenuta su «Debiti v/Erario» e il debito al netto, finché l'amministratore non la modifica.
  */
-test('la fattura conserva la ritenuta che aveva calcolato', function () {
-    $ctx = ctxBonificoParlante();
+test('la fattura con la ritenuta resta com era quando il bonifico parlante si ferma', function () {
+    [$condominio] = $ctx = ctxBonificoParlante();
     $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
     $ritenutaFattura = (int) $fattura->importo_ritenuta;
 
-    (new PagamentoFornitoreService)->registraPagamento(
-        datiPagamento($ctx, $fattura, datiBonificoParlante())
-    );
+    try {
+        (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $fattura, datiBonificoParlante()));
+    } catch (BonificoParlanteConRitenutaException) {
+    }
 
-    expect((int) $fattura->fresh()->importo_ritenuta)->toEqual($ritenutaFattura);
+    $erario = DB::table('conti_contabili')->where('condominio_id', $condominio->id)->where('ruolo', 'debiti_erario_ritenute')->value('id');
+    $saldoErario = (int) DB::table('righe_scritture')->where('conto_contabile_id', $erario)->where('tipo_riga', 'avere')->sum('importo')
+        - (int) DB::table('righe_scritture')->where('conto_contabile_id', $erario)->where('tipo_riga', 'dare')->sum('importo');
+
+    expect(PagamentoFornitore::count())->toEqual(0)
+        ->and($fattura->fresh()->stato_pagamento)->toBe(\App\Enums\StatoPagamentoFattura::APERTA)
+        ->and((int) $fattura->fresh()->importo_ritenuta)->toEqual($ritenutaFattura)
+        ->and((int) $fattura->fresh()->netto_a_pagare)->toEqual(122000 - $ritenutaFattura)
+        ->and($saldoErario)->toEqual($ritenutaFattura);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -138,7 +185,7 @@ test('la fattura conserva la ritenuta che aveva calcolato', function () {
  */
 test('la ritenuta esclusa non entra nello scadenzario F24', function () {
     [$condominio, $esercizio] = $ctx = ctxBonificoParlante();
-    $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
+    $fattura = fatturaConMotivoBonificoParlante($ctx);
 
     (new PagamentoFornitoreService)->registraPagamento(
         datiPagamento($ctx, $fattura, datiBonificoParlante())
@@ -155,24 +202,23 @@ test('la ritenuta esclusa non entra nello scadenzario F24', function () {
 
 /**
  * `verificaCoerenzaRitenuta()` rifiuta un importo dichiarato diverso da quello dovuto, senza
- * tolleranza. È giusto così — ma la schermata di **modifica** rimanda il valore già salvato
- * (`PagamentoEdit.vue:118`), che è stato calcolato prima che si scegliesse il bonifico
- * parlante. Senza un'eccezione esplicita, la guardia bloccherebbe proprio il salvataggio
- * corretto, e l'amministratore vedrebbe un errore incomprensibile spuntando una casella.
+ * tolleranza. Prima della beta.14 questa prova diceva che, con la spunta, il valore stantio della
+ * fattura non bloccava il salvataggio e vinceva lo zero del server. Dalla decisione 696 quel
+ * pagamento si ferma prima, e con la frase del bonifico parlante: non con quella della ritenuta
+ * incoerente, che all'amministratore non direbbe che cosa fare.
  */
-test('un importo dichiarato stantio non blocca il salvataggio quando c è il bonifico parlante', function () {
+test('un importo dichiarato stantio non cambia il rifiuto: si ferma con la frase del bonifico parlante', function () {
     $ctx = ctxBonificoParlante();
     $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
 
-    $pagamento = (new PagamentoFornitoreService)->registraPagamento(
+    expect(fn () => (new PagamentoFornitoreService)->registraPagamento(
         datiPagamento($ctx, $fattura, datiBonificoParlante([
             // Il valore che il form aveva in mano prima della spunta.
             'importo_ritenuta_cents' => (int) $fattura->importo_ritenuta,
         ]))
-    );
+    ))->toThrow(BonificoParlanteConRitenutaException::class);
 
-    // Vince il calcolo del server, non il valore dichiarato.
-    expect((int) $pagamento->importo_ritenuta)->toEqual(0);
+    expect(PagamentoFornitore::count())->toEqual(0);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -199,16 +245,32 @@ function aggiornaSoloBonificoParlante(PagamentoFornitore $pagamento, bool $attiv
     ]);
 }
 
-test('spuntando il bonifico parlante in modifica la ritenuta si azzera', function () {
+/** Prima della beta.14 la spunta messa in modifica azzerava la ritenuta; dalla decisione 696 si ferma, e il pagamento resta com'era. */
+test('spuntando il bonifico parlante in modifica su una fattura con la ritenuta il pagamento si ferma', function () {
     $ctx = ctxBonificoParlante();
     $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
 
     $pagamento = (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $fattura));
     expect((int) $pagamento->importo_ritenuta)->toBeGreaterThan(0);
 
+    expect(fn () => aggiornaSoloBonificoParlante($pagamento, true))->toThrow(BonificoParlanteConRitenutaException::class);
+
+    expect((int) $pagamento->fresh()->importo_ritenuta)->toEqual((int) $fattura->importo_ritenuta)
+        ->and($pagamento->fresh()->bonifico_parlante)->toBeFalse();
+});
+
+/** La controprova: sulla fattura registrata con il motivo la spunta messa in modifica si salva, e la ritenuta resta zero. */
+test('spuntando il bonifico parlante in modifica su una fattura con il motivo la spunta si salva', function () {
+    $ctx = ctxBonificoParlante();
+    $fattura = fatturaConMotivoBonificoParlante($ctx);
+
+    $pagamento = (new PagamentoFornitoreService)->registraPagamento(datiPagamento($ctx, $fattura));
+    expect((int) $pagamento->importo_ritenuta)->toEqual(0);
+
     aggiornaSoloBonificoParlante($pagamento, true);
 
-    expect((int) $pagamento->fresh()->importo_ritenuta)->toEqual(0);
+    expect($pagamento->fresh()->bonifico_parlante)->toBeTrue()
+        ->and((int) $pagamento->fresh()->importo_ritenuta)->toEqual(0);
 });
 
 /**
@@ -218,15 +280,16 @@ test('spuntando il bonifico parlante in modifica la ritenuta si azzera', functio
  *
  * Il valore salvato è zero, quindi non c'è niente da cui ripartire: va ricalcolato dalle
  * fatture, che in modifica sono immutabili e quindi danno lo stesso numero di partenza.
+ * Dalla beta.14 è la via per correggere un pagamento scritto prima con la spunta su una fattura
+ * con la ritenuta (quelli che elenca `kondomanager:verifica-bonifici-parlanti`).
  */
 test('togliendo il bonifico parlante la ritenuta torna quella delle fatture', function () {
     $ctx = ctxBonificoParlante();
     $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
 
-    $pagamento = (new PagamentoFornitoreService)->registraPagamento(
-        datiPagamento($ctx, $fattura, datiBonificoParlante())
-    );
-    expect((int) $pagamento->importo_ritenuta)->toEqual(0);
+    $pagamento = pagamentoConBonificoParlanteDiPrima($ctx, $fattura);
+    expect((int) $pagamento->importo_ritenuta)->toEqual(0)
+        ->and($pagamento->bonifico_parlante)->toBeTrue();
 
     aggiornaSoloBonificoParlante($pagamento, false);
 
@@ -247,6 +310,18 @@ test('un aggiornamento che non tocca il flag non ricalcola la ritenuta', functio
     aggiornaSoloBonificoParlante($pagamento, false);
 
     expect((int) $pagamento->fresh()->importo_ritenuta)->toEqual($prima);
+});
+
+/** Un pagamento scritto prima con la spunta si corregge negli altri campi senza essere rifiutato: la spunta non si mette adesso. */
+test('un pagamento scritto prima con la spunta su una fattura con la ritenuta resta modificabile', function () {
+    $ctx = ctxBonificoParlante();
+    $fattura = registraFatturaServiceTest($ctx, ['applica_ritenuta' => true]);
+    $pagamento = pagamentoConBonificoParlanteDiPrima($ctx, $fattura);
+
+    aggiornaSoloBonificoParlante($pagamento, true);
+
+    expect($pagamento->fresh()->bonifico_parlante)->toBeTrue()
+        ->and((int) $pagamento->fresh()->importo_ritenuta)->toEqual(0);
 });
 
 // ════════════════════════════════════════════════════════════════════════════

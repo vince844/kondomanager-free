@@ -11,9 +11,11 @@ use App\Actions\Gestionale\Movimenti\ConfermaVersamentoF24Action;
 use App\Actions\Gestionale\Movimenti\GeneraDelegheF24Action;
 use App\Actions\Gestionale\Movimenti\StornaVersamentoF24Action;
 use App\Enums\Fiscale\StatoDelegaF24;
+use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\DelegaF24;
+use App\Services\Gestionale\F24\PromemoriaDelleRitenute;
 use App\Services\Gestionale\ModelloF24Service;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
@@ -109,9 +111,12 @@ class DelegaF24Controller extends Controller
                 // Due voci non sono stati del database ma domande che l'amministratore si
                 // fa davvero: «cosa mi resta da versare» e «cosa è già in ritardo». La
                 // seconda è la sola che costa sanzioni, quindi merita un filtro suo.
+                //
+                // «Scadute» è la regola sola di `DelegaF24::scopeScadute()` (Coda 423): la scadenza prima di oggi, nel giorno
+                // dell'amministratore. Il giorno stesso si può ancora versare.
                 match ($stato) {
                     'da_versare' => $q->whereIn('stato', $aperte),
-                    'scadute' => $q->whereIn('stato', $aperte)->whereDate('data_scadenza', '<', now()->toDateString()),
+                    'scadute' => $q->scadute(),
                     default => $q->where('stato', $stato),
                 };
             })
@@ -176,6 +181,12 @@ class DelegaF24Controller extends Controller
 
         return Inertia::render('gestionale/movimenti/f24/F24List', [
             'fornitori_da_classificare' => $daClassificare,
+            // Le deleghe da versare con la ritenuta di una fattura già versata con un'altra delega, per un pagamento poi stornato
+            // (decisione 704): lo scadenzario lo dice prima del versamento, con il collegamento alla delega.
+            'avvisi_ritenute_gia_versate' => (clone $base)->aperte()->orderBy('data_scadenza')->orderBy('id')->get()
+                ->flatMap(fn (DelegaF24 $d) => array_map(fn (string $m) => ['delega_id' => $d->id, 'messaggio' => $m], $d->avvisiRitenuteGiaVersate()))
+                ->values()
+                ->all(),
             'condominio' => $condominio,
             'condomini' => $this->getCondomini(),
             'esercizio' => $esercizio,
@@ -211,6 +222,8 @@ class DelegaF24Controller extends Controller
             'condominio' => $condominio,
             'condomini' => $this->getCondomini(),
             'delega' => $delega,
+            // Il codice fiscale della delega, o in mancanza quello del condominio di oggi: lo stesso della stampa del modello.
+            'codice_fiscale_contribuente' => $delega->codiceFiscaleDelContribuente(),
             'esercizio_non_corrente' => $this->esercizioNonCorrente(
                 $delega,
                 $this->esercizioCorrente($condominio),
@@ -218,6 +231,8 @@ class DelegaF24Controller extends Controller
             ),
             'banche' => $this->banche($condominio),
             'motivo_blocco_modifica' => $delega->motivoBloccoModifica(),
+            // La ritenuta di una fattura già versata con un'altra delega, per un pagamento poi stornato (decisione 704): non va versata di nuovo.
+            'avvisi_ritenute_gia_versate' => $delega->avvisiRitenuteGiaVersate(),
             // Il modello ministeriale si stampa comunque: questi campi non sbarrano la
             // stampa, la accompagnano. Dirlo qui — dove il pulsante sta — è l'unico momento
             // in cui l'informazione serve ancora a qualcosa: allo sportello è tardi.
@@ -244,9 +259,7 @@ class DelegaF24Controller extends Controller
             $deleghe = $this->genera->esegui($condominio, $esercizio->id);
 
             if ($deleghe->isEmpty()) {
-                return back()->with($this->flashSuccess(
-                    'Nessuna ritenuta da versare: tutte quelle operate risultano già versate.'
-                ));
+                return back()->with($this->flashSuccess($this->fraseSenzaRitenuteNuove($condominio)));
             }
 
             $totale = $deleghe->sum('totale_debito');
@@ -277,7 +290,16 @@ class DelegaF24Controller extends Controller
 
         $dati = $request->validate([
             'data_versamento' => ['required', 'date'],
-            'conto_corrente_id' => ['required', 'integer', 'exists:conti_contabili,id'],
+            // ⚠️ Il conto del condominio, e il conto di una sua cassa da cui si paga (Coda 432): con il solo `exists` una richiesta
+            // scritta a mano registrava il versamento sulla banca di un altro condominio. La stessa forma del pagamento di una fattura
+            // (`StorePagamentoFornitoreRequest`).
+            'conto_corrente_id' => [
+                'required', 'integer',
+                \Illuminate\Validation\Rule::exists('conti_contabili', 'id')->where('condominio_id', $condominio->id),
+                \Illuminate\Validation\Rule::exists('casse', 'conto_contabile_id')
+                    ->where('condominio_id', $condominio->id)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
+            ],
             // ⚠️ Scopata al condominio e ai soli tipi da cui si paga (beta.19): prima
             // accettava la cassa di un altro condominio e una cassa `fondo`, e il versamento
             // da un fondo spariva dal registro di contabilità (D15). Revisione della beta.24.
@@ -311,6 +333,60 @@ class DelegaF24Controller extends Controller
 
             return back()->withErrors(['versamento' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Conferma la delega: dalla bozza a «Confermata» (Coda 754 (10), decisione 696 D6).
+     *
+     * Una delega confermata è quella che l'amministratore ha deciso di versare: «Aggiorna scadenze» non la cancella e non la rifà
+     * (`GeneraDelegheF24Action` cancella solo le bozze, e le sue ritenute risultano già in una delega), e il suo promemoria la segue.
+     * Non scrive niente in contabilità: il versamento si registra dopo, come per una bozza. Mai su una delega versata, stornata o annullata.
+     */
+    public function confermaDelega(Condominio $condominio, DelegaF24 $delega): RedirectResponse
+    {
+        abort_if($delega->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        if ($delega->stato !== StatoDelegaF24::BOZZA) {
+            return back()->withErrors(['stato_delega' => $this->frasePerLoStatoNonAmmesso($delega, 'si conferma')]);
+        }
+
+        // Una bozza con la ritenuta di un pagamento stornato non si tiene ferma: «Aggiorna scadenze» la rifà senza (Coda 754 (10)).
+        $stornati = $delega->motivoBloccoPerPagamentiStornati();
+        if ($stornati !== null) {
+            return back()->withErrors(['stato_delega' => $stornati]);
+        }
+
+        $delega->update(['stato' => StatoDelegaF24::CONFERMATA]);
+
+        return back()->with($this->flashSuccess(
+            'Delega confermata: «Aggiorna scadenze» non la rifà più. Per modificarla, riportala in bozza.'
+        ));
+    }
+
+    /** Riporta in bozza una delega confermata: «Aggiorna scadenze» torna a rifarla. Mai su una versata, stornata o annullata. */
+    public function riportaInBozza(Condominio $condominio, DelegaF24 $delega): RedirectResponse
+    {
+        abort_if($delega->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        if ($delega->stato !== StatoDelegaF24::CONFERMATA) {
+            return back()->withErrors(['stato_delega' => $this->frasePerLoStatoNonAmmesso($delega, 'si riporta in bozza')]);
+        }
+
+        $delega->update(['stato' => StatoDelegaF24::BOZZA]);
+
+        return back()->with($this->flashSuccess('Delega riportata in bozza: «Aggiorna scadenze» può rifarla.'));
+    }
+
+    /** Perché la delega, nello stato in cui è, non si conferma o non si riporta in bozza: la frase dice lo stato e che cosa fare. */
+    private function frasePerLoStatoNonAmmesso(DelegaF24 $delega, string $azione): string
+    {
+        return match ($delega->stato) {
+            StatoDelegaF24::VERSATA => 'La delega è già stata versata: non '.$azione.'. Per correggerla va stornata.',
+            StatoDelegaF24::STORNATA => 'La delega è stata stornata: non '.$azione.'.',
+            StatoDelegaF24::ANNULLATA => 'La delega è stata annullata: non '.$azione.'.',
+            StatoDelegaF24::CONFERMATA => 'La delega è già confermata.',
+            StatoDelegaF24::BOZZA => 'La delega è già in bozza.',
+        };
     }
 
     public function storna(Request $request, Condominio $condominio, DelegaF24 $delega): RedirectResponse
@@ -357,10 +433,40 @@ class DelegaF24Controller extends Controller
             'motivo_annullamento' => $dati['motivo'],
         ]);
 
+        // Le ritenute della delega annullata tornano senza delega: il suo promemoria si chiude e torna il «Prepara le deleghe F24»
+        // (Coda 718).
+        app(PromemoriaDelleRitenute::class)->allineaSenzaFermare($condominio);
+
         return back()->with($this->flashSuccess('Delega annullata.'));
     }
 
     // ── Supporto ─────────────────────────────────────────────────────────────
+
+    /**
+     * Che cosa dice «Aggiorna scadenze» quando non c'è niente da mettere in una delega nuova (Coda 754 (10)).
+     *
+     * Le ritenute non versate possono stare in una delega **confermata**, che il pulsante non rifà: dire «tutte versate» in quel caso
+     * era falso, e la confermata da versare spariva dal messaggio. «Già versate» resta per quando non ce n'è nessuna.
+     */
+    private function fraseSenzaRitenuteNuove(Condominio $condominio): string
+    {
+        $confermate = DelegaF24::where('condominio_id', $condominio->id)
+            ->where('stato', StatoDelegaF24::CONFERMATA->value)
+            ->orderBy('data_scadenza')
+            ->get();
+
+        if ($confermate->isEmpty()) {
+            return 'Nessuna ritenuta da versare: tutte quelle operate risultano già versate.';
+        }
+
+        $prima = $confermate->first()->data_scadenza->format('d/m/Y');
+        $totale = MoneyHelper::format((int) $confermate->sum('totale_debito'));
+
+        return $confermate->count() === 1
+            ? "Nessuna ritenuta nuova: quelle non ancora versate sono già nella delega confermata in scadenza il {$prima} ({$totale})."
+            : sprintf('Nessuna ritenuta nuova: quelle non ancora versate sono già nelle %d deleghe confermate (%s), la prima in scadenza il %s.',
+                $confermate->count(), $totale, $prima);
+    }
 
     /**
      * Quante ritenute, e per quanto, aspettano ancora di finire in una delega.
@@ -400,9 +506,10 @@ class DelegaF24Controller extends Controller
         return $nomiEsercizi[$delega->esercizio_id] ?? null;
     }
 
+    /** L'esercizio aperto (con due, il più recente: Coda 646, decisione 707 (4), `HasEsercizio`); senza un aperto, l'ultimo scritto. */
     private function esercizioCorrente(Condominio $condominio)
     {
-        return $condominio->esercizi()->where('stato', 'aperto')->latest('id')->first()
+        return \App\Models\Esercizio::apertoPiuRecente((int) $condominio->id)
             ?? $condominio->esercizi()->latest('id')->first();
     }
 
@@ -445,7 +552,8 @@ class DelegaF24Controller extends Controller
         return [
             'da_versare_cents' => (int) $aperte->sum('totale_debito'),
             'versato_cents' => (int) $versate->sum('totale_debito'),
-            'scadute' => $aperte->filter(fn ($d) => $d->data_scadenza->isPast())->count(),
+            // La stessa regola del filtro «Scadute» (Coda 423): prima `isPast()` contava la delega già il giorno della scadenza.
+            'scadute' => $aperte->filter(fn (DelegaF24 $d) => $d->isScaduta())->count(),
             'prossima_scadenza' => $aperte->sortBy('data_scadenza')->first()?->data_scadenza?->toDateString(),
         ];
     }

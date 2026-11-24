@@ -5,6 +5,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Helpers\DateHelper;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
@@ -50,7 +51,7 @@ final class ScritturaDiEmissione
             'condominio_id'      => $condominioId,
             'esercizio_id'       => $esercizioId,
             'gestione_id'        => $gestioneId,
-            'data_registrazione' => now(),
+            'data_registrazione' => DateHelper::oggiUtente(),
             'data_competenza'    => $dataCompetenza,
             'causale'            => $causale,
             'tipo_movimento'     => 'emissione_rata',

@@ -70,6 +70,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | I termini del servizio
+    |--------------------------------------------------------------------------
+    |
+    | Un indirizzo, facoltativo. Se c'è, la finestra «Note legali» dice «senza alcuna garanzia, salvo quelle dei termini del servizio» con il
+    | collegamento; se manca, dice «senza alcuna garanzia». Chi ospita il servizio lo punta ai suoi termini; chi si autoospita lo lascia vuoto.
+    */
+    'termini_del_servizio_url' => env('TERMINI_DEL_SERVIZIO_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Siamo nell'immagine Docker?
     |--------------------------------------------------------------------------
     |
@@ -92,5 +102,16 @@ return [
     | non cambia: la imposta sempre lo studio. Di serie spenta: la pagina è quella di sempre.
     */
     'posta_dell_installazione' => filter_var(env('POSTA_DELL_INSTALLAZIONE', false), FILTER_VALIDATE_BOOL),
+
+    /*
+    |--------------------------------------------------------------------------
+    | È la demo pubblica?
+    |--------------------------------------------------------------------------
+    |
+    | `IS_DEMO=1` sull'istanza della demo pubblica. Si legge **solo qui**: l'immagine lancia `artisan optimize`, la configurazione va in cache, e
+    | `env('IS_DEMO')` letto fuori da `config/` varrebbe sempre falso (fino alla 1.12.0-beta.13 la prop `is_demo` delle pagine era falsa anche nella
+    | demo). Nella demo la pagina d'errore non mostra il dettaglio né «Avvisa lo studio» (1.12.0-beta.14). Di serie spenta.
+    */
+    'demo' => filter_var(env('IS_DEMO', false), FILTER_VALIDATE_BOOL),
 
 ];

@@ -5,6 +5,7 @@
 
 namespace App\Services;
 
+use App\Helpers\DateHelper;
 use App\Traits\OrdinaElenco;
 use App\Http\Requests\Documento\DocumentoIndexRequest;
 
@@ -211,8 +212,8 @@ class DocumentoService
             // è anche più veloce, perché una funzione applicata alla colonna impedisce l'uso
             // dell'indice mentre un intervallo no.
             ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as uploaded_this_month', [
-                now()->startOfMonth(),
-                now()->startOfMonth()->addMonth(),
+                $this->inizioMeseUtente(),
+                $this->inizioMeseUtente()->addMonth(),
             ])
             ->first();
 
@@ -222,6 +223,15 @@ class DocumentoService
             'uploaded_this_month' => (int) ($stats->uploaded_this_month ?? 0),
             'average_size_bytes'  => (float) ($stats->average_size_bytes ?? 0),
         ];
+    }
+
+    /**
+     * L'inizio del mese corrente di chi guarda (Roma), espresso nel fuso della colonna `created_at` (UTC): fra le 00:00 e le 02:00 del primo del mese
+     * `now()->startOfMonth()` era ancora il mese prima (Coda 547).
+     */
+    protected function inizioMeseUtente(): \Carbon\Carbon
+    {
+        return DateHelper::adessoUtente()->startOfMonth()->setTimezone(config('app.timezone'));
     }
 
     /**
@@ -250,8 +260,8 @@ class DocumentoService
             // sarebbe rimasto rotto nella suite finché non ci fosse passato un test — cioè, viste
             // le due volte che è già successo su questo modulo, per un pezzo.
             ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) as uploaded_this_month', [
-                now()->startOfMonth(),
-                now()->startOfMonth()->addMonth(),
+                $this->inizioMeseUtente(),
+                $this->inizioMeseUtente()->addMonth(),
             ])
             ->first();
 

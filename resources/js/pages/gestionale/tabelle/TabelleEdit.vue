@@ -27,6 +27,8 @@ const props = defineProps<{
   tabella: Tabella;
   /** La tabella di proprietà generale del condominio (R14): se è questa, quella di oggi, e se chi guarda la sceglie. */
   proprieta?: { questa: boolean; attuale: string | null; si_sceglie: boolean };
+  /** La tabella di un gruppo (Coda 734): il segno, le unità con la quota e le unità del condominio. */
+  gruppo?: { questa: boolean; unita: number; del_condominio: number };
 }>()
 
 type TabellaType = {
@@ -108,6 +110,33 @@ const adessoProprieta = computed(() => {
     return props.proprieta?.attuale
         ? `Adesso: la tabella di proprietà generale di ${props.condominio.nome} è «${props.proprieta.attuale}».`
         : `Adesso: ${props.condominio.nome} non ha una tabella di proprietà generale.`;
+});
+
+// «È la tabella di un gruppo» (Coda 734, scena 1 della bozza approvata): si salva quando la cambi, come il primo, ed è una riga del registro sulla storia
+// della tabella. Su un punto votato con la tabella segnata votano solo i condòmini delle sue unità. Il segno lo mette l'amministratore, mai il programma.
+// Il segno che non si toglie (la tabella è il gruppo di un'assemblea non ancora chiusa): l'interruttore torna com'era e la frase del server dice perché.
+const diUnGruppo = ref(props.gruppo?.questa ?? false);
+const salvataggioGruppo = ref(false);
+const erroreGruppo = ref('');
+const cambiaGruppo = (valore: boolean) => {
+    diUnGruppo.value = valore;
+    salvataggioGruppo.value = true;
+    erroreGruppo.value = '';
+    router.post(route(generateRoute('gestionale.tabella-di-un-gruppo'), { condominio: props.condominio.id }),
+        { tabella_id: props.tabella.id, di_un_gruppo: valore },
+        { only: ['gruppo', 'flash'], preserveScroll: true, preserveState: true, onFinish: () => { salvataggioGruppo.value = false; },
+          onError: (e: Record<string, string>) => { diUnGruppo.value = !valore; erroreGruppo.value = e.di_un_gruppo ?? Object.values(e)[0] ?? ''; } });
+};
+const adessoGruppo = computed(() => {
+    const unita = props.gruppo?.unita ?? 0;
+    const altre = Math.max(0, (props.gruppo?.del_condominio ?? 0) - unita);
+    const base = `Adesso: «${props.tabella.nome}» ha ${unita} unità su ${props.gruppo?.del_condominio ?? 0}.`;
+    if (diUnGruppo.value) {
+        return `${base} Su un punto votato con questa tabella votano solo i loro condòmini, e teste, millesimi e costituzione si contano fra loro (art. 1123 c. 3 c.c.).`;
+    }
+    if (altre === 0) return `${base} Comprende tutte le unità: il segno non cambierebbe chi vota.`;
+
+    return `${base} Senza il segno, su un punto votato con questa tabella ${altre === 1 ? 'l\'altra conta come testa' : `le altre ${altre} contano come teste`} a zero millesimi.`;
 });
 
 const submit = () => {
@@ -233,7 +262,7 @@ const submit = () => {
         <Card v-if="proprieta && proprieta.si_sceglie" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20" data-testid="tabella-di-proprieta">
           <CardHeader class="pb-3 border-b border-dashed mb-4">
             <CardTitle class="text-base font-semibold">Per le assemblee</CardTitle>
-            <CardDescription>La tabella con cui il programma propone di contare i millesimi delle assemblee del condominio.</CardDescription>
+            <CardDescription>Come il programma usa questa tabella nelle assemblee di {{ condominio.nome }}.</CardDescription>
           </CardHeader>
           <CardContent class="space-y-2">
             <div class="flex items-center justify-between gap-4">
@@ -241,6 +270,24 @@ const submit = () => {
               <Switch id="di-proprieta" :model-value="diProprieta" :disabled="salvataggioProprieta" @update:model-value="cambiaProprieta" />
             </div>
             <p class="text-xs text-slate-500 dark:text-slate-400">{{ adessoProprieta }}</p>
+            <!-- La tabella di un gruppo (Coda 734): il secondo interruttore, la riga «Adesso» e il perché in un cassetto. -->
+            <div v-if="gruppo" class="space-y-2 border-t border-dashed pt-3" data-testid="tabella-di-un-gruppo">
+              <div class="flex items-center justify-between gap-4">
+                <Label for="di-un-gruppo" class="text-sm">È la tabella di un gruppo: sui suoi punti votano solo i condòmini delle sue unità</Label>
+                <Switch id="di-un-gruppo" :model-value="diUnGruppo" :disabled="salvataggioGruppo" @update:model-value="cambiaGruppo" />
+              </div>
+              <InputError :message="erroreGruppo" data-testid="errore-gruppo" />
+              <p class="text-xs text-slate-500 dark:text-slate-400" data-testid="adesso-gruppo">{{ adessoGruppo }}</p>
+              <details class="rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950" data-testid="cassetto-gruppo">
+                <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Quando è la tabella di un gruppo</summary>
+                <ul class="list-disc space-y-1 px-3 pb-2 pl-7 text-xs text-slate-700 dark:text-slate-300">
+                  <li>La cosa serve solo alcune unità: i box, la scala B, l'ascensore di una palazzina.</li>
+                  <li>Chi non ha una quota nella tabella non ne è proprietario: sul punto non vota e non conta.</li>
+                  <li>Una tabella d'uso con degli zeri (il piano terra che non usa l'ascensore ma ne è proprietario) non è di un gruppo: lascia spento.</li>
+                  <li>Il programma non lo decide da solo: lo sai tu.</li>
+                </ul>
+              </details>
+            </div>
           </CardContent>
         </Card>
 

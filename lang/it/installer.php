@@ -10,7 +10,11 @@ return [
         'brand_subtitle' => 'Software gestionale open source',
         'wait_default' => 'Attendere prego...',
         'wait_environment' => 'Configurazione del database in corso, non chiudere questa pagina...',
-        'footer_license' => 'Software Open Source (AGPL-3.0) per la gestione condominiale',
+        'footer_copyright' => '© Vincenzo Vecchio — KondoManager',
+        'footer_license' => 'Licenza GNU AGPL-3.0',
+        'footer_source' => 'Codice sorgente',
+        'footer_notes' => 'Note legali',
+        'footer_notes_text' => 'KondoManager è software libero: si può ridistribuire e modificare secondo i termini della GNU Affero General Public License, versione 3. È fornito senza alcuna garanzia, nemmeno di commerciabilità o di idoneità a uno scopo particolare. Il testo della licenza è su gnu.org/licenses/agpl-3.0.html.',
     ],
 
     'actions' => [
@@ -63,7 +67,7 @@ return [
         'extensions_text' => 'Assicurati di aver le seguenti estensioni abilitate nella configurazione di PHP.',
         'extensions_check_link' => 'Come controllare quali estensioni PHP sono installate',
         'database_label' => 'Database:',
-        'database_text' => "L'applicazione necessita di un database MySQL per la registrazione dei dati. Assicurati di aver creato un database e di avere a disposizione host, porta, nome del database, username e password.",
+        'database_text' => "L'applicazione necessita di un database MySQL per la registrazione dei dati. Assicurati di aver creato un database vuoto (il programma non cancella un database che ha già delle tabelle) e di avere a disposizione host, porta, nome del database, username e password.",
         'database_link' => 'Come creare un database su cPanel',
         'mail_label' => 'Impostazioni email:',
         'mail_text' => "L'applicazione invia email importanti come registrazione utenti, reimpostazione password e notifiche. Assicurati di avere a portata di mano un indirizzo email e una password validi, in linea con la configurazione dell'host e della porta del server.",
@@ -90,7 +94,7 @@ return [
         'app_locale' => ['label' => 'Lingua', 'tooltip' => "La lingua predefinita con cui l'applicazione verrà mostrata ai nuovi utenti. Potrai cambiarla in qualsiasi momento dalle Impostazioni Generali."],
         'db_host' => ['label' => 'Host', 'tooltip' => 'Indirizzo del server database, generalmente 127.0.0.1 o localhost.'],
         'db_port' => ['label' => 'Porta', 'tooltip' => 'La porta del server MySQL, generalmente 3306.'],
-        'db_database' => ['label' => 'Database', 'tooltip' => 'Il nome del database creato appositamente per Kondomanager.'],
+        'db_database' => ['label' => 'Database', 'tooltip' => 'Il nome del database vuoto creato appositamente per Kondomanager.'],
         'db_username' => ['label' => 'Username', 'tooltip' => 'Utente con permessi di accesso al database.'],
         'db_password' => ['label' => 'Password', 'tooltip' => "La password dell'utente database indicato sopra."],
         'mail_mailer' => ['label' => 'Mailer', 'tooltip' => 'Il metodo di invio email, generalmente "smtp".'],
@@ -150,6 +154,7 @@ return [
 
     'database' => [
         'test_button' => 'Testa connessione',
+        'non_vuoto' => '{1} Il database «:database» non è vuoto: ha già :n tabella. Il programma non lo cancella, per non farti perdere dati (tuoi o di un altro programma). Crea un database nuovo e vuoto, oppure svuota questo, poi riprova.|[2,*] Il database «:database» non è vuoto: ha già :n tabelle. Il programma non lo cancella, per non farti perdere dati (tuoi o di un altro programma). Crea un database nuovo e vuoto, oppure svuota questo, poi riprova.',
         'test_success' => 'Connessione riuscita! Il database ":database" è raggiungibile con queste credenziali.',
         'test_error' => 'Connessione non riuscita: :error',
     ],

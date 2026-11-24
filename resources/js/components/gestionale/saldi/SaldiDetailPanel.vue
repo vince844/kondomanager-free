@@ -257,6 +257,8 @@ function cambiaLegato() {
 // Il rifiuto del server alla richiesta del modale (un secondo saldo per l'intero immobile o per la stessa persona, un importo non valido):
 // si legge qui, nel modale, che resta aperto.
 const erroreModale = ref<string | null>(null);
+/** Un invio è in corso: il pulsante «Salva» è spento e un secondo clic non parte (Coda 323). */
+const inviando = ref(false);
 
 function openAddModal(gestioneId: number, tipo: 'credito' | 'debito') {
   const idAssegnati = idConUnSaldo(gestioneId);
@@ -295,6 +297,7 @@ function closeAddModal() {
 }
 
 function submitAddModal() {
+  if (inviando.value) return;
   if (!modalForm.value.importo || !modalForm.value.gestioneId) return;
   
   if (modalForm.value.targetType === 'personale' && !modalForm.value.anagraficaId) {
@@ -311,6 +314,7 @@ function submitAddModal() {
   const finalCents = modalForm.value.tipo === 'credito' ? -cents : cents;
 
   erroreModale.value = null;
+  inviando.value = true;
   router.post(
     route('admin.gestionale.saldi.store', { condominio: props.condominio.id }),
     {
@@ -325,6 +329,7 @@ function submitAddModal() {
     },
     {
       preserveScroll: true,
+      onFinish: () => { inviando.value = false; },
       onSuccess: () => closeAddModal(),
       // Qualunque campo dia il rifiuto, il modale lo mostra: `anagrafica_id` (un saldo c'è già), `saldo_iniziale`, `passaggio_id`, `error`.
       onError: (errors: Record<string, string>) => {
@@ -793,7 +798,7 @@ function submitAddModal() {
             <button @click="submitAddModal" 
                     class="px-5 py-2.5 rounded-lg text-sm font-bold text-white transition-all shadow-sm flex items-center gap-2"
                     :class="modalForm.tipo === 'credito' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'"
-                    :disabled="!modalForm.importo || (modalForm.targetType === 'personale' && !modalForm.anagraficaId) || (legato && !modalForm.passaggioId)">
+                    :disabled="inviando || !modalForm.importo || (modalForm.targetType === 'personale' && !modalForm.anagraficaId) || (legato && !modalForm.passaggioId)">
               <svg v-if="modalForm.tipo === 'credito'" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
               <TrendingDown v-else class="w-4 h-4" />
               Salva {{ modalForm.tipo === 'credito' ? 'Credito' : 'Debito' }}

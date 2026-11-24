@@ -28,6 +28,9 @@ use App\Traits\ContaNelGesto;
  *
  * Lo scrive `RegistraSubentroAction` (S5). Le colonne di S5 (`documento_id`, `data_fine_locazione`,
  * `regime_contratto`, `nota_conguaglio`, `subentro_padre_id`) arrivano con l'ottava migrazione di B2.
+ *
+ * Più persone che escono con lo stesso atto (1.12.0-beta.14, decisione 705) sono un **insieme**: un passaggio per persona, scritti insieme da
+ * `RegistraPassaggiInsiemeAction`, con `insieme_id` = l'id del primo su tutti, anche sul primo ({@see membriDellInsieme()}).
  */
 class Subentro extends Model
 {
@@ -76,7 +79,7 @@ class Subentro extends Model
     public const RISERVA_USUFRUTTO = 'riserva_usufrutto';
 
     protected $fillable = [
-        'condominio_id', 'immobile_id', 'subentro_padre_id', 'anagrafica_uscente_id', 'anagrafica_entrante_id',
+        'condominio_id', 'immobile_id', 'subentro_padre_id', 'insieme_id', 'anagrafica_uscente_id', 'anagrafica_entrante_id',
         'riga_uscente_id', 'riga_entrante_id', 'tipologia', 'tipo_passaggio', 'decorrenza',
         'data_fine_locazione', 'regime_contratto', 'estremi_titolo', 'copia_autentica_il', 'documento_id',
         'nota', 'nota_cancello', 'nota_conguaglio', 'conguaglio_annullato_il', 'nota_annullamento_conguaglio', 'utente_id',
@@ -507,6 +510,35 @@ class Subentro extends Model
 
     /** Le righe delle pertinenze che questo passaggio ha trascinato con sé. */
     public function pertinenze(): HasMany { return $this->hasMany(self::class, 'subentro_padre_id'); }
+
+    /**
+     * Decisione 705: il primo dei passaggi registrati insieme (più persone che escono con lo stesso atto); nullo per un passaggio da solo. Solo sulle
+     * righe padre: le righe delle pertinenze restano legate al loro padre con `subentro_padre_id`.
+     */
+    public function insieme(): BelongsTo { return $this->belongsTo(self::class, 'insieme_id'); }
+
+    /** Decisione 705: il passaggio è stato registrato insieme ad altri, uno per ogni persona che esce con lo stesso atto. */
+    public function nellInsieme(): bool
+    {
+        return $this->insieme_id !== null;
+    }
+
+    /**
+     * Decisione 705: i passaggi registrati insieme a questo, lui compreso, nell'ordine in cui sono stati scritti (id crescente, il primo è quello
+     * dell'`insieme_id`); per un passaggio da solo, lui solo. Le righe padre: le pertinenze di ciascuno si leggono da `pertinenze()`. Con
+     * `$conAnnullati` anche quelli annullati (lo storico, l'annullamento): annullati insieme, restano insieme.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, self>
+     */
+    public function membriDellInsieme(bool $conAnnullati = false): \Illuminate\Database\Eloquent\Collection
+    {
+        if ($this->insieme_id === null) {
+            return new \Illuminate\Database\Eloquent\Collection([$this]);
+        }
+
+        return self::query()->when($conAnnullati, fn ($q) => $q->conAnnullati())
+            ->where('insieme_id', $this->insieme_id)->whereNull('subentro_padre_id')->orderBy('id')->get();
+    }
 
     /** La coppia di conguaglio è stata tolta dopo la registrazione (S6), con data e ragione. */
     public function conguaglioAnnullato(): bool { return $this->conguaglio_annullato_il !== null; }

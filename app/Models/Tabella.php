@@ -32,6 +32,8 @@ class Tabella extends Model
         'attiva',
         'data_inizio',
         'data_fine',
+        // Il segno della tabella di un gruppo (Coda 734): lo mette l'amministratore, dalla pagina della tabella o dalla finestra del punto.
+        'di_un_gruppo',
         'created_by',
         'updated_by',
     ];
@@ -39,6 +41,7 @@ class Tabella extends Model
     protected $casts = [
         'regole_calcolo' => 'array',
         'attiva' => 'boolean',
+        'di_un_gruppo' => 'boolean',
         'data_inizio' => 'date',
         'data_fine' => 'date'
     ];

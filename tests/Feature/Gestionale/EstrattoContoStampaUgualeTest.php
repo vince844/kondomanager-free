@@ -36,24 +36,28 @@ it('spostato il calcolo in un servizio, il PDF dell\'estratto conto della pagina
 
     // Il calcolo della pagina (`buildLedger`, che `show()` e `print()` usano) è quello del servizio, e il PDF del servizio per lo stesso esercizio è quello della pagina.
     $servizio = app(\App\Services\Gestionale\EstrattoContoDellaPersona::class);
-    $esercizio = $s['e2025'];
+    // L'esercizio corrente della pagina: con il 2025 e il 2026 aperti, il più recente (Coda 646, decisione 707 (4)), dove stanno anche le emissioni del suo piano.
+    $esercizio = $s['e'];
     $metodo = new ReflectionMethod(EstrattoContoAnagraficaController::class, 'buildLedger');
     $dellaPagina = $metodo->invoke(app(EstrattoContoAnagraficaController::class), $s['c'], $esercizio, $rossi);
     expect($servizio->ledger($s['c'], $esercizio, $rossi))->toEqual($dellaPagina);
     $pdfDelServizio = $servizio->pdf($s['c'], $esercizio, $rossi);
     expect(str_replace([(string) $rossi->codice_fiscale, (string) $rossi->email], ['[CF]', '[EMAIL]'], fslTesto($pdfDelServizio, '-layout')))->toBe(ECS_ATTESO);
 
-    // Con un altro esercizio come parametro: quello del piano delle rate (2026), che la pagina non stampa perché il suo esercizio corrente è il 2025.
-    $altro = fslTesto($servizio->pdf($s['c'], $s['e'], $rossi));
-    expect($altro)->toContain('Esercizio: Esercizio 2026 | (dal 01/01/2026 al 31/12/2026)')
-        ->toContain('MOVIMENTI CONTABILI ESERCIZIO 2026');
+    // Con un altro esercizio come parametro: il 2025, che la pagina non stampa perché il suo esercizio corrente è il 2026.
+    $altro = fslTesto($servizio->pdf($s['c'], $s['e2025'], $rossi));
+    expect($altro)->toContain('Esercizio: Esercizio 2025 | (dal 01/01/2025 al 31/12/2025)')
+        ->toContain('MOVIMENTI CONTABILI ESERCIZIO 2025');
 });
 
-/** Il testo del PDF della pagina com'era prima dello spostamento (il codice fiscale e l'email della persona tolti: cambiano da una prova all'altra). */
-const ECS_ATTESO = 'Via Verdi 12 Via Verdi 12, 20121 Milano (MI) C.F. ESTRATTO CONTO — ROSSI Esercizio: Esercizio 2025 | (dal 01/01/2025 al 31/12/2025) | Stampato il '
+/**
+ * Il testo del PDF della pagina com'era prima dello spostamento (il codice fiscale e l'email della persona tolti: cambiano da una prova all'altra), con
+ * l'esercizio della pagina che dalla 1.12.0-beta.14 è il più recente dei due aperti, il 2026 (Coda 646): le righe sono le stesse.
+ */
+const ECS_ATTESO = 'Via Verdi 12 Via Verdi 12, 20121 Milano (MI) C.F. ESTRATTO CONTO — ROSSI Esercizio: Esercizio 2026 | (dal 01/01/2026 al 31/12/2026) | Stampato il '
     . '20/05/2026 12:00 ANAGRAFICA UNITÀ IMMOBILIARI Rossi Int. A (proprietario · 100%) CF: [CF] ✉ [EMAIL] SALDO INIZIALE TOTALE ADDEBITI TOTALE VERSATO '
-    . 'SALDO FINALE € 0,00 € 1.200,00 € 140,00 € 1.060,00 PAREGGIO RATE EMESSE E ADDEBITI INCASSI REGISTRATI DA VERSARE MOVIMENTI CONTABILI ESERCIZIO 2025 '
-    . 'ADDEBITI PAGAMENTI DATA PROTOCOLLO DESCRIZIONE SALDO (DARE) (AVERE) 01/01/2025 — Saldo iniziale esercizio — — € 0,00 02/01/2026 SCR-2026-00001 '
+    . 'SALDO FINALE € 0,00 € 1.200,00 € 140,00 € 1.060,00 PAREGGIO RATE EMESSE E ADDEBITI INCASSI REGISTRATI DA VERSARE MOVIMENTI CONTABILI ESERCIZIO 2026 '
+    . 'ADDEBITI PAGAMENTI DATA PROTOCOLLO DESCRIZIONE SALDO (DARE) (AVERE) 01/01/2026 — Saldo iniziale esercizio — — € 0,00 02/01/2026 SCR-2026-00001 '
     . 'Emissione Rata n.1 - Preventivo 2026 Ordinaria 2026 € 100,00 — € 100,00 ▲ Quota Rata n.1 - Preventivo 2026 • Rata n.1 (Scad. 05/11/2025) PAGATA • '
     . 'Interno A (Int. A) 02/01/2026 SCR-2026-00002 Emissione Rata n.2 - Preventivo 2026 Ordinaria 2026 € 100,00 — € 200,00 ▲ Quota Rata n.2 - Preventivo '
     . '2026 • Rata n.2 (Scad. 05/12/2025) PARZIALE • Interno A (Int. A) 02/01/2026 SCR-2026-00003 Emissione Rata n.3 - Preventivo 2026 Ordinaria 2026 € '

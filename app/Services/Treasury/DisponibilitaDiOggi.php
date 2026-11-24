@@ -168,12 +168,13 @@ final class DisponibilitaDiOggi
     }
 
     /**
-     * L'esercizio aperto che contiene oggi, o il primo aperto: dove si leggono i movimenti di un conto, e dove si crea un piano rate (le azioni consigliate, il
+     * L'esercizio aperto che contiene oggi, o quello aperto (con due, il più recente, come `HasEsercizio`: Coda 646): dove si leggono i movimenti
+     * di un conto, e dove si crea un piano rate (le azioni consigliate, il
      * compito del deficit ereditato).
      */
     public static function esercizioDiOggi(int $condominioId, string $oggi): ?int
     {
-        $aperti = DB::table('esercizi')->where('condominio_id', $condominioId)->where('stato', 'aperto')->orderBy('data_inizio')->orderBy('id')
+        $aperti = DB::table('esercizi')->where('condominio_id', $condominioId)->where('stato', 'aperto')->orderByDesc('data_inizio')->orderByDesc('id')
             ->get(['id', 'data_inizio', 'data_fine']);
         $dentro = $aperti->first(fn ($e) => substr((string) $e->data_inizio, 0, 10) <= $oggi && substr((string) $e->data_fine, 0, 10) >= $oggi);
 

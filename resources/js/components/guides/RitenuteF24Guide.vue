@@ -9,6 +9,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  *
  * Non ripete cosa fanno i pulsanti: spiega **le due soglie e le tre scadenze**, che sono la
  * parte che l'amministratore oggi ricostruisce a mano e che nessun gestionale gli racconta.
+ * Dalla 1.12.0-beta.14 (Coda 717) anche il totale guardato sul mese, il confronto di ogni soglia e il
+ * 20 agosto; e il promemoria per delega (Coda 718), con le parole della bozza approvata.
  * È anche il posto dove finisce il testo che prima stava accanto al pulsante di ricalcolo —
  * una spiegazione permanente non va in una riga che si legge una volta sola.
  */
@@ -106,11 +108,12 @@ const soglia = (cents: number) =>
                     <TabsContent value="soglie" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
                         <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Perché a volte si aspetta</h3>
-                            <p>
-                                Il condominio non versa a ogni pagamento: <strong>accumula</strong>, e versa
-                                quando il totale raggiunge una soglia. Le soglie sono due, e non si sommano
-                                fra loro — sono due adempimenti distinti.
-                            </p>
+                            <ul class="list-disc space-y-1 pl-5">
+                                <li>Il condominio non versa a ogni pagamento: <strong>accumula</strong>, e versa quando il totale fa scattare la soglia.</li>
+                                <li>Il totale si guarda <strong>sul mese</strong>: tutte le ritenute operate nel mese, più quelle rinviate dai mesi prima.</li>
+                                <li>Quando la soglia scatta, si versa <strong>tutto il mese</strong> entro il 16 del mese dopo, anche le ritenute venute dopo il pagamento che l'ha fatta scattare.</li>
+                                <li>Le soglie sono due e non si sommano fra loro: sono due adempimenti distinti.</li>
+                            </ul>
                         </section>
 
                         <section class="space-y-3">
@@ -118,21 +121,21 @@ const soglia = (cents: number) =>
                                 <p class="font-bold text-slate-900 dark:text-slate-100">
                                     Appalti 4% — soglia {{ soglia(soglie.appalti_cents) }}
                                 </p>
-                                <p class="mt-1 text-xs">
-                                    Si versa entro il 16 del mese successivo a quello in cui il cumulo raggiunge
-                                    la soglia. A prescindere, si versa comunque entro il
-                                    <strong>16 giugno</strong> e il <strong>16 dicembre</strong>.
-                                </p>
+                                <ul class="mt-1 list-disc space-y-1 pl-5 text-xs">
+                                    <li>Si versa entro il 16 del mese dopo quello in cui il totale <strong>raggiunge</strong> la soglia: {{ soglia(soglie.appalti_cents) }} esatti bastano.</li>
+                                    <li>Sotto la soglia si versa comunque entro il <strong>16 giugno</strong> (ritenute fino a maggio) e il <strong>16 dicembre</strong> (fino a novembre).</li>
+                                </ul>
                             </div>
 
                             <div class="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
                                 <p class="font-bold text-slate-900 dark:text-slate-100">
                                     Professionisti 20% — soglia {{ soglia(soglie.professionisti_cents) }}
                                 </p>
-                                <p class="mt-1 text-xs">
-                                    Stessa meccanica, ma <strong>una sola</strong> data-limite annuale: il
-                                    16 dicembre. Non il 16 giugno.
-                                </p>
+                                <ul class="mt-1 list-disc space-y-1 pl-5 text-xs">
+                                    <li>Si versa entro il 16 del mese dopo solo quando il totale <strong>supera</strong> la soglia: {{ soglia(soglie.professionisti_cents) }} esatti si rinviano ancora.</li>
+                                    <li><strong>Una sola</strong> data-limite annuale: il 16 dicembre. Non il 16 giugno.</li>
+                                    <li>Esempio: € 120 il 5 aprile e € 30 il 20 aprile fanno € 150 ad aprile, e si versano insieme entro il 16 maggio.</li>
+                                </ul>
                             </div>
 
                             <div class="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
@@ -146,10 +149,16 @@ const soglia = (cents: number) =>
 
                         <div class="flex gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
                             <Info class="h-4 w-4 shrink-0" />
-                            <p>
-                                Se una scadenza cade di sabato o in giorno festivo slitta al primo giorno
-                                lavorativo successivo — festività nazionali comprese, lunedì dell'Angelo incluso.
-                            </p>
+                            <ul class="list-disc space-y-1 pl-4">
+                                <li>
+                                    Se una scadenza cade di sabato o in giorno festivo slitta al primo giorno
+                                    lavorativo successivo — festività nazionali comprese, lunedì dell'Angelo incluso.
+                                </li>
+                                <li>
+                                    Le scadenze <strong>dal 1° al 20 agosto</strong> valgono fino al <strong>20 agosto</strong>: le ritenute
+                                    di luglio si versano entro il 20, non il 16. Se il 20 cade di sabato o domenica, il lunedì dopo.
+                                </li>
+                            </ul>
                         </div>
                     </TabsContent>
 
@@ -163,6 +172,19 @@ const soglia = (cents: number) =>
                                 all'esercizio corrente. Le deleghe confermate, versate, stornate o annullate non le tocca.
                                 Il pulsante <strong>diventa ambra con un numero</strong> quando ci sono ritenute
                                 operate che non stanno ancora in nessuna delega.
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">«Conferma la delega»</h3>
+                            <p>
+                                Serve a tenere ferma una delega che hai deciso di versare: «Aggiorna scadenze» non la rifà più
+                                e le sue cifre restano quelle fino al versamento. Non scrive niente in contabilità.
+                                Per cambiarla, «Riporta in bozza» dalla scheda della delega.
+                            </p>
+                            <p class="mt-2">
+                                Finché è confermata, i pagamenti che porta non si stornano e non cambiano data:
+                                il programma si ferma e ti chiede di riportarla in bozza prima.
                             </p>
                         </section>
 
@@ -260,6 +282,10 @@ const soglia = (cents: number) =>
                                 uguale e contrario invece di riscrivere il passato. Dopo lo storno le ritenute
                                 tornano da versare e rientrano nel prossimo calcolo.
                             </p>
+                            <p class="mt-2">
+                                Se storni un pagamento la cui ritenuta è già stata versata, il programma te lo dice;
+                                la delega del pagamento rifatto porta l'avviso «non versarla di nuovo».
+                            </p>
                             <div class="mt-3 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                                 <AlertTriangle class="h-4 w-4 shrink-0" />
                                 <p>
@@ -283,10 +309,22 @@ const soglia = (cents: number) =>
                             <h3 class="mb-2 flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
                                 <CalendarClock class="h-4 w-4" /> Il promemoria
                             </h3>
-                            <p>
-                                Registrando un pagamento con ritenuta compare un promemoria nella tua Inbox, con
-                                la scadenza già calcolata. Se storni il pagamento, il promemoria si chiude da sé.
-                            </p>
+                            <ul class="list-disc space-y-1 pl-5">
+                                <li>
+                                    Finché una ritenuta non è in una delega, nella tua Inbox c'è <strong>un promemoria solo</strong> per
+                                    condominio, «Prepara le deleghe F24», con la data del cumulo: quella che avrà la delega.
+                                </li>
+                                <li>
+                                    Dopo «Aggiorna scadenze», <strong>un promemoria per ogni delega</strong>, «F24 da versare», con la sua
+                                    scadenza e «Apri la delega». Se la delega si rifà, il promemoria la segue.
+                                </li>
+                                <li>
+                                    Registrato il versamento, il promemoria si chiude. Se storni il versamento o annulli la delega, torna
+                                    «Prepara le deleghe F24».
+                                </li>
+                                <li>Un pagamento nuovo, modificato o stornato aggiorna la data e la cifra da solo.</li>
+                                <li>«Segna come fatto» resta: il promemoria torna solo se la scadenza cambia.</li>
+                            </ul>
                         </section>
                     </TabsContent>
                 </Tabs>

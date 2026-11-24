@@ -27,4 +27,7 @@ export interface GeneralSettings extends PageProps {
   roles: RoleOption[]
   /** Chi apre la pagina può cambiare il ruolo della registrazione? Solo l'amministratore (Coda 258). */
   ruolo_registrazione_modificabile: boolean
+  comunicazioni_registra_aperture?: boolean
+  errori_avviso_dalla_pagina?: boolean
+  aperture_registrate?: number
 }

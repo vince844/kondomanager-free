@@ -97,7 +97,7 @@ class EstrattoContoAnagraficaController extends Controller
      * casse da cui il denaro può uscire, col saldo. Finché nessun piano ha assorbito la coppia del
      * passaggio, il credito di chi esce vive in `saldi` e qui non c'è una quota: il box lo dice.
      *
-     * @return array{quote: list<array<string,mixed>>, casse: list<array<string,mixed>>, credito_in_saldi: int}
+     * @return array{quote: list<array<string,mixed>>, casse: list<array<string,mixed>>, credito_in_saldi: int, rate_da_pagare: int}
      */
     private function datiRimborso(Condominio $condominio, Anagrafica $anagrafica): array
     {
@@ -171,7 +171,13 @@ class EstrattoContoAnagraficaController extends Controller
             ->filter(fn (int $netto) => $netto < 0)
             ->sum();
 
-        return ['quote' => $quote, 'casse' => $casse, 'credito_in_saldi' => abs($creditoInSaldi)];
+        // Coda 227: le rate che la persona ha ancora da pagare in questo condominio (i residui aperti, la lettura che usa anche l'annullamento di un
+        // passaggio): il credito nei saldi può andare prima su quelle, con «Compensa», e la frase del riquadro lo dice (lo decide l'amministratore: ci sono
+        // anche le rate emesse non ancora scadute).
+        $rateDaPagare = (int) collect(app(\App\Services\Gestionale\Debiti\LetturaDebiti::class)->perPersona((int) $condominio->id, (int) $anagrafica->id)['rate'])
+            ->sum(fn ($r) => max(0, (int) $r['residuo']));
+
+        return ['quote' => $quote, 'casse' => $casse, 'credito_in_saldi' => abs($creditoInSaldi), 'rate_da_pagare' => $rateDaPagare];
     }
 
     /** @return 'saldi'|'entrate'|'misto'|'eccedenza' */

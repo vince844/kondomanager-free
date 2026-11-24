@@ -204,8 +204,8 @@ export const NOTA_INTERESSI = 'Se la persona deve anche interessi o spese e vuoi
 /** La sola frase sul bollo: se e come la ricevuta lo sconta non lo dice il programma, lo decide l'amministratore con il suo commercialista. */
 export const FRASE_BOLLO = 'Se e come la ricevuta sconta il bollo lo decidi tu, con il tuo commercialista.';
 
-/** In blocco il modo di assolvere il bollo è uno solo: se tutti e due i gruppi sono «Assolta», cambiarlo in uno lo cambia anche nell'altro. */
-export const NOTA_MODO_UNICO = 'Con «Assolta» in tutti e due i gruppi il modo è uno solo, per tutte le ricevute.';
+/** In blocco il modo di assolvere il bollo è uno solo: se tutti e due i gruppi sono «Contrassegno» o «Virtuale», cambiarlo in uno lo cambia anche nell'altro. */
+export const NOTA_MODO_UNICO = 'Con «Contrassegno» o «Virtuale» in tutti e due i gruppi il modo è uno solo, per tutte le ricevute.';
 
 export const RIGA_ORIGINALE = 'La prima emissione è l\'originale: quelle dopo escono come «Copia», con la data dell\'originale.';
 

@@ -14,8 +14,10 @@ use App\Services\Import\Livelli\LivelloSoggetti;
 use App\Services\Import\Livelli\LivelloTabelle;
 use App\Services\Import\Livelli\LivelloTitolarita;
 use App\Services\Import\Livelli\LivelloUnita;
-use Illuminate\Support\Facades\DB;
+use App\Support\CodiceDellErrore;
+use App\Support\Errori\RegistroDegliErrori;
 use RuntimeException;
+use Throwable;
 
 /**
  * Esegue i livelli di un'importazione, nell'ordine, fermandosi al primo che non può passare.
@@ -152,11 +154,20 @@ final class ImportRunner
             // Una transazione per livello: se salta qui, il livello non è entrato **affatto**,
             // e la ripresa lo ritenta da capo invece di trovarlo a metà.
             // Il registro delle modifiche: una riga per livello (una per transazione, P10), firmata da chi ha avviato l'importazione.
-            $esito = \App\Services\RegistroModifiche\RegistroModifiche::comeAutore(
-                \App\Services\RegistroModifiche\GestiDelRegistro::autoreDellImportazione($ctx->batch),
-                fn () => \App\Services\RegistroModifiche\RegistroModifiche::durante(
-                    \App\Services\RegistroModifiche\GestiDelRegistro::livelloDellImportazione($ctx->batch, $livello->chiave()),
-                    fn () => $livello->commit($ctx)));
+            //
+            // ⚠️ **L'errore dentro un livello si ferma qui, fuori dalla transazione** (Coda 598, 1.12.0-beta.14). Fino alla beta.13 l'eccezione
+            // annullava il livello e poi risaliva fino a `ImportController::conferma()`: l'amministratore riceveva la pagina «Server Error», il
+            // rapporto non si scriveva e il lotto restava «in corso» per sempre, con i livelli di prima già entrati. Ora il livello si ferma come
+            // uno bloccato: il rapporto dice quale non è entrato, con il codice dell'errore, e il lotto è «parziale», da riprendere.
+            try {
+                $esito = \App\Services\RegistroModifiche\RegistroModifiche::comeAutore(
+                    \App\Services\RegistroModifiche\GestiDelRegistro::autoreDellImportazione($ctx->batch),
+                    fn () => \App\Services\RegistroModifiche\RegistroModifiche::durante(
+                        \App\Services\RegistroModifiche\GestiDelRegistro::livelloDellImportazione($ctx->batch, $livello->chiave()),
+                        fn () => $livello->commit($ctx)));
+            } catch (Throwable $e) {
+                $esito = $this->fermatoDaUnErrore($livello, $e, $esiti);
+            }
 
             $esiti[$livello->chiave()] = $esito;
 
@@ -219,6 +230,42 @@ final class ImportRunner
                 ));
             }
         }
+    }
+
+    /**
+     * Il livello che un errore del programma ha fermato: l'esito di un livello bloccato, con il codice dell'errore (Coda 598).
+     *
+     * L'errore si scrive come gli altri (`report()`: il file del server e il registro degli errori della tappa 6, con il codice nella stessa riga);
+     * all'amministratore arriva il codice, mai il testo dell'eccezione, che può contenere dati. Un errore che il gestore non scrive (un errore HTTP,
+     * una validazione) lo scrive `RegistroDegliErrori::registraAMano()`, così il codice del rapporto si trova sempre. Scrivere l'errore non deve
+     * diventare un secondo errore: se il registro non si scrive, il codice resta nel rapporto.
+     *
+     * @param  array<string, EsitoCommit>  $esiti  i livelli già eseguiti, per dire il vero su quello che è entrato prima
+     */
+    private function fermatoDaUnErrore(LivelloImport $livello, Throwable $e, array $esiti): EsitoCommit
+    {
+        $codice = CodiceDellErrore::di($e);
+
+        try {
+            report($e);
+            RegistroDegliErrori::registraAMano($e);
+        } catch (Throwable) {
+            // Il registro che non si scrive non ferma il rapporto: il codice c'è comunque.
+        }
+
+        // La strada per riprovare è quella della ripresa: ripartendo da capo, i livelli già entrati tornano nell'anteprima come «c'è già», e
+        // «Lascia com'è» li usa invece di riscriverli. Ripetere la conferma da sola si fermerebbe al primo di loro.
+        $primaEntrato = array_filter($esiti, fn (EsitoCommit $esito) => $esito->riuscito()) !== [];
+
+        return EsitoCommit::bloccato(Rilievo::errore(
+            'import.errore_inatteso',
+            sprintf('«%s» non è entrato: il programma ha incontrato un errore (codice %s).', $livello->etichetta(), $codice),
+            ($primaEntrato
+                ? 'Quello che c\'era prima è entrato. Da «Importa dati» premi «Riprendi»: l\'anteprima ti mostra quello che è già in archivio; lascialo '
+                    .'com\'è e conferma di nuovo.'
+                : 'Non è entrato niente. Da «Importa dati» premi «Riprendi» e conferma di nuovo.')
+            .' Se l\'errore si ripete, cerca il codice nel registro degli errori, o scrivici con il codice.',
+        ));
     }
 
     private function segnaParziale(ImportBatch $batch, LivelloImport $livello): void

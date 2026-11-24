@@ -710,8 +710,12 @@ final class PropostaInteressi
                         }
                     } else {
                         $chiavi[$k]['fine'] = CarbonImmutable::parse($fuori['dal'], 'UTC')->subDay()->format('Y-m-d');
-                        // Coda 678 (decisione 485): con gli interessi sospesi resta fuori tutta la rata, non solo la parte nell'accordo: la frase in testa alla persona lo dice.
-                        $chiavi[$k]['fuori_tutta'] = (int) $fuori['parte'];
+                        // Coda 678 (decisione 485): con gli interessi sospesi resta fuori tutta la rata, non solo la parte nell'accordo: la frase in testa alla persona lo
+                        // dice. Solo quando i «sospesi» li ha scelti l'amministratore e valgono alla data (Coda 712): una rata coperta per intero, o di un accordo
+                        // chiuso dalla successione, esce tutta per un'altra ragione, e la frase direbbe una scelta che nessuno ha fatto.
+                        if ($fuori['sospesi'] ?? false) {
+                            $chiavi[$k]['fuori_tutta'] = (int) $fuori['parte'];
+                        }
                     }
                     $chiavi[$k]['accordo_dal'] = $fuori['dal'];
                     $chiavi[$k]['tipo'] = 'accordo';
@@ -1160,7 +1164,8 @@ final class PropostaInteressi
         }
         $aperti = DB::table('esercizio_gestione as eg')->join('esercizi as e', 'e.id', '=', 'eg.esercizio_id')->join('gestioni as g', 'g.id', '=', 'eg.gestione_id')
             ->where('e.condominio_id', $condominio->id)->where('e.stato', 'aperto')->where('e.data_inizio', '<=', $alla . ' 23:59:59')->where('e.data_fine', '>=', $alla)
-            ->orderBy('e.data_inizio')->orderBy('g.id')
+            // Dal più recente: fra due esercizi aperti che contengono il giorno si scrive in quello che comincia dopo (Coda 646, decisione 707 (4), `HasEsercizio`).
+            ->orderByDesc('e.data_inizio')->orderByDesc('e.id')->orderBy('g.id')
             ->get(['eg.gestione_id', 'eg.esercizio_id', 'g.nome as gestione', 'g.tipo', 'e.nome as esercizio']);
         $esito = [];
         foreach (Gestione::whereIn('id', $gestioni)->get() as $g) {

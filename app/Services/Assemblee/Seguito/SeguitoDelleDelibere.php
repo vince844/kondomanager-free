@@ -255,6 +255,7 @@ final class SeguitoDelleDelibere
         $manca = false;
         $nessuno = true;
         $indice = collect($riepilogo['punti'])->keyBy('delibera_id');
+        $divisi = self::votatiDueVolte($assemblea);
         foreach (Delibera::query()->where('assemblea_id', $assemblea->id)->with(['punto', 'assemblea', 'revocataDa.punto'])->get()
             ->sortBy(fn (Delibera $d) => [(int) ($d->punto?->numero ?? 0), (int) $d->votazione, (int) $d->id]) as $d) {
             $annullato = ! self::siApre($d, $assemblea) && self::verbaleAnnullato($d, $assemblea);
@@ -269,15 +270,11 @@ final class SeguitoDelleDelibere
                 }
             }
             $t = $termini->perLaDelibera($d);
-            if ($t === null || $t['per_tutti'] === null) {
-                $manca = true;
-            } else {
-                $perTutti[] = $t['per_tutti'];
-            }
-            $nessuno = $nessuno && $t !== null && ($t['nessuno'] ?? false);
+            self::contaITermini($t, $manca, $perTutti, $nessuno);
             $tabella[] = [
                 'delibera_id' => (int) $d->id,
                 'punto' => $d->punto?->numero,
+                'oggetto' => in_array((int) $d->punto_id, $divisi, true) ? self::oggettoDi($d) : null,
                 // Il punto, per «Ferma il preventivo» sulla riga della cosa «Correggi il preventivo e fermalo di nuovo».
                 'punto_id' => $d->punto_id === null ? null : (int) $d->punto_id,
                 'testo' => (string) ($d->punto?->testo ?? $d->testo),
@@ -292,7 +289,8 @@ final class SeguitoDelleDelibere
                 'memo_salvato' => collect($indice[(int) $d->id]['righe'] ?? [])->contains(fn ($r) => $r['tipo'] === 'memo' && ($r['applicata'] ?? false)),
                 'segni' => SegniDellaDelibera::frasi($d),
                 'fondo_speciale' => SuiLavori::fondoSpeciale($d),
-                'trenta_giorni' => self::fraseDeiTrentaGiorni($t['per_tutti'] ?? null, $t === null || $t['per_tutti'] === null, (bool) ($t['nessuno'] ?? false)),
+                'trenta_giorni' => ($t['senza_termine'] ?? false) ? self::senzaTermine($d)
+                    : self::fraseDeiTrentaGiorni($t['per_tutti'] ?? null, $t === null || $t['per_tutti'] === null, (bool) ($t['nessuno'] ?? false)),
                 // Chi può impugnare (i contrari, gli astenuti, gli assenti), per il menu «Da chi» di «Segna impugnata»: la pagina è dello studio.
                 'chi_puo_impugnare' => array_values(array_map(fn ($p) => ['nome' => (string) $p['nome'], 'perche' => (string) $p['perche']], $t['chi'] ?? [])),
                 'posti' => \App\Services\Assemblee\CollegamentiDelleDelibere::posti($d),
@@ -304,7 +302,9 @@ final class SeguitoDelleDelibere
             'riepilogo' => $riepilogo,
             'tabella' => $tabella,
             'da_eseguire' => $daEseguire,
-            'trenta_giorni' => self::fraseDeiTrentaGiorni($giornoPerTutti, $manca || $perTutti === [], $nessuno && $tabella !== [], count($tabella) > 1),
+            // Solo punti rinviati o senza voto: niente da impugnare. Altrimenti contano le delibere approvate o respinte, le sole che hanno un termine.
+            'trenta_giorni' => $perTutti === [] && ! $manca && $tabella !== [] ? ['per_tutti' => null, 'dal' => null, 'frase' => self::NIENTE_DA_IMPUGNARE]
+                : self::fraseDeiTrentaGiorni($giornoPerTutti, $manca || $perTutti === [], $nessuno && $perTutti !== [], count($perTutti) > 1),
             'passo' => self::perIlPasso($assemblea, $riepilogo, $tabella),
             'puo' => ['gestire' => \App\Services\Assemblee\AccessoAlleAssemblee::gestisce($utente)],
         ];
@@ -571,5 +571,51 @@ final class SeguitoDelleDelibere
 
         return $numero === null ? null : VerbaleDellAssemblea::query()->where('assemblea_id', $delibera->assemblea_id)->where('numero', $numero)
             ->where('stato', StatoVerbale::REGISTRATO->value)->first();
+    }
+
+    /** La card «Trenta giorni» quando nessun punto è approvato o respinto: solo rinvii e punti trattati senza voto (Coda 750 B1). */
+    public const NIENTE_DA_IMPUGNARE = 'Niente da impugnare: nessun punto è approvato o respinto.';
+
+    /**
+     * Una delibera nel conto della card «Trenta giorni» (Coda 750 B1): il punto rinviato o trattato senza voto non ha termine e non conta; senza il verbale
+     * registrato (o con una consegna che manca) la data non c'è; altrimenti il suo ultimo giorno.
+     *
+     * @param ?array<string, mixed> $t
+     * @param list<string> $perTutti
+     */
+    private static function contaITermini(?array $t, bool &$manca, array &$perTutti, bool &$nessuno): void
+    {
+        if ($t['senza_termine'] ?? false) {
+            return;
+        }
+        if ($t === null || $t['per_tutti'] === null) {
+            $manca = true;
+        } else {
+            $perTutti[] = $t['per_tutti'];
+        }
+        $nessuno = $nessuno && $t !== null && ($t['nessuno'] ?? false);
+    }
+
+    /** La riga di un punto senza termine: «Niente da impugnare: rinviato.», «… trattato senza voto.». @return array{per_tutti: null, dal: null, frase: string} */
+    private static function senzaTermine(Delibera $d): array
+    {
+        return ['per_tutti' => null, 'dal' => null, 'frase' => 'Niente da impugnare' . match ($d->esito) {
+            \App\Enums\Assemblee\EsitoDelibera::RINVIATA => ': rinviato.',
+            \App\Enums\Assemblee\EsitoDelibera::SENZA_VOTO => ': trattato senza voto.',
+            default => '.',
+        }];
+    }
+
+    /** I punti dell'assemblea votati due volte (il rendiconto e il riparto, Coda 750 B6): hanno una delibera della seconda votazione. @return list<int> */
+    private static function votatiDueVolte(Assemblea $assemblea): array
+    {
+        return Delibera::query()->where('assemblea_id', $assemblea->id)->where('votazione', 2)->whereNotNull('punto_id')->pluck('punto_id')
+            ->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
+    /** L'oggetto di una delle due votazioni di un punto: `rendiconto` o `riparto`; la seconda, senza oggetto scritto, è il riparto. */
+    private static function oggettoDi(Delibera $d): string
+    {
+        return in_array($d->oggetto, ['rendiconto', 'riparto'], true) ? (string) $d->oggetto : ((int) $d->votazione === 2 ? 'riparto' : 'rendiconto');
     }
 }

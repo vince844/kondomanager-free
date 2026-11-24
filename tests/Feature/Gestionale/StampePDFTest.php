@@ -470,23 +470,32 @@ describe('Stampa Ripartizione Spese', function () {
             ->and($response->headers->get('Content-Disposition'))->toStartWith('inline; filename="ripartizione-spese-');
     });
 
-    it('il riparto aggrega per anagrafica (stessa logica dello scadenziario)', function () {
+    it('la ripartizione dà ogni soggetto su una riga sua, con la sua parte (una riga per persona dentro l\'unità)', function () {
         $ctx = setupStampePrintTest();
 
-        // Il riparto usa i piani rate della stessa gestione
-        $pianiRate = PianoRate::where('gestione_id', $ctx['gestioneId'])
-            ->with(['rate.rateQuote'])
-            ->get();
+        $response = $this->actingAs($ctx['user'])->get(route('admin.gestionale.esercizi.piani-conti.print-riparto', [
+            'condominio' => $ctx['condominio']->id,
+            'esercizio'  => $ctx['esercizioId'],
+            'pianoConto' => $ctx['pianoContoId'],
+        ]));
+        $response->assertOk();
 
-        $totalPerAnagrafica = $pianiRate
-            ->flatMap->rate
-            ->flatMap->rateQuote
-            ->groupBy('anagrafica_id')
-            ->map(fn($quotes) => $quotes->sum('importo'));
+        // Il foglio si legge come lo leggerebbe un condòmino: dal testo del PDF, non dal database.
+        $file = tempnam(sys_get_temp_dir(), 'rip');
+        file_put_contents($file, $response->getContent());
+        $testo = (string) shell_exec('pdftotext -layout '.escapeshellarg($file).' -');
+        @unlink($file);
 
-        // Stessi valori dello scadenziario
-        expect((int) ($totalPerAnagrafica[$ctx['ana1Id']] ?? 0))->toBe(12000);
-        expect((int) ($totalPerAnagrafica[$ctx['ana2Id']] ?? 0))->toBe(18000);
+        // Mario Bianchi 4.000 cent × 3 rate = € 120,00; Giulia Verdi 6.000 × 3 = € 180,00: ognuno con il suo nome sulla sua riga.
+        $rigaMario = collect(explode("\n", $testo))->first(fn ($r) => str_contains($r, 'Mario Bianchi'));
+        $rigaGiulia = collect(explode("\n", $testo))->first(fn ($r) => str_contains($r, 'Giulia Verdi'));
+
+        expect($rigaMario)->toContain('€ 120,00')
+            ->and($rigaGiulia)->toContain('€ 180,00')
+            ->and($testo)->toContain('€ 300,00')
+            // il piano è un numero: «piano 1», e la parola non si ripete
+            ->and($testo)->toContain('piano 1')
+            ->and($testo)->not->toContain('Piano Piano');
     });
 
 });

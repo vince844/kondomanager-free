@@ -5,6 +5,8 @@
 
 namespace App\Services\Import;
 
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -113,8 +115,8 @@ final class ModelloManualeWriter
             'Una riga per ogni unità: appartamenti, box, cantine, negozi. La colonna «unita» è la '
             .'CHIAVE: scegli tu come chiamarla (B1/1, int. 3, A-2…), ma poi la ripeterai IDENTICA '
             .'negli altri tre fogli.',
-            'Identica vuol dire proprio identica: «B1/1» e «B1/ 1» per noi sono due unità diverse. '
-            .'Il modo più sicuro è scriverla qui e copiarla di là.',
+            'Scrivila identica: se scappa uno spazio («B1/ 1» invece di «B1/1») te lo segnalo e le '
+            .'collego io, ma il modo più sicuro è scriverla qui e copiarla di là.',
             'F',
         );
 
@@ -129,9 +131,42 @@ final class ModelloManualeWriter
         $this->larghezze($f, ['A' => 18, 'B' => 12, 'C' => 10, 'D' => 10, 'E' => 10, 'F' => 18]);
     }
 
+    /**
+     * Le colonne del foglio delle persone, nell'ordine in cui compaiono: le otto di sempre, poi (dalla 1.12.0-beta.14, Coda 769) tutte le altre dell'anagrafica.
+     * Sono **tutte facoltative** tranne unità, nome e indirizzo, e un modello vecchio senza le colonne nuove si importa come prima: il parser le cerca per nome.
+     * Ognuna ha una spiegazione in parole semplici, che sta come nota sulla cella dell'intestazione e fa da guida.
+     *
+     * @var array<string, string>
+     */
+    private const COLONNE_PERSONE = [
+        'unita' => 'La chiave dell\'unità, scritta identica al foglio «1 unita».',
+        'nome' => 'Nome e cognome, o la ragione sociale. Obbligatorio.',
+        'codice_fiscale' => 'Facoltativo. Serve a riconoscere la stessa persona su più unità.',
+        'indirizzo' => 'Obbligatorio: è dove partono le comunicazioni.',
+        'ruolo' => 'proprietario, inquilino, usufruttuario o nuda_proprietario. Vuoto = proprietario.',
+        'quota_pct' => 'La quota di possesso, da 0 a 100. Con più comproprietari le quote fanno 100.',
+        'email' => 'Facoltativa. La prima email.',
+        'telefono' => 'Facoltativo. Il telefono fisso.',
+        'email_secondaria' => 'Facoltativa. La seconda email, diversa dalla prima.',
+        'pec' => 'Facoltativa. La PEC. Se non è un indirizzo valido non entra e te lo dico.',
+        'pec_comunicata_il' => 'Facoltativa. Il giorno in cui la persona ha comunicato la sua PEC, gg/mm/aaaa. Serve per convocarla in PEC.',
+        'mezzo_convocazione' => 'Facoltativo. Come si convoca alle assemblee: pec, raccomandata, a_mano oppure fax. Vuoto = lo propone il programma dai dati della persona. '
+            .'L\'email semplice non è un mezzo di convocazione.',
+        'cellulare' => 'Facoltativo. Il numero di cellulare.',
+        'data_nascita' => 'Facoltativa. gg/mm/aaaa.',
+        'luogo_nascita' => 'Facoltativo. Il comune o lo Stato di nascita.',
+        'tipologia_documento' => 'Facoltativa. passaporto oppure carta_identita.',
+        'numero_documento' => 'Facoltativo. Il numero del documento; non può essere lo stesso di un\'altra persona.',
+        'scadenza_documento' => 'Facoltativa. gg/mm/aaaa.',
+        'note' => 'Facoltative. Quello che vuoi tenere sulla scheda della persona.',
+    ];
+
     private function persone(Worksheet $f): void
     {
         $f->setTitle('2 persone');
+
+        $colonne = array_keys(self::COLONNE_PERSONE);
+        $ultima = Coordinate::stringFromColumnIndex(count($colonne));
 
         $this->testa(
             $f,
@@ -139,23 +174,61 @@ final class ModelloManualeWriter
             'Una riga per ogni TITOLARE, non per ogni unità: se un appartamento è di due '
             .'comproprietari, scrivi due righe con la stessa «unita». Nella colonna «unita» va la '
             .'stessa identica scritta del foglio «1 unita».',
-            'L\'indirizzo è obbligatorio: Kondomanager non registra una persona senza. Se una '
-            .'persona possiede tre unità, la scrivi tre volte — la riconosciamo dal codice fiscale, '
-            .'o dal nome se non ce l\'ha.',
-            'H',
+            'Servono solo unita, nome e indirizzo (Kondomanager non registra una persona senza). Tutte le altre colonne, da «email» in poi, sono FACOLTATIVE: '
+            .'compila quelle che hai e lascia vuote le altre. Appoggia il mouse sull\'intestazione di una colonna per leggere come si scrive. '
+            .'Mezzo di convocazione: pec, raccomandata, a_mano o fax (vuoto = lo propone il programma). Tipo di documento: passaporto o carta_identita. '
+            .'Le date come gg/mm/aaaa. Se una persona possiede tre unità, la scrivi tre volte e la riconosco dal codice fiscale, o dal nome se non ce l\'ha: '
+            .'se su due righe ha email o telefoni diversi tengo il primo e te lo segnalo.',
+            $ultima,
+            altezze: [30, 90],
         );
 
-        $this->intestazione($f, ['unita', 'nome', 'codice_fiscale', 'indirizzo', 'ruolo', 'quota_pct', 'email', 'telefono'], 'H');
+        $this->intestazione($f, $colonne, $ultima);
 
+        // Le colonne nuove restano vuote negli esempi: chi cancella le righe di esempio ma ne lascia una non trova dati inventati da noi nella scheda di una persona.
         $this->righe($f, [
-            ['B1/1', 'ROSSI MARIO', 'RSSMRA80A01H501U', 'Via Roma 1, Roma', 'proprietario', 100, '', ''],
-            ['B1/2', 'BIANCHI ANNA', '', 'Via Roma 2, Roma', 'proprietario', 60, '', ''],
-            ['B1/2', 'VERDI LUCA', '', 'Via Roma 2, Roma', 'proprietario', 40, '', ''],
+            ['B1/1', 'ROSSI MARIO', 'RSSMRA80A01H501U', 'Via Roma 1, Roma', 'proprietario', 100],
+            ['B1/2', 'BIANCHI ANNA', '', 'Via Roma 2, Roma', 'proprietario', 60],
+            ['B1/2', 'VERDI LUCA', '', 'Via Roma 2, Roma', 'proprietario', 40],
         ], nota: 'B1/2 compare due volte: due comproprietari al 60% e 40%. Ruoli ammessi: '
             .'proprietario, inquilino, usufruttuario, nuda_proprietario.');
 
         $this->chiaveTestuale($f);
-        $this->larghezze($f, ['A' => 18, 'B' => 26, 'C' => 20, 'D' => 28, 'E' => 18, 'F' => 12, 'G' => 22, 'H' => 16]);
+
+        foreach ($colonne as $i => $nome) {
+            $lettera = Coordinate::stringFromColumnIndex($i + 1);
+            $commento = $f->getComment($lettera.self::RIGA_INTESTAZIONE);
+            $commento->getText()->createTextRun(self::COLONNE_PERSONE[$nome]);
+            $commento->setWidth('260px')->setHeight('90px');
+
+            // Telefoni e numero del documento restano testo: Excel toglierebbe lo zero davanti a «0212345678» e scriverebbe 3,33E+9 per un cellulare lungo.
+            if (in_array($nome, ['telefono', 'cellulare', 'numero_documento'], true)) {
+                $f->getStyle($lettera)->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+            }
+        }
+
+        // Le due colonne a scelta chiusa si compilano da un menu.
+        $this->menuAScelta($f, 'mezzo_convocazione', $colonne, '"pec,raccomandata,a_mano,fax"');
+        $this->menuAScelta($f, 'tipologia_documento', $colonne, '"passaporto,carta_identita"');
+
+        $this->larghezze($f, ['A' => 18, 'B' => 26, 'C' => 20, 'D' => 28, 'E' => 18, 'F' => 12, 'G' => 22, 'H' => 16, 'I' => 24, 'J' => 24, 'K' => 18, 'L' => 20,
+            'M' => 16, 'N' => 14, 'O' => 18, 'P' => 20, 'Q' => 18, 'R' => 18, 'S' => 30]);
+    }
+
+    /** Un menu a tendina per una colonna a scelta chiusa: aiuta, non vincola (chi scrive un'altra parola riceve l'avviso del parser). */
+    private function menuAScelta(Worksheet $f, string $colonna, array $colonne, string $elenco): void
+    {
+        $lettera = Coordinate::stringFromColumnIndex(array_search($colonna, $colonne, true) + 1);
+        $validazione = $f->getCell($lettera.(self::RIGA_INTESTAZIONE + 1))->getDataValidation();
+        $validazione->setType(DataValidation::TYPE_LIST)
+            ->setErrorStyle(DataValidation::STYLE_INFORMATION)
+            ->setAllowBlank(true)
+            ->setShowDropDown(false)
+            ->setFormula1($elenco);
+
+        for ($r = self::RIGA_INTESTAZIONE + 2; $r <= self::RIGA_INTESTAZIONE + 300; $r++) {
+            $f->getCell($lettera.$r)->setDataValidation(clone $validazione);
+        }
     }
 
     private function tabelle(Worksheet $f): void
@@ -231,7 +304,7 @@ final class ModelloManualeWriter
     }
 
     /** Titolo in riga 1 e due righe di guida, gialle e a capo automatico. */
-    private function testa(Worksheet $f, string $titolo, string $guida1, string $guida2, string $ultimaColonna): void
+    private function testa(Worksheet $f, string $titolo, string $guida1, string $guida2, string $ultimaColonna, array $altezze = [30, 30]): void
     {
         $f->setCellValue('A1', $titolo);
         $f->getStyle('A1')->getFont()->setBold(true)->setSize(13);
@@ -246,8 +319,8 @@ final class ModelloManualeWriter
         ]);
         $f->getStyle('A2:'.$ultimaColonna.'3')->getAlignment()
             ->setWrapText(true)->setVertical(Alignment::VERTICAL_CENTER);
-        $f->getRowDimension(2)->setRowHeight(30);
-        $f->getRowDimension(3)->setRowHeight(30);
+        $f->getRowDimension(2)->setRowHeight($altezze[0]);
+        $f->getRowDimension(3)->setRowHeight($altezze[1]);
     }
 
     private function intestazione(Worksheet $f, array $colonne, string $ultima, ?int $riga = null): void

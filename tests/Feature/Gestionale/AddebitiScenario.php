@@ -17,12 +17,16 @@ use Spatie\Permission\Models\Role;
 
 require_once __DIR__ . '/../Riparto/ConsuntivoPerPersonaPosizioneScenario.php';
 
-/** L'amministratore del pannello, in `$test->user`. */
+/**
+ * L'amministratore del pannello, in `$test->user`, con «Modifica condomini»: la regola del recupero si scrive e si elimina solo con quel permesso
+ * (Coda 755 (2)), e le prove degli addebiti le scrivono dalla rotta.
+ */
 function adbAdmin($test): void
 {
     app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
     $ruolo = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
     $ruolo->givePermissionTo(Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']));
+    $ruolo->givePermissionTo(Permission::firstOrCreate(['name' => \App\Enums\Permission::EDIT_CONDOMINI->value, 'guard_name' => 'web']));
     $test->user = User::factory()->create();
     $test->user->assignRole($ruolo);
 }

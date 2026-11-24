@@ -24,7 +24,7 @@ import type { Esercizio } from '@/types/gestionale/esercizi';
 
 interface PaginationMeta { current_page: number; last_page: number; total: number; per_page: number }
 
-interface Conto { id: number; codice: string; nome: string; tipo: string; natura_dare: boolean }
+interface Conto { id: number; codice: string; nome: string; tipo: string; natura_dare: boolean; entrate?: boolean }
 
 interface Riepilogo {
     /** In centesimi: il saldo del conto a `riporto_al`, nel verso naturale. */
@@ -130,9 +130,13 @@ function stampaLibroMastro() {
 }
 
 const versoNaturale = computed(() => props.conto.natura_dare ? 'dare meno avere' : 'avere meno dare');
-const controNatura = computed(() => props.conto.natura_dare
-    ? 'una cassa sotto zero, un credito che diventa un debito'
-    : 'un fornitore a credito, un debito che diventa un credito');
+// Coda 754 (8): il mastro «Entrate e proventi» si legge come un'entrata, in avere; la situazione patrimoniale lo tiene fra i costi con il meno.
+const controNatura = computed(() => props.conto.entrate
+    ? 'più rimborsi o storni che entrate'
+    : props.conto.natura_dare
+        ? 'una cassa sotto zero, un credito che diventa un debito'
+        : 'un fornitore a credito, un debito che diventa un credito');
+const RIGA_ENTRATE = 'Entrate: il saldo si legge in avere. Nella situazione patrimoniale la stessa cifra sta fra i costi con il meno, perché le entrate li riducono.';
 
 const pageGuides = computed(() => [
     {
@@ -150,7 +154,9 @@ const pageGuides = computed(() => [
     },
     {
         title: 'Il verso del saldo',
-        description: `Il saldo è nel verso naturale del conto — ${versoNaturale.value} — come nella situazione patrimoniale. Un importo negativo è contro natura: ${controNatura.value}.`,
+        description: props.conto.entrate
+            ? `${RIGA_ENTRATE} Un importo negativo è contro natura: ${controNatura.value}.`
+            : `Il saldo è nel verso naturale del conto — ${versoNaturale.value} — come nella situazione patrimoniale. Un importo negativo è contro natura: ${controNatura.value}.`,
         icon: ArrowLeftRight,
         colorVariant: 'amber' as const,
     },
@@ -237,12 +243,18 @@ const pageGuides = computed(() => [
                                 <div class="min-w-0">
                                     <div class="text-[11px] uppercase tracking-wider text-slate-500 font-bold">{{ etichettaSaldo }}</div>
                                     <div class="text-lg font-bold tabular-nums" :class="riepilogo.saldo_alla_data < 0 ? 'text-rose-600' : 'text-slate-700'">{{ euro(riepilogo.saldo_alla_data) }}</div>
-                                    <div v-if="!filtrato" class="text-[11px] text-slate-500">È il saldo di questo conto nella situazione patrimoniale al {{ formatData(periodo.al) }}.</div>
+                                    <div v-if="!filtrato && conto.entrate" class="text-[12px] text-slate-500">Nella situazione patrimoniale al {{ formatData(periodo.al) }} la stessa cifra sta fra i costi, con il meno.</div>
+                                    <div v-else-if="!filtrato" class="text-[11px] text-slate-500">È il saldo di questo conto nella situazione patrimoniale al {{ formatData(periodo.al) }}.</div>
                                     <div v-else class="text-[11px] text-slate-500">Saldo vero a quella data, non il netto delle righe mostrate. Senza filtri: {{ euro(riepilogo.saldo_finale) }} al {{ formatData(periodo.al) }}.</div>
                                 </div>
                             </div>
                         </div>
 
+                        <!-- Coda 754 (8): il mastro delle entrate, letto in avere; la riga dice perché la situazione patrimoniale ha il meno. -->
+                        <div v-if="conto.entrate" class="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 flex items-start gap-2" data-testid="mastrino-entrate">
+                            <ArrowLeftRight class="w-4 h-4 mt-0.5 shrink-0" />
+                            <div>{{ RIGA_ENTRATE }}</div>
+                        </div>
                         <!-- D21.9: ciò che il mastrino dichiara invece di nascondere. -->
                         <div v-if="riepilogo.apertura_non_registrata !== 0" class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-900 flex items-start gap-2">
                             <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0" />

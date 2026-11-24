@@ -984,7 +984,7 @@ it('Coda 413 — chi riprende i giorni ha il pezzo regolato fra le parti (Ines �
         ->and([$sara['regolato_fra_le_parti'], $sara['a_suo_credito_nel_wallet'], $sara['da_rimborsare']])->toBe([2752, -2752, 10829])
         ->and(p59PagateDa($p, 'Teo'))->toBe(['Ugo' => 2752]);
     $stampa = p59Stampa($this, $s);
-    expect($stampa)->toContain('il conguaglio della sua uscita del 01/12/2026, a suo credito nel Wallet Proprietà1.000 su 1.000 millesimi 30 % 01/01/2026–31/12/2026 — € -27,52 a suo credito nel Wallet')
+    expect($stampa)->toContain('il conguaglio della sua uscita del 01/12/2026, a suo credito nel Wallet Proprietà1.000 su 1.000 millesimi 30 % 01/01/2026–31/12/2026 — € 27,52 a suo credito nel Wallet')
         ->and($stampa)->not->toContain('€ -27,52 regolata fra le parti')
         // Con la riga del credito le altre non sono più «di cui» (sommano al totale insieme a lei), e neanche l'ultima: la parte da rimborsare.
         ->and($stampa)->toContain('Totale a carico di Sara € 108,29 regolata fra le parti al cambio d\'inquilino € 27,52 a suo credito nel Wallet, con il conguaglio della sua uscita € 27,52 da rimborsare a chi le ha pagate € 108,29')
@@ -1018,7 +1018,7 @@ it('Coda 413 — la stessa storia con un\'entrata, l\'«Antenna» del secondo pi
         ->and([(int) $sara['totale'], $sara['a_suo_credito_nel_wallet'], $sara['da_rimborsare']])->toBe([-25771, 6548, -25771]);
     $stampa = p59Stampa($this, $s);
     expect($stampa)->toContain('— € 93,00 a suo debito nel Wallet')
-        ->and($stampa)->toContain('— € -27,52 a suo credito nel Wallet')
+        ->and($stampa)->toContain('— € 27,52 a suo credito nel Wallet')
         ->and($stampa)->toContain('a suo debito nel Wallet, con il conguaglio della sua uscita € 65,48');
     // Nel piede nessuna cifra con «€ -» (Coda 252.2): il verso è nelle parole. A mano, per luglio Sara ha le «Spese generali» regolate fra le parti, 3058 al lordo e 306 di già versato = 2752,
     // e l'«Antenna» − 9300: − 6548, a suo credito; Pia ha con il conguaglio le «Spese generali» da agosto, 13581, e l'«Antenna» − 45900 (300 al giorno per i 153 giorni dal 1/8): − 32319, a suo

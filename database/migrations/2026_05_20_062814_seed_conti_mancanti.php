@@ -37,7 +37,7 @@ return new class extends Migration
         // Critico su Windows / hosting condiviso: questa migration può girare
         // dentro una richiesta HTTP (Artisan::call in SystemUpgradeController).
         // max_execution_time = 60s di default — insufficiente per molti condomini.
-        set_time_limit(0);
+        \App\Support\LimiteDiTempo::alza(0);
 
         $condominii = DB::table('condomini')->select('id')->pluck('id');
 

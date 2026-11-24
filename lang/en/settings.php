@@ -146,6 +146,10 @@ return [
             'label' => 'Maintenance ticket updated',
             'description' => 'Get a notification when a ticket you follow is changed',
         ],
+        'error_reported' => [
+            'label' => 'Error reported',
+            'description' => 'Receive an email at the first notice of an error from a resident or a collaborator: the code, the time, the page and who reported it, without the technical details. Later notices of the same error are counted in the Action inbox task, without another email.',
+        ],
         'ticket_assigned' => [
             'label' => 'Ticket assigned',
             'description' => 'Receive a notification when a ticket is assigned to you, or is no longer assigned to you',

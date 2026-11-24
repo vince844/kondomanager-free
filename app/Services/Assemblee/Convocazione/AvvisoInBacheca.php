@@ -9,6 +9,7 @@ use App\Enums\Assemblee\AmbitoAssemblea;
 use App\Models\Assemblee\Assemblea;
 use App\Models\Assemblee\PuntoDellOrdineDelGiorno;
 use App\Models\Comunicazione;
+use App\Services\Assemblee\UnitaDelPunto;
 use App\Services\Gestionale\Lettere\TestiLettere;
 
 /**
@@ -66,8 +67,10 @@ final class AvvisoInBacheca
     public function precompilata(Assemblea $assemblea): array
     {
         $avviso = $this->emissione->avviso($assemblea, ['nome' => '', 'indirizzo' => '', 'unita' => [], 'punti' => null]);
-        $assemblea->loadMissing(['punti.scala', 'condominio']);
-        $righe = ['È convocata l\'assemblea ' . mb_strtolower($assemblea->tipo?->parola() ?? 'ordinaria') . ' dei condòmini del '
+        $assemblea->loadMissing(['punti.scala', 'punti.palazzina', 'punti.tabella', 'condominio', 'tabella']);
+        // L'assemblea dei condòmini di un gruppo (Coda 734, scena 8 della bozza): la prima riga dice il gruppo.
+        $delGruppo = UnitaDelPunto::gruppoDellAssemblea($assemblea) !== null ? 'della tabella «' . ($assemblea->tabella?->nome ?? '') . '» ' : '';
+        $righe = ['È convocata l\'assemblea ' . mb_strtolower($assemblea->tipo?->parola() ?? 'ordinaria') . ' dei condòmini ' . $delGruppo . 'del '
             . TestiLettere::condominioConNome((string) $assemblea->condominio->nome) . ':'];
         foreach ($avviso['sedute'] as $s) {
             $righe[] = '— ' . $s['nome'] . ': ' . $s['quando'] . (filled($s['dove'] ?? null) ? ', ' . $s['dove'] : '');
@@ -79,8 +82,13 @@ final class AvvisoInBacheca
             if ($frase === '') {
                 $frase = self::rigaNeutra($p);
             }
-            if ($p->ambito === AmbitoAssemblea::SCALA && $p->scala !== null) {
-                $frase .= ' (decidono i condòmini della scala ' . $p->scala->name . ')';
+            // Chi decide il punto della sola scala o palazzina, e quello del gruppo di una tabella (Coda 734): «(decidono i condòmini della tabella «Box»)»,
+            // come la riga sotto il punto nell'avviso.
+            $gruppo = UnitaDelPunto::gruppoProprio($p, $assemblea);
+            $parte = ($p->ambito === AmbitoAssemblea::SCALA && $p->scala !== null) || ($p->ambito === AmbitoAssemblea::PALAZZINA && $p->palazzina !== null)
+                ? UnitaDelPunto::parteDi($p) : null;
+            if ($parte !== null || $gruppo !== null) {
+                $frase .= ' (decidono ' . UnitaDelPunto::condomini($parte, $gruppo) . ')';
             }
             $righe[] = $p->numero . '. ' . $frase;
         }

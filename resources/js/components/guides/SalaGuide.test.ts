@@ -88,7 +88,8 @@ describe('la guida della sala', () => {
         const t = await apri();
         expect(t).toContain('Prima di «Apri l\'assemblea» la card è l\'elenco dei convocati, con il mezzo della convocazione');
         expect(t).toContain('«In collegamento» e «Delega» stanno nel menu ⋯ della riga');
-        expect(t).toContain('l\'altro contitolare entra con la spunta «senza voto»');
+        expect(t).toContain('l\'altra persona in comproprietà entra con la spunta «senza voto»');
+        expect(t).not.toContain('contitolare');
         expect(t).toContain('Con più di sei punti');
         expect(t).toContain('«Modifica» e «Togli»');
         expect(t).toContain('Un gesto arrivato resta a video');
@@ -100,5 +101,14 @@ describe('la guida della sala', () => {
         expect(voci.length).toBeGreaterThanOrEqual(25);
         expect(voci.filter((v) => v.length > 240)).toEqual([]);
         expect(sorgente).not.toMatch(/text-\[(?:[0-9]|1[01])px\]/);
+    });
+
+    test('il punto di una parte (Coda 734): la seconda riga anche per il gruppo di una tabella, e la riga azzurra di chi vota; «Discorde» spiegato (rilievo B8)', async () => {
+        const t = await apri();
+        expect(t).toContain('Su un punto della sola scala, o votato con una tabella di un gruppo, una seconda riga dice il conto della parte');
+        expect(t).not.toContain('dice chi paga, non quanti devono esserci');
+        expect(t).toContain('chi altro è in sala non vota su quel punto (art. 1123 c. 3 c.c.)');
+        expect(t).toContain('«Discorde»: i comproprietari presenti votano in modo diverso; di serie l\'unità conta astenuta, con i suoi millesimi; se nelle impostazioni '
+            + 'lo spegni, decide il presidente.');
     });
 });

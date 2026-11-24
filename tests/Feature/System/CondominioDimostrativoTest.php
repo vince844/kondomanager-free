@@ -286,6 +286,22 @@ it('⚠️ lo scadenzario F24 è già calcolato', function () {
     expect((int) $deleghe->first()->totale_debito)->toBeGreaterThan(0);
 });
 
+it('il promemoria della ritenuta è quello del programma, uno solo', function () {
+    // Coda 718 (decisioni 675 e 685 (7)): i promemoria delle ritenute li scrive il programma, uno per delega. Il condominio
+    // d'esempio ne scriveva anche uno a mano, «Versare la ritenuta d'acconto del mese», che finiva accanto a «F24 da versare»:
+    // due righe per la stessa ritenuta, con due date (Vincenzo, 22/11/2026: «togli il promemoria F24 dal condominio d'esempio»).
+    $c = creaDimostrativo()['condominio'];
+
+    $aperti = \App\Models\Evento::query()
+        ->where('is_completed', false)
+        ->whereHas('condomini', fn ($q) => $q->where('condomini.id', $c->id));
+
+    expect((clone $aperti)->where('title', "Versare la ritenuta d'acconto del mese")->count())
+        ->toBe(0, 'Il condominio d\'esempio scrive ancora a mano il promemoria della ritenuta.')
+        ->and((clone $aperti)->whereNotNull('meta->context->delega_f24_id')->count())
+        ->toBe(1, 'Il promemoria del programma per la delega del condominio d\'esempio non c\'è, o ce n\'è più di uno.');
+});
+
 it('la nota di credito riduce davvero il bonifico', function () {
     // Non basta che i due documenti esistano: la demo serve a **mostrare** che dalla banca esce
     // meno di quanto si chiude di debito. È la funzione rimessa in piedi nella beta.67.

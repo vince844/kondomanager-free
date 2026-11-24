@@ -62,6 +62,7 @@ class MemoController extends Controller
 
         return response()->json([
             'testo' => $proposta['testo'] ?? '',
+            'nota' => $proposta['nota'] ?? null,
             'origine' => $origine === null ? null : [
                 'tipo' => SchedaDelCondominio::tipoDi($origine),
                 'id' => (int) $origine->getKey(),

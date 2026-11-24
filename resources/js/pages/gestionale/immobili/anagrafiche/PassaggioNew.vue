@@ -27,6 +27,11 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  *
  * Da S5 `store` scrive (`RegistraSubentroAction`): il pannello porta gli importi del conguaglio proposto
  * per gestione e la rinuncia motivata; gli errori di dominio dell'action tornano come errori di campo.
+ *
+ * Tappa 7 della 1.12.0-beta.14 (decisione 705): nella vendita, anche con la riserva d'usufrutto, «Chi esce» ha le caselle al posto dei pallini e si
+ * spuntano tutte le persone che escono con lo stesso atto. Una sola: il passaggio di sempre (`riga_uscente_id`). Due o più: `righe_uscenti`, e il server
+ * registra un passaggio per ciascuna, tutti o nessuno; la quota di chi entra è la somma (chi entra è una persona sola, decisione 707) e il pannello è
+ * `AnteprimaGruppo.vue`, con le cifre che si scriveranno e l'impronta che la registrazione rimanda.
  */
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
@@ -36,6 +41,7 @@ import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import PassaggioProprietaGuide from '@/components/guides/PassaggioProprietaGuide.vue';
 import AnteprimaPassaggio from '@/components/gestionale/immobili/AnteprimaPassaggio.vue';
+import AnteprimaGruppo from '@/components/gestionale/immobili/AnteprimaGruppo.vue';
 import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vue';
 import PassaggioPertinenzeCard from '@/components/gestionale/immobili/PassaggioPertinenzeCard.vue';
 import AccessoriSegnalatiDelDefunto from '@/components/gestionale/immobili/AccessoriSegnalatiDelDefunto.vue';
@@ -58,15 +64,16 @@ import { useDateConverter } from '@/composables/useDateConverter';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from 'vue-select';
-import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Info, AlertTriangle, FileSignature, Home, KeyRound, KeySquare, Landmark, BellRing, Paperclip, Lock, ScrollText, Plus, X } from 'lucide-vue-next';
+import { ArrowRightLeft, CalendarDays, Scale, LoaderCircle, Check, UserPlus, Info, AlertTriangle, FileSignature, Home, KeyRound, KeySquare, Landmark, BellRing, Paperclip, Lock, ScrollText, Plus, X, Users } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
-import type { AnteprimaPassaggioDati, PersonaDelCondominio, PertinenzaCollegata, SceltaAccordoDelDefunto, SceltaInteressiDelDefunto, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
+import { eAnteprimaGruppo, erroreRuoliDiversi, sommaQuoteCentesimi, sommaQuoteComeStringa } from '@/types/gestionale/passaggi';
+import type { AnteprimaGruppoDati, AnteprimaPassaggioDati, AnteprimaRisposta, PersonaDelCondominio, PertinenzaCollegata, SceltaAccordoDelDefunto, SceltaInteressiDelDefunto, TipoPassaggio, TitolareAttuale } from '@/types/gestionale/passaggi';
 import { interessiCheValgono } from '@/lib/gestionale/passaggi/interessiDelDefunto';
 import { cambiaSpunta, dividiVoci, voceSpuntata } from '@/lib/gestionale/passaggi/vociDaSpostare';
 import { nudiInteriPossibili as nudiInteriPossibiliPer } from '@/lib/gestionale/passaggi/nudiInteri';
-import { percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
+import { percentuale, percentualeIt } from '@/lib/gestionale/passaggi/percentuale';
 import { aNome } from '@/lib/gestionale/passaggi/preposizione';
 import { partiUguali, quoteCheNonTornano } from '@/lib/gestionale/passaggi/quoteEredi';
 import { conguaglioDaScegliereNelPassaggio, coppieNonScritte, fraseArretrato, passaggioConLaScelta, sceltaConguaglioDelPassaggio, type SceltaConguaglio } from '@/lib/gestionale/passaggi/rinunciaConguaglio';
@@ -215,7 +222,7 @@ function chiudiCalendario(dp: any) {
 }
 
 /** L'errore di scrittura non appartiene a un campo: `store` lo manda come `passaggio`. */
-const erroreScrittura = computed(() => (form.errors as Record<string, string | undefined>).passaggio ?? null);
+const erroreScrittura = computed(() => (form.errors as Record<string, string | undefined>).passaggio ?? passaggioCambiato.value ?? null);
 // La rete sotto i campi (verifica S5, R12): gli errori dell'action su chiavi senza un campo visibile nel tipo
 // corrente (`pertinenze`, `quota` e `anagrafica_entrante_id` nell'estinzione, `riga_uscente_id` già chiusa)
 // finiscono qui, con il nome leggibile; `passaggio` ha già il suo riquadro.
@@ -228,7 +235,7 @@ const ETICHETTE_ERRORI: Record<string, string> = {
   interessi_eredi: 'gli interessi degli eredi',
 };
 // `ordinaria_impronta` ha il suo riquadro nella scheda dell'ordinaria, che sopravvive al ricalcolo del pannello.
-const erroriSenzaRiquadro = computed(() => Object.fromEntries(Object.entries(form.errors as Record<string, string>).filter(([k]) => k !== 'passaggio' && k !== 'ordinaria_impronta')));
+const erroriSenzaRiquadro = computed(() => Object.fromEntries(Object.entries(form.errors as Record<string, string>).filter(([k]) => k !== 'passaggio' && k !== 'ordinaria_impronta' && !k.startsWith('righe_uscenti'))));
 
 const candidatiUscente = computed(() => {
   const ruoli = props.tipo === 'usufrutto'
@@ -238,17 +245,50 @@ const candidatiUscente = computed(() => {
 });
 const uscente = computed(() => props.titolari.find(t => t.id === form.riga_uscente_id) ?? null);
 
+// --- Tappa 7 (decisione 705): più persone che escono insieme, nella vendita --------------------------------------------------------------------------------
+const eVendita = computed(() => props.tipo === 'vendita');
+/** Le righe spuntate in «Chi esce» (solo nella vendita), nell'ordine dell'elenco: è l'ordine in cui il server le registra. Una riga sola è il passaggio di sempre. */
+const righeScelte = ref<number[]>(props.tipo === 'vendita' && props.rigaPreselezionata != null ? [props.rigaPreselezionata] : []);
+const righeSceltaTitolari = computed(() => candidatiUscente.value.filter(t => righeScelte.value.includes(t.id)));
+const insieme = computed(() => eVendita.value && righeSceltaTitolari.value.length >= 2);
+function spuntaRiga(id: number) {
+  const scelte = new Set(righeScelte.value);
+  if (scelte.has(id)) scelte.delete(id); else scelte.add(id);
+  righeScelte.value = candidatiUscente.value.map(t => t.id).filter(x => scelte.has(x));
+}
+/** Chi esce insieme ha lo stesso ruolo: con ruoli diversi la frase con la strada, e nessuna richiesta al server (che direbbe lo stesso). */
+const erroreRuoli = computed(() => insieme.value ? erroreRuoliDiversi(righeSceltaTitolari.value.map(t => ({ nome: t.anagrafica.nome, tipologia: t.tipologia }))) : null);
+/** L'errore del server su una riga (`righe_uscenti.<i>`, con il nome in testa), sotto la riga giusta. */
+const erroreDellaRiga = (id: number): string | null => {
+  const i = righeScelte.value.indexOf(id);
+  return i < 0 ? null : ((form.errors as Record<string, string | undefined>)[`righe_uscenti.${i}`] ?? null);
+};
+const erroreRigheUscenti = computed(() => erroreRuoli.value ?? (form.errors as Record<string, string | undefined>).righe_uscenti ?? null);
+/** La quota di chi entra con l'insieme: la somma delle quote, al centesimo di punto (la richiesta pretende che la porti tutta). */
+const quotaDellInsieme = computed(() => insieme.value ? sommaQuoteComeStringa(righeSceltaTitolari.value.map(t => t.quota)) : null);
+const elencoQuote = computed(() => {
+  const nomi = righeSceltaTitolari.value.map(t => `${percentuale(t.quota)} di ${t.anagrafica.nome}`);
+  return nomi.length <= 1 ? nomi.join('') : `${nomi.slice(0, -1).join(', ')} e ${nomi[nomi.length - 1]}`;
+});
+
 // Un titolare solo: già selezionato. Cambia il sottotipo: si riparte.
 watch(candidatiUscente, (c) => {
+  if (props.tipo === 'vendita') {
+    // Nella vendita le righe spuntate: con un titolare solo è già spuntato, le altre restano se sono ancora fra i candidati.
+    righeScelte.value = c.length === 1 ? [c[0].id] : righeScelte.value.filter(id => c.some(t => t.id === id));
+    return;
+  }
   form.riga_uscente_id = c.length === 1 ? c[0].id : (c.some(t => t.id === form.riga_uscente_id) ? form.riga_uscente_id : null);
 }, { immediate: true });
+// Il modulo ragiona su «chi esce» come prima: la prima riga spuntata dà il ruolo, la riserva e la quota di una persona sola.
+watch(righeScelte, (r) => { if (props.tipo === 'vendita') form.riga_uscente_id = r[0] ?? null; }, { immediate: true });
 
 /**
  * La vendita con riserva d'usufrutto (beta.38, decisione 28): chi vende resta, sulla stessa quota, come usufruttuario;
  * chi compra entra nudo proprietario. Si dichiara con la casella — il programma non la deduce dal ruolo scelto, e il
  * server rifiuta un nudo proprietario da un proprietario pieno senza la dichiarazione.
  */
-const puoRiservare = computed(() => props.tipo === 'vendita' && uscente.value?.tipologia === 'proprietario');
+const puoRiservare = computed(() => props.tipo === 'vendita' && righeSceltaTitolari.value.length > 0 && righeSceltaTitolari.value.every(t => t.tipologia === 'proprietario'));
 const riserva = computed({
   get: () => form.sottotipo === 'riserva_usufrutto',
   set: (v: boolean) => {
@@ -256,7 +296,7 @@ const riserva = computed({
     form.tipologia = v ? 'nuda_proprietario' : (uscente.value?.tipologia ?? 'proprietario');
     // La nuda proprietà di tutta la quota di chi vende: con meno resterebbe un pezzo di nessuno.
     if (v && uscente.value) {
-      form.quota = String(uscente.value.quota);
+      form.quota = quotaDellInsieme.value ?? String(uscente.value.quota);
     }
   },
 });
@@ -264,9 +304,10 @@ watch(puoRiservare, (p) => { if (!p && riserva.value) riserva.value = false; });
 
 // Quota e ruolo precompilati da chi esce, non con 100 (§6.3, campi 4 e 5). La quota non si cambia (decisione 37, 1.11.0-beta.42):
 // il passaggio porta tutta la quota di chi esce, e la vendita di una parte della propria quota non è ancora prevista (Coda 175).
-watch(uscente, (u) => {
+watch([uscente, quotaDellInsieme], ([u]) => {
   if (!u) return;
-  form.quota = String(u.quota);
+  // Con l'insieme la quota è la somma delle quote di chi esce.
+  form.quota = quotaDellInsieme.value ?? String(u.quota);
   if (props.tipo === 'vendita') form.tipologia = riserva.value ? 'nuda_proprietario' : u.tipologia;
   // Decisione 65: gli eredi entrano nel ruolo del defunto.
   if (props.tipo === 'successione') form.tipologia = u.tipologia;
@@ -450,17 +491,16 @@ watch([() => form.riga_uscente_id, () => form.anagrafica_entrante_id, nessunEntr
 const candidatiEntrante = computed(() => {
   const esclusi = new Set<number>();
   if (uscente.value) esclusi.add(uscente.value.anagrafica.id);
+  // Con più persone che escono, chi entra non è nessuna di loro.
+  righeSceltaTitolari.value.forEach(t => esclusi.add(t.anagrafica.id));
   if (props.tipo !== 'vendita') props.titolari.forEach(t => esclusi.add(t.anagrafica.id));
   return props.anagrafiche.filter(a => !esclusi.has(a.id));
 });
 
-// Nella vendita chi entra è proprietario o nudo proprietario: gli altri due ruoli hanno il loro tipo di
-// passaggio, e il server lo pretende (`AnteprimaPassaggioRequest::ruoliEntrante()`).
-const RUOLI = [
-  { id: 'proprietario', label: 'Proprietario' },
-  { id: 'nuda_proprietario', label: 'Nudo proprietario' },
-];
-const ruoloModificabile = computed(() => props.tipo === 'vendita' && !riserva.value);
+// Se la persona scelta come chi entra viene spuntata fra chi esce, la scelta di prima non vale più.
+watch(candidatiEntrante, (c) => {
+  if (form.anagrafica_entrante_id !== null && !c.some(a => a.id === form.anagrafica_entrante_id) && !personeAggiunte.value.some(a => a.id === form.anagrafica_entrante_id)) form.anagrafica_entrante_id = null;
+});
 
 const REGIMI = [
   { id: 'abitativo', label: 'Abitativo (L. 431/1998)' },
@@ -475,6 +515,7 @@ const REGIMI = [
 const mancante = computed<string[]>(() => {
   const m: string[] = [];
   if (candidatiUscente.value.length > 0 && !form.riga_uscente_id && props.tipo !== 'inizio_locazione') m.push('chi esce');
+  if (erroreRuoli.value) m.push('chi esce con lo stesso ruolo');
   if (candidatiUscente.value.length === 0 && props.tipo !== 'inizio_locazione') m.push(props.tipo === 'fine_locazione' ? 'un inquilino in corso da cui uscire' : 'un titolare in corso da cui uscire');
   // P6 della 1.11.0-beta.48: nella successione la data è il giorno del decesso.
   if (!form.decorrenza) m.push(eSuccessione.value ? 'il giorno del decesso' : 'la data dell\'atto');
@@ -497,6 +538,15 @@ const completo = computed(() => mancante.value.length === 0);
 // --- L'anteprima: il server calcola, la pagina mostra -------------------------------------------
 
 const anteprima = ref<AnteprimaPassaggioDati | null>(null);
+/** Tappa 7: l'anteprima dell'insieme (più persone che escono), al posto di quella di una persona sola. */
+const gruppo = ref<AnteprimaGruppoDati | null>(null);
+/** Quello che il pannello mostra ora: l'insieme se sono spuntate più persone, altrimenti il passaggio di sempre. */
+const pannelloDati = computed<AnteprimaRisposta | null>(() => insieme.value ? gruppo.value : anteprima.value);
+const pannelloPronto = computed(() => pannelloDati.value !== null);
+/** Le coppie di conguaglio del pannello, in tutto: la rinuncia ha senso solo se ce n'è una da non scrivere. */
+const coppieDelPannello = () => gruppo.value
+  ? gruppo.value.parti.reduce((tot, p) => tot + (p.anteprima.rate.conguaglio?.coppie.length ?? 0), 0)
+  : (anteprima.value?.rate.conguaglio?.coppie.length ?? 0);
 // R17 della Fase 1-bis della .50: lo stesso quando cambiano le persone che ricevono la coppia (la data, una pertinenza spuntata di un
 // altro proprietario, un pannello senza coppie): la scelta era per altre persone, e si rifà. Una nota o un'altra modifica che lascia le
 // stesse persone non la tocca.
@@ -520,7 +570,7 @@ let ultimaRichiesta = 0;
 /** La casella della rinuncia è spuntata, c'è una coppia da non scrivere e la ragione è lunga abbastanza: solo allora parte con l'anteprima. */
 function rinunciaCompleta(): boolean {
   return !passaggioConLaScelta(props.tipo)
-    && coppieNonScritte(props.tipo, anteprima.value?.rate.conguaglio?.coppie.length ?? 0, form.arretrato, form.rinuncia_conguaglio, form.conguaglio)
+    && coppieNonScritte(props.tipo, coppieDelPannello(), form.arretrato, form.rinuncia_conguaglio, form.conguaglio)
     && form.nota_conguaglio.trim().length >= 10;
 }
 
@@ -528,7 +578,9 @@ function corpoAnteprima() {
   return {
     tipo: form.tipo,
     sottotipo: form.sottotipo,
-    riga_uscente_id: props.tipo === 'inizio_locazione' ? null : form.riga_uscente_id,
+    // Tappa 7: con più persone che escono `righe_uscenti` (nell'ordine dell'elenco) e `riga_uscente_id` nullo; con una sola, come sempre.
+    riga_uscente_id: props.tipo === 'inizio_locazione' || insieme.value ? null : form.riga_uscente_id,
+    ...(insieme.value ? { righe_uscenti: righeSceltaTitolari.value.map(t => t.id) } : {}),
     anagrafica_entrante_id: nessunEntrante.value || eSuccessione.value ? null : form.anagrafica_entrante_id,
     decorrenza: form.decorrenza,
     quota: form.quota,
@@ -549,7 +601,7 @@ function corpoAnteprima() {
     // Decisione 77 (1.11.0-beta.50): la scelta sul conguaglio, dove si chiede, entra anche nell'anteprima: nella successione la fermata
     // dopo «Scrivi» di una fine locazione di prima vale solo se il conguaglio si scrive, e finché la scelta manca il server la dice
     // «se scrivi il conguaglio». Dove la scelta non si chiede non parte: il server la rifiuterebbe.
-    conguaglio: sceltaConguaglioDelPassaggio(props.tipo, anteprima.value?.rate.conguaglio?.coppie.length ?? 0, form.arretrato) ? form.conguaglio : null,
+    conguaglio: sceltaConguaglioDelPassaggio(props.tipo, coppieDelPannello(), form.arretrato) ? form.conguaglio : null,
     // La rinuncia della vendita e dell'usufrutto (la casella) entra nell'anteprima solo quando è completa, cioè con la ragione di almeno dieci
     // caratteri come la pretende il server: l'anteprima la legge per sapere se la coppia si scrive (l'avviso «ricalcola prima il piano» c'è solo se
     // si scrive), e una rinuncia senza ragione tornerebbe 422 e farebbe sparire il pannello con la sua casella. Dove c'è la scelta non parte.
@@ -573,19 +625,19 @@ async function calcolaAnteprima() {
   if (!completo.value) {
     // Anche una risposta ancora in volo va scartata: il modulo a cui rispondeva non esiste più.
     ++ultimaRichiesta;
-    anteprima.value = null; anteprimaErrore.value = false; anteprimaBloccata.value = false;
+    anteprima.value = null; gruppo.value = null; anteprimaErrore.value = false; anteprimaBloccata.value = false;
     anteprimaInCorso.value = false; anteprimaSuperata.value = false;
     return;
   }
   const n = ++ultimaRichiesta;
   anteprimaInCorso.value = true;
   try {
-    const { data } = await axios.post<AnteprimaPassaggioDati>(
+    const { data } = await axios.post<AnteprimaRisposta>(
       route(generateRoute('gestionale.immobili.passaggi.anteprima'), { condominio: props.condominio.id, immobile: props.immobile.id }),
       corpoAnteprima(),
     );
     if (n !== ultimaRichiesta) return; // è arrivata una risposta più vecchia di quella che aspettiamo
-    anteprima.value = data;
+    if (eAnteprimaGruppo(data)) { gruppo.value = data; anteprima.value = null; } else { anteprima.value = data; gruppo.value = null; }
     anteprimaErrore.value = false;
     anteprimaBloccata.value = false;
     form.clearErrors();
@@ -598,6 +650,7 @@ async function calcolaAnteprima() {
       form.clearErrors();
       Object.keys(errori).forEach(k => form.setError(k as any, errori[k][0]));
       anteprima.value = null;
+      gruppo.value = null;
       anteprimaErrore.value = false;
       anteprimaBloccata.value = true;
     } else {
@@ -622,7 +675,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
 
 // --- Chi paga l'ordinaria dal giorno dell'atto (decisioni 31.5 e 31.6) ---------------------------
 
-const ordinaria = computed(() => anteprima.value?.ordinaria?.applicabile ? anteprima.value.ordinaria : null);
+const ordinaria = computed(() => pannelloDati.value?.ordinaria?.applicabile ? pannelloDati.value.ordinaria : null);
 // Decisione 31.8: una voce in un piano approvato ha la ripartizione bloccata e non si sposta; il server lo ripete.
 const vociDivise = computed(() => dividiVoci(ordinaria.value?.voci ?? []));
 const vociLibere = computed(() => vociDivise.value.libere);
@@ -633,19 +686,21 @@ const vociBloccate = computed(() => vociDivise.value.bloccate);
  * successo, pulisce gli errori del modulo.
  */
 const vociCambiate = ref<string | null>(null);
+/** Nell'insieme: il messaggio del server («Mentre registravi è cambiato qualcosa…») che resta mentre il pannello si ricalcola. */
+const passaggioCambiato = ref<string | null>(null);
 
 // --- Il cancello (1) e la conferma --------------------------------------------------------------
 
-const cancelloRichiesto = computed(() => anteprima.value?.cancello.richiesto ?? false);
+const cancelloRichiesto = computed(() => pannelloDati.value?.cancello.richiesto ?? false);
 // Le quote che restano per legge a chi le ha (beta.38, decisione del 29/09/2026): si dicono sempre, e non chiedono la spunta.
-const informazioniCancello = computed(() => anteprima.value?.cancello.informazioni ?? []);
+const informazioniCancello = computed(() => pannelloDati.value?.cancello.informazioni ?? []);
 /** Rilievo T4 della Fase 1-bis della .43: gli avvisi senza spunta che non riguardano quote lasciate dov'erano (decisione 58). */
-const avvisiCancello = computed(() => anteprima.value?.cancello.avvisi ?? []);
+const avvisiCancello = computed(() => pannelloDati.value?.cancello.avvisi ?? []);
 const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_letto && form.nota_cancello.trim().length >= 10));
 // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si sceglie
 // al posto della casella, e «Non scriverlo» non chiede una nota (se c'è, almeno dieci caratteri, come sul server). Decisione 77
 // (1.11.0-beta.50): lo stesso alla fine di una locazione, con un nuovo inquilino o senza, quando il pannello propone coppie.
-const numeroCoppie = computed(() => anteprima.value?.rate.conguaglio?.coppie.length ?? 0);
+const numeroCoppie = computed(() => coppieDelPannello());
 const conLaScelta = computed(() => passaggioConLaScelta(props.tipo));
 const sceltaRichiesta = computed(() => sceltaConguaglioDelPassaggio(props.tipo, numeroCoppie.value, form.arretrato));
 const rinunciaEffettiva = computed(() => coppieNonScritte(props.tipo, numeroCoppie.value, form.arretrato, form.rinuncia_conguaglio, form.conguaglio));
@@ -658,16 +713,19 @@ const rinunciaSoddisfatta = computed(() => !rinunciaEffettiva.value
 const sceltaSoddisfatta = computed(() => !sceltaRichiesta.value || form.conguaglio !== null);
 // §6.3 della 1.11.0-beta.51: il conguaglio che si scrive prenderebbe un piano da ricalcolare prima. L'anteprima risponde, con la casella o le due
 // voci a portata di mano; la registrazione resta spenta finché l'avviso c'è, e il server la rifiuterebbe comunque.
-const pianoDaRicalcolare = computed(() => anteprima.value?.rate.piano_da_ricalcolare ?? null);
+const pianoDaRicalcolare = computed(() => gruppo.value
+  ? (gruppo.value.parti.map(p => p.anteprima.rate.piano_da_ricalcolare).find(f => !!f) ?? null)
+  : (anteprima.value?.rate.piano_da_ricalcolare ?? null));
 // Il pannello si ferma solo perché il server chiede l'erede di riferimento: è una scelta, non un dato sbagliato (P6).
 const attesaScelta = computed(() => anteprimaBloccata.value && Object.keys(form.errors).length > 0 && Object.keys(form.errors).every(k => k === 'erede_di_riferimento'));
-const puoConfermare = computed(() => completo.value && anteprima.value !== null && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && !pianoDaRicalcolare.value && cancelloSoddisfatto.value && sceltaSoddisfatta.value && rinunciaSoddisfatta.value && !form.processing);
+const puoConfermare = computed(() => completo.value && pannelloPronto.value && !anteprimaErrore.value && !anteprimaInCorso.value && !anteprimaSuperata.value && !anteprimaBloccata.value && !pianoDaRicalcolare.value && cancelloSoddisfatto.value && sceltaSoddisfatta.value && rinunciaSoddisfatta.value && !form.processing);
 
-function submit() {
-  vociCambiate.value = null;
-  // Il file e il promemoria non entrano nell'anteprima (non cambiano le conseguenze): viaggiano solo con la
-  // scrittura, che con un File dentro parte come multipart.
-  form.transform(() => ({
+/**
+ * Il corpo della registrazione: quello dell'anteprima, più ciò che viaggia solo con la scrittura. Con l'insieme porta anche l'impronta del pannello
+ * (`impronta_del_gruppo`): se nel frattempo qualcosa è cambiato, il server si ferma e non scrive niente.
+ */
+function corpoRegistrazione() {
+  return {
     ...corpoAnteprima(),
     allegato_titolo: form.allegato_titolo,
     promemoria_scadenza: form.promemoria_scadenza,
@@ -680,15 +738,36 @@ function submit() {
     conguaglio: sceltaRichiesta.value ? form.conguaglio : null,
     // Rilievo S1: l'elenco delle voci che il pannello ha mostrato; se sul server è cambiato, la registrazione si ferma.
     ordinaria_impronta: ordinaria.value?.impronta ?? null,
-  }))
+    ...(insieme.value ? { impronta_del_gruppo: gruppo.value?.impronta ?? null } : {}),
+  };
+}
+
+/**
+ * La registrazione è stata rifiutata. Con le voci dell'ordinaria cambiate (rilievo S1) o, nell'insieme, con qualcosa cambiato fra il pannello e il clic
+ * («Mentre registravi è cambiato qualcosa…»): il pannello si ricalcola, e il messaggio resta finché non si riprova (il ricalcolo, al successo, pulisce
+ * gli errori del modulo).
+ */
+function dopoErroreDiRegistrazione(errori: Record<string, string>) {
+  if (errori.ordinaria_impronta) {
+    vociCambiate.value = errori.ordinaria_impronta;
+    calcolaAnteprima();
+    return;
+  }
+  if (insieme.value && errori.passaggio) {
+    passaggioCambiato.value = errori.passaggio;
+    calcolaAnteprima();
+  }
+}
+
+function submit() {
+  vociCambiate.value = null;
+  passaggioCambiato.value = null;
+  // Il file e il promemoria non entrano nell'anteprima (non cambiano le conseguenze): viaggiano solo con la
+  // scrittura, che con un File dentro parte come multipart.
+  form.transform(() => corpoRegistrazione())
     .post(route(generateRoute('gestionale.immobili.passaggi.store'), { condominio: props.condominio.id, immobile: props.immobile.id }), {
       preserveScroll: true,
-      onError: (errori) => {
-        if (errori.ordinaria_impronta) {
-          vociCambiate.value = errori.ordinaria_impronta;
-          calcolaAnteprima();
-        }
-      },
+      onError: (errori) => dopoErroreDiRegistrazione(errori as Record<string, string>),
     });
 }
 
@@ -830,6 +909,7 @@ function urlTipo(t: TipoPassaggio) {
                 <CardDescription>
                   <template v-if="tipo === 'inizio_locazione'">Chi risponde verso il condominio non cambia.</template>
                   <template v-else-if="tipo === 'successione'">Chi esce è il defunto: proprietario pieno, comproprietario o nudo proprietario. Se era usufruttuario, la sua morte è l'estinzione dell'usufrutto.</template>
+                  <template v-else-if="eVendita">Spunta chi vende o dona. Se escono in più, per esempio due fratelli che vendono insieme, spuntali tutti. Se è uno solo, è già spuntato. Un periodo già chiuso da «Modifica» non compare qui e non si può più registrare come passaggio.</template>
                   <template v-else-if="tipo === 'usufrutto'">Costituzione: il proprietario pieno diventa nudo proprietario. Estinzione: l'usufruttuario esce e il nudo proprietario torna proprietario pieno; con un altro usufrutto in corso sull'unità, torna proprietario pieno solo il nudo proprietario dell'usufrutto che finisce.</template>
                   <template v-else>I titolari in corso oggi su questa unità. Se è uno solo, è già selezionato. Un periodo già chiuso da «Modifica» non compare qui e non si può più registrare come passaggio.</template>
                 </CardDescription>
@@ -867,23 +947,39 @@ function urlTipo(t: TipoPassaggio) {
                 <!-- Radio dei titolari -->
                 <template v-else>
                   <div v-if="candidatiUscente.length" class="space-y-2">
-                    <label v-for="t in candidatiUscente" :key="t.id"
-                      class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-all"
-                      :class="form.riga_uscente_id === t.id ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400 dark:bg-blue-900/20 dark:border-blue-500' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700 dark:hover:bg-slate-900'">
-                      <input type="radio" v-model="form.riga_uscente_id" :value="t.id" class="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-600 shrink-0" />
-                      <!-- Su uno schermo stretto quota e data scendono sotto il nome invece di schiacciarlo (verifica a video della .43). -->
-                      <span class="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                        <BadgeRuolo :ruolo="t.tipologia" taglia="md" />
-                        <span class="flex flex-col min-w-0 flex-1 basis-24">
-                          <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{{ t.anagrafica.nome }}</span>
-                          <span class="text-[10px] uppercase tracking-widest text-slate-400 truncate">{{ t.anagrafica.codice_fiscale || 'CF non inserito' }}</span>
+                    <div v-for="t in candidatiUscente" :key="t.id">
+                      <label
+                        class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-all"
+                        :class="(eVendita ? righeScelte.includes(t.id) : form.riga_uscente_id === t.id) ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400 dark:bg-blue-900/20 dark:border-blue-500' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700 dark:hover:bg-slate-900'">
+                        <!-- Tappa 7: nella vendita le caselle, perché possono uscire più persone con lo stesso atto; negli altri tipi il pallino. -->
+                        <input v-if="eVendita" type="checkbox" :data-testid="`uscente-${t.id}`" :checked="righeScelte.includes(t.id)" @change="spuntaRiga(t.id)" class="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-600 shrink-0" />
+                        <input v-else type="radio" v-model="form.riga_uscente_id" :value="t.id" class="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-600 shrink-0" />
+                        <!-- Su uno schermo stretto quota e data scendono sotto il nome invece di schiacciarlo (verifica a video della .43). -->
+                        <span class="flex flex-1 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                          <BadgeRuolo :ruolo="t.tipologia" taglia="md" />
+                          <span class="flex flex-col min-w-0 flex-1 basis-24">
+                            <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{{ t.anagrafica.nome }}</span>
+                            <span class="text-[10px] uppercase tracking-widest text-slate-400 truncate">{{ t.anagrafica.codice_fiscale || 'CF non inserito' }}</span>
+                          </span>
+                          <span class="ml-auto flex items-center gap-3 whitespace-nowrap">
+                            <span class="text-xs text-slate-600 dark:text-slate-400 tabular-nums">{{ quotaIt(t.quota) }}&nbsp;%</span>
+                            <span class="text-xs text-slate-500 dark:text-slate-400" v-if="t.data_inizio">dal {{ toItalian(t.data_inizio) }}</span>
+                          </span>
                         </span>
-                        <span class="ml-auto flex items-center gap-3 whitespace-nowrap">
-                          <span class="text-xs text-slate-600 dark:text-slate-400 tabular-nums">{{ quotaIt(t.quota) }}&nbsp;%</span>
-                          <span class="text-xs text-slate-500 dark:text-slate-400" v-if="t.data_inizio">dal {{ toItalian(t.data_inizio) }}</span>
-                        </span>
-                      </span>
-                    </label>
+                      </label>
+                      <p v-if="erroreDellaRiga(t.id)" :data-testid="`errore-riga-${t.id}`" class="mt-1.5 px-1 text-xs text-rose-600 dark:text-rose-400">{{ erroreDellaRiga(t.id) }}</p>
+                    </div>
+
+                    <!-- Più persone che escono: quante, quanta quota, e il badge. Il programma registra un passaggio per ciascuna (decisione 705). -->
+                    <template v-if="insieme">
+                      <div data-testid="totale-uscenti" class="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-dashed border-slate-300 dark:border-slate-700 pt-3 mt-1 text-[13px] text-slate-700 dark:text-slate-300">
+                        <Users class="w-4 h-4 shrink-0 text-slate-400" />
+                        <span>Escono <strong class="text-slate-900 dark:text-slate-100">{{ righeSceltaTitolari.length }} persone</strong>, <strong class="text-slate-900 dark:text-slate-100">{{ percentuale(sommaQuoteCentesimi(righeSceltaTitolari.map(t => t.quota)) / 100) }}</strong> della proprietà.</span>
+                        <span data-testid="badge-insieme-modulo" class="inline-flex items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">{{ righeSceltaTitolari.length }} passaggi insieme</span>
+                      </div>
+                      <p class="text-xs text-slate-500 dark:text-slate-400 leading-snug">Il programma registra un passaggio per ciascuna, con la stessa data e lo stesso atto: il conguaglio e la posizione di ognuna restano separati.</p>
+                    </template>
+                    <p v-if="erroreRigheUscenti" data-testid="errore-righe-uscenti" class="text-[13px] text-rose-600 dark:text-rose-400 leading-snug">{{ erroreRigheUscenti }}</p>
                   </div>
                   <div v-else class="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
                     <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
@@ -996,9 +1092,9 @@ function urlTipo(t: TipoPassaggio) {
                 </div>
 
                 <!-- La frase calcolata: la scrive il server, nel riferimento dell'anteprima -->
-                <p v-if="anteprima?.riferimento.frase" class="rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 flex items-start gap-2">
+                <p v-if="pannelloDati?.riferimento.frase" class="rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-800 dark:text-slate-200 flex items-start gap-2">
                   <CalendarDays class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
-                  <span>{{ anteprima.riferimento.frase }}</span>
+                  <span>{{ pannelloDati.riferimento.frase }}</span>
                 </p>
                 <p v-else-if="form.decorrenza && !completo" class="text-[12px] text-slate-500 dark:text-slate-400 italic">
                   Appena il modulo è completo, qui compare chi risulterà titolare fino a quando e chi da quando.
@@ -1214,19 +1310,31 @@ function urlTipo(t: TipoPassaggio) {
                   </div>
 
                   <div class="sm:col-span-4">
-                    <Label for="tipologia" class="mb-1.5 block">Ruolo</Label>
-                    <v-select v-if="ruoloModificabile" class="w-full bg-white dark:bg-slate-950 text-sm" :options="RUOLI" label="label" v-model="form.tipologia" :reduce="(r: any) => r.id" :clearable="false" />
-                    <div v-else class="h-9 flex items-center"><BadgeRuolo :ruolo="form.tipologia" taglia="md" /></div>
+                    <!-- Coda 757 (2): nella vendita il ruolo non si sceglie, è quello di chi vende (il server rifiuta ogni altro): il badge, come nella successione. -->
+                    <Label for="tipologia" class="mb-1.5 flex items-center gap-1.5">
+                      Ruolo
+                      <TooltipProvider v-if="tipo === 'vendita'" :delay-duration="200">
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <Info class="w-3 h-3 text-slate-300 hover:text-slate-500 cursor-help" @click.prevent />
+                          </TooltipTrigger>
+                          <TooltipContent class="max-w-64"><p>Chi compra entra con il ruolo di chi vende. Se chi vende si tiene l'usufrutto, spunta la casella qui sotto.</p></TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Label>
+                    <div class="h-9 flex items-center" data-testid="ruolo-vendita"><BadgeRuolo :ruolo="form.tipologia" taglia="md" /></div>
                   </div>
+                  <!-- Più persone che escono: la quota è la somma, in sola lettura, e la frase dice da dove viene (decisione 705). -->
+                  <p v-if="insieme" data-testid="quota-somma" class="sm:col-span-12 -mt-2 text-xs text-slate-500 dark:text-slate-400 leading-snug">La quota è la somma di chi esce: {{ elencoQuote }}.</p>
                   <!-- La riserva d'usufrutto si dichiara (decisione 28): solo quando vende un proprietario pieno. -->
                   <div v-if="puoRiservare" class="sm:col-span-12">
                     <label class="flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 cursor-pointer select-none transition-colors"
                       :class="riserva ? 'bg-purple-50 border-purple-300 dark:bg-purple-900/20 dark:border-purple-800' : 'bg-white border-slate-200 hover:bg-slate-50 dark:bg-slate-950 dark:border-slate-700'">
                       <input type="checkbox" v-model="riserva" class="w-4 h-4 mt-0.5 accent-purple-600 rounded border-slate-300" />
                       <span class="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
-                        <strong class="font-semibold text-slate-900 dark:text-slate-100">Chi vende o dona resta usufruttuario</strong> (vendita o donazione con riserva d'usufrutto)
+                        <strong class="font-semibold text-slate-900 dark:text-slate-100">Chi vende o dona resta usufruttuario</strong> (vendita o donazione con riserva d'usufrutto)<template v-if="insieme"> — vale per tutte le persone spuntate: ciascuna tiene l'usufrutto sulla sua quota.</template>
                         <span v-if="riserva" class="block text-slate-600 dark:text-slate-400">
-                          {{ uscente?.anagrafica.nome }} resta sulla stessa quota come usufruttuario, chi compra entra nudo proprietario. Chi paga l'ordinaria dal giorno dell'atto lo scegli qui sotto, quando il pannello ha letto il modulo. Le straordinarie seguono la competenza: la data della delibera, o quella dichiarata sulla fattura.
+                          <template v-if="insieme">Ciascuna resta sulla sua quota come usufruttuaria, chi compra entra nudo proprietario.</template><template v-else>{{ uscente?.anagrafica.nome }} resta sulla stessa quota come usufruttuario, chi compra entra nudo proprietario.</template> Chi paga l'ordinaria dal giorno dell'atto lo scegli qui sotto, quando il pannello ha letto il modulo. Le straordinarie seguono la competenza: la data della delibera, o quella dichiarata sulla fattura.
                         </span>
                       </span>
                     </label>
@@ -1486,7 +1594,7 @@ function urlTipo(t: TipoPassaggio) {
             <!-- Beta.38, decisione del 29/09/2026: le quote che il passaggio lascia a chi le ha si dicono qui, con o senza
                  cancello, e non chiedono la spunta. Il piede non dice perché, né cita articoli: le ragioni sono diverse (la
                  legge, i soli saldi pregressi, una spesa tutta di chi esce, decisione 28.8 c) e le dice il pannello. -->
-            <div v-if="informazioniCancello.length && anteprima" class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-5">
+            <div v-if="informazioniCancello.length && pannelloPronto" class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-5">
               <div class="flex items-start gap-3">
                 <Info class="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
                 <div class="space-y-1">
@@ -1498,7 +1606,7 @@ function urlTipo(t: TipoPassaggio) {
                 </div>
               </div>
             </div>
-            <div v-if="avvisiCancello.length && anteprima" class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-5">
+            <div v-if="avvisiCancello.length && pannelloPronto" class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-5">
               <div class="flex items-start gap-3">
                 <Info class="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
                 <div class="space-y-1">
@@ -1509,14 +1617,26 @@ function urlTipo(t: TipoPassaggio) {
                 </div>
               </div>
             </div>
-            <div v-if="cancelloRichiesto && anteprima" class="rounded-xl border-2 border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-900/10 p-5 space-y-4">
+            <div v-if="cancelloRichiesto && pannelloPronto" class="rounded-xl border-2 border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-900/10 p-5 space-y-4">
               <div class="flex items-start gap-3">
                 <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div class="space-y-1">
-                  <p class="text-sm font-bold text-amber-900 dark:text-amber-200">Questo passaggio tocca conti già in corso</p>
-                  <ul class="text-[13px] text-amber-800 dark:text-amber-300 list-disc pl-4 space-y-0.5">
-                    <li v-for="m in anteprima.cancello.motivi" :key="m"><FraseConImporti :testo="m" /></li>
-                  </ul>
+                  <!-- Tappa 7: con più persone che escono i motivi si leggono per persona, con il nome in testa; la spunta e la nota sono una per tutte. -->
+                  <template v-if="gruppo && insieme">
+                    <p class="text-sm font-bold text-amber-900 dark:text-amber-200">Questo passaggio tocca rate già emesse o cambia un destinatario</p>
+                    <div v-for="g in gruppo.cancello.gruppi" :key="g.nome" data-testid="cancello-gruppo" class="pt-1.5">
+                      <p class="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{{ g.nome }}</p>
+                      <ul class="text-[13px] text-amber-800 dark:text-amber-300 list-disc pl-4 space-y-0.5">
+                        <li v-for="m in g.motivi" :key="m"><FraseConImporti :testo="m" /></li>
+                      </ul>
+                    </div>
+                  </template>
+                  <template v-else-if="anteprima">
+                    <p class="text-sm font-bold text-amber-900 dark:text-amber-200">Questo passaggio tocca conti già in corso</p>
+                    <ul class="text-[13px] text-amber-800 dark:text-amber-300 list-disc pl-4 space-y-0.5">
+                      <li v-for="m in anteprima.cancello.motivi" :key="m"><FraseConImporti :testo="m" /></li>
+                    </ul>
+                  </template>
                 </div>
               </div>
               <label class="flex items-center gap-3 cursor-pointer select-none">
@@ -1550,14 +1670,16 @@ function urlTipo(t: TipoPassaggio) {
                 <Button type="submit" :disabled="!puoConfermare" class="h-9 px-8 text-sm font-semibold shadow-md gap-2">
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                   <Check v-else class="h-4 w-4" />
-                  Registra passaggio
+                  <template v-if="insieme">Registra i {{ righeSceltaTitolari.length }} passaggi</template><template v-else>Registra passaggio</template>
                 </Button>
               </div>
             </div>
           </form>
 
           <!-- ============================ Il pannello (colonna sticky) ============================ -->
-          <AnteprimaPassaggio :dati="anteprima" :in-corso="anteprimaInCorso || anteprimaSuperata" :errore="anteprimaErrore" :bloccato="anteprimaBloccata" :mancante="mancante" :tipo="props.tipo"
+          <AnteprimaGruppo v-if="insieme" :dati="gruppo" :in-corso="anteprimaInCorso || anteprimaSuperata" :errore="anteprimaErrore" :bloccato="anteprimaBloccata" :mancante="mancante"
+            v-model:rinuncia="form.rinuncia_conguaglio" v-model:nota-rinuncia="form.nota_conguaglio" />
+          <AnteprimaPassaggio v-else :dati="anteprima" :in-corso="anteprimaInCorso || anteprimaSuperata" :errore="anteprimaErrore" :bloccato="anteprimaBloccata" :mancante="mancante" :tipo="props.tipo"
             :attesa-scelta="attesaScelta" :senza-successore="props.tipo === 'fine_locazione' && nessunEntrante"
             v-model:rinuncia="form.rinuncia_conguaglio" v-model:nota-rinuncia="form.nota_conguaglio" v-model:scelta-conguaglio="form.conguaglio" />
           <InputError :message="form.errors.nota_conguaglio" class="mt-2" />

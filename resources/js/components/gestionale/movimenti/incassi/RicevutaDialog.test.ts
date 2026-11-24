@@ -1570,3 +1570,24 @@ describe('la finestra della ricevuta: larga per gli indirizzi, la tabella delle 
     });
 });
 
+
+describe('Coda 707 (2): la descrizione sotto il titolo', () => {
+    // Il nome era in un `<template>` a capo dopo la data: lo spazio dell'a capo finiva prima della virgola, «del 18/11/2026 , Cecilia Angeli.».
+    const descrizione = () => (document.body.querySelector('[data-slot="dialog-description"]')?.textContent ?? '').replace(/[\s ]+/g, ' ').trim();
+
+    test('il nome segue la data senza lo spazio prima della virgola: «del 18/11/2026, Cecilia Angeli.»', async () => {
+        await apri(opzioni({ numero: 'INC-2026-00031', importo: 3279, data_versamento: '2026-11-18', posizione: { id: 9, nome: 'Cecilia Angeli' } }));
+
+        expect(descrizione()).toBe('N. INC-2026-00031, versamento di € 32,79 del 18/11/2026, Cecilia Angeli.');
+    });
+
+    test('versato da un altro, «per conto di» la posizione; senza la posizione la frase finisce con la data', async () => {
+        await apri(opzioni({ posizione: { id: 1, nome: 'Anna Bruni' }, versato_da: { id: 2, nome: 'Carlo Bruni' } }));
+        expect(descrizione()).toBe('N. INC-2026-00005, versamento di € 150,00 del 01/02/2026, per conto di Anna Bruni.');
+
+        finestra?.unmount();
+        document.body.innerHTML = '';
+        await apri(opzioni({ posizione: null }));
+        expect(descrizione()).toBe('N. INC-2026-00005, versamento di € 150,00 del 01/02/2026.');
+    });
+});

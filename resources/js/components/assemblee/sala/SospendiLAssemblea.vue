@@ -86,7 +86,7 @@ async function sospendi() {
                 <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
                     <p class="text-xs font-semibold text-slate-900 dark:text-white">Che cosa succede</p>
                     <ul class="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-700 dark:text-slate-300">
-                        <li>Le presenze di stasera si chiudono alle {{ oraDelGesto() }}.</li>
+                        <li>Le presenze di oggi si chiudono alle {{ oraDelGesto() }}.</li>
                         <li>I punti decisi restano decisi; {{ scelta ? scelta.etichetta : '' }} si riparte dal primo punto senza esito.</li>
                         <li>Quel giorno la sala si riapre dal passo «In sala», e le presenze si segnano di nuovo.</li>
                         <li>Le deleghe valgono anche nella prosecuzione.</li>

@@ -26,6 +26,11 @@ use Illuminate\Support\Carbon;
  * matura al PAGAMENTO, non alla registrazione della fattura
  * (D.P.R. 602/1973, art. 2, c. 1-bis).
  *
+ * Dalla 1.12.0-beta.14 (Coda 718, decisione 675) il listener non scrive più un promemoria per pagamento con il 16 del mese
+ * dopo: allinea i promemoria del condominio (`PromemoriaDelleRitenute`), e la ritenuta di un pagamento entra nel «Prepara le
+ * deleghe F24» del condominio con la data del cumulo. Qui il fornitore è un professionista al 20 %: € 200,00 superano la
+ * soglia di € 100,00 nel mese, e la data del cumulo è il 16 del mese dopo, come prima.
+ *
  * Approccio: invochiamo il listener a mano — (new SyncF24WithPagamento())->handle(...) —
  * esattamente come la suite inbox fa con SyncScadenziarioWithPagamento. Questo prova la
  * LOGICA del listener (crea il task giusto, con importo e scadenza corretti, e lo NON crea
@@ -42,8 +47,7 @@ use Illuminate\Support\Carbon;
 uses(RefreshDatabase::class)->group('inbox', 'pagamenti', 'f24');
 
 beforeEach(function () {
-    // Il listener fa firstOrFail() su questa categoria: senza, il suo try/catch
-    // intercetta la ModelNotFoundException e NESSUN task viene creato (falso verde).
+    // La categoria dei promemoria, come la scrive l'installazione (`CategoriaEventoSeeder`).
     CategoriaEvento::firstOrCreate(
         ['name' => 'Scadenze amministrative'],
         ['description' => 'Test', 'color' => '#000000', 'icon' => 'test']
@@ -120,18 +124,20 @@ it('crea il task F24 al pagamento di una fattura con ritenuta, con importo e sca
     // Esegue il listener VERO (lo chiamiamo a mano: l'Event::fake non lo bypassa).
     (new SyncF24WithPagamento())->handle(new PagamentoRegistrato($pagamento));
 
-    $task = Evento::where('meta->context->pagamento_id', $pagamento->id)
+    // Coda 718: un promemoria per condominio, «Prepara le deleghe F24», non uno per pagamento.
+    $task = Evento::where('meta->context->prepara_deleghe', true)
         ->where('meta->type', 'versamento_ritenuta')
-        ->first();
+        ->sole();
 
-    expect($task)->not->toBeNull();
     expect($task->meta['requires_action'])->toBeTrue();
-    expect($task->meta['is_completed'])->toBeFalse();
+    expect($task->is_completed)->toBeFalse();
     expect((int) $task->meta['importo'])->toEqual(20000);
+    expect((int) $task->meta['numero_ritenute'])->toEqual(1);
     expect($task->meta['context']['is_f24'])->toBeTrue();
     expect($task->visibility)->toEqual('hidden');
+    expect(Evento::where('meta->context->pagamento_id', $pagamento->id)->exists())->toBeFalse();
 
-    // Scadenza F24 = 16 del mese successivo a data_pagamento, ore 09:00.
+    // € 200,00 > € 100,00 a gennaio: il 16 del mese dopo, lunedì 16/02/2026, ore 09:00.
     expect(Carbon::parse($task->start_time)->format('Y-m-d H:i'))->toEqual('2026-02-16 09:00');
 });
 
@@ -148,7 +154,7 @@ it('1.12.0-beta.13 (§7 del registro delle modifiche) — il promemoria di un pa
 
     (new SyncF24WithPagamento())->handle(new PagamentoRegistrato($pagamento));
 
-    $task = Evento::where('meta->context->pagamento_id', $pagamento->id)->where('meta->type', 'versamento_ritenuta')->firstOrFail();
+    $task = Evento::where('meta->context->prepara_deleghe', true)->where('meta->type', 'versamento_ritenuta')->firstOrFail();
     expect(User::query()->whereKey(1)->exists())->toBeTrue()
         ->and($task->created_by)->toBeNull();
 });
@@ -171,11 +177,10 @@ it('sposta la scadenza F24 al lunedì se il 16 cade nel weekend', function () {
 
     (new SyncF24WithPagamento())->handle(new PagamentoRegistrato($pagamento->refresh()));
 
-    $task = Evento::where('meta->context->pagamento_id', $pagamento->id)
+    $task = Evento::where('meta->context->prepara_deleghe', true)
         ->where('meta->type', 'versamento_ritenuta')
-        ->first();
+        ->sole();
 
-    expect($task)->not->toBeNull();
     expect(Carbon::parse($task->start_time)->format('Y-m-d H:i'))->toEqual('2026-05-18 09:00');
 });
 
@@ -196,11 +201,7 @@ it('NON crea il task F24 se il pagamento non ha ritenuta', function () {
 
     (new SyncF24WithPagamento())->handle(new PagamentoRegistrato($pagamento));
 
-    $task = Evento::where('meta->context->pagamento_id', $pagamento->id)
-        ->where('meta->type', 'versamento_ritenuta')
-        ->first();
-
-    expect($task)->toBeNull();
+    expect(Evento::where('meta->type', 'versamento_ritenuta')->exists())->toBeFalse();
 });
 
 it('NON crea il task F24 per un record di storno (pagamento_padre_id valorizzato)', function () {
@@ -223,11 +224,10 @@ it('NON crea il task F24 per un record di storno (pagamento_padre_id valorizzato
 
     (new SyncF24WithPagamento())->handle(new PagamentoRegistrato($storno->refresh()));
 
-    $task = Evento::where('meta->context->pagamento_id', $storno->id)
-        ->where('meta->type', 'versamento_ritenuta')
-        ->first();
-
-    expect($task)->toBeNull();
+    // Nessun promemoria aperto: lo storno non ha ritenuta da versare, e il pagamento stornato non è più «da versare». (Il «Prepara»
+    // del pagamento originale, se `PagamentoRegistrato` è arrivato al listener, l'ha chiuso lo storno.)
+    expect(Evento::where('meta->type', 'versamento_ritenuta')->where('is_completed', false)->exists())->toBeFalse()
+        ->and(Evento::where('meta->context->pagamento_id', $storno->id)->exists())->toBeFalse();
 });
 
 // ════════════════════════════════════════════════════════════════════════════

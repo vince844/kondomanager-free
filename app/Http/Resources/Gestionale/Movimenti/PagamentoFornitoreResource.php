@@ -27,6 +27,7 @@ class PagamentoFornitoreResource extends JsonResource
             'importo_netto'          => $this->importo_netto,
             'importo_ritenuta'       => $this->importo_ritenuta,
             'importo_commissione'    => $this->importo_commissione,
+            'iban_beneficiario'      => $this->iban_beneficiario,
             'bonifico_parlante'      => $this->bonifico_parlante,
             'tipo_detrazione'        => $this->tipo_detrazione?->value ?? $this->tipo_detrazione,
             'storno_cross_esercizio' => $this->storno_cross_esercizio,

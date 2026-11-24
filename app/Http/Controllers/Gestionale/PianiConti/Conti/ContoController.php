@@ -382,6 +382,14 @@ class ContoController extends Controller
             return back()->with($this->flashError(BloccoDellaVoce::rifiutoDellEliminazione($tengonoLaVoce)));
         }
 
+        // Prevenzione 4, Coda 489 (decisione 685 (3)): la voce che è l'ultima riga di un piano, anche in bozza, non si elimina, come non la toglie il
+        // cestino del piano. Eliminata, la chiave esterna toglieva la riga e il piano restava senza voci: al ricalcolo prendeva le voci libere senza
+        // impegnarle, e un altro piano le chiedeva di nuovo.
+        if (($piano = $this->pianoDiCuiELUltimaVoce($conto)) !== null) {
+            return back()->with($this->flashError(BloccoDellaVoce::ultimaVoceDelPiano($conto->nome, $piano->nome,
+                $piano->stato === \App\Enums\StatoPianoRate::APPROVATO, 'Eliminazione inibita', 'e poi togli questa dal piano ed eliminala')));
+        }
+
         try {
             DB::beginTransaction();
             // Pulizia delle relazioni (tabella pivot) prima di eliminare il conto
@@ -399,6 +407,19 @@ class ContoController extends Controller
 
             return back()->with($this->flashError(__('gestionale.error_delete_conto')));
         }
+    }
+
+    /**
+     * Coda 489: il primo piano attivo, non straordinario, di cui la voce è l'unica riga delle voci; null se nessuno. Un piano straordinario non ha righe
+     * delle voci, ma fatture.
+     */
+    private function pianoDiCuiELUltimaVoce(Conto $conto): ?\App\Models\Gestionale\PianoRate
+    {
+        $conLaVoce = DB::table('piano_rate_capitoli')->where('conto_id', $conto->id)->pluck('piano_rate_id')->all();
+
+        return \App\Models\Gestionale\PianoRate::whereIn('id', $conLaVoce)->where('attivo', true)->orderBy('id')->get()
+            ->first(fn (\App\Models\Gestionale\PianoRate $p) => $p->tipo !== 'straordinario'
+                && ! DB::table('piano_rate_capitoli')->where('piano_rate_id', $p->id)->where('conto_id', '!=', $conto->id)->exists());
     }
 
     /**

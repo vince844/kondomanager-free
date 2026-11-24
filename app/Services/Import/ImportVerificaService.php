@@ -5,6 +5,7 @@
 
 namespace App\Services\Import;
 
+use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\ImportBatch;
@@ -29,6 +30,7 @@ use App\Services\Import\Parser\BilancioConsuntivoParser;
 use App\Services\Import\Parser\ElencoUnitaParser;
 use App\Services\Import\Parser\ModelloManualeParser;
 use App\Services\Import\Parser\RipartoConsuntivoParser;
+use App\Traits\HasEsercizio;
 use Illuminate\Support\Facades\Storage;
 use Carbon\CarbonImmutable;
 use RuntimeException;
@@ -52,6 +54,8 @@ use RuntimeException;
  */
 final class ImportVerificaService
 {
+    use HasEsercizio;
+
     /**
      * Chiave di `import_batches.decisioni` per la destinazione scelta a mano.
      *
@@ -235,9 +239,380 @@ final class ImportVerificaService
                 ));
         }
 
+        // Coda 759 (1) e (2): i saldi che la conferma non scriverebbe si dicono qui, prima, e non dopo con l'importazione a metà. Sono
+        // «da decidere» e non errori perché c'è una scelta (decisione 707 (2)): correggere il file e ricaricarlo, oppure «Importa senza
+        // i saldi» nella schermata di conferma. Così la verifica lascia arrivare a quella schermata, e la conferma piena resta chiusa.
+        foreach ($this->saldiCheNonEntrano($canonici) as $blocco) {
+            $esiti[LivelloSaldi::CHIAVE] = ($esiti[LivelloSaldi::CHIAVE] ?? new EsitoVerifica(0))->con($blocco['rilievo']);
+        }
+
+        // ⚠️ **Le cose che esistono già in archivio sono decisioni come le altre** (1.12.0-beta.14). Le calcolava solo l'anteprima
+        // (`AnteprimaImport::collisioni()`), e la schermata teneva spento il pulsante finché restavano aperte; ma `confermabile`, che è il
+        // controllo del server, non le vedeva: una conferma scritta a mano, o partita da una pagina caricata prima che una persona del
+        // file entrasse in archivio, scriveva condominio ed esercizio e si fermava a «Persone». Qui diventano rilievi da decidere, con la
+        // chiave della decisione: la stessa ricerca, la stessa chiave, e la decisione presa le toglie (`togliDecisioniPrese()`).
+        foreach ((new AnteprimaImport)->collisioni($canonici)['voci'] as $voce) {
+            $livello = $voce['cosa'] === 'persona' ? LivelloSoggetti::CHIAVE : LivelloCondominio::CHIAVE;
+            $esiti[$livello] = ($esiti[$livello] ?? new EsitoVerifica(1))->con($this->rilievoDellaCollisione($voce));
+        }
+
         $esiti = $this->togliDecisioniPrese($batch, $esiti);
 
         return compact('canonici', 'esiti', 'letture', 'dichiaratoDaiFile');
+    }
+
+    /** I codici delle cose che esistono già in archivio: gli stessi che i livelli danno scrivendo, quando la decisione manca. */
+    public const CODICI_DELLE_COSE_CHE_ESISTONO = ['condominio.duplicato', 'esercizi.duplicato', 'soggetto.duplicato'];
+
+    /**
+     * Il rilievo di una cosa che esiste già, per la verifica: la si decide nella schermata di conferma.
+     *
+     * @param  array{chiave_decisione: string, cosa: string, nome: string, esistente: string, motivo: string}  $voce  da `AnteprimaImport::collisioni()`
+     */
+    private function rilievoDellaCollisione(array $voce): Rilievo
+    {
+        $come = match ($voce['motivo']) {
+            RicercaEsistenti::PER_CODICE_FISCALE => 'con lo stesso codice fiscale',
+            RicercaEsistenti::PER_PERIODO => 'sullo stesso periodo',
+            default => 'con lo stesso nome',
+        };
+
+        return match ($voce['cosa']) {
+            'esercizio' => Rilievo::daDecidere(
+                'esercizi.duplicato',
+                sprintf('In archivio c\'è già l\'esercizio «%s», %s.', $voce['esistente'], $come),
+                'Nella schermata di conferma scegli «Usa quello che c\'è già»: due esercizi sullo stesso periodo sdoppierebbero i saldi.',
+                chiaveDecisione: $voce['chiave_decisione'],
+            ),
+            'persona' => Rilievo::daDecidere(
+                'soggetto.duplicato',
+                sprintf('«%s» c\'è già in archivio, %s.', $voce['nome'], $come),
+                'Lo decidi nella schermata di conferma: «Unisci» aggiorna la persona che hai in archivio con i dati del file, «Lascia '
+                .'com\'è» la tiene com\'è e ci collega comunque le unità.',
+                chiaveDecisione: $voce['chiave_decisione'],
+            ),
+            default => Rilievo::daDecidere(
+                'condominio.duplicato',
+                sprintf('In archivio c\'è già «%s», %s.', $voce['esistente'], $come),
+                'Lo decidi nella schermata di conferma: «Unisci» aggiorna il condominio che hai in archivio con i dati del file, «Lascia '
+                .'com\'è» lo tiene com\'è e ci collega unità, tabelle e saldi.',
+                chiaveDecisione: $voce['chiave_decisione'],
+            ),
+        };
+    }
+
+    /** I saldi intestati a persone che nessun file porta (manca l'Elenco unità, o il foglio delle persone è vuoto). */
+    public const SALDI_SENZA_PERSONE = 'saldi.senza_persone';
+
+    /** Lo scarto fra la somma dei saldi e il totale scritto nel riparto: lo stesso codice del blocco di `LivelloSaldi`. */
+    public const SALDI_NON_QUADRANO = 'saldi.non_quadrano';
+
+    /** Un saldo su un'unità che i file non hanno, o che nei file corrisponde a più unità. */
+    public const SALDI_UNITA_SCONOSCIUTA = 'saldi.unita_sconosciuta';
+
+    /** Un saldo intestato a un nome che non è fra le persone dei file. */
+    public const SALDI_PERSONA_SCONOSCIUTA = 'saldi.persona_sconosciuta';
+
+    /**
+     * Perché i saldi non entrerebbero, detto **prima** della conferma (Coda 759 (1) e (2), decisione 707 (2)).
+     *
+     * Sono i casi in cui `LivelloSaldi::commit()` si ferma dopo che gli altri livelli sono già entrati, cioè l'importazione a
+     * metà: i saldi intestati a persone che non arrivano da nessun file (`saldi.nessuna_persona_importata` del livello), le righe su
+     * un'unità o a un nome che i file non hanno (`LivelloSaldi::righeSenzaDestinatario()`, la stessa ricerca del livello: dalla
+     * 1.12.0-beta.14, il nome scritto male nel foglio dei saldi era il caso più comune e passava) e lo scarto
+     * con il totale del riparto (`LivelloSaldi::verificaQuadratura()`, la stessa regola e le stesse cifre). Per ognuno: la frase corta
+     * accanto al pulsante spento (`motivo`), la strada per correggerlo (`strada`), la frase dell'esito con «Importa senza i saldi»
+     * (`esito`) e il rilievo della verifica.
+     *
+     * @param  array<string, mixed>  $canonici  dopo le decisioni: dividere un nome doppio cambia i saldi
+     * @return list<array{codice: string, motivo: string, strada: string, esito: string, rilievo: Rilievo}>
+     */
+    public function saldiCheNonEntrano(array $canonici): array
+    {
+        $saldi = $canonici[LivelloSaldi::CHIAVE] ?? null;
+
+        if (! $saldi instanceof CanonicalSaldiApertura) {
+            return [];
+        }
+
+        $blocchi = [];
+        $delModello = $saldi->fonte === 'foglio dei saldi';
+        $intestati = count(array_filter($saldi->righe, fn (CanonicalSaldo $s) => ! $s->isSolidale()));
+
+        if ($intestati > 0 && ($canonici[LivelloSoggetti::CHIAVE] ?? []) === []) {
+            $quanti = $intestati === 1 ? '1 saldo è intestato' : $intestati.' saldi sono intestati';
+            $oppure = ' Oppure, nella schermata di conferma, importa tutto il resto senza i saldi: li scriverai tu.';
+
+            $blocchi[] = $delModello ? [
+                'codice' => self::SALDI_SENZA_PERSONE,
+                'motivo' => 'Il foglio «2 persone» del modello è vuoto: i saldi sono intestati a persone che non ci sono.',
+                'strada' => 'Compila il foglio «2 persone» e ricarica il file.',
+                'esito' => 'Il foglio «2 persone» del modello era vuoto.',
+                'rilievo' => Rilievo::daDecidere(
+                    self::SALDI_SENZA_PERSONE,
+                    $quanti.' a una persona, ma il foglio «2 persone» del modello è vuoto.',
+                    'Compila il foglio e ricarica il file; se quelle posizioni seguono la casa e non la persona, lascia vuota la colonna '
+                    .'«persona» e diventano saldi solidali sull\'unità.'.$oppure,
+                ),
+            ] : [
+                'codice' => self::SALDI_SENZA_PERSONE,
+                'motivo' => 'Manca l\'Elenco unità: i saldi del riparto sono intestati a persone che arrivano da quel file.',
+                'strada' => 'Carica l\'Elenco unità insieme agli altri file e ricaricali.',
+                'esito' => 'Mancava l\'Elenco unità, con le persone a cui sono intestati.',
+                'rilievo' => Rilievo::daDecidere(
+                    self::SALDI_SENZA_PERSONE,
+                    $quanti.' a una persona, ma nessuno dei file porta le persone: manca l\'Elenco unità.',
+                    'Caricalo insieme agli altri file e riprova: il riparto porta i nomi, ma le persone arrivano dall\'Elenco unità.'.$oppure,
+                ),
+            ];
+        }
+
+        // Le righe una per una, come le cercherà il livello: solo se le persone ci sono (senza, lo dice il blocco qui sopra) e se le unità
+        // arrivano dai file (senza, il livello dei saldi si salta con quello delle unità).
+        $unita = $canonici[LivelloUnita::CHIAVE] ?? [];
+
+        if ($blocchi === [] && $unita !== []) {
+            $righe = (new LivelloSaldi)->righeSenzaDestinatario($saldi, $unita, $canonici[LivelloSoggetti::CHIAVE] ?? []);
+            $senzaUnita = array_values(array_filter($righe, fn (array $r) => $r['codice'] !== 'saldi.soggetto_non_trovato'));
+            $senzaPersona = array_values(array_filter($righe, fn (array $r) => $r['codice'] === 'saldi.soggetto_non_trovato'));
+
+            if ($senzaUnita !== []) {
+                $blocchi[] = $this->bloccoDelleUnita($senzaUnita, $delModello);
+            }
+
+            if ($senzaPersona !== []) {
+                $blocchi[] = $this->bloccoDellePersone(array_column($senzaPersona, 'saldo'), $delModello);
+            }
+        }
+
+        $quadratura = (new LivelloSaldi)->verificaQuadratura($saldi);
+
+        if ($quadratura !== null) {
+            $scarto = MoneyHelper::format(abs((int) $saldi->scartoCents()));
+
+            $blocchi[] = [
+                'codice' => self::SALDI_NON_QUADRANO,
+                'motivo' => sprintf('Lo scarto è di %s: la somma dei saldi letti non torna con il totale scritto nel riparto.', $scarto),
+                'strada' => 'Controlla nel file le righe dei saldi (una cella cambiata, una riga in più o in meno) e ricaricalo.',
+                'esito' => sprintf('Lo scarto con il totale del riparto era di %s.', $scarto),
+                'rilievo' => Rilievo::daDecidere(
+                    self::SALDI_NON_QUADRANO,
+                    $quadratura->messaggio,
+                    'I saldi non entrano finché il totale non torna: un saldo sbagliato si trascina in ogni riparto e non si nota più. '
+                    .'Controlla di aver esportato il riparto completo, senza filtri e senza righe cancellate a mano, e ricaricalo. '
+                    .'Oppure, nella schermata di conferma, importa tutto il resto senza i saldi: li scriverai tu.',
+                ),
+            ];
+        }
+
+        return $blocchi;
+    }
+
+    /**
+     * I saldi su unità che i file non hanno (o che corrispondono a più unità): il riparto di Danea porta solo il progressivo.
+     *
+     * @param  list<array{saldo: CanonicalSaldo, codice: string}>  $righe
+     * @return array{codice: string, motivo: string, strada: string, esito: string, rilievo: Rilievo}
+     */
+    private function bloccoDelleUnita(array $righe, bool $delModello): array
+    {
+        $elenco = $this->elencoTraVirgolette(array_values(array_unique(array_map(fn (array $r) => $r['saldo']->immobileRef, $righe))));
+        $ambigue = array_filter($righe, fn (array $r) => $r['codice'] === 'saldi.unita_ambigua') !== [];
+        $dove = $delModello ? 'Nel foglio «4 saldi»' : 'Nel riparto';
+        $uno = count($righe) === 1;
+        $quale = $uno
+            ? ($ambigue ? 'che nei file non trovo, o che corrisponde a più unità (più palazzine)' : 'che non è fra quelle dei file')
+            : ($ambigue ? 'che nei file non trovo, o che corrispondono a più unità (più palazzine)' : 'che non sono fra quelle dei file');
+
+        return [
+            'codice' => self::SALDI_UNITA_SCONOSCIUTA,
+            'motivo' => $uno
+                ? sprintf('%s c\'è un saldo sull\'unità %s, %s.', $dove, $elenco, $quale)
+                : sprintf('%s ci sono %d saldi su unità %s: %s.', $dove, count($righe), $quale, $elenco),
+            'strada' => $delModello
+                ? 'Scrivi nel foglio «4 saldi» la stessa sigla del foglio delle unità e ricarica il file.'
+                : 'Esporta di nuovo il riparto e l\'Elenco unità insieme, dallo stesso condominio e dallo stesso esercizio, e ricaricali.',
+            'esito' => $uno
+                ? sprintf('%s c\'era un saldo sull\'unità %s, %s.', $dove, $elenco, $quale)
+                : sprintf('%s c\'erano %d saldi su unità %s: %s.', $dove, count($righe), $quale, $elenco),
+            'rilievo' => Rilievo::daDecidere(
+                self::SALDI_UNITA_SCONOSCIUTA,
+                $uno
+                    ? sprintf('%s%s, c\'è un saldo sull\'unità «%s», %s.', $dove, $this->allaRiga($righe[0]['saldo']), $righe[0]['saldo']->immobileRef, $quale)
+                    : sprintf('%s ci sono %d saldi su unità %s: %s.', $dove, count($righe), $quale,
+                        implode(', ', array_map(fn (array $r) => '«'.$r['saldo']->immobileRef.'»'.$this->laRiga($r['saldo']), $righe))),
+                ($delModello
+                    ? 'La sigla va scritta identica al foglio delle unità.'
+                    : 'Il riparto e l\'Elenco unità devono venire dallo stesso condominio e dallo stesso esercizio; con più palazzine il '
+                    .'riparto, che porta solo il numero dell\'unità, non dice di quale si tratta: importa i saldi una palazzina alla volta.')
+                .' Oppure, nella schermata di conferma, importa tutto il resto senza i saldi: li scriverai tu.',
+                $uno ? $righe[0]['saldo']->rigaSorgente : null,
+            ),
+        ];
+    }
+
+    /**
+     * I saldi intestati a nomi che non sono fra le persone dei file: nel modello, il nome scritto diverso dal foglio «2 persone».
+     *
+     * @param  list<CanonicalSaldo>  $righe
+     * @return array{codice: string, motivo: string, strada: string, esito: string, rilievo: Rilievo}
+     */
+    private function bloccoDellePersone(array $righe, bool $delModello): array
+    {
+        $nomi = $this->elencoTraVirgolette(array_values(array_unique(array_map(fn (CanonicalSaldo $s) => (string) $s->soggettoNome, $righe))));
+        $fra = $delModello ? 'nel foglio «2 persone»' : 'fra le persone dell\'Elenco unità';
+        $dove = $delModello ? 'Nel foglio «4 saldi»' : 'Nel riparto';
+        $uno = count($righe) === 1;
+
+        return [
+            'codice' => self::SALDI_PERSONA_SCONOSCIUTA,
+            'motivo' => $uno
+                ? sprintf('Il saldo di %s è intestato a un nome che non è %s.', $nomi, $fra)
+                : sprintf('%d saldi sono intestati a nomi che non sono %s: %s.', count($righe), $fra, $nomi),
+            'strada' => $delModello
+                ? 'Scrivi nel foglio «4 saldi» i nomi come nel foglio «2 persone» e ricarica il file.'
+                : 'Esporta di nuovo il riparto e l\'Elenco unità insieme, dallo stesso condominio, e ricaricali.',
+            'esito' => $uno
+                ? sprintf('%s c\'era un saldo intestato a %s, che non è %s.', $dove, $nomi, $fra)
+                : sprintf('%s c\'erano %d saldi intestati a nomi che non sono %s: %s.', $dove, count($righe), $fra, $nomi),
+            'rilievo' => Rilievo::daDecidere(
+                self::SALDI_PERSONA_SCONOSCIUTA,
+                $uno
+                    ? sprintf('%s%s, il saldo è intestato a «%s», che non è %s.', $dove, $this->allaRiga($righe[0]), $righe[0]->soggettoNome, $fra)
+                    : sprintf('%s ci sono %d saldi intestati a nomi che non sono %s: %s.', $dove, count($righe), $fra,
+                        implode(', ', array_map(fn (CanonicalSaldo $s) => '«'.$s->soggettoNome.'»'.$this->laRiga($s), $righe))),
+                ($delModello
+                    ? 'Il nome va scritto come nel foglio «2 persone» (maiuscole e spazi non contano). Se quella posizione segue la casa e non '
+                    .'la persona, lascia vuota la colonna «persona»: diventa un saldo solidale sull\'unità.'
+                    : 'Il riparto e l\'Elenco unità devono venire dallo stesso condominio e dallo stesso momento: con una vendita in mezzo, il '
+                    .'riparto nomina chi l\'Elenco unità non ha più.')
+                .' Oppure, nella schermata di conferma, importa tutto il resto senza i saldi: li scriverai tu.',
+                $uno ? $righe[0]->rigaSorgente : null,
+            ),
+        ];
+    }
+
+    /** @param  list<string>  $voci */
+    private function elencoTraVirgolette(array $voci): string
+    {
+        $mostrate = array_map(fn (string $v) => '«'.$v.'»', array_slice($voci, 0, 5));
+
+        return implode(', ', $mostrate).(count($voci) > 5 ? ' e altri '.(count($voci) - 5) : '');
+    }
+
+    private function laRiga(CanonicalSaldo $saldo): string
+    {
+        return $saldo->rigaSorgente === null ? '' : ' (riga '.$saldo->rigaSorgente.')';
+    }
+
+    private function allaRiga(CanonicalSaldo $saldo): string
+    {
+        return $saldo->rigaSorgente === null ? '' : ', riga '.$saldo->rigaSorgente;
+    }
+
+    /**
+     * Che cosa non entra con «Importa senza i saldi»: l'elenco che la schermata di conferma mostra accanto al pulsante.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @return list<array{cosa: string, dettaglio: string}>
+     */
+    public function nonEntraSenzaISaldi(array $canonici): array
+    {
+        $saldi = $canonici[LivelloSaldi::CHIAVE] ?? null;
+
+        if (! $saldi instanceof CanonicalSaldiApertura) {
+            return [];
+        }
+
+        $righe = count($saldi->righe);
+        $voci = [[
+            'cosa' => 'Saldi di apertura',
+            'dettaglio' => sprintf('%d %s dal %s', $righe, $righe === 1 ? 'posizione' : 'posizioni', $saldi->fonte ?? 'riparto consuntivo'),
+        ]];
+
+        // Le persone non entrano comunque, con o senza i saldi: si dice lo stesso, perché è la metà dell'importazione che manca.
+        if (($canonici[LivelloSoggetti::CHIAVE] ?? []) === []) {
+            $voci[] = [
+                'cosa' => 'Persone e chi possiede cosa',
+                'dettaglio' => $saldi->fonte === 'foglio dei saldi'
+                    ? 'il foglio «2 persone» del modello è vuoto'
+                    : 'non sono nei tuoi file: arrivano dall\'Elenco unità',
+            ];
+        }
+
+        return $voci;
+    }
+
+    /**
+     * Gli esercizi che resteranno aperti dopo la conferma, quando sono più d'uno (Coda 646, decisione 707 (4)).
+     *
+     * Succede importando l'esercizio nuovo in un condominio che ne ha ancora uno aperto: l'esercizio importato nasce aperto
+     * (`LivelloEsercizi`), e le pagine non lasciano aprirne un secondo. La schermata di conferma lo dice prima: incassi, pagamenti e
+     * saldi registrati dopo vanno nell'esercizio aperto più recente (`HasEsercizio::esercizioApertoPiuRecente()`, la stessa regola
+     * e lo stesso ordine), le rate nell'esercizio del loro piano. `null` con un esercizio aperto solo.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @return array{nomi: list<string>, piu_recente: string, titolo: string, testo: string}|null
+     */
+    public function eserciziApertiDopo(array $canonici): ?array
+    {
+        $condominio = $canonici[LivelloCondominio::CHIAVE] ?? null;
+
+        if (! $condominio instanceof CanonicalCondominio) {
+            return null;
+        }
+
+        $ricerca = new RicercaEsistenti;
+        $esistente = $ricerca->condominio($condominio);
+
+        // Un condominio nuovo nasce con l'esercizio del file e basta.
+        if ($esistente === null) {
+            return null;
+        }
+
+        $nome = fn (?string $n) => $n !== null && trim($n) !== '' ? $n : 'senza nome';
+
+        $aperti = Esercizio::query()
+            ->where('condominio_id', $esistente->id)
+            ->where('stato', 'aperto')
+            ->get(['id', 'nome', 'data_inizio'])
+            ->map(fn (Esercizio $e) => ['nome' => $nome($e->nome), 'dal' => $e->data_inizio?->toDateString() ?? '', 'id' => (int) $e->id])
+            ->all();
+
+        $importato = $canonici[LivelloEsercizi::CHIAVE] ?? null;
+
+        // Lo straordinario entra in una gestione dell'esercizio che c'è, e un esercizio sullo stesso periodo si riusa: nessuno dei due
+        // apre un esercizio in più. L'esercizio nuovo è scritto dopo gli altri, quindi a parità di data è il più recente.
+        if ($importato instanceof CanonicalEsercizio && ! $importato->eStraordinario() && $ricerca->esercizio($importato, $esistente) === null) {
+            $aperti[] = ['nome' => $nome($importato->etichetta), 'dal' => $importato->dataInizio->toDateString(), 'id' => PHP_INT_MAX];
+        }
+
+        if (count($aperti) < 2) {
+            return null;
+        }
+
+        usort($aperti, fn (array $a, array $b) => [$a['dal'], $a['id']] <=> [$b['dal'], $b['id']]);
+
+        $nomi = array_column($aperti, 'nome');
+        $piuRecente = $nomi[array_key_last($nomi)];
+        $altri = array_slice($nomi, 0, -1);
+        $tra = fn (array $n) => count($n) === 1
+            ? '«'.$n[0].'»'
+            : implode(', ', array_map(fn ($x) => '«'.$x.'»', array_slice($n, 0, -1))).' e «'.$n[array_key_last($n)].'»';
+        $quanti = [2 => 'due', 3 => 'tre', 4 => 'quattro'][count($nomi)] ?? (string) count($nomi);
+
+        return [
+            'nomi' => $nomi,
+            'piu_recente' => $piuRecente,
+            'titolo' => sprintf('Resteranno aperti %s esercizi: %s.', $quanti, $tra($nomi)),
+            'testo' => sprintf(
+                'Incassi, pagamenti e saldi che registri da qui in poi vanno nel «%s»; le rate di ogni piano vanno nell\'esercizio del suo '
+                .'piano. Quando hai finito con %s, %s.',
+                $piuRecente,
+                count($altri) === 1 ? 'il «'.$altri[0].'»' : implode(', ', array_map(fn ($x) => 'il «'.$x.'»', array_slice($altri, 0, -1))).' e il «'.$altri[array_key_last($altri)].'»',
+                count($altri) === 1 ? 'chiudilo' : 'chiudili',
+            ),
+        ];
     }
 
     /**
@@ -417,13 +792,13 @@ final class ImportVerificaService
      *
      * Pubblico e statico perché la schermata deve poter dichiarare **prima** quale esercizio
      * verrà usato: un fatto annunciato e poi disatteso è peggio di una domanda.
+     *
+     * Dalla 1.12.0-beta.14 (Coda 646, decisione 707 (4)) è la regola sola del prodotto, `HasEsercizio::esercizioApertoPiuRecente()`:
+     * con due esercizi aperti, il più recente. Prima qui c'era già il più recente, e altrove il primo trovato.
      */
     public static function esercizioApertoDi(int $condominioId): ?Esercizio
     {
-        return Esercizio::where('condominio_id', $condominioId)
-            ->where('stato', 'aperto')
-            ->orderBy('data_inizio', 'desc')
-            ->first();
+        return self::esercizioApertoPiuRecente($condominioId);
     }
 
     private function applicaDestinazione(ImportBatch $batch, array $canonici): array
@@ -480,7 +855,8 @@ final class ImportVerificaService
         //
         // La regola è quella che usa tutto il resto del prodotto — `HasEsercizio::getEsercizioCorrente()`:
         // l'esercizio **aperto**, con l'invariante «al più uno per condominio» presidiata da
-        // `CreateEsercizioRequest` e da `CondominioService::createEsercizioForCondominio()`.
+        // `CreateEsercizioRequest` e da `CondominioService::createEsercizioForCondominio()`; con due
+        // aperti (l'importazione ne lascia due), il più recente (Coda 646, decisione 707 (4)).
         // Importare significa registrare chi possiede cosa **adesso**, e «adesso» è l'esercizio
         // aperto: non c'è una seconda risposta ragionevole da offrire.
         $e = self::esercizioApertoDi($c->id);
@@ -547,6 +923,16 @@ final class ImportVerificaService
                     pec: $i === 0 ? $originale->pec : null,
                     telefoni: $i === 0 ? $originale->telefoni : [],
                     note: $originale->note,
+                    // I dati della persona del modello Excel (Coda 769) restano al primo, come il codice fiscale e i recapiti: il numero del documento è unico a schema.
+                    emailSecondaria: $i === 0 ? $originale->emailSecondaria : null,
+                    pecComunicataIl: $i === 0 ? $originale->pecComunicataIl : null,
+                    mezzoConvocazione: $i === 0 ? $originale->mezzoConvocazione : null,
+                    cellulare: $i === 0 ? $originale->cellulare : null,
+                    dataNascita: $i === 0 ? $originale->dataNascita : null,
+                    luogoNascita: $i === 0 ? $originale->luogoNascita : null,
+                    tipologiaDocumento: $i === 0 ? $originale->tipologiaDocumento : null,
+                    numeroDocumento: $i === 0 ? $originale->numeroDocumento : null,
+                    scadenzaDocumento: $i === 0 ? $originale->scadenzaDocumento : null,
                 );
 
                 $soggetti[$nuovo->chiave()] = $nuovo;
@@ -563,7 +949,7 @@ final class ImportVerificaService
                     continue;
                 }
 
-                foreach ($nuove as $ref) {
+                foreach ($nuove as $i => $ref) {
                     $aggiornate[] = new CanonicalTitolarita(
                         immobileRef: $t->immobileRef,
                         soggettoRef: $ref,
@@ -571,7 +957,7 @@ final class ImportVerificaService
                         // Il saldo **non** si spezza: resta sul primo. Dividerlo a metà sarebbe
                         // inventare una ripartizione che il file non dichiara, su denaro altrui.
                         saldoPrecedenteCents: $ref === $nuove[0] ? $t->saldoPrecedenteCents : null,
-                        quota: round(100 / count($nuove), 2),
+                        quota: PartiUguali::di(count($nuove))[$i],
                         rigaSorgente: $t->rigaSorgente,
                     );
                 }

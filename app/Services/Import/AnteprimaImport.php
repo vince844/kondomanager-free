@@ -67,10 +67,13 @@ final class AnteprimaImport
      * `crea_nuovo` non compare per il condominio: lo schema ha un indice unico sul codice
      * fiscale, quindi mostrarlo riporterebbe l'utente contro un errore di database.
      *
+     * Pubblica dalla 1.12.0-beta.14: la verifica ne fa dei rilievi da decidere (`ImportVerificaService::verifica()`), così il controllo
+     * della conferma sul server le vede come la schermata.
+     *
      * @param  array<string, mixed>  $canonici
      * @return array<string, mixed>
      */
-    private function collisioni(array $canonici): array
+    public function collisioni(array $canonici): array
     {
         $ricerca = new RicercaEsistenti;
         $voci = [];

@@ -350,6 +350,22 @@ return [
         ],
     ],
 
+    'errore_avvisato' => [
+
+        'subject' => 'Error :codice: :nome reported it',
+
+        'line_1' => ':nome (:ruolo) reported an error on :quando.',
+
+        'line_codice' => 'The error code: :codice.',
+
+        'line_pagina' => 'The page: :pagina.',
+
+        'action' => 'Open the error',
+
+        'line_dettaglio' => 'The details, the note and the report are in the «Errori» tab of the settings: they are not in this email.',
+
+    ],
+
     'assigned_ticket' => [
         'subject' => 'Ticket assigned to you: :title',
         'line_1' => ':user assigned you the ticket ":title" (:building).',

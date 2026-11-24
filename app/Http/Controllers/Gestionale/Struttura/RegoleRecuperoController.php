@@ -43,6 +43,8 @@ use Inertia\Response;
  * tutti i condomini ({@see TassoLegaleAMano}). Lo scrive, lo corregge e lo toglie solo chi gestisce le impostazioni generali: per gli altri 403.
  *
  * Le rotte stanno nel gruppo del gestionale, dietro il pannello. La regola dell'indirizzo deve essere di questo condominio: altrimenti 404.
+ * La regola nuova e l'eliminazione le fa chi ha «Modifica condomini» (`CondominioPolicy::update`), come gli interessi degli eredi: per gli altri 403
+ * (Coda 755 (2)). Il modulo dei permessi per condominio è un altro lavoro (decisione 671).
  */
 class RegoleRecuperoController extends Controller
 {
@@ -92,6 +94,8 @@ class RegoleRecuperoController extends Controller
             'interessi_eredi' => ['descrizione' => RegoleDegliEredi::DESCRIZIONE, 'voci' => RegoleDegliEredi::perLaPagina(RegoleDegliEredi::delCondominio((int) $condominio->id))],
             // Senza il permesso nel database (un'installazione a metà, le prove) la pagina si apre lo stesso, in sola lettura.
             'puo_modificare_eredi' => rescue(fn () => \Illuminate\Support\Facades\Gate::allows('update', $condominio), false, false),
+            // Coda 755 (2): la regola nuova e l'eliminazione, con lo stesso permesso; chi non l'ha vede la storia delle regole e basta.
+            'puo_modificare_regole' => rescue(fn () => \Illuminate\Support\Facades\Gate::allows('update', $condominio), false, false),
         ]);
     }
 
@@ -118,6 +122,9 @@ class RegoleRecuperoController extends Controller
 
     public function store(Request $request, Condominio $condominio): RedirectResponse
     {
+        // Una regola cambia gli interessi proposti ai condòmini e finisce nelle lettere: la scrive chi modifica il condominio, come gli
+        // interessi degli eredi (Coda 755 (2)). Prima del resto: senza il permesso non si legge neppure la richiesta.
+        \Illuminate\Support\Facades\Gate::authorize('update', $condominio);
         // La fonte «delibera» dalla delibera scelta: il riferimento è la sua frase, la stessa di ogni campo di testo (§1.4).
         $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
         if ($delibera !== null) {
@@ -183,6 +190,7 @@ class RegoleRecuperoController extends Controller
 
     public function destroy(Condominio $condominio, string|int $regola): RedirectResponse
     {
+        \Illuminate\Support\Facades\Gate::authorize('update', $condominio);
         $r = $this->assicuraRegola($condominio, $regola);
         if (($quando = $this->usataDa($condominio, $r)) !== null) {
             throw ValidationException::withMessages(['regola' => 'Questa regola è servita per gli interessi registrati al ' . CarbonImmutable::parse($quando)->format('d/m/Y')

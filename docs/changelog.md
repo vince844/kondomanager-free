@@ -7,6 +7,27 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.14] - I conti, gli eredi e le pagine d'errore
+
+**Tocca il database.** L'aggiornamento esegue da solo otto migrazioni nuove e due delle impostazioni. Nascono tre tabelle: due per gli errori del programma (l'errore e le volte in cui è successo) e una per le letture delle comunicazioni. Colonne nuove su tabelle che c'erano: il segno «di un gruppo» sulle tabelle millesimali, la richiesta della presa visione sulle comunicazioni, il legame fra i passaggi registrati insieme; nascono vuote. A chi ha già delle preferenze di notifica si aggiunge la voce «Errore avvisato», spenta. **Due migrazioni cambiano i dati che ci sono, una volta sola**: i promemoria «F24 Ritenuta» ancora aperti, uno per pagamento, si chiudono e al loro posto nasce un promemoria per ogni delega aperta e un «Prepara le deleghe F24» per le ritenute che non sono in nessuna delega (quelli che hai chiuso tu non si toccano); le voci di spesa che un'importazione aveva scritto senza il loro conto di partita doppia lo prendono («Costi per Servizi», o «Compensi Professionisti» per le voci dei professionisti). Le impostazioni nuove hanno il loro valore di serie: le aperture delle comunicazioni non si registrano, i condòmini possono avvisare lo studio dalla pagina d'errore. Nessun permesso nuovo. I requisiti del server non cambiano.
+
+**Che cosa fa la beta.**
+- **Il pregresso dell'unità va a chi era titolare il primo giorno dell'esercizio**, non a chi lo è quando generi il piano: dopo una vendita non si divide più a metà. La finestra «Riparto saldi iniziali» dice a chi va e perché, e lascia scegliere.
+- **Il «già versato» non si toglie più due volte**, e i piani rate si fermano o si ricalcolano dove prima restavano storti.
+- **Le deleghe F24 e le ritenute**: la soglia dei € 100 e dei € 500 e il totale del mese giusti, le scadenze di agosto fino al 20, un promemoria per delega, «Conferma la delega» sulla bozza e «Riporta in bozza» sulla confermata.
+- **Gli eredi e i defunti**: il versamento di un erede sul debito ereditato, la ricevuta con la sua parte, l'annullamento della successione che si ferma dopo il versamento, il riparto dopo un passaggio.
+- **Più venditori in un passaggio solo**: due fratelli che escono insieme si registrano insieme e si annullano insieme.
+- **Le pagine d'errore** con un codice, il registro degli errori nella pagina «Registri» e il rapporto da copiare; il condòmino può avvisare lo studio, e un'impostazione spegne il pulsante.
+- **La conferma di lettura delle comunicazioni**: «Aperta» e «Presa visione», per l'informazione dello studio.
+- **L'importazione**: «Importa senza i saldi», gli errori con il codice e «Riprendi», i file CSV con il punto e virgola, il modello con tutti i campi dell'anagrafica.
+- **La tabella di un gruppo e l'assemblea dei soli condòmini interessati** (i box, una scala): teste, millesimi e costituzione si contano sul gruppo.
+- **Pagamenti, casse e stampe**: il bonifico parlante con la ritenuta, la copertura dal fondo per il debito dell'anno prima, «Saldo al» nella cassa, la ripartizione spese con una riga per persona.
+- **«Salva e associa le anagrafiche»** nel nuovo immobile, proposto e scritto da Federico D'Eredità: grazie.
+- **Il piè di pagina in una riga** con «Note legali», e cinque comandi da terminale, in sola lettura, per trovare i dati già scritti da guardare.
+- **Corretto**: i due voti dello stesso punto nella scheda della persona, il verbale della persona in comproprietà entrata insieme all'altra, il nome del condòmino nell'avviso di un accordo di rientro, il limite di tempo sugli hosting condivisi, le PEC per volta (sono 20, non 50) e molte cifre e date piccole.
+
+---
+
 ## [1.12.0-beta.13] - Le assemblee e il registro delle modifiche
 
 **Tocca il database.** L'aggiornamento esegue da solo ventiquattro migrazioni nuove e sei delle impostazioni. Nascono ventisette tabelle: il registro delle modifiche, le versioni di prima dei documenti sostituiti, le assemblee con le sedute, i punti, i convocati e il preventivo fermato, le delibere con i loro collegamenti e le cose da fare dopo, il memo «Da portare in assemblea», la sala (deleghe, presenze, voti, dichiarazioni, gesti) e il verbale con il registro dei verbali e quello di nomina e revoca. Colonne nuove su tabelle che c'erano: la tabella di proprietà generale del condominio, della palazzina e della scala, come si convoca una persona, l'esito degli invii, il conto delle teste in sala per condominio, il giorno dei lavori urgenti del piano rate, l'autore facoltativo degli eventi dell'agenda. Nessuna migrazione cambia i dati che ci sono già: le colonne nuove nascono vuote, e una sola scrive una riga, quella da cui parte la catena del registro. Le impostazioni nuove hanno il loro valore di serie (il registro dura 10 anni, la casella PEC dello studio è vuota, la posta già impostata risulta «Da provare»). Cinque permessi nuovi, per il registro e per le assemblee; i ruoli di serie si riallineano da soli. I requisiti del server non cambiano.

@@ -350,6 +350,22 @@ return [
         ],
     ],
 
+    'errore_avvisato' => [
+
+        'subject' => 'Erro :codice: avisou-o :nome',
+
+        'line_1' => ':nome (:ruolo) avisou-o de um erro em :quando.',
+
+        'line_codice' => 'O código do erro: :codice.',
+
+        'line_pagina' => 'A página: :pagina.',
+
+        'action' => 'Abrir o erro',
+
+        'line_dettaglio' => 'O detalhe, a nota e o relatório estão no separador «Errori» das definições: não estão neste email.',
+
+    ],
+
     'assigned_ticket' => [
         'subject' => 'Ticket atribuído a si: :title',
         'line_1' => ':user atribuiu-lhe o ticket ":title" (:building).',

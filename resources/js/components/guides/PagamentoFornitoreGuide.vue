@@ -281,6 +281,11 @@ defineEmits(['update:open']);
                                 delle Entrate, con il tipo di detrazione e i condòmini beneficiari. Senza quella
                                 causale la detrazione si perde, e non è recuperabile dopo.
                             </p>
+                            <p class="mt-2">
+                                Se la fattura è registrata con la ritenuta, il pagamento con il bonifico parlante si ferma: togli
+                                prima la ritenuta dalla fattura (Modifica, motivo «Bonifico parlante»; una pregressa si storna e si
+                                registra di nuovo con il motivo), poi registra il pagamento dell'importo pieno.
+                            </p>
                         </section>
 
                         <section>

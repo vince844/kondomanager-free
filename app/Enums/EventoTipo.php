@@ -82,4 +82,10 @@ enum EventoTipo: string
      */
     case DELIBERA_DA_ESEGUIRE = 'delibera_da_eseguire';
     case DELIBERA_RESPINTA = 'delibera_respinta';
+
+    /**
+     * L'avviso di un errore (1.12.0-beta.14, decisione 698 (4)): un condòmino o un collaboratore ha avvisato lo studio dalla pagina d'errore. Un compito per
+     * errore, con l'errore come `eventable`; lo leggono solo quelli che hanno «Gestisci impostazioni generali». Lo scrive `CompitoDellErrore`.
+     */
+    case ERRORE_AVVISATO = 'errore_avvisato';
 }

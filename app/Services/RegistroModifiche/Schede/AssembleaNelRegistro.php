@@ -61,7 +61,7 @@ final class AssembleaNelRegistro extends SchedaNelRegistro
 
     public const FORMATI = [
         'ambito' => ['scelta', [AmbitoAssemblea::CONDOMINIO->value => 'Tutto il condominio', AmbitoAssemblea::PALAZZINA->value => 'La palazzina',
-            AmbitoAssemblea::SCALA->value => 'La scala']],
+            AmbitoAssemblea::SCALA->value => 'La scala', AmbitoAssemblea::GRUPPO->value => 'I condòmini di una tabella']],
         'palazzina_id' => ['chiave', Palazzina::class, 'name'],
         'scala_id' => ['chiave', Scala::class, 'name'],
         'tipo' => ['scelta', [TipoAssemblea::ORDINARIA->value => 'Ordinaria', TipoAssemblea::STRAORDINARIA->value => 'Straordinaria']],

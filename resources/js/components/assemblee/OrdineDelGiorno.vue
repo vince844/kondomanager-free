@@ -6,7 +6,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 <script setup lang="ts">
 /**
  * L'ordine del giorno di un'assemblea in preparazione (§3 P2; scena 1 della bozza della pagina, scena 2b della bozza delle scene della tappa 2): i punti con
- * il numero e i badge (la maggioranza, «Votano i conduttori», «Memo», «Solo la scala B», «Tabella «Ascensore B»»), «Aggiungi un punto», e per ogni punto
+ * il numero e i badge (la maggioranza, «Votano i conduttori», «Memo», «Solo la scala B», «Tabella «Ascensore B»», «Fra i condòmini della tabella «Box»» per
+ * la tabella di un gruppo, Coda 734), «Aggiungi un punto», e per ogni punto
  * «Modifica», «Sposta su», «Sposta giù», «Togli». Sotto, i punti proposti che non ci sono ancora (le proposte, differite): spuntati di serie, «Aggiungi».
  *
  * Ogni gesto è una visita parziale che rilegge solo `ordine`, `proposte` e `passi` (`preserveScroll`), più il passo «Convocazione» o «Documenti» se la pagina
@@ -50,7 +51,10 @@ const daTogliere = ref<PuntoDellaPagina | null>(null);
 const confermaTogli = ref(false);
 
 const visita = computed(() => ({ only: ['ordine', 'proposte', 'passi', 'flash', ...props.rileggi], preserveScroll: true, preserveState: true }));
-const nomeDellAssemblea = computed(() => `${props.assemblea.titolo}${props.assemblea.data ? ` del ${props.assemblea.data.split('-').reverse().join('/')}` : ''}`);
+// L'assemblea dei condòmini di un gruppo (Coda 734): la finestra del punto la nomina come la scena 11 della bozza approvata, e riceve il gruppo.
+const nomeDellAssemblea = computed(() => (props.assemblea.gruppo
+    ? `Assemblea ${props.assemblea.tipo_parola.toLowerCase()} dei condòmini della tabella «${props.assemblea.gruppo.nome}»${props.assemblea.data ? ` · ${props.assemblea.data.split('-').reverse().join('/')}` : ''}`
+    : `${props.assemblea.titolo}${props.assemblea.data ? ` del ${props.assemblea.data.split('-').reverse().join('/')}` : ''}`));
 
 function aggiungi() {
     inModifica.value = null;
@@ -134,7 +138,9 @@ const pulsante = 'inline-flex h-8 items-center justify-center gap-1.5 rounded-md
                     <div class="mt-1 flex flex-wrap items-center gap-1.5">
                         <span v-if="p.conduttore_parola" :class="[BADGE, CLASSI_DEL_BADGE.viola]">{{ p.conduttore_parola }}</span>
                         <span v-if="p.perimetro_parola" :class="[BADGE, CLASSI_DEL_BADGE.viola]" data-testid="badge-perimetro">{{ p.perimetro_parola }}</span>
-                        <span v-if="p.perimetro_parola && p.tabella_nome" :class="[BADGE, CLASSI_DEL_BADGE.neutro]" data-testid="badge-tabella">Tabella «{{ p.tabella_nome }}»</span>
+                        <span v-if="p.perimetro_parola && p.tabella_nome && !p.gruppo_parola" :class="[BADGE, CLASSI_DEL_BADGE.neutro]" data-testid="badge-tabella">Tabella «{{ p.tabella_nome }}»</span>
+                        <!-- Il punto votato con una tabella segnata «di un gruppo» (Coda 734): chi vota, come «Solo la scala B». -->
+                        <span v-if="p.gruppo_parola" :class="[BADGE, CLASSI_DEL_BADGE.viola]" data-testid="badge-gruppo">{{ p.gruppo_parola }}</span>
                         <span v-if="p.da_memo" :class="[BADGE, CLASSI_DEL_BADGE.neutro]">Memo</span>
                         <span v-if="p.maggioranza_parola" :class="[BADGE, CLASSI_DEL_BADGE[coloreDellaMaggioranza(p.maggioranza)]]" data-testid="badge-maggioranza">{{ p.maggioranza_parola }}</span>
                         <span v-else :class="[BADGE, CLASSI_DEL_BADGE.ambra]">Maggioranza da scegliere</span>
@@ -185,7 +191,7 @@ const pulsante = 'inline-flex h-8 items-center justify-center gap-1.5 rounded-md
 
         <FinestraDelPunto v-model:open="finestra" :condominio-id="condominioId" :condominio-nome="condominioNome" :assemblea-id="assemblea.id"
             :assemblea-nome="nomeDellAssemblea" :tabella-dell-assemblea="assemblea.tabella?.nome ?? null" :punto="inModifica" :scelte="scelte" :proposte="proposte"
-            :maggioranze-scelte="maggioranze" :rileggi="rileggi" />
+            :maggioranze-scelte="maggioranze" :rileggi="rileggi" :gruppo="assemblea.gruppo ?? null" />
         <ConfirmDialog v-model="confermaTogli" :title="daTogliere ? `Togliere il punto ${daTogliere.numero}?` : 'Togliere il punto?'" confirm-text="Togli il punto"
             :description="daTogliere?.da_memo ? 'Il memo torna nella memoria del condominio, e ti viene proposto alla prossima assemblea.' : 'Gli altri punti si rinumerano. La riga resta nel registro delle modifiche.'"
             @confirm="togli" />

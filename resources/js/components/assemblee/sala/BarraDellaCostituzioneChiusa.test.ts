@@ -22,7 +22,7 @@ describe('la barra a sala chiusa', () => {
     test('dice com\'è finita, non «Da aprire»', () => {
         const w = mount(Barra, { props: { ...base, chiusura } as never });
         expect(w.get('[data-testid="barra-stato"]').text()).toBe('Chiusa alle 17:10 · costituita in prima convocazione');
-        expect(w.get('[data-testid="barra-teste"]').text()).toBe('12 su 15 condòmini in sala');
+        expect(w.get('[data-testid="barra-teste"]').text()).toBe('12 su 15 condòmini alla costituzione');
         expect(w.get('[data-testid="barra-valore"]').text()).toBe('732,60 millesimi su 1.000');
         expect(w.text()).not.toContain('Da aprire');
         expect(w.text()).not.toContain('la sala li conta dall\'apertura');
@@ -37,7 +37,7 @@ describe('la barra a sala chiusa', () => {
     test('i numeri grandi sono quelli della costituzione (3 su 4, 760,00 millesimi), non zero; la frase dice «costituita in prima convocazione con 3 su 4»', () => {
         const w = mount(Barra, { props: { ...base, totaleTeste: 4, chiusura: { alle: '08:00', convocazione: 'prima', costituita: true, teste: 3, totale_teste: 4, valore: 76000000,
             totale_valore: 100000000 } } as never });
-        expect(w.get('[data-testid="barra-teste"]').text()).toBe('3 su 4 condòmini in sala');
+        expect(w.get('[data-testid="barra-teste"]').text()).toBe('3 su 4 condòmini alla costituzione');
         expect(w.get('[data-testid="barra-valore"]').text()).toBe('760,00 millesimi su 1.000');
         expect(w.get('[data-testid="barra-servono"]').text()).toBe('Chiusa alle 08:00 · costituita in prima convocazione con 3 su 4 e 760,00 millesimi.');
     });
@@ -57,7 +57,7 @@ describe('con un condòmino solo la barra dice il singolare (rilievo C44)', () =
         const aperta = mount(Barra, { props: { ...uno, presentiTeste: 0, conto: { costituita: false, mancano: 'mancano 1 condòmino e 666,67 millesimi' } } as never });
         expect(aperta.get('[data-testid="barra-teste"]').text()).toBe('0 su 1 condòmino in sala');
         const chiusa = mount(Barra, { props: { ...uno, chiusura: { ...chiusura, teste: 1, totale_teste: 1 } } as never });
-        expect(chiusa.get('[data-testid="barra-teste"]').text()).toBe('1 su 1 condòmino in sala');
+        expect(chiusa.get('[data-testid="barra-teste"]').text()).toBe('1 su 1 condòmino alla costituzione');
         expect(chiusa.text()).not.toContain('condòmini');
     });
 });

@@ -282,7 +282,8 @@ describe('«Togli la casella PEC», il consiglio della posta, lo storico (decisi
 
     test('la prova non andata della PEC rimanda al nome vero della pagina dei registri', () => {
         const sorgente = readFileSync(resolve(process.cwd(), 'resources/js/components/impostazioni/caselle/CasellaPecDelloStudio.vue'), 'utf8').replace(/\s+/g, ' ');
-        expect(sorgente).toContain('in «Audit & Logs di Sistema», scheda «Email Logs»');
+        // 1.12.0-beta.14: la pagina dei registri si chiama «Registri», e la sua scheda delle email «Email».
+        expect(sorgente).toContain('in «Registri», scheda «Email»');
         expect(sorgente).not.toContain('Impostazioni › Log');
         expect(sorgente).toContain('e il programma ne legge il giorno e l\'ora');
     });

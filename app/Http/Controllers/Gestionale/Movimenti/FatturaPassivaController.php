@@ -485,9 +485,12 @@ class FatturaPassivaController extends Controller
             }
         }
 
-        // 2. Conti nati da debiti pregressi frazionati
+        // 2. Conti nati da debiti pregressi frazionati. Coda 754 (4), 1.12.0-beta.14: anche la voce della pregressa coperta dal fondo, che la copertura
+        // `fondo_riserva` porta al posto della «sopravvenienza» (`FatturaPassivaService::registraFattura`): senza, eliminando la fattura restava a € 0,00.
         foreach ($fattura->coperture as $copertura) {
-            if ($copertura->tipo_copertura === 'sopravvenienza' && $copertura->conto_id) {
+            $voceDellaPregressa = $copertura->tipo_copertura === 'sopravvenienza'
+                || ($fattura->is_pregresso && $copertura->tipo_copertura === 'fondo_riserva');
+            if ($voceDellaPregressa && $copertura->conto_id) {
                 $contiImprevistiIds->push($copertura->conto_id);
             }
         }

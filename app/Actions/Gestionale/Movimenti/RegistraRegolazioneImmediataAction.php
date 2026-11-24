@@ -5,6 +5,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Gestionale\RegolazioneImmediataNonAmmessaException;
 use App\Helpers\MoneyHelper;
@@ -124,7 +125,7 @@ class RegistraRegolazioneImmediataAction
                 'condominio_id' => $condominio->id,
                 'esercizio_id' => $esercizio->id,
                 'gestione_id' => $validated['gestione_id'],
-                'data_registrazione' => now()->toDateString(),
+                'data_registrazione' => DateHelper::oggiUtente(),
                 'data_competenza' => $dataOperazione,
                 'causale' => mb_substr($validated['causale'], 0, 255),
                 'tipo_movimento' => TipoMovimentoContabile::REGOLAZIONE_IMMEDIATA,

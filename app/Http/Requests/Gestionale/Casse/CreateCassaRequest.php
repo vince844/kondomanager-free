@@ -31,6 +31,8 @@ class CreateCassaRequest extends FormRequest
             'descrizione'    => 'nullable|string|max:255',
             'tipo'           => 'required|in:contanti,banca,fondo,virtuale',
             'saldo_iniziale' => 'nullable|string',
+            // Il giorno del saldo di apertura (Coda 546): l'apertura va nell'esercizio che lo contiene. L'azione rifiuta un giorno in un esercizio chiuso.
+            'saldo_al'       => 'nullable|date_format:Y-m-d',
             'note'           => 'nullable|string',
             
             // Dati Bancari (Richiesti SOLO se tipo == banca)

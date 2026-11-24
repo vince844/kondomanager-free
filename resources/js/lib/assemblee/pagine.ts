@@ -55,8 +55,10 @@ export interface AssembleaDellaPagina {
     sedute: SedutaDellaPagina[];
     tabella: { id: number; nome: string; controllo: ControlloDellaTabella } | null;
     tabella_di_proprieta: { id: number; nome: string } | null;
-    perimetro_tipo: 'condominio' | 'palazzina' | 'scala';
+    perimetro_tipo: 'condominio' | 'palazzina' | 'scala' | 'gruppo';
     perimetro_id: number;
+    /** L'assemblea dei condòmini di un gruppo (Coda 734): la tabella del gruppo, con le sue unità; null per le altre. */
+    gruppo?: GruppoDellAssemblea | null;
     numero_verbale: string | null;
     verbale: { id: number; nome: string; peso: number } | null;
     verbale_da_caricare: boolean;
@@ -64,6 +66,13 @@ export interface AssembleaDellaPagina {
     annullata_motivo: string | null;
     /** «Apri la sala» dal giorno della prima convocazione; «Torna in sala» quando è in corso: con l'indirizzo della sala. */
     apri_la_sala: { attiva: boolean; perche: string; url?: string; testo?: string };
+}
+
+/** Il gruppo dell'assemblea dei condòmini di una tabella segnata «di un gruppo» (Coda 734): la tabella, il nome, le unità con la quota. */
+export interface GruppoDellAssemblea {
+    tabella_id: number;
+    nome: string;
+    unita: number;
 }
 
 export interface DeliberaDellaPagina {
@@ -97,6 +106,8 @@ export interface PuntoDellaPagina {
     perimetro_parola: string | null;
     tabella_id: number | null;
     tabella_nome: string | null;
+    /** Il badge del punto votato con una tabella segnata «di un gruppo» (Coda 734): «Fra i condòmini della tabella «Box»». */
+    gruppo_parola?: string | null;
     tabella_controllo: string | null;
     esercizio_id: number | null;
     importo: number | null;
@@ -125,6 +136,8 @@ export interface DatiDelPunto {
     tabella_id: number | null;
     importo: string | null;
     dati?: { parti_comuni?: string | null; nuova_destinazione?: string | null; delega?: DelegaDelPunto | null };
+    /** «Mettilo lo stesso» (decisione 699 (3)): il punto di tutto il condominio nell'assemblea di un gruppo, scelto con il rischio. */
+    mettilo_lo_stesso?: boolean;
 }
 
 /** La delega all'amministratore di un punto (decisione 622 (3)): per che cosa e fino a quando; il tetto è l'importo del punto. */
@@ -136,7 +149,7 @@ export interface DelegaDelPunto {
 /** Il modulo delle date e della testata dell'assemblea (`DateDellAssemblea.vue`). */
 export interface ModuloDelleDate {
     tipo: string;
-    /** `condominio`, `palazzina:3`, `scala:5`. */
+    /** `condominio`, `palazzina:3`, `scala:5`, `gruppo:7` (i condòmini della tabella 7, segnata «di un gruppo»). */
     perimetro: string;
     luogo: string;
     modalita: string;
@@ -149,17 +162,18 @@ export interface ModuloDelleDate {
 /** Il modulo dai dati della pagina. */
 export function moduloDa(a: AssembleaDellaPagina): ModuloDelleDate {
     return {
-        tipo: a.tipo, perimetro: chiaveDelPerimetro(a.ambito, a.palazzina_id, a.scala_id), luogo: a.luogo ?? '', modalita: a.modalita,
+        tipo: a.tipo, perimetro: chiaveDelPerimetro(a.ambito, a.palazzina_id, a.scala_id, a.gruppo?.tabella_id ?? a.tabella?.id), luogo: a.luogo ?? '', modalita: a.modalita,
         piattaforma: a.piattaforma ?? '', consenso_videoconferenza_il: a.consenso_videoconferenza_il ?? '', consenso_videoconferenza_modo: a.consenso_videoconferenza_modo ?? '',
         sedute: a.sedute.map((s) => ({ ...s })),
     };
 }
 
-/** Il modulo nella forma della richiesta (`PreparaAssembleaRequest`). */
+/** Il modulo nella forma della richiesta (`PreparaAssembleaRequest`): per i condòmini di un gruppo anche la tabella, che è il gruppo. */
 export function datiDelModulo(m: ModuloDelleDate): Record<string, unknown> {
     const [ambito, id] = m.perimetro.split(':');
     return {
-        tipo: m.tipo, ambito, palazzina_id: ambito === 'palazzina' ? Number(id) : null, scala_id: ambito === 'scala' ? Number(id) : null, luogo: m.luogo || null,
+        tipo: m.tipo, ambito, palazzina_id: ambito === 'palazzina' ? Number(id) : null, scala_id: ambito === 'scala' ? Number(id) : null,
+        ...(ambito === 'gruppo' ? { tabella_id: Number(id) } : {}), luogo: m.luogo || null,
         modalita: m.modalita, piattaforma: m.piattaforma || null, consenso_videoconferenza_il: m.consenso_videoconferenza_il || null,
         consenso_videoconferenza_modo: m.consenso_videoconferenza_modo || null,
         sedute: m.sedute.filter((s) => s.giorno !== '').map((s) => ({ convocazione: s.convocazione, numero: s.numero, giorno: s.giorno, ora: s.ora || '00:00' })),
@@ -232,8 +246,15 @@ export interface TabellaDelleScelte {
     id: number;
     nome: string;
     unita: number;
-    /** Il controllo per ogni perimetro: `condominio`, `palazzina:3`, `scala:5`; con le unità del perimetro con la quota e quante sono. */
-    controlli: Record<string, { frase: string; copre: boolean; esatta: boolean; con_quota: number; unita: number }>;
+    /** La tabella segnata «di un gruppo» (Coda 734): sui suoi punti votano solo i condòmini delle sue unità. */
+    di_un_gruppo?: boolean;
+    /** La somma delle sue quote: «1.000,00». */
+    millesimi?: string;
+    /**
+     * Il controllo per ogni perimetro: `condominio`, `palazzina:3`, `scala:5`, e `gruppo:7` per ogni tabella di un gruppo; con le unità del perimetro con la
+     * quota e quante sono, e (per il gruppo) se la tabella ha tutte le sue unità dentro.
+     */
+    controlli: Record<string, { frase: string; copre: boolean; esatta: boolean; con_quota: number; unita: number; dentro?: boolean }>;
 }
 
 export interface ScelteDelleAssemblee {
@@ -258,11 +279,71 @@ export interface DiarioDellaPagina {
     altre: boolean;
 }
 
-/** La chiave del perimetro per i controlli delle tabelle: `condominio`, `palazzina:3`, `scala:5`. */
-export function chiaveDelPerimetro(ambito: string | null | undefined, palazzinaId: number | null | undefined, scalaId: number | null | undefined): string {
+/** La chiave del perimetro per i controlli delle tabelle: `condominio`, `palazzina:3`, `scala:5`, `gruppo:7` (con la tabella del gruppo). */
+export function chiaveDelPerimetro(ambito: string | null | undefined, palazzinaId: number | null | undefined, scalaId: number | null | undefined,
+    tabellaId?: number | null): string {
     if (ambito === 'scala' && scalaId) return `scala:${scalaId}`;
     if (ambito === 'palazzina' && palazzinaId) return `palazzina:${palazzinaId}`;
+    if (ambito === 'gruppo' && tabellaId) return `gruppo:${tabellaId}`;
     return 'condominio';
+}
+
+/** Le materie che per legge sono di tutto il condominio, con l'inizio della frase del rischio (le stesse del server, `OrdineDelGiorno::MATERIE_DI_TUTTI`). */
+export const MATERIE_DI_TUTTI: Record<string, string> = {
+    rendiconto: 'Il rendiconto è',
+    preventivo: 'Il preventivo è',
+    nomina: 'La nomina e la revoca dell\'amministratore sono',
+    dispensa: 'La dispensa dei sei mesi è',
+    regole: 'Le regole del recupero dei crediti sono',
+};
+
+/** La materia è una di quelle che per legge sono di tutto il condominio ({@see MATERIE_DI_TUTTI}). */
+export function materiaDiTutti(materia: string | null | undefined): boolean {
+    return !!materia && materia in MATERIE_DI_TUTTI;
+}
+
+/**
+ * Le voci di «Per chi» dell'assemblea (scena 7 della bozza della tappa 3): tutto il condominio, le palazzine, le scale, e dopo le scale una voce per ogni
+ * tabella segnata «di un gruppo», «I condòmini della tabella «Box»», con le unità e i millesimi (valore `gruppo:<id>`).
+ */
+export function perimetriDellAssemblea(scelte: ScelteDelleAssemblee): { valore: string; nome: string; sotto?: string }[] {
+    return [
+        { valore: 'condominio', nome: 'Tutto il condominio' },
+        ...scelte.palazzine.map((p) => ({ valore: `palazzina:${p.id}`, nome: `La palazzina ${p.nome}` })),
+        ...scelte.scale.map((s) => ({ valore: `scala:${s.id}`, nome: `La scala ${s.nome}` })),
+        ...scelte.tabelle.filter((t) => t.di_un_gruppo === true).map((t) => ({ valore: `gruppo:${t.id}`, nome: `I condòmini della tabella «${t.nome}»`,
+            sotto: `${t.unita} unità${t.millesimi ? ` · ${t.millesimi} millesimi` : ''}` })),
+    ];
+}
+
+/** Il gruppo scelto in «Per chi» (`gruppo:<id>`), con il nome e le unità della sua tabella; null per gli altri perimetri. */
+export function gruppoDelPerimetro(scelte: ScelteDelleAssemblee, perimetro: string): GruppoDellAssemblea | null {
+    const [ambito, id] = perimetro.split(':');
+    const t = ambito === 'gruppo' ? scelte.tabelle.find((x) => x.id === Number(id)) : undefined;
+    return t ? { tabella_id: t.id, nome: t.nome, unita: t.unita } : null;
+}
+
+/** La riga della tabella del valore dell'assemblea di un gruppo, ferma: «Box · la tabella del gruppo · 8 unità su 8 · 1.000,00 millesimi». */
+export function rigaDellaTabellaDelGruppo(scelte: ScelteDelleAssemblee, gruppo: GruppoDellAssemblea): string {
+    const frase = scelte.tabelle.find((t) => t.id === gruppo.tabella_id)?.controlli[`gruppo:${gruppo.tabella_id}`]?.frase ?? `${gruppo.unita} unità`;
+    return `${gruppo.nome} · la tabella del gruppo · ${frase}`;
+}
+
+/**
+ * Il punto di tutto il condominio nell'assemblea dei condòmini di un gruppo (decisione 699 (3)): la frase del rischio, che ferma il punto finché
+ * l'amministratore non preme «Mettilo lo stesso». Null per le altre materie.
+ */
+export function rischioDelPunto(materia: string | null | undefined): string | null {
+    const inizio = materia ? MATERIE_DI_TUTTI[materia] : undefined;
+    return inizio ? `${inizio} di tutto il condominio: con i soli condòmini del gruppo la delibera è annullabile da chi non è convocato.` : null;
+}
+
+/**
+ * Le tabelle di un punto nell'assemblea dei condòmini di un gruppo (scena 11 della bozza): quella del gruppo e le tabelle di un gruppo che stanno dentro di
+ * lei, con la frase del controllo sul gruppo.
+ */
+export function tabelleDelGruppo(tabelle: TabellaDelleScelte[], gruppo: number): TabellaDelleScelte[] {
+    return tabelle.filter((t) => t.id !== gruppo && t.di_un_gruppo === true && t.controlli[`gruppo:${gruppo}`]?.dentro === true);
 }
 
 /**

@@ -35,10 +35,14 @@ use Illuminate\Support\Facades\DB;
  *   un'altra persona (il credito della posizione «si usa adesso» e il denaro va tutto sulla rata di chi l'ha versato) non è un versamento di
  *   questa ricevuta: non entra nelle quote né nel credito usato, e la ricevuta la nomina solo in `compensazioni_escluse`.
  * - **Il versamento di un erede sul debito ereditato** (decisione 539): di serie la ricevuta è intestata all'erede che ha pagato (la posizione di
- *   `PersoneDegliIncassi`), con `debito_ereditato` (di chi era il debito, il giorno della successione, la sua quota) al posto di «Per conto di», e
- *   sulla riga della rata del defunto la `nota` «la parte di Cecilia Angeli del debito ereditato da Massimo Bagnara». Con la scelta «Eredi di …» la
- *   posizione resta il defunto, con il suo indirizzo e il suo codice fiscale, e il nome «Eredi di Massimo Bagnara»; con «il defunto» come prima. Una
- *   ricevuta già emessa non cambia: la copia legge il contenuto dell'originale ({@see daIstantanea()}).
+ *   `PersoneDegliIncassi`), con `debito_ereditato` (di chi era il debito, il giorno della successione, la sua quota) al posto di «Per conto di». Con la
+ *   scelta «Eredi di …» la posizione resta il defunto, con il suo indirizzo e il suo codice fiscale, e il nome «Eredi di Massimo Bagnara»; con «il defunto»
+ *   come prima. Una ricevuta già emessa non cambia: la copia legge il contenuto dell'originale ({@see daIstantanea()}).
+ * - **La riga della rata del defunto nella ricevuta all'erede** (Coda 706, la forma A della domanda D1): la ricevuta è dell'erede, e la riga dice la sua
+ *   parte ({@see partiDellErede()}). «Quota» la parte dell'erede della rata (la cifra che «Rate scadute» le mostrava), «Già versato» i suoi versamenti su
+ *   quella parte registrati prima di questo, «Imputato» questo, «Resta» quello che resta a lei; la `nota` «la parte di Cecilia Angeli (50 %) della rata di
+ *   € 65,58 di Massimo Bagnara». La riga porta `parte_erede`, con le cifre della rata intera: la regola di prima, con cui si confronta una copia
+ *   ({@see cifre()}). Con «Eredi di …» e con «il defunto» la riga resta la rata intera.
  *
  * Non c'è il metodo di pagamento (bonifico, contanti, assegno): l'incasso non lo registra.
  */
@@ -77,6 +81,8 @@ class RicevutaIncasso
         $allErede = $eredita !== null && $eredita['intestatario'] === \App\Services\Gestionale\Accessori\VersamentoDegliEredi::RICEVUTA_ALL_EREDE && $posizione !== null;
         $agliEredi = $eredita !== null && $eredita['intestatario'] === \App\Services\Gestionale\Accessori\VersamentoDegliEredi::RICEVUTA_AGLI_EREDI;
         $notaDellErede = $allErede ? sprintf('la parte di %s del debito ereditato da %s', $eredita['nome_erede'], $eredita['di']) : null;
+        // Coda 706: le parti dell'erede sulle rate del defunto, lette una volta sola e solo per la ricevuta all'erede.
+        $partiDellErede = null;
         $compensazioni = $incasso->figlie->filter(fn (ScritturaContabile $f) => $f->tipo_movimento === TipoMovimentoContabile::STORNO_CREDITO)->values();
 
         // Quanto l'incasso ha messo su ogni quota con il denaro, e quanto le sue compensazioni con il credito.
@@ -144,7 +150,7 @@ class RicevutaIncasso
                 continue;
             }
             if ($imputato > 0) {
-                $righeQuote[] = ($notaDellErede !== null && (int) $q->anagrafica_id !== (int) $posizione->id ? ['nota' => $notaDellErede] : []) + [
+                $riga = [
                     'quota_id'    => $q->id,
                     'rata'        => $this->nomeRata($q),
                     'piano'       => $q->rata?->pianoRate?->nome,
@@ -158,6 +164,11 @@ class RicevutaIncasso
                     'dal_credito' => min(max(0, $credito[$id] ?? 0), $imputato),
                     'dopo'        => max(0, $residuoPrima - $imputato),
                 ];
+                if ($notaDellErede !== null && (int) $q->anagrafica_id !== (int) $posizione->id) {
+                    $partiDellErede ??= $this->partiDellErede($incasso, (int) $posizione->id);
+                    $riga = $this->rigaDellErede($riga, $q, $partiDellErede, $eredita, $notaDellErede);
+                }
+                $righeQuote[] = $riga;
             }
             if ($avanza > 0) {
                 $parteInPiu[] = $this->parteInPiu($avanza, $q, 0, $avanza, false);
@@ -254,7 +265,8 @@ class RicevutaIncasso
 
     /**
      * Le cifre della ricevuta, senza ciò che cambia con lo stato dell'incasso o con l'anagrafica: per sapere se la situazione delle quote è
-     * cambiata dopo l'originale.
+     * cambiata dopo l'originale. La riga della rata del defunto nella ricevuta all'erede (Coda 706) si confronta con le cifre della rata intera, che porta
+     * in `parte_erede`: sono quelle che scriveva la regola di prima, e un originale emesso con quella regola non si dice «cambiato» per la sola regola nuova.
      *
      * @param array<string, mixed> $contenuto
      * @return array<string, mixed>
@@ -262,12 +274,109 @@ class RicevutaIncasso
     public static function cifre(array $contenuto): array
     {
         return [
-            'quote'      => array_map(fn (array $q) => [$q['quota_id'] ?? null, $q['importo'] ?? 0, $q['prima'] ?? 0, $q['imputato'] ?? 0, $q['dopo'] ?? 0], $contenuto['quote'] ?? []),
+            'quote'      => array_map(fn (array $q) => isset($q['parte_erede']['rata'])
+                ? [$q['quota_id'] ?? null, $q['parte_erede']['rata'], $q['parte_erede']['rata_prima'] ?? 0, $q['imputato'] ?? 0, $q['parte_erede']['rata_dopo'] ?? 0]
+                : [$q['quota_id'] ?? null, $q['importo'] ?? 0, $q['prima'] ?? 0, $q['imputato'] ?? 0, $q['dopo'] ?? 0], $contenuto['quote'] ?? []),
             'credito'    => $contenuto['credito_usato'] ?? 0,
             'eccedenze'  => array_map(fn (array $e) => [$e['importo'] ?? 0, $e['riduce'] ?? 0, $e['a_credito'] ?? 0], $contenuto['eccedenze'] ?? []),
             'posizione'  => $contenuto['posizione']['id'] ?? null,
             'versato_da' => $contenuto['versato_da']['id'] ?? null,
         ];
+    }
+
+    /**
+     * Coda 706: la riga della rata del defunto nella ricevuta all'erede, con la sua parte. Le cifre della rata intera restano in `parte_erede` per il
+     * confronto della copia ({@see cifre()}). Senza la parte (una lettura che non la trova) la riga resta la rata intera, con la nota di prima.
+     *
+     * @param array<string, mixed> $riga
+     * @param array<string, array{quota: int, prima: int, defunto: ?int}> $parti {@see partiDellErede()}
+     * @param array<string, mixed> $eredita la lettura di {@see \App\Services\Gestionale\Accessori\VersamentoDegliEredi::deiVersamenti()}
+     * @return array<string, mixed>
+     */
+    private function rigaDellErede(array $riga, RataQuote $q, array $parti, array $eredita, string $notaDiPrima): array
+    {
+        $parte = $parti[$q->rata_id . '|' . $q->immobile_id . '|' . $q->anagrafica_id] ?? null;
+        if ($parte === null) {
+            return ['nota' => $notaDiPrima] + $riga;
+        }
+        // Con la catena (decisione 530) la rata è del primo defunto, e la percentuale della successione dell'erede non è la sua parte di quella rata: la
+        // nota la tace.
+        $diretta = $parte['defunto'] === (int) $q->anagrafica_id;
+        $nota = $diretta
+            ? sprintf('la parte di %s (%s %%) della rata di %s di %s', $eredita['nome_erede'], $eredita['quota'], \App\Helpers\MoneyHelper::format((int) $q->importo), $eredita['defunto'])
+            : sprintf('la parte di %s della rata di %s di %s', $eredita['nome_erede'], \App\Helpers\MoneyHelper::format((int) $q->importo), (string) $q->anagrafica?->nome);
+
+        return ['nota' => $nota] + array_merge($riga, [
+            'importo'     => $parte['quota'],
+            'prima'       => min($parte['prima'], $parte['quota']),
+            'riaddebito'  => 0,
+            'dopo'        => max(0, $parte['quota'] - $parte['prima'] - (int) $riga['imputato']),
+            'parte_erede' => ['percentuale' => $diretta ? $eredita['quota'] : null, 'rata' => $riga['importo'], 'rata_prima' => $riga['prima'], 'rata_dopo' => $riga['dopo']],
+        ]);
+    }
+
+    /**
+     * Coda 706: la parte dell'erede di ogni rata del defunto su cui l'incasso ha versato, «rata|unità|defunto della rata» => la parte (`quota`), i suoi
+     * versamenti su quella parte registrati prima di questo incasso (`prima`) e il defunto della successione (`defunto`). La parte è quella che «Rate
+     * scadute» le mostrava prima dei suoi versamenti: il residuo della sua riga «ereditato» al giorno del versamento
+     * ({@see \App\Services\Gestionale\Accessori\DebitoEreditato::perLaLettura()}) più i suoi versamenti fino a quel giorno, che la lettura ha già tolto.
+     * I versamenti sono quelli che il registro della successione tiene
+     * (`versamenti_degli_eredi`, con la coppia, non stornati) con le righe sulla rata del defunto legate a lui, in un incasso non annullato; «prima» segue
+     * l'ordine di registrazione, come il già versato delle altre righe (decisione 202).
+     *
+     * @return array<string, array{quota: int, prima: int, defunto: ?int}>
+     */
+    private function partiDellErede(ScritturaContabile $incasso, int $erede): array
+    {
+        $giorno = $incasso->data_competenza?->format('Y-m-d');
+        if ($giorno === null) {
+            return [];
+        }
+        // Le successioni in cui questo incasso ha la coppia dell'erede: la sua, e con la catena quella dell'erede morto dopo.
+        $successioni = \App\Models\Gestionale\Subentro::query()->where('condominio_id', $incasso->condominio_id)->where('tipo_passaggio', 'successione')
+            ->whereNull('subentro_padre_id')->orderBy('id')->get()
+            ->filter(fn ($s) => collect((array) ($s->registro['versamenti_degli_eredi'] ?? []))->contains(fn ($v) => (int) ($v['scrittura_id'] ?? 0) === (int) $incasso->id
+                && collect((array) ($v['coppie'] ?? []))->contains(fn ($c) => (int) ($c['erede'] ?? 0) === $erede)))->values();
+        if ($successioni->isEmpty()) {
+            return [];
+        }
+        $ids = $successioni->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $defunto = (int) $successioni->first()->anagrafica_uscente_id;
+
+        // Il residuo delle sue righe «ereditato» al giorno del versamento.
+        $esito = [];
+        foreach ((new \App\Services\Gestionale\Accessori\DebitoEreditato())->perLaLettura((int) $incasso->condominio_id, $giorno)['eredi'][$erede] ?? [] as $l) {
+            if (! in_array((int) ($l['ereditato']['subentro_id'] ?? 0), $ids, true)) {
+                continue;
+            }
+            $k = (int) $l['rata_id'] . '|' . (int) $l['immobile_id'] . '|' . (int) ($l['ereditato']['defunto_della_rata'] ?? $defunto);
+            $esito[$k] ??= ['quota' => 0, 'prima' => 0, 'defunto' => $defunto];
+            $esito[$k]['quota'] += max(0, (int) $l['residuo']);
+        }
+
+        // I suoi versamenti sulle rate dei defunti: gli incassi con la coppia, non stornati, dal registro delle successioni.
+        $conLaCoppia = $successioni->flatMap(fn ($s) => array_map(fn ($v) => (int) ($v['scrittura_id'] ?? 0), array_filter((array) ($s->registro['versamenti_degli_eredi'] ?? []),
+            fn ($v) => ($v['stornato_il'] ?? null) === null && ($v['coppie'] ?? []) !== [])))->unique()->values()->all();
+        $versati = DB::table('righe_scritture as rs')->join('scritture_contabili as sc', 'sc.id', '=', 'rs.scrittura_id')
+            ->join('conti_contabili as cc', 'cc.id', '=', 'rs.conto_contabile_id')
+            ->whereIn('sc.id', $conLaCoppia ?: [0])->whereNull('sc.deleted_at')->where('sc.stato', '!=', 'annullata')->where('cc.ruolo', 'crediti_condomini')
+            ->whereNotNull('rs.rata_id')->where('rs.riferimento_type', Anagrafica::class)->where('rs.riferimento_id', $erede)->where('rs.anagrafica_id', '!=', $erede)
+            ->groupBy('sc.id', 'sc.data_competenza', 'rs.anagrafica_id', 'rs.rata_id', 'rs.immobile_id')
+            ->select(['sc.id as scrittura_id', 'sc.data_competenza', 'rs.anagrafica_id', 'rs.rata_id', 'rs.immobile_id'])
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE -rs.importo END) as y")->get();
+        foreach ($versati as $v) {
+            $k = (int) $v->rata_id . '|' . (int) $v->immobile_id . '|' . (int) $v->anagrafica_id;
+            $esito[$k] ??= ['quota' => 0, 'prima' => 0, 'defunto' => $defunto];
+            // La lettura al giorno ha già tolto i versamenti fino a quel giorno: tornano nella parte.
+            if (substr((string) $v->data_competenza, 0, 10) <= $giorno) {
+                $esito[$k]['quota'] += (int) $v->y;
+            }
+            if ((int) $v->scrittura_id < (int) $incasso->id) {
+                $esito[$k]['prima'] += (int) $v->y;
+            }
+        }
+
+        return array_filter($esito, fn (array $p) => $p['quota'] > 0);
     }
 
     /** @return array{importo: int, persona: ?string, rata: string, riduce: int, a_credito: int, di_chi_ha_versato: bool} */

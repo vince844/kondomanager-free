@@ -146,6 +146,10 @@ return [
             'label' => 'Segnalazione guasto aggiornata',
             'description' => 'Ricevi una notifica quando una segnalazione guasto che segui viene modificata',
         ],
+        'error_reported' => [
+            'label' => 'Errore avvisato',
+            'description' => 'Ricevi un\'email al primo avviso di un errore da un condòmino o da un collaboratore: il codice, l\'ora, la pagina e chi ha avvisato, senza il dettaglio tecnico. Gli avvisi dopo sullo stesso errore si contano nel compito della Action inbox, senza un\'altra email.',
+        ],
         'ticket_assigned' => [
             'label' => 'Segnalazione guasto assegnata',
             'description' => 'Ricevi una notifica quando una segnalazione guasto ti viene assegnata, o non è più assegnata a te',

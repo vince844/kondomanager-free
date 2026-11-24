@@ -40,7 +40,8 @@ describe('MailSetupGuide — il mittente (Coda 121)', () => {
 
     test('dice dove si legge il motivo di un invio fallito: sotto la prova e, se la prova arriva all\'invio, nel registro delle email', () => {
         // Un indirizzo non valido e la password da riscrivere (422), come le troppe prove (429), si leggono sotto la prova e non lasciano righe nel registro.
-        expect(sorgente).toContain('<strong>Se la prova fallisce:</strong> il motivo è scritto sotto la prova e, se la prova arriva all\'invio, anche in «Audit & Logs di Sistema», scheda «Email Logs».');
+        // 1.12.0-beta.14: la pagina dei registri si chiama «Registri», e la sua scheda delle email «Email».
+        expect(sorgente).toContain('<strong>Se la prova fallisce:</strong> il motivo è scritto sotto la prova e, se la prova arriva all\'invio, anche in «Registri», scheda «Email».');
         expect(sorgente).not.toContain('e resta in «Audit & Logs di Sistema»');
     });
 

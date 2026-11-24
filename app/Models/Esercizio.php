@@ -98,6 +98,22 @@ class Esercizio extends Model
     }
 
     /**
+     * L'esercizio aperto del condominio: con più d'uno aperto, **il più recente** (la data di inizio più tarda; a pari data, l'ultimo scritto).
+     * È la regola sola del prodotto per «l'esercizio aperto» (Coda 646, decisione 707 (4)): `HasEsercizio::esercizioApertoPiuRecente()` la
+     * chiama, e qui la trova chi non usa quel trait (le azioni, i servizi, i controller fuori dal gestionale), senza chiamare un metodo statico
+     * sul trait.
+     */
+    public static function apertoPiuRecente(int $condominioId): ?self
+    {
+        return self::query()
+            ->where('condominio_id', $condominioId)
+            ->where('stato', 'aperto')
+            ->orderByDesc('data_inizio')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
      * Le rotte annidate sotto questo modello, e la relazione che porta a ciascun figlio.
      *
      * Vedi il blocco in testa a `App\Traits\RisolveIFigliDelleRotte` per il perché serve: Laravel

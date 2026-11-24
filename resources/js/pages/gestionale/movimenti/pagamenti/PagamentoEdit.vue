@@ -87,7 +87,7 @@ interface PagamentoFornitore {
     conto_corrente: { id: number, nome: string, iban?: string };
     data_pagamento: string;
     metodo_pagamento: string;
-    iban_beneficiario?: string; // non c'è nella resource, va preso dal conto/fornitore se serviva, lo lasciamo
+    iban_beneficiario?: string | null; // l'IBAN registrato nel pagamento: la Resource lo manda dalla beta.14 (Coda 626)
     importo_commissione: number;
     importo_lordo: number;
     importo_ritenuta: number;
@@ -111,6 +111,11 @@ const props = defineProps<{
      * lasciare così (sulle «Spese bancarie» di sistema), finché la commissione non cambia.
      */
     commissione?: { voce_id: number | null; gestione_id: number | null; esercizio_id?: number | null; senza_voce: boolean; puo_restare_senza_voce?: boolean; esercizio_chiuso?: boolean };
+    /**
+     * Coda 754 (2): le fatture di questo pagamento registrate con la ritenuta, con la frase del rifiuto che il server manda all'invio
+     * (`BonificoParlanteConRitenutaException`). Con una di loro la spunta del bonifico parlante messa adesso si ferma.
+     */
+    fatture_con_ritenuta?: Array<{ id: number; numero_documento: string; importo_ritenuta: number; importo_pieno: number; is_pregresso: boolean; frase: string }>;
 }>();
 
 // ---------------------------------------------------------------------------
@@ -469,6 +474,21 @@ const ibanDiscrepanza = computed(() => {
 // Richiede IBAN per bonifico
 const richiedeIban = computed(() => form.metodo_pagamento === 'bonifico');
 
+/**
+ * Coda 754 (2), decisione 696: la spunta del bonifico parlante messa adesso sul pagamento di una fattura con la ritenuta si ferma
+ * all'invio, come in registrazione; l'avviso lo dice prima, con la frase del server e il collegamento alla fattura. Un pagamento
+ * registrato prima con la spunta non si rifiuta: togliendola, la ritenuta torna quella della fattura.
+ */
+const fattureConRitenuta = computed(() => props.fatture_con_ritenuta ?? []);
+// Il riquadro rosso è visibile: «Salva Modifiche» resta spento finché la spunta non si toglie (il server resta la guardia vera).
+const spuntaSuFatturaConRitenuta = computed(() =>
+    richiedeIban.value && form.bonifico_parlante && !props.pagamento.bonifico_parlante && fattureConRitenuta.value.length > 0
+);
+
+/** Dove si toglie la ritenuta: la modifica della fattura, o la sua scheda per una pregressa (che si storna e si registra di nuovo). */
+const indirizzoDellaFattura = (f: { id: number; is_pregresso: boolean }): string =>
+    route(generateRoute(f.is_pregresso ? 'gestionale.fatture.show' : 'gestionale.fatture.edit'), { condominio: props.condominio.id, fattura: f.id });
+
 // Il Bonifico Parlante richiede un bonifico tracciabile (art. 16-bis TUIR):
 // se si cambia metodo, la dichiarazione fiscale non è più valida.
 watch(() => form.metodo_pagamento, (metodo) => {
@@ -754,10 +774,25 @@ const pageGuides: never[] = [];
                                             In modifica la conseguenza è più forte che in registrazione, perché la
                                             spunta cambia un pagamento già scritto: togliendo la ritenuta l'importo
                                             che esce al fornitore aumenta. Va detto qui, mentre si decide.
+
+                                            Coda 754 (2): sulla fattura con la ritenuta la spunta messa adesso si ferma
+                                            all'invio; l'avviso dice la frase del rifiuto e manda alla fattura.
                                         -->
-                                        <div v-if="selectedFornitore?.soggetto_ritenuta" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200">
+                                        <div v-if="spuntaSuFatturaConRitenuta" data-test="bonifico-parlante-con-ritenuta" class="flex items-start gap-2 px-2.5 py-2 bg-rose-50 dark:bg-rose-950/30 rounded-lg border border-rose-200 dark:border-rose-800/50">
+                                            <Ban class="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                                            <div class="space-y-1.5 text-xs text-rose-800 dark:text-rose-300 leading-relaxed">
+                                                <p v-for="f in fattureConRitenuta" :key="f.id">{{ f.frase }}</p>
+                                                <p class="flex flex-wrap gap-x-3 gap-y-1">
+                                                    <Link v-for="f in fattureConRitenuta" :key="`apri-${f.id}`" :href="indirizzoDellaFattura(f)"
+                                                        class="font-semibold underline underline-offset-2 hover:text-rose-950 dark:hover:text-rose-100">
+                                                        {{ f.is_pregresso ? 'Apri la fattura' : 'Modifica la fattura' }} n. {{ f.numero_documento }}
+                                                    </Link>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div v-else-if="selectedFornitore?.soggetto_ritenuta" data-test="bonifico-parlante-importo-pieno" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200">
                                             <AlertTriangle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                                            <p class="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                                            <p class="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
                                                 <strong>Il condominio non tratterrà la ritenuta d'acconto</strong> su questo pagamento:
                                                 con il bonifico parlante la opera la banca (11%), e applicarla entrambi sarebbe un
                                                 doppio prelievo. Togliendo la spunta la ritenuta torna quella prevista dalle fatture.
@@ -814,7 +849,7 @@ const pageGuides: never[] = [];
                                     class="inline-flex items-center justify-center h-9 px-5 rounded-md border border-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-all">
                                     Annulla
                                 </Link>
-                                <Button type="button" @click="handleSubmit" :disabled="form.processing"
+                                <Button type="button" data-test="salva-modifiche" @click="handleSubmit" :disabled="form.processing || spuntaSuFatturaConRitenuta"
                                     class="h-9 px-6 rounded-md font-black uppercase tracking-wider text-[10px] gap-2 transition-all shadow-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20">
                                     <Save class="w-4 h-4" />
                                     Salva Modifiche

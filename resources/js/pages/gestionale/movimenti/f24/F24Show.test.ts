@@ -14,6 +14,7 @@
 
 import { describe, expect, test, vi } from 'vitest';
 import { shallowMount } from '@vue/test-utils';
+import { router } from '@inertiajs/vue3';
 
 vi.mock('@inertiajs/vue3', async (importOriginal) => {
     const { reactive } = await import('vue');
@@ -21,7 +22,7 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => {
     return {
         ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
         Head: { render: () => null },
-        router: { visit: vi.fn() },
+        router: { visit: vi.fn(), post: vi.fn() },
         usePage: () => ({
             url: '/admin/gestionale/1/f24/7',
             props: { flash: {}, auth: { user: { roles: ['amministratore'], permissions: [] } } },
@@ -36,7 +37,7 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => {
 
 const F24Show = (await import('./F24Show.vue')).default;
 
-function montaScheda(stato: string, esercizioNonCorrente: string | null) {
+function montaScheda(stato: string, esercizioNonCorrente: string | null, extra: { cfDelega?: string | null; cfContribuente?: string | null; avvisi?: string[] } = {}) {
     return shallowMount(F24Show, {
         props: {
             condominio: { id: 1, nome: 'Condominio Test' } as any,
@@ -48,7 +49,7 @@ function montaScheda(stato: string, esercizioNonCorrente: string | null) {
                 data_scadenza: '2027-01-18',
                 data_versamento: stato === 'versata' ? '2027-01-18' : null,
                 denominazione_contribuente: 'Condominio Test',
-                cf_contribuente: '80012345678',
+                cf_contribuente: extra.cfDelega === undefined ? '80012345678' : extra.cfDelega,
                 totale_debito: 24000,
                 motivo_codice: null,
                 note: null,
@@ -60,7 +61,9 @@ function montaScheda(stato: string, esercizioNonCorrente: string | null) {
             banche: [],
             motivo_blocco_modifica: null,
             campi_mancanti: [],
+            codice_fiscale_contribuente: extra.cfContribuente === undefined ? '80012345678' : extra.cfContribuente,
             esercizio_non_corrente: esercizioNonCorrente,
+            avvisi_ritenute_gia_versate: extra.avvisi ?? [],
         },
         global: { renderStubDefaultSlot: true, mocks: { route: (nome: string) => `/${nome}` } },
     });
@@ -99,5 +102,74 @@ describe('F24Show — la delega di un esercizio che non è il corrente', () => {
 
     test('Coda 314 — su una delega dell\'esercizio corrente la frase non c\'è', () => {
         expect(testo(montaScheda('bozza', null))).not.toContain('che non è quello corrente');
+    });
+});
+
+describe('F24Show — il codice fiscale del contribuente (Coda 754 (10))', () => {
+    test('una bozza nata senza codice fiscale, con il condominio che lo ha preso dopo: nessun avviso, e il codice si legge nella scheda', () => {
+        const pagina = testo(montaScheda('bozza', null, { cfDelega: null, cfContribuente: '80012345678' }));
+
+        expect(pagina).not.toContain('Manca il codice fiscale del condominio');
+        expect(pagina).toContain('80012345678');
+    });
+
+    test('senza codice fiscale né sulla delega né sul condominio l\'avviso manda all\'anagrafica e a ricaricare la pagina, non a «Aggiorna scadenze»', () => {
+        const pagina = testo(montaScheda('bozza', null, { cfDelega: null, cfContribuente: null }));
+
+        expect(pagina).toContain('Manca il codice fiscale del condominio');
+        expect(pagina).toContain('Inseriscilo nell\'anagrafica del condominio e ricarica questa pagina');
+        expect(pagina).not.toContain('premi «Aggiorna scadenze»');
+    });
+});
+
+describe('F24Show — «Conferma la delega» e «Riporta in bozza» (Coda 754 (10), D6)', () => {
+    test('in bozza c\'è «Conferma la delega» e non «Riporta in bozza»', () => {
+        const pagina = testo(montaScheda('bozza', null));
+
+        expect(pagina).toContain('Conferma la delega');
+        expect(pagina).not.toContain('Riporta in bozza');
+    });
+
+    test('confermata c\'è «Riporta in bozza» e non «Conferma la delega»; il versamento resta possibile', () => {
+        const pagina = testo(montaScheda('confermata', null));
+
+        expect(pagina).toContain('Riporta in bozza');
+        expect(pagina).not.toContain('Conferma la delega');
+        expect(pagina).toContain('Registra versamento');
+    });
+
+    test.each(['versata', 'stornata', 'annullata'])('su una delega %s non ci sono né l\'uno né l\'altro', (stato) => {
+        const pagina = testo(montaScheda(stato, null));
+
+        expect(pagina).not.toContain('Conferma la delega');
+        expect(pagina).not.toContain('Riporta in bozza');
+    });
+
+    test('il pulsante manda la richiesta alla rotta giusta, senza dati', async () => {
+        const w = montaScheda('bozza', null);
+        const pulsante = w.findAll('button, button-stub').find((b) => b.text().includes('Conferma la delega'));
+        expect(pulsante).toBeTruthy();
+
+        await pulsante!.trigger('click');
+        expect(router.post).toHaveBeenCalledWith('/admin.gestionale.f24.conferma-delega', {}, expect.objectContaining({ preserveScroll: true }));
+
+        const w2 = montaScheda('confermata', null);
+        await w2.findAll('button, button-stub').find((b) => b.text().includes('Riporta in bozza'))!.trigger('click');
+        expect(router.post).toHaveBeenCalledWith('/admin.gestionale.f24.riporta-in-bozza', {}, expect.objectContaining({ preserveScroll: true }));
+    });
+});
+
+describe('F24Show — la ritenuta già versata con un\'altra delega (Coda 754 (10), decisione 704)', () => {
+    const avviso = 'La ritenuta della fattura n. 12 di Edilnord è già stata versata con la delega del 16/12/2026 (il pagamento è stato poi stornato): non versarla di nuovo.';
+
+    test.each(['bozza', 'confermata'])('su una delega %s con la ritenuta di una fattura già versata, la scheda lo dice con la frase intera', (stato) => {
+        const pagina = testo(montaScheda(stato, null, { avvisi: [avviso] }));
+
+        expect(pagina).toContain('Ritenuta già versata con un\'altra delega');
+        expect(pagina).toContain(avviso);
+    });
+
+    test('senza avvisi il riquadro non c\'è', () => {
+        expect(testo(montaScheda('bozza', null))).not.toContain('Ritenuta già versata con un\'altra delega');
     });
 });

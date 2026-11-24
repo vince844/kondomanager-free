@@ -28,6 +28,7 @@ use App\Services\ComunicazioneService;
 use App\Support\Allegati\RegoleAllegati;
 use App\Support\Commenti\RegoleCommenti;
 use App\Support\Comunicazioni\ContatoriElenco;
+use App\Support\Comunicazioni\LettureComunicazione;
 use App\Support\Comunicazioni\PubblicazioneProgrammata;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
@@ -348,6 +349,7 @@ class ComunicazioneController extends Controller
             'discussioni'     => RegoleCommenti::discussioniInScheda($user, $comunicazioneCaricata, 'admin'),
             // Decisione 467: i destinatari nella card dei parametri, solo nel pannello (il portale non li riceve: Coda 668).
             'destinatari'     => $this->destinatariPerScheda($comunicazioneCaricata),
+            'letture'         => LettureComunicazione::perPannello($comunicazioneCaricata),
         ]);
     }
 

@@ -41,7 +41,7 @@ const COMPONENTI = [
     'resources/js/pages/gestionale/assemblee/Assemblea.vue',
     'resources/js/components/assemblee/StradaDellAssemblea.vue',
     'app/Services/Assemblee/PassiDellAssemblea.php',
-    // Le parole dello stato di ogni persona («Non più convocato») le scrive il server.
+    // Le parole dello stato di ogni persona («Non più fra i convocati») le scrive il server.
     'app/Services/Assemblee/Convocazione/StatoDellaConvocazione.php',
     // «Torna alla proposta» lo scrive il server, con il giorno della proposta.
     'app/Services/Assemblee/Convocazione/TerminiDellaConvocazione.php',

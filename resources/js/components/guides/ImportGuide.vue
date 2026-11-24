@@ -51,10 +51,9 @@ defineEmits(['update:open']);
                 Niente viene scritto finché non confermi
               </h3>
               <p>
-                Le prime tre schermate <strong>leggono e basta</strong>. Puoi caricare i file,
-                guardare cosa ho capito, tornare indietro e ricaricare quante volte vuoi: in
-                archivio non entra nulla. La scrittura comincia solo quando premi
-                «Importa N record» nella schermata di conferma.
+                Fino al pulsante <strong>«Importa N record»</strong> della schermata di conferma in
+                archivio non entra niente. Puoi caricare i file, guardare cosa ho capito, tornare
+                indietro e ricaricare quante volte vuoi: la scrittura comincia solo quando lo premi.
               </p>
             </div>
           </section>
@@ -86,8 +85,8 @@ defineEmits(['update:open']);
             </div>
             <p class="mt-3 text-slate-600 dark:text-slate-400">
               Da <strong>altri gestionali</strong> non leggo ancora niente di specifico: se il loro
-              export somiglia a quello di Danea può funzionare lo stesso — provalo, le prime tre
-              schermate non scrivono niente — altrimenti la strada è il modello.
+              export somiglia a quello di Danea può funzionare lo stesso — provalo, finché non premi
+              «Importa N record» non scrivo niente — altrimenti la strada è il modello.
             </p>
           </section>
 
@@ -103,7 +102,8 @@ defineEmits(['update:open']);
             <ul class="space-y-2">
               <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                 <strong>Elenco unità</strong> — porta insieme persone, unità, chi possiede cosa e
-                i ruoli. È l'unico file che li ha tutti e quattro: senza, non c'è importazione.
+                i ruoli. È l'unico file che li ha tutti e quattro: senza, i saldi del riparto non entrano. Puoi importare
+                il resto con «Importa senza i saldi», e le persone e i saldi li aggiungi dopo.
               </li>
               <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                 <strong>Anagrafica + millesimi</strong> — le tabelle millesimali, con i decimali
@@ -141,6 +141,13 @@ defineEmits(['update:open']);
               i saldi <strong>non devono entrare</strong>: un saldo sbagliato non si nota subito,
               si trascina in ogni riparto successivo e finisce in un sollecito.
             </p>
+            <p class="mb-3">
+              Se non tornano, o se manca l'Elenco unità con le persone a cui i saldi sono intestati,
+              il pulsante principale resta spento e dice il perché. Puoi correggere il file e
+              ricaricarlo, oppure premere <strong>«Importa senza i saldi»</strong>: entra tutto il
+              resto, e i saldi li scrivi tu dopo, dalla pagina «Saldi iniziali» del condominio,
+              prima di emettere il primo piano rate.
+            </p>
             <p class="rounded-lg border border-slate-200 p-3 text-slate-600 dark:border-slate-800 dark:text-slate-400">
               <strong>Con il modello compilato a mano questo controllo non c'è</strong>, e non è una
               dimenticanza: il totale lo scriveresti tu, cioè la stessa mano che ha scritto le
@@ -174,9 +181,18 @@ defineEmits(['update:open']);
                 troppo non fa perdere la riga, te lo segnalo e la collego lo stesso.
               </li>
               <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                <strong>Un foglio lasciato in bianco non blocca gli altri.</strong> Se i saldi non
-                li hai, o le tabelle le metti dopo, il resto entra lo stesso e ti dico cosa è
-                rimasto fuori.
+                <strong>Le persone hanno tutti i campi dell'anagrafica.</strong> Servono solo unità,
+                nome e indirizzo; le altre colonne (seconda email, PEC, mezzo di convocazione,
+                cellulare, nascita, documento, note) sono facoltative, e un modello scaricato prima
+                senza queste colonne si importa lo stesso. Un indirizzo di posta scritto male
+                non entra e te lo dico; se la stessa persona ha su due righe contatti diversi
+                tengo il primo e te lo segnalo.
+              </li>
+              <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <strong>Un foglio lasciato in bianco non blocca gli altri, tranne le persone.</strong>
+                Se le tabelle le metti dopo, il resto entra lo stesso e ti dico cosa è rimasto
+                fuori. Se i saldi sono intestati a persone che il foglio «2 persone» non ha, i saldi
+                non entrano, e te lo dico prima di scrivere.
               </li>
               <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                 <strong>Il preventivo di spesa non te lo chiedo.</strong> Nel modello entra solo
@@ -209,6 +225,8 @@ defineEmits(['update:open']);
                 <strong>Chi esiste già in archivio.</strong> «Unisci» aggiorna quello che hai con
                 i dati del file; «lascia com'è» tiene il tuo e ci collega comunque unità, tabelle
                 e saldi. Sul solo nome ci si sbaglia: due «Rossi Mario» esistono davvero.
+                Importare dentro un condominio che c'è già chiede «Modifica condomini»; unire una
+                persona che c'è già chiede «Modifica anagrafiche» (senza, la lasci com'è).
               </li>
               <li class="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                 <strong>I nomi doppi in una cella sola</strong> («ROSSI M. / BIANCHI L.»): il

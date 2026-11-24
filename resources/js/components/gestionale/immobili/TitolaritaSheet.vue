@@ -15,17 +15,24 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * accordion che si apre solo se richiesto.
  *
  * Il trigger è il pulsante `History` di `AnagraficheList.vue`, lo stesso di `BudgetHistoryPopover`.
+ *
+ * Tappa 7 della 1.12.0-beta.14 (decisione 705): i passaggi registrati insieme (più persone che escono con lo stesso atto) sono una scheda sola, con il badge
+ * «2 passaggi insieme», le parti con le quote, una riga per persona con il suo conguaglio e il suo «Annulla il conguaglio»; il passaggio si annulla tutto insieme,
+ * con una finestra e un motivo solo («Annulla i passaggi»). Il server manda `insieme.passaggi` (§1.9 di `tappa7_progetto.md`); un passaggio da solo resta com'era.
  */
 import { computed, ref } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import BadgeRuolo from '@/components/gestionale/immobili/BadgeRuolo.vue';
 import FraseConImporti from '@/components/gestionale/immobili/FraseConImporti.vue';
 import { History, FileSignature, ShieldCheck, Scale, LoaderCircle, Landmark } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
-import type { StoricoTitolaritaDati, RigaStorico, PassaggioRegistrato } from '@/types/gestionale/passaggi';
+import type { StoricoTitolaritaDati, RigaStorico, PassaggioRegistrato, PassaggioDellInsieme } from '@/types/gestionale/passaggi';
+import { sommaQuoteCentesimi } from '@/types/gestionale/passaggi';
+import { percentuale } from '@/lib/gestionale/passaggi/percentuale';
 
 const props = defineProps<{
   open: boolean;
@@ -64,9 +71,34 @@ function titoloPassaggio(p: Pick<PassaggioRegistrato, 'tipo_passaggio' | 'sottot
 }
 
 function partiPassaggio(p: PassaggioRegistrato): string {
+  // Un insieme: tutte le persone che escono con la loro quota, e chi entra con la quota che ha dopo l'atto (`quota_entrante`, rilievo 3 dello scettico della
+  // tappa 7: il terzo fratello che aveva già il 33,33 % ha il 100 %, non la somma delle parti); la somma solo se il server non la manda.
+  if (p.insieme?.passaggi.length) {
+    const uscenti = p.insieme.passaggi.map((q) => `${q.uscente ?? 'chi esce'} (${percentuale(q.quota)})`);
+    const elenco = uscenti.length <= 1 ? uscenti.join('') : `${uscenti.slice(0, -1).join(', ')} e ${uscenti[uscenti.length - 1]}`;
+    const quotaEntrante = p.insieme.quota_entrante ?? sommaQuoteCentesimi(p.insieme.passaggi.map((q) => q.quota)) / 100;
+
+    return p.entrante ? `${elenco} → ${p.entrante} (${percentuale(quotaEntrante)})` : elenco;
+  }
   if (p.uscente && p.entrante) return `${p.uscente} → ${p.entrante}`;
   return p.uscente ?? p.entrante ?? '';
 }
+
+/** Il conguaglio di una persona dentro un insieme, in una frase: «Conguaglio di Cecilia Angeli: € 20,49 a suo credito, a debito di Luca Toscani». */
+function fraseConguaglioDi(p: PassaggioRegistrato, q: PassaggioDellInsieme): string {
+  const c = q.conguaglio;
+  const nome = q.uscente ?? 'chi esce';
+  const entra = p.entrante ?? 'chi entra';
+  if (c.stato === 'proposto') return `Conguaglio di ${nome}: ${c.importo_formattato} ${c.importo < 0 ? `a suo debito, a credito di ${entra}` : `a suo credito, a debito di ${entra}`}`;
+  if (c.stato === 'rinunciato') return `Conguaglio di ${nome}: regolato fra le parti${c.nota ? ` («${c.nota}»)` : ''}`;
+  if (c.stato === 'non_scritto') return `Conguaglio di ${nome}: nessuna riga in saldi, la posizione resta com'era${c.nota ? ` («${c.nota}»)` : ''}`;
+  if (c.stato === 'annullato') return `Conguaglio di ${nome}: annullato${c.annullato_il ? ` il ${c.annullato_il}` : ''}${c.nota_annullamento ? ` («${c.nota_annullamento}»)` : ''}`;
+
+  return `Nessun conguaglio per ${nome}`;
+}
+
+/** Il comando «Annulla il conguaglio» di una persona: solo se le righe ci sono e nessun piano le ha assorbite. */
+const puoAnnullareIlConguaglio = (q: PassaggioDellInsieme) => q.conguaglio.stato === 'proposto' && !q.conguaglio.applicato && q.conguaglio.annullabile !== false && !!props.condominioId && !!props.immobileId;
 
 const CONGUAGLIO: Record<PassaggioRegistrato['conguaglio']['stato'], string> = {
   proposto: 'Conguaglio scritto nei saldi',
@@ -81,7 +113,7 @@ const CONGUAGLIO: Record<PassaggioRegistrato['conguaglio']['stato'], string> = {
 const annullaAperto = ref<number | null>(null);
 const formAnnulla = useForm({ nota_annullamento_conguaglio: '' });
 
-function annullaConguaglio(p: PassaggioRegistrato) {
+function annullaConguaglio(p: { id: number }) {
   if (!props.condominioId || !props.immobileId) return;
   formAnnulla.delete(
     route(generateRoute('gestionale.immobili.passaggi.annulla-conguaglio'), { condominio: props.condominioId, immobile: props.immobileId, subentro: p.id }),
@@ -95,17 +127,30 @@ function annullaConguaglio(p: PassaggioRegistrato) {
 const annullaPassaggioAperto = ref<number | null>(null);
 const motivoAperto = ref<number | null>(null);
 const formAnnullaPassaggio = useForm({ nota_annullamento: '' });
+// L'insieme si annulla tutto insieme, in una finestra, con un motivo solo: la richiesta è quella di sempre, con l'id del primo passaggio.
+const insiemeDaAnnullare = ref<PassaggioRegistrato | null>(null);
+function apriAnnullaInsieme(p: PassaggioRegistrato) {
+  formAnnullaPassaggio.reset();
+  formAnnullaPassaggio.clearErrors();
+  insiemeDaAnnullare.value = p;
+}
+function annullaInsieme() {
+  const p = insiemeDaAnnullare.value;
+  if (!p) return;
+  annullaPassaggio(p, () => { insiemeDaAnnullare.value = null; });
+}
 
-function annullaPassaggio(p: PassaggioRegistrato) {
+function annullaPassaggio(p: PassaggioRegistrato, dopoIlSuccesso?: () => void) {
   if (!props.condominioId || !props.immobileId) return;
   formAnnullaPassaggio.delete(
     route(generateRoute('gestionale.immobili.passaggi.annulla'), { condominio: props.condominioId, immobile: props.immobileId, subentro: p.id }),
     {
       preserveScroll: true,
-      onSuccess: () => { annullaPassaggioAperto.value = null; formAnnullaPassaggio.reset(); },
+      onSuccess: () => { annullaPassaggioAperto.value = null; formAnnullaPassaggio.reset(); dopoIlSuccesso?.(); },
       // Rifiutato perché lo stato è cambiato dopo l'apertura della pagina: lo storico ricaricato dice ora «non
       // consentito», e il modulo col suo errore sparisce. Il perché si apre da solo, invece di un modulo che svanisce.
-      onError: (errori) => { if ((errori as Record<string, string>).passaggio) motivoAperto.value = p.id; },
+      // Nell'insieme la finestra resta aperta, con il messaggio del server («La parte di Marta Acciaioli: …»).
+      onError: (errori) => { if ((errori as Record<string, string>).passaggio && !p.insieme) motivoAperto.value = p.id; },
     },
   );
 }
@@ -122,16 +167,33 @@ function registraCopia(p: PassaggioRegistrato) {
   );
 }
 
+// Coda 786: la testa conta i passaggi, non le schede. Un insieme è una scheda sola ma tanti passaggi quante sono le persone che escono
+// (`insieme.passaggi`), e la registrazione lo ha detto così: «2 passaggi registrati insieme».
+function contaPassaggi(righe: PassaggioRegistrato[]): { passaggi: number; insieme: number } {
+  const insieme = righe.reduce((n, p) => n + (p.insieme?.passaggi.length ?? 0), 0);
+  return { passaggi: righe.reduce((n, p) => n + (p.insieme?.passaggi.length || 1), 0), insieme };
+}
+
 const sottotitolo = computed(() => {
-  const registrati = (props.storico.subentri ?? []).filter((p) => !p.annullato).length;
-  const annullati = (props.storico.subentri ?? []).length - registrati;
+  const tutti = props.storico.subentri ?? [];
+  const inVigore = contaPassaggi(tutti.filter((p) => !p.annullato));
+  const annullatiConta = contaPassaggi(tutti.filter((p) => p.annullato));
+  const registrati = inVigore.passaggi;
+  const annullati = annullatiConta.passaggi;
   const chiusi = props.storico.periodi_chiusi ?? props.storico.passaggi;
   // Un annullato resta in elenco qui sotto: il sottotitolo non può dire «nessun passaggio registrato» sopra di lui.
-  const eAnnullati = annullati === 0 ? '' : annullati === 1 ? ' Uno annullato, qui sotto.' : ` ${annullati} annullati, qui sotto.`;
+  // Un insieme annullato si conta per i suoi passaggi: «2 annullati insieme», e con altri annullati da soli «3 annullati, 2 insieme».
+  const eAnnullati = annullati === 0 ? ''
+    : annullatiConta.insieme === 0 ? (annullati === 1 ? ' Uno annullato, qui sotto.' : ` ${annullati} annullati, qui sotto.`)
+      : annullatiConta.insieme === annullati ? ` ${annullati} annullati insieme, qui sotto.`
+        : ` ${annullati} annullati, ${annullatiConta.insieme} insieme, qui sotto.`;
   if (registrati === 0 && annullati > 0) return chiusi === 0 ? `Nessun passaggio in vigore.${eAnnullati}` : `${chiusi === 1 ? 'Un periodo chiuso' : `${chiusi} periodi chiusi`}, nessun passaggio in vigore.${eAnnullati}`;
   if (registrati === 0 && chiusi === 0) return 'Nessun passaggio registrato: i titolari di oggi sono i primi che il programma conosce.';
   if (registrati === 0) return chiusi === 1 ? 'Un periodo chiuso, nessun passaggio registrato con «Registra passaggio».' : `${chiusi} periodi chiusi, nessun passaggio registrato con «Registra passaggio».`;
-  return (registrati === 1 ? 'Un passaggio registrato.' : `${registrati} passaggi registrati.`) + eAnnullati;
+  const registratiInParole = inVigore.insieme === 0 ? (registrati === 1 ? 'Un passaggio registrato.' : `${registrati} passaggi registrati.`)
+    : inVigore.insieme === registrati ? `${registrati} passaggi registrati insieme.`
+      : `${registrati} passaggi registrati, ${inVigore.insieme} insieme.`;
+  return registratiInParole + eAnnullati;
 });
 
 /** «●———» in corso, «●——●» chiuso, «○———» non ancora iniziato. */
@@ -175,6 +237,7 @@ function tratto(r: RigaStorico): string {
                   <p class="text-sm">
                     <span class="font-semibold text-slate-900 dark:text-slate-100">{{ titoloPassaggio(p) }}</span>
                     <span class="text-slate-500 dark:text-slate-400"> · dal {{ p.decorrenza_a_parole }}</span>
+                    <span v-if="p.insieme" data-testid="badge-insieme" class="ml-1.5 inline-flex items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">{{ p.insieme.passaggi.length }} passaggi insieme</span>
                   </p>
                   <span class="text-[11px] text-slate-400">registrato il {{ p.registrato_il }}</span>
                 </div>
@@ -186,7 +249,7 @@ function tratto(r: RigaStorico): string {
 
                 <div v-if="!p.annullato" class="text-[11px] text-slate-600 dark:text-slate-400 space-y-1.5">
                   <!-- Coda 245: con «Non scriverlo» alla fine di una locazione, dopo «nessuna riga in saldi» le cifre che le parti si regolano fra loro (`fra_le_parti`, dal registro). -->
-                  <p class="flex items-start gap-1.5">
+                  <p v-if="!p.insieme" class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
                       {{ CONGUAGLIO[p.conguaglio.stato] }}<!-- Alla fine senza un nuovo inquilino nessuno entra; la coppia è di chi paga al posto dell'inquilino. --><template v-if="p.conguaglio.stato === 'proposto' && p.tipo_passaggio === 'fine_locazione' && !p.entrante">: <template v-if="p.conguaglio.per_entrante?.length"><FraseConImporti :testo="p.conguaglio.per_entrante.join(', ')" /></template><template v-else><span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span> <template v-if="p.conguaglio.importo < 0">a credito</template><template v-else>a debito</template> di chi paga al posto dell'inquilino</template>; a chi esce <template v-if="p.conguaglio.importo < 0">un debito</template><template v-else>un credito</template> di <span class="whitespace-nowrap">{{ p.conguaglio.importo_formattato }}</span><template v-if="p.conguaglio.applicato">, già assorbito in un piano</template>.</template>
@@ -197,22 +260,49 @@ function tratto(r: RigaStorico): string {
                       <template v-else-if="p.conguaglio.stato === 'annullato'"> il {{ p.conguaglio.annullato_il }}<template v-if="p.conguaglio.nota_annullamento">: «{{ p.conguaglio.nota_annullamento }}»</template>.</template>
                     </span>
                   </p>
+                  <!-- Tappa 7: un insieme ha una riga per persona, con il suo conguaglio e il suo «Annulla il conguaglio» (Cecilia e Luca possono aver regolato fra loro, Marta no). -->
+                  <div v-if="p.insieme" class="space-y-2">
+                    <div v-for="q in p.insieme.passaggi" :key="q.id" data-testid="conguaglio-persona" class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                      <p class="flex items-start gap-1.5 min-w-0">
+                        <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span><FraseConImporti :testo="fraseConguaglioDi(p, q)" /></span>
+                      </p>
+                      <button v-if="!p.annullato && puoAnnullareIlConguaglio(q) && annullaAperto !== q.id" type="button" @click="annullaAperto = q.id; formAnnulla.reset(); formAnnulla.clearErrors()" class="shrink-0 font-semibold text-rose-600 dark:text-rose-400 hover:underline">
+                        Annulla il conguaglio…
+                      </button>
+                      <!-- Le fermate dopo «Scrivi» sono della persona: sotto il suo conguaglio, una volta sola (in cima alla voce il server non le ripete). -->
+                      <p v-for="(f, i) in q.fermate ?? []" :key="`fermata-${q.id}-${i}`" class="flex w-full items-start gap-1.5">
+                        <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span><FraseConImporti :testo="f" /></span>
+                      </p>
+                      <form v-if="annullaAperto === q.id" class="w-full space-y-2 pl-[18px]" @submit.prevent="annullaConguaglio(q)">
+                        <p class="text-slate-600 dark:text-slate-400">Toglie insieme le righe del conguaglio di {{ q.uscente ?? 'questa persona' }} dai saldi della gestione; le quote già emesse non cambiano, e gli altri passaggi dell'insieme restano com'è. La nota resta sul passaggio.</p>
+                        <p v-for="(a, i) in q.conguaglio.avvisi ?? []" :key="`avviso-${q.id}-${i}`" class="text-amber-800 dark:text-amber-300"><FraseConImporti :testo="a" /></p>
+                        <Input v-model="formAnnulla.nota_annullamento_conguaglio" placeholder="Come hanno regolato il conguaglio (almeno dieci caratteri)…" class="h-8 text-xs" required minlength="10" />
+                        <div class="flex items-center gap-2">
+                          <button type="submit" :disabled="formAnnulla.processing || formAnnulla.nota_annullamento_conguaglio.trim().length < 10" class="inline-flex h-8 items-center gap-1.5 rounded-md bg-rose-600 px-3 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
+                            <LoaderCircle v-if="formAnnulla.processing" class="w-3 h-3 animate-spin" /> Annulla il conguaglio
+                          </button>
+                          <button type="button" @click="annullaAperto = null" class="text-xs text-slate-500 hover:underline">Lascia com'è</button>
+                        </div>
+                        <p v-if="formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio" class="text-xs text-red-600 dark:text-red-400">{{ formAnnulla.errors.nota_annullamento_conguaglio || (formAnnulla.errors as Record<string, string>).conguaglio }}</p>
+                      </form>
+                    </div>
+                  </div>
                   <!-- 1.11.0-beta.44, decisione 65: l'arretrato del defunto, agli eredi o a suo nome. -->
                   <p v-if="p.arretrato?.frase" class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span><FraseConImporti :testo="p.arretrato.frase" /></span>
                   </p>
                   <!-- 1.11.0-beta.50, decisione 77 (3): la fermata dopo «Scrivi il conguaglio», e quanto ne resta dopo l'inizio di una locazione. -->
-                  <p v-for="(f, i) in p.fermate ?? []" :key="`fermata-${i}`" class="flex items-start gap-1.5">
+                  <p v-for="(f, i) in (p.insieme ? [] : p.fermate ?? [])" :key="`fermata-${i}`" class="flex items-start gap-1.5">
                     <Scale class="w-3 h-3 mt-0.5 shrink-0" /><span><FraseConImporti :testo="f" /></span>
                   </p>
                   <!-- Con l'arretrato agli eredi il conguaglio e l'arretrato fanno un conto solo: si correggono annullando il passaggio. Se una successione ha letto la
                        coppia, il server dice il perché e la strada (`motivo`): prima la successione, poi il conguaglio. -->
-                  <p v-if="p.conguaglio.stato === 'proposto' && p.conguaglio.annullabile === false" class="pl-[18px] text-slate-500 dark:text-slate-400">
+                  <p v-if="!p.insieme && p.conguaglio.stato === 'proposto' && p.conguaglio.annullabile === false" class="pl-[18px] text-slate-500 dark:text-slate-400">
                     <template v-if="p.conguaglio.motivo">{{ p.conguaglio.motivo }}</template>
                     <template v-else>Il conguaglio non si annulla da solo: con l'arretrato agli eredi, conguaglio e arretrato fanno un conto unico. Per cambiare la scelta annulla il passaggio e registralo di nuovo.</template>
                   </p>
                   <!-- Le righe si tolgono insieme, finché nessun piano le ha assorbite -->
-                  <div v-else-if="p.conguaglio.stato === 'proposto' && !p.conguaglio.applicato && condominioId && immobileId" class="pl-[18px]">
+                  <div v-else-if="!p.insieme && p.conguaglio.stato === 'proposto' && !p.conguaglio.applicato && condominioId && immobileId" class="pl-[18px]">
                     <button v-if="annullaAperto !== p.id" type="button" @click="annullaAperto = p.id; formAnnulla.reset(); formAnnulla.clearErrors()" class="font-semibold text-rose-600 dark:text-rose-400 hover:underline">
                       Le parti hanno regolato diversamente: annulla il conguaglio…
                     </button>
@@ -273,7 +363,10 @@ function tratto(r: RigaStorico): string {
 
                 <!-- Annullare il passaggio (beta.37): solo quando il server dice che si può; altrimenti il perché. -->
                 <div v-if="!p.annullato && condominioId && immobileId" class="text-[12px] border-t border-slate-200 dark:border-slate-700 pt-3">
-                  <template v-if="p.annullabile.si">
+                  <template v-if="p.annullabile.si && p.insieme">
+                    <button type="button" data-testid="annulla-insieme" @click="apriAnnullaInsieme(p)" class="font-semibold text-rose-600 dark:text-rose-400 hover:underline">Annulla i passaggi</button>
+                  </template>
+                  <template v-else-if="p.annullabile.si">
                     <button v-if="annullaPassaggioAperto !== p.id" type="button" @click="annullaPassaggioAperto = p.id; formAnnullaPassaggio.reset(); formAnnullaPassaggio.clearErrors()" class="font-semibold text-rose-600 dark:text-rose-400 hover:underline">
                       Annulla il passaggio…
                     </button>
@@ -297,7 +390,7 @@ function tratto(r: RigaStorico): string {
                   </template>
                   <template v-else-if="p.annullabile.motivo">
                     <button type="button" @click="motivoAperto = motivoAperto === p.id ? null : p.id" class="text-[11px] text-slate-500 dark:text-slate-400 hover:underline">
-                      Annulla il passaggio — non consentito: perché?
+                      {{ p.insieme ? 'Annulla i passaggi' : 'Annulla il passaggio' }} — non consentito: perché?
                     </button>
                     <p v-if="motivoAperto === p.id" class="mt-1 text-[11px] text-slate-600 dark:text-slate-400"><FraseConImporti :testo="p.annullabile.motivo ?? ''" /></p>
                   </template>
@@ -381,4 +474,40 @@ function tratto(r: RigaStorico): string {
       </div>
     </SheetContent>
   </Sheet>
+
+  <!-- «Annulla i passaggi»: la finestra dell'insieme, allo standard delle finestre (ancorata in alto, il riepilogo fisso nel piede, il contenuto che scorre). -->
+  <Dialog :open="insiemeDaAnnullare !== null" @update:open="(v: boolean) => { if (!v) insiemeDaAnnullare = null; }">
+    <DialogContent class="top-[8vh] flex max-h-[84vh] translate-y-0 flex-col gap-0 overflow-hidden p-0 sm:max-w-[520px]">
+      <DialogHeader class="border-b border-slate-100 px-5 pt-4 pb-3 pr-12 text-left dark:border-slate-800">
+        <DialogTitle>Annulla i {{ insiemeDaAnnullare?.insieme?.passaggi.length ?? 0 }} passaggi registrati insieme</DialogTitle>
+        <DialogDescription v-if="insiemeDaAnnullare">{{ titoloPassaggio(insiemeDaAnnullare) }} · {{ unita }} · dal {{ insiemeDaAnnullare.decorrenza_a_parole }}.</DialogDescription>
+      </DialogHeader>
+      <form v-if="insiemeDaAnnullare" data-testid="form-annulla-insieme" class="flex min-h-0 flex-1 flex-col" @submit.prevent="annullaInsieme">
+        <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-3 text-[13px] text-slate-700 dark:text-slate-300">
+          <ul class="list-disc space-y-1.5 pl-5">
+            <li v-for="(e, i) in insiemeDaAnnullare.annullabile.effetti" :key="i"><FraseConImporti :testo="e" /></li>
+            <li>Si annullano insieme, l'ultimo registrato per primo. Se uno non si può annullare, non se ne annulla nessuno, e il messaggio dice di chi e perché.</li>
+            <li>Il conguaglio di ciascuna persona si annulla anche da solo, dalla sua riga.</li>
+          </ul>
+          <ul v-if="insiemeDaAnnullare.annullabile.avvisi.length" class="space-y-1">
+            <li v-for="(a, i) in insiemeDaAnnullare.annullabile.avvisi" :key="i" class="text-amber-800 dark:text-amber-300"><FraseConImporti :testo="a" /></li>
+          </ul>
+          <div class="space-y-1.5">
+            <p class="text-xs font-semibold text-slate-500 dark:text-slate-400">Perché annulli (resta nello storico)</p>
+            <Input v-model="formAnnullaPassaggio.nota_annullamento" placeholder="Perché annulli (almeno dieci caratteri)…" class="h-9 text-sm" required minlength="10" />
+          </div>
+          <p v-if="formAnnullaPassaggio.errors.nota_annullamento || (formAnnullaPassaggio.errors as Record<string, string>).passaggio" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-200">{{ formAnnullaPassaggio.errors.nota_annullamento || (formAnnullaPassaggio.errors as Record<string, string>).passaggio }}</p>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-3 dark:border-slate-700 dark:bg-slate-800/50">
+          <span data-testid="riepilogo-annulla" class="text-[13px] text-slate-700 dark:text-slate-300">Si annullano <strong class="text-slate-900 dark:text-slate-100">{{ insiemeDaAnnullare.insieme?.passaggi.length ?? 0 }} passaggi</strong>.</span>
+          <span class="flex items-center gap-2">
+            <button type="button" @click="insiemeDaAnnullare = null" class="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Chiudi</button>
+            <button type="submit" :disabled="formAnnullaPassaggio.processing || formAnnullaPassaggio.nota_annullamento.trim().length < 10" class="inline-flex h-9 items-center gap-1.5 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200">
+              <LoaderCircle v-if="formAnnullaPassaggio.processing" class="w-3.5 h-3.5 animate-spin" /> Annulla i passaggi
+            </button>
+          </span>
+        </div>
+      </form>
+    </DialogContent>
+  </Dialog>
 </template>

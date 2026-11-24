@@ -10,6 +10,7 @@ use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\DateHelper;
 use App\Actions\Subentro\AnnullaConguaglioAction;
 use App\Actions\Subentro\AnnullaPassaggioAction;
+use App\Actions\Subentro\RegistraPassaggiInsiemeAction;
 use App\Actions\Subentro\RegistraSubentroAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\CreaAnagraficaNelPassaggioRequest;
@@ -20,6 +21,7 @@ use App\Models\Condominio;
 use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
 use App\Models\TitolaritaImmobile;
+use App\Services\Subentro\AnteprimaDelGruppo;
 use App\Services\Subentro\AnteprimaPassaggio;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
@@ -117,8 +119,14 @@ class PassaggioController extends Controller
     public function anteprima(AnteprimaPassaggioRequest $request, Condominio $condominio, Immobile $immobile, AnteprimaPassaggio $anteprima): JsonResponse
     {
         $this->assicuraUnitaDelCondominio($condominio, $immobile);
+        $dati = $request->datiPassaggio();
 
-        return response()->json($anteprima->calcola($condominio, $immobile, $request->datiPassaggio()));
+        // Decisione 705: più persone che escono insieme, il pannello dalla prova a secco (`AnteprimaDelGruppo`).
+        if (isset($dati['membri'])) {
+            return response()->json(app(AnteprimaDelGruppo::class)->calcola($condominio, $immobile, $dati, $request->user()));
+        }
+
+        return response()->json($anteprima->calcola($condominio, $immobile, $dati));
     }
 
     /**
@@ -138,6 +146,10 @@ class PassaggioController extends Controller
     {
         $this->assicuraUnitaDelCondominio($condominio, $immobile);
         $dati = $request->datiPassaggio();
+        // Decisione 705: più persone che escono con lo stesso atto, un passaggio per persona, tutti o nessuno.
+        if (isset($dati['membri'])) {
+            return $this->registraLInsieme($request, $condominio, $immobile, $dati);
+        }
 
         try {
             $esito = $action->execute($condominio, $immobile, $dati, $request->user());
@@ -230,6 +242,8 @@ class PassaggioController extends Controller
                 'per_erede'   => $perErede,
                 'per_erede_testa' => $perEredeTesta,
                 'al_posto'    => $alPosto,
+                // Decisione 705: le persone dei passaggi registrati insieme; qui un passaggio solo.
+                'insieme'     => null,
                 'azioni'      => [
                     'estratto_conto' => $entranteId ? route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => $entranteId]) : null,
                     // Il collegamento apre il modulo di modifica dell'anagrafica, che chiede «Modifica anagrafiche» (decisioni
@@ -238,6 +252,114 @@ class PassaggioController extends Controller
                         ? route('admin.anagrafiche.edit', ['anagrafica' => $entranteId]) : null,
                 ],
             ]);
+    }
+
+    /**
+     * Decisione 705: la scrittura dei passaggi registrati insieme (`RegistraPassaggiInsiemeAction`), poi l'elenco dei titolari con il riquadro verde
+     * dell'insieme: la frase per tutte, la coppia di ciascuna di chi esce con il suo estratto conto, il totale di chi entra. Il compito del nuovo titolare
+     * non convocato nasce una volta, con l'ultimo passaggio.
+     *
+     * @param array<string, mixed> $dati
+     */
+    private function registraLInsieme(AnteprimaPassaggioRequest $request, Condominio $condominio, Immobile $immobile, array $dati): RedirectResponse
+    {
+        try {
+            $esito = app(RegistraPassaggiInsiemeAction::class)->execute($condominio, $immobile, $dati, $request->user());
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            \App\Support\ErroriDiagnosticabili::registra($e, 'Registra passaggi insieme', ['condominio_id' => $condominio->id, 'immobile_id' => $immobile->id]);
+
+            return back()->withErrors(['passaggio' => 'La registrazione non è riuscita e niente è stato scritto. ' . $e->getMessage()]);
+        }
+
+        try {
+            app(\App\Services\Assemblee\Convocazione\NuovoTitolareNonConvocato::class)->dopoIlPassaggio($esito['ultimo']);
+        } catch (\Throwable $e) {
+            \App\Support\ErroriDiagnosticabili::registra($e, 'Nuovo titolare non convocato', ['subentro_id' => $esito['ultimo']->id]);
+        }
+
+        /** @var list<Subentro> $passaggi */
+        $passaggi = $esito['passaggi'];
+        $primo = $esito['subentro'];
+        $pannelli = array_map(fn (array $e) => $e['anteprima'], $esito['esiti']);
+        $gruppo = app(AnteprimaDelGruppo::class)->componi($condominio, $immobile, $dati, $pannelli);
+        $frase = str_replace(['risulteranno', 'risulterà'], ['risultano', 'risulta'], (string) $gruppo['riferimento']['frase']);
+        $entranteId = $primo->anagrafica_entrante_id;
+        $entrante = $primo->entrante?->nome;
+
+        // Le righe scritte in saldi da ciascun passaggio e dalle sue pertinenze: la coppia di chi esce, per persona, e il totale di chi entra.
+        $perPassaggio = collect($passaggi)->mapWithKeys(fn (Subentro $p) => [(int) $p->id => $p->pertinenze()->pluck('id')->push($p->id)->map(fn ($id) => (int) $id)->all()]);
+        $righe = \App\Models\Saldo::whereIn('subentro_id', $perPassaggio->flatten()->all())->get(['subentro_id', 'anagrafica_id', 'saldo_iniziale']);
+        $coppie = (int) array_sum(array_map(fn (array $e) => (int) $e['coppie'], $esito['esiti']));
+        $totaleEntrante = (int) $righe->where('anagrafica_id', $entranteId)->sum('saldo_iniziale');
+        $insieme = [];
+        foreach ($passaggi as $i => $p) {
+            $nome = (string) ($p->uscente?->nome ?? ($p->registro['nomi']['uscente'] ?? '?'));
+            $c = (int) $righe->whereIn('subentro_id', $perPassaggio[(int) $p->id])->where('anagrafica_id', (int) $p->anagrafica_uscente_id)->sum('saldo_iniziale');
+            $insieme[] = [
+                'nome' => $nome,
+                'quota' => round((float) ($dati['membri'][$i]['quota'] ?? 0), 2),
+                'frase_conguaglio' => $c === 0 ? null : sprintf('%s %s %s', \App\Helpers\MoneyHelper::format(abs($c)), $c < 0 ? 'a credito di' : 'a debito di', $nome),
+                'estratto_conto' => $p->anagrafica_uscente_id ? route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => (int) $p->anagrafica_uscente_id]) : null,
+            ];
+        }
+
+        return to_route('admin.gestionale.immobili.anagrafiche.index', ['condominio' => $condominio->id, 'immobile' => $immobile->id])
+            ->with($this->flashSuccess(sprintf('%d passaggi registrati insieme. %s', count($passaggi), $frase)))
+            ->with('passaggio_registrato', [
+                'subentro_id' => $primo->id,
+                'frase'       => $frase,
+                'coppie'      => $coppie,
+                'conguaglio'  => $coppie > 0 ? \App\Helpers\MoneyHelper::format(abs($totaleEntrante)) : null,
+                'conguaglio_rovesciato' => $coppie > 0 && $totaleEntrante < 0,
+                'riassegnate' => (int) array_sum(array_map(fn (array $e) => (int) ($e['riassegnate'] ?? 0), $esito['esiti'])),
+                'riassegnate_frase' => $this->fraseRiassegnateDellInsieme($pannelli, $entrante),
+                'rinuncia'    => $primo->conguaglioRinunciato(),
+                'non_scritto' => false,
+                'documento'   => $esito['documento']?->name,
+                'promemoria'  => null,
+                'avvisi'      => $esito['avvisi'],
+                'entrante'    => $entrante,
+                'eredi'       => [],
+                'per_erede'   => [],
+                'per_erede_testa' => null,
+                'al_posto'    => [],
+                'insieme'     => $insieme,
+                'azioni'      => [
+                    'estratto_conto' => $entranteId ? route('admin.gestionale.anagrafiche.estratto-conto', ['condominio' => $condominio->id, 'anagrafica' => $entranteId]) : null,
+                    'anagrafe'       => $entranteId && $request->user()->can('update', $primo->entrante)
+                        ? route('admin.anagrafiche.edit', ['anagrafica' => $entranteId]) : null,
+                ],
+            ]);
+    }
+
+    /**
+     * Decisione 705: «Le 2 quote in bozza della rata del 5 dicembre 2026 del piano «Preventivo 2026» sono passate a Luca Toscani»: le bozze passate da tutti
+     * i passaggi dell'insieme, piano per piano, dette al passato.
+     *
+     * @param list<array<string, mixed>> $pannelli
+     */
+    private function fraseRiassegnateDellInsieme(array $pannelli, ?string $entrante): ?string
+    {
+        $bozze = collect($pannelli)->flatMap(fn (array $p) => (array) ($p['rate']['conguaglio']['bozze_riassegnate'] ?? []));
+        if ($bozze->isEmpty()) {
+            return null;
+        }
+        $parti = $bozze->groupBy('piano_rate_id')->map(function ($g) {
+            $quote = $g->count();
+            $rate = $g->pluck('rata_id')->unique()->count();
+            $piano = (string) $g->first()['piano'];
+            $giorno = CarbonImmutable::parse((string) $g->min('scadenza'))->locale('it')->translatedFormat('j F Y');
+
+            return match (true) {
+                $quote === 1 => sprintf('la quota in bozza della rata del %s del piano «%s» è passata', $giorno, $piano),
+                $rate === 1 => sprintf('le %d quote in bozza della rata del %s del piano «%s» sono passate', $quote, $giorno, $piano),
+                default => sprintf('le %d quote in bozza di %d rate del piano «%s» sono passate', $quote, $rate, $piano),
+            };
+        })->values()->all();
+
+        return ucfirst(implode('; ', $parti)) . sprintf(' %s: è cambiato l\'intestatario, non l\'importo.', \App\Services\Subentro\FrasiObbligati::a($entrante ?? 'chi entra'));
     }
 
     /**
@@ -287,17 +409,31 @@ class PassaggioController extends Controller
             return back()->with($this->flashError('La copia autentica del titolo riguarda una vendita o donazione: questo passaggio non la prevede.'));
         }
 
-        // Una data sola per il passaggio e le sue pertinenze: le righe `subentri` figlie la ricevono insieme (verifica S6, R12).
+        // Una data sola per il passaggio e le sue pertinenze: le righe `subentri` figlie la ricevono insieme (verifica S6, R12). Decisione 705: la copia
+        // autentica dell'atto è una sola anche per i passaggi registrati insieme, e vale per tutti (la pagina la chiede sul primo).
         $giorno = CarbonImmutable::parse($dati['copia_autentica_il'])->toDateString();
+        $membri = $subentro->membriDellInsieme();
         RegistroModifiche::durante(
-            Gesto::su('condominio', 'passaggio', (int) $subentro->id, 'Passaggio dell\'unità ' . $immobile->etichetta)->nelCondominio($condominio)
+            Gesto::su('condominio', 'passaggio', (int) $membri->first()->id, 'Passaggio dell\'unità ' . $immobile->etichetta)->nelCondominio($condominio)
                 ->scheda('immobile', (int) $immobile->id)
-                ->riepilogo('Copia autentica del titolo registrata, del ' . CarbonImmutable::parse($giorno)->format('d/m/Y'))
-                ->rimando('passaggio', (int) $subentro->id, 'Passaggio dell\'unità ' . $immobile->etichetta),
-            function () use ($subentro, $giorno) {
-                $subentro->update(['copia_autentica_il' => $giorno]);
-                $subentro->pertinenze()->update(['copia_autentica_il' => $giorno]);
+                ->riepilogo('Copia autentica del titolo registrata, del ' . CarbonImmutable::parse($giorno)->format('d/m/Y')
+                    . ($membri->count() > 1 ? sprintf(', per i %d passaggi registrati insieme', $membri->count()) : ''))
+                ->rimando('passaggio', (int) $membri->first()->id, 'Passaggio dell\'unità ' . $immobile->etichetta),
+            function () use ($membri, $giorno) {
+                foreach ($membri as $membro) {
+                    $membro->update(['copia_autentica_il' => $giorno]);
+                    $membro->pertinenze()->update(['copia_autentica_il' => $giorno]);
+                }
             });
+        if ($membri->count() > 1) {
+            $nomi = $membri->map(fn (Subentro $m) => (string) ($m->uscente?->nome ?? 'chi ha venduto'))->values()->all();
+            $elenco = count($nomi) === 1 ? $nomi[0] : implode(', ', array_slice($nomi, 0, -1)) . ' e ' . end($nomi);
+            $il = CarbonImmutable::parse($giorno)->locale('it')->translatedFormat('j F Y');
+
+            return back()->with($this->flashSuccess($subentro->riservaUsufrutto()
+                ? sprintf('Copia autentica registrata per i %d passaggi registrati insieme, ricevuta il %s: per i contributi successivi la liberazione non vale per %s, perché conservano l\'usufrutto e rispondono in solido con il nudo proprietario (art. 67 ult. co. disp. att. c.c.).', $membri->count(), $il, $elenco)
+                : sprintf('Copia autentica registrata per i %d passaggi registrati insieme: dal %s la liberazione verso il condominio per i contributi successivi vale per %s (art. 63 co. 5 disp. att. c.c.).', $membri->count(), $il, $elenco)));
+        }
 
         // Vendita con riserva d'usufrutto (decisione 28.3, testi T1 della Fase 1-bis della beta.38): la copia si registra
         // come per ogni vendita, ma non libera chi vende, che resta usufruttuario: lo dice come il vademecum (`FrasiObbligati`).
@@ -349,18 +485,30 @@ class PassaggioController extends Controller
             throw $e;
         }
 
-        // Il compito del nuovo titolare non convocato, se c'era, si chiude: il passaggio non c'è più.
-        app(\App\Services\Assemblee\Convocazione\NuovoTitolareNonConvocato::class)->dopoLAnnullamento($subentro);
+        // Il compito del nuovo titolare non convocato, se c'era, si chiude: il passaggio non c'è più. Decisione 705: con l'insieme, i compiti di tutti i
+        // passaggi annullati (il compito nasce con l'ultimo, e si può annullare dall'id di uno qualsiasi).
+        foreach ($subentro->membriDellInsieme(conAnnullati: true) as $membro) {
+            app(\App\Services\Assemblee\Convocazione\NuovoTitolareNonConvocato::class)->dopoLAnnullamento($membro);
+        }
 
-        // Solo ciò che il passaggio aveva davvero toccato: una locazione non sposta rate, una rinuncia non scrive conguaglio.
-        $effetti = implode(' ', AnnullaPassaggioAction::frasiEffetti($esito, $esito['uscente'], $esito['entrante'], true, (bool) ($esito['successione'] ?? false)));
+        // Solo ciò che il passaggio aveva davvero toccato: una locazione non sposta rate, una rinuncia non scrive conguaglio. Decisione 705 (rilievo 2 dello
+        // scettico della tappa 7): per l'insieme le frasi dell'esito di tutti (`insieme.frasi`), una rata per persona e le righe del conguaglio contate; le
+        // somme dell'esito direbbero «Le quote di 2 rate» per una rata con due quote, e «il passaggio» per due.
+        $effetti = implode(' ', ($esito['insieme']['frasi'] ?? null) !== null
+            ? (array) $esito['insieme']['frasi']
+            : AnnullaPassaggioAction::frasiEffetti($esito, $esito['uscente'], $esito['entrante'], true, (bool) ($esito['successione'] ?? false)));
+        // Decisione 705: quanti passaggi ha annullato l'azione (più di uno con i passaggi registrati insieme, annullati tutti insieme).
+        $quanti = (int) ($esito['passaggi_annullati'] ?? 1);
+        [$testa, $coda] = $quanti > 1
+            ? [sprintf('%d passaggi annullati insieme. ', $quanti), ' Restano nello storico, con la tua nota.']
+            : ['Passaggio annullato. ', ' Resta nello storico, con la tua nota.'];
         if ($esito['avvisi'] === []) {
-            return back()->with($this->flashSuccess('Passaggio annullato. ' . $effetti . ' Resta nello storico, con la tua nota.'));
+            return back()->with($this->flashSuccess($testa . $effetti . $coda));
         }
 
         // Un avviso è una cosa ancora da fare: va in testa, in un messaggio che non si chiude da solo. Un successo si chiude
         // dopo sei secondi, e la scheda dello storico resta aperta sopra la pagina (giro di verifica, L-R1).
-        return back()->with($this->flashWarning('Passaggio annullato. ' . implode(' ', $esito['avvisi']) . ' ' . $effetti . ' Resta nello storico, con la tua nota.'));
+        return back()->with($this->flashWarning($testa . implode(' ', $esito['avvisi']) . ' ' . $effetti . $coda));
     }
 
     /**

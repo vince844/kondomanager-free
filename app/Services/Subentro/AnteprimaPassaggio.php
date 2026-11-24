@@ -15,6 +15,8 @@ use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
 use App\Models\TitolaritaImmobile;
+use App\Services\Assemblee\Sala\TesteDelCondominio;
+use App\Services\Assemblee\Sala\TesteDellaSala;
 use App\Support\ImportoInParole;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -70,6 +72,17 @@ class AnteprimaPassaggio
 
     /** La riga di chi esce (per le frasi di «Chi resta obbligato» all'estinzione). */
     private ?int $rigaChiEsce = null;
+
+    /**
+     * Coda 786 (decisione 705): nei passaggi registrati insieme, le anagrafiche delle **altre** persone che escono con lo stesso atto
+     * (`con_chi_esce`) e gli id dei passaggi gemelli già scritti nella prova a secco (`passaggi_gemelli`). Dati vuoti in un passaggio da solo.
+     *
+     * @var list<int>
+     */
+    private array $conChiEsce = [];
+
+    /** @var list<int> */
+    private array $passaggiGemelli = [];
 
     /** All'estinzione, sull'unità c'è un altro usufrutto in corso (rilievo GT6: la nota sull'accrescimento). */
     private bool $altroUsufrutto = false;
@@ -202,6 +215,15 @@ class AnteprimaPassaggio
      */
     private array $partiDopoScrivi = [];
 
+    /**
+     * Decisione 705: le teste in assemblea del pannello, con i numeri (`invarianti.teste`), perché il pannello dei passaggi registrati insieme le legga
+     * senza tornare alle parole ({@see AnteprimaDelGruppo}: le conta una volta, prima e dopo tutti i passaggi). Nulla se il numero non si sa ancora (manca chi
+     * esce o chi entra) o nelle locazioni.
+     *
+     * @var array{scelta: string, prima: int, dopo: int}|null
+     */
+    private ?array $teste = null;
+
     public function __construct(
         private readonly ConguaglioPassaggio $conguaglioPassaggio = new ConguaglioPassaggio(),
         private readonly FrasiObbligati $frasiObbligati = new FrasiObbligati(),
@@ -227,12 +249,15 @@ class AnteprimaPassaggio
         // divide fra loro per quota. `$nudoProprietario` resta il primo, per la controparte del calcolo.
         $this->nudi = $immobile->titolarita()->with('anagrafica')->where('tipologia', 'nuda_proprietario')->get()
             ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza))->values();
+        $this->teste = null;
         // Decisione 57 (1.11.0-beta.43, D2): all'estinzione tornano pieni solo i nudi dell'usufrutto che finisce — con un altro usufrutto
         // in corso non chi esce; senza, anche chi esce, e la sua parte resta a suo nome.
         $this->nudiDa = null;
         $this->consolida = [];
         $this->chiEsce = $uscente?->anagrafica_id !== null ? (int) $uscente->anagrafica_id : null;
         $this->rigaChiEsce = $uscente?->id !== null ? (int) $uscente->id : null;
+        $this->conChiEsce = array_values(array_map('intval', (array) ($dati['con_chi_esce'] ?? [])));
+        $this->passaggiGemelli = array_values(array_map('intval', (array) ($dati['passaggi_gemelli'] ?? [])));
         $this->altroUsufrutto = false;
         $this->nudaEreditata = null;
         $this->eredi = $tipo === 'successione' ? array_values($dati['eredi'] ?? []) : [];
@@ -368,12 +393,17 @@ class AnteprimaPassaggio
                     ? self::pianiDopoUnRegolato($conguaglio) : [],
             ],
             'obbligati' => [
-                // Decisione 28.8 a: le unità del passaggio, per la frase sui saldi intestati all'unità.
-                'frasi' => $this->blocco3($tipo, ['immobili' => $immobileIds, 'arretrato_senza_righe' => $arretrato !== null && ($arretrato['righe'] ?? []) === []] + $dati, $condominio, $immobile, $nomeUscente, $nomeEntrante, $decorrenza, $tipo === 'fine_locazione' ? $this->alPosto : $proprietari, $nudoProprietario),
+                // Decisione 28.8 a: le unità del passaggio, per la frase sui saldi intestati all'unità. Decisione 705: nella vendita registrata insieme da
+                // più persone la solidarietà le nomina tutte (`nomi_uscenti`), non solo quella di questo passaggio.
+                'frasi' => $this->blocco3($tipo, ['immobili' => $immobileIds, 'arretrato_senza_righe' => $arretrato !== null && ($arretrato['righe'] ?? []) === []] + $dati, $condominio, $immobile,
+                    $tipo === 'vendita' && count(array_filter((array) ($dati['nomi_uscenti'] ?? []))) > 1 ? $this->elenco((array) $dati['nomi_uscenti']) : $nomeUscente,
+                    $nomeEntrante, $decorrenza, $tipo === 'fine_locazione' ? $this->alPosto : $proprietari, $nudoProprietario),
                 'copia_autentica_mancante' => $tipo === 'vendita' && ! $dati['copia_autentica'],
             ],
             'invarianti' => [
                 'frasi' => $this->blocco4($tipo, $dati, $condominio, $immobile, $uscente, $entrante),
+                // Decisione 705: i numeri della frase delle teste, scritti da `fraseTeste()` nella riga sopra.
+                'teste' => $this->teste,
             ],
             'ordinaria' => $ordinaria,
             'cancello' => $this->cancello($tipo, $condominio, $immobileIds, $uscente, $tutteLeEmesse->filter(fn ($r) => $conta === null || $conta($r['anagrafica_id'], $r['immobile_id']))->values(), $intestatari, $conguaglio['riassegnazione'] ?? [], $nomeEntrante, $conguaglio['quote'] ?? [], $this->riserva($tipo, $dati) ? $decorrenza : null, array_column(array_filter($ordinaria['voci'], fn ($v) => $v['spostata']), 'conto_id'),
@@ -3472,6 +3502,74 @@ class AnteprimaPassaggio
         ]), self::dividiLeFrasiDelConguaglio($frasi)[0]);
     }
 
+    /**
+     * La frase delle quote emesse su un'unità che il passaggio non riguarda, al singolare o al plurale (Coda 664): una sola quota
+     * è «L'altra quota», mai «Le altre 1 quote». Coda 786: le quote di chi esce con lo stesso atto non sono «le altre che restano»,
+     * stanno nella parte di chi le ha; se non resta nessun'altra quota, la frase delle altre non compare.
+     */
+    private function fraseAltreQuote(Collection $altre): string
+    {
+        [$gemelle, $altre] = $this->quoteDelGruppo($altre);
+        $frasi = [];
+        if ($altre->isNotEmpty()) {
+            $chi = FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+            $frasi[] = $altre->count() === 1
+                ? sprintf('L\'altra quota emessa su questa unità resta %s: questo passaggio non la riguarda.', $chi)
+                : sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), $chi);
+        }
+        if ($gemelle->isNotEmpty()) {
+            $frasi[] = $this->fraseQuoteDelGruppo($gemelle);
+        }
+
+        return implode(' ', $frasi);
+    }
+
+    /** La stessa frase per l'unità senza rate intestate a chi esce: «La quota dell'unità resta a chi l'ha ricevuta (…).» (Coda 664, Coda 786). */
+    private function fraseQuoteDellUnita(Collection $altre): string
+    {
+        [$gemelle, $altre] = $this->quoteDelGruppo($altre);
+        $frasi = [];
+        if ($altre->isNotEmpty()) {
+            $chi = $this->elenco($altre->pluck('intestatario')->unique()->values()->all());
+            $frasi[] = $altre->count() === 1
+                ? sprintf('La quota dell\'unità resta a chi l\'ha ricevuta (%s).', $chi)
+                : sprintf('Le %d quote dell\'unità restano a chi le ha ricevute (%s).', $altre->count(), $chi);
+        }
+        if ($gemelle->isNotEmpty()) {
+            $frasi[] = $this->fraseQuoteDelGruppo($gemelle);
+        }
+
+        return implode(' ', $frasi);
+    }
+
+    /**
+     * Coda 786: le quote emesse intestate a chi esce con lo stesso atto, separate dalle altre.
+     *
+     * @return array{0: Collection, 1: Collection} le quote delle persone del gruppo, poi le altre
+     */
+    private function quoteDelGruppo(Collection $altre): array
+    {
+        if ($this->conChiEsce === []) {
+            return [collect(), $altre];
+        }
+        [$gemelle, $resto] = $altre->partition(fn ($r) => in_array((int) ($r['anagrafica_id'] ?? 0), $this->conChiEsce, true));
+
+        return [$gemelle->values(), $resto->values()];
+    }
+
+    /** «Le quote di Marta Acciaioli, che esce con lo stesso atto, sono nella sua parte.» (Coda 786): singolare con una quota di una persona sola. */
+    private function fraseQuoteDelGruppo(Collection $gemelle): string
+    {
+        $nomi = $gemelle->pluck('intestatario')->unique()->values()->all();
+        if (count($nomi) === 1) {
+            return $gemelle->count() === 1
+                ? sprintf('La quota di %s, che esce con lo stesso atto, è nella sua parte.', $nomi[0])
+                : sprintf('Le quote di %s, che esce con lo stesso atto, sono nella sua parte.', $nomi[0]);
+        }
+
+        return sprintf('Le quote di %s, che escono con lo stesso atto, sono nelle loro parti.', $this->elenco($nomi));
+    }
+
     private function blocco2(string $tipo, array $dati, Collection $tutte, Collection $diChiEsce, Collection $altre, ?array $morosita, ?string $uscente, ?string $entrante, CarbonImmutable $dal, ?TitolaritaImmobile $nudo, array $conguaglio = ['stato' => 'nessuno', 'frasi' => []]): array
     {
         // Le frasi del conguaglio calcolato, senza la sua riga d'apertura (il blocco ne ha già una per tipo).
@@ -3574,7 +3672,7 @@ class AnteprimaPassaggio
                     });
             }
         } elseif ($diChiEsce->isEmpty() && ! $nienteAGiornale) {
-            $frasi[] = sprintf('Nessuna rata emessa è intestata %s: non c\'è niente da conguagliare fra chi esce e chi entra. Le %d quote dell\'unità restano a chi le ha ricevute (%s).', $this->frasiObbligati->a((string) $uscente), $altre->count(), $this->elenco($altre->pluck('intestatario')->unique()->values()->all()));
+            $frasi[] = sprintf('Nessuna rata emessa è intestata %s: non c\'è niente da conguagliare fra chi esce e chi entra. %s', $this->frasiObbligati->a((string) $uscente), $this->fraseQuoteDellUnita($altre));
         } elseif ($estinzione && ! empty($dati['accrescimento'])) {
             // 1.11.0-beta.44: l'usufrutto si accresce agli usufruttuari che restano; la nuda resta nuda. Coda 455 (6a): con un netto di entrata anche l'art. 984 c.c.
             $frasi[] = $senzaCoppie
@@ -3583,7 +3681,7 @@ class AnteprimaPassaggio
                     self::nettoDiEntrata($conguaglio) ? self::SPESE_E_ENTRATE : 'art. 1004 c.c.');
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
+                $frasi[] = $this->fraseAltreQuote($altre);
             }
         } elseif ($estinzione && $this->nudi->isNotEmpty() && $altriNudi->isEmpty() && $nomiDelleCoppie === []) {
             // Il solo nudo è chi esce: torna pieno, e non c'è niente da conguagliare.
@@ -3607,7 +3705,7 @@ class AnteprimaPassaggio
                         self::nettoDiEntrata($conguaglio) ? ': ' . self::SPESE_E_ENTRATE : ', art. 1004 c.c.'));
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
+                $frasi[] = $this->fraseAltreQuote($altre);
             }
         } elseif ($this->riserva($tipo, $dati)) {
             // Testi T5 della Fase 1-bis: la straordinaria segue la competenza — la delibera, o quella dichiarata sulla fattura
@@ -3618,7 +3716,7 @@ class AnteprimaPassaggio
                 : 'Le rate già emesse non si toccano. %s resta usufruttuario e continua a dovere la quota ordinaria (art. 1004 c.c.): l\'ordinaria non si conguaglia. La quota straordinaria va a chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella; dal %s il titolare è %s, nudo proprietario (art. 1005 c.c.). Dove serve, il conguaglio è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano.', $uscente, $this->data($dal), $entrante ?? 'chi entra');
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
+                $frasi[] = $this->fraseAltreQuote($altre);
             }
         } elseif ($tipo === 'successione' && ! $senzaCoppie) {
             // Decisione 65 (4): il conguaglio per giorni della vendita, con il debito di chi entra diviso fra gli eredi per quota.
@@ -3661,13 +3759,13 @@ class AnteprimaPassaggio
             // (`frasi_del_conguaglio`, la mette insieme `frasiDelConguaglio()`): qui restano i fatti, che valgono con qualunque scelta.
             array_push($frasi, ...($scelta ? self::fattiDelConguaglio($frasiConguaglio) : $frasiConguaglio));
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
+                $frasi[] = $this->fraseAltreQuote($altre);
             }
         } elseif ($senzaCoppie) {
             $frasi[] = 'Le rate già emesse non si toccano.';
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
+                $frasi[] = $this->fraseAltreQuote($altre);
             }
         } else {
             // Testi T5 (cantiere C6): come nella riserva, la straordinaria segue la competenza — la delibera, o quella dichiarata
@@ -3675,7 +3773,7 @@ class AnteprimaPassaggio
             $frasi[] = sprintf('Le rate già emesse non si toccano. Il conguaglio fra %s e %s è proposto come due righe di saldo che sommano a zero, sulla gestione di ciascun piano: la quota ordinaria è divisa in proporzione ai giorni; la quota straordinaria va a chi era titolare alla data della delibera o, se la fattura dichiara la competenza, si divide per giorni su quella (art. 63 disp. att. c.c.; Cass. civ. 30 agosto 2025 n. 24236).', $uscente, $entrante ?? 'chi entra');
             array_push($frasi, ...$frasiConguaglio);
             if ($altre->isNotEmpty()) {
-                $frasi[] = sprintf('Le altre %d quote emesse su questa unità restano %s: questo passaggio non le riguarda.', $altre->count(), FrasiObbligati::a($this->elenco($altre->pluck('intestatario')->unique()->values()->all())));
+                $frasi[] = $this->fraseAltreQuote($altre);
             }
         }
 
@@ -3684,7 +3782,7 @@ class AnteprimaPassaggio
             // volta sola per tutti i rami, con la ragione di ogni piano.
             $perche = collect($conguaglio['quote'] ?? [])->pluck('piano_rate_id')->unique()
                 ->map(fn ($id) => \App\Models\Gestionale\PianoRate::find((int) $id))->filter()
-                ->map(fn ($piano) => ($f = $piano->fraseDelFermo()) !== null ? sprintf('il piano «%s» %s', $piano->nome, $f) : null)->filter()->values()->all();
+                ->map(fn ($piano) => ($f = $piano->fraseDelFermo(delGruppo: $this->passaggiGemelli)) !== null ? sprintf('il piano «%s» %s', $piano->nome, $f) : null)->filter()->values()->all();
             // Rilievo T-F del terzo giro: con più piani fermi la frase va al plurale.
             // Rilievo AMM-4 del giro sulle correzioni: quando il conguaglio si sceglie, le quote si conguagliano solo se lo scrivi.
             $qui = $scelta ? ', se scrivi il conguaglio,' : '';
@@ -3776,11 +3874,9 @@ class AnteprimaPassaggio
     }
 
     /**
-     * Le teste in assemblea si contano per persona (Cass. 25558/2020: chi possiede più unità conta una
-     * testa sola), e il numero dipende da **entrambi**: chi esce lo perde solo se non possiede altro nel
-     * condominio, chi entra lo acquista solo se non ne possedeva già. Guardare solo chi esce — com'era
-     * nella prima stesura — dava la frase opposta al vero nel caso più comune, il venditore della sua
-     * unica unità a un acquirente nuovo (uno esce, uno entra: il numero non cambia).
+     * Coda 758 (1): le teste in assemblea come le conta la sala, con la scelta del condominio («una testa» o «due teste»), non con una regola del pannello.
+     * Il conto è quello di {@see TesteDelCondominio::primaEDopo()} (l'unità e le pertinenze che passano con lei), che usa la stessa funzione della sala ({@see TesteDellaSala::teste()}): il pannello
+     * dice quanti condòmini avrebbe oggi l'assemblea e quanti dopo il passaggio. Vale per tutti i tipi; le locazioni lasciano le teste invariate.
      */
     private function fraseTeste(string $tipo, array $dati, Condominio $condominio, Immobile $immobile, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante): string
     {
@@ -3788,68 +3884,95 @@ class AnteprimaPassaggio
             return 'Teste in assemblea: invariate, l\'inquilino non entra nel conteggio dei condòmini.';
         }
 
-        if ($this->riserva($tipo, $dati)) {
-            return 'Teste in assemblea: si contano per persona; chi vende resta come usufruttuario e continua a contare, e chi compra la nuda proprietà si aggiunge se non era già condòmino.';
+        $teste = app(TesteDelCondominio::class);
+        $dopo = $this->titolariDopoIlPassaggio($tipo, $dati, $teste->titolariDiOggi($immobile), $uscente, $entrante);
+        if ($dopo === null) {
+            return 'Teste in assemblea: le conta la sala con la scelta del condominio; il numero si vede dopo aver scelto chi esce e chi entra.';
         }
+        $perUnita = [(int) $immobile->id => $dopo];
+        // Le pertinenze che passano con l'unità: per chi esce valgono come l'unità (se è titolare anche lì), altrimenti restano dove sono.
+        foreach ($immobile->pertinenze()->whereIn('id', array_map('intval', (array) ($dati['pertinenze'] ?? [])))->get() as $pertinenza) {
+            $titolari = $teste->titolariDiOggi($pertinenza);
+            if (collect($titolari)->contains(fn (array $t) => $t['anagrafica_id'] === (int) $uscente->anagrafica_id && $t['ruolo'] === (string) $uscente->tipologia)) {
+                $perUnita[(int) $pertinenza->id] = $this->titolariDopoIlPassaggio($tipo, $dati, $titolari, $uscente, $entrante) ?? [];
+            }
+        }
+        $conto = $teste->primaEDopo($condominio, $perUnita);
+        $this->teste = ['scelta' => (string) $conto['scelta'], 'prima' => (int) $conto['prima'], 'dopo' => (int) $conto['dopo']];
+
+        return sprintf('Teste in assemblea, come le conta la sala con la scelta del condominio («%s»): oggi %d, dopo il passaggio %d.',
+            $conto['scelta'] === TesteDellaSala::UNA_TESTA ? 'una testa' : 'due teste', $conto['prima'], $conto['dopo']);
+    }
+
+    /**
+     * I titolari dell'unità dopo il passaggio, per contare le teste: i titolari di oggi con la riga di chi esce tolta (o ridotta, se cede una parte) e
+     * chi entra con il suo ruolo. Nulla se manca chi esce o chi entra.
+     *
+     * @param list<array{anagrafica_id: int, ruolo: string, quota: float}> $titolari
+     * @return list<array{anagrafica_id: int, ruolo: string}>|null
+     */
+    private function titolariDopoIlPassaggio(string $tipo, array $dati, array $titolari, ?TitolaritaImmobile $uscente, ?Anagrafica $entrante): ?array
+    {
+        if ($uscente?->anagrafica_id === null) {
+            return null;
+        }
+        $esce = (int) $uscente->anagrafica_id;
+        $ruoloDiChiEsce = (string) $uscente->tipologia;
+        $cede = (float) ($dati['quota'] ?? 0);
+        $restaUnaParte = $cede > 0.0 && $cede < (float) $uscente->quota - 0.001;
+        $dopo = [];
+        foreach ($titolari as $t) {
+            $dopo[] = ['anagrafica_id' => $t['anagrafica_id'], 'ruolo' => $t['ruolo']];
+        }
+        $senzaChiEsce = fn () => array_values(array_filter($dopo, fn ($t) => ! ($t['anagrafica_id'] === $esce && $t['ruolo'] === $ruoloDiChiEsce)));
 
         if ($tipo === 'successione') {
-            // Gli eredi in comunione su un'unità hanno in assemblea un solo rappresentante (art. 67 co. 2 disp. att. c.c.).
-            return count($this->eredi) > 1
-                ? sprintf(! empty($dati['legato'])
-                    // Rilievo AMM-3 del giro sulle correzioni: chi riceve l'unità per legato non è un erede.
-                    ? 'Teste in assemblea: si contano per persona; %s esce dal conteggio se non possiede altro in questo condominio, e chi riceve l\'unità, in comunione, è rappresentato da una persona sola (art. 67 co. 2 disp. att. c.c.).'
-                    : 'Teste in assemblea: si contano per persona; %s esce dal conteggio se non possiede altro in questo condominio, e gli eredi in comunione su questa unità sono rappresentati da una persona sola (art. 67 co. 2 disp. att. c.c.).', $uscente?->anagrafica?->nome ?? 'chi esce')
-                : sprintf('Teste in assemblea: si contano per persona; %s esce dal conteggio se non possiede altro in questo condominio, e %s entra se non era già condòmino.', $uscente?->anagrafica?->nome ?? 'chi esce', $this->elencoEredi());
+            $dopo = $senzaChiEsce();
+            foreach ($this->eredi as $erede) {
+                $dopo[] = ['anagrafica_id' => (int) $erede['anagrafica']->id, 'ruolo' => $ruoloDiChiEsce];
+            }
+
+            return $dopo;
         }
 
-        if ($tipo === 'usufrutto' && ! empty($dati['accrescimento'])) {
-            return 'Teste in assemblea: si contano per persona; l\'usufruttuario esce dal conteggio se non possiede altro in questo condominio, e chi riceve l\'accrescimento era già condòmino.';
+        if ($tipo === 'usufrutto' && ($dati['sottotipo'] ?? 'costituzione') === 'estinzione') {
+            $dopo = $senzaChiEsce();
+            if (empty($dati['accrescimento'])) {
+                foreach ($this->nudi as $nudo) {
+                    $dopo = array_map(fn ($t) => $t['anagrafica_id'] === (int) $nudo->anagrafica_id && $t['ruolo'] === 'nuda_proprietario'
+                        ? ['anagrafica_id' => $t['anagrafica_id'], 'ruolo' => 'proprietario'] : $t, $dopo);
+                }
+            }
+
+            return $dopo;
+        }
+
+        if ($entrante === null) {
+            return null;
         }
 
         if ($tipo === 'usufrutto') {
-            return ($dati['sottotipo'] ?? 'costituzione') === 'estinzione'
-                ? 'Teste in assemblea: si contano per persona; il nudo proprietario era già condòmino e resta, l\'usufruttuario esce dal conteggio se non possiede altro in questo condominio.'
-                : 'Teste in assemblea: si contano per persona; chi resta come nudo proprietario continua a contare, e l\'usufruttuario si aggiunge se non era già condòmino.';
+            // La costituzione: chi esce resta nudo proprietario, chi entra è l'usufruttuario.
+            $dopo = $senzaChiEsce();
+            $dopo[] = ['anagrafica_id' => $esce, 'ruolo' => 'nuda_proprietario'];
+            $dopo[] = ['anagrafica_id' => (int) $entrante->id, 'ruolo' => 'usufruttuario'];
+
+            return $dopo;
         }
 
-        if ($uscente?->anagrafica === null || $entrante === null) {
-            return 'Teste in assemblea: si contano per persona, e il numero cambia solo se chi vende non possiede altre unità in questo condominio o se chi compra ne possedeva già una.';
+        if ($this->riserva($tipo, $dati)) {
+            // La vendita con riserva: chi vende resta usufruttuario, chi compra ha la nuda proprietà.
+            $dopo = $senzaChiEsce();
+            $dopo[] = ['anagrafica_id' => $esce, 'ruolo' => 'usufruttuario'];
+            $dopo[] = ['anagrafica_id' => (int) $entrante->id, 'ruolo' => 'nuda_proprietario'];
+
+            return $dopo;
         }
 
-        $altreUscente = $this->altreUnitaDiProprieta($condominio, $immobile, (int) $uscente->anagrafica_id);
-        $altreEntrante = $this->altreUnitaDiProprieta($condominio, $immobile, (int) $entrante->id);
-        $nomeU = $uscente->anagrafica->nome;
-        $nomeE = $entrante->nome;
+        $dopo = $restaUnaParte ? $dopo : $senzaChiEsce();
+        $dopo[] = ['anagrafica_id' => (int) $entrante->id, 'ruolo' => (string) ($dati['tipologia'] ?? 'proprietario')];
 
-        // Una vendita di quota fra comproprietari: nessuno entra e nessuno esce dal condominio.
-        $entranteGiaSuQuestaUnita = $immobile->titolarita()->where('anagrafica_id', $entrante->id)->get()
-            ->contains(fn (TitolaritaImmobile $t) => $t->inCorsoIl(DateHelper::oggiUtenteImmutable()) && in_array($t->tipologia, ['proprietario', 'nuda_proprietario'], true));
-
-        $esce = $altreUscente === 0;
-        $entra = $altreEntrante === 0 && ! $entranteGiaSuQuestaUnita;
-
-        return match (true) {
-            $esce && $entra => sprintf('Teste in assemblea: si contano per persona, e il numero non cambia — %s esce dal conteggio, %s vi entra.', $nomeU, $nomeE),
-            $esce && ! $entra => sprintf('Teste in assemblea: si contano per persona, e il numero scende di uno — %s esce dal conteggio, %s era già nel conteggio.', $nomeU, $nomeE),
-            ! $esce && $entra => sprintf('Teste in assemblea: si contano per persona, e il numero sale di uno — %s resta nel conteggio per le altre unità che possiede, %s entra nel condominio per la prima volta.', $nomeU, $nomeE),
-            default => sprintf('Teste in assemblea: si contano per persona, e il numero non cambia — %s resta nel conteggio per le altre unità che possiede, %s era già nel conteggio.', $nomeU, $nomeE),
-        };
-    }
-
-    /** Le altre unità del condominio di cui la persona è oggi proprietaria o nuda proprietaria (regola di `inCorsoIl()`). */
-    private function altreUnitaDiProprieta(Condominio $condominio, Immobile $immobile, int $anagraficaId): int
-    {
-        $oggi = DateHelper::oggiUtenteImmutable();
-
-        return TitolaritaImmobile::query()
-            ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')
-            ->where('immobili.condominio_id', $condominio->id)
-            ->where('anagrafica_immobile.anagrafica_id', $anagraficaId)
-            ->where('anagrafica_immobile.immobile_id', '!=', $immobile->id)
-            ->whereIn('anagrafica_immobile.tipologia', ['proprietario', 'nuda_proprietario'])
-            ->get(['anagrafica_immobile.*'])
-            ->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($oggi))
-            ->pluck('immobile_id')->unique()->count();
+        return $dopo;
     }
 
     // --- Il cancello (1) -------------------------------------------------------------------------
@@ -4175,7 +4298,7 @@ class AnteprimaPassaggio
             $senzaConguaglio = $tipo === 'fine_locazione' && $entrante === null && ! $this->sceltaQui;
             // Rilievo R5 e punto 8 della ripresa: senza nessuna quota a giornale il perché non è ovvio, e si dice la ragione vera.
             $senzaGiornale = ! DB::table('rate')->where('piano_rate_id', $p->piano_rate_id)->whereExists(\App\Models\Gestionale\Rata::aGiornale())->exists();
-            $perche = $senzaGiornale ? \App\Models\Gestionale\PianoRate::find($p->piano_rate_id)?->fraseDelFermo() : null;
+            $perche = $senzaGiornale ? \App\Models\Gestionale\PianoRate::find($p->piano_rate_id)?->fraseDelFermo(delGruppo: $this->passaggiGemelli) : null;
             $testa = sprintf('il piano «%s» ha %d %s non ancora %s intestat%s %s: non si può più ricalcolare%s', $p->nome, $p->n, $p->n === 1 ? 'quota' : 'quote', $p->n === 1 ? 'emessa' : 'emesse', $p->n === 1 ? 'a' : 'e', $this->frasiObbligati->a((string) $p->intestatario),
                 $perche !== null ? ' (' . $perche . ')' : '');
             $parti = array_filter([

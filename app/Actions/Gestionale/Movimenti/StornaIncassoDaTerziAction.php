@@ -69,7 +69,8 @@ class StornaIncassoDaTerziAction
             $altroEsercizio = false;
 
             if (! $esercizioOriginale || $esercizioOriginale->stato === 'chiuso') {
-                $esercizioTarget = Esercizio::where('condominio_id', $condominio->id)->where('stato', 'aperto')->first();
+                // L'esercizio aperto: con due aperti il più recente (Coda 646, decisione 707 (4), `HasEsercizio`), non il primo che il database restituisce.
+                $esercizioTarget = Esercizio::apertoPiuRecente((int) $condominio->id);
 
                 if (! $esercizioTarget) {
                     throw new IncassoDaTerziNonAmmessoException(

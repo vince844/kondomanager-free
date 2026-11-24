@@ -19,6 +19,9 @@ use App\Http\Middleware\IntestazioniDiSicurezza;
 use App\Http\Middleware\SetAppNameMiddleware;
 use App\Http\Middleware\SetLocaleMiddleware;
 use App\Http\Middleware\TogliIDatiDelleFoto;
+use App\Support\CodiceDellErrore;
+use App\Support\Errori\PaginaDiErrore;
+use App\Support\Errori\RegistroDegliErrori;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -144,6 +147,24 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+
+        // ====================================================================
+        // IL CODICE DELL'ERRORE E IL REGISTRO DEGLI ERRORI (1.12.0-beta.14)
+        // ====================================================================
+        // Coda 755 (1), decisioni 690 (2) e 698. Fino alla beta.13 la pagina «500» stampava a chiunque il messaggio dell'eccezione (con il
+        // database fermo l'indirizzo del server, la porta e il nome del database). Ora ogni errore ha un codice di sei caratteri:
+        // - nella **stessa riga** del registro su file (`codice_errore`, qui sotto), dove chi gestisce l'installazione lo cerca;
+        // - nel database (`RegistroDegliErrori`, ripulito da `Ripulitura`: niente password, dati dei moduli, valori delle query, indirizzo del database;
+        //   le email, i codici fiscali e gli IBAN diventano segnaposto; i nomi scritti in un messaggio possono restare), che la scheda «Errori»
+        //   delle impostazioni legge, con il rapporto per chi sviluppa; l'errore del database che non risponde non si prova a scrivere lì;
+        // - nella pagina d'errore (`resources/views/errors/500.blade.php`, `PaginaDiErrore`).
+        // Il 500 scritto a mano (`abort(500, …)`) Laravel non lo scrive nel registro: lo scrive `PaginaDiErrore::rispostaPerIl500()`, che dà anche
+        // alle risposte JSON dei 500 «Server Error» con il codice, mai il testo. Con il debug acceso resta tutto come prima.
+        $exceptions->context(fn (\Throwable $e) => ['codice_errore' => CodiceDellErrore::di($e)]);
+        $exceptions->report(function (\Throwable $e) {
+            RegistroDegliErrori::registra($e);
+        });
+        $exceptions->render(fn (\Throwable $e, Request $request) => PaginaDiErrore::rispostaPerIl500($e, $request));
 
         // ====================================================================
         // IL FILE TROPPO GRANDE CHE SEMBRAVA UNA SESSIONE SCADUTA

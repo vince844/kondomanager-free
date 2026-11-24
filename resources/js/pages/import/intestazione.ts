@@ -15,7 +15,7 @@ import type { GuideItem } from '@/components/PageHeaderGuide.vue';
 export const guideImport: GuideItem[] = [
   {
     title: 'Niente entra finché non confermi',
-    description: 'Le prime tre schermate leggono e basta: puoi ricaricare i file quante volte vuoi.',
+    description: 'Fino al pulsante «Importa» della schermata di conferma in archivio non entra niente: puoi ricaricare i file quante volte vuoi.',
     icon: Lock,
     colorVariant: 'emerald',
   },

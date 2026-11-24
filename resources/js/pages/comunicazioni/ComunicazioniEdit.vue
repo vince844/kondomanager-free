@@ -99,6 +99,7 @@ const form = useForm({
     condomini_ids: props.comunicazione?.condomini?.options?.map(c => c.value) ?? [],
     can_comment: !!props.comunicazione?.can_comment,
     ...(props.comunicazione?.commenti_moderati !== undefined ? { commenti_moderati: Boolean(props.comunicazione.commenti_moderati) } : {}),
+    ...(props.comunicazione?.chiedi_presa_visione !== undefined ? { chiedi_presa_visione: Boolean(props.comunicazione.chiedi_presa_visione) } : {}),
     is_featured: !!props.comunicazione?.is_featured,
     is_published: props.comunicazione?.is_published !== undefined ? Boolean(props.comunicazione.is_published) : true,
     anagrafiche: (props.comunicazione?.anagrafiche ?? []).map(anagrafica => anagrafica.id),
@@ -175,6 +176,9 @@ watch(
       form.can_comment = !!newComunicazione.can_comment;
       if (newComunicazione.commenti_moderati !== undefined) {
         (form as any).commenti_moderati = Boolean(newComunicazione.commenti_moderati);
+      }
+      if (newComunicazione.chiedi_presa_visione !== undefined) {
+        (form as any).chiedi_presa_visione = Boolean(newComunicazione.chiedi_presa_visione);
       }
       form.is_featured = !!newComunicazione.is_featured;
       const isProg = Boolean(!newComunicazione.is_published && newComunicazione.data_programmata);
@@ -538,6 +542,33 @@ const submit = () => {
                                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                                         <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.commenti_moderati') }}</h4>
                                         <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.commenti_moderati') }}</p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                        </div>
+
+                        <div v-if="(form as any).chiedi_presa_visione !== undefined" class="sm:col-span-3">
+                            <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">
+                                <div class="flex items-center space-x-3">
+                                    <Checkbox 
+                                        id="chiedi_presa_visione" 
+                                        :checked="(form as any).chiedi_presa_visione"
+                                        v-model="(form as any).chiedi_presa_visione" 
+                                        @update:checked="(val: boolean) => (form as any).chiedi_presa_visione = val" 
+                                    />
+                                    <Label for="chiedi_presa_visione" class="cursor-pointer font-medium text-sm text-slate-700 dark:text-slate-300">
+                                        {{ trans('comunicazioni.label.ask_acknowledgement') }}
+                                    </Label>
+                                </div>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.ask_acknowledgement') }}</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.ask_acknowledgement') }}</p>
                                     </HoverCardContent>
                                 </HoverCard>
                             </div>

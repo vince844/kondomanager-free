@@ -28,7 +28,8 @@ class EventoPortaleResource extends EventoResource
     public function toArray(Request $request): array
     {
         return Arr::only(parent::toArray($request), self::CAMPI) + [
-            'condomini'  => CondominioPortaleResource::collection($this->whenLoaded('condomini')),
+            // Coda 668: dei palazzi dell'evento solo quelli di chi guarda, tutti a chi l'ha scritto (`PalazziDelCondomino`), mai il nome di un altro palazzo dello studio.
+            'condomini'  => CondominioPortaleResource::collection($this->whenLoaded('condomini', fn () => PalazziDelCondomino::fra($request, $this->condomini, $this->created_by))),
             'created_by' => $this->whenLoaded('createdBy', fn () => AutorePortale::di($this->createdBy)),
         ];
     }

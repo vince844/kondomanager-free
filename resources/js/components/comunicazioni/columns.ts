@@ -12,7 +12,7 @@ import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, giornoEOraProgrammati, statoPubblicazione } from '@/lib/pubblicazione';
 import { usePermission } from "@/composables/permissions";
 import { trans } from 'laravel-vue-i18n';
-import { Lock } from 'lucide-vue-next';
+import { CheckCheck, Eye, Lock } from 'lucide-vue-next';
 import { Permission }  from "@/enums/Permission";
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -41,17 +41,57 @@ export const columns: ColumnDef<Comunicazione>[] = [
           })
         : null;
 
-      // Decisione 441: sotto il titolo, in una riga piccola e non in una colonna nuova, quanti commenti e allegati ha.
-      return h('div', { class: 'flex flex-col gap-1' }, [
-        h('div', { class: 'flex items-center space-x-2' }, [
-          shieldIcon,
-          h(Link, {
-            href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
-            class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-          }, () => comunicazione.subject)
-        ]),
-        h(ContatoriElenco, { contatori: comunicazione.contatori, mostraInAttesa: true }),
+      const linkTitolo = h('div', { class: 'flex items-center space-x-2' }, [
+        shieldIcon,
+        h(Link, {
+          href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
+          class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+        }, () => comunicazione.subject)
       ]);
+
+      // Coda 594, decisione 312 (11): «Aperture: 12» se ce n'è almeno una, «Prese visione: 8» se la presa visione è chiesta o se ce ne sono.
+      const letture = comunicazione.letture;
+      const mostraAperte = (letture?.aperte ?? 0) > 0;
+      const mostraPrese = Boolean(comunicazione.chiedi_presa_visione) || (letture?.prese_visione ?? 0) > 0;
+
+      const lettureFigli = [];
+      if (mostraAperte) {
+        lettureFigli.push(
+          h('span', { 'data-letture-aperte': '', class: 'inline-flex items-center gap-1' }, [
+            h(Eye, { class: 'w-3.5 h-3.5 shrink-0', 'aria-hidden': 'true' }),
+            trans('comunicazioni.readings.list_opened', { count: letture?.aperte ?? 0 }),
+          ])
+        );
+      }
+      if (mostraPrese) {
+        lettureFigli.push(
+          h('span', { 'data-letture-prese-visione': '', class: 'inline-flex items-center gap-1' }, [
+            h(CheckCheck, { class: 'w-3.5 h-3.5 shrink-0', 'aria-hidden': 'true' }),
+            trans('comunicazioni.readings.list_acknowledged', { count: letture?.prese_visione ?? 0 }),
+          ])
+        );
+      }
+
+      const rigaLetture = lettureFigli.length > 0
+        ? h('span', {
+            'data-letture': '',
+            class: 'inline-flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-700 dark:text-slate-200',
+          }, lettureFigli)
+        : null;
+
+      // Decisione 441 e nota E5 della decisione 313: sotto il titolo, in una riga piccola e non in una colonna nuova, quanti commenti e allegati ha e,
+      // nella stessa riga, le letture. La riga parte dove parte il titolo, non sotto lo scudo (`ScudoApprovazione`: l'icona e lo spazio che la segue).
+      const riga = comunicazione.contatori || rigaLetture
+        ? h('div', {
+            'data-riga-contatori': '',
+            class: ['flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums', shieldIcon ? 'pl-6' : ''],
+          }, [
+            h(ContatoriElenco, { contatori: comunicazione.contatori, mostraInAttesa: true }),
+            rigaLetture,
+          ])
+        : null;
+
+      return h('div', { class: 'flex flex-col gap-1' }, [linkTitolo, riga]);
     }
   },
   {

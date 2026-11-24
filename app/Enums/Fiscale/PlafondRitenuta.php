@@ -40,4 +40,28 @@ enum PlafondRitenuta: string
 
     /** Nessun rinvio possibile: si versa ogni mese a prescindere dall'importo. */
     case MENSILE_SEMPRE = 'mensile_sempre';
+
+    /**
+     * Se il cumulo delle ritenute fa scattare il versamento, con il confronto che la legge dà a questo regime (Coda 717).
+     *
+     * - **Soglia € 100,00**: si rinvia finché il cumulo «non supera» il limite (art. 9, c. 4, D.Lgs. 1/2024; dal 1° gennaio 2027
+     *   art. 32, c. 1, lett. a), D.Lgs. 33/2025): € 100,00 esatti si rinviano ancora, il versamento scatta **oltre**.
+     * - **Soglia € 500,00**: si versa quando il cumulo «raggiunga» il limite (art. 25-ter, c. 2-bis, DPR 600/1973; dal 1° gennaio
+     *   2027 art. 40, c. 3, D.Lgs. 33/2025): € 500,00 esatti fanno già scattare il versamento.
+     * - **Mensile**: nessuna soglia, il versamento scatta sempre.
+     *
+     * Il confronto sta qui e non nel calcolo: fino alla 1.12.0-beta.13 il calcolo usava `>=` per tutti e due i regimi, e € 100,00
+     * esatti di un professionista andavano al 16 del mese dopo invece di rinviarsi.
+     *
+     * @param  int  $cumulo  le ritenute accumulate, in centesimi
+     * @param  int  $soglia  la soglia del regime, in centesimi (`config('fiscale.plafond')`)
+     */
+    public function superaLaSoglia(int $cumulo, int $soglia): bool
+    {
+        return match ($this) {
+            self::SOGLIA_100_ANNUALE => $cumulo > $soglia,
+            self::SOGLIA_500_TRE_FINESTRE => $cumulo >= $soglia,
+            self::MENSILE_SEMPRE => true,
+        };
+    }
 }

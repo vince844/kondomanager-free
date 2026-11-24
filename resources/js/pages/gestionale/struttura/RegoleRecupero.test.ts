@@ -43,7 +43,7 @@ const monta = (regole: unknown[], diOggi: number | null, altro: Record<string, u
         props: { condominio: { id: 3, nome: 'Via Verdi' }, condomini: [], esercizio: null, regole, di_oggi: diOggi, tasso_di_oggi: '3,00 % annuo, art. 12 del regolamento',
             tabella_legale: [{ anno: 2026, tasso: '1,60 %', a_mano_diverso: null }, { anno: 2025, tasso: '2,00 %', a_mano_diverso: null }],
             legali_a_mano: [], anni_mancanti: [{ anno: 2027, frase: 'non ancora: il decreto esce entro il 15 dicembre 2026' }], anni_da_scrivere: [2027],
-            puo_scrivere_tasso_legale: true,
+            puo_scrivere_tasso_legale: true, puo_modificare_regole: true,
             fonti: [{ valore: 'regolamento', nome: 'regolamento' }, { valore: 'delibera', nome: 'delibera dell\'assemblea' }, { valore: 'altro', nome: 'altro' }],
             frase_senza_regole: SENZA, avvisi_fonti: { regolamento: AVVISO_REGOLAMENTO, delibera: AVVISO }, oggi: '2026-11-15', ...altro } as any,
         global: { stubs: {
@@ -249,5 +249,24 @@ describe('il tasso legale', () => {
         expect(tabella.find('[data-testid="scrivi-tasso-legale"]').exists()).toBe(false);
         expect(tabella.find('[data-testid="correggi-tasso-legale"]').exists()).toBe(false);
         expect(tabella.find('[data-testid="togli-tasso-legale"]').exists()).toBe(false);
+    });
+});
+
+describe('chi non può modificare il condominio (Coda 755 (2))', () => {
+    test('con il solo pannello la storia delle regole si legge, ma non c\'è «Scrivi una regola» né «Elimina»; la regola usata dice ancora che resta', () => {
+        monta([regola(1, '2026-09-01'), regola(2, '2026-01-01', { usata: '2026-06-29' })], 1, { puo_modificare_regole: false });
+
+        expect(w!.findAll('[data-testid="regola"]')).toHaveLength(2);
+        expect(w!.find('[data-testid="regola-nuova"]').exists()).toBe(false);
+        expect(w!.find('[data-testid="elimina-regola"]').exists()).toBe(false);
+        expect(pulito(w!.text())).not.toContain('Scrivi una regola');
+        expect(pulito(w!.text())).toContain('resta');
+    });
+
+    test('con il permesso il riquadro e il pulsante ci sono', () => {
+        monta([regola(1, '2026-09-01')], 1, { puo_modificare_regole: true });
+
+        expect(w!.find('[data-testid="regola-nuova"]').exists()).toBe(true);
+        expect(w!.find('[data-testid="elimina-regola"]').exists()).toBe(true);
     });
 });

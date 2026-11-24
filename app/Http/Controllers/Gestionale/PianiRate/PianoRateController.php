@@ -275,6 +275,12 @@ class PianoRateController extends Controller
         $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
         $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
 
+        // Coda 489 (decisione 685 (3)): nessun piano nuovo finché un piano senza voci della gestione si ricalcola ancora, e il piano senza voci scelte non
+        // nasce con la riga delle voci vuota; prima di ogni scrittura.
+        if (($rifiuto = $this->rifiutoPerIPianiSenzaVoci($validated, $esercizio)) !== null) {
+            return back()->withInput()->with($this->flashError($rifiuto));
+        }
+
         try {
             DB::beginTransaction();
             // Le unità del condominio, bloccate come PRIMA istruzione: la generazione legge titolari e saldi senza lock, e un
@@ -475,25 +481,11 @@ class PianoRateController extends Controller
 
                         // Coda 438, decisione 183.2: il piano creato senza scegliere le voci prende tutte le voci che non sono già in un piano dello
                         // stesso esercizio. Sulla gestione usata in più esercizi le voci del piano dell'anno prima entrano nel piano dell'anno dopo.
-                        $competenzaDelPiano = app(\App\Services\Riparto\CompetenzaDelPiano::class);
-                        $pianiDelloStessoEsercizio = PianoRate::where('gestione_id', $gestione->id)->whereIn('stato', ['bozza', 'approvato'])
-                            ->where('id', '!=', $pianoRate->id)->get()
-                            ->filter(fn (PianoRate $p) => $competenzaDelPiano->esercizioDelPiano($p)?->id === (int) $esercizio->id)
-                            ->pluck('id')->all();
+                        // Coda 489: senza voci libere, o con un piano della gestione con la riga vuota, la creazione si è già rifiutata
+                        // (`rifiutoPerIPianiSenzaVoci`).
+                        $pianiDelloStessoEsercizio = $this->pianiDelloStessoEsercizio($gestione, $esercizio, (int) $pianoRate->id)->pluck('id')->all();
 
-                        $capitoliOrfani = $gestione->pianoConto->conti()
-                        ->visibili()
-                        ->whereNull('parent_id')
-                        ->where(function ($q) use ($pianiDelloStessoEsercizio) {
-                            // Il padre stesso non deve essere in un piano attivo dell'esercizio (caso padre=foglia)
-                            $q->whereDoesntHave('pianiRate', fn($q2) => $q2->whereIn('piani_rate.id', $pianiDelloStessoEsercizio))
-                            // E nessuno dei suoi sottoconti deve essere in un piano attivo dell'esercizio (caso snapshot)
-                            ->whereDoesntHave('sottoconti', fn($sub) =>
-                                $sub->whereHas('pianiRate', fn($q2) => $q2->whereIn('piani_rate.id', $pianiDelloStessoEsercizio))
-                            );
-                        })
-                        ->with(['sottoconti' => fn($q) => $q->visibili()])
-                        ->get();
+                        $capitoliOrfani = $this->capitoliOrfani($gestione, $pianiDelloStessoEsercizio);
 
                         foreach ($capitoliOrfani as $c) {
                             if ($c->sottoconti->isNotEmpty()) {
@@ -626,6 +618,167 @@ class PianoRateController extends Controller
         }
     }
     
+    /**
+     * Coda 489 (decisione 685 (3)): i piani della gestione con la riga delle voci vuota (le versioni di prima) fermano la creazione di un piano nuovo,
+     * prima di ogni scrittura, con o senza «genera subito». Un piano così prende a ogni ricalcolo le voci libere del suo esercizio senza impegnarle; il suo
+     * ricalcolo gli scrive le voci che chiede, con gli stessi importi (`GeneratePianoRateAction`), e da lì le impegna.
+     * - **Qualsiasi piano nuovo, anche con le voci scelte** (decisione 685 (3): «Sì, qualsiasi piano nuovo»), si ferma finché la gestione ha un piano
+     *   senza voci che **si può ancora ricalcolare**: non fermo (`PianoRate::eImmutabile`), non rifiutato da `PianoRate::fraseDaRifare`, e con delle voci
+     *   che il ricalcolo gli scrive (`CalcoloQuoteService::vociDellaRigaVuota`; senza, resta senza voci: le ha già tutte un altro piano del suo esercizio,
+     *   e il ricalcolo dice la frase di AD3, o la riga non si scrive uguale). Nel suo esercizio il piano nuovo gli toglierebbe le voci che sceglie, e il
+     *   ricalcolo dopo cambierebbe le sue cifre; in un altro esercizio ne farebbe un piano che non si ricalcola più (decisione 192.1). La frase dice di
+     *   ricalcolarlo prima (`fraseRicalcolaliPrima`).
+     * - **Il piano nuovo senza voci scelte** si ferma anche per i piani senza voci che si possono solo eliminare e rifare (192.1), in qualunque esercizio, e,
+     *   nel suo esercizio, per quelli fermi, perché prenderebbe le stesse voci. Un piano fermo di un altro esercizio non lo ferma: non si ricalcola né si
+     *   elimina, e il piano nuovo non prende le sue voci (183.2). La frase dà a ognuno la sua strada (`fraseDeiPianiSenzaVoci`; rilievi 1 e 10 dello
+     *   scettico della tappa 1).
+     * - **Il piano nuovo senza voci scelte, senza voci libere** nel suo esercizio: nascerebbe con la riga vuota, e al primo ricalcolo dopo una voce nuova la
+     *   prenderebbe senza impegnarla. La frase è quella di AD3 (`CalcoloQuoteService::fraseVociGiaNeiPiani`), la stessa che il motore dice generando.
+     * Una gestione senza voci non si rifiuta: il piano non ha niente da prendere, come prima. Lo straordinario (anche «Spese fuori preventivo» sulla
+     * gestione ordinaria) non si ferma: prende le fatture, non le voci, e non fa di un piano senza voci di un altro esercizio un piano da rifare, perché
+     * `PianoRate::fraseDaRifare` conta solo i piani che prendono voci; lo stesso per il piano degli addebiti, che nasce al primo addebito senza passare di
+     * qui (rilievo 1 del secondo scettico della tappa 1).
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function rifiutoPerIPianiSenzaVoci(array $validated, Esercizio $esercizio): ?string
+    {
+        if (($validated['tipo'] ?? 'ordinario') === 'straordinario') {
+            return null;
+        }
+        $gestione = Gestione::find($validated['gestione_id'] ?? null);
+        $pianoConto = $gestione?->pianoConto;
+        if ($pianoConto === null) {
+            return null;
+        }
+
+        $senzaVoci = PianoRate::where('gestione_id', $gestione->id)->whereIn('stato', ['bozza', 'approvato'])->orderBy('id')->get()
+            ->filter(fn (PianoRate $p) => $p->tipo !== 'straordinario' && ! $p->eDegliAddebiti()
+                && ! DB::table('piano_rate_capitoli')->where('piano_rate_id', $p->id)->exists())->values();
+        $fermi = $senzaVoci->mapWithKeys(fn (PianoRate $p) => [$p->id => $p->eImmutabile()]);
+        $perche = $senzaVoci->mapWithKeys(fn (PianoRate $p) => [$p->id => $p->fraseDaRifare('Il piano «' . $p->nome . '» non si può ricalcolare')]);
+        // Si ricalcola ancora, e il ricalcolo gli scrive la riga: altrimenti resterebbe senza voci, e fermerebbe ogni piano nuovo senza una strada.
+        $motore = app(\App\Services\CalcoloQuoteService::class);
+        $ricalcolabili = $senzaVoci->filter(fn (PianoRate $p) => ! $fermi[$p->id] && $perche[$p->id] === null
+            && ($motore->vociDellaRigaVuota($p, $gestione) ?? []) !== [])->values();
+
+        if (! empty($validated['capitoli_config']) || ! empty($validated['capitoli_ids'])) {
+            return $ricalcolabili->isEmpty() ? null : $this->fraseRicalcolaliPrima($ricalcolabili);
+        }
+
+        $competenzaDelPiano = app(\App\Services\Riparto\CompetenzaDelPiano::class);
+        $fermano = $senzaVoci->filter(fn (PianoRate $p) => ! $fermi[$p->id] || $competenzaDelPiano->esercizioDelPiano($p)?->id === (int) $esercizio->id)->values();
+        if ($fermano->isNotEmpty()) {
+            // I ricalcolabili sono fra quelli che fermano: se sono tutti, la frase è quella del piano con le voci scelte.
+            return $fermano->count() === $ricalcolabili->count()
+                ? $this->fraseRicalcolaliPrima($ricalcolabili)
+                : $this->fraseDeiPianiSenzaVoci($fermano, $perche->all(), $ricalcolabili->isEmpty());
+        }
+
+        $piani = $this->pianiDelloStessoEsercizio($gestione, $esercizio);
+        if (! $pianoConto->conti()->visibili()->whereNull('parent_id')->exists()
+            || $this->capitoliOrfani($gestione, $piani->pluck('id')->all())->isNotEmpty()) {
+            return null;
+        }
+        $conLeVoci = DB::table('piano_rate_capitoli')->whereIn('piano_rate_id', $piani->pluck('id')->all())
+            ->whereIn('conto_id', $pianoConto->conti()->pluck('id')->all())->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->all();
+
+        return \App\Services\CalcoloQuoteService::fraseVociGiaNeiPiani(
+            $piani->filter(fn (PianoRate $p) => in_array((int) $p->id, $conLeVoci, true))->values(),
+            empty($validated['genera_subito']) ? 'Impossibile creare il piano rate' : 'Impossibile generare il piano rate'
+        );
+    }
+
+    /**
+     * Decisione 685 (3): il rifiuto di un piano nuovo, con o senza voci scelte, finché dei piani senza voci della gestione si possono ancora ricalcolare
+     * (`rifiutoPerIPianiSenzaVoci`): ricalcolarli prima, poi creare questo.
+     *
+     * @param  \Illuminate\Support\Collection<int, PianoRate>  $piani
+     */
+    private function fraseRicalcolaliPrima(\Illuminate\Support\Collection $piani): string
+    {
+        $uno = $piani->count() === 1;
+
+        // «Con gli stessi importi», non «con le stesse cifre» (rilievo 4 del secondo scettico della tappa 1): la riga scritta chiede le stesse voci con gli
+        // stessi importi (`CalcoloQuoteService::vociDellaRigaVuota`), ma il ricalcolo applica le regole di oggi, anche a chi va il pregresso dell'unità
+        // (la issue 58), e l'esito lo dice (`GenerateSaldiAction::fraseDelPregressoCambiato`).
+        return sprintf('Impossibile creare un piano nuovo finché %s %s non %s voci associate: %s prima (il ricalcolo %s le voci che chiede, con gli stessi importi; '
+            . 'se il pregresso di un\'unità va a un\'altra persona, l\'esito del ricalcolo lo dice), poi crea questo piano.',
+            $uno ? 'il piano' : 'i piani', SpeseNegativeNelPiano::elenco($piani->map(fn (PianoRate $p) => '«' . $p->nome . '»')->values()->all()),
+            $uno ? 'ha' : 'hanno', $uno ? 'ricalcolalo' : 'ricalcolali', $uno ? 'gli scrive' : 'scrive a ognuno');
+    }
+
+    /**
+     * Il rifiuto della creazione senza voci scelte quando fra i piani senza voci che la fermano ce n'è almeno uno che non si ricalcola
+     * (`rifiutoPerIPianiSenzaVoci`), con la strada per ognuno: ricalcolarlo (il ricalcolo gli scrive le voci che chiede), o, se il suo ricalcolo si rifiuta
+     * (`PianoRate::fraseDaRifare`: la gestione è usata in più esercizi), eliminarlo e crearlo di nuovo, e dopo la prima frase il perché e la strada
+     * precisa, come li dice «Ricalcola» (decisione 192.1). «Oppure scegli le voci di questo piano» solo se nessun piano senza voci si ricalcola ancora:
+     * altrimenti anche il piano con le voci scelte si ferma (decisione 685 (3)).
+     *
+     * @param  \Illuminate\Support\Collection<int, PianoRate>  $senzaVoci
+     * @param  array<int, string|null>  $perche  `fraseDaRifare` di ogni piano, per id
+     */
+    private function fraseDeiPianiSenzaVoci(\Illuminate\Support\Collection $senzaVoci, array $perche, bool $conLeVociScelte): string
+    {
+        $nomi = fn (\Illuminate\Support\Collection $piani) => ($piani->count() > 1 ? 'i piani ' : 'il piano ')
+            . SpeseNegativeNelPiano::elenco($piani->map(fn (PianoRate $p) => '«' . $p->nome . '»')->values()->all());
+        $daRicalcolare = $senzaVoci->filter(fn (PianoRate $p) => $perche[$p->id] === null)->values();
+        $daRifare = $senzaVoci->filter(fn (PianoRate $p) => $perche[$p->id] !== null)->values();
+
+        $ricalcola = fn (bool $soli) => ($soli ? ($daRicalcolare->count() > 1 ? 'ricalcolali' : 'ricalcolalo') : 'ricalcola ' . $nomi($daRicalcolare))
+            . ' (il ricalcolo ' . ($daRicalcolare->count() > 1 ? 'scrive a ognuno' : 'gli scrive') . ' le voci che chiede)';
+        $rifai = fn (bool $soli) => ($soli ? ($daRifare->count() > 1 ? 'eliminali e creali' : 'eliminalo e crealo') : 'elimina ' . $nomi($daRifare)
+            . ($daRifare->count() > 1 ? ' e creali' : ' e crealo')) . ' di nuovo scegliendo le voci';
+        $strada = match (true) {
+            $daRifare->isEmpty() => $ricalcola(true),
+            $daRicalcolare->isEmpty() => $rifai(true),
+            default => $ricalcola(false) . ' ed ' . $rifai(false),
+        };
+
+        return sprintf('Impossibile creare un piano senza scegliere le voci finché %s non %s voci associate: %s%s.',
+            $nomi($senzaVoci), $senzaVoci->count() > 1 ? 'hanno' : 'ha', $strada, $conLeVociScelte ? ', oppure scegli le voci di questo piano' : '')
+            . $daRifare->map(fn (PianoRate $p) => ' ' . $perche[$p->id])->implode('');
+    }
+
+    /**
+     * Coda 438, decisione 183.2: i piani della gestione, in bozza o approvati, dello stesso esercizio della pagina (`CompetenzaDelPiano::esercizioDelPiano`),
+     * in ordine di creazione; senza il piano `$tranne`, quello appena creato.
+     *
+     * @return \Illuminate\Support\Collection<int, PianoRate>
+     */
+    private function pianiDelloStessoEsercizio(Gestione $gestione, Esercizio $esercizio, ?int $tranne = null): \Illuminate\Support\Collection
+    {
+        $competenzaDelPiano = app(\App\Services\Riparto\CompetenzaDelPiano::class);
+
+        return PianoRate::where('gestione_id', $gestione->id)->whereIn('stato', ['bozza', 'approvato'])
+            ->when($tranne !== null, fn ($q) => $q->where('id', '!=', $tranne))->orderBy('id')->get()
+            ->filter(fn (PianoRate $p) => $competenzaDelPiano->esercizioDelPiano($p)?->id === (int) $esercizio->id)
+            ->values();
+    }
+
+    /**
+     * Coda 438, decisione 183.2: le voci radice visibili della gestione che nessun piano dato ha nella sua riga, né loro né le loro sottovoci, con le
+     * sottovoci visibili caricate: le voci che un piano creato senza sceglierle prende.
+     *
+     * @param  list<int>  $piani
+     */
+    private function capitoliOrfani(Gestione $gestione, array $piani): \Illuminate\Database\Eloquent\Collection
+    {
+        return $gestione->pianoConto->conti()
+            ->visibili()
+            ->whereNull('parent_id')
+            ->where(function ($q) use ($piani) {
+                // Il padre stesso non deve essere in un piano attivo dell'esercizio (caso padre=foglia)
+                $q->whereDoesntHave('pianiRate', fn($q2) => $q2->whereIn('piani_rate.id', $piani))
+                // E nessuno dei suoi sottoconti deve essere in un piano attivo dell'esercizio (caso snapshot)
+                ->whereDoesntHave('sottoconti', fn($sub) =>
+                    $sub->whereHas('pianiRate', fn($q2) => $q2->whereIn('piani_rate.id', $piani))
+                );
+            })
+            ->with(['sottoconti' => fn($q) => $q->visibili()])
+            ->get();
+    }
+
     /**
      * Mostra i dettagli di un singolo Piano Rate.
      * Carica tutte le relazioni necessarie (rate, quote, anagrafiche, immobili) e calcola
@@ -1276,13 +1429,8 @@ class PianoRateController extends Controller
         // appena tolta, e sulla gestione usata in più esercizi anche quelle del piano dell'altro esercizio, senza impegnarle: l'ultima voce non si toglie.
         $vociDelPiano = DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id);
         if ($pianoRate->tipo !== 'straordinario' && (clone $vociDelPiano)->exists() && ! (clone $vociDelPiano)->where('conto_id', '!=', $capitoloId)->exists()) {
-            return back()->with($this->flashError(sprintf(
-                'Impossibile togliere la voce: «%s» è l\'ultima voce del piano rate «%s». Un piano senza voci, al ricalcolo, prende tutte le voci della gestione '
-                . 'che nessun altro piano del suo esercizio ha già. Se deve chiedere un\'altra voce, aggiungila prima con «Sincronizza», se è libera, e poi togli '
-                . 'questa; se il piano non serve più, %seliminalo dall\'elenco dei piani rate.',
-                Conto::find($capitoloId)?->nome ?? 'la voce',
-                $pianoRate->nome,
-                $pianoRate->stato === \App\Enums\StatoPianoRate::APPROVATO ? 'riportalo in bozza dalla sua pagina ed ' : ''
+            return back()->with($this->flashError(\App\Services\Gestionale\BloccoDellaVoce::ultimaVoceDelPiano(
+                Conto::find($capitoloId)?->nome ?? 'la voce', $pianoRate->nome, $pianoRate->stato === \App\Enums\StatoPianoRate::APPROVATO
             )));
         }
 
@@ -1322,6 +1470,10 @@ class PianoRateController extends Controller
             // passaggio o il suo annullamento che committasse nel frattempo lascerebbe quote calcolate su righe e saldi che
             // non esistono più (giro di verifica della 1.11.0-beta.37, C-R3; `Immobile::bloccaPerScrivere`).
             Immobile::bloccaDelCondominio((int) $condominio->id);
+            // Togliere una voce rigenera il piano come «Ricalcola»: l'esito dice anche qui se il pregresso dell'unità va ad altre persone (rilievo 2 del
+            // secondo scettico della tappa 1 della 1.12.0-beta.14, `GenerateSaldiAction::fraseDelPregressoCambiato`).
+            $saldiAction = app(\App\Actions\PianoRate\GenerateSaldiAction::class);
+            $pregressoDiPrima = $saldiAction->pregressoDelleUnita($pianoRate);
 
             // Sgancia il capitolo, elimina le rate attuali e le ricalcola
             RegistroModifiche::legame($pianoRate, 'capitoli', 'Capitoli', fn () => $pianoRate->capitoli()->detach($capitoloId));
@@ -1355,7 +1507,9 @@ class PianoRateController extends Controller
             }
             
             DB::commit();
-            return back()->with($this->flashSuccess("Voce rimossa e ricalcolata."));
+            $frase = $saldiAction->fraseDelPregressoCambiato($pianoRate, $pregressoDiPrima);
+
+            return back()->with($this->flashSuccess('Voce rimossa e ricalcolata.' . ($frase !== null ? ' ' . $frase : '')));
             
         } catch (DestinatariCambiatiException $e) {
             // Il rollback annulla anche il detach: la voce è ancora nel piano finché non c'è la presa d'atto.

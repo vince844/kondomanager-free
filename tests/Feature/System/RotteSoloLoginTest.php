@@ -79,6 +79,9 @@ function elencoRotteSoloLogin(): array
         'verification.notice'                  => $account,
         'verification.send'                    => $account,
         'verification.verify'                  => [ROTTA_ACCOUNT, 'link firmato di verifica della propria email'],
+        // «Avvisa lo studio» dalla pagina d'errore (1.12.0-beta.14, decisione 698 (4)): chi è collegato, senza un permesso; nel controller la firma che lega il
+        // codice a chi ha visto la pagina, un avviso per codice, la demo che non ne manda (`AvvisoDellErroreTest`); cinque all'ora sulla rotta.
+        'errori.avviso'                        => [ROTTA_CONTROLLO, 'la firma della pagina d\'errore lega il codice a chi l\'ha vista; un avviso per codice; la demo no'],
 
         // --- stub vuoti -------------------------------------------------------------------
         'ruoli.show'               => [ROTTA_VUOTO, 'resource non implementata'],
@@ -100,6 +103,8 @@ function elencoRotteSoloLogin(): array
         'impostazioni'                         => $gestione,
         'impostazioni.generali'                => $gestione,
         'impostazioni.generali.store'          => $gestione,
+        // «Cancella le aperture registrate» (Coda 594): lo stesso Gate delle impostazioni generali.
+        'impostazioni.generali.aperture.destroy' => $gestione,
         'impostazioni.installazione'           => $gestione,
         // Il registro delle modifiche dello studio (1.12.0-beta.13): «Vede il registro delle modifiche» nel controller, mai i ruoli del portale
         // (`AccessoAlRegistro`, provato da `RegistroModifichePermessiTest`).
@@ -161,6 +166,8 @@ function elencoRotteSoloLogin(): array
         'user.comunicazioni.allegati.store' => $policy,
         // I commenti alle comunicazioni (Coda 559): la regola in `RegoleCommenti`, chiamata dal controller con un Gate.
         'user.comunicazioni.commenti.store' => $policy,
+        // La presa visione (Coda 594): la policy della scheda, poi un Gate su chi è destinatario e su ciò che la comunicazione chiede.
+        'user.comunicazioni.presa-visione' => $policy,
         'user.documenti.create'            => $policy,
         'user.documenti.store'             => $policy,
         'user.documenti.edit'              => $policy,

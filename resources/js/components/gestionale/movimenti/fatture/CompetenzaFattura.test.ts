@@ -57,3 +57,22 @@ describe('CompetenzaFattura — la pregressa e il suo periodo (decisione 26)', (
         expect(sorgente).not.toMatch(/text-\[(9|10|10\.5|11)px\]/);
     });
 });
+
+/*
+ * 1.12.0-beta.14, tappa 6, Coda 754 (4): con «Usa fondo riserva» la parte non coperta della pregressa la copre il fondo, non un piano rate. Il periodo
+ * resta obbligatorio (risposta di chi coordina); la frase dice il vero.
+ */
+describe('CompetenzaFattura — la pregressa coperta dal fondo', () => {
+    test('con il fondo: «Quella parte la copre il fondo «Fondo di riserva».», non il piano rate; il periodo resta obbligatorio', () => {
+        const testo = monta({ pregressa: true, periodoObbligatorio: true, inizioEsercizio: '2026-01-01', fondoCheCopre: 'Fondo di riserva' }).text().replace(/\s+/g, ' ');
+        expect(testo).toContain('il periodo in cui il costo è maturato è obbligatorio');
+        expect(testo).toContain('Quella parte la copre il fondo «Fondo di riserva».');
+        expect(testo).not.toContain('Quella parte finisce in un piano rate');
+        expect(testo).toContain('Dopo non si potrà aggiungere: una pregressa si storna, non si modifica.');
+    });
+
+    test('controprova — senza il fondo la frase dice ancora il piano rate', () => {
+        const testo = monta({ pregressa: true, periodoObbligatorio: true, inizioEsercizio: '2026-01-01' }).text().replace(/\s+/g, ' ');
+        expect(testo).toContain('Quella parte finisce in un piano rate');
+    });
+});

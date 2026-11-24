@@ -36,6 +36,7 @@ final class ComunicazioneNelRegistro extends SchedaNelRegistro
         'allegati_moderati' => 'Allegati in moderazione',
         'commenti_moderati' => 'Commenti in moderazione',
         'programmata_per' => 'Data e ora di pubblicazione',
+        'chiedi_presa_visione' => 'Chiedi la presa visione',
     ];
 
     public const FORMATI = [
@@ -49,6 +50,7 @@ final class ComunicazioneNelRegistro extends SchedaNelRegistro
         'allegati_moderati' => 'si_no',
         'commenti_moderati' => 'si_no',
         'programmata_per' => 'data_ora',
+        'chiedi_presa_visione' => 'si_no',
     ];
 
     /** Nessuno la scrive. */

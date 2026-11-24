@@ -12,6 +12,7 @@ use App\Services\Import\Canonical\CanonicalTitolarita;
 use App\Services\Import\EsitoCommit;
 use App\Services\Import\ImportContext;
 use App\Services\Import\LivelloImport;
+use App\Services\Import\PartiUguali;
 use App\Services\Import\PrerequisitoMancante;
 use App\Services\Import\Rilievo;
 use Illuminate\Database\Eloquent\Model;
@@ -163,13 +164,21 @@ final class LivelloTitolarita implements LivelloImport
         // scheda dell'unità, dove vede cosa sta cambiando.
         $inConflitto = $this->unitaInConflitto($daScrivere, $soggetti, $unita);
 
+        // ── Le quote che il file non dice (Coda 599, 1.12.0-beta.14) ─────────────────────
+        //
+        // Danea la quota non la dà mai, e fino alla beta.13 ogni riga senza entrava a 100: due proprietari dello stesso interno facevano 200, e dalla
+        // scheda dell'unità la guardia delle quote rifiutava ogni correzione. Ora si guarda il gruppo (unità, ruolo) del file: senza nessuna quota, parti
+        // uguali che fanno 100; con alcune quote scritte, le righe vuote si dividono il resto; se le quote scritte fanno già 100, il gruppo si salta come
+        // un conflitto, e l'avviso dice di correggere il file.
+        [$quote, $senzaResto] = $this->quoteDelFile($daScrivere, $soggetti, $unita, $inConflitto);
+
         foreach ($daScrivere as $t) {
             $soggetto = $soggetti[$t->soggettoRef];
             $immobile = $unita[$t->immobileRef];
 
             $gruppo = $immobile->getKey().':'.$t->ruolo->value;
 
-            if (isset($inConflitto[$gruppo])) {
+            if (isset($inConflitto[$gruppo]) || isset($senzaResto[$gruppo])) {
                 $saltati++;
 
                 // `registra()` prende un'entità, non un testo: il perché del salto sta
@@ -210,9 +219,9 @@ final class LivelloTitolarita implements LivelloImport
                 'immobile_id' => $immobile->getKey(),
                 'anagrafica_id' => $soggetto->getKey(),
                 'tipologia' => $t->ruolo->value,
-                // Lo schema ha default 100.00: la quota vera, quando esiste, sta solo nelle
-                // note del file (§17.4), e il parser la segnala invece di indovinarla.
-                'quota' => $t->quota ?? 100.00,
+                // La quota del file, o quella che `quoteDelFile()` dà a chi nel file non ce l'ha (Coda 599). Nei file di Danea la quota vera,
+                // quando esiste, sta solo nelle note (§17.4), e il parser la segnala invece di indovinarla.
+                'quota' => $quote[$tripla],
                 // Solo la data: un Carbon intero su sqlite scrive anche l'ora, e il filtro SQL del risolutore
                 // e la collection devono leggere lo stesso giorno (invariante 4).
                 'data_inizio' => $esercizio->data_inizio->toDateString(),
@@ -249,6 +258,22 @@ final class LivelloTitolarita implements LivelloImport
                 'Le righe del file non sono entrate e in archivio non è cambiato niente. '
                 .'Correggi la titolarità sulla scheda dell\'unità, dove vedi le quote mentre '
                 .'le cambi.',
+            );
+        }
+
+        if ($senzaResto !== []) {
+            $etichette = collect($senzaResto)->unique()->sort()->values()->all();
+
+            $avvisi[] = Rilievo::avviso(
+                'titolarita.quote_senza_resto',
+                sprintf(
+                    '%d %s nel file quote che fanno già 100 e altre persone senza quota: %s.',
+                    count($etichette),
+                    count($etichette) === 1 ? 'unità ha' : 'unità hanno',
+                    implode(', ', $etichette),
+                ),
+                'Le righe di quell\'unità non sono entrate: non so quale quota dare a chi non ce l\'ha. Scrivi la quota di ognuno nel file e '
+                .'ricaricalo, oppure registra le persone dalla scheda dell\'unità.',
             );
         }
 
@@ -332,15 +357,97 @@ final class LivelloTitolarita implements LivelloImport
                 continue; // stesso file, stesse persone: no-op, non conflitto
             }
 
-            // Il ruolo entra nell'etichetta perché il file porta anche gli inquilini: senza,
-            // «Appartamento 1 aveva già un titolare» mandava a guardare i proprietari quando
-            // a non concordare era il conduttore, e la scheda dell'unità li tiene separati.
-            $immobile = $richiesta['immobile'];
-            $unitaEtichetta = trim(($immobile->nome ?? 'Unità').' '.($immobile->interno ? 'int. '.$immobile->interno : ''));
-            $conflitti[$gruppo] = $unitaEtichetta.' ('.mb_strtolower($richiesta['ruolo']->label()).')';
+            $conflitti[$gruppo] = $this->etichettaDelGruppo($richiesta['immobile'], $richiesta['ruolo']);
         }
 
         return $conflitti;
+    }
+
+    /**
+     * Le quote da scrivere, per ogni riga del file (Coda 599, 1.12.0-beta.14), e i gruppi (unità, ruolo) da saltare perché la quota di chi non ce l'ha
+     * non si può dare.
+     *
+     * Per ogni gruppo del file, fuori da quelli in conflitto con l'archivio:
+     * - tutte le righe con la quota: quelle, come sono (una somma diversa da 100 può essere giusta, e il parser del modello lo dice già);
+     * - nessuna riga con la quota: {@see PartiUguali}, 50 e 50, 33,33 + 33,33 + 33,34;
+     * - alcune sì e alcune no: le righe vuote si dividono in parti uguali il resto fino a 100 (60 scritto, la riga vuota prende 40);
+     * - le quote scritte fanno già 100 (o non lasciano almeno 0,01 a ogni riga vuota): il gruppo si salta, perché dare zero a qualcuno o sforare 100
+     *   sarebbe decidere al posto dell'amministratore.
+     *
+     * La stessa persona scritta due volte nello stesso gruppo conta una volta sola, con la quota della prima riga: è la riga che il ciclo di scrittura
+     * tiene (la seconda è «già vista»).
+     *
+     * @param  list<CanonicalTitolarita>  $daScrivere
+     * @param  array<string, Model>  $soggetti
+     * @param  array<string, Model>  $unita
+     * @param  array<string, string>  $inConflitto
+     * @return array{0: array<string, float>, 1: array<string, string>} tripla «immobile:anagrafica:ruolo» → quota; gruppo «immobile:ruolo» → etichetta
+     */
+    private function quoteDelFile(array $daScrivere, array $soggetti, array $unita, array $inConflitto): array
+    {
+        $gruppi = [];
+
+        foreach ($daScrivere as $t) {
+            $immobile = $unita[$t->immobileRef];
+            $gruppo = $immobile->getKey().':'.$t->ruolo->value;
+
+            if (isset($inConflitto[$gruppo])) {
+                continue;
+            }
+
+            $tripla = $immobile->getKey().':'.$soggetti[$t->soggettoRef]->getKey().':'.$t->ruolo->value;
+            $gruppi[$gruppo]['immobile'] = $immobile;
+            $gruppi[$gruppo]['ruolo'] = $t->ruolo;
+            $gruppi[$gruppo]['righe'] ??= [];
+
+            if (! array_key_exists($tripla, $gruppi[$gruppo]['righe'])) {
+                $gruppi[$gruppo]['righe'][$tripla] = $t->quota;
+            }
+        }
+
+        $quote = [];
+        $senzaResto = [];
+
+        foreach ($gruppi as $gruppo => $g) {
+            $vuote = array_keys(array_filter($g['righe'], fn (?float $q) => $q === null));
+
+            if ($vuote === []) {
+                foreach ($g['righe'] as $tripla => $q) {
+                    $quote[$tripla] = (float) $q;
+                }
+
+                continue;
+            }
+
+            $resto = 100 - array_sum(array_filter($g['righe'], fn (?float $q) => $q !== null));
+
+            if ((int) round($resto * 100) < count($vuote)) {
+                $senzaResto[$gruppo] = $this->etichettaDelGruppo($g['immobile'], $g['ruolo']);
+
+                continue;
+            }
+
+            $parti = PartiUguali::di(count($vuote), $resto);
+
+            foreach ($g['righe'] as $tripla => $q) {
+                $quote[$tripla] = $q === null ? array_shift($parti) : (float) $q;
+            }
+        }
+
+        return [$quote, $senzaResto];
+    }
+
+    /**
+     * «Appartamento 1 int. 1 (proprietario)».
+     *
+     * Il ruolo entra nell'etichetta perché il file porta anche gli inquilini: senza, «Appartamento 1 aveva già un titolare» mandava a guardare i
+     * proprietari quando a non concordare era il conduttore, e la scheda dell'unità li tiene separati.
+     */
+    private function etichettaDelGruppo(Model $immobile, RuoloAnagraficaImmobile $ruolo): string
+    {
+        $unitaEtichetta = trim(($immobile->nome ?? 'Unità').' '.($immobile->interno ? 'int. '.$immobile->interno : ''));
+
+        return $unitaEtichetta.' ('.mb_strtolower($ruolo->label()).')';
     }
 
     /**

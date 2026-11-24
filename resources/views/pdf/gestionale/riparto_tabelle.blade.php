@@ -158,10 +158,17 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 </table>
 @endif
 
-@if (empty($tabelle) || empty($righe))
+@if (! empty($matrice['fonte']['non_si_genera']))
+    {{-- Coda 483: l'anteprima di un piano che la guardia del già versato non lascia generare non stampa la tabella, che mostrerebbe il già
+         versato tolto un'altra volta; dice perché il piano non si genera, con il messaggio della generazione. --}}
+    <div style="margin-top: 24px; border: 1px solid #d4924a; background-color: #fef4e8; padding: 8px 10px; font-size: 8pt; color: #5a3a10;">
+        <strong>Anteprima: questo piano non si genera così</strong><br>
+        {{ $matrice['fonte']['non_si_genera'] }}
+    </div>
+@elseif (empty($tabelle) || empty($righe))
     <p style="color: #888; font-style: italic; text-align: center; margin-top: 40px;">
-        Nessun dato disponibile. Verificare che il piano rate abbia rate emesse e che il piano
-        dei conti abbia tabelle millesimali configurate.
+        Nessuna spesa da ripartire: le voci di questo piano non hanno importi o non hanno una tabella millesimale.<br>
+        Il riparto si stampa anche con il piano in bozza e senza rate emesse.
     </p>
 @else
 
@@ -328,8 +335,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
                                 // Il campo è testo libero: «1», «T» dal form e dall'importatore, «Primo piano»
                                 // dai seeder. L'etichetta si premette solo se il valore non la porta già,
                                 // così non esce né «int. 3 · 1» né «Piano Primo piano».
-                                $etichettaPiano = $piano === '' ? null
-                                    : (str_contains(mb_strtolower($piano), 'piano') ? $piano : 'piano '.$piano);
+                                $etichettaPiano = \App\Support\EtichettaDelPiano::per($piano);
                                 $dettagliUnita = implode(' · ', array_filter([
                                     $rigaImmobile['interno'] ? 'int. '.$rigaImmobile['interno'] : null,
                                     $etichettaPiano !== null ? Str::limit($etichettaPiano, 18) : null,

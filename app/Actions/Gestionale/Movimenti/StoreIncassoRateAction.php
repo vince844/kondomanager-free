@@ -5,6 +5,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Exceptions\Gestionale\ContoPassateGestioniMancanteException;
 use App\Exceptions\Gestionale\CreditoDiAltroSoggettoException;
 use App\Exceptions\Gestionale\CreditoInsufficienteException;
@@ -196,7 +197,7 @@ class StoreIncassoRateAction
         };
     }
 
-    public static function pianoDelCredito(array $validated, \Closure $gestioneDi): array
+    public static function pianoDelCredito(array $validated, \Closure $gestioneDi, int $ereditatoCents = 0): array
     {
         $paganteId = (int) $validated['pagante_id'];
         $versatoDa = ! empty($validated['versato_da_id']) && (int) $validated['versato_da_id'] !== $paganteId;
@@ -209,7 +210,10 @@ class StoreIncassoRateAction
                 ->map(fn ($p, $k) => ['chiave' => $k, 'importo' => MoneyHelper::toCents($p['importo']), 'gestione' => $gestioneDi($p)])->values()->all(),
             collect($validated['dettaglio_pagamenti'])->filter(fn ($p) => $p['importo'] < 0)
                 ->map(fn ($p, $c) => ['chiave' => $c, 'importo' => MoneyHelper::toCents(abs($p['importo'])), 'gestione' => $gestioneDi($p)])->values()->all(),
-            MoneyHelper::toCents($validated['importo_totale']),
+            // Il denaro delle rate, senza la parte sul debito ereditato (decisione 529), già in centesimi: come il modulo, che pianifica il credito con
+            // `importoNumerico`. Con dentro quella parte lo scoperto era più piccolo, e con «prima i soldi» il credito che il modulo mostrava non si usava.
+            // La rotta dell'ordine (`OrdineImputazione::perRichiesta`) riceve dal modulo il versamento già senza: lì resta 0.
+            max(0, MoneyHelper::toCents($validated['importo_totale']) - $ereditatoCents),
             // Decisione 30.7: «Si usa adesso» vale solo con «Versato da».
             $versatoDa && ! empty($validated['credito_prima']),
             $fraGestioni,
@@ -377,7 +381,7 @@ class StoreIncassoRateAction
         $fraGestioni = array_key_exists('credito_fra_gestioni', $validated) && $validated['credito_fra_gestioni'] !== null
             ? (bool) $validated['credito_fra_gestioni']
             : null;
-        $piano = self::pianoDelCredito($validated, $gestioneDi);
+        $piano = self::pianoDelCredito($validated, $gestioneDi, $ereditatoCents);
         if ($piano['serve_scelta'] && $fraGestioni === null) {
             $gestioniCredito = collect($pagamentiCredito)->map($gestioneDi)->filter()->unique()->values();
             throw new CreditoFraGestioniDaScegliereException(
@@ -389,9 +393,11 @@ class StoreIncassoRateAction
         // L'imputazione (decisioni 217 e 218): il server rifà il calcolo dell'ordine sulle quote di prima dell'incasso e scrive che cosa
         // ha visto, con la dichiarazione del modulo se la distribuzione si discosta. Non rifiuta: un incasso fuori ordine senza una
         // dichiarazione resta «fuori ordine, non dichiarata». Qui, nell'azione, perché è l'unica porta del motore: anche chi la chiama senza la richiesta lo vede.
+        // Coda 713: il contante senza la parte sul debito ereditato, come lo manda il modulo alla rotta dell'ordine; con dentro, quella parte era «in più» e
+        // l'incasso dell'erede con una sua rata aperta finiva «fuori ordine». Un incasso tutto sul debito ereditato ha il suo esito.
         [$imputazione, $imputazioneNota] = OrdineImputazione::daScrivere(
-            app(OrdineImputazione::class)->esito($condominio->id, $paganteId, $pagamentiOrdinari, $piano['contante'], $importoTotaleCents,
-                filter_var($validated['versamento_accordo'] ?? false, FILTER_VALIDATE_BOOLEAN)),
+            app(OrdineImputazione::class)->esito($condominio->id, $paganteId, $pagamentiOrdinari, $piano['contante'], $importoTotaleCents - $ereditatoCents,
+                filter_var($validated['versamento_accordo'] ?? false, FILTER_VALIDATE_BOOLEAN), $ereditatoCents),
             $validated['imputazione_scelta'] ?? null,
             $validated['imputazione_nota'] ?? null,
         );
@@ -458,7 +464,7 @@ class StoreIncassoRateAction
                 'condominio_id'      => $condominio->id,
                 'esercizio_id'       => $esercizio->id,
                 'gestione_id'        => $gestioneId,
-                'data_registrazione' => now(),
+                'data_registrazione' => DateHelper::oggiUtente(),
                 'data_competenza'    => $validated['data_pagamento'],
                 'causale'            => $validated['descrizione'] ?: 'Incasso rate',
                 'tipo_movimento'     => 'incasso_rata',
@@ -561,8 +567,11 @@ class StoreIncassoRateAction
                 }
 
                 if ($importoDaDistribuireCents > 0) {
-                    $eccedenzaFinaleCents += $importoDaDistribuireCents;
-                    $budgetCashCents -= $importoDaDistribuireCents;
+                    // Coda 754 (7): la riga porta più di quanto il pagante deve su questa rata (cercando per unità, anche le quote degli altri). Quella
+                    // parte non ha dove andare: contata come eccedenza si perdeva, e la scrittura usciva sbilanciata (una pagina 500). Ci si ferma qui,
+                    // dentro la transazione, con la frase che dice di chi è il resto.
+                    throw $this->oltreLaQuota($scritturaIncasso, $quotaFaro, $quoteOrdinate, $nomePagante, (int) $validated['pagante_id'],
+                        MoneyHelper::toCents($pagamento['importo']), $nomeVersatoDa);
                 }
             }
 
@@ -681,7 +690,7 @@ class StoreIncassoRateAction
                     'esercizio_id'       => $esercizio->id,
                     'gestione_id'        => $gestioneId,
                     'scrittura_padre_id' => $scritturaIncasso->id, // 🟢 IL LINK DI SANGUE!
-                    'data_registrazione' => now(),
+                    'data_registrazione' => DateHelper::oggiUtente(),
                     'data_competenza'    => $validated['data_pagamento'],
                     'causale'            => 'Compensazione con il credito - ' . ($validated['descrizione'] ?: 'Incasso rate'),
                     'tipo_movimento'     => 'storno_credito',
@@ -938,5 +947,34 @@ class StoreIncassoRateAction
 
             return $scritturaIncasso;
         });
+    }
+
+    /**
+     * Coda 754 (7): il rifiuto della riga che va oltre la quota del pagante, con le cifre per la frase. Quanto doveva il pagante è quanto questo incasso
+     * ha appena messo sulle sue quote della rata (tutte saldate, se avanza qualcosa); gli altri sono chi ha ancora una quota da pagare sulla stessa rata,
+     * sulla stessa unità della riga; con «Versato da», la frase nomina chi ha versato. Importi in centesimi; la riga arriva in euro dal modulo e si
+     * converte qui, una volta.
+     *
+     * @param  \Illuminate\Support\Collection<int, RataQuote>  $quoteDelPagante
+     */
+    private function oltreLaQuota(ScritturaContabile $incasso, RataQuote $quotaFaro, \Illuminate\Support\Collection $quoteDelPagante, string $nomePagante,
+        int $paganteId, int $rigaCents, ?string $nomeVersatoDa): \App\Exceptions\Gestionale\IncassoOltreLaQuotaException
+    {
+        $deveCents = (int) DB::table('quota_scrittura')->where('scrittura_contabile_id', $incasso->id)
+            ->whereIn('rate_quota_id', $quoteDelPagante->pluck('id'))->sum('importo_pagato');
+        $altre = RataQuote::with('anagrafica')->where('rata_id', $quotaFaro->rata_id)->where('anagrafica_id', '!=', $paganteId)
+            ->where('importo', '>', 0)->whereColumn('importo_pagato', '<', 'importo')
+            ->when($quotaFaro->immobile_id, fn ($q) => $q->where('immobile_id', $quotaFaro->immobile_id))
+            ->orderBy('id')->get();
+
+        return new \App\Exceptions\Gestionale\IncassoOltreLaQuotaException(
+            $nomePagante,
+            $quotaFaro->rata->numero_rata ?? '?',
+            $deveCents,
+            $rigaCents,
+            $altre->map(fn ($q) => $q->anagrafica?->nome)->filter()->unique()->values()->all(),
+            (int) $altre->sum(fn ($q) => (int) $q->importo - (int) $q->importo_pagato),
+            $nomeVersatoDa,
+        );
     }
 }

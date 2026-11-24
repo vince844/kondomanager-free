@@ -232,6 +232,21 @@ test('la scrittura di storno è uguale e contraria, e quadra', function () {
     expect((int) $storno->scrittura_padre_id)->toBe($originale->id);
 });
 
+test('Coda 494 — lo storno senza una data, alle 00:30 di Roma del 01/05/2026, si registra il 01/05 e non il 30/04 del server', function () {
+    [$ctx, $delega] = scenarioDelega();
+    $contoCorrenteId = $ctx[4];
+    $versata = (new ConfermaVersamentoF24Action)->esegui($delega, '2026-04-16', $contoCorrenteId);
+
+    // Le 00:30 di Roma del 01/05/2026 sono le 22:30 UTC del 30/04: `now()` del server è ancora il 30 aprile.
+    $this->travelTo(\Carbon\Carbon::parse('2026-05-01 00:30:00', 'Europe/Rome')->utc());
+    $stornata = (new StornaVersamentoF24Action)->esegui($versata, 'Conto sbagliato');
+
+    $storno = DB::table('scritture_contabili')->where('tipo_movimento', TipoMovimentoContabile::STORNO_PAGAMENTO_F24->value)->sole();
+    expect(substr((string) $storno->data_registrazione, 0, 10))->toBe('2026-05-01')
+        ->and(substr((string) $storno->data_competenza, 0, 10))->toBe('2026-05-01')
+        ->and($stornata->stato)->toBe(StatoDelegaF24::STORNATA);
+});
+
 test('lo storno pretende una motivazione', function () {
     [$ctx, $delega] = scenarioDelega();
     [, , , , $contoCorrenteId] = $ctx;

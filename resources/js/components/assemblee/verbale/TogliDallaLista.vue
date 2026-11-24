@@ -5,8 +5,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 /**
- * «Togli» una persona dalla lista di chi riceve il verbale (scena 6 della bozza delle scene, decisione 595 (3)): perché il programma la propone, «Se lo
- * lasci» e «Se lo togli» affiancati con i trenta giorni di ognuno, il perché obbligatorio, che resta nel registro delle modifiche.
+ * «Togli» una persona dalla lista di chi riceve il verbale (scena 6 della bozza delle scene, decisione 595 (3)): perché il programma la propone, «Se
+ * resta nella lista» e «Se esce dalla lista» affiancati con i trenta giorni di ognuno, il perché obbligatorio, che resta nel registro delle modifiche.
  */
 import { ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
-import { CALCOLO_PRUDENTE, puntiInParole } from '@/lib/assemblee/verbale/pagina';
+import { CALCOLO_PRUDENTE, puntiDaAssente } from '@/lib/assemblee/verbale/pagina';
 import { AIUTO, CONTENUTO, CORPO, GRUPPO, PIEDE, PULSANTI, RIEPILOGO, TESTA, TITOLO_GRUPPO } from './finestra';
 import type { DestinatarioDelVerbale } from '@/types/verbale';
 
@@ -49,22 +49,22 @@ function togli() {
                 <section :class="GRUPPO">
                     <div class="grid gap-2 sm:grid-cols-2">
                         <div class="rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-800">
-                            <p :class="TITOLO_GRUPPO">Se lo lasci</p>
-                            <p class="mt-1 text-slate-700 dark:text-slate-300">Riceve il verbale ({{ persona.mezzo.parola.toLowerCase() }}). {{ puntiInParole(persona.punti_assente) }}: i trenta
+                            <p :class="TITOLO_GRUPPO">Se resta nella lista</p>
+                            <p class="mt-1 text-slate-700 dark:text-slate-300">Riceve il verbale ({{ persona.mezzo.parola.toLowerCase() }}). {{ puntiDaAssente(persona) }}: i trenta
                                 giorni partono dalla consegna.</p>
                         </div>
                         <div class="rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-800">
-                            <p :class="TITOLO_GRUPPO">Se lo togli</p>
-                            <p class="mt-1 text-slate-700 dark:text-slate-300">Non riceve il verbale. {{ puntiInParole(persona.punti_assente) }}: lo conto come chi c'era e non ha
+                            <p :class="TITOLO_GRUPPO">Se esce dalla lista</p>
+                            <p class="mt-1 text-slate-700 dark:text-slate-300">Non riceve il verbale. {{ puntiDaAssente(persona) }}: conta come chi c'era e non ha
                                 votato, astenuto: dal {{ giornoDellaDelibera }}.</p>
                         </div>
                     </div>
                     <p :class="AIUTO">Se era davvero fuori e non riceve il verbale, il suo termine per quei punti non parte. Le date sono {{ CALCOLO_PRUDENTE }}.</p>
                 </section>
                 <section :class="GRUPPO">
-                    <Label for="perche-togli" class="text-xs">Perché lo togli (obbligatorio)</Label>
+                    <Label for="perche-togli" class="text-xs">Perché esce dalla lista (obbligatorio)</Label>
                     <Textarea id="perche-togli" v-model="perche" rows="2" class="min-h-[60px] resize-none text-sm" data-testid="perche-togli"
-                        placeholder="Per esempio: è rientrato alle 19:40, prima del voto del punto 4, e in sala non è stato segnato." />
+                        placeholder="Per esempio: la persona è di nuovo in sala dalle 19:40, prima del voto del punto 4, e in sala non è stata segnata." />
                     <InputError :message="errore" />
                     <p :class="AIUTO">La scelta resta nel registro delle modifiche, con il perché.</p>
                 </section>
@@ -73,7 +73,7 @@ function togli() {
                 <p :class="RIEPILOGO" role="status"><Loader2 v-if="inCorso" class="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" /><span>{{ persona.nome }} non riceverà il verbale.</span></p>
                 <div :class="PULSANTI">
                     <Button variant="outline" @click="emit('update:open', false)">Chiudi</Button>
-                    <Button :disabled="!perche.trim() || inCorso" data-testid="conferma-togli" @click="togli">Toglilo dalla lista</Button>
+                    <Button :disabled="!perche.trim() || inCorso" data-testid="conferma-togli" @click="togli">Togli dalla lista</Button>
                 </div>
             </div>
         </DialogContent>

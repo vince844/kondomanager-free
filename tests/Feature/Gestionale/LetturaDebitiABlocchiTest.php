@@ -73,7 +73,9 @@ function ldbPregressi($test): array
     $tutte = lcdScenario(['D' => ['dino', 1000]], 3, 'tutte_rate', [['dino', 'D', 9000]], 60000);
     lcdEmetti($test, $tutte, [1, 2, 3], '2026-01-02');
     $test->travelTo('2026-02-20 10:00:00');
-    lcdIncassa($test, $s, 'bice', [lcdQuota($s, 'bice', 1) => 10000], '2026-02-20');
+    // Bice versa € 100,00 su una rata da € 75,00: € 75,00 sulla rata e € 25,00 come parte in più. Prima della Coda 754 (7) la riga da € 100,00
+    // finiva in una pagina 500 che l'aiuto non vedeva, e il versamento di Bice non c'era.
+    lcdIncassa($test, $s, 'bice', [lcdQuota($s, 'bice', 1) => 7500], '2026-02-20', 2500);
     $test->travelTo('2026-06-10 10:00:00');
 
     return [$s, $prima, $tutte];

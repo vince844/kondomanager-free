@@ -18,7 +18,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     <h2 style="margin: 0; padding: 0; font-size: 13pt; color: {{ $coloreTitoli }}; letter-spacing: 0.5px;">
         SCADENZIARIO RATE
         @if($modalita === 'anagrafica') — PER CONDÒMINO
-        @elseif($modalita === 'immobile') — PER UNITÀ IMMOBILIARE
+        @elseif($modalita === 'immobile') — PER UNITÀ IMMOBILIARE E PER SOGGETTO
         @else — PER CONDÒMINO E PER UNITÀ IMMOBILIARE
         @endif
     </h2>
@@ -89,21 +89,21 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
         </h3>
     @endif
 
-    @if(empty($matriceImmobile))
+    @if(empty($matriceImmobile['righe']))
         <p style="color: #888; font-style: italic; text-align: center; margin: 20px 0;">
             Nessuna unità immobiliare trovata in questo piano rate.
         </p>
     @else
         @include('pdf.gestionale._tabella_scadenziario', [
-            'matrice'    => $matriceImmobile,
-            'colonneRate'=> $colonneRate,
-            'labelColonna' => 'Unità Immobiliare / Intestatario',
-            'hasSottoEtichetta' => true,
+            'matrice'    => $matriceImmobile['righe'],
+            'colonneRate'=> $matriceImmobile['colonne'],
+            'labelColonna' => 'Unità',
+            'perSoggetto' => true,
+            'conPiani'   => false,
         ])
 
         <div style="font-size: 7pt; color: #666; margin-top: 4px;">
-            * Ogni riga rappresenta una singola unità immobiliare.
-            Il nome del condòmino indicato è il primo intestatario registrato.
+            * Ogni unità immobiliare ha una riga per ogni soggetto, con il suo ruolo e la sua parte rata per rata.
         </div>
     @endif
 @endif

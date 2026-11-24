@@ -59,6 +59,8 @@ final class ParoleDelPiano
         'saldi_config.*.ripartizioni' => 'riparto del saldo',
         'saldi_config.*.ripartizioni.*.anagrafica_id' => 'persona del riparto',
         'saldi_config.*.ripartizioni.*.importo' => 'importo del riparto',
+        // Issue 58: il giorno dei titolari scelto nella finestra «Riparto saldi iniziali».
+        'saldi_config.*.alla_data' => 'a chi va il pregresso',
         // La presa d'atto (quote non assegnate, destinatari cambiati), alla creazione, al ricalcolo e quando si toglie una voce.
         'accetta_scoperti' => 'presa d\'atto delle quote non assegnate',
         'nota_scoperti' => 'nota delle quote non assegnate',
@@ -73,6 +75,31 @@ final class ParoleDelPiano
         'orphan_ids.*' => 'voce da aggiungere',
     ];
 
+    /**
+     * Coda 166: l'importo di una fattura senza note a zero (o vuoto). Lo zero voleva dire «tutto» per il motore e «niente» per il carrello: la
+     * frase chiede la cifra, e dice quella che resta.
+     */
+    public static function importoFatturaAZero(string $numero, int $resta): string
+    {
+        return "Scrivi quanto mettere a rate della fattura n. {$numero}: un importo più grande di zero, al massimo "
+            . \App\Helpers\MoneyHelper::format($resta) . ', quanto ne resta da mettere a rate.';
+    }
+
+    /** Coda 166: l'importo di una fattura senza note oltre quanto ne resta, con la parte da mettere a rate, ciò che chiedono gli altri piani e il massimo. */
+    public static function importoFatturaOltre(string $numero, int $documento, int $altriPiani, int $resta): string
+    {
+        return "Della fattura n. {$numero} si possono mettere a rate " . \App\Helpers\MoneyHelper::format($documento)
+            . ($altriPiani > 0 ? ', e altri piani ne chiedono già ' . \App\Helpers\MoneyHelper::format($altriPiani) : '')
+            . ': con questo piano al massimo ' . \App\Helpers\MoneyHelper::format($resta) . '.';
+    }
+
+    /** Issue 58: il giorno dei titolari scelto per un saldo dell'unità non è fra quelli della finestra (una pagina vecchia, una richiesta a mano). */
+    public static function giornoNonOfferto(string $unita): string
+    {
+        return 'A chi va il pregresso' . ($unita !== '' ? " di {$unita}" : '') . ': il giorno scelto non è fra quelli che la finestra «Riparto saldi iniziali» '
+            . 'offre. Riapri la finestra e scegli di nuovo.';
+    }
+
     /** Le frasi delle regole: quelle di un campo prima, poi quelle di ogni regola, che usano il nome a video. */
     public static function messaggi(): array
     {
@@ -86,6 +113,9 @@ final class ParoleDelPiano
             'fatture_config.required_if' => 'Scegli almeno una fattura da mettere a rate.',
             'fatture_config.array' => 'Scegli almeno una fattura da mettere a rate.',
             'fatture_config.*.importo.required_with' => 'Scrivi quanto mettere a rate per ogni fattura scelta.',
+            // Issue 58: un saldo dell'unità si divide a mano o va ai titolari di un giorno; senza nessuno dei due segue la regola e non si manda.
+            'saldi_config.*.ripartizioni.required_without' => 'Dividi a mano il pregresso, o scegli a chi va.',
+            'saldi_config.*.alla_data.date_format' => 'A chi va il pregresso: il giorno scelto non è arrivato nella forma giusta. Riapri la finestra e scegli di nuovo.',
             // D194: gli errori dello scudo legale, che ora la pagina mostra sotto i due campi.
             'tipo_autorizzazione.required_if' => 'Scegli il tipo di autorizzazione: «Delibera Assembleare» o «Urgenza».',
             'tipo_autorizzazione.in' => 'Scegli il tipo di autorizzazione dal menu: «Delibera Assembleare» o «Urgenza».',

@@ -262,9 +262,10 @@ it('K1 — riaperto il 2026 dopo il piano 2027 che ne ha assorbito il saldo, il 
         ->and(substr_count($pdf['testo'], 'Saldo finale ' . MoneyHelper::format(45000)))->toBe(2);
 });
 
-it('K1 — due esercizi aperti come li crea l\'importazione: il saldo 2026 assorbito dal piano 2027 resta nell\'estratto del 2026, prima e dopo l\'emissione, a video e nel PDF', function () {
+it('K1 — due esercizi aperti come li crea l\'importazione: il saldo dalla pagina va nel più recente, il 2027, il suo piano lo assorbe, e l\'estratto torna con il giornale prima e dopo l\'emissione, a video e nel PDF', function () {
     // L'importazione crea ogni esercizio aperto (`LivelloEsercizi`) e gli aggancia la gestione ordinaria con
-    // `createDefaultGestione`, che riusa quella che c'è: il 2026 e il 2027 aperti, una gestione sola. La pagina mostra il primo, il 2026.
+    // `createDefaultGestione`, che riusa quella che c'è: il 2026 e il 2027 aperti, una gestione sola. La pagina mostra il più recente, il 2027
+    // (Coda 646, decisione 707 (4); fino alla 1.12.0-beta.13 il primo trovato, il 2026, dove finiva anche l'emissione del piano 2027).
     $s = rveCondominio();
     rveUnita($s, 'A', 'ugo', $s['tabella'], 1000.0);
     $e26 = Esercizio::create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2026', 'descrizione' => null, 'data_inizio' => '2026-01-01', 'data_fine' => '2026-12-31', 'stato' => 'aperto']);
@@ -273,23 +274,23 @@ it('K1 — due esercizi aperti come li crea l\'importazione: il saldo 2026 assor
     expect(app(CondominioService::class)->createDefaultGestione($s['c'], $e27)->id)->toBe($g->id);
     rveVoceSpese($s, $g);
 
-    // 6 rate da 20000, «prima rata». Rata 1 del 2026 emessa: 20000; poi Ugo +5000 dalla pagina dei saldi, sul 2026 (il primo aperto).
+    // 6 rate da 20000, «prima rata». Rata 1 del 2026 emessa: 20000; poi Ugo +5000 dalla pagina dei saldi, sul 2027 (il più recente).
     $p26 = rvePiano($s, $e26, $g, 'Preventivo 2026', 6, '2026-01-05');
     rveEmetti($this, $s, $p26, [1], '2026-01-31');
     $saldo = rveSaldoDallaPagina($this, $s, 'ugo', 'A', $g, 5000);
-    expect($saldo->esercizio_id)->toBe($e26->id);
+    expect($saldo->esercizio_id)->toBe($e27->id);
     // Giusto oggi: saldo iniziale 5000, saldo 25000.
-    expect(rveCifre(rveEstratto($this, $s, 'ugo')))->toBe(['Esercizio 2026', 5000, 25000, '€ 200,00', '€ 0,00', 1]);
+    expect(rveCifre(rveEstratto($this, $s, 'ugo')))->toBe(['Esercizio 2027', 5000, 25000, '€ 200,00', '€ 0,00', 1]);
 
-    // Il preventivo 2027 assorbe il saldo del 2026 (rata 1 del 2027 = 20000 + 5000, in bozza). La posizione di Ugo non cambia: 20000
-    // a giornale più i 5000 di pregresso, che ora stanno nella rata 1 del 2027 e non ancora nel giornale. Pagina 2026: saldo
+    // Il preventivo 2027 assorbe il saldo (rata 1 del 2027 = 20000 + 5000, in bozza). La posizione di Ugo non cambia: 20000
+    // a giornale più i 5000 di pregresso, che ora stanno nella rata 1 del 2027 e non ancora nel giornale. Pagina 2027: saldo
     // iniziale 5000, saldo 25000. Oggi 0 e 20000.
     $p27 = rvePiano($s, $e27, $g, 'Preventivo 2027', 6, '2027-01-05');
     expect([(bool) $saldo->fresh()->is_applicato, (int) $saldo->fresh()->piano_rate_id])->toBe([true, $p27->id]);
     $prima = rveEstratto($this, $s, 'ugo');
     $primaPdf = rvePdf($this, $s, 'ugo');
 
-    // Emessa la rata 1 del 2027: mastrino 20000 + 25000 = 45000; pagina 2026 5000 + 20000 + 20000 = 45000. Oggi 0 e 40000.
+    // Emessa la rata 1 del 2027 (nel 2027, l'esercizio del suo piano): mastrino 20000 + 25000 = 45000; pagina 2027 5000 + 20000 + 20000 = 45000. Oggi 0 e 40000.
     rveEmetti($this, $s, $p27, [1], '2027-01-31');
     $dopo = rveEstratto($this, $s, 'ugo');
     $dopoPdf = rvePdf($this, $s, 'ugo');
@@ -301,9 +302,9 @@ it('K1 — due esercizi aperti come li crea l\'importazione: il saldo 2026 assor
         'dopo_pdf' => [$dopoPdf['saldo_iniziale'], $dopoPdf['saldo']],
         'mastrino' => rveMastrino($s, 'ugo'),
     ])->toBe([
-        'prima' => ['Esercizio 2026', 5000, 25000],
+        'prima' => ['Esercizio 2027', 5000, 25000],
         'prima_pdf' => [5000, 25000],
-        'dopo' => ['Esercizio 2026', 5000, 45000],
+        'dopo' => ['Esercizio 2027', 5000, 45000],
         'dopo_pdf' => [5000, 45000],
         'mastrino' => 45000,
     ]);

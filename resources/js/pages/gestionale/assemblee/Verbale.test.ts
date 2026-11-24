@@ -285,7 +285,7 @@ describe('registrato', () => {
         expect(pg.find('[data-testid="testo-del-verbale"]').text()).toContain('11 condòmini su 26');
         expect(pg.find('[data-testid="badge-dello-stato"]').text()).toBe('Registrato · n. 42');
         expect(testo()).toContain('Chi riceve il verbale n. 42');
-        expect(testo()).toContain('Non sono mai entrati · 1');
+        expect(testo()).toContain('Mai in sala · 1');
         expect(testo()).toContain('Fuori al voto di un punto · 1');
         expect(pg.find('[data-anagrafica="20"] [data-testid="trenta-giorni"]').text()).toContain('punti 3, 4 e 6, fino al 14/01/2027');
         expect(pg.find('[data-anagrafica="3"] [data-testid="trenta-giorni"]').text()).toContain('punti 4 e 6, dalla consegna');
@@ -404,6 +404,18 @@ describe('la pagina compatta (decisione 656)', () => {
         }
         // C'è una lettera da stampare: il gesto principale è «Stampa le lettere», l'unico scuro.
         expect(ids.filter((id) => pg.find(`[data-testid="${id}"]`).classes().includes('bg-slate-900'))).toEqual(['stampa-le-lettere']);
+    });
+
+    test('C60: l\'unica lettera è già stampata e le PEC sono partite: il gesto principale, l\'unico scuro, è «Registra la spedizione»', async () => {
+        const v = registrato();
+        const rossi = v.trasmissione!.persone[1];
+        rossi.invio = { id: 502, canale: 'lettera', mezzo: 'raccomandata', stato: 'stampata', esito: null, esito_parola: null, esito_il: null, ricevuta_il: null,
+            spedito: false, errore: null, creato_il: '2026-12-15T20:38:00Z' };
+        const pg = await monta(pagina(v));
+        const ids = ['stampa-le-lettere', 'manda-le-pec', 'registra-la-spedizione', 'aggiungi-una-persona', 'la-prova-della-trasmissione'];
+        expect(ids.filter((id) => pg.find(`[data-testid="${id}"]`).classes().includes('bg-slate-900'))).toEqual(['registra-la-spedizione']);
+        // La lettera stampata si può ristampare: il pulsante resta, chiaro.
+        expect(pg.find('[data-testid="stampa-le-lettere"]').text()).toContain('Stampa le lettere (1)');
     });
 
     test('«Le versioni» a verbale registrato: la frase che dice che «Ripristina» non c\'è più resta', async () => {

@@ -3,57 +3,23 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 --}}
-<!DOCTYPE html>
-<html lang="{{ app()->getLocale() }}">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ __('errors.403_title') }}</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-</head>
-<body class="bg-gray-50">
+{{--
+  «Non puoi aprire questa pagina» (bozza approvata docs/design/beta14_pagine_errore_grafica_bozza.html, scena 6). Il motivo si mostra solo quando è una frase
+  scritta dal programma per le persone (l'account sospeso, il collegamento scaduto, l'esercizio di un altro condominio): i messaggi di Laravel e del pacchetto
+  dei permessi («This action is unauthorized.», «L'utente non ha le autorizzazioni corrette.») lasciano il posto alla frase della pagina
+  (`PaginaDiErrore::motivoDel403()`).
+--}}
+@extends('errors.minimal')
 
-    @php
-      $user = auth()->user();
-    @endphp
+@php($motivo = \App\Support\Errori\PaginaDiErrore::motivoDel403($exception ?? null))
 
-  <div class="flex min-h-screen flex-col items-center px-4 py-12 sm:px-6 lg:px-8">
-    <div class="mx-auto max-w-md text-center mt-20">
-       <!-- Icona Km -->
-      <div class="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-black text-white shadow-lg">
-        <span class="text-lg font-bold">Km</span>
-      </div>
-
-      <h1 class="mt-4 text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
-        {{ __('errors.403_heading') }}
-      </h1>
-
-      <p class="mt-4 text-muted-foreground">
-        @isset($exception)
-          {{ $exception->getMessage() }}
-        @else
-          {{ __('errors.403_message') }}
-        @endisset
-      </p>
-
-      <div class="mt-6">
-        @if ($user)
-          <a href="{{ $user->hasPermissionTo('Accesso pannello amministratore')
-              ? route('admin.dashboard')
-              : route('user.dashboard') }}"
-            class="inline-flex items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-            {{ __('errors.back_to_dashboard') }}
-          </a>
-        @else
-          <a href="{{ route('login') }}"
-            class="inline-flex items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-            {{ __('errors.back_to_login') }}
-          </a>
-        @endif
-      </div>
-
-    </div>
-  </div>
-
-</body>
-</html>
+@section('title', __('errors.403_title'))
+@section('code', '403')
+@section('tono', 'sl')
+@section('message', __('errors.403_heading'))
+@section('icona')
+    <svg class="i l" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+@endsection
+@section('corpo')
+    <p class="lead">{{ $motivo ?? __('errors.403_message') }}</p>
+@endsection

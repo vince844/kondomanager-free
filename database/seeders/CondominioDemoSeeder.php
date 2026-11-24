@@ -763,21 +763,8 @@ class CondominioDemoSeeder extends Seeder
 
         $totaleMoroso = (int) $morosi->sum('residuo');
 
-        // 1. La ritenuta d'acconto da versare: una scadenza di legge, con una data.
-        \App\Services\Gestionale\InboxService::createTask(
-            tipo: \App\Enums\EventoTipo::F24,
-            title: 'Versare la ritenuta d\'acconto del mese',
-            description: 'La fattura dell\'impresa di manutenzione ha una ritenuta del 4% trattenuta al '
-                . 'fornitore. Va versata con il modello F24 entro il giorno 16 del mese successivo al pagamento.',
-            scadenza: now()->addDays(6),
-            createdByUserId: $autore,
-            condominioId: $this->condominio->id,
-            // ⚠️ **Senza `actionUrl` il pulsante «Risolvi» non compare**, e l'attività diventa una
-            // nota che si può solo spuntare. Il cruscotto lo mostra solo se il collegamento c'è:
-            // un'attività senza destinazione dice cosa fare ma non dove — cioè metà del lavoro.
-            actionUrl: route('admin.gestionale.f24.index', ['condominio' => $this->condominio->id]),
-            priorita: 'alta',
-        );
+        // 1. La ritenuta d'acconto da versare: il promemoria «F24 da versare» lo scrive il programma, uno per delega, quando
+        // `generaScadenzarioF24()` prepara la delega (Coda 718, decisioni 675 e 685 (7)). Qui non se ne scrive un secondo a mano.
 
         // 2. La morosità: nasce dall'incasso parziale che il seeder registra apposta.
         if ($totaleMoroso > 0) {

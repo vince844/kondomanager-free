@@ -4,6 +4,7 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup>
+import NotaDiLicenza from '@/components/NotaDiLicenza.vue';
 import { computed } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -119,6 +120,7 @@ const startLaunch = () => {
                     {{ form.processing ? 'Preparazione...' : 'Scarica e Installa' }}
                 </Button>
             </CardFooter>
+            <NotaDiLicenza class="border-t px-6 py-3" />
         </Card>
     </div>
 </template>

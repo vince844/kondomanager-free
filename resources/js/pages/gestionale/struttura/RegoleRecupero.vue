@@ -71,6 +71,8 @@ const props = defineProps<{
     /** Decisione 494 (1): le otto scelte sugli interessi degli eredi del condominio, e chi le può cambiare. */
     interessi_eredi?: { descrizione: string; voci: VoceInteressiEredi[] };
     puo_modificare_eredi?: boolean;
+    /** Coda 755 (2): la regola nuova e l'eliminazione le fa chi modifica il condominio; chi ha il solo pannello vede la storia delle regole e basta. */
+    puo_modificare_regole?: boolean;
 }>();
 
 // Le scelte degli eredi nel modulo: quelle del condominio finché l'amministratore non le cambia; «Salva» si accende solo con una scelta diversa.
@@ -220,8 +222,8 @@ const breadcrumbs = computed(() => [
                                     <EsitiDellaScheda :condominio-id="props.condominio.id" tipo="regola_recupero" :id="r.id" />
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <span><span class="font-bold text-slate-900 dark:text-white">Dal {{ giorno(r.dal) }}</span><span v-if="r.id === di_oggi" class="ml-2 text-xs text-emerald-700 dark:text-emerald-400">vale oggi</span></span>
-                                        <Button v-if="!r.usata" size="sm" variant="outline" class="h-7 text-xs" data-testid="elimina-regola" @click="elimina(r)">Elimina</Button>
-                                        <span v-else class="text-xs text-slate-500">usata per gli interessi registrati al {{ giorno(r.usata) }}: resta</span>
+                                        <Button v-if="!r.usata && puo_modificare_regole" size="sm" variant="outline" class="h-7 text-xs" data-testid="elimina-regola" @click="elimina(r)">Elimina</Button>
+                                        <span v-else-if="r.usata" class="text-xs text-slate-500">usata per gli interessi registrati al {{ giorno(r.usata) }}: resta</span>
                                     </div>
                                     <p class="text-slate-700 dark:text-slate-300">{{ r.tasso }}<span v-if="senzaRiferimento(r)" class="ml-2 text-xs text-amber-800 dark:text-amber-300" data-testid="senza-riferimento">senza riferimento</span></p>
                                     <p class="text-xs text-slate-500">{{ testoDellaRegola(r) }}<template v-if="r.creata_da"> Scritta da {{ r.creata_da }}.</template></p>
@@ -232,7 +234,7 @@ const breadcrumbs = computed(() => [
                         </div>
 
                         <!-- Una regola nuova -->
-                        <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm p-6 lg:p-8 text-sm" data-testid="regola-nuova">
+                        <div v-if="puo_modificare_regole" class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm p-6 lg:p-8 text-sm" data-testid="regola-nuova">
                             <div>
                                 <h3 class="text-base font-bold text-slate-900 dark:text-white">Scrivi una regola</h3>
                                 <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Vale dal giorno che scrivi; le regole di prima restano per i loro giorni.</p>

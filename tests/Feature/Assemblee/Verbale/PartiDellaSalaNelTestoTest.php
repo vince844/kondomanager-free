@@ -76,3 +76,47 @@ it('i comproprietari: il nome di chi rappresenta la testa viene dalle sue person
         ->toBe('Ferro e Acciaio S.r.l., rappresentante anche di Rossi Mario')
         ->and(ComposizioneDelVerbale::rappresentante('Russo Anna e Russo Marco', 'Russo Marco'))->toBe('Russo Marco, rappresentante anche di Russo Anna');
 });
+
+it('chi entra con chi rappresenta l\'unità (rilievo B3): la frase ha il verbo, e «in comproprietà» al posto di «contitolare»', function () {
+    $fotografia = ['unita' => [5 => ['nome' => 'Int. 5']]];
+    $presenza = fn (array $insieme) => [['nome' => 'Russo Marco', 'rappresenta' => [5], 'insieme' => $insieme]];
+    expect(ComposizioneDelVerbale::presentiSenzaVoto($presenza([['anagrafica_id' => 1, 'nome' => 'Russo Anna']]), $fotografia))
+        ->toBe(['Russo Marco rappresenta l\'Int. 5; è presente senza voto anche Russo Anna, in comproprietà.'])
+        ->and(ComposizioneDelVerbale::presentiSenzaVoto($presenza([['anagrafica_id' => 1, 'nome' => 'Russo Anna'], ['anagrafica_id' => 2, 'nome' => 'Russo Luca']]),
+            $fotografia))
+        ->toBe(['Russo Marco rappresenta l\'Int. 5; sono presenti senza voto anche Russo Anna e Russo Luca, in comproprietà.']);
+});
+
+it('il punto della sola scala: prima del voto la frase di chi vota e su quanti; «Sul rendiconto: si vota» con la minuscola (rilievo B3)', function () {
+    $s = SalaDiViaRoma12::nuovo($this);
+    $scala = \App\Models\Scala::query()->create(['condominio_id' => $s->c->id, 'name' => 'B']);
+    $ascensore = \App\Models\Tabella::create(['condominio_id' => $s->c->id, 'nome' => 'Ascensore B', 'tipo' => 'standard', 'quota' => 'millesimi', 'attiva' => true]);
+    foreach (range(30, 35) as $i) {
+        $s->unita[(string) $i]->forceFill(['scala_id' => $scala->id])->saveQuietly();
+        \Illuminate\Support\Facades\DB::table('quote_tabella')->insert(['tabella_id' => $ascensore->id, 'immobile_id' => $s->unita[(string) $i]->id, 'valore' => 40,
+            'created_at' => now(), 'updated_at' => now()]);
+    }
+    $a = SalaDiViaRoma12::convoca(SalaDiViaRoma12::ordinaria($s, [
+        ['testo' => 'Approvazione del rendiconto 2025 e dello stato di riparto', 'materia' => 'rendiconto'],
+        ['testo' => 'Funi dell\'ascensore della scala B', 'materia' => 'altro', 'maggioranza' => 'ordinaria', 'ambito' => 'scala', 'scala_id' => $scala->id,
+            'tabella_id' => $ascensore->id],
+    ]), $s);
+    $seduta = SalaDiViaRoma12::apriLaSeconda($this, $s, $a);
+    SalaDiViaRoma12::entrano($this, $s, $a, ['rossi', 'marco', 'rita', 'gallo', 'c30', 'c31', 'c32', 'c33']);
+    $r = SalaDiViaRoma12::applica($this, $s, $a, SalaDiViaRoma12::gesto('si_vota', ['seduta_id' => $seduta->id, 'punto_id' => VerbaleDiViaRoma12::punto($a, 1),
+        'numero' => 1, 'oggetto' => 'rendiconto'], '2026-12-15 19:00'));
+    SalaDiViaRoma12::applica($this, $s, $a, SalaDiViaRoma12::gesto('tutti_favorevoli', ['votazione_id' => $r['votazione_id']], '2026-12-15 19:00'));
+    VerbaleDiViaRoma12::conferma($this, $s, $a, (int) $r['votazione_id'], '2026-12-15 19:01');
+    VerbaleDiViaRoma12::tuttiFavorevoli($this, $s, $a, 2, '2026-12-15 19:10');
+
+    $verbale = \App\Services\Assemblee\Verbale\VerbaliDellAssemblea::perLaSeduta($seduta->refresh(), $s->admin);
+    $testo = StrutturaDelVerbale::testo(app(ComposizioneDelVerbale::class)->componi($verbale, \App\Services\Assemblee\Verbale\ModelliDelVerbale::scelto($s->c, null))['documento']);
+    $frase = 'Sul punto votano i soli condòmini della scala B: 6 partecipanti per 240,00 millesimi.';
+    expect($testo)->toContain('Sul rendiconto: si vota alle ore 19:00')
+        ->toContain($frase)
+        ->toContain('Si vota alle ore 19:10: intervengono 4 condòmini per 160,00 millesimi')
+        ->not->toContain('Sul rendiconto: Si vota')
+        ->and(mb_strpos($testo, $frase))->toBeLessThan(mb_strpos($testo, 'Si vota alle ore 19:10'))
+        // La frase della parte una volta sola: il rendiconto è di tutto il condominio.
+        ->and(mb_substr_count($testo, 'Sul punto votano'))->toBe(1);
+});

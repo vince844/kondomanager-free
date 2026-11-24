@@ -40,6 +40,7 @@ final class PropostaDelPunto
         $oggetti = [[$tipo, $id, 'origine']];
         $esercizio = null;
         $importo = null;
+        $nota = null;
         [$testo, $pubblico, $materia] = match ($tipo) {
             'fattura_passiva' => self::dellaFattura($scheda, $oggetti, $importo),
             'piano_rate' => self::delPiano($scheda, $oggetti, $esercizio),
@@ -47,7 +48,7 @@ final class PropostaDelPunto
                 'Lavori «' . $scheda->getAttribute('nome') . '»: approvazione, impresa, piano di riparto', MateriaPunto::LAVORI->value],
             'cassa' => ['Utilizzo del fondo «' . $scheda->getAttribute('nome') . '»', 'Utilizzo del fondo «' . $scheda->getAttribute('nome') . '»',
                 MateriaPunto::FONDO->value],
-            'accordo_rientro' => self::dellAccordo($scheda, $oggetti),
+            'accordo_rientro' => self::dellAccordo($scheda, $oggetti, $nota),
             'dispensa_sei_mesi' => ['Dispensa dall\'agire entro sei mesi per la riscossione dei crediti (art. 1129 c. 9 c.c.)',
                 'Dispensa dall\'agire entro sei mesi per la riscossione dei crediti (art. 1129 c. 9 c.c.)', MateriaPunto::DISPENSA->value],
             'regola_recupero' => ['Criteri per l\'addebito degli interessi e delle spese di recupero dei crediti',
@@ -57,7 +58,8 @@ final class PropostaDelPunto
             'esercizio' => self::delRendiconto($scheda, $esercizio),
             'rendiconto_versione' => self::delRendiconto(\App\Models\Esercizio::query()->findOrFail($scheda->getAttribute('esercizio_id')), $esercizio),
             'compito' => self::delCompito($scheda, $oggetti),
-            'anagrafica' => ['Situazione di ' . $scheda->getAttribute('nome'), 'Situazione di un condòmino', MateriaPunto::ALTRO->value],
+            // Il nome della persona sta nella nota dello studio, mai nel testo del punto: l'avviso lo stampa a tutti i condòmini (Coda 749).
+            'anagrafica' => self::dellaPersona($scheda, $nota),
             // Il titolo di una segnalazione non va dove non si vede (`CompitoDellaSegnalazione`): la frase dice solo il giorno.
             'segnalazione' => self::dellaSegnalazione($scheda),
             default => [SchedaDelCondominio::nomeDi($scheda), SchedaDelCondominio::nomeDi($scheda), MateriaPunto::ALTRO->value],
@@ -88,6 +90,7 @@ final class PropostaDelPunto
             'oggetti' => $oggetti,
             'esercizio_id' => $esercizio,
             'importo' => $importo,
+            'nota' => $nota,
         ] + ($motivazione !== null ? ['dati' => ['motivazione' => $motivazione['motivazione'], 'motivazione_di' => $motivazione['di']]] : []);
     }
 
@@ -184,15 +187,45 @@ final class PropostaDelPunto
         return [$frase, $frase, MateriaPunto::PREVENTIVO->value];
     }
 
-    /** @param list<array{0: string, 1: int, 2: string}> $oggetti @return array{0: string, 1: string, 2: string} */
-    private static function dellAccordo(Model $accordo, array &$oggetti): array
+    /**
+     * L'accordo di rientro: il punto dice la somma, il numero delle rate e il giorno in cui finisce, **senza il nome** (decisione 673 (4)): è la stessa frase
+     * della bacheca, e l'avviso di convocazione la stampa a tutti i condòmini. Il nome della persona e il giorno dell'accordo vanno nella nota dello studio.
+     *
+     * @param list<array{0: string, 1: int, 2: string}> $oggetti
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private static function dellAccordo(Model $accordo, array &$oggetti, ?string &$nota): array
     {
         $persona = DB::table('anagrafiche')->where('id', $accordo->getAttribute('anagrafica_id'))->value('nome');
         if ($accordo->getAttribute('anagrafica_id') !== null) {
             $oggetti[] = ['anagrafica', (int) $accordo->getAttribute('anagrafica_id'), 'parla_di'];
         }
+        $giorno = $accordo->getAttribute('data_accordo');
+        $nota = 'Accordo con ' . $persona . ($giorno !== null ? ' del ' . \Illuminate\Support\Carbon::parse($giorno)->format('d/m/Y') : '') . '.';
 
-        return ['Autorizzazione dell\'accordo di rientro con ' . $persona, 'Autorizzazione di un accordo di rientro', MateriaPunto::ACCORDO->value];
+        $scadenze = DB::table('accordo_rientro_scadenze')->where('accordo_rientro_id', $accordo->getKey())->pluck('importo');
+        $frase = 'Autorizzazione di un accordo di rientro';
+        if ($scadenze->isNotEmpty()) {
+            $frase .= ' di ' . MoneyHelper::format((int) $scadenze->sum()) . ' in ' . $scadenze->count() . ($scadenze->count() === 1 ? ' rata' : ' rate');
+            $fino = $accordo->getAttribute('fino_al');
+            if ($fino !== null) {
+                $frase .= ', fino al ' . \Illuminate\Support\Carbon::parse($fino)->format('d/m/Y');
+            }
+        }
+
+        return [$frase, $frase, MateriaPunto::ACCORDO->value];
+    }
+
+    /**
+     * La situazione di una persona: il punto dice «un condòmino», il nome sta nella nota dello studio.
+     *
+     * @return array{0: string, 1: string, 2: string}
+     */
+    private static function dellaPersona(Model $persona, ?string &$nota): array
+    {
+        $nota = 'Situazione di ' . $persona->getAttribute('nome') . '.';
+
+        return ['Situazione di un condòmino', 'Situazione di un condòmino', MateriaPunto::ALTRO->value];
     }
 
     /**

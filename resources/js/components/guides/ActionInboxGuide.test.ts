@@ -38,6 +38,7 @@ const sorgenti = [
     'app/Services/Gestionale/Inbox/TipiDeiCompiti.php',
     'app/Services/Gestionale/Inbox/RiepilogoDellInbox.php',
     'app/Services/Gestionale/RispostePromemoria.php',
+    'app/Services/Gestionale/Inbox/CompitoDellErrore.php',
     'resources/js/components/gestionale/seiMesi/RigaDelloStudio.vue',
 ].map(leggi).join('\n').replace(/\\'/g, '\'').replace(/\s+/g, ' ');
 
@@ -72,6 +73,11 @@ describe('la guida dell\'Action inbox', () => {
         expect(t).toContain('Fatto');
         expect(t).toContain('Ricordamelo');
         expect(t).toContain('Apri l\'elenco');
+    });
+
+    test('dice che «Ricordamelo il…» su un errore avvisato scrive in agenda «Riprendi un errore avvisato», senza il codice, il nome e la nota', async () => {
+        const t = await apri();
+        expect(t).toContain('«Ricordamelo il…» su un errore avvisato scrive nell\'agenda il promemoria «Riprendi un errore avvisato», senza il codice, il nome e la nota');
     });
 
     test('ogni frase ha la riga di codice che la prova, e la riga c\'è', () => {

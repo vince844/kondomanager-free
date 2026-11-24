@@ -64,6 +64,9 @@ describe('le frasi delle card e della riga', () => {
         expect(aspettoDelTipo('emissione_rata').icona).toBe('emissione');
         expect(aspettoDelTipo('controllo_incassi').icona).toBe('incassi');
         expect(aspettoDelTipo('qualcosa').icona).toBe('scadenza');
+        // L'avviso di un errore (1.12.0-beta.14): l'icona dell'errore, in rosso.
+        expect(aspettoDelTipo('errore_avvisato').icona).toBe('errore');
+        expect(aspettoDelTipo('errore_avvisato').colore).toContain('rose');
         expect(aspettoDelTipo('qualcosa').colore).toContain('dark:');
     });
 });

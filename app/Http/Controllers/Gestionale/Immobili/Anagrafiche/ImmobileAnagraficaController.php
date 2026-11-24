@@ -460,7 +460,8 @@ class ImmobileAnagraficaController extends Controller
             'data_inizio'   => $data['data_inizio'] ?? DateHelper::oggiUtente(),
             'data_fine'     => $data['data_fine'] ?? null,
         ];
-        $errori = GuardieTitolarita::errori($immobile->titolarita()->get(), $nuova, $rigaInModifica);
+        // Come la FormRequest: in modifica la correzione non deve peggiorare la somma, anche se la lascia sopra 100 (Coda 599).
+        $errori = GuardieTitolarita::errori($immobile->titolarita()->get(), $nuova, $rigaInModifica, nonPeggiorare: $rigaInModifica !== null);
         if ($errori !== []) {
             throw ValidationException::withMessages($errori);
         }

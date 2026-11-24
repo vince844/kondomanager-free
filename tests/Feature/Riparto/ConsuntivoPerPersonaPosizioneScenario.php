@@ -199,6 +199,22 @@ function cpcRateEIncassi($test, array $s, array $emesse = [1, 2, 3, 4], array $v
     }
 }
 
+/**
+ * Gli incassi di `cpcRateEIncassi` quando U1 ha il già versato delle Pulizie: il piano lo usa, e le rate di Neri scendono sotto € 200,00 (€ 87,50,
+ * € 106,40 o € 125,00, secondo l'inquilino). Neri versa le prime tre e € 50,00 della quarta: una parte della quarta, come nel caso di sempre.
+ *
+ * Coda 754 (7): con i € 200,00 di sempre la riga della quarta va oltre la quota di Neri. Prima della 1.12.0-beta.14 l'incasso finiva in una pagina 500,
+ * che `lcdIncassa` non vede (guarda solo gli errori in sessione): le prove giravano con Neri senza nessun incasso. Oggi il programma lo rifiuta con
+ * la sua frase, e la prova lo vede. Per non tornare a girare a vuoto, qui si guarda anche che l'incasso di Neri ci sia.
+ */
+function cpcRateEIncassiConGiaVersato($test, array $s): void
+{
+    cpcRateEIncassi($test, $s, [1, 2, 3, 4], ['Neri' => [1 => null, 2 => null, 3 => null, 4 => 5000],
+        'Bianchi' => [1 => null, 2 => null, 3 => null, 4 => null], 'Verdi' => [1 => null, 2 => null, 3 => null, 4 => null]]);
+
+    expect((int) DB::table('quota_scrittura')->where('rate_quota_id', lcdQuota($s, 'Neri', 4))->sum('importo_pagato'))->toBe(5000);
+}
+
 /** Il consuntivo per persona dell'esercizio, letto al 31/12 (il giorno dopo la fine, così l'estratto conto è quello del 31/12). */
 function cpcLeggi($test, array $s, ?string $oggi = '2026-12-31 12:00:00'): array
 {

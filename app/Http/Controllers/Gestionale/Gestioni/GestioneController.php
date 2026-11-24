@@ -24,6 +24,7 @@ use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -242,14 +243,17 @@ class GestioneController extends Controller
             
             $data = $request->validated();
 
-            // Recupero esercizio aperto
-            $esercizio = $condominio->esercizi()
-                ->where('stato', 'aperto')
-                ->firstOrFail();
+            // ⚠️ **L'esercizio è quello della pagina, quando è aperto** (1.12.0-beta.14). Qui si cercava «l'esercizio aperto» per conto
+            // proprio, il primo che il database restituisce: con due esercizi aperti (decisione 707 (4)) la gestione modificata dalla pagina
+            // del 2026 finiva legata anche al 2025, e con la regola del più recente quella del 2025 anche al 2026. Dalla pagina di un
+            // esercizio chiuso resta la strada di prima (Coda 438 e 439): la gestione si porta nell'esercizio aperto, il più recente.
+            if ($esercizio->stato !== 'aperto') {
+                $esercizio = Esercizio::apertoPiuRecente($condominio->id) ?? throw (new ModelNotFoundException)->setModel(Esercizio::class);
+            }
 
             $gestione->update($data);
 
-            // Associa/aggiorna la gestione all’esercizio aperto, con il periodo della gestione dentro l'esercizio
+            // Associa/aggiorna la gestione all’esercizio, con il periodo della gestione dentro l'esercizio
             RegistroModifiche::legame($gestione, 'esercizi', 'Esercizi', fn () => $esercizio->gestioni()->syncWithoutDetaching([
                 $gestione->id => ['attiva' => true] + $this->periodoNellEsercizio($gestione, $esercizio),
             ]));

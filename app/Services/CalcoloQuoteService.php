@@ -77,6 +77,9 @@ class CalcoloQuoteService
      */
     private ?int $esercizioDelGiaVersato = null;
 
+    /** Coda 483: il messaggio con cui la guardia del già versato fermerebbe la generazione, nella lettura che la fa girare senza fermarsi; null se non la ferma. */
+    private ?string $nonSiGenera = null;
+
     /**
      * Il periodo di competenza del calcolo in corso: la base passata dal chiamante (`competenzaBase`),
      * raffinata per capitolo (`impostaCompetenzaPerConto`) o per fattura straordinaria. Da B2 (1.11.0-beta.31,
@@ -318,10 +321,15 @@ class CalcoloQuoteService
      *                          guardia serve a impedire di *generare* male, non a impedire di
      *                          rileggere. Senza questo, un documento d'assemblea diventerebbe un
      *                          foglio bianco per una modifica avvenuta dopo l'emissione.
+     * @param bool $guardiaSenzaFermarsi Coda 483: in sola lettura, la guardia del già versato gira lo stesso e, se la generazione si
+     *                          fermerebbe, il suo messaggio si legge da `getNonSiGenera()` invece di essere lanciato. Lo passa solo
+     *                          l'anteprima delle stampe del riparto di un piano non generato (`DettaglioRiparto::perPiano`): l'anteprima
+     *                          deve dire ciò che la generazione farà, e senza la guardia mostrava un già versato tolto due volte.
      */
-    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false, PeriodoCompetenza|EsitoCompetenza|null $periodo = null): array
+    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false, PeriodoCompetenza|EsitoCompetenza|null $periodo = null, bool $guardiaSenzaFermarsi = false): array
     {
         $this->gestioneCorrente = $gestione;
+        $this->nonSiGenera = null;
         // Decisione 12 anche dal ramo dei capitoli: una gestione **straordinaria** ripartita senza la data
         // della delibera non scende al periodo dell'esercizio, si ferma. Alla generazione; la stampa in
         // sola lettura non riceve mai un esito non risolto (`DettaglioRiparto` lo azzera prima).
@@ -382,7 +390,9 @@ class CalcoloQuoteService
             }
 
             if (! $soloLettura) {
-                $this->guardiaSovraFinanziamentoGiaVersato($pianoRate);
+                $this->guardiaSovraFinanziamentoGiaVersato($pianoRate, $gestione);
+            } elseif ($guardiaSenzaFermarsi) {
+                $this->nonSiGenera = $this->rifiutoDelGiaVersato($pianoRate, $gestione);
             }
 
             // [DIAG] Log capitoli senza override (importo pivot NULL)
@@ -409,7 +419,11 @@ class CalcoloQuoteService
         if (!empty($capitoliIds)) {
             $query->whereIn('id', $capitoliIds);
         } else {
-            $query->whereNull('parent_id');
+            // Le voci tecniche (il capitolo «Integrazioni Straordinarie (Scudo Legale)», con le voci delle spese fuori preventivo e dei debiti
+            // dell'esercizio precedente) restano fuori, come alla creazione (`PianoRateController::capitoliOrfani`): le chiede il piano del carrello di
+            // «Spese fuori preventivo», o il rendiconto, o le copre il fondo. Rilievo 2 dello scettico della tappa 6 della 1.12.0-beta.14: un piano senza la
+            // riga delle voci (della 1.10) le prendeva, e chiedeva ai condòmini anche la pregressa di € 610,00 (€ 1.610,00 invece di € 1.000,00).
+            $query->whereNull('parent_id')->visibili();
             if ($pianoRate) {
                 // Coda 438, decisione 183.2: le voci impegnate sono quelle degli altri piani attivi **dello stesso esercizio**. Sulla gestione usata
                 // in più esercizi il piano dell'anno dopo creato senza scegliere le voci prende anche quelle del piano dell'anno prima.
@@ -521,11 +535,23 @@ class CalcoloQuoteService
             ->distinct()->pluck('piano_rate_id')->map(fn ($id) => (int) $id)->all();
         $piani = $piani->filter(fn (PianoRate $p) => in_array((int) $p->id, $conLeVoci, true))->values();
 
-        throw new \RuntimeException(sprintf(
-            'Impossibile generare il piano rate: tutte le voci di questa gestione sono già %s %s, %s nello stesso esercizio, e un piano creato senza '
+        throw new \RuntimeException(self::fraseVociGiaNeiPiani($piani));
+    }
+
+    /**
+     * La frase di AD3 (Coda 438): tutte le voci della gestione sono già nei piani dati, e un piano senza voci scelte non ha niente da chiedere. La dice il
+     * motore alla generazione (`fermaPerLeVociGiaNeiPiani`) e, dalla Coda 489, la creazione del piano senza voci scelte quando non ne resta nessuna libera
+     * (`PianoRateController::store`), che apre con «Impossibile creare il piano rate» se non genera subito.
+     *
+     * @param Collection<int, PianoRate> $piani i piani che hanno le voci, nello stesso esercizio
+     */
+    public static function fraseVociGiaNeiPiani(Collection $piani, string $impossibile = 'Impossibile generare il piano rate'): string
+    {
+        return sprintf(
+            '%s: tutte le voci di questa gestione sono già %s %s, %s nello stesso esercizio, e un piano creato senza '
             .'scegliere le voci prende solo quelle che nessun altro piano attivo dello stesso esercizio ha già: non resta nessuna voce da chiedere.',
-            $piani->count() > 1 ? 'nei piani' : 'nel piano', $this->nomiDeiPiani($piani), $piani->count() > 1 ? 'attivi' : 'attivo'
-        ));
+            $impossibile, $piani->count() > 1 ? 'nei piani' : 'nel piano', self::nomiDeiPiani($piani), $piani->count() > 1 ? 'attivi' : 'attivo'
+        );
     }
 
     /**
@@ -533,7 +559,7 @@ class CalcoloQuoteService
      *
      * @param Collection<int, PianoRate> $piani
      */
-    private function nomiDeiPiani(Collection $piani): string
+    private static function nomiDeiPiani(Collection $piani): string
     {
         $nomi = $piani->map(fn (PianoRate $p) => '«' . $p->nome . '»')->values()->all();
 
@@ -589,25 +615,59 @@ class CalcoloQuoteService
      * sullo stesso principio di `ScopertiNonAccettatiException`: meglio un
      * errore esplicito che un buco silenzioso nello Stato Patrimoniale.
      *
+     * Dalla 1.12.0-beta.14 (Code 486 e 487) la guardia guarda le **voci con un già versato che il piano chiede**, comunque le chieda: con la riga
+     * della voce, con o senza importo, o con la riga di un capitolo sopra di lei; un piano senza righe con le voci che il motore gli farà prendere.
+     * Per ognuna somma quanto la chiede questo piano e quanto la chiedono gli altri piani attivi nell'ambito del già versato
+     * (`quantoChiedeSullaVoce`), anche quelli con la riga delle voci vuota, in qualunque esercizio (`chiestoDaUnAltroPiano`).
+     * Prima guardava solo le righe con un importo di questo piano, e negli altri piani le righe con un importo sulla stessa voce: una riga senza importo o
+     * un capitolo nell'uno e la sua sottovoce nell'altro non si vedevano, e il già versato si toglieva due volte.
+     *
      * @throws \RuntimeException
      */
-    private function guardiaSovraFinanziamentoGiaVersato(PianoRate $pianoRate): void
+    private function guardiaSovraFinanziamentoGiaVersato(PianoRate $pianoRate, Gestione $gestione): void
+    {
+        if (($rifiuto = $this->rifiutoDelGiaVersato($pianoRate, $gestione)) !== null) {
+            throw new \RuntimeException($rifiuto);
+        }
+    }
+
+    /**
+     * Il messaggio con cui la guardia del già versato ferma il piano (`guardiaSovraFinanziamentoGiaVersato`), o null se il piano si genera. Lo legge
+     * anche l'anteprima delle stampe del riparto, che non si ferma e lo stampa (Coda 483).
+     */
+    private function rifiutoDelGiaVersato(PianoRate $pianoRate, Gestione $gestione): ?string
     {
         // Coda 438 (decisione 183.1): conta il già versato che vale nei piani dell'esercizio di questo piano. Se è tutto di quell'esercizio si divide
         // fra i soli piani di quell'esercizio, e contano solo le sue fatture; se c'è una riga senza esercizio («tutti i piani della voce», il fondo
         // lavori su più anni) si divide fra tutti i piani della voce, e contano le fatture di ogni esercizio, come prima.
         $mio = $this->esercizioDelGiaVersato;
 
-        foreach ($this->pivotOverrides as $contoId => $pivotImporto) {
+        $voci = $this->vociDellaGestione($gestione);
+        if ($voci === []) {
+            return null;
+        }
+        // Le voci che questo piano chiede, come le prenderà il motore: senza righe, le radici che nessun altro piano attivo dello stesso esercizio ha già.
+        $haRighe = DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id)->exists();
+        $mie = $this->chiestoDalPiano($pianoRate, $voci, $haRighe ? [] : $this->vociImpegnateDagliAltri($pianoRate, $gestione));
+        $conGiaVersato = $mie === [] ? [] : ContributoVersato::query()->where('target_type', Conto::class)->whereIn('target_id', array_keys($mie))
+            ->distinct()->pluck('target_id')->map(fn ($id) => (int) $id)->all();
+        if ($conGiaVersato === []) {
+            return null;
+        }
+
+        $altriPiani = null;
+        $chiestoDagliAltri = [];
+        $rigaDaScrivere = false;
+        foreach ($mie as $contoId => [$importoMio, $rigaMia]) {
+            if (! in_array((int) $contoId, $conGiaVersato, true)) {
+                continue;
+            }
             $ambito = ContributoVersato::ambitoNellEsercizio((int) $contoId, $mio);
             if ($ambito === null) {
                 continue;
             }
 
-            $conto = Conto::find($contoId);
-            if (!$conto) {
-                continue;
-            }
+            $conto = $voci[$contoId];
             $perTuttiGliEsercizi = $ambito === ContributoVersato::AMBITO_TUTTI_GLI_ESERCIZI;
 
             // Caso 2 — budget stantio: una fattura REALE già registrata (non
@@ -642,65 +702,68 @@ class CalcoloQuoteService
                     $somma = number_format($spesoReale / 100, 2, ',', '.');
                     $elenco = count($parti) > 1 ? implode(', ', array_slice($parti, 0, -1)) . ' e ' . $parti[count($parti) - 1] : ($parti[0] ?? '');
 
-                    throw new \RuntimeException(
-                        sprintf('Impossibile generare: la voce di spesa "%s" ha un già versato registrato che vale per tutti gli esercizi, e le fatture reali registrate su questa voce sono ', $conto->nome)
+                    return sprintf('Impossibile generare: la voce di spesa "%s" ha un già versato registrato che vale per tutti gli esercizi, e le fatture reali registrate su questa voce sono ', $conto->nome)
                         . ($spesePerEsercizio->count() > 1
                             ? sprintf('di più esercizi: %s. La loro somma (€ %s) ', $elenco, $somma)
                             : sprintf('di un esercizio diverso da quello di questo piano, «%s»: la loro somma (€ %s) ', $esercizi->first()?->nome ?? '', $somma))
                         . sprintf('supera il budget della voce (€ %s). %s conteranno solo le fatture di quell\'esercizio.',
-                            number_format(abs((int) $conto->importo) / 100, 2, ',', '.'), self::DOVE_SI_INDICA_L_ESERCIZIO)
-                    );
+                            number_format(abs((int) $conto->importo) / 100, 2, ',', '.'), self::DOVE_SI_INDICA_L_ESERCIZIO);
                 }
-                throw new \RuntimeException(
-                    "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
+
+                return "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
                     ."ma risulta una fattura reale (€ ".number_format($spesoReale / 100, 2, ',', '.').") "
                     ."superiore al suo budget (€ ".number_format(abs((int) $conto->importo) / 100, 2, ',', '.')."). "
                     ."Aggiorna prima l'importo della voce al costo reale della spesa: altrimenti il già "
                     ."versato viene applicato contro un budget sbagliato, e la quota calcolata — qualunque "
-                    ."sia il piano rate — non corrisponde a quanto realmente dovuto."
-                );
+                    ."sia il piano rate — non corrisponde a quanto realmente dovuto.";
             }
 
-            // Caso 1 — somma che eccede: i piani fra cui il già versato si divide (tutti quelli della voce, o i soli dello stesso esercizio).
-            $altri = DB::table('piano_rate_capitoli')
-                ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
-                ->where('piano_rate_capitoli.conto_id', $contoId)
-                ->where('piani_rate.attivo', true)
-                ->where('piani_rate.id', '!=', $pianoRate->id)
-                ->whereNotNull('piano_rate_capitoli.importo')
-                ->get(['piani_rate.id as piano_id', 'piano_rate_capitoli.importo as importo']);
-            if (! $perTuttiGliEsercizi) {
-                $delloStesso = PianoRate::whereIn('id', $altri->pluck('piano_id')->unique()->all())->get()
-                    ->filter(fn (PianoRate $p) => $this->esercizioDi($p)?->id === $mio)->pluck('id')->all();
-                $altri = $altri->whereIn('piano_id', $delloStesso)->values();
+            // Caso 1 — somma che eccede: i piani fra cui il già versato si divide (tutti quelli della voce, o i soli dello stesso esercizio), ognuno con
+            // quanto chiede sulla voce (Code 486 e 487: con la riga senza importo, o con un capitolo sopra di lei; Coda 489: con la riga delle voci vuota,
+            // le voci che il motore gli farà prendere, `chiestoDaUnAltroPiano`).
+            $altriPiani ??= PianoRate::where('gestione_id', $gestione->id)->where('attivo', true)->where('id', '!=', $pianoRate->id)->delRiparto()
+                ->orderBy('id')->get()->reject(fn (PianoRate $p) => $p->tipo === 'straordinario')->values();
+            $altri = [];
+            foreach ($altriPiani as $piano) {
+                if (! $perTuttiGliEsercizi && $this->esercizioDi($piano)?->id !== $mio) {
+                    continue;
+                }
+                $chiestoDagliAltri[$piano->id] ??= $this->chiestoDaUnAltroPiano($piano, $pianoRate, $gestione, $voci, $haRighe, $rigaDaScrivere);
+                [$importo, $riga] = $chiestoDagliAltri[$piano->id]['chiesto'][$contoId] ?? [0, null];
+                if ($importo > 0) {
+                    $altri[] = ['piano' => $piano, 'importo' => $importo, 'capitolo' => $riga !== null && $riga !== (int) $contoId ? $riga : null,
+                        'senzaVoci' => $chiestoDagliAltri[$piano->id]['senzaVoci']];
+                }
             }
-            $altriPivot = (int) $altri->sum(fn ($r) => (int) $r->importo);
+            $altriPivot = (int) array_sum(array_column($altri, 'importo'));
 
-            $totaleImpegnato = $altriPivot + $pivotImporto;
+            $totaleImpegnato = $altriPivot + $importoMio;
 
             if ($totaleImpegnato > $budgetConto) {
-                $coiPiani = PianoRate::whereIn('id', $altri->pluck('piano_id')->unique()->all())->orderBy('id')->get();
+                $coiPiani = collect(array_column($altri, 'piano'));
+                $capitoli = $this->frasiDelCapitolo($voci, $haRighe && $rigaMia !== (int) $contoId ? $rigaMia : null, $altri);
                 // Il già versato vale per tutti gli esercizi, e la somma supera la voce solo per i piani di un altro esercizio della stessa gestione (la
                 // gestione usata in più esercizi). Il rifiuto resta; il messaggio dice il fatto e dove si indica l'esercizio del già versato, e non propone
                 // di alzare la voce, che lascerebbe il già versato tolto in tutti i piani che hanno la voce. Nomina tutti quei piani, anche quelli dello
                 // stesso esercizio di questo, e dice «in tutti e due» solo se con questo sono due.
                 if ($perTuttiGliEsercizi) {
                     $diAltriEsercizi = $coiPiani->filter(fn (PianoRate $p) => $this->esercizioDi($p)?->id !== $mio)->values();
-                    $nelloStesso = (int) $altri->whereNotIn('piano_id', $diAltriEsercizi->pluck('id')->all())->sum(fn ($r) => (int) $r->importo);
-                    if ($diAltriEsercizi->isNotEmpty() && $nelloStesso + $pivotImporto <= $budgetConto) {
-                        throw new \RuntimeException(sprintf(
+                    $idDiAltri = $diAltriEsercizi->pluck('id')->all();
+                    $nelloStesso = (int) array_sum(array_column(array_filter($altri, fn (array $a) => ! in_array($a['piano']->id, $idDiAltri, true)), 'importo'));
+                    if ($diAltriEsercizi->isNotEmpty() && $nelloStesso + $importoMio <= $budgetConto) {
+                        return sprintf(
                             'Impossibile generare: la voce di spesa "%s" ha un già versato registrato che vale per tutti gli esercizi, ed è già %s, %s sulla '
                             .'stessa gestione: con questo piano la somma degli importi richiesti sulla voce (€ %s) supera il suo budget (€ %s), e il già versato '
                             .'verrebbe tolto %s. %s varrà solo nei piani di quell\'esercizio.',
                             $conto->nome, $this->pianiInParole($coiPiani), $coiPiani->count() > 1 ? 'attivi' : 'attivo',
                             number_format($totaleImpegnato / 100, 2, ',', '.'), number_format($budgetConto / 100, 2, ',', '.'),
                             $coiPiani->count() > 1 ? 'in ognuno' : 'in tutti e due', self::DOVE_SI_INDICA_L_ESERCIZIO
-                        ));
+                        ) . $capitoli . $this->frasiDeiPianiSenzaVoci($altri);
                     }
                 }
                 // AD2: le strade che le pagine offrono. Un piano non si disattiva da nessuna pagina (`piani_rate.attivo` non lo spegne nessuno): la voce si
                 // chiede con un importo più basso alla creazione, o si toglie dalla pagina di un piano che ha anche altre voci (il cestino non toglie l'ultima).
-                throw new \RuntimeException(sprintf(
+                return sprintf(
                     'Impossibile generare: la voce di spesa "%s" ha un già versato registrato, ma la somma degli importi richiesti sulla voce dai piani rate '
                     .'attivi che hanno quel già versato (€ %s%s) supera il suo budget (€ %s): il già versato verrebbe tolto più volte e parte della '
                     .'spesa non verrebbe mai richiesta ai condòmini. Aggiorna prima l\'importo della voce al fabbisogno reale, oppure chiedi la voce con un '
@@ -708,9 +771,294 @@ class CalcoloQuoteService
                     $conto->nome, number_format($totaleImpegnato / 100, 2, ',', '.'),
                     $coiPiani->isEmpty() ? '' : ', con ' . ($coiPiani->count() > 1 ? 'i piani ' : 'il piano ') . $this->nomiDeiPiani($coiPiani),
                     number_format($budgetConto / 100, 2, ',', '.')
-                ));
+                ) . $capitoli . $this->frasiDeiPianiSenzaVoci($altri);
             }
         }
+
+        return null;
+    }
+
+    /**
+     * Quanto chiede sulle voci un altro piano della gestione, per la guardia del già versato (`rifiutoDelGiaVersato`): `chiesto` come
+     * `chiestoDalPiano`, e `senzaVoci` se il piano ha la riga delle voci vuota.
+     *
+     * Rilievo 1 dello scettico della tappa 1 della 1.12.0-beta.14: un piano con la riga vuota (nato con le versioni di prima) conta, in qualunque
+     * esercizio della gestione, con le voci che il motore gli farà prendere, le radici che nessun altro piano attivo **del suo esercizio** ha già (decisione
+     * 183.2). Prima non contava: sulla gestione usata in più esercizi il P26 della 1.10 senza voci chiedeva «Spese generali», e il piano del 2027 con la
+     * stessa voce toglieva una seconda volta il già versato «per tutti gli esercizi».
+     *
+     * Nello stesso esercizio le righe di questo piano sono già fra le voci prese per l'altro (`vociImpegnateDagliAltri`). Se anche questo piano ha la riga
+     * vuota (l'anteprima di stampa di un piano non generato, o il ricalcolo quando la riga non si può scrivere), contano come prese le voci che il suo
+     * ricalcolo si scrive prima del motore (`vociDellaRigaVuota`; `GeneratePianoRateAction`, Coda 489): l'anteprima dice ciò che farà «Ricalcola». Una riga
+     * che non si può scrivere uguale non toglie niente all'altro piano, e i due chiedono le stesse voci.
+     *
+     * @param array<int, Conto> $voci `vociDellaGestione`
+     * @param list<int>|false|null $rigaDaScrivere le voci che il ricalcolo di questo piano si scrive, calcolate una volta sola (`false`: non ancora)
+     * @return array{chiesto: array<int, array{0: int, 1: int}>, senzaVoci: bool}
+     */
+    private function chiestoDaUnAltroPiano(PianoRate $altro, PianoRate $questo, Gestione $gestione, array $voci, bool $questoHaRighe, array|false|null &$rigaDaScrivere): array
+    {
+        if (DB::table('piano_rate_capitoli')->where('piano_rate_id', $altro->id)->exists()) {
+            return ['chiesto' => $this->chiestoDalPiano($altro, $voci), 'senzaVoci' => false];
+        }
+        $impegnate = $this->vociImpegnateDagliAltri($altro, $gestione);
+        if (! $questoHaRighe && $this->esercizioDi($altro)?->id === $this->esercizioDelGiaVersato) {
+            if ($rigaDaScrivere === false) {
+                $rigaDaScrivere = $this->vociDellaRigaVuota($questo, $gestione);
+            }
+            $impegnate = array_values(array_unique([...$impegnate, ...($rigaDaScrivere ?? [])]));
+        }
+
+        return ['chiesto' => $this->chiestoDalPiano($altro, $voci, $impegnate), 'senzaVoci' => true];
+    }
+
+    /**
+     * La frase che dice perché un piano senza voci associate chiede la voce (`chiestoDaUnAltroPiano`), in coda ai due messaggi della guardia; vuota se
+     * nessuno dei piani nominati ha la riga vuota.
+     *
+     * @param list<array{piano: PianoRate, importo: int, capitolo: ?int, senzaVoci: bool}> $altri
+     */
+    private function frasiDeiPianiSenzaVoci(array $altri): string
+    {
+        $senza = collect($altri)->filter(fn (array $a) => $a['senzaVoci'])->pluck('piano')->values();
+        if ($senza->isEmpty()) {
+            return '';
+        }
+
+        return $senza->count() > 1
+            ? sprintf(' I piani %s non hanno voci associate: prendono le voci che nessun altro piano del loro esercizio ha già, compresa questa.', $this->nomiDeiPiani($senza))
+            : sprintf(' Il piano %s non ha voci associate: prende le voci che nessun altro piano del suo esercizio ha già, compresa questa.', $this->nomiDeiPiani($senza));
+    }
+
+    /**
+     * Quanto chiede un piano su una voce, in centesimi e in valore assoluto, come lo chiederà il motore (Code 486 e 487): per ogni riga del piano, se
+     * è la voce il suo importo o, senza importo, quello della voce; se è un capitolo sopra la voce, la parte del suo importo che il motore le passa
+     * (`ripartoFraIFigli`, con le sottovoci nate fino alla creazione di quel piano); altrimenti niente. Un piano con la riga delle voci vuota la chiede se
+     * il motore gliela farà prendere: le radici che nessun altro piano attivo del suo esercizio ha già. La guardia del già versato conta così anche gli
+     * altri piani con la riga vuota, in qualunque esercizio (`chiestoDaUnAltroPiano`).
+     */
+    public function quantoChiedeSullaVoce(PianoRate $piano, Conto $voce): int
+    {
+        $voci = $this->vociDellaGestione($piano->gestione);
+        $impegnate = DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->exists() ? [] : $this->vociImpegnateDagliAltri($piano, $piano->gestione);
+
+        return $this->chiestoDalPiano($piano, $voci, $impegnate)[(int) $voce->id][0] ?? 0;
+    }
+
+    /**
+     * Coda 489 (decisione 685 (3)): le voci da scrivere nella riga vuota di un piano perché il motore, con la riga scritta, chieda le stesse voci con gli
+     * stessi importi. Sono le voci che il motore prende senza righe (`calcolaPerGestione`): le radici visibili del piano dei conti che nessun altro piano attivo
+     * dello stesso esercizio ha già e, sotto una radice con una voce già presa, le sue sottovoci libere, a ogni livello. Null se la riga non si può
+     * scrivere uguale: un capitolo con un importo suo e una sottovoce già presa (la sua riga prenderebbe anche quella, e senza la riga il suo importo si
+     * perderebbe). Il ricalcolo le scrive senza importo (`GeneratePianoRateAction`, con `scriviLaRigaVuota`): il motore le legge con l'importo della voce, come prima.
+     *
+     * @return list<int>|null
+     */
+    public function vociDellaRigaVuota(PianoRate $pianoRate, Gestione $gestione): ?array
+    {
+        $voci = $this->vociDellaGestione($gestione);
+        $impegnate = $this->vociImpegnateDagliAltri($pianoRate, $gestione);
+        $scritte = [];
+        foreach ($voci as $voce) {
+            // Le radici visibili, come il motore senza righe (rilievo 2 dello scettico della tappa 6): il capitolo tecnico non si scrive nella riga.
+            if ($voce->parent_id === null && ! $voce->is_tecnico && ! $this->sottovociLibere($voce, $impegnate, $scritte)) {
+                return null;
+            }
+        }
+
+        return $scritte;
+    }
+
+    /**
+     * La discesa di `vociDellaRigaVuota` sotto una voce: se nessuna voce sotto di lei è già presa la voce intera, altrimenti le sue sottovoci libere; falso
+     * se la voce ha un importo suo e una sottovoce già presa.
+     *
+     * @param list<int> $impegnate
+     * @param list<int> $scritte
+     */
+    private function sottovociLibere(Conto $voce, array $impegnate, array &$scritte): bool
+    {
+        if (in_array((int) $voce->id, $impegnate, true)) {
+            return true;
+        }
+        if (! $this->haVociPreseSotto($voce, $impegnate)) {
+            $scritte[] = (int) $voce->id;
+
+            return true;
+        }
+        if ((int) $voce->importo !== 0) {
+            return false;
+        }
+        foreach ($voce->sottoconti as $figlio) {
+            if (! $this->sottovociLibere($figlio, $impegnate, $scritte)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @param list<int> $impegnate */
+    private function haVociPreseSotto(Conto $voce, array $impegnate): bool
+    {
+        foreach ($voce->sottoconti as $figlio) {
+            if (in_array((int) $figlio->id, $impegnate, true) || $this->haVociPreseSotto($figlio, $impegnate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Le voci impegnate per un piano senza righe: quelle nelle righe degli altri piani attivi dello stesso esercizio, che il motore salta (Coda 438,
+     * decisione 183.2).
+     *
+     * @return list<int>
+     */
+    private function vociImpegnateDagliAltri(PianoRate $pianoRate, Gestione $gestione): array
+    {
+        return DB::table('piano_rate_capitoli')
+            ->whereIn('piano_rate_id', $this->altriPianiAttiviDelloStessoEsercizio($pianoRate, $gestione)->pluck('id')->all())
+            ->pluck('conto_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
+    /**
+     * Le voci del piano dei conti della gestione, `id => Conto` in ordine di id, ognuna con le sue sottovoci (`sottoconti`, nello stesso ordine) e il
+     * numero delle sue tabelle: una lettura sola per la guardia, che scende nei piani come il motore senza ricaricarle.
+     *
+     * @return array<int, Conto>
+     */
+    private function vociDellaGestione(?Gestione $gestione): array
+    {
+        $pianoConto = $gestione?->pianoConto;
+        if ($pianoConto === null) {
+            return [];
+        }
+        $voci = Conto::where('piano_conto_id', $pianoConto->id)->withCount('tabelleMillesimali')->orderBy('id')->get();
+        $figli = $voci->groupBy(fn (Conto $c) => (int) $c->parent_id);
+        foreach ($voci as $voce) {
+            $voce->setRelation('sottoconti', new \Illuminate\Database\Eloquent\Collection(($figli[(int) $voce->id] ?? collect())->values()->all()));
+        }
+
+        return $voci->keyBy('id')->all();
+    }
+
+    /**
+     * Quanto chiede un piano su ogni voce che divide sulle sue tabelle, con la discesa del motore (`processaConti`): `conto_id => [centesimi, riga]`,
+     * dove `riga` è la voce della riga del piano da cui il motore ci arriva (la voce stessa, o un capitolo sopra di lei). Le righe con il loro importo,
+     * o senza con l'importo della voce; un capitolo senza tabelle divide il suo importo fra le sottovoci nate fino alla creazione del piano
+     * (`ripartoFraIFigli`, la stessa funzione del motore); senza righe, le radici visibili, saltando le voci `$impegnate`.
+     *
+     * @param array<int, Conto> $voci `vociDellaGestione`
+     * @param list<int> $impegnate
+     * @return array<int, array{0: int, 1: int}>
+     */
+    private function chiestoDalPiano(PianoRate $piano, array $voci, array $impegnate = []): array
+    {
+        $righe = DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->get(['conto_id', 'importo']);
+        $importi = [];
+        foreach ($righe as $riga) {
+            if ($riga->importo !== null) {
+                $importi[(int) $riga->conto_id] = (int) $riga->importo;
+            }
+        }
+        $nelleRighe = $righe->pluck('conto_id')->map(fn ($id) => (int) $id)->all();
+        // Senza righe, le radici che il motore prende: le visibili (`calcolaPerGestione`, rilievo 2 dello scettico della tappa 6).
+        $partenza = array_values(array_filter($voci, fn (Conto $v) => $righe->isEmpty() ? $v->parent_id === null && ! $v->is_tecnico : in_array((int) $v->id, $nelleRighe, true)));
+
+        $chiesto = [];
+        $fatte = [];
+        $prima = $this->pianoRateCreatedAt;
+        $this->pianoRateCreatedAt = $piano->created_at;
+        try {
+            $this->scendiComeIlMotore($partenza, $importi, $righe->isEmpty() ? $impegnate : [], $fatte, $chiesto, null);
+        } finally {
+            $this->pianoRateCreatedAt = $prima;
+        }
+
+        return $chiesto;
+    }
+
+    /**
+     * Il cammino di `processaConti` senza dividere niente fra le persone: una voce con l'importo del piano e le sue tabelle lo chiede; un capitolo senza
+     * tabelle lo passa alle sottovoci (`ripartoFraIFigli`) e scende; una voce senza l'importo del piano chiede il suo e scende nelle sottovoci.
+     *
+     * @param iterable<Conto> $conti
+     * @param array<int,int> $importi gli importi del piano per voce, come `pivotOverrides`
+     * @param list<int> $impegnate
+     * @param array<int,bool> $fatte come `processatiIds`
+     * @param array<int, array{0: int, 1: int}> $chiesto
+     */
+    private function scendiComeIlMotore(iterable $conti, array &$importi, array $impegnate, array &$fatte, array &$chiesto, ?int $riga): void
+    {
+        foreach ($conti as $conto) {
+            $id = (int) $conto->id;
+            if (in_array($id, $impegnate, true) || isset($fatte[$id])) {
+                continue;
+            }
+            $fatte[$id] = true;
+            $daRiga = $riga ?? $id;
+
+            if (isset($importi[$id])) {
+                if ((int) $conto->tabelle_millesimali_count > 0) {
+                    $chiesto[$id] = [abs($importi[$id]), $daRiga];
+                } elseif ($conto->sottoconti->isNotEmpty()) {
+                    [$figli, $quote] = $this->ripartoFraIFigli($conto, $importi[$id]);
+                    foreach ($quote as $figlioId => $quota) {
+                        $importi[(int) $figlioId] = $quota;
+                    }
+                    $this->scendiComeIlMotore($figli, $importi, $impegnate, $fatte, $chiesto, $daRiga);
+                }
+                continue;
+            }
+
+            if ((int) $conto->importo !== 0) {
+                $chiesto[$id] = [abs((int) $conto->importo), $daRiga];
+            }
+            if ($conto->sottoconti->isNotEmpty()) {
+                $this->scendiComeIlMotore($conto->sottoconti, $importi, $impegnate, $fatte, $chiesto, $daRiga);
+            }
+        }
+    }
+
+    /**
+     * Code 487: la frase che dice con quale capitolo i piani chiedono la voce, quando la chiedono attraverso un capitolo sopra di lei; vuota se nessuno.
+     * « La voce è chiesta con il capitolo «Manutenzione» dal piano «Preventivo 2026».», «… da questo piano e dal piano «M27».».
+     *
+     * @param array<int, Conto> $voci
+     * @param int|null $capitoloMio il capitolo della riga di questo piano, se la chiede attraverso un capitolo
+     * @param list<array{piano: PianoRate, importo: int, capitolo: ?int}> $altri
+     */
+    private function frasiDelCapitolo(array $voci, ?int $capitoloMio, array $altri): string
+    {
+        $perCapitolo = [];
+        if ($capitoloMio !== null) {
+            $perCapitolo[$capitoloMio][] = null;
+        }
+        foreach ($altri as $a) {
+            if ($a['capitolo'] !== null) {
+                $perCapitolo[$a['capitolo']][] = $a['piano'];
+            }
+        }
+        if ($perCapitolo === []) {
+            return '';
+        }
+
+        $parti = [];
+        foreach ($perCapitolo as $capitoloId => $chi) {
+            $piani = collect(array_values(array_filter($chi)));
+            $da = [];
+            if (in_array(null, $chi, true)) {
+                $da[] = 'da questo piano';
+            }
+            if ($piani->isNotEmpty()) {
+                $da[] = ($piani->count() > 1 ? 'dai piani ' : 'dal piano ') . $this->nomiDeiPiani($piani);
+            }
+            $parti[] = 'con il capitolo «' . ($voci[$capitoloId]->nome ?? '') . '» ' . implode(' e ', $da);
+        }
+
+        return ' La voce è chiesta ' . implode(', e ', $parti) . '.';
     }
 
     /** Coda 438: dove l'amministratore dice per quale esercizio vale il già versato di una voce. */
@@ -3466,6 +3814,15 @@ class CalcoloQuoteService
     public function getNettingApplicato(): array
     {
         return $this->nettingApplicato;
+    }
+
+    /**
+     * Coda 483: il messaggio con cui la guardia del già versato fermerebbe la generazione, letto dall'ultima `calcolaPerGestione()` chiamata con
+     * `guardiaSenzaFermarsi`; null se la generazione non si fermerebbe per il già versato, o se non lo si è chiesto.
+     */
+    public function getNonSiGenera(): ?string
+    {
+        return $this->nonSiGenera;
     }
 
 }

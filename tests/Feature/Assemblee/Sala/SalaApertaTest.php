@@ -76,7 +76,7 @@ it('i comproprietari presenti tutti e due: chi rappresenta l\'unità entra con l
         ->and($riga->insieme)->toBe([['anagrafica_id' => $s->persone['anna']->id, 'nome' => 'Russo Anna']])
         ->and($riga->rappresenta)->toBe([$s->unita['5']->id]);
     expect(ViaRoma12::righe($prima)->last()->riepilogo)
-        ->toBe('Assemblea ordinaria del 15/12/2026: Russo Marco entra in sala alle 18:50, con Russo Anna, contitolare, presente senza voto');
+        ->toBe('Assemblea ordinaria del 15/12/2026: Russo Marco entra in sala alle 18:50, con Russo Anna, in comproprietà, presente senza voto');
 
     // Una testa sola, e la lettura della sala porta chi è entrato insieme.
     $sala = app(\App\Services\Assemblee\Sala\LetturaDellaSala::class)->perLaPagina($a->refresh(), $s->admin);
@@ -86,10 +86,10 @@ it('i comproprietari presenti tutti e due: chi rappresenta l\'unità entra con l
     // Il verbale e il prospetto delle presenze li nominano tutti e due.
     $verbale = app(\App\Services\Assemblee\Sala\LetturaDellaSala::class)->perIlVerbale($a->refresh());
     expect(\App\Services\Assemblee\Verbale\ComposizioneDelVerbale::presentiSenzaVoto($verbale['sedute'][1]['presenze'], (array) $seduta->fotografia))
-        ->toBe(['Russo Marco, che rappresenta l\'Int. 5, e Russo Anna, contitolare, presente senza voto.']);
+        ->toBe(['Russo Marco rappresenta l\'Int. 5; è presente senza voto anche Russo Anna, in comproprietà.']);
 
     $prospetto = collect(collect(app(\App\Services\Assemblee\Sala\ProspettoDellaSala::class)->dati($a->refresh())['sedute'])->last()['presenze'])->first();
-    expect($prospetto['nota'])->toContain('con Russo Anna, contitolare, presente senza voto');
+    expect($prospetto['nota'])->toContain('con Russo Anna, in comproprietà, presente senza voto');
 
     // Escono con la testa: l'uscita di chi rappresenta chiude la riga, con chi era entrato insieme.
     $prima = ViaRoma12::ultimaRiga();
@@ -152,7 +152,7 @@ it('il verbale composto nomina chi rappresenta l\'unità e il contitolare presen
     $verbale = \App\Services\Assemblee\Verbale\VerbaliDellAssemblea::perLaSeduta($seduta->refresh(), $s->admin);
     $doc = app(\App\Services\Assemblee\Verbale\ComposizioneDelVerbale::class)->componi($verbale, \App\Services\Assemblee\Verbale\ModelliDelVerbale::scelto($s->c, null))['documento'];
     expect(\App\Services\Assemblee\Verbale\StrutturaDelVerbale::blocchi($doc)['costituzione:' . $seduta->id])
-        ->toContain('Russo Marco, che rappresenta l\'Int. 5, e Russo Anna, contitolare, presente senza voto.');
+        ->toContain('Russo Marco rappresenta l\'Int. 5; è presente senza voto anche Russo Anna, in comproprietà.');
 });
 
 it('la dichiarazione a verbale si corregge e si toglie finché il voto del punto non è confermato; il diario lo scrive; il verbale la riporta com\'è (C53)', function () {
@@ -193,4 +193,24 @@ it('la dichiarazione a verbale si corregge e si toglie finché il voto del punto
     $blocchi = \App\Services\Assemblee\Verbale\StrutturaDelVerbale::blocchi($doc);
     expect($blocchi['dichiarazione:' . $prima])->toContain('Chiedo il preventivo scritto entro venerdì.')
         ->and(array_key_exists('dichiarazione:' . $seconda, $blocchi))->toBeFalse();
+});
+
+it('le due versioni di una presenza dicono lo stato senza genere (rilievo C59): «mai in sala in questa seduta», «mai in sala», «fuori dalle 19:20»', function () {
+    $s = SalaDiViaRoma12::nuovo($this);
+    $a = SalaDiViaRoma12::convoca(SalaDiViaRoma12::ordinaria($s), $s);
+    $seduta = SalaDiViaRoma12::apriLaSeconda($this, $s, $a);
+    $c30 = ['anagrafica_id' => $s->persone['c30']->id];
+    $quella = fn (array $gesto) => SalaDiViaRoma12::manda($this, $s, $a, [$gesto])->assertOk()->json('risposte.0.conflitto.quella');
+
+    // Esce chi non è mai entrato, partendo da una versione che non c'è.
+    expect($quella(SalaDiViaRoma12::gesto('esce', ['seduta_id' => $seduta->id, 'persona' => $c30], '2026-12-15 18:50', 2)))
+        ->toBe('Condomino 30: mai in sala in questa seduta');
+    // Entra, partendo da una versione che non c'è, chi non è mai entrato.
+    expect($quella(SalaDiViaRoma12::gesto('entra', ['seduta_id' => $seduta->id, 'persona' => $c30, 'come' => 'in_sala'], '2026-12-15 18:51', 2)))
+        ->toBe('Condomino 30: mai in sala');
+    // Entra e poi esce: un'entrata da una versione vecchia trova «fuori dalle 19:20».
+    SalaDiViaRoma12::entrano($this, $s, $a, ['c30'], '2026-12-15 19:00');
+    SalaDiViaRoma12::applica($this, $s, $a, SalaDiViaRoma12::gesto('esce', ['seduta_id' => $seduta->id, 'persona' => $c30], '2026-12-15 19:20', 1));
+    expect($quella(SalaDiViaRoma12::gesto('entra', ['seduta_id' => $seduta->id, 'persona' => $c30, 'come' => 'in_sala'], '2026-12-15 19:30', 1)))
+        ->toBe('Condomino 30: fuori dalle 19:20');
 });

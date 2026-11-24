@@ -7,9 +7,11 @@ namespace App\Actions\Gestionale\Movimenti;
 
 use App\Enums\Fiscale\StatoDelegaF24;
 use App\Enums\TipoMovimentoContabile;
+use App\Helpers\DateHelper;
 use App\Models\Gestionale\DelegaF24;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\DoubleEntryValidator;
+use App\Services\Gestionale\F24\PromemoriaDelleRitenute;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -28,7 +30,8 @@ use Illuminate\Support\Str;
  *
  * Dopo lo storno le ritenute tornano **da versare**: la delega passa a `stornata`, e i
  * pagamenti che copriva rientrano nel calcolo del plafond, perché
- * `GeneraDelegheF24Action` esclude solo quelli agganciati a deleghe non stornate.
+ * `GeneraDelegheF24Action` esclude solo quelli agganciati a deleghe non stornate. Torna con loro
+ * il promemoria «Prepara le deleghe F24» del condominio (`PromemoriaDelleRitenute`, Coda 718).
  *
  * ## Perché non si riclassifica il versato su un conto crediti
  *
@@ -53,7 +56,7 @@ class StornaVersamentoF24Action
             throw new \DomainException('Lo storno di un versamento richiede una motivazione.');
         }
 
-        return DB::transaction(function () use ($delega, $motivo, $dataStorno) {
+        $stornata = DB::transaction(function () use ($delega, $motivo, $dataStorno) {
 
             $delega = DelegaF24::whereKey($delega->id)->lockForUpdate()->firstOrFail();
 
@@ -69,7 +72,8 @@ class StornaVersamentoF24Action
                 throw new \DomainException('La delega risulta versata ma non ha una scrittura collegata.');
             }
 
-            $data = $dataStorno ?? now()->toDateString();
+            // Senza una data, l'oggi dell'amministratore (Coda 494): alle 00:30 di Roma `now()` del server è ancora il giorno prima.
+            $data = $dataStorno ?? DateHelper::oggiUtente();
             $totale = (int) $delega->totale_debito;
 
             $storno = ScritturaContabile::create([
@@ -116,5 +120,12 @@ class StornaVersamentoF24Action
 
             return $delega->fresh(['righe', 'scrittura']);
         });
+
+        // Dopo il commit: le ritenute tornano senza delega, e torna il «Prepara le deleghe F24» del condominio (Coda 718).
+        if ($stornata->condominio !== null) {
+            app(PromemoriaDelleRitenute::class)->allineaSenzaFermare($stornata->condominio);
+        }
+
+        return $stornata;
     }
 }

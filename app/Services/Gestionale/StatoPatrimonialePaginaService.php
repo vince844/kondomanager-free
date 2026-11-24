@@ -645,7 +645,10 @@ class StatoPatrimonialePaginaService
                                 : 'La liquidità della situazione (per data) e la disponibilità finale delle entrate e uscite per cassa (per esercizio) non contano le stesse righe di cassa, e la differenza non viene dalle registrazioni oltre il confine: una scrittura di cassa non torna, o una registrazione di un esercizio successivo ha una data che non è dopo la fine di questo (un anno scritto male).')))),
                 'rimedio' => $r2Torna ? null
                     : ($contiSenzaCassa !== 0
-                        ? 'Crea o riassocia la cassa a quel conto nella pagina Casse.'
+                        // Coda 754 (1): nessuna pagina riaggancia una cassa a un conto; l'eliminazione ora storna l'apertura.
+                        ? 'Di solito il conto è di una cassa eliminata con la sua apertura ancora a giornale, da una versione che non la stornava: oggi, '
+                            .'eliminando una risorsa, il programma storna anche la sua apertura. Chi gestisce l\'installazione trova questi conti, con il saldo, '
+                            .'con il comando «php artisan kondomanager:verifica-aperture-casse»; come sistemarli lo decide l\'amministratore.'
                         : ($fuoriDaOgniEsercizio
                             ? AnnoACavallo::RIMEDIO_FUORI
                             : 'Apri il Libro Giornale: la diagnosi dello sbilancio trova una scrittura che non quadra, e il registro di contabilità una riga di cassa senza la sua cassa. Una registrazione di un esercizio successivo con la data sbagliata la trovi nel Libro Giornale di quell\'esercizio, cercandola per data.')),

@@ -47,6 +47,7 @@ const emit = defineEmits<{ (e: 'update:open', v: boolean): void; (e: 'salvato', 
 
 interface Proposta {
     testo: string;
+    nota?: string | null;
     origine: { tipo: string; id: number; nome: string; apri: string | null } | null;
     assemblee: { id: number; nome: string }[];
     collaboratori: { id: number; nome: string }[];
@@ -107,6 +108,9 @@ watch(() => props.open, async (aperta) => {
             giorno.value = m.ricordami_dal ?? piuGiorni(oggi, 7);
             aChi.value = m.a_chi ?? 'me';
             collaboratore.value = m.assegnato_a;
+        } else {
+            // Il nome di chi riguarda il punto (l'accordo di rientro) sta nella nota, non nel testo che arriva a tutti i condòmini.
+            nota.value = proposta.value.nota ?? '';
         }
     } catch (e) {
         errore.value = messaggioDellErrore(e, 'La proposta non si è caricata. Riprova.');
@@ -184,7 +188,7 @@ const etichetta = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate
                         class="w-full min-w-0 [&_.vs__selected]:truncate" @update:model-value="(v: number) => (assembleaId = v || null)" />
                 </div>
                 <label class="block"><span :class="etichetta">Una nota per te (resta nello studio)</span>
-                    <textarea v-model="nota" rows="2" placeholder="Per esempio: portare il preventivo dell'impresa per sostituire tutta la colonna"
+                    <textarea v-model="nota" rows="2" data-testid="nota-memo" placeholder="Per esempio: portare il preventivo dell'impresa per sostituire tutta la colonna"
                         class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-slate-400 dark:bg-slate-950" />
                 </label>
 

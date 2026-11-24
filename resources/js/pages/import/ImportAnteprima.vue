@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import Alert from '@/components/Alert.vue';
-import { Lock, CircleAlert, Users, Building2, Table2, Wallet, CheckCircle2 } from 'lucide-vue-next';
+import { Lock, CircleAlert, Users, Building2, Table2, Wallet, CheckCircle2, AlertTriangle } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
 
 const props = defineProps<{
@@ -42,6 +42,11 @@ const props = defineProps<{
       voci: {
         chiave_decisione: string; cosa: string; nome: string;
         esistente: string; motivo: string; scelte: string[];
+        /**
+         * Il condominio che c'è già, e chi importa non ha «Modifica condomini»: la scelta non si offre (la conferma la rifiuterebbe). La
+         * persona che c'è già, e chi importa non ha «Modifica anagrafiche»: resta solo «Lascia com'è» (`scelte` lo dice).
+         */
+        senza_permesso?: boolean;
       }[];
     };
     titolarita: {
@@ -69,6 +74,17 @@ const props = defineProps<{
   };
   decisioni: Record<string, string>;
   confermabile: boolean;
+  /**
+   * Coda 759 (1) e (2), decisione 707 (2): perché i saldi non entrerebbero (`motivi`, con la strada per correggerlo), se si può
+   * importare il resto senza (`possibile`: i saldi sono l'unica cosa che ferma la conferma) e che cosa non entra in quel caso.
+   */
+  senza_saldi: {
+    possibile: boolean;
+    motivi: { codice: string; motivo: string; strada: string }[];
+    non_entra: { cosa: string; dettaglio: string }[];
+  };
+  /** Coda 646, decisione 707 (4): gli esercizi che resteranno aperti dopo la conferma, quando sono più d'uno. */
+  esercizi_aperti: null | { nomi: string[]; piu_recente: string; titolo: string; testo: string };
 }>();
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -82,8 +98,24 @@ function decidi(chiave: string, scelta: string) {
   router.put(route('import.decisione', props.lotto.uuid), { chiave, scelta }, { preserveScroll: true });
 }
 
+// La conferma parte una volta sola: mentre la richiesta è in corso i due pulsanti sono spenti. Un doppio clic mandava due conferme, e la
+// seconda, su un'importazione appena entrata, la riportava a metà (il server ora la rimanda all'esito, e due conferme dello stesso lotto
+// non lavorano insieme; qui non si manda nemmeno).
+const inviando = ref(false);
+const mentreInvia = {
+  onStart: () => { inviando.value = true; },
+  onFinish: () => { inviando.value = false; },
+};
+
 function conferma() {
-  router.post(route('import.conferma', props.lotto.uuid));
+  if (inviando.value) return;
+  router.post(route('import.conferma', props.lotto.uuid), {}, mentreInvia);
+}
+
+/** «Importa senza i saldi»: la stessa conferma, senza il livello dei saldi. Il server ricontrolla che sia l'unico a fermarla. */
+function confermaSenzaSaldi() {
+  if (inviando.value) return;
+  router.post(route('import.conferma', props.lotto.uuid), { senza_saldi: true }, mentreInvia);
 }
 
 const decisioniAperte = computed(() =>
@@ -94,9 +126,23 @@ const decisioniAperte = computed(() =>
 // solo scrivendo, la conferma partiva, si fermava a metà e l'esito chiedeva una scelta che
 // nessuna schermata sapeva offrire: l'importazione diventava incompletabile alla seconda volta
 // sullo stesso archivio.
+type Collisione = (typeof props)['anteprima']['collisioni']['voci'][number];
+
+// La decisione presa che vale. «Unisci» su una persona senza il permesso di modificarla non vale (la conferma la rifiuterebbe): la voce
+// resta aperta, con la scelta che resta.
+function decisa(c: Collisione): string | undefined {
+  const d = props.decisioni[c.chiave_decisione];
+
+  return d && c.senza_permesso && !c.scelte.includes(d) ? undefined : d;
+}
+
 const collisioniAperte = computed(() =>
-  props.anteprima.collisioni.voci.filter((c) => !props.decisioni[c.chiave_decisione]).length,
+  props.anteprima.collisioni.voci.filter((c) => !decisa(c)).length,
 );
+
+// Il condominio che c'è già, senza il permesso di scriverci dentro: non è una decisione che resta, è una porta chiusa, e accanto al
+// pulsante spento si dice quale.
+const senzaPermesso = computed(() => props.anteprima.collisioni.voci.find((c) => c.senza_permesso && c.cosa === 'condominio') ?? null);
 
 // «Lascia com'è» va bene per una persona, non per un esercizio: lì la scelta non è conservare
 // un dato ma **riusare** il contenitore, e chiamarla con il nome sbagliato fa esitare.
@@ -150,6 +196,13 @@ const sottotitoloConferma = computed(() => {
 
 const puoConfermare = computed(
   () => props.confermabile && decisioniAperte.value === 0 && collisioniAperte.value === 0,
+);
+
+// Il pulsante principale è spento per i saldi (Coda 759): il motivo sta accanto, e «Importa senza i saldi» si può premere quando
+// le altre decisioni sono prese, come il pulsante principale.
+const fermoPerISaldi = computed(() => !props.confermabile && props.senza_saldi.motivi.length > 0);
+const puoConfermareSenzaSaldi = computed(
+  () => props.senza_saldi.possibile && decisioniAperte.value === 0 && collisioniAperte.value === 0,
 );
 </script>
 
@@ -206,7 +259,7 @@ const puoConfermare = computed(
             v-for="c in props.anteprima.collisioni.voci"
             :key="c.chiave_decisione"
             class="rounded-md border bg-background p-3 text-sm"
-            :class="props.decisioni[c.chiave_decisione] ? 'border-emerald-300 dark:border-emerald-900/60' : ''"
+            :class="decisa(c) ? 'border-emerald-300 dark:border-emerald-900/60' : ''"
           >
             <div class="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{{ c.cosa }}</Badge>
@@ -221,7 +274,18 @@ const puoConfermare = computed(
               Sul solo nome ci si sbaglia: due «Rossi Mario» esistono davvero. Controlla prima di unire.
             </p>
 
-            <div v-if="!props.decisioni[c.chiave_decisione]" class="mt-2 flex flex-wrap gap-2">
+            <!-- La persona che c'è già, senza «Modifica anagrafiche»: «Lascia com'è» resta, e porta in fondo. -->
+            <p v-if="c.senza_permesso && c.cosa === 'persona'" class="mt-2 text-muted-foreground" data-senza-permesso-persona>
+              Per aggiornare «{{ c.esistente }}» con i dati del file («Unisci») serve il permesso «Modifica anagrafiche»: chiedilo a chi
+              amministra lo studio. Senza, scegli «Lascia com'è»: la scheda resta com'è e le unità vengono collegate lo stesso.
+            </p>
+
+            <p v-if="c.senza_permesso && c.cosa === 'condominio'" class="mt-2 text-destructive" data-senza-permesso>
+              Per importare dentro «{{ c.esistente }}» serve il permesso «Modifica condomini»: chiedilo a chi amministra lo studio, oppure
+              chiedigli di fare lui l'importazione.
+            </p>
+
+            <div v-else-if="!decisa(c)" class="mt-2 flex flex-wrap gap-2">
               <Button
                 v-for="scelta in c.scelte"
                 :key="scelta"
@@ -234,7 +298,7 @@ const puoConfermare = computed(
             </div>
 
             <p v-else class="mt-2 text-muted-foreground">
-              Hai scelto: <strong>{{ etichettaScelta(props.decisioni[c.chiave_decisione], c.cosa).toLowerCase() }}</strong>.
+              Hai scelto: <strong>{{ etichettaScelta(decisa(c)!, c.cosa).toLowerCase() }}</strong>.
               <button
                 v-if="c.scelte.length > 1"
                 class="underline"
@@ -401,11 +465,30 @@ const puoConfermare = computed(
             </div>
           </div>
 
-          <p v-if="props.anteprima.saldi.verificabile" class="text-xs text-muted-foreground">
+          <!--
+            Coda 759 (2): «Se non tornasse, non ti farei proseguire» e il pulsante restava acceso. Adesso, se i saldi non possono
+            entrare, il motivo è qui, in rosso, con la strada per correggerlo (bozza approvata, scena 2); il pulsante qui sotto è
+            spento, e accanto c'è «Importa senza i saldi» (decisione 707 (2)).
+          -->
+          <div
+            v-if="props.senza_saldi.motivi.length"
+            class="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+            data-saldi-motivo
+          >
+            <CircleAlert class="mt-0.5 h-4 w-4 shrink-0" />
+            <div class="space-y-1">
+              <p v-for="m in props.senza_saldi.motivi" :key="m.codice">
+                <strong>I saldi non entrano.</strong> {{ m.motivo }} {{ m.strada }}
+              </p>
+              <p v-if="props.senza_saldi.possibile">Oppure importa tutto il resto senza i saldi, con il pulsante qui sotto.</p>
+            </div>
+          </div>
+
+          <p v-else-if="props.anteprima.saldi.verificabile" class="text-xs text-muted-foreground">
             Il totale non te l'ho chiesto: è scritto dentro il file che hai caricato.
-            Se non tornasse, non ti farei proseguire.
+            Se non tornasse, i saldi non entrerebbero.
           </p>
-          <p v-else class="text-xs text-muted-foreground">
+          <p v-if="!props.anteprima.saldi.verificabile" class="text-xs text-muted-foreground">
             Questo file non porta un totale di controllo, quindi la somma qui sopra non la posso
             confrontare con niente: è la somma di quello che hai scritto tu. Confrontala con
             l'ultimo rendiconto approvato prima di emettere il primo piano rate.
@@ -519,32 +602,94 @@ const puoConfermare = computed(
 
       <!-- ══ Conferma ══ -->
       <Card>
-        <CardContent class="flex flex-wrap items-center justify-between gap-4 pt-6">
-          <div>
-            <h2 class="font-semibold">Tutto qui</h2>
-            <p class="text-sm text-muted-foreground">
-              <!-- Il pulsante disabilitato si spiega da sé, e dice **quale** decisione manca -->
-              <template v-if="collisioniAperte">
-                {{ collisioniAperte === 1 ? 'Resta da decidere' : 'Restano da decidere' }}
-                {{ collisioniAperte }} {{ collisioniAperte === 1 ? 'cosa che esiste già' : 'cose che esistono già' }},
-                qui sopra.
-              </template>
-              <template v-else-if="decisioniAperte">
-                Restano {{ decisioniAperte }}
-                {{ decisioniAperte === 1 ? 'decisione da prendere' : 'decisioni da prendere' }}.
-              </template>
-              <template v-else>
-                Dopo la conferma potrai comunque annullare, finché nessuna operazione userà questi dati.
-              </template>
-            </p>
+        <CardContent class="space-y-4 pt-6">
+          <!--
+            Coda 646, decisione 707 (4): dopo la conferma resteranno aperti due esercizi. Un avviso giallo che non blocca, sopra il
+            pulsante (bozza approvata, scena 3): dove vanno incassi, pagamenti e saldi da qui in poi, e dove vanno le rate.
+          -->
+          <div
+            v-if="props.esercizi_aperti"
+            class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+            data-esercizi-aperti
+          >
+            <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+            <p><strong>{{ props.esercizi_aperti.titolo }}</strong> {{ props.esercizi_aperti.testo }}</p>
           </div>
-          <div class="flex gap-2">
-            <Link :href="route('import.verifica', props.lotto.uuid)">
-              <Button variant="outline">Torna indietro</Button>
-            </Link>
-            <Button :disabled="!puoConfermare" @click="conferma">
-              Importa {{ props.anteprima.totale_record }} record
-            </Button>
+
+          <!--
+            «Importa senza i saldi» (decisione 707 (2)): prima di premerlo si legge che cosa non entra, con lo scarto in cifre nel
+            motivo qui sopra, e chi scrive i saldi dopo.
+          -->
+          <div
+            v-if="props.senza_saldi.possibile"
+            class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+            data-senza-saldi
+          >
+            <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+            <div class="space-y-1">
+              <p><strong>Con «Importa senza i saldi» entra tutto il resto.</strong> Non entrano:</p>
+              <ul class="list-disc space-y-0.5 pl-5">
+                <li v-for="n in props.senza_saldi.non_entra" :key="n.cosa">
+                  <strong>{{ n.cosa }}</strong>: {{ n.dettaglio }}
+                </li>
+              </ul>
+              <p>I saldi li scrivi tu, dopo, dalla pagina «Saldi iniziali» del condominio, prima di emettere il primo piano rate.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 class="font-semibold">Tutto qui</h2>
+              <p class="text-sm text-muted-foreground">
+                <!-- Il pulsante disabilitato si spiega da sé, e dice **quale** decisione manca -->
+                <template v-if="senzaPermesso">
+                  <span class="text-destructive">
+                    Per importare dentro «{{ senzaPermesso.esistente }}» serve il permesso «Modifica condomini».
+                  </span>
+                </template>
+                <template v-else-if="collisioniAperte">
+                  {{ collisioniAperte === 1 ? 'Resta da decidere' : 'Restano da decidere' }}
+                  {{ collisioniAperte }} {{ collisioniAperte === 1 ? 'cosa che esiste già' : 'cose che esistono già' }},
+                  qui sopra.
+                </template>
+                <template v-else-if="decisioniAperte">
+                  Restano {{ decisioniAperte }}
+                  {{ decisioniAperte === 1 ? 'decisione da prendere' : 'decisioni da prendere' }}.
+                </template>
+                <!-- Coda 759: il pulsante principale spento per i saldi, con il motivo accanto. -->
+                <template v-else-if="fermoPerISaldi">
+                  <span class="text-destructive" data-motivo-pulsante>
+                    {{ props.senza_saldi.motivi.map((m) => m.motivo).join(' ') }}
+                  </span>
+                </template>
+                <template v-else-if="!props.confermabile">
+                  Restano errori da correggere: li trovi nella verifica dei file.
+                </template>
+                <template v-else>
+                  Dopo la conferma potrai comunque annullare, finché nessuna operazione userà questi dati.
+                </template>
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <Link v-if="fermoPerISaldi" :href="route('import.index')">
+                <Button variant="outline">Ricarica i file</Button>
+              </Link>
+              <Link v-else :href="route('import.verifica', props.lotto.uuid)">
+                <Button variant="outline">Torna indietro</Button>
+              </Link>
+              <Button
+                v-if="props.senza_saldi.possibile"
+                variant="outline"
+                :disabled="!puoConfermareSenzaSaldi || inviando"
+                data-azione="importa-senza-saldi"
+                @click="confermaSenzaSaldi"
+              >
+                Importa senza i saldi
+              </Button>
+              <Button :disabled="!puoConfermare || inviando" data-azione="importa" @click="conferma">
+                Importa {{ props.anteprima.totale_record }} record
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

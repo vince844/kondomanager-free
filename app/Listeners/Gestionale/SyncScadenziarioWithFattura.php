@@ -138,10 +138,14 @@ class SyncScadenziarioWithFattura implements ShouldQueue
         }
 
         // --- 1. EVENTO EMISSIONE RATA PER SOPRAVVENIENZA ---
-        // Se l'utente ha usato lo "Split" in Spesa Corrente, DEVE emettere le rate!
+        // La parte della pregressa non coperta dai saldi iniziali (la copertura «sopravvenienza») si chiede con un piano rate solo se nella finestra
+        // l'amministratore ha scelto «Rata integrativa». Con «Attesa conguaglio» la spesa aspetta il rendiconto, e il compito chiedeva di fare ciò che lui
+        // aveva scelto di non fare (rilievo 10 dello scettico della tappa 6 della 1.12.0-beta.14); con il fondo la copertura «sopravvenienza» non nasce.
+        // Senza la strategia salvata (un chiamante senza la finestra) il compito nasce come prima.
         $haSopravvenienza = $fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists();
-        
-        if ($haSopravvenienza) {
+        $strategiaPregressa = $fattura->dati_extra['strategia_rientro_pregressa'] ?? null;
+
+        if ($haSopravvenienza && in_array($strategiaPregressa, [null, 'rata_integrativa'], true)) {
             $scadenzaRate = DateHelper::adessoComeSiLegge()->addDays(7)->setTime(9, 0); // Promemoria tra 1 settimana
 
             Evento::updateOrCreate(

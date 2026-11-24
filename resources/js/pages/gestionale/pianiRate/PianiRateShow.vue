@@ -966,7 +966,7 @@ const executePublishSilent = () => {
     }), {}, {
         preserveScroll: true,
         onSuccess: () => {
-            showFeedback('Pubblicazione completata', 'Le rate sono ora visibili ai condòmini e le notifiche sono state inviate.', false);
+            showFeedback('Pubblicazione completata', 'Le rate sono ora visibili ai condòmini nel portale.', false);
         }
     });
 };
@@ -1503,6 +1503,7 @@ const printRipartoCapitoli = () => {
                         </HoverCardContent>
                     </HoverCard>
 
+                    <!-- Coda 672: l'app e le notifiche push non ci sono, e la rotta del pulsante (`EmissioneRateController::publishSilent`) non manda email -->
                     <!-- PUBBLICA NASCOSTE -->
                     <HoverCard v-if="props.has_unpublished_rates">
                         <HoverCardTrigger as-child>
@@ -1513,10 +1514,10 @@ const printRipartoCapitoli = () => {
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
                             <div class="space-y-3">
-                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-300"><BellRing class="w-4 h-4" /> Rate in Sospeso</h4>
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-300"><BellRing class="w-4 h-4" /> Rate in sospeso</h4>
                                 <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
-                                    <p>Ci sono rate emesse contabilmente ma attualmente <strong>nascoste</strong> ai condòmini.</p>
-                                    <p>Clicca questo pulsante per sbloccarne la visibilità nell'App e <strong>inviare le notifiche</strong> (Push/Email).</p>
+                                    <p>Ci sono rate emesse ma ancora <strong>nascoste</strong> ai condòmini.</p>
+                                    <p>Il pulsante le rende visibili nel portale dei condòmini.</p>
                                 </div>
                             </div>
                         </HoverCardContent>
@@ -1553,7 +1554,7 @@ const printRipartoCapitoli = () => {
                                 <Printer class="w-3.5 h-3.5 text-indigo-500" />
                                 <div>
                                     <div class="text-xs font-medium">Per unità immobiliare</div>
-                                    <div class="text-[10px] text-slate-400">1 riga per immobile</div>
+                                    <div class="text-xs text-slate-400">le unità con i loro soggetti</div>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuItem 
@@ -2201,7 +2202,7 @@ const printRipartoCapitoli = () => {
                 <Checkbox id="invia-notifiche" v-model="formEmissione.invia_notifiche" class="mt-1" />
                 <div class="grid gap-1.5 leading-none flex-1">
                     <label for="invia-notifiche" class="text-sm font-semibold leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2">
-                        Rendi visibile e invia notifiche
+                        Rendi visibili ai condòmini
                         <HoverCard>
                             <HoverCardTrigger as-child>
                                 <button type="button" class="cursor-pointer flex items-center" @click.stop>
@@ -2215,7 +2216,7 @@ const printRipartoCapitoli = () => {
                                     </h4>
                                     <div class="text-sm space-y-2 text-slate-600 dark:text-neutral-300">
                                         <p>Disabilita questa opzione se devi prima <strong>caricare manualmente dei pagamenti pregressi</strong> (es. allineamento da Excel).</p>
-                                        <p>Le rate verranno generate contabilmente, ma i condòmini <strong>non riceveranno notifiche</strong> e non le vedranno nella loro area privata.</p>
+                                        <p>Le rate verranno generate contabilmente, ma i condòmini <strong>non le vedranno nel portale</strong> finché non le pubblichi.</p>
                                         <Separator class="my-2"/>
                                         <div class="text-xs text-amber-600 italic font-medium dark:text-amber-400">Ricordati di pubblicarle successivamente usando il tasto "Pubblica" in tabella.</div>
                                     </div>

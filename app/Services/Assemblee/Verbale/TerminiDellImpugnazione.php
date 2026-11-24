@@ -5,6 +5,7 @@
 
 namespace App\Services\Assemblee\Verbale;
 
+use App\Enums\Assemblee\EsitoDelibera;
 use App\Models\Assemblee\Assemblea;
 use App\Models\Assemblee\Delibera;
 use App\Models\Assemblee\VerbaleDellAssemblea;
@@ -58,9 +59,10 @@ final class TerminiDellImpugnazione
 
     /**
      * I termini di ogni delibera del verbale: per persona chi può impugnare e fino a quando, e il giorno da cui sono passati per tutti (null se manca una
-     * consegna). È la lettura che la tappa delle delibere aspetta (V4 del suo progetto).
+     * consegna). È la lettura che la tappa delle delibere aspetta (V4 del suo progetto). Si confronta per delibera, mai per numero del punto: il rendiconto e
+     * il riparto votati a parte hanno ognuno i suoi termini (Coda 750 B2), e `oggetto` dice quale dei due.
      *
-     * @return list<array{delibera_id: int, punto: int, esito: string, deliberata_il: string, chi: list<array<string, mixed>>, per_tutti: ?string}>
+     * @return list<array{delibera_id: int, punto: int, votazione: int, oggetto: ?string, esito: string, deliberata_il: string, chi: list<array<string, mixed>>, per_tutti: ?string}>
      */
     public function perIlVerbale(VerbaleDellAssemblea $verbale): array
     {
@@ -72,7 +74,7 @@ final class TerminiDellImpugnazione
             $ultimo = null;
             foreach ($destinatari['persone'] as $persona) {
                 foreach ($persona['termini'] as $t) {
-                    if (! in_array((int) $p['numero'], $t['punti'], true) || $t['dal'] === null && $t['da_consegnare'] === false) {
+                    if (! in_array((int) $p['delibera_id'], $t['delibere'] ?? [], true) || $t['dal'] === null && $t['da_consegnare'] === false) {
                         continue;
                     }
                     $chi[] = ['anagrafica_id' => $persona['anagrafica_id'], 'nome' => $persona['nome'], 'perche' => $t['perche'], 'dal' => $t['dal'],
@@ -84,8 +86,9 @@ final class TerminiDellImpugnazione
                     }
                 }
             }
-            $uscita[] = ['delibera_id' => (int) $p['delibera_id'], 'punto' => (int) $p['numero'], 'esito' => (string) $p['esito'], 'deliberata_il' => (string) $p['deliberata_il'],
-                'chi' => $chi, 'per_tutti' => $tutti ? $ultimo : null];
+            $uscita[] = ['delibera_id' => (int) $p['delibera_id'], 'punto' => (int) $p['numero'], 'votazione' => (int) ($p['votazione'] ?? 1),
+                'oggetto' => $p['oggetto'] ?? null, 'esito' => (string) $p['esito'], 'deliberata_il' => (string) $p['deliberata_il'], 'chi' => $chi,
+                'per_tutti' => $tutti ? $ultimo : null];
         }
 
         return $uscita;
@@ -116,10 +119,17 @@ final class TerminiDellImpugnazione
      * favorevoli) il giorno è quello della delibera, come in {@see perTuttiIlVerbale()}, e `nessuno` lo dice: «La data non c'è» si leggerebbe come un verbale
      * mai consegnato.
      *
+     * **Senza termine** (Coda 750 B1): il punto né approvato né respinto (rinviato, trattato senza voto) non ha niente da impugnare. Non è un verbale che manca:
+     * `senza_termine` lo dice, con l'esito, e `per_tutti` resta vuoto.
+     *
      * @return ?array<string, mixed>
      */
     public function perLaDelibera(Delibera $delibera): ?array
     {
+        if (! in_array($delibera->esito, [EsitoDelibera::APPROVATA, EsitoDelibera::APPROVATA_CON_MODIFICHE, EsitoDelibera::RESPINTA], true)) {
+            return ['delibera_id' => (int) $delibera->id, 'punto' => $delibera->punto?->numero, 'esito' => $delibera->esito?->value,
+                'deliberata_il' => $delibera->deliberata_il?->format('Y-m-d'), 'chi' => [], 'per_tutti' => null, 'nessuno' => false, 'senza_termine' => true];
+        }
         $numero = VerbaliDellAssemblea::numeroDelGiorno((int) $delibera->assemblea_id, $delibera->deliberata_il?->format('Y-m-d'));
         if ($numero === null) {
             return null;
@@ -131,7 +141,8 @@ final class TerminiDellImpugnazione
         }
         $nessuno = $termini['chi'] === [];
 
-        return ['per_tutti' => $nessuno && $termini['per_tutti'] === null ? $termini['deliberata_il'] : $termini['per_tutti'], 'nessuno' => $nessuno] + $termini;
+        return ['per_tutti' => $nessuno && $termini['per_tutti'] === null ? $termini['deliberata_il'] : $termini['per_tutti'], 'nessuno' => $nessuno,
+            'senza_termine' => false] + $termini;
     }
 
     /** «Segna impugnata»: il giorno e la nota sulla delibera, e l'atto fra i documenti dell'assemblea. Non ferma niente. */

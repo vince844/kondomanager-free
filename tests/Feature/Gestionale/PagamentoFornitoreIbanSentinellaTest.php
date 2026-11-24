@@ -137,7 +137,7 @@ it('la modifica con l\'IBAN dell\'anagrafica scritto con gli spazi o in minuscol
     [$pagamento, $modifica] = pagamentoDaModificare('IT60X0542811101000000123456', 'IT28W8000000292100645211208');
 
     expect((new PagamentoFornitoreService)->aggiornaPagamento($pagamento, $modifica + ['iban_beneficiario' => 'it60 x054 2811 1010 0000 0123 456'])->iban_beneficiario)
-        ->toBe('it60 x054 2811 1010 0000 0123 456');
+        ->toBe('IT60X0542811101000000123456'); // dalla beta.14 l'IBAN si scrive senza spazi e in maiuscolo (Coda 626)
 });
 
 it('lo spazio che non si spezza dentro l\'IBAN (copiato da un PDF o da una pagina web) non è una discrepanza', function () {

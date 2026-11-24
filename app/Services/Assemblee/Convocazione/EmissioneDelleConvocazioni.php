@@ -20,6 +20,7 @@ use App\Models\Gestionale\RegistroInvio;
 use App\Models\User;
 use App\Services\Assemblee\ChiusuraDeiCompiti;
 use App\Services\Assemblee\StatiDellAssemblea;
+use App\Services\Assemblee\UnitaDelPunto;
 use App\Services\Documenti\ArchivioDocumenti;
 use App\Services\Gestionale\Invii\ArchivioAPezzi;
 use App\Services\Gestionale\Lettere\TestiLettere;
@@ -99,18 +100,22 @@ final class EmissioneDelleConvocazioni
      */
     public static function avviso(Assemblea $assemblea, array $voce, ?string $mezzo = null, ?string $etichetta = null, ?CarbonInterface $quando = null): array
     {
-        $assemblea->loadMissing(['condominio', 'sedute', 'punti.scala', 'punti.palazzina', 'punti.tabella', 'scala', 'palazzina']);
+        $assemblea->loadMissing(['condominio', 'sedute', 'punti.scala', 'punti.palazzina', 'punti.tabella', 'scala', 'palazzina', 'tabella']);
         $condominio = $assemblea->condominio;
         $quando ??= DateHelper::adessoUtente();
         $tipo = mb_strtolower($assemblea->tipo?->parola() ?? 'ordinaria');
         $nomeCondominio = TestiLettere::condominioConNome((string) $condominio->nome);
         $puntiDellaPersona = isset($voce['punti']) && is_array($voce['punti']) && $voce['punti'] !== [] ? array_map('intval', $voce['punti']) : null;
         $punti = $assemblea->punti->filter(fn (PuntoDellOrdineDelGiorno $p) => $puntiDellaPersona === null || in_array((int) $p->numero, $puntiDellaPersona, true));
+        // L'assemblea dei condòmini di un gruppo (Coda 734, scena 8 della bozza): il gruppo nel sottotitolo, nell'apertura, in una riga e nella delega.
+        $gruppo = UnitaDelPunto::gruppoDellAssemblea($assemblea) !== null ? (string) ($assemblea->tabella?->nome ?? '') : null;
         $perimetro = match ($assemblea->ambito) {
             AmbitoAssemblea::SCALA => $assemblea->scala?->name !== null ? 'scala ' . $assemblea->scala->name : null,
             AmbitoAssemblea::PALAZZINA => $assemblea->palazzina?->name !== null ? 'palazzina ' . $assemblea->palazzina->name : null,
-            default => null,
+            AmbitoAssemblea::GRUPPO => $gruppo !== null ? 'i condòmini della tabella «' . $gruppo . '»' : null,
+            AmbitoAssemblea::CONDOMINIO, null => null,
         };
+        $dellAssemblea = $gruppo !== null ? ' dei condòmini delle unità della tabella «' . $gruppo . '» del ' . $nomeCondominio : null;
 
         $sedute = [];
         foreach ($assemblea->sedute as $s) {
@@ -120,6 +125,9 @@ final class EmissioneDelleConvocazioni
                 'dove' => self::dove($assemblea, $s->luogo)];
         }
         $righe = [];
+        if ($gruppo !== null) {
+            $righe[] = 'L\'assemblea riguarda ' . UnitaDelPunto::soliCondomini(null, $gruppo, true) . ': votano e si contano solo loro.';
+        }
         if ($assemblea->modalita === ModalitaAssemblea::MISTA && filled($assemblea->piattaforma)) {
             $righe[] = 'Si può partecipare anche in videoconferenza, sulla piattaforma «' . $assemblea->piattaforma . '»: il collegamento arriva prima della riunione.';
         } elseif ($assemblea->modalita === ModalitaAssemblea::VIDEOCONFERENZA) {
@@ -140,16 +148,16 @@ final class EmissioneDelleConvocazioni
             foreach ($frasi as $cosa => $numeri) {
                 $pezzi[] = (count($numeri) === 1 ? 'il punto ' : 'i punti ') . ConvocatiDellAssemblea::elenco($numeri) . ', dove ' . $cosa;
             }
-            $conduttore = 'Lei è convocato per ' . implode('; per ', $pezzi) . '. Gli altri punti dell\'ordine del giorno non la riguardano.';
+            $conduttore = 'La convocazione la riguarda per ' . implode('; per ', $pezzi) . '. Gli altri punti dell\'ordine del giorno non la riguardano.';
         }
 
         $puntiDellAvviso = [];
         foreach ($punti as $p) {
             $note = [];
-            if ($p->ambito === AmbitoAssemblea::SCALA && $p->scala !== null) {
-                $note[] = 'Riguarda i soli condòmini della scala ' . $p->scala->name . ($p->tabella !== null ? '; la spesa si divide con la tabella «' . $p->tabella->nome . '»' : '') . '.';
-            } elseif ($p->ambito === AmbitoAssemblea::PALAZZINA && $p->palazzina !== null) {
-                $note[] = 'Riguarda i soli condòmini della palazzina ' . $p->palazzina->name . ($p->tabella !== null ? '; la spesa si divide con la tabella «' . $p->tabella->nome . '»' : '') . '.';
+            $delPunto = UnitaDelPunto::gruppoProprio($p, $assemblea); // la parte e il gruppo del punto (Coda 734): la riga dice chi vota
+            $soli = UnitaDelPunto::soliCondomini(UnitaDelPunto::parteDi($p), $delPunto);
+            if ($soli !== null) {
+                $note[] = 'Riguarda ' . $soli . ($delPunto !== null ? ': votano solo loro.' : ($p->tabella !== null ? '; la spesa si divide con la tabella «' . $p->tabella->nome . '»' : '') . '.');
             }
             if ($p->materia === MateriaPunto::DESTINAZIONE_USO) {
                 $dati = (array) ($p->dati ?? []);
@@ -189,15 +197,15 @@ final class EmissioneDelleConvocazioni
             'sottotitolo' => $nomeCondominio . ($perimetro !== null ? ' · ' . $perimetro : ''),
             'saluto' => trim((string) ($voce['nome'] ?? '')) === '' ? 'Gentili condòmini,' : 'Gentile ' . trim((string) $voce['nome']) . ',',
             'apertura' => $puntiDellaPersona === null
-                ? 'la invito all\'assemblea ' . $tipo . ' dei condòmini del ' . $nomeCondominio . ($perimetro !== null ? ', ' . $perimetro : '') . ', che si terrà:'
-                : 'la invito all\'assemblea ' . $tipo . ' del ' . $nomeCondominio . ' per i punti che la riguardano come conduttore, che si terrà:',
+                ? 'la invito all\'assemblea ' . $tipo . ($dellAssemblea ?? ' dei condòmini del ' . $nomeCondominio . ($perimetro !== null ? ', ' . $perimetro : '')) . ', che si terrà:'
+                : 'la invito all\'assemblea ' . $tipo . ($dellAssemblea ?? ' del ' . $nomeCondominio) . ' per i punti che la riguardano come conduttore, che si terrà:',
             'sedute' => $sedute,
             'righe_della_riunione' => $righe,
             'conduttore' => $conduttore,
-            'titolo_ordine' => $puntiDellaPersona === null ? 'Ordine del giorno' : 'I punti per cui è convocato',
+            'titolo_ordine' => $puntiDellaPersona === null ? 'Ordine del giorno' : 'I punti che la riguardano',
             'punti' => $puntiDellAvviso,
             'chiusura' => array_values(array_filter([
-                $unita !== '' ? 'È convocato per: ' . $unita . '.' : null,
+                $unita !== '' ? 'L\'avviso è per le unità: ' . $unita . '.' : null,
                 'Se non può partecipare, può farsi rappresentare con la delega qui sotto, compilata e firmata.',
             ])),
             'delega' => [
@@ -206,7 +214,8 @@ final class EmissioneDelleConvocazioni
                 'testo' => trim((string) ($voce['nome'] ?? '')) === '' ? 'Chi firma, ________________________________, unità ______________, delega'
                     : 'Chi firma, ' . trim((string) $voce['nome']) . ($unitaNellaDelega !== '' ? ', ' . $unitaNellaDelega : '') . ', delega',
                 'delegato' => 'il sig. / la sig.ra ______________________________________________',
-                'poteri' => 'a rappresentare chi firma nell\'assemblea ' . $tipo . ' del ' . $nomeCondominio . ($date !== [] ? ' di ' . ConvocatiDellAssemblea::elenco(array_values($date)) : '')
+                'poteri' => 'a rappresentare chi firma nell\'assemblea ' . $tipo . ($gruppo !== null ? ' dei condòmini della tabella «' . $gruppo . '»' : '')
+                    . ' del ' . $nomeCondominio . ($date !== [] ? ' di ' . ConvocatiDellAssemblea::elenco(array_values($date)) : '')
                     . ($puntiDellaPersona === null ? ', con ogni potere di intervento e di voto.' : ', per ' . (count($puntiDellaPersona) === 1 ? 'il punto ' : 'i punti ')
                         . ConvocatiDellAssemblea::elenco(array_map('strval', $puntiDellaPersona)) . '.'),
                 'avvertenza' => 'Non si può delegare l\'amministratore (art. 67 c. 5 disp. att. c.c.). Se i condòmini sono più di venti, il delegato non può rappresentare più di un quinto dei condòmini e del valore.',

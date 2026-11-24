@@ -222,10 +222,12 @@ final class AccordiRientro
      * accordo che {@see tieneFuoriGliInteressi()} tiene fuori; la parte è quella di {@see partiInCorso()}, a zero per la rata coperta già versata tutta e
      * per le rate di un accordo finito e rispettato: la parte a zero non cambia la frase «€ … sono in un accordo». Una rata in due accordi che la tengono
      * fuori (non dovrebbe succedere) resta fuori dal giorno del primo. Per un accordo chiuso da una successione in regola, `fine` è il giorno prima del
-     * decesso: l'ultimo in cui la parte fuori, se c'è, prende ancora interessi (decisione 454).
+     * decesso: l'ultimo in cui la parte fuori, se c'è, prende ancora interessi (decisione 454). `sospesi` dice se per quella rata valgono i «sospesi» della
+     * decisione 450 ({@see sospesiSullaParteFuori()}): è la sola ragione per cui la proposta scrive che resta fuori tutta la rata per una scelta
+     * dell'amministratore (Coda 678); una rata coperta per intero, o di un accordo chiuso, esce tutta per un'altra ragione (Coda 712).
      *
      * @param list<int> $persone
-     * @return array<int, array<string, array{parte: int, dal: string, protetto: ?list<array{dal: string, importo: int}>, fine?: string}>>
+     * @return array<int, array<string, array{parte: int, dal: string, protetto: ?list<array{dal: string, importo: int}>, sospesi: bool, fine?: string}>>
      */
     public function senzaInteressi(int $condominioId, array $persone, string $alla): array
     {
@@ -251,7 +253,8 @@ final class AccordiRientro
                     $versamenti ??= $this->versamenti($a);
                     $protetto = self::protetto($a, $coperta, $versamenti, $alla);
                 }
-                $esito[$persona][$k] = ['parte' => (int) ($parti[$persona][$k] ?? 0), 'dal' => self::primoGiornoFuori($a), 'protetto' => $protetto] + $fine;
+                $esito[$persona][$k] = ['parte' => (int) ($parti[$persona][$k] ?? 0), 'dal' => self::primoGiornoFuori($a), 'protetto' => $protetto,
+                    'sospesi' => self::sospesiSullaParteFuori($a, $coperta, $alla)] + $fine;
             }
         }
 
@@ -267,6 +270,18 @@ final class AccordiRientro
     {
         return ($a->interessi_parte_fuori ?? AccordoRientro::INTERESSI_CONTINUANO) === AccordoRientro::INTERESSI_CONTINUANO
             && $coperta->residuo_iniziale !== null && (int) $coperta->importo_riconosciuto < (int) $coperta->residuo_iniziale;
+    }
+
+    /**
+     * I «sospesi» della decisione 450 per una rata coperta, alla data: l'amministratore li ha scelti nell'accordo, l'accordo copre la rata solo in parte (il
+     * riconosciuto meno del residuo del giorno dell'accordo: il caso opposto di {@see interessiSullaParteFuori()}), ed è in corso, non chiuso. Una rata
+     * coperta per intero esce tutta perché l'accordo la copre tutta; un accordo chiuso, anche in regola da una successione, non «regge» più per la scelta.
+     */
+    public static function sospesiSullaParteFuori(AccordoRientro $a, AccordoRientroRata $coperta, string $alla): bool
+    {
+        return ($a->interessi_parte_fuori ?? AccordoRientro::INTERESSI_CONTINUANO) === AccordoRientro::INTERESSI_SOSPESI
+            && $coperta->residuo_iniziale !== null && (int) $coperta->importo_riconosciuto < (int) $coperta->residuo_iniziale
+            && $a->inCorsoIl($alla);
     }
 
     /**

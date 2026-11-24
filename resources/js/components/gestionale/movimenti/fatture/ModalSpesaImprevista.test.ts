@@ -298,3 +298,60 @@ describe('693, seconda passata — «Usa fondo riserva» con una riga addebitata
         expect(testo()).not.toContain('Non disponibile');
     });
 });
+
+/*
+ * 1.12.0-beta.14, tappa 6, Coda 754 (5): per il debito dell'esercizio precedente (`mode` «pregressa») la finestra non preseleziona l'origine dell'incarico.
+ * Partiva da «Intervento d'urgenza», e chi confermava senza guardare registrava una fattura da ratificare (prova G6 della revisione delle guide). Per la
+ * spesa fuori preventivo dell'anno resta com'era.
+ */
+describe('754 (5) — la finestra della pregressa parte senza origine', () => {
+    test('in modo «pregressa» l\'origine è vuota, il giustificativo non si vede e «Conferma voce» resta spento finché non si sceglie', async () => {
+        await apri({ mode: 'pregressa', importoImprevisto: 61_000 });
+        stato().tabella_millesimale_id = 3;
+        await flushPromises();
+
+        expect(stato().origine_decisionale).toBeNull();
+        expect(giustificativo()).toBeNull();
+        expect(conferma().disabled, 'senza origine la voce si conferma').toBe(true);
+        expect(testo()).toContain('Con l\'urgenza la fattura resta da ratificare in assemblea; con la delibera no.');
+
+        stato().origine_decisionale = 'delibera_assembleare';
+        await flushPromises();
+        expect(conferma().disabled).toBe(false);
+        expect(testo()).not.toContain('Con l\'urgenza la fattura resta da ratificare in assemblea');
+    });
+
+    test('in modo «pregressa», scelta la delibera con il fondo, la finestra emette l\'origine scelta e il fondo', async () => {
+        await apri({ mode: 'pregressa', importoImprevisto: 61_000 });
+        await compila('delibera_assembleare', 'fondo_riserva', FONDO.id);
+        conferma().click();
+        await flushPromises();
+
+        const emesso = finestra!.emitted('confirm')?.[0]?.[0] as Record<string, unknown>;
+        expect(emesso).toMatchObject({ origine_decisionale: 'delibera_assembleare', is_ordinario: false, strategia_rientro: 'fondo_riserva', fondo_patrimoniale_id: FONDO.id });
+    });
+
+    test('in modo «pregressa», riaperta dopo un rifiuto, la finestra riparte dall\'origine scelta prima', async () => {
+        await apri({ mode: 'pregressa', precedente: { nome_voce: 'Debito 2025 Idraulica', tabella_millesimale_id: 3, origine_decisionale: 'gestione_corrente',
+            strategia_rientro: 'conguaglio_fine_anno', motivazione_urgenza: 'Riparazione della colonna rimasta da pagare' } });
+
+        expect(stato().origine_decisionale).toBe('gestione_corrente');
+    });
+
+    test('controprova — la spesa fuori preventivo dell\'anno parte ancora dall\'urgenza, senza la frase', async () => {
+        await apri({ mode: 'corrente' });
+
+        expect(stato().origine_decisionale).toBe('gestione_corrente');
+        expect(testo()).not.toContain('Con l\'urgenza la fattura resta da ratificare in assemblea');
+    });
+
+    test('la frase della scelta è testo normale, almeno 12 px, con il tema scuro', async () => {
+        await apri({ mode: 'pregressa' });
+
+        const frase = document.body.querySelector('[data-test="scegli-origine"]') as HTMLElement;
+        expect(frase).not.toBeNull();
+        expect(frase.className).not.toMatch(/uppercase|text-\[(9|10|11)px\]/);
+        expect(frase.className).toMatch(/text-(xs|sm)/);
+        expect(frase.className).toMatch(/dark:text-/);
+    });
+});

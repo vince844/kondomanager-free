@@ -523,3 +523,39 @@ it('toccando il riquadro fiscale la posizione risulta decisa', function () {
 
     expect($fornitore->fresh()->posizioneRitenutaMaiDecisa())->toBeFalse();
 });
+
+/*
+|--------------------------------------------------------------------------
+| Il capitale sociale vuoto resta vuoto (1.12.0-beta.14, Coda 750 C1)
+|--------------------------------------------------------------------------
+*/
+
+it('salva una scheda con il capitale sociale vuoto senza trasformarlo in € 0,00 e senza una riga nel registro per una modifica che nessuno ha fatto', function () {
+    // La pagina mostra «0,00» per un NULL e lo rimanda così: la richiesta scriveva 0 e il registro raccontava «Capitale sociale: vuoto → € 0,00».
+    $fornitore = creaFornitore();
+    expect($fornitore->fresh()->getRawOriginal('capitale_sociale'))->toBeNull();
+    $prima = (int) (\App\Models\RegistroModifica::query()->max('id') ?? 0);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore(['capitale_sociale' => '0,00', 'note' => 'Chiamare prima delle 9']))
+        ->assertSessionHasNoErrors();
+
+    expect($fornitore->fresh()->getRawOriginal('capitale_sociale'))->toBeNull()
+        ->and($fornitore->fresh()->note)->toBe('Chiamare prima delle 9');
+    $righe = \App\Models\RegistroModifica::query()->where('id', '>', $prima)->get();
+    expect(json_encode($righe->toArray(), JSON_UNESCAPED_UNICODE))->not->toContain('Capitale sociale')->not->toContain('capitale_sociale');
+});
+
+it('un capitale sociale vero si salva, e un 0 scritto da chi lo aveva già a 0 resta 0', function () {
+    $fornitore = creaFornitore();
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore(['capitale_sociale' => '10.000,00']))->assertSessionHasNoErrors();
+    expect((int) $fornitore->fresh()->capitale_sociale)->toBe(1000000);
+
+    $this->put(route('admin.fornitori.update', $fornitore), payloadFornitore(['capitale_sociale' => '0,00']))->assertSessionHasNoErrors();
+    expect((int) $fornitore->fresh()->capitale_sociale)->toBe(0);
+});
+
+it('un fornitore nuovo con il capitale sociale vuoto resta senza capitale', function () {
+    $this->post(route('admin.fornitori.store'), payloadFornitore(['capitale_sociale' => '']))->assertSessionHasNoErrors();
+    $f = Fornitore::query()->latest('id')->first();
+    expect($f->getRawOriginal('capitale_sociale'))->toBeNull();
+});

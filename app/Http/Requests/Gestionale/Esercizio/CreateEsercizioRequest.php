@@ -44,12 +44,12 @@ class CreateEsercizioRequest extends FormRequest
     /**
      * Invariante: al più un esercizio aperto per condominio.
      *
-     * Senza questo vincolo `HasEsercizio::getEsercizioCorrente()` fa `->first()`
-     * senza ordinamento e l'esercizio "corrente" diventa nondeterministico: incassi,
-     * fetch della UI e soprattutto lo storno cross-esercizio (Variante B1, che cerca
-     * "un" esercizio aperto in cui appoggiare la scrittura inversa) possono finire in
-     * esercizi diversi nella stessa sessione. Ogni sigillo per-esercizio poggia su
-     * questa invariante.
+     * Le pagine non lasciano aprire un secondo esercizio; l'importazione sì (l'esercizio importato
+     * nasce aperto). Con due aperti la regola è una sola, il più recente (Coda 646, decisione 707 (4):
+     * `Esercizio::apertoPiuRecente()`, che `HasEsercizio::getEsercizioCorrente()` chiama), per gli
+     * incassi, le pagine e lo storno cross-esercizio (Variante B1). Fino alla 1.12.0-beta.14 qui c'era
+     * `->first()` senza ordinamento, e l'esercizio "corrente" era quello che il database restituiva.
+     * Ogni sigillo per-esercizio poggia su questa invariante.
      */
     public function withValidator($validator): void
     {

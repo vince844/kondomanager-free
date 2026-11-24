@@ -82,8 +82,8 @@ describe('le otto «i» delle assemblee', () => {
             consenso_videoconferenza_il: '', consenso_videoconferenza_modo: '', sedute: [{ convocazione: 'prima', numero: 1, giorno: '', ora: '08:00' },
                 { convocazione: 'seconda', numero: 1, giorno: '', ora: '18:30' }] }, scelte } as never });
         await flushPromises();
-        await provaLaI('i-per-chi-assemblea', 'Un\'assemblea di tutto il condominio, di una palazzina o di una scala: decide chi è convocato e la tabella del valore. Un '
-            + 'punto della sola scala B si sceglie nel punto.');
+        await provaLaI('i-per-chi-assemblea', 'Un\'assemblea di tutto il condominio, di una palazzina, di una scala o dei soli condòmini di una tabella segnata «di un '
+            + 'gruppo»: decide chi è convocato e la tabella del valore. Un punto della sola scala B si sceglie nel punto.');
     });
 
     test('il pagamento per l\'urgenza: il perché, e l\'etichetta resta del suo campo', async () => {

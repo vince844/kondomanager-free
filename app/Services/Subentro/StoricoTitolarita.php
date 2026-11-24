@@ -66,8 +66,9 @@ class StoricoTitolarita
         $passaggiRegistrati = $this->passaggiRegistrati($immobile);
         $periodiChiusi = $titolarita->whereNotNull('data_fine')->count();
 
-        // Un passaggio annullato (beta.37) resta in elenco ma non si conta: il pulsante dice quanti passaggi valgono.
-        $attivi = count(array_filter($passaggiRegistrati, fn (array $p) => ! $p['annullato']));
+        // Un passaggio annullato (beta.37) resta in elenco ma non si conta: il pulsante dice quanti passaggi valgono. I passaggi registrati insieme
+        // (decisione 705) sono una voce sola e si contano uno per persona: sono i passaggi che il programma ha scritto, come dice il badge.
+        $attivi = (int) array_sum(array_map(fn (array $p) => $p['annullato'] ? 0 : (! empty($p['insieme']) ? count($p['insieme']['passaggi']) : 1), $passaggiRegistrati));
 
         return [
             'passaggi' => $attivi > 0 ? $attivi : $periodiChiusi,
@@ -84,6 +85,9 @@ class StoricoTitolarita
      * copia autentica da poter registrare dopo. Solo i passaggi padre: quelli delle pertinenze sono figli e
      * compaiono come elenco dentro il loro padre. Dal più recente.
      *
+     * Decisione 705 (1.12.0-beta.14): i passaggi registrati insieme (più persone che escono con lo stesso atto) sono **una voce sola**
+     * ({@see insiemiInUnaVoce()}), al posto del primo; annullati insieme, restano insieme.
+     *
      * @return list<array<string, mixed>>
      */
     private function passaggiRegistrati(Immobile $immobile): array
@@ -91,11 +95,13 @@ class StoricoTitolarita
         // Anche gli annullati (beta.37): restano nello storico, annullati, e sono l'unico posto dove si vedono.
         $annullamento = app(\App\Actions\Subentro\AnnullaPassaggioAction::class);
 
-        return Subentro::conAnnullati()->with(['uscente', 'entrante', 'pertinenze' => fn ($q) => $q->conAnnullati(), 'pertinenze.immobile', 'saldi', 'pertinenze.saldi', 'condominio', 'immobile', 'annullatoDa:id,name'])
+        $passaggi = Subentro::conAnnullati()->with(['uscente', 'entrante', 'pertinenze' => fn ($q) => $q->conAnnullati(), 'pertinenze.immobile', 'saldi', 'pertinenze.saldi', 'condominio', 'immobile', 'annullatoDa:id,name'])
             ->where('immobile_id', $immobile->id)
             ->whereNull('subentro_padre_id')
             ->orderByDesc('decorrenza')->orderByDesc('id')
-            ->get()
+            ->get();
+
+        $voci = $passaggi
             ->map(function (Subentro $s) use ($annullamento) {
                 $saldi = $s->saldi->merge($s->pertinenze->flatMap->saldi);
                 // 1.11.0-beta.44: le righe dell'arretrato di una successione stanno con quelle del conguaglio, ma sono un'altra cosa.
@@ -197,8 +203,112 @@ class StoricoTitolarita
                         // Che cosa torna come prima: solo ciò che questo passaggio ha toccato, detto prima di confermare.
                         'effetti' => ! $s->annullato() && $motivo === null ? $annullamento->effetti($s) : [],
                     ],
+                    // Decisione 705: le parti dei passaggi registrati insieme (`insiemiInUnaVoce`); nullo per un passaggio da solo.
+                    'insieme' => null,
                 ];
             })->values()->all();
+
+        return $this->insiemiInUnaVoce($passaggi, $voci);
+    }
+
+    /**
+     * Decisione 705: le voci dei passaggi registrati insieme diventano una, al posto della prima che si incontra (sono tutte con la stessa data e con
+     * gli id di seguito). Un passaggio da solo resta com'è.
+     *
+     * @param \Illuminate\Support\Collection<int, Subentro> $passaggi nell'ordine delle voci
+     * @param list<array<string, mixed>> $voci
+     * @return list<array<string, mixed>>
+     */
+    private function insiemiInUnaVoce(\Illuminate\Support\Collection $passaggi, array $voci): array
+    {
+        $perId = collect($voci)->keyBy('id');
+        $esito = [];
+        $fatti = [];
+        foreach ($passaggi->values() as $i => $s) {
+            if ($s->insieme_id === null) {
+                $esito[] = $voci[$i];
+
+                continue;
+            }
+            if (isset($fatti[(int) $s->insieme_id])) {
+                continue;
+            }
+            $fatti[(int) $s->insieme_id] = true;
+            $membri = $passaggi->where('insieme_id', $s->insieme_id)->sortBy('id')->values();
+            $esito[] = $membri->count() > 1 ? $this->voceDellInsieme($membri, $perId) : $voci[$i];
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Decisione 705: la voce dei passaggi registrati insieme. I campi di oggi restano quelli del primo, per i lettori che non conoscono l'insieme, con
+     * quattro cose dell'insieme: la solidarietà con tutte le persone che escono, le pertinenze di tutti, le fermate vuote (sono di ciascuna persona, nella
+     * sua parte), e `annullabile` dell'insieme (si
+     * annullano tutti insieme: la stessa regola dell'azione, {@see \App\Actions\Subentro\AnnullaPassaggioAction::motivoBlocco()}, che per un passaggio
+     * dell'insieme dice il motivo dell'insieme). In `insieme`:
+     * - `passaggi`, una parte per persona, nell'ordine in cui sono stati scritti: la voce di oggi di quel passaggio (il suo `id`, `uscente`, il suo
+     *   `conguaglio` con «Annulla il conguaglio», le sue `fermate`, le sue `pertinenze`…), con la `quota` della riga di chi esce e senza `annullabile`,
+     *   che è dell'insieme. La copia autentica è una sola, sul primo (la voce);
+     * - `quota_entrante`, la quota di chi entra dopo tutti i passaggi (il terzo fratello che aveva già il 33,33 % ha il 100 %).
+     *
+     * @param \Illuminate\Support\Collection<int, Subentro> $membri
+     * @param \Illuminate\Support\Collection<int, array<string, mixed>> $perId le voci, per id
+     * @return array<string, mixed>
+     */
+    private function voceDellInsieme(\Illuminate\Support\Collection $membri, \Illuminate\Support\Collection $perId): array
+    {
+        $primo = $membri->first();
+        $parti = $membri->map(function (Subentro $m) use ($perId) {
+            $parte = $perId->get($m->id);
+            unset($parte['annullabile'], $parte['insieme']);
+
+            return ['quota' => $this->quotaDiChiEsce($m)] + $parte;
+        })->values()->all();
+
+        $voce = $perId->get($primo->id);
+        $voce['pertinenze'] = array_values(array_unique(array_merge(...array_map(fn (array $p) => $p['pertinenze'], $parti))));
+        // Le fermate dopo «Scrivi» sono della persona (la parte di Ugo, la parte di Anna): stanno solo nella sua parte, e la pagina le dice sotto il suo nome.
+        // In cima, unite, si leggevano due volte e senza il nome.
+        $voce['fermate'] = [];
+        if (! $primo->annullato()) {
+            $voce['obbligati'] = $this->frasiObbligati->daSubentro($primo, $this->nomiDiChiEsce($membri));
+        }
+        $voce['insieme'] = ['passaggi' => $parti, 'quota_entrante' => $this->quotaDiChiEntra($membri->last())];
+
+        return $voce;
+    }
+
+    /** La quota della riga di chi esce, in percentuale: quella che il passaggio ha portato tutta. */
+    private function quotaDiChiEsce(Subentro $s): ?float
+    {
+        $quota = $s->riga_uscente_id === null ? null : TitolaritaImmobile::query()->whereKey($s->riga_uscente_id)->value('quota');
+
+        return $quota === null ? null : round((float) $quota, 2);
+    }
+
+    /**
+     * La quota di chi entra dopo l'ultimo passaggio dell'insieme: dal suo registro (la riga che ha aperto o sommato, con il «dopo»), anche quando
+     * l'annullamento l'ha tolta; dalla riga, se il registro non la dice.
+     */
+    private function quotaDiChiEntra(Subentro $ultimo): ?float
+    {
+        $op = collect($ultimo->registro['righe'] ?? [])->first(fn ($op) => (int) ($op['id'] ?? 0) === (int) $ultimo->riga_entrante_id && isset($op['dopo']['quota']));
+        $quota = $op['dopo']['quota'] ?? ($ultimo->riga_entrante_id === null ? null : TitolaritaImmobile::query()->whereKey($ultimo->riga_entrante_id)->value('quota'));
+
+        return $quota === null ? null : round((float) $quota, 2);
+    }
+
+    /**
+     * Le persone che escono con l'insieme, nell'ordine in cui sono stati scritti i passaggi, per la frase della solidarietà e della liberazione
+     * (`FrasiObbligati::daSubentro`): chi entra risponde in solido con tutte, e le frasi sono al plurale (rilievo 5 dello scettico della tappa 7).
+     *
+     * @param \Illuminate\Support\Collection<int, Subentro> $membri
+     * @return list<string>
+     */
+    private function nomiDiChiEsce(\Illuminate\Support\Collection $membri): array
+    {
+        return $membri->map(fn (Subentro $m) => $m->uscente?->nome ?? ($m->registro['nomi']['uscente'] ?? null))->filter()->unique()->values()->all();
     }
 
     private function riga(TitolaritaImmobile $t, CarbonImmutable $oggi, $subentri): array
@@ -376,7 +486,10 @@ class StoricoTitolarita
         $decesso = CarbonImmutable::parse($s->decorrenza->format('Y-m-d'));
 
         $frase = $s->interessi_del_defunto === Subentro::INTERESSI_AL_DECESSO
-            ? sprintf('Gli interessi di %s si fermano al decesso: la sua proposta degli interessi conta i giorni fino al %s.', $defunto, $decesso->subDay()->format('d/m/Y'))
+            // Coda 709: con l'arretrato a nome del defunto nessuno prende il debito, e lo storico dice che dopo il decesso non ha interessi; con l'arretrato
+            // agli eredi li contano gli eredi (la frase non cambia).
+            ? sprintf('Gli interessi di %s si fermano al decesso: la sua proposta degli interessi conta i giorni fino al %s%s', $defunto, $decesso->subDay()->format('d/m/Y'),
+                $s->arretratoAgliEredi() ? '.' : ': dopo il decesso nessuno conta interessi su questo debito.')
             : sprintf('Gli interessi di %s continuano a suo nome dopo il decesso: la sua proposta degli interessi conta i giorni anche dopo il %s.', $defunto, $decesso->format('d/m/Y'));
         // D6 della lente del denaro della 1-bis della beta.12: la successione registrata prima della scelta non la ha nel suo registro (la scrive la registrazione,
         // `RegistraSubentroAction`); il valore della colonna l'ha messo la migrazione 170100, e lo storico lo dice.
@@ -424,17 +537,25 @@ class StoricoTitolarita
         if ($accordi !== []) {
             $date = \App\Models\Gestionale\AccordoRientro::whereIn('id', array_map(fn ($r) => (int) $r['id'], $accordi))->pluck('data_accordo', 'id');
             foreach ($accordi as $r) {
-                $frasi[] = sprintf('L\'accordo di rientro di %s%s si è chiuso per la successione: per gli interessi %s.', $defunto,
-                    isset($date[(int) $r['id']]) ? ' del ' . CarbonImmutable::parse($date[(int) $r['id']])->format('d/m/Y') : '',
-                    $r['scelta'] === \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_DECADENZA ? 'vale come una decadenza' : 'resta in regola fino al decesso');
+                $del = isset($date[(int) $r['id']]) ? ' del ' . CarbonImmutable::parse($date[(int) $r['id']])->format('d/m/Y') : '';
+                // Coda 682: l'annullamento ha riaperto l'accordo, e lo storico non lo dice più chiuso.
+                $frasi[] = $s->annullato()
+                    ? sprintf('L\'accordo di rientro di %s%s si era chiuso per la successione; l\'annullamento l\'ha riaperto.', $defunto, $del)
+                    : sprintf('L\'accordo di rientro di %s%s si è chiuso per la successione: per gli interessi %s.', $defunto, $del,
+                        $r['scelta'] === \App\Models\Gestionale\AccordoRientro::SUCCESSIONE_DECADENZA ? 'vale come una decadenza' : 'resta in regola fino al decesso');
             }
         }
         $segnalati = array_values(array_filter((array) ($arretrato['accessori'] ?? []), fn ($r) => (bool) ($r['segnalato'] ?? false)));
         if ($segnalati !== []) {
             $rate = \App\Models\Gestionale\RataQuote::with('rata:id,descrizione')->whereIn('id', array_map(fn ($r) => (int) $r['quota_id'], $segnalati))->get()->keyBy('id');
             foreach ($segnalati as $r) {
-                $frasi[] = sprintf('«%s» (%s) è passato agli eredi con un pagamento segnalato dal portale ancora da verificare: l\'ha scelto chi ha registrato il passaggio.',
-                    trim((string) ($rate[(int) $r['quota_id']]?->rata?->descrizione ?? 'Addebito')), \App\Helpers\MoneyHelper::format((int) ($r['aperto'] ?? 0)));
+                $nomeRata = trim((string) ($rate[(int) $r['quota_id']]?->rata?->descrizione ?? 'Addebito'));
+                // Coda 682: con il passaggio annullato l'accessorio è tornato al defunto.
+                $frasi[] = $s->annullato()
+                    ? sprintf('«%s» (%s) era passato agli eredi con un pagamento segnalato dal portale: l\'annullamento l\'ha riportato a nome di %s.', $nomeRata,
+                        \App\Helpers\MoneyHelper::format((int) ($r['aperto'] ?? 0)), $defunto)
+                    : sprintf('«%s» (%s) è passato agli eredi con un pagamento segnalato dal portale ancora da verificare: l\'ha scelto chi ha registrato il passaggio.',
+                        $nomeRata, \App\Helpers\MoneyHelper::format((int) ($r['aperto'] ?? 0)));
             }
         }
 
@@ -445,6 +566,16 @@ class StoricoTitolarita
     {
         $scelta = $s->registro['arretrato']['scelta'] ?? null;
         $defunto = $s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'questa persona');
+        // Coda 682: un passaggio annullato ha tolto le sue righe dai saldi, e i saldi di oggi non dicono più com'era l'arretrato: la frase viene dal registro,
+        // con la cifra che la successione aveva passato (le successioni registrate prima del totale dicono il fatto senza la cifra).
+        if ($s->annullato() && $scelta === Subentro::ARRETRATO_AGLI_EREDI) {
+            $totale = $s->registro['arretrato']['totale'] ?? null;
+            // Con un totale negativo la frase comincia già con «Credito di …»: la cifra senza «a credito», per non dirlo due volte.
+            $cifra = $totale === null ? '' : \App\Helpers\MoneyHelper::format(abs((int) $totale)) . ', ';
+
+            return ['scelta' => $scelta, 'frase' => sprintf('%s di %s agli eredi: %spassato con la successione; l\'annullamento ha tolto le sue righe dai saldi.',
+                $totale !== null && (int) $totale < 0 ? 'Credito' : 'Arretrato', $defunto, $cifra)];
+        }
         if ($scelta === Subentro::ARRETRATO_AGLI_EREDI) {
             $perErede = $righe->where('anagrafica_id', '!=', (int) $s->anagrafica_uscente_id)->groupBy('anagrafica_id')->map(fn ($g) => (int) $g->sum('saldo_iniziale'))->filter();
             // Rilievo X9 della Fase 1-bis: le righe che non hanno trovato un esercizio su cui scriversi sono rimaste a nome del defunto.

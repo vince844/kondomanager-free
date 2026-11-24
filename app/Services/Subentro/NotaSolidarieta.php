@@ -20,8 +20,8 @@ use Illuminate\Support\Facades\DB;
  * La nota **calcolata** dell'art. 63 co. 4 disp. att. c.c. (1.11.0-beta.31, B2 S7, §7 del progetto).
  *
  * Chi subentra risponde in solido con il cedente per i contributi dell'anno in corso e di quello precedente.
- * Il programma **non intesta** nulla a chi entra — salvo i saldi intestati all'unità, che un piano generato dopo il
- * passaggio può addebitare anche a chi entra (la nota lo dice, decisione 28.8 a) — e **non sollecita**: le quote emesse a
+ * Il programma **non intesta** nulla a chi entra — i saldi intestati all'unità restano a chi ne era titolare il primo giorno
+ * del loro esercizio, salvo una scelta diversa nel piano rate (la nota lo dice, decisione 28.8 a e issue 58) — e **non sollecita**: le quote emesse a
  * chi è uscito restano sue (invariante 20, la morosità resta all'uscente). Ma chi legge la posizione di chi è entrato — o
  * l'elenco delle rate aperte di un'unità — deve sapere che quel debito esiste e che la legge glielo fa rispondere: la
  * nota lo dice, con il residuo ancora aperto a nome di chi è uscito su quell'unità, finché il passaggio è
@@ -140,10 +140,10 @@ final class NotaSolidarieta
                 count($usufruttuari['nomi']) === 1 => sprintf(' Dal %s %s, nudo proprietario, e %s, usufruttuario, rispondono in solido per i contributi di %s (art. 67 ult. co. disp. att. c.c.).', $alGiorno, $chiCompra, $usufruttuari['nomi'][0], $unita),
                 default => sprintf(' Dal %s %s, nudo proprietario, risponde in solido con gli usufruttuari %s per i contributi di %s (art. 67 ult. co. disp. att. c.c.).', $alGiorno, $chiCompra, $this->elenco($usufruttuari['nomi']), $unita),
             };
-            // Decisione 28.8 a: un saldo intestato all'unità, o a una pertinenza passata con lo stesso atto, si addebita quando
-            // si genera il piano, e un piano generato dopo il passaggio può addebitarlo a chi compra: «Nessuna quota è
-            // intestata a …» nomina l'eccezione, con la forma delle frasi su chi resta obbligato. A chi vada è la Coda 174.
-            $salvo = $this->frasi->saldiIntestatiAllUnita($this->frasi->immobiliDelPassaggio($s)) ? FrasiObbligati::SALVO_SALDI_DELL_UNITA : '';
+            // Decisione 28.8 a con la issue 58 (Coda 174, decisione 674): un saldo intestato all'unità, o a una pertinenza passata con
+            // lo stesso atto, resta a chi ne era titolare il primo giorno del suo esercizio, salvo una scelta diversa nel piano rate:
+            // «Nessuna quota è intestata a …» lo dice, con la forma delle frasi dello storico.
+            $salvo = $this->frasi->saldiIntestatiAllUnita($this->frasi->immobiliDelPassaggio($s)) ? FrasiObbligati::saldiDellUnita(true) : '';
             $testo = $s->riservaUsufrutto() ? sprintf(
                 'Dal %s %s, nudo proprietario, e %s, usufruttuario, rispondono in solido per i contributi di %s (art. 67 ult. co. disp. att. c.c.)%s. Se %s risponda anche di quelli non pagati da %s prima dell\'atto, negli esercizi %s e %s (art. 63 co. 4), la giurisprudenza non l\'ha chiarito: decide l\'amministratore. Nessuna quota è intestata %s per quel periodo%s: %s.%s%s',
                 $alGiorno, $s->entrante?->nome ?? 'chi è entrato', $s->uscente?->nome ?? 'chi è uscito', $unita,
@@ -190,7 +190,7 @@ final class NotaSolidarieta
      */
     private function inizioFinestra(Condominio $condominio): ?CarbonImmutable
     {
-        $aperto = Esercizio::where('condominio_id', $condominio->id)->where('stato', 'aperto')->orderBy('data_inizio')->first();
+        $aperto = Esercizio::apertoPiuRecente((int) $condominio->id); // con due aperti, il più recente (Coda 646, decisione 707 (4))
         if ($aperto === null) {
             return null;
         }

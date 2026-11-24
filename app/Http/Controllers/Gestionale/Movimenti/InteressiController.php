@@ -174,7 +174,8 @@ class InteressiController extends Controller
         $oggi = DateHelper::oggiUtente();
         $scelte = DB::table('esercizio_gestione as eg')->join('esercizi as e', 'e.id', '=', 'eg.esercizio_id')->join('gestioni as g', 'g.id', '=', 'eg.gestione_id')
             ->where('e.condominio_id', $condominio->id)->where('e.stato', 'aperto')->where('e.data_inizio', '<=', $oggi . ' 23:59:59')->where('e.data_fine', '>=', $oggi)
-            ->orderBy('g.id')->get(['g.id as gestione_id', 'e.id as esercizio_id', 'g.nome as gestione', 'g.tipo', 'e.nome as esercizio'])
+            // Prima le gestioni del più recente: con due esercizi aperti che contengono oggi, la proposta è la sua ordinaria (Coda 646, decisione 707 (4)).
+            ->orderByDesc('e.data_inizio')->orderByDesc('e.id')->orderBy('g.id')->get(['g.id as gestione_id', 'e.id as esercizio_id', 'g.nome as gestione', 'g.tipo', 'e.nome as esercizio'])
             ->map(fn ($r) => ['gestione_id' => (int) $r->gestione_id, 'esercizio_id' => (int) $r->esercizio_id, 'nome' => $r->gestione . ' (' . $r->esercizio . ')', 'tipo' => (string) $r->tipo,
                 'voci' => Conto::query()->join('piani_conti as pc', 'pc.id', '=', 'conti.piano_conto_id')->where('pc.gestione_id', $r->gestione_id)->where('pc.condominio_id', $condominio->id)
                     ->whereNotNull('conti.conto_contabile_id')->whereDoesntHave('sottoconti')->whereHas('tabelleMillesimali')->orderBy('conti.nome')->get(['conti.id', 'conti.nome', 'conti.tipo'])

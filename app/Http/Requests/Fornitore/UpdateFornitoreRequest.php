@@ -129,10 +129,26 @@ class UpdateFornitoreRequest extends FormRequest
         ];
     }
 
+    /**
+     * Il capitale sociale in centesimi. La pagina mostra «0,00» per un capitale che non c'è e lo rimanda così: un valore che vale 0 mentre nel database c'è
+     * NULL resta NULL (altrimenti il registro racconta una modifica che nessuno ha fatto); la casella svuotata è NULL.
+     */
+    private function capitaleSociale(): ?int
+    {
+        if (blank($this->input('capitale_sociale'))) {
+            return null;
+        }
+        $centesimi = MoneyHelper::toCents($this->input('capitale_sociale'));
+        $fornitore = $this->route('fornitore');
+        $attuale = $fornitore instanceof \App\Models\Fornitore ? $fornitore->getRawOriginal('capitale_sociale') : \App\Models\Fornitore::query()->whereKey($fornitore)->value('capitale_sociale');
+
+        return $centesimi === 0 && $attuale === null ? null : $centesimi;
+    }
+
     protected function prepareForValidation()
     {
         $this->merge([
-            'capitale_sociale'      => MoneyHelper::toCents($this->capitale_sociale) ?? 0,
+            'capitale_sociale'      => $this->capitaleSociale(),
             'data_iscrizione_cciaa' => $this->data_iscrizione_cciaa ? Carbon::parse($this->input('data_iscrizione_cciaa'))->toDateString() : null,
             'email'                 => $this->email ? Str::lower($this->input('email')) : null,
             'pec'                   => $this->pec ? Str::lower($this->input('pec')) : null,

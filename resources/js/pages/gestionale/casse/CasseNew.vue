@@ -37,6 +37,9 @@ interface ContoOption {
 const props = defineProps<{
   condominio: Building;
   condomini: Building[];
+  /** Il primo giorno del primo esercizio aperto: il «Saldo al» di partenza e il minimo del calendario. */
+  saldo_al_predefinito?: string | null;
+  saldo_al_minimo?: string | null;
 }>()
 
 const permessi = usePermission();
@@ -116,6 +119,7 @@ const form = useForm({
   descrizione: '',
   tipo: 'contanti' as TipoCassa,
   saldo_iniziale: '',
+  saldo_al: props.saldo_al_predefinito ?? '',
   note: '',
   intestatario: '',
   tipo_conto: 'ordinario', 
@@ -135,6 +139,14 @@ const form = useForm({
   vincolo_descrizione: '', 
   is_override_assemblea: false,
   motivazione_override: '',
+});
+
+/** Il «Saldo al» serve solo se c'è un saldo di apertura: con il campo vuoto o a zero l'azione lo ignora (importo zero). */
+const saldoCompilato = computed(() => {
+  const v = String(form.saldo_iniziale ?? '').trim();
+  if (v === '') return false;
+  const n = parseFloat(v.replace(/\./g, '').replace(',', '.'));
+  return Number.isFinite(n) && n !== 0;
 });
 
 // --- LOGICA DI DOMINIO LATO UI ---
@@ -274,6 +286,20 @@ const submit = () => {
                     />
                     <InputError :message="form.errors.saldo_iniziale" />
                     <p class="text-xs text-slate-400 mt-1 italic">Es: <strong>1.000,00</strong> (attivo) · <strong>-500,00</strong> (scoperto)</p>
+                  </div>
+
+                  <div v-if="saldoCompilato" class="sm:col-span-3">
+                    <Label for="saldo_al" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Saldo al</Label>
+                    <Input
+                      id="saldo_al"
+                      type="date"
+                      v-model="form.saldo_al"
+                      :min="props.saldo_al_minimo ?? undefined"
+                      class="mt-1 block w-full bg-white dark:bg-slate-950"
+                      @focus="form.clearErrors('saldo_al')"
+                    />
+                    <InputError :message="form.errors.saldo_al" />
+                    <p class="text-xs text-slate-500 mt-1">Il giorno a cui vale il saldo: l'apertura va nell'esercizio che lo contiene. Non può cadere in un esercizio chiuso.</p>
                   </div>
 
                   <div class="sm:col-span-3">

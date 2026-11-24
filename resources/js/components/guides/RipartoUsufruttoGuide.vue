@@ -167,7 +167,7 @@ defineEmits(['update:open']);
             <div class="p-4 rounded-lg bg-slate-100 dark:bg-slate-800 flex gap-3 text-[13px]">
               <Info class="w-5 h-5 text-slate-500 shrink-0" />
               <div>
-                Le quote devono tornare in ogni periodo: Bice 50 % ed Elsa 50 % fanno l'unità intera, e così Bice 50 % e Ugo 50 %. Se non tornano, il programma non indovina: divide ogni ruolo fra le sue sole persone, come prima. Succede, per esempio, dopo un'estinzione registrata da una versione più vecchia, con un altro usufrutto ancora in corso: tutti i nudi proprietari tornavano proprietari pieni e la somma superava il 100 %. Correggi le quote nella scheda dell'unità. Fanno eccezione, per ora, i saldi pregressi intestati all'unità quando l'unità è diventata così con un passaggio registrato: si ripartiscono come prima. Controllali nell'anteprima del piano e, se serve, usa il riparto manuale.
+                Le quote devono tornare in ogni periodo: Bice 50 % ed Elsa 50 % fanno l'unità intera, e così Bice 50 % e Ugo 50 %. Se non tornano, il programma non indovina: divide ogni ruolo fra le sue sole persone, come prima. Succede, per esempio, dopo un'estinzione registrata da una versione più vecchia, con un altro usufrutto ancora in corso: tutti i nudi proprietari tornavano proprietari pieni e la somma superava il 100 %. Correggi le quote nella scheda dell'unità. I saldi pregressi intestati all'unità si dividono come l'unità era il primo giorno del loro esercizio: se è diventata così con un passaggio dopo, quel giorno non lo era. Controllali nell'anteprima del piano e, se serve, usa il riparto manuale.
               </div>
             </div>
           </section>

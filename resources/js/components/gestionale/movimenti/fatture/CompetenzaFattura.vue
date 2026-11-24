@@ -50,6 +50,11 @@ const props = defineProps<{
     pregressa?: boolean;
     /** Pregressa con una parte non coperta dai saldi iniziali: il periodo è obbligatorio (decisione 26). */
     periodoObbligatorio?: boolean;
+    /**
+     * Coda 754 (4), 1.12.0-beta.14: il nome del fondo che copre la parte non coperta della pregressa («Usa fondo riserva» nella finestra), o null. Quella
+     * parte allora non va in un piano rate: la frase del periodo lo dice.
+     */
+    fondoCheCopre?: string | null;
     /** L'inizio dell'esercizio della fattura (AAAA-MM-GG): il periodo di una pregressa si chiude prima. */
     inizioEsercizio?: string | null;
     errori?: { dal?: string; al?: string };
@@ -244,8 +249,9 @@ const fraseDeiLavori = computed(() => {
         <p v-if="pregressa && periodoObbligatorio && modo === 'nessuna'" class="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
             Fattura pregressa con una parte non coperta dai saldi iniziali: il periodo in cui il costo è maturato è
             obbligatorio<template v-if="inizioEsercizioIt">, e si chiude prima del {{ inizioEsercizioIt }}, quando inizia questo esercizio</template>.
-            Quella parte finisce in un piano rate: senza il periodo, dopo un passaggio, la pagherebbe chi è entrato per un
-            costo di quando l'unità era di chi è uscito. Dopo non si potrà aggiungere: una pregressa si storna, non si modifica.
+            <template v-if="fondoCheCopre">Quella parte la copre il fondo «{{ fondoCheCopre }}».</template>
+            <template v-else>Quella parte finisce in un piano rate: senza il periodo, dopo un passaggio, la pagherebbe chi è entrato per un
+            costo di quando l'unità era di chi è uscito.</template> Dopo non si potrà aggiungere: una pregressa si storna, non si modifica.
         </p>
         <p v-else-if="pregressa && modo === 'nessuna'" class="text-xs leading-relaxed text-slate-500">
             Fattura pregressa: se una parte non è coperta dai saldi iniziali, qui andrà il periodo in cui il costo è

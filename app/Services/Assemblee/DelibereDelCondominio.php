@@ -56,7 +56,7 @@ final class DelibereDelCondominio
     {
         $scheda = $tipo !== null && $id !== null ? SchedaDelCondominio::risolvi($condominio, $tipo, $id) : null;
         $tipoScheda = $scheda === null ? null : SchedaDelCondominio::tipoDi($scheda);
-        $delibere = Delibera::query()->where('condominio_id', $condominio->id)->with(['assemblea', 'punto.oggetti', 'revocataDa.punto'])
+        $delibere = Delibera::query()->where('condominio_id', $condominio->id)->with(['assemblea.tabella', 'punto.oggetti', 'revocataDa.punto'])
             ->orderByDesc('deliberata_il')->orderByDesc('id')->get();
         $contenitori = $scheda === null ? [] : self::contenitori($scheda);
         $materie = array_map(fn ($m) => $m->value, self::MATERIE[$tipoScheda ?? ''] ?? []);
@@ -245,7 +245,9 @@ final class DelibereDelCondominio
             'numero_verbale' => $a->numero_verbale,
             // Anche l'assemblea tenuta fuori dal programma: è una riunione di carta registrata a mano, come dice l'archivio.
             'verbale_da_caricare' => $a->stato === \App\Enums\Assemblee\StatoAssemblea::REGISTRATA_A_MANO && $a->verbale_documento_id === null,
-            'perimetro' => $a->ambito?->parola(),
+            // I condòmini di un gruppo con il nome della tabella (Coda 734): la delibera dei box si riconosce nel piano dei box.
+            'perimetro' => $a->ambito === \App\Enums\Assemblee\AmbitoAssemblea::GRUPPO && $a->tabella !== null
+                ? 'I condòmini della tabella «' . $a->tabella->nome . '»' : $a->ambito?->parola(),
         ];
     }
 

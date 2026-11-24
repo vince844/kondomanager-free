@@ -22,7 +22,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        set_time_limit(0); // Evita timeout durante la data migration
+        \App\Support\LimiteDiTempo::alza(0); // Evita timeout durante la data migration
 
         // Guard: controlla che la colonna esista (esecuzioni parziali)
         if (! Schema::hasColumn('segnalazioni', 'can_comment')) {

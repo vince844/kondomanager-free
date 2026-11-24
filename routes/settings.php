@@ -19,6 +19,7 @@ use App\Http\Controllers\Impostazioni\RestoreController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthController;
+use App\Http\Controllers\System\AvvisoDellErroreController;
 use App\Http\Middleware\CheckForPendingUpdates;
 use App\Http\Middleware\CheckSuspendedUser;
 use App\Http\Middleware\EnsureRestoreToken;
@@ -30,6 +31,12 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Inertia\Inertia;
 
 Route::middleware('auth')->group(function () {
+
+    // «Avvisa lo studio» dalla pagina d'errore (1.12.0-beta.14, decisione 698 (4)): chi è collegato e non vede il dettaglio manda il codice allo studio.
+    // Cinque avvisi all'ora per persona, con un nome loro (non si sommano agli altri limiti); un avviso per codice lo dice il controller.
+    Route::post('errori/avviso', AvvisoDellErroreController::class)
+        ->middleware('throttle:5,60,avvisi-errori')
+        ->name('errori.avviso');
 
     Route::get('impostazioni', ImpostazioniController::class)
         ->name('impostazioni');
@@ -49,6 +56,9 @@ Route::middleware('auth')->group(function () {
 
     Route::post('impostazioni/generali', [ImpostazioniGeneraliController::class, 'store'])
         ->name('impostazioni.generali.store');
+
+    Route::delete('impostazioni/generali/aperture', [ImpostazioniGeneraliController::class, 'cancellaAperture'])
+        ->name('impostazioni.generali.aperture.destroy');
 
     Route::get('impostazioni/stampe', [ImpostazioniStampeController::class, 'index'])
         ->name('impostazioni.stampe');
@@ -159,9 +169,13 @@ Route::middleware('auth')->group(function () {
         Route::post('impostazioni/mail/promemoria', [MailSettingsController::class, 'promemoria'])
             ->name('admin.settings.mail.promemoria');
 
-        // LOGS & AUDIT
+        // LOGS & AUDIT: la pagina «Registri», con le schede «Email» ed «Errori» (`?scheda=errori`, 1.12.0-beta.14).
         Route::get('logs', [LogsController::class, 'index'])
             ->name('logs.index');
+
+        // «Scarica il rapporto» di una volta di un errore (decisione 698 (3)): un file di testo senza password, dati dei moduli e valori delle query.
+        Route::get('logs/errori/{volta}/rapporto', [LogsController::class, 'rapporto'])
+            ->name('logs.errori.rapporto');
     });
 
     // BACKUPS

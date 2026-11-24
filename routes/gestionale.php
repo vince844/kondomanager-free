@@ -636,6 +636,7 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('addebiti/spese/proposta', [\App\Http\Controllers\Gestionale\Movimenti\InteressiController::class, 'spese'])->name('addebiti.spese.proposta');
 
     // Le regole del recupero dei crediti del condominio, con la loro storia: l'elenco, una regola nuova, l'eliminazione di una regola mai usata.
+    // La regola nuova e l'eliminazione le fa chi ha «Modifica condomini» (il controller, 403): l'elenco lo vede chiunque abbia il pannello.
     // `{regola}` arriva grezzo: che sia di questo condominio lo controlla il controller (404).
     Route::get('recupero-crediti', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'index'])->name('recupero-crediti.index');
     Route::post('recupero-crediti', [\App\Http\Controllers\Gestionale\Struttura\RegoleRecuperoController::class, 'store'])->name('recupero-crediti.store');
@@ -854,6 +855,13 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/f24/{delega}/versa', [DelegaF24Controller::class, 'conferma'])
         ->name('f24.versa');
+
+    // Lo stato «Confermata» si raggiunge da qui (1.12.0-beta.14, Coda 754 (10)): la guardia è quella delle altre azioni della delega.
+    Route::post('/f24/{delega}/conferma-delega', [DelegaF24Controller::class, 'confermaDelega'])
+        ->name('f24.conferma-delega');
+
+    Route::post('/f24/{delega}/riporta-in-bozza', [DelegaF24Controller::class, 'riportaInBozza'])
+        ->name('f24.riporta-in-bozza');
 
     Route::post('/f24/{delega}/storna', [DelegaF24Controller::class, 'storna'])
         ->name('f24.storna');

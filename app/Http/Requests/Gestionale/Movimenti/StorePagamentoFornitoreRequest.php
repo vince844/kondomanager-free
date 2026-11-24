@@ -163,5 +163,17 @@ class StorePagamentoFornitoreRequest extends FormRequest
         $this->merge([
             'condominio_id' => $this->route('condominio')?->id,
         ]);
+        $this->normalizzaIban();
+    }
+
+    /**
+     * L'IBAN si valida e si scrive senza spazi e in maiuscolo (Coda 626): scritto a gruppi di quattro supera i 34 caratteri della colonna senza essere
+     * troppo lungo. Un campo vuoto resta vuoto; un campo assente resta assente.
+     */
+    private function normalizzaIban(): void
+    {
+        if ($this->has('iban_beneficiario') && is_string($this->input('iban_beneficiario'))) {
+            $this->merge(['iban_beneficiario' => \App\Services\Gestionale\PagamentoFornitoreService::normalizzaIban($this->input('iban_beneficiario')) ?: null]);
+        }
     }
 }

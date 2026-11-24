@@ -5,6 +5,7 @@
 
 namespace App\Livewire\Installer;
 
+use App\Services\Installer\ControlloDatabaseVuoto;
 use App\Services\Installer\PreparaDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
@@ -140,6 +141,11 @@ class InstallerWizard extends Component
         try {
             if ($this->stepKey === 'environment') {
                 $this->runEnvironmentSetup($payload['data']);
+
+                // `$progress` è stato letto prima del passo, e il file si riscrive da lì: il database appena preparato non deve perdersi.
+                if (isset($this->progress[ControlloDatabaseVuoto::CHIAVE_PROGRESSO])) {
+                    $progress[ControlloDatabaseVuoto::CHIAVE_PROGRESSO] = $this->progress[ControlloDatabaseVuoto::CHIAVE_PROGRESSO];
+                }
             }
 
             // Solo se lo step è stato davvero compilato (non saltato): altrimenti
@@ -208,6 +214,29 @@ class InstallerWizard extends Component
             }
 
             // =====================================================
+            // STEP 0: il database dev'essere vuoto (Coda 755 (3)). `migrate:fresh` cancella
+            // tutte le tabelle di un database che ha la tabella `migrations`, anche quelle di
+            // un altro programma: si controlla con una connessione a parte, PRIMA di scrivere
+            // il .env e di lanciare qualsiasi cosa. Il passo ripetuto sul database che il
+            // wizard ha appena preparato passa.
+            // =====================================================
+            $controllo = app(ControlloDatabaseVuoto::class);
+            $progressFile = (string) config('installer.options.progress_file');
+            $databaseDelWizard = $controllo->preparatoDalWizard(
+                $progressFile,
+                (string) ($data['db_host'] ?? ''),
+                (string) ($data['db_port'] ?? 3306),
+                (string) $data['db_database'],
+            );
+            $controllo->controllaCredenziali([
+                'host' => (string) ($data['db_host'] ?? ''),
+                'port' => $data['db_port'] ?? 3306,
+                'database' => (string) $data['db_database'],
+                'username' => $data['db_username'] ?? null,
+                'password' => $data['db_password'] ?? null,
+            ], $databaseDelWizard);
+
+            // =====================================================
             // STEP 1: Scrivi subito il .env con le credenziali reali.
             // Deve essere il PRIMO passo — così migrate:fresh e db:seed
             // leggono sempre le credenziali corrette dal .env anche
@@ -242,9 +271,22 @@ class InstallerWizard extends Component
             // (1.11.0-beta.32): qui, come sempre, con migrate:fresh — il wizard lavora su un
             // database che dichiara vuoto.
             $prepara = app(PreparaDatabase::class);
-            $prepara->migra(fresh: true);
+            $prepara->migra(fresh: true, databaseDelWizard: $databaseDelWizard);
             $prepara->pulisciCache(fresh: true);
             $prepara->seed();
+
+            // Il database è preparato: se il passo si ripete su questo stesso database, non si ferma.
+            $controllo->ricordaDatabasePreparato(
+                $progressFile,
+                (string) ($data['db_host'] ?? ''),
+                (string) ($data['db_port'] ?? 3306),
+                (string) $data['db_database'],
+            );
+            $this->progress[ControlloDatabaseVuoto::CHIAVE_PROGRESSO] = $controllo->impronta(
+                (string) ($data['db_host'] ?? ''),
+                (string) ($data['db_port'] ?? 3306),
+                (string) $data['db_database'],
+            );
         }
 
         app(PreparaDatabase::class)->collegaStorage();

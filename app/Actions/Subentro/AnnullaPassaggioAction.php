@@ -22,6 +22,7 @@ use App\Services\Subentro\AccessoriAgliEredi;
 use App\Services\Subentro\FermataDopoScrivi;
 use App\Services\Subentro\FrasiObbligati;
 use App\Services\Subentro\GuardieTitolarita;
+use App\Services\Subentro\NudiDellEstinzione;
 use App\Services\Subentro\QuoteNateDopoIlPassaggio;
 use App\Services\Subentro\RegolaDelPiano;
 use App\Services\Subentro\VociDaSpostare;
@@ -48,6 +49,7 @@ use Illuminate\Validation\ValidationException;
  * - il passaggio è di prima della beta.37 (nessun registro): ricostruire le righe dalle date sarebbe tirare a indovinare;
  * - dopo di lui, sull'unità o su una sua pertinenza, è registrato un altro passaggio, anche con una data precedente: si annulla
  *   prima quello;
+ * - nella successione, un erede ha già versato sul debito ereditato e il suo incasso non è stornato (decisione 690 (3)): si storna prima l'incasso;
  * - il conguaglio è già assorbito da un piano (la stessa frase di `AnnullaConguaglioAction`);
  * - una quota toccata dopo il passaggio — una bozza passata a chi è entrato, o una quota nata dopo che l'annullamento
  *   cambierebbe (un piano generato o ricalcolato dopo, con la titolarità di dopo: di chi è entrato, di chi è uscito, o di
@@ -92,12 +94,68 @@ final class AnnullaPassaggioAction
             'torna qui', perIlPassaggio: true, presiDaSeguire: $presiDaSeguire, legate: true);
     }
 
+    /**
+     * Perché questo passaggio non si può annullare, o `null`. Senza scrivere niente: la legge anche lo storico.
+     *
+     * Decisione 705 (1.12.0-beta.14): un passaggio registrato insieme ad altri (più persone che escono con lo stesso atto) si annulla con tutti
+     * quelli dell'insieme, e il motivo è quello dell'insieme ({@see motivoDellInsieme()}), lo stesso che troverebbe l'azione.
+     */
     public function motivoBlocco(Subentro $passaggio): ?string
     {
         $padre = $passaggio->subentro_padre_id ? Subentro::conAnnullati()->find($passaggio->subentro_padre_id) : $passaggio;
         if ($padre === null || $padre->annullato()) {
             return 'Questo passaggio è già stato annullato.';
         }
+        $membri = $this->membriDaAnnullare($padre);
+
+        return $membri->count() > 1 ? $this->motivoDellInsieme($membri) : $this->motivoDelPassaggio($padre);
+    }
+
+    /**
+     * Decisione 705: i passaggi dell'insieme di questo, non annullati, nell'ordine in cui sono stati scritti; per un passaggio da solo, lui solo.
+     *
+     * @return Collection<int, Subentro>
+     */
+    private function membriDaAnnullare(Subentro $padre): Collection
+    {
+        return $padre->insieme_id === null ? collect([$padre]) : collect($padre->membriDellInsieme()->all());
+    }
+
+    /**
+     * Decisione 705: il motivo dell'insieme, letto come lo troverebbe l'azione, che annulla i passaggi dall'ultimo registrato al primo. Prima un
+     * passaggio registrato dopo l'insieme, su una delle sue unità, con la frase di oggi (è dell'insieme, non di una persona); poi ogni passaggio,
+     * dall'ultimo, sullo stato che lascerebbero quelli dopo di lui già annullati ({@see motivoDelPassaggio()} con `$dopo`), con il nome della persona
+     * davanti: «La parte di Marta Acciaioli: …».
+     *
+     * @param Collection<int, Subentro> $membri
+     */
+    private function motivoDellInsieme(Collection $membri): ?string
+    {
+        $famiglie = $membri->flatMap(fn (Subentro $m) => $this->famiglia($m))->values();
+        if ($motivo = $this->passaggioDopo($famiglie, $famiglie->pluck('id')->map(fn ($id) => (int) $id)->all())) {
+            return $motivo;
+        }
+        $propri = $this->nomiPropri($membri);
+        foreach ($membri->sortByDesc('id')->values() as $membro) {
+            $dopo = $membri->filter(fn (Subentro $m) => (int) $m->id > (int) $membro->id)->values();
+            if ($motivo = $this->motivoDelPassaggio($membro, $dopo)) {
+                return self::fraseDellaParte((string) ($this->nome($membro, 'uscente') ?? 'chi esce'), $motivo, $propri);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Il motivo di un passaggio solo, o di un passaggio dell'insieme letto come se quelli registrati dopo di lui nello stesso insieme (`$dopo`) fossero
+     * già annullati: quelli non contano come «un altro passaggio registrato dopo», e le righe che hanno scritto o cambiato (la riga di chi entra,
+     * sommata) si leggono come le lascerebbe il loro annullamento ({@see righeDopoGliAltri()}).
+     *
+     * @param Collection<int, Subentro>|null $dopo
+     */
+    private function motivoDelPassaggio(Subentro $padre, ?Collection $dopo = null): ?string
+    {
+        $dopo ??= collect();
         $famiglia = $this->famiglia($padre);
 
         if ($famiglia->contains(fn (Subentro $s) => ! is_array($s->registro))) {
@@ -105,7 +163,15 @@ final class AnnullaPassaggioAction
                 . 'scriveva: non si annulla dal programma. Si corregge a mano, da «Modifica associazione» e «Associa soggetto», come prima.';
         }
 
-        if ($motivo = $this->passaggioDopo($famiglia)) {
+        $salta = $dopo->flatMap(fn (Subentro $m) => $this->famiglia($m)->pluck('id'))->map(fn ($id) => (int) $id)->values()->all();
+        if ($motivo = $this->passaggioDopo($famiglia, $salta)) {
+            return $motivo;
+        }
+
+        // Decisione 690 (3), Coda 708: un erede ha già versato sul debito ereditato con questa successione. Prima dei piani che hanno assorbito le righe
+        // dell'arretrato o quelle legate: un piano che ha preso la coppia del versamento ha preso con lei anche l'arretrato, e la frase del piano direbbe
+        // di eliminarlo senza dire dell'incasso; la strada è lo storno, che scrive la coppia rovescia se il piano l'ha già presa.
+        if ($motivo = self::versamentiDegliErediRegistrati($padre)) {
             return $motivo;
         }
 
@@ -122,11 +188,16 @@ final class AnnullaPassaggioAction
             return self::fraseLegateAssorbite($legate, $this->presiDaSeguire($famiglia));
         }
 
-        return $this->motivoDelleQuoteEDelleRighe($padre, $famiglia);
+        return $this->motivoDelleQuoteEDelleRighe($padre, $famiglia, $dopo);
     }
 
-    /** Le ultime regole di `motivoBlocco`, dopo i passaggi registrati dopo e i piani: le quote toccate dopo il passaggio, le righe corrette a mano. */
-    private function motivoDelleQuoteEDelleRighe(Subentro $padre, Collection $famiglia): ?string
+    /**
+     * Le ultime regole di `motivoBlocco`, dopo i passaggi registrati dopo e i piani: le quote toccate dopo il passaggio, le righe corrette a mano. Con
+     * `$dopo` (decisione 705) le righe si leggono come le lascerebbe l'annullamento dei passaggi dell'insieme registrati dopo.
+     *
+     * @param Collection<int, Subentro> $dopo
+     */
+    private function motivoDelleQuoteEDelleRighe(Subentro $padre, Collection $famiglia, Collection $dopo): ?string
     {
         // Decisione 493 (7): un erede con interessi sul debito ereditato registrati con questa successione: prima si annulla l'addebito. Prima della regola
         // delle quote nate dopo il passaggio, che fermerebbe con la frase delle rate emesse («annulla l'emissione»), che per un addebito non è la strada.
@@ -140,16 +211,29 @@ final class AnnullaPassaggioAction
             return $motivo;
         }
 
-        return $this->righeCorrette($famiglia) ?? $this->righeInConflitto($famiglia);
+        return $this->righeCorrette($famiglia, $dopo) ?? $this->righeInConflitto($famiglia, $dopo);
     }
 
     /**
      * Ciò che l'annullamento lascia da fare: i piani generati o ricalcolati dopo il passaggio, non ancora emessi, con
      * quote che l'annullamento cambierebbe (`quoteNateDopo`).
      *
+     * Decisione 705: per un passaggio dell'insieme, quelli di tutti i passaggi dell'insieme, senza doppioni.
+     *
      * @return list<string>
      */
     public function avvisi(Subentro $padre): array
+    {
+        $membri = $padre->annullato() ? collect([$padre]) : $this->membriDaAnnullare($padre);
+        if ($membri->count() < 2) {
+            return $this->avvisiDelPassaggio($padre);
+        }
+
+        return array_values(array_unique(array_merge(...$membri->sortByDesc('id')->map(fn (Subentro $m) => $this->avvisiDelPassaggio($m))->values()->all())));
+    }
+
+    /** Gli avvisi di un passaggio solo, o di uno dell'insieme (l'azione li legge così, uno per volta). @return list<string> */
+    private function avvisiDelPassaggio(Subentro $padre): array
     {
         $famiglia = $this->famiglia($padre);
 
@@ -228,18 +312,129 @@ final class AnnullaPassaggioAction
      * Che cosa l'annullamento rimette, detto prima di confermare: solo ciò che questo passaggio ha davvero toccato (una
      * locazione non sposta rate, una rinuncia non scrive conguaglio, un piano ricalcolato si è portato via le bozze).
      *
+     * Decisione 705: per un passaggio dell'insieme, gli effetti di tutti ({@see frasiEffettiDellInsieme()}).
+     *
      * @return list<string>
      */
     public function effetti(Subentro $padre): array
     {
-        $famiglia = $this->famiglia($padre);
-        $rate = $this->quoteDelRegistro($padre)['voci']->pluck('rata_id')->unique()->count();
+        $membri = $padre->annullato() ? collect([$padre]) : $this->membriDaAnnullare($padre);
+        if ($membri->count() > 1) {
+            $frasi = self::frasiEffettiDellInsieme($membri->map(fn (Subentro $m) => [$this->contiDegliEffetti($m), $this->nome($m, 'uscente'), $this->nome($m, 'entrante')])->values()->all(), false);
+            $chiTorna = $this->chiTornaTitolare($membri);
 
-        return self::frasiEffetti(
-            ['rate' => $rate, 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(), 'arretrato' => count($padre->saldiDellArretrato()),
-                'legate' => self::legateInParole(Saldo::where('passaggio_id', $padre->id)->orderBy('id')->get()), 'interessi' => self::interessiInParole($padre)],
-            $this->nome($padre, 'uscente'), $this->nome($padre, 'entrante'), false, $padre->successione(),
-        );
+            return $chiTorna === [] ? $frasi : array_values(array_merge(...array_map(
+                fn (string $f) => $f === 'Le righe di titolarità scritte dai passaggi tornano come prima.' ? $chiTorna : [$f], $frasi)));
+        }
+
+        return self::frasiEffetti($this->contiDegliEffetti($padre), $this->nome($padre, 'uscente'), $this->nome($padre, 'entrante'), false, $padre->successione());
+    }
+
+    /**
+     * Decisione 705, la finestra «Annulla i passaggi» della bozza approvata della tappa 7: al posto di «Le righe di titolarità scritte dai passaggi tornano
+     * come prima.», chi torna titolare con la sua quota e che cosa succede a chi era entrato — «Cecilia Angeli e Marta Acciaioli tornano titolari al 50 %
+     * senza data di fine; Luca Toscani esce dall'unità.»; il terzo fratello che aveva già la sua parte «torna al 33,33 %». Letto dalle righe dell'unità come
+     * le lascerebbe l'annullamento di tutti ({@see righeDopoGliAltri()}), senza scrivere niente. Sulle pertinenze la frase di oggi, con il loro nome. Vuoto
+     * se una riga di chi esce non si trova più: allora resta la frase di oggi.
+     *
+     * @param Collection<int, Subentro> $membri
+     * @return list<string>
+     */
+    private function chiTornaTitolare(Collection $membri): array
+    {
+        $primo = $membri->first();
+        $ultimo = $membri->last();
+        $righe = $this->righeDopoGliAltri([(int) $primo->immobile_id], $membri);
+        $persone = [];
+        foreach ($membri as $m) {
+            $riga = $m->riga_uscente_id !== null ? $righe->get((int) $m->riga_uscente_id) : null;
+            if ($riga === null) {
+                return [];
+            }
+            $fine = $riga->data_fine === null ? null : CarbonImmutable::parse(substr((string) $riga->data_fine, 0, 10));
+            $persone[] = ['nome' => $this->nome($m, 'uscente') ?? 'chi esce', 'quota' => round((float) $riga->quota, 2), 'fine' => $fine];
+        }
+        // «al 50 %», «all'80 %»: la preposizione con l'articolo della percentuale.
+        $al = fn (float $q) => preg_replace(['/^il /', '/^l\'/', '/^lo /'], ['al ', 'all\'', 'allo '], NudiDellEstinzione::percentuale($q));
+        $finePer = fn (?CarbonImmutable $f) => $f === null ? ' senza data di fine' : ' fino al ' . $this->data($f);
+        $stessaQuota = collect($persone)->pluck('quota')->unique()->count() === 1;
+        $stessaFine = collect($persone)->map(fn (array $p) => $p['fine']?->toDateString())->unique()->count() === 1;
+        $chi = $this->elenco(array_map(fn (array $p) => $p['nome'] . ($stessaQuota ? '' : ' ' . $al($p['quota'])) . ($stessaFine ? '' : $finePer($p['fine'])), $persone));
+        $frase = $chi . (count($persone) > 1 ? ' tornano titolari' : ' torna titolare') . ($primo->riservaUsufrutto() ? ' della proprietà piena' : '')
+            . ($stessaQuota ? ' ' . $al($persone[0]['quota']) : '') . ($stessaFine ? $finePer($persone[0]['fine']) : '')
+            . ($primo->riservaUsufrutto() ? ', e l\'usufrutto tenuto con l\'atto si toglie' : '');
+
+        // Chi era entrato: esce dall'unità, o torna alla parte che aveva prima (il terzo fratello), o com'era se aveva un altro ruolo.
+        $entrante = $this->nome($ultimo, 'entrante');
+        if ($entrante !== null && $ultimo->anagrafica_entrante_id !== null) {
+            $sue = $righe->filter(fn (object $r) => (int) $r->anagrafica_id === (int) $ultimo->anagrafica_entrante_id);
+            $stessoRuolo = $sue->filter(fn (object $r) => (string) $r->tipologia === (string) $ultimo->tipologia && $r->data_fine === null)->values();
+            $frase .= '; ' . match (true) {
+                $sue->isEmpty() => $entrante . ' esce dall\'unità',
+                $stessoRuolo->count() === 1 => $entrante . ' torna ' . $al((float) $stessoRuolo[0]->quota),
+                default => $entrante . ' torna com\'era prima dell\'atto',
+            };
+        }
+        $frasi = [$frase . '.'];
+
+        $pertinenze = $membri->flatMap(fn (Subentro $m) => $this->famiglia($m)->skip(1)->map(fn (Subentro $f) => (string) ($f->immobile?->nome ?? '')))
+            ->filter()->unique()->values()->all();
+        if ($pertinenze !== []) {
+            $frasi[] = sprintf('Su %s le righe di titolarità scritte dai passaggi tornano come prima.', $this->elenco($pertinenze));
+        }
+
+        return $frasi;
+    }
+
+    /** Che cosa il passaggio ha toccato, contato come lo conta l'esito dell'annullamento. @return array<string, mixed> */
+    private function contiDegliEffetti(Subentro $padre): array
+    {
+        $famiglia = $this->famiglia($padre);
+
+        return ['rate' => $this->quoteDelRegistro($padre)['voci']->pluck('rata_id')->unique()->count(), 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(),
+            'arretrato' => count($padre->saldiDellArretrato()), 'legate' => self::legateInParole(Saldo::where('passaggio_id', $padre->id)->orderBy('id')->get()),
+            'interessi' => self::interessiInParole($padre)];
+    }
+
+    /**
+     * Decisione 705: le frasi dell'esito per i passaggi registrati insieme, prima (`$fatto` falso, nella finestra dello storico) o dopo (nel messaggio):
+     * quelle di ciascun passaggio, senza doppioni, con le righe di titolarità «scritte dai passaggi» e le righe del conguaglio contate tutte insieme
+     * («Le 4 righe del conguaglio si tolgono dai saldi della gestione.»). Le quote delle rate passate restano una frase per persona: tornano a ciascuna.
+     *
+     * @param list<array{0: array<string, mixed>, 1: ?string, 2: ?string}> $parti per ogni passaggio i conti, chi esce e chi entra
+     * @return list<string>
+     */
+    public static function frasiEffettiDellInsieme(array $parti, bool $fatto): array
+    {
+        $conguaglio = $fatto ? 'Il conguaglio è stato tolto dai saldi della gestione.' : 'Il conguaglio si toglie dai saldi della gestione.';
+        $righeDelConguaglio = 0;
+        $frasi = [];
+        foreach ($parti as [$conti, $uscente, $entrante]) {
+            foreach (self::frasiEffetti($conti, $uscente, $entrante, $fatto) as $frase) {
+                if ($frase === $conguaglio) {
+                    $righeDelConguaglio += (int) $conti['saldi'];
+                }
+                $frasi[] = $frase;
+            }
+        }
+        $frasi = array_map(fn (string $f) => match ($f) {
+            'Le righe di titolarità scritte dal passaggio tornano come prima.' => 'Le righe di titolarità scritte dai passaggi tornano come prima.',
+            'Le righe di titolarità scritte dal passaggio sono tornate come prima.' => 'Le righe di titolarità scritte dai passaggi sono tornate come prima.',
+            $conguaglio => sprintf('%s del conguaglio %s dai saldi della gestione.',
+                $righeDelConguaglio === 1 ? 'La riga' : "Le {$righeDelConguaglio} righe",
+                $fatto ? ($righeDelConguaglio === 1 ? 'è stata tolta' : 'sono state tolte') : ($righeDelConguaglio === 1 ? 'si toglie' : 'si tolgono')),
+            default => $f,
+        }, $frasi);
+        $frasi = array_values(array_unique($frasi));
+        // Prima le righe di titolarità, poi le quote tornate a ciascuna (nell'ordine dei passaggi), poi il resto: l'ordine della frase di un passaggio.
+        $posto = fn (string $f) => match (true) {
+            str_starts_with($f, 'Le righe di titolarità') => 0,
+            str_starts_with($f, 'La quota di una rata') || str_starts_with($f, 'Le quote di ') => 1,
+            default => 2,
+        };
+        usort($frasi, fn (string $a, string $b) => $posto($a) <=> $posto($b));
+
+        return $frasi;
     }
 
     /**
@@ -401,6 +596,71 @@ final class AnnullaPassaggioAction
     }
 
     /**
+     * Decisione 690 (3), Coda 708: un erede ha già versato sul debito ereditato con questa successione, e l'incasso non è stornato: la successione non si
+     * annulla, e la frase dice chi, quanto e quale incasso stornare prima. Annullarla toglierebbe la coppia del Wallet e lascerebbe il denaro dell'erede
+     * sulla rata del defunto, che tornerebbe debitore pagato da un altro senza che nessuna riga lo dica.
+     *
+     * Si legge il registro della successione (`versamenti_degli_eredi`, scritto da `VersamentoDegliEredi`): le voci non stornate con il giorno del versamento
+     * dal decesso in poi, che sono la strada «Debito ereditato da …» dell'erede pagante e quella «per il debito degli eredi» dal conto del defunto (con o senza
+     * «Versato da»), le cui righe portano il legame agli eredi. Una voce con il giorno di prima del decesso (un bonifico del defunto registrato dopo la
+     * successione) non ferma: è solo la coppia per quota, senza legami, e l'annullamento la toglie con le righe legate; il versamento resta del defunto.
+     * Con la catena (decisione 530) le coppie degli eredi di un erede stanno nel registro della seconda successione, che si annulla per prima.
+     *
+     * Chi ha pagato si dice come lo dice il dettaglio dell'incasso (`VersamentoDegliEredi::deiVersamenti`, `erede`): un erede solo, con tutte le righe sulla
+     * rata del defunto legate a lui; altrimenti il versamento è «registrato per gli eredi». Null se non ce ne sono.
+     */
+    private static function versamentiDegliErediRegistrati(Subentro $padre): ?string
+    {
+        if (! $padre->successione() || $padre->decorrenza === null) {
+            return null;
+        }
+        $decesso = $padre->decorrenza->format('Y-m-d');
+        $voci = collect((array) ($padre->registro['versamenti_degli_eredi'] ?? []))
+            ->filter(fn ($v) => ($v['stornato_il'] ?? null) === null && (array) ($v['coppie'] ?? []) !== []
+                && (($v['il'] ?? null) === null || (string) $v['il'] >= $decesso))
+            ->values();
+        if ($voci->isEmpty()) {
+            return null;
+        }
+        $ids = $voci->map(fn ($v) => (int) ($v['scrittura_id'] ?? 0))->unique()->values()->all();
+        $incassi = \App\Models\Gestionale\ScritturaContabile::whereIn('id', $ids ?: [0])->get(['id', 'numero_protocollo', 'data_competenza'])->keyBy('id');
+        $chiHaPagato = app(\App\Services\Gestionale\Accessori\VersamentoDegliEredi::class)->deiVersamenti($ids);
+        $nomi = \App\Models\Anagrafica::whereIn('id', $voci->flatMap(fn ($v) => array_map(fn ($c) => (int) ($c['erede'] ?? 0), (array) $v['coppie']))->unique()->values()->all() ?: [0])
+            ->pluck('nome', 'id');
+
+        $versamenti = $voci->map(function ($v) use ($incassi, $chiHaPagato, $nomi) {
+            $id = (int) ($v['scrittura_id'] ?? 0);
+            $incasso = $incassi->get($id);
+            $giorno = $incasso?->data_competenza?->format('Y-m-d') ?? (string) ($v['il'] ?? '');
+            $protocollo = trim((string) ($incasso?->numero_protocollo ?? ''));
+            $erede = $chiHaPagato[$id]['erede'] ?? null;
+
+            return [
+                'cifra' => \App\Helpers\MoneyHelper::format((int) array_sum(array_map(fn ($c) => (int) ($c['importo'] ?? 0), (array) $v['coppie']))),
+                'incasso' => 'incasso ' . ($protocollo !== '' ? $protocollo . ' ' : '') . ($giorno !== '' ? 'del ' . self::giornoItaliano($giorno) : ''),
+                'erede' => $erede !== null ? (string) ($nomi[(int) $erede] ?? $chiHaPagato[$id]['nome_erede'] ?? 'Un erede') : null,
+                'eredi' => \App\Services\Gestionale\Accessori\RegoleDegliEredi::elenco(array_values(array_unique(array_map(fn ($c) => (string) ($nomi[(int) ($c['erede'] ?? 0)] ?? ''),
+                    (array) $v['coppie'])))),
+            ];
+        });
+
+        if ($versamenti->count() === 1) {
+            $x = $versamenti->first();
+
+            return $x['erede'] !== null
+                ? sprintf('%s ha già versato %s sul debito ereditato con questa successione (%s). Storna prima il suo incasso dall\'elenco degli incassi, poi torna qui.',
+                    $x['erede'], $x['cifra'], trim($x['incasso']))
+                : sprintf('Sul debito ereditato con questa successione c\'è un versamento di %s registrato per gli eredi %s (%s). Storna prima quell\'incasso '
+                    . 'dall\'elenco degli incassi, poi torna qui.', $x['cifra'], $x['eredi'], trim($x['incasso']));
+        }
+
+        return sprintf('Gli eredi hanno già versato sul debito ereditato con questa successione: %s. Storna prima quegli incassi dall\'elenco degli incassi, poi '
+            . 'torna qui.', $versamenti->map(fn ($x) => $x['erede'] !== null
+                ? sprintf('%s %s (%s)', $x['erede'], $x['cifra'], trim($x['incasso']))
+                : sprintf('%s per gli eredi %s (%s)', $x['cifra'], $x['eredi'], trim($x['incasso'])))->implode(', '));
+    }
+
+    /**
      * D3 della prova della Coda 663: gli avvisi degli interessi del defunto, prima di annullare una successione con «si fermano al decesso». Gli interessi
      * registrati con quella scelta restano come sono (la proposta dopo l'annullamento offre i giorni dal decesso); quelli passati agli eredi con la
      * registrazione dopo la successione (decisione 493 (13)) tornano a suo nome.
@@ -464,7 +724,10 @@ final class AnnullaPassaggioAction
     }
 
     /**
-     * @return array{righe: int, rate: int, saldi: int, arretrato: int, avvisi: list<string>, uscente: ?string, entrante: ?string, successione: bool, legate: array{testo: string, plurale: bool}|null}
+     * Decisione 705 (1.12.0-beta.14): un passaggio registrato insieme ad altri (più persone che escono con lo stesso atto) si annulla con tutti quelli
+     * dell'insieme, dall'id di uno qualsiasi ({@see annullaLInsieme()}). `passaggi_annullati` dice quanti; `insieme` è nullo per un passaggio da solo.
+     *
+     * @return array{righe: int, rate: int, saldi: int, arretrato: int, avvisi: list<string>, uscente: ?string, entrante: ?string, successione: bool, legate: array{testo: string, plurale: bool}|null, passaggi_annullati: int, insieme: ?array{passaggi: list<int>, nomi: list<string>, frasi: list<string>}}
      */
     public function execute(Subentro $passaggio, string $nota, User $utente): array
     {
@@ -473,55 +736,234 @@ final class AnnullaPassaggioAction
             throw ValidationException::withMessages(['nota_annullamento' => 'Scrivi in almeno dieci caratteri perché annulli il passaggio: resta nello storico.']);
         }
 
-        // Il passaggio e le sue pertinenze, letti prima della transazione: le righe figlie nascono solo con il padre, nella
-        // transazione della registrazione, e le loro unità non cambiano più.
         $padreId = (int) ($passaggio->subentro_padre_id ?? $passaggio->id);
-        $famigliaUnita = Subentro::conAnnullati()->where(fn ($q) => $q->whereKey($padreId)->orWhere('subentro_padre_id', $padreId))->pluck('immobile_id', 'id');
-        $idsFamiglia = $famigliaUnita->keys()->map(fn ($id) => (int) $id)->sort()->values()->all();
-        $unita = $famigliaUnita->values()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+        $padre = Subentro::conAnnullati()->findOrFail($padreId);
+        if (! $padre->annullato() && ($membri = $this->membriDaAnnullare($padre))->count() > 1) {
+            return $this->annullaLInsieme($membri, $nota, $utente);
+        }
 
         // Tre tentativi: un'emissione di più rate può prendere le quote dell'unità in un ordine diverso, e InnoDB scioglie
         // l'incrocio annullando una delle due transazioni. Il corpo scrive solo nel database, e rifarlo è sicuro.
         // Gesto 4 all'indietro: una riga sola, con il motivo scritto.
-        $gesto = GestiDelRegistro::passaggioAnnullato(Subentro::conAnnullati()->findOrFail($padreId), $nota);
-        $esito = DB::transaction(fn () => RegistroModifiche::durante($gesto, function () use ($padreId, $idsFamiglia, $unita, $nota, $utente) {
-            // 0. I lock, PRIMA di qualunque lettura senza lock. Su MySQL (REPEATABLE READ) l'istantanea delle letture nasce
-            //    alla prima SELECT semplice: presi dopo, i lock non farebbero vedere ai controlli un passaggio, un'emissione
-            //    o un «Associa» appena committati, e le scritture qui sotto li sovrascriverebbero (Fase 1-bis della beta.37,
-            //    A2, riprodotto su MySQL). Prima l'unità, nello stesso ordine di `RegistraSubentroAction`: con i passaggi
-            //    bloccati per primi (e l'intervallo dell'indice dei figli con loro) una registrazione in volo sulla stessa
-            //    unità si incrociava con l'annullamento, e MySQL ne uccideva uno (1213, giro di verifica, C-R1, riprodotto).
-            //    Poi i passaggi per chiave primaria, e le righe, le quote e i saldi dell'unità, che scrivono anche
-            //    «Associa», l'emissione e l'incasso. Nessun `orderBy` sulle letture bloccanti: InnoDB blocca nell'ordine
-            //    dell'indice che usa, e un ordinamento può fargli scegliere la chiave primaria e bloccare tutta la tabella.
-            Immobile::bloccaPerScrivere($unita);
-            $bloccati = Subentro::conAnnullati()->whereIn('id', $idsFamiglia)->lockForUpdate()->get()->keyBy('id');
-            $padre = $bloccati->get($padreId) ?? throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())->setModel(Subentro::class, [$padreId]);
-            $voci = collect($padre->registro['quote'] ?? []);
-            DB::table('anagrafica_immobile')->whereIn('immobile_id', $unita)->lockForUpdate()->pluck('id');
-            DB::table('rate_quote')->whereIn('immobile_id', $unita)->lockForUpdate()->pluck('id');
-            DB::table('rate_quote')->whereIn('id', $voci->pluck('id')->merge($voci->pluck('gemella_id'))->filter()->all())->lockForUpdate()->pluck('id');
-            // I promemoria delle rate di chi esce e di chi entra, che `seguonoLeQuote` riscrive e che il controllo delle
-            // segnalazioni legge: una segnalazione dal portale in volo aspetta, e poi rilegge (C-R5). Dalla tabella ponte
-            // e per chiave, con letture bloccanti: una lettura semplice qui fisserebbe l'istantanea troppo presto.
-            // Nella successione anche gli eredi: i promemoria degli interessi e delle spese passati a loro si riscrivono (Coda 652).
-            $persone = array_values(array_unique(array_filter([(int) $padre->anagrafica_uscente_id, (int) $padre->anagrafica_entrante_id,
-                ...array_map(fn ($e) => (int) ($e['anagrafica_id'] ?? 0), (array) ($padre->registro['eredi'] ?? []))])));
-            // Solo le chiavi dall'indice della persona, poi per chiave primaria: chiedere `evento_id` all'indice della
-            // persona fa scegliere a MySQL la scansione dell'indice unico, che sotto lock bloccherebbe tutta la tabella
-            // (verificato con EXPLAIN su MySQL 8.4, giro di verifica C-R6).
-            $ponte = DB::table('anagrafica_evento')->whereIn('anagrafica_id', $persone)->lockForUpdate()->pluck('id')->all();
-            $promemoria = DB::table('anagrafica_evento')->whereIn('id', $ponte)->lockForUpdate()->pluck('evento_id')->all();
-            DB::table('eventi')->whereIn('id', $promemoria)->lockForUpdate()->pluck('id');
-            $saldi = Saldo::whereIn('subentro_id', $idsFamiglia)->lockForUpdate()->with('pianoRate')->get();
-            // 1.11.0-beta.53 (Coda 244): i saldi del Wallet legati al passaggio, dopo le righe che il passaggio ha scritto.
-            $legate = Saldo::where('passaggio_id', $padreId)->lockForUpdate()->get();
+        $prep = $this->prepara($padreId, $nota);
+        $esito = DB::transaction(fn () => $this->annullaUno($prep, $nota, $utente, false), 3);
 
-            $famiglia = $this->famiglia($padre);
-            if ($motivo = $this->motivoBlocco($padre)) {
+        // Il contatore dei promemoria dello staff è in cache per dieci minuti: il promemoria tolto non deve contare ancora.
+        InboxService::clearAdminCache();
+
+        return $esito + ['passaggi_annullati' => 1, 'insieme' => null];
+    }
+
+    /**
+     * Il passaggio e le sue pertinenze, letti prima della transazione: le righe figlie nascono solo con il padre, nella transazione della
+     * registrazione, e le loro unità non cambiano più. Con il gesto 4 all'indietro, che legge l'unità: anche lui prima della transazione.
+     *
+     * @return array{padre_id: int, ids: list<int>, unita: list<int>, gesto: \App\Services\RegistroModifiche\Gesto}
+     */
+    private function prepara(int $padreId, string $nota): array
+    {
+        $famigliaUnita = Subentro::conAnnullati()->where(fn ($q) => $q->whereKey($padreId)->orWhere('subentro_padre_id', $padreId))->pluck('immobile_id', 'id');
+
+        return [
+            'padre_id' => $padreId,
+            'ids' => $famigliaUnita->keys()->map(fn ($id) => (int) $id)->sort()->values()->all(),
+            'unita' => $famigliaUnita->values()->map(fn ($id) => (int) $id)->unique()->sort()->values()->all(),
+            'gesto' => GestiDelRegistro::passaggioAnnullato(Subentro::conAnnullati()->findOrFail($padreId), $nota),
+        ];
+    }
+
+    /**
+     * Decisione 705: i passaggi registrati insieme si annullano tutti insieme, con un motivo solo, **dall'ultimo registrato al primo**, nella stessa
+     * transazione e sotto una riga sola del registro delle modifiche ({@see GestiDelRegistro::passaggiAnnullatiInsieme()}): ognuno con il suo
+     * annullamento di oggi ({@see annullaUno()}), che fa i suoi controlli sullo stato lasciato da quelli già annullati. È esatto per costruzione, come la
+     * registrazione: un passaggio legge solo ciò che è registrato prima di lui. Un rifiuto in uno qualsiasi annulla tutto, con il nome della persona
+     * davanti («La parte di Marta Acciaioli: …»); un passaggio registrato dopo l'insieme lo ferma con la frase di oggi, che è dell'insieme.
+     *
+     * I lock sono quelli di oggi, presi **per tutti i passaggi prima di ogni lettura senza lock**: su MySQL l'istantanea nasce alla prima lettura
+     * semplice, e i lock del secondo presi dopo le letture del primo non gli farebbero vedere ciò che è stato scritto nel frattempo.
+     *
+     * @param Collection<int, Subentro> $membri i passaggi dell'insieme, nell'ordine in cui sono stati scritti
+     */
+    private function annullaLInsieme(Collection $membri, string $nota, User $utente): array
+    {
+        $membri = $membri->sortBy('id')->values();
+        $preps = $membri->sortByDesc('id')->map(fn (Subentro $m) => $this->prepara((int) $m->id, $nota))->values()->all();
+        $unita = collect($preps)->flatMap(fn (array $p) => $p['unita'])->unique()->sort()->values()->all();
+        $ids = collect($preps)->flatMap(fn (array $p) => $p['ids'])->unique()->sort()->values()->all();
+        $padri = collect($preps)->pluck('padre_id')->sort()->values()->all();
+        $nomi = $membri->mapWithKeys(fn (Subentro $m) => [(int) $m->id => (string) ($this->nome($m, 'uscente') ?? 'chi esce')])->all();
+        $propri = $this->nomiPropri($membri);
+        $gesto = GestiDelRegistro::passaggiAnnullatiInsieme($membri->all(), $nota);
+
+        $esito = DB::transaction(fn () => RegistroModifiche::durante($gesto, function () use ($preps, $unita, $ids, $padri, $nota, $utente, $nomi, $propri, $membri) {
+            // 0. I lock di tutti, prima di ogni lettura senza lock (vedi `annullaUno`). Ognuno li riprende per sé: sono già suoi.
+            ['bloccati' => $bloccati] = $this->blocca($unita, $ids, $padri);
+            if ($bloccati->only($padri)->contains(fn (Subentro $s) => $s->annullato())) {
+                throw ValidationException::withMessages(['passaggio' => 'Questo passaggio è già stato annullato.']);
+            }
+            // Un passaggio registrato dopo l'insieme, su una delle sue unità: si annulla prima quello, con la frase di oggi.
+            $famiglie = Subentro::conAnnullati()->with('immobile:id,nome')->whereIn('id', $ids)->orderBy('id')->get();
+            if ($motivo = $this->passaggioDopo($famiglie, $ids)) {
                 throw ValidationException::withMessages(['passaggio' => $motivo]);
             }
-            $avvisi = $this->avvisi($padre);
+
+            $esiti = [];
+            foreach ($preps as $prep) {
+                try {
+                    // Il gesto di ciascuno si conta nel lotto dell'insieme.
+                    $esiti[(int) $prep['padre_id']] = $this->annullaUno($prep, $nota, $utente, true);
+                } catch (ValidationException $e) {
+                    throw self::conLaParte($e, $nomi[(int) $prep['padre_id']] ?? 'chi esce', $propri);
+                }
+            }
+
+            return $this->esitoDellInsieme($esiti, $membri);
+        }), 3);
+
+        InboxService::clearAdminCache();
+
+        return $esito;
+    }
+
+    /**
+     * L'esito dell'insieme nella forma di quello di un passaggio (le somme, chi esce in tutti), più `passaggi_annullati` e `insieme`: gli id dei
+     * passaggi, i nomi di chi esce e le frasi dell'esito di tutti ({@see frasiEffettiDellInsieme()}), che il messaggio dice al posto di quelle di uno.
+     *
+     * @param array<int, array<string, mixed>> $esiti per id del passaggio
+     * @param Collection<int, Subentro> $membri
+     */
+    private function esitoDellInsieme(array $esiti, Collection $membri): array
+    {
+        $inOrdine = $membri->map(fn (Subentro $m) => $esiti[(int) $m->id])->values();
+        $somma = fn (string $chiave) => (int) $inOrdine->sum(fn (array $e) => (int) ($e[$chiave] ?? 0));
+        $nomi = $inOrdine->map(fn (array $e) => (string) ($e['uscente'] ?? 'chi esce'))->all();
+
+        return [
+            'righe' => $somma('righe'), 'rate' => $somma('rate'), 'saldi' => $somma('saldi'), 'arretrato' => $somma('arretrato'),
+            'avvisi' => array_values(array_unique(array_merge(...array_map(fn (array $e) => (array) $e['avvisi'], array_values($esiti))))),
+            'uscente' => $this->elenco($nomi), 'entrante' => $inOrdine->first()['entrante'] ?? null,
+            'successione' => false, 'legate' => null, 'interessi' => null,
+            'passaggi_annullati' => $inOrdine->count(),
+            'insieme' => [
+                'passaggi' => $membri->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+                'nomi' => $nomi,
+                'frasi' => self::frasiEffettiDellInsieme($inOrdine->map(fn (array $e) => [$e, $e['uscente'] ?? null, $e['entrante'] ?? null])->all(), true),
+            ],
+        ];
+    }
+
+    /** Il rifiuto di un passaggio dell'insieme, con il nome della persona davanti, sulle stesse chiavi. @param list<string> $propri */
+    private static function conLaParte(ValidationException $e, string $nome, array $propri): ValidationException
+    {
+        $messaggi = [];
+        foreach ($e->errors() as $chiave => $frasi) {
+            foreach ((array) $frasi as $frase) {
+                $messaggi[$chiave][] = self::fraseDellaParte($nome, (string) $frase, $propri);
+            }
+        }
+
+        return ValidationException::withMessages($messaggi);
+    }
+
+    /**
+     * «La parte di Marta Acciaioli: il conguaglio di questo passaggio …». La frase che comincia con un nome proprio (una persona, un'unità) lo tiene
+     * maiuscolo. Le parole della bozza approvata (`docs/design/beta14_piu_venditori_bozza.html`), come la registrazione dell'insieme.
+     *
+     * @param list<string> $propri
+     */
+    private static function fraseDellaParte(string $nome, string $frase, array $propri): string
+    {
+        $proprio = collect($propri)->contains(fn (string $p) => $p !== '' && str_starts_with($frase, $p));
+
+        return 'La parte di ' . $nome . ': ' . ($proprio ? $frase : mb_lcfirst($frase));
+    }
+
+    /** I nomi propri con cui un motivo può cominciare: le persone dei passaggi e le loro unità. @param Collection<int, Subentro> $membri @return list<string> */
+    private function nomiPropri(Collection $membri): array
+    {
+        $nomi = [];
+        foreach ($membri as $m) {
+            array_push($nomi, $this->nome($m, 'uscente'), $this->nome($m, 'entrante'), ...$this->famiglia($m)->map(fn (Subentro $s) => $s->immobile?->nome)->all());
+        }
+
+        return array_values(array_unique(array_filter(array_map(fn ($n) => $n === null ? '' : (string) $n, $nomi))));
+    }
+
+    /**
+     * I lock dell'annullamento, PRIMA di qualunque lettura senza lock. Su MySQL (REPEATABLE READ) l'istantanea delle letture nasce
+     * alla prima SELECT semplice: presi dopo, i lock non farebbero vedere ai controlli un passaggio, un'emissione
+     * o un «Associa» appena committati, e le scritture qui sotto li sovrascriverebbero (Fase 1-bis della beta.37,
+     * A2, riprodotto su MySQL). Prima l'unità, nello stesso ordine di `RegistraSubentroAction`: con i passaggi
+     * bloccati per primi (e l'intervallo dell'indice dei figli con loro) una registrazione in volo sulla stessa
+     * unità si incrociava con l'annullamento, e MySQL ne uccideva uno (1213, giro di verifica, C-R1, riprodotto).
+     * Poi i passaggi per chiave primaria, e le righe, le quote e i saldi dell'unità, che scrivono anche
+     * «Associa», l'emissione e l'incasso. Nessun `orderBy` sulle letture bloccanti: InnoDB blocca nell'ordine
+     * dell'indice che usa, e un ordinamento può fargli scegliere la chiave primaria e bloccare tutta la tabella.
+     *
+     * Decisione 705: per i passaggi registrati insieme le unità, i passaggi e le persone di tutti, in una volta.
+     *
+     * @param list<int> $unita
+     * @param list<int> $idsFamiglia
+     * @param list<int> $padriIds
+     * @return array{bloccati: Collection<int, Subentro>, saldi: Collection<int, Saldo>, legate: Collection<int, Saldo>}
+     */
+    private function blocca(array $unita, array $idsFamiglia, array $padriIds): array
+    {
+        Immobile::bloccaPerScrivere($unita);
+        $bloccati = Subentro::conAnnullati()->whereIn('id', $idsFamiglia)->lockForUpdate()->get()->keyBy('id');
+        $padri = collect($padriIds)->map(fn (int $id) => $bloccati->get($id) ?? throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())->setModel(Subentro::class, [$id]));
+        $voci = $padri->flatMap(fn (Subentro $p) => (array) ($p->registro['quote'] ?? []));
+        DB::table('anagrafica_immobile')->whereIn('immobile_id', $unita)->lockForUpdate()->pluck('id');
+        DB::table('rate_quote')->whereIn('immobile_id', $unita)->lockForUpdate()->pluck('id');
+        DB::table('rate_quote')->whereIn('id', $voci->pluck('id')->merge($voci->pluck('gemella_id'))->filter()->all())->lockForUpdate()->pluck('id');
+        // I promemoria delle rate di chi esce e di chi entra, che `seguonoLeQuote` riscrive e che il controllo delle
+        // segnalazioni legge: una segnalazione dal portale in volo aspetta, e poi rilegge (C-R5). Dalla tabella ponte
+        // e per chiave, con letture bloccanti: una lettura semplice qui fisserebbe l'istantanea troppo presto.
+        // Nella successione anche gli eredi: i promemoria degli interessi e delle spese passati a loro si riscrivono (Coda 652).
+        $persone = array_values(array_unique(array_filter($padri->flatMap(fn (Subentro $p) => [(int) $p->anagrafica_uscente_id, (int) $p->anagrafica_entrante_id,
+            ...array_map(fn ($e) => (int) ($e['anagrafica_id'] ?? 0), (array) ($p->registro['eredi'] ?? []))])->all())));
+        // Solo le chiavi dall'indice della persona, poi per chiave primaria: chiedere `evento_id` all'indice della
+        // persona fa scegliere a MySQL la scansione dell'indice unico, che sotto lock bloccherebbe tutta la tabella
+        // (verificato con EXPLAIN su MySQL 8.4, giro di verifica C-R6).
+        $ponte = DB::table('anagrafica_evento')->whereIn('anagrafica_id', $persone)->lockForUpdate()->pluck('id')->all();
+        $promemoria = DB::table('anagrafica_evento')->whereIn('id', $ponte)->lockForUpdate()->pluck('evento_id')->all();
+        DB::table('eventi')->whereIn('id', $promemoria)->lockForUpdate()->pluck('id');
+        $saldi = Saldo::whereIn('subentro_id', $idsFamiglia)->lockForUpdate()->with('pianoRate')->get();
+        // 1.11.0-beta.53 (Coda 244): i saldi del Wallet legati al passaggio, dopo le righe che il passaggio ha scritto.
+        $legate = Saldo::whereIn('passaggio_id', $padriIds)->lockForUpdate()->get();
+
+        return ['bloccati' => $bloccati, 'saldi' => $saldi, 'legate' => $legate];
+    }
+
+    /**
+     * Il lavoro dell'annullamento di un passaggio, nel suo gesto (gesto 4 all'indietro) e nella transazione di chi chiama: i lock, i controlli, le
+     * scritture. Da solo
+     * (`execute`) o come uno dell'insieme (`annullaLInsieme`, decisione 705): lì ogni passaggio si legge da solo con `motivoDelPassaggio`, sullo stato
+     * lasciato da quelli già annullati, e il motivo dell'insieme resta allo storico.
+     *
+     * @param array{padre_id: int, ids: list<int>, unita: list<int>} $prep
+     * @return array<string, mixed>
+     */
+    private function annullaUno(array $prep, string $nota, User $utente, bool $nellInsieme): array
+    {
+        ['padre_id' => $padreId, 'ids' => $idsFamiglia, 'unita' => $unita] = $prep;
+
+        return RegistroModifiche::durante($prep['gesto'], function () use ($padreId, $idsFamiglia, $unita, $nota, $utente, $nellInsieme) {
+            // 0. I lock, PRIMA di qualunque lettura senza lock (`blocca`).
+            ['bloccati' => $bloccati, 'saldi' => $saldi, 'legate' => $legate] = $this->blocca($unita, $idsFamiglia, [$padreId]);
+            $padre = $bloccati->get($padreId);
+            $voci = collect($padre->registro['quote'] ?? []);
+
+            $famiglia = $this->famiglia($padre);
+            $motivo = match (true) {
+                $padre->annullato() => 'Questo passaggio è già stato annullato.',
+                $nellInsieme => $this->motivoDelPassaggio($padre),
+                default => $this->motivoBlocco($padre),
+            };
+            if ($motivo) {
+                throw ValidationException::withMessages(['passaggio' => $motivo]);
+            }
+            $avvisi = $this->avvisiDelPassaggio($padre);
             // D3: la frase della proposta del defunto, letta prima che l'annullamento tolga la scelta.
             $interessi = self::interessiInParole($padre);
 
@@ -636,12 +1078,7 @@ final class AnnullaPassaggioAction
 
             return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante,
                 'successione' => $padre->successione(), 'legate' => $legateInParole, 'interessi' => $interessi];
-        }), 3);
-
-        // Il contatore dei promemoria dello staff è in cache per dieci minuti: il promemoria tolto non deve contare ancora.
-        InboxService::clearAdminCache();
-
-        return $esito;
+        });
     }
 
     // --- Le regole -----------------------------------------------------------------------------------
@@ -679,14 +1116,21 @@ final class AnnullaPassaggioAction
      * registrato dopo, con una data precedente, può aver letto ciò che questo ha scritto (la coppia di una fine «Scrivi» divisa sulla
      * titolarità di dopo la vendita, le fonti di una successione, una fermata): annullare prima questo lascerebbe soldi sbagliati. Un
      * passaggio legge solo ciò che è registrato prima di lui, e quello con l'id più alto si può sempre annullare: nessuno stallo.
+     *
+     * Decisione 705: `$salta` sono i passaggi che non contano — quelli dello stesso insieme, che si annullano insieme: registrati dopo questo
+     * (lo storico, che legge un passaggio dell'insieme come se quelli dopo fossero già annullati), o tutti (l'insieme intero, che si ferma solo per un
+     * passaggio registrato dopo di lui).
+     *
+     * @param list<int> $salta
      */
-    private function passaggioDopo(Collection $famiglia): ?string
+    private function passaggioDopo(Collection $famiglia, array $salta = []): ?string
     {
         $qui = (int) $famiglia->first()->immobile_id;
         foreach ($famiglia as $s) {
             $ultimo = Subentro::with(['uscente:id,nome', 'entrante:id,nome', 'padre.immobile:id,nome'])->where('immobile_id', $s->immobile_id)
+                ->when($salta !== [], fn ($q) => $q->whereNotIn('id', $salta))
                 ->orderByDesc('id')->first();
-            if ($ultimo === null || (int) $ultimo->id === (int) $s->id) {
+            if ($ultimo === null || (int) $ultimo->id <= (int) $s->id) {
                 continue;
             }
             $unita = $s->immobile?->nome ?? 'l\'unità';
@@ -884,14 +1328,21 @@ final class AnnullaPassaggioAction
         return null;
     }
 
-    private function righeCorrette(Collection $famiglia): ?string
+    /**
+     * Una riga scritta dal passaggio e corretta a mano dopo. Con `$dopo` (decisione 705) la riga si confronta con come la lascerebbe l'annullamento dei
+     * passaggi dello stesso insieme registrati dopo ({@see righeDopoGliAltri()}): la riga di chi entra, sommata dal secondo, torna quella del primo.
+     *
+     * @param Collection<int, Subentro>|null $dopo
+     */
+    private function righeCorrette(Collection $famiglia, ?Collection $dopo = null): ?string
     {
+        $simulate = $dopo === null || $dopo->isEmpty() ? null : $this->righeDopoGliAltri($this->unita($famiglia), $dopo);
         foreach ($famiglia as $s) {
             foreach ($s->registro['righe'] ?? [] as $op) {
                 if (! isset($op['dopo'])) {
                     continue;
                 }
-                $riga = DB::table('anagrafica_immobile')->where('id', $op['id'])->first();
+                $riga = $simulate !== null ? $simulate->get((int) $op['id']) : DB::table('anagrafica_immobile')->where('id', $op['id'])->first();
                 $diversa = $riga === null || collect($op['dopo'])->contains(fn ($valore, $campo) => $this->normalizza($campo, $riga->{$campo} ?? null) !== $this->normalizza($campo, $valore));
                 if ($diversa) {
                     $nome = $riga !== null ? DB::table('anagrafiche')->where('id', $riga->anagrafica_id)->value('nome') : null;
@@ -911,13 +1362,18 @@ final class AnnullaPassaggioAction
      * dov'è, mentre la riga di chi era uscito si riapre (Fase 1-bis, A1: la vendita di una parte, con chi vende
      * riassociato per il resto; la fine locazione con il nuovo inquilino associato a mano). Togliere righe fa solo
      * scendere le somme: basta controllare le righe che l'annullamento rimette.
+     *
+     * Con `$dopo` (decisione 705) si parte dalle righe come le lascerebbe l'annullamento dei passaggi dello stesso insieme registrati dopo.
+     *
+     * @param Collection<int, Subentro>|null $dopo
      */
-    private function righeInConflitto(Collection $famiglia): ?string
+    private function righeInConflitto(Collection $famiglia, ?Collection $dopo = null): ?string
     {
         foreach ($famiglia as $s) {
             $ops = collect($s->registro['righe'] ?? []);
             $aperte = $ops->where('operazione', 'aperta')->pluck('id')->map(fn ($id) => (int) $id)->all();
-            $righe = DB::table('anagrafica_immobile')->where('immobile_id', $s->immobile_id)->get()
+            $righe = ($dopo === null || $dopo->isEmpty() ? DB::table('anagrafica_immobile')->where('immobile_id', $s->immobile_id)->get()->keyBy('id')
+                : $this->righeDopoGliAltri([(int) $s->immobile_id], $dopo))
                 ->reject(fn ($r) => in_array((int) $r->id, $aperte, true))->keyBy('id');
             $rimesse = [];
             foreach ($ops as $op) {
@@ -952,6 +1408,40 @@ final class AnnullaPassaggioAction
         }
 
         return null;
+    }
+
+    /**
+     * Decisione 705: le righe di titolarità delle unità come le lascerebbe l'annullamento dei passaggi `$dopo` (dello stesso insieme, registrati dopo
+     * quello che si legge), dall'ultimo: le righe che hanno aperto se ne vanno, quelle che hanno chiuso o cambiato tornano come prima. È ciò che trova
+     * l'azione, che li annulla prima di lui. Senza scrivere niente.
+     *
+     * @param list<int> $unita
+     * @param Collection<int, Subentro> $dopo
+     * @return Collection<int, object> per id
+     */
+    private function righeDopoGliAltri(array $unita, Collection $dopo): Collection
+    {
+        $righe = DB::table('anagrafica_immobile')->whereIn('immobile_id', $unita)->get()->keyBy('id');
+        foreach ($dopo->sortByDesc('id') as $membro) {
+            foreach ($this->famiglia($membro) as $s) {
+                foreach (array_reverse($s->registro['righe'] ?? []) as $op) {
+                    $riga = $righe->get((int) $op['id']);
+                    if ($riga === null) {
+                        continue;
+                    }
+                    if ($op['operazione'] === 'aperta') {
+                        $righe->forget((int) $op['id']);
+
+                        continue;
+                    }
+                    foreach ((array) ($op['prima'] ?? []) as $campo => $valore) {
+                        $riga->{$campo} = $valore;
+                    }
+                }
+            }
+        }
+
+        return $righe;
     }
 
     private function fraseConflitto(Subentro $s, object $rimessa, ?object $altra, ?array $sforo): string

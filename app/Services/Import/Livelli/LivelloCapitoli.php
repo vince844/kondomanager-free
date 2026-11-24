@@ -11,6 +11,7 @@ use App\Models\Esercizio;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\ImportBatchItem;
+use App\Services\Gestionale\CreazioneDellaVoce;
 use App\Services\Import\Canonical\CanonicalCapitolo;
 use App\Services\Import\Canonical\CanonicalStrutturaSpese;
 use App\Services\Import\EsitoCommit;
@@ -208,8 +209,13 @@ final class LivelloCapitoli implements LivelloImport
      */
     private function scrivi(ImportContext $ctx, PianoConto $piano, CanonicalCapitolo $capitolo): int
     {
+        // Il conto di partita doppia (Coda 113): senza, la prima fattura su una di queste voci si fermerebbe su «Integrità compromessa». Una voce
+        // di spesa importata è «standard»: il mastro è quello che darebbe il salvataggio a mano ({@see CreazioneDellaVoce::contoContabile()}).
+        $mastro = CreazioneDellaVoce::contoContabile((int) $piano->condominio_id, 'standard', 'spesa');
+
         $padre = Conto::create([
             'piano_conto_id' => $piano->id,
+            'conto_contabile_id' => $mastro,
             'parent_id' => null,
             'is_capitolo' => true,
             'nome' => $capitolo->nome,
@@ -226,6 +232,7 @@ final class LivelloCapitoli implements LivelloImport
         foreach ($capitolo->voci as $voce) {
             $figlio = Conto::create([
                 'piano_conto_id' => $piano->id,
+                'conto_contabile_id' => $mastro,
                 'parent_id' => $padre->id,
                 'is_capitolo' => false,
                 'nome' => $voce->nome,

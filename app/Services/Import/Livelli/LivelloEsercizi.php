@@ -175,8 +175,9 @@ final class LivelloEsercizi implements LivelloImport
      * molti-a-molti con gli esercizi — un fondo lavori pluriennale ci sta dentro per costruzione.
      *
      * **Perché non si crea un secondo esercizio**, che è quello che succedeva prima: sarebbe un
-     * secondo esercizio **aperto** sullo stesso condominio, e l'invariante «al più uno aperto» è
-     * quella su cui poggia `HasEsercizio::getEsercizioCorrente()`, che fa `->first()`. Misurato
+     * secondo esercizio **aperto** sullo stesso condominio, sullo stesso periodo: le pagine tengono «al più uno aperto», e con due
+     * aperti `HasEsercizio::getEsercizioCorrente()` prende il più recente (Coda 646, decisione 707 (4)), che qui sarebbe lo
+     * straordinario, con le date dell'ordinario. Misurato
      * prima della correzione: due esercizi accavallati e **una sola** gestione ordinaria
      * agganciata a entrambi, con la parola «Straordinario» finita in una descrizione testuale.
      *

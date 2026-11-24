@@ -264,7 +264,7 @@ final class ProspettoDellaSala
             // I contitolari entrati insieme, presenti senza voto (rilievo C53).
             if (filled($p['insieme'] ?? null)) {
                 $note[] = 'con ' . TesteDellaSala::elenco(array_map(fn ($x) => (string) $x['nome'], (array) $p['insieme']))
-                    . (count((array) $p['insieme']) === 1 ? ', contitolare, presente senza voto' : ', contitolari, presenti senza voto');
+                    . ', in comproprietà, ' . (count((array) $p['insieme']) === 1 ? 'presente senza voto' : 'presenti senza voto');
             }
             if (filled($p['motivo_collegamento'] ?? null)) {
                 $note[] = 'motivo del collegamento: ' . $p['motivo_collegamento'];

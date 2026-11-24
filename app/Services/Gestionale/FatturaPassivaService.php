@@ -5,6 +5,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Helpers\DateHelper;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Helpers\MoneyHelper;
@@ -178,8 +179,18 @@ class FatturaPassivaService
             // Il moltiplicatore resta per la testata della fattura a database
             $netto = ($totaleDoc - $ritenuta) * $moltiplicatore;
 
+            // Coda 754 (5), 1.12.0-beta.14: la giustificazione dello sforo di una pregressa è quella dell'urgenza scelta nella finestra per la sua parte non
+            // coperta dai saldi iniziali, e l'importo è quella parte (`eccedenzaPregressaCents`), qualunque cifra mandi la pagina: fino alla tappa 6 la
+            // pagina mandava € 0,00 (la parte comune delle righe «Fuori preventivo», che la pregressa non ha) e la fattura restava da ratificare per niente
+            // (prova G6). Una pregressa tutta coperta dai saldi iniziali non ha niente da ratificare: la giustificazione rimasta nel modulo non si scrive.
+            $overrideBudget = $data['dati_extra']['override_budget'] ?? null;
+            if ($isPregresso && ! $isNotaCredito && ! empty($overrideBudget)) {
+                $eccedenzaDaRatificare = self::eccedenzaPregressaCents($data);
+                $overrideBudget = $eccedenzaDaRatificare > 0 ? array_merge($overrideBudget, ['importo_sforo' => $eccedenzaDaRatificare]) : null;
+            }
+
             $statoApprovazione = $data['stato_approvazione'] ?? 'approvata';
-            if (! empty($data['dati_extra']['override_budget'])) {
+            if (! empty($overrideBudget)) {
                 $statoApprovazione = 'sforo_motivato';
             }
 
@@ -289,7 +300,7 @@ class FatturaPassivaService
                     ),
                     // `competenza` non sta più qui dalla 1.11.0-beta.31: è nelle colonne
                     // `competenza_dal/al` (la migrazione `2026_09_18_200000` ha travasato le vecchie).
-                    'override_budget' => $data['dati_extra']['override_budget'] ?? null,
+                    'override_budget' => $overrideBudget,
                     // Coda 693 (b), decisione 532: i dati della finestra «Fuori preventivo» (l'origine, la strategia, il fondo, il giustificativo dell'urgenza).
                     // Non c'erano: la Dashboard li cercava qui (`DashboardController`) e con la delibera non trovava la strategia scelta (prova E5). Non sulla
                     // pregressa, la cui eccedenza ha la sua copertura (qui sotto): la Dashboard la legge com'era.
@@ -306,6 +317,12 @@ class FatturaPassivaService
                     // uscisse dalla cassa. Misurato con una sonda end-to-end il 04/09/2026, prima
                     // di questa correzione.
                     'nota_storno' => $data['dati_extra']['nota_storno'] ?? null,
+                    // Rilievo 10 dello scettico della tappa 6 della 1.12.0-beta.14: la strategia scelta nella finestra per la parte della pregressa non
+                    // coperta dai saldi iniziali. La legge il compito «Emettere rate» (`SyncScadenziarioWithFattura`), che nasce solo con «Rata
+                    // integrativa»: con «Attesa conguaglio» la spesa aspetta il rendiconto. Solo sulla pregressa, e solo con la finestra.
+                    ...($isPregresso && ! $isNotaCredito && ! empty($logLegale['strategia_rientro'])
+                        ? ['strategia_rientro_pregressa' => $logLegale['strategia_rientro']]
+                        : []),
                 ],
             ]);
 
@@ -330,7 +347,7 @@ class FatturaPassivaService
             // stesso identico bug del "caso del forum" (beta.27), solo spostato a fine
             // esercizio invece che sulla rata integrativa.
             // =====================================================================
-            $overrideData = $data['dati_extra']['override_budget'] ?? null;
+            $overrideData = $overrideBudget;
 
             // Coda 693 (b) e (d), decisione 532: la copertura dal fondo della spesa fuori preventivo nasce dai dati della sua finestra, con la delibera come con
             // l'urgenza, per la parte comune (le righe «Fuori preventivo» senza unità, quelle che vanno sulla voce tecnica creata sopra). È la stessa copertura
@@ -362,8 +379,12 @@ class FatturaPassivaService
                 ? $parteComuneImprevisto
                 : 0;
 
-            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])
-                && ($parteImprevistoNelloSforo === 0 || (int) ($overrideData['importo_sforo'] ?? 0) > $parteImprevistoNelloSforo)) {
+            // Coda 754 (5), 1.12.0-beta.14: mai una copertura dal fondo da € 0,00 (lo sforo deve superare la parte dell'imprevisto, che ha la sua copertura;
+            // senza imprevisto, superare zero), e mai da qui per una pregressa: la sua copertura dal fondo nasce una volta sola, dai dati della finestra, per
+            // la parte non coperta dai saldi iniziali (più sotto). Fino alla tappa 6 l'urgenza con il fondo su una pregressa faceva nascere qui una copertura
+            // da € 0,00 (prova G5).
+            if ($overrideData && ! $isPregresso && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])
+                && (int) ($overrideData['importo_sforo'] ?? 0) > $parteImprevistoNelloSforo) {
                 $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0) - $parteImprevistoNelloSforo;
                 $fattura->coperture()->create([
                     'tipo_copertura' => 'fondo_riserva',
@@ -462,6 +483,13 @@ class FatturaPassivaService
                     // L'eccedenza interna si calcola sui valori assoluti
                     $totaleCopertoPregresso += $importoCoperturaCents;
 
+                    // Coda 754 (4), 1.12.0-beta.14: la copertura dal fondo della parte non coperta dai saldi iniziali porta la voce su cui sta il costo
+                    // (`conto_id`, più sotto). Lo storno la passa alla sua nota con la voce, e la nota toglie il costo da quella voce (la scrittura, più
+                    // sotto); la nota non la ricopia fra le sue coperture, perché la voce prende il posto del fondo in `fonte_id` e il fondo andrebbe perso.
+                    if ($isNotaCredito && $copertura['tipo_copertura'] === 'fondo_riserva' && ! empty($copertura['conto_id'])) {
+                        continue;
+                    }
+
                     $fattura->coperture()->create([
                         'tipo_copertura' => $copertura['tipo_copertura'],
                         // FIX: Moltiplicatore per i report del DB
@@ -512,22 +540,46 @@ class FatturaPassivaService
             // importo negativo. Su una nota di credito è un costo inventato per registrare un
             // provento. Coda 129.
             if (! $isNotaCredito && $isPregresso && $eccedenzaCents > 0 && $logLegale) {
+                // Coda 754 (4), 1.12.0-beta.14 (decisione 696, D2): con «Usa fondo riserva» nella finestra il programma prepara la copertura dal fondo, come
+                // per la spesa fuori preventivo dell'anno (Coda 693, decisione 532): pianificata, e il fondo si muove solo con il giroconto che la conferma
+                // (`RegistraGirocontoAction`). Fino alla tappa 6 i dati della finestra si buttavano e non nasceva niente (prova G4).
+                //
+                // Il costo resta sulla voce, nel rendiconto (la scrittura qui sotto non cambia), ma la voce nasce a € 0,00 di preventivo e la copertura
+                // «sopravvenienza» non nasce: è lei che porta la pregressa nel carrello di «Spese fuori preventivo», nelle fatture in sospeso della
+                // Dashboard e nel promemoria «Emettere rate» (`SyncScadenziarioWithFattura`). Con l'importo della voce la chiedeva anche un piano della
+                // gestione senza la riga delle voci (i piani della 1.10, generati o ricalcolati: € 1.610,00 invece di € 1.000,00), fino al rilievo 2 dello
+                // scettico della tappa 6 (`CalcoloQuoteService::calcolaPerGestione`); il piano creato dalla rotta le voci tecniche non le prende
+                // (`PianoRateController::capitoliOrfani`). Con il fondo sarebbe chiesta due volte: la voce a € 0,00 vale per ogni strada che la chieda con il
+                // suo importo. Al posto della «sopravvenienza» la copertura dal fondo, che porta la voce (`conto_id`): lo storno toglie il costo da lì.
+                $coperturaDalFondo = ($logLegale['strategia_rientro'] ?? null) === 'fondo_riserva' && ! empty($logLegale['fondo_patrimoniale_id']);
+
                 $nuovoContoIdPregresso = $this->creaContoDinamicoSopravvenienza(
                     $condominioId,
                     $data['gestione_id'],
                     $fornitore->id,
                     $logLegale,
-                    $eccedenzaCents
+                    $coperturaDalFondo ? 0 : $eccedenzaCents
                 );
 
-                $fattura->coperture()->create([
-                    'tipo_copertura' => 'sopravvenienza',
-                    // FIX: Moltiplicatore per i report del DB
-                    'importo' => $eccedenzaCents * $moltiplicatore,
-                    'stato' => 'pianificata',
-                    'conto_id' => $nuovoContoIdPregresso,
-                    'nota_amministratore' => 'Eccedenza fattura pregressa non coperta dai saldi iniziali',
-                ]);
+                if ($coperturaDalFondo) {
+                    $fattura->coperture()->create([
+                        'tipo_copertura' => 'fondo_riserva',
+                        'importo' => $eccedenzaCents,
+                        'stato' => 'pianificata',
+                        'fondo_id' => $logLegale['fondo_patrimoniale_id'],
+                        'conto_id' => $nuovoContoIdPregresso,
+                        'nota_amministratore' => self::notaDellaCoperturaPregressa($logLegale),
+                    ]);
+                } else {
+                    $fattura->coperture()->create([
+                        'tipo_copertura' => 'sopravvenienza',
+                        // FIX: Moltiplicatore per i report del DB
+                        'importo' => $eccedenzaCents * $moltiplicatore,
+                        'stato' => 'pianificata',
+                        'conto_id' => $nuovoContoIdPregresso,
+                        'nota_amministratore' => 'Eccedenza fattura pregressa non coperta dai saldi iniziali',
+                    ]);
+                }
             }
 
             // 5. Salvataggio File
@@ -552,7 +604,7 @@ class FatturaPassivaService
                 'condominio_id' => $condominioId,
                 'esercizio_id' => $data['esercizio_id'],
                 'gestione_id' => $data['gestione_id'] ?? null,
-                'data_registrazione' => now(),
+                'data_registrazione' => DateHelper::oggiUtente(),
                 'data_competenza' => $fattura->data_documento,
                 'numero_protocollo' => $fattura->numero_protocollo,
                 'causale' => ($isPregresso ? '[PREGRESSO] ' : '')."Ft. {$data['numero_documento']} - {$fornitore->ragione_sociale}",
@@ -571,7 +623,11 @@ class FatturaPassivaService
                     foreach ($data['coperture'] as $copertura) {
                         $importoCoperturaCents = (int) round($copertura['importo'] * 100);
 
-                        if ($copertura['tipo_copertura'] === 'fondo_riserva') {
+                        // Coda 754 (4), 1.12.0-beta.14: la copertura dal fondo che porta la voce (la parte non coperta dai saldi iniziali, coperta dal fondo
+                        // scelto nella finestra) ha il costo sulla voce, non su «passate gestioni»: lo storno lo toglie da lì, come la sopravvenienza (Coda 145).
+                        $fondoSullaVoce = $copertura['tipo_copertura'] === 'fondo_riserva' && ! empty($copertura['conto_id']);
+
+                        if ($copertura['tipo_copertura'] === 'fondo_riserva' && ! $fondoSullaVoce) {
                             // Beta.19: la riga DARE è strutturale (bilancia l'AVERE
                             // debiti) ma NON tocca più il conto del fondo — andava
                             // sul fondo col segno passivo, in contraddizione col suo
@@ -584,7 +640,7 @@ class FatturaPassivaService
                                 'importo' => abs($importoCoperturaCents),
                                 'note' => 'Debito pregresso con copertura da fondo (in attesa di giroconto di conferma)',
                             ]);
-                        } elseif ($copertura['tipo_copertura'] === 'sopravvenienza' && ! empty($copertura['conto_id'])) {
+                        } elseif (($copertura['tipo_copertura'] === 'sopravvenienza' && ! empty($copertura['conto_id'])) || $fondoSullaVoce) {
                             // ⚠️ **Coda 145 — una copertura di sopravvenienza non è una copertura
                             // da rata zero, e finire in `$totaleRata0` le faceva perdere la strada
                             // di casa.** La fattura che l'ha generata ha scritto DARE sul mastro del
@@ -614,7 +670,9 @@ class FatturaPassivaService
                                     'tipo_riga' => 'dare',
                                     'importo' => abs($importoCoperturaCents),
                                     'voce_spesa_id' => $contoSopravvenienza->id,
-                                    'note' => 'Storno della sopravvenienza passiva: annulla il costo sul capitolo generato dalla fattura pregressa',
+                                    'note' => $fondoSullaVoce
+                                        ? 'Storno del debito dell\'esercizio precedente coperto dal fondo: annulla il costo sul capitolo generato dalla fattura pregressa'
+                                        : 'Storno della sopravvenienza passiva: annulla il costo sul capitolo generato dalla fattura pregressa',
                                 ]);
                             } else {
                                 // Senza il mastro non si può scrivere la contropartita giusta: si
@@ -713,10 +771,10 @@ class FatturaPassivaService
                             'note' => 'Anticipazione spesa ad personam (Art. 63)',
                         ]);
                     } elseif (! empty($riga['conto_id'])) {
-                        $contoBudget = Conto::find($riga['conto_id']);
-                        if ($contoBudget && $contoBudget->conto_contabile_id) {
+                        $mastroDellaVoce = $this->mastroDellaVoce(Conto::find($riga['conto_id']), $condominioId);
+                        if ($mastroDellaVoce !== null) {
                             $scrittura->righe()->create([
-                                'conto_contabile_id' => $contoBudget->conto_contabile_id,
+                                'conto_contabile_id' => $mastroDellaVoce,
                                 'tipo_riga' => $versoRiga,
                                 'importo' => $importoLordoRiga,
                                 'voce_spesa_id' => $riga['conto_id'],
@@ -900,6 +958,25 @@ class FatturaPassivaService
         }
 
         return abs($imponibile + $imposta) - $coperto;
+    }
+
+    /**
+     * Coda 754 (4), 1.12.0-beta.14: la nota della copertura dal fondo di una pregressa, con le parole della spesa fuori preventivo dell'anno (Coda 693) e
+     * la sua origine: «Copertura del debito dell'esercizio precedente «Debito 2025 Idraulica» (delibera del 15/10/2026)», o con l'urgenza «(art. 1135 c.c.):»
+     * e il giustificativo. È la sola traccia della scelta fatta nella finestra: i dati della finestra non si salvano sulla pregressa (`registraFattura`).
+     */
+    public static function notaDellaCoperturaPregressa(array $logLegale): string
+    {
+        $voce = 'Copertura del debito dell\'esercizio precedente «'.trim((string) ($logLegale['nome_voce'] ?? '')).'»';
+        if (($logLegale['origine_decisionale'] ?? null) === 'gestione_corrente') {
+            $motivo = trim((string) ($logLegale['motivazione_urgenza'] ?? '')) ?: trim((string) ($logLegale['motivazione_sforo'] ?? ''));
+
+            return $voce.' (art. 1135 c.c.)'.($motivo !== '' ? ': '.$motivo : '');
+        }
+
+        return $voce.(! empty($logLegale['data_assemblea'])
+            ? ' (delibera del '.Carbon::parse($logLegale['data_assemblea'])->format('d/m/Y').')'
+            : ' (delibera assembleare)');
     }
 
     /**
@@ -1327,7 +1404,7 @@ class FatturaPassivaService
                 'condominio_id' => $fattura->condominio_id,
                 'esercizio_id' => $fattura->esercizio_id,
                 'gestione_id' => $gestioneId,
-                'data_registrazione' => now(),
+                'data_registrazione' => DateHelper::oggiUtente(),
                 'data_competenza' => $fattura->data_documento,
                 'numero_protocollo' => $fattura->numero_protocollo, // immutabile
                 'causale' => "Ft. {$fattura->numero_documento} - {$fornitore->ragione_sociale} [modifica]",
@@ -1374,10 +1451,10 @@ class FatturaPassivaService
                         'note' => 'Anticipazione spesa ad personam (Art. 63)',
                     ]);
                 } elseif (! empty($riga['conto_id'])) {
-                    $contoBudget = Conto::find($riga['conto_id']);
-                    if ($contoBudget && $contoBudget->conto_contabile_id) {
+                    $mastroDellaVoce = $this->mastroDellaVoce(Conto::find($riga['conto_id']), (int) $fattura->condominio_id);
+                    if ($mastroDellaVoce !== null) {
                         $scrittura->righe()->create([
-                            'conto_contabile_id' => $contoBudget->conto_contabile_id,
+                            'conto_contabile_id' => $mastroDellaVoce,
                             'tipo_riga' => $versoRiga,
                             'importo' => $importoLordoRiga,
                             'voce_spesa_id' => $riga['conto_id'],
@@ -1461,6 +1538,34 @@ class FatturaPassivaService
 
             return $fattura->fresh();
         });
+    }
+
+    /**
+     * Il mastro su cui va la riga di una voce: quello della voce, oppure — per una voce di spesa nata senza (le voci importate prima della
+     * Coda 113, o per un'altra strada) — quello che le darebbe il salvataggio a mano, scritto sulla voce. È la regola di
+     * `CreazioneDellaVoce::contoContabile()`, che dalla 1.12.0-beta.14 crea il mastro che il condominio non ha più (lo cancella
+     * l'amministratore, e la migrazione dell'aggiornamento non lo ricrea): prima la fattura si fermava su «Integrità compromessa».
+     * Una voce di entrata senza mastro resta `null`, e la fattura si ferma come prima: il suo capitolo è una voce di spesa.
+     */
+    private function mastroDellaVoce(?Conto $voce, int $condominioId): ?int
+    {
+        if ($voce === null) {
+            return null;
+        }
+
+        if ($voce->conto_contabile_id) {
+            return (int) $voce->conto_contabile_id;
+        }
+
+        if (VociDiEntrataNelMastro::diEntrata((string) $voce->tipo)) {
+            return null;
+        }
+
+        $mastro = CreazioneDellaVoce::contoContabile($condominioId, (string) ($voce->tipo_spesa ?: 'standard'), (string) $voce->tipo);
+        $voce->conto_contabile_id = $mastro;
+        $voce->save();
+
+        return $mastro;
     }
 
     /**

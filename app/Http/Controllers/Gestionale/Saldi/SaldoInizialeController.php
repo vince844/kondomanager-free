@@ -224,10 +224,30 @@ class SaldoInizialeController extends Controller
         if (! empty($validated['passaggio_id'])) {
             $this->scriviLegata($riga, (int) $validated['passaggio_id']);
         } else {
-            Saldo::create($riga);
+            $this->scriviManuale($riga);
         }
 
         return back()->with($this->flashSuccess('Saldo aggiunto al Wallet con successo.'));
+    }
+
+    /**
+     * Il saldo scritto a mano: come quello legato, dentro una transazione che blocca l'unità per prima e ripete il controllo del posto (Coda 323:
+     * il controllo della richiesta e la scrittura non erano atomici, e due invii quasi insieme scrivevano due saldi).
+     *
+     * @param array<string, mixed> $riga
+     */
+    private function scriviManuale(array $riga): void
+    {
+        DB::transaction(function () use ($riga) {
+            Immobile::bloccaPerScrivere([(int) $riga['immobile_id']]);
+            $frase = CreateSaldoRequest::fraseDelPostoOccupato(
+                (int) $riga['esercizio_id'], (int) $riga['gestione_id'], (int) $riga['immobile_id'], $riga['anagrafica_id'] === null ? null : (int) $riga['anagrafica_id']
+            );
+            if ($frase !== null) {
+                throw ValidationException::withMessages(['anagrafica_id' => $frase]);
+            }
+            Saldo::create($riga);
+        }, 3);
     }
 
     /**

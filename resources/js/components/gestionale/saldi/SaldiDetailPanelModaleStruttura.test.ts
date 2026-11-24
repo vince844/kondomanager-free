@@ -25,6 +25,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import vSelect from 'vue-select';
+import { router } from '@inertiajs/vue3';
 
 vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
@@ -168,5 +169,29 @@ describe('il menu di «Soggetto specifico» non è tagliato dal modale', () => {
 
         expect(menu, 'Il menu delle persone non si è aperto').not.toBeNull();
         expect(cheTagliano(menu!)).toEqual([]);
+    });
+});
+
+describe('il pulsante «Salva» si spegne durante l\'invio (Coda 323)', () => {
+    test('un secondo clic mentre il primo invio è in corso non parte; a invio finito il pulsante torna acceso', async () => {
+        const w = await apri([]);
+        vi.mocked(router.post).mockClear();
+        (w.vm as unknown as { modalForm: { importo: string } }).modalForm.importo = '50,00';
+        await w.vm.$nextTick();
+        const salva = () => w.findAll('button').find((b) => b.text().includes('Salva Credito'))!;
+
+        await salva().trigger('click');
+        await w.vm.$nextTick();
+        expect(router.post).toHaveBeenCalledTimes(1);
+        expect(salva().attributes('disabled')).toBeDefined();
+
+        await salva().trigger('click');
+        expect(router.post).toHaveBeenCalledTimes(1);
+
+        const opzioni = vi.mocked(router.post).mock.calls[0][2] as { onFinish?: () => void };
+        expect(typeof opzioni.onFinish).toBe('function');
+        opzioni.onFinish!();
+        await w.vm.$nextTick();
+        expect(salva().attributes('disabled')).toBeUndefined();
     });
 });

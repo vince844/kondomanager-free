@@ -60,6 +60,15 @@ describe('«Chi entra in sala per l\'Int. 5?»', () => {
         expect(entrate).toEqual([[7, '', [6]]]);
     });
 
+    test('in collegamento la spunta dice «in collegamento», nella forma senza genere (rilievo C59)', async () => {
+        w = mount(FinestraDellEntrata as never, { attachTo: document.body, props: { open: true, come: 'in_collegamento', serveIlMotivo: false, unita: 'Int. 5',
+            persone: [6, 7], candidati: [{ id: 6, etichetta: 'Russo Anna' }, { id: 7, etichetta: 'Russo Marco' }] } });
+        await flushPromises();
+        (document.body.querySelector('[data-testid="chi-entra"] [data-opzione="1"]') as HTMLElement).click();
+        await flushPromises();
+        expect(testo('[data-testid="anche-6"]')).toBe('Anche Russo Anna è in collegamento, senza voto');
+    });
+
     test('niente spunta per chi ha anche un\'unità sua: entra da sé, con la sua testa (revisione del 22/11)', async () => {
         w = mount(FinestraDellEntrata as never, { attachTo: document.body, props: { open: true, come: 'in_sala', serveIlMotivo: false, unita: 'Int. 5',
             persone: [6, 7], conTestaSua: [6], candidati: [{ id: 6, etichetta: 'Russo Anna' }, { id: 7, etichetta: 'Russo Marco' }] } });
@@ -100,6 +109,7 @@ describe('la riga e la sala in sola lettura dicono chi è entrato insieme', () =
         s.ultima_seduta!.presenze = s.ultima_seduta!.presenze.map((p) => (p.anagrafica_id === 6 ? { ...p, insieme: [{ anagrafica_id: 7, nome: 'Russo Marco' }] } : p));
         conLaSala(s, SalaInSolaLettura);
         await flushPromises();
-        expect(testo('[data-testid="lettura-presenze-tabella"]')).toContain('con Russo Marco, contitolare, presente senza voto');
+        expect(testo('[data-testid="lettura-presenze-tabella"]')).toContain('con Russo Marco, in comproprietà, presente senza voto');
+        expect(testo('[data-testid="lettura-presenze-tabella"]')).not.toContain('contitolare');
     });
 });

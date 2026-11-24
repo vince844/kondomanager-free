@@ -440,7 +440,14 @@ class StoreFatturaRequest extends FormRequest
         $dal = $this->input('competenza_dal');
         $al = $this->input('competenza_al');
         if (blank($dal) || blank($al)) {
-            $validator->errors()->add('competenza_dal', 'Fattura pregressa con una parte non coperta dai saldi iniziali: dichiara il periodo in cui il costo è maturato. Quella parte finisce in un piano rate, e senza il periodo, dopo una vendita, la pagherebbe chi è entrato per un costo di quando l\'unità era di chi è uscito. Dopo non si potrà più aggiungere: una pregressa si storna, non si modifica.');
+            // Coda 754 (4), 1.12.0-beta.14: con «Usa fondo riserva» nella finestra quella parte non va in un piano rate, la copre il fondo (la copertura che
+            // `FatturaPassivaService::registraFattura` prepara). Il periodo resta obbligatorio; la frase dice il vero.
+            $fondo = $this->fondoDellaPregressa();
+            $perche = $fondo !== null
+                ? 'Quella parte la copre il fondo «'.$fondo.'».'
+                : 'Quella parte finisce in un piano rate, e senza il periodo, dopo una vendita, la pagherebbe chi è entrato per un costo di quando l\'unità era di chi è uscito.';
+            $validator->errors()->add('competenza_dal', 'Fattura pregressa con una parte non coperta dai saldi iniziali: dichiara il periodo in cui il costo è maturato. '
+                .$perche.' Dopo non si potrà più aggiungere: una pregressa si storna, non si modifica.');
 
             return;
         }
@@ -451,6 +458,25 @@ class StoreFatturaRequest extends FormRequest
                 \Carbon\Carbon::parse($inizioEsercizio)->format('d/m/Y'),
             ));
         }
+    }
+
+    /**
+     * Coda 754 (4), 1.12.0-beta.14: il nome del fondo che copre la parte non coperta di una pregressa, quando la finestra ha scelto «Usa fondo riserva»
+     * con un fondo di questo condominio; `null` altrimenti (allora quella parte va in un piano rate). Lo legge la frase del periodo, qui sopra.
+     */
+    private function fondoDellaPregressa(): ?string
+    {
+        if ($this->input('dati_extra.log_legale_sopravvenienza.strategia_rientro') !== 'fondo_riserva') {
+            return null;
+        }
+        $id = $this->input('dati_extra.log_legale_sopravvenienza.fondo_patrimoniale_id');
+        if (! is_numeric($id)) {
+            return null;
+        }
+        $nome = \App\Models\Gestionale\Cassa::query()->where('condominio_id', (int) $this->route('condominio')->id)->where('tipo', 'fondo')
+            ->where('conto_contabile_id', (int) $id)->value('nome');
+
+        return $nome !== null ? (string) $nome : null;
     }
 
     /**

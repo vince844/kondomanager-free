@@ -79,12 +79,14 @@ final class CompitoDaModerare
      * comunicazioni con «Visualizza comunicazioni», dei documenti con «Visualizza documenti archivio», degli eventi con «Visualizza scadenze in agenda».
      * In `azioni`, per tipo di elemento, le prossime azioni che sa fare (la 454 del registro delle decisioni): un compito si legge solo se la sua è fra queste.
      *
-     * @return array{comunicazioni: bool, documenti: bool, eventi: bool, azioni: array{segnalazioni: list<string>, comunicazioni: list<string>, documenti: list<string>, eventi: list<string>}}
+     * In `errori`, se legge gli avvisi degli errori ({@see CompitoDellErrore::chiLoVede()}): non sono da moderare, ma la regola arriva con questa.
+     *
+     * @return array{comunicazioni: bool, documenti: bool, eventi: bool, azioni: array{segnalazioni: list<string>, comunicazioni: list<string>, documenti: list<string>, eventi: list<string>}, errori: bool}
      */
     public static function chiVede(?User $utente): array
     {
         if ($utente === null) {
-            return ['comunicazioni' => false, 'documenti' => false, 'eventi' => false, 'azioni' => self::azioniCheSaFare(null)];
+            return ['comunicazioni' => false, 'documenti' => false, 'eventi' => false, 'azioni' => self::azioniCheSaFare(null), 'errori' => false];
         }
 
         return [
@@ -92,6 +94,8 @@ final class CompitoDaModerare
             'documenti' => (bool) $utente->checkPermissionTo(Permission::VIEW_ARCHIVE_DOCUMENTS->value),
             'eventi' => (bool) $utente->checkPermissionTo(Permission::VIEW_EVENTS->value),
             'azioni' => self::azioniCheSaFare($utente),
+            // Gli avvisi degli errori (1.12.0-beta.14): non sono da moderare, ma viaggiano con questa regola, che arriva a ogni lettura dei compiti.
+            'errori' => CompitoDellErrore::chiLoVede($utente),
         ];
     }
 

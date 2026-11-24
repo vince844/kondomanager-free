@@ -40,8 +40,8 @@ const totaleMillesimi = computed(() => millesimi(props.totaleValore).replace(/,0
 const nomeDellaChiusura = computed(() => (props.chiusura?.convocazione === 'seconda' ? 'seconda convocazione' : 'prima convocazione'));
 const dellaChiusura = computed(() => `Chiusa alle ${props.chiusura!.alle} · ${props.chiusura!.costituita ? 'costituita' : 'non costituita'} in ${nomeDellaChiusura.value}`);
 
-// Il nome segue il numero che gli sta davanti: «1 condòmino», «0 su 1 condòmino in sala», «3 su 4 condòmini in sala» (rilievo C44).
-const teste = computed(() => (chiusa.value ? `${props.chiusura!.teste} su ${condomini(props.chiusura!.totale_teste)} in sala` : daAprire.value ? condomini(props.totaleTeste)
+// A sala chiusa i numeri sono quelli della costituzione, non di chi è in sala adesso (C44, 750 B4). Il nome segue il numero che gli sta davanti: «1 condòmino», «0 su 1 condòmino in sala», «3 su 4 condòmini in sala» (rilievo C44).
+const teste = computed(() => (chiusa.value ? `${props.chiusura!.teste} su ${condomini(props.chiusura!.totale_teste)} alla costituzione` : daAprire.value ? condomini(props.totaleTeste)
     : `${props.presentiTeste} su ${condomini(props.totaleTeste)} in sala${props.perDelega > 0 ? ` (${props.perDelega} per delega)` : ''}`));
 const valore = computed(() => (chiusa.value ? `${millesimi(props.chiusura!.valore)} millesimi su ${millesimi(props.chiusura!.totale_valore).replace(/,00$/, '')}` : daAprire.value ? `${millesimi(props.totaleValore)} millesimi` : `${millesimi(props.presentiValore)} millesimi su ${totaleMillesimi.value}`));
 const stato = computed(() => {

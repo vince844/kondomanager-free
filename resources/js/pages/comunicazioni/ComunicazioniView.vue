@@ -28,8 +28,10 @@ import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { colorePubblicazione, etichettaPrivacy, etichettaStatoPubblicazione, giornoEOraProgrammati, statoPubblicazione } from '@/lib/pubblicazione';
 import AllegatiRiquadro from '@/components/allegati/AllegatiRiquadro.vue';
 import DiscussioniComunicazione, { type DiscussioneItem, type CommentiConfig } from '@/components/commenti/DiscussioniComunicazione.vue';
+import LettureComunicazione from '@/components/comunicazioni/LettureComunicazione.vue';
+import PresaVisione from '@/components/comunicazioni/PresaVisione.vue';
 import type { BreadcrumbItem } from '@/types';
-import type { Comunicazione } from "@/types/comunicazioni";
+import type { Comunicazione, LetturaPortale, LetturePannello } from "@/types/comunicazioni";
 import type { AllegatiConfig, AllegatoItem } from '@/types/allegati';
 
 const { generateRoute, getRolePrefix } = usePermission();
@@ -43,6 +45,8 @@ const props = defineProps<{
   discussioni?: DiscussioneItem[];
   // Decisione 467: solo nel pannello.
   destinatari?: { tipo: 'condomini' | 'persone' | 'privata'; totale: number; nomi: string[] };
+  letture?: LetturePannello;
+  lettura?: LetturaPortale;
 }>();
 
 // Ricava dinamicamente l'oggetto priorità dal file constants
@@ -229,6 +233,14 @@ const commentiInAttesa = computed(() => {
                                 <span>{{ espanso ? trans('comunicazioni.label.read_less') : trans('comunicazioni.label.read_more') }}</span>
                                 <component :is="espanso ? ChevronUp : ChevronDown" class="w-3.5 h-3.5" />
                             </button>
+
+                            <!-- Coda 594: la parte del condòmino della conferma di lettura sta in `PresaVisione`, sotto il testo e dopo «Leggi tutto» -->
+                            <PresaVisione
+                                v-if="props.lettura"
+                                :comunicazione-id="comunicazione.id"
+                                :lettura="props.lettura"
+                                class="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800"
+                            />
                         </CardContent>
                     </Card>
                 </div>
@@ -400,6 +412,14 @@ const commentiInAttesa = computed(() => {
                     :allegati="props.allegati || []"
                     :config="props.allegati_config"
                 />
+            </div>
+
+            <!-- Terza riga: Letture -->
+            <div
+                v-if="props.letture"
+                data-riga="letture"
+            >
+                <LettureComunicazione :letture="props.letture" />
             </div>
         </div>
 

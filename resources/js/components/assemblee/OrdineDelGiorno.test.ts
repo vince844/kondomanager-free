@@ -12,6 +12,7 @@
  * - Le proposte che non ci sono ancora, spuntate di serie: togliendo la spunta, «Non spuntato: resta per la prossima assemblea.»; «Aggiungi N punti» manda
  *   le sole chiavi spuntate con la maggioranza, in una visita parziale.
  * - Dalla convocazione, niente pulsanti e la frase.
+ * - La finestra del punto riceve il gruppo dell'assemblea (Coda 734) e, per i condòmini di un gruppo, il nome della scena 11 della bozza approvata.
  *
  * Che cosa non copre: la finestra del punto (i due menu della scala e della tabella si provano a video), il riordino.
  */
@@ -86,6 +87,18 @@ describe('l\'ordine del giorno', () => {
             expect.objectContaining({ only: ['ordine', 'proposte', 'passi', 'flash', 'convocazione'] }));
         // La finestra «Aggiungi un punto» legge la stessa maggioranza scelta nel riquadro.
         expect(w!.findComponent({ name: 'FinestraDelPunto' }).props('maggioranzeScelte')).toEqual({ 'fattura:45': 'ordinaria' });
+    });
+
+    test('la finestra del punto riceve il gruppo dell\'assemblea e, per i condòmini di un gruppo, il nome della scena 11', async () => {
+        const Finestra = (await import('./FinestraDelPunto.vue')).default;
+        await monta({});
+        expect(w!.findComponent(Finestra).props('gruppo')).toBeNull();
+        expect(w!.findComponent(Finestra).props('assembleaNome')).toBe('Assemblea ordinaria di Via Roma 12 del 15/12/2026');
+        w!.unmount();
+        const gruppo = { tabella_id: 9, nome: 'Box', unita: 8 };
+        await monta({ assemblea: { ...assemblea, titolo: 'Assemblea straordinaria di Via Roma 12', tipo_parola: 'Straordinaria', data: '2026-12-14', gruppo } });
+        expect(w!.findComponent(Finestra).props('gruppo')).toEqual(gruppo);
+        expect(w!.findComponent(Finestra).props('assembleaNome')).toBe('Assemblea straordinaria dei condòmini della tabella «Box» · 14/12/2026');
     });
 
     test('dalla prima spedizione niente pulsanti, e la frase', async () => {

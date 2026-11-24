@@ -98,8 +98,9 @@ it('il foglio della persona scaricato da solo ha i millesimi, come quello dell\'
 it('il già versato non usato dell\'unità va una volta sola, ai titolari di diritto reale: non sul foglio dell\'inquilino, una nota sola nella scheda', function () {
     // U1 ha versato € 2.000,00 per le Pulizie, il piano ne usa 1.500,00: € 500,00 non usati. Gialli inquilino di U1 al 30 % tutto l'anno: niente. Con un
     // inquilino che lascia l'unità nell'esercizio la cifra non va a nessuno: il test qui sotto.
+    // Coda 754 (7): Neri versa una parte della quarta rata, ridotta dal già versato, non i € 200,00 di sempre (`cpcRateEIncassiConGiaVersato`).
     $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]], 'inquilino' => ['U1', 'Gialli', 30, '2020-01-01', null]]);
-    cpcRateEIncassi($this, $s);
+    cpcRateEIncassiConGiaVersato($this, $s);
     cpcSpese($s);
     $this->travelTo('2027-01-10 10:00:00');
     $c = app(ConguaglioDelRendiconto::class);
@@ -122,8 +123,9 @@ it('il già versato non usato dell\'unità va una volta sola, ai titolari di dir
 
 it('lo stesso già versato con l\'inquilino che lascia l\'unità il 30/06: non va sul foglio di nessuno, e le righe dell\'unità dicono «a chi va lo decidi tu»', function () {
     // Il contributo dell'unità non dice chi l'ha versato: può essere denaro dell'inquilino che esce. Con il cambio dell'inquilino la cifra resta da decidere.
+    // Coda 754 (7): Neri versa una parte della quarta rata, ridotta dal già versato, non i € 200,00 di sempre (`cpcRateEIncassiConGiaVersato`).
     $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]], 'inquilino' => ['U1', 'Gialli', 30, '2020-01-01', '2026-06-30']]);
-    cpcRateEIncassi($this, $s);
+    cpcRateEIncassiConGiaVersato($this, $s);
     cpcSpese($s);
     $this->travelTo('2027-01-10 10:00:00');
     $c = app(ConguaglioDelRendiconto::class);
@@ -444,9 +446,10 @@ it('la percentuale dei costi dice la sua base: sul deliberato delle voci, con la
 
 it('il già versato per tutti gli esercizi che il piano dell\'esercizio prima ha già usato non torna «non usato» nell\'esercizio dopo della stessa gestione', function () {
     // € 2.000,00 registrati per tutti gli esercizi sulle Pulizie di U1; il piano del 2026 ne usa 1.500,00. Nel 2026 e nel 2027 restano € 500,00.
+    // Coda 754 (7): Neri versa una parte della quarta rata, ridotta dal già versato, non i € 200,00 di sempre (`cpcRateEIncassiConGiaVersato`).
     $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]]]);
     DB::table('contributi_versati')->where('condominio_id', $s['c']->id)->update(['esercizio_id' => null]);
-    cpcRateEIncassi($this, $s);
+    cpcRateEIncassiConGiaVersato($this, $s);
     cpcSpese($s);
     $e27 = \App\Models\Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2027', 'data_inizio' => '2027-01-01', 'data_fine' => '2027-12-31', 'stato' => 'aperto']);
     legaAEsercizio($e27, $s['g']->id);
@@ -537,9 +540,10 @@ it('le rate non ancora emesse anche nei totali: della gestione e del condominio,
 });
 
 it('il foglio con la carta intestata: la firma non va da sola sulla pagina dopo, sta con le righe che spiegano', function () {
+    // Coda 754 (7): Neri versa una parte della quarta rata, ridotta dal già versato, non i € 200,00 di sempre (`cpcRateEIncassiConGiaVersato`).
     \Illuminate\Support\Facades\Storage::fake('public');
     $s = cpcViaVerdi($this, ['gia_versato' => [['U1', 'pulizie', 200000, null]]]);
-    cpcRateEIncassi($this, $s);
+    cpcRateEIncassiConGiaVersato($this, $s);
     cpcPassaggio($this, $s);
     cpcSpese($s);
     cpcSpesaPersonale($s, 'U3', 8000, '2026-09-10');

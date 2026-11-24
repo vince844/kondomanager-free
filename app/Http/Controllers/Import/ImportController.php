@@ -7,12 +7,14 @@ namespace App\Http\Controllers\Import;
 
 use App\Enums\Role as RoleEnum;
 use App\Http\Controllers\Controller;
+use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\ImportBatch;
 use App\Models\ImportFile;
 use App\Services\Import\AnnullamentoImportazione;
 use App\Services\Import\AnteprimaImport;
+use App\Services\Import\Canonical\CanonicalCondominio;
 use App\Services\Import\Controlli\ControlliPostImport;
 use App\Services\Import\EsitoVerifica;
 use App\Services\Import\ImportContext;
@@ -22,15 +24,23 @@ use App\Services\Import\ImportVerificaService;
 use App\Services\Import\Livelli\LivelloCapitoli;
 use App\Services\Import\Livelli\LivelloCondominio;
 use App\Services\Import\Livelli\LivelloEsercizi;
+use App\Services\Import\Livelli\LivelloSaldi;
+use App\Services\Import\Livelli\LivelloSoggetti;
+use App\Services\Import\EsitoCommit;
+use App\Services\Import\PrerequisitoMancante;
 use App\Services\Import\ModelloManualeWriter;
+use App\Services\Import\RicercaEsistenti;
 use App\Services\Import\Rilievo;
 use App\Services\Import\Severita;
 use App\Services\Import\ReportType;
 use App\Services\Import\SpreadsheetReader;
 use App\Services\PDF\PdfService;
 use App\Traits\HandleFlashMessages;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 use Inertia\Inertia;
 use Inertia\Response;
 use App\Support\LimiteCaricamento;
@@ -326,17 +336,28 @@ class ImportController extends Controller
      */
     public function store(Request $request)
     {
+        // Coda 596 (1.12.0-beta.14): il formato lo dice il **nome**, il contenuto deve solo essere compatibile. `mimes` da solo guarda
+        // il contenuto, e un CSV con il punto e virgola (il separatore di Excel in italiano) è testo semplice: veniva letto come `.txt`
+        // e rifiutato con la frase dei formati. Il nome resta ristretto ai tre formati che il lettore apre; il contenuto può essere
+        // anche testo, perché un CSV è testo. Il file non si serve mai al browser e il lettore apre il CSV come testo.
+        $formati = implode(', ', SpreadsheetReader::ESTENSIONI_AMMESSE);
+        $fraseDeiFormati = 'Accetto solo file '.$formati.'. Se il tuo gestionale esporta in un altro formato, aprilo in Excel e salvalo come .xls.';
+
         $validato = $request->validate([
             'file' => ['required', 'array', 'min:1', 'max:20'],
             'file.*' => [
+                // Al primo rifiuto ci si ferma: due frasi uguali sotto lo stesso file non dicono niente di più.
+                'bail',
                 'file',
-                'mimes:'.implode(',', SpreadsheetReader::ESTENSIONI_AMMESSE),
+                'extensions:'.implode(',', SpreadsheetReader::ESTENSIONI_AMMESSE),
+                'mimes:'.implode(',', [...SpreadsheetReader::ESTENSIONI_AMMESSE, 'txt']),
                 // Il tetto dell'importatore resta **25 MB, il suo** — un export di più esercizi è
                 // grosso per natura — ma non promette mai più di quanto il server accetti.
                 'max:'.LimiteCaricamento::regolaMax(self::tettoImportMb()),
             ],
         ], [
-            'file.*.mimes' => 'Accetto solo file :values. Se il tuo gestionale esporta in un altro formato, aprilo in Excel e salvalo come .xls.',
+            'file.*.extensions' => $fraseDeiFormati,
+            'file.*.mimes' => $fraseDeiFormati,
             'file.*.max' => 'Un file supera il limite di '.LimiteCaricamento::etichetta(self::tettoImportMb())
                 .'. Esporta un esercizio alla volta, oppure scrivici.',
         ]);
@@ -385,7 +406,7 @@ class ImportController extends Controller
     {
         $batch = $this->lotto($uuid, ['files']);
 
-        $letto = $this->verifica->verifica($batch);
+        $letto = $this->conIlPermesso($batch, $this->verifica->verifica($batch));
 
         return Inertia::render('import/ImportVerifica', [
             'lotto' => ['uuid' => $batch->uuid, 'stato' => $batch->stato],
@@ -457,14 +478,15 @@ class ImportController extends Controller
             ->whereIn('condominio_id', array_column($condomini, 'id'))
             ->where('stato', 'aperto')
             ->orderBy('data_inizio', 'desc')
+            ->orderBy('id', 'desc')
             ->get(['id', 'condominio_id', 'nome', 'data_inizio', 'data_fine']);
 
         $esercizi = [];
 
         foreach ($aperti as $e) {
-            // `first()` come fa `HasEsercizio::getEsercizioCorrente()`: se l'invariante «al più
-            // un esercizio aperto» fosse violata, la schermata deve annunciare **lo stesso** che
-            // userà il motore, non un altro.
+            // Il primo di quest'ordine, cioè il più recente: è la regola di `HasEsercizio::esercizioApertoPiuRecente()`, con lo stesso
+            // ordine (Coda 646, decisione 707 (4)). Con due esercizi aperti la schermata annuncia **lo stesso** che userà il motore.
+            // Tutti i condomìni in una lettura sola, non uno per volta: la tendina cambia nel browser.
             $esercizi[(string) $e->condominio_id] ??= [
                 'nome' => $e->nome !== null && $e->nome !== '' ? $e->nome : 'senza nome',
                 'periodo' => $e->data_inizio?->format('d/m/Y').' – '.$e->data_fine?->format('d/m/Y'),
@@ -560,13 +582,42 @@ class ImportController extends Controller
     public function anteprima(string $uuid): Response
     {
         $batch = $this->lotto($uuid, ['files']);
-        $letto = $this->verifica->verifica($batch);
+        $letto = $this->conIlPermesso($batch, $this->verifica->verifica($batch));
+
+        $confermabile = collect($letto['esiti'])->every(fn (EsitoVerifica $e) => $e->confermabile());
+        $blocchi = $this->verifica->saldiCheNonEntrano($letto['canonici']);
+
+        $anteprima = $this->anteprima->costruisci($letto['canonici']);
+        $senzaPermesso = $this->condominioSenzaPermesso($batch, $letto['canonici']) !== null;
+        $personeSenzaPermesso = $this->personeSenzaPermesso($batch, $letto['canonici']);
+        // Il condominio che c'è già, senza il permesso di modificarlo: la schermata dice che cosa serve al posto di «Unisci» e «Lascia
+        // com'è», che la conferma rifiuterebbe. La persona che c'è già, senza il permesso di modificare le anagrafiche: resta solo
+        // «Lascia com'è», e la schermata dice che cosa serve per unire.
+        $anteprima['collisioni']['voci'] = array_map(
+            fn (array $v) => match (true) {
+                $v['cosa'] === 'persona' && isset($personeSenzaPermesso[$v['chiave_decisione']]) => ['scelte' => ['salta'], 'senza_permesso' => true] + $v,
+                default => $v + ['senza_permesso' => $senzaPermesso && $v['cosa'] === 'condominio'],
+            },
+            $anteprima['collisioni']['voci'],
+        );
 
         return Inertia::render('import/ImportAnteprima', [
             'lotto' => ['uuid' => $batch->uuid, 'stato' => $batch->stato],
-            'anteprima' => $this->anteprima->costruisci($letto['canonici']),
+            'anteprima' => $anteprima,
             'decisioni' => $batch->decisioni ?? [],
-            'confermabile' => collect($letto['esiti'])->every(fn (EsitoVerifica $e) => $e->confermabile()),
+            'confermabile' => $confermabile,
+            // Coda 759 (1) e (2), decisione 707 (2): il pulsante principale spento con il motivo, e accanto «Importa senza i saldi»
+            // con l'elenco di ciò che non entra. Si offre solo se i saldi sono l'unica cosa che ferma la conferma: un errore in un
+            // altro livello non si scavalca. Le decisioni ancora aperte le conta la schermata, come per il pulsante principale.
+            'senza_saldi' => [
+                'possibile' => ! $confermabile && $blocchi !== [] && collect($letto['esiti'])
+                    ->except(LivelloSaldi::CHIAVE)
+                    ->every(fn (EsitoVerifica $e) => $e->errori() === 0),
+                'motivi' => array_map(fn (array $b) => ['codice' => $b['codice'], 'motivo' => $b['motivo'], 'strada' => $b['strada']], $blocchi),
+                'non_entra' => $blocchi === [] ? [] : $this->verifica->nonEntraSenzaISaldi($letto['canonici']),
+            ],
+            // Coda 646, decisione 707 (4): dopo la conferma resteranno aperti due esercizi, e la schermata lo dice prima.
+            'esercizi_aperti' => $this->verifica->eserciziApertiDopo($letto['canonici']),
         ]);
     }
 
@@ -585,6 +636,26 @@ class ImportController extends Controller
         ]);
 
         $batch = $this->lotto($uuid);
+
+        // «Unisci» o «Lascia com'è» sul condominio che c'è già: si scrive dentro quel condominio, e serve il permesso di modificarlo, come
+        // per la destinazione scelta a mano (`destinazione()`). La conferma lo ricontrolla.
+        if (str_starts_with($validato['chiave'], LivelloCondominio::CHIAVE.':')) {
+            $senzaPermesso = $this->condominioSenzaPermesso($batch, $this->verifica->verifica($batch)['canonici']);
+
+            if ($senzaPermesso !== null) {
+                $this->rifiutaSenzaPermesso($senzaPermesso);
+            }
+        }
+
+        // «Unisci» su una persona che c'è già riscrive i suoi dati, e serve «Modifica anagrafiche». «Lascia com'è» no: la persona resta
+        // com'è, e le unità le vengono collegate. La conferma lo ricontrolla.
+        if ($validato['scelta'] === 'unisci' && str_starts_with($validato['chiave'], LivelloSoggetti::CHIAVE.':')) {
+            $persona = $this->personeSenzaPermesso($batch, $this->verifica->verifica($batch)['canonici'])[$validato['chiave']] ?? null;
+
+            if ($persona !== null) {
+                $this->rifiutaUnisciSenzaPermesso($persona);
+            }
+        }
 
         $batch->update([
             'decisioni' => [...($batch->decisioni ?? []), $validato['chiave'] => $validato['scelta']],
@@ -649,10 +720,61 @@ class ImportController extends Controller
 
     /**
      * Il commit: da qui in poi qualcosa entra in archivio.
+     *
+     * ⚠️ **La conferma si ricontrolla qui, sul server** (Coda 759 (1) e (2), 1.12.0-beta.14). Il pulsante spento della schermata
+     * non bastava: la conferma partiva lo stesso senza l'Elenco unità o con lo scarto sui saldi, scriveva condominio, unità e
+     * tabelle e si fermava ai saldi, lasciando l'importazione a metà. Ora la regola è quella della schermata (`confermabile`), e
+     * se non vale non si scrive niente.
+     *
+     * **«Importa senza i saldi»** (`senza_saldi`, decisione 707 (2)): la stessa regola senza il livello dei saldi, che non entra.
+     * L'esito lo dice nella riga dei saldi («non li ho importati: hai scelto…», con il perché e chi li scrive).
      */
-    public function conferma(string $uuid)
+    public function conferma(Request $request, string $uuid)
     {
         $batch = $this->lotto($uuid, ['files']);
+
+        // ⚠️ **Una conferma per lotto alla volta, e mai su un lotto già entrato** (1.12.0-beta.14). Il doppio clic su «Importa», o
+        // «Indietro» del browser e di nuovo il pulsante, rifaceva la verifica su un lotto completato: il condominio appena scritto
+        // risultava «c'è già» senza decisione, il primo livello si fermava, il lotto tornava «parziale» a «Condominio» e il rapporto si
+        // riscriveva con quel solo livello, perdendo gli avvisi da controllare. Il blocco fa aspettare la seconda richiesta finché la
+        // prima ha finito; poi lo stato, riletto dentro il blocco, la rimanda all'esito.
+        try {
+            return Cache::lock(self::chiaveDelBlocco($batch), self::DURATA_DEL_BLOCCO)
+                ->block(self::ATTESA_DEL_BLOCCO, fn () => $this->confermaUnaVolta($request, $batch->fresh(['files'])));
+        } catch (LockTimeoutException) {
+            return redirect()->route('import.anteprima', $batch->uuid)->with($this->flashError(
+                'Questa importazione sta già entrando in archivio, partita da un altro clic o da un\'altra scheda. Aspetta che finisca: '
+                .'il suo esito lo trovi da «Importa dati».'
+            ));
+        }
+    }
+
+    /** Il blocco della conferma di un lotto: dura più dell'importazione più lunga, e si libera appena la conferma risponde. */
+    public static function chiaveDelBlocco(ImportBatch $batch): string
+    {
+        return 'import:conferma:'.$batch->uuid;
+    }
+
+    /** Quanto tiene il blocco, in secondi, se il processo muore senza liberarlo. */
+    private const DURATA_DEL_BLOCCO = 900;
+
+    /** Quanto aspetta la seconda conferma che la prima finisca, in secondi, prima di dirlo. */
+    private const ATTESA_DEL_BLOCCO = 60;
+
+    /** La conferma vera, dentro il blocco del lotto: vedi `conferma()`. */
+    private function confermaUnaVolta(Request $request, ImportBatch $batch)
+    {
+        if ($batch->stato === ImportBatch::STATO_COMPLETATO) {
+            return redirect()->route('import.esito', $batch->uuid)
+                ->with($this->flashInfo('Questa importazione è già entrata: la trovi qui.'));
+        }
+
+        if ($batch->stato === ImportBatch::STATO_ANNULLATO) {
+            return redirect()->route('import.index')
+                ->with($this->flashError('Questa importazione è stata annullata: per rifarla, carica di nuovo i file.'));
+        }
+
+        $senzaSaldi = $request->boolean('senza_saldi');
 
         // ⚠️ **Il permesso si ricontrolla qui, dove si scrive davvero.**
         //
@@ -668,18 +790,251 @@ class ImportController extends Controller
         }
         $letto = $this->verifica->verifica($batch);
 
+        // Lo stesso quando è il file a dichiarare un condominio che c'è già (1.12.0-beta.14): «Unisci» e «Lascia com'è» scrivono dentro
+        // quel condominio come la destinazione scelta a mano, e chiedono lo stesso permesso. Prima questo controllo non c'era: chi aveva
+        // solo «Importa dati» riscriveva l'indirizzo e aggiungeva le unità di un condominio che non poteva modificare.
+        if (($senzaPermesso = $this->condominioSenzaPermesso($batch, $letto['canonici'])) !== null) {
+            $this->rifiutaSenzaPermesso($senzaPermesso);
+        }
+
+        // E per «Unisci» su una persona che c'è già, che riscrive i suoi dati: «Modifica anagrafiche» (1.12.0-beta.14).
+        foreach ($this->personeSenzaPermesso($batch, $letto['canonici']) as $chiave => $persona) {
+            if ((($batch->decisioni ?? [])[$chiave] ?? null) === 'unisci') {
+                $this->rifiutaUnisciSenzaPermesso($persona);
+            }
+        }
+
+        if (($rifiuto = $this->rifiutoDellaConferma($letto, $senzaSaldi)) !== null) {
+            return redirect()->route('import.anteprima', $batch->uuid)->with($this->flashError($rifiuto));
+        }
+
+        $blocchi = $this->verifica->saldiCheNonEntrano($letto['canonici']);
         $ctx = new ImportContext($batch);
 
         foreach ($letto['canonici'] as $livello => $dati) {
+            // Senza i saldi il livello non riceve i suoi dati, e si salta come un file che non c'è: gli altri livelli non ne
+            // dipendono (è l'ultimo), e l'importazione arriva in fondo.
+            if ($senzaSaldi && $livello === LivelloSaldi::CHIAVE) {
+                continue;
+            }
+
             $ctx->conCanonico($livello, $dati);
         }
 
         $esiti = $this->runner->esegui($ctx, $batch->decisioni ?? []);
 
+        // La riga dei saldi dice il vero: non «nessun file porta i saldi», ma che li ha lasciati fuori l'amministratore, perché, e
+        // che li scrive lui. Solo se il livello si è saltato davvero: se si è fermato per un altro motivo (un esercizio senza
+        // gestione), quel motivo resta.
+        $perScelta = $senzaSaldi && ($esiti[LivelloSaldi::CHIAVE] ?? null)?->saltato() === true;
+
+        if ($perScelta) {
+            $esiti[LivelloSaldi::CHIAVE] = EsitoCommit::bloccatoDaPrerequisiti(new PrerequisitoMancante(
+                'saldi.non_importati_per_scelta',
+                trim('I saldi di apertura non li ho importati: hai scelto «Importa senza i saldi». '
+                    .implode(' ', array_column($blocchi, 'esito'))),
+                'I saldi li scrivi tu, dalla pagina «Saldi iniziali» del condominio, prima di emettere il primo piano rate: un saldo che '
+                .'manca o è sbagliato si trascina in ogni riparto.',
+                bloccante: false,
+            ));
+        }
+
         $batch->refresh();
-        $batch->update(['rapporto' => $this->rapporto($esiti, $letto['esiti'], $letto['canonici'])]);
+        $batch->update(['rapporto' => $this->rapporto($esiti, $letto['esiti'], $letto['canonici'], $perScelta)]);
 
         return redirect()->route('import.esito', $batch->uuid);
+    }
+
+    /**
+     * Perché la conferma non parte, o `null`: `confermabile` della schermata, cioè ogni livello senza errori e senza decisioni
+     * sospese. Con «Importa senza i saldi» il livello dei saldi non conta.
+     *
+     * Dalla 1.12.0-beta.14 ci sono anche le cose che esistono già in archivio e non sono decise: la verifica le dà come decisioni da
+     * prendere (`ImportVerificaService::CODICI_DELLE_COSE_CHE_ESISTONO`), e qui si dice quante restano.
+     *
+     * @param  array{canonici: array<string, mixed>, esiti: array<string, EsitoVerifica>}  $letto
+     */
+    private function rifiutoDellaConferma(array $letto, bool $senzaSaldi): ?string
+    {
+        $esiti = collect($letto['esiti']);
+
+        $daDecidere = $esiti->flatMap(fn (EsitoVerifica $e) => $e->perSeverita(Severita::DaDecidere));
+        $coseCheEsistono = $daDecidere->filter(fn (Rilievo $r) => in_array($r->codice, ImportVerificaService::CODICI_DELLE_COSE_CHE_ESISTONO, true))->count();
+        $errori = $esiti->sum(fn (EsitoVerifica $e) => $e->errori());
+
+        if ($coseCheEsistono > 0 && $errori === 0 && $coseCheEsistono === $daDecidere->count()) {
+            return $coseCheEsistono === 1
+                ? 'Non ho importato niente: resta da decidere 1 cosa che esiste già, nella schermata di conferma.'
+                : sprintf('Non ho importato niente: restano da decidere %d cose che esistono già, nella schermata di conferma.', $coseCheEsistono);
+        }
+
+        if ($esiti->except(LivelloSaldi::CHIAVE)->contains(fn (EsitoVerifica $e) => ! $e->confermabile())) {
+            return 'Non ho importato niente: restano errori da correggere o decisioni da prendere. Li trovi nella verifica dei file e '
+                .'nella schermata di conferma.';
+        }
+
+        if ($senzaSaldi || ($esiti->get(LivelloSaldi::CHIAVE)?->confermabile() ?? true)) {
+            return null;
+        }
+
+        $blocchi = $this->verifica->saldiCheNonEntrano($letto['canonici']);
+
+        if ($blocchi === []) {
+            return 'Non ho importato niente: i saldi di apertura hanno errori da correggere. Li trovi nella verifica dei file.';
+        }
+
+        return 'Non ho importato niente. '.implode(' ', array_column($blocchi, 'motivo'))
+            .' Correggi il file e ricaricalo, oppure scegli «Importa senza i saldi».';
+    }
+
+    /**
+     * Il condominio che c'è già e in cui l'importazione scriverebbe, quando chi importa non ha il permesso di modificarlo; `null` se lo ha,
+     * se il condominio è nuovo, o se è nato da questo stesso lotto (la ripresa di un'importazione fermata a metà: l'anteprima lo mostra fra
+     * le cose che esistono già, ed è il suo).
+     *
+     * È la stessa regola della destinazione scelta a mano (`destinazione()`), per la strada in cui il condominio lo dichiara il file: per
+     * nome o per codice fiscale, `RicercaEsistenti::condominio()`, la ricerca che usa anche il livello del condominio.
+     *
+     * @param  array<string, mixed>  $canonici
+     */
+    private function condominioSenzaPermesso(ImportBatch $batch, array $canonici): ?Condominio
+    {
+        $dati = $canonici[LivelloCondominio::CHIAVE] ?? null;
+
+        if (! $dati instanceof CanonicalCondominio) {
+            return null;
+        }
+
+        $esistente = (new RicercaEsistenti)->condominio($dati);
+
+        if ($esistente === null) {
+            return null;
+        }
+
+        $natoDaQuestoLotto = $batch->itemsCreati()
+            ->where('livello', LivelloCondominio::CHIAVE)
+            ->where('importabile_type', Condominio::class)
+            ->where('importabile_id', $esistente->id)
+            ->exists();
+
+        return $natoDaQuestoLotto || $this->puoModificare($esistente) ? null : $esistente;
+    }
+
+    /** «Modifica condomini», come la chiede `destinazione()`; un permesso che l'installazione non ha non ce l'ha nessuno. */
+    private function puoModificare(Condominio $condominio): bool
+    {
+        try {
+            return Gate::allows('update', $condominio);
+        } catch (PermissionDoesNotExist) {
+            return false;
+        }
+    }
+
+    /** Il rifiuto della decisione o della conferma dentro un condominio che non si può modificare: un 403, come la destinazione. */
+    private function rifiutaSenzaPermesso(Condominio $condominio): never
+    {
+        abort(403, sprintf('Per importare dentro «%s» serve il permesso «Modifica condomini».', $condominio->nome));
+    }
+
+    /**
+     * Le persone che ci sono già e che «Unisci» riscriverebbe, quando chi importa non ha «Modifica anagrafiche»: la chiave della decisione
+     * e la persona in archivio. Vuoto se il permesso c'è. Non contano le persone nate da questo stesso lotto (la ripresa di
+     * un'importazione fermata a metà: l'anteprima le mostra fra le cose che esistono già, e sono sue).
+     *
+     * È la regola del condominio che c'è già (`condominioSenzaPermesso()`) dal lato delle persone, con la ricerca dell'anteprima e del
+     * livello (`RicercaEsistenti::soggetto()`). Solo «Unisci» la chiede: «Lascia com'è» non tocca la persona.
+     *
+     * @param  array<string, mixed>  $canonici
+     * @return array<string, Anagrafica>
+     */
+    private function personeSenzaPermesso(ImportBatch $batch, array $canonici): array
+    {
+        $ricerca = new RicercaEsistenti;
+        $nate = null;
+        $persone = [];
+
+        foreach ($canonici[LivelloSoggetti::CHIAVE] ?? [] as $chiave => $dati) {
+            $esistente = $ricerca->soggetto($dati);
+
+            if ($esistente === null || $this->puoModificareLaPersona($esistente)) {
+                continue;
+            }
+
+            $nate ??= $batch->itemsCreati()
+                ->where('livello', LivelloSoggetti::CHIAVE)
+                ->where('importabile_type', Anagrafica::class)
+                ->pluck('importabile_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            if (! in_array($esistente->id, $nate, true)) {
+                $persone[LivelloSoggetti::CHIAVE.':'.$chiave] = $esistente;
+            }
+        }
+
+        return $persone;
+    }
+
+    /** «Modifica anagrafiche», come la chiede il modulo della persona; un permesso che l'installazione non ha non ce l'ha nessuno. */
+    private function puoModificareLaPersona(Anagrafica $persona): bool
+    {
+        try {
+            return Gate::allows('update', $persona);
+        } catch (PermissionDoesNotExist) {
+            return false;
+        }
+    }
+
+    /** Il rifiuto di «Unisci», nella decisione o nella conferma, su una persona che non si può modificare: un 403. */
+    private function rifiutaUnisciSenzaPermesso(Anagrafica $persona): never
+    {
+        abort(403, sprintf('Per aggiornare «%s» con i dati del file serve il permesso «Modifica anagrafiche».', $persona->nome));
+    }
+
+    /**
+     * La verifica con, in più, il permesso che manca per il condominio che c'è già: un errore sul condominio, così la schermata di verifica
+     * non lascia proseguire e quella di conferma resta chiusa, con il perché, invece di una pagina 403 dopo il clic. E per le persone che
+     * ci sono già, senza «Modifica anagrafiche»: il rilievo `soggetto.senza_permesso` (vedi sotto).
+     *
+     * @param  array{canonici: array<string, mixed>, esiti: array<string, EsitoVerifica>}  $letto
+     * @return array{canonici: array<string, mixed>, esiti: array<string, EsitoVerifica>}
+     */
+    private function conIlPermesso(ImportBatch $batch, array $letto): array
+    {
+        $senzaPermesso = $this->condominioSenzaPermesso($batch, $letto['canonici']);
+
+        if ($senzaPermesso !== null) {
+            $letto['esiti'][LivelloCondominio::CHIAVE] = ($letto['esiti'][LivelloCondominio::CHIAVE] ?? new EsitoVerifica(1))
+                ->con(Rilievo::errore(
+                    'condominio.senza_permesso',
+                    sprintf('«%s» c\'è già in archivio, e per importarci dentro serve il permesso «Modifica condomini».', $senzaPermesso->nome),
+                    'Chiedi a chi amministra lo studio di dartelo, oppure di fare lui l\'importazione. Se i file sono di un altro condominio, '
+                    .'controlla il nome e il codice fiscale nella testata delle stampe.',
+                ));
+        }
+
+        // Le persone che ci sono già, senza «Modifica anagrafiche»: non un errore, perché «Lascia com'è» resta e porta in fondo; un avviso
+        // finché non si è deciso, e una decisione da prendere se sul lotto c'è già «Unisci» (una pagina vecchia, un permesso tolto dopo
+        // la scelta), che la conferma rifiuterebbe.
+        foreach ($this->personeSenzaPermesso($batch, $letto['canonici']) as $chiave => $persona) {
+            $decisione = ($batch->decisioni ?? [])[$chiave] ?? null;
+
+            if ($decisione === 'salta') {
+                continue;
+            }
+
+            $messaggio = sprintf('«%s» c\'è già in archivio: per aggiornare la sua scheda con i dati del file («Unisci») serve il permesso «Modifica anagrafiche».', $persona->nome);
+            $rimedio = 'Nella schermata di conferma scegli «Lascia com\'è»: la persona resta com\'è e le unità le vengono collegate lo stesso. '
+                .'Per unire, chiedi il permesso a chi amministra lo studio.';
+
+            $letto['esiti'][LivelloSoggetti::CHIAVE] = ($letto['esiti'][LivelloSoggetti::CHIAVE] ?? new EsitoVerifica(1))->con(
+                $decisione === 'unisci'
+                    ? Rilievo::daDecidere('soggetto.senza_permesso', $messaggio, $rimedio, chiaveDecisione: $chiave)
+                    : Rilievo::avviso('soggetto.senza_permesso', $messaggio, $rimedio),
+            );
+        }
+
+        return $letto;
     }
 
     /**
@@ -804,10 +1159,17 @@ class ImportController extends Controller
      *
      * @param  array<string, EsitoCommit>  $esiti  cosa è successo scrivendo
      * @param  array<string, EsitoVerifica>  $esitiLettura  cosa era emerso leggendo
+     * @param  bool  $saldiPerScelta  i saldi lasciati fuori con «Importa senza i saldi»: la loro riga porta `per_scelta`
      */
-    private function rapporto(array $esiti, array $esitiLettura = [], array $canonici = []): array
+    private function rapporto(array $esiti, array $esitiLettura = [], array $canonici = [], bool $saldiPerScelta = false): array
     {
         $righe = [];
+
+        // «Importa senza i saldi»: gli avvisi letti nel riparto parlano di righe che non sono entrate, e la quadratura di saldi che
+        // non sono in archivio. La riga dei saldi dice da sola che cosa è successo.
+        if ($saldiPerScelta) {
+            unset($esitiLettura[LivelloSaldi::CHIAVE], $canonici[LivelloSaldi::CHIAVE]);
+        }
 
         foreach ($esiti as $livello => $esito) {
             $riga = [
@@ -816,6 +1178,10 @@ class ImportController extends Controller
                     ->firstWhere(fn ($l) => $l->chiave() === $livello)?->etichetta() ?? $livello,
                 ...$esito->toArray(),
             ];
+
+            if ($saldiPerScelta && $livello === LivelloSaldi::CHIAVE) {
+                $riga['per_scelta'] = true;
+            }
 
             // L'origine resta scritta: «l'ho letto nel tuo file» e «l'ho scoperto scrivendo»
             // sono due cose diverse, e il rimedio cambia di conseguenza.
@@ -1007,7 +1373,7 @@ class ImportController extends Controller
         // Visto a video alla prima prova, e non era un dettaglio: sopra un modello riconosciuto
         // al 100% con «Condominio · Unità · Persone · Tabelle · Saldi» comparivano tre righe che
         // dicevano che mancavano l'elenco unità, il riparto e l'anagrafica millesimi — e la
-        // prima con un cartello rosso «senza, non si prosegue». Cioè: al primo file dell'unica
+        // prima con un cartello rosso che la diceva indispensabile. Cioè: al primo file dell'unica
         // strada pensata per chi da Danea non può esportare niente, la schermata rispondeva
         // chiedendo tre export di Danea.
         //
@@ -1021,7 +1387,13 @@ class ImportController extends Controller
             ReportType::ElencoUnita->value => [
                 'cosa' => 'l\'Elenco unità',
                 'serve_per' => 'persone, unità e chi possiede cosa',
-                'bloccante' => true,
+                // ⚠️ **Il cartello rosso quando è vero** (Coda 759 (1), 1.12.0-beta.14). Diceva «senza, non si prosegue» sempre, e la
+                // conferma passava sempre. Adesso dice «senza, persone e saldi non entrano», e c'è quando ci sono i saldi del riparto, intestati
+                // a persone che arrivano da questo file (`ImportVerificaService::saldiCheNonEntrano()`): la conferma piena si chiude, e si
+                // prosegue con «Importa senza i saldi».
+                // Senza il riparto non c'è niente da fermare — chi importa le sole tabelle in un condominio che ha già le persone
+                // arriva in fondo —, e il file va fra quelli da aggiungere quando si vuole.
+                'bloccante' => in_array(ReportType::RipartoConsuntivo->value, $presenti, true),
             ],
             // ⚠️ **Non bloccante, ma per poco.**
             //
@@ -1029,8 +1401,8 @@ class ImportController extends Controller
             // il condominio e l'esercizio. Per mezza giornata questa riga ha detto «bloccante»,
             // che era il modo sbagliato di descrivere un problema vero: chi in Danea non ha
             // consuntivi — perché quel condominio lo prende in gestione adesso — non poteva
-            // esportarlo nemmeno volendo, e si trovava davanti a un cartello che diceva
-            // «senza, non si prosegue» su un file che non esiste. Adesso la destinazione si può
+            // esportarlo nemmeno volendo, e si trovava davanti a un cartello che lo diceva
+            // indispensabile, su un file che non esiste. Adesso la destinazione si può
             // indicare a mano nella schermata di verifica, e questa stampa torna a essere ciò
             // che è: la sola sorgente dei **saldi di apertura**, che non stanno da nessun'altra parte.
             ReportType::RipartoConsuntivo->value => [

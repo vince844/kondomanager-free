@@ -181,10 +181,19 @@ describe('l\'avviso del browser', () => {
     test('il browser che tiene senza promettere: solo la nota leggera; quello che tiene: niente', () => {
         w = mount(Avviso, { attachTo: document.body, props: { tenuta: 'non_promette' } });
         expect(parole(campo('nota-del-browser')!)).toBe('Questo browser tiene il lavoro, ma non promette di non cancellarlo se il disco si riempie. '
-            + 'Per la sala di stasera basta. Per esserne sicuro, tieni il foglio della sala.');
+            + 'Per questa sala basta. Per esserne sicuro, tieni il foglio della sala.');
         expect(campo('avviso-finestra-privata')).toBeNull();
         w.unmount();
         w = mount(Avviso, { attachTo: document.body, props: { tenuta: 'tiene' } });
         expect(testo()).toBe('');
+    });
+});
+
+describe('le frasi della sala non dicono «stasera» (la sala si tiene anche di giorno)', () => {
+    test('né l\'avviso del browser né la finestra della sospensione', async () => {
+        const { readFileSync } = await import('node:fs');
+        for (const file of ['./AvvisoDelBrowser.vue', '../SospendiLAssemblea.vue']) {
+            expect(readFileSync(new URL(file, import.meta.url), 'utf8').toLowerCase()).not.toContain('stasera');
+        }
     });
 });

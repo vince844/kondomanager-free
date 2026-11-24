@@ -103,7 +103,7 @@ class UpdateCassaAction
             // presente o dati insufficienti: qui non si ripete nessuno dei suoi controlli.
             // Siamo dentro la transazione della modifica, quindi o la cassa cambia e
             // l'apertura è a giornale, o non è successo niente.
-            $this->aperturaAction->execute($cassa);
+            $this->aperturaAction->execute($cassa, $data['saldo_al'] ?? null);
 
             // --- 3. AGGIORNAMENTO CONTO CONTABILE (Nome + Ruolo) ---
             if ($cassa->contoContabile) {

@@ -30,6 +30,7 @@ use App\Services\Assemblee\DeliberaInParole;
 use App\Services\Assemblee\MaggioranzePerMateria;
 use App\Services\Assemblee\PassiDellAssemblea;
 use App\Services\Assemblee\TabellaDiProprieta;
+use App\Services\Assemblee\UnitaDelPunto;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -51,14 +52,19 @@ final class PerLePagine
             'ora' => $s->fissata_il?->format('H:i'),
             'luogo' => $s->luogo,
         ])->values()->all();
-        $perimetro = self::perimetroDi($a->ambito?->value, $a->palazzina, $a->scala);
+        $perimetro = self::perimetroDi($a->ambito?->value, $a->palazzina, $a->scala, $a->tabella);
         $tabella = $a->tabella;
         $perimetroModello = match ($a->ambito) {
             AmbitoAssemblea::SCALA => $a->scala,
             AmbitoAssemblea::PALAZZINA => $a->palazzina,
-            default => $condominio,
+            // I condòmini di un gruppo (Coda 734): il perimetro è la tabella del gruppo, che è anche la tabella del valore e la sola da proporre.
+            AmbitoAssemblea::GRUPPO => null,
+            AmbitoAssemblea::CONDOMINIO, null => $condominio,
         };
-        $proprieta = $perimetroModello === null ? null : TabellaDiProprieta::di($perimetroModello);
+        $diUnGruppo = UnitaDelPunto::gruppoDellAssemblea($a) !== null && $tabella !== null;
+        $proprieta = $diUnGruppo ? $tabella : ($perimetroModello === null ? null : TabellaDiProprieta::di($perimetroModello));
+        $controllo = $diUnGruppo ? UnitaDelPunto::controlloDelGruppo($tabella) : ($perimetroModello === null || $tabella === null ? null
+            : TabellaDiProprieta::controllo($tabella, $perimetroModello));
 
         return [
             'id' => (int) $a->id,
@@ -87,18 +93,21 @@ final class PerLePagine
             'consenso_videoconferenza_modo' => $a->consenso_videoconferenza_modo,
             'data' => $a->data?->format('Y-m-d'),
             'sedute' => $sedute,
-            'tabella' => $tabella === null || $perimetroModello === null ? null : [
+            'tabella' => $tabella === null || $controllo === null ? null : [
                 'id' => (int) $tabella->id,
                 'nome' => $tabella->nome,
-                'controllo' => TabellaDiProprieta::controllo($tabella, $perimetroModello),
+                'controllo' => $controllo,
             ],
             'tabella_di_proprieta' => $proprieta === null ? null : ['id' => (int) $proprieta->id, 'nome' => $proprieta->nome],
             'perimetro_tipo' => match ($a->ambito) {
                 AmbitoAssemblea::SCALA => 'scala',
                 AmbitoAssemblea::PALAZZINA => 'palazzina',
-                default => 'condominio',
+                AmbitoAssemblea::GRUPPO => 'gruppo',
+                AmbitoAssemblea::CONDOMINIO, null => 'condominio',
             },
-            'perimetro_id' => (int) ($perimetroModello?->getKey() ?? $condominio->id),
+            'perimetro_id' => (int) ($diUnGruppo ? $tabella->id : ($perimetroModello?->getKey() ?? $condominio->id)),
+            // L'assemblea dei condòmini di un gruppo: la tabella, con le sue unità (la finestra del punto e il riquadro di «Per chi» le dicono).
+            'gruppo' => $diUnGruppo ? ['tabella_id' => (int) $tabella->id, 'nome' => (string) $tabella->nome, 'unita' => (int) $controllo['con_quota']] : null,
             'numero_verbale' => $a->numero_verbale,
             'verbale' => $a->verbale === null ? null : [
                 'id' => (int) $a->verbale->id,
@@ -112,14 +121,17 @@ final class PerLePagine
         ];
     }
 
-    /** «Assemblea ordinaria di Via Roma 12»; per la riunione a mano «Riunione del 12/03/2024». */
+    /** «Assemblea ordinaria di Via Roma 12», «Assemblea ordinaria dei condòmini della tabella «Box» di Via Roma 12»; per la riunione a mano «Riunione del 12/03/2024». */
     public static function titolo(Assemblea $a, Condominio $condominio): string
     {
         if ($a->eAMano()) {
             return $a->nome();
         }
 
-        return 'Assemblea ' . mb_strtolower((string) ($a->tipo?->parola() ?? TipoAssemblea::ORDINARIA->parola())) . ' di ' . $condominio->nome;
+        // Fase 1-bis della beta.14: l'assemblea dei condòmini di un gruppo lo dice nella testa, come l'ordine del giorno della preparazione.
+        $gruppo = $a->ambito === AmbitoAssemblea::GRUPPO && $a->tabella?->nome !== null ? ' dei condòmini della tabella «' . $a->tabella->nome . '»' : '';
+
+        return 'Assemblea ' . mb_strtolower((string) ($a->tipo?->parola() ?? TipoAssemblea::ORDINARIA->parola())) . $gruppo . ' di ' . $condominio->nome;
     }
 
     /** «Prima convocazione 14/12/2026 alle 8:00 · seconda 15/12/2026 alle 18:30 · sala condominiale, Via Roma 12». */
@@ -194,18 +206,23 @@ final class PerLePagine
         return ['attiva' => true, 'perche' => 'Oggi è il giorno della prima convocazione.', 'url' => $url, 'testo' => 'Apri la sala'];
     }
 
-    /** «Tutto il condominio», «Solo la palazzina A», «Solo la scala B». */
-    public static function perimetroDi(?string $ambito, ?Palazzina $palazzina, ?Scala $scala): string
+    /**
+     * «Tutto il condominio», «Solo la palazzina A», «Solo la scala B», «Solo i condòmini della tabella «Box»» (l'assemblea dei condòmini di un gruppo, con la
+     * sua tabella; senza la tabella «Solo i condòmini di una tabella»).
+     */
+    public static function perimetroDi(?string $ambito, ?Palazzina $palazzina, ?Scala $scala, ?Tabella $tabella = null): string
     {
         return match ($ambito) {
             AmbitoAssemblea::SCALA->value => 'Solo la scala ' . ($scala?->name ?? ''),
             AmbitoAssemblea::PALAZZINA->value => 'Solo la palazzina ' . ($palazzina?->name ?? ''),
+            AmbitoAssemblea::GRUPPO->value => $tabella !== null ? 'Solo i condòmini della tabella «' . $tabella->nome . '»' : 'Solo i condòmini di una tabella',
             default => 'Tutto il condominio',
         };
     }
 
     /**
-     * L'ordine del giorno, con i badge della bozza: la maggioranza, «Votano i conduttori», «Solo la scala B», «Tabella «Ascensore B»», «Memo»; per
+     * L'ordine del giorno, con i badge della bozza: la maggioranza, «Votano i conduttori», «Solo la scala B», «Tabella «Ascensore B»», «Fra i condòmini della
+     * tabella «Box»» (la tabella di un gruppo, Coda 734), «Memo»; per
      * un'assemblea tenuta fuori dal programma o una riunione a mano le delibere di ogni punto, con chi le usa.
      *
      * @return list<array<string, mixed>>
@@ -217,9 +234,14 @@ final class PerLePagine
         $palazzine = Palazzina::query()->whereIn('id', $punti->pluck('palazzina_id')->filter()->unique())->get()->keyBy('id');
         $tabelle = Tabella::query()->whereIn('id', $punti->pluck('tabella_id')->filter()->unique())->get()->keyBy('id');
 
-        return $punti->map(function (PuntoDellOrdineDelGiorno $p) use ($a, $scale, $palazzine, $tabelle) {
+        $delGruppo = UnitaDelPunto::gruppoDellAssemblea($a);
+
+        return $punti->map(function (PuntoDellOrdineDelGiorno $p) use ($a, $scale, $palazzine, $tabelle, $delGruppo) {
             $diUnaParte = $p->ambito !== null && $p->ambito !== AmbitoAssemblea::CONDOMINIO;
             $tabella = $p->tabella_id !== null ? $tabelle[$p->tabella_id] ?? null : null;
+            // Il punto votato con una tabella segnata «di un gruppo» (Coda 734): il badge dice chi vota, come «Solo la scala B». Nell'assemblea dei condòmini
+            // di quel gruppo la sua tabella non è un gruppo in più.
+            $gruppo = $tabella !== null && $tabella->di_un_gruppo && (int) $tabella->id !== $delGruppo ? (string) $tabella->nome : null;
             $perimetro = match ($p->ambito) {
                 AmbitoAssemblea::SCALA => $scale[$p->scala_id] ?? null,
                 AmbitoAssemblea::PALAZZINA => $palazzine[$p->palazzina_id] ?? null,
@@ -250,6 +272,7 @@ final class PerLePagine
                 'perimetro_parola' => $diUnaParte ? self::perimetroDi($p->ambito?->value, $palazzine[$p->palazzina_id] ?? null, $scale[$p->scala_id] ?? null) : null,
                 'tabella_id' => $p->tabella_id,
                 'tabella_nome' => $tabella?->nome,
+                'gruppo_parola' => $gruppo === null ? null : 'Fra i condòmini della tabella «' . $gruppo . '»',
                 'tabella_controllo' => $tabella !== null && $perimetro !== null ? TabellaDiProprieta::controllo($tabella, $perimetro)['frase'] : null,
                 'esercizio_id' => $p->esercizio_id,
                 'importo' => $p->importo,
@@ -312,8 +335,9 @@ final class PerLePagine
     }
 
     /**
-     * I menu delle pagine: tipo, perimetro, materie, maggioranze, esiti, modalità; le palazzine e le scale con le unità; le tabelle con le unità e la
-     * proposta per una scala (quella che ha tutte e sole le sue unità, scena 2 della bozza delle scene della tappa 2) e il controllo per ogni perimetro.
+     * I menu delle pagine: tipo, perimetro, materie, maggioranze, esiti, modalità; le palazzine e le scale con le unità; le tabelle con le unità, il segno
+     * della tabella di un gruppo (Coda 734), la proposta per una scala (quella che ha tutte e sole le sue unità, scena 2 della bozza delle scene della tappa
+     * 2) e il controllo per ogni perimetro.
      *
      * @return array<string, mixed>
      */
@@ -323,9 +347,9 @@ final class PerLePagine
         $immobili = DB::table('immobili')->where('condominio_id', $c->id)->get(['id', 'palazzina_id', 'scala_id']);
         $palazzine = Palazzina::query()->where('condominio_id', $c->id)->orderBy('name')->get();
         $scale = Scala::query()->where('condominio_id', $c->id)->orderBy('name')->get();
-        $tabelle = Tabella::query()->where('condominio_id', $c->id)->orderBy('nome')->get(['id', 'nome', 'scala_id', 'palazzina_id']);
-        $quote = DB::table('quote_tabella')->whereIn('tabella_id', $tabelle->pluck('id'))->where('valore', '>', 0)->get(['tabella_id', 'immobile_id', 'valore'])
-            ->groupBy('tabella_id');
+        $tabelle = Tabella::query()->where('condominio_id', $c->id)->orderBy('nome')->get(['id', 'nome', 'scala_id', 'palazzina_id', 'di_un_gruppo']);
+        // Le unità con la quota maggiore di zero, lo stesso criterio delle unità del punto del gruppo nella sala ({@see UnitaDelPunto}).
+        $quote = UnitaDelPunto::quoteMaggioriDiZero($tabelle->pluck('id')->map(fn ($id) => (int) $id)->all());
         $unitaDi = [
             'condominio' => $immobili->pluck('id')->map(fn ($id) => (int) $id)->all(),
         ];
@@ -335,8 +359,12 @@ final class PerLePagine
         foreach ($scale as $s) {
             $unitaDi['scala:' . $s->id] = $immobili->where('scala_id', $s->id)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         }
+        // Le tabelle di un gruppo sono anche un perimetro (Coda 734, l'assemblea dei condòmini di un gruppo): `gruppo:<id>`, con le unità con la quota.
+        foreach ($tabelle->where('di_un_gruppo', true) as $g) {
+            $unitaDi['gruppo:' . $g->id] = array_map('intval', array_keys($quote[(int) $g->id] ?? []));
+        }
         $tabelleScelte = $tabelle->map(function (Tabella $t) use ($quote, $unitaDi) {
-            $sue = collect($quote[$t->id] ?? [])->mapWithKeys(fn ($q) => [(int) $q->immobile_id => (float) $q->valore]);
+            $sue = collect($quote[(int) $t->id] ?? [])->map(fn ($valore) => (float) $valore);
             $controlli = [];
             foreach ($unitaDi as $chiave => $unita) {
                 $dentro = $sue->only($unita);
@@ -348,15 +376,19 @@ final class PerLePagine
                     // Per l'avviso della tabella parziale nella finestra del punto (decisione 640 (2)): le unità del perimetro con la quota, e quante sono.
                     'con_quota' => $dentro->count(),
                     'unita' => count($unita),
+                    // Per il perimetro di un gruppo: la tabella ha tutte le sue unità dentro il gruppo (la tabella di un gruppo più piccolo, §1.1-bis).
+                    'dentro' => $sue->isNotEmpty() && $sue->keys()->diff($unita)->isEmpty(),
                 ];
             }
 
-            return ['id' => (int) $t->id, 'nome' => $t->nome, 'unita' => $sue->count(), 'controlli' => $controlli];
+            return ['id' => (int) $t->id, 'nome' => $t->nome, 'unita' => $sue->count(), 'di_un_gruppo' => (bool) $t->di_un_gruppo,
+                'millesimi' => number_format((int) round($sue->sum() * 100000) / 100000, 2, ',', '.'), 'controlli' => $controlli];
         })->values()->all();
 
         return [
             'tipi' => $scelta(TipoAssemblea::parole()),
-            'perimetri' => $scelta(AmbitoAssemblea::parole()),
+            // I perimetri di un punto e di un memo: il gruppo è solo dell'assemblea, e il suo menu lo scrive la pagina con le tabelle segnate.
+            'perimetri' => $scelta(array_intersect_key(AmbitoAssemblea::parole(), array_flip(AmbitoAssemblea::valoriDeiPunti()))),
             'modalita' => $scelta(ModalitaAssemblea::parole()),
             'materie' => $scelta(MateriaPunto::parole()),
             'maggioranze' => $scelta(Maggioranza::parole()),

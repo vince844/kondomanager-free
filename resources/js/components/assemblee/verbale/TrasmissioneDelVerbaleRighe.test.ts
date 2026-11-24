@@ -40,7 +40,7 @@ function conTreRighe(): VerbaleDellaPagina {
     const [galli, rossi, romano] = v.trasmissione!.persone;
     const partita = { ...rossi, invio: { id: 502, canale: 'lettera', mezzo: 'raccomandata', stato: 'spedita', esito: null, esito_parola: null, esito_il: null, ricevuta_il: null,
         spedito: true, errore: null, creato_il: '2026-12-15T20:38:00Z' } };
-    const bianchi = { ...rossi, anagrafica_id: 16, nome: 'Bianchi Anna', unita: 'Int. 14', invio: null, perche: 'entrato alle 19:20: assente ai punti 3 e 4', punti_assente: [3, 4], voti: [],
+    const bianchi = { ...rossi, anagrafica_id: 16, nome: 'Bianchi Anna', unita: 'Int. 14', invio: null, perche: 'in sala dalle 19:20: assente ai punti 3 e 4', punti_assente: [3, 4], voti: [],
         termini: [{ punti: [3, 4], perche: 'assente', dal: null, fino_al: null, da_consegnare: true }] };
 
     return { ...v, trasmissione: { ...v.trasmissione!, persone: [galli, partita, bianchi, romano], quanti: 3 } };
@@ -108,6 +108,9 @@ describe('la riga di chi riceve il verbale', () => {
         el('[data-testid="voce-togli"]').click();
         await flushPromises();
         expect(el('[data-testid="finestra-togli"]')).not.toBeNull();
+        // L'esempio del perché senza genere (rilievo C59).
+        expect(el('[data-testid="perche-togli"]').getAttribute('placeholder'))
+            .toBe('Per esempio: la persona è di nuovo in sala dalle 19:40, prima del voto del punto 4, e in sala non è stata segnata.');
     });
 
     test('al telefono una scheda per persona: il bordo e gli angoli sulla riga, «Può impugnare» detto per esteso; dal portatile in su la tabella', async () => {
@@ -117,5 +120,43 @@ describe('la riga di chi riceve il verbale', () => {
         const etichetta = galli.querySelector('[data-colonna="impugnare"] [data-testid="etichetta-al-telefono"]')!;
         expect(testo(etichetta)).toBe('Può impugnare');
         expect(etichetta.className.split(' ')).toContain('lg:hidden');
+    });
+});
+
+describe('il rendiconto e il riparto votati a parte (Coda 750 B2)', () => {
+    /**
+     * Il punto 1 votato due volte: Rossi Mario era in sala al rendiconto (favorevole) e fuori al riparto; Romano Ida contraria al rendiconto e favorevole al
+     * riparto. I gruppi di «Chi riceve» dicono «Mai in sala» (rilievo C59).
+     */
+    function conIlRiparto(): VerbaleDellaPagina {
+        const v = registrato();
+        const [galli, rossi, romano] = v.trasmissione!.persone;
+        const voce = (oggetto: 'rendiconto' | 'riparto', votazione: number, delibera: number) => ({ votazione_id: votazione, delibera_id: delibera, numero: 1, oggetto });
+        const fuori = { ...rossi, perche: 'fuori dalle 19:02: assente al riparto del punto 1', punti_assente: [1], voti: {},
+            voti_per_votazione: [{ ...voce('rendiconto', 101, 71), voto: 'favorevole' }, { ...voce('riparto', 102, 72), voto: null }],
+            termini: [{ punti: [1], perche: 'assente', dal: null, fino_al: null, da_consegnare: true, delibere: [72], voci: [voce('riparto', 102, 72)] }] };
+        const contraria = { ...romano, voti: {}, voti_per_votazione: [{ ...voce('rendiconto', 101, 71), voto: 'contrario' }, { ...voce('riparto', 102, 72), voto: 'favorevole' }],
+            termini: [{ punti: [1], perche: 'contrario', dal: '2026-12-15', fino_al: '2027-01-14', da_consegnare: false, delibere: [71], voci: [voce('rendiconto', 101, 71)] }] };
+        const termini = { delibere: [
+            { delibera_id: 71, punto: 1, votazione: 1, oggetto: 'rendiconto', esito: 'approvata', deliberata_il: '2026-12-15',
+                chi: [{ anagrafica_id: 13, nome: 'Romano Ida', perche: 'contrario', dal: '2026-12-15', fino_al: '2027-01-14' }], per_tutti: '2027-01-14' },
+            { delibera_id: 72, punto: 1, votazione: 2, oggetto: 'riparto', esito: 'approvata', deliberata_il: '2026-12-15',
+                chi: [{ anagrafica_id: 3, nome: 'Rossi Mario', perche: 'assente', dal: null, fino_al: null }], per_tutti: null },
+        ], per_tutti: null };
+
+        return { ...v, trasmissione: { ...v.trasmissione!, persone: [galli, fuori, contraria] as never }, termini: termini as never };
+    }
+
+    test('«Può impugnare» dice quale delle due votazioni: il riparto dalla consegna, il rendiconto favorevole senza termine', async () => {
+        await monta(conIlRiparto());
+        const righe = [...riga(3).querySelectorAll('[data-testid="trenta-giorni"] > span')].map((x) => testo(x));
+        expect(righe).toEqual(['il riparto del punto 1, dalla consegna', 'il rendiconto del punto 1, favorevole, nessun termine']);
+        expect(testo(riga(3).querySelector('[data-colonna="perche"]'))).toBe('fuori dalle 19:02: assente al riparto del punto 1');
+    });
+
+    test('«Chi c\'era»: la riga del rendiconto con il suo oggetto; i gruppi con le parole senza genere', async () => {
+        await monta(conIlRiparto());
+        expect(testo(el('[data-testid="chi-cera"]'))).toContain('Punto 1, il rendiconto · Romano Ida (contrario) · fino al 14/01/2027');
+        expect(testo(el('[data-gruppo="mai_entrati"]'))).toContain('Mai in sala · 1');
     });
 });

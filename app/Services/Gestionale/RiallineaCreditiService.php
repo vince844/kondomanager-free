@@ -5,6 +5,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Helpers\DateHelper;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Exceptions\Gestionale\ContoPassateGestioniMancanteException;
@@ -173,7 +174,7 @@ class RiallineaCreditiService
                     'esercizio_id'       => $compensazione->esercizio_id,
                     'gestione_id'        => $compensazione->gestione_id,
                     'scrittura_padre_id' => $compensazione->id,
-                    'data_registrazione' => now()->toDateString(),
+                    'data_registrazione' => DateHelper::oggiUtente(),
                     'data_competenza'    => $compensazione->data_competenza->toDateString(),
                     'causale'            => self::MARCATORE . " — rettifica prot. {$compensazione->numero_protocollo}",
                     'tipo_movimento'     => 'rettifica',
@@ -220,7 +221,7 @@ class RiallineaCreditiService
                     'condominio_id'      => $condominio->id,
                     'esercizio_id'       => $voce['esercizio_id'],
                     'gestione_id'        => $voce['gestione_id'],
-                    'data_registrazione' => now(),
+                    'data_registrazione' => DateHelper::oggiUtente(),
                     'data_competenza'    => $voce['data'],
                     'causale'            => self::MARCATORE . ' — emissione ' . $rata->descrizione,
                     'tipo_movimento'     => 'emissione_rata',

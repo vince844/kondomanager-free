@@ -29,7 +29,7 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => ({
 
 const F24List = (await import('./F24List.vue')).default;
 
-function montaElenco(esercizio: { id: number; nome: string } | null) {
+function montaElenco(esercizio: { id: number; nome: string } | null, avvisi: { delega_id: number; messaggio: string }[] = []) {
     return shallowMount(F24List, {
         props: {
             condominio: { id: 1, nome: 'Condominio Test' } as any,
@@ -40,6 +40,7 @@ function montaElenco(esercizio: { id: number; nome: string } | null) {
             soglie: { appalti_cents: 50000, professionisti_cents: 10000 },
             da_calcolare: { numero: 0, totale_cents: 0 },
             fornitori_da_classificare: [],
+            avvisi_ritenute_gia_versate: avvisi,
         },
         global: { renderStubDefaultSlot: true, mocks: { route: (nome: string) => `/${nome}` } },
     });
@@ -60,5 +61,20 @@ describe('F24List — il «Versato»', () => {
 
         expect(paragrafi).toContain('€ 200,00');
         expect(paragrafi.some((t) => t.startsWith('dell\'esercizio «'))).toBe(false);
+    });
+});
+
+describe('F24List — la ritenuta già versata con un\'altra delega (Coda 754 (10), decisione 704)', () => {
+    const messaggio = 'La ritenuta della fattura n. 12 di Edilnord è già stata versata con la delega del 16/12/2026 (il pagamento è stato poi stornato): non versarla di nuovo.';
+
+    test('lo scadenzario dice la frase prima del versamento', () => {
+        const pagina = montaElenco({ id: 9, nome: 'Esercizio 2026' }, [{ delega_id: 7, messaggio }]).text().replace(/\s+/g, ' ');
+
+        expect(pagina).toContain('Ritenuta già versata con un\'altra delega');
+        expect(pagina).toContain(messaggio);
+    });
+
+    test('senza avvisi il riquadro non c\'è', () => {
+        expect(montaElenco({ id: 9, nome: 'Esercizio 2026' }).text()).not.toContain('Ritenuta già versata con un\'altra delega');
     });
 });

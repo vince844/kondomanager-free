@@ -8,24 +8,23 @@ namespace App\Services\Assemblee\Sala;
 use App\Enums\Assemblee\AmbitoAssemblea;
 use App\Enums\Assemblee\AmministrazionePunto;
 use App\Enums\Assemblee\Maggioranza;
-use App\Http\Controllers\Assemblee\PerLePagine;
 use App\Models\Assemblee\Assemblea;
 use App\Models\Assemblee\PuntoDellOrdineDelGiorno;
 use App\Models\Assemblee\SedutaDellAssemblea;
 use App\Models\ImpostazioniCondominio;
 use App\Models\Immobile;
-use App\Models\Palazzina;
-use App\Models\Scala;
 use App\Models\Tabella;
 use App\Services\Assemblee\Convocazione\ConvocatiDellAssemblea;
 use App\Services\Assemblee\TabellaDiProprieta;
+use App\Services\Assemblee\UnitaDelPunto;
 use App\Services\Riparto\RisolutoreTitolari;
 use App\Support\PeriodoCompetenza;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * La fotografia della seduta (R1): all'apertura, le unità del perimetro dell'assemblea con i titolari attivi **al giorno della seduta**
+ * La fotografia della seduta (R1): all'apertura, le unità del perimetro dell'assemblea ({@see UnitaDelPunto::dellAssemblea()}: per i condòmini di un gruppo
+ * le unità con la quota nella tabella del gruppo) con i titolari attivi **al giorno della seduta**
  * ({@see RisolutoreTitolari::attiviAlla()}, come i convocati), i millesimi della tabella dell'assemblea e di ogni tabella dei punti in **centomillesimi
  * interi** (la conversione si fa una volta sola, qui), le teste della costituzione e di ogni punto ({@see TesteDellaSala}), i totali, i nomi. Fermata
  * all'apertura nella seduta (`fotografia`, `impronta_fotografia`): i conti e i voti della seduta la leggono, e la seconda convocazione rilegge chi è titolare
@@ -39,8 +38,10 @@ use Illuminate\Support\Facades\DB;
  *   `delega_oltre_il_quinto`, `voto_discorde_comproprietari`, ferme all'apertura come le teste), `tabella` `{id, nome}`, `avvisi`;
  * - `persone`: id => `{nome}`; `unita`: id => `{nome, millesimi, titolari: [{anagrafica_id, ruolo, quota}], scala_id, palazzina_id}`;
  * - `costituzione`: `{totale_teste, totale_valore, teste: [{chiave, nome, persone, unita, millesimi}]}`;
- * - `punti`: `[{punto_id, numero, maggioranza, amministrazione, conduttore, perimetro, tabella, millesimi: id => centomillesimi, totale_teste,
- *   totale_valore, teste, usufrutto: [id delle unità con usufruttuario e nudo proprietario]}]`.
+ * - `punti`: `[{punto_id, numero, maggioranza, amministrazione, conduttore, perimetro, parte, gruppo, tabella, millesimi: id => centomillesimi,
+ *   totale_teste, totale_valore, teste, usufrutto: [id delle unità con usufruttuario e nudo proprietario]}]`. Le unità del punto sono quelle di
+ *   {@see UnitaDelPunto}: il perimetro del punto e, con la tabella segnata «di un gruppo», le sole unità con la quota (Coda 734). `parte` («la scala B»)
+ *   e `gruppo` (`{tabella_id, nome}`) mancano nelle fotografie fermate nella beta.13: chi le legge usa `?? null`.
  */
 final class FotografiaDellaSeduta
 {
@@ -95,26 +96,27 @@ final class FotografiaDellaSeduta
         $costituzione = TesteDellaSala::teste($diChiCostituisce, $modo, $nomi);
 
         $perPunto = [];
+        // Le unità di ogni punto (Coda 734): il perimetro del punto e, con la tabella di un gruppo, le sole unità con la quota ({@see UnitaDelPunto}).
+        // Nell'assemblea dei condòmini di un gruppo i punti con la tabella del gruppo sono di tutta l'assemblea: niente gruppo in più.
+        $gruppi = UnitaDelPunto::gruppi($punti, UnitaDelPunto::gruppoDellAssemblea($assemblea));
         foreach ($punti as $p) {
             $tabellaDelPunto = $p->tabella_id !== null ? Tabella::query()->find($p->tabella_id) : $tabella;
-            $diQuesto = array_keys(array_filter($unita, fn ($u) => match ($p->ambito) {
-                AmbitoAssemblea::SCALA => $u['scala_id'] === $p->scala_id,
-                AmbitoAssemblea::PALAZZINA => $u['palazzina_id'] === $p->palazzina_id,
-                default => true,
-            }));
+            $diQuesto = UnitaDelPunto::delPunto($p, $unita, $gruppi);
             $millesimi = [];
             foreach ($diQuesto as $id) {
                 $millesimi[$id] = (int) ($quote[(int) $tabellaDelPunto?->id][$id] ?? 0);
             }
+            $gruppo = UnitaDelPunto::gruppoDel($p, $gruppi);
+            $parte = UnitaDelPunto::parteDi($p);
             $voce = [
                 'punto_id' => (int) $p->id,
                 'numero' => (int) $p->numero,
                 'maggioranza' => $p->maggioranza?->value,
                 'amministrazione' => $p->amministrazione?->value ?? AmministrazionePunto::ORDINARIA->value,
                 'conduttore' => $p->conduttore?->value,
-                'perimetro' => $p->ambito !== null && $p->ambito !== AmbitoAssemblea::CONDOMINIO
-                    ? PerLePagine::perimetroDi($p->ambito->value, $p->palazzina_id ? Palazzina::query()->find($p->palazzina_id) : null,
-                        $p->scala_id ? Scala::query()->find($p->scala_id) : null) : null,
+                'perimetro' => UnitaDelPunto::perimetro($parte, $gruppo['nome'] ?? null),
+                'parte' => $parte,
+                'gruppo' => $gruppo === null ? null : ['tabella_id' => (int) $p->tabella_id, 'nome' => $gruppo['nome']],
                 'tabella' => $tabellaDelPunto === null ? null : ['id' => (int) $tabellaDelPunto->id, 'nome' => (string) $tabellaDelPunto->nome],
                 'millesimi' => $millesimi,
                 'usufrutto' => array_values(array_filter($diQuesto, fn ($id) => self::conUsufrutto($unita[$id]['titolari']))),
@@ -242,19 +244,18 @@ final class FotografiaDellaSeduta
         $perimetro = match ($assemblea->ambito) {
             AmbitoAssemblea::SCALA => $assemblea->scala,
             AmbitoAssemblea::PALAZZINA => $assemblea->palazzina,
-            default => $assemblea->condominio,
+            // I condòmini di un gruppo: la tabella è il gruppo, e senza non c'è una tabella di proprietà da proporre.
+            AmbitoAssemblea::GRUPPO => null,
+            AmbitoAssemblea::CONDOMINIO, null => $assemblea->condominio,
         };
 
         return $perimetro === null ? null : TabellaDiProprieta::di($perimetro);
     }
 
-    /** Le unità del perimetro dell'assemblea, con le persone e la pivot. @return Collection<int, Immobile> */
+    /** Le unità del perimetro dell'assemblea, con le persone e la pivot ({@see UnitaDelPunto::dellAssemblea()}). @return Collection<int, Immobile> */
     private function unita(Assemblea $assemblea): Collection
     {
-        return Immobile::query()->where('condominio_id', $assemblea->condominio_id)
-            ->when($assemblea->ambito === AmbitoAssemblea::PALAZZINA && $assemblea->palazzina_id !== null, fn ($q) => $q->where('palazzina_id', $assemblea->palazzina_id))
-            ->when($assemblea->ambito === AmbitoAssemblea::SCALA && $assemblea->scala_id !== null, fn ($q) => $q->where('scala_id', $assemblea->scala_id))
-            ->with('anagrafiche')->orderBy('id')->get();
+        return UnitaDelPunto::dellAssemblea($assemblea);
     }
 
     /**

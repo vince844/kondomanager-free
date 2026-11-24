@@ -260,6 +260,11 @@ defineEmits(['update:open']);
                                 la pagina non propone nessun esercizio e non salva finché non ne scegli uno; i versamenti
                                 registrati prima di questa scelta valgono per «Tutti gli esercizi», come prima.
                             </p>
+                            <ul class="ml-5 mt-2 list-disc space-y-1">
+                                <li>Conta anche il piano che chiede la voce con il suo capitolo, o senza un importo suo: allora con l'importo della voce.</li>
+                                <li>Conta anche il piano senza voci associate, nato con le versioni di prima: con le voci che prende, quelle che nessun altro piano del suo esercizio ha già.</li>
+                                <li>Se un piano non ancora generato la supera, l'anteprima della stampa del riparto lo dice al posto della tabella, con il messaggio della generazione.</li>
+                            </ul>
                         </section>
                     </TabsContent>
 

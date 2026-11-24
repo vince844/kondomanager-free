@@ -75,3 +75,12 @@ describe('il nuovo piano dalla delibera e con l\'urgenza', () => {
         expect(pagina).toContain('giornoDeiLavori: gestioneStraordinaria.value && form.tipo_autorizzazione === \'urgenza\' ? form.giorno_dei_lavori : null');
     });
 });
+
+describe('niente testo sotto i 12 px nella riga della delibera', () => {
+    test('«obbligatoria» e «(facoltativa)» della riga «La delibera dell\'assemblea» sono text-xs', () => {
+        const riga = leggi('PianiRateNew.vue').split('Data della delibera dell\'assemblea</template>')[1]?.split('(facoltativa)')[0] ?? '';
+        expect(riga).toContain('obbligatoria');
+        expect(riga).not.toContain('text-[10px]');
+        expect(leggi('PianiRateNew.vue')).toMatch(/text-xs[^>]*>\(facoltativa\)/);
+    });
+});

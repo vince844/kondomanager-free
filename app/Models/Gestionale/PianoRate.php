@@ -235,10 +235,59 @@ class PianoRate extends Model
      * `$passaggiAParte` (verifica a video della .42): la ragione del conguaglio dice solo «di questo passaggio» / «di questi
      * passaggi», e i passaggi vanno in elenco subito dopo (`vociDeiPassaggi($this->passaggiDaAnnullare())`); in fila nella stessa
      * frase, con più passaggi, era un blocco. Il conguaglio, se c'è, è sempre l'ultima ragione.
+     * `$delGruppo` (Coda 786): gli id dei passaggi gemelli già scritti nella prova dei passaggi registrati insieme.
      *
+     * @param list<int> $delGruppo
      * @return list<string>
      */
-    public function ragioniInParole(bool $passaggiAParte = false): array
+    public function ragioniInParole(bool $passaggiAParte = false, array $delGruppo = []): array
+    {
+        return $delGruppo === [] ? $this->ragioniDelleParole($passaggiAParte) : $this->ragioniNelGruppo($passaggiAParte, $delGruppo);
+    }
+
+    /**
+     * Coda 786 (decisione 705): nella prova a secco dei passaggi registrati insieme il secondo vede il primo già scritto, e il piano risultava «preso nel
+     * conguaglio del passaggio Cecilia Angeli → …» come da un passaggio registrato prima. Non lo è: lo scriverà questo stesso atto. I passaggi gemelli
+     * (`$delGruppo`, gli id di quelli già scritti nella prova) non fanno parte delle ragioni di prima; se hanno preso il piano, la frase lo dice leggendo il
+     * gruppo: «è preso anche nel conguaglio della parte di Cecilia Angeli, qui sopra». Se a tenere fermo il piano prima del gruppo non c'era nessun'altra
+     * ragione, resta solo quella: «è preso nel conguaglio della parte di …, qui sopra». Un passaggio vero di prima si nomina come sempre, e il gruppo si
+     * aggiunge in coda alla sua ragione.
+     *
+     * @param list<int> $delGruppo
+     * @return list<string>
+     */
+    private function ragioniNelGruppo(bool $passaggiAParte, array $delGruppo): array
+    {
+        $tutti = $this->passaggiCheLoHannoConguagliato();
+        $isGemello = fn (Subentro $s) => in_array((int) $s->id, $delGruppo, true) || in_array((int) $s->subentro_padre_id, $delGruppo, true);
+        $gemelli = array_values(array_filter($tutti, $isGemello));
+        if ($gemelli === []) {
+            return $this->ragioniDelleParole($passaggiAParte);
+        }
+        $prima = $this->passaggiDelConguaglio;
+        $this->passaggiDelConguaglio = array_values(array_filter($tutti, fn (Subentro $s) => ! $isGemello($s)));
+        try {
+            $ragioni = $this->ragioniDelleParole($passaggiAParte);
+        } finally {
+            $this->passaggiDelConguaglio = $prima;
+        }
+        $nomi = array_values(array_unique(array_map(fn (Subentro $s) => (string) ($s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'chi esce')), self::senzaPertinenze($gemelli))));
+        $parte = (count($nomi) === 1 ? 'della parte di ' : 'delle parti di ') . (count($nomi) === 1 ? $nomi[0] : implode(', ', array_slice($nomi, 0, -1)) . ' e ' . end($nomi)) . ', qui sopra';
+        $ultima = $ragioni === [] ? null : $ragioni[count($ragioni) - 1];
+        if ($ultima !== null && str_contains($ultima, 'nel conguaglio')) {
+            $ragioni[count($ragioni) - 1] = $ultima . ' e anche in quello ' . $parte;
+        } elseif ($ultima !== null && str_contains($ultima, 'tenuto fermo')) {
+            // Fase 1-bis della beta.14: «è tenuto fermo» non nomina nessun conguaglio, quindi «in quello» non avrebbe a che cosa riferirsi.
+            $ragioni[count($ragioni) - 1] = $ultima . ' ed è preso anche nel conguaglio ' . $parte;
+        } else {
+            $ragioni[] = ($ragioni === [] ? 'è preso' : 'è preso anche') . ' nel conguaglio ' . $parte;
+        }
+
+        return $ragioni;
+    }
+
+    /** @return list<string> */
+    private function ragioniDelleParole(bool $passaggiAParte): array
     {
         // Rilievo R11 della Fase 1-bis della .48: una successione con il conguaglio non scritto non ha preso il piano in nessun conguaglio,
         // lo tiene fermo (le bozze passate all'erede di riferimento). Con un passaggio così fra quelli da annullare, la frase vale per tutti.
@@ -269,9 +318,9 @@ class PianoRate extends Model
     }
 
     /** «ha già quote a giornale» / «ha un incasso su una sua quota» / … : le ragioni di `ragioniDelFermo()` in una frase. Null se non è fermo. */
-    public function fraseDelFermo(bool $passaggiAParte = false): ?string
+    public function fraseDelFermo(bool $passaggiAParte = false, array $delGruppo = []): ?string
     {
-        $parti = $this->ragioniInParole($passaggiAParte);
+        $parti = $this->ragioniInParole($passaggiAParte, $delGruppo);
         if ($parti === []) {
             return null;
         }
@@ -505,10 +554,10 @@ class PianoRate extends Model
      * - **senza l'esercizio salvato** (`esercizio_id` nullo: la generazione lo scrive dalla migrazione 9, la creazione dalla Coda 75) su una gestione
      *   agganciata a più esercizi. Ricalcolato, il piano prende l'esercizio della pagina da cui si ricalcola (`GeneratePianoRateAction`), e con lui il
      *   già versato che vale lì; la deduzione dalle date (`CompetenzaDelPiano::esercizioDelPiano`) sbaglia altri piani. Vale per ogni tipo di piano;
-     * - **non straordinario con la riga delle voci vuota** (`piano_rate_capitoli` senza righe) mentre un altro piano della gestione, in bozza o
-     *   approvato come li legge la creazione, è di un altro esercizio. Dalla decisione 183.2 la riga vuota prende le voci che nessun piano del suo
-     *   esercizio ha già, anche quelle del piano dell'altro esercizio, senza impegnarle per la creazione, il motore e la copertura dei piani dopo, e
-     *   la guardia del già versato non le vede. Non si guarda quali voci prenderebbe: basta la riga vuota.
+     * - **non straordinario con la riga delle voci vuota** (`piano_rate_capitoli` senza righe) mentre un altro piano della gestione che prende voci
+     *   (non straordinario, non degli addebiti), in bozza o approvato come li legge la creazione, è di un altro esercizio. Dalla decisione 183.2 la
+     *   riga vuota prende le voci che nessun piano del suo esercizio ha già, anche quelle del piano dell'altro esercizio, senza impegnarle per la creazione, il motore e la copertura dei piani dopo, e
+     *   la guardia del già versato le conta comunque, anche senza voci associate, se sono della stessa gestione (Coda 489). Non si guarda quali voci prenderebbe: basta la riga vuota.
      *
      * Il controllo è uno per tutte e due le rotte che ricalcolano (`PianoRateGenerationController`, `PianoRateController::detachCapitolo`), come
      * `fraseConguagliato()`: sta qui perché le due rotte lo chiedono uguale, prima di ogni scrittura e dopo i rifiuti che ci sono già (incassi,
@@ -543,8 +592,14 @@ class PianoRate extends Model
         // (nessuna pagina stacca una gestione da un esercizio, e la creazione la vuole agganciata all'esercizio della pagina).
         $competenza = app(\App\Services\Riparto\CompetenzaDelPiano::class);
         $mio = $competenza->esercizioDelPiano($this);
-        $altri = self::where('gestione_id', $this->gestione_id)->where('id', '!=', $this->id)
+        // Solo i piani che prendono voci (rilievo 1 del secondo scettico della tappa 1 della 1.12.0-beta.14): lo straordinario prende le fatture e il piano
+        // degli addebiti le somme chieste a una persona, senza la riga delle voci. Questo piano non può chiedere di nuovo le loro voci, e la guardia del già
+        // versato non li conta (`CalcoloQuoteService::rifiutoDelGiaVersato`): con loro la ragione del rifiuto non c'è, e un «Spese fuori preventivo» o il
+        // primo addebito individuale di un altro esercizio farebbero di un piano della 1.10 senza voci un piano da rifare, senza passare dal fermo della
+        // creazione (decisione 691 (2)).
+        $altri = self::where('gestione_id', $this->gestione_id)->where('id', '!=', $this->id)->delRiparto()
             ->whereIn('stato', [StatoPianoRate::BOZZA->value, StatoPianoRate::APPROVATO->value])->orderBy('id')->get()
+            ->reject(fn (self $p) => $p->tipo === 'straordinario')
             ->map(fn (self $p) => ['piano' => $p, 'esercizio' => $competenza->esercizioDelPiano($p)])
             ->filter(fn (array $x) => $x['esercizio']?->id !== $mio?->id)
             ->values();
@@ -567,13 +622,28 @@ class PianoRate extends Model
      * creazione e mostrato da nessuna pagina dopo) con le sue cifre, perché rifatto con il riparto proposto sposta denaro fra i comproprietari;
      * i tratti di competenza delle voci (`competenze_capitolo`, anche loro solo dalla creazione); gli spostamenti di «Sposta spesa». Il riparto e
      * i tratti si riscrivono nella creazione, gli spostamenti con «Sposta spesa» sul piano nuovo. Vuota se il piano non tiene niente di questo.
+     *
+     * Anche la scelta di a chi va il pregresso dell'unità (issue 58: `saldi_config` con `alla_data`, rilievo 9 dello scettico della tappa 1
+     * della 1.12.0-beta.14), con la persona e il giorno come li dice la finestra: il piano nuovo torna alla regola finché non si sceglie di
+     * nuovo. Una scelta che non vale più (`GenerateSaldiAction::scelteCheNonValgonoPiu()`) non si perde, perché già non si applica.
      */
     private function cioCheLaStradaPerde(): string
     {
         $parti = [];
+        $saldiAction = app(\App\Actions\PianoRate\GenerateSaldiAction::class);
+        $nonValgono = array_column($saldiAction->scelteCheNonValgonoPiu($this), 'saldo_id');
         foreach ((array) ($this->saldi_config ?? []) as $conf) {
             $saldo = \App\Models\Saldo::with('immobile')->find((int) ($conf['saldo_id'] ?? 0));
             $ripartizioni = collect($conf['ripartizioni'] ?? []);
+            if ($saldo !== null && $ripartizioni->isEmpty() && ! empty($conf['alla_data']) && ! in_array((int) $saldo->id, $nonValgono, true)
+                && $this->gestione !== null) {
+                $scelta = collect($saldiAction->anteprimaSolidale($saldo, $this->gestione)['scelte'])->firstWhere('alla_data', substr((string) $conf['alla_data'], 0, 10));
+                if ($scelta !== null) {
+                    $parti[] = sprintf('a chi va il pregresso di %s (%s: la tua scelta, %s, %s)', $saldo->immobile?->nome ?? 'un\'unità',
+                        \App\Helpers\MoneyHelper::format(abs((int) $saldo->saldo_iniziale)), self::elencoSemplice(array_column($scelta['quote'], 'nome')), $scelta['etichetta']);
+                }
+                continue;
+            }
             if ($saldo === null || $ripartizioni->isEmpty()) {
                 continue;
             }
@@ -696,17 +766,20 @@ class PianoRate extends Model
      * saldi della 1.7.x e della 1.8.x non lo hanno: la colonna nasce vuota con la beta.32 della 1.10, e la migrazione del
      * 01/03/2026 ha lasciato `is_applicato` falso su tutti i saldi di allora. Per loro vale il saldo senza piano dello stesso
      * esercizio del piano, scritto prima delle sue quote: la 1.7.0 prendeva i saldi «manuali» per condominio ed esercizio. Mai le
-     * coppie dei passaggi né i debiti verso i fornitori.
+     * coppie dei passaggi né i debiti verso i fornitori, e mai le righe legate a un passaggio (`passaggio_id`, Coda 711): nascono dalla
+     * 1.11.0-beta.53 — le righe scritte dal Wallet per un passaggio, la coppia del versamento di un erede — e non sono mai saldi di prima
+     * della 1.10. Liberata da un piano eliminato, la coppia di un erede nata prima delle quote di un altro piano con il riporto spariva
+     * dall'estratto conto.
      *
      * Un criterio solo per il conguaglio di un passaggio (`ConguaglioPassaggio`, le quote senza composizione) e per il saldo
      * iniziale dell'estratto conto (DC3, 1.11.0-beta.49).
      *
-     * @param object $saldo una riga di `saldi` (modello o riga grezza): piano_rate_id, esercizio_id, created_at, subentro_id, fornitore_id
+     * @param object $saldo una riga di `saldi` (modello o riga grezza): piano_rate_id, esercizio_id, created_at, subentro_id, fornitore_id, passaggio_id
      * @param string|null $quoteNateIl quando sono nate le quote del piano (`MIN(rate_quote.created_at)`), null se non ne ha
      */
     public static function saldoAssorbito(object $saldo, int $pianoId, ?int $esercizioDelPiano, ?string $quoteNateIl): bool
     {
-        if (($saldo->subentro_id ?? null) !== null || ($saldo->fornitore_id ?? null) !== null) {
+        if (($saldo->subentro_id ?? null) !== null || ($saldo->fornitore_id ?? null) !== null || ($saldo->passaggio_id ?? null) !== null) {
             return false;
         }
         if ($saldo->piano_rate_id !== null) {

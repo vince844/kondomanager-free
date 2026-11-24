@@ -5,6 +5,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Helpers\DateHelper;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\TipoMovimentoContabile;
@@ -119,7 +120,9 @@ class RiallineaFondiService
 
         $esercizio = $esercizioId
             ? $condominio->esercizi()->where('esercizi.id', $esercizioId)->where('stato', 'aperto')->firstOrFail()
-            : $condominio->esercizi()->where('stato', 'aperto')->orderBy('data_inizio')->firstOrFail();
+            // Con due esercizi aperti, il più recente (Coda 646, decisione 707 (4), `HasEsercizio`).
+            : (\App\Models\Esercizio::apertoPiuRecente((int) $condominio->id)
+                ?? throw (new \Illuminate\Database\Eloquent\ModelNotFoundException)->setModel(\App\Models\Esercizio::class));
 
         $contiFondo = Cassa::where('condominio_id', $condominio->id)
             ->where('tipo', 'fondo')
@@ -187,8 +190,8 @@ class RiallineaFondiService
                     'esercizio_id' => $esercizio->id,
                     'gestione_id' => $originale->gestione_id,
                     'scrittura_padre_id' => $originale->id,
-                    'data_registrazione' => now()->toDateString(),
-                    'data_competenza' => now()->toDateString(),
+                    'data_registrazione' => DateHelper::oggiUtente(),
+                    'data_competenza' => DateHelper::oggiUtente(),
                     'causale' => mb_substr(
                         self::CAUSALE_MARKER." — rettifica {$originale->numero_protocollo}",
                         0, 255

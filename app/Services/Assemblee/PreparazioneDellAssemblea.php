@@ -17,6 +17,7 @@ use App\Models\Assemblee\SedutaDellAssemblea;
 use App\Models\Condominio;
 use App\Models\Palazzina;
 use App\Models\Scala;
+use App\Models\Tabella;
 use App\Models\User;
 use App\Services\Assemblee\Convocazione\CompitiDellaConvocazione;
 use App\Services\RegistroModifiche\GestiDelRegistro;
@@ -34,6 +35,9 @@ use Illuminate\Validation\ValidationException;
  */
 final class PreparazioneDellAssemblea
 {
+    /** Il gruppo e la sua tabella dicono chi è convocato (Coda 734, §1.1-bis del progetto della tappa 3): dopo la preparazione restano. */
+    public const FRASE_GRUPPO_FERMO = 'Il gruppo e la tabella non si cambiano dopo la preparazione: decidono chi è convocato.';
+
     /** I campi dell'assemblea che arrivano dalla pagina. */
     private const CAMPI = ['tipo', 'luogo', 'modalita', 'piattaforma', 'consenso_videoconferenza_il', 'consenso_videoconferenza_modo', 'tabella_id',
         'raccomandate_entro_il', 'affissione_dal', 'affissione_al'];
@@ -57,11 +61,17 @@ final class PreparazioneDellAssemblea
         $sedute = self::sedute($dati['sedute'] ?? []);
         [$ambito, $palazzina, $scala] = MemoriaDelCondominio::perimetro($condominio, $dati);
         $campi = self::campi($condominio, $dati) + ['ambito' => $ambito, 'palazzina_id' => $palazzina, 'scala_id' => $scala];
-        if (! array_key_exists('tabella_id', $dati)) {
+        $gesto = GestiDelRegistro::assembleaPreparata($condominio);
+        if ($ambito === AmbitoAssemblea::GRUPPO->value) {
+            // I condòmini di un gruppo: la tabella del valore è il gruppo, una tabella del condominio con il segno; la riga del registro lo dice.
+            $gruppo = self::tabellaDelGruppo($campi['tabella_id'] ?? null);
+            $campi['tabella_id'] = (int) $gruppo->id;
+            $gesto->campo('ambito', 'Per chi', null, AmbitoAssemblea::GRUPPO->parola())->campo('tabella_id', 'Tabella del valore', null, (string) $gruppo->nome);
+        } elseif (! array_key_exists('tabella_id', $dati)) {
             $campi['tabella_id'] = self::tabellaProposta($condominio, $ambito, $palazzina, $scala);
         }
 
-        return RegistroModifiche::durante(GestiDelRegistro::assembleaPreparata($condominio), function () use ($condominio, $campi, $sedute, $puntiScelti, $puntiScritti, $utente, $ordine) {
+        return RegistroModifiche::durante($gesto, function () use ($condominio, $campi, $sedute, $puntiScelti, $puntiScritti, $utente, $ordine) {
             $assemblea = Assemblea::create($campi + [
                 'condominio_id' => $condominio->id,
                 'tipo' => $campi['tipo'] ?? TipoAssemblea::ORDINARIA->value,
@@ -125,6 +135,8 @@ final class PreparazioneDellAssemblea
         $condominio = $assemblea->condominio;
         $sedute = array_key_exists('sedute', $dati) ? self::sedute($dati['sedute']) : null;
 
+        self::ilGruppoResta($assemblea, $dati);
+
         return DB::transaction(function () use ($assemblea, $condominio, $dati, $sedute, $utente) {
             $campi = self::campi($condominio, $dati);
             if (array_key_exists('ambito', $dati)) {
@@ -157,7 +169,7 @@ final class PreparazioneDellAssemblea
                 if ($m->eInAttesa()) {
                     $m->update(['assemblea_id' => null]);
                 } elseif ($m->stato === \App\Enums\Assemblee\StatoMemo::NEL_PUNTO) {
-                    MemoriaDelCondominio::tornaInAttesa($m);
+                    MemoriaDelCondominio::tornaInAttesa($m, false, true);
                 }
             }
             // Le voci dell'agenda e i compiti che hanno l'assemblea come `eventable`: senza l'assemblea non portano più da nessuna parte.
@@ -260,12 +272,43 @@ final class PreparazioneDellAssemblea
         return $campi;
     }
 
+    /** La tabella del gruppo, già risolta nel condominio: deve avere il segno «di un gruppo», altrimenti 422. */
+    private static function tabellaDelGruppo(mixed $id): Tabella
+    {
+        $tabella = empty($id) ? null : Tabella::query()->find((int) $id);
+        if ($tabella === null || ! $tabella->di_un_gruppo) {
+            throw ValidationException::withMessages(['tabella_id' => \App\Http\Requests\Assemblee\PreparaAssembleaRequest::FRASE_DEL_GRUPPO]);
+        }
+
+        return $tabella;
+    }
+
+    /**
+     * Dopo la preparazione il gruppo e la sua tabella non cambiano, e un'assemblea non diventa di un gruppo: decidono chi è convocato. Gli stessi valori
+     * rimandati dalla pagina (il modulo delle date li manda sempre) passano.
+     *
+     * @param array<string, mixed> $dati
+     */
+    private static function ilGruppoResta(Assemblea $assemblea, array $dati): void
+    {
+        $eraDiUnGruppo = $assemblea->ambito === AmbitoAssemblea::GRUPPO;
+        if (array_key_exists('ambito', $dati) && ($eraDiUnGruppo || $dati['ambito'] === AmbitoAssemblea::GRUPPO->value)
+            && $dati['ambito'] !== $assemblea->ambito?->value) {
+            throw ValidationException::withMessages(['ambito' => self::FRASE_GRUPPO_FERMO]);
+        }
+        if ($eraDiUnGruppo && array_key_exists('tabella_id', $dati) && (int) $dati['tabella_id'] !== (int) $assemblea->tabella_id) {
+            throw ValidationException::withMessages(['tabella_id' => self::FRASE_GRUPPO_FERMO]);
+        }
+    }
+
     /** La tabella del valore proposta: quella di proprietà del perimetro (R14), se l'amministratore l'ha scelta. */
     private static function tabellaProposta(Condominio $condominio, string $ambito, ?int $palazzina, ?int $scala): ?int
     {
         $perimetro = match ($ambito) {
             AmbitoAssemblea::SCALA->value => Scala::query()->find($scala),
             AmbitoAssemblea::PALAZZINA->value => Palazzina::query()->find($palazzina),
+            // I condòmini di un gruppo hanno la tabella del gruppo ({@see crea()}): qui non si propone niente.
+            AmbitoAssemblea::GRUPPO->value => null,
             default => $condominio,
         };
 

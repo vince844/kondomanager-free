@@ -72,3 +72,16 @@ describe('GiaVersatoGuide — controprova', () => {
         expect(guida).toContain('3. Per quale esercizio vale?');
     });
 });
+
+describe('GiaVersatoGuide — la somma sulla voce (Code 483, 486, 487)', () => {
+    test('dice che conta anche il piano che chiede la voce con il suo capitolo o senza un importo suo, e che l\'anteprima di stampa lo dice', () => {
+        expect(guida).toContain('Conta anche il piano che chiede la voce con il suo capitolo, o senza un importo suo: allora con l\'importo della voce.');
+        expect(guida).toContain('Se un piano non ancora generato la supera, l\'anteprima della stampa del riparto lo dice al posto della tabella, con il messaggio della generazione.');
+    });
+});
+
+describe('GiaVersatoGuide — il piano senza voci associate (rilievo 11 dello scettico della tappa 1)', () => {
+    test('dice che conta anche il piano senza voci associate, con le voci che prende', () => {
+        expect(guida).toContain('Conta anche il piano senza voci associate, nato con le versioni di prima: con le voci che prende, quelle che nessun altro piano del suo esercizio ha già.');
+    });
+});

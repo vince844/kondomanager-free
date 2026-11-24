@@ -132,76 +132,29 @@ class PianoContiPrintController extends Controller
     ) {
         // Recupera i piani rate collegati alla stessa gestione del piano dei conti
         $pianiRate = PianoRate::where('gestione_id', $pianoConto->gestione_id)
+            ->orderBy('id')
             ->with([
                 'rate' => fn($q) => $q->orderBy('numero_rata'),
                 'rate.rateQuote.anagrafica',
-                'rate.rateQuote.immobile',
+                'rate.rateQuote.immobile.anagrafiche',
             ])
             ->get();
 
-        // --- Costruzione matrice ---
-        // Righe: unità immobiliari / anagrafiche
-        // Colonne: rate (per numero e scadenza)
-        $matrice    = [];   // chiave => [cod, nome, piano, interno, importi_per_rata[numero_rata], totale]
-        $colonneRate = [];   // numero_rata => [nome, scadenza]
+        // Solo i piani dell'esercizio della stampa: una gestione usata in più esercizi ha anche i piani degli altri, e il foglio dell'anno non porta le
+        // cifre di un altro anno. Un piano senza l'esercizio salvato (i piani vecchi) è quello che il programma gli attribuisce.
+        $competenza = app(\App\Services\Riparto\CompetenzaDelPiano::class);
+        $pianiRate = $pianiRate->filter(fn (PianoRate $p) => $competenza->esercizioDelPiano($p)?->id === $esercizio->id)->values();
 
-        foreach ($pianiRate as $pianoRate) {
-            foreach ($pianoRate->rate as $rata) {
-                // Colonna per questa rata
-                $colonneRate[$rata->numero_rata] = [
-                    'nome'    => $rata->numero_rata . 'ª Rata',
-                    'scadenza'=> $rata->data_scadenza
-                        ? $rata->data_scadenza->format('d/m/Y')
-                        : '',
-                ];
-
-                foreach ($rata->rateQuote as $quota) {
-                    if (!$quota->immobile_id && !$quota->anagrafica_id) continue;
-
-                    $chiave = $quota->immobile_id
-                        ? 'immobile_' . $quota->immobile_id
-                        : 'anagrafica_' . $quota->anagrafica_id;
-
-                    if (!isset($matrice[$chiave])) {
-                        $immobile  = $quota->immobile;
-                        $anagrafica = $quota->anagrafica;
-
-                        // Nome del condòmino/intestatario
-                        $nomeEnte = $anagrafica->nome ?? '';
-                        $codice   = $immobile ? ($immobile->codice_immobile ?? '-') : '-';
-                        $interno  = $immobile ? ($immobile->interno ?? '') : '';
-                        $piano    = $immobile ? ($immobile->piano ?? '') : '';
-
-                        $matrice[$chiave] = [
-                            'cod'             => $codice,
-                            'nome'            => $nomeEnte,
-                            'interno'         => $interno,
-                            'piano'           => $piano,
-                            'importi_per_rata'=> [],
-                            'totale'          => 0,
-                        ];
-                    }
-
-                    if (!isset($matrice[$chiave]['importi_per_rata'][$rata->numero_rata])) {
-                        $matrice[$chiave]['importi_per_rata'][$rata->numero_rata] = 0;
-                    }
-
-                    $matrice[$chiave]['importi_per_rata'][$rata->numero_rata] += $quota->importo;
-                    $matrice[$chiave]['totale'] += $quota->importo;
-                }
-            }
-        }
-
-        // Ordina le colonne per numero rata e la matrice per codice immobile
-        ksort($colonneRate);
-        usort($matrice, fn($a, $b) => strcmp($a['cod'], $b['cod']));
+        // Una riga per ogni soggetto dentro la sua unità, una colonna per ogni rata di ogni piano.
+        $matrice = self::matricePerSoggetto($pianiRate, 'codice');
 
         $data = [
             'condominio'  => $condominio,
             'esercizio'   => $esercizio,
             'pianoConto'  => $pianoConto,
-            'colonneRate' => $colonneRate,
-            'matrice'     => $matrice,
+            'colonneRate' => $matrice['colonne'],
+            'matrice'     => $matrice['righe'],
+            'conPiani'    => $matrice['piani'] > 1,
         ];
 
         $mpdf = $pdfService->generate('pdf.gestionale.ripartizione_spese', $data + ['gruppo_carta' => GruppoCarta::RENDICONTO_E_ASSEMBLEA], [
@@ -215,5 +168,131 @@ class PianoContiPrintController extends Controller
         return response($mpdf->Output($nomeFile, \Mpdf\Output\Destination::STRING_RETURN))
             ->header('Content-Type', 'application/pdf')
             ->header('Content-Disposition', 'inline; filename="'.$nomeFile.'"');
+    }
+
+    /**
+     * Le quote di uno o più piani rate, per unità e per soggetto: la forma delle stampe date ai condòmini (la ripartizione spese e lo
+     * scadenziario per unità, Coda 756). Una riga per unità, dentro la riga una per ogni soggetto con il suo ruolo (P, NP, U, I) e la
+     * sua parte rata per rata; il totale dell'unità è la somma dei suoi soggetti. Le quote annullate non entrano, come in tutte le altre
+     * letture delle quote. Le colonne sono una per rata di ogni piano (chiave «<piano>:<numero>»): con più piani nella gestione la
+     * rata 1 del secondo non finisce sotto la data della rata 1 del primo.
+     *
+     * Il ruolo è quello **di allora**, dalle righe del riparto del piano (`righe_riparto.ruolo_risolto`), e la titolarità del giorno solo
+     * in mancanza: la stessa regola della stampa del riparto per tabella (`MatriceRipartoBuilder`).
+     *
+     * @param  \Illuminate\Support\Collection<int, PianoRate>  $pianiRate  con `rate.rateQuote` caricate
+     * @param  'codice'|'etichetta'  $ordine
+     * @param  bool  $conQuoteSenzaUnita  le quote di una persona senza unità fanno una riga a parte (la ripartizione) o non entrano (lo scadenziario per unità)
+     * @return array{colonne: array<string, array{nome: string, scadenza: string, piano: string}>, piani: int, righe: list<array<string, mixed>>}
+     */
+    public static function matricePerSoggetto(\Illuminate\Support\Collection $pianiRate, string $ordine = 'etichetta', bool $conQuoteSenzaUnita = true): array
+    {
+        // Fase 1-bis della beta.14: un `foreach` e non una freccia in un ciclo della raccolta (la trappola della Coda 212: una freccia che restituisce `false` ferma il ciclo).
+        foreach ($pianiRate as $p) {
+            $p->loadMissing(['rate.rateQuote.anagrafica', 'rate.rateQuote.immobile.anagrafiche']);
+        }
+
+        $ruoliDiAllora = [];
+        $righeRiparto = \App\Models\Gestionale\RigaRiparto::whereIn('piano_rate_id', $pianiRate->pluck('id'))
+            ->whereIn('tipo', [\App\Models\Gestionale\RigaRiparto::TIPO_RIPARTO, \App\Models\Gestionale\RigaRiparto::TIPO_AD_PERSONAM])
+            ->whereNotNull('ruolo_risolto')->whereNotNull('anagrafica_id')
+            ->orderBy('id')->get(['anagrafica_id', 'immobile_id', 'ruolo_risolto']);
+        foreach ($righeRiparto as $r) {
+            $ruoliDiAllora[$r->anagrafica_id.'|'.$r->immobile_id] ??= (string) $r->ruolo_risolto;
+        }
+
+        $titolari = new \App\Services\Riparto\RisolutoreTitolari();
+        $sigle = ['proprietario' => 'P', 'nuda_proprietario' => 'NP', 'usufruttuario' => 'U', 'inquilino' => 'I'];
+        $ordineRuoli = ['proprietario' => 0, 'nuda_proprietario' => 1, 'usufruttuario' => 2, 'inquilino' => 3];
+
+        $colonne = [];
+        $unita = [];
+        $piani = 0;
+
+        foreach ($pianiRate as $pianoRate) {
+            $haRate = false;
+            foreach ($pianoRate->rate as $rata) {
+                $chiaveColonna = $pianoRate->id.':'.$rata->numero_rata;
+                $colonne[$chiaveColonna] = [
+                    'nome'     => $rata->numero_rata.'ª Rata',
+                    'scadenza' => $rata->data_scadenza ? $rata->data_scadenza->format('d/m/Y') : '',
+                    'piano'    => (string) $pianoRate->nome,
+                ];
+                $haRate = true;
+
+                foreach ($rata->rateQuote as $quota) {
+                    if ($quota->stato === 'annullata') {
+                        continue;
+                    }
+                    if (! $quota->immobile_id && ! $quota->anagrafica_id) {
+                        continue;
+                    }
+                    if (! $quota->immobile_id && ! $conQuoteSenzaUnita) {
+                        continue;
+                    }
+
+                    $chiaveUnita = $quota->immobile_id ? 'immobile_'.$quota->immobile_id : 'anagrafica_'.$quota->anagrafica_id;
+                    $immobile = $quota->immobile;
+
+                    if (! isset($unita[$chiaveUnita])) {
+                        $codice = $immobile ? ($immobile->codice_immobile ?? '-') : '-';
+                        $dettagli = $immobile ? array_filter([
+                            $immobile->interno ? 'int. '.$immobile->interno : null,
+                            \App\Support\EtichettaDelPiano::per($immobile->piano),
+                            $codice !== '-' ? $codice : null,
+                        ]) : [];
+                        $unita[$chiaveUnita] = [
+                            'codice'    => (string) $codice,
+                            'etichetta' => $immobile ? ($immobile->nome ?: $codice) : 'Senza unità immobiliare',
+                            'dettaglio' => implode(' · ', $dettagli),
+                            'soggetti'  => [],
+                            'totale'    => 0,
+                        ];
+                    }
+
+                    $chiaveSoggetto = (int) $quota->anagrafica_id;
+                    if (! isset($unita[$chiaveUnita]['soggetti'][$chiaveSoggetto])) {
+                        $ruoloRaw = $ruoliDiAllora[$quota->anagrafica_id.'|'.$quota->immobile_id] ?? null;
+                        if ($ruoloRaw === null && $immobile) {
+                            $pivot = $titolari->attiviAlla($immobile->anagrafiche)->where('id', $quota->anagrafica_id)->first()?->pivot
+                                ?? $immobile->anagrafiche->where('id', $quota->anagrafica_id)->first()?->pivot;
+                            $ruoloRaw = $pivot?->tipologia;
+                        }
+                        $ruoloRaw = (string) ($ruoloRaw ?: ($immobile ? 'proprietario' : ''));
+                        $unita[$chiaveUnita]['soggetti'][$chiaveSoggetto] = [
+                            'nome'             => (string) ($quota->anagrafica->nome ?? '—'),
+                            'ruolo'            => $sigle[$ruoloRaw] ?? ($ruoloRaw === '' ? '' : strtoupper(substr($ruoloRaw, 0, 1))),
+                            'ruolo_raw'        => $ruoloRaw,
+                            'importi_per_rata' => [],
+                            'totale'           => 0,
+                        ];
+                    }
+
+                    $unita[$chiaveUnita]['soggetti'][$chiaveSoggetto]['importi_per_rata'][$chiaveColonna] =
+                        ($unita[$chiaveUnita]['soggetti'][$chiaveSoggetto]['importi_per_rata'][$chiaveColonna] ?? 0) + (int) $quota->importo;
+                    $unita[$chiaveUnita]['soggetti'][$chiaveSoggetto]['totale'] += (int) $quota->importo;
+                    $unita[$chiaveUnita]['totale'] += (int) $quota->importo;
+                }
+            }
+            if ($haRate) {
+                $piani++;
+            }
+        }
+
+        foreach ($unita as &$riga) {
+            uasort($riga['soggetti'], fn ($a, $b) => ($ordineRuoli[$a['ruolo_raw']] ?? 9) <=> ($ordineRuoli[$b['ruolo_raw']] ?? 9));
+            $riga['soggetti'] = array_values($riga['soggetti']);
+        }
+        unset($riga);
+
+        $righe = array_values($unita);
+        usort($righe, function ($a, $b) use ($ordine) {
+            $perCodice = strnatcasecmp($a['codice'], $b['codice']);
+            $perNome = strnatcasecmp($a['etichetta'], $b['etichetta']);
+
+            return $ordine === 'codice' ? ($perCodice ?: $perNome) : ($perNome ?: $perCodice);
+        });
+
+        return ['colonne' => $colonne, 'piani' => $piani, 'righe' => $righe];
     }
 }

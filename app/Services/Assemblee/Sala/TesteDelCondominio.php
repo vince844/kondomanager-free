@@ -42,6 +42,44 @@ final class TesteDelCondominio
     }
 
     /**
+     * Le teste del condominio prima e dopo un passaggio di titolarità, come le conta la sala (Coda 758 (1): il pannello «Cosa cambierà» della vendita dice
+     * lo stesso numero che poi trova l'assemblea). Il conto è quello di {@see perLaPagina()}: le unità di oggi con la scelta del condominio; «dopo» sostituisce
+     * chi porta ogni unità del passaggio (l'unità e le pertinenze che passano con lei) con chi la porterebbe sui titolari dati, come su un punto di
+     * ordinaria amministrazione.
+     *
+     * @param array<int, list<array{anagrafica_id: int, ruolo: string}>> $titolariDopo i titolari dopo il passaggio, per ogni unità che passa (id dell'unità)
+     * @return array{scelta: string, prima: int, dopo: int}
+     */
+    public function primaEDopo(Condominio $condominio, array $titolariDopo): array
+    {
+        $scelta = (string) (ImpostazioniCondominio::delCondominio((int) $condominio->id)->assemblee_teste ?: TesteDellaSala::DUE_TESTE);
+        [$unita, $nomi] = $this->unita($condominio);
+        $prima = count(TesteDellaSala::teste($unita, $scelta, $nomi));
+        foreach ($titolariDopo as $unitaId => $titolari) {
+            $unita[(int) $unitaId] = ['persone' => TesteDellaSala::chiCostituisce($titolari, [AmministrazionePunto::ORDINARIA->value]),
+                'millesimi' => (int) ($unita[(int) $unitaId]['millesimi'] ?? 0)];
+        }
+
+        return ['scelta' => $scelta, 'prima' => $prima, 'dopo' => count(TesteDellaSala::teste($unita, $scelta, $nomi))];
+    }
+
+    /**
+     * I titolari di oggi di un'unità, con la regola della sala (i titolari attivi al giorno di oggi).
+     *
+     * @return list<array{anagrafica_id: int, ruolo: string, quota: float}>
+     */
+    public function titolariDiOggi(Immobile $immobile): array
+    {
+        $periodo = PeriodoCompetenza::puntuale(\App\Helpers\DateHelper::oggiUtente());
+        $titolari = [];
+        foreach ($this->risolutore->attiviAlla($immobile->anagrafiche()->get(), $periodo) as $a) {
+            $titolari[] = ['anagrafica_id' => (int) $a->id, 'ruolo' => (string) $a->pivot->tipologia, 'quota' => (float) $a->pivot->quota];
+        }
+
+        return $titolari;
+    }
+
+    /**
      * Le due righe «Adesso: …».
      *
      * @param list<array<string, mixed>> $una

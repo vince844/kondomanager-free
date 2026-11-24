@@ -26,6 +26,7 @@ final class TabellaNelRegistro extends SchedaNelRegistro
         'numero_decimali' => 'Numero decimali',
         'descrizione' => 'Descrizione',
         'note' => 'Note',
+        'di_un_gruppo' => 'Tabella di un gruppo (assemblee)',
     ];
 
     public const FORMATI = [
@@ -33,6 +34,7 @@ final class TabellaNelRegistro extends SchedaNelRegistro
             'acqua' => 'Acqua', 'lastrico' => 'Lastrico', 'speciale' => 'Speciale', 'altro' => 'Altro']],
         'quota' => ['scelta', ['millesimi' => 'Millesimi', 'persone' => 'Persone', 'quote' => 'Quote', 'kwatt' => 'Kilowatt', 'mtcubi' => 'Metri cubi']],
         'numero_decimali' => 'numero',
+        'di_un_gruppo' => 'si_no',
     ];
 
     /** Non in pagina: il condominio dall'indirizzo, palazzina e scala (il riquadro è caduto), le regole di calcolo, la data di fine. */

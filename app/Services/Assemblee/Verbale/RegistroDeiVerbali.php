@@ -19,6 +19,7 @@ use App\Models\Assemblee\VerbaleDellAssemblea;
 use App\Models\Condominio;
 use App\Models\Palazzina;
 use App\Models\Scala;
+use App\Models\Tabella;
 use App\Models\User;
 use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\RegistroModifiche;
@@ -40,19 +41,21 @@ use Illuminate\Validation\ValidationException;
  */
 final class RegistroDeiVerbali
 {
-    /** Il perimetro di un registro, con il suo nome: «Registro dei verbali di Via Roma 12», «… della scala B di Via Roma 12». @return array{chiave: string, nome: string, scala_id: ?int, palazzina_id: ?int} */
+    /** Il perimetro di un registro, con il suo nome: «Registro dei verbali di Via Roma 12», «… della scala B di Via Roma 12», «… dei condòmini della tabella «Box» di Via Roma 12». @return array{chiave: string, nome: string, scala_id: ?int, palazzina_id: ?int, tabella_id: ?int} */
     public static function perimetro(Condominio $condominio, string $registro): array
     {
         [$tipo, $id] = array_pad(explode(':', $registro, 2), 2, null);
         $scala = $tipo === 'scala' && is_numeric($id) ? Scala::query()->whereKey((int) $id)->first() : null;
         $palazzina = $tipo === 'palazzina' && is_numeric($id) ? Palazzina::query()->whereKey((int) $id)->first() : null;
-        $parte = $scala !== null ? 'della scala ' . $scala->name . ' ' : ($palazzina !== null ? 'della palazzina ' . $palazzina->name . ' ' : '');
+        $gruppo = $tipo === 'gruppo' && is_numeric($id) ? Tabella::query()->whereKey((int) $id)->first() : null; // il registro di un gruppo, decisione 699 (2)
+        $parte = $scala !== null ? 'della scala ' . $scala->name . ' ' : ($palazzina !== null ? 'della palazzina ' . $palazzina->name . ' '
+            : ($gruppo !== null ? 'dei condòmini della tabella «' . $gruppo->nome . '» ' : ''));
 
         return ['chiave' => $registro, 'nome' => 'Registro dei verbali ' . $parte . 'di ' . $condominio->nome, 'scala_id' => $scala?->id === null ? null : (int) $scala->id,
-            'palazzina_id' => $palazzina?->id === null ? null : (int) $palazzina->id];
+            'palazzina_id' => $palazzina?->id === null ? null : (int) $palazzina->id, 'tabella_id' => $gruppo?->id === null ? null : (int) $gruppo->id];
     }
 
-    /** Il registro è uno di questo condominio: `condominio`, o una scala o una palazzina sue; altrimenti 404. */
+    /** Il registro è uno di questo condominio: `condominio`, o una scala, una palazzina o una tabella di un gruppo sue; altrimenti 404. */
     public static function delCondominio(Condominio $condominio, ?string $registro): string
     {
         $registro = $registro === null || $registro === '' ? 'condominio' : $registro;
@@ -60,11 +63,8 @@ final class RegistroDeiVerbali
             return $registro;
         }
         [$tipo, $id] = array_pad(explode(':', $registro, 2), 2, null);
-        $ok = is_numeric($id) && match ($tipo) {
-            'scala' => Scala::query()->whereKey((int) $id)->where('condominio_id', $condominio->id)->exists(),
-            'palazzina' => Palazzina::query()->whereKey((int) $id)->where('condominio_id', $condominio->id)->exists(),
-            default => false,
-        };
+        $schede = ['scala' => Scala::class, 'palazzina' => Palazzina::class, 'gruppo' => Tabella::class];
+        $ok = is_numeric($id) && isset($schede[$tipo]) && $schede[$tipo]::query()->whereKey((int) $id)->where('condominio_id', $condominio->id)->exists();
         abort_unless($ok, 404);
 
         return $tipo . ':' . (int) $id;
@@ -300,13 +300,17 @@ final class RegistroDeiVerbali
         $s->update(['nel_libro_il' => $giorno]);
     }
 
-    /** «Ordinaria, seconda convocazione», con il perimetro: «Ordinaria della scala B, prima convocazione». @return array<string, mixed> */
+    /**
+     * «Ordinaria, seconda convocazione», con il perimetro: «Ordinaria della scala B, prima convocazione», «Straordinaria dei condòmini della tabella «Box»,
+     * prima convocazione». @return array<string, mixed>
+     */
     private static function assemblea(Assemblea $a, ?SedutaDellAssemblea $s): array
     {
         $perimetro = match ($a->ambito) {
             AmbitoAssemblea::SCALA => $a->scala?->name !== null ? ' della scala ' . $a->scala->name : '',
             AmbitoAssemblea::PALAZZINA => $a->palazzina?->name !== null ? ' della palazzina ' . $a->palazzina->name : '',
-            default => '',
+            AmbitoAssemblea::GRUPPO => $a->tabella?->nome !== null ? ' dei condòmini della tabella «' . $a->tabella->nome . '»' : '',
+            AmbitoAssemblea::CONDOMINIO, null => '',
         };
         $convocazione = $s === null ? null : (((int) $s->numero > 1 ? 'prosecuzione della ' : '') . ($s->convocazione?->value === 'seconda' ? 'seconda' : 'prima') . ' convocazione');
 

@@ -96,7 +96,7 @@ function riga(t: TestaDellaFotografia): RigaDellaTesta {
         const dopoIlVoto = sala.value.punti.flatMap((p) => p.votazioni.map((v) => ({ p, v })))
             .filter(({ v }) => v.seduta_id === sala.value.seduta_id && v.votata_il < diPersona.entrata_il && !v.intervenuti.teste.some((x) => x.chiave === t.chiave)).at(-1);
         if (dopoIlVoto) {
-            note.push(`entrato alle ${oraDiRoma(diPersona.entrata_il)}, dopo il voto del punto ${dopoIlVoto.p.numero} (${oraDiRoma(dopoIlVoto.v.votata_il)}): `
+            note.push(`in sala dalle ${oraDiRoma(diPersona.entrata_il)}, dopo il voto del punto ${dopoIlVoto.p.numero} (${oraDiRoma(dopoIlVoto.v.votata_il)}): `
                 + `per il punto ${dopoIlVoto.p.numero} non conta`);
         }
     }

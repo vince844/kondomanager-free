@@ -99,6 +99,12 @@ class CassaController extends Controller
         $casse = $query->tap(fn ($q) => $this->ordina($q, $validated, CassaIndexRequest::colonneOrdinabili(), predefinita: 'nome', versoPredefinito: 'asc'))
             ->paginate($validated['per_page']);
 
+        // Letta prima della Resource, che sostituisce gli elementi della pagina con le sue righe.
+        $storniDelleAperture = (object) collect($casse->items())
+            ->filter(fn (Cassa $c) => $c->motivoBloccoEliminazione() === null)
+            ->mapWithKeys(fn (Cassa $c) => [$c->id => $c->fraseDelloStornoDellApertura()])
+            ->filter()->all();
+
         return Inertia::render('gestionale/casse/CasseList', [
             'condominio' => $condominio,
             'esercizio'  => $this->getEsercizioCorrente($condominio),
@@ -110,7 +116,9 @@ class CassaController extends Controller
                 'last_page'    => $casse->lastPage(),
                 'total'        => $casse->total(),
             ],
-            'filters'    => $request->only(['nome']), 
+            'filters'    => $request->only(['nome']),
+            // Coda 754 (1): per la finestra «Elimina» delle risorse che si possono eliminare con l'apertura a giornale, la frase dello storno.
+            'storni_delle_aperture' => $storniDelleAperture,
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
         ]);
@@ -130,7 +138,22 @@ class CassaController extends Controller
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
-        ]); 
+        ] + $this->ilGiornoDelSaldo($condominio));
+    }
+
+    /**
+     * Il campo «Saldo al» del modulo della cassa: il primo giorno dell'esercizio aperto (con due, il più recente: Coda 646, `HasEsercizio`); il minimo del
+     * calendario è il primo giorno del più vecchio degli aperti, che accetta ancora registrazioni: mai dentro un esercizio chiuso (il rifiuto vero è del
+     * server, `RegistraAperturaCassaAction`). Nulli se nessun esercizio è aperto.
+     *
+     * @return array{saldo_al_predefinito: ?string, saldo_al_minimo: ?string}
+     */
+    private function ilGiornoDelSaldo(Condominio $condominio): array
+    {
+        $primo = $condominio->esercizi()->where('stato', 'aperto')->orderBy('data_inizio')->first();
+        $giorno = $this->getEsercizioCorrente($condominio)?->data_inizio?->format('Y-m-d');
+
+        return ['saldo_al_predefinito' => $giorno, 'saldo_al_minimo' => $primo?->data_inizio?->format('Y-m-d')];
     }
 
     /**
@@ -193,7 +216,7 @@ class CassaController extends Controller
             'cassa'      => new UpdateCassaResource($cassa),
             // La delibera dello sblocco d'emergenza, se è collegata: «Scegli la delibera» la mostra scelta.
             'delibera'   => \App\Http\Controllers\Assemblee\DeliberaNelleSchede::perLaPagina($cassa, 'deroga'),
-        ]);
+        ] + $this->ilGiornoDelSaldo($condominio));
     }
 
     /**
@@ -274,9 +297,16 @@ class CassaController extends Controller
             return back()->with($this->flashError($motivo));
         }
 
+        // Coda 754 (1), decisione 696 (D3, «Elimina e storna»): la frase si legge prima, quando l'apertura è ancora valida.
+        $fraseDelloStorno = $cassa->fraseDelloStornoDellApertura(fatto: true);
+
         try {
             DB::transaction(function () use ($cassa, $condominio) {
-                
+
+                // Coda 754 (1): prima di tutto la sua apertura, stornata nel libro giornale. Senza, l'apertura restava sul conto archiviato e una
+                // cassa ricreata con il saldo giusto si sommava a quella sbagliata (€ 2.150,00 + € 2.100,00 di liquidità, «Liquidità e cassa» rosso).
+                $this->stornaLeAperture($cassa);
+
                 // Carichiamo il conto contabile associato per poterlo eliminare dopo
                 $contoContabile = $cassa->contoContabile;
 
@@ -304,7 +334,7 @@ class CassaController extends Controller
             });
 
             return to_route('admin.gestionale.casse.index', $condominio)->with(
-                $this->flashSuccess('Risorsa eliminata correttamente.')
+                $this->flashSuccess($fraseDelloStorno === null ? 'Risorsa eliminata correttamente.' : 'Risorsa eliminata. ' . $fraseDelloStorno)
             );
 
         } catch (\Throwable $e) {
@@ -317,6 +347,58 @@ class CassaController extends Controller
             return back()->with(
                 $this->flashError('Impossibile eliminare la risorsa: ' . $e->getMessage())
             );
+        }
+    }
+
+    /**
+     * Coda 754 (1), decisione 696 (D3): lo storno delle aperture della cassa che si elimina, dentro la transazione dell'eliminazione.
+     *
+     * Come lo storno di un incasso (`StornoIncassoRateAction`): una scrittura uguale e contraria, figlia dell'apertura (`scrittura_padre_id`), con la
+     * registrazione di oggi, e l'apertura «annullata»; tutte e due restano nel libro giornale. Due differenze, volute:
+     * - **la data di competenza è quella dell'apertura**, non oggi: l'apertura sbagliata non è mai stata liquidità vera, e così a ogni data il conto
+     *   archiviato e «Fondo Passate Gestioni» tornano a zero (la situazione patrimoniale di gennaio non vede € 2.150,00 su un conto senza cassa);
+     * - **il tipo è `apertura`**, non `rettifica`: le letture che tengono le aperture fuori dai flussi dell'esercizio (il riepilogo finanziario, il registro,
+     *   il risultato di gestione) tengono fuori anche lo storno, e quelle che le contano sempre (la tesoreria) contano anche lui. Le guardie «un'apertura
+     *   sola per cassa» lo saltano perché ha il padre (`Cassa::apertureValide`).
+     */
+    private function stornaLeAperture(Cassa $cassa): void
+    {
+        foreach ($cassa->apertureValide() as $trovata) {
+            // Riletta sotto blocco: due eliminazioni insieme non stornano la stessa apertura due volte.
+            $apertura = \App\Models\Gestionale\ScritturaContabile::with(['righe', 'esercizio'])->lockForUpdate()->find($trovata->id);
+            if (! $apertura || $apertura->stato === 'annullata') {
+                continue;
+            }
+            if ($apertura->esercizio?->stato === 'chiuso') {
+                throw new \RuntimeException('la sua apertura è nell\'esercizio «' . $apertura->esercizio->nome . '», che è chiuso.');
+            }
+
+            $storno = \App\Models\Gestionale\ScritturaContabile::create([
+                'condominio_id'      => $apertura->condominio_id,
+                'esercizio_id'       => $apertura->esercizio_id,
+                'gestione_id'        => $apertura->gestione_id,
+                'scrittura_padre_id' => $apertura->id,
+                'data_registrazione' => \App\Helpers\DateHelper::oggiUtente(),
+                'data_competenza'    => $apertura->data_competenza,
+                'causale'            => mb_substr('Storno del saldo di apertura — ' . $cassa->nome . ', risorsa eliminata', 0, 255),
+                'tipo_movimento'     => \App\Enums\TipoMovimentoContabile::APERTURA,
+                'stato'              => 'registrata',
+                'note'               => 'Annullamento prot. ' . $apertura->numero_protocollo,
+                'created_by'         => auth()->id(),
+            ]);
+
+            foreach ($apertura->righe as $riga) {
+                $storno->righe()->create([
+                    'conto_contabile_id' => $riga->conto_contabile_id,
+                    'cassa_id'           => $riga->cassa_id,
+                    'tipo_riga'          => $riga->tipo_riga === 'dare' ? 'avere' : 'dare',
+                    'importo'            => $riga->importo,
+                    'note'               => 'Storno del saldo di apertura',
+                ]);
+            }
+
+            \App\Services\Gestionale\DoubleEntryValidator::validateOrFail($storno->id);
+            $apertura->update(['stato' => 'annullata']);
         }
     }
 }

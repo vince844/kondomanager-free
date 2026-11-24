@@ -188,4 +188,10 @@ describe('la guida delle assemblee', () => {
             expect(t, frase).toContain(frase);
         }
     });
+
+    test('la tabella del punto che non comprende tutte le unità: senza il segno teste a zero millesimi, con il segno «di un gruppo» votano solo le sue unità (Coda 734)', async () => {
+        const t = await apri();
+        expect(t).toContain('senza il segno «di un gruppo» le unità fuori contano come teste a zero millesimi; con il segno sul punto votano solo i condòmini delle sue unità');
+        expect(t).toContain('nella finestra del punto con il pulsante sotto la riga arancio, senza lasciarla');
+    });
 });

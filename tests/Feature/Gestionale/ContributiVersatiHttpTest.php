@@ -355,6 +355,61 @@ test('SCENARIO A: un secondo salvataggio non riaccredita la cassa una seconda vo
     expect(DB::table('scritture_contabili')->where('tipo_movimento', 'accantonamento')->count())->toBe(1);
 })->group('contributi', 'http', 'liquidita');
 
+/**
+ * Coda 754 (9): senza il conto di sistema «Fondo Passate Gestioni» l'accantonamento non si scriveva, la risposta diceva «aggiornati» e le righe restavano
+ * «registrata in cassa», così la domanda «dove sono questi soldi?» non tornava più e la cassa restava a zero. Ora si ferma prima di salvare, con l'errore
+ * sulla cassa e la frase della regola 76.3; con il conto, la cassa sale come prima.
+ */
+test('SCENARIO A senza il conto «Fondo Passate Gestioni»: errore sulla cassa, niente salvato e niente scritto; con il conto la cassa sale di € 500,00', function () {
+    $sc = cvScenario(setupContabile());
+    $cassa = cvCreaCassa($sc->condominio->id);
+    $url = "/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}";
+    $payload = [
+        'natura' => 'fondo_vincolato',
+        'righe' => [['immobile_id' => $sc->unita[0]->immobile->id, 'gia_versato' => 50_000]],
+        'liquidita_stato' => 'registrata_in_cassa', 'cassa_id' => $cassa->id,
+    ];
+    $passate = DB::table('conti_contabili')->where('condominio_id', $sc->condominio->id)->where('ruolo', 'passate_gestioni')->first();
+    DB::table('conti_contabili')->where('id', $passate->id)->delete();
+
+    $this->actingAs($this->user)->put($url, $payload)->assertSessionHasErrors(['cassa_id' => 'Il già versato non è stato salvato: manca il conto di sistema '
+        .'«Fondo Passate Gestioni» (2301), che serve per accreditare i soldi sulla cassa. Va ripristinato da chi gestisce l\'installazione.']);
+
+    expect(ContributoVersato::count())->toBe(0)
+        ->and(DB::table('scritture_contabili')->count())->toBe(0)
+        ->and(app(SaldoCassaService::class)->saldoDisponibile($cassa->fresh()))->toBe(0);
+
+    // Ripristinato il conto, lo stesso salvataggio accredita la cassa: la domanda non era andata perduta.
+    DB::table('conti_contabili')->insert((array) $passate);
+    $this->actingAs($this->user)->put($url, $payload)->assertSessionHasNoErrors();
+    expect(app(SaldoCassaService::class)->saldoDisponibile($cassa->fresh()))->toBe(50_000)
+        ->and(ContributoVersato::value('liquidita_stato'))->toBe('registrata_in_cassa');
+})->group('contributi', 'http', 'liquidita');
+
+test('il comando in sola lettura trova il già versato «ancora in cassa» salvato senza l\'accredito, e non quello accreditato', function () {
+    $sc = cvScenario(setupContabile());
+    $cassa = cvCreaCassa($sc->condominio->id);
+    $url = "/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}";
+    // Una voce salvata come prima della correzione: la riga «registrata in cassa», e nessun accredito sulla cassa.
+    ContributoVersato::create(['condominio_id' => $sc->condominio->id, 'target_type' => Conto::class, 'target_id' => $sc->conto->id,
+        'immobile_id' => $sc->unita[0]->immobile->id, 'importo_cents' => 50_000, 'natura' => 'fondo_vincolato', 'origine' => 'migrazione',
+        'liquidita_stato' => 'registrata_in_cassa', 'cassa_id' => $cassa->id]);
+    $prima = [ContributoVersato::count(), DB::table('scritture_contabili')->count(), DB::table('righe_scritture')->count()];
+
+    expect(\Illuminate\Support\Facades\Artisan::call('kondomanager:verifica-gia-versato-in-cassa'))->toBe(0);
+    $uscita = \Illuminate\Support\Facades\Artisan::output();
+    expect($uscita)->toContain('Lavori ristrutturazione')->toContain('Banca Test')->toContain('500,00')->toContain('azzera le righe e salva');
+    expect([ContributoVersato::count(), DB::table('scritture_contabili')->count(), DB::table('righe_scritture')->count()])->toBe($prima);
+
+    // La stessa voce dichiarata di nuovo, con l'accredito: non compare più.
+    ContributoVersato::query()->delete();
+    $this->actingAs($this->user)->put($url, [
+        'natura' => 'fondo_vincolato', 'righe' => [['immobile_id' => $sc->unita[0]->immobile->id, 'gia_versato' => 50_000]],
+        'liquidita_stato' => 'registrata_in_cassa', 'cassa_id' => $cassa->id,
+    ])->assertSessionHasNoErrors();
+    $this->artisan('kondomanager:verifica-gia-versato-in-cassa')->expectsOutputToContain('Nessun già versato')->assertExitCode(0);
+})->group('contributi', 'liquidita');
+
 test('SCENARIO B: "già speso come acconto" non tocca la cassa ma apre un task di audit', function () {
     $sc = cvScenario(setupContabile());
 
@@ -379,12 +434,15 @@ test('SCENARIO B: "già speso come acconto" non tocca la cassa ma apre un task d
     $evento = Evento::where('tipo', EventoTipo::GIA_VERSATO_ACCONTO_DICHIARATO)->first();
     expect($evento)->not->toBeNull();
     expect($evento->description)->toContain('Rossi Costruzioni');
-    expect($evento->description)->toContain('fattura pregressa');
+    // Coda 754 (9): un'istruzione sola, quella della finestra e della guida. Una fattura pregressa è un debito da pagare: per un acconto già uscito
+    // ne creerebbe uno che non c'è.
+    expect($evento->description)->not->toContain('fattura pregressa')
+        ->and($evento->description)->toContain('L\'acconto di € 1.000,00 è già uscito verso il fornitore prima di KondoManager. Quando registri la fattura '
+            .'dell\'opera, controlla se il fornitore lo ha già scontato; se la fattura è per l\'intero costo, il programma vedrà da pagare anche l\'acconto: '
+            .'annotalo e paga solo il resto.');
     expect($evento->meta['context']['importo_cents'])->toBe(100_000);
 
-    // Il link porta a registrare la fattura pregressa (is_pregresso), non più
-    // alla stessa pagina del già-versato: riusa il meccanismo esistente per i
-    // debiti ereditati da altri gestionali invece di lasciare solo una nota.
+    // Il link porta alla registrazione della fattura, dove l'acconto va controllato quando la fattura dell'opera arriva.
     expect($evento->meta['action_url'])->toContain('/fatture/create');
 
     $cv = ContributoVersato::first();

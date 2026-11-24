@@ -222,10 +222,15 @@ final class ControlliDelConguaglio
     /**
      * CA: per ogni unità, le spese per singole unità ancora da chiedere, quelle di giorni senza un titolare e quelle chieste con rate non ancora emesse,
      * contro le anticipazioni aperte dell'unità sul giornale. Dove non tornano, una spesa personale non è né da chiedere né in un piano.
+     *
+     * Coda 681 (1.12.0-beta.14): un'unità di un piano dell'esercizio senza il dettaglio del riparto che non si ricostruisce
+     * (`personali_non_calcolabili`) non si confronta: la parte personale delle quote non si sa, e il controllo la dice non calcolabile, con il
+     * perché, invece di «torna» o «non torna». Se nessun'altra unità non torna, l'esito è «da leggere».
      */
     public static function personali(array $letto): array
     {
-        $per = $letto['personali_per_unita'] ?? [];
+        $nonCalcolabili = $letto['personali_non_calcolabili'] ?? [];
+        $per = array_diff_key($letto['personali_per_unita'] ?? [], $nonCalcolabili);
         $sinistra = 0;
         $destra = 0;
         $somme = ['non_chieste' => 0, 'senza_titolare' => 0, 'non_emesse' => 0];
@@ -248,6 +253,11 @@ final class ControlliDelConguaglio
             .($f['dette'] < $f['aperte'] ? ', mancano '.self::euro($f['aperte'] - $f['dette']) : ', in più '.self::euro($f['dette'] - $f['aperte'])), array_slice($fuori, 0, self::UNITA_NELLA_NOTA));
         $termini = 'non ancora chieste '.self::euro($somme['non_chieste']).' + chieste con rate non emesse '.self::euro($somme['non_emesse'])
             .($somme['senza_titolare'] !== 0 ? ' + senza un titolare '.self::euro($somme['senza_titolare']) : '');
+        $c = count($nonCalcolabili);
+        $nota = $n === 0
+            ? ($per === [] ? ($c === 0 ? 'Nessuna spesa per singole unità aperta.' : '')
+                : (count($per) === 1 ? 'Per l\'unità' : 'Per ognuna delle '.count($per).' unità').' con spese per singole unità: '.$termini.' = anticipazioni aperte '.self::euro($destra).'.')
+            : ($n === 1 ? 'Un\'unità non torna: ' : $n.' unità non tornano: ').implode('; ', $righe).($n > self::UNITA_NELLA_NOTA ? '; e altre '.($n - self::UNITA_NELLA_NOTA) : '').'.';
 
         return [
             'id' => 'CA',
@@ -256,14 +266,40 @@ final class ControlliDelConguaglio
             'sinistra' => $sinistra,
             'destra' => $destra,
             'segno' => $n === 0 ? '=' : '≠',
-            'esito' => $n === 0 ? 'quadra' : 'non_quadra',
-            'nota' => $n === 0
-                ? ($per === [] ? 'Nessuna spesa per singole unità aperta.' : 'Per ognuna delle '.count($per).' unità con spese per singole unità: '.$termini.' = anticipazioni aperte '.self::euro($destra).'.')
-                : ($n === 1 ? 'Un\'unità non torna: ' : $n.' unità non tornano: ').implode('; ', $righe).($n > self::UNITA_NELLA_NOTA ? '; e altre '.($n - self::UNITA_NELLA_NOTA) : '').'.',
-            'breve' => $n === 0 ? null : ($n === 1 ? '1 unità' : $n.' unità'),
+            'esito' => $n !== 0 ? 'non_quadra' : ($c === 0 ? 'quadra' : 'segnalazione'),
+            'nota' => trim($nota.' '.self::nonCalcolabili($nonCalcolabili)),
+            'breve' => $n !== 0 ? ($n === 1 ? '1 unità' : $n.' unità') : ($c === 0 ? null : ($c === 1 ? '1 unità non calcolabile' : $c.' unità non calcolabili')),
             'rimedio' => $n === 0 ? null : self::RIMEDIO_PERSONALI,
             'azione' => null,
         ];
+    }
+
+    /**
+     * Le unità che il controllo delle spese personali non confronta, una frase per ogni perché: «Int. 1: non calcolabile. Il piano «…» non ha il
+     * dettaglio del riparto e non si ricostruisce: la parte personale delle sue quote non si sa.» (Coda 681). Vuota se non ce ne sono.
+     *
+     * @param  array<int, list<string>>  $nonCalcolabili  unità => i perché
+     */
+    private static function nonCalcolabili(array $nonCalcolabili): string
+    {
+        if ($nonCalcolabili === []) {
+            return '';
+        }
+        $nomi = Immobile::whereIn('id', array_keys($nonCalcolabili))->get()->mapWithKeys(fn (Immobile $i) => [(int) $i->id => (string) $i->etichetta])->all();
+        $gruppi = [];
+        foreach ($nonCalcolabili as $iid => $perche) {
+            $gruppi[implode(' ', (array) $perche)][] = $nomi[(int) $iid] ?? 'Unità '.$iid;
+        }
+        $frasi = [];
+        foreach ($gruppi as $perche => $unita) {
+            $dette = array_slice($unita, 0, self::UNITA_NELLA_NOTA);
+            $elenco = count($unita) > count($dette)
+                ? implode(', ', $dette).' e altre '.(count($unita) - count($dette))
+                : (count($dette) === 1 ? $dette[0] : implode(', ', array_slice($dette, 0, -1)).' e '.end($dette));
+            $frasi[] = $elenco.(count($unita) === 1 ? ': non calcolabile. ' : ': non calcolabili. ').$perche;
+        }
+
+        return implode(' ', $frasi);
     }
 
     /**

@@ -10,6 +10,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * lo stesso avviso (art. 66 c. 5). **Il programma controlla le date mentre le scrivi** (`lib/assemblee/date.ts`, gli stessi casi del server, R11): la frase
  * sotto le due convocazioni è verde quando va bene, rossa quando no.
  *
+ * «Per chi» ha anche i condòmini di una tabella segnata «di un gruppo» (Coda 734, scena 7 della bozza approvata, {@see perimetriDellAssemblea}): scelto il
+ * gruppo, il riquadro azzurro dice chi riceve l'avviso e come conta la sala.
  * Il componente tiene solo il modulo (`v-model`): salvare lo fa la pagina, con la sua visita.
  */
 import { computed } from 'vue';
@@ -20,7 +22,7 @@ import SuggerimentoDellaI from '@/components/assemblee/convocazione/Suggerimento
 import CampoGiorno from '@/components/CampoGiorno.vue';
 import { FRASE_MANCA_LA_PRIMA, controllaLeDate, fraseDeiCinqueGiorni } from '@/lib/assemblee/date';
 import type { TerminiDellaPrima } from '@/types/assemblee';
-import { seduteDaControllare, type ModuloDelleDate, type ScelteDelleAssemblee, type SedutaDellaPagina } from '@/lib/assemblee/pagine';
+import { gruppoDelPerimetro, perimetriDellAssemblea, seduteDaControllare, type ModuloDelleDate, type ScelteDelleAssemblee, type SedutaDellaPagina } from '@/lib/assemblee/pagine';
 
 const props = withDefaults(defineProps<{
     modelValue: ModuloDelleDate;
@@ -35,7 +37,7 @@ const props = withDefaults(defineProps<{
 }>(), { disabilitato: false, perimetroBloccato: false, mostraMancanti: true, termini: null });
 const emit = defineEmits<{ (e: 'update:modelValue', v: ModuloDelleDate): void }>();
 
-interface Opzione { valore: string; nome: string }
+interface Opzione { valore: string; nome: string; sotto?: string }
 
 const cambia = <K extends keyof ModuloDelleDate>(chiave: K, valore: ModuloDelleDate[K]) => emit('update:modelValue', { ...props.modelValue, [chiave]: valore });
 const seduta = (convocazione: 'prima' | 'seconda', numero = 1) => props.modelValue.sedute.find((s) => s.convocazione === convocazione && s.numero === numero);
@@ -68,11 +70,8 @@ const cinqueGiorni = computed(() => fraseDeiCinqueGiorni(seduta('prima')?.giorno
 
 const tipi = computed<Opzione[]>(() => props.scelte.tipi);
 const modalita = computed<Opzione[]>(() => props.scelte.modalita);
-const perimetri = computed<Opzione[]>(() => [
-    { valore: 'condominio', nome: 'Tutto il condominio' },
-    ...props.scelte.palazzine.map((p) => ({ valore: `palazzina:${p.id}`, nome: `La palazzina ${p.nome}` })),
-    ...props.scelte.scale.map((s) => ({ valore: `scala:${s.id}`, nome: `La scala ${s.nome}` })),
-]);
+const perimetri = computed<Opzione[]>(() => perimetriDellAssemblea(props.scelte));
+const gruppo = computed(() => gruppoDelPerimetro(props.scelte, props.modelValue.perimetro));
 const inVideo = computed(() => props.modelValue.modalita !== 'presenza');
 
 const etichetta = 'mb-1 flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400';
@@ -89,11 +88,12 @@ const input = 'h-9 w-full rounded-md border border-input bg-transparent px-3 tex
             <div class="menu-campo">
                 <span :class="etichetta">Per chi
                     <SuggerimentoDellaI testid="i-per-chi-assemblea"
-                        testo="Un'assemblea di tutto il condominio, di una palazzina o di una scala: decide chi è convocato e la tabella del valore. Un punto della sola scala B si sceglie nel punto." />
+                        testo="Un'assemblea di tutto il condominio, di una palazzina, di una scala o dei soli condòmini di una tabella segnata «di un gruppo»: decide chi è convocato e la tabella del valore. Un punto della sola scala B si sceglie nel punto." />
                 </span>
                 <v-select :model-value="modelValue.perimetro" :options="perimetri" label="nome" :reduce="(o: Opzione) => o.valore" :clearable="false" :searchable="false"
-                    :disabled="disabilitato || perimetroBloccato" @update:model-value="(v: string) => cambia('perimetro', v)" />
+                    :disabled="disabilitato || perimetroBloccato" @update:model-value="(v: string) => cambia('perimetro', v)"><template #option="o"><span class="block">{{ o.nome }}</span><span v-if="o.sotto" class="block text-xs opacity-70">{{ o.sotto }}</span></template></v-select>
             </div>
+            <p v-if="gruppo" class="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 sm:col-span-2 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200" data-testid="assemblea-del-gruppo"><span class="font-medium">L'assemblea è dei soli condòmini {{ gruppo.unita === 1 ? 'dell\'unità' : `delle ${gruppo.unita} unità` }} della tabella «{{ gruppo.nome }}» (art. 1123 c. 3 c.c.).</span> L'avviso va a loro, e la sala conta teste e millesimi fra loro. Il gruppo e la tabella non si cambiano dopo la preparazione: decidono chi è convocato.</p>
             <div>
                 <span :class="etichetta">Prima convocazione</span>
                 <div class="grid grid-cols-[minmax(0,1fr)_96px] gap-2">

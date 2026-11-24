@@ -566,8 +566,12 @@ final class ModelloManualeParser
         $righe = 0;
         /** @var array<string, float> $quotePerUnita */
         $quotePerUnita = [];
+        /** @var array<string, true> $senzaQuotaPerUnita le unità con almeno una riga senza quota */
+        $senzaQuotaPerUnita = [];
         $senzaRuolo = 0;
         $diverse = [];
+        /** @var array<string, list<array{riga: int, campi: array<string, string>}>> $raccolta i campi di ogni riga di ogni persona */
+        $raccolta = [];
 
         for ($i = $intestazione + 1; $i < $foglio->numeroRighe(); $i++) {
             $riga = $foglio->riga($i);
@@ -626,22 +630,28 @@ final class ModelloManualeParser
                 continue;
             }
 
+            // Dalla 1.12.0-beta.14 (Coda 769) la riga porta tutti i campi dell'anagrafica; le colonne che il file non ha restano vuote (un modello vecchio
+            // di otto colonne dà gli stessi dati di prima). I valori si raccolgono per persona e si uniscono dopo il giro: la stessa persona su più righe
+            // può avere i contatti scritti solo su una.
+            $campi = $this->campiDellaPersona($riga, $mappa, $rigaUtente, $nome, $foglio, $rilievi);
+
             $soggetto = new CanonicalSoggetto(
                 nome: $nome,
                 codiceFiscale: strtoupper(trim((string) $this->cella($riga, $mappa, 'codice fiscale'))) ?: null,
                 indirizzo: trim((string) $this->cella($riga, $mappa, 'indirizzo')) ?: null,
-                email: trim((string) $this->cella($riga, $mappa, 'email')) ?: null,
-                telefoni: array_values(array_filter([trim((string) $this->cella($riga, $mappa, 'telefono'))])),
             );
 
             // La stessa persona su tre unità si scrive tre volte, ed è una sola: la riconosciamo
             // dal codice fiscale, o dal nome quando non ce l'ha.
             $soggetti[$soggetto->chiave()] ??= $soggetto;
+            $raccolta[$soggetto->chiave()][] = ['riga' => $rigaUtente, 'campi' => $campi];
 
             $quota = $this->numero($this->cella($riga, $mappa, 'quota pct'));
 
             if ($quota !== null) {
                 $quotePerUnita[$immobileRef] = ($quotePerUnita[$immobileRef] ?? 0) + $quota;
+            } else {
+                $senzaQuotaPerUnita[$immobileRef] = true;
             }
 
             $titolarita[] = new CanonicalTitolarita(
@@ -651,6 +661,10 @@ final class ModelloManualeParser
                 quota: $quota,
                 rigaSorgente: $rigaUtente,
             );
+        }
+
+        foreach ($raccolta as $chiave => $dellaPersona) {
+            $soggetti[$chiave] = $this->unisciLaPersona($soggetti[$chiave], $dellaPersona, $foglio, $rilievi);
         }
 
         $this->avvisaSigleDiverse($diverse, $foglio, $rilievi);
@@ -667,16 +681,22 @@ final class ModelloManualeParser
         }
 
         foreach ($quotePerUnita as $ref => $somma) {
-            // Le quote si controllano ma non si correggono: `LivelloTitolarita` scrive quello che
-            // il file dice, e una somma diversa da 100 può essere legittima (una nuda proprietà
-            // accanto a un usufrutto non fa 100 di proprietà piena).
+            // Le quote scritte si controllano ma non si correggono: `LivelloTitolarita` scrive quello
+            // che il file dice, e una somma diversa da 100 può essere legittima (una nuda proprietà
+            // accanto a un usufrutto non fa 100 di proprietà piena). Le righe **senza** quota, dalla
+            // 1.12.0-beta.14 (Coda 599), prendono il resto fino a 100 fra le persone dello stesso
+            // ruolo, o non entrano se il resto non c'è: il rimedio lo dice, invece di «come sono».
             if (abs($somma - 100) > 0.01) {
                 $rilievi[] = Rilievo::avviso(
                     'modello.quote_non_fanno_cento',
                     sprintf('Le quote dell\'unità «%s» sommano a %s invece che a 100.', $this->etichettaDi($ref), rtrim(rtrim(number_format($somma, 2, ',', '.'), '0'), ',')),
-                    'Le importo come sono: può essere corretto — per esempio un usufrutto accanto '
-                    .'a una nuda proprietà — ma se erano due comproprietari al 50% controlla la '
-                    .'colonna «quota_pct».',
+                    isset($senzaQuotaPerUnita[$ref])
+                        ? 'Le righe senza quota prendono il resto fino a 100, in parti uguali fra le persone dello stesso ruolo; se le quote '
+                            .'scritte di quel ruolo fanno già 100, le sue righe non entrano. Se le quote vere sono diverse, scrivile nella '
+                            .'colonna «quota_pct».'
+                        : 'Le importo come sono: può essere corretto — per esempio un usufrutto accanto '
+                            .'a una nuda proprietà — ma se erano due comproprietari al 50% controlla la '
+                            .'colonna «quota_pct».',
                     colonna: 'quota_pct',
                     foglio: $foglio->nome,
                 );
@@ -684,6 +704,200 @@ final class ModelloManualeParser
         }
 
         return [$soggetti, $titolarita, new EsitoVerifica($righe, $rilievi)];
+    }
+
+    /**
+     * I campi dell'anagrafica di una riga del foglio delle persone, già riconosciuti (Coda 769, 1.12.0-beta.14).
+     *
+     * Tutti facoltativi. Un valore scritto male **non ferma il file**: dà un avviso e quel campo resta vuoto, perché un dato falso in anagrafica
+     * (una PEC che non esiste, una data che sposta di due giorni la nascita) costa più di un campo da completare a mano.
+     *
+     * @param  list<Rilievo>  $rilievi  raccolti per riferimento
+     * @return array<string, string> campo => valore ('' se vuoto o scartato)
+     */
+    private function campiDellaPersona(array $riga, array $mappa, int $rigaUtente, string $nome, Foglio $foglio, array &$rilievi): array
+    {
+        $testo = fn (string $colonna) => trim((string) $this->cella($riga, $mappa, $colonna));
+
+        $campi = [
+            'telefono' => $testo('telefono'),
+            'cellulare' => $testo('cellulare'),
+            'luogo_nascita' => $testo('luogo nascita'),
+            'numero_documento' => $testo('numero documento'),
+            'note' => $testo('note'),
+        ];
+
+        // Le tre caselle di posta: una scritta male non entra, e lo dice.
+        foreach (['email' => 'email', 'email_secondaria' => 'email secondaria', 'pec' => 'pec'] as $campo => $colonna) {
+            $valore = $testo($colonna);
+
+            if ($valore !== '' && filter_var($valore, FILTER_VALIDATE_EMAIL) === false) {
+                $rilievi[] = Rilievo::avviso(
+                    'modello.recapito_non_valido',
+                    sprintf('«%s» non sembra un indirizzo di posta valido (colonna «%s», «%s»): non l\'ho importato.', $valore, str_replace(' ', '_', $colonna), $nome),
+                    'Correggilo nel file e ricarica, oppure scrivilo a mano sulla scheda della persona dopo l\'importazione.',
+                    riga: $rigaUtente,
+                    colonna: str_replace(' ', '_', $colonna),
+                    foglio: $foglio->nome,
+                );
+                $valore = '';
+            }
+
+            // La PEC si scrive in minuscolo (lo chiede anche la scheda della persona).
+            $campi[$campo] = $campo === 'pec' ? mb_strtolower($valore) : $valore;
+        }
+
+        if ($campi['email_secondaria'] !== '' && mb_strtolower($campi['email_secondaria']) === mb_strtolower($campi['email'])) {
+            $rilievi[] = Rilievo::avviso(
+                'modello.recapito_ripetuto',
+                sprintf('La seconda email di «%s» è uguale alla prima: l\'ho importata una volta sola.', $nome),
+                'Lascia vuota «email_secondaria» se non ne ha una seconda.',
+                riga: $rigaUtente,
+                colonna: 'email_secondaria',
+                foglio: $foglio->nome,
+            );
+            $campi['email_secondaria'] = '';
+        }
+
+        // Come si convoca: i quattro mezzi dell'art. 66 c. 3 disp. att.; vuoto, il programma lo propone dai dati.
+        $mezzo = HeaderDetector::normalizza($testo('mezzo convocazione'));
+        $mezzi = ['pec' => 'pec', 'raccomandata' => 'raccomandata', 'a mano' => 'a_mano', 'fax' => 'fax'];
+
+        if ($mezzo !== '' && ! isset($mezzi[$mezzo])) {
+            $rilievi[] = Rilievo::avviso(
+                'modello.mezzo_sconosciuto',
+                sprintf('Il mezzo di convocazione «%s» di «%s» non è fra quelli che riconosco: l\'ho lasciato vuoto.', $testo('mezzo convocazione'), $nome),
+                'Scrivi uno di questi: pec, raccomandata, a_mano, fax. Vuoto, il programma lo propone dai dati della persona.',
+                riga: $rigaUtente,
+                colonna: 'mezzo_convocazione',
+                foglio: $foglio->nome,
+            );
+        }
+        $campi['mezzo_convocazione'] = $mezzi[$mezzo] ?? '';
+
+        // Le tre date, come le altre date del modello (gg/mm/aaaa o la data di Excel). Nascita e PEC comunicata non possono essere nel futuro.
+        $oggi = \App\Helpers\DateHelper::oggiUtenteImmutable();
+        foreach (['pec_comunicata_il' => ['pec comunicata il', true], 'data_nascita' => ['data nascita', true], 'scadenza_documento' => ['scadenza documento', false]] as $campo => [$colonna, $nonFutura]) {
+            $cella = $this->cella($riga, $mappa, $colonna);
+            $campi[$campo] = '';
+
+            if (trim((string) $cella) === '') {
+                continue;
+            }
+
+            $data = $this->data($cella);
+
+            if ($data === null || ($nonFutura && $data->greaterThan($oggi))) {
+                $rilievi[] = Rilievo::avviso(
+                    'modello.data_non_valida',
+                    sprintf('La data «%s» di «%s» non è valida%s: l\'ho lasciata vuota.', trim((string) $cella), $nome, $data !== null ? ' (è nel futuro)' : ''),
+                    'Scrivila come gg/mm/aaaa, per esempio 15/03/1980.',
+                    riga: $rigaUtente,
+                    colonna: str_replace(' ', '_', $colonna),
+                    foglio: $foglio->nome,
+                );
+
+                continue;
+            }
+
+            $campi[$campo] = $data->toDateString();
+        }
+
+        // Il tipo di documento: nello schema sono due, passaporto e carta d'identità.
+        $tipo = HeaderDetector::normalizza($testo('tipologia documento'));
+        $tipi = ['passaporto' => 'passport', 'passport' => 'passport', 'carta identita' => 'id_card', 'carta d identita' => 'id_card', 'carta di identita' => 'id_card',
+            'id card' => 'id_card', 'idcard' => 'id_card', 'cie' => 'id_card'];
+
+        if ($tipo !== '' && ! isset($tipi[$tipo])) {
+            $rilievi[] = Rilievo::avviso(
+                'modello.documento_sconosciuto',
+                sprintf('Il tipo di documento «%s» di «%s» non è fra quelli che riconosco: l\'ho lasciato vuoto.', $testo('tipologia documento'), $nome),
+                'Scrivi «passaporto» oppure «carta d\'identità». Il numero del documento lo importo comunque.',
+                riga: $rigaUtente,
+                colonna: 'tipologia_documento',
+                foglio: $foglio->nome,
+            );
+        }
+        $campi['tipologia_documento'] = $tipi[$tipo] ?? '';
+
+        return $campi;
+    }
+
+    /**
+     * La persona scritta su più righe diventa una sola, con il primo valore non vuoto di ogni campo.
+     *
+     * Se su due righe lo stesso campo ha valori diversi, uno solo può entrare: un avviso per persona dice quale è entrato e quali no, con le righe, perché
+     * l'amministratore possa correggere il file o scegliere a mano (prima il primo valore vinceva senza dirlo, e un contatto scritto solo sulla seconda
+     * riga si perdeva).
+     *
+     * @param  list<array{riga: int, campi: array<string, string>}>  $dellaPersona
+     * @param  list<Rilievo>  $rilievi  raccolti per riferimento
+     */
+    private function unisciLaPersona(CanonicalSoggetto $base, array $dellaPersona, Foglio $foglio, array &$rilievi): CanonicalSoggetto
+    {
+        $parole = [
+            'email' => 'email', 'email_secondaria' => 'seconda email', 'pec' => 'PEC', 'telefono' => 'telefono', 'cellulare' => 'cellulare',
+            'pec_comunicata_il' => 'PEC comunicata il', 'mezzo_convocazione' => 'mezzo di convocazione', 'data_nascita' => 'data di nascita',
+            'luogo_nascita' => 'luogo di nascita', 'tipologia_documento' => 'tipo di documento', 'numero_documento' => 'numero del documento',
+            'scadenza_documento' => 'scadenza del documento', 'note' => 'note',
+        ];
+        $uniti = [];
+        $diversi = [];
+
+        foreach ($parole as $campo => $parola) {
+            $tenuto = null;
+            $scartati = [];
+
+            foreach ($dellaPersona as $r) {
+                $valore = $r['campi'][$campo] ?? '';
+
+                if ($valore === '') {
+                    continue;
+                }
+
+                if ($tenuto === null) {
+                    $tenuto = [$valore, $r['riga']];
+                } elseif (mb_strtolower($valore) !== mb_strtolower($tenuto[0])) {
+                    $scartati[mb_strtolower($valore)] ??= sprintf('«%s» (riga %d)', $valore, $r['riga']);
+                }
+            }
+
+            $uniti[$campo] = $tenuto[0] ?? '';
+
+            if ($scartati !== []) {
+                $diversi[] = sprintf('%s: ho tenuto «%s» (riga %d), non ho importato %s', $parola, $tenuto[0], $tenuto[1], implode(', ', $scartati));
+            }
+        }
+
+        if ($diversi !== []) {
+            $rilievi[] = Rilievo::avviso(
+                'modello.contatti_diversi',
+                sprintf('«%s» è scritta su più righe con dati diversi. %s.', $base->nome, implode('; ', $diversi)),
+                'Entra il primo valore non vuoto. Se è sbagliato, correggi il file e ricarica, oppure cambialo sulla scheda della persona dopo l\'importazione.',
+                $dellaPersona[0]['riga'],
+                null,
+                $foglio->nome,
+            );
+        }
+
+        return new CanonicalSoggetto(
+            nome: $base->nome,
+            codiceFiscale: $base->codiceFiscale,
+            indirizzo: $base->indirizzo,
+            email: $uniti['email'] ?: null,
+            pec: $uniti['pec'] ?: null,
+            telefoni: $uniti['telefono'] !== '' ? [$uniti['telefono']] : [],
+            note: $uniti['note'] ?: null,
+            emailSecondaria: $uniti['email_secondaria'] ?: null,
+            pecComunicataIl: $uniti['pec_comunicata_il'] ?: null,
+            mezzoConvocazione: $uniti['mezzo_convocazione'] ?: null,
+            cellulare: $uniti['cellulare'] ?: null,
+            dataNascita: $uniti['data_nascita'] ?: null,
+            luogoNascita: $uniti['luogo_nascita'] ?: null,
+            tipologiaDocumento: $uniti['tipologia_documento'] ?: null,
+            numeroDocumento: $uniti['numero_documento'] ?: null,
+            scadenzaDocumento: $uniti['scadenza_documento'] ?: null,
+        );
     }
 
     /**

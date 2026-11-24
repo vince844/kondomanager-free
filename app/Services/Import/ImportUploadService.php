@@ -10,6 +10,7 @@ use App\Models\ImportFile;
 use App\Services\Import\Parser\ModelloManualeParser;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -74,7 +75,24 @@ final class ImportUploadService
             return $gia;
         }
 
-        $percorso = $file->store('import/'.$batch->uuid, self::DISCO);
+        // Coda 596 (1.12.0-beta.14): il nome sul disco è casuale, l'estensione è quella **dichiarata**, in minuscolo. `store()` la
+        // indovinava dal contenuto, e un CSV con il punto e virgola diventava `.txt`, che il lettore poi rifiuta («Formato «txt» non
+        // gestito»). La validazione di `ImportController::store()` ha già ristretto il nome ai formati ammessi; un'estensione fuori da
+        // quelli (un chiamante che non passa dalla rotta) torna a quella indovinata, e il lettore la rifiuta come prima.
+        //
+        // ⚠️ **Il contenuto vince quando è un foglio Excel.** Con la sola estensione dichiarata un `.xls` rinominato (o salvato male)
+        // «elenco_unita.csv» finiva sul disco come `.csv`, il lettore lo apriva come testo e il riconoscimento lo dava «non
+        // importabile», senza una frase; prima della Coda 596 si salvava `.xls` e si riconosceva. La dichiarata serve per il testo.
+        $dichiarata = strtolower($file->getClientOriginalExtension());
+        $indovinata = strtolower((string) $file->extension());
+
+        $estensione = match (true) {
+            in_array($indovinata, ['xls', 'xlsx'], true) => $indovinata,
+            in_array($dichiarata, SpreadsheetReader::ESTENSIONI_AMMESSE, true) => $dichiarata,
+            default => $indovinata ?: 'bin',
+        };
+
+        $percorso = $file->storeAs('import/'.$batch->uuid, Str::random(40).'.'.$estensione, self::DISCO);
 
         if ($percorso === false) {
             throw new RuntimeException('Non riesco a salvare il file caricato.');

@@ -8,6 +8,7 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Http\Controllers\Gestionale\PianiConti\PianoContiPrintController;
 use App\Models\Gestionale\PianoRate;
 use App\Services\PDF\PdfService;
 use App\Services\PianoRateQuoteService;
@@ -253,46 +254,11 @@ class PianoRatePrintController extends Controller
     }
 
     /**
-     * Aggrega per immobile_id: 1 riga = 1 unità immobiliare.
+     * Una riga per unità immobiliare e, dentro l'unità, una per ogni soggetto con il suo ruolo (decisione 696, D4): la stessa forma
+     * della ripartizione spese, costruita nello stesso punto (`PianoContiPrintController::matricePerSoggetto`).
      */
     private function buildMatriceImmobile(PianoRate $pianoRate, array $colonneRate): array
     {
-        $matrice = [];
-
-        foreach ($pianoRate->rate as $rata) {
-            $quotePerImmobile = $rata->rateQuote->whereNotNull('immobile_id')->groupBy('immobile_id');
-
-            foreach ($quotePerImmobile as $immobileId => $quotes) {
-                $immobile   = $quotes->first()->immobile;
-                $anagrafica = $quotes->first()->anagrafica;
-                if (!$immobile) continue;
-
-                if (!isset($matrice[$immobileId])) {
-                    $codice  = $immobile->codice_immobile ?? '-';
-                    $interno = $immobile->interno ?: '-';
-                    $piano   = $immobile->piano   ?: '-';
-                    $proprietario = $anagrafica->nome ?? '—';
-
-                    // Identità primaria allineata alla vista a schermo ("Per immobile"):
-                    // guida il nome dell'unità (immobile.nome, fallback codice), con
-                    // interno/piano/codice come dettaglio e l'intestatario anagrafico
-                    // come riga secondaria (identifica il debitore, valenza legale).
-                    $matrice[$immobileId] = [
-                        'etichetta'       => $immobile->nome ?: $codice,
-                        'sub_etichetta'   => 'Int. ' . $interno . ' • Piano ' . $piano . ' · cod. ' . $codice,
-                        'intestatario'    => $proprietario,
-                        'importi_per_rata'=> [],
-                        'totale'          => 0,
-                    ];
-                }
-
-                $importoRata = $quotes->sum('importo');
-                $matrice[$immobileId]['importi_per_rata'][$rata->numero_rata] = $importoRata;
-                $matrice[$immobileId]['totale'] += $importoRata;
-            }
-        }
-
-        uasort($matrice, fn($a, $b) => strcmp($a['etichetta'], $b['etichetta']));
-        return array_values($matrice);
+        return PianoContiPrintController::matricePerSoggetto(collect([$pianoRate]), 'etichetta', conQuoteSenzaUnita: false);
     }
 }

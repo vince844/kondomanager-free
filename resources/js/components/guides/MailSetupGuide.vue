@@ -118,7 +118,7 @@ defineEmits(['update:open']);
                 <strong>Pulsante di prova:</strong> Prima di salvare la configurazione, digita il tuo indirizzo personale ed esegui il test per verificare la connessione immediata.
               </li>
               <li>
-                <strong>Se la prova fallisce:</strong> il motivo è scritto sotto la prova e, se la prova arriva all'invio, anche in «Audit & Logs di Sistema», scheda «Email Logs».
+                <strong>Se la prova fallisce:</strong> il motivo è scritto sotto la prova e, se la prova arriva all'invio, anche in «Registri», scheda «Email».
               </li>
               <li>
                 <!-- prova: resources/js/components/impostazioni/caselle/CasellaDellaPosta.vue:99 «const conModifica» -->

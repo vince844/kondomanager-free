@@ -303,7 +303,7 @@ it('la lettera della trasmissione, nei tre casi della carta: il destinatario, l\
         ->and($lettera['pagine'])->toBe(1)
         ->and(cdsNumeroPagine($pdf))->toBe(2)
         ->and($testo)->toContain('Bianchi Anna')->toContain('Oggetto: trasmissione del verbale n. 42')->toContain('assemblea ordinaria del 15/12/2026')
-        ->toContain('nella copia sottoscritta che segue')->toContain('Lo riceve come assente per i punti 1 e 2')->toContain('art. 1137 c. 2 c.c.')
+        ->toContain('nella copia sottoscritta che segue')->toContain('Lo riceve come assente ai punti 1 e 2')->toContain('art. 1137 c. 2 c.c.')
         ->toContain('Raccomandata')->toContain('L\'amministratore')
         ->and(cdsTesto($pdf, 2))->toContain('Verbale firmato da presidente e segretario');
     svdTestata($pdf, $this->dataName());

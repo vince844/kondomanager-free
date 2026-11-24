@@ -3,6 +3,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
+<!--
+  La pagina «Registri» delle impostazioni (fino alla 1.12.0-beta.13 «Audit & Logs»): la scheda «Email», il registro delle email inviate, e la scheda
+  «Errori» (1.12.0-beta.14, decisione 698; bozza approvata docs/design/beta14_pagine_errore_grafica_bozza.html, scene 7–9), con il dettaglio di un errore
+  nella sua finestra e «Guida» nel cassetto. La scheda si cambia senza ricaricare la pagina: una visita parziale che chiede solo le sue props.
+-->
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
@@ -17,7 +22,15 @@ import {
     Activity,
     RotateCcw,
     Calendar as CalendarIcon,
+    Bug,
+    Search as SearchIcon,
+    Send,
+    ShieldCheck,
 } from 'lucide-vue-next';
+import SchedaErrori from '@/components/impostazioni/errori/SchedaErrori.vue';
+import FinestraDellErrore from '@/components/impostazioni/errori/FinestraDellErrore.vue';
+import RegistriGuide from '@/components/guides/RegistriGuide.vue';
+import { etichettaNuovi, type DettaglioErrore, type FiltriErrori, type RigaErrore } from '@/lib/impostazioni/errori';
 import { Input } from '@/components/ui/input';
 import {
     Table,
@@ -59,10 +72,51 @@ const props = withDefaults(defineProps<{
         per_page?: number;
     };
     availableMailers?: string[];
+    scheda?: 'email' | 'errori';
+    erroriNuovi?: number;
+    errori?: { data: RigaErrore[]; total: number; current_page: number; last_page: number; links: Array<{ url: string | null; label: string; active: boolean }> };
+    erroriFiltri?: FiltriErrori;
+    dettaglio?: DettaglioErrore | null;
+    codiceNonTrovato?: string | null;
 }>(), {
     filters: () => ({ search: '', status: 'tutti', mailer: 'tutti', date_from: '', date_to: '', per_page: 10 }),
     availableMailers: () => [],
+    scheda: 'email',
+    erroriNuovi: 0,
+    errori: undefined,
+    erroriFiltri: () => ({ cerca: '', stato: 'tutti', dal: '', al: '', per_page: 10 }),
+    dettaglio: null,
+    codiceNonTrovato: null,
 });
+
+// La scheda aperta e la finestra del dettaglio di un errore. «Apri» chiede solo il dettaglio (e il numero dei nuovi, che aprendolo cala); l'indirizzo
+// tiene l'errore aperto, così un collegamento (il compito della Action inbox, l'email) porta dritto alla finestra.
+const mostraGuida = ref(false);
+const finestraAperta = ref(props.scheda === 'errori' && props.dettaglio !== null);
+const cartellinoNuovi = computed(() => etichettaNuovi(props.erroriNuovi ?? 0));
+
+function vaiAllaScheda(scheda: 'email' | 'errori') {
+    if (scheda === props.scheda) return;
+    router.get(route('logs.index'), scheda === 'errori' ? { scheda: 'errori' } : {}, {
+        only: scheda === 'errori' ? ['scheda', 'errori', 'erroriFiltri', 'codiceNonTrovato', 'erroriNuovi'] : ['scheda', 'mailLogs', 'filters', 'availableMailers'],
+        preserveScroll: true,
+        replace: true,
+    });
+}
+
+function apriErrore(id: number) {
+    router.get(route('logs.index'), { ...(props.erroriFiltri?.cerca ? { cerca: props.erroriFiltri.cerca } : {}), scheda: 'errori', errore: id }, {
+        only: ['dettaglio', 'erroriNuovi', 'errori'],
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => (finestraAperta.value = true),
+    });
+}
+
+function cambiaFinestra(aperta: boolean) {
+    finestraAperta.value = aperta;
+}
 
 // Stato filtri
 const search = ref(props.filters.search || '');
@@ -180,12 +234,34 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
         href: '/impostazioni',
     },
     {
-        title: 'Audit & Logs',
+        title: 'Registri',
         href: '/logs',
     },
 ]);
 
-const pageGuides = computed<GuideItem[]>(() => [
+// Le tre card in alto seguono la scheda (bozza, scena 7): con «Errori» il codice, gli avvisi e il rapporto.
+const guideDegliErrori: GuideItem[] = [
+    {
+        title: 'Il codice',
+        description: 'Sei caratteri, uguali sulla pagina d\'errore e qui: scrivilo nella ricerca e l\'errore si apre.',
+        icon: SearchIcon,
+        colorVariant: 'blue',
+    },
+    {
+        title: 'Gli avvisi',
+        description: 'Un condòmino o un collaboratore ti avvisa dalla pagina d\'errore: lo trovi qui e nella Action inbox.',
+        icon: Send,
+        colorVariant: 'amber',
+    },
+    {
+        title: 'Il rapporto',
+        description: 'Copialo o scaricalo per chi ti assiste. Senza password, senza i dati dei moduli e i valori delle query; i nomi scritti nei messaggi possono restare: rileggilo prima di mandarlo.',
+        icon: ShieldCheck,
+        colorVariant: 'emerald',
+    },
+];
+
+const pageGuides = computed<GuideItem[]>(() => props.scheda === 'errori' ? guideDegliErrori : [
     {
         title: 'Registro invii',
         description: 'Traccia tutte le email generate dal programma verso condòmini e collaboratori.',
@@ -218,39 +294,61 @@ const formatDate = (dateString: string) => {
 
 <template>
     <AppLayout :breadcrumbs="[]">
-        <Head title="Audit & Logs" />
+        <Head title="Registri" />
 
         <div class="px-4 py-6 space-y-6">
             <PageHeaderGuide
-                page-title="Audit & Logs"
-                page-subtitle="Il registro delle email inviate dal programma, con il motivo di quelle non partite."
+                page-title="Registri"
+                page-subtitle="Le email che il programma ha mandato, con il motivo di quelle non partite, e gli errori che ha incontrato, con il codice per ritrovarli."
                 :icon="Activity"
                 :guides="pageGuides"
                 :breadcrumbs="breadcrumbs"
                 back-url="/impostazioni"
                 :back-text="trans('impostazioni.label.settings')"
                 :video-url="null"
+                has-text-guide
+                @open-text-guide="mostraGuida = true"
             />
+            <RegistriGuide v-model:open="mostraGuida" />
 
             <!-- Scheda e barra filtri -->
             <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4 space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <nav class="inline-flex items-center space-x-2 shadow-sm ring-1 ring-black/5 md:rounded-lg p-1.5 bg-slate-50 dark:bg-card w-full sm:w-auto overflow-x-auto">
-                        <!-- Una sola scheda finché «Attività Sistema» non ha dati (Coda 465): è quella aperta. -->
+                    <!-- Le due schede: «Email» e «Errori» (1.12.0-beta.14). «Attività Sistema» non c'è finché non ha dati (Coda 465). -->
+                    <nav class="grid w-full grid-cols-2 gap-1.5 rounded-lg bg-slate-50 p-1.5 shadow-sm ring-1 ring-black/5 dark:bg-card sm:inline-flex sm:w-auto">
                         <Button
                             variant="ghost"
-                            class="justify-start gap-2 bg-white dark:bg-slate-900 shadow-sm"
+                            data-testid="scheda-email"
+                            class="justify-center gap-2 sm:justify-start"
+                            :class="props.scheda === 'email' ? 'bg-white shadow-sm dark:bg-slate-900' : 'text-slate-500'"
+                            @click="vaiAllaScheda('email')"
                         >
-                            <Mail class="h-4 w-4 text-primary" />
-                            Email Logs
-                            <Badge variant="secondary" class="ml-1 h-5 px-1.5 text-[10px] pointer-events-none tabular-nums">
-                                {{ props.mailLogs.total }}
+                            <Mail class="h-4 w-4" :class="props.scheda === 'email' ? 'text-primary' : ''" />
+                            Email
+                            <Badge variant="secondary" class="ml-1 h-5 px-1.5 text-xs pointer-events-none tabular-nums">
+                                {{ props.mailLogs?.total ?? 0 }}
                             </Badge>
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            data-testid="scheda-errori"
+                            class="justify-center gap-2 sm:justify-start"
+                            :class="props.scheda === 'errori' ? 'bg-white shadow-sm dark:bg-slate-900' : 'text-slate-500'"
+                            @click="vaiAllaScheda('errori')"
+                        >
+                            <Bug class="h-4 w-4" :class="props.scheda === 'errori' ? 'text-primary' : ''" />
+                            Errori
+                            <span v-if="cartellinoNuovi" data-testid="errori-nuovi"
+                                class="ml-1 inline-flex h-5 items-center rounded-md border border-rose-200 bg-rose-50 px-1.5 text-xs font-medium tabular-nums text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+                                {{ cartellinoNuovi }}
+                            </span>
                         </Button>
                     </nav>
 
+                    <span v-if="props.scheda === 'errori'" class="text-xs text-muted-foreground">Si tengono 90 giorni.</span>
+
                     <Button
-                        v-if="haFiltriAttivi"
+                        v-if="props.scheda === 'email' && haFiltriAttivi"
                         type="button"
                         variant="ghost"
                         size="sm"
@@ -262,7 +360,10 @@ const formatDate = (dateString: string) => {
                     </Button>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end pt-2 border-t border-slate-100 dark:border-slate-800">
+                <SchedaErrori v-if="props.scheda === 'errori' && props.errori" :errori="props.errori" :filtri="props.erroriFiltri"
+                    :codice-non-trovato="props.codiceNonTrovato ?? null" @apri="apriErrore" @mostra="finestraAperta = props.dettaglio !== null" />
+
+                <div v-if="props.scheda === 'email'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end pt-2 border-t border-slate-100 dark:border-slate-800">
                     <!-- Destinatario o oggetto -->
                     <div class="space-y-1">
                         <label class="text-xs font-medium text-muted-foreground">Destinatario o oggetto</label>
@@ -365,8 +466,10 @@ const formatDate = (dateString: string) => {
                 </div>
             </div>
 
+            <FinestraDellErrore :dettaglio="props.dettaglio ?? null" :open="finestraAperta" @update:open="cambiaFinestra" />
+
             <!-- Tabella log e paginazione -->
-            <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4 bg-white dark:bg-card">
+            <div v-if="props.scheda === 'email'" class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4 bg-white dark:bg-card">
                 <section class="w-full space-y-4">
                     <div class="rounded-md border">
                         <Table>
@@ -390,7 +493,7 @@ const formatDate = (dateString: string) => {
                                              title="Nessun server di posta configurato: il messaggio è stato solo registrato, non è partito."
                                              class="inline-flex flex-col items-center justify-center rounded-full text-blue-600">
                                             <FileText class="w-4 h-4" />
-                                            <span class="text-[10px] leading-tight">Non partita</span>
+                                            <span class="text-xs leading-tight">Non partita</span>
                                         </div>
                                         <div v-else class="inline-flex items-center justify-center w-8 h-8 rounded-full text-red-600">
                                             <AlertCircle class="w-4 h-4" />
@@ -408,7 +511,7 @@ const formatDate = (dateString: string) => {
                                         <div class="truncate" :title="log.subject">{{ log.subject }}</div>
                                     </TableCell>
                                     <TableCell class="hidden lg:table-cell">
-                                        <Badge variant="outline" class="font-mono text-[10px] uppercase">{{ log.mailer }}</Badge>
+                                        <Badge variant="outline" class="text-xs uppercase">{{ log.mailer }}</Badge>
                                     </TableCell>
                                     <TableCell class="text-right text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                                         {{ formatDate(log.sent_at) }}

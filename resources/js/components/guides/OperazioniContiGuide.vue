@@ -212,7 +212,7 @@ defineEmits(['update:open']);
             </p>
             <ul class="list-disc list-inside space-y-1 text-[13px] text-slate-600 dark:text-slate-400 pl-2">
               <li><strong>Distinta base:</strong> il riepilogo delle voci con i relativi preventivi. Rispetta l'ordinamento scelto a schermo, nome o codice. Se il piano ha voci di entrata, le mostra con il meno e riporta a parte le spese, le entrate e la somma da ripartire.</li>
-              <li><strong>Ripartizione spese:</strong> proietta come i preventivi verranno suddivisi per singola unità — il documento da portare in assemblea per la delibera.</li>
+              <li><strong>Ripartizione spese:</strong> proietta come i preventivi verranno suddivisi per singola unità, con una riga per ogni persona dell'unità e il totale dell'unità accanto — il documento da portare in assemblea per la delibera. Si stampa anche con il piano in bozza.</li>
             </ul>
           </section>
 

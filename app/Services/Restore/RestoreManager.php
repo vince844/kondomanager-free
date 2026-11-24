@@ -146,7 +146,7 @@ class RestoreManager
         }
 
         $budgetSeconds = max(5, (int) config('backup.step_time_budget', 20));
-        @set_time_limit($budgetSeconds + 30);
+        \App\Support\LimiteDiTempo::alza($budgetSeconds + 30);
         ignore_user_abort(true);
 
         try {

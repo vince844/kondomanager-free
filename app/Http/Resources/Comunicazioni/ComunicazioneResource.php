@@ -34,6 +34,14 @@ class ComunicazioneResource extends JsonResource
             'is_private'    => $this->is_private,
             'can_comment'   => $this->can_comment,
             'commenti_moderati' => (bool) $this->commenti_moderati,
+            'chiedi_presa_visione' => (bool) $this->chiedi_presa_visione,
+            'letture'       => $this->when(
+                isset($this->letture_aperte_count) && isset($this->letture_prese_visione_count),
+                fn () => [
+                    'aperte' => (int) $this->letture_aperte_count,
+                    'prese_visione' => (int) $this->letture_prese_visione_count,
+                ]
+            ),
             'data_programmata' => PubblicazioneProgrammata::perModulo($this->programmata_per),
             'pubblicata_il' => $this->pubblicata_il?->diffForHumans(),
             'created_at'    => $this->created_at->diffForHumans(),

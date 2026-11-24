@@ -21,6 +21,9 @@ use App\Services\Riparto\SpeseNegativeNelPiano;
  * Le usano il rifiuto della modifica e dell'eliminazione della voce, della voce nuova sotto un capitolo tenuto e delle tabelle della voce (`ContoController`,
  * `CreateContoRequest`, i controller delle tabelle), la scheda della voce (`ContoResource`) e le frasi della voce di spesa scritta con il meno
  * (`VoceDiSpesaNegativa`). La pagina del piano dei conti compone le stesse parole con i collegamenti ai piani (`ContiNew.vue`).
+ *
+ * Qui anche la frase dell'ultima voce di un piano (`ultimaVoceDelPiano`), che vale per ogni piano, in bozza o approvato: la dicono il cestino del piano
+ * e, dalla Coda 489, l'eliminazione della voce dal piano dei conti.
  */
 final class BloccoDellaVoce
 {
@@ -83,6 +86,25 @@ final class BloccoDellaVoce
     {
         return self::frase('Eliminazione inibita: la voce non si elimina finché ' . self::chi($tengonoLaVoce, 'la voce', false) . ' ' . self::nelPiano($tengonoLaVoce),
             $tengonoLaVoce, 'elimina la voce', 'la voce resta');
+    }
+
+    /**
+     * Il rifiuto di lasciare un piano rate senza voci (Coda 438, decisione 192): un piano senza voci, al ricalcolo, prende tutte le voci che nessun altro
+     * piano del suo esercizio ha già, senza impegnarle. Lo dicono il cestino del piano (`PianoRateController::detachCapitolo`, «Impossibile togliere la
+     * voce») e, dalla Coda 489 (decisione 685 (3)), l'eliminazione dal piano dei conti della voce che è l'ultima riga di un piano, anche in bozza
+     * (`ContoController::destroy`, «Eliminazione inibita»).
+     *
+     * @param  string  $impossibile  l'apertura della frase
+     * @param  string  $poi  che cosa fare dopo aver aggiunto l'altra voce: «e poi togli questa», «e poi togli questa dal piano ed eliminala»
+     */
+    public static function ultimaVoceDelPiano(string $voce, string $piano, bool $approvato, string $impossibile = 'Impossibile togliere la voce', string $poi = 'e poi togli questa'): string
+    {
+        return sprintf(
+            '%s: «%s» è l\'ultima voce del piano rate «%s». Un piano senza voci, al ricalcolo, prende tutte le voci della gestione '
+            . 'che nessun altro piano del suo esercizio ha già. Se deve chiedere un\'altra voce, aggiungila prima con «Sincronizza», se è libera, %s; '
+            . 'se il piano non serve più, %seliminalo dall\'elenco dei piani rate.',
+            $impossibile, $voce, $piano, $poi, $approvato ? 'riportalo in bozza dalla sua pagina ed ' : ''
+        );
     }
 
     /**

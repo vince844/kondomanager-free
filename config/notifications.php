@@ -158,6 +158,13 @@ return [
                 // Coda 683 (3): chi approva gli allegati delle segnalazioni o quelli delle comunicazioni (l'email parte solo per il tipo che approva).
                 'permission'  => [Permission::APPROVE_ATTACHMENTS_SEGNALAZIONI, Permission::APPROVE_ATTACHMENTS_COMUNICAZIONI],
             ],
+            // 1.12.0-beta.14 (decisione 701): l'email dell'avviso di un errore, a chi governa l'installazione e la scheda «Errori». Spenta di serie
+            // (`2026_11_22_200100_seed_preferenza_notifica_errore_avvisato`); senza il permesso la voce non si vede e l'email non parte.
+            NotificationType::ERROR_REPORTED->value => [
+                'label'       => 'Errore avvisato',
+                'description' => 'Ricevi un\'email quando un condòmino o un collaboratore ti avvisa di un errore dalla pagina d\'errore',
+                'permission'  => Permission::MANAGE_GENERAL_SETTINGS,
+            ],
         ],
     ],
 ];

@@ -98,6 +98,61 @@ const totali = computed(() => props.livelli.reduce(
   { totali: 0, valide: 0, da_decidere: 0, errori: 0 },
 ));
 
+// Il piede conta per nome i rilievi della tappa 5 (1.12.0-beta.14), perché ognuno ha la sua strada: i saldi che non entrerebbero (nessuna
+// persona che li porti, lo scarto con il totale del riparto, un'unità o un nome che i file non hanno) si scelgono con «Importa senza i
+// saldi»; le cose che esistono già si decidono nella schermata di conferma; un permesso che manca non si corregge nel file.
+const SALDI_CHE_NON_ENTRANO = ['saldi.senza_persone', 'saldi.non_quadrano', 'saldi.unita_sconosciuta', 'saldi.persona_sconosciuta'];
+const COSE_CHE_ESISTONO = ['condominio.duplicato', 'esercizi.duplicato', 'soggetto.duplicato'];
+const PERSONA_SENZA_PERMESSO = 'soggetto.senza_permesso';
+const CONDOMINIO_SENZA_PERMESSO = 'condominio.senza_permesso';
+
+const daDecidere = computed(() => props.livelli.flatMap((l) => l.da_decidere));
+const saldiDaDecidere = computed(() => daDecidere.value.filter((r) => SALDI_CHE_NON_ENTRANO.includes(r.codice)).length);
+const coseCheEsistono = computed(() => daDecidere.value.filter((r) => COSE_CHE_ESISTONO.includes(r.codice)).length);
+// La persona che c'è già, senza «Modifica anagrafiche»: un avviso finché non si decide, una decisione se sul lotto c'è già «Unisci».
+const personeSenzaPermesso = computed(
+  () => props.livelli.flatMap((l) => [...l.da_decidere, ...l.avvisi]).filter((r) => r.codice === PERSONA_SENZA_PERMESSO).length,
+);
+const altreDecisioni = computed(() => daDecidere.value.filter(
+  (r) => !SALDI_CHE_NON_ENTRANO.includes(r.codice) && !COSE_CHE_ESISTONO.includes(r.codice) && r.codice !== PERSONA_SENZA_PERMESSO,
+).length);
+
+/** Le frasi del piede quando non ci sono errori ma la conferma piena è chiusa: una per strada. */
+const frasiDaDecidere = computed(() => {
+  const frasi: string[] = [];
+  const cose = coseCheEsistono.value;
+  const persone = personeSenzaPermesso.value;
+  const altre = altreDecisioni.value;
+
+  if (cose > 0) {
+    frasi.push(cose === 1
+      ? '1 cosa esiste già in archivio: la decidi nella schermata di conferma.'
+      : `${cose} cose esistono già in archivio: le decidi nella schermata di conferma.`);
+  }
+  if (persone > 0) {
+    frasi.push(persone === 1
+      ? 'Per unire la persona che c\'è già in archivio serve il permesso «Modifica anagrafiche»: senza, nella schermata di conferma la lasci com\'è.'
+      : `Per unire le ${persone} persone che ci sono già in archivio serve il permesso «Modifica anagrafiche»: senza, nella schermata di conferma le lasci come sono.`);
+  }
+  if (saldiDaDecidere.value > 0) {
+    frasi.push('I saldi non entrerebbero: nella schermata di conferma scegli se correggere il file o importare il resto senza i saldi.');
+  }
+  if (altre > 0 || frasi.length === 0) {
+    const n = frasi.length === 0 ? totali.value.da_decidere : altre;
+    frasi.push(`Restano ${n} ${n === 1 ? 'decisione' : 'decisioni'} da prendere: le rispondi nella schermata di conferma, dove vedi anche cosa cambia.`);
+  }
+
+  // «Nessun errore» stona quando i saldi non entrerebbero: la conferma piena è chiusa, e la scelta è fra correggere il file e importare il
+  // resto senza i saldi.
+  return (saldiDaDecidere.value > 0 ? '' : 'Nessun errore. ') + frasi.join(' ');
+});
+
+// Il condominio che c'è già, senza «Modifica condomini»: non si corregge nel file, si chiede il permesso.
+const condominioSenzaPermesso = computed(
+  () => props.livelli.flatMap((l) => l.errori).find((r) => r.codice === CONDOMINIO_SENZA_PERMESSO) ?? null,
+);
+const altriErrori = computed(() => props.livelli.some((l) => l.errori.some((r) => r.codice !== CONDOMINIO_SENZA_PERMESSO)));
+
 const avvisiTotali = computed(() => props.livelli.reduce((n, l) => n + l.avvisi.length, 0));
 
 /**
@@ -444,14 +499,12 @@ function salvaDestinazione() {
       </div>
 
       <div class="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-        <span class="text-sm text-muted-foreground">
+        <span class="text-sm text-muted-foreground" data-piede>
           <template v-if="props.confermabile">
             Tutto pronto: {{ avvisiTotali }} {{ avvisiTotali === 1 ? 'avviso' : 'avvisi' }} da leggere, niente da sistemare.
           </template>
           <template v-else-if="props.senza_errori">
-            Nessun errore. Restano {{ totali.da_decidere }}
-            {{ totali.da_decidere === 1 ? 'decisione' : 'decisioni' }} da prendere: le rispondi
-            nella schermata di conferma, dove vedi anche cosa cambia.
+            {{ frasiDaDecidere }}
           </template>
           <template v-else-if="mancaSoloIlCondominio">
             <!--
@@ -461,8 +514,12 @@ function salvaDestinazione() {
             -->
             Manca solo il condominio di destinazione: sceglilo qui sopra.
           </template>
+          <template v-else-if="condominioSenzaPermesso && !altriErrori">
+            {{ condominioSenzaPermesso.messaggio }} Chiedilo a chi amministra lo studio, oppure chiedigli di fare lui l'importazione.
+          </template>
           <template v-else>
             Ci sono errori da correggere nel file: sistemali e ricarica.
+            <template v-if="condominioSenzaPermesso">{{ condominioSenzaPermesso.messaggio }}</template>
           </template>
         </span>
 

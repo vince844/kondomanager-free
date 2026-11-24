@@ -34,7 +34,8 @@ watch(() => props.open, (a) => { if (a) { chi.value = null; punti.value = 'tutti
 const persone = computed(() => props.trasmissione.persone.filter((p) => !p.riceve).map((p: DestinatarioDelVerbale) => ({ id: p.anagrafica_id,
     etichetta: `${p.nome} · ${p.perche} · ${righeDeiTrentaGiorni(p).join('; ') || 'favorevole, nessun termine'}` })));
 const opzioniDeiPunti = computed(() => [{ id: 'tutti' as const, etichetta: 'Tutti i punti' },
-    ...props.trasmissione.punti.map((p) => ({ id: p.numero, etichetta: `Il punto ${p.numero}` }))]);
+    // Il punto votato due volte (il rendiconto e il riparto) è una voce sola: «Il punto 1» vale per tutte e due le delibere.
+    ...[...new Set(props.trasmissione.punti.map((p) => p.numero))].map((numero) => ({ id: numero, etichetta: `Il punto ${numero}` }))]);
 
 function aggiungi() {
     if (chi.value === null || !perche.value.trim()) return;

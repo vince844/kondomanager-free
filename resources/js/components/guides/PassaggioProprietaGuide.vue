@@ -272,6 +272,7 @@ function vaiA(s: Scheda, p?: Parte) {
                 <li>Se il piano non si ricalcola più, le rate in bozza che scadono dal giorno dell'atto passano a chi compra, salvo i casi detti qui sotto, e il conguaglio sistema il resto; se si ricalcola ancora, va ricalcolato prima di emettere.</li>
                 <li>Chi compra risponde in solido per l'esercizio in corso e per quello precedente; chi vende resta obbligato anche per i contributi maturati dopo, finché il condominio non riceve copia autentica del titolo.</li>
                 <li>Con la riserva d'usufrutto chi vende resta usufruttuario, e il modulo chiede chi paga l'ordinaria dal giorno dell'atto.</li>
+                <li>Se escono più persone con lo stesso atto, in «Chi esce» le spunti tutte: un passaggio per ciascuna, tutti o nessuno (cassetto «Più persone che escono insieme»).</li>
               </ul>
             </div>
             <section>
@@ -291,6 +292,20 @@ function vaiA(s: Scheda, p?: Parte) {
             <div>
 
               <Accordion type="multiple" :unmount-on-hide="false" class="rounded-lg border border-slate-200 px-3 dark:border-slate-700">
+                <AccordionItem value="v-insieme" class="border-slate-200 last:border-b-0 dark:border-slate-700">
+                  <AccordionTrigger class="py-3 text-left text-[13px] font-semibold text-slate-800 dark:text-slate-200">Più persone che escono insieme</AccordionTrigger>
+                  <AccordionContent class="space-y-3 text-[13px] text-slate-700 dark:text-slate-300">
+                    <ul class="list-disc space-y-1.5 pl-5">
+                      <li><strong>Quando:</strong> nella vendita o donazione, anche con la riserva d'usufrutto, spunti in «Chi esce» tutte le persone che vendono o donano con lo stesso atto.</li>
+                      <li><strong>Che cosa scrive il programma:</strong> un passaggio per ciascuna persona, con la stessa data e lo stesso atto, tutti insieme o nessuno. Se uno non va, non si registra niente e il messaggio dice di chi è.</li>
+                      <li><strong>Lo stesso ruolo:</strong> tutte con la proprietà piena, o tutte con la nuda proprietà. Con ruoli diversi si registrano passaggi separati, uno per persona.</li>
+                      <li><strong>Chi entra:</strong> una persona sola, che riceve la somma delle quote. Se ognuna vende a una persona diversa, si registrano passaggi separati. Se una persona vende a più persone (per esempio due coniugi che comprano insieme), il programma non lo registra ancora: si fa a mano, come la vendita di una parte della quota.</li>
+                      <li><strong>Il pannello:</strong> una parte per ciascuna persona che esce, con le sue rate e il suo conguaglio, e le cifre sono quelle che si scrivono. Chi resta obbligato e le teste in assemblea si dicono una volta sola.</li>
+                      <li><strong>Annullare:</strong> i passaggi si annullano tutti insieme, l'ultimo registrato per primo, con un motivo solo. Se uno non si può annullare, non se ne annulla nessuno.</li>
+                      <li><strong>Il conguaglio:</strong> ciascuna persona ha il suo, e si annulla anche da solo, dallo storico.</li>
+                    </ul>
+                  </AccordionContent>
+                </AccordionItem>
                 <AccordionItem value="v6" class="border-slate-200 last:border-b-0 dark:border-slate-700">
                   <AccordionTrigger class="py-3 text-left text-[13px] font-semibold text-slate-800 dark:text-slate-200">Chi vende tiene un'altra parte dell'unità</AccordionTrigger>
                   <AccordionContent class="space-y-3 text-[13px] text-slate-700 dark:text-slate-300">
@@ -322,7 +337,7 @@ function vaiA(s: Scheda, p?: Parte) {
                 <ShieldCheck class="h-4 w-4 text-indigo-500" /> Chi resta obbligato
               </h3>
               <p class="mb-3">
-                Chi acquista risponde in solido con chi vende per i contributi dell'esercizio in corso e di quello precedente (art. 63 co. 4 disp. att. c.c.). Il programma <strong>non intesta nulla</strong> all'acquirente per questo, salvo i saldi intestati all'unità, che si addebitano quando si genera il piano: la nota resta nel pannello e nella situazione debitoria dell'unità. Chi paga in forza della solidarietà ha regresso verso il venditore per quanto ha pagato al condominio, salvo diverso accordo fra le parti (Cass. 11199/2021).
+                Chi acquista risponde in solido con chi vende per i contributi dell'esercizio in corso e di quello precedente (art. 63 co. 4 disp. att. c.c.). Il programma <strong>non intesta nulla</strong> all'acquirente per questo, e i saldi intestati all'unità restano a chi ne era titolare il primo giorno del loro esercizio, salvo una tua scelta diversa nel piano rate: la nota resta nel pannello e nella situazione debitoria dell'unità. Chi paga in forza della solidarietà ha regresso verso il venditore per quanto ha pagato al condominio, salvo diverso accordo fra le parti (Cass. 11199/2021).
               </p>
               <div class="flex items-start gap-3 rounded-lg p-4 border border-indigo-200 bg-white dark:border-indigo-900/60 dark:bg-slate-900">
                 <ShieldCheck class="mt-0.5 h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-400" />
@@ -423,7 +438,7 @@ function vaiA(s: Scheda, p?: Parte) {
                   <AccordionTrigger class="py-3 text-left text-[13px] font-semibold text-slate-800 dark:text-slate-200">Chi vende ha solo una quota</AccordionTrigger>
                   <AccordionContent class="space-y-3 text-[13px] text-slate-700 dark:text-slate-300">
                     <p>
-                      Se chi vende ha solo una quota e sull'unità resta un altro proprietario pieno, il programma divide l'unità secondo le quote registrate (guida «Ruoli e usufrutto»); i saldi pregressi intestati all'unità, per ora, no.
+                      Se chi vende ha solo una quota e sull'unità resta un altro proprietario pieno, il programma divide l'unità secondo le quote registrate (guida «Ruoli e usufrutto»). I saldi pregressi intestati all'unità si dividono fra chi ne era titolare il primo giorno del loro esercizio, con le quote di quel giorno.
                     </p>
                   </AccordionContent>
                 </AccordionItem>
@@ -1057,9 +1072,12 @@ function vaiA(s: Scheda, p?: Parte) {
               <p>
                 Con l'arretrato agli eredi la scelta non c'è: conguaglio e arretrato fanno un conto solo. Vale anche per il legato.
               </p>
+              <p>
+                <strong>I saldi intestati all'unità</strong> seguono la stessa scelta quando il piano rate li applica: con l'arretrato agli eredi vanno agli eredi, per le loro quote; con l'arretrato a nome del defunto restano al defunto. Al defunto solo se è morto dall'inizio dell'esercizio prima di quello del saldo: con una morte di prima, o con una successione registrata senza la scelta sull'arretrato, vanno agli eredi. Nella finestra del piano puoi sceglierne un altro.
+              </p>
               <!-- Decisione 483: la scelta sugli interessi del defunto dopo il decesso, con le parole della card. -->
               <p>
-                <strong>Gli interessi del defunto dopo il decesso.</strong> Sotto la scelta dell'arretrato, con tutte e due le strade: «si fermano al decesso» (di serie con l'arretrato agli eredi) o «continuano a suo nome» (di serie con l'arretrato a nome del defunto). Con «si fermano al decesso» la proposta degli interessi del defunto, sulle rate delle unità della successione, conta i giorni fino al giorno prima del decesso; con «continuano a suo nome» continua a contarli anche dopo. Lo storico del passaggio lo dice; per cambiarla si annulla il passaggio e si registra di nuovo.
+                <strong>Gli interessi del defunto dopo il decesso.</strong> Sotto la scelta dell'arretrato, con tutte e due le strade: «si fermano al decesso» (di serie con l'arretrato agli eredi) o «continuano a suo nome» (di serie con l'arretrato a nome del defunto). Con «si fermano al decesso» la proposta degli interessi del defunto, sulle rate delle unità della successione, conta i giorni fino al giorno prima del decesso: dopo il decesso nessuno conta interessi su questo debito (con l'arretrato a nome del defunto; con l'arretrato agli eredi li contano gli eredi); con «continuano a suo nome» continua a contarli anche dopo. Lo storico del passaggio lo dice; per cambiarla si annulla il passaggio e si registra di nuovo.
               </p>
               <!-- Decisione 494 (2): la card degli interessi degli eredi, con le otto scelte e il caso. -->
               <p data-testid="guida-interessi-eredi-successione">
@@ -1112,7 +1130,7 @@ function vaiA(s: Scheda, p?: Parte) {
                       Le quote che un piano ricalcolato dopo dà al defunto per i giorni prima del decesso l'arretrato non le comprende, e il riquadro «Da sapere» lo dice: con l'arretrato agli eredi si passano agli eredi con i saldi dal Wallet legati alla successione; con l'arretrato a nome del defunto restano a suo nome. Quando il piano si genera o si ricalcola, il programma lo ripete nel suo cancello: nomina il defunto con la cifra e la parte di ogni erede per quota, dice la strada (i saldi dal Wallet legati alla successione) e se il piano applica o no i saldi del Wallet, e chiede la spunta, e lo ripete a ogni ricalcolo.
                     </p>
                     <p>
-                      Se il piano applica i saldi del Wallet e i saldi, legati alla successione o di prima, sono la parte di ognuno, il cancello dice «i saldi ci sono già … non serve registrare altro»; con saldi non legati di altra cifra dice che il programma non sa se comprendono la parte. Se il piano non applica i saldi non legge quelli non legati: con saldi non legati dice che il programma non sa se comprendono la parte, e che se la comprendono basta creare di nuovo il piano, che li assorbe. I saldi legati alla successione li legge anche lì, e non li chiede di nuovo a chi li ha: il piano creato di nuovo li assorbe. Non li chiede di nuovo nemmeno se un altro piano della stessa gestione, non ancora emesso, li ha già assorbiti: dice in quale piano sono e le due strade, eliminare quel piano, così tornano liberi nel Wallet, o registrare quelli di questo piano dopo aver emesso quell'altro. Se la parte si regola fra le parti, i saldi legati alla successione ancora liberi nel Wallet si tolgono: il prossimo piano della stessa gestione che applica i saldi li assorbirebbe. Con due successioni dello stesso defunto sulla stessa unità (la proprietà e la nuda proprietà) la cifra si divide per ruolo; dove non si può dividere, decide l'amministratore. Con due defunti sulla stessa unità i saldi non legati di un erede sono gli stessi in ogni voce: se un erede senza saldo legato ha un saldo non legato che è già la sua parte per un defunto, per l'altro la voce chiede il saldo legato e lo dice; se non è la parte per nessuno e il programma non sa se la comprende, le voci dopo la prima dicono che sono gli stessi saldi, che comprendono le parti solo se le comprendono insieme (con la somma) e che per la parte che non comprendono serve il saldo legato. Se un defunto è anche erede di un altro defunto della stessa unità, e tutte e due le successioni passano l'arretrato agli eredi, il cancello lo dice nella voce di chi muore per primo e, se il piano calcola ancora qualcosa per l'erede, anche nella sua: la sua parte da erede della cifra dell'altro non passa ai suoi eredi, la divisione la decide l'amministratore e le righe del Wallet non chiudono la voce.
+                      Se il piano applica i saldi del Wallet e i saldi, legati alla successione o di prima, sono la parte di ognuno, il cancello dice «i saldi ci sono già … non serve registrare altro»; con saldi non legati di altra cifra dice che il programma non sa se comprendono la parte. Se il piano non applica i saldi non legge quelli non legati: con saldi non legati dice che il programma non sa se comprendono la parte, e che se la comprendono basta creare di nuovo il piano, che li assorbe. I saldi legati alla successione li legge anche lì, e non li chiede di nuovo a chi li ha: il piano creato di nuovo li assorbe. Non li chiede di nuovo nemmeno se un altro piano della stessa gestione, non ancora emesso, li ha già assorbiti: dice in quale piano sono e le due strade, eliminare quel piano, così tornano liberi nel Wallet, o registrare quelli di questo piano dopo aver emesso quell'altro. Se la parte si regola fra le parti, i saldi legati alla successione ancora liberi nel Wallet si tolgono: il prossimo piano della stessa gestione che applica i saldi li assorbirebbe. Con due successioni dello stesso defunto sulla stessa unità (la proprietà e la nuda proprietà) la cifra si divide per ruolo; dove non si può dividere, decide l'amministratore. Con due defunti sulla stessa unità i saldi non legati di un erede sono gli stessi in ogni voce: se un erede senza saldo legato ha un saldo non legato che è già la sua parte per un defunto, per l'altro la voce chiede il saldo legato e lo dice; se non è la parte per nessuno e il programma non sa se la comprende, le voci dopo la prima dicono che sono gli stessi saldi, che comprendono le parti solo se le comprendono insieme (con la somma) e che per la parte che non comprendono serve il saldo legato. Se un defunto è anche erede di un altro defunto, anche con la successione registrata su un'altra unità, e tutte e due le successioni passano l'arretrato agli eredi, il cancello lo dice nella voce di chi muore per primo e, se il piano calcola ancora qualcosa per l'erede, anche nella sua: la sua parte da erede della cifra dell'altro non passa ai suoi eredi, la divisione la decide l'amministratore e le righe del Wallet non chiudono la voce.
                     </p>
                   </AccordionContent>
                 </AccordionItem>
@@ -1242,6 +1260,7 @@ function vaiA(s: Scheda, p?: Parte) {
                       <li>una rata passata a chi era entrato è stata emessa; oppure sulla quota dell'unità in quella rata c'è un pagamento, anche solo sulla parte del saldo pregresso rimasta a chi era uscito; oppure chi era entrato o chi era uscito ha segnalato dal portale un pagamento di quella rata, non ancora verificato;</li>
                       <li>in un piano generato o ricalcolato dopo il passaggio, una quota che l'annullamento cambierebbe — di chi era entrato, di chi era uscito o di chi ha preso i giorni rimasti scoperti — è stata emessa o pagata, o ne è stato segnalato il pagamento dal portale e non è ancora verificato;</li>
                       <li>il conguaglio è già stato assorbito da un piano;</li>
+                      <li>nella successione, un erede ha già versato sul debito ereditato: si storna prima il suo incasso, dall'elenco degli incassi;</li>
                       <li>una riga di titolarità aperta, chiusa o cambiata dal passaggio è stata corretta a mano dopo;</li>
                       <li>una riga associata o modificata a mano dopo il passaggio si scontra con quella che tornerebbe: la stessa persona, nello stesso ruolo, due volte nello stesso periodo, oppure quote dello stesso ruolo oltre 100 nello stesso giorno. Il «perché?» dice come sistemarla.</li>
                     </ul>

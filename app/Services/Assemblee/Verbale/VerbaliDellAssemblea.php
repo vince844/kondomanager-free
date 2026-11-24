@@ -28,13 +28,17 @@ use Illuminate\Validation\ValidationException;
  */
 final class VerbaliDellAssemblea
 {
-    /** Il registro del perimetro dell'assemblea: `condominio`, `scala:<id>`, `palazzina:<id>` (decisione 598: la scala e la palazzina hanno il loro). */
+    /**
+     * Il registro del perimetro dell'assemblea: `condominio`, `scala:<id>`, `palazzina:<id>` (decisione 598: la scala e la palazzina hanno il loro),
+     * `gruppo:<id della tabella>` per i condòmini di un gruppo (decisione 699 (2): un registro suo, dal n. 1, come per la scala).
+     */
     public static function registroDi(Assemblea $assemblea): string
     {
         return match ($assemblea->ambito) {
             AmbitoAssemblea::SCALA => $assemblea->scala_id !== null ? 'scala:' . $assemblea->scala_id : 'condominio',
             AmbitoAssemblea::PALAZZINA => $assemblea->palazzina_id !== null ? 'palazzina:' . $assemblea->palazzina_id : 'condominio',
-            default => 'condominio',
+            AmbitoAssemblea::GRUPPO => $assemblea->tabella_id !== null ? 'gruppo:' . $assemblea->tabella_id : 'condominio',
+            AmbitoAssemblea::CONDOMINIO, null => 'condominio',
         };
     }
 

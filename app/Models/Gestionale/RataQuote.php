@@ -404,7 +404,10 @@ class RataQuote extends Model
      * Si ricostruisce solo un piano straordinario con una riga ad personam fra le sue fatture (`DettaglioRiparto::perPiano`, il motore in
      * sola lettura con le titolarità di oggi), e la ricostruzione si usa solo se, per ogni soggetto (persona e unità), la somma delle sue
      * righe è la somma della spesa delle quote di cui è il soggetto del riparto (`riassegnazione.righe_di`, o la persona della quota):
-     * l'invariante di `RigaRiparto`. Un motore che si ferma è una ricostruzione che non torna. La usano il rilevamento delle emissioni
+     * l'invariante di `RigaRiparto`. Le righe di titolarità aperte da un passaggio registrato dopo il piano non contano: la spesa ricostruita della
+     * loro unità si divide fra le righe che restano, per le loro quote, come quando il piano è nato (Coda 681, {@see righeSenzaChiEntraDopo()}); chi
+     * resta fuori conta per il soggetto delle quote che ha ricevuto, o per l'unico soggetto delle quote dell'unità. Un motore che si ferma è una
+     * ricostruzione che non torna. La usano il rilevamento delle emissioni
      * già scritte (`RiallineaCreditiService`), l'emissione e le guardie dello storno e delle note di credito ({@see rateEmesseConAdPersonam()}).
      *
      * @return list<array{anagrafica_id: int, immobile_id: int, riga_fattura_id: ?int, importo: int}>|null
@@ -424,24 +427,65 @@ class RataQuote extends Model
         if (($dettaglio['fonte']['tipo'] ?? null) !== \App\Services\Riparto\DettaglioRiparto::RICOSTRUITO) {
             return null;
         }
+        // Le quote per soggetto del riparto: chi ha avuto la quota, o, per una bozza passata con un passaggio registrato dopo, chi l'aveva quando il
+        // piano è nato (`riassegnazione.righe_di`). Per ogni unità i soggetti delle sue quote, e di chi ha ricevuto una bozza da chi.
+        $quote = [];
+        $soggettiDi = [];
+        $ricevuteDa = [];
+        foreach (self::whereIn('rata_id', $piano->rate()->pluck('id'))->get() as $q) {
+            $regole = is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo, true) : $q->regole_calcolo;
+            $soggetto = (int) ($regole['riassegnazione']['righe_di'] ?? $q->anagrafica_id);
+            $chiave = $soggetto . '|' . ($q->immobile_id ?? '');
+            $quote[$chiave] = ($quote[$chiave] ?? 0) + $q->componenti()['spesa'];
+            if ($q->immobile_id !== null) {
+                $soggettiDi[(int) $q->immobile_id][$soggetto] = true;
+                if ($soggetto !== (int) $q->anagrafica_id) {
+                    $ricevuteDa[(int) $q->immobile_id . '|' . (int) $q->anagrafica_id][$soggetto] = true;
+                }
+            }
+        }
+        // Coda 681 (1.12.0-beta.14): la ricostruzione usa le titolarità di oggi, il piano quelle del giorno in cui è nato. Le righe aperte da un
+        // passaggio registrato dopo il piano (chi compra, gli eredi, ognuno di una catena, l'erede che era già titolare e somma) non contano: la
+        // spesa ricostruita della loro unità torna alle righe che c'erano, anche chiuse, per le loro quote (`righeSenzaChiEntraDopo`). Chi resta
+        // fuori va a chi il piano l'ha chiesta, come le quote che ha ricevuto (`righe_di`), o, se non ne ha ricevute ed è entrato con un passaggio,
+        // all'unico soggetto delle quote dell'unità. Senza, un passaggio su una qualunque unità rendeva nulla la ricostruzione di tutto il piano.
+        // Resta sua, e il confronto decide come prima, la riga di chi non è entrato con un passaggio registrato (una riga di titolarità cambiata a
+        // mano).
+        $entrati = [];
+        $passaggi = $soggettiDi === [] ? collect() : Subentro::whereIn('immobile_id', array_keys($soggettiDi))->orderBy('id')
+            ->get(['id', 'immobile_id', 'anagrafica_entrante_id', 'tipo_passaggio', 'registro', 'created_at']);
+        foreach ($passaggi as $p) {
+            foreach (array_filter([(int) $p->anagrafica_entrante_id, ...array_map('intval', array_column($p->eredi(), 'anagrafica_id'))]) as $id) {
+                $entrati[(int) $p->immobile_id][$id] = true;
+            }
+        }
+        $righeDelMotore = self::righeSenzaChiEntraDopo($piano, $dettaglio['righe'], $passaggi);
+        $aChi = function (int $persona, ?int $unita) use ($soggettiDi, $ricevuteDa, $entrati): int {
+            if ($unita === null || isset($soggettiDi[$unita][$persona])) {
+                return $persona;
+            }
+            $da = array_keys($ricevuteDa[$unita . '|' . $persona] ?? []);
+            if (count($da) === 1) {
+                return (int) $da[0];
+            }
+            $soggetti = array_keys($soggettiDi[$unita] ?? []);
+
+            return $da === [] && count($soggetti) === 1 && isset($entrati[$unita][$persona]) ? (int) $soggetti[0] : $persona;
+        };
         $righe = [];
         $adPersonam = [];
-        foreach ($dettaglio['righe'] as $r) {
+        foreach ($righeDelMotore as $r) {
             if (($r['anagrafica_id'] ?? null) === null) {
                 continue;
             }
-            $chiave = (int) $r['anagrafica_id'] . '|' . ($r['immobile_id'] ?? '');
+            $unita = ($r['immobile_id'] ?? null) === null ? null : (int) $r['immobile_id'];
+            $persona = $aChi((int) $r['anagrafica_id'], $unita);
+            $chiave = $persona . '|' . ($unita ?? '');
             $righe[$chiave] = ($righe[$chiave] ?? 0) + (int) $r['importo'];
-            if (($r['tipo'] ?? null) === RigaRiparto::TIPO_AD_PERSONAM && ($r['immobile_id'] ?? null) !== null) {
-                $adPersonam[] = ['anagrafica_id' => (int) $r['anagrafica_id'], 'immobile_id' => (int) $r['immobile_id'],
+            if (($r['tipo'] ?? null) === RigaRiparto::TIPO_AD_PERSONAM && $unita !== null) {
+                $adPersonam[] = ['anagrafica_id' => $persona, 'immobile_id' => $unita,
                     'riga_fattura_id' => isset($r['riga_fattura_id']) ? (int) $r['riga_fattura_id'] : null, 'importo' => (int) $r['importo']];
             }
-        }
-        $quote = [];
-        foreach (self::whereIn('rata_id', $piano->rate()->pluck('id'))->get() as $q) {
-            $regole = is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo, true) : $q->regole_calcolo;
-            $chiave = (int) ($regole['riassegnazione']['righe_di'] ?? $q->anagrafica_id) . '|' . ($q->immobile_id ?? '');
-            $quote[$chiave] = ($quote[$chiave] ?? 0) + $q->componenti()['spesa'];
         }
         foreach (array_keys($righe + $quote) as $chiave) {
             if (($righe[$chiave] ?? 0) !== ($quote[$chiave] ?? 0)) {
@@ -450,6 +494,91 @@ class RataQuote extends Model
         }
 
         return $adPersonam;
+    }
+
+    /**
+     * Le righe della ricostruzione senza le righe di titolarità aperte da un passaggio registrato dopo il piano (Coda 681).
+     *
+     * Il motore in sola lettura divide ogni unità fra tutte le sue righe attive, anche quelle chiuse e quelle nate dopo: dopo la vendita della metà di
+     * Bice a Carla l'Interno 2 va per un terzo alla riga chiusa di Bice, a Dario e a Carla, mentre il piano l'ha chiesto per metà a Bice e per metà a
+     * Dario. Qui, per ogni unità con un passaggio registrato quando le quote del piano c'erano già (`PianoRate::quoteCeranoAl`), le righe che quel
+     * passaggio ha aperto (`registro.righe`, «aperta») non contano: la spesa di ogni riparto e di ogni addebito dell'unità che le toccava si divide fra
+     * le righe che restano, dello stesso ruolo, per le loro quote, con i resti maggiori. È la divisione del giorno in cui il piano è nato. Con un solo
+     * titolare la riga chiusa porta tutto; con l'erede che era già titolare e somma, conta la sua riga di prima e non quella nuova. Un riparto senza
+     * nessuna riga che resta (un ruolo che prima non c'era) e le altre righe del motore restano come sono: il confronto con le quote decide.
+     *
+     * @param list<array<string, mixed>> $righe le righe del dettaglio del riparto ricostruito
+     * @param \Illuminate\Support\Collection<int, Subentro> $passaggi i passaggi non annullati sulle unità delle quote del piano
+     * @return list<array<string, mixed>>
+     */
+    private static function righeSenzaChiEntraDopo(PianoRate $piano, array $righe, \Illuminate\Support\Collection $passaggi): array
+    {
+        $primaQuota = $passaggi->isEmpty() ? 0 : (int) \Illuminate\Support\Facades\DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
+            ->where('rate.piano_rate_id', $piano->id)->min('rate_quote.id');
+        $aperte = [];
+        foreach ($passaggi as $p) {
+            if ($primaQuota === 0 || ! $piano->quoteCeranoAl($p, $primaQuota)) {
+                continue;
+            }
+            foreach ((array) ($p->registro['righe'] ?? []) as $operazione) {
+                if (($operazione['operazione'] ?? null) === 'aperta' && isset($operazione['id'])) {
+                    $aperte[(int) $p->immobile_id][(int) $operazione['id']] = true;
+                }
+            }
+        }
+        if ($aperte === []) {
+            return $righe;
+        }
+        // Le righe attive delle unità toccate (quelle che il motore legge), nell'ordine del motore: per unità e ruolo, chi entra dopo e chi resta.
+        $restano = [];
+        $entrate = [];
+        foreach (\Illuminate\Support\Facades\DB::table('anagrafica_immobile')->whereIn('immobile_id', array_keys($aperte))->where('attivo', true)->orderBy('id')
+            ->get(['id', 'anagrafica_id', 'immobile_id', 'tipologia', 'quota']) as $t) {
+            if (isset($aperte[(int) $t->immobile_id][(int) $t->id])) {
+                $entrate[(int) $t->immobile_id][(string) $t->tipologia][(int) $t->anagrafica_id] = true;
+            } elseif ((float) $t->quota > 0.0) {
+                $restano[(int) $t->immobile_id][(string) $t->tipologia][(int) $t->anagrafica_id] =
+                    ($restano[(int) $t->immobile_id][(string) $t->tipologia][(int) $t->anagrafica_id] ?? 0.0) + (float) $t->quota;
+            }
+        }
+        // Un riparto per unità: il tipo, il conto, la tabella, il ruolo chiesto e la riga di fattura.
+        $gruppi = [];
+        foreach ($righe as $i => $r) {
+            $unita = ($r['immobile_id'] ?? null) === null ? null : (int) $r['immobile_id'];
+            if ($unita === null || ! isset($entrate[$unita]) || ($r['anagrafica_id'] ?? null) === null
+                || ! in_array($r['tipo'] ?? null, [RigaRiparto::TIPO_AD_PERSONAM, RigaRiparto::TIPO_RIPARTO], true)) {
+                continue;
+            }
+            $gruppi[implode('|', [$r['tipo'], $unita, $r['conto_id'] ?? '', $r['tabella_id'] ?? '', $r['ruolo_richiesto'] ?? '', $r['riga_fattura_id'] ?? ''])][] = $i;
+        }
+        $nuove = [];
+        foreach ($gruppi as $indici) {
+            $unita = (int) $righe[$indici[0]]['immobile_id'];
+            $ruoli = array_values(array_unique(array_map(fn (int $i) => (string) ($righe[$i]['ruolo_risolto'] ?? ''), $indici)));
+            $tocca = false;
+            foreach ($indici as $i) {
+                $tocca = $tocca || isset($entrate[$unita][(string) ($righe[$i]['ruolo_risolto'] ?? '')][(int) $righe[$i]['anagrafica_id']]);
+            }
+            $pesi = [];
+            foreach ($ruoli as $ruolo) {
+                foreach ($restano[$unita][$ruolo] ?? [] as $persona => $quota) {
+                    $pesi[$persona] = ($pesi[$persona] ?? 0.0) + $quota;
+                }
+            }
+            if (! $tocca || $pesi === []) {
+                continue;
+            }
+            $totale = array_sum(array_map(fn (int $i) => (int) $righe[$i]['importo'], $indici));
+            $modello = $righe[$indici[0]];
+            foreach ($indici as $i) {
+                unset($righe[$i]);
+            }
+            foreach (MoneyHelper::ripartisciPerQuote($totale, $pesi) as $persona => $importo) {
+                $nuove[] = array_merge($modello, ['anagrafica_id' => (int) $persona, 'importo' => (int) $importo, 'quota_possesso' => $pesi[$persona]]);
+            }
+        }
+
+        return [...array_values($righe), ...$nuove];
     }
 
     /**

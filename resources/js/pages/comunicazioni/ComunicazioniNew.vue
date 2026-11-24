@@ -104,6 +104,7 @@ const form = useForm({
     cosa_da_fare_id: props.precompilata?.cosa_da_fare_id ?? null,
     can_comment: false as boolean,
     commenti_moderati: (props.commenti_moderati_di_serie ?? true) as boolean,
+    chiedi_presa_visione: false as boolean,
     is_featured: false as boolean,
     is_published: !props.precompilata?.cosa_da_fare_id,
     data_programmata: null as string | null,
@@ -488,6 +489,33 @@ const submit = () => {
                                     <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                                         <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.commenti_moderati') }}</h4>
                                         <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.commenti_moderati') }}</p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                        </div>
+
+                        <div class="sm:col-span-3">
+                            <div class="flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">
+                                <div class="flex items-center space-x-3">
+                                    <Checkbox 
+                                        id="chiedi_presa_visione" 
+                                        :checked="form.chiedi_presa_visione"
+                                        v-model="form.chiedi_presa_visione" 
+                                        @update:checked="(val: boolean) => form.chiedi_presa_visione = val" 
+                                    />
+                                    <Label for="chiedi_presa_visione" class="cursor-pointer font-medium text-sm text-slate-700 dark:text-slate-300">
+                                        {{ trans('comunicazioni.label.ask_acknowledgement') }}
+                                    </Label>
+                                </div>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">{{ trans('comunicazioni.label.ask_acknowledgement') }}</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">{{ trans('comunicazioni.tooltip.ask_acknowledgement') }}</p>
                                     </HoverCardContent>
                                 </HoverCard>
                             </div>

@@ -12,6 +12,7 @@ use App\Http\Controllers\Assemblee\RaccoltaController;
 use App\Http\Controllers\Assemblee\RatificaController;
 use App\Http\Controllers\Assemblee\RiunioneAManoController;
 use App\Http\Controllers\Assemblee\TabellaDiProprietaController;
+use App\Http\Controllers\Assemblee\TabellaDiUnGruppoController;
 use App\Http\Controllers\Assemblee\TenutaFuoriController;
 use App\Http\Middleware\EnsureCondominioHasEsercizio;
 use App\Http\Middleware\EnsureCondominioHasPianoConti;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Caricato da `routes/admin.php` dentro il suo gruppo: prefisso `admin/`, nomi `admin.`, l'accesso al pannello. Il gruppo è quello del gestionale
 | (`routes/gestionale.php`): gli stessi middleware e `scopeBindings()`, così una rotta annidata nasce protetta (`ScopingDelleRotteAnnidateTest`). I
-| permessi si controllano nei controller (`AccessoAlleAssemblee`), come il registro. I nomi: admin.gestionale.assemblee.*, admin.gestionale.delibere.*, admin.gestionale.memo.*, admin.gestionale.tabella-di-proprieta, admin.gestionale.fatture.ratifica.
+| permessi si controllano nei controller (`AccessoAlleAssemblee`), come il registro. I nomi: admin.gestionale.assemblee.*, admin.gestionale.delibere.*, admin.gestionale.memo.*, admin.gestionale.tabella-di-proprieta, admin.gestionale.tabella-di-un-gruppo, admin.gestionale.fatture.ratifica.
 */
 
 Route::prefix('/gestionale/{condominio}')
@@ -87,6 +88,8 @@ Route::prefix('/gestionale/{condominio}')
 
         // La tabella di proprietà generale del condominio, di una palazzina, di una scala (P12).
         Route::post('/tabella-di-proprieta', TabellaDiProprietaController::class)->name('tabella-di-proprieta');
+        // Il segno della tabella di un gruppo (Coda 734): sui suoi punti votano solo i condòmini delle sue unità.
+        Route::post('/tabella-di-un-gruppo', TabellaDiUnGruppoController::class)->name('tabella-di-un-gruppo');
 
         // La ratifica dello sforo con la delibera (R12, decisione 561): il pagamento per l'urgenza resta `fatture.approva-sforo`.
         Route::post('/fatture/{fattura}/ratifica', RatificaController::class)->whereNumber('fattura')->name('fatture.ratifica');

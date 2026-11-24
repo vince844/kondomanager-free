@@ -77,17 +77,15 @@ export const columns: ColumnDef<User>[] = [
     accessorKey: 'name',
     header: ({ column }) =>
       h(DataTableColumnHeader, { column, title: trans('users.table.name') }),
-    cell: ({ row, table }) => {
+    cell: ({ row }) => {
       const user = row.original
 
       const toggleVerification = () => {
         router.put(route('utenti.toggle-verification', { user: user.id }), {}, {
           preserveScroll: true,
-          only: ['users', 'flash'],
-          onSuccess: () => {
-            user.email_verified_at = user.email_verified_at ? null : new Date().toISOString()
-            table.options.meta?.updateData(row.index, user)
-          },
+          // Coda 416: la riga e le tre card (`stats`) arrivano dal server; niente ribaltamento in locale, che lasciava
+          // le card con i numeri di prima.
+          only: ['users', 'stats', 'flash'],
         })
       }
 

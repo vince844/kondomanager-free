@@ -60,8 +60,7 @@ const GDR_ECCEZIONI = [
     'app/Http/Controllers/Gestionale/PianiConti/Conti/ContoController.php::destroy' => [1, 'dentro l\'eliminazione della voce: la sua riga «eliminata» (il tratto)'],
     'app/Services/CondominioService.php::createDefaultGestione' => [1, 'la gestione di base nasce con il condominio (la sua riga «creata»)'],
     // Il programma, da solo (decisione 547 (2), P8, P23).
-    'app/Listeners/Gestionale/SyncF24WithPagamento.php::handle' => [1, 'il programma crea il promemoria del versamento (decisione 547 (2))'],
-    'app/Listeners/Gestionale/SyncF24WithPagamento.php::handleAggiornato' => [1, 'il programma aggiorna il promemoria del versamento (decisione 547 (2))'],
+    'app/Services/Gestionale/F24/PromemoriaDelleRitenute.php::scrivi' => [1, 'il programma tiene i promemoria delle ritenute, uno per delega e il «Prepara le deleghe F24» (decisioni 547 (2) e 675, Coda 718)'],
     'app/Listeners/Gestionale/SyncScadenziarioWithFattura.php::handle' => [5, 'il programma crea i compiti della fattura (decisione 547 (2))'],
     'app/Services/Gestionale/EventiRataCondomino.php::crea' => [2, 'il programma crea gli eventi delle rate dei condòmini (decisione 547 (2))'],
     'app/Services/Gestionale/InboxService.php::createTask' => [1, 'il programma crea i compiti (decisione 547 (2))'],
@@ -71,6 +70,7 @@ const GDR_ECCEZIONI = [
     'app/Services/Assemblee/Sala/FoglioDellaSala.php::stampato' => [1, 'il programma scrive l\'ora dell\'ultima stampa del foglio della sala: una colonna del programma, che da sola non fa una riga (P8)'],
     'app/Services/Gestionale/Inbox/CompitoDaModerare.php::aggiorna' => [1, 'il programma aggiorna il compito di moderazione (decisione 547 (2))'],
     'app/Services/Gestionale/Inbox/CompitoDellaSegnalazione.php::sincronizza' => [1, 'il programma tiene il compito della segnalazione (decisione 547 (2))'],
+    'app/Services/Gestionale/Inbox/CompitoDellErrore.php::avvisato' => [1, 'il programma aggiunge il condominio di chi avvisa di nuovo al compito dell\'errore avvisato (decisione 547 (2))'],
     'app/Http/Controllers/Eventi/Utenti/PaymentReportingController.php::__invoke' => [1, 'il compito nasce dal programma alla segnalazione del condòmino (decisione 547 (2))'],
     'app/Http/Controllers/Eventi/Utenti/EventoController.php::store' => [1, 'decisione di Vincenzo del 19/11: l\'agenda personale del condòmino non entra nel registro (decisione 555)'],
     'app/Http/Controllers/Eventi/Utenti/EventoController.php::destroy' => [1, 'decisione di Vincenzo del 19/11: l\'agenda personale del condòmino non entra nel registro (decisione 555)'],

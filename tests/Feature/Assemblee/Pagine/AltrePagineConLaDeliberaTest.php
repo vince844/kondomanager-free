@@ -42,7 +42,8 @@ beforeEach(function () {
 function apdUtente(): User
 {
     $u = be52Utente();
-    foreach ([Permesso::VIEW_ASSEMBLEE, Permesso::MANAGE_ASSEMBLEE] as $p) {
+    // «Modifica condomini»: la regola del recupero si scrive solo con quel permesso (Coda 755 (2)).
+    foreach ([Permesso::VIEW_ASSEMBLEE, Permesso::MANAGE_ASSEMBLEE, Permesso::EDIT_CONDOMINI] as $p) {
         Permission::firstOrCreate(['name' => $p->value, 'guard_name' => 'web']);
         $u->givePermissionTo($p->value);
     }

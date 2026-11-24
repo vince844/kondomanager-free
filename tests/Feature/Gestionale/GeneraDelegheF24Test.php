@@ -157,6 +157,38 @@ test('rigenerare sostituisce le bozze invece di duplicarle', function () {
         ->and(DB::table('righe_f24')->count())->toEqual(1);
 });
 
+test('Coda 212 — una bozza senza righe non ferma la cancellazione delle altre: «Aggiorna scadenze» non lascia nessuna bozza vecchia', function () {
+    $ctx = ctxF24();
+    [$condominio, $esercizio] = $ctx;
+
+    // La bozza senza righe, scritta qui: oggi nessun punto del programma la produce (la delega nasce con le sue righe nella stessa
+    // transazione), ma `each()` si fermava al primo «falso» e la cancellazione delle righe di una bozza vuota rende 0.
+    $vuota = DelegaF24::create([
+        'uuid' => (string) \Illuminate\Support\Str::uuid(),
+        'condominio_id' => $condominio->id,
+        'esercizio_id' => $esercizio->id,
+        'stato' => StatoDelegaF24::BOZZA,
+        'plafond' => PlafondRitenuta::SOGLIA_500_TRE_FINESTRE,
+        'data_scadenza' => '2026-06-16',
+        'cf_contribuente' => $condominio->codice_fiscale,
+        'denominazione_contribuente' => $condominio->nome,
+        'totale_debito' => 0,
+        'saldo' => 0,
+        'motivo_codice' => 'termine_di_legge',
+    ]);
+
+    pagaConRitenuta($ctx, '2026-03-10', 20_000);
+    $prima = azioneDeleghe()->esegui($condominio, $esercizio->id)->sole();
+
+    // Il secondo ricalcolo deve togliere la vuota e la bozza del primo, e rifare una bozza sola.
+    $seconda = azioneDeleghe()->esegui($condominio, $esercizio->id)->sole();
+
+    expect(DelegaF24::whereKey($vuota->id)->exists())->toBeFalse()
+        ->and(DelegaF24::whereKey($prima->id)->exists())->toBeFalse()
+        ->and(DelegaF24::where('condominio_id', $condominio->id)->pluck('id')->all())->toBe([$seconda->id])
+        ->and(DB::table('righe_f24')->count())->toBe(1);
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // Cosa non deve entrarci
 // ════════════════════════════════════════════════════════════════════════════

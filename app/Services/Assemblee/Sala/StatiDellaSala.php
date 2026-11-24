@@ -393,9 +393,7 @@ final class StatiDellaSala
                 . ConvocatiDellAssemblea::elenco($numeri) . '): segnali «Rinviata», o votali prima di chiudere.']);
         }
         $giorno = $seduta->fissata_il->format('Y-m-d');
-        $votate = Delibera::query()->where('assemblea_id', $a->id)->count();
-        $frase = 'chiusa alle ' . $g->ora() . ': ' . ($votate === 1 ? '1 delibera' : $votate . ' delibere')
-            . ($senza->isNotEmpty() ? ', ' . ($senza->count() === 1 ? '1 punto rinviato' : $senza->count() . ' punti rinviati') : '');
+        $frase = 'chiusa alle ' . $g->ora() . ': ' . self::riepilogoDelleDelibere((int) $a->id, $senza->count());
 
         RegistroModifiche::durante(GestiDelRegistro::dellaSala($a, $frase, $g->segnatoIl, $g->dalFoglio($seduta)), function () use ($a, $seduta, $senza, $giorno, $g) {
             foreach ($senza as $punto) {
@@ -409,6 +407,33 @@ final class StatiDellaSala
         app(\App\Services\Assemblee\Verbale\VersioniDelVerbale::class)->allaChiusuraDellaSala($seduta->refresh(), $g->utente, $g->segnatoIl);
 
         return ['versione' => null, 'messaggio' => null];
+    }
+
+    /**
+     * Che cosa è uscito dalla sala, detto in una frase sola per la riga della strada e per quella del registro: le delibere votate (approvate, con modifiche,
+     * respinte), i punti trattati senza voto e i punti rinviati («2 delibere, 2 senza voto, 4 punti rinviati»). `$ancoraDaRinviare` sono i punti senza esito
+     * che la chiusura sta per segnare «Rinviata» e che non hanno ancora la loro delibera. Una cosa che non c'è non si scrive; senza niente, «nessuna delibera».
+     */
+    public static function riepilogoDelleDelibere(int $assembleaId, int $ancoraDaRinviare = 0): string
+    {
+        $esiti = Delibera::query()->where('assemblea_id', $assembleaId)->pluck('esito')
+            ->map(fn ($e) => $e instanceof EsitoDelibera ? $e->value : (string) $e);
+        $rinviatiGia = $esiti->filter(fn ($e) => $e === EsitoDelibera::RINVIATA->value)->count();
+        $senzaVoto = $esiti->filter(fn ($e) => $e === EsitoDelibera::SENZA_VOTO->value)->count();
+        $votate = $esiti->count() - $senzaVoto - $rinviatiGia;
+        $rinviati = $rinviatiGia + $ancoraDaRinviare;
+        $pezzi = [];
+        if ($votate > 0) {
+            $pezzi[] = $votate === 1 ? '1 delibera' : $votate . ' delibere';
+        }
+        if ($senzaVoto > 0) {
+            $pezzi[] = $senzaVoto . ' senza voto';
+        }
+        if ($rinviati > 0) {
+            $pezzi[] = $rinviati === 1 ? '1 punto rinviato' : $rinviati . ' punti rinviati';
+        }
+
+        return $pezzi === [] ? 'nessuna delibera' : implode(', ', $pezzi);
     }
 
     /** La seduta aperta dell'assemblea: aperta, senza esito. */

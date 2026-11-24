@@ -141,12 +141,12 @@ export function frasiDegliErrori(errori: Record<string, string | string[]> | nul
 }
 
 /**
- * L'interruttore «Avvisa i condòmini»: l'esempio della «i», la spiegazione di acceso e spento, e la riga «Adesso: …». È l'interruttore della pagina del piano
- * («Rendi visibile e invia notifiche», `invia_notifiche`), acceso di serie: acceso, la scadenza della rata compare nell'area dei condòmini; spento, la rata va a
- * giornale nascosta, e si pubblica dopo dalla pagina del piano.
+ * L'interruttore «Rendi visibili ai condòmini»: l'esempio della «i», la spiegazione di acceso e spento, e la riga «Adesso: …». È l'interruttore della pagina del
+ * piano, con lo stesso nome (`invia_notifiche`, che non manda notifiche), acceso di serie: acceso, la scadenza della rata compare nell'area dei condòmini;
+ * spento, la rata va a giornale nascosta, e si pubblica dopo dalla pagina del piano.
  */
 export const AVVISA = {
-    titolo: 'Avvisa i condòmini',
+    titolo: 'Rendi visibili ai condòmini',
     esempio: 'Per esempio: spegnilo se prima devi registrare i versamenti già arrivati, così nessuno vede da pagare una rata che ha già versato.',
     spiegazione: 'Acceso: la scadenza delle rate compare subito nell\'area dei condòmini. Spento: le rate vanno a giornale, ma i condòmini non le vedono finché non le pubblichi.',
     acceso: 'Adesso: i condòmini delle rate spuntate vedono la scadenza nella loro area. Di serie, come nella pagina del piano.',
