@@ -1041,7 +1041,7 @@ const submit = () => {
                         <div class="text-[11px] text-slate-500 dark:text-slate-400">
                           Palazzina: {{ q.immobile?.palazzina?.name ?? "—" }} |
                           Scala: {{ q.immobile?.scala?.name ?? "—" }} |
-                          Interno: {{ q.immobile?.interno ?? "—" }} |
+                          <template v-if="q.immobile?.interno != null">Interno: {{ q.immobile.interno }} |</template>
                           Piano: {{ q.immobile?.piano ?? "—" }} |
                           Sup: {{ q.immobile?.superficie ?? "—" }} m²
                         </div>
@@ -1068,7 +1068,7 @@ const submit = () => {
                               <span class="text-xs text-gray-500 mt-1">
                                 Palazzina: {{ option.palazzina?.name ?? "—" }} |
                                 Scala: {{ option.scala?.name ?? "—" }} |
-                                Interno: {{ option.interno ?? "—" }} |
+                                <template v-if="option.interno != null">Interno: {{ option.interno }} |</template>
                                 Piano: {{ option.piano ?? "—" }} |
                                 Sup: {{ option.superficie ?? "—" }} m²
                               </span>

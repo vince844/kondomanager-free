@@ -801,9 +801,9 @@ const getResiduoTooltip = (rata: any) => {
 
 const immobileDettagli = (immobile: any) => {
   if (!immobile) return "";
-  const interno = immobile.interno ?? "-";
-  const piano = immobile.piano ?? "-";
-  return `Int. ${interno} • Piano ${piano}`;
+  // Senza interno non si scrive «Int. -» (#69).
+  return [immobile.interno && `Int. ${immobile.interno}`, `Piano ${immobile.piano ?? "-"}`]
+    .filter(Boolean).join(" • ");
 };
 
 const isVoceRicevente = (capitoloId: number) => {
