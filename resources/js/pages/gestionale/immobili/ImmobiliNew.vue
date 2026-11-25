@@ -362,16 +362,6 @@ const submit = (associa: boolean = false) => {
               Annulla
             </Link>
 
-            <Button 
-              type="submit"
-              :disabled="form.processing" 
-              class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
-            >
-              <LoaderCircle v-if="form.processing && !associaAnagrafiche" class="h-4 w-4 animate-spin" />
-              <Plus v-else class="h-3.5 w-3.5" />
-              Salva Immobile
-            </Button>
-
             <Button
               type="button"
               variant="outline"
@@ -382,6 +372,16 @@ const submit = (associa: boolean = false) => {
               <LoaderCircle v-if="form.processing && associaAnagrafiche" class="h-4 w-4 animate-spin" />
               <Users v-else class="h-3.5 w-3.5" />
               Salva e associa le anagrafiche
+            </Button>
+
+            <Button
+              type="submit"
+              :disabled="form.processing"
+              class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
+            >
+              <LoaderCircle v-if="form.processing && !associaAnagrafiche" class="h-4 w-4 animate-spin" />
+              <Plus v-else class="h-3.5 w-3.5" />
+              Salva Immobile
             </Button>
         </div>
 
