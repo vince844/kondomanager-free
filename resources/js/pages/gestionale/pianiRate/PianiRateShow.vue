@@ -801,8 +801,8 @@ const getResiduoTooltip = (rata: any) => {
 
 const immobileDettagli = (immobile: any) => {
   if (!immobile) return "";
-  // Senza interno non si scrive «Int. -» (#69).
-  return [immobile.interno && `Int. ${immobile.interno}`, `Piano ${immobile.piano ?? "-"}`]
+  // Solo le parti presenti: senza interno o piano non si scrive «Int. -» / «Piano -» (#69). Il piano 0 resta.
+  return [immobile.interno && `Int. ${immobile.interno}`, immobile.piano != null && `Piano ${immobile.piano}`]
     .filter(Boolean).join(" • ");
 };
 

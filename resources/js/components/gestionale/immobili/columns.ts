@@ -142,7 +142,9 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
             h(MapPin, { class: 'w-3 h-3 text-slate-400' }),
             h('span', `Pal. ${immobile.palazzina?.name ?? '-'} | Sc. ${immobile.scala?.name ?? '-'}`)
           ]),
-          h('span', { class: 'text-[10px] text-slate-400 uppercase tracking-tight' }, `Piano: ${immobile.piano ?? '-'}`)
+          immobile.piano != null
+            ? h('span', { class: 'text-[10px] text-slate-400 uppercase tracking-tight' }, `Piano: ${immobile.piano}`)
+            : null
         ])
       }
     },
