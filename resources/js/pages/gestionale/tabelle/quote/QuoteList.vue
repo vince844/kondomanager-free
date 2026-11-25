@@ -1042,7 +1042,7 @@ const submit = () => {
                           Palazzina: {{ q.immobile?.palazzina?.name ?? "—" }} |
                           Scala: {{ q.immobile?.scala?.name ?? "—" }} |
                           <template v-if="q.immobile?.interno != null">Interno: {{ q.immobile.interno }} |</template>
-                          Piano: {{ q.immobile?.piano ?? "—" }} |
+                          <template v-if="q.immobile?.piano != null">Piano: {{ q.immobile.piano }} |</template>
                           Sup: {{ q.immobile?.superficie ?? "—" }} m²
                         </div>
                       </div>
@@ -1069,7 +1069,7 @@ const submit = () => {
                                 Palazzina: {{ option.palazzina?.name ?? "—" }} |
                                 Scala: {{ option.scala?.name ?? "—" }} |
                                 <template v-if="option.interno != null">Interno: {{ option.interno }} |</template>
-                                Piano: {{ option.piano ?? "—" }} |
+                                <template v-if="option.piano != null">Piano: {{ option.piano }} |</template>
                                 Sup: {{ option.superficie ?? "—" }} m²
                               </span>
                             </div>
