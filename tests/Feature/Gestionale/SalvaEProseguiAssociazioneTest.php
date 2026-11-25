@@ -1,0 +1,100 @@
+<?php
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kondomanager-free
+// Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
+
+/**
+ * "Salva e prosegui" nella scheda "Nuova associazione" (issue #69).
+ *
+ * Accanto a "Salva associazione" (che resta com'era e manda all'elenco) ci sono "Salva e aggiungi
+ * un'altra persona", che riapre la nuova associazione della stessa unità, e "Salva e crea un nuovo
+ * immobile", che apre il nuovo immobile dello stesso condominio. Il modulo sceglie la destinazione
+ * con il campo `next_route`. Qui si verificano il redirect, il messaggio e l'associazione salvata.
+ */
+
+use App\Models\Anagrafica;
+use App\Models\Condominio;
+use App\Models\Esercizio;
+use App\Models\Gestionale\PianoConto;
+use App\Models\Immobile;
+use App\Models\User;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
+
+beforeEach(function () {
+    app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
+    $ruolo = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+    $ruolo->givePermissionTo(
+        Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web'])
+    );
+
+    $this->user = User::factory()->create();
+    $this->user->assignRole($ruolo);
+
+    $this->condominio = Condominio::factory()->create();
+    Esercizio::factory()->create(['condominio_id' => $this->condominio->id]);
+    PianoConto::factory()->create(['condominio_id' => $this->condominio->id]);
+
+    $this->immobile = Immobile::query()->create(['condominio_id' => $this->condominio->id, 'nome' => 'Appartamento', 'interno' => '7']);
+    $this->persona = Anagrafica::query()->create(['nome' => 'Mario Rossi', 'indirizzo' => 'Via Roma 12', 'codice_fiscale' => 'RSSMRA70A01H501U']);
+});
+
+function spaSalva($test, array $extra = [])
+{
+    return $test->actingAs($test->user)->post(
+        route('admin.gestionale.immobili.anagrafiche.store', ['condominio' => $test->condominio->id, 'immobile' => $test->immobile->id]),
+        array_merge([
+            'anagrafica_id' => $test->persona->id,
+            'tipologia'     => 'proprietario',
+            'quota'         => 100,
+            'data_inizio'   => '2026-01-01',
+        ], $extra)
+    );
+}
+
+function spaAssociazioneSalvata($test): bool
+{
+    return $test->immobile->anagrafiche()->whereKey($test->persona->id)->exists();
+}
+
+it('con il solo "Salva associazione" torna all\'elenco, come prima', function () {
+    spaSalva($this)
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('message', fn ($m) => $m['type'] === 'success')
+        ->assertRedirect(route('admin.gestionale.immobili.anagrafiche.index', [
+            'condominio' => $this->condominio->id,
+            'immobile'   => $this->immobile->id,
+        ]));
+
+    expect(spaAssociazioneSalvata($this))->toBeTrue();
+});
+
+it('con "Salva e aggiungi un\'altra persona" riapre la nuova associazione della stessa unità', function () {
+    spaSalva($this, ['next_route' => 'associa_anagrafica'])
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('message', fn ($m) => $m['type'] === 'success')
+        ->assertRedirect(route('admin.gestionale.immobili.anagrafiche.create', [
+            'condominio' => $this->condominio->id,
+            'immobile'   => $this->immobile->id,
+        ]));
+
+    expect(spaAssociazioneSalvata($this))->toBeTrue();
+});
+
+it('con "Salva e crea un nuovo immobile" apre il nuovo immobile dello stesso condominio', function () {
+    spaSalva($this, ['next_route' => 'nuovo_immobile'])
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('message', fn ($m) => $m['type'] === 'success')
+        ->assertRedirect(route('admin.gestionale.immobili.create', ['condominio' => $this->condominio->id]));
+
+    expect(spaAssociazioneSalvata($this))->toBeTrue();
+});
+
+it('rifiuta una destinazione non ammessa e non salva l\'associazione', function () {
+    spaSalva($this, ['next_route' => 'altrove'])
+        ->assertSessionHasErrors('next_route');
+
+    expect(spaAssociazioneSalvata($this))->toBeFalse();
+});

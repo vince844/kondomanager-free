@@ -51,6 +51,8 @@ class CreateImmobileAnagraficaRequest extends FormRequest
             'tipologia'           => ['required', Rule::in(RuoloAnagraficaImmobile::values())],
             'data_inizio'         => 'required|date',
             'data_fine'           => 'sometimes|nullable|date|after_or_equal:data_inizio',
+            // Quale pagina aprire dopo il salvataggio (#69), null = elenco degli immobili
+            'next_route'          => ['nullable', Rule::in(['associa_anagrafica', 'nuovo_immobile'])],
         ];
     }
 

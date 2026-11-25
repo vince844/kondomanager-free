@@ -15,7 +15,7 @@ import Alert from '@/components/Alert.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import RipartoUsufruttoGuide from '@/components/guides/RipartoUsufruttoGuide.vue';
 import { Button } from '@/components/ui/button';
-import { Plus, LoaderCircle, Info, UserCheck, CalendarDays, Coins } from 'lucide-vue-next';
+import { Plus, LoaderCircle, Info, UserCheck, CalendarDays, Coins, UserPlus, Building2 } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
@@ -101,16 +101,24 @@ const form = useForm({
   anagrafica_id: '',
 });
 
-const submit = () => {
+// `nextRoute` sceglie dove andare dopo il salvataggio (#69), senza si torna all'elenco.
+type NextRoute = 'associa_anagrafica' | 'nuovo_immobile' | null;
+
+// Il pulsante premuto, per far girare lo spinner su quello giusto.
+const nextRouteInCorso = ref<NextRoute>(null);
+
+const submit = (nextRoute: NextRoute = null) => {
+    nextRouteInCorso.value = nextRoute;
     form.data_inizio = toBackend(form.data_inizio);
     form.data_fine   = toBackend(form.data_fine);
-    
-    form.post(route(...generateRoute('gestionale.immobili.anagrafiche.store', { condominio: props.condominio.id, immobile: props.immobile.id })), {
-        preserveScroll: true,
-        onSuccess: () => {
-            form.reset()
-        }
-    });
+
+    form.transform((data) => ({ ...data, next_route: nextRoute }))
+        .post(route(...generateRoute('gestionale.immobili.anagrafiche.store', { condominio: props.condominio.id, immobile: props.immobile.id })), {
+            preserveScroll: true,
+            onSuccess: () => {
+                form.reset()
+            }
+        });
 };
 </script>
 
@@ -140,7 +148,7 @@ const submit = () => {
       <ImmobileLayout>
         <div class="space-y-6">
 
-          <form @submit.prevent="submit" class="space-y-6">
+          <form @submit.prevent="submit()" class="space-y-6">
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
@@ -356,12 +364,36 @@ const submit = () => {
                 Annulla
               </Link>
 
-              <Button 
+              <Button
+                  type="button"
+                  variant="outline"
+                  :disabled="form.processing"
+                  class="h-9 px-6 text-sm font-semibold shadow-sm gap-2"
+                  @click="submit('associa_anagrafica')"
+              >
+                  <LoaderCircle v-if="form.processing && nextRouteInCorso === 'associa_anagrafica'" class="h-4 w-4 animate-spin" />
+                  <UserPlus v-else class="h-4 w-4" />
+                  Salva e aggiungi un'altra persona
+              </Button>
+
+              <Button
+                  type="button"
+                  variant="outline"
+                  :disabled="form.processing"
+                  class="h-9 px-6 text-sm font-semibold shadow-sm gap-2"
+                  @click="submit('nuovo_immobile')"
+              >
+                  <LoaderCircle v-if="form.processing && nextRouteInCorso === 'nuovo_immobile'" class="h-4 w-4 animate-spin" />
+                  <Building2 v-else class="h-4 w-4" />
+                  Salva e crea un nuovo immobile
+              </Button>
+
+              <Button
                   type="submit"
                   :disabled="form.processing" 
                   class="h-9 px-8 text-sm font-semibold shadow-md gap-2"
               >
-                  <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                  <LoaderCircle v-if="form.processing && nextRouteInCorso === null" class="h-4 w-4 animate-spin" />
                   <Plus v-else class="h-4 w-4" />
                   Salva associazione
               </Button>

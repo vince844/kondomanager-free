@@ -6,9 +6,10 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 <script setup lang="ts">
 
 import { computed, ref } from 'vue';
-import { Link, Head, useForm } from '@inertiajs/vue3';
+import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import Alert from '@/components/Alert.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
 import { List, Plus, Users, LoaderCircle, Home, Hash, MapPin, Info } from 'lucide-vue-next';
@@ -22,6 +23,7 @@ import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import CercaComune from '@/components/comuni/CercaComune.vue';
 import type { BreadcrumbItem } from '@/types';
+import type { Flash } from '@/types/flash';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Scala } from '@/types/gestionale/scale';
 import type { TipologiaImmobile } from '@/types/gestionale/tipologie-immobili';
@@ -36,6 +38,9 @@ const props = defineProps<{
 }>()
 
 const { generatePath, generateRoute } = usePermission();
+
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -135,6 +140,10 @@ const submit = (associa: boolean = false) => {
         back-text="Torna all'elenco"
       >
       </PageHeaderGuide>
+
+      <div v-if="flashMessage">
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
 
       <form id="immobileForm" @submit.prevent="submit(false)" class="space-y-6">
 
