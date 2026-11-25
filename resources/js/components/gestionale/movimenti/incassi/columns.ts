@@ -138,7 +138,7 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
                           }),
                           h('div', { class: 'flex flex-col' }, [
                             h('span', { class: 'font-medium text-gray-700' },
-                              `Rata n.${rata.numero}` + (rata.immobile ? ` · Int. ${rata.immobile}` : '')
+                              `Rata n.${rata.numero}` + (rata.immobile ? ` · ${rata.immobile}` : '') // `immobile` è già l'etichetta («Int. 3» o il nome)
                             ),
                             h('span', { class: 'text-[9px] text-gray-400' }, rata.scadenza),
                             // Coda 167 (R6): la rata di chi ha versato che riceve la parte in più.

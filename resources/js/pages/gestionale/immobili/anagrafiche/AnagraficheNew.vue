@@ -123,7 +123,7 @@ const submit = () => {
 
       <PageHeaderGuide
         page-title="Nuova associazione"
-        :page-subtitle="`Collega un soggetto all'immobile: ${immobile.nome} (Int. ${immobile.interno})`"
+        :page-subtitle="`Collega un soggetto all'immobile: ${immobile.nome}${immobile.interno ? ` (Int. ${immobile.interno})` : ''}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: props.condominio.id, immobile: props.immobile.id })"

@@ -856,7 +856,7 @@ function urlTipo(t: TipoPassaggio) {
 
       <PageHeaderGuide
         page-title="Registra passaggio"
-        :page-subtitle="`${tipoCorrente.titolo} su ${immobile.nome} (Int. ${immobile.interno})`"
+        :page-subtitle="`${tipoCorrente.titolo} su ${immobile.nome}${immobile.interno ? ` (Int. ${immobile.interno})` : ''}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :back-url="urlElenco"

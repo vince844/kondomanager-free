@@ -126,7 +126,7 @@ const pageGuides = computed(() => [
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Interno / Piano</p>
-                <p class="text-sm font-medium">{{ immobile.interno }} / {{ immobile.piano ?? '-' }}</p>
+                <p class="text-sm font-medium">{{ [immobile.interno, immobile.piano ?? '-'].filter((v) => v != null).join(' / ') }}</p>
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Palazzina / Scala</p>
@@ -223,5 +223,5 @@ const pageGuides = computed(() => [
     </div>
   </GestionaleLayout>
 
-  <TitolaritaSheet v-model:open="storicoAperto" :storico="storico" :unita="`${immobile.nome} (Int. ${immobile.interno})`" />
+  <TitolaritaSheet v-model:open="storicoAperto" :storico="storico" :unita="`${immobile.nome}${immobile.interno ? ` (Int. ${immobile.interno})` : ''}`" />
 </template>

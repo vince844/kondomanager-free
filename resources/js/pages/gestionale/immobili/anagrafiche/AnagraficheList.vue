@@ -159,7 +159,7 @@ function urlPassaggio(tipo: TipoPassaggio) {
 
       <PageHeaderGuide
         page-title="Titolari dell'unità"
-        :page-subtitle="`Chi risponde e chi occupa: ${props.immobile.nome} (Int. ${props.immobile.interno})`"
+        :page-subtitle="`Chi risponde e chi occupa: ${props.immobile.nome}${props.immobile.interno ? ` (Int. ${props.immobile.interno})` : ''}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
       >
@@ -346,5 +346,5 @@ function urlPassaggio(tipo: TipoPassaggio) {
     </div>
   </GestionaleLayout>
 
-  <TitolaritaSheet v-model:open="storicoAperto" :storico="storico" :unita="`${immobile.nome} (Int. ${immobile.interno})`" :condominio-id="props.condominio.id" :immobile-id="props.immobile.id" />
+  <TitolaritaSheet v-model:open="storicoAperto" :storico="storico" :unita="`${immobile.nome}${immobile.interno ? ` (Int. ${immobile.interno})` : ''}`" :condominio-id="props.condominio.id" :immobile-id="props.immobile.id" />
 </template>
