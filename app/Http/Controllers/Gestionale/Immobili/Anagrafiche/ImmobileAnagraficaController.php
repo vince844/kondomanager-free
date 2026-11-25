@@ -25,6 +25,7 @@ use App\Services\Subentro\StoricoTitolarita;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
@@ -180,6 +181,7 @@ class ImmobileAnagraficaController extends Controller
     public function store(CreateImmobileAnagraficaRequest $request, Condominio $condominio, Immobile $immobile): RedirectResponse
     {
         $data = $request->validated();
+        $nextRoute = Arr::pull($data, 'next_route');
 
         try {
             DB::beginTransaction();
@@ -218,10 +220,11 @@ class ImmobileAnagraficaController extends Controller
 
             DB::commit();
 
-           return to_route('admin.gestionale.immobili.anagrafiche.index', [
-                'condominio' => $condominio->id,
-                'immobile'   => $immobile->id,
-            ])->with($this->flashSuccess(__('gestionale.success_attach_anagrafica')));
+            return (match ($nextRoute) {
+                'associa_anagrafica' => to_route('admin.gestionale.immobili.anagrafiche.create', ['condominio' => $condominio->id, 'immobile' => $immobile->id]),
+                'nuovo_immobile'     => to_route('admin.gestionale.immobili.create', ['condominio' => $condominio->id]),
+                default              => to_route('admin.gestionale.immobili.anagrafiche.index', ['condominio' => $condominio->id, 'immobile' => $immobile->id]),
+            })->with($this->flashSuccess(__('gestionale.success_attach_anagrafica')));
 
         } catch (ValidationException $e) {
             DB::rollBack();
