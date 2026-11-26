@@ -12,8 +12,9 @@ import { Input } from "@/components/ui/input";
 import InputError from '@/components/InputError.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import QuoteMillesimiGuide from '@/components/guides/QuoteMillesimiGuide.vue';
+import IncollaMillesimi from '@/components/gestionale/tabelle/IncollaMillesimi.vue';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Plus, LoaderCircle, Trash2, Table as TableIcon, Info, Hash, Home, Check, Search, ArrowUp, ArrowDown, ArrowUpDown, X, Layers, Building2, DoorOpen, Shapes } from 'lucide-vue-next';
+import { Plus, LoaderCircle, Trash2, Table as TableIcon, Info, Hash, Home, Check, Search, ArrowUp, ArrowDown, ArrowUpDown, X, Layers, ClipboardPaste, Building2, DoorOpen, Shapes } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from "@/enums/Permission";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -724,6 +725,51 @@ const associaInBlocco = (unita: Immobile[]) => {
   ricerca.value = "";
 };
 
+/**
+ * «Incolla da un foglio di calcolo»: i valori riconosciuti dalla finestra entrano nella griglia.
+ *
+ * Un'unità già nell'elenco prende il valore incollato; una che non c'è ancora entra con il suo
+ * valore, come farebbe l'associazione in blocco seguita dalla compilazione. **Qui non si salva
+ * niente**: i valori si vedono, si correggono e partono con «Salva», e il totale in fondo li conta
+ * subito. Le righe che l'incolla non nomina restano come sono.
+ *
+ * Il valore entra come se fosse stato battuto e si fosse usciti dalla casella: con i decimali
+ * dichiarati dalla tabella come minimo (`171.3` diventa `171.30`), e intero se è più preciso.
+ */
+const modaleIncolla = ref(false);
+
+/** Le unità già nella griglia: la finestra cerca prima fra queste, e di queste mostra il valore di adesso. */
+const unitaInGriglia = computed<number[]>(() => form.quote.filter((q: any) => q.immobile).map((q: any) => q.immobile.id));
+const valoriInGriglia = computed<Record<number, string | null>>(() =>
+  Object.fromEntries(form.quote.filter((q: any) => q.immobile).map((q: any) => [q.immobile.id, q.valore === "" || q.valore === null || q.valore === undefined ? null : String(q.valore)])),
+);
+
+const applicaIncolla = (righe: { immobileId: number; valore: string }[]) => {
+  const perUnita = new Map<number, any>(
+    form.quote.filter((q: any) => q.immobile).map((q: any) => [q.immobile.id, q]),
+  );
+  const nuove: any[] = [];
+
+  for (const r of righe) {
+    const presente = perUnita.get(r.immobileId);
+    if (presente) {
+      presente.valore = normalizzaAllaPrecisione(r.valore);
+      continue;
+    }
+    const immobile = (rawImmobili as Immobile[]).find((i) => i.id === r.immobileId);
+    if (immobile) {
+      nuove.push({ chiave: prossimaChiave(), id: null, valore: normalizzaAllaPrecisione(r.valore), immobile });
+    }
+  }
+
+  if (nuove.length > 0) {
+    form.quote = [...form.quote, ...nuove];
+  }
+
+  // Come dopo l'associazione in blocco: una ricerca attiva nasconderebbe ciò che è appena entrato.
+  ricerca.value = "";
+};
+
 const righeAssociate = computed(() => form.quote.filter((q: any) => q.immobile).length);
 
 /**
@@ -967,6 +1013,23 @@ const submit = () => {
                 >
                   <Layers class="w-3.5 h-3.5" />
                   Associa in blocco
+                </Button>
+
+                <!--
+                  I valori arrivano quasi sempre in un foglio, dal tecnico o dall'amministratore di
+                  prima: l'associazione in blocco porta le unità, questo porta i millesimi. Solo per
+                  chi ha «Modifica condomini», come «Salva quote»: senza, i valori incollati non si
+                  potrebbero salvare.
+                -->
+                <Button
+                  v-if="puoModificare"
+                  type="button"
+                  @click="modaleIncolla = true"
+                  data-test="apri-incolla"
+                  class="h-8 px-4 text-[10px] font-bold uppercase tracking-widest gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 shadow-sm"
+                >
+                  <ClipboardPaste class="w-3.5 h-3.5" />
+                  Incolla da un foglio
                 </Button>
 
                 <Button
@@ -1320,6 +1383,15 @@ const submit = () => {
     tecnico. Le righe nascono vuote, la pagina dice quante ne restano da compilare, e la
     generazione del piano rate si ferma se qualcuna è ancora tale.
   -->
+  <IncollaMillesimi
+    v-if="puoModificare"
+    v-model:open="modaleIncolla"
+    :unita="rawImmobili"
+    :in-tabella="unitaInGriglia"
+    :adesso="valoriInGriglia"
+    @applica="applicaIncolla"
+  />
+
   <Dialog v-model:open="modaleBlocco">
     <DialogContent class="sm:max-w-[560px]">
       <DialogHeader>
